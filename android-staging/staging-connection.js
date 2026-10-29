@@ -47,6 +47,7 @@
       localStorage.removeItem('sharika_supabase_session_v1');
       localStorage.removeItem('vr_state_v2');
       localStorage.removeItem('vr_sess');
+      localStorage.removeItem('vr_app_v1');
       // An isolated staging build must never import the HTML demo accounts.
       localStorage.setItem(ACCOUNT_KEY, '[]');
     } catch (_) {}
@@ -387,7 +388,11 @@
         return;
       }
       const local=await authenticated(account);
-      window.A=Object.assign(window.A,local.p);
+      window.A=Object.assign({
+        name:'Me',pic:null,myRoom:null,claim:{d:'',streak:0},
+        st:{},sw:{},rw:{},fol:[]
+      },local.p);
+      if(typeof window.fixA==='function')window.fixA();
       try{localStorage.setItem('vr_sess',local.key);}catch(_){}
       window.saveA();
       window.hideAuth();
