@@ -81,7 +81,10 @@ jobs:
             echo "::error::Both encrypted signing secrets are required; refusing an unstable debug-signed APK."
             exit 1
           else
-            printf '%s' "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
+            # Mobile paste can insert line breaks or spaces; base64 has no whitespace.
+            printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
+            # Verify the exact expected private staging key, not any replacement.
+            printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-staging-signing.p12" | sha256sum --check --status
             chmod 600 "$RUNNER_TEMP/sharika-staging-signing.p12"
             echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-staging-signing.p12" >> "$GITHUB_ENV"
             echo "SHARIKA_STAGING_SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
