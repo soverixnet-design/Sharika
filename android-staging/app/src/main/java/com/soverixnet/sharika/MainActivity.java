@@ -97,7 +97,7 @@ public final class MainActivity extends Activity {
         root.addView(action("Send verification email", this::sendVerification, "#39445F"));
         root.addView(action("Refresh login and test Cloudflare API", this::testAuthenticatedApi, "#167A78"));
         root.addView(action("Check backend health", this::checkHealth, "#39445F"));
-        root.addView(action("Sign out", () -> {
+        root.addView(action("Sign out", view -> {
             auth.signOut();
             refreshIdentity();
             show("Signed out from this staging app.");
