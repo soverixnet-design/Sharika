@@ -13,6 +13,7 @@
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
   let busyRooms = false, framePoll = null;
+  let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
 
   function errText(error) { return String(error && error.message || error || 'Connection unavailable'); }
   function toast(message) { if (window.toast) window.toast(message); }
@@ -40,6 +41,69 @@
   };
   async function api(method, path, body) {
     return native('api', { method, path: '/api/v1' + path, body });
+  }
+  async function voiceSdk() {
+    if (window.LivekitClient) return window.LivekitClient;
+    if (!voiceSdkPromise) {
+      voiceSdkPromise = new Promise((resolve,reject)=>{
+        const script = document.createElement('script');
+        // The version is pinned; only fetched when a Sharika-scoped token is
+        // available. Never load the live user's Supabase voice adapter.
+        script.src='https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js';
+        script.onload=()=>window.LivekitClient ?
+          resolve(window.LivekitClient) : reject(new Error('LiveKit SDK unavailable'));
+        script.onerror=()=>reject(new Error('LiveKit SDK could not load'));
+        document.head.appendChild(script);
+      });
+    }
+    return voiceSdkPromise;
+  }
+  async function disconnectVoice() {
+    if(!voiceRoom)return;
+    const room=voiceRoom;
+    voiceRoom=null;voiceRoomId=null;
+    await room.disconnect();
+  }
+  async function connectVoice(roomId) {
+    // This must fail closed until the user configures NEW Sharika-scoped
+    // LiveKit secrets. Tokens are minted only after D1 room membership check.
+    const info=await api('POST','/rooms/'+roomId+'/voice-token',{});
+    const sdk=await voiceSdk();
+    await disconnectVoice();
+    const room=new sdk.Room({
+      audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true}
+    });
+    room.on(sdk.RoomEvent.TrackSubscribed,(track)=>{
+      if(track.kind===sdk.Track.Kind.Audio) {
+        const element=track.attach();
+        element.autoplay=true;
+        element.dataset.sharikaVoice='true';
+        document.body.appendChild(element);
+      }
+    });
+    room.on(sdk.RoomEvent.TrackUnsubscribed,(track)=>{
+      track.detach().forEach(node=>node.remove());
+    });
+    room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
+      const frame=document.getElementById('rf')?.contentWindow;
+      if(!frame || !frame.seats)return;
+      const talking=new Set(speakers.map(p=>p.identity));
+      for(const seat of frame.seats){
+        if(seat && seat.user_id)seat.talk=talking.has('sharika:'+seat.user_id);
+      }
+      if(typeof frame.render==='function')frame.render();
+    });
+    await room.connect(info.url,info.token);
+    voiceRoom=room;voiceRoomId=roomId;
+    try{await room.startAudio();}catch(_){}
+    if(info.publish)await room.localParticipant.setMicrophoneEnabled(true);
+    return {publishing:!!info.publish};
+  }
+  async function toggleVoice() {
+    if(!voiceRoom || !voiceRoomId)throw new Error('Voice connection is not available');
+    const currently=voiceRoom.localParticipant.isMicrophoneEnabled;
+    await voiceRoom.localParticipant.setMicrophoneEnabled(!currently);
+    return !currently;
   }
   function cleanLocalFakeState() {
     try {
@@ -287,20 +351,34 @@
         if(action==='take' && seat>0) {
           await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
           frame.close(); await syncFrame(room,frame);
-          frame.toast('Seat joined. Voice connection is not configured yet.');
+          const state=await connectVoice(room.id);
+          frame.toast(state.publishing?'Microphone enabled':'Listening to room');
         } else if(action==='down') {
           await api('PUT','/rooms/'+room.id+'/seat',{seat_no:null});
           frame.close(); await syncFrame(room,frame);
-          frame.toast('You left the microphone seat');
+          await connectVoice(room.id);
+          frame.toast('Seat released; listening only');
         } else frame.toast('Moderation requires verified server permissions');
       } catch (error) { frame.toast(errText(error)); }
     };
     const mic=frame.$ && frame.$('mic');
-    if(mic) mic.onclick=()=>frame.toast('LiveKit voice is not configured for Sharika staging yet');
+    if(mic) mic.onclick=async ()=>{
+      try {
+        const enabled=await toggleVoice();
+        mic.textContent=enabled?'🎤':'🔇';
+        mic.classList.toggle('off',!enabled);
+        frame.toast(enabled?'Microphone enabled':'Microphone muted');
+      } catch(error) {frame.toast(errText(error));}
+    };
     const rewards=frame.$ && frame.$('rrpill');
     if(rewards) rewards.onclick=()=>frame.toast('Weekly room rewards are not available yet');
     await syncFrame(room,frame);
-    frame.toast('This is an authentic staging room. Voice, games and gifts are pending.');
+    try {
+      const voice=await connectVoice(room.id);
+      frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
+    } catch(error) {
+      frame.toast('Voice pending: '+errText(error));
+    }
     if(framePoll) clearInterval(framePoll);
     framePoll=setInterval(()=>{if(window.cur?.id===room.id)syncFrame(room,frame).catch(()=>{});},15000);
   }
@@ -325,6 +403,7 @@
   window.leaveRoom=function() {
     const current=window.cur;
     if(framePoll){clearInterval(framePoll);framePoll=null;}
+    disconnectVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
     const iframe=document.getElementById('rf');
     if(iframe) iframe.onload=null;
