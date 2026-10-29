@@ -701,7 +701,7 @@ setTimeout(function(){$("sp").classList.add("off");showWeekly(function(){})},130
   window.SharikaWinBanner={show:show,cfg:cfg};
 })();
 
-setTimeout(demoWin,7000);setInterval(demoWin,32000);</script>
+/* Fake game-win announcements disabled; server events only. */</script>
 <style id="shx">
 :root{--sh1:#ff9a8b;--sh2:#ffd6a5;--sh3:#9be7d0}
 .app{background:radial-gradient(900px 500px at 10% -10%,rgba(255,154,139,.28),transparent 60%),radial-gradient(700px 480px at 100% 20%,rgba(99,102,241,.35),transparent 60%),linear-gradient(180deg,#0d1b5e,#070b2e 80%)}
@@ -893,5 +893,6 @@ go(0);$("wkb").onclick=end;el.querySelectorAll(".wkd u").forEach(function(x,n){x
 el.querySelectorAll(".pp").forEach(function(p){p.onclick=function(){var u=t.filter(function(x){return x.id===p.dataset.u})[0];end();setTimeout(function(){try{openProfile({id:u.id,n:u.n,e:u.e,lv:u.lv})}catch(e){}},700)}});
 el.querySelectorAll(".cpp").forEach(function(p){p.onclick=function(){end();setTimeout(function(){try{openProfile({id:p.dataset.c,n:p.dataset.n,e:p.dataset.e,lv:50})}catch(e){}},700)}})};
 var sp=document.createElement("div");sp.className="spk";var E=["✦","✧","✨","⭐"];for(var i=0;i<12;i++){var q=document.createElement("i");q.textContent=E[i%4];q.style.left=(Math.random()*95)+"%";q.style.fontSize=(10+Math.random()*10)+"px";q.style.color="#ffe9b0";q.style.animationDuration=(9+Math.random()*9)+"s";q.style.animationDelay=(-Math.random()*12)+"s";sp.appendChild(q)}
-document.getElementById("app").appendChild(sp)})()</script></body>
+document.getElementById("app").appendChild(sp)})()</script><script src="./connection.js"></script>
+</body>
 </html>
