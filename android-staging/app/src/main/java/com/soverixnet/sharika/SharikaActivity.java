@@ -219,7 +219,19 @@ public final class SharikaActivity extends Activity {
         auth.signInWithEmailAndPassword(email, password).addOnCompleteListener(this, task -> {
             if (!task.isSuccessful())
                 sendResult(id, result(false, null, safe(task.getException())));
-            else sendResult(id, result(true, identity(auth.getCurrentUser()), null));
+            else {
+                FirebaseUser current = auth.getCurrentUser();
+                if (current == null) {
+                    sendResult(id, result(false,null,"firebase_session_missing"));
+                    return;
+                }
+                current.reload().addOnCompleteListener(this, refreshed -> {
+                    FirebaseUser updated = auth.getCurrentUser();
+                    if (!refreshed.isSuccessful() || updated == null)
+                        sendResult(id, result(false,null,"firebase_session_refresh_failed"));
+                    else sendResult(id, result(true, identity(updated), null));
+                });
+            }
         });
     }
 
