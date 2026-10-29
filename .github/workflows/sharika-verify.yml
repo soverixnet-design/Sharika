@@ -1,0 +1,32 @@
+name: Sharika source verification
+
+# Static checks only. This workflow does not access any server or secret.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "admin/**"
+      - "backend/**"
+      - "tools/verify-integration.mjs"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Verify the two browser connection scripts parse
+        run: |
+          node --check app/connection.js
+          node --check admin/connection.js
+
+      - name: Confirm bridges, Edge secret boundaries and deployment safety
+        run: node tools/verify-integration.mjs
