@@ -1,6 +1,7 @@
 // Static integration checks for Sharika. Never executes app/backend code.
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import { Script } from 'node:vm';
 
 const pairs = [
   ['app/index.html', 'app/connection.js'],
@@ -12,6 +13,7 @@ for (const [htmlPath, bridgePath] of pairs) {
   const bridge = readFileSync(bridgePath, 'utf8');
   assert.ok(html.length > 20_000, htmlPath + ' is unexpectedly short');
   assert.ok(bridge.length > 100, bridgePath + ' is unexpectedly short');
+  new Script(bridge, { filename: bridgePath }); // Parse the entire adapter without executing it.
   const sources = [...html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)]
     .map((match) => match[1]);
   assert.equal(sources.filter((s) => s === './connection.js').length, 1,
@@ -47,3 +49,11 @@ assert.match(admin, /api\('GET','\/admin\/status'\)/,
 assert.match(admin, /localStorage\.removeItem\('aa'\)/,
   'Legacy local demo login must be cleared');
 console.log('PASS: demo sign-in cannot bypass the connected admin gate');
+
+const roomHtml = readFileSync('app/index.html', 'utf8');
+const appBridge = readFileSync('app/connection.js', 'utf8');
+const fakeChatTimer = /setInterval\\(function\\(\\)\\{var o=others\\(\\);[\\s\\S]*?\\},9000\\);/;
+assert.match(roomHtml, fakeChatTimer, 'Original room demo timer fixture has changed');
+assert.ok(appBridge.includes('/setInterval\\\\(function\\\\(\\\\)\\\\{var o=others\\\\(\\\\);'),
+  'Bridge must suppress the 9-second fake chat timer');
+console.log('PASS: connected rooms suppress template-generated chat messages');
