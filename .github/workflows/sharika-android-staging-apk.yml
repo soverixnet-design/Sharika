@@ -71,16 +71,14 @@ jobs:
           test -n "$SDKMANAGER"
           "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
 
-      - name: Restore stable staging signer from encrypted GitHub secrets if configured
+      - name: Restore required stable staging signer from encrypted GitHub secrets
         env:
           KEY_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
           KEY_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
-          if [[ -z "$KEY_B64" && -z "$KEY_PASSWORD" ]]; then
-            echo "::warning::Stable signing secrets not yet configured; APK uses temporary debug key."
-          elif [[ -z "$KEY_B64" || -z "$KEY_PASSWORD" ]]; then
-            echo "::error::Both stable signing secrets must be configured together."
+          if [[ -z "$KEY_B64" || -z "$KEY_PASSWORD" ]]; then
+            echo "::error::Both encrypted signing secrets are required; refusing an unstable debug-signed APK."
             exit 1
           else
             printf '%s' "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
