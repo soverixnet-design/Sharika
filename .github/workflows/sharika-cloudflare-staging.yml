@@ -1,0 +1,97 @@
+name: Sharika staging D1 rollout (manual approval only)
+
+on:
+  push:
+    branches:
+      - feature/sharika-cloudflare-d1-foundation-20261029
+    paths:
+      - '.github/workflows/sharika-cloudflare-staging.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Select an isolated staging operation; nothing touches the live app'
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - initialize-d1
+          - initialize-d1-and-publish-worker
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-staging-d1-rollout
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Check staging scope and code
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse wrong account, database, or environment
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const c = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
+            if (c.name !== "sharika-api-staging" ||
+                c.account_id !== "d81cf7c48fb9b36d468cb0a08720cd74" ||
+                c.vars?.SHARIKA_ENV !== "staging" ||
+                c.d1_databases?.length !== 1 ||
+                c.d1_databases[0].binding !== "DB" ||
+                c.d1_databases[0].database_name !== "sharika-staging" ||
+                c.d1_databases[0].database_id !== "b2c62252-12a5-4740-90c7-01a536d9a39a") {
+              throw new Error("Unexpected Cloudflare target: refusing to continue");
+            }
+            console.log("Verified staging-only Cloudflare account and D1 binding");
+          '
+      - name: Run Worker syntax and tests
+        run: npm run check
+      - name: Validate D1 schema in local ephemeral SQLite only
+        run: |
+          python3 - <<'PY'
+          import pathlib, sqlite3
+          script = pathlib.Path('migrations/0001_initial.sql').read_text()
+          conn = sqlite3.connect(':memory:')
+          conn.executescript(script)
+          assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'sharika_users'").fetchone()
+          assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'sharika_wallet_ledger'").fetchone()
+          print('Staging schema passes local SQLite checks')
+          PY
+
+  remote:
+    name: Initialize isolated Cloudflare staging
+    needs: preflight
+    # A push NEVER creates tables or publishes Workers.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/sharika-cloudflare-d1-foundation-20261029' && inputs.action != 'validate' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require a token stored as a GitHub Actions secret
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Configure CLOUDFLARE_API_TOKEN as a repository Actions secret first."
+            exit 1
+          fi
+      - name: Apply only Sharika staging D1 migrations
+        run: npx --yes wrangler@4 d1 migrations apply sharika-staging --remote --config wrangler.jsonc
+      - name: Publish only the isolated staging Worker
+        if: ${{ inputs.action == 'initialize-d1-and-publish-worker' }}
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
