@@ -241,6 +241,21 @@ async function handler(req) {
         }
         return response({ member, owner: room.owner_id === actor.id });
       }
+      // Leaving a room must release the caller's membership and microphone seat.
+      // The owner keeps the room's permanent owner record and seat zero.
+      if (parts[2] === 'leave' && parts.length === 3 && req.method === 'POST') {
+        if (!member) return response({ left: true, owner: room.owner_id === actor.id });
+        if (room.owner_id === actor.id) {
+          if (member.seat_no !== null) {
+            await requestDb('sharika_room_members', 'PATCH',
+              `room_id=eq.${roomId}&user_id=eq.${actor.id}`, { seat_no: null });
+          }
+        } else {
+          await requestDb('sharika_room_members', 'DELETE',
+            `room_id=eq.${roomId}&user_id=eq.${actor.id}`);
+        }
+        return response({ left: true, owner: room.owner_id === actor.id });
+      }
       if (parts[2] === 'seat' && req.method === 'PUT') {
         if (!member) return failure('join_room_first', 403);
         const data = await parseBody(req);
