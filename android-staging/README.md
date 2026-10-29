@@ -1,7 +1,10 @@
-# Sharika Android Staging (private test APK, not the user app)
+# Sharika Android staging alpha — original Sharika UI
 
-This is the **first isolated Android staging harness**, not the finished
-Sharika Voice Chat app or its existing design.
+This branch now packages the **user's exact original Sharika HTML/CSS**
+inside an Android WebView, with native Firebase Auth and a separate Cloudflare
+D1 adapter. It is a staging alpha, not a finished user-facing release.
+The previous Android login/API diagnostic screen remains unexported for test
+purposes; the launcher now opens the original designed app.
 
 ## Safety
 
@@ -9,23 +12,32 @@ Sharika Voice Chat app or its existing design.
 - Firebase project: `sharika-voice-chat-app` (the uploaded Android
   `google-services.json` was checked for this exact package and project).
 - Backend: `https://sharika-api-staging.soverixnet.workers.dev`.
-- The Java activity uses the Firebase Android SDK directly. All HTTP calls
-  go **only** to the staging Worker; it never opens the existing HTML app,
-  Supabase, DigitalOcean or the current Sharika frontend.
-- It supports email/password **test** account creation and sign-in,
-  Firebase Google sign-in using Credential Manager, verification emails,
-  and read-only requests to `/health` and `/api/v1/me`.
+- The new launcher `SharikaActivity` packages `../app/index.html` unchanged
+  and substitutes only an Android-specific `staging-connection.js` for the
+  former Supabase bridge. Native Firebase Auth and a narrow allowlist of HTTP
+  calls connect **only** to the new Cloudflare staging Worker. No Supabase
+  production session, service key or old account is imported.
+- It supports native Firebase email/password account creation, Google sign-in
+  using Android Credential Manager, email verification, D1 profile creation,
+  live reads of wallet/room lists, joining/leaving rooms and setting seats.
+  The original 3D room UI is loaded from the original HTML asset.
+  Voice connection code requests a scoped token when available, but the
+  Sharika-specific LiveKit credentials are not configured/verified yet.
   A `404 profile_not_found` after Firebase token verification is expected:
   existing Supabase users have not been imported into staging D1.
-- No wallet transactions, gift/game actions, voice calls, demo currency,
-  admin changes, migrations, or production installations are performed.
+- No financial/gift/game/admin mutations or migrations are performed.
+  Original placeholder game/gift/message buttons are intercepted so they
+  cannot generate false payouts or impersonate real users. Real voice,
+  background audio, real-time chat and admin operations remain unverified.
+  Any microphone access requires Android runtime permission.
 - Do not distribute this staging test APK as a finished app. It may share a
   package name with a future release; avoid installing over an existing app.
 
 ## Build
 
 The separate branch workflow
-`.github/workflows/sharika-android-staging-apk.yml` runs an automated
+`.github/workflows/sharika-android-staging-apk.yml` verifies the
+original HTML/staging adapter contract and runs an automated
 **debug APK** build on this feature branch and uploads the APK as a CI
 artifact. The workflow never deploys a production app or creates paid cloud
 resources.
@@ -101,3 +113,26 @@ other-device live presence, gifts, games, paid wallet actions, admin mutations,
 ranking, identity import and production cutover. Backend operations may require
 further security and end-to-end testing before real users access them.
 Do not enable billing or merge this branch to production.
+
+
+## Original-design Android alpha test plan
+
+1. Keep the existing Firebase staging project and the stable Android
+   signer registered. **Do not use the old Supabase login.**
+2. Install the new staging APK over the previous *same-signed test APK*.
+   Never uninstall a different live installation or clear its data.
+3. On the original Sharika login page, use **Continue with Google** or
+   sign up with an email and a password of at least 12 characters.
+4. For email signup, click the verification link and sign in again.
+   New Google accounts may be asked for a real name/date of birth.
+5. Create a new isolated D1 profile. Room creation, listing, member joining
+   and seat updates should then be available in the original room design.
+6. A Sharika-scoped LiveKit WSS address/API credentials are required on the
+   Worker for real voice. Neither microphone audio nor 2-device voice is
+   claimed tested before those secrets and device permissions are configured.
+7. Wallet/game/gift/message/admin controls that lack a transactional backend
+   are intentionally unavailable, not simulated.
+
+A physical Android device and a second distinct user account are still
+required for honest end-to-end verification before any production release.
+No live app or historical data has been changed.
