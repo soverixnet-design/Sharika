@@ -52,8 +52,8 @@ console.log('PASS: demo sign-in cannot bypass the connected admin gate');
 
 const roomHtml = readFileSync('app/index.html', 'utf8');
 const appBridge = readFileSync('app/connection.js', 'utf8');
-const fakeChatTimer = /setInterval\\(function\\(\\)\\{var o=others\\(\\);[\\s\\S]*?\\},9000\\);/;
-assert.match(roomHtml, fakeChatTimer, 'Original room demo timer fixture has changed');
-assert.ok(appBridge.includes('/setInterval\\\\(function\\\\(\\\\)\\\\{var o=others\\\\(\\\\);'),
+assert.ok(roomHtml.includes('setInterval(function(){var o=others();'),
+  'Original room demo timer fixture has changed');
+assert.ok(appBridge.includes('setInterval\\(function\\(\\)\\{var o=others\\(\\);'),
   'Bridge must suppress the 9-second fake chat timer');
 console.log('PASS: connected rooms suppress template-generated chat messages');
