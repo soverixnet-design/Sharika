@@ -4,6 +4,25 @@ This is an **unpublished, isolated, no-spend migration foundation**. It does not
 replace or write the existing Supabase project, Sovera/Earnbd data, DigitalOcean
 droplets, LiveKit services, or the original Sharika app/admin HTML and adapters.
 
+## Account-linked staging status (2026-10-29)
+
+- Cloudflare account `d81cf7c48fb9b36d468cb0a08720cd74` and D1 database
+  `sharika-staging` (`b2c62252-12a5-4740-90c7-01a536d9a39a`) are now
+  pinned in `wrangler.jsonc`. These identifiers are not secret credentials.
+- The user created the empty remote D1 database. **The remote schema has NOT
+  been applied; no staging Worker has been published.**
+- A staging-only guarded rollout workflow is in
+  `.github/workflows/sharika-cloudflare-staging.yml`. A normal push only
+  validates locally; remote schema initialization and Worker deployment
+  require a specifically chosen manual action plus a separately stored GitHub
+  Actions secret `CLOUDFLARE_API_TOKEN` with narrowly scoped permissions.
+- GitHub requires a manually dispatched workflow file to also exist on the
+  repository's default branch; since this remains an unmerged draft, its
+  "Run workflow" control is **not yet available**. Do not merge the full
+  migration branch just to activate that control.
+- Secrets belong in GitHub Actions Secrets, never in source code, screenshots
+  or chat. Do not configure production routes or live app adapters yet.
+
 ## Delivered in this stage
 
 - D1 schema for Sharika profiles (8-digit IDs), rooms, seats, wallet history and
