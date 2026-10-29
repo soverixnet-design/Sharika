@@ -1,0 +1,12 @@
+{
+  "name": "sharika-cloudflare-d1-staging",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check src/index.mjs && node --check src/auth.mjs && npm test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
