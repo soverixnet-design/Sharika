@@ -134,4 +134,5 @@ P.analytics=function(){var u=D.users.length*1250,r=[["Registered users",N(u)],["
 $("pg").innerHTML='<div class="kp">'+r.map(function(x){return'<div class="k"><small>'+x[0]+"</small><b>"+x[1]+"</b></div>"}).join("")+'</div><div class="card"><button class="btn o s" id="ex2">Export CSV</button><p class="n" style="margin-top:8px">Sample numbers. Real values will come from the server.</p></div>';$("ex2").onclick=function(){var l=document.createElement("a");l.href=URL.createObjectURL(new Blob([r.map(function(x){return x.join(",")}).join("\n")],{type:"text/csv"}));l.download="analytics.csv";l.click()}};
 P.system=function(){var S=[["API server","OK","42 ms"],["WebSocket","OK","18 ms"],["PostgreSQL","OK","6 ms"],["Redis","OK","1 ms"],["Voice provider","OK","60 ms"],["Push (FCM/APNs)","OK","120 ms"],["SMS gateway","Warning","900 ms"],["Backups","OK","last: 03:00"]];$("pg").innerHTML='<div class="card"><p class="n">Sample status. A real server will report live health here.</p>'+T(["Service","Status","Latency"],S.map(function(x){return[x[0],'<span class="tag '+(x[1]=="OK"?"t-ok":"t-w")+'">'+x[1]+"</span>",x[2]]}))+"</div>"};
 ME=st(1,"aa");if(ME)shell();else login();
-</script></body></html>
+</script><script src="./connection.js"></script>
+</body></html>
