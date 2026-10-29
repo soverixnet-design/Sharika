@@ -149,6 +149,11 @@
     const current = await ensureProfile(account, form);
     const local = remember(account, current);
     await Promise.allSettled([reloadWallet(), reloadRooms()]);
+    // The original UI's login function reconstructs A from this object;
+    // carry the real room back so it does not hide the newly loaded own room.
+    local.p.myRoom = window.A.myRoom || null;
+    local.state = {...balance};
+    try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local])); } catch (_) {}
     return local;
   }
 
