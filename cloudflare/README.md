@@ -1,94 +1,96 @@
-# Sharika — Cloudflare Workers + D1 (isolated preview)
+# Sharika — Cloudflare Workers + D1 (isolated staging)
 
-This is an **unpublished, isolated, no-spend migration foundation**. It does not
-replace or write the existing Supabase project, Sovera/Earnbd data, DigitalOcean
-droplets, LiveKit services, or the original Sharika app/admin HTML and adapters.
+This project builds a **separate staging backend** for Sharika. It is not the
+currently running Sharika client. The original app and admin adapters still
+use their existing Supabase endpoints, and nothing here changes or imports
+Sovera/Earnbd data or modifies DigitalOcean and LiveKit servers.
 
-## Account-linked staging status (2026-10-29)
+## Verified staging resources (2026-10-29)
 
-- Cloudflare account `d81cf7c48fb9b36d468cb0a08720cd74` and D1 database
-  `sharika-staging` (`b2c62252-12a5-4740-90c7-01a536d9a39a`) are now
-  pinned in `wrangler.jsonc`. These identifiers are not secret credentials.
-- The user created the empty remote D1 database. **The remote schema has NOT
-  been applied; no staging Worker has been published.**
-- A staging-only guarded rollout workflow is in
-  `.github/workflows/sharika-cloudflare-staging.yml`. A normal push only
-  validates locally; remote schema initialization and Worker deployment
-  require a specifically chosen manual action plus a separately stored GitHub
-  Actions secret `CLOUDFLARE_API_TOKEN` with narrowly scoped permissions.
-- GitHub requires a manually dispatched workflow file to also exist on the
-  repository's default branch; since this remains an unmerged draft, its
-  "Run workflow" control is **not yet available**. Do not merge the full
-  migration branch just to activate that control.
-- Secrets belong in GitHub Actions Secrets, never in source code, screenshots
-  or chat. Do not configure production routes or live app adapters yet.
+- Cloudflare Worker: `https://sharika-api-staging.soverixnet.workers.dev`
+- Cloudflare account: `d81cf7c48fb9b36d468cb0a08720cd74`
+- Isolated D1 database: `sharika-staging`, ID
+  `b2c62252-12a5-4740-90c7-01a536d9a39a`
+- The remote D1 migration `0001_initial.sql` **was applied** via the manual
+  GitHub Actions workflow. The schema exists, but old user data has **not**
+  been imported.
+- The Worker was **deployed**, and `GET /health` returned HTTP 200 with D1
+  healthy. Before configuring Firebase it reported `auth_configured: false`.
+- The user created a new Firebase project: `sharika-voice-chat-app`.
+  Its **public project ID** is now configured in `wrangler.jsonc`. This code
+  change needs another explicit manual staging Worker deployment to take effect.
+- No web/Android Firebase app registration, enabled sign-in providers, end-user
+  sign-in, authenticated Worker request or old-user identity linking has yet
+  been verified. Project ID configuration alone does not complete login.
 
-## Delivered in this stage
+## Deployment safety
 
-- D1 schema for Sharika profiles (8-digit IDs), rooms, seats, wallet history and
-  future gift/admin data. No demo/admin accounts and no fake payment results.
-- Firebase ID-token verifier using Google's signed public keys. Email/password,
-  Google, and Facebook sign-in can be provided by Firebase Auth once configured.
-  **A Firebase project is NOT created or configured by this commit.**
-- Authenticated API: `GET /health`, `GET/POST/PATCH /api/v1/me`,
+- Cloudflare Worker and D1 are separate from the live app. No production
+  domain route, existing frontend adapter, shared database, or billing plan
+  is changed by the staging workflow.
+- Every deploy requires a manual GitHub Actions selection:
+  `deploy-staging-worker`; ordinary pushes run tests only.
+- The default-branch manual workflow checks the exact Cloudflare account,
+  database, staging-only Worker name and Firebase project ID, and checks out
+  a **pinned candidate commit** before deploying. Change that pin deliberately
+  when promoting a new candidate.
+- The `CLOUDFLARE_API_TOKEN` is a GitHub Actions secret. Never paste secrets,
+  service-account private keys, passwords, or recovery codes in this repo or
+  in chat.
+- All browser origins remain blocked (`ALLOWED_ORIGINS` is empty) until a
+  dedicated staging frontend URL is reviewed.
+
+## Current API foundation
+
+- D1 profile and wallet ledger schema, room owners, room members, gift and
+  admin staging tables; 8-digit public IDs.
+- Cryptographic verification of Firebase ID tokens from the configured
+  project against Google's JWKs.
+- Endpoints: `GET /health`, `GET/POST/PATCH /api/v1/me`,
   `GET /api/v1/users/:publicId`, `GET /api/v1/wallet`,
-  `GET/POST /api/v1/rooms`, `POST /api/v1/rooms/:id/join`,
-  `POST /api/v1/rooms/:id/leave`, `PUT /api/v1/rooms/:id/seat`,
-  `GET /api/v1/rooms/:id/members`, `POST /api/v1/rooms/:id/voice-token`.
-- Gift sending, daily claims, exchange, games, recharges and **all admin
-  mutations** intentionally return HTTP 501 `migration_pending`. They have not
-  been migrated or claimed as working.
-- Cross-origin browser requests are denied unless their origin appears in
-  `ALLOWED_ORIGINS`. D1 uses bound parameters for all input values.
+  `GET/POST /api/v1/rooms`, room join/leave/seat/members and voice-token.
+- New-user signup requires a verified Firebase ID token and an eligible
+  profile; it creates a staging profile with a welcome ledger entry.
+- Voice-token issuance additionally requires **Sharika-scoped** LiveKit
+  secrets and URL. These are not configured by adding Firebase.
+- Gifts, daily claims, exchange, games, recharge and admin mutations return
+  HTTP 501 `migration_pending`. These features are not yet migrated.
 
-## Reproduce/tests (requires Node.js 22+)
+## Development and checks
 
 ```sh
 cd cloudflare
 npm run check
 ```
 
-## Local-only setup when you have a Cloudflare account
+The separate default-branch manual workflow
+`.github/workflows/sharika-d1-staging-initialize.yml` supports
+`verify-only`, `create-tables`, and `deploy-staging-worker`.
+Do not repeat `create-tables` unless a schema migration needs applying.
 
-Cloudflare Workers and D1 have free quotas, but exceeding them can stop requests.
-No billing account or paid feature is necessary for this proof of concept.
+## Remaining steps before switching any user
 
-1. Install a current Wrangler CLI using Cloudflare's official instructions and
-   sign in **to your own account** (`npx wrangler login`). No credentials in Git.
-2. From `cloudflare/`, use `npx wrangler d1 create sharika-staging`.
-3. Replace the all-zero `database_id` in `wrangler.jsonc` with the newly
-   allocated D1 database ID. **Do not point at a live D1 database.**
-4. Run `npx wrangler d1 migrations apply sharika-staging --local`.
-5. Supply your own free Firebase Auth project ID and exact staging frontend
-   origins via Wrangler vars. No `FIREBASE_PROJECT_ID` means fail-closed 503.
-6. For voice token testing only, set `LIVEKIT_API_KEY`,
-   `LIVEKIT_API_SECRET` as Worker secrets and `LIVEKIT_URL` as a variable
-   for an existing **Sharika-scoped** LiveKit service. Never commit secrets.
-7. Run `npx wrangler dev` and inspect `/health`. A remote D1 migration or
-   remote deployment is **not** part of this stage.
+1. In the new Firebase console enable the intended providers under
+   **Authentication → Sign-in method**. Register an appropriate Firebase
+   Web or Android app for an isolated staging client; preserve its public
+   SDK configuration. Do not share any private admin key.
+2. Deploy the newly reviewed staging Worker candidate, verify `/health`,
+   expect anonymous `/api/v1/me` to return HTTP 401, and test a *real*
+   verified Firebase login on a separate staging frontend.
+3. Register the exact staging frontend origin in `ALLOWED_ORIGINS` only
+   after the staging client URL is known. Keep all live origins unchanged.
+4. Make an approved backup and inventory of Sharika-only Supabase data.
+   Map old Supabase user UUIDs to new Firebase UIDs securely; passwords
+   cannot simply be copied. Do not silently duplicate accounts or re-credit
+   the 2,000-coin welcome reward.
+5. Reconcile historical balances and ledgers, and implement server-authoritative,
+   transactional, idempotent financial/game/admin changes with tests.
+6. Connect voice to an explicitly Sharika-scoped LiveKit service, test
+   multiple devices, and evaluate Workers/D1 free-tier quotas.
 
-## Required work before any live cutover
-
-1. Obtain an explicit user-approved migration window and encrypted export
-   / backup for Sharika data only (no Sovera/Earnbd tables).
-2. Securely map Supabase user UUIDs to Firebase Auth UIDs. Existing Supabase
-   passwords cannot be copied into Firebase as plaintext; use verified account
-   linking / password reset instead of silently replacing identities.
-3. Import all existing `sharika_*` profiles, ID assignments, transaction
-   history, balances, memberships, gifts, configs and admin roles **once**.
-   Reconcile ledger totals before enabling financial writes. Do not re-credit
-   the 2,000-coin welcome gift for imported accounts.
-4. Implement transactional, idempotent server-authoritative gifts, games,
-   exchange, recharge approval and admin audit with concurrency tests.
-5. Wire **new** app/admin adapters behind an explicit staging-only flag,
-   test Google/email sign-in, voice, identity, seats, wallet and moderation
-   across multiple real devices. Do not switch the live frontend until verified.
-6. Assess traffic and Workers/D1 daily limits; free tier is not unlimited.
-
-The original `app/connection.js` and `admin/connection.js` still talk to
-Supabase intentionally. This keeps live users and old data untouched.
+No live cutover, data migration or paid upgrade is authorized by this stage.
 
 References:
-- https://developers.cloudflare.com/d1/worker-api/d1-database/
 - https://developers.cloudflare.com/workers/wrangler/configuration/
+- https://developers.cloudflare.com/d1/worker-api/d1-database/
 - https://firebase.google.com/docs/auth/admin/verify-id-tokens
