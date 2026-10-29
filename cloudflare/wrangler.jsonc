@@ -15,7 +15,7 @@
   ],
   "vars": {
     "SHARIKA_ENV": "staging",
-    "FIREBASE_PROJECT_ID": "",
+    "FIREBASE_PROJECT_ID": "sharika-voice-chat-app",
     "ALLOWED_ORIGINS": ""
   }
 }
