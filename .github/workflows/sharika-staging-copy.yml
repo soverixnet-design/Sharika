@@ -1,0 +1,68 @@
+name: Sharika staging source copy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-staging-copy
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out Sharika candidate without merging
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: feature/sharika-connect-20261029
+          persist-credentials: false
+
+      - name: Validate candidate and package source
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s app/index.html
+          test -s admin/index.html
+          test -s backend/sharika-api/index.ts
+          SOURCE_SHA="$(git rev-parse --verify HEAD)"
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          tar --create --gzip --file="$RUNNER_TEMP/sharika-preview.tgz" app admin backend
+          test -s "$RUNNER_TEMP/sharika-preview.tgz"
+          echo "Candidate validated, SHA: $SOURCE_SHA"
+
+      - name: Copy to isolated unprivileged server directory
+        env:
+          DEPLOY_KEY: ${{ secrets.SHARIKA_DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.SHARIKA_DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.SHARIKA_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.SHARIKA_DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.SHARIKA_DEPLOY_PORT }}
+          SOURCE_SHA: ${{ steps.package.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PORT"
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$DEPLOY_USER" = sharika-deploy
+          umask 077
+          printf '%s\n' "$DEPLOY_KEY" > "$RUNNER_TEMP/sharika_id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/sharika_known_hosts"
+          SSH_OPTS=(-F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/sharika_known_hosts" -o IdentitiesOnly=yes -o ConnectTimeout=15 -p "$DEPLOY_PORT" -i "$RUNNER_TEMP/sharika_id_ed25519")
+          REMOTE="$DEPLOY_USER@$DEPLOY_HOST"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "mkdir -p -- \$HOME/sharika/previews/$SOURCE_SHA"
+          scp -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$RUNNER_TEMP/sharika_known_hosts" -o IdentitiesOnly=yes \
+            -P "$DEPLOY_PORT" -i "$RUNNER_TEMP/sharika_id_ed25519" \
+            "$RUNNER_TEMP/sharika-preview.tgz" "$REMOTE:sharika/previews/$SOURCE_SHA/source.tgz"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" \
+            "tar -xzf sharika/previews/$SOURCE_SHA/source.tgz -C sharika/previews/$SOURCE_SHA && test -s sharika/previews/$SOURCE_SHA/app/index.html && test -s sharika/previews/$SOURCE_SHA/admin/index.html && test -s sharika/previews/$SOURCE_SHA/backend/sharika-api/index.ts && printf 'SHARIKA_STAGING_COPY_OK\\n'"
+          echo "Preview source copied to the Sharika-only home directory; no server service was changed."
