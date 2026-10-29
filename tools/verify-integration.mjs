@@ -57,3 +57,12 @@ assert.ok(roomHtml.includes('setInterval(function(){var o=others();'),
 assert.ok(appBridge.includes('setInterval\\(function\\(\\)\\{var o=others\\(\\);'),
   'Bridge must suppress the 9-second fake chat timer');
 console.log('PASS: connected rooms suppress template-generated chat messages');
+
+assert.match(api, /parts\[2\] === 'leave' && parts\.length === 3 && req\.method === 'POST'/,
+  'Server must support authenticated room departure');
+assert.match(api, /requestDb\('sharika_room_members', 'DELETE'/,
+  'Leaving members must release their persisted room presence');
+assert.match(appBridge, /jsonFetch\(BASE \+ '\/functions\/v1\/sharika-api\/rooms\/'[\s\S]*?'\/leave'/,
+  'Leaving a room must notify the backend');
+console.log('PASS: room departure releases membership without deleting owner rooms');
+
