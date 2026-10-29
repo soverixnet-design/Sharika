@@ -74,3 +74,25 @@ new certificate fingerprint. For reliable repeated testing, configure a stable,
 secret-backed test signing keystore in GitHub Actions before distributing more
 builds. **Never commit a keystore or a private signing key to the repository.**
 A production/Play release needs the real signing fingerprint separately.
+
+### Persistent staging Android signing (without additional cost)
+
+The staging Android debug workflow optionally uses a private PKCS12 keystore
+stored in **GitHub Actions encrypted repository secrets**. Configure both:
+
+- `SHARIKA_STAGING_KEYSTORE_B64`: entire single-line base64 representation
+  of the private `sharika-staging-signing.p12` file.
+- `SHARIKA_STAGING_KEYSTORE_PASSWORD`: the keystore password. The fixed
+  alias is `sharika-staging` and the key password is identical.
+
+The keystore and its password are deliberately **never** in the public repo.
+When the two secrets are configured, every subsequent staging debug APK is
+signed with this same private key. The workflow verifies its SHA-1 and refuses
+to publish an APK bearing an unexpected certificate.
+
+Stable staging SHA-1: `AB:49:1A:1A:90:5A:42:BF:42:41:7D:7B:62:C6:58:B3:79:F3:2B:B0`
+Stable staging SHA-256: `B5:7C:40:76:2F:4E:90:DE:B7:9E:0B:D6:7B:9E:12:EA:1B:BD:D4:E4:07:CD:4A:EB:1A:F8:58:7B:B8:16:B3:CD`
+
+Add these fingerprints to Firebase Android project
+`sharika-voice-chat-app` for `com.soverixnet.sharika` before trying the
+stable APK's Google sign-in. This is a **staging** key, not a release/Play key.

@@ -3,9 +3,34 @@ plugins {
     id 'com.google.gms.google-services'
 }
 
+// GitHub Actions supplies these only from repository secrets.
+// Never commit a keystore or password to this public repository.
+def stagingKeystorePath = System.getenv('SHARIKA_STAGING_KEYSTORE_PATH')
+def stagingKeystorePassword = System.getenv('SHARIKA_STAGING_KEYSTORE_PASSWORD')
+def stableStagingSigner = stagingKeystorePath && stagingKeystorePassword
+
 android {
     namespace 'com.soverixnet.sharika'
     compileSdk 35
+
+    signingConfigs {
+        if (stableStagingSigner) {
+            sharikaStaging {
+                storeFile file(stagingKeystorePath)
+                storePassword stagingKeystorePassword
+                keyAlias 'sharika-staging'
+                keyPassword stagingKeystorePassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (stableStagingSigner) {
+                signingConfig signingConfigs.sharikaStaging
+            }
+        }
+    }
 
     defaultConfig {
         applicationId 'com.soverixnet.sharika'

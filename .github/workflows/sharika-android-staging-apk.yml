@@ -71,14 +71,39 @@ jobs:
           test -n "$SDKMANAGER"
           "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
 
+      - name: Restore stable staging signer from encrypted GitHub secrets if configured
+        env:
+          KEY_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KEY_B64" && -z "$KEY_PASSWORD" ]]; then
+            echo "::warning::Stable signing secrets not yet configured; APK uses temporary debug key."
+          elif [[ -z "$KEY_B64" || -z "$KEY_PASSWORD" ]]; then
+            echo "::error::Both stable signing secrets must be configured together."
+            exit 1
+          else
+            printf '%s' "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
+            chmod 600 "$RUNNER_TEMP/sharika-staging-signing.p12"
+            echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-staging-signing.p12" >> "$GITHUB_ENV"
+            echo "SHARIKA_STAGING_SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
+            echo "Restored private staging signing key (not committed to repository)."
+          fi
+
       - name: Compile staging APK only
+        env:
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Print signing fingerprint for this exact APK
         run: |
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs \
-            app/build/outputs/apk/debug/app-debug.apk
+          CERTS="$("$SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk)"
+          echo "$CERTS"
+          if [[ "${SHARIKA_STAGING_SIGNING_CONFIGURED:-}" == "true" ]]; then
+            printf '%s\n' "$CERTS" | grep -qi 'Signer #1 certificate SHA-1 digest: ab491a1a905a42bf42417d7b62c658b379f32bb0'
+            echo 'SHARIKA_STABLE_STAGING_CERTIFICATE_VERIFIED'
+          fi
 
       - name: Save private-test APK artifact
         uses: actions/upload-artifact@v4
