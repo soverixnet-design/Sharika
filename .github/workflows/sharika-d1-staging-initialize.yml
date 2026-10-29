@@ -32,7 +32,7 @@ jobs:
       - name: Checkout reviewed staging candidate at a pinned commit
         uses: actions/checkout@v4
         with:
-          ref: a1887cc59c62e343b68a70b143368a58452a1dc1
+          ref: 98de712a20a2b7c37c1ff3fff5b94483afbd54a5
           persist-credentials: false
 
       - name: Refuse any target other than the approved isolated staging account and D1
@@ -49,7 +49,7 @@ jobs:
                 db.database_name !== "sharika-staging" ||
                 db.database_id !== "b2c62252-12a5-4740-90c7-01a536d9a39a" ||
                 c.workers_dev !== true ||
-                c.vars?.FIREBASE_PROJECT_ID !== "" ||
+                c.vars?.FIREBASE_PROJECT_ID !== "sharika-voice-chat-app" ||
                 c.vars?.ALLOWED_ORIGINS !== "") {
               throw new Error("Refusing unexpected Cloudflare configuration");
             }
