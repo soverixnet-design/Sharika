@@ -370,6 +370,17 @@
         frame.toast(enabled?'Microphone enabled':'Microphone muted');
       } catch(error) {frame.toast(errText(error));}
     };
+    const pendingRoomButtons = {
+      bGame:'Games require fair server-generated rounds before release',
+      bGift:'Gifts require real D1 wallet transactions before release',
+      bMsg:'Private messaging is not on the staging server yet',
+      bOwn:'Owner moderation is not on the staging server yet',
+      roomBtn:'Room settings must be saved to the server before release'
+    };
+    for (const [buttonId, reason] of Object.entries(pendingRoomButtons)) {
+      const control = frame.$ && frame.$(buttonId);
+      if (control) control.onclick=()=>frame.toast(reason);
+    }
     const rewards=frame.$ && frame.$('rrpill');
     if(rewards) rewards.onclick=()=>frame.toast('Weekly room rewards are not available yet');
     await syncFrame(room,frame);
