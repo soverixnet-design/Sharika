@@ -13,7 +13,8 @@ Sharika Voice Chat app or its existing design.
   go **only** to the staging Worker; it never opens the existing HTML app,
   Supabase, DigitalOcean or the current Sharika frontend.
 - It supports email/password **test** account creation and sign-in,
-  verification emails, and read-only requests to `/health` and `/api/v1/me`.
+  Firebase Google sign-in using Credential Manager, verification emails,
+  and read-only requests to `/health` and `/api/v1/me`.
   A `404 profile_not_found` after Firebase token verification is expected:
   existing Supabase users have not been imported into staging D1.
 - No wallet transactions, gift/game actions, voice calls, demo currency,
@@ -40,7 +41,10 @@ The resulting file is `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Before live login/voice features
 
-1. Enable Firebase Authentication Email/Password in the new project.
+1. Enable Firebase Authentication Email/Password **and Google** in the new project.
+   Add the **exact signing certificate SHA-1 (and SHA-256)** of the APK being
+   installed to Firebase project settings. The new configuration includes the
+   Android OAuth client and the generated `default_web_client_id` Web client.
 2. For test email accounts, confirm verification using the emailed link.
 3. Test that a real signed Firebase ID token reaches the protected Cloudflare
    endpoint. `/api/v1/me` returning 404 for an unimported user is expected.
@@ -54,3 +58,19 @@ The resulting file is `app/build/outputs/apk/debug/app-debug.apk`.
 Firebase `google-services.json` includes public, non-secret app
 configuration identifiers; it does not include a service-account private key.
 Keep privileged API tokens and service credentials out of source.
+
+## Google Sign-In and signing-certificate stability
+
+The explicit **Continue with Google** button requests a Google ID token using
+Android Credential Manager. Firebase signs the user into this **new staging
+Firebase project**, then the existing read-only Cloudflare API check can verify
+its Firebase ID token. Google sign-in is only functional after Google is enabled
+under Firebase Authentication → Sign-in method.
+
+**Important:** The GitHub Actions hosted debug runner generates a different
+Android debug keystore on a new run. Firebase SHA-1 records are therefore tied
+to one particular downloaded APK, and a newer build may require registering a
+new certificate fingerprint. For reliable repeated testing, configure a stable,
+secret-backed test signing keystore in GitHub Actions before distributing more
+builds. **Never commit a keystore or a private signing key to the repository.**
+A production/Play release needs the real signing fingerprint separately.
