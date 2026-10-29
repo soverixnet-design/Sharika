@@ -27,3 +27,9 @@ This branch is **an integration candidate, not a production release**. The origi
 The browser uses only a publishable Supabase key. Never put a Supabase service-role key, LiveKit secret or server SSH key into frontend code. Money SQL functions are callable by `service_role` only. Existing Sovera services are not modified.
 
 Do not merge or publish this branch as complete until the checklist above passes.
+
+## Automation added (29 October 2026)
+- `.github/workflows/sharika-verify.yml` runs dependency-free bridge/source security checks on pull requests; [first run passed](https://github.com/soverixnet-design/Sharika/actions/runs/40899368028).
+- `.github/workflows/sharika-server-sync.yml` contains an opt-in non-root, strict-host-key SSH file sync. It stays disabled until the owner configures the dedicated deploy SSH account and GitHub secrets/variables once; see `DEPLOYMENT_SETUP.md`.
+- The sync only transfers `app/`, `admin/` and `backend/` and changes a Sharika-only symlink. It does not restart existing services, publish a site, deploy the Edge Function, migrate databases, or build an APK.
+- The provided production server has **not been modified** by these workflows; no claim of live app/voice/game success is made.
