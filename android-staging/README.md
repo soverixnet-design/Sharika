@@ -67,32 +67,37 @@ Firebase project**, then the existing read-only Cloudflare API check can verify
 its Firebase ID token. Google sign-in is only functional after Google is enabled
 under Firebase Authentication → Sign-in method.
 
-**Important:** The GitHub Actions hosted debug runner generates a different
-Android debug keystore on a new run. Firebase SHA-1 records are therefore tied
-to one particular downloaded APK, and a newer build may require registering a
-new certificate fingerprint. For reliable repeated testing, configure a stable,
-secret-backed test signing keystore in GitHub Actions before distributing more
-builds. **Never commit a keystore or a private signing key to the repository.**
-A production/Play release needs the real signing fingerprint separately.
+**Important:** The GitHub Actions workflow requires the stable encrypted staging keystore
+and checks the expected SHA-1 before publishing an artifact. It refuses to
+fall back to an ephemeral debug certificate. A production/Play release
+requires its own separate fingerprint and private key.
 
-### Persistent staging Android signing (without additional cost)
 
-The staging Android debug workflow optionally uses a private PKCS12 keystore
-stored in **GitHub Actions encrypted repository secrets**. Configure both:
+## New staging profile and room controls (not the live app)
 
-- `SHARIKA_STAGING_KEYSTORE_B64`: entire single-line base64 representation
-  of the private `sharika-staging-signing.p12` file.
-- `SHARIKA_STAGING_KEYSTORE_PASSWORD`: the keystore password. The fixed
-  alias is `sharika-staging` and the key password is identical.
+The test APK now exercises these isolated D1 endpoints using a verified Firebase
+ID token. The Worker independently authenticates every request:
 
-The keystore and its password are deliberately **never** in the public repo.
-When the two secrets are configured, every subsequent staging debug APK is
-signed with this same private key. The workflow verifies its SHA-1 and refuses
-to publish an APK bearing an unexpected certificate.
+| App control | Worker endpoint | Effect |
+| --- | --- | --- |
+| Create staging profile | `POST /api/v1/me` | Adds only a NEW Firebase identity to staging D1 with the schema-defined welcome ledger entry; never copies existing Supabase users |
+| Read staging profile | `GET /api/v1/me` | Read-only |
+| Read staging wallet | `GET /api/v1/wallet` | Read-only; no transfer, recharge, gift, or payout |
+| Create staging room | `POST /api/v1/rooms` | Makes a new staging room owned by the signed-in user |
+| List staging rooms | `GET /api/v1/rooms` | Read-only |
+| Join / leave room | `POST /api/v1/rooms/:id/join`, `/leave` | Staging membership only |
+| View members | `GET /api/v1/rooms/:id/members` | Read-only |
+| Take / release a seat | `PUT /api/v1/rooms/:id/seat` | Staging seating only; 0 in the tester means no seat |
 
-Stable staging SHA-1: `AB:49:1A:1A:90:5A:42:BF:42:41:7D:7B:62:C6:58:B3:79:F3:2B:B0`
-Stable staging SHA-256: `B5:7C:40:76:2F:4E:90:DE:B7:9E:0B:D6:7B:9E:12:EA:1B:BD:D4:E4:07:CD:4A:EB:1A:F8:58:7B:B8:16:B3:CD`
+To test: install the *stable-signature staging APK* without replacing an
+existing live Sharika installation; sign in with Google or a verified
+email account; create a profile (name, real date of birth, country); then
+create or join a room. The room ID is 8 digits. A profile must exist
+before wallet and room operations. An unimported existing Supabase user
+will not appear automatically.
 
-Add these fingerprints to Firebase Android project
-`sharika-voice-chat-app` for `com.soverixnet.sharika` before trying the
-stable APK's Google sign-in. This is a **staging** key, not a release/Play key.
+**Not yet connected:** original full Sharika UI, microphone/LiveKit voice,
+other-device live presence, gifts, games, paid wallet actions, admin mutations,
+ranking, identity import and production cutover. Backend operations may require
+further security and end-to-end testing before real users access them.
+Do not enable billing or merge this branch to production.
