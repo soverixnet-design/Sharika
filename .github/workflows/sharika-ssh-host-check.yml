@@ -1,0 +1,31 @@
+name: Sharika SSH host-key discovery
+# Read-only diagnostic: prints public host identity, never uses deploy secrets.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read public server SSH identity
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ vars.SHARIKA_DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.SHARIKA_DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_PORT"
+          ssh-keyscan -T 10 -p "$DEPLOY_PORT" -t ed25519 "$DEPLOY_HOST" 2>/dev/null | sort -u > "$RUNNER_TEMP/sharika_ed25519_host_key"
+          test -s "$RUNNER_TEMP/sharika_ed25519_host_key"
+          echo 'PUBLIC_HOST_KEY_START'
+          cat "$RUNNER_TEMP/sharika_ed25519_host_key"
+          echo 'PUBLIC_HOST_KEY_END'
+          echo 'PUBLIC_FINGERPRINT_START'
+          ssh-keygen -lf "$RUNNER_TEMP/sharika_ed25519_host_key"
+          echo 'PUBLIC_FINGERPRINT_END'
+          echo 'This is untrusted until compared with the DigitalOcean console fingerprint.'
