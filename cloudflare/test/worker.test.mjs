@@ -1,0 +1,135 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { webcrypto } from 'node:crypto';
+import { verifyFirebaseToken } from '../src/auth.mjs';
+import { handleRequest, publicId, ageFromDate } from '../src/index.mjs';
+
+globalThis.crypto ??= webcrypto;
+const project = 'sharika-preview-1234';
+const jwkUrl = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
+function encode(value) {
+  const bytes = value instanceof Uint8Array ? Buffer.from(value) : (typeof value === 'string' ? Buffer.from(value) : Buffer.from(JSON.stringify(value)));
+  return bytes.toString('base64url');
+}
+const pair = await crypto.subtle.generateKey(
+  { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+const publicKey = { ...(await crypto.subtle.exportKey('jwk', pair.publicKey)), kid: 'test-key-01', alg: 'RS256', use: 'sig' };
+const certFetch = async url => {
+  assert.equal(url, jwkUrl);
+  return { ok: true, headers: new Headers({ 'cache-control': 'max-age=300' }),
+    json: async () => ({ keys: [publicKey] }) };
+};
+async function token(changes = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = encode({ alg: 'RS256', kid: 'test-key-01', typ: 'JWT' });
+  const body = encode({
+    aud: project, iss: 'https://securetoken.google.com/' + project,
+    sub: 'secure-user', exp: now + 3600, iat: now - 60,
+    auth_time: now - 60, email_verified: true, ...changes
+  });
+  const content = header + '.' + body;
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', pair.privateKey, new TextEncoder().encode(content));
+  return content + '.' + encode(new Uint8Array(sig));
+}
+function fakeDb() {
+  const calls = [];
+  const db = {
+    calls,
+    prepare(sql) {
+      const self = {
+        sql, values: [],
+        bind(...vals) { this.values = vals; return this; },
+        async first() {
+          calls.push(['first', sql, this.values]);
+          if (sql.includes('SELECT 1')) return { ok: 1 };
+          return null;
+        },
+        async all() { calls.push(['all', sql, this.values]); return { results: [] }; },
+        async run() { calls.push(['run', sql, this.values]); return { success: true }; },
+      };
+      return self;
+    },
+    async batch(stmts) { calls.push(['batch', stmts]); return [{ success: true }, { success: true }]; }
+  };
+  return db;
+}
+
+test('profile identifiers are 8 digits; age validates real dates', () => {
+  assert.equal(publicId(10000001), '10000001');
+  assert.equal(ageFromDate('2020-02-30'), null);
+  assert.equal(ageFromDate('2040-01-01'), null);
+  assert.equal(ageFromDate('2000-01-01') > 13, true);
+});
+test('requires a cryptographically valid Firebase ID token', async () => {
+  const jwt = await token();
+  assert.equal((await verifyFirebaseToken('Bearer ' + jwt, project, certFetch))?.uid,
+    'firebase:' + project + ':secure-user');
+  assert.equal(await verifyFirebaseToken('Bearer ' + await token({ aud: 'wrong-project' }), project, certFetch), null);
+  assert.equal(await verifyFirebaseToken('Bearer ' + await token({ exp: 1 }), project, certFetch), null);
+  assert.equal(await verifyFirebaseToken('Bearer broken', project, certFetch), null);
+  const sigPart = jwt.split('.')[2];
+  const damaged = jwt.slice(0, -sigPart.length) + (sigPart[0] === 'A' ? 'B' : 'A') + sigPart.slice(1);
+  assert.equal(await verifyFirebaseToken('Bearer ' + damaged, project, certFetch), null);
+});
+test('unknown HTTP origin is denied before credentials', async () => {
+  const response = await handleRequest(new Request('https://example.test/health', { headers: { Origin: 'https://untrusted.example' } }),
+    { DB: fakeDb(), FIREBASE_PROJECT_ID: project, ALLOWED_ORIGINS: 'https://sharika.example' });
+  assert.equal(response.status, 403);
+});
+test('health checks database and never requires the user token', async () => {
+  const response = await handleRequest(new Request('https://example.test/health'),
+    { DB: fakeDb(), FIREBASE_PROJECT_ID: project });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).environment, 'staging');
+});
+test('staging health reports D1 availability without opening protected APIs', async () => {
+  const db = fakeDb();
+  const response = await handleRequest(new Request('https://example.test/health'), { DB: db });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).auth_configured, false);
+  assert.equal(db.calls.length, 1);
+  assert.match(db.calls[0][1], /SELECT 1/);
+});
+test('fails closed with no identity configuration', async () => {
+  const response = await handleRequest(new Request('https://example.test/api/v1/me'), { DB: fakeDb() });
+  assert.equal(response.status, 503);
+});
+test('private wallet rejects anonymous requests before D1 reads', async () => {
+  const db = fakeDb();
+  const response = await handleRequest(new Request('https://example.test/api/v1/wallet'),
+    { DB: db, FIREBASE_PROJECT_ID: project });
+  assert.equal(response.status, 401);
+  assert.equal(db.calls.length, 0);
+});
+test('verified but unregistered users cannot read someone else wallet', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = certFetch;
+  try {
+    const db = fakeDb();
+    const response = await handleRequest(new Request('https://example.test/api/v1/wallet', {
+      headers: { Authorization: 'Bearer ' + await token() }
+    }), { DB: db, FIREBASE_PROJECT_ID: project });
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).error, 'profile_not_found');
+  } finally { globalThis.fetch = originalFetch; }
+});
+test('unimplemented money-changing endpoints fail closed', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = certFetch;
+  try {
+    // Give the verified actor a real active profile; no money mutation should run.
+    const db = fakeDb();
+    const original = db.prepare.bind(db);
+    db.prepare = sql => {
+      const stmt = original(sql);
+      if (sql.includes('FROM sharika_users WHERE auth_uid')) stmt.first = async () => ({ status:'active', coins:2000, diamonds:0, xp:0 });
+      return stmt;
+    };
+    const response = await handleRequest(new Request('https://example.test/api/v1/exchange', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + await token() }, body: JSON.stringify({ diamonds: 500 })
+    }), { DB: db, FIREBASE_PROJECT_ID: project });
+    assert.equal(response.status, 501);
+    assert.equal((await response.json()).error, 'migration_pending');
+  } finally { globalThis.fetch = originalFetch; }
+});

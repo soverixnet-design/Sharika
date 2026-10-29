@@ -1,0 +1,39 @@
+name: Sharika Cloudflare D1 staging checks
+on:
+  push:
+    branches:
+      - feature/sharika-cloudflare-d1-foundation-20261029
+    paths:
+      - 'cloudflare/**'
+      - '.github/workflows/sharika-cloudflare-check.yml'
+  pull_request:
+    paths:
+      - 'cloudflare/**'
+      - '.github/workflows/sharika-cloudflare-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and unit checks
+        run: npm --prefix cloudflare run check
+      - name: Validate isolated SQLite schema in-memory
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sqlite3
+          sql = pathlib.Path('cloudflare/migrations/0001_initial.sql').read_text()
+          db = sqlite3.connect(':memory:')
+          db.executescript(sql)
+          tables = db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+          assert db.execute("SELECT name FROM sqlite_master WHERE name='sharika_wallet_ledger'").fetchone()
+          print('Sharika D1 schema valid:', len(tables), 'tables')
+          PY
