@@ -49,6 +49,14 @@ assert.match(admin, /api\('GET','\/admin\/status'\)/,
 assert.match(admin, /localStorage\.removeItem\('aa'\)/,
   'Legacy local demo login must be cleared');
 console.log('PASS: demo sign-in cannot bypass the connected admin gate');
+const adminHtml = readFileSync('admin/index.html', 'utf8');
+assert.doesNotMatch(adminHtml, /value="admin@akira\.app"|value="admin123"|value="123456"/,
+  'Original admin HTML must not embed demo credentials');
+assert.doesNotMatch(adminHtml, /ME=st\(1,"aa"\);if\(ME\)shell\(\)/,
+  'Legacy localStorage login must not open the admin shell');
+assert.match(adminHtml, /Secure admin sign-in is unavailable until the server connection loads/,
+  'Admin sign-in must fail closed if the connection script is missing');
+console.log('PASS: admin HTML fails closed without its backend bridge');
 
 const roomHtml = readFileSync('app/index.html', 'utf8');
 const appBridge = readFileSync('app/connection.js', 'utf8');
