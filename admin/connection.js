@@ -83,10 +83,122 @@
   }
 
   const P = window.P;
+  const originalLucky = P.lucky;
+  const originalReward = P.rr;
   const fallback = title => () => {
     document.getElementById('pg').innerHTML = '<div class="card"><h3>'+esc(title)+'</h3><p class="n">The original layout is preserved. This module needs its verified server connection before it can be used.</p></div>';
   };
   for (const name of Object.keys(P)) P[name] = fallback(name);
+  // Prevent old example records from being mistaken for live users or payments.
+  window.D.users = [];
+  window.D.rc = [];
+  window.D.audit = [];
+
+  P.lucky = function () {
+    originalLucky();
+    const publish = document.getElementById('sv');
+    const enabled = document.getElementById('ks');
+    if (publish) publish.addEventListener('click', async event => {
+      event.stopImmediatePropagation();
+      const multipliers = [...document.querySelectorAll('[data-m]')];
+      const rows = multipliers.map((_, index) => [
+        Number(document.querySelector('[data-m="'+index+'"]')?.value),
+        Number(document.querySelector('[data-w="'+index+'"]')?.value),
+      ]);
+      const total = rows.reduce((sum, row) => sum + row[1],0);
+      const rtp = rows.reduce((sum,row) => sum + row[0]*row[1],0);
+      if (Math.abs(total-100) > .0001 || rtp < 80 || rtp > 95) {
+        window.toast('Probability must equal 100% and return 80–95%');return;
+      }
+      try {
+        const value = { ...window.D.lucky, rows, ver:(window.D.lucky.ver || 0)+1 };
+        await api('PUT','/admin/kv/lucky',{value});
+        Object.assign(window.D.lucky,value);
+        window.toast('Lucky odds published on the server');P.lucky();
+      } catch (error) { window.toast(error.message); }
+    },true);
+    if (enabled) enabled.addEventListener('click', async event => {
+      event.stopImmediatePropagation();
+      try {
+        const value = { ...window.D.lucky, on:!window.D.lucky.on };
+        await api('PUT','/admin/kv/lucky',{value});
+        Object.assign(window.D.lucky,value);P.lucky();
+      } catch (error) { window.toast(error.message); }
+    },true);
+  };
+
+  P.rr = function () {
+    originalReward();
+    const save = document.getElementById('rs');
+    const toggle = document.getElementById('re');
+    if (save) save.addEventListener('click', async event => {
+      event.stopImmediatePropagation();
+      const pct = Number(document.getElementById('rp').value);
+      const days = Number(document.getElementById('rd').value);
+      const minp = Number(document.getElementById('rm').value);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 50 || !Number.isInteger(days) || days < 1 ||
+        !Number.isSafeInteger(minp) || minp < 0) { window.toast('Invalid room reward settings');return; }
+      try {
+        const value = { ...window.D.rr,pct,days,minp };
+        await api('PUT','/admin/kv/rr',{value});
+        Object.assign(window.D.rr,value);window.toast('Reward settings saved');P.rr();
+      } catch (error) { window.toast(error.message); }
+    },true);
+    if (toggle) toggle.addEventListener('click', async event => {
+      event.stopImmediatePropagation();
+      try {
+        const value = { ...window.D.rr,on:!window.D.rr.on };
+        await api('PUT','/admin/kv/rr',{value});
+        Object.assign(window.D.rr,value);P.rr();
+      } catch (error) { window.toast(error.message); }
+    },true);
+  };
+
+  P.gifts = async function () {
+    const root = document.getElementById('pg');
+    root.innerHTML = '<div class="card">Loading actual gift catalog…</div>';
+    try {
+      const data = await api('GET','/admin/gifts');
+      const gifts = data.gifts || [];
+      root.innerHTML = '<div class="card"><div class="row">'+
+        '<input id="gn" placeholder="Name"><input id="ge" placeholder="Emoji" style="max-width:90px">'+
+        '<input id="gp" type="number" placeholder="Price (coins)" style="max-width:150px">'+
+        '<select id="gt" style="max-width:130px"><option value="0">Gifts</option><option value="1">Luxury</option><option value="2">Lucky</option></select>'+
+        '<button class="btn" id="ga">Add gift</button></div>'+
+        '<p class="n">Upload of animated images requires configured Supabase Storage; emoji and prices are connected.</p>'+
+        window.T(['Gift','Category','Price','Active'],gifts.map(g => [
+          esc(g.emoji)+' '+esc(g.name),['Gifts','Luxury','Lucky'][g.tab],
+          '<input type="number" data-price="'+g.id+'" value="'+esc(g.price_coins)+'">',
+          '<button class="sw'+(g.active?' on':'')+'" data-on="'+g.id+'" aria-label="Toggle gift"></button>',
+        ]))+'</div>';
+      root.querySelector('#ga').onclick = async () => {
+        try {
+          const name = root.querySelector('#gn').value.trim();
+          const emoji = root.querySelector('#ge').value.trim() || '🎁';
+          const price_coins = Number(root.querySelector('#gp').value);
+          const tab = Number(root.querySelector('#gt').value);
+          await api('POST','/admin/gifts',{name,emoji,price_coins,tab});
+          window.toast('Gift added to server');P.gifts();
+        } catch (error) { window.toast(error.message); }
+      };
+      root.querySelectorAll('[data-price]').forEach(input => {
+        input.onchange = async () => {
+          try {
+            await api('PATCH','/admin/gifts/'+input.dataset.price,{price_coins:Number(input.value)});
+            window.toast('Gift price saved');
+          } catch (error) { window.toast(error.message);P.gifts(); }
+        };
+      });
+      root.querySelectorAll('[data-on]').forEach(button => {
+        button.onclick = async () => {
+          try {
+            await api('PATCH','/admin/gifts/'+button.dataset.on,{active:!button.classList.contains('on')});
+            P.gifts();
+          } catch (error) { window.toast(error.message); }
+        };
+      });
+    } catch (error) { root.textContent = error.message; }
+  };
 
   P.dash = async function () {
     document.getElementById('pg').innerHTML = '<div class="card">Loading verified dashboard…</div>';
