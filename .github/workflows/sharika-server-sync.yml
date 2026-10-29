@@ -75,9 +75,9 @@ jobs:
             -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
             "$SSH_USER@$SSH_HOST" "mkdir -p sharika/releases/$GITHUB_SHA"
-          rsync -az -- \
+          rsync -az \
             -e "ssh -i $SSH_KEY -p $SSH_PORT -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$SSH_KNOWN_HOSTS" \
-            app admin backend \
+            -- app admin backend \
             "$SSH_USER@$SSH_HOST:sharika/releases/$GITHUB_SHA/"
 
       - name: Verify release and switch the Sharika-only pointer
