@@ -1,0 +1,40 @@
+name: Sharika SSH login check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify deploy user over SSH (read-only)
+        env:
+          SHARIKA_SSH_KEY: ${{ secrets.SHARIKA_DEPLOY_KEY }}
+          SHARIKA_SSH_HOST_KEY: ${{ secrets.SHARIKA_DEPLOY_KNOWN_HOSTS }}
+          SHARIKA_HOST: ${{ vars.SHARIKA_DEPLOY_HOST }}
+          SHARIKA_USER: ${{ vars.SHARIKA_DEPLOY_USER }}
+          SHARIKA_PORT: ${{ vars.SHARIKA_DEPLOY_PORT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SHARIKA_SSH_KEY"
+          test -n "$SHARIKA_SSH_HOST_KEY"
+          test -n "$SHARIKA_HOST"
+          test -n "$SHARIKA_USER"
+          test -n "$SHARIKA_PORT"
+          umask 077
+          printf '%s\n' "$SHARIKA_SSH_KEY" > "$RUNNER_TEMP/sharika_id_ed25519"
+          printf '%s\n' "$SHARIKA_SSH_HOST_KEY" > "$RUNNER_TEMP/sharika_known_hosts"
+          ssh -F /dev/null \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/sharika_known_hosts" \
+            -o IdentitiesOnly=yes \
+            -o ConnectTimeout=10 \
+            -p "$SHARIKA_PORT" \
+            -i "$RUNNER_TEMP/sharika_id_ed25519" \
+            "$SHARIKA_USER@$SHARIKA_HOST" \
+            'printf "SHARIKA_READ_ONLY_SSH_OK\n"; id -un'
