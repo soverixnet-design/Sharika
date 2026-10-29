@@ -459,8 +459,16 @@
 
   const oldLeaveRoom = window.leaveRoom;
   window.leaveRoom = function () {
+    const roomId = window.cur?.id;
+    const token = session?.access_token;
     if (framePoll) { clearInterval(framePoll); framePoll = null; }
     disconnectVoice().catch(() => {});
+    // Best-effort release on navigation/exit. The API may be unavailable
+    // while Supabase is quota restricted; never keep the room UI open for it.
+    if (roomId && token) {
+      jsonFetch(BASE + '/functions/v1/sharika-api/rooms/' + encodeURIComponent(roomId) + '/leave',
+        'POST', {}, token).catch(() => {});
+    }
     const iframe = document.getElementById('rf');
     if (iframe) iframe.onload = null;
     oldLeaveRoom();
@@ -468,6 +476,8 @@
 
   const oldLogout = window.logout;
   window.logout = function () {
+    // Release the current room while the authenticated token still exists.
+    if (window.cur) window.leaveRoom();
     const token = session?.access_token;
     setSession(null);
     localStorage.removeItem(ACCOUNT_KEY);
