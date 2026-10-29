@@ -271,6 +271,9 @@
     win.tick = function () {}; // No simulated microphone activity.
     win.U = []; // No invented audience accounts.
     win.$('chat')?.querySelectorAll('.msg').forEach(element => element.remove());
+    const catalog = await api('GET','/config');
+    giftCatalog = catalog.gifts || [];
+    win.G = giftCatalog.map(g => [g.emoji || '🎁',Number(g.price_coins),g.name,Number(g.tab),g.image_url || '']);
     win.sendGift = async function () {
       const gift = win.G[win.gsel];
       const recipientIds = (win.rec || []).map(i => win.__sharikaSeatIds?.[i]).filter(Boolean);
