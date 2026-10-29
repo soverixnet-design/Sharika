@@ -440,6 +440,11 @@
   // Remove simulated gifts from the room document; keep all original styles.
   if (typeof window.ROOM_HTML === 'string') {
     window.ROOM_HTML = window.ROOM_HTML.replace('setInterval(botGift,28000);', '');
+    // The template's 9-second fake chat timer impersonates users. Remove it.
+    window.ROOM_HTML = window.ROOM_HTML.replace(
+      /setInterval\\(function\\(\\)\\{var o=others\\(\\);[\\s\\S]*?\\},9000\\);/,
+      ''
+    );
   }
   const oldOpenRoom = window.openRoom;
   window.openRoom = async function (room) {
