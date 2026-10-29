@@ -27,7 +27,6 @@ import androidx.credentials.exceptions.GetCredentialException;
 
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
-import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.auth.FirebaseUser;
@@ -253,7 +252,7 @@ public final class MainActivity extends Activity {
                                         : "Google Firebase sign-in failed: "
                                             + safeError(task.getException()));
                                 });
-                        } catch (GoogleIdTokenParsingException error) {
+                        } catch (RuntimeException error) {
                             googleSignInPending = false;
                             show("Google ID token was invalid: " + safeError(error));
                         }
