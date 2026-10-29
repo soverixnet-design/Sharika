@@ -83,6 +83,14 @@ test('health checks database and never requires the user token', async () => {
   assert.equal(response.status, 200);
   assert.equal((await response.json()).environment, 'staging');
 });
+test('staging health reports D1 availability without opening protected APIs', async () => {
+  const db = fakeDb();
+  const response = await handleRequest(new Request('https://example.test/health'), { DB: db });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).auth_configured, false);
+  assert.equal(db.calls.length, 1);
+  assert.match(db.calls[0][1], /SELECT 1/);
+});
 test('fails closed with no identity configuration', async () => {
   const response = await handleRequest(new Request('https://example.test/api/v1/me'), { DB: fakeDb() });
   assert.equal(response.status, 503);
