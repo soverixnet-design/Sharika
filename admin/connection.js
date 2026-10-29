@@ -45,7 +45,10 @@
 
   const originalLogin = window.login;
   window.login = function () {
+    activeRole = null;
     originalLogin();
+    // The original template has a localStorage demo login. It is never an admin credential.
+    try { localStorage.removeItem('aa'); } catch (_) {}
     const email = document.getElementById('em');
     const password = document.getElementById('pw');
     const code = document.getElementById('tf');
@@ -55,6 +58,13 @@
     const note = document.querySelector('#lf p:last-child');
     if (note) note.textContent = 'Only an approved Sharika administrator can sign in. Never use demo credentials.';
     const button = document.getElementById('go');
+    // The template also wired Enter in each input directly to the demo login.
+    // Route every keyboard submission through the verified Supabase sign-in.
+    for (const field of [email, password, code]) {
+      if (field) field.onkeydown = event => {
+        if (event.key === 'Enter') { event.preventDefault(); button?.click(); }
+      };
+    }
     if (button) button.onclick = async () => {
       button.disabled = true;
       try {
@@ -323,6 +333,8 @@
 
   const originalShell = window.shell;
   window.shell = function () {
+    // Fail closed: direct calls and legacy demo handlers cannot open the admin shell.
+    if (!session || !activeRole) { window.login(); return; }
     originalShell();
     const who = document.querySelector('.top .who');
     if (who) who.innerHTML = 'Signed in as<br><b>'+esc(window.ME)+'</b> · '+esc(activeRole || 'Admin');
