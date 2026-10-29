@@ -11,6 +11,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -90,6 +91,16 @@ public final class MainActivity extends Activity {
         root.setPadding(dp(22), dp(34), dp(22), dp(28));
         scroll.addView(root);
         setContentView(scroll);
+
+        // Original user-supplied Sharika art: no generated redraw or logo changes.
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.mipmap.sharika_logo);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setContentDescription("Sharika app logo");
+        LinearLayout.LayoutParams artwork = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(210));
+        artwork.bottomMargin = dp(14);
+        root.addView(logo, artwork);
 
         TextView title = label("Sharika Voice Chat", 29, WHITE, true);
         root.addView(title);
