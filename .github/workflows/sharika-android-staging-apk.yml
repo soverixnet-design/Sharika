@@ -52,6 +52,23 @@ jobs:
           console.log('SHARIKA_ANDROID_FIREBASE_IDENTITY_AND_GOOGLE_OAUTH_OK');
           NODE
 
+      - name: Check exact original Sharika UI and isolated Android adapter
+        run: |
+          node --check staging-connection.js
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('../app/index.html', 'utf8');
+          const bridge = fs.readFileSync('staging-connection.js', 'utf8');
+          if (!html.includes('<title>Sharika Voice Chat App</title>') ||
+              !html.includes('<script src="./connection.js">') ||
+              !bridge.includes("window.API.login") ||
+              !bridge.includes("SharikaNative") ||
+              /rfrmcmeyamndghtiheci\.supabase\.co|sb_publishable_/.test(bridge)) {
+            throw new Error('Original design or staging-only connection contract failed');
+          }
+          console.log('SHARIKA_ORIGINAL_UI_AND_ISOLATED_BRIDGE_VERIFIED');
+          NODE
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
