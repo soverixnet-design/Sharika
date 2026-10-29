@@ -37,4 +37,4 @@ jobs:
             -p "$SHARIKA_PORT" \
             -i "$RUNNER_TEMP/sharika_id_ed25519" \
             "$SHARIKA_USER@$SHARIKA_HOST" \
-            'printf "SHARIKA_READ_ONLY_SSH_OK\n"; id -un'
+            'printf "SHARIKA_READ_ONLY_SSH_OK\n"; id -un; printf "SHARIKA_MEMORY_MB\\n"; free -m | head -n 3; printf "SHARIKA_HOME_DISK\\n"; df -h "$HOME" | tail -n 2; printf "SHARIKA_CPU_COUNT\\n"; nproc'
