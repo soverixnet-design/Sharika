@@ -442,7 +442,7 @@
     window.ROOM_HTML = window.ROOM_HTML.replace('setInterval(botGift,28000);', '');
     // The template's 9-second fake chat timer impersonates users. Remove it.
     window.ROOM_HTML = window.ROOM_HTML.replace(
-      /setInterval\\(function\\(\\)\\{var o=others\\(\\);[\\s\\S]*?\\},9000\\);/,
+      /setInterval\(function\(\)\{var o=others\(\);[\s\S]*?\},9000\);/,
       ''
     );
   }
