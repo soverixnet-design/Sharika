@@ -1,0 +1,398 @@
+/* Sharika Android-only staging adapter.
+ * Preserves the original supplied HTML/CSS/room art. No Supabase endpoint,
+ * service-role key, demo identity, fake payouts, or plaintext token in JS.
+ * Requires native SharikaActivity, which verifies Firebase authentication
+ * and sends allowlisted requests exclusively to the new Cloudflare Worker.
+ */
+(function () {
+  'use strict';
+  const ACCOUNT_KEY = 'vr_accts_v1';
+  const META_KEY = 'sharika_staging_registration_v1';
+  const COLORS = ['#9b4dff,#4c1d95','#ff3dc8,#9d174d','#0ea5e9,#075985','#10b981,#065f46'];
+  const calls = new Map();
+  let seq = 0, session = null, profile = null;
+  let balance = { coins: 0, dia: 0, xp: 0 };
+  let busyRooms = false, framePoll = null;
+
+  function errText(error) { return String(error && error.message || error || 'Connection unavailable'); }
+  function toast(message) { if (window.toast) window.toast(message); }
+  function native(action, payload) {
+    if (!window.SharikaNative || typeof window.SharikaNative.call !== 'function')
+      return Promise.reject(new Error('Android native bridge unavailable'));
+    return new Promise((resolve, reject) => {
+      const id = String(++seq);
+      const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, 25000);
+      calls.set(id, { resolve, reject, timer });
+      try { window.SharikaNative.call(id, action, JSON.stringify(payload || {})); }
+      catch (error) { clearTimeout(timer); calls.delete(id); reject(error); }
+    });
+  }
+  window.SharikaNativeReply = function (id, response) {
+    const pending = calls.get(id);
+    if (!pending) return;
+    calls.delete(id);
+    clearTimeout(pending.timer);
+    try {
+      const message = JSON.parse(response);
+      if (message.ok) pending.resolve(message.data || {});
+      else pending.reject(new Error(message.error || 'unknown_error'));
+    } catch (error) { pending.reject(error); }
+  };
+  async function api(method, path, body) {
+    return native('api', { method, path: '/api/v1' + path, body });
+  }
+  function cleanLocalFakeState() {
+    try {
+      localStorage.removeItem('vr_guest');
+      localStorage.removeItem('sharika_supabase_session_v1');
+      localStorage.removeItem('vr_state_v2');
+      localStorage.removeItem('vr_sess');
+      // An isolated staging build must never import the HTML demo accounts.
+      localStorage.setItem(ACCOUNT_KEY, '[]');
+    } catch (_) {}
+    window.CFG.rooms = [];
+    window.CFG.people = [];
+    window.CFG.chats = [];
+    window.CFG.wealth = [];
+    window.renderRooms();
+  }
+  function remember(account, current) {
+    profile = current;
+    const key = String(account.email || current.user_id || '').toLowerCase();
+    const local = {
+      key,
+      p: {
+        id: current.public_id, name: current.name, pic: current.pic || null,
+        country: current.country || '', dob: current.birthdate || '',
+        minor: !!current.minor, cover: current.cover || null, bio: current.bio || '',
+        myRoom: null, claim: { d:'', streak:0 }
+      },
+      state: { coins:current.coins || 0, dia:current.diamonds || 0, xp:current.xp || 0 }
+    };
+    balance = { ...local.state };
+    session = { email: account.email, user: { id:current.user_id, email:account.email } };
+    try {
+      localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local]));
+      localStorage.setItem('vr_state_v2', JSON.stringify(balance));
+    } catch (_) {}
+    return local;
+  }
+  function cachedSignup(email) {
+    try {
+      const record = JSON.parse(localStorage.getItem(META_KEY) || 'null');
+      return record && record.email === email ? record : null;
+    } catch (_) { return null; }
+  }
+  function birthdateFromUi(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Use YYYY-MM-DD for your date of birth');
+    return value;
+  }
+  function profileForm(account) {
+    return new Promise((resolve, reject) => {
+      const layer = document.createElement('div');
+      layer.id = 'sharika-stage-profile-setup';
+      layer.style.cssText = 'position:fixed;z-index:2147483646;inset:0;background:#0c0920f5;display:flex;align-items:center;justify-content:center;padding:22px;color:white;font-family:inherit';
+      layer.innerHTML = '<form style="width:min(100%,410px);background:linear-gradient(160deg,#2d2158,#131530);border:1px solid #6754c0;border-radius:24px;padding:24px;box-shadow:0 15px 45px #0008">' +
+        '<h2 style="margin:0 0 8px">Finish your Sharika profile</h2>' +
+        '<p style="font-size:13px;opacity:.8">A real name and birth date are needed for the new staging account. Existing accounts are not imported.</p>' +
+        '<label>Name<input name="name" maxlength="80" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0" value=""></label>' +
+        '<label>Birth date<input name="birthdate" type="date" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
+        '<label>Country<input name="country" maxlength="16" placeholder="BD" style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
+        '<div id="stage-profile-error" style="color:#ffb4b4;font-size:13px"></div>' +
+        '<button type="submit" style="width:100%;padding:15px;border:0;border-radius:14px;background:#8e72f6;color:#fff;font-weight:700">Create staging profile</button>' +
+        '<button type="button" id="stage-profile-cancel" style="width:100%;padding:13px;border:0;background:transparent;color:#ddd">Cancel</button></form>';
+      document.body.appendChild(layer);
+      const name = layer.querySelector('[name="name"]');
+      name.value = account.displayName || '';
+      let finished = false;
+      function close() { if (finished) return; finished = true; layer.remove(); }
+      layer.querySelector('#stage-profile-cancel').onclick = () => {
+        close(); reject(new Error('Profile setup cancelled'));
+      };
+      layer.querySelector('form').onsubmit = async event => {
+        event.preventDefault();
+        const form = event.currentTarget, button = form.querySelector('[type=submit]');
+        button.disabled = true;
+        try {
+          const data = {
+            name:form.elements.name.value.trim(),
+            birthdate:birthdateFromUi(form.elements.birthdate.value),
+            country:form.elements.country.value.trim()
+          };
+          const saved = await api('POST','/me',data);
+          close(); resolve(saved);
+        } catch (error) {
+          layer.querySelector('#stage-profile-error').textContent = errText(error);
+          button.disabled = false;
+        }
+      };
+    });
+  }
+  async function ensureProfile(account, form) {
+    try { return await api('GET', '/me'); }
+    catch (error) {
+      if (errText(error) !== 'profile_not_found') throw error;
+      const cached = form || cachedSignup(account.email);
+      if (cached && cached.name && cached.dob) {
+        const saved = await api('POST','/me',{
+          name:cached.name, birthdate:cached.dob, country:cached.country || ''
+        });
+        try { localStorage.removeItem(META_KEY); } catch (_) {}
+        return saved;
+      }
+      return profileForm(account);
+    }
+  }
+  async function authenticated(account, form) {
+    if (!account.signedIn || !account.emailVerified)
+      throw new Error('Check your email verification link, then sign in again');
+    const current = await ensureProfile(account, form);
+    const local = remember(account, current);
+    await Promise.allSettled([reloadWallet(), reloadRooms()]);
+    return local;
+  }
+
+  window.API.signup = async function (form) {
+    if (!form.key || !form.key.includes('@'))
+      return { ok:false, msg:'Use an email address. Phone OTP is not enabled yet.' };
+    if (String(form.pw || '').length < 12)
+      return { ok:false, msg:'Use at least 12 characters for your password.' };
+    try {
+      const result = await native('emailSignUp', {email:form.key.trim(), password:form.pw});
+      try {
+        localStorage.setItem(META_KEY, JSON.stringify({
+          email:form.key.trim(), name:form.name, dob:form.dob, country:form.country
+        }));
+      } catch (_) {}
+      return { ok:false, msg:result.verificationSent ?
+        'Account created. Verify your email, then log in.' :
+        'Account created. Verification email could not be sent; try again later.' };
+    } catch (error) { return { ok:false, msg:errText(error) }; }
+  };
+  window.API.login = async function (identity, password) {
+    if (!identity.includes('@')) return {ok:false,msg:'Sign in using your email address'};
+    try {
+      const account = await native('emailSignIn',{email:identity.trim(),password});
+      const local = await authenticated(account);
+      return {ok:true,acct:local};
+    } catch (error) { return {ok:false,msg:errText(error)}; }
+  };
+  async function googleLogin() {
+    try {
+      toast('Opening Google account picker…');
+      const account = await native('googleSignIn');
+      const local = await authenticated(account);
+      window.enter(local,'Signed in to Sharika staging');
+    } catch (error) { toast(errText(error)); }
+  }
+
+  // Keep original login imagery, forms, colors, and navigation.
+  const previousAuthRender = window.authRender;
+  window.authRender = function () {
+    previousAuthRender();
+    const google = document.getElementById('wg');
+    if (google) google.onclick = googleLogin;
+    for (const id of ['wgs','ag']) {
+      const guest = document.getElementById(id);
+      if (guest) {
+        guest.disabled = true;
+        guest.style.display = 'none';
+      }
+    }
+    const notice = document.querySelector('#au .aw > .lbl:last-child');
+    if (notice) notice.textContent = 'Accounts use real Firebase Authentication and isolated Cloudflare staging.';
+  };
+  document.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (['wgs','ag'].includes(button.id)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      toast('Sign in to use Sharika');
+    }
+  }, true);
+
+  window.RS = function () { return {...balance}; };
+  window.addCoins = function () { toast('Coin changes require the verified server'); };
+  window.addDia = function () { toast('Diamond changes require the verified server'); };
+  async function reloadWallet() {
+    const wallet = await api('GET','/wallet');
+    balance = {coins:Number(wallet.coins)||0,dia:Number(wallet.diamonds)||0,xp:Number(wallet.xp)||0};
+    localStorage.setItem('vr_state_v2',JSON.stringify(balance));
+    window.refresh();
+    return wallet;
+  }
+  async function reloadRooms() {
+    if (busyRooms || !session) return;
+    busyRooms = true;
+    try {
+      const data = await api('GET','/rooms');
+      const rows = data.rooms || [];
+      const own = rows.find(r => r.owner_id === session.user.id);
+      window.CFG.rooms = rows.filter(r => r.owner_id !== session.user.id).map((r,i)=>({
+        id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:0,host:'Room owner',
+        tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
+        th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count
+      }));
+      window.A.myRoom = own ? {
+        id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
+        c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count
+      } : null;
+      window.renderRooms();
+    } catch (error) { toast('Rooms unavailable: '+errText(error)); }
+    finally { busyRooms = false; }
+  }
+  async function syncFrame(room,frame) {
+    if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
+    const [data,owner] = await Promise.all([
+      api('GET','/rooms/'+room.id+'/members'),
+      api('GET','/users/'+room.id)
+    ]);
+    const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
+      (_,i)=>({empty:1,i}));
+    slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,muted:false,talk:false};
+    const audience=[];
+    for(const member of data.members || []) {
+      const user=member.sharika_users;
+      if(!user || member.user_id===room.owner_id) continue;
+      if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
+        slots[member.seat_no]={
+          n:user.name,e:'👤',i:member.seat_no,user_id:member.user_id,
+          muted:!!member.muted,talk:false
+        };
+      else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level});
+    }
+    frame.seats=slots;
+    frame.U=audience;
+    frame.S.coins=balance.coins;
+    frame.S.xp=balance.xp;
+    frame.S.n=slots.length;
+    frame.render();
+  }
+  async function attachFrame(room) {
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(!frame || !frame.seats || !window.cur || window.cur.id!==room.id) return;
+    frame.tick=function(){};
+    frame.U=[];
+    frame.G=[];
+    frame.sendGift=function(){ frame.toast('Gifts are not available until secure D1 wallet settlement is tested'); };
+    frame.act=async function(action,seat) {
+      try {
+        if(action==='take' && seat>0) {
+          await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
+          frame.close(); await syncFrame(room,frame);
+          frame.toast('Seat joined. Voice connection is not configured yet.');
+        } else if(action==='down') {
+          await api('PUT','/rooms/'+room.id+'/seat',{seat_no:null});
+          frame.close(); await syncFrame(room,frame);
+          frame.toast('You left the microphone seat');
+        } else frame.toast('Moderation requires verified server permissions');
+      } catch (error) { frame.toast(errText(error)); }
+    };
+    const mic=frame.$ && frame.$('mic');
+    if(mic) mic.onclick=()=>frame.toast('LiveKit voice is not configured for Sharika staging yet');
+    const rewards=frame.$ && frame.$('rrpill');
+    if(rewards) rewards.onclick=()=>frame.toast('Weekly room rewards are not available yet');
+    await syncFrame(room,frame);
+    frame.toast('This is an authentic staging room. Voice, games and gifts are pending.');
+    if(framePoll) clearInterval(framePoll);
+    framePoll=setInterval(()=>{if(window.cur?.id===room.id)syncFrame(room,frame).catch(()=>{});},15000);
+  }
+  // Block simulated gift/chat bots in the original room HTML only in this
+  // packaged staging APK. Do not edit the user's original layout or art.
+  if(typeof window.ROOM_HTML === 'string') {
+    window.ROOM_HTML=window.ROOM_HTML.replace('setInterval(botGift,28000);','');
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      /setInterval\(function\(\)\{var o=others\(\);[\s\S]*?\},9000\);/,'');
+  }
+  const originalOpenRoom=window.openRoom;
+  window.openRoom=async function(room) {
+    if(!session){ window.showAuth('welcome'); return; }
+    try {
+      await api('POST','/rooms/'+room.id+'/join',{});
+      const iframe=document.getElementById('rf');
+      iframe.onload=()=>attachFrame(room).catch(error=>toast(errText(error)));
+      originalOpenRoom(room);
+    } catch(error) { toast('Could not join: '+errText(error)); }
+  };
+  const originalLeaveRoom=window.leaveRoom;
+  window.leaveRoom=function() {
+    const current=window.cur;
+    if(framePoll){clearInterval(framePoll);framePoll=null;}
+    if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
+    const iframe=document.getElementById('rf');
+    if(iframe) iframe.onload=null;
+    originalLeaveRoom();
+  };
+  // Financial UI is explicitly locked until D1 ledger and admin migration.
+  document.addEventListener('click', async event => {
+    const button=event.target.closest('button');
+    if(!button) return;
+    const id=button.id;
+    if(!['cl','pc','ec','cm'].includes(id)) return;
+    if(id==='ec' && !document.querySelector('#sh h3')?.textContent?.includes('Exchange')) return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(!session){window.showAuth('welcome');return;}
+    if(id!=='cm') {
+      toast('Coins, recharge, gifts and exchange are locked until the real backend is ready');
+      return;
+    }
+    button.disabled=true;
+    try {
+      const name=document.getElementById('cn')?.value?.trim() || 'My Sharika room';
+      const chosen=document.querySelector('#ce button.sel');
+      await api('POST','/rooms',{name,emoji:chosen?.textContent?.trim() || '🎙️',theme:'mid'});
+      window.closeSheet();
+      await reloadRooms();
+      const room=window.myR();
+      if(room) window.openRoom(room);
+      toast('Your staging room has been created');
+    } catch(error) {toast(errText(error));}
+    finally {button.disabled=false;}
+  },true);
+
+  window.renderMsg=function(){
+    const view=document.getElementById('ml');
+    if(view)view.innerHTML='<div class="empty">Messages are not available yet.</div>';
+  };
+  window.renderRank=function(){
+    const view=document.getElementById('rb');
+    if(view)view.innerHTML='<div class="empty">No verified ranking results yet.</div>';
+  };
+  window.box=function() {
+    window.openSheet('<h3>🏆 Weekly rewards</h3><div class="empty">Rewards are not enabled on the staging server.</div>');
+  };
+  const originalLogout=window.logout;
+  window.logout=function(){
+    if(window.cur)window.leaveRoom();
+    session=null;profile=null;balance={coins:0,dia:0,xp:0};
+    native('signOut').catch(()=>{});
+    cleanLocalFakeState();
+    originalLogout();
+  };
+  window.SharikaServer={api,reloadWallet,reloadRooms,connected:()=>!!session};
+
+  async function restore(){
+    cleanLocalFakeState();
+    try{
+      const account=await native('session');
+      if(!account.signedIn || !account.emailVerified) {
+        window.showAuth('welcome');
+        if(account.signedIn)toast('Verify your email, then sign in');
+        return;
+      }
+      const local=await authenticated(account);
+      window.A=Object.assign(window.A,local.p);
+      try{localStorage.setItem('vr_sess',local.key);}catch(_){}
+      window.saveA();
+      window.hideAuth();
+      window.refresh();
+      window.renderRooms();
+      window.go('home');
+    }catch(error){
+      window.showAuth('welcome');
+      toast('Sign-in needed: '+errText(error));
+    }
+  }
+  restore();
+})();
