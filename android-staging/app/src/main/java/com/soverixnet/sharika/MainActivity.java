@@ -64,6 +64,13 @@ public final class MainActivity extends Activity {
     private TextView identity;
     private EditText email;
     private EditText password;
+    // Isolated staging-only profile and room controls. Never points at the live app.
+    private EditText profileName;
+    private EditText profileBirthday;
+    private EditText profileCountry;
+    private EditText roomName;
+    private EditText roomId;
+    private EditText seatNo;
 
     private int dp(int size) {
         return Math.round(getResources().getDisplayMetrics().density * size);
@@ -127,6 +134,42 @@ public final class MainActivity extends Activity {
         root.addView(action("Refresh login and test Cloudflare API", this::testAuthenticatedApi, "#167A78"));
         root.addView(action("Check backend health", this::checkHealth, "#39445F"));
         root.addView(action("Sign out", this::signOut, "#39445F"));
+
+        TextView stagingSection = label("Staging profile & rooms", 23, WHITE, true);
+        LinearLayout.LayoutParams section = new LinearLayout.LayoutParams(-1, -2);
+        section.topMargin = dp(28);
+        section.bottomMargin = dp(10);
+        stagingSection.setLayoutParams(section);
+        root.addView(stagingSection);
+        root.addView(label("These controls write ONLY to the new, isolated D1 staging database. Existing users and wallets are not migrated.", 13, MUTED, false));
+
+        profileName = entry("Your display name (required)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        root.addView(profileName);
+        profileBirthday = entry("Date of birth: YYYY-MM-DD (age 13+)", InputType.TYPE_CLASS_DATETIME);
+        root.addView(profileBirthday);
+        profileCountry = entry("Country (for example BD)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        root.addView(profileCountry);
+        root.addView(action("Create my new staging profile", this::createStagingProfile, "#426DE5"));
+        root.addView(action("Read my staging profile", this::readStagingProfile, "#39445F"));
+        root.addView(action("Read my staging wallet (no transfers)", this::readStagingWallet, "#39445F"));
+
+        TextView roomSection = label("Staging rooms (no live voice yet)", 20, WHITE, true);
+        LinearLayout.LayoutParams roomHeader = new LinearLayout.LayoutParams(-1, -2);
+        roomHeader.topMargin = dp(22);
+        roomSection.setLayoutParams(roomHeader);
+        root.addView(roomSection);
+        roomName = entry("New room name", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        root.addView(roomName);
+        root.addView(action("Create my staging room", this::createStagingRoom, "#426DE5"));
+        root.addView(action("List staging rooms", this::listStagingRooms, "#39445F"));
+        roomId = entry("8-digit room ID", InputType.TYPE_CLASS_NUMBER);
+        root.addView(roomId);
+        root.addView(action("Join room", this::joinStagingRoom, "#167A78"));
+        root.addView(action("View room members", this::readStagingMembers, "#39445F"));
+        seatNo = entry("Seat 1–20, or 0 to stand", InputType.TYPE_CLASS_NUMBER);
+        root.addView(seatNo);
+        root.addView(action("Take / release my room seat", this::setStagingSeat, "#167A78"));
+        root.addView(action("Leave room", this::leaveStagingRoom, "#39445F"));
 
         identity = label("", 14, MUTED, false);
         LinearLayout.LayoutParams identityParams = new LinearLayout.LayoutParams(-1, -2);
@@ -320,6 +363,181 @@ public final class MainActivity extends Activity {
         if (error == null) return "Unknown error";
         String value = error.getLocalizedMessage();
         return value == null ? "Unknown error" : value.replaceAll("[\\r\\n]", " ");
+    }
+
+    // Firebase identity is always verified by the Worker again. These methods
+    // never use an app-supplied UID, a service key, or a Supabase session.
+    private interface TokenAction { void run(String token); }
+
+    private void afterStagingLogin(TokenAction action) {
+        FirebaseUser user = auth.getCurrentUser();
+        if (user == null) {
+            show("Sign in with Google or email first.");
+            return;
+        }
+        show("Checking Firebase sign-in before the staging request…");
+        user.reload().addOnCompleteListener(this, refreshed -> {
+            FirebaseUser current = auth.getCurrentUser();
+            refreshIdentity();
+            if (!refreshed.isSuccessful() || current == null) {
+                show("Could not refresh login: " + safeError(refreshed.getException()));
+                return;
+            }
+            if (!current.isEmailVerified()) {
+                show("Verify your Firebase email first, or use Google login.");
+                return;
+            }
+            current.getIdToken(false).addOnCompleteListener(this, tokenResult -> {
+                if (!tokenResult.isSuccessful() || tokenResult.getResult() == null
+                    || tokenResult.getResult().getToken() == null) {
+                    show("Firebase token unavailable: " + safeError(tokenResult.getException()));
+                    return;
+                }
+                action.run(tokenResult.getResult().getToken());
+            });
+        });
+    }
+
+    private void createStagingProfile(View ignored) {
+        String name = profileName.getText().toString().trim();
+        String birthday = profileBirthday.getText().toString().trim();
+        String country = profileCountry.getText().toString().trim();
+        if (name.isEmpty() || !birthday.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            show("Enter your name and birth date in YYYY-MM-DD format.");
+            return;
+        }
+        try {
+            JSONObject payload = new JSONObject().put("name", name).put("birthdate", birthday)
+                .put("country", country);
+            afterStagingLogin(token -> stagingRequest("POST", "/api/v1/me", token, payload, false));
+        } catch (org.json.JSONException error) {
+            show("Profile input is invalid.");
+        }
+    }
+
+    private void readStagingProfile(View ignored) {
+        afterStagingLogin(token -> stagingRequest("GET", "/api/v1/me", token, null, false));
+    }
+
+    private void readStagingWallet(View ignored) {
+        afterStagingLogin(token -> stagingRequest("GET", "/api/v1/wallet", token, null, false));
+    }
+
+    private void createStagingRoom(View ignored) {
+        String name = roomName.getText().toString().trim();
+        if (name.isEmpty()) { show("Enter a room name."); return; }
+        try {
+            JSONObject payload = new JSONObject().put("name", name).put("seat_count", 12);
+            afterStagingLogin(token -> stagingRequest("POST", "/api/v1/rooms", token, payload, true));
+        } catch (org.json.JSONException error) {
+            show("Invalid room name.");
+        }
+    }
+
+    private void listStagingRooms(View ignored) {
+        afterStagingLogin(token -> stagingRequest("GET", "/api/v1/rooms", token, null, false));
+    }
+
+    private String selectedRoomPath() {
+        String id = roomId.getText().toString().trim();
+        if (!id.matches("\\d{8}")) {
+            show("Enter the exact 8-digit staging room ID.");
+            return null;
+        }
+        return "/api/v1/rooms/" + id;
+    }
+
+    private void joinStagingRoom(View ignored) {
+        String path = selectedRoomPath();
+        if (path != null) afterStagingLogin(token -> stagingRequest("POST", path + "/join", token, null, false));
+    }
+
+    private void leaveStagingRoom(View ignored) {
+        String path = selectedRoomPath();
+        if (path != null) afterStagingLogin(token -> stagingRequest("POST", path + "/leave", token, null, false));
+    }
+
+    private void readStagingMembers(View ignored) {
+        String path = selectedRoomPath();
+        if (path != null) afterStagingLogin(token -> stagingRequest("GET", path + "/members", token, null, false));
+    }
+
+    private void setStagingSeat(View ignored) {
+        String path = selectedRoomPath();
+        if (path == null) return;
+        String input = seatNo.getText().toString().trim();
+        int seat;
+        try { seat = Integer.parseInt(input); }
+        catch (NumberFormatException e) { show("Seat must be 0–20."); return; }
+        if (seat < 0 || seat > 20) { show("Seat must be 0–20."); return; }
+        try {
+            JSONObject body = new JSONObject().put("seat_no", seat == 0 ? JSONObject.NULL : seat);
+            afterStagingLogin(token -> stagingRequest("PUT", path + "/seat", token, body, false));
+        } catch (org.json.JSONException error) {
+            show("Seat input is invalid.");
+        }
+    }
+
+    private void stagingRequest(String method, String path, String token, JSONObject body,
+                                boolean saveRoomId) {
+        show("Contacting isolated staging API: " + method + " " + path);
+        io.execute(() -> {
+            HttpURLConnection connection = null;
+            int code = -1;
+            JSONObject response = null;
+            String message;
+            try {
+                connection = (HttpURLConnection) new URL(BACKEND + path).openConnection();
+                connection.setRequestMethod(method);
+                connection.setConnectTimeout(12000);
+                connection.setReadTimeout(12000);
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                if (body != null) {
+                    connection.setDoOutput(true);
+                    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    try (java.io.OutputStream output = connection.getOutputStream()) {
+                        output.write(body.toString().getBytes(StandardCharsets.UTF_8));
+                    }
+                }
+                code = connection.getResponseCode();
+                InputStream stream = code >= 400
+                    ? connection.getErrorStream() : connection.getInputStream();
+                StringBuilder raw = new StringBuilder();
+                if (stream != null) {
+                    try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null && raw.length() < 4500)
+                            raw.append(line);
+                    }
+                }
+                response = new JSONObject(raw.toString());
+                if (code >= 200 && code < 300) {
+                    String shown = response.toString(2);
+                    message = "Staging request succeeded (HTTP " + code + ").\n"
+                        + shown.substring(0, Math.min(shown.length(), 3500));
+                } else {
+                    String error = response.optString("error", "unknown");
+                    message = "Staging API HTTP " + code + ": " + error;
+                    if (code == 404 && "profile_not_found".equals(error))
+                        message += "\nCreate your staging profile first. Old users are not migrated.";
+                    if (code == 501)
+                        message += "\nThis feature is intentionally locked until safe migration.";
+                }
+            } catch (Exception error) {
+                message = "Staging request failed: " + safeError(error);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            final String result = message;
+            final String createdId = saveRoomId && code >= 200 && code < 300
+                && response != null ? response.optString("id", "") : "";
+            runOnUiThread(() -> {
+                show(result);
+                if (createdId.matches("\\d{8}")) roomId.setText(createdId);
+            });
+        });
     }
 
     private void testAuthenticatedApi(View view) {
