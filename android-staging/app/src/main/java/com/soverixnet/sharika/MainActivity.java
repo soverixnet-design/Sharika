@@ -5,6 +5,7 @@ import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.os.CancellationSignal;
 import android.text.InputType;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,7 +15,21 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.credentials.ClearCredentialStateRequest;
+import androidx.credentials.Credential;
+import androidx.credentials.CredentialManager;
+import androidx.credentials.CredentialManagerCallback;
+import androidx.credentials.CustomCredential;
+import androidx.credentials.GetCredentialRequest;
+import androidx.credentials.GetCredentialResponse;
+import androidx.credentials.exceptions.ClearCredentialException;
+import androidx.credentials.exceptions.GetCredentialException;
+
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.auth.FirebaseUser;
 
 import org.json.JSONObject;
@@ -43,6 +58,8 @@ public final class MainActivity extends Activity {
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private FirebaseAuth auth;
+    private CredentialManager credentialManager;
+    private boolean googleSignInPending;
     private TextView status;
     private TextView identity;
     private EditText email;
@@ -58,6 +75,7 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(BACKGROUND);
         getWindow().setNavigationBarColor(BACKGROUND);
         auth = FirebaseAuth.getInstance();
+        credentialManager = CredentialManager.create(this);
         buildScreen();
         refreshIdentity();
         checkHealth();
@@ -92,16 +110,13 @@ public final class MainActivity extends Activity {
         password = entry("Password (12+ characters)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         root.addView(password);
 
+        root.addView(action("Continue with Google", this::signInGoogle, "#4285F4"));
         root.addView(action("Sign in", this::signIn, "#7862F5"));
         root.addView(action("Create staging Firebase account", this::register, "#426DE5"));
         root.addView(action("Send verification email", this::sendVerification, "#39445F"));
         root.addView(action("Refresh login and test Cloudflare API", this::testAuthenticatedApi, "#167A78"));
         root.addView(action("Check backend health", this::checkHealth, "#39445F"));
-        root.addView(action("Sign out", view -> {
-            auth.signOut();
-            refreshIdentity();
-            show("Signed out from this staging app.");
-        }, "#39445F"));
+        root.addView(action("Sign out", this::signOut, "#39445F"));
 
         identity = label("", 14, MUTED, false);
         LinearLayout.LayoutParams identityParams = new LinearLayout.LayoutParams(-1, -2);
@@ -199,6 +214,75 @@ public final class MainActivity extends Activity {
                     ? "Account created. Check your inbox and verify your email. Then refresh."
                     : "Account created, but verification email failed: " + safeError(sent.getException())));
         });
+    }
+
+    /** Explicit Google button flow; no changes to the existing app or stored users. */
+    private void signInGoogle(View view) {
+        if (googleSignInPending) return;
+        googleSignInPending = true;
+        show("Opening Google account picker for isolated Firebase staging…");
+        try {
+            // The Google Services Gradle plugin generates this Web OAuth client ID
+            // from the verified client_type=3 entry in google-services.json.
+            GetSignInWithGoogleOption option = new GetSignInWithGoogleOption.Builder(
+                getString(R.string.default_web_client_id)).build();
+            GetCredentialRequest request = new GetCredentialRequest.Builder()
+                .addCredentialOption(option).build();
+            credentialManager.getCredentialAsync(
+                this, request, new CancellationSignal(), this::runOnUiThread,
+                new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
+                    @Override
+                    public void onResult(GetCredentialResponse response) {
+                        Credential credential = response.getCredential();
+                        if (!(credential instanceof CustomCredential)
+                            || !GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                                .equals(credential.getType())) {
+                            googleSignInPending = false;
+                            show("Google sign-in did not return a Google ID token.");
+                            return;
+                        }
+                        try {
+                            String idToken = GoogleIdTokenCredential
+                                .createFrom(((CustomCredential) credential).getData()).getIdToken();
+                            auth.signInWithCredential(GoogleAuthProvider.getCredential(idToken, null))
+                                .addOnCompleteListener(MainActivity.this, task -> {
+                                    googleSignInPending = false;
+                                    refreshIdentity();
+                                    show(task.isSuccessful()
+                                        ? "Google + Firebase sign-in succeeded. Test Cloudflare API next."
+                                        : "Google Firebase sign-in failed: "
+                                            + safeError(task.getException()));
+                                });
+                        } catch (GoogleIdTokenParsingException error) {
+                            googleSignInPending = false;
+                            show("Google ID token was invalid: " + safeError(error));
+                        }
+                    }
+
+                    @Override
+                    public void onError(GetCredentialException error) {
+                        googleSignInPending = false;
+                        show("Google account selection unavailable: " + safeError(error));
+                    }
+                });
+        } catch (Exception error) {
+            googleSignInPending = false;
+            show("Could not start Google sign-in: " + safeError(error));
+        }
+    }
+
+    private void signOut(View view) {
+        auth.signOut();
+        refreshIdentity();
+        show("Signed out of Firebase staging.");
+        // Also clear provider state so the next Google button press can choose
+        // a different account. This does not revoke or delete Google accounts.
+        credentialManager.clearCredentialStateAsync(
+            new ClearCredentialStateRequest(), new CancellationSignal(),
+            this::runOnUiThread, new CredentialManagerCallback<Void, ClearCredentialException>() {
+                @Override public void onResult(Void result) { }
+                @Override public void onError(ClearCredentialException error) { }
+            });
     }
 
     private void signIn(View view) {
