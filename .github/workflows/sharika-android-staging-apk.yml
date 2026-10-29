@@ -51,16 +51,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK tools
-        uses: android-actions/setup-android@v3
-
       - name: Set up pinned Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Install Android platform
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Install Android packages using hosted runner SDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          test -d "$SDK_ROOT/cmdline-tools"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
 
       - name: Compile staging APK only
         run: gradle :app:assembleDebug --no-daemon --stacktrace
