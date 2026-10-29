@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "847262470616",
+    "project_id": "sharika-voice-chat-app",
+    "storage_bucket": "sharika-voice-chat-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:847262470616:android:6eb09ce25aa6bdae2ce2ad",
+        "android_client_info": {
+          "package_name": "com.soverixnet.sharika"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAuKw-SVccI_bN4GSC6tOEC1yUm6lkBxQA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
