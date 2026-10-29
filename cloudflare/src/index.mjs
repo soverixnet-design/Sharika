@@ -93,10 +93,13 @@ export async function handleRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
   if (path === '/health' && request.method === 'GET') {
-    if (!env.DB || !env.FIREBASE_PROJECT_ID) return fail('not_configured', 503, cors);
+    // A database-only diagnostic for staging. Authentication remains unavailable
+    // until FIREBASE_PROJECT_ID is explicitly configured for protected endpoints.
+    if (!env.DB) return fail('database_unavailable', 503, cors);
     try {
       await env.DB.prepare('SELECT 1 AS ok').first();
-      return reply({ ok: true, service: 'sharika-cloudflare-staging', environment: 'staging' }, 200, cors);
+      return reply({ ok: true, service: 'sharika-cloudflare-staging', environment: 'staging',
+        auth_configured: !!env.FIREBASE_PROJECT_ID }, 200, cors);
     } catch (_) { return fail('database_unavailable', 503, cors); }
   }
   if (!env.DB || !env.FIREBASE_PROJECT_ID) return fail('not_configured', 503, cors);
