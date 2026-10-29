@@ -147,7 +147,9 @@ public final class SharikaActivity extends Activity {
     private String safe(Exception exception) {
         if (exception == null) return "unknown_error";
         String message = exception.getLocalizedMessage();
-        return message == null ? "unknown_error" : message.replaceAll("[\\r\\n]", " ").substring(0, Math.min(message.length(), 240));
+        if (message == null) return "unknown_error";
+        String cleaned = message.replaceAll("[\\r\\n]", " ");
+        return cleaned.substring(0, Math.min(cleaned.length(), 240));
     }
 
     private void sendResult(String id, JSONObject response) {
