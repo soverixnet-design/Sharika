@@ -8,7 +8,7 @@
     {
       "binding": "DB",
       "database_name": "sharika-staging",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "b2c62252-12a5-4740-90c7-01a536d9a39a",
       "migrations_dir": "migrations"
     }
   ],
