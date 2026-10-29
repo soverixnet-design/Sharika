@@ -1,16 +1,17 @@
-name: Sharika D1 staging initialization
+name: Sharika staging backend (D1 and Worker)
 
 on:
   workflow_dispatch:
     inputs:
       operation:
-        description: 'Choose verify-only first, then create-tables for the isolated Sharika staging D1'
+        description: 'Choose a safe staging operation (never changes the live app)'
         type: choice
         required: true
         default: verify-only
         options:
           - verify-only
           - create-tables
+          - deploy-staging-worker
 
 permissions:
   contents: read
@@ -31,7 +32,7 @@ jobs:
       - name: Checkout reviewed staging candidate at a pinned commit
         uses: actions/checkout@v4
         with:
-          ref: 1f6d3e18716958985f33af2cbb6160f2f99a8f0b
+          ref: a1887cc59c62e343b68a70b143368a58452a1dc1
           persist-credentials: false
 
       - name: Refuse any target other than the approved isolated staging account and D1
@@ -46,7 +47,10 @@ jobs:
                 c.d1_databases?.length !== 1 ||
                 db.binding !== "DB" ||
                 db.database_name !== "sharika-staging" ||
-                db.database_id !== "b2c62252-12a5-4740-90c7-01a536d9a39a") {
+                db.database_id !== "b2c62252-12a5-4740-90c7-01a536d9a39a" ||
+                c.workers_dev !== true ||
+                c.vars?.FIREBASE_PROJECT_ID !== "" ||
+                c.vars?.ALLOWED_ORIGINS !== "") {
               throw new Error("Refusing unexpected Cloudflare configuration");
             }
             console.log("APPROVED_SHARIKA_STAGING_D1_ONLY");
@@ -72,7 +76,7 @@ jobs:
           print(f"SHARIKA_D1_LOCAL_SCHEMA_OK: {len(tables)} tables")
           PY
 
-      - name: Apply migrations to isolated remote D1 only (never deploy a Worker)
+      - name: Apply migrations to isolated remote D1 only (schema mode)
         if: ${{ inputs.operation == 'create-tables' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
@@ -83,3 +87,24 @@ jobs:
             exit 1
           fi
           npx --yes wrangler@4 d1 migrations apply sharika-staging --remote --config wrangler.jsonc
+
+      - name: Confirm existing staging D1 schema before Worker deployment
+        if: ${{ inputs.operation == 'deploy-staging-worker' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Missing GitHub Actions secret CLOUDFLARE_API_TOKEN"
+            exit 1
+          fi
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS count FROM sharika_users"
+
+      - name: Deploy only sharika-api-staging to workers.dev (protected APIs remain closed)
+        if: ${{ inputs.operation == 'deploy-staging-worker' }}
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: d81cf7c48fb9b36d468cb0a08720cd74
+          workingDirectory: cloudflare
+          command: deploy --config wrangler.jsonc
