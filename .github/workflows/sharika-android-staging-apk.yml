@@ -42,7 +42,14 @@ jobs:
               !gradle.includes("applicationId 'com.soverixnet.sharika'")) {
             throw new Error('Refusing to build unexpected Android Firebase identity');
           }
-          console.log('SHARIKA_ANDROID_FIREBASE_IDENTITY_OK');
+          const oauth = c.client?.[0]?.oauth_client || [];
+          const androidClient = oauth.find(v => v.client_type === 1);
+          const webClient = oauth.find(v => v.client_type === 3);
+          if (!androidClient?.android_info?.certificate_hash ||
+              !webClient?.client_id) {
+            throw new Error('Google OAuth client IDs missing from google-services.json');
+          }
+          console.log('SHARIKA_ANDROID_FIREBASE_IDENTITY_AND_GOOGLE_OAUTH_OK');
           NODE
 
       - name: Set up Java 17
@@ -66,6 +73,12 @@ jobs:
 
       - name: Compile staging APK only
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Print signing fingerprint for this exact APK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs \
+            app/build/outputs/apk/debug/app-debug.apk
 
       - name: Save private-test APK artifact
         uses: actions/upload-artifact@v4
