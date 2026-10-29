@@ -36,3 +36,14 @@ assert.match(workflow, /StrictHostKeyChecking=yes/,
 assert.match(workflow, /\[ "\$DEPLOY_USER" = "root" \]/,
   'Root deployment must be rejected');
 console.log('PASS: Edge secret boundaries and safe deploy defaults');
+
+const admin = readFileSync('admin/connection.js', 'utf8');
+assert.match(admin, /field\.onkeydown\s*=\s*event\s*=>/,
+  'Enter-key handling must override the legacy demo login');
+assert.match(admin, /if\s*\(!session\s*\|\|\s*!activeRole\)\s*\{\s*window\.login\(\);\s*return;/,
+  'Admin shell must reject sessions without a server-verified admin role');
+assert.match(admin, /api\('GET','\/admin\/status'\)/,
+  'Admin role must be verified by the server');
+assert.match(admin, /localStorage\.removeItem\('aa'\)/,
+  'Legacy local demo login must be cleared');
+console.log('PASS: demo sign-in cannot bypass the connected admin gate');
