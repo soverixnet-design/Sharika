@@ -760,7 +760,37 @@
     const roomGameButton=frame.$ && frame.$('bGame');
     if(roomGameButton)roomGameButton.onclick=()=>showGameCard(frame.document,true,frame.toast);
     const rewards=frame.$ && frame.$('rrpill');
-    if(rewards) rewards.onclick=()=>frame.toast('Weekly room rewards are not available yet');
+    if(rewards) rewards.onclick=async()=>{
+      frame.open('<h3>🏆 Weekly Top Rooms</h3>'+
+        '<div id="sh-room-week" class="empty">Loading verified room results…</div>'+
+        '<p style="font-size:12px;opacity:.7;text-align:center">'+
+        'This ranking is read-only. Automatic room-reward coins are not enabled yet.</p>');
+      const target=frame.$('sh-room-week');
+      if(!target)return;
+      try{
+        const data=await api('GET','/rankings?period=weekly&kind=room');
+        if(!target.isConnected||!session)return;
+        target.textContent='';
+        const rooms=Array.isArray(data.leaders)?data.leaders.slice(0,10):[];
+        if(!rooms.length){
+          target.textContent='No verified room gifts recorded this week.';
+          return;
+        }
+        for(const item of rooms){
+          const row=frame.document.createElement('div');
+          row.className='row';
+          const label=frame.document.createElement('b');
+          label.textContent='#'+item.rank+' '+(item.emoji||'🎙️')+' '+
+            (item.name||'Room')+' · ID '+item.room_id;
+          const amount=frame.document.createElement('span');
+          amount.textContent='🪙 '+Number(item.total||0).toLocaleString('en-US');
+          row.append(label,amount);
+          target.appendChild(row);
+        }
+      }catch(error){
+        if(target.isConnected)target.textContent='Room ranking unavailable: '+errText(error);
+      }
+    };
     await syncFrame(room,frame);
     try {
       const voice=await connectVoice(room.id);
