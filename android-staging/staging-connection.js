@@ -452,7 +452,11 @@
   function startPresence(){
     if(presenceTimer)clearInterval(presenceTimer);
     heartbeatPresence(null);
-    presenceTimer=setInterval(()=>heartbeatPresence(),25000);
+    presenceTimer=setInterval(()=>{
+      heartbeatPresence();
+      // Refresh real room-card counters without changing the original cards.
+      if(!window.cur && document.visibilityState==='visible')reloadRooms().catch(()=>{});
+    },25000);
   }
   async function reloadWallet() {
     const wallet = await api('GET','/wallet');
