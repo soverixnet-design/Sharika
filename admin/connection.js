@@ -66,6 +66,39 @@
     return status;
   }
 
+  // Google users have no separate Sharika admin password. The Firebase UID must
+  // match a D1-approved role, exactly like password sign-in.
+  let googleSdkPromise = null;
+  function googleSdk() {
+    if (!googleSdkPromise) googleSdkPromise = Promise.all([
+      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js'),
+      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js')
+    ]).then(async ([appModule, authModule]) => {
+      let app;
+      try { app = appModule.getApp('sharika-staging-admin'); }
+      catch (_) {
+        app = appModule.initializeApp({
+          apiKey:FIREBASE_KEY,
+          authDomain:'sharika-voice-chat-app.firebaseapp.com',
+          projectId:'sharika-voice-chat-app'
+        }, 'sharika-staging-admin');
+      }
+      const auth = authModule.getAuth(app);
+      await authModule.setPersistence(auth,authModule.browserSessionPersistence);
+      auth.useDeviceLanguage();
+      return { auth, authModule };
+    });
+    return googleSdkPromise;
+  }
+  function googleError(error) {
+    if (error?.code === 'auth/unauthorized-domain')
+      return 'This admin domain must be added in Firebase Authentication > Settings > Authorized domains: '+window.location.hostname;
+    if (error?.code === 'auth/popup-blocked' || error?.code === 'auth/popup-closed-by-user')
+      return 'Allow the Google sign-in popup and try again (or open this page in Chrome).';
+    if (error?.code === 'auth/operation-not-supported-in-this-environment')
+      return 'Open this panel directly in Chrome or Firefox; embedded browsers may block Google sign-in.';
+    return error?.message || 'Google sign-in failed';
+  }
   // Override the original demo login before anybody can enter the shell.
   const originalLogin = window.login;
   window.login = function () {
@@ -78,6 +111,51 @@
     const p = document.querySelector('#lf p:last-child');
     if (p) p.textContent='Use a verified Sharika Firebase account with an assigned admin role. No demo password is accepted.';
     if (!button || !email || !password) return;
+    const googleButton = document.createElement('button');
+    googleButton.type = 'button';
+    googleButton.id = 'google-signin';
+    googleButton.className = 'btn o';
+    googleButton.style.cssText = 'width:100%;margin-top:12px;min-height:48px';
+    googleButton.textContent = 'Continue with Google';
+    googleButton.disabled = true;
+    button.insertAdjacentElement('afterend', googleButton);
+    const googleHelp = document.createElement('p');
+    googleHelp.style.cssText = 'margin:9px 0 0;font-size:12px;opacity:.8';
+    googleHelp.textContent = 'Use the same Google account as your Sharika Android app. No extra password.';
+    googleButton.insertAdjacentElement('afterend', googleHelp);
+    googleSdk().then(() => {
+      if (googleButton.isConnected) googleButton.disabled = false;
+    }).catch(error => {
+      if (googleButton.isConnected) {
+        googleButton.textContent = 'Google sign-in unavailable';
+        byId('le').textContent = googleError(error);
+      }
+    });
+    googleButton.onclick = async function () {
+      googleButton.disabled = true;
+      byId('le').textContent = 'Opening Google sign-in…';
+      let sdk = null;
+      try {
+        sdk = await googleSdk();
+        const provider = new sdk.authModule.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt:'select_account' });
+        const signed = await sdk.authModule.signInWithPopup(sdk.auth, provider);
+        const jwt = await signed.user.getIdToken();
+        const refresh = signed.user.refreshToken;
+        if (!jwt || !refresh) throw new Error('Google session could not be established');
+        save({idToken:jwt,refreshToken:refresh,
+          expiresAt:Date.now()+50*60*1000,email:signed.user.email || ''});
+        await verifyAdmin();
+        window.V = 'dash';
+        window.shell();
+      } catch (error) {
+        save(null); role=null; identity=null;
+        if (sdk?.auth?.currentUser) await sdk.authModule.signOut(sdk.auth).catch(()=>{});
+        if (byId('le')) byId('le').textContent = googleError(error);
+      } finally {
+        if (googleButton.isConnected) googleButton.disabled = false;
+      }
+    };
     async function submit() {
       if (!email.value.trim() || !password.value) { byId('le').textContent='Email and password required';return; }
       button.disabled=true;
@@ -110,7 +188,7 @@
     const who = document.querySelector('.top .who');
     if (who) who.innerHTML='Verified as<br><b>'+esc(window.ME)+'</b> · '+esc(role)+' (staging)';
     const exit = byId('lo');
-    if (exit) exit.onclick=()=>{save(null);window.login();};
+    if (exit) exit.onclick=()=>{save(null);role=null;identity=null;googleSdkPromise?.then(({auth,authModule})=>authModule.signOut(auth)).catch(()=>{});window.login();};
   };
 
   // Replace the demo localStorage data. Never treat template rows as actual users.
