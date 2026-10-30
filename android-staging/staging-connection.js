@@ -555,6 +555,8 @@
     frame.G=[];
     frame.sendGift=function(){ frame.toast('Use the verified gift box Send button'); };
     frame.others=function(){return (frame.seats||[]).filter(s=>s&&!s.empty&&!s.lock);};
+    // Only the server may enable Lucky Gifts, and never for a minor.
+    frame.__minor=profile?.minor!==false;
     frame.__luckyOff=true;
     let availableGiftIds=[];
     let giftBusy=false;
@@ -566,7 +568,8 @@
     if(giftButton)giftButton.onclick=async ()=>{
       try{
         const data=await api('GET','/gifts');
-        const gifts=(data.gifts||[]).filter(g=>g.tab===0||g.tab===1);
+        const gifts=(data.gifts||[]).filter(g=>g.tab===0||g.tab===1||
+          (g.tab===2 && data.lucky_enabled===true && profile?.minor===false));
         if(!gifts.length){frame.toast('No active gifts in the catalog yet');return;}
         const htmlSafe=text=>String(text??'').replace(/[&<>"']/g,
           c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -577,7 +580,8 @@
             ?htmlSafe(url):'';
         };
         availableGiftIds=gifts.map(g=>g.id);
-        frame.gtab=gifts.some(g=>g.tab===0)?0:1;
+        frame.__luckyOff=!gifts.some(g=>g.tab===2);
+        frame.gtab=[0,1,2].find(tab=>gifts.some(g=>g.tab===tab))??0;
         frame.gsel=Math.max(0,gifts.findIndex(g=>g.tab===frame.gtab));
         frame.G=gifts.map(g=>[htmlSafe(g.emoji||'🎁'),Number(g.price_coins),
           htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
@@ -611,6 +615,15 @@
         frame.S.xp=balance.xp;
         frame.close();
         frame.toast('Gift sent · '+result.spent_coins+' coins charged ✓');
+        if(result.lucky && typeof frame.luckyFx==='function') {
+          const confirmed={payout_coins:Number(result.lucky.payout_coins)||0,
+            max_multiplier:Number(result.lucky.max_multiplier)||0};
+          setTimeout(()=>{
+            if(window.cur?.id===room.id)
+              frame.luckyFx(confirmed.payout_coins,confirmed.max_multiplier,
+                frame.G[chosen]||[result.gift.emoji]);
+          },1000);
+        }
         for(const index of indices.slice(0,20)){
           const slot=frame.seats?.[Number(index)];
           if(!slot||!recipients.includes(slot.public_id))continue;
