@@ -30,7 +30,7 @@
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let busyRooms = false, framePoll = null, giftPoll = null;
+  let busyRooms = false, framePoll = null, giftPoll = null, chatPoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -146,6 +146,7 @@
         state.media=await navigator.mediaDevices.getUserMedia({
           audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
         });
+        if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
         state.publishPC=new RTCPeerConnection();
         const local=state.media.getAudioTracks()[0];
         const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
@@ -161,6 +162,7 @@
         });
         await state.publishPC.setRemoteDescription(negotiation.sessionDescription);
       }
+      if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
       const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
       state.subscribeId=joined.sessionId;
       state.sessionIds.push(joined.sessionId);
@@ -205,57 +207,104 @@
     voiceRoom=null;voiceRoomId=null;
     await room.disconnect();
   }
+  // One connection transition at a time: seat/poll callbacks can fire together.
+  // Switching rooms or leaving invalidates stale async connection attempts.
+  let voiceOperation=Promise.resolve(),pendingVoice=null,wantedVoiceRoom=null;
+  function releaseVoice() {
+    wantedVoiceRoom=null;
+    const task=voiceOperation.catch(()=>{}).then(()=>disconnectVoice());
+    voiceOperation=task;
+    return task;
+  }
   async function connectVoice(roomId) {
-    const config=await api('GET','/rooms/'+roomId+'/voice/config');
-    await disconnectVoice();
-    if(config.provider==='cloudflare_sfu') {
-      voiceBackend='cloudflare_sfu';
-      return connectSfu(roomId,!!config.publish);
+    if(pendingVoice?.roomId===roomId)return pendingVoice.promise;
+    wantedVoiceRoom=roomId;
+    const task=voiceOperation.catch(()=>{}).then(async()=>{
+      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      const config=await api('GET','/rooms/'+roomId+'/voice/config');
+      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      await disconnectVoice();
+      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      if(config.provider==='cloudflare_sfu') {
+        voiceBackend='cloudflare_sfu';
+        return connectSfu(roomId,!!config.publish);
+      }
+      if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
+      // Keep the isolated LiveKit fallback only when explicitly configured.
+      const info=await api('POST','/rooms/'+roomId+'/voice-token',{});
+      const sdk=await voiceSdk();
+      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      voiceBackend='livekit';
+      const room=new sdk.Room({
+        audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true}
+      });
+      room.on(sdk.RoomEvent.TrackSubscribed,(track)=>{
+        if(track.kind===sdk.Track.Kind.Audio) {
+          const element=track.attach();
+          element.autoplay=true;
+          element.dataset.sharikaVoice='true';
+          document.body.appendChild(element);
+        }
+      });
+      room.on(sdk.RoomEvent.TrackUnsubscribed,(track)=>{
+        track.detach().forEach(node=>node.remove());
+      });
+      room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
+        const frame=document.getElementById('rf')?.contentWindow;
+        if(!frame || !frame.seats)return;
+        const talking=new Set(speakers.map(p=>p.identity));
+        for(const seat of frame.seats){
+          if(seat && seat.user_id)seat.talk=talking.has('sharika:'+seat.user_id);
+        }
+        if(typeof frame.render==='function')frame.render();
+      });
+      try{await room.connect(info.url,info.token);}
+      catch(error){await room.disconnect().catch(()=>{});throw error;}
+      if(wantedVoiceRoom!==roomId) {
+        await room.disconnect().catch(()=>{});
+        return {publishing:false,stale:true};
+      }
+      voiceRoom=room;voiceRoomId=roomId;
+      try{await room.startAudio();}catch(_){}
+      if(info.publish)await room.localParticipant.setMicrophoneEnabled(true);
+      return {publishing:!!info.publish};
+    });
+    voiceOperation=task;
+    pendingVoice={roomId,promise:task};
+    try {
+      const result=await task;
+      if(!result.stale && wantedVoiceRoom===roomId)markLocalMicrophone(!!result.publishing);
+      return result;
+    } finally {
+      if(pendingVoice?.promise===task)pendingVoice=null;
     }
-    if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
-    // Keep the isolated LiveKit fallback only when explicitly configured.
-    const info=await api('POST','/rooms/'+roomId+'/voice-token',{});
-    const sdk=await voiceSdk();
-    voiceBackend='livekit';
-    const room=new sdk.Room({
-      audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true}
-    });
-    room.on(sdk.RoomEvent.TrackSubscribed,(track)=>{
-      if(track.kind===sdk.Track.Kind.Audio) {
-        const element=track.attach();
-        element.autoplay=true;
-        element.dataset.sharikaVoice='true';
-        document.body.appendChild(element);
-      }
-    });
-    room.on(sdk.RoomEvent.TrackUnsubscribed,(track)=>{
-      track.detach().forEach(node=>node.remove());
-    });
-    room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
-      const frame=document.getElementById('rf')?.contentWindow;
-      if(!frame || !frame.seats)return;
-      const talking=new Set(speakers.map(p=>p.identity));
-      for(const seat of frame.seats){
-        if(seat && seat.user_id)seat.talk=talking.has('sharika:'+seat.user_id);
-      }
+  }
+  function markLocalMicrophone(enabled) {
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(!frame||!Array.isArray(frame.seats))return;
+    const localSeat=frame.seats.find(slot=>slot?.user_id===session?.user?.id);
+    if(localSeat) {
+      localSeat.muted=!enabled;
       if(typeof frame.render==='function')frame.render();
-    });
-    await room.connect(info.url,info.token);
-    voiceRoom=room;voiceRoomId=roomId;
-    try{await room.startAudio();}catch(_){}
-    if(info.publish)await room.localParticipant.setMicrophoneEnabled(true);
-    return {publishing:!!info.publish};
+    }
+    const mic=frame.$?.('mic');
+    if(mic) {
+      mic.textContent=enabled?'🎤':'🔇';
+      mic.classList.toggle('off',!enabled);
+    }
   }
   async function toggleVoice() {
     if(sfuState) {
       const track=sfuState.media?.getAudioTracks()[0];
       if(!track)throw new Error('Take an available mic seat first');
       track.enabled=!track.enabled;
+      markLocalMicrophone(track.enabled);
       return track.enabled;
     }
     if(!voiceRoom || !voiceRoomId)throw new Error('Voice connection is not available');
     const currently=voiceRoom.localParticipant.isMicrophoneEnabled;
     await voiceRoom.localParticipant.setMicrophoneEnabled(!currently);
+    markLocalMicrophone(!currently);
     return !currently;
   }
   function cleanLocalFakeState() {
@@ -525,9 +574,14 @@
       (!!self && self.seat_no!==null && !self.muted);
     if(sfuState?.roomId===room.id && !!sfuState.media!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
+    const localMic=sfuState?.roomId===room.id ?
+      sfuState.media?.getAudioTracks()[0]?.enabled :
+      voiceRoomId===room.id&&voiceRoom ?
+        voiceRoom.localParticipant.isMicrophoneEnabled : undefined;
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
-    slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,muted:false,talk:false};
+    slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,
+      muted:room.owner_id===session?.user?.id&&localMic===false,talk:false};
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
@@ -535,7 +589,7 @@
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
           n:user.name,e:'👤',i:member.seat_no,user_id:member.user_id,public_id:user.public_id,
-          muted:!!member.muted,talk:false
+          muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false
         };
       else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level});
     }
@@ -561,6 +615,7 @@
     let availableGiftIds=[];
     let giftBusy=false;
     let lastGiftEventId=null;
+    let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
     const giftButton=frame.$ && frame.$('bGift');
@@ -691,7 +746,13 @@
         if(action==='take' && seat>0) {
           await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
           frame.close(); await syncFrame(room,frame);
-          const state=await connectVoice(room.id);
+          let state=await connectVoice(room.id);
+          // An in-flight listener connection might have started before the
+          // seat assignment; recheck verified publish permission once.
+          if(!state.publishing) {
+            const current=await api('GET','/rooms/'+room.id+'/voice/config');
+            if(current.publish)state=await connectVoice(room.id);
+          }
           frame.toast(state.publishing?'Microphone enabled':'Listening to room');
         } else if(action==='down' && seat>0) {
           if(!isSelf && owner && target?.user_id) {
@@ -715,11 +776,43 @@
         } else if(action==='own' && owner) {
           frame.open('<h3>👑 Verified owner controls</h3>'+
             '<div class="row">Tap an occupied seat to mute, unmute, remove from mic or kick a guest.</div>');
+        } else if(action==='prof' && target?.public_id) {
+          const member=await api('GET','/users/'+target.public_id);
+          frame.open('<h3>👤 Verified profile</h3><div id="sh-room-profile"></div>');
+          const node=frame.$('sh-room-profile');
+          if(node) {
+            const name=frame.document.createElement('div');
+            name.className='row';
+            name.textContent=(member.name||'Member')+' · ID '+member.id;
+            const detail=frame.document.createElement('div');
+            detail.className='lbl';
+            detail.textContent='Country: '+(member.country||'Not set')+
+              ' · Wealth Lv '+Number(member.wealth_level||0)+
+              ' · Charm Lv '+Number(member.charm_level||0);
+            node.append(name,detail);
+          }
         } else if(action==='gift' && seat>0 && target?.public_id) {
           frame.rec=[seat];
           frame.$('bGift')?.click();
         } else frame.toast('This action is not connected to the verified server yet');
       } catch (error) { frame.toast(errText(error)); }
+    };
+    // The supplied room template advertises a demo 10% weekly local-coin
+    // claim. Never expose that fake balance mutation as a real room reward.
+    frame.rewardSheet=async function(){
+      frame.open('<h3>💰 Verified Room Reward</h3>'+
+        '<div id="sh-real-room-reward" class="row">Checking room reward…</div>');
+      const target=frame.$('sh-real-room-reward');
+      if(!target)return;
+      try{
+        const rewards=await api('GET','/rooms/'+room.id+'/rewards');
+        if(target.isConnected)target.textContent='Lucky Gift room reward: '+
+          Number(rewards.reward_coins||0).toLocaleString('en-US')+
+          ' coins (held in room ledger, not added to personal wallet).';
+      }catch(error){
+        if(target.isConnected)target.textContent=
+          'Lucky Gift room rewards are unavailable until enabled by the server.';
+      }
     };
     // The existing room-settings sheet is reused. Its original Save action
     // runs only after the authenticated D1 owner update succeeds.
@@ -746,9 +839,12 @@
       }
       saveButton.disabled=true;
       try{
-        const data=await api('PATCH','/rooms/'+room.id,{name,seat_count:newSeatCount});
+        const data=await api('PATCH','/rooms/'+room.id,{
+          name,seat_count:newSeatCount,theme:frame.S.theme||room.th||'mid'
+        });
         room.name=data.room.name;
         room.seat_count=data.room.seat_count;
+        room.th=data.room.theme;
         if(typeof oldSave==='function')oldSave.call(saveButton);
         await reloadRooms();
         await syncFrame(room,frame);
@@ -760,6 +856,61 @@
         saveButton.disabled=false;
       }
     },true);
+    // Mirror the verified room conversation into the original chat area.
+    // No local-only send, simulated user, or repeated history on reconnect.
+    async function pollRoomChat() {
+      if(chatPollInFlight)return chatPollInFlight;
+      const work=(async()=>{
+        if(window.cur?.id!==room.id)return;
+        const data=await api('GET','/rooms/'+room.id+'/chat?after='+lastChatId);
+        const messages=Array.isArray(data.messages)?data.messages:[];
+        for(const item of messages) {
+          const id=Number(item.id);
+          if(!Number.isSafeInteger(id)||id<=lastChatId)continue;
+          lastChatId=id;
+          frame.msg(String(item.name||'Member'),'👤',String(item.body||''),{
+            me:item.sender_id===profile?.public_id,lv:1
+          });
+        }
+      })();
+      chatPollInFlight=work;
+      try{await work;}finally{if(chatPollInFlight===work)chatPollInFlight=null;}
+    }
+    const messageInput=frame.$ && frame.$('txt');
+    const messageSend=frame.$ && frame.$('sendTxt');
+    async function sendRoomMessage() {
+      const body=messageInput?.value?.trim()||'';
+      if(!body||chatSendBusy)return;
+      if(body.length>300){frame.toast('Room messages must be 300 characters or fewer');return;}
+      chatSendBusy=true;
+      if(messageSend)messageSend.disabled=true;
+      try {
+        const requestId='chat:'+Date.now().toString(36)+':'+
+          Math.random().toString(36).slice(2);
+        await api('POST','/rooms/'+room.id+'/chat',{body,request_id:requestId});
+        if(messageInput?.value?.trim()===body)messageInput.value='';
+        if(typeof frame.updBtn==='function')frame.updBtn();
+        await pollRoomChat();
+      }catch(error){frame.toast('Message not sent: '+errText(error));}
+      finally {
+        chatSendBusy=false;
+        if(messageSend)messageSend.disabled=false;
+      }
+    }
+    if(messageSend)messageSend.onclick=sendRoomMessage;
+    if(messageInput)messageInput.onkeydown=event=>{
+      if(event.key==='Enter'&&!event.shiftKey){
+        event.preventDefault();
+        sendRoomMessage();
+      }
+    };
+    const imageSend=frame.$ && frame.$('imgBtn');
+    if(imageSend)imageSend.onclick=()=>frame.toast('Room photo messages are not online yet');
+    pollRoomChat().catch(error=>frame.toast('Chat unavailable: '+errText(error)));
+    if(chatPoll)clearInterval(chatPoll);
+    chatPoll=setInterval(()=>{
+      if(window.cur?.id===room.id)pollRoomChat().catch(()=>{});
+    },3500);
     const mic=frame.$ && frame.$('mic');
     if(mic) mic.onclick=async ()=>{
       try {
@@ -853,11 +1004,28 @@
       'function others(){return seats.filter(function(s){return !s.empty&&!s.lock})}');
     window.ROOM_HTML=window.ROOM_HTML.replace(
       /setInterval\(function\(\)\{var o=others\(\);[\s\S]*?\},9000\);/,'');
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      'msg("Rafi","🧑‍🎤","Greetings to everyone 👋",{ci:1,lv:16});'+
+      'msg("Nusrat","👩‍🦰","Will sing tonight 🎶",{ci:2,lv:19});','');
   }
   const originalOpenRoom=window.openRoom;
   window.openRoom=async function(room) {
     if(!session){ window.showAuth('welcome'); return; }
     try {
+      const prior=window.cur;
+      if(prior?.id===room.id) {
+        document.getElementById('rw')?.classList.add('on');
+        document.getElementById('mini')?.classList.remove('on');
+        return;
+      }
+      // Room-to-room navigation must release old seats, membership and audio.
+      if(prior && prior.id!==room.id) {
+        if(framePoll){clearInterval(framePoll);framePoll=null;}
+        if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
+        if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        await releaseVoice();
+        await api('POST','/rooms/'+prior.id+'/leave',{});
+      }
       await api('POST','/rooms/'+room.id+'/join',{});
       heartbeatPresence(room.id);
       const iframe=document.getElementById('rf');
@@ -870,7 +1038,8 @@
     const current=window.cur;
     if(framePoll){clearInterval(framePoll);framePoll=null;}
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
-    disconnectVoice().catch(()=>{});
+    if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+    releaseVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
     if(session)heartbeatPresence(null);
     const iframe=document.getElementById('rf');
