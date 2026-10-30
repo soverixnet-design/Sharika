@@ -13,6 +13,7 @@ import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
 const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset']);
+const ROOM_SEAT_FRAMES = new Set(['grad','gold','neon','sq']);
 const MAX_BODY = 20_000;
 const PROFILE_FRAMES = new Set([
   '', 'phoenix-fire', 'ice-wings', 'royal-dragon', 'vip7',
@@ -668,13 +669,15 @@ export async function handleRequest(request, env) {
       const name=body.name===undefined ? room.name : txt(body.name,100);
       const seatCount=body.seat_count===undefined ? room.seat_count : body.seat_count;
       const theme=body.theme===undefined ? (room.theme||'mid') : body.theme;
+      const seatFrame=body.seat_frame_style===undefined
+        ? (room.seat_frame_style||'grad') : body.seat_frame_style;
       if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20 ||
-         !ROOM_THEMES.has(theme))
+         !ROOM_THEMES.has(theme) || !ROOM_SEAT_FRAMES.has(seatFrame))
         return fail('invalid_room_settings',400,cors);
       const updated=await env.DB.prepare(
-        'UPDATE sharika_rooms SET name=?,seat_count=?,theme=? WHERE id=? AND owner_id=? '+
+        'UPDATE sharika_rooms SET name=?,seat_count=?,theme=?,seat_frame_style=? WHERE id=? AND owner_id=? '+
         'AND NOT EXISTS (SELECT 1 FROM sharika_room_members WHERE room_id=? AND seat_no>?)'
-      ).bind(name,seatCount,theme,roomId,uid,roomId,seatCount).run();
+      ).bind(name,seatCount,theme,seatFrame,roomId,uid,roomId,seatCount).run();
       if(!updated.meta?.changes)return fail('seats_occupied_above_new_limit',409,cors);
       if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
         .dropSeatLocksAbove(seatCount);
@@ -1030,6 +1033,7 @@ export async function handleRequest(request, env) {
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.
           seat_count:room.seat_count,
+          seat_frame_style:room.seat_frame_style||'grad',
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
           members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
