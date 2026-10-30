@@ -795,6 +795,8 @@
             list.append(button);
           }
         } else if(action==='take' && seat>0) {
+          // The owner already occupies seat zero; invite a guest instead.
+          if(owner){await frame.act('inv',seat);return;}
           await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
           frame.close(); await syncFrame(room,frame);
           let state=await connectVoice(room.id);
@@ -847,6 +849,65 @@
           frame.$('bGift')?.click();
         } else frame.toast('This action is not connected to the verified server yet');
       } catch (error) { frame.toast(errText(error)); }
+    };
+    // The room template's audience menu previously changed local demo seats.
+    // Wire those buttons to authenticated server operations instead.
+    const originalMemberSheet=frame.userSheet;
+    if(typeof originalMemberSheet==='function')frame.userSheet=function(user,search) {
+      originalMemberSheet(user,search);
+      const sheet=frame.$('sheet');
+      const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
+      if(inviteButton)inviteButton.onclick=async()=>{
+        if(inviteButton.disabled)return;
+        if(room.owner_id!==session?.user?.id) {
+          frame.toast('Only the room owner can send a mic invite');return;
+        }
+        const seat=frame.seats.findIndex((item,index)=>
+          index>0&&item?.empty&&!item?.lock
+        );
+        if(seat<1){frame.toast('No open mic seats');return;}
+        inviteButton.disabled=true;
+        try {
+          await api('POST','/rooms/'+room.id+'/invitations',{
+            seat_no:seat,target_public_id:String(user.id)
+          });
+          frame.close();
+          frame.toast('Invitation sent to ID '+String(user.id));
+        }catch(error) {
+          inviteButton.disabled=false;
+          frame.toast('Invite not sent: '+errText(error));
+        }
+      };
+      for(const [code,action] of [['dn','remove_seat'],['kk','kick']]) {
+        const button=sheet?.querySelector('button.act[data-a="'+code+'"]');
+        if(!button)continue;
+        button.onclick=async()=>{
+          if(button.disabled)return;
+          const onSeat=Number.isInteger(user.seat)&&user.seat>0;
+          const target=onSeat?frame.seats[user.seat]:null;
+          const isSelf=target?.user_id===session?.user?.id;
+          if(!isSelf && room.owner_id!==session?.user?.id) {
+            frame.toast('Room owner only');return;
+          }
+          button.disabled=true;
+          try {
+            if(isSelf && action==='remove_seat') {
+              await api('PUT','/rooms/'+room.id+'/seat',{seat_no:null});
+              frame.close();await syncFrame(room,frame);await connectVoice(room.id);
+            }else if(onSeat)await moderateSeat(action,user.seat);
+            else if(action==='kick') {
+              await api('POST','/rooms/'+room.id+'/moderate',{
+                action,target_public_id:String(user.id)
+              });
+              frame.close();await syncFrame(room,frame);
+              frame.toast('Guest removed for 10 minutes');
+            }
+          }catch(error) {
+            button.disabled=false;
+            frame.toast('Action failed: '+errText(error));
+          }
+        };
+      }
     };
     // The supplied room template advertises a demo 10% weekly local-coin
     // claim. Never expose that fake balance mutation as a real room reward.
