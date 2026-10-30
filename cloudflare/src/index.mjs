@@ -114,9 +114,10 @@ export async function handleRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
-  // Only the room's public card thumbnail supports anonymous cross-origin GET;
+  const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
+  // Public image thumbnails support anonymous GET; edits remain authenticated.
   // all mutations continue through strict origin and Firebase checks.
-  const cors = coverPath && request.method==='GET'
+  const cors = (coverPath || avatarPath) && request.method==='GET'
     ? {'access-control-allow-origin':'*'} : corsFor(request, env);
   if (!cors) return fail('origin_forbidden', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -130,6 +131,19 @@ export async function handleRequest(request, env) {
     if(!image)return fail('room_cover_not_found',404,cors);
     const binary=atob(image.image_base64);
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  if(avatarPath && request.method==='GET') {
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const image=await env.DB.prepare(
+      'SELECT a.image_base64 FROM sharika_user_avatars a '+
+      'JOIN sharika_users u ON u.auth_uid=a.auth_uid WHERE u.public_no=? AND u.status=?'
+    ).bind(Number(avatarPath[1]),'active').first();
+    if(!image)return fail('avatar_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
     return new Response(bytes,{status:200,headers:{
       'content-type':'image/jpeg','cache-control':'public, max-age=3600',
       'x-content-type-options':'nosniff',...cors
@@ -182,6 +196,45 @@ export async function handleRequest(request, env) {
       const coordinator=env.VOICE_ROOMS.getByName('sharika:presence:staging');
       await coordinator.presenceTouch(uid,roomId);
       return reply({ok:true,window_seconds:90},200,cors);
+    }
+    if(path === '/api/v1/me/avatar' && request.method==='PUT') {
+      const user=await assertActive(env.DB,uid);
+      const len=Number(request.headers.get('content-length')||0);
+      if(len>125000)return fail('avatar_too_large',413,cors);
+      const raw=await request.text();
+      if(raw.length>125000)return fail('avatar_too_large',413,cors);
+      let body;
+      try{body=JSON.parse(raw||'{}');}catch(_){return fail('invalid_avatar',400,cors);}
+      if(!body||typeof body!=='object'||Array.isArray(body)||
+         typeof body.image_data!=='string'||!body.image_data.startsWith('data:image/jpeg;base64,'))
+        return fail('invalid_avatar',400,cors);
+      const imageBase64=body.image_data.slice('data:image/jpeg;base64,'.length);
+      if(imageBase64.length<16||imageBase64.length>120000||
+         !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64))
+        return fail('invalid_avatar',400,cors);
+      let binary;
+      try{binary=atob(imageBase64);}catch(_){return fail('invalid_avatar',400,cors);}
+      if(binary.length<32||binary.length>90000||
+         binary.charCodeAt(0)!==255||binary.charCodeAt(1)!==216||
+         binary.charCodeAt(2)!==255||
+         binary.charCodeAt(binary.length-2)!==255||
+         binary.charCodeAt(binary.length-1)!==217)
+        return fail('invalid_avatar',400,cors);
+      const written=await env.DB.prepare(
+        'INSERT INTO sharika_user_avatars(auth_uid,mime,image_base64,image_bytes) '+
+        "VALUES(?,'image/jpeg',?,?) ON CONFLICT(auth_uid) DO UPDATE SET "+
+        'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
+        "version=MIN(sharika_user_avatars.version+1,1000000000),updated_at=datetime('now') "+
+        "WHERE sharika_user_avatars.updated_at<=datetime('now','-20 seconds')"
+      ).bind(uid,imageBase64,binary.length).run();
+      if(!written.meta?.changes)return fail('avatar_rate_limited',429,cors);
+      const image=await env.DB.prepare(
+        'SELECT version FROM sharika_user_avatars WHERE auth_uid=?'
+      ).bind(uid).first();
+      const pic=url.origin+'/api/v1/users/'+publicId(user.public_no)+'/avatar?v='+image.version;
+      await env.DB.prepare("UPDATE sharika_users SET pic=?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
+        .bind(pic,uid).run();
+      return reply(showProfile(await me(env.DB,uid)),200,cors);
     }
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
