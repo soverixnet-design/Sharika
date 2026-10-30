@@ -1,7 +1,8 @@
 /* Sharika Cloudflare D1 staging admin connector.
  * Preserves the supplied 3D admin layout. Firebase verifies identity;
  * Cloudflare D1 checks the explicit admin role on EVERY request.
- * This staging panel is read-only until money/game/moderation writes are tested.
+ * Only verified Super Admin user-status and gift catalog edits are enabled.
+ * No money, betting, or live voice modifications.
  */
 (function () {
   'use strict';
@@ -46,10 +47,12 @@
       email:session.email });
     return session.idToken;
   }
-  async function api(method, path) {
+  async function api(method, path, body) {
     const jwt = await idToken();
     const response = await fetch(API+'/api/v1/admin/'+path,{
-      method, headers:{authorization:'Bearer '+jwt,accept:'application/json'},
+      method, headers:{authorization:'Bearer '+jwt,accept:'application/json',
+        ...(body === undefined ? {} : {'content-type':'application/json'})},
+      body:body === undefined ? undefined : JSON.stringify(body),
       cache:'no-store'
     });
     const data = await response.json().catch(()=>({}));
@@ -322,32 +325,77 @@
   };
   P.users=async function () {
     const root=byId('pg');
-    root.innerHTML='<div class="card"><div class="row"><input id="q" placeholder="Search by ID or name" aria-label="Search users"></div><div id="ul">Loading…</div></div>';
+    root.innerHTML='<div class="card"><h3>Verified users</h3><div class="row">'+
+      '<input id="q" placeholder="Search by ID or name" aria-label="Search users"></div>'+
+      '<div id="ul">Loading…</div></div>';
     const list=byId('ul'),input=byId('q');
     async function refresh() {
       list.textContent='Loading verified users…';
       try {
         const data=await api('GET','users'+(input.value.trim()?'?q='+encodeURIComponent(input.value.trim()):''));
-        const users=data.users || [];
-        list.innerHTML=window.T(['User ID','Name','Country','Sent Lv.','Coins','Diamonds','Status'],
-          users.map(u=>[esc(u.public_id),esc(u.name),esc(u.country),
-            fmt(u.wealth_level),fmt(u.coins),fmt(u.diamonds),esc(u.status)]));
-      } catch(error) {list.textContent=error.message;}
+        const users=data.users||[];
+        list.innerHTML=window.T(['User ID','Name','Country','Sent Lv.','Coins','Diamonds','Status','Admin action'],
+          users.map(u=>{
+            const action=role==='super'&&u.public_id!==identity?.public_id&&u.status!=='deleted'?
+              '<button type="button" class="btn s" data-status-id="'+esc(u.public_id)+
+              '" data-current-status="'+esc(u.status)+'">'+
+              (u.status==='active'?'Block':'Unblock')+'</button>':'—';
+            return [esc(u.public_id),esc(u.name),esc(u.country),fmt(u.wealth_level),
+              fmt(u.coins),fmt(u.diamonds),esc(u.status),action];
+          }));
+      }catch(error){list.textContent=error.message;}
     }
+    list.onclick=async e=>{
+      const button=e.target.closest('button[data-status-id]');
+      if(!button||button.disabled)return;
+      const publicId=button.dataset.statusId;
+      const next=button.dataset.currentStatus==='active'?'blocked':'active';
+      const reason=window.prompt('Reason for '+(next==='blocked'?'blocking':'unblocking')+' user '+publicId+':');
+      if(reason===null)return;
+      if(reason.trim().length<3){note('Please enter a reason (3 or more characters).');return;}
+      if(!window.confirm('Confirm '+next+' for user '+publicId+'?'))return;
+      button.disabled=true;
+      try{
+        await api('PATCH','users/'+encodeURIComponent(publicId)+'/status',{status:next,reason:reason.trim()});
+        note('User '+publicId+' is now '+next);
+        await refresh();
+      }catch(error){note('Could not update: '+error.message);button.disabled=false;}
+    };
     let timer;
     input.oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,250);};
     await refresh();
   };
   P.rooms=async function () {
-    const root=byId('pg');root.innerHTML=card('Rooms','Loading…');
+    const root=byId('pg');root.innerHTML=card('Rooms','Loading verified rooms…');
     try {
       const data=await api('GET','rooms');
-      root.innerHTML='<div class="card">'+window.T(
-        ['Room ID','Name','Owner ID','Members','Seats'],
-        (data.rooms||[]).map(r=>[esc(r.id),esc(r.name),
-          esc(r.owner_public_id||''),fmt(r.members),fmt(r.seat_count)])
-      )+'</div>';
-    } catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
+      root.innerHTML='<div class="card"><p class="n">Real D1 rooms and saved members. Live presence is not tracked yet.</p>'+
+        window.T(['Room ID','Name','Owner ID','Members','Seats','Inspect'],
+          (data.rooms||[]).map(r=>[
+            esc(r.id),esc(r.name),esc(r.owner_public_id||''),
+            fmt(r.members),fmt(r.seat_count),
+            '<button type="button" class="btn s" data-room-id="'+esc(r.id)+'">Members</button>'
+          ]))+'<div id="room-members-detail"></div></div>';
+      root.onclick=async e=>{
+        const button=e.target.closest('button[data-room-id]');
+        if(!button||button.disabled)return;
+        button.disabled=true;
+        const detail=byId('room-members-detail');
+        detail.textContent='Loading members…';
+        try{
+          const data=await api('GET','rooms/'+encodeURIComponent(button.dataset.roomId)+'/members');
+          detail.innerHTML='<h3>Members of '+esc(data.room.name)+' ('+esc(data.room.id)+')</h3>'+
+            '<p class="n">Room membership only; online status is not measured.</p>'+
+            window.T(['User ID','Name','Room role','Seat','Muted','Joined'],
+              (data.members||[]).map(m=>[
+                esc(m.public_id),esc(m.name),esc(m.role),
+                m.seat_no==null?'Audience':fmt(m.seat_no),
+                m.muted?'Yes':'No',esc(m.joined_at)
+              ]));
+        }catch(error){detail.textContent=error.message;}
+        finally{button.disabled=false;}
+      };
+    }catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
   };
   P.ledger=async function () {
     const root=byId('pg');
@@ -368,14 +416,62 @@
     await refresh();
   };
   P.gifts=async function () {
-    const root=byId('pg');root.innerHTML=card('Gifts','Loading…');
-    try {
-      const data=await api('GET','gifts');
-      root.innerHTML='<div class="card"><p class="n">Live D1 catalog, read-only until secured store actions are implemented.</p>'+
-        window.T(['Gift','Category','Coins','State'],(data.gifts||[]).map(g=>[
-          esc(g.emoji)+' '+esc(g.name),['Gifts','Luxury','Lucky'][g.tab]||'Other',
-          fmt(g.price_coins),g.active?'Active':'Disabled']))+'</div>';
-    }catch(error){root.innerHTML=card('Gift catalog unavailable',error.message);}
+    const root=byId('pg');
+    const canEdit=role==='super';
+    root.innerHTML=(canEdit?'<div class="card"><h3>Add gift to real catalog</h3>'+
+      '<p class="n">Gift transfers remain disabled until wallet settlement is tested.</p>'+
+      '<div class="row"><input id="gift-name" maxlength="80" placeholder="Gift name" aria-label="Gift name">'+
+      '<input id="gift-emoji" maxlength="16" placeholder="🎁" aria-label="Gift emoji">'+
+      '<input id="gift-price" type="number" min="1" step="1" placeholder="Coin price" aria-label="Coin price">'+
+      '<select id="gift-category" aria-label="Gift category"><option value="0">Gifts</option>'+
+      '<option value="1">Luxury</option><option value="2">Lucky</option></select>'+
+      '<button type="button" id="gift-create" class="btn s">Add gift</button></div></div>':'')+
+      '<div class="card"><h3>Real gift catalog</h3><div id="gift-list">Loading…</div></div>';
+    const list=byId('gift-list');
+    async function refresh() {
+      list.textContent='Loading catalog…';
+      try{
+        const data=await api('GET','gifts');
+        list.innerHTML=window.T(['ID','Gift','Category','Coins','State','Admin action'],
+          (data.gifts||[]).map(g=>[
+            fmt(g.id),esc(g.emoji)+' '+esc(g.name),
+            ['Gifts','Luxury','Lucky'][g.tab]||'Other',fmt(g.price_coins),
+            g.active?'Active':'Disabled',
+            canEdit?'<button type="button" class="btn s" data-gift-id="'+esc(g.id)+
+              '" data-gift-active="'+(g.active?1:0)+'">'+
+              (g.active?'Disable':'Activate')+'</button>':'—'
+          ]));
+      }catch(error){list.textContent=error.message;}
+    }
+    if(canEdit){
+      byId('gift-create').onclick=async ()=>{
+        const button=byId('gift-create');
+        const name=byId('gift-name').value.trim();
+        const price=Number(byId('gift-price').value);
+        const emoji=byId('gift-emoji').value.trim()||'🎁';
+        const tab=Number(byId('gift-category').value);
+        if(!name||!Number.isSafeInteger(price)||price<=0){note('Enter gift name and valid coin price');return;}
+        button.disabled=true;
+        try{
+          await api('POST','gifts',{name,emoji,tab,price_coins:price,active:false});
+          byId('gift-name').value='';byId('gift-price').value='';byId('gift-emoji').value='';
+          note('Gift added. Activate it when ready.');await refresh();
+        }catch(error){note('Gift not created: '+error.message);}
+        finally{button.disabled=false;}
+      };
+      list.onclick=async e=>{
+        const button=e.target.closest('button[data-gift-id]');
+        if(!button||button.disabled)return;
+        const enabled=button.dataset.giftActive!=='1';
+        if(!window.confirm((enabled?'Activate':'Disable')+' gift #'+button.dataset.giftId+'?'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','gifts/'+encodeURIComponent(button.dataset.giftId),{active:enabled});
+          note('Gift catalog updated');await refresh();
+        }catch(error){note('Gift update failed: '+error.message);button.disabled=false;}
+      };
+    }
+    await refresh();
   };
   P.audit=async function () {
     const root=byId('pg');root.innerHTML=card('Admin audit','Loading…');
@@ -394,6 +490,22 @@
         window.T(['User ID','Name','Role','Assigned'],(data.admins||[]).map(a=>[
           esc(a.public_id),esc(a.name),esc(a.role),esc(a.assigned_at)]))+'</div>';
     }catch(error){root.innerHTML=card('Admin roles unavailable',error.message);}
+  };
+  P.analytics=async function () {
+    const root=byId('pg');root.innerHTML=card('Analytics','Loading verified statistics…');
+    try{
+      const data=await api('GET','analytics');
+      const rows=[
+        ['Active users',data.active_users],['Blocked users',data.blocked_users],
+        ['Rooms created',data.total_rooms],['Saved room memberships',data.room_memberships],
+        ['Occupied seats',data.occupied_seats],['Catalog gifts',data.catalog_gifts],
+        ['Active gifts',data.active_gifts],['App administrators',data.admins]
+      ];
+      root.innerHTML='<div class="kp">'+rows.map(([name,num])=>
+        '<div class="k"><small>'+esc(name)+'</small><b>'+fmt(num)+'</b></div>'
+      ).join('')+'</div>'+card('Verified D1 analytics',
+        'These are persisted counts, not live presence. No fake online-user figures.');
+    }catch(error){root.innerHTML=card('Analytics unavailable',error.message);}
   };
   P.system=async function () {
     const root=byId('pg');
