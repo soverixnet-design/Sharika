@@ -153,3 +153,17 @@ test('both offline game layouts use the matching server-backed wager chips',()=>
     assert.doesNotMatch(html,/https?:\/\/[^\s"'<>]+/);
   }
 });
+
+
+test('Night Food and Jackpot Fruit show verified round winners to all viewers',()=>{
+  const base=new URL('../../android-staging/app/src/main/assets/original-games/',import.meta.url);
+  const night=readFileSync(new URL('night-food-wheel.html',base),'utf8');
+  const jackpot=readFileSync(new URL('jackpot-fruit.html',base),'utf8');
+  assert.match(night,/Round Top 3:/);
+  assert.match(night,/prev\.top_winners/);
+  assert.match(jackpot,/verifiedWinners\.textContent/);
+  assert.match(jackpot,/prev\.top_winners/);
+  assert.match(jackpot,/if\(!spent&&!?\(prev\.top_winners\|\|\[\]\)\.length\)return/);
+  // The original no-bet guard hid top-three results from spectators.
+  assert.doesNotMatch(jackpot,/if\(!spent\)return;/);
+});
