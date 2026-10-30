@@ -446,6 +446,120 @@ export async function handleRequest(request, env) {
         }
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
+      // Gift sending uses the real D1 catalog and an all-or-nothing ledger.
+      // Lucky/random-payout items stay off until their fair game engine exists.
+      if (parts.length===5 && action==='gifts') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(request.method==='GET') {
+          const rows=await env.DB.prepare(
+            'SELECT e.id,e.quantity,e.price_coins,e.created_at,'+
+            'su.public_no AS sender_no,ru.public_no AS recipient_no,'+
+            'g.name,g.emoji FROM sharika_gift_events e '+
+            'JOIN sharika_users su ON su.auth_uid=e.sender_uid '+
+            'JOIN sharika_users ru ON ru.auth_uid=e.recipient_uid '+
+            'JOIN sharika_gifts g ON g.id=e.gift_id '+
+            'WHERE e.room_id=? ORDER BY e.id DESC LIMIT 40'
+          ).bind(roomId).all();
+          return reply({events:(rows.results||[]).reverse().map(e=>({
+            id:e.id,quantity:e.quantity,price_coins:e.price_coins,
+            created_at:e.created_at,sender_id:publicId(e.sender_no),
+            recipient_id:publicId(e.recipient_no),name:e.name,emoji:e.emoji
+          }))},200,cors);
+        }
+        if(request.method==='POST') {
+          const body=await readBody(request);
+          const giftId=body.gift_id,quantity=body.quantity;
+          const requested=body.recipient_public_ids;
+          const requestId=typeof body.request_id==='string'?body.request_id.trim():'';
+          if(!Number.isSafeInteger(giftId)||giftId<1||
+             !Number.isSafeInteger(quantity)||quantity<1||quantity>10||
+             !Array.isArray(requested)||requested.length<1||requested.length>20||
+             requested.some(x=>typeof x!=='string'||!PUBLIC_ID.test(x))||
+             new Set(requested).size!==requested.length||
+             !/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
+            return fail('invalid_gift_request',400,cors);
+          const ids=[...requested].sort();
+          const existing=await env.DB.prepare(
+            'SELECT id,gift_id,quantity,recipient_ids_json,total_coins '+
+            'FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
+          ).bind(uid,requestId).first();
+          if(existing){
+            if(existing.gift_id!==giftId||existing.quantity!==quantity||
+                existing.recipient_ids_json!==JSON.stringify(ids))
+              return fail('idempotency_conflict',409,cors);
+            const wallet=await me(env.DB,uid);
+            return reply({duplicate:true,transaction_id:existing.id,
+              coins:wallet.coins,spent_coins:existing.total_coins},200,cors);
+          }
+          const gift=await env.DB.prepare(
+            'SELECT id,name,emoji,tab,price_coins FROM sharika_gifts '+
+            'WHERE id=? AND active=1 AND tab IN (0,1)'
+          ).bind(giftId).first();
+          if(!gift)return fail('gift_unavailable',404,cors);
+          const recipients=await env.DB.prepare(
+            'SELECT u.auth_uid,u.public_no,u.status FROM sharika_users u '+
+            'JOIN sharika_room_members m ON m.user_id=u.auth_uid '+
+            'WHERE m.room_id=? AND u.public_no IN ('+
+            ids.map(()=>'?').join(',')+')'
+          ).bind(roomId,...ids.map(Number)).all();
+          const found=recipients.results||[];
+          if(found.length!==ids.length||found.some(u=>u.status!=='active'))
+            return fail('gift_recipient_unavailable',409,cors);
+          const spend=Number(gift.price_coins)*quantity*ids.length;
+          if(!Number.isSafeInteger(spend)||spend<1||spend>100000000)
+            return fail('gift_amount_exceeds_limit',400,cors);
+          const sender=await assertActive(env.DB,uid);
+          if(sender.coins<spend)return fail('insufficient_coins',409,cors);
+          const recent=await env.DB.prepare(
+            "SELECT COUNT(*) AS n FROM sharika_gift_transactions WHERE sender_uid=? "+
+            "AND created_at>=datetime('now','-1 minute')"
+          ).bind(uid).first();
+          if(Number(recent?.n||0)>=20)return fail('gift_rate_limited',429,cors);
+          const txid='gift:'+requestId;
+          const statements=[
+            env.DB.prepare("UPDATE sharika_users SET coins=CASE WHEN status='active' "+
+              "THEN coins-? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
+              .bind(spend,uid),
+            env.DB.prepare(
+              'INSERT INTO sharika_gift_transactions(sender_uid,room_id,gift_id,quantity,'+
+              'recipient_ids_json,total_coins,request_id) VALUES(?,?,?,?,?,?,?)'
+            ).bind(uid,roomId,giftId,quantity,JSON.stringify(ids),spend,requestId),
+            env.DB.prepare(
+              "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+              "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'gift_sent',?)"
+            ).bind(uid,-spend,uid,txid),
+            env.DB.prepare(
+              'UPDATE sharika_users SET wealth_level=MAX(wealth_level,1+CAST('+
+              "(SELECT COALESCE(-SUM(delta),0) FROM sharika_wallet_ledger "+
+              "WHERE auth_uid=? AND currency='coins' AND reason='gift_sent')/1000 "+
+              "AS INTEGER)) WHERE auth_uid=?"
+            ).bind(uid,uid)
+          ];
+          for(const recipient of found) {
+            const xp=Number(gift.price_coins)*quantity;
+            statements.push(env.DB.prepare(
+              'INSERT INTO sharika_gift_events(transaction_id,room_id,sender_uid,'+
+              'recipient_uid,gift_id,quantity,price_coins) VALUES('+
+              '(SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?,?,?,?,?)'
+            ).bind(uid,requestId,roomId,uid,recipient.auth_uid,giftId,quantity,gift.price_coins));
+            statements.push(env.DB.prepare(
+              "UPDATE sharika_users SET xp=CASE WHEN status='active' THEN xp+? ELSE -1 END,"+
+              "charm_level=MAX(charm_level,1+CAST((xp+?)/1000 AS INTEGER)),"+
+              "updated_at=datetime('now') WHERE auth_uid=?"
+            ).bind(xp,xp,recipient.auth_uid));
+          }
+          await env.DB.batch(statements);
+          const saved=await env.DB.prepare(
+            'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
+          ).bind(uid,requestId).first();
+          const wallet=await me(env.DB,uid);
+          return reply({duplicate:false,transaction_id:saved.id,
+            gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
+            coins:wallet.coins,spent_coins:spend,recipients:ids,
+            quantity},201,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       if (!member) return fail('join_room_first', 403, cors);
       if (parts.length === 6 && action === 'voice')
         return await handleVoiceOperation({

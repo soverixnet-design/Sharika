@@ -30,7 +30,7 @@
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let busyRooms = false, framePoll = null;
+  let busyRooms = false, framePoll = null, giftPoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -473,14 +473,14 @@
     ]);
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
-    slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,muted:false,talk:false};
+    slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,muted:false,talk:false};
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
       if(!user || member.user_id===room.owner_id) continue;
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
-          n:user.name,e:'👤',i:member.seat_no,user_id:member.user_id,
+          n:user.name,e:'👤',i:member.seat_no,user_id:member.user_id,public_id:user.public_id,
           muted:!!member.muted,talk:false
         };
       else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level});
@@ -499,7 +499,12 @@
     frame.tick=function(){};
     frame.U=[];
     frame.G=[];
-    frame.sendGift=function(){ frame.toast('Sending gifts is disabled until verified wallet settlement is ready'); };
+    frame.sendGift=function(){ frame.toast('Use the verified gift box Send button'); };
+    frame.others=function(){return (frame.seats||[]).filter(s=>s&&!s.empty&&!s.lock);};
+    frame.__luckyOff=true;
+    let availableGiftIds=[];
+    let giftBusy=false;
+    let lastGiftEventId=null;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
     const giftButton=frame.$ && frame.$('bGift');
@@ -507,7 +512,7 @@
     if(giftButton)giftButton.onclick=async ()=>{
       try{
         const data=await api('GET','/gifts');
-        const gifts=(data.gifts||[]).filter(g=>g.active!==0);
+        const gifts=(data.gifts||[]).filter(g=>g.tab===0||g.tab===1);
         if(!gifts.length){frame.toast('No active gifts in the catalog yet');return;}
         const htmlSafe=text=>String(text??'').replace(/[&<>"']/g,
           c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -517,19 +522,67 @@
             !Array.from(url).some(c=>c.charCodeAt(0)<=32 || ['"',"'",'<','>'].includes(c))
             ?htmlSafe(url):'';
         };
+        availableGiftIds=gifts.map(g=>g.id);
+        frame.gtab=gifts.some(g=>g.tab===0)?0:1;
+        frame.gsel=Math.max(0,gifts.findIndex(g=>g.tab===frame.gtab));
         frame.G=gifts.map(g=>[htmlSafe(g.emoji||'🎁'),Number(g.price_coins),
           htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
         if(typeof originalGiftOpen==='function')originalGiftOpen.call(giftButton);
-        else frame.toast('Gift catalog available, sending is not ready');
+        else frame.toast('Gift box unavailable');
       }catch(error){frame.toast('Gift catalog unavailable: '+errText(error));}
     };
-    // The original gift game debits a local demo wallet. Intercept its Send
-    // button before any original handler can run until D1 ledger is available.
-    frame.document.addEventListener('click',event=>{
-      if(!event.target.closest?.('#snd'))return;
+    // The original gift game debits a local wallet; always intercept before it
+    // executes, settle at the server, then use the original gift flight artwork.
+    frame.document.addEventListener('click',async event=>{
+      const button=event.target.closest?.('#snd');
+      if(!button)return;
       event.preventDefault();event.stopImmediatePropagation();
-      frame.toast('Gift sending is disabled until verified wallet settlement is ready');
+      if(giftBusy||!session)return;
+      giftBusy=true;button.disabled=true;
+      try{
+        const chosen=Number(frame.gsel);
+        const giftId=availableGiftIds[chosen];
+        const quantity=Number(frame.qty);
+        const indices=Array.isArray(frame.rec)?frame.rec:[];
+        const recipients=[...new Set(indices.map(index=>
+          frame.seats?.[Number(index)]?.public_id).filter(Boolean))];
+        if(!giftId||!Number.isInteger(quantity)||quantity<1||quantity>10||
+          !recipients.length)throw new Error('Select a gift and an occupied seat');
+        const requestId='gift:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+        const result=await api('POST','/rooms/'+room.id+'/gifts',{
+          gift_id:giftId,quantity,recipient_public_ids:recipients,request_id:requestId
+        });
+        await reloadWallet();
+        frame.S.coins=balance.coins;
+        frame.S.xp=balance.xp;
+        frame.close();
+        frame.toast('Gift sent · '+result.spent_coins+' coins charged ✓');
+        for(const index of indices.slice(0,20)){
+          const slot=frame.seats?.[Number(index)];
+          if(!slot||!recipients.includes(slot.public_id))continue;
+          for(let n=0;n<Math.min(quantity,2);n++){
+            if(typeof frame.fly==='function')
+              frame.fly(result.gift.emoji,Number(index),n*180,Number(frame.G[chosen]?.[1]||0));
+          }
+        }
+        const feed=await api('GET','/rooms/'+room.id+'/gifts').catch(()=>null);
+        if(feed?.events?.length)lastGiftEventId=Math.max(...feed.events.map(e=>e.id));
+      }catch(error){frame.toast('Gift not sent: '+errText(error));}
+      finally{giftBusy=false;button.disabled=false;}
     },true);
+    async function pollGiftEvents(){
+      const data=await api('GET','/rooms/'+room.id+'/gifts');
+      const events=data.events||[];
+      const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
+      if(lastGiftEventId===null){lastGiftEventId=latest;return;}
+      for(const event of events){
+        if(event.id<=lastGiftEventId||event.sender_id===profile?.public_id)continue;
+        const seat=(frame.seats||[]).find(s=>s?.public_id===event.recipient_id);
+        if(seat && typeof frame.fly==='function')
+          frame.fly(event.emoji,seat.i,0,event.price_coins);
+      }
+      lastGiftEventId=Math.max(lastGiftEventId,latest);
+    }
     frame.act=async function(action,seat) {
       try {
         if(action==='take' && seat>0) {
@@ -613,11 +666,17 @@
     }
     if(framePoll) clearInterval(framePoll);
     framePoll=setInterval(()=>{if(window.cur?.id===room.id)syncFrame(room,frame).catch(()=>{});},15000);
+    if(giftPoll)clearInterval(giftPoll);
+    pollGiftEvents().catch(()=>{});
+    giftPoll=setInterval(()=>{if(window.cur?.id===room.id)pollGiftEvents().catch(()=>{});},5000);
   }
   // Block simulated gift/chat bots in the original room HTML only in this
   // packaged staging APK. Do not edit the user's original layout or art.
   if(typeof window.ROOM_HTML === 'string') {
     window.ROOM_HTML=window.ROOM_HTML.replace('setInterval(botGift,28000);','');
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      'function others(){return seats.filter(function(s){return s.i>0&&!s.empty&&!s.lock})}',
+      'function others(){return seats.filter(function(s){return !s.empty&&!s.lock})}');
     window.ROOM_HTML=window.ROOM_HTML.replace(
       /setInterval\(function\(\)\{var o=others\(\);[\s\S]*?\},9000\);/,'');
   }
@@ -635,6 +694,7 @@
   window.leaveRoom=function() {
     const current=window.cur;
     if(framePoll){clearInterval(framePoll);framePoll=null;}
+    if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
     disconnectVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
     const iframe=document.getElementById('rf');
