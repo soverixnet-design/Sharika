@@ -5,6 +5,7 @@ import { handleAdminOperation } from '../src/admin.mjs';
 function mock(role) {
   const calls = [];
   const db = {
+    async batch(statements) { calls.push({batch:statements.length}); return statements.map((_,i)=>({meta:{last_row_id:11,changes:1}})); },
     prepare(sql) {
       const row = {
         bind(...args) { calls.push({sql,args}); return this; },
@@ -12,6 +13,12 @@ function mock(role) {
           if (sql.includes('FROM sharika_admin_roles a')) {
             return role ? {role, public_no:10000001, name:'Owner'} : null;
           }
+          if (sql.startsWith('SELECT u.auth_uid')) return {
+            auth_uid:'other_uid',status:'active',name:'Other',admin_role:null
+          };
+          if (sql.startsWith('SELECT * FROM sharika_gifts')) return {
+            id:3,name:'Rose',active:0,price_coins:5,tab:0
+          };
           return {users:1,rooms:1,active_gifts:0,ledger_entries:1,coins_total:2000,diamonds_total:0};
         },
         async all() {
@@ -27,9 +34,11 @@ function mock(role) {
   };
   return {db,calls};
 }
-async function handle(role, path, method='GET') {
+async function handle(role, path, method='GET', body) {
   const {db,calls}=mock(role);
-  const request=new Request('https://api.example.test'+path,{method});
+  const request=new Request('https://api.example.test'+path,{method,
+    headers:body===undefined?{}:{'content-type':'application/json'},
+    body:body===undefined?undefined:JSON.stringify(body)});
   const result=await handleAdminOperation({request,env:{DB:db},uid:'firebase_uid',
     path:new URL(request.url).pathname,cors:{},
     reply:(payload,status)=>Response.json(payload,{status}),
@@ -48,10 +57,11 @@ test('role is checked from D1 and does not expose private Firebase UID',async()=
   assert.equal(response.status,200);
   assert.equal(response.data.public_id,'10000001');
   assert.equal(response.data.role,'super');
-  assert.equal(response.data.read_only,true);
+  assert.equal(response.data.read_only,false);
+  assert.deepEqual(response.data.write_scopes,['user_status','gift_catalog']);
   assert.equal(JSON.stringify(response.data).includes('firebase_uid'),false);
 });
-test('super admins still cannot mutate wallets, status or roles in staging',async()=>{
+test('super admins cannot mutate wallets or admin roles in staging',async()=>{
   const response=await handle('super','/api/v1/admin/users/10000001/wallet','POST');
   assert.equal(response.status,405);
   assert.equal(response.data.error,'admin_write_not_enabled');
@@ -72,4 +82,28 @@ test('unknown admin module does not silently succeed',async()=>{
   const response=await handle('super','/api/v1/admin/recharge-requests');
   assert.equal(response.status,501);
   assert.equal(response.data.error,'admin_module_not_ready');
+});
+
+test('only super admin can block a non-admin user with an audit record',async()=>{
+  const path='/api/v1/admin/users/10000002/status';
+  const blocked=await handle('super',path,'PATCH',{status:'blocked',reason:'Abusive conduct'});
+  assert.equal(blocked.status,200);
+  assert.equal(blocked.data.public_id,'10000002');
+  assert.equal(blocked.data.status,'blocked');
+  assert.equal(blocked.calls.at(-1).batch,2);
+  const denied=await handle('support',path,'PATCH',{status:'blocked',reason:'Abusive conduct'});
+  assert.equal(denied.status,403);
+});
+
+test('gift catalog creation defaults disabled, financial mutations stay unavailable',async()=>{
+  const response=await handle('super','/api/v1/admin/gifts','POST',{
+    name:'Rose',emoji:'🌹',tab:0,price_coins:5
+  });
+  assert.equal(response.status,201);
+  assert.equal(response.data.created,true);
+  assert.equal(response.calls.at(-1).batch,2);
+  const rejected=await handle('finance','/api/v1/admin/gifts','POST',{
+    name:'Rose',price_coins:5
+  });
+  assert.equal(rejected.status,403);
 });
