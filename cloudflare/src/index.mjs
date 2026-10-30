@@ -339,6 +339,45 @@ export async function handleRequest(request, env) {
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
       return reply({ coins: user.coins, diamonds: user.diamonds, xp: user.xp, ledger: rows.results || [] }, 200, cors);
     }
+    // Atomic diamond-to-coin conversion: 100 diamonds -> 70 coins.
+    // Cloudflare D1 batch is a single transaction; a constraint or duplicate
+    // request rolls back both balances and BOTH immutable ledger entries.
+    if (path === '/api/v1/wallet/exchange' && request.method === 'POST') {
+      const user=await assertActive(env.DB,uid);
+      if(user.minor)return fail('exchange_adult_only',403,cors);
+      const body=await readBody(request);
+      const diamonds=body.diamonds;
+      const requestId=typeof body.request_id==='string'?body.request_id.trim():'';
+      if(!Number.isSafeInteger(diamonds)||diamonds<100||diamonds>1000000||
+        diamonds%100!==0||!/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
+        return fail('invalid_exchange',400,cors);
+      const txid='exchange:'+requestId;
+      const prior=await env.DB.prepare(
+        "SELECT id,delta FROM sharika_wallet_ledger WHERE auth_uid=? AND currency='diamonds' AND request_id=? AND reason='diamond_exchange'"
+      ).bind(uid,txid).first();
+      if(prior) {
+        if(Number(prior.delta)!==-diamonds)return fail('idempotency_conflict',409,cors);
+        const saved=await me(env.DB,uid);
+        return reply({coins:saved.coins,diamonds:saved.diamonds,
+          spent_diamonds:diamonds,credited_coins:diamonds/100*70,duplicate:true},200,cors);
+      }
+      if(user.diamonds<diamonds)return fail('insufficient_diamonds',409,cors);
+      const coins=diamonds/100*70;
+      await env.DB.batch([
+        env.DB.prepare("UPDATE sharika_users SET diamonds=diamonds-?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
+          .bind(diamonds,uid),
+        env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+          "VALUES(?,'diamonds',?,(SELECT diamonds FROM sharika_users WHERE auth_uid=?),'diamond_exchange',?)").bind(uid,-diamonds,uid,txid),
+        env.DB.prepare("UPDATE sharika_users SET coins=coins+?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
+          .bind(coins,uid),
+        env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+          "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'diamond_exchange',?)")
+          .bind(uid,coins,uid,txid)
+      ]);
+      const updated=await me(env.DB,uid);
+      return reply({coins:updated.coins,diamonds:updated.diamonds,
+        spent_diamonds:diamonds,credited_coins:coins,duplicate:false},200,cors);
+    }
     if (path === '/api/v1/rooms') {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {

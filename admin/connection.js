@@ -568,6 +568,32 @@
     root.innerHTML=card('Sharika staging','Firebase login and D1 role enforcement active. Financial writes remain locked.');
   };
 
+  // The original visual-only dashboard includes demo pages. Replace every
+  // unconnected page with an honest staging status while retaining its card
+  // layout and menu. No fake sellers, payouts, or active games are displayed.
+  const verifiedPages=new Set([
+    'dash','analytics','users','support','rooms','ledger','gifts','audit','admins','system'
+  ]);
+  for(const entry of window.NAV||[]) {
+    const key=entry[0];
+    if(!key||verifiedPages.has(key))continue;
+    P[key]=function(){
+      const root=byId('pg');
+      const label=entry[2]||key;
+      const message=key==='rech'
+        ?'Recharge requests are sent to the verified Support Inbox for manual checking. No automatic coins are credited.'
+        :key==='money'
+        ?'Verified diamond exchange rate: 100 diamonds = 70 coins. Package and rate editing are not yet enabled.'
+        :'This module is not connected to the verified staging backend yet. Demo data and fake actions are disabled.';
+      root.innerHTML=card(label,message);
+      if(key==='rech'){
+        const open=document.createElement('button');
+        open.type='button';open.className='btn';open.textContent='Open verified Support Inbox';
+        open.onclick=()=>{window.V='support';window.shell();};
+        root.querySelector('.card')?.appendChild(open);
+      }
+    };
+  }
   async function restore() {
     if (!session) {window.login();return;}
     try {await verifyAdmin();window.V='dash';window.shell();}

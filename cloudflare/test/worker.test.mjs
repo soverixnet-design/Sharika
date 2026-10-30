@@ -266,3 +266,83 @@ test('direct messages reject unilateral follows before storing anything',async()
     assert.equal(db.calls.filter(c=>c[0]==='run' && c[1].includes('sharika_private_messages')).length,0);
   }finally{globalThis.fetch=prior;}
 });
+
+test('diamond exchange is authenticated and rejects invalid or unaffordable amounts',async()=>{
+  const anon=await handleRequest(new Request('https://example.test/api/v1/wallet/exchange',{
+    method:'POST',body:JSON.stringify({diamonds:100,request_id:'exchange_test_12345'})
+  }),{DB:fakeDb(),FIREBASE_PROJECT_ID:project});
+  assert.equal(anon.status,401);
+  const originalFetch=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const makeDb=()=>{
+      const db=fakeDb(),prior=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=prior(sql);
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({status:'active',minor:0,coins:2000,diamonds:500});
+        return stmt;
+      };
+      return db;
+    };
+    const request=(diamonds)=>new Request('https://example.test/api/v1/wallet/exchange',{
+      method:'POST',headers:{Authorization:'Bearer '+tokenValue},
+      body:JSON.stringify({diamonds,request_id:'exchange_test_12345'})
+    });
+    const tokenValue=await token();
+    const invalidDB=makeDb();
+    const invalid=await handleRequest(request(125),{DB:invalidDB,FIREBASE_PROJECT_ID:project});
+    assert.equal(invalid.status,400);
+    assert.equal(invalidDB.calls.filter(c=>c[0]==='batch').length,0);
+    const tooBigDB=makeDb();
+    const tooBig=await handleRequest(request(1000),{DB:tooBigDB,FIREBASE_PROJECT_ID:project});
+    assert.equal(tooBig.status,409);
+    assert.equal((await tooBig.json()).error,'insufficient_diamonds');
+    assert.equal(tooBigDB.calls.filter(c=>c[0]==='batch').length,0);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('diamond exchange batches both balances and immutable double-entry ledger',async()=>{
+  const originalFetch=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',minor:0,coins:2000,diamonds:500});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/wallet/exchange',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({diamonds:100,request_id:'exchange_test_atomic123'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    assert.equal((await res.json()).credited_coins,70);
+    const batch=db.calls.find(c=>c[0]==='batch');
+    assert.equal(batch[1].length,4);
+    assert.deepEqual(batch[1].map(s=>s.values[0]),[100,'firebase:'+project+':secure-user',70,'firebase:'+project+':secure-user']);
+    assert.equal(batch[1][1].values[1],-100);
+    assert.equal(batch[1][3].values[1],70);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('replayed exchange request with a different amount is rejected',async()=>{
+  const originalFetch=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',minor:0,coins:2000,diamonds:500});
+      if(sql.includes("FROM sharika_wallet_ledger WHERE auth_uid")&&sql.includes("reason='diamond_exchange'"))
+        stmt.first=async()=>({id:1,delta:-100});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/wallet/exchange',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({diamonds:500,request_id:'exchange_test_replay123'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,409);
+    assert.equal((await res.json()).error,'idempotency_conflict');
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+  }finally{globalThis.fetch=originalFetch;}
+});

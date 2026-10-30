@@ -641,17 +641,63 @@
     if(iframe) iframe.onload=null;
     originalLeaveRoom();
   };
-  // Financial UI is explicitly locked until D1 ledger and admin migration.
+  // Preserve original recharge/exchange artwork, but never use demo balances.
+  // The rate is fixed on the verified server: 100 diamonds -> 70 coins.
+  window.RATE=0.7;
+  let selectedRecharge='';let selectedDiamonds=null;let walletOperationBusy=false;
+  document.addEventListener('click',e=>{
+    const exchange=e.target.closest?.('#rcp [data-e]');
+    if(exchange){
+      const presets=[500,1000,5000,20000];
+      selectedDiamonds=presets[Number(exchange.dataset.e)]||null;
+    }
+    const recharge=e.target.closest?.('#rcp [data-p]');
+    if(recharge)selectedRecharge=recharge.textContent.trim().replace(/\s+/g,' ').slice(0,150);
+  },true);
+  function nextWalletRequestId(prefix){
+    return prefix+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+  }
+  // Financial writes stay locked except verified exchange and support requests.
   document.addEventListener('click', async event => {
     const button=event.target.closest('button');
     if(!button) return;
     const id=button.id;
-    if(!['cl','pc','ec','cm'].includes(id)) return;
+    if(!['cl','pc','ec','cm','rcs','rcl2'].includes(id)) return;
     if(id==='ec' && !document.querySelector('#sh h3')?.textContent?.includes('Exchange')) return;
     event.preventDefault();event.stopImmediatePropagation();
     if(!session){window.showAuth('welcome');return;}
-    if(id!=='cm') {
-      toast('Coins, recharge, gifts and exchange are locked until the real backend is ready');
+    if(id==='cl'){toast('Daily rewards require verified server-side claim tracking');return;}
+    if(id==='rcl2'){toast('No verified coin sellers have been approved yet');return;}
+    if(id==='rcs'){
+      document.getElementById('rcp')?.classList.remove('on');
+      openSupportThread();return;
+    }
+    if(id==='ec'||id==='pc'){
+      if(walletOperationBusy)return;
+      walletOperationBusy=true;button.disabled=true;
+      try{
+        if(id==='ec'){
+          if(!selectedDiamonds)throw new Error('Select a diamond amount');
+          const result=await api('POST','/wallet/exchange',{
+            diamonds:selectedDiamonds,request_id:nextWalletRequestId('exchange')
+          });
+          await reloadWallet();
+          window.closeSheet();
+          toast(result.duplicate?'Exchange already completed':
+            'Exchange complete: +'+result.credited_coins+' coins');
+        }else{
+          if(!selectedRecharge)throw new Error('Choose a recharge package');
+          await api('POST','/support/messages',{
+            body:'Recharge request · '+selectedRecharge+' · User ID '+
+              String(profile?.public_id||'')+
+              '. Please verify payment and confirm before crediting coins.',
+            request_id:nextWalletRequestId('recharge')
+          });
+          window.closeSheet();
+          toast('Recharge request sent to verified support. No coins added yet.');
+        }
+      }catch(error){toast('Request not completed: '+errText(error));}
+      finally{walletOperationBusy=false;button.disabled=false;}
       return;
     }
     button.disabled=true;
