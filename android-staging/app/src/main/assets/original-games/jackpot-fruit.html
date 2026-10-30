@@ -117,7 +117,8 @@ const GameBridge=(()=>{
 
 const $=s=>document.querySelector(s),fmt=n=>Number(n||0).toLocaleString('en-US');
 const F=[['🍋',5],['🍇',5],['🥝',5],['🍒',40],0,['🍑',5],['🍉',20],['🍌',10],['🍓',10]];
-const RING=[0,1,2,5,8,7,6,3],CH=[10000,100000,500000,1000000];
+const RING=[0,1,2,5,8,7,6,3],CH=[1000,10000,100000,1000000,10000000];
+const chipLabel=c=>c>=1000000?(c/1000000)+'M':c>=1000?(c/1000)+'K':String(c);
 let chip=CH[0],bets=Array(9).fill(0),busy=false,muted=false,latestSeen=null;
 const tiles=F.map((f,i)=>{
  const d=document.createElement('button');d.className='t'+(i===3||i===6||i===7||i===8?' p':'');
@@ -125,7 +126,7 @@ const tiles=F.map((f,i)=>{
  else {d.id='tm';d.className='';d.disabled=true}
  $('#g').appendChild(d);return d;
 });
-$('#ch').innerHTML=CH.map((c,i)=>'<div class="cw"><button class="'+(i?'':'on')+'" data-c="'+c+'">'+['🔵','🟡','🟠','🟣'][i]+' '+fmt(c)+'</button><i class="am"></i></div>').join('');
+$('#ch').innerHTML=CH.map((c,i)=>'<div class="cw"><button class="'+(i?'':'on')+'" data-c="'+c+'">'+['🔵','🟡','🟠','🟣','🔴'][i]+' '+chipLabel(c)+'</button><i class="am"></i></div>').join('');
 document.querySelectorAll('#ch button').forEach(b=>b.onclick=()=>{chip=Number(b.dataset.c);document.querySelectorAll('#ch button').forEach(v=>v.classList.toggle('on',b===v))});
 function msg(t){$('#msg').textContent=t;clearTimeout(msg.id);msg.id=setTimeout(()=>$('#msg').textContent='',3000)}
 async function place(tileIndex){
