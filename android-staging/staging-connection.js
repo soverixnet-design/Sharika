@@ -1022,282 +1022,76 @@
       if(requestNo===rankingRequest)view.textContent='Rankings unavailable: '+errText(error);
     }
   };
-  // Keep the original room layout; playable games use server-owned bets and outcomes.
-  // The Food Wheel cover is the user's supplied artwork.
-  let gameViewTimer=null;
-  const announcedGameResults=new Set();
-  const announcedRoundWinners=new Set();
+  // Each uploaded original gets its own compact card. The uploaded HTML
+  // scripts still use demo wallets/random results, so we show a clearly
+  // marked visual-only preview until those mechanics have been moved to D1.
+  // Never accept their local wallet postMessage events as currency.
+  const originalGameCards=[
+    {id:'sovera-food',name:'Sovera Food Wheel',tag:'🎡 Classic',
+      image:'file:///android_asset/food-wheel-original-card.png',
+      page:'file:///android_asset/original-games/sovera-food-wheel.html'},
+    {id:'night-food',name:'Night Food Wheel',tag:'🌙 Night',
+      image:'file:///android_asset/food-wheel-original-card.png',
+      page:'file:///android_asset/original-games/night-food-wheel.html'},
+    {id:'jackpot',name:'Jackpot Fruit',tag:'🎰 Jackpot',
+      image:'file:///android_asset/jackpot-fruit-original-card.png',
+      page:'file:///android_asset/original-games/jackpot-fruit.html'}
+  ];
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
-    if(gameViewTimer){clearInterval(gameViewTimer);gameViewTimer=null;}
     const sheet=doc.getElementById(insideRoom?'sheet':'sh');
     const overlay=doc.getElementById(insideRoom?'bg':'shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
-    sheet.innerHTML='<div class="grab"></div><h3>🎮 Games</h3>'+
-      '<div style="max-height:72vh;overflow-y:auto;padding-bottom:16px">'+
-      '<button id="sharika-food-wheel-card" type="button" aria-label="Open Food Wheel" '+
-      'style="display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer">'+
-      '<img src="file:///android_asset/food-wheel-card.jpg" alt="Food Wheel game" '+
-      'style="display:block;width:100%;height:auto;border-radius:16px"></button>'+
-      '<button id="sharika-jackpot-card" type="button" '+
-      'style="width:100%;margin-top:12px;padding:16px;border:2px solid #fbbf24;'+
-      'border-radius:16px;background:linear-gradient(110deg,#310061,#8f006c,#ff7600);'+
-      'color:#fff;font-size:19px;font-weight:bold">🍒 🍋 🍇  JACKPOT FRUIT  🍉 🍓 🍊</button>'+
-      '<div id="sharika-game-stage" style="padding-top:10px"></div></div>';
+    function catalog(){
+      sheet.innerHTML='<div class="grab"></div><h3>🎮 Original Games</h3>'+
+        '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
+        'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
+        '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
+        'Original graphics · server wallet integration pending</p>';
+      const grid=sheet.querySelector('#sh-original-grid');
+      originalGameCards.forEach(item=>{
+        const card=doc.createElement('button');
+        card.type='button';
+        card.setAttribute('aria-label','View '+item.name);
+        card.style.cssText='display:flex;flex-direction:column;align-items:stretch;'+
+          'padding:6px;min-width:0;border:1px solid #e9ba50;border-radius:14px;'+
+          'background:linear-gradient(150deg,#381760,#130b32);color:#fff;'+
+          'box-shadow:0 5px 12px #0006;text-align:left;cursor:pointer';
+        const img=doc.createElement('img');
+        img.src=item.image;
+        img.alt=item.name;
+        img.style.cssText='width:100%;aspect-ratio:3/2;object-fit:cover;'+
+          'border-radius:10px;display:block';
+        if(item.id==='night-food')img.style.filter='hue-rotate(24deg) brightness(.72)';
+        const title=doc.createElement('b');
+        title.textContent=item.name;
+        title.style.cssText='font-size:13px;line-height:1.3;padding:7px 2px 1px';
+        const tag=doc.createElement('span');
+        tag.textContent=item.tag;
+        tag.style.cssText='color:#fbbf24;font-size:11px;padding:0 2px 4px';
+        card.append(img,title,tag);
+        card.onclick=()=>preview(item);
+        grid.appendChild(card);
+      });
+    }
+    function preview(item){
+      sheet.innerHTML='<div class="grab"></div>'+
+        '<button id="sh-original-back" type="button" '+
+        'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
+        'background:#351164;color:#fff">← All games</button>'+
+        '<h3 style="margin:8px 0"></h3>'+
+        '<p style="background:#6a270e;border:1px solid #fbbf24;border-radius:10px;'+
+        'padding:10px;font-size:12px;color:#fff">Original design preview only. '+
+        'Betting is disabled until verified server-coin integration.</p>'+
+        '<img id="sh-original-preview" alt="Original game cover" '+
+        'style="display:block;width:100%;height:auto;max-height:59vh;object-fit:contain;'+
+        'border:1px solid #a56dff;border-radius:12px">';
+      sheet.querySelector('h3').textContent=item.name;
+      sheet.querySelector('#sh-original-back').onclick=catalog;
+      sheet.querySelector('#sh-original-preview').src=item.image;
+    }
+    catalog();
     overlay.classList.add('on');
-    const stage=sheet.querySelector('#sharika-game-stage');
-    let active=null,gameState=null,chosen=0,refreshing=false,submitting=false;
-    let seenVisualResult='',wheelRotation=0;
-    function showGameInfo(lines){
-      const output=stage.querySelector('#sg-extra-output');
-      if(output)output.textContent=lines.join('\n');
-    }
-    function showTopThree(winners,game,roundNo){
-      if(!Array.isArray(winners)||!winners.length)return;
-      const key=game+':'+roundNo;
-      if(announcedRoundWinners.has(key))return;
-      announcedRoundWinners.add(key);
-      const label=game==='food-wheel'?'Food Wheel':'Jackpot Fruit';
-      const banner=doc.createElement('div');
-      banner.setAttribute('role','status');
-      banner.style.cssText='position:fixed;z-index:999999;top:17%;left:5%;width:90%;'+
-        'box-sizing:border-box;border:2px solid #fbbf24;border-radius:18px;'+
-        'background:linear-gradient(100deg,#310061,#8514ae,#e26811);'+
-        'color:white;font-weight:bold;padding:13px 16px;text-align:center;'+
-        'box-shadow:0 10px 40px #0009;pointer-events:none;'+
-        'transform:translateX(110vw);transition:transform .8s ease-out';
-      banner.textContent='🏆 '+label+' · Round '+roundNo+' · '+
-        winners.map(w=>w.rank+'. '+w.name+' +'+Number(w.payout).toLocaleString('en-US')).join(' · ');
-      doc.body.appendChild(banner);
-      setTimeout(()=>{if(banner.isConnected)banner.style.transform='translateX(0)'},50);
-      setTimeout(()=>banner.remove(),10000);
-    }
-
-    function display(state){
-      gameState=state;
-      const resultEl=stage.querySelector('#sg-result');
-      const statusEl=stage.querySelector('#sg-status');
-      const coinsEl=stage.querySelector('#sg-coins');
-      const submit=stage.querySelector('#sg-bet');
-      if(!statusEl||!submit)return;
-      const seconds=Math.max(0,Math.ceil(((state.phase==='betting'
-        ?state.round.bet_closes_ms:state.round.closes_ms)-state.server_time)/1000));
-      statusEl.textContent=(state.phase==='betting'?'Betting open':'Waiting for result')+
-        ' · '+seconds+'s · Round '+state.round.round_no;
-      coinsEl.textContent=Number(state.coins||0).toLocaleString('en-US');
-      const bet=state.my_bet;
-      submit.disabled=state.phase!=='betting'||!!bet||submitting;
-      submit.textContent=bet?'Bet placed ✓':'Place server-verified bet';
-      let result='All players share the same server result.';
-      if(state.previous_result){
-        const p=state.previous_result,out=p.outcome;
-        result=active==='food-wheel'?'Previous: '+out.symbol+' · sector '+(out.sector+1):
-          'Previous: '+out.reels.join(' ')+' · '+(out.jackpot?'JACKPOT':'No jackpot');
-        const mine=state.previous_bet;
-        if(mine)result+=' · Your payout: '+Number(mine.payout||0).toLocaleString('en-US')+' coins';
-      }
-      if(bet)result+=' · Your current bet: '+Number(bet.stake).toLocaleString('en-US')+' coins';
-      resultEl.textContent=result;
-      const winners=Array.isArray(state.previous_winners)?state.previous_winners:[];
-      const topEl=stage.querySelector('#sg-top-three');
-      if(topEl)topEl.textContent=winners.length?'🏆 Top 3: '+
-        winners.map(w=>w.rank+'. '+w.name+' +'+Number(w.payout).toLocaleString('en-US')).join(' · '):
-        'No winners in the previous round';
-      if(state.previous_result)showTopThree(winners,active,state.previous_result.round_no);
-      // Reveal only the confirmed server outcome. Never fabricate winners.
-      const previous=state.previous_result;
-      if(previous){
-        const revealKey=active+':'+previous.round_no;
-        if(revealKey!==seenVisualResult){
-          seenVisualResult=revealKey;
-          if(active==='food-wheel'){
-            const wheel=stage.querySelector('#sg-wheel-rotor');
-            if(wheel && Number.isInteger(previous.outcome?.sector)){
-              const target=340-previous.outcome.sector*40;
-              const extra=(target-(wheelRotation%360)+360)%360;
-              wheelRotation+=1800+extra;
-              wheel.style.transition='transform 2600ms cubic-bezier(.12,.8,.12,1)';
-              wheel.style.transform='rotate('+wheelRotation+'deg)';
-            }
-          }else{
-            const reels=stage.querySelectorAll('#sg-fruit-reels .sg-reel');
-            const results=previous.outcome?.reels||[];
-            reels.forEach((reel,i)=>{
-              reel.textContent=results[i]||'❔';
-              reel.style.animation='none';
-              void reel.offsetWidth;
-              reel.style.animation='sg-reveal .7s ease-out both';
-              reel.style.animationDelay=(i*180)+'ms';
-            });
-          }
-        }
-      }
-    }
-    async function refresh(){
-      if(refreshing||!active)return;
-      if(!overlay.classList.contains('on')){if(gameViewTimer)clearInterval(gameViewTimer);gameViewTimer=null;return;}
-      refreshing=true;
-      try{
-        const requestedGame=active;
-        const data=await api('GET','/games/'+requestedGame+'/state');
-        if(!overlay.classList.contains('on')||requestedGame!==active)return;
-        display(data);
-        const settled=data.previous_bet;
-        if(settled?.status==='settled'){
-          const proofKey=requestedGame+':'+settled.id;
-          if(!announcedGameResults.has(proofKey)){
-            announcedGameResults.add(proofKey);
-            await reloadWallet();
-            if(settled.payout>0){
-              showToast('Verified win: '+Number(settled.payout).toLocaleString('en-US')+' coins');
-              if(window.SharikaWinBanner?.show){
-                window.SharikaWinBanner.show({name:profile?.name||'Player',
-                  game:requestedGame==='food-wheel'?'Food Wheel':'Jackpot Fruit',
-                  amount:settled.payout});
-              }
-            }
-          }
-        }
-      }catch(error){
-        const status=stage.querySelector('#sg-status');
-        if(status)status.textContent='Game server: '+errText(error);
-      }finally{refreshing=false;}
-    }
-    function openGame(game){
-      active=game;chosen=0;gameState=null;seenVisualResult='';wheelRotation=0;
-      const names=game==='food-wheel'
-        ?['🍅','🦐','🐟','🍗','🥩','🍕','🥬','🥕','🌽']:[];
-      const wheelVisual=names.length
-        ?'<div style="position:relative;width:238px;height:238px;margin:16px auto 20px">'+
-          '<div id="sg-wheel-rotor" style="position:relative;width:100%;height:100%;box-sizing:border-box;'+
-            'border:9px solid #ffca36;border-radius:50%;box-shadow:0 0 0 4px #8d4c0e,0 0 24px #fbbf2488;'+
-            'background:conic-gradient(#16a34a 0 40deg,#2563eb 40deg 80deg,#ce2665 80deg 120deg,'+
-            '#854dff 120deg 160deg,#f97316 160deg 200deg,#eab308 200deg 240deg,'+
-            '#15803d 240deg 280deg,#0891b2 280deg 320deg,#7c3aed 320deg 360deg)">'+
-            names.map((symbol,i)=>'<span style="position:absolute;left:50%;top:50%;font-size:26px;'+
-              'transform:translate(-50%,-50%) rotate('+(i*40+20)+'deg) translateY(-78px) '+
-              'rotate(-'+(i*40+20)+'deg)">'+symbol+'</span>').join('')+
-            '<span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'+
-              'border:4px solid #fcd34d;border-radius:50%;background:#5b21b6;'+
-              'padding:6px;font-size:22px">⭐</span></div>'+
-            '<div aria-label="Winning pointer" style="position:absolute;left:calc(50% - 13px);top:-15px;'+
-              'width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;'+
-              'border-top:26px solid #fbbf24;filter:drop-shadow(0 2px 2px #281124)"></div></div>'
-        :'<style>@keyframes sg-reveal{0%{transform:translateY(-24px) scale(.7);opacity:.35}'+
-          '75%{transform:translateY(5px) scale(1.1);opacity:1}100%{transform:none;opacity:1}}</style>'+
-          '<div id="sg-fruit-reels" style="display:flex;justify-content:center;gap:10px;margin:16px auto">'+
-          '<span class="sg-reel" style="font-size:48px;background:#451c7a;border:3px solid #fbbf24;'+
-          'border-radius:15px;padding:8px">❔</span>'+
-          '<span class="sg-reel" style="font-size:48px;background:#451c7a;border:3px solid #fbbf24;'+
-          'border-radius:15px;padding:8px">❔</span>'+
-          '<span class="sg-reel" style="font-size:48px;background:#451c7a;border:3px solid #fbbf24;'+
-          'border-radius:15px;padding:8px">❔</span></div>';
-      stage.innerHTML='<h3 style="margin:12px 0">'+
-        (game==='food-wheel'?'🎡 Food Wheel':'🎰 Jackpot Fruit')+'</h3>'+
-        wheelVisual+
-        '<div class="empty" id="sg-status">Connecting to server…</div>'+
-        (names.length?'<div id="sg-choices" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">'+
-          names.map((name,index)=>'<button type="button" data-game-pick="'+index+
-            '" style="padding:9px 0;background:#32105a;border:2px solid #7253aa;'+
-            'border-radius:12px;font-size:24px">'+name+'</button>').join('')+'</div>':
-          '<div style="font-size:36px;text-align:center;margin:14px">🍒 🍋 🍇</div>')+
-        '<div class="empty" style="padding:8px">'+
-        (game==='food-wheel'?'9 equal sectors · correct pick pays 9×':
-         '3 matching fruits pay 36× · otherwise zero')+
-        ' · One bet per round · virtual coins only</div>'+
-        '<div style="display:flex;gap:8px;align-items:center;margin:10px 0">'+
-        '<input id="sg-stake" type="number" min="1" step="1" value="100" '+
-        'placeholder="Coins" style="min-width:0;flex:1;padding:10px;border-radius:10px">'+
-        '<span style="font-size:12px">Balance: <b id="sg-coins">—</b></span></div>'+
-        '<button id="sg-bet" class="btn" type="button" disabled '+
-        'style="width:100%;padding:12px;border-radius:12px">Connecting…</button>'+
-        '<div class="empty" id="sg-result" style="padding:12px 4px"></div>'+
-        '<div class="empty" id="sg-top-three" style="padding:6px 0;font-size:12px"></div>'+
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">'+
-          '<button type="button" id="sg-stats" class="btn" style="flex:1">Today</button>'+
-          '<button type="button" id="sg-history" class="btn" style="flex:1">30 rounds</button>'+
-          '<button type="button" id="sg-ranking" class="btn" style="flex:1">Ranking</button>'+
-          '<select id="sg-period" aria-label="Ranking period" style="border-radius:8px;background:#271149;color:white">'+
-            '<option value="daily">Daily</option><option value="weekly">Weekly</option>'+
-            '<option value="monthly">Monthly</option></select></div>'+
-        '<pre id="sg-extra-output" style="white-space:pre-wrap;overflow-y:auto;max-height:220px;'+
-          'font:13px/1.6 sans-serif;color:#eee9ff;margin:8px 0"></pre>';
-      async function loadGameDetails(type){
-        const shownGame=game;
-        showGameInfo(['Loading verified game records…']);
-        try{
-          let lines=[];
-          if(type==='stats'){
-            const d=await api('GET','/games/'+shownGame+'/stats');
-            lines=['Today (UTC): '+Number(d.total_won).toLocaleString('en-US')+' coins won',
-              'Bets: '+d.plays+' · Winning bets: '+d.wins,
-              'Staked: '+Number(d.total_staked).toLocaleString('en-US')+
-              ' · Net: '+Number(d.net_coins).toLocaleString('en-US')];
-          }else if(type==='history'){
-            const d=await api('GET','/games/'+shownGame+'/rounds');
-            lines=['Last '+d.rounds.length+' verified rounds (UTC)'];
-            for(const r of d.rounds){
-              const outcome=shownGame==='food-wheel'?r.outcome.symbol:r.outcome.reels.join(' ');
-              const top=r.top_three?.length
-                ?' · 🏆 '+r.top_three.map(w=>w.name+' +'+w.payout).join(', '):'';
-              lines.push('#'+r.round_no+' · '+outcome+top);
-            }
-            if(d.rounds.length===0)lines.push('No completed rounds yet');
-          }else{
-            const period=stage.querySelector('#sg-period')?.value||'daily';
-            const d=await api('GET','/games/'+shownGame+'/rankings?period='+period);
-            lines=[period.toUpperCase()+' game winners (UTC)'];
-            for(const r of d.ranking)
-              lines.push(r.rank+'. '+r.name+' · '+Number(r.total_won).toLocaleString('en-US')+' coins');
-            if(d.ranking.length===0)lines.push('No verified winners yet');
-          }
-          if(active===shownGame)showGameInfo(lines);
-        }catch(e){
-          if(active===shownGame)showGameInfo(['Game records unavailable: '+errText(e)]);
-        }
-      }
-      stage.querySelector('#sg-stats').onclick=()=>loadGameDetails('stats');
-      stage.querySelector('#sg-history').onclick=()=>loadGameDetails('history');
-      stage.querySelector('#sg-ranking').onclick=()=>loadGameDetails('rankings');
-      stage.querySelector('#sg-period').onchange=()=>loadGameDetails('rankings');
-      const choices=stage.querySelector('#sg-choices');
-      if(choices){
-        function paint(){choices.querySelectorAll('button').forEach((b,i)=>{
-          b.style.borderColor=i===chosen?'#fbbf24':'#7253aa';
-          b.style.background=i===chosen?'#7e22ce':'#32105a';
-        });}
-        choices.onclick=e=>{const button=e.target.closest('button[data-game-pick]');
-          if(button){chosen=Number(button.dataset.gamePick);paint();}};
-        paint();
-      }
-      const betButton=stage.querySelector('#sg-bet');
-      betButton.onclick=async()=>{
-        if(submitting||!gameState||gameState.phase!=='betting'||gameState.my_bet)return;
-        const raw=stage.querySelector('#sg-stake')?.value||'';
-        const stake=Number(raw);
-        if(!Number.isSafeInteger(stake)||stake<1||stake>Number(gameState.coins)){
-          showToast('Enter a whole-coin bet within your wallet balance');return;
-        }
-        submitting=true;betButton.disabled=true;
-        try{
-          const request_id='game:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
-          const body={round_no:gameState.round.round_no,stake,request_id};
-          if(active==='food-wheel')body.pick=chosen;
-          const accepted=await api('POST','/games/'+active+'/bet',body);
-          if(gameState)gameState.my_bet=accepted.bet;
-          showToast('Bet accepted and coins debited by server');
-          await reloadWallet();
-          await refresh();
-        }catch(error){showToast('Bet not placed: '+errText(error));}
-        finally{submitting=false;if(gameState)display(gameState);}
-      };
-      if(gameViewTimer)clearInterval(gameViewTimer);
-      refresh();
-      gameViewTimer=setInterval(refresh,1600);
-      stage.scrollIntoView({behavior:'smooth',block:'nearest'});
-    }
-    sheet.querySelector('#sharika-food-wheel-card')?.addEventListener('click',()=>openGame('food-wheel'));
-    sheet.querySelector('#sharika-jackpot-card')?.addEventListener('click',()=>openGame('jackpot-fruit'));
   }
   const gamesShortcut=document.getElementById('qg');
   if(gamesShortcut)gamesShortcut.onclick=()=>showGameCard(document,false,toast);
