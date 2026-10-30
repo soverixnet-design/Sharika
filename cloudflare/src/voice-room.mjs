@@ -41,6 +41,16 @@ export class SharikaVoiceRoom extends DurableObject {
         'seat_no INTEGER PRIMARY KEY CHECK(seat_no BETWEEN 1 AND 20), ' +
         'locked_at_ms INTEGER NOT NULL)'
       );
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_seat_invites (' +
+        'invitee_uid TEXT PRIMARY KEY, inviter_uid TEXT NOT NULL, ' +
+        'seat_no INTEGER NOT NULL, invited_at_ms INTEGER NOT NULL, ' +
+        'expires_at_ms INTEGER NOT NULL)'
+      );
+      this.ctx.storage.sql.exec(
+        'CREATE INDEX IF NOT EXISTS room_seat_invites_expiry ' +
+        'ON room_seat_invites(expires_at_ms)'
+      );
     });
   }
 
@@ -154,6 +164,10 @@ export class SharikaVoiceRoom extends DurableObject {
       const member=await db.prepare(
         'SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?'
       ).bind(roomId,uid).first();
+      this.ctx.storage.sql.exec('DELETE FROM room_seat_invites WHERE invitee_uid=?',uid);
+      if(seat!==null)this.ctx.storage.sql.exec(
+        'DELETE FROM room_seat_invites WHERE seat_no=?',seat
+      );
       return {member};
     });
   }
@@ -169,6 +183,7 @@ export class SharikaVoiceRoom extends DurableObject {
           'INSERT OR IGNORE INTO room_seat_locks(seat_no,locked_at_ms) VALUES(?,?)',
           seat,Date.now()
         );
+        this.ctx.storage.sql.exec('DELETE FROM room_seat_invites WHERE seat_no=?',seat);
       } else {
         this.ctx.storage.sql.exec(
           'DELETE FROM room_seat_locks WHERE seat_no=?',seat
@@ -183,8 +198,91 @@ export class SharikaVoiceRoom extends DurableObject {
       this.ctx.storage.sql.exec(
         'DELETE FROM room_seat_locks WHERE seat_no>?',seatCount
       );
+      this.ctx.storage.sql.exec(
+        'DELETE FROM room_seat_invites WHERE seat_no>?',seatCount
+      );
       return true;
     });
+  }
+
+  // Room invitations expire after 2 minutes and are never accepted without
+  // both the recipient's authenticated consent and a free, unlocked seat.
+  async seatInviteSend(roomId,inviterUid,inviteeUid,seat) {
+    return this.withSeatGate(async()=>{
+      const now=Date.now();
+      this.ctx.storage.sql.exec(
+        'DELETE FROM room_seat_invites WHERE expires_at_ms<=?',now
+      );
+      if(this.ctx.storage.sql.exec(
+        'SELECT 1 AS locked FROM room_seat_locks WHERE seat_no=?',seat
+      ).toArray()[0])return {error:'seat_locked'};
+      const occupied=await this.sharikaDb.prepare(
+        'SELECT user_id FROM sharika_room_members WHERE room_id=? AND seat_no=?'
+      ).bind(roomId,seat).first();
+      if(occupied)return {error:'seat_occupied'};
+      const current=this.ctx.storage.sql.exec(
+        'SELECT invited_at_ms FROM room_seat_invites WHERE invitee_uid=?',inviteeUid
+      ).toArray()[0];
+      if(current&&now-Number(current.invited_at_ms)<15000)
+        return {error:'invite_rate_limited'};
+      this.ctx.storage.sql.exec(
+        'INSERT INTO room_seat_invites(invitee_uid,inviter_uid,seat_no,invited_at_ms,expires_at_ms) ' +
+        'VALUES(?,?,?,?,?) ON CONFLICT(invitee_uid) DO UPDATE SET ' +
+        'inviter_uid=excluded.inviter_uid,seat_no=excluded.seat_no,' +
+        'invited_at_ms=excluded.invited_at_ms,expires_at_ms=excluded.expires_at_ms',
+        inviteeUid,inviterUid,seat,now,now+120000
+      );
+      return {seat_no:seat,invited_at_ms:now,expires_at_ms:now+120000};
+    });
+  }
+
+  async seatInvitePending(uid) {
+    this.ctx.storage.sql.exec(
+      'DELETE FROM room_seat_invites WHERE expires_at_ms<=?',Date.now()
+    );
+    const invite=this.ctx.storage.sql.exec(
+      'SELECT seat_no,invited_at_ms,expires_at_ms FROM room_seat_invites ' +
+      'WHERE invitee_uid=?',uid
+    ).toArray()[0];
+    return {invite:invite||null};
+  }
+
+  async seatInviteRespond(roomId,uid,seat,accept) {
+    return this.withSeatGate(async()=>{
+      const invite=this.ctx.storage.sql.exec(
+        'SELECT seat_no,expires_at_ms FROM room_seat_invites WHERE invitee_uid=?',uid
+      ).toArray()[0];
+      if(!invite||Number(invite.expires_at_ms)<=Date.now()||
+         Number(invite.seat_no)!==seat)return {error:'invite_not_found'};
+      if(!accept) {
+        this.ctx.storage.sql.exec('DELETE FROM room_seat_invites WHERE invitee_uid=?',uid);
+        return {accepted:false};
+      }
+      if(this.ctx.storage.sql.exec(
+        'SELECT 1 AS locked FROM room_seat_locks WHERE seat_no=?',seat
+      ).toArray()[0])return {error:'seat_locked'};
+      const occupant=await this.sharikaDb.prepare(
+        'SELECT user_id FROM sharika_room_members WHERE room_id=? AND seat_no=?'
+      ).bind(roomId,seat).first();
+      if(occupant)return {error:'seat_occupied'};
+      const member=await this.sharikaDb.prepare(
+        'SELECT seat_no FROM sharika_room_members WHERE room_id=? AND user_id=?'
+      ).bind(roomId,uid).first();
+      if(!member)return {error:'join_room_first'};
+      if(member.seat_no!==null)return {error:'already_seated'};
+      const result=await this.sharikaDb.prepare(
+        'UPDATE sharika_room_members SET seat_no=? WHERE room_id=? AND user_id=? AND seat_no IS NULL'
+      ).bind(seat,roomId,uid).run();
+      if(!result.meta?.changes)return {error:'seat_occupied'};
+      this.ctx.storage.sql.exec('DELETE FROM room_seat_invites WHERE invitee_uid=?',uid);
+      this.ctx.storage.sql.exec('DELETE FROM room_seat_invites WHERE seat_no=?',seat);
+      return {accepted:true,seat_no:seat};
+    });
+  }
+
+  async seatInviteClear(uid) {
+    this.ctx.storage.sql.exec('DELETE FROM room_seat_invites WHERE invitee_uid=?',uid);
+    return true;
   }
 
   // Presence is touched by the authenticated Android app every 25 seconds.
