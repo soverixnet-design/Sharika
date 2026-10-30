@@ -585,8 +585,24 @@
         frame.gsel=Math.max(0,gifts.findIndex(g=>g.tab===frame.gtab));
         frame.G=gifts.map(g=>[htmlSafe(g.emoji||'🎁'),Number(g.price_coins),
           htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
-        if(typeof originalGiftOpen==='function')originalGiftOpen.call(giftButton);
-        else frame.toast('Gift box unavailable');
+        if(typeof originalGiftOpen==='function') {
+          originalGiftOpen.call(giftButton);
+          // Google Play requires chance-based virtual reward odds next to a
+          // purchase. Preserve the original gift modal, insert text only.
+          frame.document.getElementById('sharika-lucky-odds')?.remove();
+          if(data.lucky_enabled===true && Array.isArray(data.lucky_odds)) {
+            const send=frame.document.getElementById('snd');
+            if(send?.parentElement) {
+              const label=frame.document.createElement('div');
+              label.id='sharika-lucky-odds';
+              label.style.cssText='font-size:11px;line-height:1.4;padding:6px;color:#e7d8ff;text-align:center';
+              label.textContent='Lucky Gift odds: '+data.lucky_odds.map(x=>
+                x.multiplier+'x '+x.probability_percent+'%').join(' · ')+
+                '. Virtual rewards only; no cashout or resale.';
+              send.parentElement.insertBefore(label,send);
+            }
+          }
+        } else frame.toast('Gift box unavailable');
       }catch(error){frame.toast('Gift catalog unavailable: '+errText(error));}
     };
     // The original gift game debits a local wallet; always intercept before it
