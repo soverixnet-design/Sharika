@@ -163,6 +163,14 @@ export async function handleRequest(request, env) {
         wealth_level: user.wealth_level, charm_level: user.charm_level }, 200, cors)
         : fail('not_found', 404, cors);
     }
+    if (path === '/api/v1/gifts' && request.method === 'GET') {
+      await assertActive(env.DB, uid);
+      const result = await env.DB.prepare(
+        'SELECT id,name,emoji,tab,price_coins,image_url,animation_url ' +
+        'FROM sharika_gifts WHERE active=1 ORDER BY id LIMIT 100'
+      ).all();
+      return reply({ gifts:result.results || [], read_only:true }, 200, cors);
+    }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       const user = await assertActive(env.DB, uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
