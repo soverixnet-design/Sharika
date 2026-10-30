@@ -1,6 +1,7 @@
 // Sharika staging admin: verified D1 reads plus restricted user moderation and gift catalog edits.
 // Every request is authenticated by the outer Worker with a verified Firebase JWT.
-// No account-creation, wallet-mutation, gameplay, or admin-seeding route.
+// Only explicitly audited seller inventory and verified grants may credit wallets.
+import { handleSellerAdmin } from './sellers.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
 const FINANCE_ROLES = new Set(['super', 'finance']);
@@ -70,6 +71,10 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   const operation = path.slice(ADMIN_PREFIX.length);
   const url = new URL(request.url);
 
+  if (operation.startsWith('sellers')) return await handleSellerAdmin({
+    request, env, uid, actor, operation, cors, reply, fail
+  });
+
   // Support agents may reply to real user conversations, with explicit scope.
   const supportReply=/^support\/([0-9]{8})\/reply$/.exec(operation);
   if (supportReply && request.method==='POST') {
@@ -118,7 +123,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   }
 
   // Mutations are deliberately small and restricted to verified Super Admin.
-  // No balance, recharge, reward, or other financial mutation is exposed.
+  // Other wallet and reward mutations remain disabled outside the audited seller flow.
   if (request.method !== 'GET') {
     const denied = allowed(actor.role, new Set(['super']), fail, cors);
     if (denied) return denied;
@@ -248,7 +253,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if (operation === 'status') {
     return reply({ role:actor.role, name:actor.name, public_id:id(actor.public_no),
       environment:'staging', read_only:actor.role!=='super',
-      write_scopes:actor.role==='super'?['user_status','gift_catalog','support_reply']:
+      write_scopes:actor.role==='super'?['user_status','gift_catalog','support_reply','seller_approval','seller_stock_allocation']:
         actor.role==='support'?['support_reply']:[] }, 200, cors);
   }
   if (operation === 'rankings' && request.method === 'GET') {

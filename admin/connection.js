@@ -397,6 +397,72 @@
       };
     }catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
   };
+
+  P.sellers=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>🪙 Verified coin sellers</h3>'+
+      '<p class="n">Seller stock is separate from personal wallets. Allocations and transfers are permanently audited.</p>'+
+      '<div id="seller-list">Loading…</div></div>'+
+      '<div class="card"><h3>Recent seller transfers</h3><div id="seller-transfers">Loading…</div></div>'+
+      (role==='super'?'<div class="card"><h3>Seller management</h3>'+
+        '<div class="row"><input id="seller-id" maxlength="8" inputmode="numeric" placeholder="Seller 8-digit user ID">'+
+        '<button type="button" class="btn s" id="seller-approve">Approve</button>'+
+        '<button type="button" class="btn s" id="seller-suspend">Suspend</button></div>'+
+        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000)">'+
+        '<button type="button" class="btn s" id="seller-allocate">Allocate stock</button></div>'+
+        '<p class="n" id="seller-note">Only Super Admin can approve sellers and allocate inventory.</p></div>':'');
+    const table=byId('seller-list'),transfers=byId('seller-transfers');
+    async function refresh(){
+      table.textContent='Loading approved seller records…';
+      transfers.textContent='Loading verified transfers…';
+      try{
+        const [list,history]=await Promise.all([api('GET','sellers'),api('GET','sellers/transfers')]);
+        table.innerHTML=window.T(['ID','Name','Status','Available stock','Updated'],(list.sellers||[]).map(s=>
+          [esc(s.public_id),esc(s.name),s.active?'Approved':'Suspended',
+           fmt(s.available_coins),esc(s.updated_at||'')]));
+        transfers.innerHTML=window.T(['#','Seller ID','Recipient ID','Coins','Stock after','Time'],
+          (history.transfers||[]).map(t=>[
+            esc(t.id),esc(t.seller_public_id),esc(t.recipient_public_id),
+            fmt(t.coins),fmt(t.stock_after),esc(t.created_at||'')]));
+        if(!list.sellers?.length)table.insertAdjacentHTML('beforeend','<p class="n">No approved sellers yet.</p>');
+      }catch(error){table.textContent=error.message;transfers.textContent='Transfer history unavailable.';}
+    }
+    await refresh();
+    if(role!=='super')return;
+    const note=byId('seller-note'),idInput=byId('seller-id'),coinsInput=byId('seller-coins');
+    let busy=false;
+    async function act(button,kind){
+      if(busy)return;
+      const sellerId=idInput.value.trim();
+      const raw=coinsInput.value.trim();
+      const coins=Number(raw);
+      if(!/^[0-9]{8}$/.test(sellerId)){
+        note.textContent='Enter an existing eight-digit user ID.';return;
+      }
+      if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000)){
+        note.textContent='Allocate 1–1,000,000 coins per request.';return;
+      }
+      const message=kind==='allocate'
+        ?'Add '+fmt(coins)+' coins to the SELLER STOCK of '+sellerId+'? This does not debit any user.'
+        :(kind==='approve'?'Approve':'Suspend')+' coin seller '+sellerId+'?';
+      if(!window.confirm(message))return;
+      busy=true;button.disabled=true;note.textContent='Submitting verified request…';
+      try{
+        const payload=kind==='allocate'
+          ?{seller_public_id:sellerId,coins,request_id:'admin-seller:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2)}
+          :{target_public_id:sellerId,active:kind==='approve'};
+        const result=await api('POST',kind==='allocate'?'sellers/allocate':'sellers',payload);
+        note.textContent=kind==='allocate'?'Allocated '+fmt(coins)+' stock coins. New stock '+fmt(result.available_coins)+'.':
+          'Seller '+sellerId+' '+(kind==='approve'?'approved':'suspended')+'.';
+        await refresh();
+      }catch(error){note.textContent='Request rejected: '+error.message;}
+      finally{busy=false;button.disabled=false;}
+    }
+    byId('seller-approve')?.addEventListener('click',e=>act(e.currentTarget,'approve'));
+    byId('seller-suspend')?.addEventListener('click',e=>act(e.currentTarget,'suspend'));
+    byId('seller-allocate')?.addEventListener('click',e=>act(e.currentTarget,'allocate'));
+  };
+
   P.ledger=async function () {
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>Wallet ledger</h3><div class="row"><input id="ledger-id" inputmode="numeric" placeholder="Optional 8-digit user ID"><button class="btn s" id="ledger-go">Search</button></div><div id="ledger-list">Loading…</div></div>';
@@ -629,7 +695,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','gifts','rank','audit','admins','system'
+    'dash','analytics','users','support','rooms','ledger','sellers','gifts','rank','audit','admins','system'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

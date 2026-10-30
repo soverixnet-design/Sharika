@@ -802,7 +802,65 @@
   function nextWalletRequestId(prefix){
     return prefix+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
   }
-  // Financial writes stay locked except verified exchange and support requests.
+
+  // Approved Coin Sellers: actual D1 seller rows, never fabricated profiles.
+  const sellerEscape=v=>String(v==null?'':v).replace(/[&<>"']/g,
+    c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  async function showVerifiedCoinSellers(){
+    window.openSheet('<h3>🪙 Coin sellers</h3><div id="sharika-seller-content">Loading approved sellers…</div>');
+    const root=document.getElementById('sharika-seller-content');
+    if(!root)return;
+    try{
+      const [directory,mine]=await Promise.all([
+        api('GET','/sellers'),api('GET','/sellers/me')
+      ]);
+      if(!root.isConnected)return;
+      const listed=(directory.sellers||[]).map(s=>
+        '<div class="opt" style="padding:10px;border-radius:12px">'+
+        '<b>🪙 '+sellerEscape(s.name||'Coin seller')+'</b> · ID '+
+        sellerEscape(s.public_id)+'</div>').join('');
+      const self=mine.seller;
+      const me=self&&self.active?
+        '<div class="card" style="margin-top:12px;padding:12px">'+
+        '<b>Your seller stock: '+Number(self.available_coins||0).toLocaleString('en-US')+' coins</b>'+
+        '<p class="n">Recharge an existing Sharika user with your assigned seller stock.</p>'+
+        '<input id="sharika-seller-target" inputmode="numeric" maxlength="8" placeholder="Recipient 8-digit user ID" aria-label="Recipient user ID">'+
+        '<input id="sharika-seller-amount" inputmode="numeric" placeholder="Coins to send (1–1,000,000)" aria-label="Coins to send">'+
+        '<button class="btn" type="button" id="sharika-seller-send">Transfer coins</button>'+
+        '<div id="sharika-seller-note" aria-live="polite"></div></div>':
+        self?'<p class="n">Your seller permission is currently suspended.</p>':'';
+      root.innerHTML='<div class="empty">'+(listed||'No approved coin sellers yet.')+'</div>'+me;
+      const send=document.getElementById('sharika-seller-send');
+      if(send)send.addEventListener('click',async()=>{
+        const recipient=document.getElementById('sharika-seller-target')?.value.trim()||'';
+        const raw=document.getElementById('sharika-seller-amount')?.value.trim()||'';
+        const amount=Number(raw);
+        const note=document.getElementById('sharika-seller-note');
+        if(!/^[0-9]{8}$/.test(recipient)||!/^\d+$/.test(raw)||
+          !Number.isSafeInteger(amount)||amount<1||amount>1000000){
+          if(note)note.textContent='Enter a valid eight-digit user ID and 1–1,000,000 coins.';
+          return;
+        }
+        if(!window.confirm('Transfer '+amount.toLocaleString('en-US')+' coins to user '+recipient+'?'))return;
+        const requestId=nextWalletRequestId('seller');
+        send.disabled=true;
+        try{
+          const result=await api('POST','/sellers/transfer',{
+            target_public_id:recipient,coins:amount,request_id:requestId
+          });
+          if(note)note.textContent='Transfer #'+result.transfer_id+' complete. Remaining stock: '+
+            Number(result.available_coins).toLocaleString('en-US')+' coins.';
+          toast('Coin transfer recorded');
+          await reloadWallet();
+        }catch(error){
+          if(note)note.textContent=errText(error);
+          send.disabled=false;
+        }
+      });
+    }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
+  }
+
+  // Wallet writes require verified exchange or approved seller stock transfer.
   document.addEventListener('click', async event => {
     const button=event.target.closest('button');
     if(!button) return;
@@ -812,7 +870,7 @@
     event.preventDefault();event.stopImmediatePropagation();
     if(!session){window.showAuth('welcome');return;}
     if(id==='cl'){toast('Daily rewards require verified server-side claim tracking');return;}
-    if(id==='rcl2'){toast('No verified coin sellers have been approved yet');return;}
+    if(id==='rcl2'){await showVerifiedCoinSellers();return;}
     if(id==='rcs'){
       document.getElementById('rcp')?.classList.remove('on');
       openSupportThread();return;
