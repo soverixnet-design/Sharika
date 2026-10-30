@@ -1,5 +1,29 @@
 # Sharika — Cloudflare Workers + D1 (isolated staging)
 
+## Verified deployment checkpoint — 30 October 2026
+
+**Staging only.** The tested source branch is `feature/sharika-original-games-cards-20261030`, commit `b881bd946d0199902a311b832e017ebabc98823f`. GitHub checks and Android staging debug build passed. This source includes real game-bet retry protection and read-only Top Recharge rankings from approved wallet ledger transactions, **but these newer changes have not been deployed to the staging Worker**.
+
+Direct read-only HTTP checks on 30 October:
+- `GET /health` → **200**, `{"ok":true,"service":"sharika-cloudflare-staging","environment":"staging","auth_configured":true}`.
+- Anonymous `GET /api/v1/me` → **401**, `{"error":"not_authenticated"}`.
+- A two-phone authenticated microphone test and complete game payout test **have not passed**. No public/production release is claimed.
+
+### Migration-journal drift: do not rerun old migrations
+
+The isolated remote D1 database `sharika-staging` currently has the newer `sharika_*` tables (including original-game bets, manual recharge reviews and daily check-ins), **but `d1_migrations` records only `0001_initial.sql`**. This means its migration journal does not match the observed schema. Re-running `create-tables` / remote `d1 migrations apply` could reapply already-existing schema changes and damage staging records. First reconcile the exact D1 schema and migration history via a reviewed backup and migration-only procedure; **do not mark migrations applied or rebuild tables speculatively**.
+
+As of this check the staging DB contains 2 users, 1 room and existing gift/wallet records. No remote D1 writes or reset were performed during this review. The new rankings require no new migration.
+
+### Safe source promotion remains manual
+
+The default-branch workflow `.github/workflows/sharika-d1-staging-initialize.yml` still checks out an **older pinned commit** (`98de712a20a2b7c37c1ff3fff5b94483afbd54a5`). **Do not use its `deploy-staging-worker` action as-is to publish the latest candidate**, or its `create-tables` action against the existing DB. A repository maintainer with GitHub Actions workflow-edit permission must first review/update the manual workflow's pinned commit to the tested candidate, remove or disable the unsafe migration path, keep the exact staging-only Worker/account/DB guardrails, then run its manual deploy action. Check the resulting health/auth endpoints before allowing test users.
+
+Neither routine Git pushes nor this document deploy anything. Existing Sovera/Akira services, Cloudflare production routes and user data are out of scope.
+
+---
+
+
 This project builds a **separate staging backend** for Sharika. It is not the
 currently running Sharika client. The original app and admin adapters still
 use their existing Supabase endpoints, and nothing here changes or imports
