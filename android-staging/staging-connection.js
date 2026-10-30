@@ -1237,6 +1237,15 @@
   window.renderRank=async function(){
     const view=document.getElementById('rb');
     if(!view)return;
+    const rankView=document.getElementById('v-rank');
+    if(rankView&&!document.getElementById('wgb')){
+      const weeklyButton=document.createElement('button');
+      weeklyButton.id='wgb';
+      weeklyButton.textContent='🏆';
+      weeklyButton.title='Verified weekly leaders';
+      weeklyButton.onclick=()=>window.box();
+      rankView.appendChild(weeklyButton);
+    }
     const requestNo=++rankingRequest;
     const periods=['daily','weekly','monthly'];
     const kinds={1:'rich',2:'charm',3:'room'};
@@ -1397,8 +1406,70 @@
   }
   const gamesShortcut=document.getElementById('qg');
   if(gamesShortcut)gamesShortcut.onclick=()=>showGameCard(document,false,toast);
+  // The original reward button used a fake #128 rank and local coin credit.
+  // Show verified weekly leaders instead; no claim or coin-grant control.
   window.box=function() {
-    window.openSheet('<h3>🏆 Weekly rewards</h3><div class="empty">Rewards are not enabled on the staging server.</div>');
+    if(!session){window.showAuth('welcome');return;}
+    window.openSheet('<h3>🏆 Verified Weekly Leaders</h3>'+
+      '<div class="empty">Results are based on completed server records, not demo users.</div>'+
+      '<div id="sh-week-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0"></div>'+
+      '<div id="sh-week-list" aria-live="polite"></div>'+
+      '<p style="font-size:12px;opacity:.75;text-align:center;margin:14px 3px">'+
+      'Weekly coin rewards and Couple ranking are not enabled yet.</p>');
+    const tabs=document.getElementById('sh-week-tabs');
+    const list=document.getElementById('sh-week-list');
+    if(!tabs||!list)return;
+    const options=[
+      {kind:'recharge',title:'Top Recharge'},
+      {kind:'charm',title:'Top Gift'},
+      {kind:'room',title:'Top Room'}
+    ];
+    let requestNo=0;
+    const buttons=new Map();
+    async function select(kind) {
+      const selected=++requestNo;
+      for(const [key,button] of buttons)
+        button.style.opacity=key===kind?'1':'.55';
+      list.textContent='Loading verified results…';
+      try {
+        const data=await api('GET','/rankings?period=weekly&kind='+kind);
+        if(requestNo!==selected||!list.isConnected||!session)return;
+        list.textContent='';
+        const leaders=Array.isArray(data.leaders)?data.leaders.slice(0,10):[];
+        if(!leaders.length){
+          list.textContent='No verified results for this week yet.';
+          return;
+        }
+        for(const item of leaders) {
+          const row=document.createElement('div');
+          row.className='wrw';
+          const place=document.createElement('span');
+          place.className='m';
+          place.textContent=['🥇','🥈','🥉'][item.rank-1]||'🏅';
+          const title=document.createElement('b');
+          title.textContent='#'+item.rank+' '+(item.name||'User')+
+            ' · ID '+(kind==='room'?item.room_id:item.public_id);
+          const amount=document.createElement('em');
+          amount.textContent='🪙 '+Number(item.total||0).toLocaleString('en-US');
+          row.append(place,title,amount);
+          list.appendChild(row);
+        }
+      }catch(error){
+        if(requestNo===selected&&list.isConnected)
+          list.textContent='Unable to load verified rankings: '+errText(error);
+      }
+    }
+    for(const option of options){
+      const button=document.createElement('button');
+      button.type='button';
+      button.textContent=option.title;
+      button.style.cssText='padding:9px 10px;border-radius:12px;'+
+        'border:1px solid #d4af37;background:#351164;color:#fff;font-weight:700';
+      button.onclick=()=>select(option.kind);
+      tabs.appendChild(button);
+      buttons.set(option.kind,button);
+    }
+    select('recharge');
   };
   const originalLogout=window.logout;
   window.logout=function(){
