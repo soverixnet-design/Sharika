@@ -1064,6 +1064,25 @@
     window.refresh();
     return wallet;
   }
+  async function refreshWalletAfterConfirmedTransaction(snapshot=null) {
+    const accountId=session?.user?.id;
+    try{await reloadWallet();return true;}
+    catch(error){
+      // Once D1 confirms a debit/credit, never claim it failed just because
+      // a subsequent wallet read or local display refresh had an outage.
+      if(session?.user?.id!==accountId)return false;
+      if(snapshot&&Number.isSafeInteger(snapshot.coins)&&snapshot.coins>=0)
+        balance.coins=snapshot.coins;
+      if(snapshot&&Number.isSafeInteger(snapshot.diamonds)&&snapshot.diamonds>=0)
+        balance.dia=snapshot.diamonds;
+      if(snapshot&&Number.isSafeInteger(snapshot.xp)&&snapshot.xp>=0)
+        balance.xp=snapshot.xp;
+      try{localStorage.setItem('vr_state_v2',JSON.stringify(balance));window.refresh();}
+      catch(e){console.warn('Wallet display refresh deferred:',errText(e));}
+      console.warn('Confirmed transaction; wallet refresh delayed:',errText(error));
+      return false;
+    }
+  }
   let roomsRequestNo=0;
   async function reloadRooms() {
     if (!session) return;
@@ -1339,6 +1358,7 @@
     frame.__luckyOff=true;
     let availableGiftIds=[];
     let giftBusy=false;
+    let pendingGiftRequest=null;
     let lastGiftEventId=null;
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     // Load only the real gift catalog approved in D1 by the admin panel.
@@ -1481,6 +1501,7 @@
       event.preventDefault();event.stopImmediatePropagation();
       if(giftBusy||!session)return;
       giftBusy=true;button.disabled=true;
+      let giftCommitted=false;
       try{
         const chosen=Number(frame.gsel);
         const giftId=availableGiftIds[chosen];
@@ -1492,11 +1513,15 @@
             frame.seats?.[Number(index)]?.public_id).filter(Boolean))];
         if(!giftId||!Number.isInteger(quantity)||quantity<1||quantity>10||
           !recipients.length)throw new Error('Select a gift and an occupied seat');
-        const requestId='gift:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+        const fingerprint=JSON.stringify([giftId,quantity,[...recipients].sort()]);
+        const requestId=pendingGiftRequest?.fingerprint===fingerprint
+          ?pendingGiftRequest.requestId:nextWalletRequestId('gift');
+        pendingGiftRequest={fingerprint,requestId};
         const result=await api('POST','/rooms/'+room.id+'/gifts',{
           gift_id:giftId,quantity,recipient_public_ids:recipients,request_id:requestId
         });
-        await reloadWallet();
+        giftCommitted=true;pendingGiftRequest=null;
+        await refreshWalletAfterConfirmedTransaction({coins:result.coins});
         frame.S.coins=balance.coins;
         frame.S.xp=balance.xp;
         frame.close();
@@ -1528,7 +1553,11 @@
         }
         const feed=await api('GET','/rooms/'+room.id+'/gifts').catch(()=>null);
         if(feed?.events?.length)lastGiftEventId=Math.max(...feed.events.map(e=>e.id));
-      }catch(error){frame.toast('Gift not sent: '+errText(error));}
+      }catch(error){
+        frame.toast(giftCommitted
+          ?'Gift sent, but screen update delayed: '+errText(error)
+          :'Gift not confirmed; check wallet before retrying: '+errText(error));
+      }
       finally{giftBusy=false;button.disabled=false;}
     },true);
     async function pollGiftEvents(){
@@ -2334,6 +2363,7 @@
   // The rate is fixed on the verified server: 100 diamonds -> 70 coins.
   window.RATE=0.7;
   let selectedRecharge='';let selectedDiamonds=null;let walletOperationBusy=false;
+  let pendingExchangeRequest=null;
   document.addEventListener('click',e=>{
     const exchange=e.target.closest?.('#rcp [data-e]');
     if(exchange){
@@ -2393,6 +2423,7 @@
       const targetField=document.getElementById('sharika-seller-target');
       if(targetField&&/^[0-9]{8}$/.test(targetId))targetField.value=targetId;
       const send=document.getElementById('sharika-seller-send');
+      let pendingSellerTransfer=null;
       if(send)send.addEventListener('click',async()=>{
         const recipient=document.getElementById('sharika-seller-target')?.value.trim()||'';
         const raw=document.getElementById('sharika-seller-amount')?.value.trim()||'';
@@ -2404,15 +2435,20 @@
           return;
         }
         send.disabled=true;
+        let transferCommitted=false;
         try{
           const verified=await api('GET','/users/'+recipient);
           if(String(verified.id)!==recipient)throw new Error('Recipient verification failed');
           if(!window.confirm('Send '+amount.toLocaleString('en-US')+' coins to '+
             String(verified.name||'User')+' (ID '+recipient+')?')){send.disabled=false;return;}
-          const requestId=nextWalletRequestId('seller');
+          const fingerprint=recipient+':'+amount;
+          const requestId=pendingSellerTransfer?.fingerprint===fingerprint
+            ?pendingSellerTransfer.requestId:nextWalletRequestId('seller');
+          pendingSellerTransfer={fingerprint,requestId};
           const result=await api('POST','/sellers/transfer',{
             target_public_id:recipient,coins:amount,request_id:requestId
           });
+          transferCommitted=true;pendingSellerTransfer=null;
           if(note)note.textContent='Transfer #'+result.transfer_id+' from ID '+
             sellerEscape(result.sender_public_id)+' to ID '+sellerEscape(recipient)+
             ' complete. Remaining seller stock: '+
@@ -2425,10 +2461,12 @@
             ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
             ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('')||'No transfers yet.';
           toast('Coin transfer recorded');
-          await reloadWallet();
+          await refreshWalletAfterConfirmedTransaction();
         }catch(error){
-          if(note)note.textContent=errText(error);
-          send.disabled=false;
+          if(note)note.textContent=(transferCommitted
+            ?'Transfer recorded; display update delayed: '
+            :'Transfer not confirmed; check history before retrying: ')+errText(error);
+          if(!transferCommitted)send.disabled=false;
         }
       });
     }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
@@ -2603,13 +2641,20 @@
     if(id==='ec'||id==='pc'){
       if(walletOperationBusy)return;
       walletOperationBusy=true;button.disabled=true;
+      let actionConfirmed=false;
       try{
         if(id==='ec'){
           if(!selectedDiamonds)throw new Error('Select a diamond amount');
+          const requestId=pendingExchangeRequest?.diamonds===selectedDiamonds
+            ?pendingExchangeRequest.requestId:nextWalletRequestId('exchange');
+          pendingExchangeRequest={diamonds:selectedDiamonds,requestId};
           const result=await api('POST','/wallet/exchange',{
-            diamonds:selectedDiamonds,request_id:nextWalletRequestId('exchange')
+            diamonds:selectedDiamonds,request_id:requestId
           });
-          await reloadWallet();
+          actionConfirmed=true;pendingExchangeRequest=null;
+          await refreshWalletAfterConfirmedTransaction({
+            coins:result.coins,diamonds:result.diamonds
+          });
           window.closeSheet();
           toast(result.duplicate?'Exchange already completed':
             'Exchange complete: +'+result.credited_coins+' coins');
@@ -2621,10 +2666,15 @@
               '. Please verify payment and confirm before crediting coins.',
             request_id:nextWalletRequestId('recharge')
           });
+          actionConfirmed=true;
           window.closeSheet();
           toast('Recharge request sent to verified support. No coins added yet.');
         }
-      }catch(error){toast('Request not completed: '+errText(error));}
+      }catch(error){
+        toast(actionConfirmed
+          ?'Request confirmed; screen update delayed: '+errText(error)
+          :'Request not confirmed; check transaction history before retrying: '+errText(error));
+      }
       finally{walletOperationBusy=false;button.disabled=false;}
       return;
     }
