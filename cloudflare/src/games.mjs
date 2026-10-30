@@ -84,6 +84,58 @@ export async function settleDueBets(db,uid,now=Date.now()){
   }
   return resolved;
 }
+// Credits expired game bets even when their owners have not reopened the app.
+// A small per-request cap bounds Worker work; the storage trigger guarantees
+// every winning bet is credited at most once across concurrent requests.
+export async function settleAllDueBets(db,now=Date.now()){
+  const pending=(await db.prepare(
+    "SELECT b.id,b.user_uid,b.game,b.round_no,b.pick_index,b.stake,r.seed_hex "+
+    "FROM sharika_game_bets b JOIN sharika_game_rounds r ON r.id=b.round_id "+
+    "WHERE b.status='accepted' AND r.closes_ms<=? ORDER BY b.id LIMIT 25"
+  ).bind(now).all()).results||[];
+  let resolved=0;
+  for(const bet of pending){
+    const result=await roundResult(bet);
+    const won=bet.game==='food-wheel'
+      ? bet.pick_index===result.sector : result.jackpot;
+    const payout=won?bet.stake*TYPES[bet.game].multiplier:0;
+    const updated=await db.prepare(
+      "UPDATE sharika_game_bets SET status='settled',payout=?,result_json=?,settled_at=datetime('now') "+
+      "WHERE id=? AND user_uid=? AND status='accepted'"
+    ).bind(payout,JSON.stringify(result),bet.id,bet.user_uid).run();
+    if(updated.meta?.changes===1)resolved++;
+  }
+  return resolved;
+}
+
+export function periodStartUtc(period,now=Date.now()){
+  if(!['daily','weekly','monthly'].includes(period))return null;
+  const d=new Date(now);
+  d.setUTCHours(0,0,0,0);
+  if(period==='weekly')d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
+  if(period==='monthly')d.setUTCDate(1);
+  return d.toISOString().slice(0,19).replace('T',' ');
+}
+
+// Top finishers are derived from the seed-confirmed result, never from fake
+// client animations or whether a user's wallet was queried after round end.
+async function roundWinners(db,round){
+  if(!round)return [];
+  const result=round.outcome;
+  if(round.game==='jackpot-fruit'&&!result.jackpot)return [];
+  const extra=round.game==='food-wheel'?' AND b.pick_index=?':'';
+  const args=[round.game,round.round_no];
+  if(round.game==='food-wheel')args.push(result.sector);
+  const winners=(await db.prepare(
+    'SELECT u.public_no,u.name,b.stake FROM sharika_game_bets b '+
+    'JOIN sharika_users u ON u.auth_uid=b.user_uid '+
+    'WHERE b.game=? AND b.round_no=?'+extra+
+    ' ORDER BY b.stake DESC,b.id ASC LIMIT 3'
+  ).bind(...args).all()).results||[];
+  return winners.map((r,i)=>({rank:i+1,user_id:r.public_no,name:r.name,
+    payout:r.stake*TYPES[round.game].multiplier}));
+}
+
 async function finishedRound(db,game,roundNo,now){
   const row=await db.prepare('SELECT * FROM sharika_game_rounds WHERE game=? AND round_no=?')
     .bind(game,roundNo).first();
@@ -99,12 +151,59 @@ export async function handleGameRequest({request,db,uid,game,action,reply,fail,c
   if(!user||user.status!=='active')return fail('profile_unavailable',403,cors);
   if(user.minor)return fail('games_adult_only',403,cors);
   await settleDueBets(db,uid,now);
+  await settleAllDueBets(db,now);
   if(action==='history'&&request.method==='GET'){
     const rows=(await db.prepare(
       'SELECT id,round_no,stake,pick_index,status,payout,result_json,created_at '+
       'FROM sharika_game_bets WHERE user_uid=? AND game=? ORDER BY id DESC LIMIT 30'
     ).bind(uid,game).all()).results||[];
     return reply({game,history:rows.map(safeBet)},200,cors);
+  }
+  if(action==='stats'&&request.method==='GET'){
+    const from=periodStartUtc('daily',now);
+    const totals=await db.prepare(
+      "SELECT COUNT(*) AS plays, COALESCE(SUM(stake),0) AS staked, "+
+      "COALESCE(SUM(payout),0) AS won, "+
+      "COALESCE(SUM(CASE WHEN payout>0 THEN 1 ELSE 0 END),0) AS wins "+
+      "FROM sharika_game_bets WHERE game=? AND user_uid=? "+
+      "AND status='settled' AND settled_at>=?"
+    ).bind(game,uid,from).first();
+    return reply({game,period:'daily',since_utc:from,timezone:'UTC',
+      plays:totals?.plays||0,wins:totals?.wins||0,
+      total_won:totals?.won||0,total_staked:totals?.staked||0,
+      net_coins:(totals?.won||0)-(totals?.staked||0)},200,cors);
+  }
+  if(action==='rankings'&&request.method==='GET'){
+    const period=new URL(request.url).searchParams.get('period')||'daily';
+    const from=periodStartUtc(period,now);
+    if(!from)return fail('invalid_ranking_period',400,cors);
+    const rows=(await db.prepare(
+      "SELECT u.public_no,u.name,COUNT(*) AS plays, "+
+      "COALESCE(SUM(b.payout),0) AS total_won, "+
+      "COALESCE(SUM(b.stake),0) AS total_staked, "+
+      "COALESCE(SUM(CASE WHEN b.payout>0 THEN 1 ELSE 0 END),0) AS wins "+
+      "FROM sharika_game_bets b JOIN sharika_users u ON u.auth_uid=b.user_uid "+
+      "WHERE b.game=? AND b.status='settled' AND b.settled_at>=? "+
+      "GROUP BY b.user_uid HAVING SUM(b.payout)>0 "+
+      "ORDER BY total_won DESC,wins DESC,u.public_no ASC LIMIT 20"
+    ).bind(game,from).all()).results||[];
+    return reply({game,period,since_utc:from,timezone:'UTC',
+      ranking:rows.map((r,i)=>({rank:i+1,user_id:r.public_no,name:r.name,
+        plays:r.plays,wins:r.wins,total_won:r.total_won,
+        total_staked:r.total_staked}))},200,cors);
+  }
+  if(action==='rounds'&&request.method==='GET'){
+    const rows=(await db.prepare(
+      'SELECT * FROM sharika_game_rounds WHERE game=? AND closes_ms<=? '+
+      'ORDER BY round_no DESC LIMIT 30'
+    ).bind(game,now).all()).results||[];
+    const rounds=[];
+    for(const row of rows){
+      const item={...publicRound(row),seed_hex:row.seed_hex,
+        outcome:await roundResult(row)};
+      rounds.push({...item,top_three:await roundWinners(db,{...item,game})});
+    }
+    return reply({game,rounds,timezone:'UTC'},200,cors);
   }
   if(action!=='state'&&action!=='bet')return fail('game_route_not_found',404,cors);
   const round=await ensureRound(db,game,now);
@@ -117,12 +216,14 @@ export async function handleGameRequest({request,db,uid,game,action,reply,fail,c
         .bind(uid,game,round.round_no-1).first()
     ]);
     const current=await db.prepare('SELECT coins FROM sharika_users WHERE auth_uid=?').bind(uid).first();
+    const previousWinners=await roundWinners(db,previous?{...previous,game}:null);
     return reply({game,round:publicRound(round),phase:now<round.bet_closes_ms?'betting':'waiting',
       server_time:now,symbols:spec.symbols,payout_multiplier:spec.multiplier,
       rules:game==='food-wheel'?'Pick one of 9 equal sectors; winning pick pays 9x the stake.':
         'Three matching fruits pay 36x the stake; all other results pay zero.',
       one_bet_per_round:true,coins:current?.coins||0,
-      my_bet:safeBet(own),previous_result:previous,previous_bet:safeBet(previousBet),
+      my_bet:safeBet(own),previous_result:previous,
+      previous_winners:previousWinners,previous_bet:safeBet(previousBet),
       virtual_coins_only:true},200,cors);
   }
   if(action==='bet'&&request.method==='POST'){

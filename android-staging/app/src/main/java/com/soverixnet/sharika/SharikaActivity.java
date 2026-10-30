@@ -326,6 +326,8 @@ public final class SharikaActivity extends Activity {
         // No /admin, arbitrary URLs, billing, redirects or platform credentials.
         if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(rich|charm|room)$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/me"))
             return method.equals("GET") || method.equals("POST") || method.equals("PATCH");
@@ -340,7 +342,7 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET") || method.equals("PUT") || method.equals("DELETE");
         if (path.matches("^/api/v1/messages/[0-9]{8}$"))
             return method.equals("GET") || method.equals("POST");
-        if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/(state|history)$"))
+        if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/(state|history|rounds|stats|rankings)$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/bet$"))
             return method.equals("POST");

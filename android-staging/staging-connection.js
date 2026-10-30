@@ -1022,10 +1022,11 @@
       if(requestNo===rankingRequest)view.textContent='Rankings unavailable: '+errText(error);
     }
   };
-  // Food Wheel is a real packaged game-selection card, not playable betting.
-  // It uses the exact user-supplied artwork and preserves both original sheets.
+  // Keep the original room layout; playable games use server-owned bets and outcomes.
+  // The Food Wheel cover is the user's supplied artwork.
   let gameViewTimer=null;
   const announcedGameResults=new Set();
+  const announcedRoundWinners=new Set();
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
     if(gameViewTimer){clearInterval(gameViewTimer);gameViewTimer=null;}
@@ -1047,6 +1048,31 @@
     const stage=sheet.querySelector('#sharika-game-stage');
     let active=null,gameState=null,chosen=0,refreshing=false,submitting=false;
     let seenVisualResult='',wheelRotation=0;
+    function showGameInfo(lines){
+      const output=stage.querySelector('#sg-extra-output');
+      if(output)output.textContent=lines.join('\n');
+    }
+    function showTopThree(winners,game,roundNo){
+      if(!Array.isArray(winners)||!winners.length)return;
+      const key=game+':'+roundNo;
+      if(announcedRoundWinners.has(key))return;
+      announcedRoundWinners.add(key);
+      const label=game==='food-wheel'?'Food Wheel':'Jackpot Fruit';
+      const banner=doc.createElement('div');
+      banner.setAttribute('role','status');
+      banner.style.cssText='position:fixed;z-index:999999;top:17%;left:5%;width:90%;'+
+        'box-sizing:border-box;border:2px solid #fbbf24;border-radius:18px;'+
+        'background:linear-gradient(100deg,#310061,#8514ae,#e26811);'+
+        'color:white;font-weight:bold;padding:13px 16px;text-align:center;'+
+        'box-shadow:0 10px 40px #0009;pointer-events:none;'+
+        'transform:translateX(110vw);transition:transform .8s ease-out';
+      banner.textContent='🏆 '+label+' · Round '+roundNo+' · '+
+        winners.map(w=>w.rank+'. '+w.name+' +'+Number(w.payout).toLocaleString('en-US')).join(' · ');
+      doc.body.appendChild(banner);
+      setTimeout(()=>{if(banner.isConnected)banner.style.transform='translateX(0)'},50);
+      setTimeout(()=>banner.remove(),10000);
+    }
+
     function display(state){
       gameState=state;
       const resultEl=stage.querySelector('#sg-result');
@@ -1072,6 +1098,12 @@
       }
       if(bet)result+=' · Your current bet: '+Number(bet.stake).toLocaleString('en-US')+' coins';
       resultEl.textContent=result;
+      const winners=Array.isArray(state.previous_winners)?state.previous_winners:[];
+      const topEl=stage.querySelector('#sg-top-three');
+      if(topEl)topEl.textContent=winners.length?'🏆 Top 3: '+
+        winners.map(w=>w.rank+'. '+w.name+' +'+Number(w.payout).toLocaleString('en-US')).join(' · '):
+        'No winners in the previous round';
+      if(state.previous_result)showTopThree(winners,active,state.previous_result.round_no);
       // Reveal only the confirmed server outcome. Never fabricate winners.
       const previous=state.previous_result;
       if(previous){
@@ -1179,7 +1211,55 @@
         '<span style="font-size:12px">Balance: <b id="sg-coins">—</b></span></div>'+
         '<button id="sg-bet" class="btn" type="button" disabled '+
         'style="width:100%;padding:12px;border-radius:12px">Connecting…</button>'+
-        '<div class="empty" id="sg-result" style="padding:12px 4px"></div>';
+        '<div class="empty" id="sg-result" style="padding:12px 4px"></div>'+
+        '<div class="empty" id="sg-top-three" style="padding:6px 0;font-size:12px"></div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">'+
+          '<button type="button" id="sg-stats" class="btn" style="flex:1">Today</button>'+
+          '<button type="button" id="sg-history" class="btn" style="flex:1">30 rounds</button>'+
+          '<button type="button" id="sg-ranking" class="btn" style="flex:1">Ranking</button>'+
+          '<select id="sg-period" aria-label="Ranking period" style="border-radius:8px;background:#271149;color:white">'+
+            '<option value="daily">Daily</option><option value="weekly">Weekly</option>'+
+            '<option value="monthly">Monthly</option></select></div>'+
+        '<pre id="sg-extra-output" style="white-space:pre-wrap;overflow-y:auto;max-height:220px;'+
+          'font:13px/1.6 sans-serif;color:#eee9ff;margin:8px 0"></pre>';
+      async function loadGameDetails(type){
+        const shownGame=game;
+        showGameInfo(['Loading verified game records…']);
+        try{
+          let lines=[];
+          if(type==='stats'){
+            const d=await api('GET','/games/'+shownGame+'/stats');
+            lines=['Today (UTC): '+Number(d.total_won).toLocaleString('en-US')+' coins won',
+              'Bets: '+d.plays+' · Winning bets: '+d.wins,
+              'Staked: '+Number(d.total_staked).toLocaleString('en-US')+
+              ' · Net: '+Number(d.net_coins).toLocaleString('en-US')];
+          }else if(type==='history'){
+            const d=await api('GET','/games/'+shownGame+'/rounds');
+            lines=['Last '+d.rounds.length+' verified rounds (UTC)'];
+            for(const r of d.rounds){
+              const outcome=shownGame==='food-wheel'?r.outcome.symbol:r.outcome.reels.join(' ');
+              const top=r.top_three?.length
+                ?' · 🏆 '+r.top_three.map(w=>w.name+' +'+w.payout).join(', '):'';
+              lines.push('#'+r.round_no+' · '+outcome+top);
+            }
+            if(d.rounds.length===0)lines.push('No completed rounds yet');
+          }else{
+            const period=stage.querySelector('#sg-period')?.value||'daily';
+            const d=await api('GET','/games/'+shownGame+'/rankings?period='+period);
+            lines=[period.toUpperCase()+' game winners (UTC)'];
+            for(const r of d.ranking)
+              lines.push(r.rank+'. '+r.name+' · '+Number(r.total_won).toLocaleString('en-US')+' coins');
+            if(d.ranking.length===0)lines.push('No verified winners yet');
+          }
+          if(active===shownGame)showGameInfo(lines);
+        }catch(e){
+          if(active===shownGame)showGameInfo(['Game records unavailable: '+errText(e)]);
+        }
+      }
+      stage.querySelector('#sg-stats').onclick=()=>loadGameDetails('stats');
+      stage.querySelector('#sg-history').onclick=()=>loadGameDetails('history');
+      stage.querySelector('#sg-ranking').onclick=()=>loadGameDetails('rankings');
+      stage.querySelector('#sg-period').onchange=()=>loadGameDetails('rankings');
       const choices=stage.querySelector('#sg-choices');
       if(choices){
         function paint(){choices.querySelectorAll('button').forEach((b,i)=>{

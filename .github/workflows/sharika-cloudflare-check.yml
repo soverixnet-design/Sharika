@@ -48,6 +48,14 @@ jobs:
           assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='tester'").fetchone()[0] == 600
           db.execute("UPDATE sharika_game_bets SET status='settled' WHERE id=1")
           assert db.execute("SELECT COUNT(*) FROM sharika_wallet_ledger").fetchone()[0] == 2
+          # The ninth Food Wheel sector must be accepted by SQLite too.
+          # It used to be wrongly rejected by a 0..7 CHECK constraint.
+          db.execute("INSERT INTO sharika_game_rounds(id,game,round_no,starts_ms,bet_closes_ms,closes_ms,seed_hex,commit_sha256) VALUES ('food-wheel:2','food-wheel',2,?,?,?,?,?)",
+                     (now,now+30000,now+40000,'c'*64,'d'*64))
+          db.execute("INSERT INTO sharika_game_bets(game,round_no,round_id,user_uid,stake,pick_index,request_id) VALUES ('food-wheel',2,'food-wheel:2','tester',10,8,'game-test-sector9-567890')")
+          assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='tester'").fetchone()[0] == 590
+          assert db.execute("SELECT COUNT(*) FROM sharika_wallet_ledger").fetchone()[0] == 3
+          print('All 9 Food Wheel sectors allowed; existing ledger preserved')
           print('Game debit/payout ledger and replay protection verified')
           print('Sharika D1 schema valid:', len(tables), 'tables')
           PY

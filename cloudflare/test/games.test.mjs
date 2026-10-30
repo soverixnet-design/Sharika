@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
-import { roundResult, handleGameRequest, settleDueBets } from '../src/games.mjs';
+import { roundResult, handleGameRequest, settleDueBets, settleAllDueBets, periodStartUtc } from '../src/games.mjs';
 globalThis.crypto ??= webcrypto;
 
 const seed='ab'.repeat(32);
@@ -68,4 +68,23 @@ test('settlement has no effect when no expired authenticated bets exist',async()
   const db=fakeDb();
   assert.equal(await settleDueBets(db,'alice'),0);
   assert.equal(db.calls.some(x=>x.type==='run'),false);
+});
+
+
+test('daily, Monday-weekly, and monthly game totals use fixed UTC boundaries',()=>{
+  const now=Date.UTC(2026,9,30,21,55,0);
+  assert.equal(periodStartUtc('daily',now),'2026-10-30 00:00:00');
+  assert.equal(periodStartUtc('weekly',now),'2026-10-26 00:00:00');
+  assert.equal(periodStartUtc('monthly',now),'2026-10-01 00:00:00');
+  assert.equal(periodStartUtc('invalid',now),null);
+});
+
+test('new history and personal stats endpoints require adult and reveal no demo rankings',async()=>{
+  const db=fakeDb();
+  for(const route of ['stats','rankings','rounds']){
+    const response=await handleGameRequest(args(db,'food-wheel',route));
+    assert.equal(response.status,200);
+  }
+  assert.equal(await settleAllDueBets(db),0);
+  assert.equal(db.calls.some(x=>x.sql.includes('INSERT INTO sharika_game_bets')),false);
 });
