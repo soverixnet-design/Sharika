@@ -3,8 +3,8 @@
 // Round seed is committed in D1 before bets; clients see it only after the round ends.
 const GAMES={
   'sovera-food':{name:'Sovera Food Wheel',symbols:['🍗','🐟','🌭','🥩','🍇','🥬','🫑','🍉'],mult:[45,25,15,10,5,5,5,5],chips:[50,500,2000,10000]},
-  'night-food':{name:'Night Food Wheel',symbols:['🌭','🍢','🍗','🥩','🥕','🌽','🥬','🍅'],mult:[10,15,25,45,5,5,5,5,1.2,4],chips:[10000,100000,500000,1000000]},
-  'jackpot-fruit':{name:'Jackpot Fruit',symbols:['🍋','🍇','🥝','🍑','🍓','🍌','🍉','🍒'],mult:[5,5,5,5,10,10,20,40],chips:[10000,100000,500000,1000000]}
+  'night-food':{name:'Night Food Wheel',symbols:['🌭','🍢','🍗','🥩','🥕','🌽','🥬','🍅'],mult:[10,15,25,45,5,5,5,5,1.2,4],chips:[1000,10000,100000,1000000,10000000]},
+  'jackpot-fruit':{name:'Jackpot Fruit',symbols:['🍋','🍇','🥝','🍑','🍓','🍌','🍉','🍒'],mult:[5,5,5,5,10,10,20,40],chips:[1000,10000,100000,1000000,10000000]}
 };
 export const ORIGINAL_ROUND_MS=40000;
 const BET_MS=28000,MAX_STAKE=100000000,ID=/^[A-Za-z0-9:_-]{12,80}$/;
