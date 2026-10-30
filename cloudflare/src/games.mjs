@@ -234,20 +234,24 @@ export async function handleGameRequest({request,db,uid,game,action,reply,fail,c
     }catch(_){return fail('invalid_game_bet',400,cors);}
     const stake=input?.stake,pick=input?.pick,requestId=input?.request_id,roundNo=input?.round_no;
     if(!Number.isSafeInteger(stake)||stake<1||stake>MAX_STAKE||
-       !Number.isSafeInteger(roundNo)||roundNo!==round.round_no||
+       !Number.isSafeInteger(roundNo)||roundNo<0||
        typeof requestId!=='string'||!REQUEST_ID.test(requestId)||
        (game==='food-wheel'&&(!Number.isInteger(pick)||pick<0||pick>=spec.symbols.length))||
        (game==='jackpot-fruit'&&pick!==undefined&&pick!==null))
       return fail('invalid_game_bet',400,cors);
+    // A closed round must not hide a previously accepted request from a
+    // client retry. The unique request ID is scoped to the verified user.
     const existing=await db.prepare('SELECT * FROM sharika_game_bets WHERE user_uid=? AND request_id=?')
       .bind(uid,requestId).first();
     if(existing){
-      if(existing.round_id!==round.id||existing.stake!==stake||
+      if(existing.game!==game||existing.round_no!==roundNo||
+         existing.stake!==stake||
          existing.pick_index!==(game==='food-wheel'?pick:null))
         return fail('idempotency_conflict',409,cors);
       return reply({bet:safeBet(existing),duplicate:true},200,cors);
     }
-    if(Date.now()>=round.bet_closes_ms)return fail('betting_closed',409,cors);
+    if(roundNo!==round.round_no||Date.now()>=round.bet_closes_ms)
+      return fail('betting_closed',409,cors);
     if(user.coins<stake)return fail('insufficient_coins',409,cors);
     try{
       await db.prepare('INSERT INTO sharika_game_bets '+
