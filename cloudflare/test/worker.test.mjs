@@ -760,3 +760,93 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
     assert.deepEqual(calls.map(x=>x[0]),['lock','seat']);
   }finally{globalThis.fetch=oldFetch;}
 });
+
+test('mic invitations require room owner, an unseated real member and recipient consent',async()=>{
+  const previousFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try {
+    const uid='firebase:'+project+':secure-user';
+    const roomId='10000001';
+    const base='https://example.test/api/v1/rooms/'+roomId+'/invitations';
+    const headers={Authorization:'Bearer '+await token()};
+    function roomDb(owner,joined=true,targetJoined=true){
+      const db=fakeDb(),previous=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const statement=previous(sql);
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id=?'))
+          statement.first=async()=>({id:roomId,owner_id:owner,seat_count:12});
+        if(sql.includes('FROM sharika_room_members WHERE room_id=?'))
+          statement.first=async()=>joined?{user_id:uid,seat_no:null,role:'member'}:null;
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          statement.first=async()=>({auth_uid:uid,status:'active',public_no:10000002});
+        if(sql.includes('SELECT u.auth_uid,u.status,m.seat_no FROM sharika_room_members m'))
+          statement.first=async()=>targetJoined?{
+            auth_uid:'target-uid',status:'active',seat_no:null
+          }:null;
+        return statement;
+      };
+      return db;
+    }
+    const calls=[];
+    const rooms={getByName(name){
+      assert.equal(name,'sharika:'+roomId);
+      return {
+        async seatInvitePending(user){calls.push(['pending',user]);return {invite:null};},
+        async seatInviteSend(...args){
+          calls.push(['send',...args]);
+          return {seat_no:args[3],invited_at_ms:1,expires_at_ms:2};
+        },
+        async seatInviteRespond(...args){
+          calls.push(['respond',...args]);
+          return {accepted:args[3],seat_no:args[2]};
+        }
+      };
+    }};
+    const post=(body)=>new Request(base,{
+      method:'POST',headers,body:JSON.stringify(body)
+    });
+    const correct={seat_no:4,target_public_id:'10000003'};
+    const env=(owner,joined=true,targetJoined=true)=>({
+      DB:roomDb(owner,joined,targetJoined),
+      VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    const denied=await handleRequest(post(correct),env('different-owner'));
+    assert.equal(denied.status,403);
+    assert.equal(calls.length,0);
+    const outsider=await handleRequest(new Request(base,{headers}),env(uid,false));
+    assert.equal(outsider.status,403);
+    const missing=await handleRequest(post(correct),env(uid,true,false));
+    assert.equal(missing.status,409);
+    assert.equal(calls.length,0);
+    const invalid=await handleRequest(post({seat_no:25,target_public_id:'10000003'}),env(uid));
+    assert.equal(invalid.status,400);
+    const sent=await handleRequest(post(correct),env(uid));
+    assert.equal(sent.status,201);
+    assert.deepEqual(calls[0],['send',roomId,uid,'target-uid',4]);
+    const pending=await handleRequest(new Request(base,{headers}),env('different-owner'));
+    assert.equal(pending.status,200);
+    assert.deepEqual(calls[1],['pending',uid]);
+    const response=(body)=>new Request(base+'/respond',{
+      method:'POST',headers,body:JSON.stringify(body)
+    });
+    const bad=await handleRequest(response({seat_no:4,accept:'true'}),env('different-owner'));
+    assert.equal(bad.status,400);
+    const accepted=await handleRequest(response({seat_no:4,accept:true}),env('different-owner'));
+    assert.equal(accepted.status,200);
+    assert.equal((await accepted.json()).accepted,true);
+    assert.deepEqual(calls[2],['respond',roomId,uid,4,true]);
+    const declined=await handleRequest(response({seat_no:4,accept:false}),env('different-owner'));
+    assert.equal(declined.status,200);
+    assert.equal((await declined.json()).accepted,false);
+  }finally{globalThis.fetch=previousFetch;}
+});
+
+test('mic invitations deny unauthenticated users before any database lookups',async()=>{
+  const db=fakeDb();
+  const response=await handleRequest(new Request(
+    'https://example.test/api/v1/rooms/10000001/invitations'),{
+    DB:db,FIREBASE_PROJECT_ID:project
+  });
+  assert.equal(response.status,401);
+  assert.equal(db.calls.length,0);
+});
