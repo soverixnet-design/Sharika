@@ -63,6 +63,8 @@ jobs:
               !html.includes('<script src="./connection.js">') ||
               !bridge.includes("window.API.login") ||
               !bridge.includes("SharikaNative") ||
+              !bridge.includes("fitAndroidViewport(document, false)") ||
+              !bridge.includes("fitAndroidViewport(frame.document, true)") ||
               /rfrmcmeyamndghtiheci\.supabase\.co|sb_publishable_/.test(bridge)) {
             throw new Error('Original design or staging-only connection contract failed');
           }
