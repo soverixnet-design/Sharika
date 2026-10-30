@@ -32,6 +32,28 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout owner-owned Sovera source cosmetics at a pinned commit
+        uses: actions/checkout@v4
+        with:
+          repository: soverixnet-design/sovera-voice-app
+          ref: 0e30b48962272b8a687509aef4dee9bc4a047767
+          path: _sovera_cosmetics
+          persist-credentials: false
+
+      - name: Bundle original Sovera frames, entrances, medals and sound in staging APK
+        run: |
+          mkdir -p app/src/main/assets/sovera-effects
+          mkdir -p app/src/main/assets/sovera-medals
+          mkdir -p app/src/main/assets/sovera-sounds
+          cp -a ../_sovera_cosmetics/assets/effects/. app/src/main/assets/sovera-effects/
+          cp -a ../_sovera_cosmetics/assets/medals/. app/src/main/assets/sovera-medals/
+          cp -a ../_sovera_cosmetics/assets/sounds/. app/src/main/assets/sovera-sounds/
+          test "$(find app/src/main/assets/sovera-effects -type f | wc -l)" -ge 30
+          for effect in royal-gold.webp violet-love.webp ice-admin.webp vip7.webp phoenix-queen-entry.webp lion-queen-entry.webp; do
+            test -s "app/src/main/assets/sovera-effects/$effect"
+          done
+          echo 'SOVERA_ORIGINAL_COSMETICS_BUNDLED_OFFLINE'
+
       - name: Check that this APK cannot use the wrong Firebase project
         run: |
           node - <<'NODE'
@@ -135,6 +157,13 @@ jobs:
         env:
           SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify original Sovera cosmetics are inside the offline APK
+        run: |
+          for effect in royal-gold.webp violet-love.webp ice-admin.webp vip7.webp phoenix-queen-entry.webp lion-queen-entry.webp; do
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/sovera-effects/$effect"
+          done
+          echo 'SOVERA_FRAMES_ENTRIES_IN_APK_VERIFIED'
 
       - name: Check original game cards and HTML are packaged in the staging APK
         run: |
