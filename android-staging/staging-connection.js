@@ -1004,6 +1004,10 @@
   // Block simulated gift/chat bots in the original room HTML only in this
   // packaged staging APK. Do not edit the user's original layout or art.
   if(typeof window.ROOM_HTML === 'string') {
+    window.ROOM_HTML=window.ROOM_HTML.replace('coins:12450,xp:7200','coins:0,xp:0');
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      /var base=\[\{n:"You",e:"😎"\}[\s\S]*?\];\nfor\(var q=0;/,
+      'var base=[];\nfor(var q=0;');
     window.ROOM_HTML=window.ROOM_HTML.replace('setInterval(botGift,28000);','');
     window.ROOM_HTML=window.ROOM_HTML.replace(
       'function others(){return seats.filter(function(s){return s.i>0&&!s.empty&&!s.lock})}',
