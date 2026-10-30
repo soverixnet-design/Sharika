@@ -683,10 +683,10 @@
   P.rank=async function () {
     const root=byId('pg');
     let kind='rich',period='weekly',requestNo=0;
-    const kinds={rich:'Rich · sent',charm:'Charm · received',room:'Rooms'};
+    const kinds={rich:'Rich · sent',charm:'Charm · received',room:'Rooms',recharge:'Top Recharge'};
     const periods={daily:'Daily',weekly:'Weekly',monthly:'Monthly'};
-    root.innerHTML='<div class="card"><h3>Verified gift rankings</h3>'+
-      '<p>Rankings reflect settled gift transfers in the Android app, not simulated players or payouts.</p>'+
+    root.innerHTML='<div class="card"><h3>Verified wallet rankings</h3>'+
+      '<p>Gift ranks reflect settled transfers; Top Recharge counts only approved seller or finance recharge coins. No simulated players or payouts.</p>'+
       '<div class="row" id="rank-kinds">'+Object.entries(kinds).map(([key,label])=>
         '<button class="btn" type="button" data-rkind="'+esc(key)+'">'+esc(label)+'</button>'
       ).join('')+'</div>'+
@@ -704,11 +704,11 @@
         if(current!==requestNo)return;
         const leaders=Array.isArray(data.leaders)?data.leaders:[];
         if(!leaders.length){
-          results.textContent='No settled gifts recorded for this period.';
+          results.textContent=kind==='recharge'?'No approved recharges recorded for this period.':'No settled gifts recorded for this period.';
           return;
         }
         const labels=kind==='room'?['Rank','Room ID','Room','Gift coins']:
-          ['Rank','User ID','Name','Gift coins'];
+          ['Rank','User ID','Name',kind==='recharge'?'Approved recharge coins':'Gift coins'];
         const rows=leaders.map(item=>kind==='room'
           ?[fmt(item.rank),esc(item.room_id),esc(item.name),fmt(item.total)]
           :[fmt(item.rank),esc(item.public_id),esc(item.name),fmt(item.total)]);
