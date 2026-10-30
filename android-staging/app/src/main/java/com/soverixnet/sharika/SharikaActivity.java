@@ -60,6 +60,10 @@ public final class SharikaActivity extends Activity {
     private WebView browser;
     private PermissionRequest pendingMic;
     private boolean googlePending;
+    // Firebase reload contacts the identity server; refreshing on every
+    // 1.6-second live-game poll causes overlapping network calls.
+    private volatile String recentlyVerifiedUserId;
+    private volatile long lastVerifiedReloadMs;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -371,6 +375,15 @@ public final class SharikaActivity extends Activity {
         if (user == null) {
             sendResult(id, result(false,null,"login_required")); return;
         }
+        // Check verified email with Firebase regularly, not on every live-game
+        // state poll. Every individual API call still gets a Firebase ID token;
+        // the Worker validates that token and the user on each request.
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (user.getUid().equals(recentlyVerifiedUserId)
+            && user.isEmailVerified() && now - lastVerifiedReloadMs < 60000L) {
+            requestStagingToken(id, method, path, data, user);
+            return;
+        }
         user.reload().addOnCompleteListener(this, reload -> {
             FirebaseUser current = auth.getCurrentUser();
             if (!reload.isSuccessful() || current == null) {
@@ -379,14 +392,21 @@ public final class SharikaActivity extends Activity {
             if (!current.isEmailVerified()) {
                 sendResult(id, result(false,null,"email_verification_required")); return;
             }
-            current.getIdToken(false).addOnCompleteListener(this, token -> {
-                if (!token.isSuccessful() || token.getResult() == null
-                    || token.getResult().getToken() == null) {
-                    sendResult(id, result(false,null,"firebase_token_unavailable")); return;
-                }
-                JSONObject body = data.optJSONObject("body");
-                io.execute(() -> stageHttp(id, method, path, body, token.getResult().getToken()));
-            });
+            recentlyVerifiedUserId = current.getUid();
+            lastVerifiedReloadMs = android.os.SystemClock.elapsedRealtime();
+            requestStagingToken(id, method, path, data, current);
+        });
+    }
+
+    private void requestStagingToken(String id, String method, String path,
+                                    JSONObject data, FirebaseUser user) {
+        user.getIdToken(false).addOnCompleteListener(this, token -> {
+            if (!token.isSuccessful() || token.getResult() == null
+                || token.getResult().getToken() == null) {
+                sendResult(id, result(false,null,"firebase_token_unavailable")); return;
+            }
+            JSONObject body = data.optJSONObject("body");
+            io.execute(() -> stageHttp(id, method, path, body, token.getResult().getToken()));
         });
     }
 
