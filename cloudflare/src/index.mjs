@@ -7,7 +7,7 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
-import { drawLuckyGift, CASHOUT_LUCKY_GIFTS_BLOCKED } from './lucky-gifts.mjs';
+import { drawLuckyGift, luckyGiftBenefits, CASHOUT_LUCKY_GIFTS_BLOCKED } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -540,8 +540,23 @@ export async function handleRequest(request, env) {
         }
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
+      // Room-earned Lucky rewards are room balances, never an automatic
+      // credit to the owner's withdrawable wallet. Source-level cashout hold
+      // prevents listing this ledger until approvals and D1 schema are ready.
+      if (parts.length===5 && action==='rewards' && request.method==='GET') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(CASHOUT_LUCKY_GIFTS_BLOCKED)
+          return fail('lucky_cashout_approval_required',403,cors);
+        const result=await env.DB.prepare(
+          'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
+          'FROM sharika_lucky_room_rewards WHERE room_id=?'
+        ).bind(roomId).first();
+        const points=Number(result?.points)||0;
+        return reply({room_id:roomId,reward_coins:Math.floor(points/100),
+          reward_fraction_hundredths:points%100,reward_hundredths:points},200,cors);
+      }
       // Gift sending uses the real D1 catalog and an all-or-nothing ledger.
-      // Lucky/random-payout items stay off until their fair game engine exists.
+      // Lucky/random-payout items remain blocked pending cashout compliance.
       if (parts.length===5 && action==='gifts') {
         if(!member)return fail('join_room_first',403,cors);
         if(request.method==='GET') {
@@ -615,7 +630,7 @@ export async function handleRequest(request, env) {
           if(!Number.isSafeInteger(spend)||spend<1||spend>100000000)
             return fail('gift_amount_exceeds_limit',400,cors);
           const sender=await assertActive(env.DB,uid);
-          let lucky=null;
+          let lucky=null,benefits=null;
           if(gift.tab===2) {
             if(env.SHARIKA_LUCKY_GIFTS_ENABLED!=='true')
               return fail('lucky_gifts_disabled',503,cors);
@@ -624,6 +639,7 @@ export async function handleRequest(request, env) {
             if(sender.minor || !(ageFromDate(sender.birthdate)>=18))
               return fail('lucky_gifts_adult_only',403,cors);
             lucky=drawLuckyGift(Number(gift.price_coins),quantity*ids.length);
+            benefits=luckyGiftBenefits(Number(gift.price_coins),quantity,ids.length);
             if(!Number.isSafeInteger(sender.coins-spend+lucky.payout_coins))
               return fail('lucky_wallet_limit',400,cors);
           }
@@ -683,7 +699,16 @@ export async function handleRequest(request, env) {
               "charm_level=MAX(charm_level,1+CAST((xp+?)/1000 AS INTEGER)),"+
               "updated_at=datetime('now') WHERE auth_uid=?"
             ).bind(xp,xp,recipient.auth_uid));
+            if(benefits)statements.push(env.DB.prepare(
+              'INSERT INTO sharika_lucky_recipient_rewards(transaction_id,recipient_uid,'+
+              'earned_hundredths) VALUES('+
+              '(SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
+            ).bind(uid,requestId,recipient.auth_uid,benefits.recipient_hundredths));
           }
+          if(benefits)statements.push(env.DB.prepare(
+            'INSERT INTO sharika_lucky_room_rewards(transaction_id,room_id,reward_hundredths) '+
+            'VALUES((SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
+          ).bind(uid,requestId,roomId,benefits.room_hundredths));
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
@@ -693,7 +718,9 @@ export async function handleRequest(request, env) {
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
             quantity,lucky:lucky?{payout_coins:lucky.payout_coins,
-              max_multiplier:lucky.max_multiplier}:null},201,cors);
+              max_multiplier:lucky.max_multiplier,
+              recipient_reward_diamonds:benefits.recipient_hundredths/100,
+              room_reward_coins:benefits.room_hundredths/100}:null},201,cors);
         }
         return fail('method_not_allowed',405,cors);
       }
