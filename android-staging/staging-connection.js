@@ -241,7 +241,12 @@
   }
   function paintVerifiedAvatar(node,value,doc){
     const src=verifiedAvatarUrl(value);
-    if(!node||!src||!doc)return false;
+    if(!node||!doc)return false;
+    if(!src){
+      // A recycled seat or message row must never retain another user's photo.
+      node.querySelector('.sh-verified-avatar-image')?.remove();
+      return false;
+    }
     if(node.querySelector('.sh-verified-avatar-image')?.dataset.source===src)return true;
     node.querySelector('.sh-verified-avatar-image')?.remove();
     // Keep the original emoji underneath until the image has loaded.
