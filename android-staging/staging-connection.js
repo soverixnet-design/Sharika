@@ -327,10 +327,35 @@
     }
     anchor.insertAdjacentElement('afterend',strip);
   }
+  // A verified seller has two distinct wallets: personal coins in the
+  // original profile, plus this seller-stock entry beside their public ID.
+  let sellerProfileRequest=0;
+  async function renderSellerWalletProfileButton(){
+    const requestNo=++sellerProfileRequest;
+    const id=session?.user?.id;
+    const anchor=document.querySelector('#v-me .mid');
+    document.getElementById('sharika-seller-wallet-entry')?.remove();
+    if(!id||!anchor)return;
+    try{
+      const data=await api('GET','/sellers/me');
+      if(requestNo!==sellerProfileRequest||session?.user?.id!==id||!anchor.isConnected)return;
+      const seller=data.seller;
+      if(!seller)return;
+      const button=document.createElement('button');
+      button.id='sharika-seller-wallet-entry';
+      button.type='button';
+      button.textContent='🪙 Seller Wallet · '+Number(seller.available_coins||0).toLocaleString('en-US')+' coins';
+      button.style.cssText='display:block;margin:8px auto;padding:8px 14px;border:1px solid #f0be55;'+
+        'border-radius:15px;background:#3b225b;color:#fff;font-weight:700;font-size:12px';
+      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true});
+      (document.getElementById('sh-sovera-own-identity')||anchor).insertAdjacentElement('afterend',button);
+    }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
+  }
   const priorRenderMe=window.renderMe;
   if(typeof priorRenderMe==='function')window.renderMe=function(){
     priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
+    renderSellerWalletProfileButton().catch(()=>{});
   };
   window.frEl=function(){return frameTag(window.A?.frame||'');};
   window.frameSheet=function(){styleSelectionSheet('frame_style');};
@@ -1018,7 +1043,8 @@
         frame.S.coins=balance.coins;
         frame.S.xp=balance.xp;
         frame.close();
-        frame.toast('Gift sent · '+result.spent_coins+' coins charged ✓');
+        frame.toast('Gift sent · '+result.spent_coins+' coins charged · Room +'+
+        Number(result.room_reward_coins||0).toLocaleString('en-US')+' coins ✓');
         if(result.lucky) {
           frame.toast('Lucky Gift: receiver 5% diamonds · room 1% reward');
         }
@@ -1375,8 +1401,8 @@
         };
       }
     };
-    // The supplied room template advertises a demo 10% weekly local-coin
-    // claim. Never expose that fake balance mutation as a real room reward.
+    // Read the actual D1 room reward ledger. Never expose the old local
+    // claim button, which simulated a wallet mutation.
     frame.rewardSheet=async function(){
       frame.open('<h3>💰 Verified Room Reward</h3>'+
         '<div id="sh-real-room-reward" class="row">Checking room reward…</div>');
@@ -1384,12 +1410,15 @@
       if(!target)return;
       try{
         const rewards=await api('GET','/rooms/'+room.id+'/rewards');
-        if(target.isConnected)target.textContent='Lucky Gift room reward: '+
-          Number(rewards.reward_coins||0).toLocaleString('en-US')+
-          ' coins (held in room ledger, not added to personal wallet).';
+        const normal=Number(rewards.regular_reward_hundredths||0)/100;
+        const lucky=Number(rewards.lucky_reward_hundredths||0)/100;
+        if(target.isConnected)target.textContent='Ordinary gifts 10%: '+
+          normal.toLocaleString('en-US')+' coins · Lucky Gift 1% (if enabled): '+
+          lucky.toLocaleString('en-US')+' coins. Total: '+
+          (normal+lucky).toLocaleString('en-US')+
+          ' coins. Verified room ledger only; no personal-wallet transfer or withdrawal.';
       }catch(error){
-        if(target.isConnected)target.textContent=
-          'Lucky Gift room rewards are unavailable until enabled by the server.';
+        if(target.isConnected)target.textContent='Room rewards unavailable: '+errText(error);
       }
     };
     // The existing room-settings sheet is reused. Its original Save action
@@ -1402,7 +1431,7 @@
         if(typeof frame.settings==='function')frame.settings();
         else if(typeof oldRoomOpen==='function')oldRoomOpen.call(roomButton);
         const rewardLabel=frame.$('rRw')?.querySelector('small');
-        if(rewardLabel)rewardLabel.textContent='1% of enabled Lucky Gifts · server verified';
+        if(rewardLabel)rewardLabel.textContent='10% of ordinary gifts · verified room ledger';
       };
     }
     frame.document.addEventListener('click',async event=>{
@@ -1706,13 +1735,15 @@
   // Approved Coin Sellers: actual D1 seller rows, never fabricated profiles.
   const sellerEscape=v=>String(v==null?'':v).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  async function showVerifiedCoinSellers(){
-    window.openSheet('<h3>🪙 Coin sellers</h3><div id="sharika-seller-content">Loading approved sellers…</div>');
+  async function showVerifiedCoinSellers({walletOnly=false}={}){
+    window.openSheet('<h3>🪙 '+(walletOnly?'Seller Wallet':'Coin sellers')+
+      '</h3><div id="sharika-seller-content">Loading verified seller data…</div>');
     const root=document.getElementById('sharika-seller-content');
     if(!root)return;
     try{
-      const [directory,mine]=await Promise.all([
-        api('GET','/sellers'),api('GET','/sellers/me')
+      const [directory,mine,transfers,allocations]=await Promise.all([
+        api('GET','/sellers'),api('GET','/sellers/me'),
+        api('GET','/sellers/transfers'),api('GET','/sellers/allocations')
       ]);
       if(!root.isConnected)return;
       const listed=(directory.sellers||[]).map(s=>
@@ -1729,7 +1760,21 @@
         '<button class="btn" type="button" id="sharika-seller-send">Transfer coins</button>'+
         '<div id="sharika-seller-note" aria-live="polite"></div></div>':
         self?'<p class="n">Your seller permission is currently suspended.</p>':'';
-      root.innerHTML='<div class="empty">'+(listed||'No approved coin sellers yet.')+'</div>'+me;
+      const historyRows=(transfers.transfers||[]).slice(0,30).map(t=>
+        '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
+        'Transfer #'+sellerEscape(t.id)+' · Sender ID '+sellerEscape(t.sender_public_id)+
+        ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
+        ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('');
+      const stockRows=(allocations.allocations||[]).slice(0,30).map(a=>
+        '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
+        'Allocation #'+sellerEscape(a.id)+' · Admin ID '+sellerEscape(a.sender_public_id)+
+        ' → Seller ID '+sellerEscape(a.seller_public_id)+
+        ' · +'+Number(a.coins||0).toLocaleString('en-US')+' stock coins</div>').join('');
+      root.innerHTML=(walletOnly?'':'<div class="empty">'+
+        (listed||'No approved coin sellers yet.')+'</div>')+me+
+        (self?'<div class="card" style="margin-top:12px;padding:12px"><h4>Coin transfer list</h4>'+
+          '<div id="sharika-seller-history">'+(historyRows||'No transfers yet.')+'</div>'+
+          '<h4>Seller wallet stock allocations</h4>'+(stockRows||'No allocations yet.')+'</div>':'');
       const send=document.getElementById('sharika-seller-send');
       if(send)send.addEventListener('click',async()=>{
         const recipient=document.getElementById('sharika-seller-target')?.value.trim()||'';
@@ -1748,8 +1793,17 @@
           const result=await api('POST','/sellers/transfer',{
             target_public_id:recipient,coins:amount,request_id:requestId
           });
-          if(note)note.textContent='Transfer #'+result.transfer_id+' complete. Remaining stock: '+
+          if(note)note.textContent='Transfer #'+result.transfer_id+' from ID '+
+            sellerEscape(result.sender_public_id)+' to ID '+sellerEscape(recipient)+
+            ' complete. Remaining seller stock: '+
             Number(result.available_coins).toLocaleString('en-US')+' coins.';
+          const latest=await api('GET','/sellers/transfers').catch(()=>null);
+          const history=document.getElementById('sharika-seller-history');
+          if(history&&latest)history.innerHTML=(latest.transfers||[]).slice(0,30).map(t=>
+            '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
+            'Transfer #'+sellerEscape(t.id)+' · Sender ID '+sellerEscape(t.sender_public_id)+
+            ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
+            ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('')||'No transfers yet.';
           toast('Coin transfer recorded');
           await reloadWallet();
         }catch(error){
