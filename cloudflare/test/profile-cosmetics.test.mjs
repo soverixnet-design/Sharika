@@ -269,3 +269,32 @@ test('avatar slots clear stale photos when the next verified user has no uploade
   assert.equal(paint(slot,null,{}),false);
   assert.equal(removed,1,'a seat assigned to a user without a photo cannot display the prior occupant');
 });
+
+test('confirmed gift, seller transfer and exchange do not turn into false failures when wallet refresh fails',async()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=adapter.indexOf('  async function refreshWalletAfterConfirmedTransaction(');
+  const end=adapter.indexOf('  let roomsRequestNo=0;',start);
+  assert.ok(start>0&&end>start,'post-commit wallet recovery helper exists');
+  const balance={coins:0,dia:0,xp:0};
+  let refreshed=0,saved=null;
+  const helper=new Function('reloadWallet','session','balance','localStorage',
+    'window','errText','console',adapter.slice(start,end)+
+    ';return refreshWalletAfterConfirmedTransaction;')(
+      async()=>{throw Error('temporary wallet outage');},
+      {user:{id:'verified-user'}},balance,
+      {setItem(key,value){saved={key,value};}},
+      {refresh(){refreshed++;}},String,{warn(){}}
+    );
+  assert.equal(await helper({coins:725,diamonds:8}),false);
+  assert.deepEqual(balance,{coins:725,dia:8,xp:0});
+  assert.equal(refreshed,1);
+  assert.equal(saved.key,'vr_state_v2');
+  assert.equal(JSON.parse(saved.value).coins,725);
+  assert.match(adapter,/pendingGiftRequest\?\.fingerprint===fingerprint/);
+  assert.match(adapter,/pendingSellerTransfer\?\.fingerprint===fingerprint/);
+  assert.match(adapter,/pendingExchangeRequest\?\.diamonds===selectedDiamonds/);
+  assert.match(adapter,/giftCommitted=true;pendingGiftRequest=null/);
+  assert.match(adapter,/transferCommitted=true;pendingSellerTransfer=null/);
+  assert.match(adapter,/actionConfirmed=true;pendingExchangeRequest=null/);
+  assert.doesNotMatch(adapter,/Gift not sent: /);
+});
