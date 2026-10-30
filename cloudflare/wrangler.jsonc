@@ -17,7 +17,8 @@
     "SHARIKA_ENV": "staging",
     "FIREBASE_PROJECT_ID": "sharika-voice-chat-app",
     "ALLOWED_ORIGINS": "",
-    "SHARIKA_LUCKY_GIFTS_ENABLED": "false"
+    "SHARIKA_LUCKY_GIFTS_ENABLED": "false",
+    "SHARIKA_COINS_CASH_REDEEMABLE": "false"
   },
   "durable_objects": {
     "bindings": [
