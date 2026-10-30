@@ -739,16 +739,113 @@
         'These are persisted counts, not live presence. No fake online-user figures.');
     }catch(error){root.innerHTML=card('Analytics unavailable',error.message);}
   };
+  P.rech=async function(){
+    const root=byId('pg');
+    if(role!=='super'&&role!=='finance'){
+      root.innerHTML=card('Recharge requests','Only verified Finance or Super Admin can approve payments.');
+      return;
+    }
+    root.innerHTML='<div class="card"><h3>💳 Verified recharge requests</h3>'+
+      '<p class="n">A support request is NOT proof of payment. Verify the transaction directly with the payment provider before approval. Only a verified Finance or Super Admin may credit coins.</p>'+
+      '<div id="recharge-list">Loading genuine support requests…</div></div>'+
+      '<div class="card"><h3>Review selected request</h3>'+
+      '<div class="row"><label>Support request # <input id="rc-request-id" class="field" inputmode="numeric" placeholder="Choose a pending request"></label>'+
+      '<label>Coins to credit <input id="rc-amount" class="field" inputmode="numeric" placeholder="1–1,000,000"></label></div>'+
+      '<div class="row"><label>Payment method <input id="rc-method" class="field" maxlength="40" placeholder="e.g. bKash or PayPal"></label>'+
+      '<label>Verified receipt ID <input id="rc-reference" class="field" maxlength="120" placeholder="External transaction reference"></label></div>'+
+      '<label style="display:block;margin:12px 0"><input type="checkbox" id="rc-verified"> I independently verified that this payment was received.</label>'+
+      '<button id="rc-approve" class="btn s" type="button">Approve and credit once</button>'+
+      '<p class="n">If payment was not received, enter a reason and reject. A rejected request cannot later be approved; ask the user to submit a new request.</p>'+
+      '<textarea id="rc-reject-note" class="field" maxlength="250" placeholder="Reason for rejection (at least 8 characters)"></textarea>'+
+      '<button id="rc-reject" class="btn s" type="button">Reject selected request</button>'+
+      '<p id="rc-note" class="n" aria-live="polite"></p></div>';
+    const list=byId('recharge-list'),note=byId('rc-note');
+    let busy=false;
+    async function refresh(){
+      list.textContent='Loading verified request records…';
+      try{
+        const result=await api('GET','recharges');
+        const items=result.requests||[];
+        if(!items.length){list.innerHTML='<p class="n">No recharge support requests have been submitted.</p>';return;}
+        list.innerHTML=items.map(r=>
+          '<div class="row" style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)">'+
+          '<div style="flex:1;min-width:0"><b>#'+esc(r.request_id)+' · ID '+esc(r.public_id)+'</b>'+
+          '<p class="n">'+esc(r.name)+' · '+esc(r.status)+' · '+esc(r.requested_at||'')+'</p>'+
+          '<p class="n">'+esc(r.request_text||'')+'</p>'+
+          (r.status==='approved'?'<p class="n">Verified: '+fmt(r.reviewed_coins)+' coins · '+esc(r.payment_method||'')+
+            ' · '+esc(r.payment_reference||'')+'</p>':'')+'</div>'+
+          (r.status==='pending'?'<button class="btn s" data-rc-select="'+esc(r.request_id)+'" type="button">Select</button>':'')+
+          '</div>').join('');
+        list.querySelectorAll('[data-rc-select]').forEach(button=>{
+          button.onclick=()=>{
+            byId('rc-request-id').value=button.dataset.rcSelect;
+            byId('rc-amount').value='';
+            byId('rc-method').value='';
+            byId('rc-reference').value='';
+            byId('rc-verified').checked=false;
+            note.textContent='Selected request #'+button.dataset.rcSelect+
+              '. Check external payment receipt before entering coins.';
+          };
+        });
+      }catch(error){list.textContent='Recharge records unavailable: '+error.message;}
+    }
+    async function review(kind){
+      if(busy)return;
+      const idRaw=byId('rc-request-id').value.trim();
+      const id=Number(idRaw);
+      if(!/^\\d+$/.test(idRaw)||!Number.isSafeInteger(id)||id<1){
+        note.textContent='Select a genuine pending support request first.';return;
+      }
+      let data={support_message_id:id},question;
+      if(kind==='approve'){
+        const raw=byId('rc-amount').value.trim(),coins=Number(raw);
+        const method=byId('rc-method').value.trim();
+        const reference=byId('rc-reference').value.trim();
+        if(!/^\\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000||
+            method.length<2||reference.length<6||!byId('rc-verified').checked){
+          note.textContent='Enter a valid coin amount, payment method, receipt ID, and check verified payment.';return;
+        }
+        data={...data,coins,payment_method:method,payment_reference:reference,confirm_payment_verified:true};
+        question='You independently verified payment '+reference+' via '+method+
+          '. Credit '+fmt(coins)+' coins to request #'+id+'? This cannot be undone.';
+      }else{
+        const reason=byId('rc-reject-note').value.trim();
+        if(reason.length<8||reason.length>250){
+          note.textContent='Enter a rejection reason of 8–250 characters.';return;
+        }
+        data.note=reason;
+        question='Reject recharge request #'+id+' without crediting coins?';
+      }
+      if(!window.confirm(question))return;
+      busy=true;byId('rc-approve').disabled=true;byId('rc-reject').disabled=true;
+      note.textContent='Submitting reviewed request…';
+      try{
+        const result=await api('POST','recharges/'+kind,data);
+        note.textContent=kind==='approve'?
+          (result.duplicate?'Already approved; no extra coins credited.':
+            'Approved: +'+fmt(result.credited_coins)+' coins; inviter bonus +'+
+              fmt(result.referral_bonus_coins)+' coins.') :
+          'Request rejected; zero coins credited.';
+        byId('rc-verified').checked=false;
+        await refresh();
+      }catch(error){note.textContent='Not completed: '+error.message;}
+      finally{busy=false;byId('rc-approve').disabled=false;byId('rc-reject').disabled=false;}
+    }
+    byId('rc-approve').onclick=()=>review('approve');
+    byId('rc-reject').onclick=()=>review('reject');
+    await refresh();
+  };
+
   P.system=async function () {
     const root=byId('pg');
-    root.innerHTML=card('Sharika staging','Firebase login and D1 role enforcement active. Financial writes remain locked.');
+    root.innerHTML=card('Sharika staging','Firebase login and D1 role enforcement active. Only audited, authenticated wallet operations are permitted.');
   };
 
   // The original visual-only dashboard includes demo pages. Replace every
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','gifts','rank','audit','admins','system'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','rech','gifts','rank','audit','admins','system'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
