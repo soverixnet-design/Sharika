@@ -2898,6 +2898,23 @@
       image:'file:///android_asset/jackpot-fruit-original-card.png',
       page:'file:///android_asset/original-games/jackpot-fruit.html'}
   ];
+  // Only announce server-confirmed round winners during the first ten seconds
+  // after settlement. Persist one announcement per game/round across reopens.
+  const announcedOriginalGameRounds=new Map();
+  function verifiedOriginalGameTopThree(game,state){
+    const prev=state?.previous_result;
+    if(!prev||!Number.isSafeInteger(prev.round_no)||prev.round_no<0)return null;
+    const elapsed=Number(state.server_time)-(prev.round_no+1)*40000;
+    if(!Number.isFinite(elapsed)||elapsed<0||elapsed>10000)return null;
+    const winners=Array.isArray(prev.top_winners)?prev.top_winners.slice(0,3)
+      .filter(w=>w&&/^[0-9]{8}$/.test(String(w.public_id||''))&&
+        typeof w.name==='string'&&w.name.trim()&&
+        Number.isSafeInteger(Number(w.total_win))&&Number(w.total_win)>0):[];
+    if(!winners.length||announcedOriginalGameRounds.get(game)===prev.round_no)return null;
+    announcedOriginalGameRounds.set(game,prev.round_no);
+    return {round_no:prev.round_no,winners};
+  }
+  let originalGameWalletRefreshTime=0;
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
     const sheet=doc.getElementById(insideRoom?'sheet':'sh');
@@ -2937,8 +2954,44 @@
     }
     let currentGameFrame=null;
     const view=doc.defaultView||window;
+    if(typeof view.__sharikaOriginalGameCleanup==='function')
+      view.__sharikaOriginalGameCleanup();
+    let winnerBannerTimer=null;
+    function clearWinnerBanner(){
+      if(winnerBannerTimer!==null){view.clearTimeout(winnerBannerTimer);winnerBannerTimer=null;}
+      doc.getElementById('sh-verified-original-winners')?.remove();
+    }
+    function announceRoundWinners(game,result){
+      const confirmed=verifiedOriginalGameTopThree(game,result);
+      if(!confirmed)return;
+      clearWinnerBanner();
+      const banner=doc.createElement('div');
+      banner.id='sh-verified-original-winners';
+      banner.setAttribute('role','status');
+      banner.setAttribute('aria-live','polite');
+      banner.style.cssText='position:fixed;top:max(12px,env(safe-area-inset-top));'+
+        'left:5%;width:90%;box-sizing:border-box;z-index:2147483000;'+
+        'padding:11px 13px;border:2px solid #f9d76f;border-radius:18px;'+
+        'background:linear-gradient(130deg,#3a1269,#10082e);'+
+        'box-shadow:0 8px 32px #000b,0 0 20px #f59e0b66;'+
+        'color:#fff;text-align:center;font-weight:700;pointer-events:none';
+      const title=doc.createElement('div');
+      title.textContent='🏆 Round '+confirmed.round_no+' · Top 3 winners';
+      title.style.cssText='font-size:14px;color:#ffe49b;margin-bottom:5px';
+      banner.appendChild(title);
+      for(const [index,winner] of confirmed.winners.entries()){
+        const line=doc.createElement('div');
+        line.style.cssText='font-size:12px;line-height:1.45;overflow-wrap:anywhere';
+        line.textContent=['🥇','🥈','🥉'][index]+' '+
+          winner.name+' · ID '+winner.public_id+' · '+
+          Number(winner.total_win).toLocaleString('en-US')+' coins';
+        banner.appendChild(line);
+      }
+      doc.body.appendChild(banner);
+      winnerBannerTimer=view.setTimeout(()=>{banner.remove();winnerBannerTimer=null;},10000);
+    }
     function preview(item){
-      currentGameFrame=null;
+      currentGameFrame=null;clearWinnerBanner();
       sheet.innerHTML='<div class="grab"></div>'+
         '<button id="sh-original-back" type="button" '+
         'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
@@ -2948,7 +3001,7 @@
         'min-height:380px;border:1px solid #a56dff;border-radius:12px;'+
         'overflow:hidden;background:#100424"></div>';
       sheet.querySelector('h3').textContent=item.name;
-      sheet.querySelector('#sh-original-back').onclick=()=>{currentGameFrame=null;catalog()};
+      sheet.querySelector('#sh-original-back').onclick=()=>{currentGameFrame=null;clearWinnerBanner();catalog()};
       const gameFrame=doc.createElement('iframe');
       gameFrame.src=item.page;
       gameFrame.setAttribute('title',item.name);
@@ -2959,12 +3012,12 @@
     }
     // Child frame has no Firebase session, no native bridge, no wallet setter.
     // Only the active exact iframe can request one of these fixed operations.
-    view.addEventListener('message',async function onOriginalGameMessage(event){
+    const onOriginalGameMessage=async function(event){
       const current=currentGameFrame;
       if(!current||event.source!==current.element.contentWindow||!session)return;
       const data=event.data;
       if(!data||typeof data!=='object')return;
-      if(data.type==='sharika:original-exit'){currentGameFrame=null;catalog();return;}
+      if(data.type==='sharika:original-exit'){currentGameFrame=null;clearWinnerBanner();catalog();return;}
       if(data.type!=='sharika:original-request')return;
       const permitted=['state','history','stats','rankings','bet'];
       if(data.game!==current.item.id||!permitted.includes(data.action)||
@@ -2979,12 +3032,28 @@
         // If the user changed games mid-request, do not send any data to it.
         if(!session||currentGameFrame!==current)return;
         target.postMessage({type:'sharika:original-response',id:data.id,ok:true,value:result},'*');
+        if(data.action==='state'){
+          announceRoundWinners(current.item.id,result);
+          // A winning round credits D1 on state reads. Refresh the shared
+          // profile/room wallet when its coin balance changes, not just on bets.
+          if(Number.isSafeInteger(result?.coins)&&result.coins>=0&&
+             result.coins!==balance.coins&&
+             Date.now()-originalGameWalletRefreshTime>=2500){
+            originalGameWalletRefreshTime=Date.now();
+            reloadWallet().catch(()=>{});
+          }
+        }
         if(data.action==='bet')reloadWallet().catch(()=>{});
       }catch(error){
         if(!session||currentGameFrame!==current)return;
         target.postMessage({type:'sharika:original-response',id:data.id,ok:false,error:errText(error)},'*');
       }
-    });
+    };
+    view.addEventListener('message',onOriginalGameMessage);
+    view.__sharikaOriginalGameCleanup=()=>{
+      view.removeEventListener('message',onOriginalGameMessage);
+      clearWinnerBanner();currentGameFrame=null;
+    };
     catalog();
     overlay.classList.add('on');
   }
