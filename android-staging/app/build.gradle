@@ -1,0 +1,71 @@
+plugins {
+    id 'com.android.application'
+    id 'com.google.gms.google-services'
+}
+
+// GitHub Actions supplies these only from repository secrets.
+// Never commit a keystore or password to this public repository.
+def stagingKeystorePath = System.getenv('SHARIKA_STAGING_KEYSTORE_PATH')
+def stagingKeystorePassword = System.getenv('SHARIKA_STAGING_KEYSTORE_PASSWORD')
+def stableStagingSigner = stagingKeystorePath && stagingKeystorePassword
+
+android {
+    namespace 'com.soverixnet.sharika'
+    compileSdk 35
+
+    signingConfigs {
+        if (stableStagingSigner) {
+            sharikaStaging {
+                storeFile file(stagingKeystorePath)
+                storePassword stagingKeystorePassword
+                keyAlias 'sharika-staging'
+                keyPassword stagingKeystorePassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (stableStagingSigner) {
+                signingConfig signingConfigs.sharikaStaging
+            }
+        }
+    }
+
+    defaultConfig {
+        applicationId 'com.soverixnet.sharika'
+        minSdk 26
+        targetSdk 35
+        versionCode 2
+        versionName '0.2.0-staging-original-ui'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:35.1.0')
+    implementation 'com.google.firebase:firebase-auth'
+    // Google sign-in via Android Credential Manager (official Firebase flow).
+    implementation 'androidx.credentials:credentials:1.3.0'
+    implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'
+    implementation 'com.google.android.libraries.identity.googleid:googleid:1.2.1'
+}
+
+ 
+// Package the exact original Sharika HTML and CSS without changing the live
+// app's app/index.html. Only the Android staging copy gets the D1 adapter.
+def sharikaUiAssets = layout.buildDirectory.dir('generated/sharika-ui-assets')
+tasks.register('prepareSharikaUiAssets', Copy) {
+    from(rootProject.file('../app/index.html'))
+    from(rootProject.file('staging-connection.js')) {
+        rename { 'connection.js' }
+    }
+    into(sharikaUiAssets)
+}
+android.sourceSets.main.assets.srcDir(sharikaUiAssets)
+tasks.named('preBuild').configure {
+    dependsOn(tasks.named('prepareSharikaUiAssets'))
+}

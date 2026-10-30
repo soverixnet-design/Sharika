@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sharika-api-staging",
-  "main": "src/index.mjs",
+  "main": "src/voice-worker.mjs",
   "compatibility_date": "2026-10-29",
   "account_id": "d81cf7c48fb9b36d468cb0a08720cd74",
   "workers_dev": true,
@@ -17,5 +17,21 @@
     "SHARIKA_ENV": "staging",
     "FIREBASE_PROJECT_ID": "sharika-voice-chat-app",
     "ALLOWED_ORIGINS": ""
-  }
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "VOICE_ROOMS",
+        "class_name": "SharikaVoiceRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1_sharika_sfu_voice_rooms",
+      "new_sqlite_classes": [
+        "SharikaVoiceRoom"
+      ]
+    }
+  ]
 }

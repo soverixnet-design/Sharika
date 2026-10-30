@@ -133,3 +133,345 @@ test('unimplemented money-changing endpoints fail closed', async () => {
     assert.equal((await response.json()).error, 'migration_pending');
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('verified active users receive only the enabled D1 gift catalog',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(), old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.includes('FROM sharika_gifts WHERE active=1'))
+        stmt.all=async()=>({results:[{id:1,name:'Rose',emoji:'🌹',tab:0,price_coins:5}]});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/gifts',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    assert.equal((await res.json()).gifts[0].name,'Rose');
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('only the verified room owner can save room settings in D1',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const owner='firebase:'+project+':secure-user';
+    const buildDb=(roomOwner,canUpdate=true)=>{
+      const db=fakeDb(),old=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=old(sql);
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({status:'active'});
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+          stmt.first=async()=>({id:'10000001',owner_id:roomOwner,name:'My Room',seat_count:12});
+        if(sql.startsWith('UPDATE sharika_rooms SET name='))
+          stmt.run=async()=>({meta:{changes:canUpdate?1:0}});
+        return stmt;
+      };
+      return db;
+    };
+    const request=async()=>new Request('https://example.test/api/v1/rooms/10000001',{
+      method:'PATCH',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({name:'Fresh Room',seat_count:10})
+    });
+    const allowed=await handleRequest(await request(),{DB:buildDb(owner),FIREBASE_PROJECT_ID:project});
+    assert.equal(allowed.status,200);
+    const denied=await handleRequest(await request(),{DB:buildDb('other-owner'),FIREBASE_PROJECT_ID:project});
+    assert.equal(denied.status,403);
+    const occupied=await handleRequest(await request(),{DB:buildDb(owner,false),FIREBASE_PROJECT_ID:project});
+    assert.equal(occupied.status,409);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('support history requires Firebase authentication and scopes reads to the signer',async()=>{
+  const anon=await handleRequest(new Request('https://example.test/api/v1/support/messages'),{
+    DB:fakeDb(),FIREBASE_PROJECT_ID:project
+  });
+  assert.equal(anon.status,401);
+  const prior=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),orig=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=orig(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/support/messages',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    assert.deepEqual((await res.json()).messages,[]);
+    const call=db.calls.find(c=>c[0]==='all' && c[1].includes('FROM sharika_support_messages'));
+    assert.equal(call[2][0],'firebase:'+project+':secure-user');
+  }finally{globalThis.fetch=prior;}
+});
+
+test('anonymous users cannot list follows or read private conversations',async()=>{
+  for(const route of ['/api/v1/follows','/api/v1/messages','/api/v1/messages/10000003']){
+    const response=await handleRequest(new Request('https://example.test'+route),{
+      DB:fakeDb(),FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(response.status,401,route);
+  }
+});
+
+test('only the authenticated user can list their real following and followers',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))stmt.first=async()=>({status:'active'});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/follows',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    assert.deepEqual((await res.json()).following,[]);
+    const queries=db.calls.filter(c=>c[0]==='all' && c[1].includes('sharika_follows'));
+    assert.equal(queries.length,2);
+    for(const q of queries)assert.equal(q[2].at(-1),'firebase:'+project+':secure-user');
+  }finally{globalThis.fetch=prior;}
+});
+
+test('direct messages reject unilateral follows before storing anything',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))stmt.first=async()=>({status:'active'});
+      if(sql.includes('FROM sharika_users WHERE public_no'))stmt.first=async()=>({
+        auth_uid:'firebase:'+project+':recipient',public_no:10000003,
+        name:'Recipient',status:'active'
+      });
+      if(sql.includes('SELECT follower_uid FROM sharika_follows'))stmt.all=async()=>({
+        results:[{follower_uid:'firebase:'+project+':secure-user'}]
+      });
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/messages/10000003',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({body:'hello',request_id:'verified_message_12345'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,403);
+    assert.equal((await res.json()).error,'mutual_follow_required');
+    assert.equal(db.calls.filter(c=>c[0]==='run' && c[1].includes('sharika_private_messages')).length,0);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('diamond exchange is authenticated and rejects invalid or unaffordable amounts',async()=>{
+  const anon=await handleRequest(new Request('https://example.test/api/v1/wallet/exchange',{
+    method:'POST',body:JSON.stringify({diamonds:100,request_id:'exchange_test_12345'})
+  }),{DB:fakeDb(),FIREBASE_PROJECT_ID:project});
+  assert.equal(anon.status,401);
+  const originalFetch=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const makeDb=()=>{
+      const db=fakeDb(),prior=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=prior(sql);
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({status:'active',minor:0,coins:2000,diamonds:500});
+        return stmt;
+      };
+      return db;
+    };
+    const request=(diamonds)=>new Request('https://example.test/api/v1/wallet/exchange',{
+      method:'POST',headers:{Authorization:'Bearer '+tokenValue},
+      body:JSON.stringify({diamonds,request_id:'exchange_test_12345'})
+    });
+    const tokenValue=await token();
+    const invalidDB=makeDb();
+    const invalid=await handleRequest(request(125),{DB:invalidDB,FIREBASE_PROJECT_ID:project});
+    assert.equal(invalid.status,400);
+    assert.equal(invalidDB.calls.filter(c=>c[0]==='batch').length,0);
+    const tooBigDB=makeDb();
+    const tooBig=await handleRequest(request(1000),{DB:tooBigDB,FIREBASE_PROJECT_ID:project});
+    assert.equal(tooBig.status,409);
+    assert.equal((await tooBig.json()).error,'insufficient_diamonds');
+    assert.equal(tooBigDB.calls.filter(c=>c[0]==='batch').length,0);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('diamond exchange batches both balances and immutable double-entry ledger',async()=>{
+  const originalFetch=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',minor:0,coins:2000,diamonds:500});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/wallet/exchange',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({diamonds:100,request_id:'exchange_test_atomic123'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    assert.equal((await res.json()).credited_coins,70);
+    const batch=db.calls.find(c=>c[0]==='batch');
+    assert.equal(batch[1].length,4);
+    assert.deepEqual(batch[1].map(s=>s.values[0]),[100,'firebase:'+project+':secure-user',70,'firebase:'+project+':secure-user']);
+    assert.equal(batch[1][1].values[1],-100);
+    assert.equal(batch[1][3].values[1],70);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('replayed exchange request with a different amount is rejected',async()=>{
+  const originalFetch=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',minor:0,coins:2000,diamonds:500});
+      if(sql.includes("FROM sharika_wallet_ledger WHERE auth_uid")&&sql.includes("reason='diamond_exchange'"))
+        stmt.first=async()=>({id:1,delta:-100});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/wallet/exchange',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({diamonds:500,request_id:'exchange_test_replay123'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,409);
+    assert.equal((await res.json()).error,'idempotency_conflict');
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('room gifts require Firebase auth and a verified room membership',async()=>{
+  const anon=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+    method:'POST',body:JSON.stringify({gift_id:9,quantity:1,
+      recipient_public_ids:['10000001'],request_id:'gift_auth_12345678'})
+  }),{DB:fakeDb(),FIREBASE_PROJECT_ID:project});
+  assert.equal(anon.status,401);
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:'firebase:'+project+':secure-user'});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:9,quantity:1,
+        recipient_public_ids:['10000001'],request_id:'gift_auth_12345678'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,403);
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('regular gift sending uses catalog price and atomically settles one coin debit with recipient XP',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000,diamonds:0});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:uid});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
+      if(sql.includes('FROM sharika_gifts')&&sql.includes('tab IN (0,1)'))
+        stmt.first=async()=>({id:9,name:'Rose',emoji:'🌹',price_coins:10,tab:0});
+      if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
+        stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,status:'active'}]});
+      if(sql.startsWith('SELECT id,total_coins FROM sharika_gift_transactions'))
+        stmt.first=async()=>({id:71,total_coins:50});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:9,quantity:5,
+        recipient_public_ids:['10000001'],request_id:'gift_atomic_12345678'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,201);
+    const json=await res.json();
+    assert.equal(json.spent_coins,50);
+    assert.deepEqual(json.recipients,['10000001']);
+    const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
+    assert.equal(stmts.length,6);
+    assert.equal(stmts[0].values[0],50);
+    assert.equal(stmts[2].values[1],-50);
+    assert.equal(stmts[5].values[0],50);
+    assert.equal(stmts[5].values[2],uid);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('lucky gifts cannot issue unverified payouts through the regular gift endpoint',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:uid});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:uid});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:999,quantity:1,
+        recipient_public_ids:['10000001'],request_id:'gift_lucky_block_123'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,404);
+    assert.equal((await res.json()).error,'gift_unavailable');
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+  }finally{globalThis.fetch=prior;}
+});
+
+
+test('gift leaderboards require Firebase auth and use only settled gift events',async()=>{
+  const unauth=await handleRequest(new Request('https://example.test/api/v1/rankings'),
+    {DB:fakeDb(),FIREBASE_PROJECT_ID:project});
+  assert.equal(unauth.status,401);
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.startsWith('SELECT * FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',public_no:10000001});
+      if(sql.includes('FROM sharika_gift_events'))
+        stmt.all=async()=>{db.calls.push(['all',sql,stmt.values]);return {results:[{public_no:10000002,name:'A real recipient',
+          pic:null,wealth_level:1,charm_level:2,total:75}]};};
+      return stmt;
+    };
+    const headers={Authorization:'Bearer '+await token()};
+    const ok=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings?kind=charm&period=weekly',{headers}),
+      {DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(ok.status,200);
+    const data=await ok.json();
+    assert.equal(data.source,'settled_gift_events');
+    assert.equal(data.kind,'charm');
+    assert.deepEqual(data.leaders.map(x=>[x.public_id,x.total]),[['10000002',75]]);
+    const query=db.calls.find(c=>c[0]==='all'&&c[1].includes('FROM sharika_gift_events'));
+    assert.ok(query);
+    assert.equal(query[2].length,2);
+    const bad=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings?kind=play&period=weekly',{headers}),
+      {DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(bad.status,400);
+    assert.equal((await bad.json()).error,'invalid_ranking_filter');
+  }finally{globalThis.fetch=prior;}
+});

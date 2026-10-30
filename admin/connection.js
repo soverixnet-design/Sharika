@@ -1,360 +1,660 @@
-/* Sharika admin backend adapter. Original admin HTML/CSS are unchanged.
- * The demo password, fake records and local-only financial actions are not trusted.
+/* Sharika Cloudflare D1 staging admin connector.
+ * Preserves the supplied 3D admin layout. Firebase verifies identity;
+ * Cloudflare D1 checks the explicit admin role on EVERY request.
+ * Only verified Super Admin user-status and gift catalog edits are enabled.
+ * No money, betting, or live voice modifications.
  */
 (function () {
   'use strict';
-  const BASE = 'https://rfrmcmeyamndghtiheci.supabase.co';
-  const PUBLISHABLE = 'sb_publishable_hMmbkkboIJhuhRCd6FORuQ_j8y8Kkrh';
-  const SESSION_KEY = 'sharika_admin_auth_v1';
+  const API = window.location.origin;
+  const FIREBASE_KEY = "AIzaSyAuKw-SVccI_bN4GSC6tOEC1yUm6lkBxQA";
+  const SESSION_KEY = 'sharika_admin_firebase_staging_v1';
   let session = null;
-  let activeRole = null;
-  let users = [];
-  try { session = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch (_) {}
-
-  function esc(text) { return String(text == null ? '' : text).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-  function fmt(number) { return Number(number || 0).toLocaleString('en-US'); }
-  function authSave(s) {
-    session = s ? { access_token:s.access_token,refresh_token:s.refresh_token,
-      expires_at: Math.floor(Date.now()/1000)+(s.expires_in || 3600) } : null;
-    if (session) sessionStorage.setItem(SESSION_KEY,JSON.stringify(session));
+  let role = null;
+  let identity = null;
+  const byId = id => document.getElementById(id);
+  const esc = input => String(input == null ? '' : input).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmt = n => Number(n || 0).toLocaleString('en-US');
+  const card = (title, body) => '<div class="card"><h3>'+esc(title)+'</h3><p class="n">'+esc(body)+'</p></div>';
+  function note(message) { if (window.toast) window.toast(message); }
+  function save(next) {
+    session = next;
+    if (next) sessionStorage.setItem(SESSION_KEY,JSON.stringify(next));
     else sessionStorage.removeItem(SESSION_KEY);
   }
-  async function query(url, method, body, token) {
-    const res = await fetch(url,{ method,
-      headers: { apikey:PUBLISHABLE, 'content-type':'application/json',
-        ...(token ? { authorization:'Bearer '+token } : {}) },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error_description || data.message || data.msg || data.error || 'Server unavailable');
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+    if (cached && cached.idToken && cached.refreshToken) session = cached;
+  } catch (_) { save(null); }
+  async function firebase(path, body, form) {
+    const response = await fetch('https://'+(form ? 'securetoken' : 'identitytoolkit')+
+      '.googleapis.com/v1/'+path+'?key='+encodeURIComponent(FIREBASE_KEY), {
+        method:'POST', headers:{'content-type':form ? 'application/x-www-form-urlencoded' : 'application/json'},
+        body:form ? new URLSearchParams(body).toString() : JSON.stringify(body)
+      });
+    const data = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(data.error?.message || 'Firebase sign-in unavailable');
     return data;
   }
-  async function token() {
-    if (!session) throw new Error('Please sign in');
-    if (session.expires_at > Date.now()/1000 + 60) return session.access_token;
-    if (!session.refresh_token) throw new Error('Admin session expired');
-    const refreshed = await query(BASE+'/auth/v1/token?grant_type=refresh_token','POST',{
-      refresh_token:session.refresh_token,
-    });
-    authSave(refreshed);
-    return session.access_token;
+  async function idToken() {
+    if (!session) throw new Error('Sign in first');
+    if (session.expiresAt > Date.now() + 90_000) return session.idToken;
+    const data = await firebase('token', {grant_type:'refresh_token',
+      refresh_token:session.refreshToken}, true);
+    save({ idToken:data.id_token,refreshToken:data.refresh_token,
+      expiresAt:Date.now()+Math.max(300,Number(data.expires_in || 3600))*1000,
+      email:session.email });
+    return session.idToken;
   }
-  async function api(method,path,body) {
-    return query(BASE+'/functions/v1/sharika-api'+path,method,body,await token());
+  async function api(method, path, body) {
+    const jwt = await idToken();
+    const response = await fetch(API+'/api/v1/admin/'+path,{
+      method, headers:{authorization:'Bearer '+jwt,accept:'application/json',
+        ...(body === undefined ? {} : {'content-type':'application/json'})},
+      body:body === undefined ? undefined : JSON.stringify(body),
+      cache:'no-store'
+    });
+    const data = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(data.error || 'Admin service unavailable');
+    return data;
+  }
+  async function verifyAdmin() {
+    const status = await api('GET','status');
+    if (!['super','support','finance'].includes(status.role))
+      throw new Error('Admin role not assigned');
+    role = status.role;
+    identity = status;
+    window.ME = session.email || status.name || 'Administrator';
+    return status;
   }
 
+  // Direct Google Identity Services token flow avoids the Firebase popup helper.
+  // The returned OAuth access token is exchanged immediately for a Firebase
+  // ID/refresh token. It is never saved or sent to our own backend.
+  const GOOGLE_WEB_CLIENT_ID = "847262470616-qgorfnp05kl5qj8npldgo7gdop2kho6o.apps.googleusercontent.com";
+  let googleClientPromise = null;
+  let googlePending = null;
+  function googleClient() {
+    if (!googleClientPromise) googleClientPromise = new Promise((resolve,reject) => {
+      function setup() {
+        try {
+          const oauth = window.google?.accounts?.oauth2;
+          if (!oauth) throw new Error('Google sign-in library unavailable');
+          resolve(oauth.initTokenClient({
+            client_id: GOOGLE_WEB_CLIENT_ID,
+            scope: 'openid email profile',
+            callback: response => { if (googlePending) googlePending(response); },
+            error_callback: error => {
+              if (googlePending) googlePending({error:error?.type || 'google_popup_error'});
+            }
+          }));
+        } catch (error) {reject(error);}
+      }
+      if (window.google?.accounts?.oauth2) {setup();return;}
+      const script = document.createElement('script');
+      script.src='https://accounts.google.com/gsi/client';
+      script.async=true;
+      script.onload=setup;
+      script.onerror=()=>reject(new Error('Google sign-in library could not load'));
+      document.head.appendChild(script);
+    });
+    return googleClientPromise;
+  }
+  // On Android Chrome, use Firebase's established popup handler. It does not
+  // require this Cloudflare Worker origin to be added to the Google JS client.
+  let firebasePopupPromise=null;
+  function firebasePopupSdk() {
+    if (!firebasePopupPromise) firebasePopupPromise=Promise.all([
+      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js'),
+      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js')
+    ]).then(async ([appModule,authModule])=>{
+      let app;
+      try {app=appModule.getApp('sharika-staging-admin');}
+      catch(_) {app=appModule.initializeApp({
+        apiKey:FIREBASE_KEY,
+        authDomain:'sharika-voice-chat-app.firebaseapp.com',
+        projectId:'sharika-voice-chat-app'
+      },'sharika-staging-admin');}
+      const auth=authModule.getAuth(app);
+      await authModule.setPersistence(auth,authModule.browserSessionPersistence);
+      auth.useDeviceLanguage();
+      return {auth,authModule};
+    });
+    return firebasePopupPromise;
+  }
+  function googleError(error) {
+    const message=String(error?.message || error?.error || 'Google sign-in failed');
+    if (message.includes('origin_mismatch') || message.includes('Not a valid origin'))
+      return 'Google OAuth Web client must allow this JavaScript origin: '+window.location.origin;
+    if (message.includes('popup_closed') || message.includes('popup_failed_to_open'))
+      return 'Google sign-in popup closed or blocked. Allow popups and try again.';
+    if (message.includes('access_denied'))
+      return 'Google sign-in was cancelled. Please choose your Sharika Google account.';
+    if (message.includes('EMAIL_EXISTS'))
+      return 'This email already has another sign-in provider. Ask an administrator to link it securely.';
+    return message;
+  }
+  // Override the original demo login before anybody can enter the shell.
   const originalLogin = window.login;
   window.login = function () {
-    activeRole = null;
+    role = null; identity = null;
     originalLogin();
-    // The original template has a localStorage demo login. It is never an admin credential.
     try { localStorage.removeItem('aa'); } catch (_) {}
-    const email = document.getElementById('em');
-    const password = document.getElementById('pw');
-    const code = document.getElementById('tf');
-    if (email) email.value = '';
-    if (password) password.value = '';
-    if (code) { code.value = ''; code.disabled = true; code.placeholder = '2FA will require provider setup'; }
-    const note = document.querySelector('#lf p:last-child');
-    if (note) note.textContent = 'Only an approved Sharika administrator can sign in. Never use demo credentials.';
-    const button = document.getElementById('go');
-    // The template also wired Enter in each input directly to the demo login.
-    // Route every keyboard submission through the verified Supabase sign-in.
-    for (const field of [email, password, code]) {
-      if (field) field.onkeydown = event => {
-        if (event.key === 'Enter') { event.preventDefault(); button?.click(); }
-      };
-    }
-    if (button) button.onclick = async () => {
-      button.disabled = true;
-      try {
-        const result = await query(BASE+'/auth/v1/token?grant_type=password','POST',{
-          email:email.value.trim(),password:password.value,
-        });
-        authSave(result);
-        const status = await api('GET','/admin/status');
-        activeRole = status.role;
-        window.ME = result.user?.email || email.value.trim();
-        window.V = 'dash';
-        await loadSettings();
-        window.shell();
-      } catch (error) {
-        authSave(null);
-        document.getElementById('le').textContent = error.message;
-      } finally { button.disabled = false; }
-    };
-  };
-
-  async function loadSettings() {
-    const settings = await api('GET','/admin/config');
-    const kv = settings.kv || {};
-    if (kv.lucky && typeof kv.lucky === 'object') Object.assign(window.D.lucky, kv.lucky);
-    if (kv.rr && typeof kv.rr === 'object') Object.assign(window.D.rr, kv.rr);
-  }
-
-  const P = window.P;
-  const originalLucky = P.lucky;
-  const originalReward = P.rr;
-  const fallback = title => () => {
-    document.getElementById('pg').innerHTML = '<div class="card"><h3>'+esc(title)+'</h3><p class="n">The original layout is preserved. This module needs its verified server connection before it can be used.</p></div>';
-  };
-  for (const name of Object.keys(P)) P[name] = fallback(name);
-  // Prevent old example records from being mistaken for live users or payments.
-  window.D.users = [];
-  window.D.rc = [];
-  window.D.audit = [];
-
-  P.lucky = function () {
-    originalLucky();
-    const publish = document.getElementById('sv');
-    const enabled = document.getElementById('ks');
-    if (publish) publish.addEventListener('click', async event => {
-      event.stopImmediatePropagation();
-      const multipliers = [...document.querySelectorAll('[data-m]')];
-      const rows = multipliers.map((_, index) => [
-        Number(document.querySelector('[data-m="'+index+'"]')?.value),
-        Number(document.querySelector('[data-w="'+index+'"]')?.value),
-      ]);
-      const total = rows.reduce((sum, row) => sum + row[1],0);
-      const rtp = rows.reduce((sum,row) => sum + row[0]*row[1],0);
-      if (Math.abs(total-100) > .0001 || rtp < 80 || rtp > 95) {
-        window.toast('Probability must equal 100% and return 80–95%');return;
-      }
-      try {
-        const value = { ...window.D.lucky, rows, ver:(window.D.lucky.ver || 0)+1 };
-        await api('PUT','/admin/kv/lucky',{value});
-        Object.assign(window.D.lucky,value);
-        window.toast('Lucky odds published on the server');P.lucky();
-      } catch (error) { window.toast(error.message); }
-    },true);
-    if (enabled) enabled.addEventListener('click', async event => {
-      event.stopImmediatePropagation();
-      try {
-        const value = { ...window.D.lucky, on:!window.D.lucky.on };
-        await api('PUT','/admin/kv/lucky',{value});
-        Object.assign(window.D.lucky,value);P.lucky();
-      } catch (error) { window.toast(error.message); }
-    },true);
-  };
-
-  P.rr = function () {
-    originalReward();
-    const save = document.getElementById('rs');
-    const toggle = document.getElementById('re');
-    if (save) save.addEventListener('click', async event => {
-      event.stopImmediatePropagation();
-      const pct = Number(document.getElementById('rp').value);
-      const days = Number(document.getElementById('rd').value);
-      const minp = Number(document.getElementById('rm').value);
-      if (!Number.isFinite(pct) || pct < 0 || pct > 50 || !Number.isInteger(days) || days < 1 ||
-        !Number.isSafeInteger(minp) || minp < 0) { window.toast('Invalid room reward settings');return; }
-      try {
-        const value = { ...window.D.rr,pct,days,minp };
-        await api('PUT','/admin/kv/rr',{value});
-        Object.assign(window.D.rr,value);window.toast('Reward settings saved');P.rr();
-      } catch (error) { window.toast(error.message); }
-    },true);
-    if (toggle) toggle.addEventListener('click', async event => {
-      event.stopImmediatePropagation();
-      try {
-        const value = { ...window.D.rr,on:!window.D.rr.on };
-        await api('PUT','/admin/kv/rr',{value});
-        Object.assign(window.D.rr,value);P.rr();
-      } catch (error) { window.toast(error.message); }
-    },true);
-  };
-
-  P.gifts = async function () {
-    const root = document.getElementById('pg');
-    root.innerHTML = '<div class="card">Loading actual gift catalog…</div>';
-    try {
-      const data = await api('GET','/admin/gifts');
-      const gifts = data.gifts || [];
-      root.innerHTML = '<div class="card"><div class="row">'+
-        '<input id="gn" placeholder="Name"><input id="ge" placeholder="Emoji" style="max-width:90px">'+
-        '<input id="gp" type="number" placeholder="Price (coins)" style="max-width:150px">'+
-        '<select id="gt" style="max-width:130px"><option value="0">Gifts</option><option value="1">Luxury</option><option value="2">Lucky</option></select>'+
-        '<button class="btn" id="ga">Add gift</button></div>'+
-        '<p class="n">Upload of animated images requires configured Supabase Storage; emoji and prices are connected.</p>'+
-        window.T(['Gift','Category','Price','Active'],gifts.map(g => [
-          esc(g.emoji)+' '+esc(g.name),['Gifts','Luxury','Lucky'][g.tab],
-          '<input type="number" data-price="'+g.id+'" value="'+esc(g.price_coins)+'">',
-          '<button class="sw'+(g.active?' on':'')+'" data-on="'+g.id+'" aria-label="Toggle gift"></button>',
-        ]))+'</div>';
-      root.querySelector('#ga').onclick = async () => {
-        try {
-          const name = root.querySelector('#gn').value.trim();
-          const emoji = root.querySelector('#ge').value.trim() || '🎁';
-          const price_coins = Number(root.querySelector('#gp').value);
-          const tab = Number(root.querySelector('#gt').value);
-          await api('POST','/admin/gifts',{name,emoji,price_coins,tab});
-          window.toast('Gift added to server');P.gifts();
-        } catch (error) { window.toast(error.message); }
-      };
-      root.querySelectorAll('[data-price]').forEach(input => {
-        input.onchange = async () => {
-          try {
-            await api('PATCH','/admin/gifts/'+input.dataset.price,{price_coins:Number(input.value)});
-            window.toast('Gift price saved');
-          } catch (error) { window.toast(error.message);P.gifts(); }
-        };
-      });
-      root.querySelectorAll('[data-on]').forEach(button => {
-        button.onclick = async () => {
-          try {
-            await api('PATCH','/admin/gifts/'+button.dataset.on,{active:!button.classList.contains('on')});
-            P.gifts();
-          } catch (error) { window.toast(error.message); }
-        };
-      });
-    } catch (error) { root.textContent = error.message; }
-  };
-
-  P.dash = async function () {
-    document.getElementById('pg').innerHTML = '<div class="card">Loading verified dashboard…</div>';
-    try {
-      const [usr,rooms,requests] = await Promise.all([
-        api('GET','/admin/users'),api('GET','/admin/rooms'),
-        activeRole === 'finance' || activeRole === 'super' ? api('GET','/admin/recharge-requests') : Promise.resolve({requests:[]}),
-      ]);
-      users = usr.users || [];
-      const activeRooms = (rooms.rooms || []).filter(r => r.is_live).length;
-      const coinTotal = users.reduce((sum,u) => sum+Number(u.coins || 0),0);
-      const items = [ ['Registered users',users.length],['Live rooms',activeRooms],
-        ['Recharge requests',(requests.requests || []).length],['Coins (loaded users)',fmt(coinTotal)] ];
-      document.getElementById('pg').innerHTML = '<div class="kp">'+items.map(([key,value]) =>
-        '<div class="k"><small>'+esc(key)+'</small><b>'+esc(value)+'</b></div>'
-      ).join('')+'</div><div class="card"><p class="n">Only server-verified records are shown. User results are limited to the first 300.</p></div>';
-    } catch (error) { document.getElementById('pg').textContent = error.message; }
-  };
-
-  P.users = async function () {
-    const root = document.getElementById('pg');
-    root.innerHTML = '<div class="card"><div class="row"><input id="q" placeholder="Search by ID or name" aria-label="Search users"></div><div id="ul">Loading…</div></div>';
-    try {
-      users = (await api('GET','/admin/users')).users || [];
-      function render() {
-        const q = document.getElementById('q').value.toLowerCase();
-        const filtered = users.filter(u => !q || String(u.public_id).includes(q) || u.name.toLowerCase().includes(q));
-        document.getElementById('ul').innerHTML = window.T(['ID','Name','Country','Level','Coins','Diamonds','Status',''],filtered.map(u => [
-          esc(u.public_id),esc(u.name),esc(u.country),fmt(u.wealth_level),fmt(u.coins),fmt(u.diamonds),
-          esc(u.status),'<button class="btn s" data-user="'+esc(u.public_id)+'">Manage</button>',
-        ]));
-        document.querySelectorAll('[data-user]').forEach(button => {
-          button.onclick = () => manageUser(button.dataset.user);
-        });
-      }
-      document.getElementById('q').oninput = render;
-      render();
-    } catch (error) { document.getElementById('ul').textContent = error.message; }
-  };
-
-  function manageUser(publicId) {
-    const user = users.find(u => u.public_id === publicId);
-    if (!user) return;
-    const dialog = window.modal('<h3>'+esc(user.name)+' · '+esc(publicId)+'</h3>'+
-      '<label>Adjust coins (+ or -, max 100,000 per request)</label><input id="am" type="number">'+
-      '<label>Reason (required)</label><input id="rs" placeholder="Reason">'+
-      '<div class="row"><button class="btn k" id="ap">Apply</button><button class="btn r" id="bn">'+
-      (user.status === 'active' ? 'Block user' : 'Unblock user')+'</button><button class="btn o" id="cl">Close</button></div>');
-    dialog.querySelector('#cl').onclick = () => dialog.remove();
-    dialog.querySelector('#ap').onclick = async () => {
-      try {
-        const delta = Number(dialog.querySelector('#am').value);
-        const reason = dialog.querySelector('#rs').value.trim();
-        if (!Number.isSafeInteger(delta) || delta === 0 || Math.abs(delta) > 100000 || reason.length < 4) {
-          throw new Error('Enter an amount within 100,000 and a clear reason');
+    const email = byId('em'), password = byId('pw'), button = byId('go');
+    const code = byId('tf');
+    if (code) { code.disabled=true;code.value='';code.placeholder='Role checked securely by server'; }
+    const p = document.querySelector('#lf p:last-child');
+    if (p) p.textContent='Use a verified Sharika Firebase account with an assigned admin role. No demo password is accepted.';
+    if (!button || !email || !password) return;
+    const googleButton = document.createElement('button');
+    googleButton.type = 'button';
+    googleButton.id = 'google-signin';
+    googleButton.className = 'btn o';
+    googleButton.style.cssText = 'width:100%;margin-top:12px;min-height:48px';
+    googleButton.textContent = 'Continue with Google';
+    googleButton.disabled = true;
+    button.insertAdjacentElement('afterend', googleButton);
+    const googleHelp = document.createElement('p');
+    googleHelp.style.cssText = 'margin:9px 0 0;font-size:12px;opacity:.8';
+    googleHelp.textContent = 'Use the same Google account as your Sharika Android app. No extra password.';
+    googleButton.insertAdjacentElement('afterend', googleHelp);
+    let readyClient = null;
+    let readyPopupSdk = null;
+    const useChromePopup = /Android/i.test(navigator.userAgent) &&
+      /Chrome\//i.test(navigator.userAgent) && !/EdgA|OPR/i.test(navigator.userAgent);
+    function initializeGIS() {
+      googleClient().then(client => {
+        readyClient=client;
+        if (googleButton.isConnected) googleButton.disabled=false;
+      }).catch(error => {
+        if (googleButton.isConnected) {
+          googleButton.textContent='Google sign-in unavailable';
+          const label=byId('le');
+          if(label) label.textContent=googleError(error);
         }
-        await api('POST','/admin/users/'+publicId+'/wallet',{ delta,reason,request_id:crypto.randomUUID() });
-        dialog.remove();window.toast('Server wallet updated');P.users();
-      } catch (error) { window.toast(error.message); }
-    };
-    dialog.querySelector('#bn').onclick = async () => {
-      try {
-        const reason = dialog.querySelector('#rs').value.trim();
-        await api('PATCH','/admin/users/'+publicId+'/status',{
-          status:user.status==='active'?'blocked':'active',reason,
-        });
-        dialog.remove();window.toast('User status saved');P.users();
-      } catch (error) { window.toast(error.message); }
-    };
-  }
-
-  P.rech = async function () {
-    const root = document.getElementById('pg');
-    root.innerHTML = '<div class="card">Loading actual recharge requests…</div>';
-    try {
-      const [pending,allUsers] = await Promise.all([
-        api('GET','/admin/recharge-requests'), api('GET','/admin/users'),
-      ]);
-      const lookups = new Map((allUsers.users || []).map(u => [u.user_id,u]));
-      root.innerHTML = '<div class="card"><p class="n">Coins are credited only after admin approval on the server.</p>'+
-        window.T(['Request','User','Coins','Status',''],(pending.requests || []).map(r => [
-          '#'+r.id,esc(lookups.get(r.user_id)?.public_id || r.user_id),fmt(r.coins),
-          'pending','<button class="btn k s" data-approve="'+r.id+'">Approve</button> '+
-          '<button class="btn r s" data-reject="'+r.id+'">Reject</button>',
-        ]))+'</div>';
-      root.querySelectorAll('[data-approve],[data-reject]').forEach(button => {
-        button.onclick = async () => {
-          const approve = button.hasAttribute('data-approve');
-          const id = approve ? button.dataset.approve : button.dataset.reject;
-          if (!window.confirm((approve ? 'Approve and credit' : 'Reject') + ' recharge #'+id+'?')) return;
-          button.disabled = true;
-          try {
-            await api('POST','/admin/recharge-requests/'+id+'/review',{approve});
-            window.toast('Recharge decision saved');P.rech();
-          } catch (error) { window.toast(error.message);button.disabled = false; }
-        };
       });
-    } catch (error) { root.textContent = error.message; }
+    }
+    if (useChromePopup) {
+      firebasePopupSdk().then(sdk=>{
+        readyPopupSdk=sdk;
+        if (googleButton.isConnected) googleButton.disabled=false;
+      }).catch(()=>initializeGIS());
+    } else initializeGIS();
+    googleButton.onclick=function () {
+      if (readyPopupSdk) {
+        googleButton.disabled=true;
+        const label=byId('le');
+        if (label) label.textContent='Opening Google sign-in…';
+        const provider=new readyPopupSdk.authModule.GoogleAuthProvider();
+        provider.setCustomParameters({prompt:'select_account'});
+        let operation;
+        try {
+          // Invoke popup synchronously in the user's click gesture.
+          operation=readyPopupSdk.authModule.signInWithPopup(readyPopupSdk.auth,provider);
+        } catch(error) {operation=Promise.reject(error);}
+        Promise.resolve(operation).then(async signed=>{
+          const jwt=await signed.user.getIdToken();
+          const refresh=signed.user.refreshToken;
+          if (!jwt || !refresh) throw new Error('Firebase did not establish a session');
+          save({idToken:jwt,refreshToken:refresh,
+            expiresAt:Date.now()+50*60*1000,email:signed.user.email || ''});
+          await verifyAdmin();
+          window.V='dash';window.shell();
+        }).catch(async error=>{
+          save(null);role=null;identity=null;
+          await readyPopupSdk.authModule.signOut(readyPopupSdk.auth).catch(()=>{});
+          const errorLabel=byId('le');
+          if (errorLabel) errorLabel.textContent=googleError(error);
+        }).finally(()=>{
+          if (googleButton.isConnected) googleButton.disabled=false;
+        });
+        return;
+      }
+      // Google requires requestAccessToken to be called directly from a click.
+      if (!readyClient || googlePending) return;
+      googleButton.disabled=true;
+      const label=byId('le');
+      if (label) label.textContent='Choose your Google account…';
+      const timeout=setTimeout(() => {
+        if (googlePending === onGoogleResponse) {
+          googlePending=null;
+          if (googleButton.isConnected) googleButton.disabled=false;
+          const status=byId('le');
+          if(status) status.textContent='Google sign-in timed out. Please try again.';
+        }
+      },120000);
+      async function onGoogleResponse(response) {
+        if (googlePending !== onGoogleResponse) return;
+        googlePending=null;
+        clearTimeout(timeout);
+        try {
+          if (response?.error || !response?.access_token)
+            throw new Error(response?.error || 'Google did not return a sign-in token');
+          const data=await firebase('accounts:signInWithIdp',{
+            requestUri:window.location.origin+'/admin/',
+            postBody:new URLSearchParams({
+              access_token:response.access_token,providerId:'google.com'
+            }).toString(),
+            returnSecureToken:true
+          },false);
+          if (!data.idToken || !data.refreshToken)
+            throw new Error('Firebase did not establish a session');
+          save({idToken:data.idToken,refreshToken:data.refreshToken,
+            expiresAt:Date.now()+Math.max(300,Number(data.expiresIn || 3600))*1000,
+            email:data.email || ''});
+          await verifyAdmin();
+          window.V='dash';
+          window.shell();
+        } catch (error) {
+          save(null);role=null;identity=null;
+          const errorLabel=byId('le');
+          if (errorLabel) errorLabel.textContent=googleError(error);
+        } finally {
+          if (googleButton.isConnected) googleButton.disabled=false;
+        }
+      }
+      googlePending=onGoogleResponse;
+      try { readyClient.requestAccessToken({prompt:'select_account'}); }
+      catch(error) {
+        googlePending=null;
+        clearTimeout(timeout);
+        googleButton.disabled=false;
+        if (label) label.textContent=googleError(error);
+      }
+    };
+    async function submit() {
+      if (!email.value.trim() || !password.value) { byId('le').textContent='Email and password required';return; }
+      button.disabled=true;
+      byId('le').textContent='Verifying Firebase and admin permission…';
+      try {
+        const data=await firebase('accounts:signInWithPassword',{
+          email:email.value.trim(),password:password.value,returnSecureToken:true
+        }, false);
+        password.value='';
+        save({idToken:data.idToken,refreshToken:data.refreshToken,
+          expiresAt:Date.now()+Math.max(300,Number(data.expiresIn || 3600))*1000,
+          email:data.email || email.value.trim()});
+        await verifyAdmin();
+        window.V='dash';
+        window.shell();
+      } catch(error) {
+        save(null);role=null;identity=null;
+        byId('le').textContent=error.message || 'Access denied';
+      } finally {button.disabled=false;}
+    }
+    button.onclick=submit;
+    for (const field of [email,password]) field.onkeydown=e=>{
+      if(e.key==='Enter'){e.preventDefault();submit();}
+    };
   };
-
-  P.rooms = async function () {
-    const root = document.getElementById('pg');
-    root.innerHTML = '<div class="card">Loading rooms…</div>';
-    try {
-      const data = await api('GET','/admin/rooms');
-      root.innerHTML = '<div class="card">'+window.T(['Room ID','Name','Owner','Live'],(data.rooms || []).map(r => [
-        esc(r.id),esc(r.name),esc(r.owner_id),r.is_live ? 'Live':'Offline',
-      ]))+'</div>';
-    } catch (error) { root.textContent = error.message; }
-  };
-
-  P.audit = async function () {
-    const root = document.getElementById('pg');
-    root.innerHTML = '<div class="card">Loading audit history…</div>';
-    try {
-      const data = await api('GET','/admin/audit');
-      root.innerHTML = '<div class="card">'+window.T(['Time','Admin','Action','Details'],(data.audit || []).map(a => [
-        esc(a.created_at),esc(a.actor_id),esc(a.action),esc(JSON.stringify(a.details)),
-      ]))+'</div>';
-    } catch (error) { root.textContent = error.message; }
-  };
-
   const originalShell = window.shell;
   window.shell = function () {
-    // Fail closed: direct calls and legacy demo handlers cannot open the admin shell.
-    if (!session || !activeRole) { window.login(); return; }
+    if (!session || !role) { window.login(); return; }
     originalShell();
     const who = document.querySelector('.top .who');
-    if (who) who.innerHTML = 'Signed in as<br><b>'+esc(window.ME)+'</b> · '+esc(activeRole || 'Admin');
-    const logout = document.getElementById('lo');
-    if (logout) logout.onclick = () => { authSave(null);activeRole=null;window.login(); };
+    if (who) who.innerHTML='Verified as<br><b>'+esc(window.ME)+'</b> · '+esc(role)+' (staging)';
+    const exit = byId('lo');
+    if (exit) exit.onclick=()=>{save(null);role=null;identity=null;window.login();};
   };
 
-  // Fresh session restoration requires role verification; the old localStorage
-  // demo login flag cannot grant access to this connected admin panel.
-  async function restore() {
-    if (!session) { window.login(); return; }
+  // Replace the demo localStorage data. Never treat template rows as actual users.
+  window.D.users=[];window.D.rc=[];window.D.audit=[];
+  const P=window.P;
+  const unavailable=label=>()=>{byId('pg').innerHTML=card(label,
+    'This feature is locked until the server validates its permissions and transactions. No simulated changes are made.');};
+  for(const name of Object.keys(P)) P[name]=unavailable(name);
+
+  P.dash=async function () {
+    const root=byId('pg');root.innerHTML=card('Dashboard','Loading verified totals…');
     try {
-      const status = await api('GET','/admin/status');
-      activeRole = status.role;
-      const user = await query(BASE+'/auth/v1/user','GET',undefined,await token());
-      window.ME = user.email || 'Admin';
-      window.V = 'dash';
-      await loadSettings();
-      window.shell();
-    } catch (_) { authSave(null);window.login(); }
+      const data=await api('GET','dashboard');
+      const metrics=[['Registered users',data.users],['Rooms',data.rooms],
+        ['Active gifts',data.active_gifts],['Ledger entries',data.ledger_entries],
+        ['Online now',data.online_users==null?'Not tracked':data.online_users],
+        ['Live rooms',data.live_rooms==null?'Not tracked':data.live_rooms]];
+      if (data.coins_total!=null) {
+        metrics.push(['Wallet coins (total)',fmt(data.coins_total)]);
+        metrics.push(['Wallet diamonds (total)',fmt(data.diamonds_total)]);
+      }
+      root.innerHTML='<div class="kp">'+metrics.map(x=>
+        '<div class="k"><small>'+esc(x[0])+'</small><b>'+esc(x[1])+'</b></div>'
+      ).join('')+'</div>'+card('Verified staging data',
+        'These counts come from the same D1 database used by the Android app. The panel is read-only.');
+    } catch (error) { root.innerHTML=card('Dashboard unavailable',error.message); }
+  };
+  P.users=async function () {
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>Verified users</h3><div class="row">'+
+      '<input id="q" placeholder="Search by ID or name" aria-label="Search users"></div>'+
+      '<div id="ul">Loading…</div></div>';
+    const list=byId('ul'),input=byId('q');
+    async function refresh() {
+      list.textContent='Loading verified users…';
+      try {
+        const data=await api('GET','users'+(input.value.trim()?'?q='+encodeURIComponent(input.value.trim()):''));
+        const users=data.users||[];
+        list.innerHTML=window.T(['User ID','Name','Country','Sent Lv.','Coins','Diamonds','Status','Admin action'],
+          users.map(u=>{
+            const action=role==='super'&&u.public_id!==identity?.public_id&&u.status!=='deleted'?
+              '<button type="button" class="btn s" data-status-id="'+esc(u.public_id)+
+              '" data-current-status="'+esc(u.status)+'">'+
+              (u.status==='active'?'Block':'Unblock')+'</button>':'—';
+            return [esc(u.public_id),esc(u.name),esc(u.country),fmt(u.wealth_level),
+              fmt(u.coins),fmt(u.diamonds),esc(u.status),action];
+          }));
+      }catch(error){list.textContent=error.message;}
+    }
+    list.onclick=async e=>{
+      const button=e.target.closest('button[data-status-id]');
+      if(!button||button.disabled)return;
+      const publicId=button.dataset.statusId;
+      const next=button.dataset.currentStatus==='active'?'blocked':'active';
+      const reason=window.prompt('Reason for '+(next==='blocked'?'blocking':'unblocking')+' user '+publicId+':');
+      if(reason===null)return;
+      if(reason.trim().length<3){note('Please enter a reason (3 or more characters).');return;}
+      if(!window.confirm('Confirm '+next+' for user '+publicId+'?'))return;
+      button.disabled=true;
+      try{
+        await api('PATCH','users/'+encodeURIComponent(publicId)+'/status',{status:next,reason:reason.trim()});
+        note('User '+publicId+' is now '+next);
+        await refresh();
+      }catch(error){note('Could not update: '+error.message);button.disabled=false;}
+    };
+    let timer;
+    input.oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,250);};
+    await refresh();
+  };
+  P.rooms=async function () {
+    const root=byId('pg');root.innerHTML=card('Rooms','Loading verified rooms…');
+    try {
+      const data=await api('GET','rooms');
+      root.innerHTML='<div class="card"><p class="n">Real D1 rooms and saved members. Live presence is not tracked yet.</p>'+
+        window.T(['Room ID','Name','Owner ID','Members','Seats','Inspect'],
+          (data.rooms||[]).map(r=>[
+            esc(r.id),esc(r.name),esc(r.owner_public_id||''),
+            fmt(r.members),fmt(r.seat_count),
+            '<button type="button" class="btn s" data-room-id="'+esc(r.id)+'">Members</button>'
+          ]))+'<div id="room-members-detail"></div></div>';
+      root.onclick=async e=>{
+        const button=e.target.closest('button[data-room-id]');
+        if(!button||button.disabled)return;
+        button.disabled=true;
+        const detail=byId('room-members-detail');
+        detail.textContent='Loading members…';
+        try{
+          const data=await api('GET','rooms/'+encodeURIComponent(button.dataset.roomId)+'/members');
+          detail.innerHTML='<h3>Members of '+esc(data.room.name)+' ('+esc(data.room.id)+')</h3>'+
+            '<p class="n">Room membership only; online status is not measured.</p>'+
+            window.T(['User ID','Name','Room role','Seat','Muted','Joined'],
+              (data.members||[]).map(m=>[
+                esc(m.public_id),esc(m.name),esc(m.role),
+                m.seat_no==null?'Audience':fmt(m.seat_no),
+                m.muted?'Yes':'No',esc(m.joined_at)
+              ]));
+        }catch(error){detail.textContent=error.message;}
+        finally{button.disabled=false;}
+      };
+    }catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
+  };
+  P.ledger=async function () {
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>Wallet ledger</h3><div class="row"><input id="ledger-id" inputmode="numeric" placeholder="Optional 8-digit user ID"><button class="btn s" id="ledger-go">Search</button></div><div id="ledger-list">Loading…</div></div>';
+    const output=byId('ledger-list'),field=byId('ledger-id');
+    async function refresh() {
+      output.textContent='Loading verified transaction history…';
+      try {
+        const id=field.value.trim();
+        if(id&&!/^[0-9]{8}$/.test(id))throw new Error('Enter a valid eight-digit Sharika ID');
+        const data=await api('GET','ledger'+(id?'?public_id='+id:''));
+        output.innerHTML=window.T(['Entry','User','Currency','Change','Balance','Reason','Time'],
+          (data.ledger||[]).map(x=>[fmt(x.id),esc(x.public_id),esc(x.currency),
+            fmt(x.delta),fmt(x.balance_after),esc(x.reason),esc(x.created_at)]));
+      } catch(error){output.textContent=error.message;}
+    }
+    byId('ledger-go').onclick=refresh;
+    await refresh();
+  };
+  P.support=async function () {
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>Verified support inbox</h3>'+
+      '<p class="n">Messages are stored in the Sharika D1 database. No demo tickets.</p>'+
+      '<button type="button" class="btn s" id="support-refresh">Refresh</button>'+
+      '<div id="support-list">Loading…</div></div><div id="support-thread"></div>';
+    const list=byId('support-list'),thread=byId('support-thread');
+    let opened=null;
+    async function refreshList(){
+      try {
+        const data=await api('GET','support');
+        list.innerHTML=window.T(['User ID','Name','Messages','Latest message','Open'],
+          (data.conversations||[]).map(c=>[
+            esc(c.public_id),esc(c.name),fmt(c.message_count),
+            esc(String(c.last_body||'').slice(0,140)),
+            '<button type="button" class="btn s" data-support-id="'+esc(c.public_id)+'">Open</button>'
+          ]));
+      }catch(error){list.textContent=error.message;}
+    }
+    async function refreshThread(){
+      if(!opened)return;
+      try{
+        const data=await api('GET','support/'+encodeURIComponent(opened));
+        const rows=(data.messages||[]).map(m=>[
+          m.sender_role==='admin'?'Admin':'User',esc(m.body),esc(m.created_at)
+        ]);
+        thread.innerHTML='<div class="card"><h3>Support: '+esc(data.user.name)+
+          ' (ID '+esc(data.user.public_id)+')</h3>'+
+          window.T(['From','Message','Sent'],rows)+
+          '<div class="row"><input id="support-reply-text" maxlength="1000" '+
+          'placeholder="Reply to this user" aria-label="Support reply">'+
+          '<button type="button" class="btn s" id="support-send">Send reply</button></div></div>';
+        byId('support-send').onclick=async()=>{
+          const button=byId('support-send');
+          const body=byId('support-reply-text').value.trim();
+          if(!body){note('Write a reply first.');return;}
+          button.disabled=true;
+          try{
+            const request_id='adm:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+            await api('POST','support/'+encodeURIComponent(opened)+'/reply',{body,request_id});
+            note('Support reply sent');
+            await refreshThread();await refreshList();
+          }catch(error){note('Reply failed: '+error.message);button.disabled=false;}
+        };
+      }catch(error){thread.textContent='Conversation unavailable: '+error.message;}
+    }
+    list.onclick=e=>{
+      const button=e.target.closest('button[data-support-id]');
+      if(!button)return;
+      opened=button.dataset.supportId;
+      refreshThread();
+    };
+    byId('support-refresh').onclick=async()=>{await refreshList();await refreshThread();};
+    await refreshList();
+  };
+
+  P.gifts=async function () {
+    const root=byId('pg');
+    const canEdit=role==='super';
+    root.innerHTML=(canEdit?'<div class="card"><h3>Add gift to real catalog</h3>'+
+      '<p class="n">Regular gifts are settled through the verified wallet ledger. Lucky payouts are still disabled.</p>'+
+      '<div class="row"><input id="gift-name" maxlength="80" placeholder="Gift name" aria-label="Gift name">'+
+      '<input id="gift-emoji" maxlength="16" placeholder="🎁" aria-label="Gift emoji">'+
+      '<input id="gift-price" type="number" min="1" step="1" placeholder="Coin price" aria-label="Coin price">'+
+      '<select id="gift-category" aria-label="Gift category"><option value="0">Gifts</option>'+
+      '<option value="1">Luxury</option><option value="2">Lucky</option></select>'+
+      '<button type="button" id="gift-create" class="btn s">Add gift</button></div></div>':'')+
+      '<div class="card"><h3>Real gift catalog</h3><div id="gift-list">Loading…</div></div>'+
+      '<div class="card"><h3>Verified gift transactions</h3><div id="gift-event-list">Loading…</div></div>';
+    const list=byId('gift-list');
+    async function refresh() {
+      list.textContent='Loading catalog…';
+      try{
+        const data=await api('GET','gifts');
+        list.innerHTML=window.T(['ID','Gift','Category','Coins','State','Admin action'],
+          (data.gifts||[]).map(g=>[
+            fmt(g.id),esc(g.emoji)+' '+esc(g.name),
+            ['Gifts','Luxury','Lucky'][g.tab]||'Other',fmt(g.price_coins),
+            g.active?'Active':'Disabled',
+            canEdit?'<button type="button" class="btn s" data-gift-id="'+esc(g.id)+
+              '" data-gift-active="'+(g.active?1:0)+'">'+
+              (g.active?'Disable':'Activate')+'</button>':'—'
+          ]));
+      }catch(error){list.textContent=error.message;}
+    }
+    if(canEdit){
+      byId('gift-create').onclick=async ()=>{
+        const button=byId('gift-create');
+        const name=byId('gift-name').value.trim();
+        const price=Number(byId('gift-price').value);
+        const emoji=byId('gift-emoji').value.trim()||'🎁';
+        const tab=Number(byId('gift-category').value);
+        if(!name||!Number.isSafeInteger(price)||price<=0){note('Enter gift name and valid coin price');return;}
+        button.disabled=true;
+        try{
+          await api('POST','gifts',{name,emoji,tab,price_coins:price,active:false});
+          byId('gift-name').value='';byId('gift-price').value='';byId('gift-emoji').value='';
+          note('Gift added. Activate it when ready.');await refresh();
+        }catch(error){note('Gift not created: '+error.message);}
+        finally{button.disabled=false;}
+      };
+      list.onclick=async e=>{
+        const button=e.target.closest('button[data-gift-id]');
+        if(!button||button.disabled)return;
+        const enabled=button.dataset.giftActive!=='1';
+        if(!window.confirm((enabled?'Activate':'Disable')+' gift #'+button.dataset.giftId+'?'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','gifts/'+encodeURIComponent(button.dataset.giftId),{active:enabled});
+          note('Gift catalog updated');await refresh();
+        }catch(error){note('Gift update failed: '+error.message);button.disabled=false;}
+      };
+    }
+    await refresh();
+    const giftHistory=byId('gift-event-list');
+    if(role==='super'||role==='finance') {
+      try {
+        const history=await api('GET','gift-events');
+        giftHistory.innerHTML=window.T(
+          ['Time','Room','Sender','Recipient','Gift','Quantity','Coins'],
+          (history.events||[]).map(e=>[
+            esc(e.created_at),esc(e.room_id),esc(e.sender_id),
+            esc(e.recipient_id),esc(e.emoji)+' '+esc(e.gift),
+            fmt(e.quantity),fmt(e.coins)
+          ]));
+      }catch(error){giftHistory.textContent='Gift history unavailable: '+error.message;}
+    }else giftHistory.textContent='Only Super Admin and Finance roles can view gift transactions.';
+  };
+  P.audit=async function () {
+    const root=byId('pg');root.innerHTML=card('Admin audit','Loading…');
+    try {
+      const data=await api('GET','audit');
+      root.innerHTML='<div class="card">'+window.T(['Time','Admin ID','Action','Details'],
+        (data.audit||[]).map(a=>[esc(a.created_at),esc(a.actor_public_id||''),
+          esc(a.action),esc(a.details_json)]))+'</div>';
+    }catch(error){root.innerHTML=card('Admin audit unavailable',error.message);}
+  };
+  P.admins=async function () {
+    const root=byId('pg');root.innerHTML=card('Admin roles','Loading…');
+    try {
+      const data=await api('GET','roles');
+      root.innerHTML='<div class="card"><p class="n">Roles are assigned by the trusted Cloudflare operator. Self-promotion is disabled.</p>'+
+        window.T(['User ID','Name','Role','Assigned'],(data.admins||[]).map(a=>[
+          esc(a.public_id),esc(a.name),esc(a.role),esc(a.assigned_at)]))+'</div>';
+    }catch(error){root.innerHTML=card('Admin roles unavailable',error.message);}
+  };
+  P.rank=async function () {
+    const root=byId('pg');
+    let kind='rich',period='weekly',requestNo=0;
+    const kinds={rich:'Rich · sent',charm:'Charm · received',room:'Rooms'};
+    const periods={daily:'Daily',weekly:'Weekly',monthly:'Monthly'};
+    root.innerHTML='<div class="card"><h3>Verified gift rankings</h3>'+
+      '<p>Rankings reflect settled gift transfers in the Android app, not simulated players or payouts.</p>'+
+      '<div class="row" id="rank-kinds">'+Object.entries(kinds).map(([key,label])=>
+        '<button class="btn" type="button" data-rkind="'+esc(key)+'">'+esc(label)+'</button>'
+      ).join('')+'</div>'+
+      '<div class="row" id="rank-periods">'+Object.entries(periods).map(([key,label])=>
+        '<button class="btn" type="button" data-rperiod="'+esc(key)+'">'+esc(label)+'</button>'
+      ).join('')+'</div><div id="rank-results">Loading verified rankings…</div></div>';
+    const results=byId('rank-results');
+    async function reload(){
+      const current=++requestNo;
+      root.querySelectorAll('[data-rkind]').forEach(b=>b.disabled=b.dataset.rkind===kind);
+      root.querySelectorAll('[data-rperiod]').forEach(b=>b.disabled=b.dataset.rperiod===period);
+      results.textContent='Loading verified rankings…';
+      try{
+        const data=await api('GET','rankings?kind='+kind+'&period='+period);
+        if(current!==requestNo)return;
+        const leaders=Array.isArray(data.leaders)?data.leaders:[];
+        if(!leaders.length){
+          results.textContent='No settled gifts recorded for this period.';
+          return;
+        }
+        const labels=kind==='room'?['Rank','Room ID','Room','Gift coins']:
+          ['Rank','User ID','Name','Gift coins'];
+        const rows=leaders.map(item=>kind==='room'
+          ?[fmt(item.rank),esc(item.room_id),esc(item.name),fmt(item.total)]
+          :[fmt(item.rank),esc(item.public_id),esc(item.name),fmt(item.total)]);
+        results.innerHTML=window.T(labels,rows);
+      }catch(error){if(current===requestNo)results.textContent='Rankings unavailable: '+error.message;}
+    }
+    root.onclick=e=>{
+      const k=e.target.closest('button[data-rkind]');
+      const p=e.target.closest('button[data-rperiod]');
+      if(k){kind=k.dataset.rkind;reload();}
+      if(p){period=p.dataset.rperiod;reload();}
+    };
+    await reload();
+  };
+  P.analytics=async function () {
+    const root=byId('pg');root.innerHTML=card('Analytics','Loading verified statistics…');
+    try{
+      const data=await api('GET','analytics');
+      const rows=[
+        ['Active users',data.active_users],['Blocked users',data.blocked_users],
+        ['Rooms created',data.total_rooms],['Saved room memberships',data.room_memberships],
+        ['Occupied seats',data.occupied_seats],['Catalog gifts',data.catalog_gifts],
+        ['Active gifts',data.active_gifts],['App administrators',data.admins]
+      ];
+      root.innerHTML='<div class="kp">'+rows.map(([name,num])=>
+        '<div class="k"><small>'+esc(name)+'</small><b>'+fmt(num)+'</b></div>'
+      ).join('')+'</div>'+card('Verified D1 analytics',
+        'These are persisted counts, not live presence. No fake online-user figures.');
+    }catch(error){root.innerHTML=card('Analytics unavailable',error.message);}
+  };
+  P.system=async function () {
+    const root=byId('pg');
+    root.innerHTML=card('Sharika staging','Firebase login and D1 role enforcement active. Financial writes remain locked.');
+  };
+
+  // The original visual-only dashboard includes demo pages. Replace every
+  // unconnected page with an honest staging status while retaining its card
+  // layout and menu. No fake sellers, payouts, or active games are displayed.
+  const verifiedPages=new Set([
+    'dash','analytics','users','support','rooms','ledger','gifts','rank','audit','admins','system'
+  ]);
+  for(const entry of window.NAV||[]) {
+    const key=entry[0];
+    if(!key||verifiedPages.has(key))continue;
+    P[key]=function(){
+      const root=byId('pg');
+      const label=entry[2]||key;
+      const message=key==='rech'
+        ?'Recharge requests are sent to the verified Support Inbox for manual checking. No automatic coins are credited.'
+        :key==='money'
+        ?'Verified diamond exchange rate: 100 diamonds = 70 coins. Package and rate editing are not yet enabled.'
+        :'This module is not connected to the verified staging backend yet. Demo data and fake actions are disabled.';
+      root.innerHTML=card(label,message);
+      if(key==='rech'){
+        const open=document.createElement('button');
+        open.type='button';open.className='btn';open.textContent='Open verified Support Inbox';
+        open.onclick=()=>{window.V='support';window.shell();};
+        root.querySelector('.card')?.appendChild(open);
+      }
+    };
+  }
+  async function restore() {
+    if (!session) {window.login();return;}
+    try {await verifyAdmin();window.V='dash';window.shell();}
+    catch (_) {save(null);window.login();}
   }
   restore();
 })();
