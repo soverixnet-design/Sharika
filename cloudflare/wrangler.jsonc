@@ -35,5 +35,12 @@
         "SharikaVoiceRoom"
       ]
     }
-  ]
+  ],
+  "keep_vars": true,
+  "secrets": {
+    "required": [
+      "REALTIME_SFU_APP_ID",
+      "REALTIME_SFU_APP_SECRET"
+    ]
+  }
 }
