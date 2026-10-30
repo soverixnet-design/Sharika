@@ -13,6 +13,16 @@ const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache
 const PUBLIC_ID = /^[0-9]{8}$/;
 const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset']);
 const MAX_BODY = 20_000;
+const PROFILE_FRAMES = new Set([
+  '', 'phoenix-fire', 'ice-wings', 'royal-dragon', 'vip7',
+  'royal-gold', 'violet-love', 'ice-admin', 'golden-dragon',
+  'ice-dragon', 'violet-phoenix', 'castle-flag',
+  'lion-queen', 'phoenix-queen', 'tiger-queen'
+]);
+const PROFILE_ENTRIES = new Set([
+  '', 'phoenix', 'dragon-queen', 'ice-king', 'castle-flag',
+  'lion-queen', 'phoenix-queen', 'tiger-queen'
+]);
 const enc = new TextEncoder();
 
 function reply(payload, status = 200, cors = {}) {
@@ -27,6 +37,7 @@ function showProfile(user) {
     user_id: user.auth_uid, public_id: publicId(user.public_no),
     name: user.name, country: user.country, birthdate: user.birthdate,
     minor: !!user.minor, pic: user.pic, cover: user.cover, bio: user.bio,
+    frame_style: user.frame_style || '', entry_style: user.entry_style || '',
     coins: user.coins, diamonds: user.diamonds, xp: user.xp,
     wealth_level: user.wealth_level, charm_level: user.charm_level, status: user.status
   };
@@ -187,10 +198,20 @@ export async function handleRequest(request, env) {
       if (request.method === 'PATCH') {
         await assertActive(env.DB, uid);
         const body = await readBody(request);
-        if (body.birthdate !== undefined || body.coins !== undefined || body.status !== undefined || body.diamonds !== undefined) return fail('protected_field', 403, cors);
+        if (body.birthdate !== undefined || body.coins !== undefined || body.status !== undefined || body.diamonds !== undefined || body.public_no !== undefined || body.auth_uid !== undefined) return fail('protected_field', 403, cors);
         const changes = {};
         for (const [key, limit] of Object.entries({ name: 80, country: 16, pic: 2048, cover: 2048, bio: 500 })) {
           if (body[key] !== undefined) changes[key] = txt(body[key], limit) || (key === 'name' ? null : '');
+        }
+        if (body.frame_style !== undefined) {
+          if (typeof body.frame_style !== 'string' || !PROFILE_FRAMES.has(body.frame_style))
+            return fail('invalid_frame_style', 400, cors);
+          changes.frame_style = body.frame_style;
+        }
+        if (body.entry_style !== undefined) {
+          if (typeof body.entry_style !== 'string' || !PROFILE_ENTRIES.has(body.entry_style))
+            return fail('invalid_entry_style', 400, cors);
+          changes.entry_style = body.entry_style;
         }
         if (!Object.keys(changes).length || changes.name === null) return fail('invalid_profile', 400, cors);
         const keys = Object.keys(changes);
@@ -204,7 +225,8 @@ export async function handleRequest(request, env) {
       await assertActive(env.DB, uid);
       const user = await env.DB.prepare('SELECT * FROM sharika_users WHERE public_no=?').bind(Number(parts[3])).first();
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
-        wealth_level: user.wealth_level, charm_level: user.charm_level }, 200, cors)
+        wealth_level: user.wealth_level, charm_level: user.charm_level,
+        frame_style: user.frame_style || '', entry_style: user.entry_style || '' }, 200, cors)
         : fail('not_found', 404, cors);
     }
     // Real follow graph. Identity always comes from the verified Firebase token.
@@ -841,7 +863,7 @@ export async function handleRequest(request, env) {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,
-          u.public_no,u.name,u.pic,u.wealth_level FROM sharika_room_members m
+          u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
@@ -849,7 +871,8 @@ export async function handleRequest(request, env) {
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
           members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
-          sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level }
+          sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
+            frame_style: x.frame_style || '', entry_style: x.entry_style || '' }
         })) }, 200, cors);
       }
       if (parts.length === 5 && action === 'voice-token' && request.method === 'POST') {
