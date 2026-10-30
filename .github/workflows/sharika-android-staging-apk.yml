@@ -5,6 +5,7 @@ on:
     branches:
       - feature/sharika-android-staging-20261030
       - feature/sharika-original-games-cards-20261030
+      - feature/sharika-lucky-gifts-20261030
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
