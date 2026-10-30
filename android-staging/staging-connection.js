@@ -1120,6 +1120,18 @@
             '<div id="sh-member-profile"></div>');
           const panel=frame.$('sh-member-profile');
           if(panel) {
+            cosmeticCss(frame.document);
+            const picture=frame.document.createElement('div');
+            picture.className='sh-sovera-preview';
+            picture.style.cssText='width:94px;height:94px;margin:16px auto;font-size:45px';
+            picture.textContent='👤';
+            const chosen=frameArt(member.frame_style);
+            if(chosen){
+              const art=frame.document.createElement('i');
+              art.className='fxr sh-sovera-frame';
+              art.style.backgroundImage='url('+effectPath(chosen.art)+')';
+              picture.appendChild(art);
+            }
             const name=frame.document.createElement('div');
             name.className='row';
             name.textContent=String(member.name||'Member')+' · ID '+String(member.id);
@@ -1127,8 +1139,10 @@
             details.className='lbl';
             details.textContent='Country: '+String(member.country||'Not set')+
               ' · Wealth Lv '+Number(member.wealth_level||0)+
-              ' · Charm Lv '+Number(member.charm_level||0);
-            panel.append(name,details);
+              ' · Charm Lv '+Number(member.charm_level||0)+
+              ' · Frame: '+String(chosen?.name||'None')+
+              ' · Entry: '+String(entryArt(member.entry_style)?.name||'None');
+            panel.append(picture,name,details);
           }
         }catch(error) {
           profileButton.disabled=false;
