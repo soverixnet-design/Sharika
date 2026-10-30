@@ -1,4 +1,5 @@
 import { verifyFirebaseToken } from './auth.mjs';
+import { handleVoiceOperation } from './sfu.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -211,6 +212,11 @@ export async function handleRequest(request, env) {
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
       if (!member) return fail('join_room_first', 403, cors);
+      if (parts.length === 6 && action === 'voice')
+        return await handleVoiceOperation({
+          request, env, room, member, uid, roomId, operation:parts[5],
+          reply, fail, cors, readBody
+        });
       if (parts.length === 5 && action === 'seat' && request.method === 'PUT') {
         const body = await readBody(request);
         const seat = body.seat_no === null ? null : Number(body.seat_no);
@@ -246,6 +252,8 @@ export async function handleRequest(request, env) {
     if (error.message === 'body_too_large' || error.message === 'invalid_body') return fail(error.message, 400, cors);
     if (error.message === 'profile_not_found' || error.message === 'room_not_found') return fail(error.message, 404, cors);
     if (error.message === 'profile_unavailable') return fail(error.message, 403, cors);
+    if (error.message === 'sfu_upstream_unavailable' || error.message === 'sfu_track_unavailable')
+      return fail(error.message, 502, cors);
     if (/SQLITE_CONSTRAINT|UNIQUE constraint|constraint failed/i.test(error.message || '')) return fail('conflict', 409, cors);
     console.error('sharika_stage_error', error.message);
     return fail('internal_error', 500, cors);

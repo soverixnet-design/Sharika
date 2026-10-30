@@ -77,7 +77,7 @@ public final class SharikaActivity extends Activity {
         browser.getSettings().setAllowFileAccessFromFileURLs(false);
         browser.getSettings().setAllowUniversalAccessFromFileURLs(false);
         browser.getSettings().setJavaScriptCanOpenWindowsAutomatically(false);
-        browser.getSettings().setMediaPlaybackRequiresUserGesture(true);
+        browser.getSettings().setMediaPlaybackRequiresUserGesture(false);
         browser.addJavascriptInterface(new NativeBridge(), "SharikaNative");
         browser.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -309,7 +309,7 @@ public final class SharikaActivity extends Activity {
             return false;
         // Narrow capability boundary: staging profile/wallet/rooms, nothing
         // involving admin, billing, gifts, games, arbitrary URLs or SSRF.
-        return path.matches("^/api/v1/(?:me|wallet|users/[0-9]{8}|rooms(?:/[0-9]{8}(?:/(?:join|leave|members|seat|voice-token))?)?)$");
+        return path.matches("^/api/v1/(?:me|wallet|users/[0-9]{8}|rooms(?:/[0-9]{8}(?:/(?:join|leave|members|seat|voice-token|voice/(?:config|session|publish|subscribe|renegotiate|publications|heartbeat|leave)))?)?)$");
     }
 
     private void callStagingApi(String id, JSONObject data) {

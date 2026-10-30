@@ -14,6 +14,7 @@
   let balance = { coins: 0, dia: 0, xp: 0 };
   let busyRooms = false, framePoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
+  let voiceBackend = null;
 
   function errText(error) { return String(error && error.message || error || 'Connection unavailable'); }
   function toast(message) { if (window.toast) window.toast(message); }
@@ -42,6 +43,126 @@
   async function api(method, path, body) {
     return native('api', { method, path: '/api/v1' + path, body });
   }
+
+  // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
+  let sfuState = null;
+  async function waitIce(peer) {
+    if (peer.iceGatheringState === 'complete') return;
+    await new Promise((resolve,reject) => {
+      const timeout=setTimeout(()=>{cleanup();reject(new Error('Voice network timeout'));},12000);
+      function changed(){ if(peer.iceGatheringState==='complete'){cleanup();resolve();} }
+      function cleanup(){clearTimeout(timeout);peer.removeEventListener('icegatheringstatechange',changed);}
+      peer.addEventListener('icegatheringstatechange',changed);
+      changed();
+    });
+  }
+  async function disconnectSfu() {
+    const state=sfuState;
+    if(!state)return;
+    sfuState=null;
+    state.closed=true;
+    if(state.timer)clearInterval(state.timer);
+    for(const element of state.audioElements){element.pause();element.srcObject=null;element.remove();}
+    if(state.media)for(const track of state.media.getTracks())track.stop();
+    for(const pc of [state.publishPC,state.receivePC])if(pc)pc.close();
+    if(state.sessionIds.length) {
+      try {await api('POST','/rooms/'+state.roomId+'/voice/leave',{sessionIds:state.sessionIds});}
+      catch (_) { /* stale sessions expire in the coordinator */ }
+    }
+  }
+  function addAudioTrack(state,event) {
+    if(state.closed)return;
+    const audio=document.createElement('audio');
+    audio.autoplay=true;
+    audio.playsInline=true;
+    audio.dataset.sharikaVoice='true';
+    audio.srcObject=new MediaStream([event.track]);
+    document.body.appendChild(audio);
+    state.audioElements.add(audio);
+    audio.play().catch(()=>{ /* Android may require a user tap for playback */ });
+    event.track.addEventListener('ended',()=>{
+      state.audioElements.delete(audio);audio.pause();audio.remove();
+    },{once:true});
+  }
+  async function subscribeSfu(state) {
+    if(state.closed || state.syncing)return;
+    state.syncing=true;
+    try {
+      const data=await api('GET','/rooms/'+state.roomId+'/voice/publications');
+      const upcoming=(data.publications||[]).filter(x=>x &&
+        !state.subscribed.has(x.sessionId+':'+x.trackName));
+      if(!upcoming.length)return;
+      for(let cursor=0;cursor<upcoming.length;cursor+=8) {
+        if(state.closed)return;
+        const batch=upcoming.slice(cursor,cursor+8);
+        const response=await api('POST','/rooms/'+state.roomId+'/voice/subscribe',{
+          sessionId:state.subscribeId,
+          publications:batch.map(x=>({sessionId:x.sessionId,trackName:x.trackName}))
+        });
+        // Map the SFU's receiving MIDs before setRemoteDescription fires "track".
+        for(const track of response.tracks||[]) {
+          state.remoteMids.set(String(track.mid),track.userId||'');
+        }
+        await state.receivePC.setRemoteDescription(response.sessionDescription);
+        const answer=await state.receivePC.createAnswer();
+        await state.receivePC.setLocalDescription(answer);
+        await waitIce(state.receivePC);
+        await api('PUT','/rooms/'+state.roomId+'/voice/renegotiate',{
+          sessionId:state.subscribeId,sessionDescription:state.receivePC.localDescription
+        });
+        batch.forEach(x=>state.subscribed.add(x.sessionId+':'+x.trackName));
+      }
+    }catch(error) {
+      console.warn('Sharika voice subscriptions:',errText(error));
+    }finally {state.syncing=false;}
+  }
+  async function connectSfu(roomId,canPublish) {
+    const state={
+      roomId,closed:false,sessionIds:[],publishPC:null,receivePC:null,
+      media:null,audioElements:new Set(),remoteMids:new Map(),
+      subscribed:new Set(),subscribeId:null,timer:null,syncing:false
+    };
+    sfuState=state;
+    try {
+      if(canPublish) {
+        state.media=await navigator.mediaDevices.getUserMedia({
+          audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
+        });
+        state.publishPC=new RTCPeerConnection();
+        const local=state.media.getAudioTracks()[0];
+        const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
+        const offer=await state.publishPC.createOffer();
+        await state.publishPC.setLocalDescription(offer);
+        await waitIce(state.publishPC);
+        const published=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'publish'});
+        state.sessionIds.push(published.sessionId);
+        const negotiation=await api('POST','/rooms/'+roomId+'/voice/publish',{
+          sessionId:published.sessionId,
+          sessionDescription:state.publishPC.localDescription,
+          mid:transceiver.mid,trackName:'microphone'
+        });
+        await state.publishPC.setRemoteDescription(negotiation.sessionDescription);
+      }
+      const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
+      state.subscribeId=joined.sessionId;
+      state.sessionIds.push(joined.sessionId);
+      state.receivePC=new RTCPeerConnection();
+      state.receivePC.ontrack=event=>addAudioTrack(state,event);
+      await subscribeSfu(state);
+      // Refresh both presence and publications; do not consume room resources
+      // on a tight per-frame timer.
+      state.timer=setInterval(()=>{
+        if(state.closed)return;
+        api('POST','/rooms/'+roomId+'/voice/heartbeat',{sessionIds:state.sessionIds}).catch(()=>{});
+        subscribeSfu(state).catch(()=>{});
+      },8000);
+      return {publishing:canPublish};
+    }catch(error){
+      await disconnectSfu();
+      throw error;
+    }
+  }
+
   async function voiceSdk() {
     if (window.LivekitClient) return window.LivekitClient;
     if (!voiceSdkPromise) {
@@ -59,17 +180,25 @@
     return voiceSdkPromise;
   }
   async function disconnectVoice() {
+    if(sfuState)await disconnectSfu();
+    voiceBackend=null;
     if(!voiceRoom)return;
     const room=voiceRoom;
     voiceRoom=null;voiceRoomId=null;
     await room.disconnect();
   }
   async function connectVoice(roomId) {
-    // This must fail closed until the user configures NEW Sharika-scoped
-    // LiveKit secrets. Tokens are minted only after D1 room membership check.
+    const config=await api('GET','/rooms/'+roomId+'/voice/config');
+    await disconnectVoice();
+    if(config.provider==='cloudflare_sfu') {
+      voiceBackend='cloudflare_sfu';
+      return connectSfu(roomId,!!config.publish);
+    }
+    if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
+    // Keep the isolated LiveKit fallback only when explicitly configured.
     const info=await api('POST','/rooms/'+roomId+'/voice-token',{});
     const sdk=await voiceSdk();
-    await disconnectVoice();
+    voiceBackend='livekit';
     const room=new sdk.Room({
       audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true}
     });
@@ -100,6 +229,12 @@
     return {publishing:!!info.publish};
   }
   async function toggleVoice() {
+    if(sfuState) {
+      const track=sfuState.media?.getAudioTracks()[0];
+      if(!track)throw new Error('Take an available mic seat first');
+      track.enabled=!track.enabled;
+      return track.enabled;
+    }
     if(!voiceRoom || !voiceRoomId)throw new Error('Voice connection is not available');
     const currently=voiceRoom.localParticipant.isMicrophoneEnabled;
     await voiceRoom.localParticipant.setMicrophoneEnabled(!currently);
@@ -466,7 +601,7 @@
     cleanLocalFakeState();
     originalLogout();
   };
-  window.SharikaServer={api,reloadWallet,reloadRooms,connected:()=>!!session};
+  window.SharikaServer={api,reloadWallet,reloadRooms,connected:()=>!!session,voiceProvider:()=>voiceBackend};
 
   async function restore(){
     cleanLocalFakeState();
