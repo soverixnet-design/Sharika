@@ -376,6 +376,42 @@
       (document.getElementById('sh-sovera-own-identity')||anchor).insertAdjacentElement('afterend',button);
     }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
   }
+  let avatarUploadBusy=false;
+  function pickProfilePhoto(){
+    if(!session||!profile){toast('Sign in to change your profile photo');return;}
+    if(avatarUploadBusy){toast('Profile photo upload is already running');return;}
+    const picker=document.createElement('input');
+    picker.type='file';picker.accept='image/*';
+    picker.style.cssText='position:fixed;opacity:0;left:-10000px;top:0';
+    document.body.appendChild(picker);
+    picker.addEventListener('cancel',()=>picker.remove(),{once:true});
+    picker.onchange=async()=>{
+      const file=picker.files?.[0];picker.remove();
+      if(!file)return;
+      avatarUploadBusy=true;
+      toast('Preparing your profile photo…');
+      try{
+        const image_data=await jpegRoomPreview(file);
+        const saved=await api('PUT','/me/avatar',{image_data});
+        if(!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(saved.pic||''))
+          throw new Error('Profile photo confirmation unavailable');
+        profile=saved;
+        window.A.pic=saved.pic;
+        window.saveA();window.renderMe();
+        toast('Profile photo saved · visible on your ID ✓');
+      }catch(error){toast('Profile photo not saved: '+errText(error));}
+      finally{avatarUploadBusy=false;}
+    };
+    picker.click();
+  }
+  // The original HTML photo picker writes only to localStorage. In staging
+  // route every profile photo selection through the verified server wallet ID.
+  document.addEventListener('click',event=>{
+    if(event.target.closest?.('#v-me #pavb, #v-me .mav, #sh #ep')){
+      event.preventDefault();event.stopImmediatePropagation();
+      pickProfilePhoto();
+    }
+  },true);
   const priorRenderMe=window.renderMe;
   if(typeof priorRenderMe==='function')window.renderMe=function(){
     priorRenderMe.apply(this,arguments);
