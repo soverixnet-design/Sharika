@@ -499,7 +499,28 @@
     frame.tick=function(){};
     frame.U=[];
     frame.G=[];
-    frame.sendGift=function(){ frame.toast('Gifts are not available until secure D1 wallet settlement is tested'); };
+    frame.sendGift=function(){ frame.toast('Sending gifts is disabled until verified wallet settlement is ready'); };
+    // Load only the real gift catalog approved in D1 by the admin panel.
+    // Keep the existing original Sharika gift box and its original artwork.
+    const giftButton=frame.$ && frame.$('bGift');
+    const originalGiftOpen=giftButton && giftButton.onclick;
+    if(giftButton)giftButton.onclick=async ()=>{
+      try{
+        const data=await api('GET','/gifts');
+        const gifts=(data.gifts||[]).filter(g=>g.active!==0);
+        if(!gifts.length){frame.toast('No active gifts in the catalog yet');return;}
+        frame.G=gifts.map(g=>[g.emoji||'🎁',Number(g.price_coins),g.name,Number(g.tab),g.image_url||'']);
+        if(typeof originalGiftOpen==='function')originalGiftOpen.call(giftButton);
+        else frame.toast('Gift catalog available, sending is not ready');
+      }catch(error){frame.toast('Gift catalog unavailable: '+errText(error));}
+    };
+    // The original gift game debits a local demo wallet. Intercept its Send
+    // button before any original handler can run until D1 ledger is available.
+    frame.document.addEventListener('click',event=>{
+      if(!event.target.closest?.('#snd'))return;
+      event.preventDefault();event.stopImmediatePropagation();
+      frame.toast('Gift sending is disabled until verified wallet settlement is ready');
+    },true);
     frame.act=async function(action,seat) {
       try {
         if(action==='take' && seat>0) {
@@ -526,7 +547,6 @@
     };
     const pendingRoomButtons = {
       bGame:'Games require fair server-generated rounds before release',
-      bGift:'Gifts require real D1 wallet transactions before release',
       bMsg:'Private messaging is not on the staging server yet',
       bOwn:'Owner moderation is not on the staging server yet',
       roomBtn:'Room settings must be saved to the server before release'
