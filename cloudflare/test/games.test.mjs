@@ -116,3 +116,36 @@ test('classic game bet replay remains idempotent after its round has closed',asy
   assert.equal(late.status,409);
   assert.equal((await late.json()).error,'betting_closed');
 });
+
+test('two simultaneous identical bet requests return the single accepted bet',async()=>{
+  const originalNow=Date.now;
+  const fixed=Math.floor(originalNow()/40000)*40000+1000;
+  Date.now=()=>fixed;
+  try{
+    const db=fakeDb();
+    const originalPrepare=db.prepare.bind(db);
+    const roundNo=Math.floor(fixed/40000);
+    const accepted={id:101,game:'food-wheel',round_no:roundNo,
+      round_id:'food-wheel:'+roundNo,stake:50,pick_index:4,
+      status:'accepted',payout:0,result_json:null};
+    let lookups=0,insertAttempts=0;
+    db.prepare=sql=>{
+      if(sql.startsWith('SELECT * FROM sharika_game_bets WHERE user_uid=? AND request_id=?')){
+        return {bind(){return this;},async first(){lookups++;return lookups===1?null:accepted;}};
+      }
+      if(sql.startsWith('INSERT INTO sharika_game_bets')){
+        return {bind(){return this;},async run(){
+          insertAttempts++;throw Error('UNIQUE constraint failed: sharika_game_bets.user_uid');
+        }};
+      }
+      return originalPrepare(sql);
+    };
+    const response=await handleGameRequest(args(db,'food-wheel','bet','POST',{
+      stake:50,round_no:roundNo,pick:4,request_id:'game:parallel-request-12345'
+    }));
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).duplicate,true);
+    assert.equal(lookups,2);
+    assert.equal(insertAttempts,1);
+  }finally{Date.now=originalNow;}
+});
