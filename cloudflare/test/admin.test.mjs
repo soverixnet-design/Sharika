@@ -22,6 +22,10 @@ function mock(role) {
           return {users:1,rooms:1,active_gifts:0,ledger_entries:1,coins_total:2000,diamonds_total:0};
         },
         async all() {
+          if(sql.includes("m.body LIKE '[Sharika report]%'")) return {results:[{
+            id:57,reporter_no:10000002,created_at:'2026-10-31 02:00:00',
+            body:'[Sharika report] user ID 10000003 · Member\\nReason: Spam messages'
+          }]};
           if (sql.includes('FROM sharika_users')) return {results:[{
             public_no:10000001,name:'Owner',country:'BD',coins:2000,diamonds:0,
             wealth_level:1,charm_level:1,status:'active',created_at:'2026-10-30'
@@ -189,4 +193,18 @@ test('Top Recharge counts verified seller/manual credits only, not signup or gam
   assert.doesNotMatch(sqlText,/signup_welcome|game_win|referral_bonus/);
   assert.equal(bound.length,2);
   assert.equal(await readGiftRankings(db,'weekly','unsupported'),null);
+});
+
+test('only support/super can triage verified reports without editing wallet data',async()=>{
+  const support=await handle('support','/api/v1/admin/reports');
+  assert.equal(support.status,200);
+  assert.equal(support.data.read_only,true);
+  assert.equal(support.data.reports[0].reporter_public_id,'10000002');
+  assert.equal(support.data.reports[0].id,57);
+  assert.match(support.data.reports[0].body,/Sharika report/);
+  assert.ok(!support.calls.some(c=>c.batch));
+  assert.equal((await handle('super','/api/v1/admin/reports')).status,200);
+  const blocked=await handle('finance','/api/v1/admin/reports');
+  assert.equal(blocked.status,403);
+  assert.equal(blocked.data.error,'admin_permission_denied');
 });
