@@ -277,12 +277,14 @@
       // The user's stored profile photo follows the same public ID into
       // owner, guest and mic seats. Frames remain over the circular avatar.
       paintVerifiedAvatar(el.querySelector('.face'),seat.pic,doc);
-      avatar.querySelector('.sh-sovera-frame')?.remove();
+      // Repeated server refreshes must not stack medals over one another.
+      avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
+        .forEach(decoration=>decoration.remove());
       const item=frameArt(seat.frame_style);
       const medal=medalArt(seat.medal_style);
+      avatar.classList.toggle('sh-has-sovera-frame',!!item);
       if(!item&&!medal)continue;
       avatar.style.position='relative';
-      avatar.classList.toggle('sh-has-sovera-frame',!!item);
       if(item){
         const decoration=doc.createElement('i');
         decoration.className='fxr sh-sovera-frame';
@@ -463,16 +465,21 @@
     if(!session||!profile){toast('Sign in to change your profile photo');return;}
     if(avatarUploadBusy){toast('Profile photo upload is already running');return;}
     avatarUploadBusy=true;
+    const accountId=session.user.id;
+    const publicId=profile.public_id;
     try{
       toast('Opening your Android photo gallery…');
       // Use a native, single-image Android picker. It decodes HEIC/JPEG and
       // produces a bounded JPEG; no broad storage permission is needed.
       const picked=await native('pickProfilePhoto');
+      if(session?.user?.id!==accountId)throw new Error('Account changed; please select the photo again');
       const image_data=picked?.image_data;
       if(typeof image_data!=='string'||!image_data.startsWith('data:image/jpeg;base64,'))
         throw new Error('Gallery did not return a usable photo');
       toast('Uploading your profile photo…');
       const saved=await api('PUT','/me/avatar',{image_data});
+      if(session?.user?.id!==accountId || saved?.public_id!==publicId)
+        throw new Error('Profile changed before photo confirmation');
       if(!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(saved.pic||''))
         throw new Error('Profile photo confirmation unavailable');
       profile=saved;
@@ -1165,10 +1172,17 @@
   };
   async function syncFrame(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
+    // Out-of-order room polls cannot restore stale seats or old cosmetics.
+    const requestNo=(frame.__sharikaSeatSyncNo||0)+1;
+    frame.__sharikaSeatSyncNo=requestNo;
+    const userId=session?.user?.id;
     const [data,owner] = await Promise.all([
       api('GET','/rooms/'+room.id+'/members'),
       api('GET','/users/'+room.id)
     ]);
+    if(frame.__sharikaSeatSyncNo!==requestNo ||
+       !session || session.user.id!==userId || window.cur?.id!==room.id ||
+       document.getElementById('rf')?.contentWindow!==frame)return;
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     const eligible=room.owner_id===session?.user?.id||
       (!!self && self.seat_no!==null && !self.muted);
@@ -1982,6 +1996,8 @@
       const work=(async()=>{
         if(window.cur?.id!==room.id)return;
         const data=await api('GET','/rooms/'+room.id+'/chat?after='+lastChatId);
+        if(window.cur?.id!==room.id || !session ||
+           document.getElementById('rf')?.contentWindow!==frame)return;
         const messages=Array.isArray(data.messages)?data.messages:[];
         for(const item of messages) {
           const id=Number(item.id);
