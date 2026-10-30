@@ -66,9 +66,9 @@ BEGIN
       WHERE id=NEW.round_id AND game=NEW.game AND round_no=NEW.round_no);
   SELECT RAISE(ABORT,'original_betting_closed') WHERE
     (SELECT bet_closes_ms FROM sharika_original_game_rounds WHERE id=NEW.round_id)
-      <= CAST(strftime('%s','now') AS INTEGER)*1000 OR
+      <= CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) OR
     (SELECT starts_ms FROM sharika_original_game_rounds WHERE id=NEW.round_id)
-      > CAST(strftime('%s','now') AS INTEGER)*1000;
+      > CAST((julianday('now')-2440587.5)*86400000 AS INTEGER);
   SELECT RAISE(ABORT,'original_invalid_pick') WHERE
     (NEW.game!='night-food' AND NEW.pick_index>7);
   SELECT RAISE(ABORT,'original_user_ineligible') WHERE NOT EXISTS
