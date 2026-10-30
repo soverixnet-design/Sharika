@@ -787,7 +787,10 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       'https://example.test/api/v1/rooms/10000001/members',{headers}),
       {DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
     assert.equal(members.status,200);
-    assert.deepEqual((await members.json()).locked_seats,[3]);
+    const memberSnapshot=await members.json();
+    assert.equal(memberSnapshot.seat_count,12,
+      'room seat count is returned for other members to refresh their view');
+    assert.deepEqual(memberSnapshot.locked_seats,[3]);
     const notJoined=await handleRequest(new Request(
       'https://example.test/api/v1/rooms/10000001/members',{headers}),
       {DB:makeDb(uid,false),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
