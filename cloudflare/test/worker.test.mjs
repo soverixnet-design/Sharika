@@ -186,3 +186,28 @@ test('only the verified room owner can save room settings in D1',async()=>{
     assert.equal(occupied.status,409);
   }finally{globalThis.fetch=originalFetch;}
 });
+
+test('support history requires Firebase authentication and scopes reads to the signer',async()=>{
+  const anon=await handleRequest(new Request('https://example.test/api/v1/support/messages'),{
+    DB:fakeDb(),FIREBASE_PROJECT_ID:project
+  });
+  assert.equal(anon.status,401);
+  const prior=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),orig=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=orig(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/support/messages',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    assert.deepEqual((await res.json()).messages,[]);
+    const call=db.calls.find(c=>c[0]==='all' && c[1].includes('FROM sharika_support_messages'));
+    assert.equal(call[2][0],'firebase:'+project+':secure-user');
+  }finally{globalThis.fetch=prior;}
+});

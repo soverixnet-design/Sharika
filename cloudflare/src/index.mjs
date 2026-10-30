@@ -163,6 +163,46 @@ export async function handleRequest(request, env) {
         wealth_level: user.wealth_level, charm_level: user.charm_level }, 200, cors)
         : fail('not_found', 404, cors);
     }
+    // Verified user-to-support chat; never reads another user's conversation.
+    if (path === '/api/v1/support/messages') {
+      await assertActive(env.DB, uid);
+      if (request.method === 'GET') {
+        const rows=await env.DB.prepare(
+          'SELECT id,sender_role,body,created_at FROM sharika_support_messages '+
+          'WHERE user_id=? ORDER BY id DESC LIMIT 100'
+        ).bind(uid).all();
+        return reply({messages:(rows.results||[]).reverse()},200,cors);
+      }
+      if (request.method === 'POST') {
+        const payload=await readBody(request);
+        const message=typeof payload.body==='string'?payload.body.trim():'';
+        const requestId=typeof payload.request_id==='string'?payload.request_id.trim():'';
+        if(message.length<1||message.length>1000||
+            !/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
+          return fail('invalid_support_message',400,cors);
+        const existing=await env.DB.prepare(
+          'SELECT id,sender_role,body,created_at FROM sharika_support_messages '+
+          'WHERE request_id=? AND user_id=? AND sender_uid=?'
+        ).bind(requestId,uid,uid).first();
+        if(existing)return reply({message:existing,duplicate:true},200,cors);
+        const recent=await env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM sharika_support_messages WHERE sender_uid=? "+
+          "AND sender_role='user' AND created_at>=datetime('now','-1 minute')"
+        ).bind(uid).first();
+        if(Number(recent?.n||0)>=6)return fail('support_rate_limited',429,cors);
+        await env.DB.prepare(
+          "INSERT OR IGNORE INTO sharika_support_messages(user_id,sender_uid,sender_role,body,request_id) "+
+          "VALUES(?,?,'user',?,?)"
+        ).bind(uid,uid,message,requestId).run();
+        const saved=await env.DB.prepare(
+          'SELECT id,sender_role,body,created_at FROM sharika_support_messages '+
+          'WHERE request_id=? AND user_id=? AND sender_uid=?'
+        ).bind(requestId,uid,uid).first();
+        if(!saved)return fail('support_request_conflict',409,cors);
+        return reply({message:saved},201,cors);
+      }
+      return fail('method_not_allowed',405,cors);
+    }
     if (path === '/api/v1/gifts' && request.method === 'GET') {
       await assertActive(env.DB, uid);
       const result = await env.DB.prepare(

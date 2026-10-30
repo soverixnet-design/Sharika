@@ -23,6 +23,53 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   const operation = path.slice(ADMIN_PREFIX.length);
   const url = new URL(request.url);
 
+  // Support agents may reply to real user conversations, with explicit scope.
+  const supportReply=/^support\/([0-9]{8})\/reply$/.exec(operation);
+  if (supportReply && request.method==='POST') {
+    const denied=allowed(actor.role,new Set(['super','support']),fail,cors);
+    if(denied)return denied;
+    let payload;
+    try {
+      const raw=await request.text();
+      if(raw.length>4096)return fail('support_body_too_large',413,cors);
+      payload=JSON.parse(raw||'{}');
+    }catch(_){return fail('invalid_support_json',400,cors);}
+    const message=typeof payload?.body==='string'?payload.body.trim():'';
+    const requestId=typeof payload?.request_id==='string'?payload.request_id.trim():'';
+    if(message.length<1||message.length>1000||
+       !/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
+      return fail('invalid_support_reply',400,cors);
+    const target=await env.DB.prepare(
+      'SELECT auth_uid,public_no,name FROM sharika_users WHERE public_no=?'
+    ).bind(Number(supportReply[1])).first();
+    if(!target)return fail('user_not_found',404,cors);
+    const existing=await env.DB.prepare(
+      'SELECT id,body,created_at FROM sharika_support_messages '+
+      'WHERE request_id=? AND user_id=? AND sender_uid=?'
+    ).bind(requestId,target.auth_uid,uid).first();
+    if(existing)return reply({message:existing,duplicate:true},200,cors);
+    const recent=await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM sharika_support_messages WHERE sender_uid=? "+
+      "AND sender_role='admin' AND created_at>=datetime('now','-1 minute')"
+    ).bind(uid).first();
+    if(Number(recent?.n||0)>=30)return fail('support_rate_limited',429,cors);
+    const inserted=await env.DB.prepare(
+      "INSERT OR IGNORE INTO sharika_support_messages(user_id,sender_uid,sender_role,body,request_id) "+
+      "VALUES(?,?,'admin',?,?)"
+    ).bind(target.auth_uid,uid,message,requestId).run();
+    const saved=await env.DB.prepare(
+      'SELECT id,sender_role,body,created_at FROM sharika_support_messages '+
+      'WHERE request_id=? AND user_id=? AND sender_uid=?'
+    ).bind(requestId,target.auth_uid,uid).first();
+    if(!saved)return fail('support_request_conflict',409,cors);
+    if(inserted.meta?.changes)await env.DB.prepare(
+      'INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)'
+    ).bind(uid,'support_reply',JSON.stringify({
+      user_id:supportReply[1],message_id:saved.id
+    })).run();
+    return reply({message:saved},201,cors);
+  }
+
   // Mutations are deliberately small and restricted to verified Super Admin.
   // No balance, recharge, reward, or other financial mutation is exposed.
   if (request.method !== 'GET') {
@@ -123,10 +170,39 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     return fail('admin_write_not_enabled',405,cors);
   }
 
+  if(operation==='support') {
+    const denied=allowed(actor.role,new Set(['super','support']),fail,cors);
+    if(denied)return denied;
+    const rows=values(await env.DB.prepare(
+      'SELECT u.public_no,u.name,COUNT(*) AS message_count,MAX(m.id) AS last_id,'+
+      '(SELECT body FROM sharika_support_messages x WHERE x.user_id=m.user_id '+
+      'ORDER BY x.id DESC LIMIT 1) AS last_body '+
+      'FROM sharika_support_messages m JOIN sharika_users u ON u.auth_uid=m.user_id '+
+      'GROUP BY m.user_id ORDER BY last_id DESC LIMIT 100'
+    ).all());
+    return reply({conversations:rows.map(x=>({...x,public_id:id(x.public_no),
+      public_no:undefined})),limited_to:100},200,cors);
+  }
+  const supportRoute=/^support\/([0-9]{8})$/.exec(operation);
+  if(supportRoute) {
+    const denied=allowed(actor.role,new Set(['super','support']),fail,cors);
+    if(denied)return denied;
+    const target=await env.DB.prepare(
+      'SELECT auth_uid,public_no,name FROM sharika_users WHERE public_no=?'
+    ).bind(Number(supportRoute[1])).first();
+    if(!target)return fail('user_not_found',404,cors);
+    const messages=values(await env.DB.prepare(
+      'SELECT id,sender_role,body,created_at FROM sharika_support_messages '+
+      'WHERE user_id=? ORDER BY id DESC LIMIT 100'
+    ).bind(target.auth_uid).all()).reverse();
+    return reply({user:{public_id:id(target.public_no),name:target.name},
+      messages},200,cors);
+  }
   if (operation === 'status') {
     return reply({ role:actor.role, name:actor.name, public_id:id(actor.public_no),
       environment:'staging', read_only:actor.role!=='super',
-      write_scopes:actor.role==='super'?['user_status','gift_catalog']:[] }, 200, cors);
+      write_scopes:actor.role==='super'?['user_status','gift_catalog','support_reply']:
+        actor.role==='support'?['support_reply']:[] }, 200, cors);
   }
   if (operation === 'dashboard') {
     const totals = await env.DB.prepare(

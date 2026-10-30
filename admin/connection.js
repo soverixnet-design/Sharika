@@ -415,6 +415,62 @@
     byId('ledger-go').onclick=refresh;
     await refresh();
   };
+  P.support=async function () {
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>Verified support inbox</h3>'+
+      '<p class="n">Messages are stored in the Sharika D1 database. No demo tickets.</p>'+
+      '<button type="button" class="btn s" id="support-refresh">Refresh</button>'+
+      '<div id="support-list">Loading…</div></div><div id="support-thread"></div>';
+    const list=byId('support-list'),thread=byId('support-thread');
+    let opened=null;
+    async function refreshList(){
+      try {
+        const data=await api('GET','support');
+        list.innerHTML=window.T(['User ID','Name','Messages','Latest message','Open'],
+          (data.conversations||[]).map(c=>[
+            esc(c.public_id),esc(c.name),fmt(c.message_count),
+            esc(String(c.last_body||'').slice(0,140)),
+            '<button type="button" class="btn s" data-support-id="'+esc(c.public_id)+'">Open</button>'
+          ]));
+      }catch(error){list.textContent=error.message;}
+    }
+    async function refreshThread(){
+      if(!opened)return;
+      try{
+        const data=await api('GET','support/'+encodeURIComponent(opened));
+        const rows=(data.messages||[]).map(m=>[
+          m.sender_role==='admin'?'Admin':'User',esc(m.body),esc(m.created_at)
+        ]);
+        thread.innerHTML='<div class="card"><h3>Support: '+esc(data.user.name)+
+          ' (ID '+esc(data.user.public_id)+')</h3>'+
+          window.T(['From','Message','Sent'],rows)+
+          '<div class="row"><input id="support-reply-text" maxlength="1000" '+
+          'placeholder="Reply to this user" aria-label="Support reply">'+
+          '<button type="button" class="btn s" id="support-send">Send reply</button></div></div>';
+        byId('support-send').onclick=async()=>{
+          const button=byId('support-send');
+          const body=byId('support-reply-text').value.trim();
+          if(!body){note('Write a reply first.');return;}
+          button.disabled=true;
+          try{
+            const request_id='adm:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+            await api('POST','support/'+encodeURIComponent(opened)+'/reply',{body,request_id});
+            note('Support reply sent');
+            await refreshThread();await refreshList();
+          }catch(error){note('Reply failed: '+error.message);button.disabled=false;}
+        };
+      }catch(error){thread.textContent='Conversation unavailable: '+error.message;}
+    }
+    list.onclick=e=>{
+      const button=e.target.closest('button[data-support-id]');
+      if(!button)return;
+      opened=button.dataset.supportId;
+      refreshThread();
+    };
+    byId('support-refresh').onclick=async()=>{await refreshList();await refreshThread();};
+    await refreshList();
+  };
+
   P.gifts=async function () {
     const root=byId('pg');
     const canEdit=role==='super';

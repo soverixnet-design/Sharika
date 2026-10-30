@@ -668,9 +668,73 @@
     finally {button.disabled=false;}
   },true);
 
+  // Real user-to-admin support chat using the original Sharika message cards.
+  let supportPoll=null;
+  let supportBusy=false;
+  async function loadSupportMessages(){
+    const container=document.getElementById('tb');
+    if(!container||!session)return;
+    const data=await api('GET','/support/messages');
+    container.textContent='';
+    for(const message of data.messages||[]){
+      const bubble=document.createElement('div');
+      bubble.className='bub '+(message.sender_role==='user'?'me':'th');
+      bubble.textContent=message.body;
+      container.appendChild(bubble);
+    }
+    container.scrollTop=container.scrollHeight;
+  }
+  async function openSupportThread(){
+    if(!session){window.showAuth('welcome');return;}
+    document.getElementById('th')?.classList.add('on');
+    document.getElementById('thn').textContent='🎧 Customer service';
+    const container=document.getElementById('tb');
+    container.textContent='Loading support messages…';
+    try{await loadSupportMessages();}
+    catch(error){container.textContent='Messages unavailable: '+errText(error);}
+    if(supportPoll)clearInterval(supportPoll);
+    supportPoll=setInterval(()=>{
+      if(!session||!document.getElementById('th')?.classList.contains('on'))return;
+      loadSupportMessages().catch(()=>{});
+    },15000);
+  }
   window.renderMsg=function(){
     const view=document.getElementById('ml');
-    if(view)view.innerHTML='<div class="empty">Messages are not available yet.</div>';
+    if(!view)return;
+    const demoBadge=document.querySelector('.ni[data-v="msg"] em');
+    if(demoBadge)demoBadge.style.display='none';
+    if(!session){view.innerHTML='<div class="empty">Sign in to view your conversations.</div>';return;}
+    view.innerHTML='<div class="chatrow" id="verified-support-chat">'+
+      '<div class="av">🎧</div><div><b>Customer service</b>'+
+      '<small>Verified Sharika support conversation</small></div><time>›</time></div>';
+    document.getElementById('verified-support-chat').onclick=openSupportThread;
+  };
+  const supportSendButton=document.getElementById('ts');
+  const supportInput=document.getElementById('ti');
+  async function sendSupportMessage(){
+    if(!session){window.showAuth('welcome');return;}
+    if(supportBusy)return;
+    const body=supportInput?.value?.trim()||'';
+    if(!body)return;
+    if(body.length>1000){toast('Message is too long');return;}
+    supportBusy=true;
+    if(supportSendButton)supportSendButton.disabled=true;
+    try{
+      const request_id='usr:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+      await api('POST','/support/messages',{body,request_id});
+      supportInput.value='';
+      await loadSupportMessages();
+    }catch(error){toast('Message not sent: '+errText(error));}
+    finally{supportBusy=false;if(supportSendButton)supportSendButton.disabled=false;}
+  }
+  if(supportSendButton)supportSendButton.onclick=sendSupportMessage;
+  if(supportInput)supportInput.onkeydown=e=>{
+    if(e.key==='Enter'){e.preventDefault();sendSupportMessage();}
+  };
+  const supportBackButton=document.getElementById('thb');
+  if(supportBackButton)supportBackButton.onclick=()=>{
+    document.getElementById('th')?.classList.remove('on');
+    if(supportPoll){clearInterval(supportPoll);supportPoll=null;}
   };
   window.renderRank=function(){
     const view=document.getElementById('rb');

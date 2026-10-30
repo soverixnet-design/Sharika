@@ -107,3 +107,23 @@ test('gift catalog creation defaults disabled, financial mutations stay unavaila
   });
   assert.equal(rejected.status,403);
 });
+
+test('support inbox is role-protected and never exposes messages to finance',async()=>{
+  const support=await handle('support','/api/v1/admin/support');
+  assert.equal(support.status,200);
+  assert.deepEqual(support.data.conversations,[]);
+  const finance=await handle('finance','/api/v1/admin/support');
+  assert.equal(finance.status,403);
+});
+
+test('support replies require validated text even for an assigned support agent',async()=>{
+  const invalid=await handle('support','/api/v1/admin/support/10000002/reply','POST',{
+    body:'',request_id:'adm:sample123456'
+  });
+  assert.equal(invalid.status,400);
+  assert.equal(invalid.data.error,'invalid_support_reply');
+  const finance=await handle('finance','/api/v1/admin/support/10000002/reply','POST',{
+    body:'Hello',request_id:'adm:sample123456'
+  });
+  assert.equal(finance.status,403);
+});
