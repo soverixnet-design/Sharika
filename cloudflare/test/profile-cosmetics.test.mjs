@@ -243,3 +243,13 @@ test('Android startup hides legacy demo screens until Firebase session restorati
   finish();
   assert.ok(!classes.has('sharika-startup-verifying'));
 });
+
+test('room user and room reports go to authenticated Support Inbox, not demo state',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.match(adapter,/function openVerifiedReport\(kind,targetId,targetName\)/);
+  assert.match(adapter,/openVerifiedReport\('user',verifiedId/);
+  assert.match(adapter,/openVerifiedReport\('room',room\.id,room\.name\)/);
+  assert.match(adapter,/api\('POST','\/support\/messages',\{/);
+  assert.match(adapter,/request_id:'report:'/);
+  assert.match(adapter,/Report sent to verified support/);
+});
