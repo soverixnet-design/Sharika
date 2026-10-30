@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/games.mjs && node --check src/original-games.mjs && node --check src/index.mjs && node --check src/admin.mjs && node --check src/moderation.mjs && node --check src/sellers.mjs && node --check src/sfu.mjs && node --check src/voice-room.mjs && node --check src/voice-worker.mjs && npm test"
+    "check": "node --check src/games.mjs && node --check src/original-games.mjs && node --check src/index.mjs && node --check src/admin.mjs && node --check src/moderation.mjs && node --check src/sellers.mjs && node --check src/daily.mjs && node --check src/sfu.mjs && node --check src/voice-room.mjs && node --check src/voice-worker.mjs && npm test"
   },
   "engines": {
     "node": ">=22"

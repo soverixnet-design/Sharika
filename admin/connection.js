@@ -398,6 +398,46 @@
     }catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
   };
 
+
+  P.daily=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>🎁 Verified Daily Check-in</h3>'+
+      '<p class="n">Rewards are credited once per UTC day to the real wallet and immutable ledger.</p>'+
+      '<div id="daily-stats">Loading server totals…</div></div>'+
+      '<div class="card"><h3>7-day coin rewards</h3>'+
+      '<div class="row" id="daily-config-fields">Loading…</div>'+
+      (role==='super'?'<button class="btn s" id="daily-save" type="button">Save reward amounts</button>':'')+
+      '<p class="n" id="daily-note">Only Super Admin may edit future rewards (1–1,000 coins per day). Previous claims never change.</p></div>';
+    const stats=byId('daily-stats'),fields=byId('daily-config-fields'),note=byId('daily-note');
+    try{
+      const result=await api('GET','daily');
+      stats.innerHTML=window.T(['UTC day','Claims today','Coins awarded today'],[
+        [esc(result.utc_day),fmt(result.claims_today),fmt(result.coins_awarded_today)]
+      ]);
+      fields.innerHTML=(result.rewards||[]).map((reward,i)=>
+        '<label style="display:inline-grid;gap:5px"><span>Day '+(i+1)+'</span>'+
+        '<input type="number" class="field" min="1" max="1000" id="daily-day-'+(i+1)+
+        '" value="'+esc(reward)+'" '+(role==='super'?'':'disabled')+'></label>').join('');
+    }catch(error){stats.textContent=error.message;fields.textContent='Rewards unavailable.';return;}
+    if(role!=='super')return;
+    byId('daily-save')?.addEventListener('click',async event=>{
+      const rewards=Array.from({length:7},(_,i)=>{
+        const raw=byId('daily-day-'+(i+1))?.value.trim()||'';
+        return /^\d+$/.test(raw)?Number(raw):NaN;
+      });
+      if(rewards.some(n=>!Number.isSafeInteger(n)||n<1||n>1000)){
+        note.textContent='Every reward must be a whole number from 1 to 1,000 coins.';return;
+      }
+      if(!window.confirm('Save these 7 daily reward values? Existing claims will stay unchanged.'))return;
+      const button=event.currentTarget;button.disabled=true;
+      try{
+        await api('PATCH','daily',{rewards});
+        note.textContent='Daily rewards saved and audited. Future claims use the new values.';
+      }catch(error){note.textContent='Update failed: '+error.message;}
+      finally{button.disabled=false;}
+    });
+  };
+
   P.sellers=async function(){
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>🪙 Verified coin sellers</h3>'+
@@ -695,7 +735,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','gifts','rank','audit','admins','system'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','gifts','rank','audit','admins','system'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

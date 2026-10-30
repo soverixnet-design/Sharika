@@ -58,7 +58,7 @@ test('role is checked from D1 and does not expose private Firebase UID',async()=
   assert.equal(response.data.public_id,'10000001');
   assert.equal(response.data.role,'super');
   assert.equal(response.data.read_only,false);
-  assert.deepEqual(response.data.write_scopes,['user_status','gift_catalog','support_reply','seller_approval','seller_stock_allocation']);
+  assert.deepEqual(response.data.write_scopes,['user_status','gift_catalog','support_reply','seller_approval','seller_stock_allocation','daily_reward_config']);
   assert.equal(JSON.stringify(response.data).includes('firebase_uid'),false);
 });
 test('super admins cannot mutate wallets or admin roles in staging',async()=>{

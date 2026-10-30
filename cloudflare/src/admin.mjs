@@ -2,6 +2,7 @@
 // Every request is authenticated by the outer Worker with a verified Firebase JWT.
 // Only explicitly audited seller inventory and verified grants may credit wallets.
 import { handleSellerAdmin } from './sellers.mjs';
+import { handleDailyAdmin } from './daily.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
 const FINANCE_ROLES = new Set(['super', 'finance']);
@@ -71,6 +72,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   const operation = path.slice(ADMIN_PREFIX.length);
   const url = new URL(request.url);
 
+  if (operation==='daily') return await handleDailyAdmin({
+    request, env, uid, actor, operation, cors, reply, fail
+  });
   if (operation.startsWith('sellers')) return await handleSellerAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
@@ -253,7 +257,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if (operation === 'status') {
     return reply({ role:actor.role, name:actor.name, public_id:id(actor.public_no),
       environment:'staging', read_only:actor.role!=='super',
-      write_scopes:actor.role==='super'?['user_status','gift_catalog','support_reply','seller_approval','seller_stock_allocation']:
+      write_scopes:actor.role==='super'?['user_status','gift_catalog','support_reply','seller_approval','seller_stock_allocation','daily_reward_config']:
         actor.role==='support'?['support_reply']:[] }, 200, cors);
   }
   if (operation === 'rankings' && request.method === 'GET') {

@@ -860,7 +860,84 @@
     }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
   }
 
-  // Wallet writes require verified exchange or approved seller stock transfer.
+
+  // Original daily reward card retained; values and claim status come from D1.
+  let dailyClaimBusy=false;
+  async function showVerifiedDailySheet(){
+    if(!session){window.showAuth('welcome');return;}
+    window.openSheet('<h3>🎁 Daily check-in</h3>'+
+      '<div id="sharika-daily-content" aria-live="polite">Loading verified daily rewards…</div>');
+    const root=document.getElementById('sharika-daily-content');
+    if(!root)return;
+    try{
+      const data=await api('GET','/daily');
+      if(!root.isConnected)return;
+      const steps=(data.rewards||[]).map((coins,i)=>
+        '<button type="button" class="'+(data.next_day===i+1&&!data.claimed_today?'sel':'')+
+        '" disabled style="'+(data.claimed_today&&data.claimed?.streak===i+1?'opacity:.6;':'')+'">'+
+        '<span>'+(i===6?'🎁':'🪙')+'</span>Day '+(i+1)+'<br>'+
+        Number(coins).toLocaleString('en-US')+'</button>').join('');
+      const claim=data.claimed_today?
+        '<button class="big" id="cl" disabled style="opacity:.5">Today reward already claimed ✓</button>':
+        '<button class="big" id="cl">🪙 '+Number(data.rewards?.[data.next_day-1]||0).toLocaleString('en-US')+
+        ' Get coins</button>';
+      const tasks=(data.tasks||[]).map(t=>
+        '<div class="row"><span>'+(t.completed?'✅ ':'☑️ ')+sellerEscape(t.title)+
+        '</span><b>'+(t.completed?'Done':'Pending')+'</b></div>').join('');
+      root.innerHTML='<div class="g4">'+steps+'</div>'+claim+
+        '<p class="n">Your streak: '+Number(data.streak||0)+' days · Resets after a missed UTC day.</p>'+
+        '<div class="card" style="margin-top:12px;padding:12px"><b>Today’s activity</b>'+
+        (tasks||'<p class="n">No task activity available.</p>')+
+        '<p class="n">Task progress is verified; separate task coin rewards are not enabled.</p></div>';
+    }catch(error){if(root.isConnected)root.textContent='Daily rewards unavailable: '+errText(error);}
+  }
+  async function claimVerifiedDaily(){
+    if(dailyClaimBusy)return;
+    dailyClaimBusy=true;
+    const button=document.getElementById('cl');
+    if(button)button.disabled=true;
+    try{
+      const result=await api('POST','/daily/check-in',{});
+      await reloadWallet();
+      toast(result.duplicate?'Today’s reward was already claimed':
+        '+'+Number(result.claimed?.reward_coins||0).toLocaleString('en-US')+' coins received 🎉');
+      await showVerifiedDailySheet();
+    }catch(error){
+      toast('Check-in failed: '+errText(error));
+      if(button)button.disabled=false;
+      // A concurrent claim may have succeeded: server refresh resolves truth.
+      await showVerifiedDailySheet();
+    }finally{dailyClaimBusy=false;}
+  }
+  function showVerifiedInviteSheet(){
+    if(!session){window.showAuth('welcome');return;}
+    const invite=String(profile?.public_id||'');
+    if(!/^[0-9]{8}$/.test(invite)){toast('Your verified profile ID is not available yet');return;}
+    window.openSheet('<h3>🤝 Invite a friend</h3>'+
+      '<p class="n">Share your verified Sharika ID. Referral bonuses are not enabled yet.</p>'+
+      '<div class="idp" style="margin-top:12px">Invite code: <b>'+
+      sellerEscape(invite)+'</b></div><button class="big" id="sharika-share-invite">📤 Share code</button>');
+    document.getElementById('sharika-share-invite')?.addEventListener('click',async()=>{
+      const message='Join me on Sharika Voice Chat! My ID: '+invite;
+      try{
+        if(navigator.share)await navigator.share({text:message});
+        else if(navigator.clipboard)await navigator.clipboard.writeText(message);
+        else{toast('Invite code: '+invite);return;}
+        toast('Invite code shared');
+      }catch(_){toast('Invite code: '+invite);}
+    });
+  }
+  window.dailySheet=showVerifiedDailySheet;
+  window.inviteSheet=showVerifiedInviteSheet;
+  document.addEventListener('click',event=>{
+    const daily=event.target.closest?.('#qd,[data-m="daily"]');
+    const invite=event.target.closest?.('#qi,[data-m="invite"]');
+    if(!daily&&!invite)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(daily)showVerifiedDailySheet();else showVerifiedInviteSheet();
+  },true);
+
+  // Wallet writes require verified exchange, check-in or approved seller transfer.
   document.addEventListener('click', async event => {
     const button=event.target.closest('button');
     if(!button) return;
@@ -869,7 +946,7 @@
     if(id==='ec' && !document.querySelector('#sh h3')?.textContent?.includes('Exchange')) return;
     event.preventDefault();event.stopImmediatePropagation();
     if(!session){window.showAuth('welcome');return;}
-    if(id==='cl'){toast('Daily rewards require verified server-side claim tracking');return;}
+    if(id==='cl'){await claimVerifiedDaily();return;}
     if(id==='rcl2'){await showVerifiedCoinSellers();return;}
     if(id==='rcs'){
       document.getElementById('rcp')?.classList.remove('on');

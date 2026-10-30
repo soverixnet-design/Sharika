@@ -2,6 +2,7 @@ import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
+import { handleDailyApp } from './daily.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
@@ -118,6 +119,9 @@ export async function handleRequest(request, env) {
   const parts = path.split('/').filter(Boolean);
   try {
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
+      request, env, uid, path, cors, reply, fail
+    });
+    if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in') return await handleDailyApp({
       request, env, uid, path, cors, reply, fail
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
