@@ -123,7 +123,7 @@ jobs:
       - name: Set up pinned Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.11.1'
 
       - name: Install Android packages using hosted runner SDK
         run: |
@@ -131,7 +131,7 @@ jobs:
           test -d "$SDK_ROOT/cmdline-tools"
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
           test -n "$SDKMANAGER"
-          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
 
       - name: Restore required stable staging signer from encrypted GitHub secrets
         env:
