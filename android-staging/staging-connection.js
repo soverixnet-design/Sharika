@@ -716,13 +716,17 @@
       const events=data.events||[];
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
       if(lastGiftEventId===null){lastGiftEventId=latest;return;}
+      let receivedGift=false;
       for(const event of events){
         if(event.id<=lastGiftEventId||event.sender_id===profile?.public_id)continue;
+        if(event.recipient_id===profile?.public_id)receivedGift=true;
         const seat=(frame.seats||[]).find(s=>s?.public_id===event.recipient_id);
         if(seat && typeof frame.fly==='function')
           frame.fly(event.emoji,seat.i,0,event.price_coins);
       }
       lastGiftEventId=Math.max(lastGiftEventId,latest);
+      // Recipients see their verified diamond/coin balance after incoming gifts.
+      if(receivedGift)await reloadWallet();
     }
     async function moderateSeat(action,seat) {
       if(room.owner_id!==session?.user?.id)throw new Error('Room owner only');
