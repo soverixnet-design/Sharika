@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,webcrypto} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {ORIGINAL_ROUND_MS,originalOutcome,originalPayout,handleOriginalGameRequest} from '../src/original-games.mjs';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
@@ -92,4 +93,63 @@ test('accepted original-game bets survive a retry after the round closes',async(
   assert.equal(stale.status,409);
   assert.equal((await stale.json()).error,'betting_closed');
   assert.ok(queries.some(sql=>sql.includes('sharika_original_game_bets')));
+});
+
+
+test('Night Food and Jackpot Fruit advertise 1k chips for small verified wallets',async()=>{
+  // A staging account may have only 1,425 coins; the old 10k minimum
+  // prevented any manual wager while Sovera Food Wheel appeared to work.
+  const now=Date.now();
+  const currentRound=Math.floor(now/ORIGINAL_ROUND_MS);
+  const db={prepare(sql){
+    const stmt={
+      bind(...values){this.values=values;return this;},
+      async all(){return {results:[]};},
+      async first(){
+        if(sql.startsWith('SELECT * FROM sharika_original_game_rounds WHERE game=? AND round_no=?'))
+          return {id:'round',game:this.values[0],round_no:currentRound,
+            commit_sha256:commit,seed_hex:seed};
+        if(sql.startsWith('SELECT * FROM sharika_original_game_rounds WHERE game=? AND closes_ms<=?'))
+          return null;
+        if(sql.startsWith('SELECT coins,minor,status FROM sharika_users'))
+          return {coins:1425,minor:0,status:'active'};
+        if(sql.includes('FROM sharika_original_game_bets WHERE user_uid=? AND game=?'))
+          return null;
+        if(sql.includes('FROM sharika_original_game_pools'))
+          return {coins:0};
+        if(sql.includes('COUNT(*) AS bets'))
+          return {bets:0,wagered:0,won:0};
+        throw Error('Unexpected SQL query '+sql);
+      },
+      async run(){throw Error('Read-only game catalog may not write fake balance');}
+    };
+    return stmt;
+  }};
+  const reply=(body,status)=>Response.json(body,{status});
+  const fail=(error,status)=>Response.json({error},{status});
+  for(const game of ['night-food','jackpot-fruit']){
+    const res=await handleOriginalGameRequest({
+      request:new Request('https://sharika.test/api/v1/original-games/'+game+'/state'),
+      db,uid:'verified-user',game,action:'state',reply,fail,cors:{}
+    });
+    assert.equal(res.status,200);
+    const state=await res.json();
+    assert.equal(state.coins,1425);
+    assert.deepEqual(state.chips,[1000,10000,100000,1000000,10000000]);
+    assert.equal(state.virtual_coins_only,true);
+  }
+});
+
+
+test('both offline game layouts use the matching server-backed wager chips',()=>{
+  for(const [page,token] of [
+    ['night-food-wheel.html','const chips=[1000,10000,100000,1000000,10000000];'],
+    ['jackpot-fruit.html','CH=[1000,10000,100000,1000000,10000000];']
+  ]){
+    const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/'+page,import.meta.url),'utf8');
+    assert.ok(html.includes(token),page+' must offer the 1k wallet-compatible chip');
+    assert.match(html,/sharika:original-request/);
+    assert.match(html,/sharika:original-response/);
+    assert.doesNotMatch(html,/https?:\/\/[^\s"'<>]+/);
+  }
 });
