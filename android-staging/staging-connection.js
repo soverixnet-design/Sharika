@@ -205,6 +205,66 @@
     doc.body.appendChild(cover);
     doc.defaultView?.setTimeout(()=>cover.remove(),choice.ms);
   }
+  // Avatar URLs come only from the authenticated Sharika profile API. Never
+  // render arbitrary user-supplied image URLs in verified room identities.
+  function verifiedAvatarUrl(value){
+    return typeof value==='string' &&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(value)
+      ?value:null;
+  }
+  function paintVerifiedAvatar(node,value,doc){
+    const src=verifiedAvatarUrl(value);
+    if(!node||!src||!doc)return false;
+    if(node.querySelector('.sh-verified-avatar-image')?.dataset.source===src)return true;
+    node.querySelector('.sh-verified-avatar-image')?.remove();
+    // Keep the original emoji underneath until the image has loaded.
+    if(!node.classList.contains('face'))node.style.position='relative';
+    node.style.overflow='hidden';
+    const image=doc.createElement('img');
+    image.className='sh-verified-avatar-image';
+    image.dataset.source=src;
+    image.alt='';
+    image.setAttribute('aria-hidden','true');
+    image.style.cssText='position:absolute;inset:0;width:100%;height:100%;'+
+      'display:block;object-fit:cover;border-radius:inherit;z-index:2;'+
+      'pointer-events:none;opacity:0';
+    image.onload=()=>{image.style.opacity='1';};
+    image.onerror=()=>image.remove();
+    node.appendChild(image);
+    image.src=src;
+    return true;
+  }
+  function roomAvatarForPublicId(frame,id){
+    const key=String(id||'');
+    if(key===profile?.public_id)return verifiedAvatarUrl(profile?.pic);
+    const member=(frame?.seats||[]).find(item=>item?.public_id===key)||
+      (frame?.U||[]).find(item=>item?.id===key);
+    return verifiedAvatarUrl(member?.pic);
+  }
+  function decorateRoomPeople(frame){
+    const doc=frame?.document;
+    for(const row of doc?.querySelectorAll('#ul .urow')||[]){
+      const index=Number(row.dataset.i);
+      if(!Number.isInteger(index)||index<0)continue;
+      const item=row.dataset.t==='m'?frame.seats?.[index]:
+        row.dataset.t==='a'?frame.U?.[index]:null;
+      if(item)paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
+    }
+  }
+  function decorateRoomChat(frame){
+    const doc=frame?.document;
+    for(const message of doc?.querySelectorAll('#chat .msg[data-sh-sender-id]')||[]){
+      paintVerifiedAvatar(message.querySelector('.mav'),
+        roomAvatarForPublicId(frame,message.dataset.shSenderId),doc);
+    }
+  }
+  function decorateGiftRecipients(frame){
+    for(const chip of frame?.document?.querySelectorAll('#sheet .chips .chip[data-r]')||[]){
+      const i=Number(chip.dataset.r);
+      if(!Number.isInteger(i)||i<0)continue;
+      paintVerifiedAvatar(chip.querySelector('.c'),frame.seats?.[i]?.pic,frame.document);
+    }
+  }
   function decorateRoomSeats(frame){
     const doc=frame?.document;
     if(!doc)return;
@@ -214,6 +274,9 @@
       const el=frame.seatEl?.(seat.i);
       const avatar=el?.querySelector('.av');
       if(!avatar)continue;
+      // The user's stored profile photo follows the same public ID into
+      // owner, guest and mic seats. Frames remain over the circular avatar.
+      paintVerifiedAvatar(el.querySelector('.face'),seat.pic,doc);
       avatar.querySelector('.sh-sovera-frame')?.remove();
       const item=frameArt(seat.frame_style);
       const medal=medalArt(seat.medal_style);
@@ -245,6 +308,18 @@
     if(typeof normal==='function')frame.render=function(){
       normal.apply(this,arguments);
       decorateRoomSeats(frame);
+      decorateRoomPeople(frame);
+      decorateRoomChat(frame);
+    };
+    const normalUsers=frame.fillUsers;
+    if(typeof normalUsers==='function')frame.fillUsers=function(){
+      normalUsers.apply(this,arguments);
+      decorateRoomPeople(frame);
+    };
+    const originalGiftSheet=frame.giftSheet;
+    if(typeof originalGiftSheet==='function')frame.giftSheet=function(){
+      originalGiftSheet.apply(this,arguments);
+      decorateGiftRecipients(frame);
     };
   }
   function styleSelectionSheet(kind){
@@ -403,7 +478,18 @@
       profile=saved;
       window.A.pic=saved.pic;
       window.saveA();window.renderMe();
-      toast('Profile photo saved · visible on your ID ✓');
+      // Refresh this same verified ID inside an already open room immediately.
+      const roomFrame=document.getElementById('rf')?.contentWindow;
+      if(window.cur?.id&&roomFrame?.seats){
+        for(const seat of roomFrame.seats)
+          if(seat?.user_id===session.user.id)seat.pic=saved.pic;
+        for(const member of roomFrame.U||[])
+          if(member?.id===saved.public_id)member.pic=saved.pic;
+        roomFrame.render?.();
+        decorateRoomPeople(roomFrame);
+        decorateRoomChat(roomFrame);
+      }
+      toast('Profile photo saved · visible on your ID and room ✓');
     }catch(error){
       if(errText(error)!=='profile_photo_cancelled')
         toast('Profile photo not saved: '+errText(error));
@@ -1105,7 +1191,8 @@
     }
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
-    slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,
+    slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
+      user_id:room.owner_id,public_id:room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
@@ -1115,12 +1202,14 @@
       if(!user || member.user_id===room.owner_id) continue;
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
-          n:user.name,e:'👤',i:member.seat_no,user_id:member.user_id,public_id:user.public_id,
+          n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
+          user_id:member.user_id,public_id:user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
-      else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level,
+      else audience.push({n:user.name,e:'👤',id:user.public_id,
+        pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
         medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
     }
@@ -1134,6 +1223,8 @@
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
     frame.render();
+    decorateRoomPeople(frame);
+    decorateRoomChat(frame);
     const present=new Set((data.members||[]).map(m=>m.user_id));
     if(!frame.__soveraSeenMembers){
       frame.__soveraSeenMembers=present;
@@ -1225,6 +1316,7 @@
           htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
         if(typeof originalGiftOpen==='function') {
           originalGiftOpen.call(giftButton);
+          decorateGiftRecipients(frame);
           if(directGiftTarget) {
             // Replace the old seat-only recipient chips with the verified
             // selected person. Sending always uses this exact public ID.
@@ -1432,6 +1524,11 @@
           frame.open('<h3>👤 Verified profile</h3><div id="sh-room-profile"></div>');
           const node=frame.$('sh-room-profile');
           if(node) {
+            const avatar=frame.document.createElement('div');
+            avatar.className='sh-sovera-preview';
+            avatar.textContent='👤';
+            paintVerifiedAvatar(avatar,member.pic,frame.document);
+            node.appendChild(avatar);
             const name=frame.document.createElement('div');
             name.className='row';
             name.textContent=(member.name||'Member')+' · ID '+member.id;
@@ -1454,6 +1551,9 @@
     if(typeof originalMemberSheet==='function')frame.userSheet=function(user,search) {
       originalMemberSheet(user,search);
       const sheet=frame.$('sheet');
+      const photo=user?.seat!=null?frame.seats?.[user.seat]?.pic:
+        frame.U?.[user?.k]?.pic;
+      paintVerifiedAvatar(sheet?.querySelector('.who .ua'),photo,frame.document);
       const verifiedId=String(user?.id||'');
       const verified=/^[0-9]{8}$/.test(verifiedId);
       const profileButton=sheet?.querySelector('button.act[data-a="pf"]');
@@ -1472,6 +1572,7 @@
             picture.className='sh-sovera-preview';
             picture.style.cssText='width:94px;height:94px;margin:16px auto;font-size:45px';
             picture.textContent='👤';
+            paintVerifiedAvatar(picture,member.pic,frame.document);
             const chosen=frameArt(member.frame_style);
             if(chosen){
               const art=frame.document.createElement('i');
@@ -1886,9 +1987,14 @@
           const id=Number(item.id);
           if(!Number.isSafeInteger(id)||id<=lastChatId)continue;
           lastChatId=id;
+          const memberPhoto=roomAvatarForPublicId(frame,item.sender_id);
           frame.msg(String(item.name||'Member'),'👤',String(item.body||''),{
             me:item.sender_id===profile?.public_id,lv:1
           });
+          // Room chat uses the same saved avatar as the sender's room ID.
+          const chatRow=frame.document.querySelector('#chat .msg:last-child');
+          if(chatRow)chatRow.dataset.shSenderId=String(item.sender_id||'');
+          paintVerifiedAvatar(chatRow?.querySelector('.mav'),memberPhoto,frame.document);
         }
       })();
       chatPollInFlight=work;
@@ -2526,6 +2632,13 @@
           safeMessageHTML(f.public_id)+'</time></div>');
       }
       list.innerHTML=rows.length?rows.join(''):'<div class="empty">No private conversations yet.</div>';
+      // The existing follow APIs return verified profile pictures.
+      // Match by public ID, never by display name or demo avatar.
+      const inboxPhotos=new Map([...following,...followers,...conv]
+        .filter(u=>verifiedAvatarUrl(u.pic))
+        .map(u=>[String(u.public_id),u.pic]));
+      for(const row of list.querySelectorAll('.chatrow[data-private-id]'))
+        paintVerifiedAvatar(row.querySelector('.av'),inboxPhotos.get(row.dataset.privateId),document);
       list.onclick=e=>{
         const row=e.target.closest('.chatrow[data-private-id]');
         if(row)openPrivateThread(row.dataset.privateId,row.dataset.privateName);
