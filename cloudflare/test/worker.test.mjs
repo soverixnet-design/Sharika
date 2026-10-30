@@ -454,6 +454,9 @@ test('gift leaderboards require Firebase auth and use only settled gift events',
       if(sql.includes('FROM sharika_gift_events'))
         stmt.all=async()=>{db.calls.push(['all',sql,stmt.values]);return {results:[{public_no:10000002,name:'A real recipient',
           pic:null,wealth_level:1,charm_level:2,total:75}]};};
+      if(sql.includes('FROM sharika_wallet_ledger l'))
+        stmt.all=async()=>{db.calls.push(['all',sql,stmt.values]);return {results:[{public_no:10000003,name:'Verified buyer',
+          pic:null,wealth_level:1,charm_level:1,total:2500}]};};
       return stmt;
     };
     const headers={Authorization:'Bearer '+await token()};
@@ -468,6 +471,14 @@ test('gift leaderboards require Firebase auth and use only settled gift events',
     const query=db.calls.find(c=>c[0]==='all'&&c[1].includes('FROM sharika_gift_events'));
     assert.ok(query);
     assert.equal(query[2].length,2);
+    const recharge=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings?kind=recharge&period=weekly',{headers}),
+      {DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(recharge.status,200);
+    const rechargeData=await recharge.json();
+    assert.equal(rechargeData.source,'verified_recharge_ledger');
+    assert.equal(rechargeData.leaders[0].public_id,'10000003');
+    assert.equal(rechargeData.leaders[0].total,2500);
     const bad=await handleRequest(new Request(
       'https://example.test/api/v1/rankings?kind=play&period=weekly',{headers}),
       {DB:db,FIREBASE_PROJECT_ID:project});
