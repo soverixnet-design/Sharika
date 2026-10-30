@@ -3,6 +3,7 @@
 // Only explicitly audited seller inventory and verified grants may credit wallets.
 import { handleSellerAdmin } from './sellers.mjs';
 import { handleDailyAdmin } from './daily.mjs';
+import { handleInviteAdmin } from './invites.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
 const FINANCE_ROLES = new Set(['super', 'finance']);
@@ -72,6 +73,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   const operation = path.slice(ADMIN_PREFIX.length);
   const url = new URL(request.url);
 
+  if (operation==='invites') return await handleInviteAdmin({
+    request, env, uid, actor, operation, cors, reply, fail
+  });
   if (operation==='daily') return await handleDailyAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });

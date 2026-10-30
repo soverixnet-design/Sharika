@@ -1,3 +1,4 @@
+import { rechargeReferralStatements } from './invites.mjs';
 // Sharika staging: approved coin sellers with a separate audited stock ledger.
 // No seller may mint coins, spend another seller's stock, or grant admin roles.
 const PUBLIC_ID=/^[0-9]{8}$/;
@@ -78,6 +79,16 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
     if(Number(recipient.coins)>MAX_USER_BALANCE-amount)
       return fail('recipient_balance_limit',409,cors);
     const creditId='seller-credit:'+uid+':'+requestId;
+    let referralCredit;
+    try{
+      referralCredit=await rechargeReferralStatements({
+        db:env.DB,recipientUid:recipient.auth_uid,sellerUid:uid,requestId,amount
+      });
+    }catch(error){
+      if(error.message==='inviter_balance_limit')
+        return fail('inviter_balance_limit',409,cors);
+      throw error;
+    }
     await env.DB.batch([
       env.DB.prepare(
         'UPDATE sharika_coin_sellers SET available_coins='+
@@ -96,14 +107,16 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
       env.DB.prepare(
         'INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) '+
         "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'seller_recharge',?)"
-      ).bind(recipient.auth_uid,amount,recipient.auth_uid,creditId)
+      ).bind(recipient.auth_uid,amount,recipient.auth_uid,creditId),
+      ...referralCredit.statements
     ]);
     const saved=await env.DB.prepare(
       'SELECT id,stock_after FROM sharika_coin_seller_transfers '+
       'WHERE seller_uid=? AND request_id=?'
     ).bind(uid,requestId).first();
     return reply({duplicate:false,transfer_id:saved.id,coins:amount,
-      recipient_public_id:publicId,available_coins:saved.stock_after},201,cors);
+      recipient_public_id:publicId,available_coins:saved.stock_after,
+      referral_bonus_coins:referralCredit.bonus},201,cors);
   }
   return fail('seller_method_not_allowed',405,cors);
 }

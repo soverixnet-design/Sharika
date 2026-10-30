@@ -407,7 +407,10 @@
       '<div class="card"><h3>7-day coin rewards</h3>'+
       '<div class="row" id="daily-config-fields">Loading…</div>'+
       (role==='super'?'<button class="btn s" id="daily-save" type="button">Save reward amounts</button>':'')+
-      '<p class="n" id="daily-note">Only Super Admin may edit future rewards (1–1,000 coins per day). Previous claims never change.</p></div>';
+      '<p class="n" id="daily-note">Only Super Admin may edit future rewards (1–1,000 coins per day). Previous claims never change.</p></div>'+
+      '<div class="card"><h3>🤝 Verified invites</h3>'+
+      '<p class="n">Verified referral signup: inviter +5,000 coins, new user starts with 10,000 coins. Later approved coin-seller recharge: inviter +5%.</p>'+
+      '<div id="daily-invite-report">Loading verified referrals…</div></div>';
     const stats=byId('daily-stats'),fields=byId('daily-config-fields'),note=byId('daily-note');
     try{
       const result=await api('GET','daily');
@@ -419,6 +422,16 @@
         '<input type="number" class="field" min="1" max="1000" id="daily-day-'+(i+1)+
         '" value="'+esc(reward)+'" '+(role==='super'?'':'disabled')+'></label>').join('');
     }catch(error){stats.textContent=error.message;fields.textContent='Rewards unavailable.';return;}
+    try{
+      const invites=await api('GET','invites');
+      const table=window.T(['Inviter ID','New user ID','Joined'],(invites.referrals||[]).map(r=>[
+        esc(r.inviter_public_id),esc(r.referred_public_id),esc(r.joined_at||'')
+      ]));
+      byId('daily-invite-report').innerHTML='<p class="n">Total verified invites: <b>'+
+        fmt(invites.total_invites)+'</b></p>'+
+        window.T(['Bonus type','Coin rewards credited','Transactions'],
+          (invites.bonus_totals||[]).map(r=>[esc(r.reason),fmt(r.coins),fmt(r.count)]))+table;
+    }catch(error){byId('daily-invite-report').textContent=error.message;}
     if(role!=='super')return;
     byId('daily-save')?.addEventListener('click',async event=>{
       const rewards=Array.from({length:7},(_,i)=>{

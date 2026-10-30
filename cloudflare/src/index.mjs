@@ -3,6 +3,7 @@ import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleDailyApp } from './daily.mjs';
+import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
@@ -121,6 +122,9 @@ export async function handleRequest(request, env) {
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
       request, env, uid, path, cors, reply, fail
     });
+    if (path==='/api/v1/invites') return await handleInviteApp({
+      request, env, uid, path, cors, reply, fail
+    });
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in') return await handleDailyApp({
       request, env, uid, path, cors, reply, fail
     });
@@ -158,14 +162,24 @@ export async function handleRequest(request, env) {
         if (!name || age === null) return fail('invalid_profile', 400, cors);
         const country = txt(body.country, 16);
         const pic = txt(body.pic, 2048) || null;
-        await env.DB.batch([
+        // A referral may only be attributed at initial account registration.
+        const referral=await resolveInviter({
+          db:env.DB,uid,inviteCode:body.invite_code,fail,cors
+        });
+        if(referral.error)return referral.error;
+        const welcomeCoins=signupCoins(!!referral.inviter);
+        const registration=[
           env.DB.prepare(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,country,pic,coins)
-            VALUES((SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users),?,?,?,?,?,?,2000)`)
-            .bind(uid, name, body.birthdate, age < 18 ? 1 : 0, country, pic),
+            VALUES((SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users),?,?,?,?,?,?,?)`)
+            .bind(uid,name,body.birthdate,age<18?1:0,country,pic,welcomeCoins),
           env.DB.prepare(`INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id)
-            VALUES(?,'coins',2000,2000,'signup_welcome',?)`)
-            .bind(uid, 'signup:' + uid),
-        ]);
+            VALUES(?,'coins',?,?,?,?)`)
+            .bind(uid,welcomeCoins,welcomeCoins,referral.inviter?'signup_invited':'signup_welcome','signup:'+uid)
+        ];
+        if(referral.inviter)registration.push(...signupReferralStatements({
+          db:env.DB,uid,inviterUid:referral.inviter.auth_uid
+        }));
+        await env.DB.batch(registration);
         return reply(showProfile(await me(env.DB, uid)), 201, cors);
       }
       if (request.method === 'PATCH') {

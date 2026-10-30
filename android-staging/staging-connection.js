@@ -317,12 +317,14 @@
         '<label>Name<input name="name" maxlength="80" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0" value=""></label>' +
         '<label>Birth date<input name="birthdate" type="date" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
         '<label>Country<input name="country" maxlength="16" placeholder="BD" style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
+        '<label>Invite code (optional)<input name="invite_code" maxlength="8" inputmode="numeric" placeholder="8-digit inviter ID" style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
         '<div id="stage-profile-error" style="color:#ffb4b4;font-size:13px"></div>' +
         '<button type="submit" style="width:100%;padding:15px;border:0;border-radius:14px;background:#8e72f6;color:#fff;font-weight:700">Create staging profile</button>' +
         '<button type="button" id="stage-profile-cancel" style="width:100%;padding:13px;border:0;background:transparent;color:#ddd">Cancel</button></form>';
       document.body.appendChild(layer);
       const name = layer.querySelector('[name="name"]');
       name.value = account.displayName || '';
+      layer.querySelector('[name="invite_code"]').value=cachedSignup(account.email)?.invite_code||'';
       let finished = false;
       function close() { if (finished) return; finished = true; layer.remove(); }
       layer.querySelector('#stage-profile-cancel').onclick = () => {
@@ -336,7 +338,8 @@
           const data = {
             name:form.elements.name.value.trim(),
             birthdate:birthdateFromUi(form.elements.birthdate.value),
-            country:form.elements.country.value.trim()
+            country:form.elements.country.value.trim(),
+            invite_code:form.elements.invite_code.value.trim()
           };
           const saved = await api('POST','/me',data);
           close(); resolve(saved);
@@ -353,11 +356,18 @@
       if (errText(error) !== 'profile_not_found') throw error;
       const cached = form || cachedSignup(account.email);
       if (cached && cached.name && cached.dob) {
-        const saved = await api('POST','/me',{
-          name:cached.name, birthdate:cached.dob, country:cached.country || ''
-        });
-        try { localStorage.removeItem(META_KEY); } catch (_) {}
-        return saved;
+        try{
+          const saved = await api('POST','/me',{
+            name:cached.name,birthdate:cached.dob,country:cached.country||'',
+            invite_code:cached.invite_code||''
+          });
+          try{localStorage.removeItem(META_KEY);}catch(_){}
+          return saved;
+        }catch(error){
+          if(!['invalid_invite_code','invite_code_not_found','cannot_invite_self'].includes(errText(error)))
+            throw error;
+          // A typed invite code can be corrected without making a fake account.
+        }
       }
       return profileForm(account);
     }
@@ -376,6 +386,24 @@
     return local;
   }
 
+
+  // Add one optional field to the original themed signup card; no layout redesign.
+  function ensureInviteCodeInput(){
+    const auth=document.getElementById('au');
+    const terms=auth?.querySelector('.tc');
+    if(!terms||auth.querySelector('#stage-invite-code'))return;
+    terms.insertAdjacentHTML('beforebegin',
+      '<div class="lbl">Invite code (optional)</div>'+
+      '<input class="field" id="stage-invite-code" maxlength="8" inputmode="numeric" '+
+      'placeholder="Inviter 8-digit Sharika ID" autocomplete="off">');
+  }
+  const inviteAuthRoot=document.getElementById('au');
+  if(inviteAuthRoot){
+    const inviteObserver=new MutationObserver(ensureInviteCodeInput);
+    inviteObserver.observe(inviteAuthRoot,{childList:true});
+    ensureInviteCodeInput();
+  }
+
   window.API.signup = async function (form) {
     if (!form.key || !form.key.includes('@'))
       return { ok:false, msg:'Use an email address. Phone OTP is not enabled yet.' };
@@ -385,7 +413,8 @@
       const result = await native('emailSignUp', {email:form.key.trim(), password:form.pw});
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
-          email:form.key.trim(), name:form.name, dob:form.dob, country:form.country
+          email:form.key.trim(), name:form.name, dob:form.dob, country:form.country,
+          invite_code:document.getElementById('stage-invite-code')?.value.trim()||''
         }));
       } catch (_) {}
       return { ok:false, msg:result.verificationSent ?
@@ -909,23 +938,44 @@
       await showVerifiedDailySheet();
     }finally{dailyClaimBusy=false;}
   }
-  function showVerifiedInviteSheet(){
+  async function showVerifiedInviteSheet(){
     if(!session){window.showAuth('welcome');return;}
-    const invite=String(profile?.public_id||'');
-    if(!/^[0-9]{8}$/.test(invite)){toast('Your verified profile ID is not available yet');return;}
     window.openSheet('<h3>🤝 Invite a friend</h3>'+
-      '<p class="n">Share your verified Sharika ID. Referral bonuses are not enabled yet.</p>'+
-      '<div class="idp" style="margin-top:12px">Invite code: <b>'+
-      sellerEscape(invite)+'</b></div><button class="big" id="sharika-share-invite">📤 Share code</button>');
-    document.getElementById('sharika-share-invite')?.addEventListener('click',async()=>{
-      const message='Join me on Sharika Voice Chat! My ID: '+invite;
-      try{
-        if(navigator.share)await navigator.share({text:message});
-        else if(navigator.clipboard)await navigator.clipboard.writeText(message);
-        else{toast('Invite code: '+invite);return;}
-        toast('Invite code shared');
-      }catch(_){toast('Invite code: '+invite);}
-    });
+      '<div id="sharika-invite-data" aria-live="polite">Loading verified invites…</div>');
+    const root=document.getElementById('sharika-invite-data');
+    if(!root)return;
+    try{
+      const result=await api('GET','/invites');
+      if(!root.isConnected)return;
+      const invite=String(result.invite_code||'');
+      if(!/^[0-9]{8}$/.test(invite))throw new Error('Verified ID unavailable');
+      const referrals=(result.referrals||[]).map(r=>
+        '<div class="row"><span>ID '+sellerEscape(r.public_id)+'</span>'+
+        '<b>'+sellerEscape(r.name)+'</b></div>').join('');
+      root.innerHTML='<p class="n">New invite signup: you earn 5,000 coins; your friend starts with 10,000 coins. You also earn 5% of their verified coin-seller recharges.</p>'+
+        '<div class="idp" style="margin-top:12px">Your invite code: <b>'+
+        sellerEscape(invite)+'</b></div>'+
+        '<div class="row"><span>Friends who joined</span><b>'+
+        Number(result.total_invites||0).toLocaleString('en-US')+'</b></div>'+
+        '<div class="row"><span>Signup invite rewards earned</span><b>'+
+        Number(result.signup_bonus_coins||0).toLocaleString('en-US')+' coins</b></div>'+
+        '<div class="row"><span>5% recharge rewards earned</span><b>'+
+        Number(result.recharge_bonus_coins||0).toLocaleString('en-US')+' coins</b></div>'+
+        (result.invited_by?'<p class="n">You joined with code '+sellerEscape(result.invited_by)+'</p>':'')+
+        (referrals?'<div class="card" style="padding:12px;margin-top:12px">'+
+        '<b>Verified referrals</b>'+referrals+'</div>':'')+
+        '<button class="big" id="sharika-share-invite">📤 Share code</button>';
+      document.getElementById('sharika-share-invite')?.addEventListener('click',async()=>{
+        const message='Join me on Sharika Voice Chat! Enter my invite code '+invite+
+          ' when creating your account.';
+        try{
+          if(navigator.share)await navigator.share({text:message});
+          else if(navigator.clipboard)await navigator.clipboard.writeText(message);
+          else{toast('Invite code: '+invite);return;}
+          toast('Invite code shared');
+        }catch(_){toast('Invite code: '+invite);}
+      });
+    }catch(error){if(root.isConnected)root.textContent='Invite tracking unavailable: '+errText(error);}
   }
   window.dailySheet=showVerifiedDailySheet;
   window.inviteSheet=showVerifiedInviteSheet;
