@@ -515,6 +515,8 @@ export async function handleRequest(request, env) {
         'AND NOT EXISTS (SELECT 1 FROM sharika_room_members WHERE room_id=? AND seat_no>?)'
       ).bind(name,seatCount,theme,roomId,uid,roomId,seatCount).run();
       if(!updated.meta?.changes)return fail('seats_occupied_above_new_limit',409,cors);
+      if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+        .dropSeatLocksAbove(seatCount);
       return reply({room:await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?')
         .bind(roomId).first()},200,cors);
     }
@@ -768,19 +770,42 @@ export async function handleRequest(request, env) {
         return handleRoomModeration({
           request,env,uid,room,roomId,reply,fail,cors,readBody
         });
+      if (parts.length===5 && action==='locks' && request.method==='PUT') {
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
+        const body=await readBody(request);
+        if(!Number.isInteger(body.seat_no)||body.seat_no<1||
+           body.seat_no>room.seat_count||typeof body.locked!=='boolean')
+          return fail('invalid_seat_lock',400,cors);
+        const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .changeSeatLock(roomId,body.seat_no,body.locked);
+        if(result.error)return fail(result.error,409,cors);
+        return reply(result,200,cors);
+      }
       if (parts.length === 5 && action === 'seat' && request.method === 'PUT') {
-        const body = await readBody(request);
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
+        const body=await readBody(request);
         const seat = body.seat_no === null ? null : Number(body.seat_no);
-        if (seat !== null && (!Number.isInteger(seat) || seat < 1 || seat > room.seat_count)) return fail('invalid_seat', 400, cors);
-        await env.DB.prepare('UPDATE sharika_room_members SET seat_no=? WHERE room_id=? AND user_id=?').bind(seat,roomId,uid).run();
-        const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
-        return reply({ member: saved }, 200, cors);
+        if (seat !== null && (!Number.isInteger(seat) || seat < 1 ||
+          seat > room.seat_count)) return fail('invalid_seat', 400, cors);
+        const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .changeMemberSeat(roomId,uid,seat);
+        if(result.error)return fail(result.error,
+          result.error==='seat_locked'?409:403,cors);
+        return reply(result,200,cors);
       }
       if (parts.length === 5 && action === 'members' && request.method === 'GET') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,
           u.public_no,u.name,u.pic,u.wealth_level FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
-        return reply({ room: roomId, members: (result.results || []).map(x => ({
+        const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .lockedSeats();
+        return reply({ room: roomId,
+          locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
+          members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level }
         })) }, 200, cors);
