@@ -440,11 +440,11 @@ test('lucky gifts cannot issue unverified payouts through the regular gift endpo
 });
 
 
-test('cashout Lucky Gift is disabled by default and remains blocked if feature flag is switched on',async()=>{
+test('Lucky Gift requires an explicit virtual-only economy and checks age',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try {
     const uid='firebase:'+project+':secure-user';
-    async function attempt(minor,enabled) {
+    async function attempt(minor,enabled,redeemable) {
       const db=fakeDb(),old=db.prepare.bind(db);
       db.prepare=sql=>{
         const stmt=old(sql);
@@ -465,25 +465,28 @@ test('cashout Lucky Gift is disabled by default and remains blocked if feature f
         body:JSON.stringify({gift_id:10,quantity:1,
           recipient_public_ids:['10000001'],request_id:'gift_lucky_age_123'})
       }),{DB:db,FIREBASE_PROJECT_ID:project,
-        SHARIKA_LUCKY_GIFTS_ENABLED:enabled?'true':'false'});
+        SHARIKA_LUCKY_GIFTS_ENABLED:enabled?'true':'false',
+        SHARIKA_COINS_CASH_REDEEMABLE:redeemable});
       return {res,db};
     }
     const disabled=await attempt(0,false);
     assert.equal(disabled.res.status,503);
     assert.equal((await disabled.res.json()).error,'lucky_gifts_disabled');
     assert.equal(disabled.db.calls.some(c=>c[0]==='batch'),false);
-    const adult=await attempt(0,true);
-    assert.equal(adult.res.status,403);
-    assert.equal((await adult.res.json()).error,'lucky_cashout_approval_required');
-    assert.equal(adult.db.calls.some(c=>c[0]==='batch'),false);
-    const minor=await attempt(1,true);
+    for(const economy of [undefined,'true']) {
+      const blocked=await attempt(0,true,economy);
+      assert.equal(blocked.res.status,403);
+      assert.equal((await blocked.res.json()).error,'lucky_requires_non_redeemable_coins');
+      assert.equal(blocked.db.calls.some(c=>c[0]==='batch'),false);
+    }
+    const minor=await attempt(1,true,'false');
     assert.equal(minor.res.status,403);
-    assert.equal((await minor.res.json()).error,'lucky_cashout_approval_required');
+    assert.equal((await minor.res.json()).error,'lucky_gifts_adult_only');
     assert.equal(minor.db.calls.some(c=>c[0]==='batch'),false);
   }finally{globalThis.fetch=prior;}
 });
 
-test('cashout hold prevents any Lucky Gift ledger mutation even for a verified adult',async()=>{
+test('verified adult Lucky Gift uses one wallet debit and receiver/room rewards',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try {
     const uid='firebase:'+project+':secure-user';
@@ -500,21 +503,31 @@ test('cashout hold prevents any Lucky Gift ledger mutation even for a verified a
         stmt.first=async()=>({id:10,name:'Lucky Clover',emoji:'🍀',price_coins:10,tab:2});
       if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
         stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,status:'active'}]});
+      if(sql.startsWith('SELECT id,total_coins FROM sharika_gift_transactions'))
+        stmt.first=async()=>({id:75,total_coins:10});
       return stmt;
     };
     const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
       method:'POST',headers:{Authorization:'Bearer '+await token()},
       body:JSON.stringify({gift_id:10,quantity:1,
-        recipient_public_ids:['10000001'],request_id:'gift_lucky_cashout_hold'})
-    }),{DB:db,FIREBASE_PROJECT_ID:project,SHARIKA_LUCKY_GIFTS_ENABLED:'true'});
-    assert.equal(res.status,403);
-    assert.equal((await res.json()).error,'lucky_cashout_approval_required');
-    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
-    assert.equal(db.calls.some(c=>c[0]==='run'),false);
+        recipient_public_ids:['10000001'],request_id:'gift_lucky_virtual_12345'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project,SHARIKA_LUCKY_GIFTS_ENABLED:'true',
+      SHARIKA_COINS_CASH_REDEEMABLE:'false'});
+    assert.equal(res.status,201);
+    const receipt=await res.json();
+    assert.equal(receipt.spent_coins,10);
+    assert.equal(receipt.lucky.recipient_reward_diamonds,0.5);
+    assert.equal(receipt.lucky.room_reward_coins,0.1);
+    assert.ok([0,1,2,5,10,50].includes(receipt.lucky.max_multiplier));
+    const stmts=db.calls.find(c=>c[0]==='batch')?.[1]||[];
+    assert.equal(stmts.filter(x=>x.sql.startsWith('UPDATE sharika_users SET coins=CASE')).length,1);
+    assert.equal(stmts.filter(x=>x.sql.includes('sharika_lucky_recipient_rewards')).length,1);
+    assert.equal(stmts.filter(x=>x.sql.includes('sharika_lucky_room_rewards')).length,1);
+    assert.equal(stmts.filter(x=>x.sql.includes('sharika_lucky_gift_outcomes')).length,1);
   }finally{globalThis.fetch=prior;}
 });
 
-test('cashout hold hides Lucky Gift from gift catalogue even with the flag enabled',async()=>{
+test('virtual-only Lucky catalogue returns odds, but cashable coins remain hidden',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
     const db=fakeDb(),old=db.prepare.bind(db);
@@ -532,6 +545,16 @@ test('cashout hold hides Lucky Gift from gift catalogue even with the flag enabl
     const catalog=db.calls.find(c=>c[0]==='all'&&c[1].includes('FROM sharika_gifts'));
     assert.ok(catalog);
     assert.equal(catalog[2][0],0);
+    const allowed=await handleRequest(new Request('https://example.test/api/v1/gifts',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project,SHARIKA_LUCKY_GIFTS_ENABLED:'true',
+      SHARIKA_COINS_CASH_REDEEMABLE:'false'});
+    assert.equal(allowed.status,200);
+    const data=await allowed.json();
+    assert.equal(data.lucky_enabled,true);
+    assert.equal(data.lucky_odds.reduce((sum,o)=>sum+o.probability_percent,0),100);
+    const calls=db.calls.filter(c=>c[0]==='all'&&c[1].includes('FROM sharika_gifts'));
+    assert.equal(calls.at(-1)[2][0],1);
   }finally{globalThis.fetch=prior;}
 });
 
