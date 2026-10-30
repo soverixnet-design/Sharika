@@ -7,7 +7,7 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
-import { drawLuckyGift, luckyGiftBenefits, CASHOUT_LUCKY_GIFTS_BLOCKED } from './lucky-gifts.mjs';
+import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -401,13 +401,15 @@ export async function handleRequest(request, env) {
     if (path === '/api/v1/gifts' && request.method === 'GET') {
       const viewer = await assertActive(env.DB, uid);
       const luckyAllowed = env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
-        !CASHOUT_LUCKY_GIFTS_BLOCKED && !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
+        nonRedeemableLuckyEconomy(env) && !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
       const result = await env.DB.prepare(
         'SELECT id,name,emoji,tab,price_coins,image_url,animation_url ' +
         'FROM sharika_gifts WHERE active=1 AND (tab IN (0,1) OR (tab=2 AND ?=1)) ORDER BY id LIMIT 100'
       ).bind(luckyAllowed ? 1 : 0).all();
       return reply({ gifts:result.results || [], lucky_enabled:luckyAllowed,
-        read_only:true }, 200, cors);
+        lucky_odds:luckyAllowed ? LUCKY_ODDS.map(x=>({
+          multiplier:x.multiplier,probability_percent:x.weight/100
+        })) : [],read_only:true }, 200, cors);
     }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       await assertActive(env.DB, uid);
@@ -545,8 +547,8 @@ export async function handleRequest(request, env) {
       // prevents listing this ledger until approvals and D1 schema are ready.
       if (parts.length===5 && action==='rewards' && request.method==='GET') {
         if(!member)return fail('join_room_first',403,cors);
-        if(CASHOUT_LUCKY_GIFTS_BLOCKED)
-          return fail('lucky_cashout_approval_required',403,cors);
+        if(!nonRedeemableLuckyEconomy(env))
+          return fail('lucky_requires_non_redeemable_coins',403,cors);
         const result=await env.DB.prepare(
           'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
           'FROM sharika_lucky_room_rewards WHERE room_id=?'
@@ -560,7 +562,8 @@ export async function handleRequest(request, env) {
       if (parts.length===5 && action==='gifts') {
         if(!member)return fail('join_room_first',403,cors);
         if(request.method==='GET') {
-          const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true';
+          const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
+            nonRedeemableLuckyEconomy(env);
           const rows=await env.DB.prepare(
             'SELECT e.id,e.quantity,e.price_coins,e.created_at,'+
             'su.public_no AS sender_no,ru.public_no AS recipient_no,'+
@@ -634,8 +637,8 @@ export async function handleRequest(request, env) {
           if(gift.tab===2) {
             if(env.SHARIKA_LUCKY_GIFTS_ENABLED!=='true')
               return fail('lucky_gifts_disabled',503,cors);
-            if(CASHOUT_LUCKY_GIFTS_BLOCKED)
-              return fail('lucky_cashout_approval_required',403,cors);
+            if(!nonRedeemableLuckyEconomy(env))
+              return fail('lucky_requires_non_redeemable_coins',403,cors);
             if(sender.minor || !(ageFromDate(sender.birthdate)>=18))
               return fail('lucky_gifts_adult_only',403,cors);
             lucky=drawLuckyGift(Number(gift.price_coins),quantity*ids.length);
