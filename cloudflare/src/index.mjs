@@ -11,6 +11,7 @@ import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
+const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset']);
 const MAX_BODY = 20_000;
 const enc = new TextEncoder();
 
@@ -505,12 +506,14 @@ export async function handleRequest(request, env) {
       const body=await readBody(request);
       const name=body.name===undefined ? room.name : txt(body.name,100);
       const seatCount=body.seat_count===undefined ? room.seat_count : body.seat_count;
-      if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20)
+      const theme=body.theme===undefined ? (room.theme||'mid') : body.theme;
+      if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20 ||
+         !ROOM_THEMES.has(theme))
         return fail('invalid_room_settings',400,cors);
       const updated=await env.DB.prepare(
-        'UPDATE sharika_rooms SET name=?,seat_count=? WHERE id=? AND owner_id=? '+
+        'UPDATE sharika_rooms SET name=?,seat_count=?,theme=? WHERE id=? AND owner_id=? '+
         'AND NOT EXISTS (SELECT 1 FROM sharika_room_members WHERE room_id=? AND seat_no>?)'
-      ).bind(name,seatCount,roomId,uid,roomId,seatCount).run();
+      ).bind(name,seatCount,theme,roomId,uid,roomId,seatCount).run();
       if(!updated.meta?.changes)return fail('seats_occupied_above_new_limit',409,cors);
       return reply({room:await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?')
         .bind(roomId).first()},200,cors);
@@ -520,6 +523,34 @@ export async function handleRequest(request, env) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // Text chat is real-time room data, not a browser-only fake conversation.
+      // Only verified members may read or send, and the Worker supplies identity.
+      if (parts.length === 5 && action === 'chat') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_chat_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET') {
+          const raw=url.searchParams.get('after')||'0';
+          if(!/^[0-9]{1,12}$/.test(raw) || !Number.isSafeInteger(Number(raw)))
+            return fail('invalid_chat_cursor',400,cors);
+          return reply(await coordinator.roomChatRead(Number(raw)),200,cors);
+        }
+        if(request.method==='POST') {
+          const payload=await readBody(request);
+          const message=typeof payload.body==='string'?payload.body.trim():'';
+          const requestId=typeof payload.request_id==='string'?payload.request_id.trim():'';
+          if(!message||message.length>300||
+             !/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
+            return fail('invalid_room_message',400,cors);
+          const user=await assertActive(env.DB,uid);
+          const result=await coordinator.roomChatSend(uid,publicId(user.public_no),
+            txt(user.name,80)||'Member',message,requestId);
+          if(result.error)return fail(result.error,
+            result.error==='message_rate_limited'?429:409,cors);
+          return reply(result,result.duplicate?200:201,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       if (parts.length === 5 && action === 'join' && request.method === 'POST') {
         const ban=await env.DB.prepare(
           'SELECT banned_until_ms FROM sharika_room_bans WHERE room_id=? AND user_id=?'
