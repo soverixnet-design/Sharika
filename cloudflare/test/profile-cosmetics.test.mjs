@@ -27,7 +27,7 @@ function cosmeticsDb(){
   const current={auth_uid:'firebase:'+project+':member',
     public_no:10000001,name:'Member',country:'BD',birthdate:'2000-01-01',
     minor:0,status:'active',coins:42,diamonds:0,xp:0,wealth_level:1,charm_level:1,
-    pic:null,cover:null,bio:'',frame_style:'',entry_style:''};
+    pic:null,cover:null,bio:'',frame_style:'',entry_style:'',medal_style:'',name_tag_style:''};
   const mutations=[];
   const db={current,mutations,prepare(sql){
     return {values:[],bind(...values){this.values=values;return this;},
@@ -62,18 +62,23 @@ test('original Sovera cosmetics persist on verified profiles without wallet chan
         method,headers,...(body?{body:JSON.stringify(body)}:{})
       }),{DB:db,FIREBASE_PROJECT_ID:project});
     let response=await run('PATCH','/me',{
-      frame_style:'royal-gold',entry_style:'phoenix-queen'
+      frame_style:'royal-gold',entry_style:'phoenix-queen',
+      medal_style:'gold',name_tag_style:'legend'
     });
     assert.equal(response.status,200);
     const updated=await response.json();
     assert.equal(updated.frame_style,'royal-gold');
     assert.equal(updated.entry_style,'phoenix-queen');
+    assert.equal(updated.medal_style,'gold');
+    assert.equal(updated.name_tag_style,'legend');
     assert.equal(updated.coins,42);
     assert.equal(db.mutations.length,1);
     response=await run('GET','/users/10000001');
     const publicView=await response.json();
     assert.equal(publicView.frame_style,'royal-gold');
     assert.equal(publicView.entry_style,'phoenix-queen');
+    assert.equal(publicView.medal_style,'gold');
+    assert.equal(publicView.name_tag_style,'legend');
     assert.equal(publicView.coins,undefined);
     response=await run('PATCH','/me',{frame_style:'https://untrusted.example/frame'});
     assert.equal(response.status,400);
@@ -81,13 +86,21 @@ test('original Sovera cosmetics persist on verified profiles without wallet chan
     response=await run('PATCH','/me',{entry_style:'../../script.js'});
     assert.equal(response.status,400);
     assert.equal(db.mutations.length,1);
+    response=await run('PATCH','/me',{medal_style:'manager'});
+    assert.equal(response.status,400);
+    assert.equal(db.mutations.length,1);
+    response=await run('PATCH','/me',{name_tag_style:'../../../admin'});
+    assert.equal(response.status,400);
+    assert.equal(db.mutations.length,1);
     response=await run('PATCH','/me',{coins:5000,frame_style:'vip7'});
     assert.equal(response.status,403);
     assert.equal(db.mutations.length,1);
-    response=await run('PATCH','/me',{frame_style:'',entry_style:''});
+    response=await run('PATCH','/me',{frame_style:'',entry_style:'',medal_style:'',name_tag_style:''});
     assert.equal(response.status,200);
     assert.equal(db.current.frame_style,'');
     assert.equal(db.current.entry_style,'');
+    assert.equal(db.current.medal_style,'');
+    assert.equal(db.current.name_tag_style,'');
     assert.equal(db.current.coins,42);
   }finally{globalThis.fetch=prior;}
 });
