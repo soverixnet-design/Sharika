@@ -23,6 +23,17 @@ export class SharikaVoiceRoom extends DurableObject {
       this.ctx.storage.sql.exec(
         'CREATE INDEX IF NOT EXISTS app_presence_seen ON app_presence(last_seen)'
       );
+      // Room text chat is durable, server-authored and isolated by coordinator.
+      // No unverified browser names or local demo messages are accepted.
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_chat (' +
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT NOT NULL, ' +
+        'public_id TEXT NOT NULL, display_name TEXT NOT NULL, body TEXT NOT NULL, ' +
+        'request_id TEXT NOT NULL UNIQUE, created_at_ms INTEGER NOT NULL)'
+      );
+      this.ctx.storage.sql.exec(
+        'CREATE INDEX IF NOT EXISTS room_chat_by_user ON room_chat(uid, id)'
+      );
     });
   }
 
@@ -125,6 +136,50 @@ export class SharikaVoiceRoom extends DurableObject {
       );
     }
     return true;
+  }
+
+  // The Worker checks Firebase identity, profile status and D1 room membership
+  // before reaching these methods. The Durable Object owns ordered messages.
+  async roomChatRead(afterId) {
+    const safeAfter = Number.isSafeInteger(afterId) && afterId >= 0 ? afterId : 0;
+    const messages = this.ctx.storage.sql.exec(
+      'SELECT id,public_id AS sender_id,display_name AS name,body,created_at_ms ' +
+      'FROM room_chat WHERE id>? ORDER BY id DESC LIMIT 40', safeAfter
+    ).toArray().reverse();
+    return {messages};
+  }
+
+  async roomChatSend(uid, publicId, displayName, body, requestId) {
+    const existing = this.ctx.storage.sql.exec(
+      'SELECT id,uid,public_id AS sender_id,display_name AS name,body,created_at_ms ' +
+      'FROM room_chat WHERE request_id=?', requestId
+    ).toArray()[0];
+    if (existing) {
+      if (existing.uid !== uid || existing.body !== body)
+        return {error:'message_request_conflict'};
+      const {uid: _privateUid, ...message} = existing;
+      return {message,duplicate:true};
+    }
+    const now = Date.now();
+    const last = this.ctx.storage.sql.exec(
+      'SELECT created_at_ms FROM room_chat WHERE uid=? ORDER BY id DESC LIMIT 1', uid
+    ).toArray()[0];
+    if (last && now - Number(last.created_at_ms) < 1500)
+      return {error:'message_rate_limited'};
+    this.ctx.storage.sql.exec(
+      'INSERT INTO room_chat(uid,public_id,display_name,body,request_id,created_at_ms) ' +
+      'VALUES(?,?,?,?,?,?)',uid,publicId,displayName,body,requestId,now
+    );
+    const id = Number(this.ctx.storage.sql.exec(
+      'SELECT last_insert_rowid() AS id'
+    ).toArray()[0].id);
+    // Keep the most recent 200 messages per room, avoiding unbounded DO usage.
+    this.ctx.storage.sql.exec(
+      'DELETE FROM room_chat WHERE id < ' +
+      '(SELECT id FROM room_chat ORDER BY id DESC LIMIT 1 OFFSET 199)'
+    );
+    return {message:{id,sender_id:publicId,name:displayName,body,created_at_ms:now},
+      duplicate:false};
   }
 
   async presenceTouch(uid, roomId) {
