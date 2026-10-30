@@ -2,6 +2,7 @@ import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
+import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
@@ -235,6 +236,10 @@ export async function handleRequest(request, env) {
       await env.DB.prepare("UPDATE sharika_users SET pic=?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
         .bind(pic,uid).run();
       return reply(showProfile(await me(env.DB,uid)),200,cors);
+    }
+    if(path==='/api/v1/banners' && request.method==='GET') {
+      await assertActive(env.DB,uid);
+      return reply({banners:await listPublicBanners(env.DB)},200,cors);
     }
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
