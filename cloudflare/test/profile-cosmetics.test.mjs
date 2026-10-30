@@ -122,3 +122,57 @@ test('verified profile photos follow the same public ID into room avatars and me
   assert.match(adapter,/inboxPhotos=new Map/);
   assert.match(adapter,/roomFrame\.render\?\.\(\)/);
 });
+
+test('room polling keeps the newest seat count and ignores responses after leaving',async()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=adapter.indexOf('  async function syncFrame(room,frame) {');
+  const end=adapter.indexOf('  async function attachFrame(room) {');
+  assert.ok(start>=0&&end>start,'room synchronization must be available');
+  const syncSource=adapter.slice(start,end);
+  const pending=[];
+  const room={id:'10000001',owner_id:'owner-uid',seat_count:12};
+  const frame={
+    seats:[{empty:1}],S:{frame:'grad'},U:[],renders:[],
+    render(){this.renders.push(this.seats.length);}
+  };
+  const state={cur:{id:room.id}};
+  const iframe={contentWindow:frame};
+  const sync=new Function('api','session','window','document','sfuState',
+    'voiceRoomId','voiceRoom','balance','verifiedAvatarUrl',
+    'decorateRoomPeople','decorateRoomChat','connectVoice','playSoveraEntry',
+    syncSource+';return syncFrame;')(
+      (method,path)=>{
+        if(path.endsWith('/members'))
+          return new Promise(resolve=>pending.push(resolve));
+        return Promise.resolve({name:'Room owner'});
+      },
+      {user:{id:'owner-uid'}},state,{getElementById:()=>iframe},
+      null,null,null,{coins:1,xp:2},()=>null,()=>{},()=>{},async()=>{},()=>{}
+    );
+  const older=sync(room,frame);
+  const newer=sync(room,frame);
+  assert.equal(pending.length,2);
+  pending[1]({seat_count:4,members:[],locked_seats:[]});
+  await newer;
+  assert.equal(room.seat_count,4);
+  assert.deepEqual(frame.renders,[5]);
+  pending[0]({seat_count:12,members:[],locked_seats:[]});
+  await older;
+  assert.equal(room.seat_count,4,'stale response must not restore old count');
+  assert.deepEqual(frame.renders,[5],'stale response must not re-render old seats');
+  const leaving=sync(room,frame);
+  state.cur={id:'10000002'};
+  pending[2]({seat_count:17,members:[],locked_seats:[]});
+  await leaving;
+  assert.equal(room.seat_count,4,'completed request cannot edit an exited room');
+  assert.deepEqual(frame.renders,[5]);
+});
+
+test('cosmetics and profile uploads do not accumulate effects or cross accounts',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.match(adapter,/querySelectorAll\('\.sh-sovera-frame,\.sh-sovera-seat-medal'\)/);
+  assert.match(adapter,/avatar\.classList\.toggle\('sh-has-sovera-frame',!!item\)/);
+  assert.match(adapter,/const accountId=session\.user\.id/);
+  assert.match(adapter,/saved\?\.public_id!==publicId/);
+  assert.match(adapter,/document\.getElementById\('rf'\)\?\.contentWindow!==frame/);
+});
