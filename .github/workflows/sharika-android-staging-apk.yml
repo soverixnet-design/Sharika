@@ -1,0 +1,132 @@
+name: Sharika isolated Android staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-android-staging-20261030
+    paths:
+      - 'android-staging/**'
+      - '.github/workflows/sharika-android-staging-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-android-staging-only
+  cancel-in-progress: false
+
+jobs:
+  debug-apk:
+    name: Build a staging-only Android debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: android-staging
+    steps:
+      - name: Checkout code (no live app changes)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check that this APK cannot use the wrong Firebase project
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const c = JSON.parse(fs.readFileSync('app/google-services.json', 'utf8'));
+          const gradle = fs.readFileSync('app/build.gradle', 'utf8');
+          const pkg = c.client?.[0]?.client_info?.android_client_info?.package_name;
+          if (c.project_info?.project_id !== 'sharika-voice-chat-app' ||
+              pkg !== 'com.soverixnet.sharika' ||
+              !gradle.includes("applicationId 'com.soverixnet.sharika'")) {
+            throw new Error('Refusing to build unexpected Android Firebase identity');
+          }
+          const oauth = c.client?.[0]?.oauth_client || [];
+          const androidClient = oauth.find(v => v.client_type === 1);
+          const webClient = oauth.find(v => v.client_type === 3);
+          if (!androidClient?.android_info?.certificate_hash ||
+              !webClient?.client_id) {
+            throw new Error('Google OAuth client IDs missing from google-services.json');
+          }
+          console.log('SHARIKA_ANDROID_FIREBASE_IDENTITY_AND_GOOGLE_OAUTH_OK');
+          NODE
+
+      - name: Check exact original Sharika UI and isolated Android adapter
+        run: |
+          node --check staging-connection.js
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('../app/index.html', 'utf8');
+          const bridge = fs.readFileSync('staging-connection.js', 'utf8');
+          if (!html.includes('<title>Sharika Voice Chat App</title>') ||
+              !html.includes('<script src="./connection.js">') ||
+              !bridge.includes("window.API.login") ||
+              !bridge.includes("SharikaNative") ||
+              /rfrmcmeyamndghtiheci\.supabase\.co|sb_publishable_/.test(bridge)) {
+            throw new Error('Original design or staging-only connection contract failed');
+          }
+          console.log('SHARIKA_ORIGINAL_UI_AND_ISOLATED_BRIDGE_VERIFIED');
+          NODE
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up pinned Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install Android packages using hosted runner SDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          test -d "$SDK_ROOT/cmdline-tools"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Restore required stable staging signer from encrypted GitHub secrets
+        env:
+          KEY_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KEY_B64" || -z "$KEY_PASSWORD" ]]; then
+            echo "::error::Both encrypted signing secrets are required; refusing an unstable debug-signed APK."
+            exit 1
+          else
+            # Mobile paste can insert line breaks or spaces; base64 has no whitespace.
+            printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
+            # Verify the exact expected private staging key, not any replacement.
+            printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-staging-signing.p12" | sha256sum --check --status
+            chmod 600 "$RUNNER_TEMP/sharika-staging-signing.p12"
+            echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-staging-signing.p12" >> "$GITHUB_ENV"
+            echo "SHARIKA_STAGING_SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
+            echo "Restored private staging signing key (not committed to repository)."
+          fi
+
+      - name: Compile staging APK only
+        env:
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Print signing fingerprint for this exact APK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          CERTS="$("$SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk)"
+          echo "$CERTS"
+          if [[ "${SHARIKA_STAGING_SIGNING_CONFIGURED:-}" == "true" ]]; then
+            printf '%s\n' "$CERTS" | grep -qi 'Signer #1 certificate SHA-1 digest: ab491a1a905a42bf42417d7b62c658b379f32bb0'
+            echo 'SHARIKA_STABLE_STAGING_CERTIFICATE_VERIFIED'
+          fi
+
+      - name: Save private-test APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
