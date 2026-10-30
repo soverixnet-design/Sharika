@@ -5,7 +5,7 @@
  */
 (function () {
   'use strict';
-  const API = 'https://sharika-api-staging.soverixnet.workers.dev';
+  const API = window.location.origin;
   const FIREBASE_KEY = "AIzaSyAuKw-SVccI_bN4GSC6tOEC1yUm6lkBxQA";
   const SESSION_KEY = 'sharika_admin_firebase_staging_v1';
   let session = null;
