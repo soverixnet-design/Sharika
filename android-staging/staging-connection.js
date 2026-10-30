@@ -509,7 +509,16 @@
         const data=await api('GET','/gifts');
         const gifts=(data.gifts||[]).filter(g=>g.active!==0);
         if(!gifts.length){frame.toast('No active gifts in the catalog yet');return;}
-        frame.G=gifts.map(g=>[g.emoji||'🎁',Number(g.price_coins),g.name,Number(g.tab),g.image_url||'']);
+        const htmlSafe=text=>String(text??'').replace(/[&<>"']/g,
+          c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const imageSafe=value=>{
+          const url=String(value||'').trim();
+          return url.startsWith('https://') && url.length<=1000 &&
+            !Array.from(url).some(c=>c.charCodeAt(0)<=32 || ['"',"'",'<','>'].includes(c))
+            ?htmlSafe(url):'';
+        };
+        frame.G=gifts.map(g=>[htmlSafe(g.emoji||'🎁'),Number(g.price_coins),
+          htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
         if(typeof originalGiftOpen==='function')originalGiftOpen.call(giftButton);
         else frame.toast('Gift catalog available, sending is not ready');
       }catch(error){frame.toast('Gift catalog unavailable: '+errText(error));}
