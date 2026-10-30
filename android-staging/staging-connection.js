@@ -66,7 +66,8 @@
       return Promise.reject(new Error('Android native bridge unavailable'));
     return new Promise((resolve, reject) => {
       const id = String(++seq);
-      const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, 25000);
+      const timeoutMs = action === 'pickProfilePhoto' ? 180000 : 25000;
+      const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, timeoutMs);
       calls.set(id, { resolve, reject, timer });
       try { window.SharikaNative.call(id, action, JSON.stringify(payload || {})); }
       catch (error) { clearTimeout(timer); calls.delete(id); reject(error); }
