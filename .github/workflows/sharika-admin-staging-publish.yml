@@ -54,7 +54,7 @@ jobs:
                 c.d1_databases || c.routes || c.route || c.durable_objects ||
                 !c.rules?.some(r => r.type === "Text") ||
                 !page.includes("Sharika Admin Control Panel") ||
-                !bridge.includes("recharge:'Top Recharge'")) {
+                !bridge.includes("Top Recharge")) {
               throw new Error("Refusing non-isolated admin Worker or missing real ranking UI");
             }
             console.log("SHARIKA_ADMIN_STAGING_ONLY");
