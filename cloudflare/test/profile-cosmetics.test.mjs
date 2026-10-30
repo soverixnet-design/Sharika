@@ -176,3 +176,34 @@ test('cosmetics and profile uploads do not accumulate effects or cross accounts'
   assert.match(adapter,/saved\?\.public_id!==publicId/);
   assert.match(adapter,/document\.getElementById\('rf'\)\?\.contentWindow!==frame/);
 });
+
+test('room creation and seat settings reload even during an in-flight room poll',async()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=adapter.indexOf('  let roomsRequestNo=0;');
+  const end=adapter.indexOf('  // Android\'s system picker',start);
+  assert.ok(start>=0&&end>start);
+  const pending=[];
+  const view={
+    CFG:{rooms:[]},A:{myRoom:null},renders:0,
+    renderRooms(){this.renders++;}
+  };
+  const reloadRooms=new Function('api','session','window','COLORS','toast','errText',
+    adapter.slice(start,end)+';return reloadRooms;')(
+      ()=>new Promise(resolve=>pending.push(resolve)),
+      {user:{id:'owner-uid'}},view,['#000,#fff'],()=>{},String
+    );
+  const previous=reloadRooms();
+  const saved=reloadRooms();
+  assert.equal(pending.length,2,'a save must not skip its refresh');
+  const room=seat_count=>({
+    id:'10000001',owner_id:'owner-uid',name:'My room',seat_count,
+    online_count:1,theme:'mid'
+  });
+  pending[1]({rooms:[room(4)]});
+  await saved;
+  assert.equal(view.A.myRoom.seat_count,4);
+  pending[0]({rooms:[room(12)]});
+  await previous;
+  assert.equal(view.A.myRoom.seat_count,4);
+  assert.equal(view.renders,1,'stale response cannot redraw room cards');
+});
