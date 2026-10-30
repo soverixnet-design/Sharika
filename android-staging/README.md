@@ -1,5 +1,13 @@
 # Sharika Android staging alpha — original Sharika UI
 
+## Android Firebase bridge route allowlist
+
+The native shell explicitly permits only known signed-in staging API routes:
+rooms/voice, gifts, mutual follow/messages/support, wallet exchange,
+verified rankings and the two server games. Google/Firebase tokens are never
+exposed in page JavaScript. Unlisted paths (including all admin routes),
+arbitrary hosts and encoded path tricks are still blocked.
+
 ## Server-verified virtual-coin games (isolated staging only)
 
 Food Wheel and Jackpot Fruit now use 40-second UTC rounds with 28 seconds

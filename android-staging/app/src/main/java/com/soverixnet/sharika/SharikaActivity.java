@@ -313,11 +313,51 @@ public final class SharikaActivity extends Activity {
     }
 
     private boolean allowedApi(String method, String path) {
-        if (!("GET".equals(method) || "POST".equals(method) || "PATCH".equals(method) || "PUT".equals(method)))
+        if (path == null || !path.startsWith("/api/v1/") ||
+            path.contains("%") || path.contains("#") || path.contains("..") ||
+            !(method.equals("GET") || method.equals("POST") ||
+              method.equals("PATCH") || method.equals("PUT") || method.equals("DELETE")))
             return false;
-        // Narrow capability boundary: staging profile/wallet/rooms, nothing
-        // involving admin, billing, gifts, games, arbitrary URLs or SSRF.
-        return path.matches("^/api/v1/(?:me|wallet|users/[0-9]{8}|rooms(?:/[0-9]{8}(?:/(?:join|leave|members|seat|voice-token|voice/(?:config|session|publish|subscribe|renegotiate|publications|heartbeat|leave)))?)?)$");
+        // A fixed-origin bridge, with explicit route/method allowlisting.
+        // No /admin, arbitrary URLs, billing, redirects or platform credentials.
+        if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(rich|charm|room)$"))
+            return method.equals("GET");
+        if (path.contains("?")) return false;
+        if (path.equals("/api/v1/me"))
+            return method.equals("GET") || method.equals("POST") || method.equals("PATCH");
+        if (path.equals("/api/v1/wallet")) return method.equals("GET");
+        if (path.equals("/api/v1/wallet/exchange")) return method.equals("POST");
+        if (path.equals("/api/v1/follows") || path.equals("/api/v1/messages") ||
+            path.equals("/api/v1/gifts")) return method.equals("GET");
+        if (path.equals("/api/v1/support/messages"))
+            return method.equals("GET") || method.equals("POST");
+        if (path.matches("^/api/v1/users/[0-9]{8}$")) return method.equals("GET");
+        if (path.matches("^/api/v1/users/[0-9]{8}/follow$"))
+            return method.equals("GET") || method.equals("PUT") || method.equals("DELETE");
+        if (path.matches("^/api/v1/messages/[0-9]{8}$"))
+            return method.equals("GET") || method.equals("POST");
+        if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/(state|history)$"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/bet$"))
+            return method.equals("POST");
+        if (path.equals("/api/v1/games")) return method.equals("GET");
+        if (path.equals("/api/v1/rooms"))
+            return method.equals("GET") || method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}$"))
+            return method.equals("GET") || method.equals("PATCH");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/members$"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/(join|leave)$"))
+            return method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/seat$"))
+            return method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/gifts$"))
+            return method.equals("GET") || method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/voice-token$"))
+            return method.equals("POST");
+        // Preserve the already permitted voice transport routes byte-for-byte.
+        return path.matches("^/api/v1/rooms/[0-9]{8}/voice/(config|session|publish|subscribe|renegotiate|publications|heartbeat|leave)$")
+            && (method.equals("GET") || method.equals("POST") || method.equals("PUT"));
     }
 
     private void callStagingApi(String id, JSONObject data) {
