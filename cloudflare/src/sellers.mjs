@@ -25,7 +25,7 @@ function sellerView(row){
 export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
   if(!path.startsWith('/api/v1/sellers'))return null;
   const actor=await env.DB.prepare(
-    "SELECT auth_uid,minor FROM sharika_users WHERE auth_uid=? AND status='active'"
+    "SELECT auth_uid,minor,public_no FROM sharika_users WHERE auth_uid=? AND status='active'"
   ).bind(uid).first();
   if(!actor)return fail('profile_unavailable',403,cors);
   if(path==='/api/v1/sellers'&&request.method==='GET'){
@@ -43,6 +43,36 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
       'WHERE s.seller_uid=?'
     ).bind(uid).first();
     return reply({seller:row?sellerView(row):null},200,cors);
+  }
+  // A seller can inspect only their own immutable stock movements.
+  // Sender/recipient are verified public IDs, never client-supplied labels.
+  if(path==='/api/v1/sellers/transfers'&&request.method==='GET'){
+    const rows=resultRows(await env.DB.prepare(
+      'SELECT t.id,su.public_no AS sender_no,ru.public_no AS recipient_no,'+
+      't.amount,t.stock_after,t.created_at FROM sharika_coin_seller_transfers t '+
+      'JOIN sharika_users su ON su.auth_uid=t.seller_uid '+
+      'JOIN sharika_users ru ON ru.auth_uid=t.target_uid '+
+      'WHERE t.seller_uid=? ORDER BY t.id DESC LIMIT 100'
+    ).bind(uid).all());
+    return reply({transfers:rows.map(t=>({
+      id:t.id,sender_public_id:showId(t.sender_no),
+      recipient_public_id:showId(t.recipient_no),coins:t.amount,
+      stock_after:t.stock_after,created_at:t.created_at
+    })),read_only:true},200,cors);
+  }
+  if(path==='/api/v1/sellers/allocations'&&request.method==='GET'){
+    const rows=resultRows(await env.DB.prepare(
+      'SELECT a.id,au.public_no AS sender_no,su.public_no AS seller_no,'+
+      'a.amount,a.stock_after,a.created_at FROM sharika_coin_seller_allocations a '+
+      'JOIN sharika_users au ON au.auth_uid=a.actor_uid '+
+      'JOIN sharika_users su ON su.auth_uid=a.seller_uid '+
+      'WHERE a.seller_uid=? ORDER BY a.id DESC LIMIT 100'
+    ).bind(uid).all());
+    return reply({allocations:rows.map(a=>({
+      id:a.id,sender_public_id:showId(a.sender_no),
+      seller_public_id:showId(a.seller_no),coins:a.amount,
+      stock_after:a.stock_after,created_at:a.created_at
+    })),read_only:true},200,cors);
   }
   if(path==='/api/v1/sellers/transfer'&&request.method==='POST'){
     let body;
@@ -73,7 +103,8 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
         'SELECT available_coins FROM sharika_coin_sellers WHERE seller_uid=?'
       ).bind(uid).first();
       return reply({duplicate:true,transfer_id:existing.id,
-        available_coins:stock?.available_coins??0,recipient_public_id:publicId,coins:amount},200,cors);
+        available_coins:stock?.available_coins??0,recipient_public_id:publicId,
+        sender_public_id:showId(actor.public_no),coins:amount},200,cors);
     }
     if(Number(seller.available_coins)<amount)return fail('seller_stock_insufficient',409,cors);
     if(Number(recipient.coins)>MAX_USER_BALANCE-amount)
@@ -115,7 +146,9 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
       'WHERE seller_uid=? AND request_id=?'
     ).bind(uid,requestId).first();
     return reply({duplicate:false,transfer_id:saved.id,coins:amount,
-      recipient_public_id:publicId,available_coins:saved.stock_after,
+      recipient_public_id:publicId,
+      sender_public_id:showId(actor.public_no),
+      available_coins:saved.stock_after,
       referral_bonus_coins:referralCredit.bonus},201,cors);
   }
   return fail('seller_method_not_allowed',405,cors);
@@ -143,8 +176,23 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
     ).all());
     return reply({transfers:rows.map(t=>({
       id:t.id,seller_public_id:showId(t.seller_no),
+      sender_public_id:showId(t.seller_no),
       recipient_public_id:showId(t.recipient_no),
       coins:t.amount,stock_after:t.stock_after,created_at:t.created_at
+    })),read_only:true},200,cors);
+  }
+  if(operation==='sellers/allocations'&&request.method==='GET'){
+    const rows=resultRows(await env.DB.prepare(
+      'SELECT a.id,au.public_no AS sender_no,su.public_no AS seller_no,'+
+      'a.amount,a.stock_after,a.created_at FROM sharika_coin_seller_allocations a '+
+      'JOIN sharika_users au ON au.auth_uid=a.actor_uid '+
+      'JOIN sharika_users su ON su.auth_uid=a.seller_uid '+
+      'ORDER BY a.id DESC LIMIT 100'
+    ).all());
+    return reply({allocations:rows.map(a=>({
+      id:a.id,sender_public_id:showId(a.sender_no),
+      seller_public_id:showId(a.seller_no),coins:a.amount,
+      stock_after:a.stock_after,created_at:a.created_at
     })),read_only:true},200,cors);
   }
   if(actor.role!=='super')return fail('admin_permission_denied',403,cors);
