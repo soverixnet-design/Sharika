@@ -232,6 +232,7 @@ public final class SharikaActivity extends Activity {
         if (bounds.outWidth < 1 || bounds.outHeight < 1)
             throw new IOException("Invalid gallery image");
         BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = 1;
         while ((Math.max(bounds.outWidth,bounds.outHeight) / options.inSampleSize) > 960)
             options.inSampleSize *= 2;
         try (InputStream stream = getContentResolver().openInputStream(uri)) {
