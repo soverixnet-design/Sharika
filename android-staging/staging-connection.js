@@ -412,6 +412,27 @@
       pickProfilePhoto();
     }
   },true);
+  // The original edit form writes only to localStorage. Save verified
+  // profile name/bio through the same Firebase-authenticated D1 profile.
+  document.addEventListener('click',event=>{
+    const save=event.target.closest?.('#sh #es');
+    if(!save)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(!session||!profile){toast('Sign in to edit your profile');return;}
+    const name=document.getElementById('en')?.value?.trim()||'';
+    const bio=document.getElementById('eb')?.value?.trim()||'';
+    if(!name||name.length>80||bio.length>500){toast('Check name and bio length');return;}
+    if(save.disabled)return;
+    save.disabled=true;
+    api('PATCH','/me',{name,bio}).then(saved=>{
+      if(saved.public_id!==profile.public_id)throw new Error('Profile identity mismatch');
+      profile=saved;
+      window.A.name=saved.name;window.A.bio=saved.bio||'';
+      window.saveA();window.closeSheet();window.renderMe();
+      toast('Profile saved to your verified ID ✓');
+    }).catch(error=>toast('Profile not saved: '+errText(error)))
+      .finally(()=>{if(save.isConnected)save.disabled=false;});
+  },true);
   const priorRenderMe=window.renderMe;
   if(typeof priorRenderMe==='function')window.renderMe=function(){
     priorRenderMe.apply(this,arguments);
@@ -708,6 +729,7 @@
     balance = { ...local.state };
     session = { email: account.email, user: { id:current.user_id, email:account.email } };
     startPresence();
+    refreshVerifiedBanners().catch(error=>console.warn('Banner refresh unavailable:',errText(error)));
     try {
       localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local]));
       localStorage.setItem('vr_state_v2', JSON.stringify(balance));
@@ -1932,7 +1954,7 @@
   // Approved Coin Sellers: actual D1 seller rows, never fabricated profiles.
   const sellerEscape=v=>String(v==null?'':v).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  async function showVerifiedCoinSellers({walletOnly=false}={}){
+  async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
     window.openSheet('<h3>🪙 '+(walletOnly?'Seller Wallet':'Coin sellers')+
       '</h3><div id="sharika-seller-content">Loading verified seller data…</div>');
     const root=document.getElementById('sharika-seller-content');
@@ -1972,6 +1994,8 @@
         (self?'<div class="card" style="margin-top:12px;padding:12px"><h4>Coin transfer list</h4>'+
           '<div id="sharika-seller-history">'+(historyRows||'No transfers yet.')+'</div>'+
           '<h4>Seller wallet stock allocations</h4>'+(stockRows||'No allocations yet.')+'</div>':'');
+      const targetField=document.getElementById('sharika-seller-target');
+      if(targetField&&/^[0-9]{8}$/.test(targetId))targetField.value=targetId;
       const send=document.getElementById('sharika-seller-send');
       if(send)send.addEventListener('click',async()=>{
         const recipient=document.getElementById('sharika-seller-target')?.value.trim()||'';
@@ -1983,10 +2007,13 @@
           if(note)note.textContent='Enter a valid eight-digit user ID and 1–1,000,000 coins.';
           return;
         }
-        if(!window.confirm('Transfer '+amount.toLocaleString('en-US')+' coins to user '+recipient+'?'))return;
-        const requestId=nextWalletRequestId('seller');
         send.disabled=true;
         try{
+          const verified=await api('GET','/users/'+recipient);
+          if(String(verified.id)!==recipient)throw new Error('Recipient verification failed');
+          if(!window.confirm('Send '+amount.toLocaleString('en-US')+' coins to '+
+            String(verified.name||'User')+' (ID '+recipient+')?')){send.disabled=false;return;}
+          const requestId=nextWalletRequestId('seller');
           const result=await api('POST','/sellers/transfer',{
             target_public_id:recipient,coins:amount,request_id:requestId
           });
@@ -2011,6 +2038,59 @@
     }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
   }
 
+
+  // Public banner metadata is populated by verified Super-Admin D1 records.
+  // Keep the original 3D carousel/scroll behavior and never show demo offers.
+  function renderVerifiedBanners(list){
+    const approved=Array.isArray(list)?list.filter(row=>row&&
+      typeof row.title==='string'&&row.title.length<=80&&
+      /^#[0-9a-fA-F]{6}$/.test(row.color_a||'')&&
+      /^#[0-9a-fA-F]{6}$/.test(row.color_b||'')&&
+      ['none','daily','recharge','rank','invite'].includes(row.action)).slice(0,10):[];
+    const cards=approved.map(row=>({
+      t:row.title,s:String(row.subtitle||'').slice(0,160),
+      e:String(row.emoji||'🎉').slice(0,12),
+      c:row.color_a+','+row.color_b,a:row.action
+    }));
+    if(!cards.length)cards.push({t:'Welcome to Sharika',
+      s:'Talk with friends in voice rooms',e:'🎙️',c:'#9b4dff,#0ea5e9',a:'none'});
+    window.CFG.banners=cards;
+    const slide=document.getElementById('ban'),dots=document.getElementById('dots');
+    if(slide)slide.innerHTML=cards.map((row,i)=>
+      '<div class="slide" data-i="'+i+'" style="background:linear-gradient(135deg,'+
+      row.c+')"><b>'+sellerEscape(row.t)+'</b><small>'+sellerEscape(row.s)+
+      '</small><i>'+sellerEscape(row.e)+'</i></div>').join('');
+    if(dots)dots.innerHTML=cards.map((_,i)=>'<u'+(!i?' class="on"':'')+'></u>').join('');
+    window.bi=0;
+  }
+  async function refreshVerifiedBanners(){
+    if(!session)return;
+    const data=await api('GET','/banners');
+    if(session)renderVerifiedBanners(data.banners);
+  }
+  renderVerifiedBanners([]);
+
+  // A verified seller may recharge directly from another real user's ID card.
+  const originalOpenProfile=window.openProfile;
+  if(typeof originalOpenProfile==='function')window.openProfile=function(user){
+    originalOpenProfile.apply(this,arguments);
+    const targetId=String(user?.id||'');
+    const root=document.querySelector('#pfc .pfh .meta');
+    if(!/^[0-9]{8}$/.test(targetId)||!root||!session)return;
+    Promise.all([api('GET','/sellers/me'),api('GET','/users/'+targetId)])
+      .then(([mine,verified])=>{
+        if(!root.isConnected||!mine.seller?.active||String(verified.id)!==targetId)return;
+        const button=document.createElement('button');
+        button.type='button';button.className='act';
+        button.textContent='🪙 Send seller coins to ID '+targetId;
+        button.style.cssText='display:block;margin:8px auto;padding:9px 13px;border-radius:12px';
+        button.onclick=()=>{
+          document.getElementById('pfo')?.classList.remove('on');
+          showVerifiedCoinSellers({walletOnly:true,targetId});
+        };
+        root.insertAdjacentElement('afterend',button);
+      }).catch(()=>{});
+  };
 
   // Original daily reward card retained; values and claim status come from D1.
   let dailyClaimBusy=false;
