@@ -64,7 +64,7 @@ test('invalid and nonexistent codes cannot create fake referrals',async()=>{
 test('self referral is rejected',async()=>{
   assert.equal((await resolve(mock({self:true}),'10000002')).status,403);
 });
-test('real inviter dashboard exposes public IDs, counts but no private UIDs or bonuses',async()=>{
+test('real inviter dashboard exposes public IDs, actual bonus totals and no private UIDs',async()=>{
   const f=mock();
   const request=new Request('https://example.test/api/v1/invites');
   const response=await handleInviteApp({request,env:{DB:f.DB},uid:'alice',
@@ -75,7 +75,11 @@ test('real inviter dashboard exposes public IDs, counts but no private UIDs or b
   assert.equal(data.total_invites,2);
   assert.equal(data.referrals[0].public_id,'10000010');
   assert.equal(data.invited_by,'10000003');
-  assert.equal(data.bonus_coins,0);
+  assert.equal(data.signup_bonus_coins,0);
+  assert.equal(data.recharge_bonus_coins,0);
+  assert.equal(data.signup_inviter_reward,5000);
+  assert.equal(data.signup_invitee_reward,10000);
+  assert.equal(data.recharge_bonus_percent,5);
   assert.equal(data.bonus_enabled,true);
   assert.equal(JSON.stringify(data).includes('alice'),false);
   assert.equal(f.state.writes,0);
