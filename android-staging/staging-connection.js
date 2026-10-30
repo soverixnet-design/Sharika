@@ -90,6 +90,19 @@
     {id:'phoenix-queen',name:'Phoenix Queen',art:'phoenix-queen-entry.webp',still:'phoenix-queen-still.webp',ms:13800},
     {id:'tiger-queen',name:'Tiger Queen',art:'tiger-queen-entry.webp',still:'tiger-queen-still.webp',ms:12000}
   ];
+  const SOVERA_MEDALS=[
+    {id:'bronze',name:'Bronze medal',art:'bronze.webp',group:'medals'},
+    {id:'silver',name:'Silver medal',art:'silver.webp',group:'medals'},
+    {id:'gold',name:'Gold medal',art:'gold.webp',group:'medals'},
+    {id:'top-host',name:'Top Host decorative art',art:'top-host-medal.webp'}
+  ];
+  const SOVERA_TAGS=[
+    {id:'legend',name:'Sovera Legend decorative nameplate',art:'legend-tag.webp'}
+  ];
+  function medalArt(key){return SOVERA_MEDALS.find(m=>m.id===key);}
+  function nameTagArt(key){return SOVERA_TAGS.find(m=>m.id===key);}
+  function cosmeticMedia(item){return item?.group==='medals'?
+    './sovera-medals/'+item.art:effectPath(item.art);}
   function frameArt(key){return SOVERA_FRAMES.find(f=>f.id===key);}
   function entryArt(key){return SOVERA_ENTRIES.find(f=>f.id===key);}
   function effectPath(file){return './sovera-effects/'+file;}
@@ -121,6 +134,9 @@
       'display:grid;place-items:center;background:linear-gradient(135deg,#8149c8,#26104a);',
       'font-size:30px;margin:4px 0}',
       '.sh-sovera-preview .sh-sovera-frame.fxr{width:170%!important;height:170%!important}',
+      '.sh-sovera-id-effects{display:flex;justify-content:center;align-items:center;gap:8px;margin:6px auto 12px}',
+      '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
+      '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
       'pointer-events:none;display:flex;justify-content:center;align-items:center;',
       'background:radial-gradient(circle,#251054a8,transparent 70%)}',
@@ -169,13 +185,24 @@
       if(!avatar)continue;
       avatar.querySelector('.sh-sovera-frame')?.remove();
       const item=frameArt(seat.frame_style);
-      if(!item)continue;
+      const medal=medalArt(seat.medal_style);
+      if(!item&&!medal)continue;
       avatar.style.position='relative';
-      const decoration=doc.createElement('i');
-      decoration.className='fxr sh-sovera-frame';
-      decoration.setAttribute('aria-hidden','true');
-      decoration.style.backgroundImage='url('+effectPath(item.art)+')';
-      avatar.appendChild(decoration);
+      if(item){
+        const decoration=doc.createElement('i');
+        decoration.className='fxr sh-sovera-frame';
+        decoration.setAttribute('aria-hidden','true');
+        decoration.style.backgroundImage='url('+effectPath(item.art)+')';
+        avatar.appendChild(decoration);
+      }
+      if(medal){
+        const badge=doc.createElement('img');
+        badge.className='sh-sovera-seat-medal';
+        badge.alt='';
+        badge.src=cosmeticMedia(medal);
+        badge.setAttribute('aria-hidden','true');
+        avatar.appendChild(badge);
+      }
     }
   }
   function wireSoveraRoomFrames(frame){
@@ -192,23 +219,41 @@
     if(!session){window.showAuth('welcome');return;}
     cosmeticCss(document);
     const isEntry=kind==='entry_style';
-    const title=isEntry?'✨ Original Sovera Entry':'🖼️ Original Sovera Avatar Frames';
-    const catalog=isEntry?SOVERA_ENTRIES:SOVERA_FRAMES;
-    window.openSheet('<h3>'+title+'</h3><div id="sh-sovera-list" class="sh-sovera-grid"></div>'+
-      '<p style="font-size:12px;color:#c9bbed">Free cosmetic selection. No coins charged. Your choice is saved to your verified profile.</p>');
+    const isMedal=kind==='medal_style';
+    const isTag=kind==='name_tag_style';
+    const title=isEntry?'✨ Original Sovera Entry':
+      isMedal?'🏅 Original Sovera Medals':
+      isTag?'🎖️ Original Sovera Name Tag':'🖼️ Original Sovera Avatar Frames';
+    const catalog=isEntry?SOVERA_ENTRIES:isMedal?SOVERA_MEDALS:isTag?SOVERA_TAGS:SOVERA_FRAMES;
+    window.openSheet('<h3>'+title+'</h3><div id="sh-sovera-tabs"></div>'+
+      '<div id="sh-sovera-list" class="sh-sovera-grid"></div>'+
+      '<p style="font-size:12px;color:#c9bbed">Free decorative styles; no coins charged and no staff/VIP rank awarded. Your choice is saved on the verified server.</p>');
     const node=document.getElementById('sh-sovera-list');
     if(!node)return;
-    const current=isEntry?profile?.entry_style:profile?.frame_style;
+    const tabs=document.getElementById('sh-sovera-tabs');
+    tabs.style.cssText='display:flex;gap:5px;margin:10px 0;flex-wrap:wrap';
+    for(const option of [
+      ['frame_style','Frames'],['entry_style','Entry'],
+      ['medal_style','Medal'],['name_tag_style','Name Tag']
+    ]){
+      const tab=document.createElement('button');
+      tab.type='button';tab.className='act';tab.textContent=option[1];
+      tab.style.cssText='flex:1;padding:8px 6px;min-width:60px;font-size:12px;border-radius:10px;'+
+        (option[0]===kind?'background:#6a40b7;color:#fff':'background:#2c2357;color:#fff');
+      tab.onclick=()=>styleSelectionSheet(option[0]);
+      tabs.appendChild(tab);
+    }
+    const current=profile?.[kind]||'';
     const choices=[{id:'',name:'None',art:''},...catalog];
     for(const item of choices){
       const button=document.createElement('button');
       button.className='sh-sovera-item';
       button.type='button';
       button.setAttribute('aria-pressed',String((current||'')===item.id));
-      if(isEntry){
+      if(isEntry||isMedal||isTag){
         const img=document.createElement('img');
-        if(item.art)img.src=effectPath(item.still||item.art);
-        else img.alt='No entry effect';
+        if(item.art)img.src=cosmeticMedia({...item,art:item.still||item.art});
+        else img.alt='No decorative effect';
         button.appendChild(img);
       }else{
         const preview=document.createElement('div');
@@ -246,17 +291,47 @@
           if(window.A){
             window.A.frame=saved.frame_style||'';
             window.A.entry=saved.entry_style||'';
+            window.A.cosmeticMedal=saved.medal_style||'';
+            window.A.cosmeticTag=saved.name_tag_style||'';
             window.A.frameImg=null;
             window.saveA();
             window.renderMe();
           }
           window.closeSheet();
-          toast((isEntry?'Entry':'Frame')+' saved to your verified profile ✓');
+          toast((isEntry?'Entry':isMedal?'Medal':isTag?'Name tag':'Frame')+
+            ' saved to your verified profile ✓');
         }catch(error){toast('Effect not saved: '+errText(error));button.disabled=false;}
       };
     }
   }
   cosmeticCss(document);
+  // The old HTML creates random "Manager" badges locally. Never represent those
+  // as real ranks in staging. Only verified server cosmetics are displayed.
+  window.ownedMedals=function(){return [];};
+  function renderVerifiedIdentity(){
+    const anchor=document.querySelector('#v-me .mid');
+    if(!anchor)return;
+    document.getElementById('sh-sovera-own-identity')?.remove();
+    const medal=medalArt(profile?.medal_style);
+    const tag=nameTagArt(profile?.name_tag_style);
+    if(!medal&&!tag)return;
+    const strip=document.createElement('div');
+    strip.id='sh-sovera-own-identity';strip.className='sh-sovera-id-effects';
+    for(const item of [medal,tag]){
+      if(!item)continue;
+      const img=document.createElement('img');
+      img.src=cosmeticMedia(item);
+      img.alt=item.name+' (decoration only)';
+      img.title=item.name+' · decorative';
+      strip.appendChild(img);
+    }
+    anchor.insertAdjacentElement('afterend',strip);
+  }
+  const priorRenderMe=window.renderMe;
+  if(typeof priorRenderMe==='function')window.renderMe=function(){
+    priorRenderMe.apply(this,arguments);
+    renderVerifiedIdentity();
+  };
   window.frEl=function(){return frameTag(window.A?.frame||'');};
   window.frameSheet=function(){styleSelectionSheet('frame_style');};
   document.addEventListener('click',event=>{
@@ -537,7 +612,9 @@
         id: current.public_id, name: current.name, pic: current.pic || null,
         country: current.country || '', dob: current.birthdate || '',
         minor: !!current.minor, cover: current.cover || null, bio: current.bio || '',
-        frame: current.frame_style || '', entry: current.entry_style || '', frameImg: null,
+        frame: current.frame_style || '', entry: current.entry_style || '',
+        cosmeticMedal: current.medal_style || '', cosmeticTag: current.name_tag_style || '',
+        frameImg: null,
         myRoom: null, claim: { d:'', streak:0 }
       },
       state: { coins:current.coins || 0, dia:current.diamonds || 0, xp:current.xp || 0 }
@@ -788,7 +865,8 @@
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
-      frame_style:owner.frame_style||'',entry_style:owner.entry_style||''};
+      frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
+      medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
@@ -797,10 +875,12 @@
         slots[member.seat_no]={
           n:user.name,e:'👤',i:member.seat_no,user_id:member.user_id,public_id:user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
-          frame_style:user.frame_style||'',entry_style:user.entry_style||''
+          frame_style:user.frame_style||'',entry_style:user.entry_style||'',
+          medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
       else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level,
-        frame_style:user.frame_style||'',entry_style:user.entry_style||''});
+        frame_style:user.frame_style||'',entry_style:user.entry_style||'',
+        medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
     }
     for(const seatNo of data.locked_seats||[]) {
       if(Number.isInteger(seatNo)&&seatNo>0&&seatNo<slots.length&&slots[seatNo].empty)
@@ -1144,7 +1224,16 @@
               ' · Charm Lv '+Number(member.charm_level||0)+
               ' · Frame: '+String(chosen?.name||'None')+
               ' · Entry: '+String(entryArt(member.entry_style)?.name||'None');
-            panel.append(picture,name,details);
+            const strip=frame.document.createElement('div');
+            strip.className='sh-sovera-id-effects';
+            for(const item of [medalArt(member.medal_style),nameTagArt(member.name_tag_style)]){
+              if(!item)continue;
+              const img=frame.document.createElement('img');
+              img.src=cosmeticMedia(item);
+              img.alt=item.name+' (decorative)';
+              strip.appendChild(img);
+            }
+            panel.append(picture,name,details,strip);
           }
         }catch(error) {
           profileButton.disabled=false;
