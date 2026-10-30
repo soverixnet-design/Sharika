@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {handleRequest} from '../src/index.mjs';
 
 globalThis.crypto ??= webcrypto;
@@ -103,4 +104,21 @@ test('original Sovera cosmetics persist on verified profiles without wallet chan
     assert.equal(db.current.name_tag_style,'');
     assert.equal(db.current.coins,42);
   }finally{globalThis.fetch=prior;}
+});
+
+
+test('verified profile photos follow the same public ID into room avatars and messages',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
+  assert.match(worker,/u\.public_no,u\.name,u\.pic,u\.wealth_level/);
+  assert.match(worker,/pic: x\.pic/);
+  assert.match(adapter,/function verifiedAvatarUrl\(value\)/);
+  assert.match(adapter,/pic:verifiedAvatarUrl\(owner\.pic\)/);
+  assert.match(adapter,/pic:verifiedAvatarUrl\(user\.pic\)/);
+  assert.match(adapter,/paintVerifiedAvatar\(el\.querySelector\('\.face'\),seat\.pic,doc\)/);
+  assert.match(adapter,/decorateRoomPeople\(frame\)/);
+  assert.match(adapter,/decorateGiftRecipients\(frame\)/);
+  assert.match(adapter,/roomAvatarForPublicId\(frame,item\.sender_id\)/);
+  assert.match(adapter,/inboxPhotos=new Map/);
+  assert.match(adapter,/roomFrame\.render\?\.\(\)/);
 });
