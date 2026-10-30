@@ -127,3 +127,12 @@ test('support replies require validated text even for an assigned support agent'
   });
   assert.equal(finance.status,403);
 });
+
+test('gift history is real D1 data and available only to finance or super roles',async()=>{
+  const finance=await handle('finance','/api/v1/admin/gift-events');
+  assert.equal(finance.status,200);
+  assert.deepEqual(finance.data.events,[]);
+  const denied=await handle('support','/api/v1/admin/gift-events');
+  assert.equal(denied.status,403);
+  assert.equal(denied.data.error,'admin_permission_denied');
+});

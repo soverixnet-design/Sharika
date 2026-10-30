@@ -475,14 +475,15 @@
     const root=byId('pg');
     const canEdit=role==='super';
     root.innerHTML=(canEdit?'<div class="card"><h3>Add gift to real catalog</h3>'+
-      '<p class="n">Gift transfers remain disabled until wallet settlement is tested.</p>'+
+      '<p class="n">Regular gifts are settled through the verified wallet ledger. Lucky payouts are still disabled.</p>'+
       '<div class="row"><input id="gift-name" maxlength="80" placeholder="Gift name" aria-label="Gift name">'+
       '<input id="gift-emoji" maxlength="16" placeholder="🎁" aria-label="Gift emoji">'+
       '<input id="gift-price" type="number" min="1" step="1" placeholder="Coin price" aria-label="Coin price">'+
       '<select id="gift-category" aria-label="Gift category"><option value="0">Gifts</option>'+
       '<option value="1">Luxury</option><option value="2">Lucky</option></select>'+
       '<button type="button" id="gift-create" class="btn s">Add gift</button></div></div>':'')+
-      '<div class="card"><h3>Real gift catalog</h3><div id="gift-list">Loading…</div></div>';
+      '<div class="card"><h3>Real gift catalog</h3><div id="gift-list">Loading…</div></div>'+
+      '<div class="card"><h3>Verified gift transactions</h3><div id="gift-event-list">Loading…</div></div>';
     const list=byId('gift-list');
     async function refresh() {
       list.textContent='Loading catalog…';
@@ -528,6 +529,19 @@
       };
     }
     await refresh();
+    const giftHistory=byId('gift-event-list');
+    if(role==='super'||role==='finance') {
+      try {
+        const history=await api('GET','gift-events');
+        giftHistory.innerHTML=window.T(
+          ['Time','Room','Sender','Recipient','Gift','Quantity','Coins'],
+          (history.events||[]).map(e=>[
+            esc(e.created_at),esc(e.room_id),esc(e.sender_id),
+            esc(e.recipient_id),esc(e.emoji)+' '+esc(e.gift),
+            fmt(e.quantity),fmt(e.coins)
+          ]));
+      }catch(error){giftHistory.textContent='Gift history unavailable: '+error.message;}
+    }else giftHistory.textContent='Only Super Admin and Finance roles can view gift transactions.';
   };
   P.audit=async function () {
     const root=byId('pg');root.innerHTML=card('Admin audit','Loading…');

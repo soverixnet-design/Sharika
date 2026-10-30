@@ -286,6 +286,25 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     return reply({ ledger:rows.map(l => ({ ...l, public_id:id(l.public_no), public_no:undefined })),
       limited_to:100, read_only:true }, 200, cors);
   }
+  if (operation === 'gift-events' && request.method === 'GET') {
+    const denied=allowed(actor.role,FINANCE_ROLES,fail,cors);
+    if(denied)return denied;
+    const rows=values(await env.DB.prepare(
+      'SELECT e.id,e.room_id,e.quantity,e.price_coins,e.created_at,'+
+      's.public_no AS sender_no,r.public_no AS recipient_no,g.name,g.emoji '+
+      'FROM sharika_gift_events e '+
+      'JOIN sharika_users s ON s.auth_uid=e.sender_uid '+
+      'JOIN sharika_users r ON r.auth_uid=e.recipient_uid '+
+      'JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'ORDER BY e.id DESC LIMIT 100'
+    ).all());
+    return reply({events:rows.map(e=>({
+      id:e.id,room_id:e.room_id,sender_id:id(e.sender_no),
+      recipient_id:id(e.recipient_no),gift:e.name,emoji:e.emoji,
+      quantity:e.quantity,coins:e.quantity*e.price_coins,
+      created_at:e.created_at
+    })),read_only:true},200,cors);
+  }
   if (operation === 'gifts') {
     const rows = values(await env.DB.prepare(
       'SELECT id,name,emoji,tab,price_coins,active,image_url,animation_url FROM sharika_gifts ORDER BY id LIMIT 100'
