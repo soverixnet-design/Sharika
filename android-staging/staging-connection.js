@@ -1435,6 +1435,28 @@
           // Google Play requires chance-based virtual reward odds next to a
           // purchase. Preserve the original gift modal, insert text only.
           frame.document.getElementById('sharika-lucky-odds')?.remove();
+          if(data.lucky_enabled!==true){
+            // Keep the original Lucky tab visible as disabled, so members know
+            // it was not forgotten. No client-side draw or fake coin reward.
+            const tabs=frame.$('sheet')?.querySelector('.gtabs');
+            if(tabs){
+              const locked=frame.document.createElement('button');
+              locked.type='button';
+              locked.disabled=true;
+              locked.setAttribute('aria-label','Lucky Gift unavailable');
+              locked.textContent='🍀 Lucky';
+              locked.title=profile?.minor?'Adults only':'Server approval required';
+              locked.style.opacity='.45';
+              tabs.appendChild(locked);
+              const note=frame.document.createElement('div');
+              note.id='sharika-lucky-status';
+              note.style.cssText='font-size:11px;line-height:1.4;padding:5px;text-align:center;color:#e7d8ff';
+              note.textContent=profile?.minor?
+                'Lucky Gifts are for eligible adults only.':
+                'Lucky Gifts are not active on this staging server yet; ordinary gifts remain available.';
+              tabs.after(note);
+            }
+          }
           if(data.lucky_enabled===true && Array.isArray(data.lucky_odds)) {
             const send=frame.document.getElementById('snd');
             if(send?.parentElement) {
@@ -3015,6 +3037,11 @@
     const onOriginalGameMessage=async function(event){
       const current=currentGameFrame;
       if(!current||event.source!==current.element.contentWindow||!session)return;
+      if(!overlay.classList.contains('on')){
+        // Closing the sheet must stop the hidden game from polling the server.
+        view.__sharikaOriginalGameCleanup?.();
+        return;
+      }
       const data=event.data;
       if(!data||typeof data!=='object')return;
       if(data.type==='sharika:original-exit'){currentGameFrame=null;clearWinnerBanner();catalog();return;}
@@ -3052,7 +3079,9 @@
     view.addEventListener('message',onOriginalGameMessage);
     view.__sharikaOriginalGameCleanup=()=>{
       view.removeEventListener('message',onOriginalGameMessage);
-      clearWinnerBanner();currentGameFrame=null;
+      clearWinnerBanner();
+      currentGameFrame?.element?.remove();
+      currentGameFrame=null;
     };
     catalog();
     overlay.classList.add('on');
