@@ -158,6 +158,12 @@ jobs:
           SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Verify Android 16 target SDK in compiled APK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "targetSdkVersion:'36'"
+          echo 'SHARIKA_ANDROID_TARGET_API_36_VERIFIED'
+
       - name: Verify original Sovera cosmetics are inside the offline APK
         run: |
           for effect in royal-gold.webp violet-love.webp ice-admin.webp vip7.webp phoenix-queen-entry.webp lion-queen-entry.webp; do
