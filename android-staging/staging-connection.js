@@ -615,6 +615,9 @@
         frame.S.xp=balance.xp;
         frame.close();
         frame.toast('Gift sent · '+result.spent_coins+' coins charged ✓');
+        if(result.lucky) {
+          frame.toast('Lucky Gift: receiver 5% diamonds · room 1% reward');
+        }
         if(result.lucky && typeof frame.luckyFx==='function') {
           const confirmed={payout_coins:Number(result.lucky.payout_coins)||0,
             max_multiplier:Number(result.lucky.max_multiplier)||0};
