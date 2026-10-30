@@ -1027,6 +1027,9 @@ export async function handleRequest(request, env) {
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
         return reply({ room: roomId,
+          // Room capacity is authoritative in D1; all joined devices must
+          // receive current capacity even when their room card is cached.
+          seat_count:room.seat_count,
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
           members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
