@@ -181,19 +181,25 @@ export async function handleOriginalGameRequest({request,db,uid,game,action,repl
     if(!wallet||wallet.status!=='active')return fail('profile_required',403,cors);
     if(wallet.minor)return fail('game_adult_only',403,cors);
     let b;try{b=await request.json();}catch{return fail('invalid_json',400,cors);}
-    const n=roundNo(Date.now()),t=clock(n);
-    if(!Number.isSafeInteger(b?.round_no)||b.round_no!==n||Date.now()>=t.bet_closes_ms)
-      return fail('betting_closed',409,cors);
-    if(!Number.isSafeInteger(b.pick)||b.pick<0||b.pick>(game==='night-food'?9:7)||
+    if(!b||typeof b!=='object'||Array.isArray(b)||
+      !Number.isSafeInteger(b.round_no)||b.round_no<0||
+      !Number.isSafeInteger(b.pick)||b.pick<0||b.pick>(game==='night-food'?9:7)||
       !Number.isSafeInteger(b.amount)||b.amount<1||b.amount>MAX_STAKE||
       !ID.test(b.request_id||''))return fail('invalid_bet',400,cors);
+    // Network retries must be idempotent even if the accepted round has
+    // already closed. Look up the original request before checking the clock.
     const prior=await db.prepare('SELECT * FROM sharika_original_game_bets WHERE user_uid=? AND request_id=?')
       .bind(uid,b.request_id).first();
     if(prior){
-      if(prior.game!==game||prior.round_no!==n||prior.pick_index!==b.pick||prior.amount!==b.amount)
+      if(prior.game!==game||prior.round_no!==b.round_no||
+         prior.pick_index!==b.pick||prior.amount!==b.amount)
         return fail('idempotency_conflict',409,cors);
-      return reply({bet_id:prior.id,duplicate:true,coins:(await userCoins(db,uid)).coins,round_no:n},200,cors);
+      return reply({bet_id:prior.id,duplicate:true,coins:(await userCoins(db,uid)).coins,
+        round_no:prior.round_no},200,cors);
     }
+    const n=roundNo(Date.now()),t=clock(n);
+    if(b.round_no!==n||Date.now()>=t.bet_closes_ms)
+      return fail('betting_closed',409,cors);
     const round=await ensureRound(db,game,n);
     try{
       await db.prepare('INSERT INTO sharika_original_game_bets(game,round_no,round_id,user_uid,pick_index,amount,request_id) VALUES(?,?,?,?,?,?,?)')
