@@ -671,6 +671,10 @@
   // Real user-to-admin support chat using the original Sharika message cards.
   let supportPoll=null;
   let supportBusy=false;
+  let activePrivateId=null;
+  let canSendPrivate=false;
+  const safeMessageHTML=value=>String(value??'').replace(/[&<>"']/g,
+    c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   async function loadSupportMessages(){
     const container=document.getElementById('tb');
     if(!container||!session)return;
@@ -685,6 +689,8 @@
     container.scrollTop=container.scrollHeight;
   }
   async function openSupportThread(){
+    activePrivateId=null;canSendPrivate=false;
+    const restoredSend=document.getElementById('ts');if(restoredSend)restoredSend.disabled=false;
     if(!session){window.showAuth('welcome');return;}
     document.getElementById('th')?.classList.add('on');
     document.getElementById('thn').textContent='🎧 Customer service';
@@ -698,7 +704,59 @@
       loadSupportMessages().catch(()=>{});
     },15000);
   }
-  window.renderMsg=function(){
+  async function loadPrivateMessages(publicId){
+    const data=await api('GET','/messages/'+encodeURIComponent(publicId));
+    const container=document.getElementById('tb');
+    if(!container)return;
+    container.textContent='';
+    for(const m of data.messages||[]){
+      const bubble=document.createElement('div');
+      bubble.className='bub '+(m.from_me?'me':'th');
+      bubble.textContent=m.body;
+      container.appendChild(bubble);
+    }
+    const status=await api('GET','/users/'+encodeURIComponent(publicId)+'/follow');
+    canSendPrivate=!!status.mutual;
+    const hint=document.createElement('div');
+    hint.className='bub th';
+    hint.textContent=canSendPrivate?'Both users follow each other. Chat enabled.':
+      status.following?'You follow this user. Waiting for them to follow back.':
+      'Follow this user to request a private conversation.';
+    container.appendChild(hint);
+    const followButton=document.createElement('button');
+    followButton.type='button';
+    followButton.className='btn';
+    followButton.textContent=status.following?'Unfollow':'Follow';
+    followButton.onclick=async()=>{
+      followButton.disabled=true;
+      try{
+        await api(status.following?'DELETE':'PUT','/users/'+encodeURIComponent(publicId)+'/follow');
+        await loadPrivateMessages(publicId);
+        window.renderMsg();
+      }catch(error){toast('Follow failed: '+errText(error));followButton.disabled=false;}
+    };
+    container.appendChild(followButton);
+    const sendButton=document.getElementById('ts');
+    if(sendButton)sendButton.disabled=!canSendPrivate;
+    container.scrollTop=container.scrollHeight;
+  }
+  async function openPrivateThread(publicId,name){
+    if(!session){window.showAuth('welcome');return;}
+    if(!/^[0-9]{8}$/.test(String(publicId))){toast('Invalid 8-digit user ID');return;}
+    activePrivateId=String(publicId);canSendPrivate=false;
+    const guardedSend=document.getElementById('ts');if(guardedSend)guardedSend.disabled=true;
+    document.getElementById('th')?.classList.add('on');
+    document.getElementById('thn').textContent='💬 '+name+' · '+publicId;
+    document.getElementById('tb').textContent='Loading conversation…';
+    try{await loadPrivateMessages(activePrivateId);}
+    catch(error){document.getElementById('tb').textContent=errText(error);}
+    if(supportPoll)clearInterval(supportPoll);
+    supportPoll=setInterval(()=>{
+      if(!session||!document.getElementById('th')?.classList.contains('on'))return;
+      loadPrivateMessages(activePrivateId).catch(()=>{});
+    },15000);
+  }
+  window.renderMsg=async function(){
     const view=document.getElementById('ml');
     if(!view)return;
     const demoBadge=document.querySelector('.ni[data-v="msg"] em');
@@ -706,8 +764,58 @@
     if(!session){view.innerHTML='<div class="empty">Sign in to view your conversations.</div>';return;}
     view.innerHTML='<div class="chatrow" id="verified-support-chat">'+
       '<div class="av">🎧</div><div><b>Customer service</b>'+
-      '<small>Verified Sharika support conversation</small></div><time>›</time></div>';
+      '<small>Verified Sharika support conversation</small></div><time>›</time></div>'+
+      '<div class="row"><input class="field" id="find-user-id" inputmode="numeric" '+
+      'maxlength="8" placeholder="Enter 8-digit user ID" aria-label="Find user by ID">'+
+      '<button class="btn" type="button" id="find-user-button">Find</button></div>'+
+      '<div id="real-inbox">Loading messages…</div>';
     document.getElementById('verified-support-chat').onclick=openSupportThread;
+    const find=async()=>{
+      const value=document.getElementById('find-user-id').value.trim();
+      if(!/^[0-9]{8}$/.test(value)){toast('Enter an 8-digit user ID');return;}
+      try{
+        const user=await api('GET','/users/'+encodeURIComponent(value));
+        await openPrivateThread(value,user.name);
+      }catch(error){toast('User unavailable: '+errText(error));}
+    };
+    document.getElementById('find-user-button').onclick=find;
+    document.getElementById('find-user-id').onkeydown=e=>{
+      if(e.key==='Enter'){e.preventDefault();find();}
+    };
+    const list=document.getElementById('real-inbox');
+    try{
+      const [inbox,follows]=await Promise.all([
+        api('GET','/messages'),api('GET','/follows')
+      ]);
+      const following=follows.following||[],followers=follows.followers||[];
+      const known=new Set(following.map(f=>f.public_id));
+      const conv=inbox.conversations||[];
+      const byId=new Set(conv.map(c=>c.public_id));
+      const rows=conv.map(c=>'<div class="chatrow" data-private-id="'+safeMessageHTML(c.public_id)+
+        '" data-private-name="'+safeMessageHTML(c.name)+'"><div class="av">💬</div><div><b>'+
+        safeMessageHTML(c.name)+'</b><small>'+safeMessageHTML(c.last_body||'')+
+        '</small></div><time>'+safeMessageHTML(c.public_id)+'</time></div>');
+      for(const f of following){
+        if(byId.has(f.public_id))continue;
+        rows.push('<div class="chatrow" data-private-id="'+safeMessageHTML(f.public_id)+
+          '" data-private-name="'+safeMessageHTML(f.name)+'"><div class="av">👤</div><div><b>'+
+          safeMessageHTML(f.name)+'</b><small>'+(f.follows_me?'Mutual follow · Chat ready':
+          'Following · Waiting for follow back')+'</small></div><time>'+
+          safeMessageHTML(f.public_id)+'</time></div>');
+      }
+      for(const f of followers){
+        if(known.has(f.public_id)||byId.has(f.public_id))continue;
+        rows.push('<div class="chatrow" data-private-id="'+safeMessageHTML(f.public_id)+
+          '" data-private-name="'+safeMessageHTML(f.name)+'"><div class="av">➕</div><div><b>'+
+          safeMessageHTML(f.name)+'</b><small>Follows you · Follow back to chat</small></div><time>'+
+          safeMessageHTML(f.public_id)+'</time></div>');
+      }
+      list.innerHTML=rows.length?rows.join(''):'<div class="empty">No private conversations yet.</div>';
+      list.onclick=e=>{
+        const row=e.target.closest('.chatrow[data-private-id]');
+        if(row)openPrivateThread(row.dataset.privateId,row.dataset.privateName);
+      };
+    }catch(error){list.textContent='Messages unavailable: '+errText(error);}
   };
   const supportSendButton=document.getElementById('ts');
   const supportInput=document.getElementById('ti');
@@ -721,11 +829,18 @@
     if(supportSendButton)supportSendButton.disabled=true;
     try{
       const request_id='usr:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
-      await api('POST','/support/messages',{body,request_id});
-      supportInput.value='';
-      await loadSupportMessages();
+      if(activePrivateId){
+        if(!canSendPrivate)throw new Error('mutual_follow_required');
+        await api('POST','/messages/'+encodeURIComponent(activePrivateId),{body,request_id});
+        supportInput.value='';
+        await loadPrivateMessages(activePrivateId);
+      }else{
+        await api('POST','/support/messages',{body,request_id});
+        supportInput.value='';
+        await loadSupportMessages();
+      }
     }catch(error){toast('Message not sent: '+errText(error));}
-    finally{supportBusy=false;if(supportSendButton)supportSendButton.disabled=false;}
+    finally{supportBusy=false;if(supportSendButton)supportSendButton.disabled=!!activePrivateId&&!canSendPrivate;}
   }
   if(supportSendButton)supportSendButton.onclick=sendSupportMessage;
   if(supportInput)supportInput.onkeydown=e=>{
@@ -735,6 +850,9 @@
   if(supportBackButton)supportBackButton.onclick=()=>{
     document.getElementById('th')?.classList.remove('on');
     if(supportPoll){clearInterval(supportPoll);supportPoll=null;}
+    activePrivateId=null;canSendPrivate=false;
+    if(supportSendButton)supportSendButton.disabled=false;
+    window.renderMsg();
   };
   window.renderRank=function(){
     const view=document.getElementById('rb');

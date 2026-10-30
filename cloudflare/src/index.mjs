@@ -47,7 +47,7 @@ function corsFor(request, env) {
   if (!origin) return {};
   return {
     'access-control-allow-origin': origin, 'vary': 'Origin',
-    'access-control-allow-methods': 'GET, POST, PATCH, PUT, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
     'access-control-allow-headers': 'authorization,content-type,idempotency-key',
   };
 }
@@ -163,6 +163,128 @@ export async function handleRequest(request, env) {
         wealth_level: user.wealth_level, charm_level: user.charm_level }, 200, cors)
         : fail('not_found', 404, cors);
     }
+    // Real follow graph. Identity always comes from the verified Firebase token.
+    if (path === '/api/v1/follows' && request.method === 'GET') {
+      await assertActive(env.DB, uid);
+      const following=await env.DB.prepare(
+        'SELECT u.public_no,u.name,u.pic,'+
+        'EXISTS(SELECT 1 FROM sharika_follows x WHERE x.follower_uid=u.auth_uid '+
+        'AND x.followed_uid=?) AS follows_me FROM sharika_follows f '+
+        'JOIN sharika_users u ON u.auth_uid=f.followed_uid '+
+        "WHERE f.follower_uid=? AND u.status='active' ORDER BY f.created_at DESC LIMIT 100"
+      ).bind(uid,uid).all();
+      const followers=await env.DB.prepare(
+        'SELECT u.public_no,u.name,u.pic FROM sharika_follows f '+
+        'JOIN sharika_users u ON u.auth_uid=f.follower_uid '+
+        "WHERE f.followed_uid=? AND u.status='active' ORDER BY f.created_at DESC LIMIT 100"
+      ).bind(uid).all();
+      return reply({following:(following.results||[]).map(u=>({...u,
+        public_id:publicId(u.public_no),public_no:undefined})),
+        followers:(followers.results||[]).map(u=>({...u,
+        public_id:publicId(u.public_no),public_no:undefined}))},200,cors);
+    }
+    if(parts.length===5 && parts[0]==='api' && parts[1]==='v1' &&
+       parts[2]==='users' && PUBLIC_ID.test(parts[3]) && parts[4]==='follow') {
+      await assertActive(env.DB,uid);
+      const target=await env.DB.prepare(
+        "SELECT auth_uid,public_no,name,status FROM sharika_users WHERE public_no=?"
+      ).bind(Number(parts[3])).first();
+      if(!target||target.status!=='active')return fail('user_not_found',404,cors);
+      if(target.auth_uid===uid)return fail('cannot_follow_self',400,cors);
+      if(request.method==='PUT') {
+        await env.DB.prepare(
+          'INSERT OR IGNORE INTO sharika_follows(follower_uid,followed_uid) VALUES(?,?)'
+        ).bind(uid,target.auth_uid).run();
+      } else if(request.method==='DELETE') {
+        await env.DB.prepare(
+          'DELETE FROM sharika_follows WHERE follower_uid=? AND followed_uid=?'
+        ).bind(uid,target.auth_uid).run();
+      } else if(request.method!=='GET')return fail('method_not_allowed',405,cors);
+      const relations=await env.DB.prepare(
+        'SELECT follower_uid,followed_uid FROM sharika_follows '+
+        'WHERE (follower_uid=? AND followed_uid=?) OR (follower_uid=? AND followed_uid=?)'
+      ).bind(uid,target.auth_uid,target.auth_uid,uid).all();
+      const follow=(relations.results||[]);
+      const following=follow.some(r=>r.follower_uid===uid);
+      const follows_me=follow.some(r=>r.follower_uid===target.auth_uid);
+      return reply({public_id:publicId(target.public_no),name:target.name,
+        following,follows_me,mutual:following&&follows_me},200,cors);
+    }
+    if(path==='/api/v1/messages' && request.method==='GET') {
+      await assertActive(env.DB,uid);
+      const rows=await env.DB.prepare(
+        'SELECT m.id,m.body,m.created_at,u.public_no,u.name '+
+        'FROM sharika_private_messages m JOIN sharika_users u ON u.auth_uid='+
+        'CASE WHEN m.sender_uid=? THEN m.recipient_uid ELSE m.sender_uid END '+
+        'WHERE m.sender_uid=? OR m.recipient_uid=? ORDER BY m.id DESC LIMIT 200'
+      ).bind(uid,uid,uid).all();
+      const seen=new Set(),conversations=[];
+      for(const item of rows.results||[]) {
+        const other=publicId(item.public_no);
+        if(seen.has(other))continue;
+        seen.add(other);
+        conversations.push({public_id:other,name:item.name,
+          last_body:item.body,last_at:item.created_at});
+        if(conversations.length>=100)break;
+      }
+      return reply({conversations},200,cors);
+    }
+    const messagePath=/^\/api\/v1\/messages\/([0-9]{8})$/.exec(path);
+    if(messagePath) {
+      await assertActive(env.DB,uid);
+      const target=await env.DB.prepare(
+        "SELECT auth_uid,public_no,name,status FROM sharika_users WHERE public_no=?"
+      ).bind(Number(messagePath[1])).first();
+      if(!target||target.status!=='active')return fail('user_not_found',404,cors);
+      if(target.auth_uid===uid)return fail('cannot_message_self',400,cors);
+      const relations=await env.DB.prepare(
+        'SELECT follower_uid FROM sharika_follows '+
+        'WHERE (follower_uid=? AND followed_uid=?) OR (follower_uid=? AND followed_uid=?)'
+      ).bind(uid,target.auth_uid,target.auth_uid,uid).all();
+      const mutual=(relations.results||[]).length===2;
+      if(request.method==='GET'){
+        const result=await env.DB.prepare(
+          'SELECT id,sender_uid,body,created_at FROM sharika_private_messages '+
+          'WHERE (sender_uid=? AND recipient_uid=?) OR (sender_uid=? AND recipient_uid=?) '+
+          'ORDER BY id DESC LIMIT 100'
+        ).bind(uid,target.auth_uid,target.auth_uid,uid).all();
+        return reply({user:{public_id:publicId(target.public_no),name:target.name},
+          mutual,messages:(result.results||[]).reverse().map(m=>({
+            id:m.id,from_me:m.sender_uid===uid,body:m.body,created_at:m.created_at
+          }))},200,cors);
+      }
+      if(request.method==='POST') {
+        if(!mutual)return fail('mutual_follow_required',403,cors);
+        const payload=await readBody(request);
+        const message=typeof payload.body==='string'?payload.body.trim():'';
+        const requestId=typeof payload.request_id==='string'?payload.request_id.trim():'';
+        if(message.length<1||message.length>1000||
+           !/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
+          return fail('invalid_private_message',400,cors);
+        const existing=await env.DB.prepare(
+          'SELECT id,body,created_at FROM sharika_private_messages WHERE request_id=? '+
+          'AND sender_uid=? AND recipient_uid=?'
+        ).bind(requestId,uid,target.auth_uid).first();
+        if(existing)return reply({message:existing,duplicate:true},200,cors);
+        const rate=await env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM sharika_private_messages WHERE sender_uid=? "+
+          "AND created_at>=datetime('now','-1 minute')"
+        ).bind(uid).first();
+        if(Number(rate?.n||0)>=15)return fail('message_rate_limited',429,cors);
+        await env.DB.prepare(
+          'INSERT OR IGNORE INTO sharika_private_messages(sender_uid,recipient_uid,body,request_id) '+
+          'VALUES(?,?,?,?)'
+        ).bind(uid,target.auth_uid,message,requestId).run();
+        const saved=await env.DB.prepare(
+          'SELECT id,body,created_at FROM sharika_private_messages '+
+          'WHERE request_id=? AND sender_uid=? AND recipient_uid=?'
+        ).bind(requestId,uid,target.auth_uid).first();
+        if(!saved)return fail('message_request_conflict',409,cors);
+        return reply({message:saved},201,cors);
+      }
+      return fail('method_not_allowed',405,cors);
+    }
+
     // Verified user-to-support chat; never reads another user's conversation.
     if (path === '/api/v1/support/messages') {
       await assertActive(env.DB, uid);

@@ -211,3 +211,58 @@ test('support history requires Firebase authentication and scopes reads to the s
     assert.equal(call[2][0],'firebase:'+project+':secure-user');
   }finally{globalThis.fetch=prior;}
 });
+
+test('anonymous users cannot list follows or read private conversations',async()=>{
+  for(const route of ['/api/v1/follows','/api/v1/messages','/api/v1/messages/10000003']){
+    const response=await handleRequest(new Request('https://example.test'+route),{
+      DB:fakeDb(),FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(response.status,401,route);
+  }
+});
+
+test('only the authenticated user can list their real following and followers',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))stmt.first=async()=>({status:'active'});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/follows',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    assert.deepEqual((await res.json()).following,[]);
+    const queries=db.calls.filter(c=>c[0]==='all' && c[1].includes('sharika_follows'));
+    assert.equal(queries.length,2);
+    for(const q of queries)assert.equal(q[2].at(-1),'firebase:'+project+':secure-user');
+  }finally{globalThis.fetch=prior;}
+});
+
+test('direct messages reject unilateral follows before storing anything',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))stmt.first=async()=>({status:'active'});
+      if(sql.includes('FROM sharika_users WHERE public_no'))stmt.first=async()=>({
+        auth_uid:'firebase:'+project+':recipient',public_no:10000003,
+        name:'Recipient',status:'active'
+      });
+      if(sql.includes('SELECT follower_uid FROM sharika_follows'))stmt.all=async()=>({
+        results:[{follower_uid:'firebase:'+project+':secure-user'}]
+      });
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/messages/10000003',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({body:'hello',request_id:'verified_message_12345'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,403);
+    assert.equal((await res.json()).error,'mutual_follow_required');
+    assert.equal(db.calls.filter(c=>c[0]==='run' && c[1].includes('sharika_private_messages')).length,0);
+  }finally{globalThis.fetch=prior;}
+});
