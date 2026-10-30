@@ -167,3 +167,38 @@ test('Night Food and Jackpot Fruit show verified round winners to all viewers',(
   // The original no-bet guard hid top-three results from spectators.
   assert.doesNotMatch(jackpot,/if\(!spent\)return;/);
 });
+
+test('all three original games announce at most three verified winners for ten seconds',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=adapter.indexOf('  const announcedOriginalGameRounds=new Map();');
+  const end=adapter.indexOf('  function showGameCard(',start);
+  assert.ok(start>=0&&end>start,'verified ten-second winner gate must exist');
+  const topThree=new Function(adapter.slice(start,end)+';return verifiedOriginalGameTopThree;')();
+  const n=48123456;
+  const winners=[1,2,3,4].map(i=>({
+    public_id:String(10000000+i),name:'Winner '+i,total_win:i*1000
+  }));
+  const state=(round,seconds,items=winners)=>({
+    server_time:(round+1)*40000+seconds*1000,
+    previous_result:{round_no:round,top_winners:items}
+  });
+  assert.equal(topThree('sovera-food',state(n,11)),null,'stale finished round is not reannounced');
+  const latest=topThree('sovera-food',state(n,2));
+  assert.equal(latest.winners.length,3,'real first three only; never fabricate a fourth');
+  assert.equal(latest.winners[0].public_id,'10000001');
+  assert.equal(topThree('sovera-food',state(n,4)),null,'polling cannot replay same result');
+  assert.equal(topThree('night-food',state(n,1)).winners.length,3);
+  assert.equal(topThree('jackpot-fruit',state(n,8)).winners.length,3);
+  assert.equal(topThree('jackpot-fruit',state(n+1,1,[])),null,'no demo winners');
+  assert.match(adapter,/winnerBannerTimer=view\.setTimeout\(\(\)=>\{banner\.remove\(\);winnerBannerTimer=null;\},10000\)/);
+  assert.match(adapter,/line\.textContent=\['🥇','🥈','🥉'\]/);
+});
+
+test('verified original game settlement refreshes the shared profile and room wallet',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.match(adapter,/if\(data\.action==='state'\)\{[\s\S]*?announceRoundWinners\(current\.item\.id,result\)/);
+  assert.match(adapter,/result\.coins!==balance\.coins/);
+  assert.match(adapter,/originalGameWalletRefreshTime>=2500/);
+  assert.match(adapter,/reloadWallet\(\)\.catch\(\(\)=>\{\}\)/);
+  assert.match(adapter,/view\.removeEventListener\('message',onOriginalGameMessage\)/);
+});
