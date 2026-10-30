@@ -138,27 +138,30 @@
     style.textContent=[
       '.sh-sovera-frame.fxr{position:absolute!important;top:50%!important;left:50%!important;',
       'right:auto!important;bottom:auto!important;inset:auto!important;',
-      'width:172%!important;height:172%!important;transform:translate(-50%,-50%)!important;',
+      'width:142%!important;height:142%!important;transform:translate(-50%,-50%)!important;',
       'z-index:9!important;border:0!important;border-radius:0!important;',
       'background-size:contain!important;background-position:center!important;',
       'background-repeat:no-repeat!important;-webkit-mask:none!important;mask:none!important;',
-      'pointer-events:none!important;animation:shSoGlow 3s ease-in-out infinite!important}',
+      'pointer-events:none!important;animation:none!important}',
       '.sh-sovera-frame::after{content:none!important}',
-      '#v-me .mav{position:relative;overflow:visible!important}',
-      '#v-me .mav>.sh-sovera-frame{width:157%!important;height:157%!important}',
-      '.pavw{overflow:visible!important}',
-      '.pavw>.sh-sovera-frame{width:180%!important;height:180%!important}',
+      '#v-me .mav{position:relative;overflow:visible!important;animation:none!important;',
+      'transform:none!important;margin-bottom:25px!important}',
+      '#v-me .mav>div{animation:none!important;transform:none!important}',
+      '#v-me .mav>.sh-sovera-frame{width:138%!important;height:138%!important}',
+      '.pavw{overflow:visible!important;margin-bottom:22px!important}',
+      '.pavw>.sh-sovera-frame{width:142%!important;height:142%!important}',
       '@keyframes shSoGlow{50%{filter:brightness(1.18) drop-shadow(0 0 6px #ffe6a055)}}',
-      '.sh-sovera-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}',
+      '.sh-sovera-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}',
       '.sh-sovera-item{min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;',
-      'border:1px solid #6b61ad;background:#211747;border-radius:14px;color:#fff;padding:10px 4px;',
+      'border:1px solid #6b61ad;background:#211747;border-radius:14px;color:#fff;padding:12px 8px;',
+      'min-height:160px;overflow:hidden;',
       'font-size:11px;font-weight:700}',
       '.sh-sovera-item[aria-pressed="true"]{border:2px solid #ffdb70;background:#423068}',
       '.sh-sovera-item img{object-fit:contain;width:72px;height:72px;max-width:100%}',
-      '.sh-sovera-preview{position:relative;width:72px;height:72px;border-radius:50%;',
+      '.sh-sovera-preview{position:relative;width:96px;height:96px;border-radius:50%;',
       'display:grid;place-items:center;background:linear-gradient(135deg,#8149c8,#26104a);',
-      'font-size:30px;margin:4px 0}',
-      '.sh-sovera-preview .sh-sovera-frame.fxr{width:170%!important;height:170%!important}',
+      'font-size:36px;margin:16px 0 10px}',
+      '.sh-sovera-preview .sh-sovera-frame.fxr{width:137%!important;height:137%!important}',
       '.sh-sovera-id-effects{display:flex;justify-content:center;align-items:center;gap:8px;margin:6px auto 12px}',
       '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
       '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
@@ -377,32 +380,30 @@
     }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
   }
   let avatarUploadBusy=false;
-  function pickProfilePhoto(){
+  async function pickProfilePhoto(){
     if(!session||!profile){toast('Sign in to change your profile photo');return;}
     if(avatarUploadBusy){toast('Profile photo upload is already running');return;}
-    const picker=document.createElement('input');
-    picker.type='file';picker.accept='image/*';
-    picker.style.cssText='position:fixed;opacity:0;left:-10000px;top:0';
-    document.body.appendChild(picker);
-    picker.addEventListener('cancel',()=>picker.remove(),{once:true});
-    picker.onchange=async()=>{
-      const file=picker.files?.[0];picker.remove();
-      if(!file)return;
-      avatarUploadBusy=true;
-      toast('Preparing your profile photo…');
-      try{
-        const image_data=await jpegRoomPreview(file);
-        const saved=await api('PUT','/me/avatar',{image_data});
-        if(!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(saved.pic||''))
-          throw new Error('Profile photo confirmation unavailable');
-        profile=saved;
-        window.A.pic=saved.pic;
-        window.saveA();window.renderMe();
-        toast('Profile photo saved · visible on your ID ✓');
-      }catch(error){toast('Profile photo not saved: '+errText(error));}
-      finally{avatarUploadBusy=false;}
-    };
-    picker.click();
+    avatarUploadBusy=true;
+    try{
+      toast('Opening your Android photo gallery…');
+      // Use a native, single-image Android picker. It decodes HEIC/JPEG and
+      // produces a bounded JPEG; no broad storage permission is needed.
+      const picked=await native('pickProfilePhoto');
+      const image_data=picked?.image_data;
+      if(typeof image_data!=='string'||!image_data.startsWith('data:image/jpeg;base64,'))
+        throw new Error('Gallery did not return a usable photo');
+      toast('Uploading your profile photo…');
+      const saved=await api('PUT','/me/avatar',{image_data});
+      if(!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(saved.pic||''))
+        throw new Error('Profile photo confirmation unavailable');
+      profile=saved;
+      window.A.pic=saved.pic;
+      window.saveA();window.renderMe();
+      toast('Profile photo saved · visible on your ID ✓');
+    }catch(error){
+      if(errText(error)!=='profile_photo_cancelled')
+        toast('Profile photo not saved: '+errText(error));
+    }finally{avatarUploadBusy=false;}
   }
   // The original HTML photo picker writes only to localStorage. In staging
   // route every profile photo selection through the verified server wallet ID.
