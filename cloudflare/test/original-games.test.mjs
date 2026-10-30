@@ -201,4 +201,6 @@ test('verified original game settlement refreshes the shared profile and room wa
   assert.match(adapter,/originalGameWalletRefreshTime>=2500/);
   assert.match(adapter,/reloadWallet\(\)\.catch\(\(\)=>\{\}\)/);
   assert.match(adapter,/view\.removeEventListener\('message',onOriginalGameMessage\)/);
+  assert.match(adapter,/if\(!overlay\.classList\.contains\('on'\)\)/);
+  assert.match(adapter,/currentGameFrame\?\.element\?\.remove\(\)/);
 });
