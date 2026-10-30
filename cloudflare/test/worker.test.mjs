@@ -184,6 +184,18 @@ test('only the verified room owner can save room settings in D1',async()=>{
     assert.equal(denied.status,403);
     const occupied=await handleRequest(await request(),{DB:buildDb(owner,false),FIREBASE_PROJECT_ID:project});
     assert.equal(occupied.status,409);
+    const changedTheme=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001',{
+        method:'PATCH',headers:{Authorization:'Bearer '+await token()},
+        body:JSON.stringify({name:'Fresh Room',seat_count:10,theme:'ocean'})
+      }),{DB:buildDb(owner),FIREBASE_PROJECT_ID:project});
+    assert.equal(changedTheme.status,200);
+    const invalidTheme=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001',{
+        method:'PATCH',headers:{Authorization:'Bearer '+await token()},
+        body:JSON.stringify({name:'Fresh Room',seat_count:10,theme:'../../unsafe'})
+      }),{DB:buildDb(owner),FIREBASE_PROJECT_ID:project});
+    assert.equal(invalidTheme.status,400);
   }finally{globalThis.fetch=originalFetch;}
 });
 
@@ -603,4 +615,78 @@ test('gift leaderboards require Firebase auth and use only settled gift events',
     assert.equal(bad.status,400);
     assert.equal((await bad.json()).error,'invalid_ranking_filter');
   }finally{globalThis.fetch=prior;}
+});
+
+
+test('room text chat requires verified membership and uses server identity',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const principal='firebase:'+project+':secure-user';
+    const room='10000001';
+    function roomDb(joined){
+      const db=fakeDb(),old=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=old(sql);
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id=?'))
+          stmt.first=async()=>({id:room,owner_id:'different-owner'});
+        if(sql.includes('FROM sharika_room_members WHERE room_id=?'))
+          stmt.first=async()=>joined?{user_id:principal,role:'member',seat_no:null}:null;
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({auth_uid:principal,status:'active',
+            public_no:10000002,name:'Verified Sharika User'});
+        return stmt;
+      };
+      return db;
+    }
+    const calls=[];
+    const rooms={
+      getByName(name){
+        assert.equal(name,'sharika:'+room);
+        return {
+          async roomChatRead(after){calls.push(['read',after]);return {messages:[]};},
+          async roomChatSend(...params){
+            calls.push(['send',...params]);
+            return {message:{id:1,sender_id:params[1],name:params[2],
+              body:params[3],created_at_ms:Date.now()},duplicate:false};
+          }
+        };
+      }
+    };
+    const headers={Authorization:'Bearer '+await token()};
+    const endpoint='https://example.test/api/v1/rooms/'+room+'/chat';
+    const noMember=await handleRequest(new Request(endpoint,{headers}),
+      {DB:roomDb(false),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    assert.equal(noMember.status,403);
+    assert.equal(calls.length,0);
+    const read=await handleRequest(new Request(endpoint+'?after=17',{headers}),
+      {DB:roomDb(true),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    assert.equal(read.status,200);
+    assert.deepEqual(calls[0],['read',17]);
+    const invalid=await handleRequest(new Request(endpoint,{
+      method:'POST',headers,
+      body:JSON.stringify({body:'x'.repeat(301),request_id:'chat:request-12345'})
+    }),{DB:roomDb(true),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    assert.equal(invalid.status,400);
+    assert.equal(calls.filter(c=>c[0]==='send').length,0);
+    const posted=await handleRequest(new Request(endpoint,{
+      method:'POST',headers,
+      body:JSON.stringify({body:'Hello voice room',request_id:'chat:request-12345',
+        sender_id:'99999999',name:'Fake owner'})
+    }),{DB:roomDb(true),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    assert.equal(posted.status,201);
+    const response=await posted.json();
+    assert.equal(response.message.sender_id,'10000002');
+    assert.equal(response.message.name,'Verified Sharika User');
+    assert.deepEqual(calls.at(-1).slice(0,5),
+      ['send',principal,'10000002','Verified Sharika User','Hello voice room']);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('room chat denies unverified requests before reaching the coordinator',async()=>{
+  const response=await handleRequest(new Request(
+    'https://example.test/api/v1/rooms/10000001/chat',{
+      method:'POST',body:JSON.stringify({body:'hello'})}),
+    {DB:fakeDb(),FIREBASE_PROJECT_ID:project});
+  assert.equal(response.status,401);
 });
