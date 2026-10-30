@@ -1,0 +1,87 @@
+name: Sharika admin staging frontend (manual only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Verify first, then publish only Sharika admin staging'
+        type: choice
+        required: true
+        default: verify-only
+        options:
+          - verify-only
+          - deploy-staging-admin
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-admin-staging-manual
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and optionally publish isolated admin frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cloudflare
+    steps:
+      - name: Checkout reviewed immutable Sharika staging candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 935e34cc9ace6e04d56f074ccfea214dd9bd9021
+          persist-credentials: false
+
+      - name: Confirm exact admin Worker target and API service binding
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const c = JSON.parse(readFileSync("wrangler.admin.jsonc", "utf8"));
+            const s = c.services?.[0];
+            const page = readFileSync("../admin/index.html", "utf8");
+            const bridge = readFileSync("../admin/connection.js", "utf8");
+            if (c.name !== "sharika-admin-staging" ||
+                c.account_id !== "d81cf7c48fb9b36d468cb0a08720cd74" ||
+                c.main !== "src/admin-frontend-worker.mjs" ||
+                c.workers_dev !== true ||
+                c.vars?.SHARIKA_ENV !== "staging" ||
+                c.services?.length !== 1 ||
+                s.binding !== "SHARIKA_API" ||
+                s.service !== "sharika-api-staging" ||
+                s.environment !== "production" ||
+                c.d1_databases || c.routes || c.route || c.durable_objects ||
+                !c.rules?.some(r => r.type === "Text") ||
+                !page.includes("Sharika Admin Control Panel") ||
+                !bridge.includes("recharge:'Top Recharge'")) {
+              throw new Error("Refusing non-isolated admin Worker or missing real ranking UI");
+            }
+            console.log("SHARIKA_ADMIN_STAGING_ONLY");
+          '
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test staging Worker and admin connector
+        run: npm run check
+
+      - name: Prepare original admin HTML and verified connection script
+        run: |
+          cp ../admin/index.html src/admin-index.html
+          cp ../admin/connection.js src/admin-connection.txt
+          node --check ../admin/connection.js
+
+      - name: Compile admin Worker locally without uploading
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc
+
+      - name: Publish only sharika-admin-staging (never D1 or production)
+        if: ${{ inputs.operation == 'deploy-staging-admin' }}
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: d81cf7c48fb9b36d468cb0a08720cd74
+          workingDirectory: cloudflare
+          command: deploy --config wrangler.admin.jsonc --keep-vars
