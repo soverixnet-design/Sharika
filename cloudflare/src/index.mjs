@@ -19,6 +19,8 @@ const PROFILE_FRAMES = new Set([
   'ice-dragon', 'violet-phoenix', 'castle-flag',
   'lion-queen', 'phoenix-queen', 'tiger-queen'
 ]);
+const PROFILE_MEDALS = new Set(['', 'bronze', 'silver', 'gold', 'top-host']);
+const PROFILE_NAME_TAGS = new Set(['', 'legend']);
 const PROFILE_ENTRIES = new Set([
   '', 'phoenix', 'dragon-queen', 'ice-king', 'castle-flag',
   'lion-queen', 'phoenix-queen', 'tiger-queen'
@@ -38,6 +40,7 @@ function showProfile(user) {
     name: user.name, country: user.country, birthdate: user.birthdate,
     minor: !!user.minor, pic: user.pic, cover: user.cover, bio: user.bio,
     frame_style: user.frame_style || '', entry_style: user.entry_style || '',
+    medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '',
     coins: user.coins, diamonds: user.diamonds, xp: user.xp,
     wealth_level: user.wealth_level, charm_level: user.charm_level, status: user.status
   };
@@ -213,6 +216,16 @@ export async function handleRequest(request, env) {
             return fail('invalid_entry_style', 400, cors);
           changes.entry_style = body.entry_style;
         }
+        if (body.medal_style !== undefined) {
+          if (typeof body.medal_style !== 'string' || !PROFILE_MEDALS.has(body.medal_style))
+            return fail('invalid_medal_style', 400, cors);
+          changes.medal_style = body.medal_style;
+        }
+        if (body.name_tag_style !== undefined) {
+          if (typeof body.name_tag_style !== 'string' || !PROFILE_NAME_TAGS.has(body.name_tag_style))
+            return fail('invalid_name_tag_style', 400, cors);
+          changes.name_tag_style = body.name_tag_style;
+        }
         if (!Object.keys(changes).length || changes.name === null) return fail('invalid_profile', 400, cors);
         const keys = Object.keys(changes);
         await env.DB.prepare('UPDATE sharika_users SET ' + keys.map(x => x + '=?').join(',') + `,updated_at=datetime('now') WHERE auth_uid=?`)
@@ -226,7 +239,8 @@ export async function handleRequest(request, env) {
       const user = await env.DB.prepare('SELECT * FROM sharika_users WHERE public_no=?').bind(Number(parts[3])).first();
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
         wealth_level: user.wealth_level, charm_level: user.charm_level,
-        frame_style: user.frame_style || '', entry_style: user.entry_style || '' }, 200, cors)
+        frame_style: user.frame_style || '', entry_style: user.entry_style || '',
+        medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '' }, 200, cors)
         : fail('not_found', 404, cors);
     }
     // Real follow graph. Identity always comes from the verified Firebase token.
@@ -863,7 +877,7 @@ export async function handleRequest(request, env) {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,
-          u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style FROM sharika_room_members m
+          u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
@@ -872,7 +886,8 @@ export async function handleRequest(request, env) {
           members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
-            frame_style: x.frame_style || '', entry_style: x.entry_style || '' }
+            frame_style: x.frame_style || '', entry_style: x.entry_style || '',
+            medal_style: x.medal_style || '', name_tag_style: x.name_tag_style || '' }
         })) }, 200, cors);
       }
       if (parts.length === 5 && action === 'voice-token' && request.method === 'POST') {
