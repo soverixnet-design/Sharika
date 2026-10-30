@@ -249,6 +249,23 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     return fail('admin_write_not_enabled',405,cors);
   }
 
+  // Authenticated user reports use the verified Support Inbox.
+  // Moderators get read-only triage; audited Super Admin blocks stay separate.
+  if(operation==='reports' && request.method==='GET'){
+    const denied=allowed(actor.role,new Set(['super','support']),fail,cors);
+    if(denied)return denied;
+    const rows=values(await env.DB.prepare(
+      'SELECT m.id,m.body,m.created_at,u.public_no AS reporter_no '+
+      'FROM sharika_support_messages m '+
+      'JOIN sharika_users u ON u.auth_uid=m.user_id '+
+      "WHERE m.sender_role='user' AND m.body LIKE '[Sharika report]%' "+
+      'ORDER BY m.id DESC LIMIT 100'
+    ).all());
+    return reply({reports:rows.map(row=>({
+      id:row.id,reporter_public_id:id(row.reporter_no),
+      body:row.body,created_at:row.created_at
+    })),read_only:true,limited_to:100},200,cors);
+  }
   if(operation==='support') {
     const denied=allowed(actor.role,new Set(['super','support']),fail,cors);
     if(denied)return denied;
