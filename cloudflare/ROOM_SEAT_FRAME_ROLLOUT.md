@@ -14,11 +14,11 @@ The original room sheet let owners choose `Colorful`, `Gold`, `Neon` or `Chowka`
 - Existing room received `grad` default. Column is present and uses a SQL CHECK allowlist.
 - **Do not run all historical D1 migrations to catch up:** this staging database was previously migrated manually and has migration-journal drift. Inspect `d1_migrations` and reconcile against already-applied schema before using `wrangler d1 migrations apply`.
 
-## Worker staging rollout pending
+## Worker staging rollout and verification
 - [x] Additive D1 column safely applied.
 - [x] Server owner PATCH, members GET and Android renderer implemented on the draft feature branch.
 - [x] Cloudflare automated tests passed with new migration and value validation.
-- [ ] Deploy the updated source to `sharika-api-staging` only while preserving D1/Durable Object bindings, Firebase secrets, and existing service routes.
+- [x] Updated source deployed to **`sharika-api-staging` only** through GitHub run [41130350309](https://github.com/soverixnet-design/Sharika/actions/runs/41130350309), completed successfully 30 Oct 2026 21:21 UTC; no D1 migrations were run by this deployment. Cloudflare deployment `5edd9d81-42a9-4230-b856-318ec428f531`, version `90a44f65-6df8-416b-9c06-9388fa757290` at 100%. Checked D1 (`DB`), voice Durable Object (`VOICE_ROOMS`), and both realtime SFU secret bindings remained intact. Public `/health` returned `ok: true`, `environment: staging`, `auth_configured: true`; unauthenticated `/api/v1/rooms` returned HTTP 401.
 - [ ] Verify authenticated `PATCH /api/v1/rooms/:id` with `seat_frame_style:'gold'`, confirm D1 and `GET /api/v1/rooms/:id/members` reflect it, then restore original `grad` for staging room if desired.
 - [ ] Test owner and guest on separate Android phones, including rejoin/restart and 5–21 seat settings; leave production unchanged until owner acceptance.
 
