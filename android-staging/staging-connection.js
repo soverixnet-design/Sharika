@@ -22,6 +22,31 @@
       ].join('')
     ].join('');
     doc.head.appendChild(style);
+    // Staging-only depth effects: no changes to the owner's original layout,
+    // routes, seat hit targets, labels, or accessibility semantics.
+    const depth=doc.createElement('style');
+    depth.id='sharika-subtle-icon-depth';
+    depth.textContent=roomFrame ? [
+      '.top .ib,.top .room,#bOwn,.dock .rb,.dock .mic,.dock .inp #emo,.dock .inp #imgBtn,.stats .pill{',
+      'box-shadow:inset 0 2px 2px #fff6,inset 0 -5px 8px #070319b3,0 6px 12px #03010b99!important;',
+      'filter:drop-shadow(0 2px 2px #0007);transition:filter .15s ease,box-shadow .15s ease}',
+      '.dock .e3,.top .room .rav,.top .ib svg,.dock .mic{',
+      'filter:drop-shadow(0 3px 2px #05020da8);text-shadow:0 2px 1px #0008,0 -1px 2px #fff6}',
+      '.dock button:active,.top .ib:active{filter:brightness(1.12) drop-shadow(0 1px 2px #0009)}',
+      '@media(prefers-reduced-motion:reduce){.top .ib,.top .room,.dock .rb,.dock .mic{transition:none!important}}'
+    ].join('') : [
+      '.nav .ni span,.qa button span,.hd .logo,.nav .plus,#minib,.acts .act span{',
+      'display:inline-block;filter:drop-shadow(0 3px 2px #04020da8);',
+      'text-shadow:0 2px 1px #0009,0 -1px 2px #fff7}',
+      '.qa button,.nav .ni,.nav .plus,.hd .logo,#minib,.tabs button{',
+      'box-shadow:inset 0 2px 2px #fff5,inset 0 -4px 7px #05011399,0 5px 10px #03010b80;',
+      'transition:filter .15s ease,box-shadow .15s ease}',
+      '.qa button:active,.nav button:active,.tabs button:active{filter:brightness(1.12)}',
+      '#grid .card .bg{box-shadow:inset 0 2px 3px #fff4,inset 0 -8px 15px #05021199}',
+      '#sh-original-grid>button:active{transform:translateY(2px) scale(.98)}',
+      '@media(prefers-reduced-motion:reduce){.qa button,.nav button,.tabs button{transition:none!important}}'
+    ].join('');
+    doc.head.appendChild(depth);
   }
   fitAndroidViewport(document, false);
   const ACCOUNT_KEY = 'vr_accts_v1';
@@ -2395,7 +2420,7 @@
         card.style.cssText='display:flex;flex-direction:column;align-items:stretch;'+
           'padding:6px;min-width:0;border:1px solid #e9ba50;border-radius:14px;'+
           'background:linear-gradient(150deg,#381760,#130b32);color:#fff;'+
-          'box-shadow:0 5px 12px #0006;text-align:left;cursor:pointer';
+          'box-shadow:inset 0 2px 2px #fff5,inset 0 -5px 9px #0009,0 9px 16px #0009;text-align:left;cursor:pointer';
         const img=doc.createElement('img');
         img.src=item.image;
         img.alt=item.name;
