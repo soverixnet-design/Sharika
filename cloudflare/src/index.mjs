@@ -7,7 +7,7 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
-import { drawLuckyGift } from './lucky-gifts.mjs';
+import { drawLuckyGift, CASHOUT_LUCKY_GIFTS_BLOCKED } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -401,7 +401,7 @@ export async function handleRequest(request, env) {
     if (path === '/api/v1/gifts' && request.method === 'GET') {
       const viewer = await assertActive(env.DB, uid);
       const luckyAllowed = env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
-        !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
+        !CASHOUT_LUCKY_GIFTS_BLOCKED && !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
       const result = await env.DB.prepare(
         'SELECT id,name,emoji,tab,price_coins,image_url,animation_url ' +
         'FROM sharika_gifts WHERE active=1 AND (tab IN (0,1) OR (tab=2 AND ?=1)) ORDER BY id LIMIT 100'
@@ -619,6 +619,8 @@ export async function handleRequest(request, env) {
           if(gift.tab===2) {
             if(env.SHARIKA_LUCKY_GIFTS_ENABLED!=='true')
               return fail('lucky_gifts_disabled',503,cors);
+            if(CASHOUT_LUCKY_GIFTS_BLOCKED)
+              return fail('lucky_cashout_approval_required',403,cors);
             if(sender.minor || !(ageFromDate(sender.birthdate)>=18))
               return fail('lucky_gifts_adult_only',403,cors);
             lucky=drawLuckyGift(Number(gift.price_coins),quantity*ids.length);
