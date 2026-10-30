@@ -525,6 +525,46 @@ export async function handleRequest(request, env) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // An owner may invite an unseated, verified member to an unlocked mic seat.
+      if(parts.length===5 && action==='invitations') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_invites_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET')return reply(await coordinator.seatInvitePending(uid),200,cors);
+        if(request.method==='POST') {
+          if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+          const body=await readBody(request);
+          if(!Number.isInteger(body.seat_no)||body.seat_no<1||
+             body.seat_no>room.seat_count||
+             typeof body.target_public_id!=='string'||!PUBLIC_ID.test(body.target_public_id))
+            return fail('invalid_invitation',400,cors);
+          const target=await env.DB.prepare(
+            'SELECT u.auth_uid,u.status,m.seat_no FROM sharika_room_members m '+
+            'JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? AND u.public_no=?'
+          ).bind(roomId,Number(body.target_public_id)).first();
+          if(!target||target.status!=='active'||target.auth_uid===uid||
+             target.seat_no!==null)return fail('invite_target_unavailable',409,cors);
+          const result=await coordinator.seatInviteSend(roomId,uid,target.auth_uid,body.seat_no);
+          if(result.error)return fail(result.error,
+            result.error==='invite_rate_limited'?429:409,cors);
+          return reply({invitation:result},201,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
+      if(parts.length===6 && action==='invitations' &&
+         parts[5]==='respond' && request.method==='POST') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_invites_unavailable',503,cors);
+        const body=await readBody(request);
+        if(!Number.isInteger(body.seat_no)||body.seat_no<1||
+           body.seat_no>room.seat_count||typeof body.accept!=='boolean')
+          return fail('invalid_invitation_response',400,cors);
+        const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .seatInviteRespond(roomId,uid,body.seat_no,body.accept);
+        if(result.error)return fail(result.error,
+          result.error==='invite_not_found'?404:409,cors);
+        return reply(result,200,cors);
+      }
       // Text chat is real-time room data, not a browser-only fake conversation.
       // Only verified members may read or send, and the Worker supplies identity.
       if (parts.length === 5 && action === 'chat') {
@@ -573,6 +613,8 @@ export async function handleRequest(request, env) {
         } else {
           await env.DB.prepare('DELETE FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId, uid).run();
         }
+        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .seatInviteClear(uid);
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
       // Room-earned Lucky rewards are room balances, never an automatic
