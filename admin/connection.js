@@ -456,7 +456,8 @@
     root.innerHTML='<div class="card"><h3>🪙 Verified coin sellers</h3>'+
       '<p class="n">Seller stock is separate from personal wallets. Allocations and transfers are permanently audited.</p>'+
       '<div id="seller-list">Loading…</div></div>'+
-      '<div class="card"><h3>Recent seller transfers</h3><div id="seller-transfers">Loading…</div></div>'+
+      '<div class="card"><h3>Coin transfer list · sender IDs</h3><div id="seller-transfers">Loading…</div></div>'+
+      '<div class="card"><h3>Seller wallet allocations</h3><div id="seller-allocations">Loading…</div></div>'+
       (role==='super'?'<div class="card"><h3>Seller management</h3>'+
         '<div class="row"><input id="seller-id" maxlength="8" inputmode="numeric" placeholder="Seller 8-digit user ID">'+
         '<button type="button" class="btn s" id="seller-approve">Approve</button>'+
@@ -464,21 +465,33 @@
         '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000)">'+
         '<button type="button" class="btn s" id="seller-allocate">Allocate stock</button></div>'+
         '<p class="n" id="seller-note">Only Super Admin can approve sellers and allocate inventory.</p></div>':'');
-    const table=byId('seller-list'),transfers=byId('seller-transfers');
+    const table=byId('seller-list'),transfers=byId('seller-transfers'),
+      allocations=byId('seller-allocations');
     async function refresh(){
       table.textContent='Loading approved seller records…';
       transfers.textContent='Loading verified transfers…';
+      allocations.textContent='Loading verified seller stock credits…';
       try{
-        const [list,history]=await Promise.all([api('GET','sellers'),api('GET','sellers/transfers')]);
+        const [list,history,credits]=await Promise.all([
+          api('GET','sellers'),api('GET','sellers/transfers'),api('GET','sellers/allocations')
+        ]);
         table.innerHTML=window.T(['ID','Name','Status','Available stock','Updated'],(list.sellers||[]).map(s=>
           [esc(s.public_id),esc(s.name),s.active?'Approved':'Suspended',
            fmt(s.available_coins),esc(s.updated_at||'')]));
-        transfers.innerHTML=window.T(['#','Seller ID','Recipient ID','Coins','Stock after','Time'],
+        transfers.innerHTML=window.T(['#','Sender ID','Recipient ID','Coins','Stock after','Time'],
           (history.transfers||[]).map(t=>[
-            esc(t.id),esc(t.seller_public_id),esc(t.recipient_public_id),
+            esc(t.id),esc(t.sender_public_id),esc(t.recipient_public_id),
             fmt(t.coins),fmt(t.stock_after),esc(t.created_at||'')]));
+        allocations.innerHTML=window.T(['#','Admin sender ID','Seller ID','Stock coins added','Stock after','Time'],
+          (credits.allocations||[]).map(a=>[
+            esc(a.id),esc(a.sender_public_id),esc(a.seller_public_id),
+            fmt(a.coins),fmt(a.stock_after),esc(a.created_at||'')]));
         if(!list.sellers?.length)table.insertAdjacentHTML('beforeend','<p class="n">No approved sellers yet.</p>');
-      }catch(error){table.textContent=error.message;transfers.textContent='Transfer history unavailable.';}
+      }catch(error){
+        table.textContent=error.message;
+        transfers.textContent='Transfer history unavailable.';
+        allocations.textContent='Allocation history unavailable.';
+      }
     }
     await refresh();
     if(role!=='super')return;
