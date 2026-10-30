@@ -1338,6 +1338,57 @@
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
+    // Report a verified member or room through the existing authenticated
+    // Support Inbox. No fake moderator action and no wallet mutation.
+    function openVerifiedReport(kind,targetId,targetName){
+      if(!session || !/^[0-9]{8}$/.test(String(targetId||''))){
+        frame.toast('Verified report target unavailable');return;
+      }
+      if(kind!=='user'&&kind!=='room')return;
+      if(kind==='user'&&String(targetId)===profile?.public_id){
+        frame.toast('You cannot report your own profile');return;
+      }
+      frame.open('<h3>🚩 Report to Sharika Support</h3>'+
+        '<div id="sh-verified-report"></div>');
+      const box=frame.$('sh-verified-report');
+      if(!box)return;
+      const label=frame.document.createElement('div');
+      label.className='row';
+      label.textContent=(kind==='user'?'User':'Room')+': '+
+        String(targetName||'Unknown')+' · ID '+String(targetId);
+      const reason=frame.document.createElement('textarea');
+      reason.id='sh-verified-report-reason';
+      reason.maxLength=500;
+      reason.rows=4;
+      reason.placeholder='Explain what happened (at least 10 characters)';
+      reason.setAttribute('aria-label','Reason for report');
+      reason.style.cssText='display:block;width:100%;padding:12px;margin:10px 0;'+
+        'border:1px solid #9b82e5;border-radius:12px;background:#17102f;color:white';
+      const submit=frame.document.createElement('button');
+      submit.type='button';submit.className='send';
+      submit.textContent='Send report to support';
+      submit.style.cssText='width:100%;padding:12px;margin-top:7px';
+      submit.onclick=async()=>{
+        const why=reason.value.trim();
+        if(why.length<10){frame.toast('Write at least 10 characters');return;}
+        if(submit.disabled)return;
+        submit.disabled=true;
+        try{
+          await api('POST','/support/messages',{
+            body:'[Sharika report] '+kind+' ID '+String(targetId)+
+              ' · '+String(targetName||'Unknown')+'\nReason: '+why,
+            request_id:'report:'+Date.now().toString(36)+':'+
+              Math.random().toString(36).slice(2)
+          });
+          frame.close();
+          frame.toast('Report sent to verified support ✓');
+        }catch(error){
+          frame.toast('Report not sent: '+errText(error));
+          if(submit.isConnected)submit.disabled=false;
+        }
+      };
+      box.append(label,reason,submit);
+    }
     const giftButton=frame.$ && frame.$('bGift');
     const originalGiftOpen=giftButton && giftButton.onclick;
     let directGiftTarget=null;
@@ -1736,6 +1787,15 @@
           frame.toast('Message unavailable: '+errText(error));
         }
       };
+      const reportMemberButton=frame.document.createElement('button');
+      reportMemberButton.type='button';
+      reportMemberButton.className='act';
+      reportMemberButton.textContent='🚩 Report';
+      sheet?.querySelector('.acts')?.appendChild(reportMemberButton);
+      reportMemberButton.onclick=()=>{
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        openVerifiedReport('user',verifiedId,String(user.n||'Member'));
+      };
       const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
       if(inviteButton)inviteButton.onclick=async()=>{
         if(inviteButton.disabled)return;
@@ -1912,7 +1972,23 @@
     if(roomButton){
       const oldRoomOpen=roomButton.onclick;
       roomButton.onclick=()=>{
-        if(room.owner_id!==session?.user?.id){frame.toast('Only room owner can edit settings');return;}
+        if(room.owner_id!==session?.user?.id){
+          // Guests can inspect and report a room without owner privileges.
+          frame.open('<h3>🎙️ Room information</h3><div id="sh-room-info"></div>');
+          const info=frame.$('sh-room-info');
+          if(info){
+            const label=frame.document.createElement('div');
+            label.className='row';
+            label.textContent=String(room.name||'Room')+' · ID '+String(room.id);
+            const report=frame.document.createElement('button');
+            report.type='button';report.className='send';
+            report.textContent='🚩 Report this room';
+            report.style.cssText='display:block;width:100%;padding:12px;margin:12px 0';
+            report.onclick=()=>openVerifiedReport('room',room.id,room.name);
+            info.append(label,report);
+          }
+          return;
+        }
         if(typeof frame.settings==='function')frame.settings();
         else if(typeof oldRoomOpen==='function')oldRoomOpen.call(roomButton);
         const rewardLabel=frame.$('rRw')?.querySelector('small');
