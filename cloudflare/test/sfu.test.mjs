@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleVoiceOperation } from '../src/sfu.mjs';
+import { handleVoiceOperation,forceCloseMicrophone } from '../src/sfu.mjs';
 
 const reply = (value,status=200) => Response.json(value,{status});
 const fail = (error,status) => reply({error},status);
@@ -72,5 +72,28 @@ test('new SFU session is owner-scoped and credentials remain server-side',async(
     const result=await r.json();
     assert.equal(result.sessionId,'session-one');
     assert.equal(JSON.stringify(result).includes('private-do-not-expose'),false);
+  }finally{globalThis.fetch=old;}
+});
+
+test('owner moderation force-closes verified local microphone MIDs, not remote tracks',async()=>{
+  const old=globalThis.fetch;
+  const calls=[];
+  globalThis.fetch=async(url,options)=>{
+    calls.push({url:String(url),method:options.method||'GET'});
+    assert.equal(options.headers.Authorization,'Bearer private-do-not-expose');
+    if(!options.method)return Response.json({tracks:[
+      {location:'local',trackName:'microphone',status:'active',mid:'0'},
+      {location:'remote',trackName:'microphone',status:'active',mid:'1'},
+      {location:'local',trackName:'camera',status:'active',mid:'2'}
+    ]});
+    assert.equal(options.method,'PUT');
+    assert.equal(String(url).endsWith('/sessions/session-one/tracks/close'),true);
+    assert.deepEqual(JSON.parse(options.body),{tracks:[{mid:'0'}],force:true});
+    return Response.json({tracks:[{mid:'0'}]});
+  };
+  try{
+    const r=await forceCloseMicrophone(env,'session-one');
+    assert.equal(r.closed,1);
+    assert.equal(calls.length,2);
   }finally{globalThis.fetch=old;}
 });

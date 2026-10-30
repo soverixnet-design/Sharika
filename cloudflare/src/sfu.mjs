@@ -44,6 +44,38 @@ function checkTracks(result, size) {
   return result;
 }
 
+// Force-close the published microphone track during verified owner moderation.
+// Cloudflare Realtime SFU supports "force":true without client SDP renegotiation.
+export async function forceCloseMicrophone(env, sessionId) {
+  if(!sfuAvailable(env)||!cleanSid(sessionId))
+    throw new Error('sfu_upstream_unavailable');
+  const base='https://rtc.live.cloudflare.com/v1/apps/'+
+    encodeURIComponent(env.REALTIME_SFU_APP_ID)+'/sessions/'+sessionId;
+  const headers={Authorization:'Bearer '+env.REALTIME_SFU_APP_SECRET,
+    'Content-Type':'application/json'};
+  const infoResponse=await fetch(base,{headers,signal:AbortSignal.timeout(15000)});
+  if(infoResponse.status===404||infoResponse.status===410)
+    return {closed:0,expired:true};
+  if(!infoResponse.ok)throw new Error('sfu_upstream_unavailable');
+  const info=await infoResponse.json();
+  const mids=(info.tracks||[])
+    .filter(t=>t.location==='local'&&t.trackName==='microphone'&&
+      t.status==='active'&&MID.test(String(t.mid)))
+    .map(t=>String(t.mid));
+  if(!mids.length)return {closed:0};
+  const closedResponse=await fetch(base+'/tracks/close',{
+    method:'PUT',headers,
+    body:JSON.stringify({tracks:mids.map(mid=>({mid})),force:true}),
+    signal:AbortSignal.timeout(15000)
+  });
+  if(closedResponse.status===404||closedResponse.status===410)
+    return {closed:0,expired:true};
+  if(!closedResponse.ok)throw new Error('sfu_upstream_unavailable');
+  const closed=await closedResponse.json();
+  checkTracks(closed,mids.length);
+  return {closed:mids.length};
+}
+
 export async function handleVoiceOperation({
   request, env, room, member, uid, roomId, operation,
   reply, fail, cors, readBody

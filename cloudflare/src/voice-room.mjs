@@ -108,6 +108,25 @@ export class SharikaVoiceRoom extends DurableObject {
   }
   // Presence is touched by the authenticated Android app every 25 seconds.
   // Stale sessions expire after 90 seconds, even after a crash or network loss.
+  async publishedFor(uid) {
+    this.prune();
+    return this.ctx.storage.sql.exec(
+      'SELECT session_id AS sessionId FROM voice_sessions ' +
+      'WHERE uid=? AND can_publish=1 AND published=1',uid
+    ).toArray();
+  }
+
+  async withdrawUser(uid,forgetAll=false) {
+    if(forgetAll) {
+      this.ctx.storage.sql.exec('DELETE FROM voice_sessions WHERE uid=?',uid);
+    } else {
+      this.ctx.storage.sql.exec(
+        'UPDATE voice_sessions SET published=0,track_name=NULL WHERE uid=?',uid
+      );
+    }
+    return true;
+  }
+
   async presenceTouch(uid, roomId) {
     const now=Date.now();
     this.ctx.storage.sql.exec('DELETE FROM app_presence WHERE last_seen < ?',now-90_000);

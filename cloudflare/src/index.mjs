@@ -1,5 +1,6 @@
 import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
+import { handleRoomModeration } from './moderation.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
@@ -492,6 +493,11 @@ export async function handleRequest(request, env) {
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
       if (parts.length === 5 && action === 'join' && request.method === 'POST') {
+        const ban=await env.DB.prepare(
+          'SELECT banned_until_ms FROM sharika_room_bans WHERE room_id=? AND user_id=?'
+        ).bind(roomId,uid).first();
+        if(ban&&Number(ban.banned_until_ms)>Date.now())
+          return fail('room_temporarily_blocked',403,cors);
         if (!member) {
           await env.DB.prepare(`INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) VALUES(?,?,'member')`)
             .bind(roomId, uid).run();
@@ -628,6 +634,10 @@ export async function handleRequest(request, env) {
           request, env, room, member, uid, roomId, operation:parts[5],
           reply, fail, cors, readBody
         });
+      if(parts.length===5 && action==='moderate')
+        return handleRoomModeration({
+          request,env,uid,room,roomId,reply,fail,cors,readBody
+        });
       if (parts.length === 5 && action === 'seat' && request.method === 'PUT') {
         const body = await readBody(request);
         const seat = body.seat_no === null ? null : Number(body.seat_no);
@@ -649,7 +659,7 @@ export async function handleRequest(request, env) {
         if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET || !/^wss:\/\//.test(env.LIVEKIT_URL || '')) {
           return fail('voice_not_configured', 503, cors);
         }
-        const publish = member.seat_no !== null || room.owner_id === uid;
+        const publish = room.owner_id === uid || (member.seat_no !== null && !member.muted);
         const token = await createVoiceToken(env, uid, roomId, publish, room.owner_id === uid);
         return reply({ token, url: env.LIVEKIT_URL, room: 'sharika:' + roomId, publish }, 200, cors);
       }

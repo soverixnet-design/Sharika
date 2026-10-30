@@ -491,6 +491,11 @@
       api('GET','/rooms/'+room.id+'/members'),
       api('GET','/users/'+room.id)
     ]);
+    const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
+    const eligible=room.owner_id===session?.user?.id||
+      (!!self && self.seat_no!==null && !self.muted);
+    if(sfuState?.roomId===room.id && !!sfuState.media!==!!eligible)
+      connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,muted:false,talk:false};
@@ -603,19 +608,56 @@
       }
       lastGiftEventId=Math.max(lastGiftEventId,latest);
     }
+    async function moderateSeat(action,seat) {
+      if(room.owner_id!==session?.user?.id)throw new Error('Room owner only');
+      const target=frame.seats?.[seat];
+      if(!target||target.empty||!target.public_id||
+         target.user_id===room.owner_id)throw new Error('Choose a guest seat');
+      const result=await api('POST','/rooms/'+room.id+'/moderate',{
+        action,target_public_id:target.public_id
+      });
+      frame.close();
+      await syncFrame(room,frame);
+      frame.toast(action==='kick'?'Guest removed for 10 minutes':
+        action==='remove_seat'?'Guest removed from mic':'Guest '+action+'d');
+      return result;
+    }
     frame.act=async function(action,seat) {
       try {
+        const target=frame.seats?.[seat];
+        const isSelf=target?.user_id===session?.user?.id;
+        const owner=room.owner_id===session?.user?.id;
         if(action==='take' && seat>0) {
           await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
           frame.close(); await syncFrame(room,frame);
           const state=await connectVoice(room.id);
           frame.toast(state.publishing?'Microphone enabled':'Listening to room');
-        } else if(action==='down') {
-          await api('PUT','/rooms/'+room.id+'/seat',{seat_no:null});
-          frame.close(); await syncFrame(room,frame);
-          await connectVoice(room.id);
-          frame.toast('Seat released; listening only');
-        } else frame.toast('Moderation requires verified server permissions');
+        } else if(action==='down' && seat>0) {
+          if(!isSelf && owner && target?.user_id) {
+            await moderateSeat('remove_seat',seat);
+          } else if(isSelf) {
+            await api('PUT','/rooms/'+room.id+'/seat',{seat_no:null});
+            frame.close(); await syncFrame(room,frame);
+            await connectVoice(room.id);
+            frame.toast('Seat released; listening only');
+          } else throw new Error('You can only leave your own seat');
+        } else if(action==='mute' && seat>0) {
+          if(owner && target?.user_id && !isSelf)
+            await moderateSeat(target.muted?'unmute':'mute',seat);
+          else if(isSelf) {
+            const enabled=await toggleVoice();
+            frame.close();
+            frame.toast(enabled?'Microphone on':'Microphone off');
+          } else throw new Error('Only the owner can mute another user');
+        } else if(action==='kick' && seat>0) {
+          await moderateSeat('kick',seat);
+        } else if(action==='own' && owner) {
+          frame.open('<h3>👑 Verified owner controls</h3>'+
+            '<div class="row">Tap an occupied seat to mute, unmute, remove from mic or kick a guest.</div>');
+        } else if(action==='gift' && seat>0 && target?.public_id) {
+          frame.rec=[seat];
+          frame.$('bGift')?.click();
+        } else frame.toast('This action is not connected to the verified server yet');
       } catch (error) { frame.toast(errText(error)); }
     };
     // The existing room-settings sheet is reused. Its original Save action
@@ -666,13 +708,25 @@
         frame.toast(enabled?'Microphone enabled':'Microphone muted');
       } catch(error) {frame.toast(errText(error));}
     };
-    const pendingRoomButtons = {
-      bMsg:'Private messaging is not on the staging server yet',
-      bOwn:'Owner moderation is not on the staging server yet',
-    };
-    for (const [buttonId, reason] of Object.entries(pendingRoomButtons)) {
-      const control = frame.$ && frame.$(buttonId);
-      if (control) control.onclick=()=>frame.toast(reason);
+    const inboxButton=frame.$ && frame.$('bMsg');
+    if(inboxButton) {
+      // The original badge was a demo unread count, not verified server data.
+      inboxButton.querySelector('em')?.remove();
+      inboxButton.onclick=()=>{
+        // Minimize without leaving the D1 room or disconnecting WebRTC audio.
+        if(typeof frame.close==='function')frame.close();
+        document.getElementById('rw')?.classList.remove('on');
+        const bubble=document.getElementById('minib');
+        if(bubble)bubble.textContent=room.emoji||'🎙️';
+        document.getElementById('mini')?.classList.add('on');
+        window.go('msg'); // Reuses verified direct messages and mutual-follow checks.
+      };
+    }
+    const ownerButton=frame.$ && frame.$('bOwn');
+    if(ownerButton) {
+      ownerButton.style.display=room.owner_id===session?.user?.id?'':'none';
+      ownerButton.onclick=()=>frame.open('<h3>👑 Verified owner controls</h3>'+
+        '<div class="row">Tap any occupied guest seat to mute, unmute, remove from mic or kick.</div>');
     }
     const roomGameButton=frame.$ && frame.$('bGame');
     if(roomGameButton)roomGameButton.onclick=()=>showGameCard(frame.document,true,frame.toast);
@@ -686,7 +740,15 @@
       frame.toast('Voice pending: '+errText(error));
     }
     if(framePoll) clearInterval(framePoll);
-    framePoll=setInterval(()=>{if(window.cur?.id===room.id)syncFrame(room,frame).catch(()=>{});},15000);
+    framePoll=setInterval(()=>{
+      if(window.cur?.id!==room.id)return;
+      syncFrame(room,frame).catch(error=>{
+        if(errText(error)==='join_room_first') {
+          window.leaveRoom();
+          toast('The room owner removed you from the room');
+        }
+      });
+    },15000);
     if(giftPoll)clearInterval(giftPoll);
     pollGiftEvents().catch(()=>{});
     giftPoll=setInterval(()=>{if(window.cur?.id===room.id)pollGiftEvents().catch(()=>{});},5000);
