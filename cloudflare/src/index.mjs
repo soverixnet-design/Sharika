@@ -7,6 +7,7 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import { drawLuckyGift } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -398,12 +399,15 @@ export async function handleRequest(request, env) {
       return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {
-      await assertActive(env.DB, uid);
+      const viewer = await assertActive(env.DB, uid);
+      const luckyAllowed = env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
+        !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
       const result = await env.DB.prepare(
         'SELECT id,name,emoji,tab,price_coins,image_url,animation_url ' +
-        'FROM sharika_gifts WHERE active=1 ORDER BY id LIMIT 100'
-      ).all();
-      return reply({ gifts:result.results || [], read_only:true }, 200, cors);
+        'FROM sharika_gifts WHERE active=1 AND (tab IN (0,1) OR (tab=2 AND ?=1)) ORDER BY id LIMIT 100'
+      ).bind(luckyAllowed ? 1 : 0).all();
+      return reply({ gifts:result.results || [], lucky_enabled:luckyAllowed,
+        read_only:true }, 200, cors);
     }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       await assertActive(env.DB, uid);
@@ -541,19 +545,25 @@ export async function handleRequest(request, env) {
       if (parts.length===5 && action==='gifts') {
         if(!member)return fail('join_room_first',403,cors);
         if(request.method==='GET') {
+          const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true';
           const rows=await env.DB.prepare(
             'SELECT e.id,e.quantity,e.price_coins,e.created_at,'+
             'su.public_no AS sender_no,ru.public_no AS recipient_no,'+
-            'g.name,g.emoji FROM sharika_gift_events e '+
+            (luckyEnabled?'g.name,g.emoji,g.tab,lo.payout_coins,lo.max_multiplier ':
+              'g.name,g.emoji,g.tab,NULL AS payout_coins,NULL AS max_multiplier ')+
+            'FROM sharika_gift_events e '+
             'JOIN sharika_users su ON su.auth_uid=e.sender_uid '+
             'JOIN sharika_users ru ON ru.auth_uid=e.recipient_uid '+
             'JOIN sharika_gifts g ON g.id=e.gift_id '+
+            (luckyEnabled?'LEFT JOIN sharika_lucky_gift_outcomes lo ON lo.transaction_id=e.transaction_id ':'')+
             'WHERE e.room_id=? ORDER BY e.id DESC LIMIT 40'
           ).bind(roomId).all();
           return reply({events:(rows.results||[]).reverse().map(e=>({
             id:e.id,quantity:e.quantity,price_coins:e.price_coins,
             created_at:e.created_at,sender_id:publicId(e.sender_no),
-            recipient_id:publicId(e.recipient_no),name:e.name,emoji:e.emoji
+            recipient_id:publicId(e.recipient_no),name:e.name,emoji:e.emoji,
+            lucky:e.tab===2&&luckyEnabled?{payout_coins:Number(e.payout_coins)||0:
+              max_multiplier:Number(e.max_multiplier)||0}:null
           }))},200,cors);
         }
         if(request.method==='POST') {
@@ -578,12 +588,18 @@ export async function handleRequest(request, env) {
                 existing.recipient_ids_json!==JSON.stringify(ids))
               return fail('idempotency_conflict',409,cors);
             const wallet=await me(env.DB,uid);
+            const outcome=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true'
+              ?await env.DB.prepare(
+                'SELECT payout_coins,max_multiplier FROM sharika_lucky_gift_outcomes WHERE transaction_id=?'
+              ).bind(existing.id).first():null;
             return reply({duplicate:true,transaction_id:existing.id,
-              coins:wallet.coins,spent_coins:existing.total_coins},200,cors);
+              coins:wallet.coins,spent_coins:existing.total_coins,
+              lucky:outcome?{payout_coins:outcome.payout_coins,
+                max_multiplier:outcome.max_multiplier}:null},200,cors);
           }
           const gift=await env.DB.prepare(
             'SELECT id,name,emoji,tab,price_coins FROM sharika_gifts '+
-            'WHERE id=? AND active=1 AND tab IN (0,1)'
+            'WHERE id=? AND active=1 AND tab IN (0,1,2)'
           ).bind(giftId).first();
           if(!gift)return fail('gift_unavailable',404,cors);
           const recipients=await env.DB.prepare(
@@ -599,6 +615,16 @@ export async function handleRequest(request, env) {
           if(!Number.isSafeInteger(spend)||spend<1||spend>100000000)
             return fail('gift_amount_exceeds_limit',400,cors);
           const sender=await assertActive(env.DB,uid);
+          let lucky=null;
+          if(gift.tab===2) {
+            if(env.SHARIKA_LUCKY_GIFTS_ENABLED!=='true')
+              return fail('lucky_gifts_disabled',503,cors);
+            if(sender.minor || !(ageFromDate(sender.birthdate)>=18))
+              return fail('lucky_gifts_adult_only',403,cors);
+            lucky=drawLuckyGift(Number(gift.price_coins),quantity*ids.length);
+            if(!Number.isSafeInteger(sender.coins-spend+lucky.payout_coins))
+              return fail('lucky_wallet_limit',400,cors);
+          }
           if(sender.coins<spend)return fail('insufficient_coins',409,cors);
           const recent=await env.DB.prepare(
             "SELECT COUNT(*) AS n FROM sharika_gift_transactions WHERE sender_uid=? "+
@@ -625,6 +651,24 @@ export async function handleRequest(request, env) {
               "AS INTEGER)) WHERE auth_uid=?"
             ).bind(uid,uid)
           ];
+          if(lucky) {
+            if(lucky.payout_coins>0) {
+              statements.push(env.DB.prepare(
+                "UPDATE sharika_users SET coins=coins+?,updated_at=datetime('now') "+
+                "WHERE auth_uid=? AND status='active'"
+              ).bind(lucky.payout_coins,uid));
+              statements.push(env.DB.prepare(
+                "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+                "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'lucky_gift_reward',?)"
+              ).bind(uid,lucky.payout_coins,uid,'lucky:'+requestId));
+            }
+            statements.push(env.DB.prepare(
+              'INSERT INTO sharika_lucky_gift_outcomes(transaction_id,sender_uid,'+
+              'payout_coins,max_multiplier,rolls_json) VALUES('+
+              '(SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?,?,?)'
+            ).bind(uid,requestId,uid,lucky.payout_coins,lucky.max_multiplier,
+              JSON.stringify(lucky.rolls)));
+          }
           for(const recipient of found) {
             const xp=Number(gift.price_coins)*quantity;
             statements.push(env.DB.prepare(
@@ -646,7 +690,8 @@ export async function handleRequest(request, env) {
           return reply({duplicate:false,transaction_id:saved.id,
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
-            quantity},201,cors);
+            quantity,lucky:lucky?{payout_coins:lucky.payout_coins,
+              max_multiplier:lucky.max_multiplier}:null},201,cors);
         }
         return fail('method_not_allowed',405,cors);
       }
