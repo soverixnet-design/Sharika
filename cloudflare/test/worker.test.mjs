@@ -440,7 +440,7 @@ test('lucky gifts cannot issue unverified payouts through the regular gift endpo
 });
 
 
-test('Lucky Gift is age-gated, disabled by default, and never debits a minor',async()=>{
+test('cashout Lucky Gift is disabled by default and remains blocked if feature flag is switched on',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try {
     const uid='firebase:'+project+':secure-user';
@@ -472,14 +472,18 @@ test('Lucky Gift is age-gated, disabled by default, and never debits a minor',as
     assert.equal(disabled.res.status,503);
     assert.equal((await disabled.res.json()).error,'lucky_gifts_disabled');
     assert.equal(disabled.db.calls.some(c=>c[0]==='batch'),false);
+    const adult=await attempt(0,true);
+    assert.equal(adult.res.status,403);
+    assert.equal((await adult.res.json()).error,'lucky_cashout_approval_required');
+    assert.equal(adult.db.calls.some(c=>c[0]==='batch'),false);
     const minor=await attempt(1,true);
     assert.equal(minor.res.status,403);
-    assert.equal((await minor.res.json()).error,'lucky_gifts_adult_only');
+    assert.equal((await minor.res.json()).error,'lucky_cashout_approval_required');
     assert.equal(minor.db.calls.some(c=>c[0]==='batch'),false);
   }finally{globalThis.fetch=prior;}
 });
 
-test('adult Lucky Gift draws on server and batches debit, result and payout ledger',async()=>{
+test('cashout hold prevents any Lucky Gift ledger mutation even for a verified adult',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try {
     const uid='firebase:'+project+':secure-user';
@@ -496,27 +500,38 @@ test('adult Lucky Gift draws on server and batches debit, result and payout ledg
         stmt.first=async()=>({id:10,name:'Lucky Clover',emoji:'🍀',price_coins:10,tab:2});
       if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
         stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,status:'active'}]});
-      if(sql.startsWith('SELECT id,total_coins FROM sharika_gift_transactions'))
-        stmt.first=async()=>({id:75,total_coins:10});
       return stmt;
     };
     const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
       method:'POST',headers:{Authorization:'Bearer '+await token()},
       body:JSON.stringify({gift_id:10,quantity:1,
-        recipient_public_ids:['10000001'],request_id:'gift_lucky_adult_123'})
+        recipient_public_ids:['10000001'],request_id:'gift_lucky_cashout_hold'})
     }),{DB:db,FIREBASE_PROJECT_ID:project,SHARIKA_LUCKY_GIFTS_ENABLED:'true'});
-    assert.equal(res.status,201);
-    const json=await res.json();
-    assert.equal(json.spent_coins,10);
-    assert.ok([0,1,2,5,10,50].includes(json.lucky.max_multiplier));
-    assert.equal(json.lucky.payout_coins,json.lucky.max_multiplier*10);
-    const statements=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.ok(statements);
-    assert.ok(statements.some(x=>x.sql?.includes('sharika_lucky_gift_outcomes')));
-    assert.equal(statements.filter(x=>x.sql?.includes('INSERT INTO sharika_wallet_ledger') &&
-      x.sql.includes("'gift_sent'")).length,1);
-    assert.equal(statements.filter(x=>x.sql?.includes("'lucky_gift_reward'")).length,
-      json.lucky.payout_coins>0?1:0);
+    assert.equal(res.status,403);
+    assert.equal((await res.json()).error,'lucky_cashout_approval_required');
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+    assert.equal(db.calls.some(c=>c[0]==='run'),false);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('cashout hold hides Lucky Gift from gift catalogue even with the flag enabled',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000,birthdate:'1998-01-01',minor:0});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/gifts',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project,SHARIKA_LUCKY_GIFTS_ENABLED:'true'});
+    assert.equal(res.status,200);
+    assert.equal((await res.json()).lucky_enabled,false);
+    const catalog=db.calls.find(c=>c[0]==='all'&&c[1].includes('FROM sharika_gifts'));
+    assert.ok(catalog);
+    assert.equal(catalog[2][0],0);
   }finally{globalThis.fetch=prior;}
 });
 
