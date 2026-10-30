@@ -823,6 +823,8 @@
         if(room.owner_id!==session?.user?.id){frame.toast('Only room owner can edit settings');return;}
         if(typeof frame.settings==='function')frame.settings();
         else if(typeof oldRoomOpen==='function')oldRoomOpen.call(roomButton);
+        const rewardLabel=frame.$('rRw')?.querySelector('small');
+        if(rewardLabel)rewardLabel.textContent='1% of enabled Lucky Gifts · server verified';
       };
     }
     frame.document.addEventListener('click',async event=>{
