@@ -415,13 +415,48 @@ test('regular gift sending uses catalog price and atomically settles one coin de
     assert.equal(res.status,201);
     const json=await res.json();
     assert.equal(json.spent_coins,50);
+    assert.equal(json.room_reward_coins,5);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.equal(stmts.length,6);
+    assert.equal(stmts.length,7);
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);
     assert.equal(stmts[5].values[2],uid);
+    assert.match(stmts[6].sql,/sharika_regular_room_rewards/);
+    assert.equal(stmts[6].values[3],500);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('room rewards show immutable 10% ordinary-gift shares, never personal wallet credit',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000,diamonds:0});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:uid});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
+      if(sql.includes('FROM sharika_regular_room_rewards WHERE room_id='))
+        stmt.first=async()=>({points:1234});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/rewards',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project,SHARIKA_LUCKY_GIFTS_ENABLED:'false'});
+    assert.equal(res.status,200);
+    const data=await res.json();
+    assert.equal(data.reward_hundredths,1234);
+    assert.equal(data.regular_reward_hundredths,1234);
+    assert.equal(data.reward_coins,12);
+    assert.equal(data.reward_fraction_hundredths,34);
+    assert.equal(data.owner_wallet_credited,false);
+    assert.equal(data.withdrawal_enabled,false);
+    assert.equal(db.calls.some(x=>x[1]?.includes?.('sharika_lucky_room_rewards')),false);
   }finally{globalThis.fetch=prior;}
 });
 
