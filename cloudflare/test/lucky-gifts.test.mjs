@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { drawLuckyGift, LUCKY_ODDS } from '../src/lucky-gifts.mjs';
+import { drawLuckyGift, luckyGiftBenefits, LUCKY_ODDS } from '../src/lucky-gifts.mjs';
 
 test('Lucky Gift odds exactly match original Sharika 10000-ticket table', () => {
   assert.equal(LUCKY_ODDS.reduce((a, x) => a + x.weight, 0), 10000);
@@ -33,4 +33,23 @@ test('Lucky Gift rejects unsafe or client-shaped draws', () => {
   for (const roll of [-1, 10000, NaN, '0'])
     assert.throws(() => drawLuckyGift(1, 1, () => roll), RangeError);
   assert.throws(() => drawLuckyGift(Number.MAX_SAFE_INTEGER, 2, () => 9999), RangeError);
+});
+
+test('Lucky Gift pays recipient 5% diamonds and room 1% from the same spend', () => {
+  const gift = luckyGiftBenefits(10000, 1, 1);
+  assert.equal(gift.recipient_hundredths / 100, 500);
+  assert.equal(gift.room_hundredths / 100, 100);
+  const all = luckyGiftBenefits(100, 2, 3);
+  assert.equal(all.recipient_hundredths / 100, 10);
+  assert.equal(all.room_hundredths / 100, 6);
+});
+test('small Lucky Gifts preserve fractional reward entitlements', () => {
+  const gift = luckyGiftBenefits(5, 1, 1);
+  assert.equal(gift.recipient_hundredths, 25);
+  assert.equal(gift.room_hundredths, 5);
+  assert.equal((gift.recipient_hundredths * 4) / 100, 1);
+  assert.equal((gift.room_hundredths * 20) / 100, 1);
+  for (const args of [[0,1,1],[10,0,1],[10,1,0],[10,11,1],
+    [10,1,21],[1.5,1,1],[Number.MAX_SAFE_INTEGER,10,20]])
+    assert.throws(() => luckyGiftBenefits(...args), RangeError);
 });
