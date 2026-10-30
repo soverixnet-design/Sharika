@@ -36,14 +36,14 @@ const reply=(data,status)=>Response.json(data,{status});
 const fail=(error,status)=>Response.json({error},{status});
 const app=async (db,method,path,body)=>{
   const req=new Request('https://staging.test'+path,{method,body:body?JSON.stringify(body):undefined});
-  const res=await handleSellerApp({request:req,env:db,uid:'seller1',path,cors,reply,fail});
+  const res=await handleSellerApp({request:req,env:{DB:db},uid:'seller1',path,cors,reply,fail});
   return {status:res.status,data:await res.json()};
 };
 const admin=async (db,role,method,operation,body)=>{
   const request=new Request('https://staging.test/api/v1/admin/'+operation,{
     method,body:body?JSON.stringify(body):undefined
   });
-  const res=await handleSellerAdmin({request,env:db,uid:'owner',actor:{role},
+  const res=await handleSellerAdmin({request,env:{DB:db},uid:'owner',actor:{role},
     operation,cors,reply,fail});
   return {status:res.status,data:await res.json()};
 };
