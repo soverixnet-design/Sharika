@@ -513,7 +513,8 @@ test('adult Lucky Gift draws on server and batches debit, result and payout ledg
     const statements=db.calls.find(c=>c[0]==='batch')?.[1];
     assert.ok(statements);
     assert.ok(statements.some(x=>x.sql?.includes('sharika_lucky_gift_outcomes')));
-    assert.equal(statements.filter(x=>x.sql?.includes("'gift_sent'")).length,1);
+    assert.equal(statements.filter(x=>x.sql?.includes('INSERT INTO sharika_wallet_ledger') &&
+      x.sql.includes("'gift_sent'")).length,1);
     assert.equal(statements.filter(x=>x.sql?.includes("'lucky_gift_reward'")).length,
       json.lucky.payout_coins>0?1:0);
   }finally{globalThis.fetch=prior;}
