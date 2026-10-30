@@ -561,6 +561,49 @@
           esc(a.public_id),esc(a.name),esc(a.role),esc(a.assigned_at)]))+'</div>';
     }catch(error){root.innerHTML=card('Admin roles unavailable',error.message);}
   };
+  P.rank=async function () {
+    const root=byId('pg');
+    let kind='rich',period='weekly',requestNo=0;
+    const kinds={rich:'Rich · sent',charm:'Charm · received',room:'Rooms'};
+    const periods={daily:'Daily',weekly:'Weekly',monthly:'Monthly'};
+    root.innerHTML='<div class="card"><h3>Verified gift rankings</h3>'+
+      '<p>Rankings reflect settled gift transfers in the Android app, not simulated players or payouts.</p>'+
+      '<div class="row" id="rank-kinds">'+Object.entries(kinds).map(([key,label])=>
+        '<button class="btn" type="button" data-rkind="'+esc(key)+'">'+esc(label)+'</button>'
+      ).join('')+'</div>'+
+      '<div class="row" id="rank-periods">'+Object.entries(periods).map(([key,label])=>
+        '<button class="btn" type="button" data-rperiod="'+esc(key)+'">'+esc(label)+'</button>'
+      ).join('')+'</div><div id="rank-results">Loading verified rankings…</div></div>';
+    const results=byId('rank-results');
+    async function reload(){
+      const current=++requestNo;
+      root.querySelectorAll('[data-rkind]').forEach(b=>b.disabled=b.dataset.rkind===kind);
+      root.querySelectorAll('[data-rperiod]').forEach(b=>b.disabled=b.dataset.rperiod===period);
+      results.textContent='Loading verified rankings…';
+      try{
+        const data=await api('GET','rankings?kind='+kind+'&period='+period);
+        if(current!==requestNo)return;
+        const leaders=Array.isArray(data.leaders)?data.leaders:[];
+        if(!leaders.length){
+          results.textContent='No settled gifts recorded for this period.';
+          return;
+        }
+        const labels=kind==='room'?['Rank','Room ID','Room','Gift coins']:
+          ['Rank','User ID','Name','Gift coins'];
+        const rows=leaders.map(item=>kind==='room'
+          ?[fmt(item.rank),esc(item.room_id),esc(item.name),fmt(item.total)]
+          :[fmt(item.rank),esc(item.public_id),esc(item.name),fmt(item.total)]);
+        results.innerHTML=window.T(labels,rows);
+      }catch(error){if(current===requestNo)results.textContent='Rankings unavailable: '+error.message;}
+    }
+    root.onclick=e=>{
+      const k=e.target.closest('button[data-rkind]');
+      const p=e.target.closest('button[data-rperiod]');
+      if(k){kind=k.dataset.rkind;reload();}
+      if(p){period=p.dataset.rperiod;reload();}
+    };
+    await reload();
+  };
   P.analytics=async function () {
     const root=byId('pg');root.innerHTML=card('Analytics','Loading verified statistics…');
     try{
@@ -586,7 +629,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','gifts','audit','admins','system'
+    'dash','analytics','users','support','rooms','ledger','gifts','rank','audit','admins','system'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

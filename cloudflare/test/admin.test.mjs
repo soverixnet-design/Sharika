@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleAdminOperation } from '../src/admin.mjs';
+import { handleAdminOperation, readGiftRankings } from '../src/admin.mjs';
 
 function mock(role) {
   const calls = [];
@@ -135,4 +135,33 @@ test('gift history is real D1 data and available only to finance or super roles'
   const denied=await handle('support','/api/v1/admin/gift-events');
   assert.equal(denied.status,403);
   assert.equal(denied.data.error,'admin_permission_denied');
+});
+
+test('admin gift rankings are read-only and finance-role gated',async()=>{
+  const yes=await handle('finance','/api/v1/admin/rankings?kind=room&period=daily');
+  assert.equal(yes.status,200);
+  assert.deepEqual(yes.data.leaders,[]);
+  assert.equal(yes.data.source,'settled_gift_events');
+  const denied=await handle('support','/api/v1/admin/rankings');
+  assert.equal(denied.status,403);
+  const invalid=await handle('super','/api/v1/admin/rankings?kind=bogus');
+  assert.equal(invalid.status,400);
+});
+test('gift ranking SQL totals real events using parameterized UTC boundaries',async()=>{
+  let captured;
+  const db={prepare(sql){
+    captured={sql,args:null};
+    return {bind(...args){captured.args=args;return this;},
+      async all(){return {results:[{public_no:10000002,name:'Real sender',
+        pic:null,wealth_level:3,charm_level:4,total:120}]};}};
+  }};
+  const data=await readGiftRankings(db,'weekly','rich');
+  assert.equal(data.leaders[0].public_id,'10000002');
+  assert.equal(data.leaders[0].total,120);
+  assert.match(captured.sql,/SUM\(CAST\(e.quantity AS INTEGER\)\*CAST\(e.price_coins AS INTEGER\)\)/);
+  assert.match(captured.sql,/e.created_at>=\? AND e.created_at<\?/);
+  const [start,end]=captured.args;
+  assert.equal(new Date(start.replace(' ','T')+'Z').getUTCDay(),1);
+  assert.equal((Date.parse(end.replace(' ','T')+'Z')-Date.parse(start.replace(' ','T')+'Z'))/86400000,7);
+  assert.equal(await readGiftRankings(db,'2020','rich'),null);
 });

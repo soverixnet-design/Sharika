@@ -1,6 +1,6 @@
 import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
-import { handleAdminOperation } from './admin.mjs';
+import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -324,6 +324,13 @@ export async function handleRequest(request, env) {
         return reply({message:saved},201,cors);
       }
       return fail('method_not_allowed',405,cors);
+    }
+    if (path === '/api/v1/rankings' && request.method === 'GET') {
+      await assertActive(env.DB,uid);
+      const period=url.searchParams.get('period')||'weekly';
+      const kind=url.searchParams.get('kind')||'rich';
+      const result=await readGiftRankings(env.DB,period,kind);
+      return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {
       await assertActive(env.DB, uid);

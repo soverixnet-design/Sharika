@@ -960,9 +960,66 @@
     if(supportSendButton)supportSendButton.disabled=false;
     window.renderMsg();
   };
-  window.renderRank=function(){
+  // The supplied HTML contains a simulated weekly podium. Never display it
+  // as real winners while this staging app uses verified server data.
+  window.showWeekly=function(done){if(typeof done==='function')done();};
+  let rankingRequest=0;
+  window.renderRank=async function(){
     const view=document.getElementById('rb');
-    if(view)view.innerHTML='<div class="empty">No verified ranking results yet.</div>';
+    if(!view)return;
+    const requestNo=++rankingRequest;
+    const periods=['daily','weekly','monthly'];
+    const kinds={1:'rich',2:'charm',3:'room'};
+    const period=periods[window.rper]||'weekly';
+    const kind=kinds[window.rtab];
+    view.innerHTML='<div class="empty">Loading verified rankings…</div>';
+    if(!kind){
+      view.innerHTML='<div class="empty">This ranking has no verified server results yet.</div>';
+      return;
+    }
+    if(!session){
+      view.innerHTML='<div class="empty">Sign in to see verified rankings.</div>';
+      return;
+    }
+    try{
+      const data=await api('GET','/rankings?period='+period+'&kind='+kind);
+      if(requestNo!==rankingRequest)return;
+      const leaders=Array.isArray(data.leaders)?data.leaders:[];
+      view.textContent='';
+      if(!leaders.length){
+        view.innerHTML='<div class="empty">No settled gifts recorded in this period yet.</div>';
+        return;
+      }
+      const info=document.createElement('div');
+      info.className='empty';
+      info.textContent=kind==='rich'?'Gift coins sent · verified server ranking':
+        kind==='charm'?'Gift coins received · verified server ranking':
+        'Gift coins sent in each room · verified server ranking';
+      view.appendChild(info);
+      for(const leader of leaders){
+        const row=document.createElement('div');
+        row.className='rr'+(leader.public_id&&leader.public_id===profile?.public_id?' me':'');
+        row.innerHTML='<b class="n"></b><div class="ra"></div>'+
+          '<div class="rn"><b></b><span class="idl"><i class="idb">ID</i>'+
+          '<span class="sid"></span></span></div>'+
+          '<div class="rv"><i class="cn"></i><span class="amt"></span></div>';
+        row.querySelector('.n').textContent=String(leader.rank);
+        const avatar=row.querySelector('.ra');
+        if(kind==='room')avatar.textContent=leader.emoji||'🎙️';
+        else if(leader.pic){
+          const img=document.createElement('img');
+          img.src=leader.pic;img.alt='';
+          img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';
+          avatar.appendChild(img);
+        }else avatar.textContent='👤';
+        row.querySelector('.rn b').textContent=leader.name||'User';
+        row.querySelector('.sid').textContent=kind==='room'?leader.room_id:leader.public_id;
+        row.querySelector('.amt').textContent=Number(leader.total||0).toLocaleString('en-US');
+        view.appendChild(row);
+      }
+    }catch(error){
+      if(requestNo===rankingRequest)view.textContent='Rankings unavailable: '+errText(error);
+    }
   };
   window.box=function() {
     window.openSheet('<h3>🏆 Weekly rewards</h3><div class="empty">Rewards are not enabled on the staging server.</div>');

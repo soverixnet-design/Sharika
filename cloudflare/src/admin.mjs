@@ -11,6 +11,53 @@ function allowed(role, roles, fail, cors) {
   return roles.has(role) ? null : fail('admin_permission_denied', 403, cors);
 }
 
+
+// Public gift rankings use only settled gift events, never wallet estimates or demo data.
+// UTC boundaries are half-open so each transaction belongs to exactly one period.
+export async function readGiftRankings(db, period, kind) {
+  if (!['daily','weekly','monthly'].includes(period) ||
+      !['rich','charm','room'].includes(kind)) return null;
+  const now=new Date(), year=now.getUTCFullYear(), month=now.getUTCMonth();
+  let start;
+  if (period==='daily') {
+    start=new Date(Date.UTC(year,month,now.getUTCDate()));
+  } else if (period==='weekly') {
+    const mondayOffset=(now.getUTCDay()+6)%7;
+    start=new Date(Date.UTC(year,month,now.getUTCDate()-mondayOffset));
+  } else {
+    start=new Date(Date.UTC(year,month,1));
+  }
+  const end=new Date(start.getTime());
+  if (period==='daily') end.setUTCDate(end.getUTCDate()+1);
+  else if (period==='weekly') end.setUTCDate(end.getUTCDate()+7);
+  else end.setUTCMonth(end.getUTCMonth()+1);
+  const stamp=date=>date.toISOString().slice(0,19).replace('T',' ');
+  const startAt=stamp(start),endAt=stamp(end);
+  const value='SUM(CAST(e.quantity AS INTEGER)*CAST(e.price_coins AS INTEGER))';
+  let sql;
+  if(kind==='room') {
+    sql='SELECT r.id AS room_id,r.name,r.emoji,'+value+' AS total '+
+      'FROM sharika_gift_events e JOIN sharika_rooms r ON r.id=e.room_id '+
+      'WHERE e.created_at>=? AND e.created_at<? '+
+      'GROUP BY e.room_id ORDER BY total DESC,r.id ASC LIMIT 50';
+  } else {
+    const participant=kind==='rich'?'e.sender_uid':'e.recipient_uid';
+    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+value+' AS total '+
+      'FROM sharika_gift_events e JOIN sharika_users u ON u.auth_uid='+participant+' '+
+      'WHERE e.created_at>=? AND e.created_at<? '+
+      'GROUP BY '+participant+' ORDER BY total DESC,u.public_no ASC LIMIT 50';
+  }
+  const rows=(await db.prepare(sql).bind(startAt,endAt).all()).results||[];
+  const leaders=rows.map((row,i)=>kind==='room'
+    ? {rank:i+1,room_id:row.room_id,name:row.name,emoji:row.emoji||'🎙️',
+       total:Number(row.total)||0}
+    : {rank:i+1,public_id:id(row.public_no),name:row.name,pic:row.pic||null,
+       total:Number(row.total)||0,wealth_level:row.wealth_level,
+       charm_level:row.charm_level});
+  return {period,kind,start_at:start.toISOString(),end_at:end.toISOString(),
+    leaders,read_only:true,source:'settled_gift_events'};
+}
+
 export async function handleAdminOperation({ request, env, uid, path, cors, reply, fail }) {
   if (!path.startsWith(ADMIN_PREFIX)) return null;
   const actor = await env.DB.prepare(
@@ -203,6 +250,14 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       environment:'staging', read_only:actor.role!=='super',
       write_scopes:actor.role==='super'?['user_status','gift_catalog','support_reply']:
         actor.role==='support'?['support_reply']:[] }, 200, cors);
+  }
+  if (operation === 'rankings' && request.method === 'GET') {
+    const denied=allowed(actor.role,FINANCE_ROLES,fail,cors);
+    if(denied)return denied;
+    const period=url.searchParams.get('period')||'weekly';
+    const kind=url.searchParams.get('kind')||'rich';
+    const result=await readGiftRankings(env.DB,period,kind);
+    return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
   }
   if (operation === 'dashboard') {
     const totals = await env.DB.prepare(

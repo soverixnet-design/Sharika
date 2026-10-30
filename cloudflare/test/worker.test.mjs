@@ -438,3 +438,40 @@ test('lucky gifts cannot issue unverified payouts through the regular gift endpo
     assert.equal(db.calls.some(c=>c[0]==='batch'),false);
   }finally{globalThis.fetch=prior;}
 });
+
+
+test('gift leaderboards require Firebase auth and use only settled gift events',async()=>{
+  const unauth=await handleRequest(new Request('https://example.test/api/v1/rankings'),
+    {DB:fakeDb(),FIREBASE_PROJECT_ID:project});
+  assert.equal(unauth.status,401);
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.startsWith('SELECT * FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',public_no:10000001});
+      if(sql.includes('FROM sharika_gift_events'))
+        stmt.all=async()=>{db.calls.push(['all',sql,stmt.values]);return {results:[{public_no:10000002,name:'A real recipient',
+          pic:null,wealth_level:1,charm_level:2,total:75}]};};
+      return stmt;
+    };
+    const headers={Authorization:'Bearer '+await token()};
+    const ok=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings?kind=charm&period=weekly',{headers}),
+      {DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(ok.status,200);
+    const data=await ok.json();
+    assert.equal(data.source,'settled_gift_events');
+    assert.equal(data.kind,'charm');
+    assert.deepEqual(data.leaders.map(x=>[x.public_id,x.total]),[['10000002',75]]);
+    const query=db.calls.find(c=>c[0]==='all'&&c[1].includes('FROM sharika_gift_events'));
+    assert.ok(query);
+    assert.equal(query[2].length,2);
+    const bad=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings?kind=play&period=weekly',{headers}),
+      {DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(bad.status,400);
+    assert.equal((await bad.json()).error,'invalid_ranking_filter');
+  }finally{globalThis.fetch=prior;}
+});
