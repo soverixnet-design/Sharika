@@ -165,3 +165,28 @@ test('gift ranking SQL totals real events using parameterized UTC boundaries',as
   assert.equal((Date.parse(end.replace(' ','T')+'Z')-Date.parse(start.replace(' ','T')+'Z'))/86400000,7);
   assert.equal(await readGiftRankings(db,'2020','rich'),null);
 });
+
+test('Top Recharge counts verified seller/manual credits only, not signup or game wins',async()=>{
+  let sqlText='',bound=[];
+  const db={prepare(sql){
+    sqlText=sql;
+    return {bind(...args){bound=args;return this;},
+      async all(){return {results:[{
+        public_no:10000031,name:'Verified buyer',pic:null,
+        wealth_level:2,charm_level:1,total:4500
+      }]};}};
+  }};
+  const top=await readGiftRankings(db,'weekly','recharge');
+  assert.equal(top.source,'verified_recharge_ledger');
+  assert.equal(top.read_only,true);
+  assert.equal(top.leaders[0].public_id,'10000031');
+  assert.equal(top.leaders[0].total,4500);
+  assert.match(sqlText,/FROM sharika_wallet_ledger l/);
+  assert.match(sqlText,/l.currency='coins'/);
+  assert.match(sqlText,/l.delta>0/);
+  assert.match(sqlText,/seller_recharge/);
+  assert.match(sqlText,/manual_recharge/);
+  assert.doesNotMatch(sqlText,/signup_welcome|game_win|referral_bonus/);
+  assert.equal(bound.length,2);
+  assert.equal(await readGiftRankings(db,'weekly','unsupported'),null);
+});
