@@ -849,6 +849,89 @@
     await refresh();
   };
 
+  P.banners=async function(){
+    const root=byId('pg');
+    root.innerHTML=card('Home banners','Loading verified banner configuration…');
+    try{
+      const data=await api('GET','banners');
+      const rows=data.banners||[];
+      const actions=[['none','No action'],['daily','Daily check-in'],['recharge','Recharge'],['rank','Rankings'],['invite','Invite friends']];
+      const choices=selected=>actions.map(([key,label])=>
+        '<option value="'+key+'"'+(selected===key?' selected':'')+'>'+label+'</option>').join('');
+      const palette={
+        purple:['#9b4dff','#ff3dc8'],ocean:['#0ea5e9','#075985'],
+        gold:['#f59e0b','#ff3dc8'],green:['#10b981','#3b82f6']
+      };
+      const list=rows.map(row=>{
+        const canEdit=role==='super';
+        return '<div class="card" style="margin:10px 0">'+
+          '<div style="padding:10px;border-radius:12px;background:linear-gradient(135deg,'+
+          esc(row.color_a)+','+esc(row.color_b)+');color:#fff">'+
+          '<b>'+esc(row.emoji)+' '+esc(row.title)+'</b><small style="display:block">'+
+          esc(row.subtitle)+'</small></div>'+
+          '<p class="n">Banner #'+esc(row.id)+' · '+(row.active?'Visible in app':'Hidden')+'</p>'+
+          (canEdit?'<div class="row"><input data-bf="title" data-id="'+row.id+'" maxlength="80" value="'+esc(row.title)+'" aria-label="Banner title">'+
+          '<input data-bf="subtitle" data-id="'+row.id+'" maxlength="160" value="'+esc(row.subtitle||'')+'" aria-label="Banner subtitle"></div>'+
+          '<div class="row"><select data-bf="action" data-id="'+row.id+'">'+choices(row.action)+'</select>'+
+          '<input type="number" min="0" max="100" data-bf="sort_order" data-id="'+row.id+'" value="'+Number(row.sort_order)+'" aria-label="Display order">'+
+          '<label><input type="checkbox" data-bf="active" data-id="'+row.id+'"'+(row.active?' checked':'')+'> Active</label>'+
+          '<button class="btn s" type="button" data-bsave="'+row.id+'">Save</button></div>':'')+
+          '</div>';
+      }).join('');
+      const create=role==='super'?'<div class="card"><h3>➕ Add home banner</h3>'+
+        '<p class="n">Banner text, color and action are controlled here. Image uploads need a separate verified media-store integration.</p>'+
+        '<div class="row"><input id="new-banner-title" maxlength="80" placeholder="Banner headline">'+
+        '<input id="new-banner-subtitle" maxlength="160" placeholder="Subtitle"></div>'+
+        '<div class="row"><input id="new-banner-emoji" maxlength="12" value="🎉" aria-label="Emoji">'+
+        '<select id="new-banner-action">'+choices('none')+'</select>'+
+        '<select id="new-banner-color"><option value="purple">Purple</option><option value="gold">Gold</option><option value="ocean">Ocean</option><option value="green">Green</option></select>'+
+        '<label><input type="checkbox" id="new-banner-active"> Show now</label>'+
+        '<button class="btn" id="new-banner-save" type="button">Add banner</button></div></div>':'';
+      root.innerHTML=card('Verified home banners',
+        'These are real D1 announcements used by the Sharika Android home carousel. No demo banners or wallet changes.')+
+        (list||card('No banners','No active or inactive banners have been created.'))+create+
+        '<p id="banner-note" class="n" aria-live="polite"></p>';
+      const note=byId('banner-note');
+      const add=byId('new-banner-save');
+      if(add)add.onclick=async()=>{
+        if(add.disabled)return;
+        add.disabled=true;
+        try{
+          const picked=palette[byId('new-banner-color').value]||palette.purple;
+          await api('POST','banners',{
+            title:byId('new-banner-title').value.trim(),
+            subtitle:byId('new-banner-subtitle').value.trim(),
+            emoji:byId('new-banner-emoji').value.trim()||'🎉',
+            action:byId('new-banner-action').value,
+            color_a:picked[0],color_b:picked[1],
+            active:byId('new-banner-active').checked,sort_order:rows.length
+          });
+          await P.banners();
+        }catch(error){if(note)note.textContent='Banner not created: '+error.message;}
+        finally{if(add.isConnected)add.disabled=false;}
+      };
+      root.querySelectorAll('[data-bsave]').forEach(button=>{
+        button.onclick=async()=>{
+          const id=button.dataset.bsave;
+          const field=name=>root.querySelector('[data-bf="'+name+'"][data-id="'+id+'"]');
+          const sort=Number(field('sort_order').value);
+          if(!Number.isSafeInteger(sort)||sort<0||sort>100){
+            note.textContent='Display order must be between 0 and 100.';return;
+          }
+          button.disabled=true;
+          try{
+            await api('PATCH','banners/'+id,{
+              title:field('title').value.trim(),subtitle:field('subtitle').value.trim(),
+              action:field('action').value,sort_order:sort,active:field('active').checked
+            });
+            await P.banners();
+          }catch(error){if(note)note.textContent='Banner not saved: '+error.message;}
+          finally{if(button.isConnected)button.disabled=false;}
+        };
+      });
+    }catch(error){root.innerHTML=card('Banners unavailable',error.message);}
+  };
+
   P.system=async function () {
     const root=byId('pg');
     root.innerHTML=card('Sharika staging','Firebase login and D1 role enforcement active. Only audited, authenticated wallet operations are permitted.');
@@ -858,7 +941,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','rech','gifts','rank','audit','admins','system'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','rech','gifts','rank','audit','admins','system','banners'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
