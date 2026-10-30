@@ -945,11 +945,12 @@
         id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
-        cover_url:r.cover_url||null
+        seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
         c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
+        seat_frame_style:own.seat_frame_style||'grad',
         n:Number(own.online_count)||0,cover_url:own.cover_url||null
       } : null;
       window.renderRooms();
@@ -1090,6 +1091,13 @@
     // This also updates guests who remain in the room while its owner edits it.
     if(Number.isInteger(data.seat_count)&&data.seat_count>=4&&data.seat_count<=20)
       room.seat_count=data.seat_count;
+    if(['grad','gold','neon','sq'].includes(data.seat_frame_style))
+      room.seat_frame_style=data.seat_frame_style;
+    const chosenSeatFrame=room.seat_frame_style||'grad';
+    if(frame.S.frame!==chosenSeatFrame){
+      frame.S.frame=chosenSeatFrame;
+      if(typeof frame.applyTheme==='function')frame.applyTheme();
+    }
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,
@@ -1649,6 +1657,40 @@
     };
     // The original +/- controls updated only iframe-local S.n. A rejoin then
     // restored the old D1 limit. Persist each tap before updating the visual.
+    // Unlike the original local-only frame picker, the room's seat frame is
+    // saved in D1 so every guest sees the same decorative ring after rejoin.
+    let seatFrameSaveBusy=false;
+    frame.document.addEventListener('click',async event=>{
+      const choice=event.target.closest?.('.fr button[data-f]');
+      if(!choice||!frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Seat arrangement'))return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if(room.owner_id!==session?.user?.id){frame.toast('Room owner only');return;}
+      if(seatFrameSaveBusy)return;
+      const style=choice.dataset.f;
+      if(!['grad','gold','neon','sq'].includes(style)){frame.toast('Unknown seat frame');return;}
+      if(style===(room.seat_frame_style||'grad'))return;
+      seatFrameSaveBusy=true;
+      frame.$('sheet')?.querySelectorAll('.fr button').forEach(button=>{button.disabled=true;});
+      try{
+        const result=await api('PATCH','/rooms/'+room.id,{
+          name:room.name||'My Sharika room',seat_count:room.seat_count,
+          theme:room.th||'mid',seat_frame_style:style
+        });
+        if(result.room?.seat_frame_style!==style)throw new Error('Seat frame not confirmed by server');
+        room.seat_frame_style=style;
+        frame.S.frame=style;
+        if(typeof frame.applyTheme==='function')frame.applyTheme();
+        if(typeof frame.seatSet==='function')frame.seatSet();
+        await reloadRooms();
+        frame.toast('Seat frame saved for everyone ✓');
+      }catch(error){
+        frame.toast('Seat frame not saved: '+errText(error));
+      }finally{
+        seatFrameSaveBusy=false;
+        frame.$('sheet')?.querySelectorAll('.fr button').forEach(button=>{button.disabled=false;});
+      }
+    },true);
     let seatCountSaveBusy=false;
     frame.document.addEventListener('click',async event=>{
       const control=event.target.closest?.('#mn,#pl');
@@ -1757,7 +1799,8 @@
       saveButton.disabled=true;
       try{
         const data=await api('PATCH','/rooms/'+room.id,{
-          name,seat_count:newSeatCount,theme:frame.S.theme||room.th||'mid'
+          name,seat_count:newSeatCount,theme:frame.S.theme||room.th||'mid',
+          seat_frame_style:room.seat_frame_style||'grad'
         });
         room.name=data.room.name;
         room.seat_count=data.room.seat_count;
