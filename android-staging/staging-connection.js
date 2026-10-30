@@ -536,6 +536,45 @@
         } else frame.toast('Moderation requires verified server permissions');
       } catch (error) { frame.toast(errText(error)); }
     };
+    // The existing room-settings sheet is reused. Its original Save action
+    // runs only after the authenticated D1 owner update succeeds.
+    const roomButton=frame.$ && frame.$('roomBtn');
+    if(roomButton){
+      const oldRoomOpen=roomButton.onclick;
+      roomButton.onclick=()=>{
+        if(room.owner_id!==session?.user?.id){frame.toast('Only room owner can edit settings');return;}
+        if(typeof frame.settings==='function')frame.settings();
+        else if(typeof oldRoomOpen==='function')oldRoomOpen.call(roomButton);
+      };
+    }
+    frame.document.addEventListener('click',async event=>{
+      const saveButton=event.target.closest?.('#save');
+      if(!saveButton || !frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Room settings'))return;
+      event.preventDefault();event.stopImmediatePropagation();
+      if(room.owner_id!==session?.user?.id){frame.toast('Room owner only');return;}
+      if(saveButton.disabled)return;
+      const oldSave=saveButton.onclick;
+      const name=frame.$('nm')?.value?.trim()||'My Sharika room';
+      const newSeatCount=Number(frame.S.n)-1;
+      if(!Number.isInteger(newSeatCount)||newSeatCount<4||newSeatCount>20){
+        frame.toast('Please choose 5–21 total seats');return;
+      }
+      saveButton.disabled=true;
+      try{
+        const data=await api('PATCH','/rooms/'+room.id,{name,seat_count:newSeatCount});
+        room.name=data.room.name;
+        room.seat_count=data.room.seat_count;
+        if(typeof oldSave==='function')oldSave.call(saveButton);
+        await reloadRooms();
+        await syncFrame(room,frame);
+        frame.toast('Room settings saved on server ✓');
+      }catch(error){
+        frame.S.name=room.name;
+        await syncFrame(room,frame).catch(()=>{});
+        frame.toast('Settings not saved: '+errText(error));
+        saveButton.disabled=false;
+      }
+    },true);
     const mic=frame.$ && frame.$('mic');
     if(mic) mic.onclick=async ()=>{
       try {
@@ -549,7 +588,6 @@
       bGame:'Games require fair server-generated rounds before release',
       bMsg:'Private messaging is not on the staging server yet',
       bOwn:'Owner moderation is not on the staging server yet',
-      roomBtn:'Room settings must be saved to the server before release'
     };
     for (const [buttonId, reason] of Object.entries(pendingRoomButtons)) {
       const control = frame.$ && frame.$(buttonId);
