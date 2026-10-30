@@ -1,3 +1,17 @@
+## Deployment checkpoint — 30 October 2026
+
+- Dedicated SFU application `sharika-staging-audio` created in the selected
+  Cloudflare account; App ID `12e774e74598f9095403d08971423d2d`.
+- Both `REALTIME_SFU_APP_ID` and `REALTIME_SFU_APP_SECRET` saved as
+  **secret_text** bindings on `sharika-api-staging`. No secret value is
+  committed, returned to Android, or stored in this document.
+- Worker published with `VOICE_ROOMS` SQLite-backed Durable Object and
+  the existing isolated D1 database `sharika-staging`.
+- Automated Cloudflare syntax/unit checks passed; same-source Android staging
+  APK was built and signed successfully. Physical two-device voice has **not**
+  yet been confirmed.
+- Existing DigitalOcean/other app deployments were not changed.
+
 # Sharika staging — Cloudflare Realtime SFU audio
 
 This changes only the isolated `feature/sharika-android-staging-20261030`
