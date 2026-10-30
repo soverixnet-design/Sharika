@@ -119,6 +119,17 @@ export class SharikaVoiceRoom extends DurableObject {
     return true;
   }
 
+  async presenceRoomCounts() {
+    const now=Date.now();
+    this.ctx.storage.sql.exec('DELETE FROM app_presence WHERE last_seen < ?',now-90_000);
+    const rows=this.ctx.storage.sql.exec(
+      'SELECT room_id AS roomId,COUNT(*) AS onlineCount FROM app_presence ' +
+      'WHERE room_id IS NOT NULL AND last_seen >= ? ' +
+      'GROUP BY room_id ORDER BY room_id LIMIT 1000',now-90_000
+    ).toArray();
+    return Object.fromEntries(rows.map(r=>[r.roomId,Number(r.onlineCount)||0]));
+  }
+
   async presenceStats() {
     const now=Date.now();
     this.ctx.storage.sql.exec('DELETE FROM app_presence WHERE last_seen < ?',now-90_000);

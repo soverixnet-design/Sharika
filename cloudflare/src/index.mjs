@@ -434,7 +434,17 @@ export async function handleRequest(request, env) {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {
         const rows = await env.DB.prepare('SELECT * FROM sharika_rooms ORDER BY created_at DESC LIMIT 100').all();
-        return reply({ rooms: (rows.results || []).map(r => ({ ...r })) }, 200, cors);
+        // One verified room presence snapshot for all displayed cards.
+        let online={};
+        if(env.VOICE_ROOMS) {
+          try {
+            online=await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+              .presenceRoomCounts();
+          } catch(error) {console.warn('room_presence_unavailable',error?.message);}
+        }
+        return reply({rooms:(rows.results||[]).map(r=>({
+          ...r,online_count:Number(online?.[r.id])||0
+        }))},200,cors);
       }
       if (request.method === 'POST') {
         const prior = await env.DB.prepare('SELECT * FROM sharika_rooms WHERE owner_id=?').bind(uid).first();

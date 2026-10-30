@@ -469,13 +469,13 @@
       const rows = data.rooms || [];
       const own = rows.find(r => r.owner_id === session.user.id);
       window.CFG.rooms = rows.filter(r => r.owner_id !== session.user.id).map((r,i)=>({
-        id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:0,host:'Room owner',
+        id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
-        c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count
+        c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,n:Number(own.online_count)||0
       } : null;
       window.renderRooms();
     } catch (error) { toast('Rooms unavailable: '+errText(error)); }
