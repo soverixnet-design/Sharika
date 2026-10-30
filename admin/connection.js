@@ -305,6 +305,59 @@
     'This feature is locked until the server validates its permissions and transactions. No simulated changes are made.');};
   for(const name of Object.keys(P)) P[name]=unavailable(name);
 
+  P.mod=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>🚩 Verified user and room reports</h3>'+
+      '<p class="n">Reports from signed-in Sharika users are stored in the Support Inbox. '+
+      'Moderators can review them here. Account blocks require Super Admin permission.</p>'+
+      '<div class="row" id="sh-mod-shortcuts"></div>'+
+      '<div id="sh-mod-reports">Loading reported issues…</div></div>';
+    const controls=byId('sh-mod-shortcuts');
+    for(const [label,page] of [
+      ['Open Support Inbox','support'],['Review Rooms','rooms'],['Find User','users']
+    ]){
+      const button=document.createElement('button');
+      button.type='button';button.className='btn';
+      button.textContent=label;
+      button.onclick=()=>{window.V=page;window.shell();};
+      controls?.appendChild(button);
+    }
+    const list=byId('sh-mod-reports');
+    if(!list)return;
+    try{
+      const data=await api('GET','reports');
+      if(!list.isConnected)return;
+      list.textContent='';
+      const reports=Array.isArray(data.reports)?data.reports:[];
+      if(!reports.length){
+        list.textContent='No verified reports submitted yet.';
+        return;
+      }
+      for(const report of reports){
+        const item=document.createElement('div');
+        item.className='card';
+        const header=document.createElement('b');
+        header.textContent='Report #'+report.id+' · From ID '+
+          String(report.reporter_public_id||'Unknown');
+        const when=document.createElement('small');
+        when.style.cssText='display:block;margin:5px 0;opacity:.7';
+        when.textContent=String(report.created_at||'');
+        const details=document.createElement('p');
+        details.style.whiteSpace='pre-wrap';
+        details.textContent=String(report.body||'');
+        const open=document.createElement('button');
+        open.type='button';open.className='btn';
+        open.textContent='Review in Support Inbox';
+        open.onclick=()=>{window.V='support';window.shell();};
+        item.append(header,when,details,open);
+        list.appendChild(item);
+      }
+    }catch(error){
+      if(list.isConnected)
+        list.textContent='Report review unavailable: '+error.message;
+    }
+  };
+
   P.dash=async function () {
     const root=byId('pg');root.innerHTML=card('Dashboard','Loading verified totals…');
     try {
