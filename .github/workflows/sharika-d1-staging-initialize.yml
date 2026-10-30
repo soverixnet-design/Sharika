@@ -31,7 +31,7 @@ jobs:
       - name: Checkout reviewed candidate at immutable commit
         uses: actions/checkout@v4
         with:
-          ref: cd060fffec65b6e52d8f17d3428f88de2f60e4c4
+          ref: bb4aeea0910a5109458f4ee9c7f5c4403516832e
           persist-credentials: false
 
       - name: Refuse non-staging Cloudflare target, D1, origins and Firebase project
@@ -43,6 +43,7 @@ jobs:
             if (c.name !== "sharika-api-staging" ||
                 c.account_id !== "d81cf7c48fb9b36d468cb0a08720cd74" ||
                 c.vars?.SHARIKA_ENV !== "staging" ||
+                c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED !== "false" ||
                 c.d1_databases?.length !== 1 ||
                 db?.binding !== "DB" ||
                 db.database_name !== "sharika-staging" ||
@@ -96,7 +97,7 @@ jobs:
             echo "::error::Missing GitHub Actions secret CLOUDFLARE_API_TOKEN"
             exit 1
           fi
-          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT (SELECT COUNT(*) FROM sharika_users) AS users, (SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger, (SELECT COUNT(*) FROM sharika_original_game_bets) AS original_bets, (SELECT COUNT(*) FROM sharika_manual_recharge_reviews) AS reviews"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT (SELECT COUNT(*) FROM sharika_users) AS users, (SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger, (SELECT COUNT(*) FROM sharika_original_game_bets) AS original_bets, (SELECT COUNT(*) FROM sharika_manual_recharge_reviews) AS reviews, (SELECT COUNT(*) FROM sharika_lucky_gift_outcomes) AS lucky_outcomes"
 
       - name: Deploy only sharika-api-staging to workers.dev (no database migration)
         if: ${{ inputs.operation == 'deploy-staging-worker' }}
