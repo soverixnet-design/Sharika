@@ -1,12 +1,14 @@
 // Server-only Lucky Gift draws. Preserve the original Sharika odds (basis points).
 // 0x 70.2%, 1x 15%, 2x 8%, 5x 4%, 10x 2.5%, 50x 0.3%.
 // Only cryptographic randomness on the Worker may select outcomes.
-// CASHOUT COMPLIANCE HOLD: Sharika coins have real-world redeemable value.
-// A feature flag must not turn on chance-based cash payouts before the actual
-// gambling licenses, store certification, verified adult identity and
-// licensed-territory enforcement have been completed and independently reviewed.
-// Removing this hold requires a separate reviewed source-code release.
-export const CASHOUT_LUCKY_GIFTS_BLOCKED = true;
+// Owner-confirmed economy: coins are purchased for in-app social gifting,
+// with no cashout, sellback, or prize of real-world value.
+// Fail closed unless the Worker explicitly declares a non-redeemable economy.
+// A future cashout feature must remove this declaration and disable Lucky Gifts
+// pending a separate jurisdictional review.
+export function nonRedeemableLuckyEconomy(env) {
+  return env?.SHARIKA_COINS_CASH_REDEEMABLE === 'false';
+}
 
 export function luckyGiftBenefits(priceCoins, quantity, recipientCount) {
   if (![priceCoins,quantity,recipientCount].every(Number.isSafeInteger) ||
