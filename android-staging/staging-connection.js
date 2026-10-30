@@ -145,6 +145,8 @@
       'background-repeat:no-repeat!important;-webkit-mask:none!important;mask:none!important;',
       'pointer-events:none!important;animation:none!important}',
       '.sh-sovera-frame::after{content:none!important}',
+      '.seat .av.sh-has-sovera-frame{margin-bottom:9px}',
+      '.host .av.sh-has-sovera-frame{margin-bottom:17px}',
       '#v-me .mav{position:relative;overflow:visible!important;animation:none!important;',
       'transform:none!important;margin-bottom:25px!important}',
       '#v-me .mav>div{animation:none!important;transform:none!important}',
@@ -217,6 +219,7 @@
       const medal=medalArt(seat.medal_style);
       if(!item&&!medal)continue;
       avatar.style.position='relative';
+      avatar.classList.toggle('sh-has-sovera-frame',!!item);
       if(item){
         const decoration=doc.createElement('i');
         decoration.className='fxr sh-sovera-frame';
