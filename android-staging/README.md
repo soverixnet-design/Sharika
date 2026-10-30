@@ -1,5 +1,26 @@
 # Sharika Android staging alpha — original Sharika UI
 
+## Server-verified virtual-coin games (isolated staging only)
+
+Food Wheel and Jackpot Fruit now use 40-second UTC rounds with 28 seconds
+open for one bet per verified adult account per game and round. A user may bet
+any whole-coin amount up to their available wallet balance (subject to safe
+integer limits). The fixed payout schedule is **9x** for one of nine equal Food
+Wheel sectors, and **36x** when all three of six equally likely Jackpot Fruit
+reels match. All other outcomes pay zero. The expected return is 100% before
+rounding; no operator edge or cash redemption is implemented.
+
+D1 stores round commitments, accepted bets, settled results and immutable
+wallet ledger entries. Bet debits and win payouts use one-time SQLite triggers.
+The SHA-256 commitment is published before betting and the random seed becomes
+visible after each round closes. Results are computed by the Worker, not
+Android localStorage. Settlement happens on a returning player's next game or
+wallet request; background payout broadcasting and full multi-device end-to-end
+testing are not yet complete.
+
+**Never deploy this staging feature to a cash-equivalent wallet or Play Store
+without country-by-country legal, age-gating and gaming-policy review.**
+
 ## Food Wheel game card (staging preview, 2026-10-30)
 
 The supplied Food Wheel artwork is packaged locally as `app/src/main/assets/food-wheel-card.jpg`.

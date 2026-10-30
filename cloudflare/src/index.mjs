@@ -1,6 +1,7 @@
 import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
+import { handleGameRequest, settleDueBets } from './games.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -325,6 +326,18 @@ export async function handleRequest(request, env) {
       }
       return fail('method_not_allowed',405,cors);
     }
+    // Authenticated UTC-synchronized virtual-coin games. The D1 migration
+    // owns the atomic debit/payout triggers and exactly-once settlement.
+    if (parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='games') {
+      await assertActive(env.DB,uid);
+      if(parts.length===3&&request.method==='GET')
+        return reply({games:['food-wheel','jackpot-fruit'],round_ms:40000,
+          virtual_coins_only:true},200,cors);
+      if(parts.length===5)
+        return await handleGameRequest({request,db:env.DB,uid,game:parts[3],
+          action:parts[4],reply,fail,cors});
+      return fail('game_route_not_found',404,cors);
+    }
     if (path === '/api/v1/rankings' && request.method === 'GET') {
       await assertActive(env.DB,uid);
       const period=url.searchParams.get('period')||'weekly';
@@ -341,7 +354,9 @@ export async function handleRequest(request, env) {
       return reply({ gifts:result.results || [], read_only:true }, 200, cors);
     }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
-      const user = await assertActive(env.DB, uid);
+      await assertActive(env.DB, uid);
+      await settleDueBets(env.DB,uid);
+      const user = await me(env.DB,uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
       return reply({ coins: user.coins, diamonds: user.diamonds, xp: user.xp, ledger: rows.results || [] }, 200, cors);
