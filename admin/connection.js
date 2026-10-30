@@ -98,6 +98,28 @@
     });
     return googleClientPromise;
   }
+  // On Android Chrome, use Firebase's established popup handler. It does not
+  // require this Cloudflare Worker origin to be added to the Google JS client.
+  let firebasePopupPromise=null;
+  function firebasePopupSdk() {
+    if (!firebasePopupPromise) firebasePopupPromise=Promise.all([
+      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js'),
+      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js')
+    ]).then(async ([appModule,authModule])=>{
+      let app;
+      try {app=appModule.getApp('sharika-staging-admin');}
+      catch(_) {app=appModule.initializeApp({
+        apiKey:FIREBASE_KEY,
+        authDomain:'sharika-voice-chat-app.firebaseapp.com',
+        projectId:'sharika-voice-chat-app'
+      },'sharika-staging-admin');}
+      const auth=authModule.getAuth(app);
+      await authModule.setPersistence(auth,authModule.browserSessionPersistence);
+      auth.useDeviceLanguage();
+      return {auth,authModule};
+    });
+    return firebasePopupPromise;
+  }
   function googleError(error) {
     const message=String(error?.message || error?.error || 'Google sign-in failed');
     if (message.includes('origin_mismatch') || message.includes('Not a valid origin'))
@@ -135,17 +157,57 @@
     googleHelp.textContent = 'Use the same Google account as your Sharika Android app. No extra password.';
     googleButton.insertAdjacentElement('afterend', googleHelp);
     let readyClient = null;
-    googleClient().then(client => {
-      readyClient=client;
-      if (googleButton.isConnected) googleButton.disabled=false;
-    }).catch(error => {
-      if (googleButton.isConnected) {
-        googleButton.textContent='Google sign-in unavailable';
-        const label=byId('le');
-        if(label) label.textContent=googleError(error);
-      }
-    });
+    let readyPopupSdk = null;
+    const useChromePopup = /Android/i.test(navigator.userAgent) &&
+      /Chrome\//i.test(navigator.userAgent) && !/EdgA|OPR/i.test(navigator.userAgent);
+    function initializeGIS() {
+      googleClient().then(client => {
+        readyClient=client;
+        if (googleButton.isConnected) googleButton.disabled=false;
+      }).catch(error => {
+        if (googleButton.isConnected) {
+          googleButton.textContent='Google sign-in unavailable';
+          const label=byId('le');
+          if(label) label.textContent=googleError(error);
+        }
+      });
+    }
+    if (useChromePopup) {
+      firebasePopupSdk().then(sdk=>{
+        readyPopupSdk=sdk;
+        if (googleButton.isConnected) googleButton.disabled=false;
+      }).catch(()=>initializeGIS());
+    } else initializeGIS();
     googleButton.onclick=function () {
+      if (readyPopupSdk) {
+        googleButton.disabled=true;
+        const label=byId('le');
+        if (label) label.textContent='Opening Google sign-in…';
+        const provider=new readyPopupSdk.authModule.GoogleAuthProvider();
+        provider.setCustomParameters({prompt:'select_account'});
+        let operation;
+        try {
+          // Invoke popup synchronously in the user's click gesture.
+          operation=readyPopupSdk.authModule.signInWithPopup(readyPopupSdk.auth,provider);
+        } catch(error) {operation=Promise.reject(error);}
+        Promise.resolve(operation).then(async signed=>{
+          const jwt=await signed.user.getIdToken();
+          const refresh=signed.user.refreshToken;
+          if (!jwt || !refresh) throw new Error('Firebase did not establish a session');
+          save({idToken:jwt,refreshToken:refresh,
+            expiresAt:Date.now()+50*60*1000,email:signed.user.email || ''});
+          await verifyAdmin();
+          window.V='dash';window.shell();
+        }).catch(async error=>{
+          save(null);role=null;identity=null;
+          await readyPopupSdk.authModule.signOut(readyPopupSdk.auth).catch(()=>{});
+          const errorLabel=byId('le');
+          if (errorLabel) errorLabel.textContent=googleError(error);
+        }).finally(()=>{
+          if (googleButton.isConnected) googleButton.disabled=false;
+        });
+        return;
+      }
       // Google requires requestAccessToken to be called directly from a click.
       if (!readyClient || googlePending) return;
       googleButton.disabled=true;
