@@ -2,6 +2,8 @@ package com.soverixnet.sharika;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -10,6 +12,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -54,11 +57,13 @@ import java.util.concurrent.Executors;
 public final class SharikaActivity extends Activity {
     private static final String STAGING_API = "https://sharika-api-staging.soverixnet.workers.dev";
     private static final int MIC_PERMISSION_REQUEST = 3412;
+    private static final int IMAGE_PICKER_REQUEST = 3413;
     private final ExecutorService io = Executors.newFixedThreadPool(2);
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
     private PermissionRequest pendingMic;
+    private ValueCallback<Uri[]> pendingImageSelection;
     private boolean googlePending;
     // Firebase reload contacts the identity server; refreshing on every
     // 1.6-second live-game poll causes overlapping network calls.
@@ -103,9 +108,38 @@ public final class SharikaActivity extends Activity {
             @Override public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> requestMicrophone(request));
             }
+            @Override public boolean onShowFileChooser(WebView view,
+                    ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
+                // Android grants access only to the selected image. Do not
+                // request blanket READ_MEDIA_IMAGES or storage permissions.
+                if (pendingImageSelection != null) pendingImageSelection.onReceiveValue(null);
+                pendingImageSelection = callback;
+                Intent chooser = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                chooser.addCategory(Intent.CATEGORY_OPENABLE);
+                chooser.setType("image/*");
+                chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                try {
+                    startActivityForResult(chooser, IMAGE_PICKER_REQUEST);
+                    return true;
+                } catch (RuntimeException error) {
+                    pendingImageSelection = null;
+                    callback.onReceiveValue(null);
+                    return true;
+                }
+            }
         });
         setContentView(browser, new ViewGroup.LayoutParams(-1, -1));
         browser.loadUrl("file:///android_asset/index.html");
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != IMAGE_PICKER_REQUEST) return;
+        ValueCallback<Uri[]> callback = pendingImageSelection;
+        pendingImageSelection = null;
+        if (callback == null) return;
+        Uri selected = resultCode == Activity.RESULT_OK && data != null ? data.getData() : null;
+        callback.onReceiveValue(selected == null ? null : new Uri[]{selected});
     }
 
     private void requestMicrophone(PermissionRequest request) {
@@ -361,7 +395,9 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
         if (path.equals("/api/v1/daily/check-in")) return method.equals("POST");
-        if (path.equals("/api/v1/sellers") || path.equals("/api/v1/sellers/me")) return method.equals("GET");
+        if (path.equals("/api/v1/sellers") || path.equals("/api/v1/sellers/me") ||
+            path.equals("/api/v1/sellers/transfers") || path.equals("/api/v1/sellers/allocations"))
+            return method.equals("GET");
         if (path.equals("/api/v1/sellers/transfer")) return method.equals("POST");
         if (path.equals("/api/v1/rooms"))
             return method.equals("GET") || method.equals("POST");
@@ -369,6 +405,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))
+            return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/locks$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/invitations$"))
