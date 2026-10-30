@@ -207,3 +207,39 @@ test('room creation and seat settings reload even during an in-flight room poll'
   assert.equal(view.A.myRoom.seat_count,4);
   assert.equal(view.renders,1,'stale response cannot redraw room cards');
 });
+
+test('Android startup hides legacy demo screens until Firebase session restoration',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=adapter.indexOf('  function startVerifiedStartup(){');
+  const end=adapter.indexOf('  const ACCOUNT_KEY',start);
+  assert.ok(start>0&&end>start);
+  const classes=new Set();
+  const root={classList:{
+    add(value){classes.add(value);},
+    remove(value){classes.delete(value);}
+  }};
+  const inserted=[];
+  const stageDocument={
+    head:{appendChild(item){inserted.push(item);}},
+    createElement(){return {id:'',textContent:''};},
+    getElementById(id){return id==='app'?root:null;}
+  };
+  const originalPodium=()=>{throw new Error('legacy demo top 3 must not appear');};
+  const stageWindow={showWeekly:originalPodium};
+  const finish=new Function('document','window',
+    adapter.slice(start,end)+';return finishVerifiedStartup;')(
+      stageDocument,stageWindow
+    );
+  assert.ok(classes.has('sharika-startup-verifying'));
+  assert.equal(inserted.length,1);
+  assert.match(inserted[0].textContent,/\.views/);
+  assert.match(inserted[0].textContent,/\.auth/);
+  assert.match(inserted[0].textContent,/\.nav/);
+  let finishedSplash=false;
+  stageWindow.showWeekly(()=>{finishedSplash=true;});
+  assert.equal(finishedSplash,true,'original splash must still finish');
+  assert.notEqual(stageWindow.showWeekly,originalPodium);
+  assert.match(adapter,/\}finally\{[\s\S]*?finishVerifiedStartup\(\)/);
+  finish();
+  assert.ok(!classes.has('sharika-startup-verifying'));
+});
