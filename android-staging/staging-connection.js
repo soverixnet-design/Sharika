@@ -861,16 +861,133 @@
       window.CFG.rooms = rows.filter(r => r.owner_id !== session.user.id).map((r,i)=>({
         id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
-        th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count
+        th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
+        cover_url:r.cover_url||null
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
-        c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,n:Number(own.online_count)||0
+        c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
+        n:Number(own.online_count)||0,cover_url:own.cover_url||null
       } : null;
       window.renderRooms();
     } catch (error) { toast('Rooms unavailable: '+errText(error)); }
     finally { busyRooms = false; }
   }
+  // Android's system picker grants selected-image access; no blanket
+  // gallery/storage permission or native device file path is exposed to JS.
+  const COVER_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
+  function verifiedCoverUrl(value){
+    return typeof value==='string' &&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/cover\?v=[0-9]+$/.test(value)
+      ?value:null;
+  }
+  async function jpegRoomPreview(file){
+    if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
+      throw new Error('Choose an image smaller than 15 MB');
+    const blobUrl=URL.createObjectURL(file);
+    const photo=new Image();
+    try{
+      await new Promise((resolve,reject)=>{
+        const timeout=setTimeout(()=>reject(new Error('Image loading timed out')),20000);
+        photo.onload=()=>{clearTimeout(timeout);resolve();};
+        photo.onerror=()=>{clearTimeout(timeout);reject(new Error('Image could not be opened'));};
+        photo.src=blobUrl;
+      });
+      const sourceWidth=photo.naturalWidth,sourceHeight=photo.naturalHeight;
+      if(!sourceWidth||!sourceHeight)throw new Error('Invalid image dimensions');
+      const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+      if(!ctx)throw new Error('Image editor is unavailable');
+      for(const side of [900,720,600,480,360,280]){
+        const scale=Math.min(1,side/Math.max(sourceWidth,sourceHeight));
+        canvas.width=Math.max(1,Math.round(sourceWidth*scale));
+        canvas.height=Math.max(1,Math.round(sourceHeight*scale));
+        ctx.fillStyle='#161029';ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(photo,0,0,canvas.width,canvas.height);
+        for(const quality of [.76,.60,.45]){
+          const preview=canvas.toDataURL('image/jpeg',quality);
+          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=120023)
+            return preview;
+        }
+      }
+      throw new Error('Photo too large after resizing');
+    }finally{URL.revokeObjectURL(blobUrl);}
+  }
+  let coverUploadBusy=false;
+  function pickRoomCover(room,frame=null){
+    if(!session||room?.owner_id!==session.user.id){
+      toast('Only the room owner can change its cover photo');return;
+    }
+    if(coverUploadBusy){toast('Room photo upload is already running');return;}
+    const picker=document.createElement('input');
+    picker.type='file';picker.accept='image/*';
+    picker.style.cssText='position:fixed;opacity:0;left:-10000px;top:0';
+    document.body.appendChild(picker);
+    picker.addEventListener('cancel',()=>picker.remove(),{once:true});
+    picker.onchange=async()=>{
+      const file=picker.files?.[0];picker.remove();
+      if(!file)return;
+      coverUploadBusy=true;
+      toast('Preparing your room photo…');
+      try{
+        const image_data=await jpegRoomPreview(file);
+        const saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
+        room.cover_url=verifiedCoverUrl(saved.cover_url);
+        if(frame?.S)frame.S.pic=room.cover_url;
+        const preview=frame?.$?.('pbig');
+        if(preview&&room.cover_url){
+          preview.style.backgroundImage='url("'+room.cover_url+'")';
+          preview.style.backgroundSize='cover';
+          preview.textContent='';
+        }
+        await reloadRooms();
+        toast('Room photo saved · visible on room cards ✓');
+      }catch(error){toast('Room photo not saved: '+errText(error));}
+      finally{coverUploadBusy=false;}
+    };
+    picker.click();
+  }
+  function drawVerifiedRoomCards(){
+    const rooms=[...(window.CFG.rooms||[]),window.A?.myRoom].filter(Boolean);
+    for(const card of document.querySelectorAll('#grid .card[data-id]')){
+      const room=rooms.find(r=>r.id===card.dataset.id);
+      if(!room)continue;
+      const image=verifiedCoverUrl(room.cover_url);
+      if(image){
+        const background=card.querySelector('.bg');
+        if(background){
+          background.style.backgroundImage='linear-gradient(180deg,transparent 35%,rgba(7,4,26,.55)),url("'+image+'")';
+          background.style.backgroundSize='cover';
+          background.style.backgroundPosition='center';
+          const pattern=background.querySelector('.pat');
+          if(pattern)pattern.style.opacity='0';
+        }
+        const emoji=card.querySelector('.emo');if(emoji)emoji.style.display='none';
+      }
+      if(room.owner_id===session?.user?.id&&!card.querySelector('.sh-room-cover-edit')){
+        const button=document.createElement('button');
+        button.type='button';button.className='sh-room-cover-edit';
+        button.textContent='📷 Edit photo';
+        button.setAttribute('aria-label','Add or change room cover photo');
+        button.style.cssText='position:absolute;z-index:30;top:8px;right:8px;'+
+          'border:1px solid #fff9;border-radius:12px;background:#140b35d9;'+
+          'color:#fff;padding:7px 9px;font-size:12px;font-weight:700';
+        button.onpointerdown=e=>e.stopPropagation();
+        button.onclick=e=>{e.preventDefault();e.stopPropagation();pickRoomCover(room);};
+        card.style.position='relative';card.appendChild(button);
+      }
+    }
+  }
+  // Original tab/search handlers call their lexical renderRooms binding rather
+  // than window.renderRooms; observe only direct grid child changes too.
+  const coverGrid=document.getElementById('grid');
+  if(coverGrid)new MutationObserver(()=>drawVerifiedRoomCards())
+    .observe(coverGrid,{childList:true});
+  const originalRenderRoomsWithCards=window.renderRooms;
+  window.renderRooms=function(...args){
+    const result=originalRenderRoomsWithCards.apply(this,args);
+    drawVerifiedRoomCards();
+    return result;
+  };
   async function syncFrame(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
     const [data,owner] = await Promise.all([
@@ -1432,6 +1549,25 @@
         else if(typeof oldRoomOpen==='function')oldRoomOpen.call(roomButton);
         const rewardLabel=frame.$('rRw')?.querySelector('small');
         if(rewardLabel)rewardLabel.textContent='10% of ordinary gifts · verified room ledger';
+        const photo=frame.$('pbig');
+        if(photo){
+          if(verifiedCoverUrl(room.cover_url)){
+            photo.style.backgroundImage='url("'+room.cover_url+'")';
+            photo.style.backgroundSize='cover';
+          }
+          photo.title='Choose room photo from gallery';
+          photo.onclick=()=>pickRoomCover(room,frame);
+        }
+        const sheet=frame.$('sheet');
+        if(sheet&&!frame.$('sh-room-photo-action')){
+          const button=frame.document.createElement('button');
+          button.id='sh-room-photo-action';button.type='button';
+          button.className='send';button.textContent='📷 Change room card photo';
+          button.style.cssText='display:block;width:100%;margin:12px 0;padding:12px;border-radius:12px';
+          button.onclick=()=>pickRoomCover(room,frame);
+          const actions=sheet.querySelector('.gbar');
+          sheet.insertBefore(button,actions||null);
+        }
       };
     }
     frame.document.addEventListener('click',async event=>{
