@@ -593,6 +593,10 @@
         };
       else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level});
     }
+    for(const seatNo of data.locked_seats||[]) {
+      if(Number.isInteger(seatNo)&&seatNo>0&&seatNo<slots.length&&slots[seatNo].empty)
+        slots[seatNo]={lock:1,i:seatNo};
+    }
     frame.seats=slots;
     frame.U=audience;
     frame.S.coins=balance.coins;
@@ -747,7 +751,15 @@
         const target=frame.seats?.[seat];
         const isSelf=target?.user_id===session?.user?.id;
         const owner=room.owner_id===session?.user?.id;
-        if(action==='take' && seat>0) {
+        if((action==='lock'||action==='unlock')&&seat>0) {
+          if(!owner)throw new Error('Room owner only');
+          await api('PUT','/rooms/'+room.id+'/locks',{
+            seat_no:seat,locked:action==='lock'
+          });
+          frame.close();
+          await syncFrame(room,frame);
+          frame.toast(action==='lock'?'Seat locked':'Seat unlocked');
+        } else if(action==='take' && seat>0) {
           await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
           frame.close(); await syncFrame(room,frame);
           let state=await connectVoice(room.id);
