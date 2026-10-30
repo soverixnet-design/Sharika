@@ -261,7 +261,20 @@ export async function handleGameRequest({request,db,uid,game,action,reply,fail,c
           game==='food-wheel'?pick:null,requestId).run();
     }catch(e){
       if(/insufficient|ineligible/i.test(e.message||''))return fail('insufficient_coins',409,cors);
-      if(/UNIQUE|constraint/i.test(e.message||''))return fail('bet_already_placed',409,cors);
+      if(/UNIQUE|constraint/i.test(e.message||'')){
+        // Another identical request may have won the INSERT race. The UNIQUE
+        // constraint already prevents a second debit; confirm it was identical.
+        const collision=await db.prepare('SELECT * FROM sharika_game_bets WHERE user_uid=? AND request_id=?')
+          .bind(uid,requestId).first();
+        if(collision){
+          if(collision.game!==game||collision.round_no!==roundNo||
+             collision.stake!==stake||
+             collision.pick_index!==(game==='food-wheel'?pick:null))
+            return fail('idempotency_conflict',409,cors);
+          return reply({bet:safeBet(collision),duplicate:true},200,cors);
+        }
+        return fail('bet_already_placed',409,cors);
+      }
       throw e;
     }
     const saved=await db.prepare('SELECT * FROM sharika_game_bets WHERE user_uid=? AND request_id=?')
