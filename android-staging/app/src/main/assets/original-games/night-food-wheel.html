@@ -114,9 +114,18 @@ function redraw(d){
  const prev=d.previous_result;
  if(prev){
  its[prev.index]?.classList.add('hl');
- const top=(prev.top_winners||[]).slice(0,3).map((w,i)=>['🥇','🥈','🥉'][i]+' '+w.name+' '+fmt(w.total_win)).join(' · ');
- $('#hist').textContent='Last result: '+C.items[prev.index][0]+' · #'+prev.round_no+
-   (top?' · Real winners: '+top:' · No recorded winners yet');
+ const top=(prev.top_winners||[]).slice(0,3).map((w,i)=>
+   ['🥇','🥈','🥉'][i]+' '+(w.name||'User')+' (#'+w.public_id+') · '+fmt(w.total_win)+' coins');
+ const history=$('#hist');
+ history.style.cssText='flex-direction:column;align-items:center;justify-content:center;'+
+   'text-align:center;white-space:normal;line-height:1.35;gap:4px;padding:8px 10px';
+ history.replaceChildren();
+ const last=document.createElement('div');
+ last.textContent='🎡 Last result: '+C.items[prev.index][0]+' · Round '+prev.round_no;
+ const winners=document.createElement('div');
+ winners.style.cssText='font-size:12px;color:#ffe49a;font-weight:700;overflow-wrap:anywhere';
+ winners.textContent=top.length?'🏆 Round Top 3: '+top.join(' · '):'🏆 No verified winners in this round yet';
+ history.append(last,winners);
 }
 }
 async function place(index){
