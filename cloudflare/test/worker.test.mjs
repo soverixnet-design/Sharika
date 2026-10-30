@@ -133,3 +133,56 @@ test('unimplemented money-changing endpoints fail closed', async () => {
     assert.equal((await response.json()).error, 'migration_pending');
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('verified active users receive only the enabled D1 gift catalog',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(), old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.includes('FROM sharika_gifts WHERE active=1'))
+        stmt.all=async()=>({results:[{id:1,name:'Rose',emoji:'🌹',tab:0,price_coins:5}]});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/gifts',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    assert.equal((await res.json()).gifts[0].name,'Rose');
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('only the verified room owner can save room settings in D1',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const owner='firebase:'+project+':secure-user';
+    const buildDb=(roomOwner,canUpdate=true)=>{
+      const db=fakeDb(),old=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=old(sql);
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({status:'active'});
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+          stmt.first=async()=>({id:'10000001',owner_id:roomOwner,name:'My Room',seat_count:12});
+        if(sql.startsWith('UPDATE sharika_rooms SET name='))
+          stmt.run=async()=>({meta:{changes:canUpdate?1:0}});
+        return stmt;
+      };
+      return db;
+    };
+    const request=async()=>new Request('https://example.test/api/v1/rooms/10000001',{
+      method:'PATCH',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({name:'Fresh Room',seat_count:10})
+    });
+    const allowed=await handleRequest(await request(),{DB:buildDb(owner),FIREBASE_PROJECT_ID:project});
+    assert.equal(allowed.status,200);
+    const denied=await handleRequest(await request(),{DB:buildDb('other-owner'),FIREBASE_PROJECT_ID:project});
+    assert.equal(denied.status,403);
+    const occupied=await handleRequest(await request(),{DB:buildDb(owner,false),FIREBASE_PROJECT_ID:project});
+    assert.equal(occupied.status,409);
+  }finally{globalThis.fetch=originalFetch;}
+});
