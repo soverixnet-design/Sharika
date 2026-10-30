@@ -39,7 +39,7 @@ jobs:
           tables = db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
           assert db.execute("SELECT name FROM sqlite_master WHERE name='sharika_wallet_ledger'").fetchone()
           import time
-          now = int(time.time()*1000)
+          now = int(time.time()*1000) - 2000  # Round is safely open before SQLite checks it
           db.execute("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES (10000001,'tester','Tester','2000-01-01',0,200)")
           db.execute("INSERT INTO sharika_game_rounds(id,game,round_no,starts_ms,bet_closes_ms,closes_ms,seed_hex,commit_sha256) VALUES ('food-wheel:1','food-wheel',1,?,?,?,?,?)",
                      (now,now+30000,now+40000,'a'*64,'b'*64))
