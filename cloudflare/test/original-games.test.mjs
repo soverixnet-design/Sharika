@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,webcrypto} from 'node:crypto';
-import {ORIGINAL_ROUND_MS,originalOutcome,originalPayout} from '../src/original-games.mjs';
+import {ORIGINAL_ROUND_MS,originalOutcome,originalPayout,handleOriginalGameRequest} from '../src/original-games.mjs';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const seed='0123456789abcdef'.repeat(4);
@@ -49,4 +49,47 @@ test('Jackpot bonuses are authoritative and pool bonuses cannot mint unlimited c
 test('real history and winners never arise from local Math.random',()=>{
   const source=originalOutcome.toString()+originalPayout.toString();
   assert.doesNotMatch(source,/Math\.random|localStorage|fake.*winner/i);
+});
+test('accepted original-game bets survive a retry after the round closes',async()=>{
+  const round=Math.floor(Date.now()/ORIGINAL_ROUND_MS)-1;
+  const existing={id:76,game:'sovera-food',round_no:round,pick_index:2,
+    amount:500,request_id:'original-retry-test-12345'};
+  const queries=[];
+  let prior=existing;
+  const db={prepare(sql){
+    return {
+      bind(...args){this.args=args;return this;},
+      async first(){
+        queries.push(sql);
+        if(sql.startsWith('SELECT coins,minor,status FROM sharika_users'))
+          return {coins:750,minor:0,status:'active'};
+        if(sql.startsWith('SELECT * FROM sharika_original_game_bets WHERE user_uid=?'))
+          return prior;
+        throw Error('Unexpected read: '+sql);
+      },
+      async run(){throw Error('A retry must never insert another bet');}
+    };
+  }};
+  const reply=(body,status)=>Response.json(body,{status});
+  const fail=(error,status)=>Response.json({error},{status});
+  const call=body=>handleOriginalGameRequest({
+    request:new Request('https://sharika.test/api/v1/original-games/sovera-food/bet',{
+      method:'POST',body:JSON.stringify(body),
+      headers:{'content-type':'application/json'}
+    }),db,uid:'verified-user',game:'sovera-food',action:'bet',reply,fail,cors:{}
+  });
+  const payload={round_no:round,pick:2,amount:500,request_id:existing.request_id};
+  const replay=await call(payload);
+  assert.equal(replay.status,200);
+  assert.deepEqual(await replay.json(),{
+    bet_id:76,duplicate:true,coins:750,round_no:round
+  });
+  const conflict=await call({...payload,amount:501});
+  assert.equal(conflict.status,409);
+  assert.equal((await conflict.json()).error,'idempotency_conflict');
+  prior=null;
+  const stale=await call({...payload,request_id:'original-stale-new-1234'});
+  assert.equal(stale.status,409);
+  assert.equal((await stale.json()).error,'betting_closed');
+  assert.ok(queries.some(sql=>sql.includes('sharika_original_game_bets')));
 });
