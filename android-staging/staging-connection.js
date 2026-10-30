@@ -1248,7 +1248,7 @@
     }
     const requestNo=++rankingRequest;
     const periods=['daily','weekly','monthly'];
-    const kinds={1:'rich',2:'charm',3:'room'};
+    const kinds={0:'recharge',1:'rich',2:'charm',3:'room'};
     const period=periods[window.rper]||'weekly';
     const kind=kinds[window.rtab];
     view.innerHTML='<div class="empty">Loading verified rankings…</div>';
@@ -1271,7 +1271,8 @@
       }
       const info=document.createElement('div');
       info.className='empty';
-      info.textContent=kind==='rich'?'Gift coins sent · verified server ranking':
+      info.textContent=kind==='recharge'?'Approved recharge coins · verified server ranking':
+        kind==='rich'?'Gift coins sent · verified server ranking':
         kind==='charm'?'Gift coins received · verified server ranking':
         'Gift coins sent in each room · verified server ranking';
       view.appendChild(info);
