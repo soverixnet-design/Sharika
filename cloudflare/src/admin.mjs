@@ -16,11 +16,12 @@ function allowed(role, roles, fail, cors) {
 }
 
 
-// Public gift rankings use only settled gift events, never wallet estimates or demo data.
-// UTC boundaries are half-open so each transaction belongs to exactly one period.
+// Public rankings use only verified gift events or approved recharge ledger
+// credits, never demo users, payment references or client-reported balances.
+// UTC boundaries are half-open so each transaction belongs to one period.
 export async function readGiftRankings(db, period, kind) {
   if (!['daily','weekly','monthly'].includes(period) ||
-      !['rich','charm','room'].includes(kind)) return null;
+      !['rich','charm','room','recharge'].includes(kind)) return null;
   const now=new Date(), year=now.getUTCFullYear(), month=now.getUTCMonth();
   let start;
   if (period==='daily') {
@@ -44,6 +45,15 @@ export async function readGiftRankings(db, period, kind) {
       'FROM sharika_gift_events e JOIN sharika_rooms r ON r.id=e.room_id '+
       'WHERE e.created_at>=? AND e.created_at<? '+
       'GROUP BY e.room_id ORDER BY total DESC,r.id ASC LIMIT 50';
+  } else if(kind==='recharge') {
+    // Seller transfers and finance-approved receipts are the only recharge
+    // sources. Do not count welcome coins, referral bonuses or game payouts.
+    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+
+      'SUM(l.delta) AS total FROM sharika_wallet_ledger l '+
+      'JOIN sharika_users u ON u.auth_uid=l.auth_uid '+
+      "WHERE l.created_at>=? AND l.created_at<? AND l.currency='coins' "+
+      "AND l.delta>0 AND l.reason IN ('seller_recharge','manual_recharge') "+
+      'GROUP BY l.auth_uid ORDER BY total DESC,u.public_no ASC LIMIT 50';
   } else {
     const participant=kind==='rich'?'e.sender_uid':'e.recipient_uid';
     sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+value+' AS total '+
@@ -59,7 +69,7 @@ export async function readGiftRankings(db, period, kind) {
        total:Number(row.total)||0,wealth_level:row.wealth_level,
        charm_level:row.charm_level});
   return {period,kind,start_at:start.toISOString(),end_at:end.toISOString(),
-    leaders,read_only:true,source:'settled_gift_events'};
+    leaders,read_only:true,source:kind==='recharge'?'verified_recharge_ledger':'settled_gift_events'};
 }
 
 export async function handleAdminOperation({ request, env, uid, path, cors, reply, fail }) {
