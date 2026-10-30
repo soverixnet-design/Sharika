@@ -629,7 +629,9 @@
     // Keep the existing original Sharika gift box and its original artwork.
     const giftButton=frame.$ && frame.$('bGift');
     const originalGiftOpen=giftButton && giftButton.onclick;
-    if(giftButton)giftButton.onclick=async ()=>{
+    let directGiftTarget=null;
+    async function openVerifiedGiftBox(recipientOverride=null){
+      directGiftTarget=recipientOverride;
       try{
         const data=await api('GET','/gifts');
         const gifts=(data.gifts||[]).filter(g=>g.tab===0||g.tab===1||
@@ -651,6 +653,17 @@
           htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
         if(typeof originalGiftOpen==='function') {
           originalGiftOpen.call(giftButton);
+          if(directGiftTarget) {
+            // Replace the old seat-only recipient chips with the verified
+            // selected person. Sending always uses this exact public ID.
+            const selected=frame.document.createElement('div');
+            selected.className='row';
+            selected.textContent='🎁 Send to '+directGiftTarget.name+
+              ' · ID '+directGiftTarget.id;
+            const chips=frame.$('sheet')?.querySelector('.chips');
+            if(chips)chips.replaceWith(selected);
+            else frame.$('sheet')?.prepend(selected);
+          }
           // Google Play requires chance-based virtual reward odds next to a
           // purchase. Preserve the original gift modal, insert text only.
           frame.document.getElementById('sharika-lucky-odds')?.remove();
@@ -668,7 +681,8 @@
           }
         } else frame.toast('Gift box unavailable');
       }catch(error){frame.toast('Gift catalog unavailable: '+errText(error));}
-    };
+    }
+    if(giftButton)giftButton.onclick=()=>openVerifiedGiftBox(null);
     // The original gift game debits a local wallet; always intercept before it
     // executes, settle at the server, then use the original gift flight artwork.
     frame.document.addEventListener('click',async event=>{
@@ -682,8 +696,10 @@
         const giftId=availableGiftIds[chosen];
         const quantity=Number(frame.qty);
         const indices=Array.isArray(frame.rec)?frame.rec:[];
-        const recipients=[...new Set(indices.map(index=>
-          frame.seats?.[Number(index)]?.public_id).filter(Boolean))];
+        const recipients=directGiftTarget
+          ?[directGiftTarget.id]
+          :[...new Set(indices.map(index=>
+            frame.seats?.[Number(index)]?.public_id).filter(Boolean))];
         if(!giftId||!Number.isInteger(quantity)||quantity<1||quantity>10||
           !recipients.length)throw new Error('Select a gift and an occupied seat');
         const requestId='gift:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
@@ -707,7 +723,11 @@
                 frame.G[chosen]||[result.gift.emoji]);
           },1000);
         }
-        for(const index of indices.slice(0,20)){
+        const animatedIndices=directGiftTarget
+          ?(frame.seats||[]).filter(slot=>slot?.public_id===directGiftTarget.id)
+            .map(slot=>slot.i)
+          :indices;
+        for(const index of animatedIndices.slice(0,20)){
           const slot=frame.seats?.[Number(index)];
           if(!slot||!recipients.includes(slot.public_id))continue;
           for(let n=0;n<Math.min(quantity,2);n++){
@@ -923,6 +943,54 @@
           }
         };
       }
+      // Use the same D1 gift catalog and wallet ledger as the room Gift box.
+      // A room audience member may receive a gift without occupying a mic seat.
+      const memberGiftButton=sheet?.querySelector('button.act[data-a="gf"]');
+      if(memberGiftButton)memberGiftButton.onclick=async()=>{
+        if(memberGiftButton.disabled)return;
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        memberGiftButton.disabled=true;
+        try {
+          const members=await api('GET','/rooms/'+room.id+'/members');
+          if(!(members.members||[]).some(member=>
+            member.sharika_users?.public_id===verifiedId))
+            throw new Error('This user has left the room');
+          await openVerifiedGiftBox({id:verifiedId,name:String(user.n||'Member')});
+        }catch(error) {
+          frame.toast('Gift unavailable: '+errText(error));
+        }finally {
+          if(memberGiftButton.isConnected)memberGiftButton.disabled=false;
+        }
+      };
+      // Open the existing authenticated private-message view. Its server
+      // already enforces mutual follow before enabling message sending.
+      const messageButton=frame.document.createElement('button');
+      messageButton.type='button';
+      messageButton.className='act';
+      messageButton.textContent='💬 Message';
+      sheet?.querySelector('.acts')?.appendChild(messageButton);
+      messageButton.onclick=async()=>{
+        if(messageButton.disabled)return;
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        if(verifiedId===profile?.public_id) {
+          frame.toast('Choose another member to message');return;
+        }
+        messageButton.disabled=true;
+        try {
+          const member=await api('GET','/users/'+verifiedId);
+          frame.close();
+          document.getElementById('rw')?.classList.remove('on');
+          const bubble=document.getElementById('minib');
+          if(bubble)bubble.textContent=room.emoji||'🎙️';
+          document.getElementById('mini')?.classList.add('on');
+          window.go('msg');
+          await window.renderMsg();
+          await openPrivateThread(verifiedId,String(member.name||'Member'));
+        }catch(error) {
+          messageButton.disabled=false;
+          frame.toast('Message unavailable: '+errText(error));
+        }
+      };
       const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
       if(inviteButton)inviteButton.onclick=async()=>{
         if(inviteButton.disabled)return;
