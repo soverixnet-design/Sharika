@@ -201,6 +201,28 @@ export async function handleRequest(request, env) {
         return reply(await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?').bind(roomId).first(), 201, cors);
       }
     }
+    // Room settings are owned by the verified room owner, never the browser's
+    // self-declared "owner" flag. Save name and seat count in shared D1.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'v1' &&
+        parts[2] === 'rooms' && PUBLIC_ID.test(parts[3]) && request.method === 'PATCH') {
+      await assertActive(env.DB, uid);
+      const roomId=parts[3];
+      const room=await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?').bind(roomId).first();
+      if(!room)return fail('room_not_found',404,cors);
+      if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+      const body=await readBody(request);
+      const name=body.name===undefined ? room.name : txt(body.name,100);
+      const seatCount=body.seat_count===undefined ? room.seat_count : body.seat_count;
+      if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20)
+        return fail('invalid_room_settings',400,cors);
+      const updated=await env.DB.prepare(
+        'UPDATE sharika_rooms SET name=?,seat_count=? WHERE id=? AND owner_id=? '+
+        'AND NOT EXISTS (SELECT 1 FROM sharika_room_members WHERE room_id=? AND seat_no>?)'
+      ).bind(name,seatCount,roomId,uid,roomId,seatCount).run();
+      if(!updated.meta?.changes)return fail('seats_occupied_above_new_limit',409,cors);
+      return reply({room:await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?')
+        .bind(roomId).first()},200,cors);
+    }
     if (parts.length >= 5 && parts[0] === 'api' && parts[1] === 'v1' && parts[2] === 'rooms' && PUBLIC_ID.test(parts[3])) {
       await assertActive(env.DB, uid);
       const roomId = parts[3];
