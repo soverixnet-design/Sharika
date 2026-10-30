@@ -138,7 +138,7 @@
     style.id='sh-sovera-cosmetics';
     style.textContent=[
       '.sh-sovera-frame.fxr{position:absolute!important;top:50%!important;left:50%!important;',
-      'right:auto!important;bottom:auto!important;inset:auto!important;',
+      'right:auto!important;bottom:auto!important;',
       'width:142%!important;height:142%!important;transform:translate(-50%,-50%)!important;',
       'z-index:9!important;border:0!important;border-radius:0!important;',
       'background-size:contain!important;background-position:center!important;',
