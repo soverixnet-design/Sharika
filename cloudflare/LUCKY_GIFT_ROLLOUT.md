@@ -37,7 +37,8 @@ No existing data was deleted and the journal was not modified.
   https://github.com/soverixnet-design/Sharika/actions/runs/41080757134
 - Verified staging API source deployment:
   https://github.com/soverixnet-design/Sharika/actions/runs/41082603727
-- The reviewed source pin is `bb4aeea0910a5109458f4ee9c7f5c4403516832e`.
+- The deployed staging Worker remains pinned to `bb4aeea0910a5109458f4ee9c7f5c4403516832e` with the live Lucky flag `false`.
+- The newer cashout safety hold exists in draft PR #4 source and passed its own CI: https://github.com/soverixnet-design/Sharika/actions/runs/41084037034. It has **not yet been deployed** to the staging Worker; the deployed feature flag is still OFF.
 - API health returned 200; unauthenticated gift endpoint returned 401.
 - Worker name is `sharika-api-staging`, **not production**.
 - `SHARIKA_LUCKY_GIFTS_ENABLED` is explicitly `false` in deployed bindings.
@@ -85,8 +86,7 @@ legally cleared for cashout until they pass the same review.
 
 ## Before activating Lucky coin payouts
 
-1. Clarify whether coins can ever be transferred, redeemed, sold back or
-   exchanged for real-world value; review required platform/market rules.
+1. **Resolved: coins are cash-redeemable.** Obtain and independently verify the exact gambling license, territorial allowance and platform certification before proceeding.
 2. Implement any needed true age and location restrictions. Self-declared DOB
    does not constitute strong age verification.
 3. Confirm that the staged Lucky catalogue contains approved active tab=2
