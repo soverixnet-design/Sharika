@@ -17,7 +17,7 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
             return recipient?{auth_uid:'recipient2',coins:20,status:'active'}:null;
           if(sql.includes('FROM sharika_coin_seller_transfers t'))return duplicate?{id:12,amount:200,target_uid:'recipient2'}:null;
           if(sql.includes('SELECT id,stock_after FROM sharika_coin_seller_transfers'))return {id:12,stock_after:stock-200};
-          if(sql.includes('FROM sharika_coin_seller_allocations WHERE'))return null;
+          if(sql.includes('SELECT id,amount,stock_after,seller_uid FROM sharika_coin_seller_allocations'))return null;
           if(sql.includes('SELECT s.seller_uid'))return seller?{seller_uid:'seller1',active:1,available_coins:stock}:null;
           if(sql.includes('SELECT id,stock_after FROM sharika_coin_seller_allocations'))return {id:13,stock_after:stock+200};
           if(sql.includes('SELECT auth_uid,status,minor FROM sharika_users'))return actor?{auth_uid:'seller1',status:'active',minor}:null;
