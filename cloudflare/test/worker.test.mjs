@@ -387,7 +387,7 @@ test('regular gift sending uses catalog price and atomically settles one coin de
         stmt.first=async()=>({id:'10000001',owner_id:uid});
       if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
         stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
-      if(sql.includes('FROM sharika_gifts')&&sql.includes('tab IN (0,1)'))
+      if(sql.includes('FROM sharika_gifts')&&sql.includes('tab IN (0,1,2)'))
         stmt.first=async()=>({id:9,name:'Rose',emoji:'🌹',price_coins:10,tab:0});
       if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
         stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,status:'active'}]});
@@ -439,6 +439,85 @@ test('lucky gifts cannot issue unverified payouts through the regular gift endpo
   }finally{globalThis.fetch=prior;}
 });
 
+
+test('Lucky Gift is age-gated, disabled by default, and never debits a minor',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try {
+    const uid='firebase:'+project+':secure-user';
+    async function attempt(minor,enabled) {
+      const db=fakeDb(),old=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=old(sql);
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({status:'active',coins:2000,minor,birthdate:minor?'2016-01-01':'1998-01-01'});
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+          stmt.first=async()=>({id:'10000001',owner_id:uid});
+        if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+          stmt.first=async()=>({room_id:'10000001',user_id:uid});
+        if(sql.includes('FROM sharika_gifts')&&sql.includes('tab IN (0,1,2)'))
+          stmt.first=async()=>({id:10,name:'Lucky Clover',emoji:'🍀',price_coins:10,tab:2});
+        if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
+          stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,status:'active'}]});
+        return stmt;
+      };
+      const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+        method:'POST',headers:{Authorization:'Bearer '+await token()},
+        body:JSON.stringify({gift_id:10,quantity:1,
+          recipient_public_ids:['10000001'],request_id:'gift_lucky_age_123'})
+      }),{DB:db,FIREBASE_PROJECT_ID:project,
+        SHARIKA_LUCKY_GIFTS_ENABLED:enabled?'true':'false'});
+      return {res,db};
+    }
+    const disabled=await attempt(0,false);
+    assert.equal(disabled.res.status,503);
+    assert.equal((await disabled.res.json()).error,'lucky_gifts_disabled');
+    assert.equal(disabled.db.calls.some(c=>c[0]==='batch'),false);
+    const minor=await attempt(1,true);
+    assert.equal(minor.res.status,403);
+    assert.equal((await minor.res.json()).error,'lucky_gifts_adult_only');
+    assert.equal(minor.db.calls.some(c=>c[0]==='batch'),false);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('adult Lucky Gift draws on server and batches debit, result and payout ledger',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try {
+    const uid='firebase:'+project+':secure-user';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000,birthdate:'1998-01-01',minor:0});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:uid});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:uid});
+      if(sql.includes('FROM sharika_gifts')&&sql.includes('tab IN (0,1,2)'))
+        stmt.first=async()=>({id:10,name:'Lucky Clover',emoji:'🍀',price_coins:10,tab:2});
+      if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
+        stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,status:'active'}]});
+      if(sql.startsWith('SELECT id,total_coins FROM sharika_gift_transactions'))
+        stmt.first=async()=>({id:75,total_coins:10});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:10,quantity:1,
+        recipient_public_ids:['10000001'],request_id:'gift_lucky_adult_123'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project,SHARIKA_LUCKY_GIFTS_ENABLED:'true'});
+    assert.equal(res.status,201);
+    const json=await res.json();
+    assert.equal(json.spent_coins,10);
+    assert.ok([0,1,2,5,10,50].includes(json.lucky.max_multiplier));
+    assert.equal(json.lucky.payout_coins,json.lucky.max_multiplier*10);
+    const statements=db.calls.find(c=>c[0]==='batch')?.[1];
+    assert.ok(statements);
+    assert.ok(statements.some(x=>x.sql?.includes('sharika_lucky_gift_outcomes')));
+    assert.equal(statements.filter(x=>x.sql?.includes("'gift_sent'")).length,1);
+    assert.equal(statements.filter(x=>x.sql?.includes("'lucky_gift_reward'")).length,
+      json.lucky.payout_coins>0?1:0);
+  }finally{globalThis.fetch=prior;}
+});
 
 test('gift leaderboards require Firebase auth and use only settled gift events',async()=>{
   const unauth=await handleRequest(new Request('https://example.test/api/v1/rankings'),
