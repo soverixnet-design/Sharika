@@ -111,11 +111,30 @@ async function createVoiceToken(env, uid, room, publish, owner) {
 }
 
 export async function handleRequest(request, env) {
-  const cors = corsFor(request, env);
-  if (!cors) return fail('origin_forbidden', 403);
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+  const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
+  // Only the room's public card thumbnail supports anonymous cross-origin GET;
+  // all mutations continue through strict origin and Firebase checks.
+  const cors = coverPath && request.method==='GET'
+    ? {'access-control-allow-origin':'*'} : corsFor(request, env);
+  if (!cors) return fail('origin_forbidden', 403);
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+  // The image is a public room-card asset; mutation is owner-authenticated
+  // further below. No Firebase tokens or profile data are exposed here.
+  if(coverPath && request.method==='GET') {
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const image=await env.DB.prepare(
+      'SELECT mime,image_base64,version FROM sharika_room_covers WHERE room_id=?'
+    ).bind(coverPath[1]).first();
+    if(!image)return fail('room_cover_not_found',404,cors);
+    const binary=atob(image.image_base64);
+    const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
   if (path === '/health' && request.method === 'GET') {
     // A database-only diagnostic for staging. Authentication remains unavailable
     // until FIREBASE_PROJECT_ID is explicitly configured for protected endpoints.
@@ -496,10 +515,56 @@ export async function handleRequest(request, env) {
       return reply({coins:updated.coins,diamonds:updated.diamonds,
         spent_diamonds:diamonds,credited_coins:coins,duplicate:false},200,cors);
     }
+    if(coverPath && request.method==='PUT') {
+      await assertActive(env.DB,uid);
+      const roomId=coverPath[1];
+      const room=await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?')
+        .bind(roomId).first();
+      if(!room)return fail('room_not_found',404,cors);
+      if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+      const contentLength=Number(request.headers.get('content-length')||0);
+      if(contentLength>125000)return fail('room_cover_too_large',413,cors);
+      const raw=await request.text();
+      if(raw.length>125000)return fail('room_cover_too_large',413,cors);
+      let body;
+      try{body=JSON.parse(raw||'{}');}catch(_){return fail('invalid_room_cover',400,cors);}
+      if(!body||typeof body!=='object'||Array.isArray(body)||
+         typeof body.image_data!=='string'||!body.image_data.startsWith('data:image/jpeg;base64,'))
+        return fail('invalid_room_cover',400,cors);
+      const imageBase64=body.image_data.slice('data:image/jpeg;base64,'.length);
+      if(imageBase64.length<16||imageBase64.length>120000||
+         !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64))
+        return fail('invalid_room_cover',400,cors);
+      let binary;
+      try{binary=atob(imageBase64);}catch(_){return fail('invalid_room_cover',400,cors);}
+      if(binary.length<32||binary.length>90000||
+         binary.charCodeAt(0)!==255||binary.charCodeAt(1)!==216||
+         binary.charCodeAt(2)!==255||
+         binary.charCodeAt(binary.length-2)!==255||
+         binary.charCodeAt(binary.length-1)!==217)
+        return fail('invalid_room_cover',400,cors);
+      const saved=await env.DB.prepare(
+        'INSERT INTO sharika_room_covers(room_id,mime,image_base64,image_bytes) '+
+        "VALUES(?,'image/jpeg',?,?) ON CONFLICT(room_id) DO UPDATE SET "+
+        'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
+        "version=MIN(sharika_room_covers.version+1,1000000000),updated_at=datetime('now') "+
+        "WHERE sharika_room_covers.updated_at<=datetime('now','-20 seconds')"
+      ).bind(roomId,imageBase64,binary.length).run();
+      if(!saved.meta?.changes)return fail('room_cover_rate_limited',429,cors);
+      const row=await env.DB.prepare(
+        'SELECT version,image_bytes FROM sharika_room_covers WHERE room_id=?'
+      ).bind(roomId).first();
+      return reply({room_id:roomId,cover_url:url.origin+path+'?v='+row.version,
+        cover_version:row.version,image_bytes:row.image_bytes},200,cors);
+    }
     if (path === '/api/v1/rooms') {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {
-        const rows = await env.DB.prepare('SELECT * FROM sharika_rooms ORDER BY created_at DESC LIMIT 100').all();
+        const rows=await env.DB.prepare(
+          'SELECT r.*,c.version AS cover_version FROM sharika_rooms r '+
+          'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
+          'ORDER BY r.created_at DESC LIMIT 100'
+        ).all();
         // One verified room presence snapshot for all displayed cards.
         let online={};
         if(env.VOICE_ROOMS) {
@@ -509,7 +574,9 @@ export async function handleRequest(request, env) {
           } catch(error) {console.warn('room_presence_unavailable',error?.message);}
         }
         return reply({rooms:(rows.results||[]).map(r=>({
-          ...r,online_count:Number(online?.[r.id])||0
+          ...r,cover_url:r.cover_version?url.origin+'/api/v1/rooms/'+r.id+
+            '/cover?v='+r.cover_version:null,
+          online_count:Number(online?.[r.id])||0
         }))},200,cors);
       }
       if (request.method === 'POST') {
