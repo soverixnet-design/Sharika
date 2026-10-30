@@ -253,3 +253,19 @@ test('room user and room reports go to authenticated Support Inbox, not demo sta
   assert.match(adapter,/request_id:'report:'/);
   assert.match(adapter,/Report sent to verified support/);
 });
+
+test('avatar slots clear stale photos when the next verified user has no uploaded image',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=adapter.indexOf('  function paintVerifiedAvatar(node,value,doc){');
+  const end=adapter.indexOf('  function roomAvatarForPublicId(frame,id){',start);
+  assert.ok(start>0&&end>start,'verified avatar painter exists');
+  const paint=new Function('verifiedAvatarUrl',
+    adapter.slice(start,end)+';return paintVerifiedAvatar;')(
+      value=>value==='trusted-photo'?'trusted-photo':null
+    );
+  let removed=0;
+  const oldImage={dataset:{source:'previous-user-photo'},remove(){removed++;}};
+  const slot={querySelector(){return oldImage;}};
+  assert.equal(paint(slot,null,{}),false);
+  assert.equal(removed,1,'a seat assigned to a user without a photo cannot display the prior occupant');
+});
