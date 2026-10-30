@@ -123,3 +123,36 @@ Owner's Lucky Gift rules (2026-10-30):
 - This is DORMANT implementation only. `CASHOUT_LUCKY_GIFTS_BLOCKED` remains
   `true` and `SHARIKA_LUCKY_GIFTS_ENABLED` remains `false`. No new
   real-money chance rewards have been activated.
+
+## Owner correction — coins are entertainment-only virtual items
+
+On 2026-10-30 the owner clarified that Sharika **does not offer cashout,
+sellback, cash conversion, external prize redemption, or an in-app coin resale
+system**. Users purchase coins from the operator solely to use them in the
+same voice-chat app (gifts, rooms, games). This **supersedes** the earlier
+statement that coins could be cashed out. Do not label the economy cash-
+redeemable without new evidence.
+
+The previous unconditional `CASHOUT_LUCKY_GIFTS_BLOCKED` source hold was
+therefore replaced with a fail-closed virtual-economy requirement:
+`SHARIKA_COINS_CASH_REDEEMABLE=false` must be **explicitly** configured and
+`SHARIKA_LUCKY_GIFTS_ENABLED=true` must be enabled separately before Lucky
+Gift catalogue/spend are available. Any missing value or change to
+`SHARIKA_COINS_CASH_REDEEMABLE=true` blocks Lucky spending again.
+The Lucky feature flag itself remains **false** in staging; no live deposits,
+withdrawals or randomized gifts have been activated.
+
+For Google Play distribution, disclose the exact 0x/1x/2x/5x/10x/50x odds
+immediately adjacent to the send action. Added a small inline text disclosure
+to the existing original gift modal; it does not redesign the modal.
+Google Play's payments policy generally requires Play Billing for in-app
+virtual currency sold in Play-distributed apps, subject to listed regional
+program exceptions. The existing operator/seller top-up workflow must be
+reviewed for compliance before Play Store publication:
+https://support.google.com/googleplay/android-developer/answer/9858738?hl=en
+
+Important: Whether a virtual random-reward mechanic needs additional local
+restrictions still depends on the countries where it is offered. Do not
+represent the PR as legal clearance. The staging D1 migration-journal drift
+and unapplied 0014 rewards schema must be resolved before even a staging
+Lucky Gift transaction is allowed.
