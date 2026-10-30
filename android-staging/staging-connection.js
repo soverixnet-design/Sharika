@@ -647,7 +647,6 @@
       } catch(error) {frame.toast(errText(error));}
     };
     const pendingRoomButtons = {
-      bGame:'Games require fair server-generated rounds before release',
       bMsg:'Private messaging is not on the staging server yet',
       bOwn:'Owner moderation is not on the staging server yet',
     };
@@ -655,6 +654,8 @@
       const control = frame.$ && frame.$(buttonId);
       if (control) control.onclick=()=>frame.toast(reason);
     }
+    const roomGameButton=frame.$ && frame.$('bGame');
+    if(roomGameButton)roomGameButton.onclick=()=>showGameCard(frame.document,true,frame.toast);
     const rewards=frame.$ && frame.$('rrpill');
     if(rewards) rewards.onclick=()=>frame.toast('Weekly room rewards are not available yet');
     await syncFrame(room,frame);
@@ -1021,6 +1022,29 @@
       if(requestNo===rankingRequest)view.textContent='Rankings unavailable: '+errText(error);
     }
   };
+  // Food Wheel is a real packaged game-selection card, not playable betting.
+  // It uses the exact user-supplied artwork and preserves both original sheets.
+  function showGameCard(doc,insideRoom,showToast){
+    if(!session){window.showAuth('welcome');return;}
+    const sheet=doc.getElementById(insideRoom?'sheet':'sh');
+    const overlay=doc.getElementById(insideRoom?'bg':'shb');
+    if(!sheet||!overlay){showToast('Game card unavailable');return;}
+    sheet.innerHTML='<div class="grab"></div><h3>🎮 Games</h3>'+
+      '<button id="sharika-food-wheel-card" type="button" '+
+      'aria-label="Food Wheel game card, gameplay not enabled yet" '+
+      'style="display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer">'+
+      '<img src="file:///android_asset/food-wheel-card.jpg" alt="Food Wheel — Spin and Win" '+
+      'style="display:block;width:100%;height:auto;aspect-ratio:1536/961;object-fit:contain;border-radius:16px">'+
+      '</button><div class="empty" style="padding:12px 4px 4px">'+
+      'Food Wheel preview · Fair game rounds and coin settlement are not enabled yet.'+
+      '</div>';
+    overlay.classList.add('on');
+    sheet.querySelector('#sharika-food-wheel-card')?.addEventListener('click',()=>{
+      showToast('Food Wheel is not available until server-verified rounds are enabled');
+    });
+  }
+  const gamesShortcut=document.getElementById('qg');
+  if(gamesShortcut)gamesShortcut.onclick=()=>showGameCard(document,false,toast);
   window.box=function() {
     window.openSheet('<h3>🏆 Weekly rewards</h3><div class="empty">Rewards are not enabled on the staging server.</div>');
   };

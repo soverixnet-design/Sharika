@@ -1,5 +1,15 @@
 # Sharika Android staging alpha — original Sharika UI
 
+## Food Wheel game card (staging preview, 2026-10-30)
+
+The supplied Food Wheel artwork is packaged locally as `app/src/main/assets/food-wheel-card.jpg`.
+The original Home **Games** shortcut and the in-room **Games** button open its
+game-selection card inside the existing sheets without changing the original
+HTML, room design, or voice code. This is a visual card only: clicking it displays
+an explicit message that server-verified game rounds and coin settlement are
+not enabled. It cannot place a bet, spend wallet coins, or fabricate a win.
+The Android APK CI checks that this image is actually inside the built APK.
+
 This branch now packages the **user's exact original Sharika HTML/CSS**
 inside an Android WebView, with native Firebase Auth and a separate Cloudflare
 D1 adapter. It is a staging alpha, not a finished user-facing release.
