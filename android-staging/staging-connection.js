@@ -55,7 +55,7 @@
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let busyRooms = false, framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null;
+  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -1032,14 +1032,19 @@
     window.refresh();
     return wallet;
   }
+  let roomsRequestNo=0;
   async function reloadRooms() {
-    if (busyRooms || !session) return;
-    busyRooms = true;
+    if (!session) return;
+    // Room creation and settings saves must always request a fresh list.
+    // An earlier background poll may finish later, but cannot undo it.
+    const requestNo=++roomsRequestNo;
+    const userId=session.user.id;
     try {
       const data = await api('GET','/rooms');
+      if(requestNo!==roomsRequestNo || session?.user?.id!==userId)return;
       const rows = data.rooms || [];
-      const own = rows.find(r => r.owner_id === session.user.id);
-      window.CFG.rooms = rows.filter(r => r.owner_id !== session.user.id).map((r,i)=>({
+      const own = rows.find(r => r.owner_id === userId);
+      window.CFG.rooms = rows.filter(r => r.owner_id !== userId).map((r,i)=>({
         id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
@@ -1052,8 +1057,10 @@
         n:Number(own.online_count)||0,cover_url:own.cover_url||null
       } : null;
       window.renderRooms();
-    } catch (error) { toast('Rooms unavailable: '+errText(error)); }
-    finally { busyRooms = false; }
+    } catch (error) {
+      if(requestNo===roomsRequestNo && session?.user?.id===userId)
+        toast('Rooms unavailable: '+errText(error));
+    }
   }
   // Android's system picker grants selected-image access; no blanket
   // gallery/storage permission or native device file path is exposed to JS.
