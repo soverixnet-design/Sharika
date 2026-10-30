@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sharika-admin-staging",
+  "main": "src/admin-frontend-worker.mjs",
+  "compatibility_date": "2026-10-29",
+  "account_id": "d81cf7c48fb9b36d468cb0a08720cd74",
+  "workers_dev": true,
+  "vars": {
+    "SHARIKA_ENV": "staging"
+  },
+  "services": [
+    {
+      "binding": "SHARIKA_API",
+      "service": "sharika-api-staging",
+      "environment": "production"
+    }
+  ],
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.html", "**/*.txt"],
+      "fallthrough": true
+    }
+  ]
+}
