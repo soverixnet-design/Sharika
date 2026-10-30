@@ -369,6 +369,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/locks$"))
+            return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/chat$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/(join|leave)$"))
