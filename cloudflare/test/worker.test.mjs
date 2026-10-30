@@ -885,3 +885,108 @@ test('mic invitations deny unauthenticated users before any database lookups',as
   assert.equal(response.status,401);
   assert.equal(db.calls.length,0);
 });
+
+
+test('room card image is publicly readable but cannot be edited without a verified login',async()=>{
+  const db=fakeDb();
+  const photo=Buffer.from([255,216,255,...Array(36).fill(3),255,217]);
+  const prev=db.prepare.bind(db);
+  db.prepare=sql=>{
+    const stmt=prev(sql);
+    if(sql.includes('SELECT mime,image_base64,version FROM sharika_room_covers'))
+      stmt.first=async()=>({mime:'image/jpeg',image_base64:photo.toString('base64'),version:2});
+    return stmt;
+  };
+  const path='https://example.test/api/v1/rooms/10000001/cover';
+  const publicImage=await handleRequest(new Request(path,{headers:{Origin:'https://untrusted.example'}}),{DB:db,FIREBASE_PROJECT_ID:project});
+  assert.equal(publicImage.status,200);
+  assert.equal(publicImage.headers.get('content-type'),'image/jpeg');
+  assert.equal(publicImage.headers.get('access-control-allow-origin'),'*');
+  assert.deepEqual(Buffer.from(await publicImage.arrayBuffer()),photo);
+  const anonymous=await handleRequest(new Request(path,{
+    method:'PUT',body:JSON.stringify({image_data:'data:image/jpeg;base64,'+photo.toString('base64')})
+  }),{DB:db,FIREBASE_PROJECT_ID:project});
+  assert.equal(anonymous.status,401);
+  assert.equal(db.calls.some(c=>c[0]==='run'),false);
+});
+
+test('room owner can upload a bounded photo and non-owners cannot change it',async()=>{
+  const prevFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const actor='firebase:'+project+':secure-user';
+    const room='10000001';
+    const jpeg=Buffer.from([255,216,255,...Array(36).fill(3),255,217]);
+    const image_data='data:image/jpeg;base64,'+jpeg.toString('base64');
+    function makeDb(owner,changes=1){
+      const db=fakeDb(),prev=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=prev(sql);
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({status:'active'});
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id=?'))
+          stmt.first=async()=>({id:room,owner_id:owner});
+        if(sql.startsWith('INSERT INTO sharika_room_covers'))
+          stmt.run=async()=>{db.calls.push(['cover_run',sql,stmt.values]);return {meta:{changes}};};
+        if(sql.startsWith('SELECT version,image_bytes FROM sharika_room_covers'))
+          stmt.first=async()=>({version:2,image_bytes:jpeg.length});
+        return stmt;
+      };
+      return db;
+    }
+    async function request(payload){
+      return new Request('https://example.test/api/v1/rooms/'+room+'/cover',{
+        method:'PUT',headers:{Authorization:'Bearer '+await token()},
+        body:JSON.stringify({image_data:payload})
+      });
+    }
+    const outsiderDb=makeDb('other-person');
+    const outsider=await handleRequest(await request(image_data),{DB:outsiderDb,FIREBASE_PROJECT_ID:project});
+    assert.equal(outsider.status,403);
+    assert.equal(outsiderDb.calls.some(c=>c[0]==='cover_run'),false);
+    const invalidDb=makeDb(actor);
+    const invalid=await handleRequest(await request('data:image/png;base64,'+jpeg.toString('base64')),
+      {DB:invalidDb,FIREBASE_PROJECT_ID:project});
+    assert.equal(invalid.status,400);
+    assert.equal(invalidDb.calls.some(c=>c[0]==='cover_run'),false);
+    const ownerDb=makeDb(actor);
+    const saved=await handleRequest(await request(image_data),
+      {DB:ownerDb,FIREBASE_PROJECT_ID:project});
+    assert.equal(saved.status,200);
+    const savedBody=await saved.json();
+    assert.equal(savedBody.cover_url,'https://example.test/api/v1/rooms/10000001/cover?v=2');
+    assert.equal(savedBody.image_bytes,jpeg.length);
+    assert.equal(ownerDb.calls.some(c=>c[0]==='cover_run'),true);
+    const repeat=await handleRequest(await request(image_data),
+      {DB:makeDb(actor,0),FIREBASE_PROJECT_ID:project});
+    assert.equal(repeat.status,429);
+  }finally{globalThis.fetch=prevFetch;}
+});
+
+test('room listing returns only a versioned cover image URL, never image bytes',async()=>{
+  const prevFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),prev=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=prev(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.includes('FROM sharika_rooms r LEFT JOIN sharika_room_covers c')){
+        stmt.all=async()=>({results:[
+          {id:'10000001',name:'Room with cover',cover_version:7},
+          {id:'10000002',name:'No cover',cover_version:null}
+        ]});
+      }
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/rooms',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    const result=await res.json();
+    assert.equal(result.rooms[0].cover_url,'https://example.test/api/v1/rooms/10000001/cover?v=7');
+    assert.equal(result.rooms[1].cover_url,null);
+    assert.equal(JSON.stringify(result).includes('image_base64'),false);
+  }finally{globalThis.fetch=prevFetch;}
+});
