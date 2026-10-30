@@ -364,11 +364,11 @@ export async function handleRequest(request, env) {
       if(user.diamonds<diamonds)return fail('insufficient_diamonds',409,cors);
       const coins=diamonds/100*70;
       await env.DB.batch([
-        env.DB.prepare("UPDATE sharika_users SET diamonds=diamonds-?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
+        env.DB.prepare("UPDATE sharika_users SET diamonds=CASE WHEN status='active' THEN diamonds-? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
           .bind(diamonds,uid),
         env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
           "VALUES(?,'diamonds',?,(SELECT diamonds FROM sharika_users WHERE auth_uid=?),'diamond_exchange',?)").bind(uid,-diamonds,uid,txid),
-        env.DB.prepare("UPDATE sharika_users SET coins=coins+?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
+        env.DB.prepare("UPDATE sharika_users SET coins=CASE WHEN status='active' THEN coins+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
           .bind(coins,uid),
         env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
           "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'diamond_exchange',?)")
