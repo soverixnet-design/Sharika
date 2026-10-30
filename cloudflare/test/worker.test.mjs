@@ -990,3 +990,72 @@ test('room listing returns only a versioned cover image URL, never image bytes',
     assert.equal(JSON.stringify(result).includes('image_base64'),false);
   }finally{globalThis.fetch=prevFetch;}
 });
+
+test('profile avatar is public JPEG but only an authenticated user can upload',async()=>{
+  const db=fakeDb(),jpeg=Buffer.from([255,216,255,...Array(36).fill(5),255,217]);
+  const original=db.prepare.bind(db);
+  db.prepare=sql=>{
+    const stmt=original(sql);
+    if(sql.includes('SELECT a.image_base64 FROM sharika_user_avatars'))
+      stmt.first=async()=>({image_base64:jpeg.toString('base64')});
+    return stmt;
+  };
+  const endpoint='https://example.test/api/v1/users/10000001/avatar';
+  const image=await handleRequest(new Request(endpoint,{headers:{Origin:'https://untrusted.example'}}),
+    {DB:db,FIREBASE_PROJECT_ID:project});
+  assert.equal(image.status,200);
+  assert.equal(image.headers.get('content-type'),'image/jpeg');
+  assert.equal(image.headers.get('access-control-allow-origin'),'*');
+  assert.deepEqual(Buffer.from(await image.arrayBuffer()),jpeg);
+  const withoutLogin=await handleRequest(new Request('https://example.test/api/v1/me/avatar',{
+    method:'PUT',body:JSON.stringify({image_data:'data:image/jpeg;base64,'+jpeg.toString('base64')})
+  }),{DB:db,FIREBASE_PROJECT_ID:project});
+  assert.equal(withoutLogin.status,401);
+  assert.equal(db.calls.some(c=>c[0]==='run'),false);
+});
+
+test('profile avatar validates JPEG, persists only to own ID, and rate limits replacement',async()=>{
+  const beforeFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const userId='firebase:'+project+':secure-user';
+    const jpeg=Buffer.from([255,216,255,...Array(36).fill(7),255,217]);
+    const image_data='data:image/jpeg;base64,'+jpeg.toString('base64');
+    function dbWithUser(changes=1){
+      const db=fakeDb(),original=db.prepare.bind(db);
+      let userPic=null;
+      db.prepare=sql=>{
+        const stmt=original(sql);
+        if(sql.includes('SELECT * FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({auth_uid:userId,public_no:10000001,name:'Guest',status:'active',pic:userPic});
+        if(sql.startsWith('INSERT INTO sharika_user_avatars'))
+          stmt.run=async()=>{db.calls.push(['avatar_run',sql,stmt.values]);return {meta:{changes}};};
+        if(sql.startsWith('SELECT version FROM sharika_user_avatars'))
+          stmt.first=async()=>({version:2});
+        if(sql.startsWith('UPDATE sharika_users SET pic='))
+          stmt.run=async()=>{userPic=stmt.values[0];db.calls.push(['profile_pic',sql,stmt.values]);return {meta:{changes:1}};};
+        return stmt;
+      };
+      return db;
+    }
+    const req=async payload=>new Request('https://example.test/api/v1/me/avatar',{
+      method:'PUT',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({image_data:payload})
+    });
+    const invalidDb=dbWithUser();
+    const invalid=await handleRequest(await req('data:image/png;base64,'+jpeg.toString('base64')),
+      {DB:invalidDb,FIREBASE_PROJECT_ID:project});
+    assert.equal(invalid.status,400);
+    assert.equal(invalidDb.calls.some(c=>c[0]==='avatar_run'),false);
+    const goodDb=dbWithUser();
+    const saved=await handleRequest(await req(image_data),{DB:goodDb,FIREBASE_PROJECT_ID:project});
+    assert.equal(saved.status,200);
+    assert.equal((await saved.json()).pic,'https://example.test/api/v1/users/10000001/avatar?v=2');
+    assert.equal(goodDb.calls.some(c=>c[0]==='avatar_run'),true);
+    assert.equal(goodDb.calls.some(c=>c[0]==='profile_pic'),true);
+    const limited=await handleRequest(await req(image_data),{
+      DB:dbWithUser(0),FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(limited.status,429);
+  }finally{globalThis.fetch=beforeFetch;}
+});
