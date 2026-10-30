@@ -49,6 +49,33 @@
     doc.head.appendChild(depth);
   }
   fitAndroidViewport(document, false);
+  // The original HTML eagerly renders demo rooms and a fake weekly podium
+  // before the native Firebase session check completes. Keep only the
+  // original branded splash visible until the verified state is known.
+  function startVerifiedStartup(){
+    const style=document.createElement('style');
+    style.id='sharika-verified-startup-style';
+    style.textContent=[
+      '#app.sharika-startup-verifying .views,',
+      '#app.sharika-startup-verifying .nav,',
+      '#app.sharika-startup-verifying .auth,',
+      '#app.sharika-startup-verifying #mini{visibility:hidden!important}',
+      '#app.sharika-startup-verifying::after{',
+      'content:"Opening Sharika…";position:absolute;inset:0;z-index:94;',
+      'display:grid;place-items:center;background:linear-gradient(180deg,#1a0b45,#05030f);',
+      'color:#e9dbff;font-size:16px;font-weight:700;pointer-events:none}'
+    ].join('');
+    document.head.appendChild(style);
+    document.getElementById('app')?.classList.add('sharika-startup-verifying');
+  }
+  function finishVerifiedStartup(){
+    document.getElementById('app')?.classList.remove('sharika-startup-verifying');
+  }
+  startVerifiedStartup();
+  // The old splash timer invokes a simulated Top 3 ranking. The verified
+  // ranking screen has its own server API and remains fully available.
+  window.showWeekly=function(done){if(typeof done==='function')done();};
+  document.getElementById('wk')?.remove();
   const ACCOUNT_KEY = 'vr_accts_v1';
   const META_KEY = 'sharika_staging_registration_v1';
   const COLORS = ['#9b4dff,#4c1d95','#ff3dc8,#9d174d','#0ea5e9,#075985','#10b981,#065f46'];
@@ -2982,6 +3009,10 @@
     }catch(error){
       window.showAuth('welcome');
       toast('Sign-in needed: '+errText(error));
+    }finally{
+      // Signed-out users see real Firebase login, signed-in users their D1
+      // home; neither ever sees the old unverified demo between the two.
+      finishVerifiedStartup();
     }
   }
   restore();
