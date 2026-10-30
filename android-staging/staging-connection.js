@@ -1046,6 +1046,7 @@
     overlay.classList.add('on');
     const stage=sheet.querySelector('#sharika-game-stage');
     let active=null,gameState=null,chosen=0,refreshing=false,submitting=false;
+    let seenVisualResult='',wheelRotation=0;
     function display(state){
       gameState=state;
       const resultEl=stage.querySelector('#sg-result');
@@ -1071,6 +1072,34 @@
       }
       if(bet)result+=' · Your current bet: '+Number(bet.stake).toLocaleString('en-US')+' coins';
       resultEl.textContent=result;
+      // Reveal only the confirmed server outcome. Never fabricate winners.
+      const previous=state.previous_result;
+      if(previous){
+        const revealKey=active+':'+previous.round_no;
+        if(revealKey!==seenVisualResult){
+          seenVisualResult=revealKey;
+          if(active==='food-wheel'){
+            const wheel=stage.querySelector('#sg-wheel-rotor');
+            if(wheel && Number.isInteger(previous.outcome?.sector)){
+              const target=340-previous.outcome.sector*40;
+              const extra=(target-(wheelRotation%360)+360)%360;
+              wheelRotation+=1800+extra;
+              wheel.style.transition='transform 2600ms cubic-bezier(.12,.8,.12,1)';
+              wheel.style.transform='rotate('+wheelRotation+'deg)';
+            }
+          }else{
+            const reels=stage.querySelectorAll('#sg-fruit-reels .sg-reel');
+            const results=previous.outcome?.reels||[];
+            reels.forEach((reel,i)=>{
+              reel.textContent=results[i]||'❔';
+              reel.style.animation='none';
+              void reel.offsetWidth;
+              reel.style.animation='sg-reveal .7s ease-out both';
+              reel.style.animationDelay=(i*180)+'ms';
+            });
+          }
+        }
+      }
     }
     async function refresh(){
       if(refreshing||!active)return;
@@ -1103,11 +1132,37 @@
       }finally{refreshing=false;}
     }
     function openGame(game){
-      active=game;chosen=0;gameState=null;
+      active=game;chosen=0;gameState=null;seenVisualResult='';wheelRotation=0;
       const names=game==='food-wheel'
         ?['🍅','🦐','🐟','🍗','🥩','🍕','🥬','🥕','🌽']:[];
+      const wheelVisual=names.length
+        ?'<div style="position:relative;width:238px;height:238px;margin:16px auto 20px">'+
+          '<div id="sg-wheel-rotor" style="position:relative;width:100%;height:100%;box-sizing:border-box;'+
+            'border:9px solid #ffca36;border-radius:50%;box-shadow:0 0 0 4px #8d4c0e,0 0 24px #fbbf2488;'+
+            'background:conic-gradient(#16a34a 0 40deg,#2563eb 40deg 80deg,#ce2665 80deg 120deg,'+
+            '#854dff 120deg 160deg,#f97316 160deg 200deg,#eab308 200deg 240deg,'+
+            '#15803d 240deg 280deg,#0891b2 280deg 320deg,#7c3aed 320deg 360deg)">'+
+            names.map((symbol,i)=>'<span style="position:absolute;left:50%;top:50%;font-size:26px;'+
+              'transform:translate(-50%,-50%) rotate('+(i*40+20)+'deg) translateY(-78px) '+
+              'rotate(-'+(i*40+20)+'deg)">'+symbol+'</span>').join('')+
+            '<span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'+
+              'border:4px solid #fcd34d;border-radius:50%;background:#5b21b6;'+
+              'padding:6px;font-size:22px">⭐</span></div>'+
+            '<div aria-label="Winning pointer" style="position:absolute;left:calc(50% - 13px);top:-15px;'+
+              'width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;'+
+              'border-top:26px solid #fbbf24;filter:drop-shadow(0 2px 2px #281124)"></div></div>'
+        :'<style>@keyframes sg-reveal{0%{transform:translateY(-24px) scale(.7);opacity:.35}'+
+          '75%{transform:translateY(5px) scale(1.1);opacity:1}100%{transform:none;opacity:1}}</style>'+
+          '<div id="sg-fruit-reels" style="display:flex;justify-content:center;gap:10px;margin:16px auto">'+
+          '<span class="sg-reel" style="font-size:48px;background:#451c7a;border:3px solid #fbbf24;'+
+          'border-radius:15px;padding:8px">❔</span>'+
+          '<span class="sg-reel" style="font-size:48px;background:#451c7a;border:3px solid #fbbf24;'+
+          'border-radius:15px;padding:8px">❔</span>'+
+          '<span class="sg-reel" style="font-size:48px;background:#451c7a;border:3px solid #fbbf24;'+
+          'border-radius:15px;padding:8px">❔</span></div>';
       stage.innerHTML='<h3 style="margin:12px 0">'+
         (game==='food-wheel'?'🎡 Food Wheel':'🎰 Jackpot Fruit')+'</h3>'+
+        wheelVisual+
         '<div class="empty" id="sg-status">Connecting to server…</div>'+
         (names.length?'<div id="sg-choices" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">'+
           names.map((name,index)=>'<button type="button" data-game-pick="'+index+
