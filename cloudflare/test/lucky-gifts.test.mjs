@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { drawLuckyGift, luckyGiftBenefits, LUCKY_ODDS } from '../src/lucky-gifts.mjs';
 
@@ -52,4 +53,17 @@ test('small Lucky Gifts preserve fractional reward entitlements', () => {
   for (const args of [[0,1,1],[10,0,1],[10,1,0],[10,11,1],
     [10,1,21],[1.5,1,1],[Number.MAX_SAFE_INTEGER,10,20]])
     assert.throws(() => luckyGiftBenefits(...args), RangeError);
+});
+
+test('Lucky Gift stays visibly gated until an approved adult server catalogue is enabled',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
+  const config=readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8');
+  assert.match(adapter,/if\(data\.lucky_enabled!==true\)/);
+  assert.match(adapter,/locked\.disabled=true/);
+  assert.match(adapter,/Lucky Gifts are not active on this staging server yet/);
+  assert.match(adapter,/data\.lucky_enabled===true && Array\.isArray\(data\.lucky_odds\)/);
+  assert.match(adapter,/api\('POST','\/rooms\/'\+room\.id\+'\/gifts'/);
+  assert.match(worker,/nonRedeemableLuckyEconomy\(env\)/);
+  assert.match(config,/"SHARIKA_LUCKY_GIFTS_ENABLED": "false"/);
 });
