@@ -690,3 +690,73 @@ test('room chat denies unverified requests before reaching the coordinator',asyn
     {DB:fakeDb(),FIREBASE_PROJECT_ID:project});
   assert.equal(response.status,401);
 });
+
+
+test('room seat locks are owner-only and stop seat claims on the server',async()=>{
+  const oldFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const makeDb=(roomOwner,joined=true)=>{
+      const db=fakeDb(),prepare=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=prepare(sql);
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id=?'))
+          stmt.first=async()=>({id:'10000001',owner_id:roomOwner,seat_count:12});
+        if(sql.includes('FROM sharika_room_members WHERE room_id=?'))
+          stmt.first=async()=>joined?{room_id:'10000001',user_id:uid,
+            seat_no:null,muted:0,role:'member'}:null;
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({status:'active',public_no:10000002,name:'Verified'});
+        if(sql.includes('FROM sharika_room_members m'))
+          stmt.all=async()=>({results:[]});
+        return stmt;
+      };
+      return db;
+    };
+    const calls=[];
+    const coordinator={
+      async lockedSeats(){return [3];},
+      async changeSeatLock(roomId,seat,locked){
+        calls.push(['lock',roomId,seat,locked]);return {locked_seats:locked?[3]:[]};
+      },
+      async changeMemberSeat(roomId,userId,seat){
+        calls.push(['seat',roomId,userId,seat]);
+        return seat===3?{error:'seat_locked'}:{member:{seat_no:seat}};
+      }
+    };
+    const rooms={getByName(name){
+      assert.equal(name,'sharika:10000001');return coordinator;
+    }};
+    const headers={Authorization:'Bearer '+await token()};
+    const lockRequest=()=>new Request('https://example.test/api/v1/rooms/10000001/locks',{
+      method:'PUT',headers,body:JSON.stringify({seat_no:3,locked:true})
+    });
+    const denied=await handleRequest(lockRequest(),{
+      DB:makeDb('other-owner'),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(denied.status,403);
+    assert.equal(calls.length,0);
+    const allowed=await handleRequest(lockRequest(),{
+      DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(allowed.status,200);
+    assert.deepEqual((await allowed.json()).locked_seats,[3]);
+    const seat=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001/seat',{
+        method:'PUT',headers,body:JSON.stringify({seat_no:3})
+      }),{DB:makeDb('other-owner'),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    assert.equal(seat.status,409);
+    assert.equal((await seat.json()).error,'seat_locked');
+    const members=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001/members',{headers}),
+      {DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    assert.equal(members.status,200);
+    assert.deepEqual((await members.json()).locked_seats,[3]);
+    const notJoined=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001/members',{headers}),
+      {DB:makeDb(uid,false),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    assert.equal(notJoined.status,403);
+    assert.deepEqual(calls.map(x=>x[0]),['lock','seat']);
+  }finally{globalThis.fetch=oldFetch;}
+});
