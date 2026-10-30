@@ -30,7 +30,7 @@ async function indexFrom(seed,suffix,game){
   for(let i=0;i<weights.length;i++)if((r-=weights[i])<0)return i;
   return 7;
 }
-async function outcome(row){
+export async function originalOutcome(row){
   const {game,seed_hex:seed}=row;
   const result=await indexFrom(seed,'result',game);
   const positions=[result],roll=parseInt((await sha(seed+'|bonus')).slice(0,8),16)%1000;
@@ -43,7 +43,7 @@ async function outcome(row){
   return {index:result,positions,bonus,seed_hex:seed,commit_sha256:row.commit_sha256,
     symbols:positions.map(i=>GAMES[game].symbols[i])};
 }
-function payoutFor(bet,answer,budget,total){
+export function originalPayout(bet,answer,budget,total){
   const g=GAMES[bet.game];
   let base=0;
   for(const idx of answer.positions){
@@ -82,11 +82,11 @@ export async function settleOriginalDueBets(db){
     let item=cache.get(b.round_id);
     if(!item){
       const row={id:b.round_id,game:b.game,seed_hex:b.seed_hex,commit_sha256:b.commit_sha256};
-      const answer=await outcome(row);
+      const answer=await originalOutcome(row);
       const jp=await jackpotBudget(db,row,answer);
       item={answer,jp};cache.set(b.round_id,item);
     }
-    const payout=payoutFor(b,item.answer,Number(item.jp.budget||0),Number(item.jp.total||0));
+    const payout=originalPayout(b,item.answer,Number(item.jp.budget||0),Number(item.jp.total||0));
     // A conditional update + D1 AFTER UPDATE trigger performs payout and one
     // immutable ledger entry. A duplicate settle never credits twice.
     await db.prepare("UPDATE sharika_original_game_bets SET status='settled',payout=?,result_json=?,settled_at=datetime('now') "+
@@ -109,16 +109,30 @@ async function currentState(db,uid,game){
     .bind(uid,game,n-1).all();
   const prev=await db.prepare('SELECT * FROM sharika_original_game_rounds WHERE game=? AND closes_ms<=? ORDER BY round_no DESC LIMIT 1')
     .bind(game,now).first();
-  const previous=prev?{round_no:prev.round_no,...await outcome(prev)}:null;
+  let previous=null;
+  if(prev){
+    // Real winners only. Never manufacture leaderboard names or balances.
+    const winners=await db.prepare(
+      "SELECT u.public_no,u.name,SUM(b.payout) AS total_win FROM sharika_original_game_bets b "+
+      "JOIN sharika_users u ON u.auth_uid=b.user_uid WHERE b.round_id=? "+
+      "AND b.status='settled' AND b.payout>0 GROUP BY b.user_uid "+
+      "ORDER BY total_win DESC,u.public_no LIMIT 3").bind(prev.id).all();
+    previous={round_no:prev.round_no,...await originalOutcome(prev),
+      top_winners:(winners.results||[]).map(u=>({
+        public_id:String(u.public_no).padStart(8,'0'),name:u.name,total_win:u.total_win
+      }))};
+  }
   const wallet=await userCoins(db,uid);
   const pool=game==='jackpot-fruit'
     ?await db.prepare("SELECT coins FROM sharika_original_game_pools WHERE game='jackpot-fruit'").first():null;
   const myBets=(bets.results||[]).map(b=>({...b,result:b.result_json?JSON.parse(b.result_json):null,result_json:undefined}));
+  const today=await stats(db,uid,game);
   return {game,name:GAMES[game].name,virtual_coins_only:true,
     server_time:now,round:{round_no:n,starts_ms:t.starts_ms,bet_closes_ms:t.bet_closes_ms,
       closes_ms:t.closes_ms,commit_sha256:r.commit_sha256,phase:now<t.bet_closes_ms?'bet':'spin'},
     symbols:GAMES[game].symbols,multipliers:GAMES[game].mult,
     chips:GAMES[game].chips,coins:wallet?.coins??0,my_bets:myBets,previous_result:previous,
+    today_won:today.won,today_wagered:today.wagered,
     jackpot_pool:pool?.coins??0};
 }
 async function history(db,game){
@@ -126,7 +140,7 @@ async function history(db,game){
   const rows=await db.prepare('SELECT * FROM sharika_original_game_rounds WHERE game=? AND closes_ms<=? ORDER BY round_no DESC LIMIT 30')
     .bind(game,now).all();
   const results=[];
-  for(const row of rows.results||[])results.push({round_no:row.round_no,...await outcome(row)});
+  for(const row of rows.results||[])results.push({round_no:row.round_no,...await originalOutcome(row)});
   return results;
 }
 async function stats(db,uid,game){

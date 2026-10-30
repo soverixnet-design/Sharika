@@ -111,7 +111,12 @@ function redraw(d){
  its.forEach((it,i)=>{it.querySelector('u').textContent=bets[i]?fmt(bets[i]):'';it.classList.remove('hl')});
  document.querySelectorAll('#grp .g').forEach(it=>{const i=Number(it.dataset.g);it.querySelector('u').textContent=bets[i]?fmt(bets[i]):''});
  const prev=d.previous_result;
- if(prev){its[prev.index]?.classList.add('hl');$('#hist').textContent='Last result: '+C.items[prev.index][0]+' · #'+prev.round_no}
+ if(prev){
+ its[prev.index]?.classList.add('hl');
+ const top=(prev.top_winners||[]).slice(0,3).map((w,i)=>['🥇','🥈','🥉'][i]+' '+w.name+' '+fmt(w.total_win)).join(' · ');
+ $('#hist').textContent='Last result: '+C.items[prev.index][0]+' · #'+prev.round_no+
+   (top?' · Real winners: '+top:' · No recorded winners yet');
+}
 }
 async function place(index){
  if(busy)return;const d=GameBridge.get();
@@ -129,11 +134,30 @@ GameBridge.onRefresh(async (d,now,changed)=>{
  const won=(d.my_bets||[]).filter(b=>b.round_no===d.previous_result.round_no).reduce((a,b)=>a+Number(b.payout||0),0);
  if(won>0){$('#win').textContent='🎉 WIN '+fmt(won)+' virtual coins';$('#win').classList.add('show');setTimeout(()=>$('#win').classList.remove('show'),3500)}
  }
- try{const st=await GameBridge.call('stats');$('#today').textContent=fmt(st.won)}catch(e){}
+ $('#today').textContent=fmt(d.today_won);
 });
 GameBridge.onError(e=>msg('Server: '+e));
 setInterval(()=>{const d=GameBridge.get();if(d)$('#t').textContent=Math.max(0,Math.ceil((d.round.bet_closes_ms-GameBridge.now())/1000))||'🎡'},200);
 $('#og-back').onclick=()=>parent.postMessage({type:'sharika:original-exit'},'*');
+$('#foot').style.cursor='pointer';$('#foot').title='Tap for verified daily rankings';
+$('#foot').onclick=async()=>{
+ const panel=document.createElement('div');
+ panel.style.cssText='position:fixed;inset:12% 7%;z-index:500;overflow:auto;background:#1c0b30;'+
+ 'border:2px solid #ffd34f;border-radius:18px;padding:20px;color:white;white-space:pre-line';
+ const close=document.createElement('button');close.textContent='× Close';
+ close.style.cssText='float:right;background:#802469;color:white;border-radius:10px;padding:8px';
+ close.onclick=()=>panel.remove();panel.appendChild(close);
+ const label=document.createElement('p');label.textContent='Loading real rankings…';panel.appendChild(label);
+ document.body.appendChild(panel);
+ try{
+ const [h,r]=await Promise.all([GameBridge.call('history'),GameBridge.call('rankings')]);
+ label.textContent='🏆 Daily verified winners\n'+
+ ((r.rankings||[]).slice(0,10).map((x,i)=>(i+1)+'. '+x.name+' (#'+x.public_id+') '+fmt(x.total_win)).join('\n')||'No winners yet')+
+ '\n\n📜 Last rounds\n'+
+ ((h.rounds||[]).slice(0,10).map(x=>'#'+x.round_no+' '+C.items[x.index][0]).join('\n')||'No rounds yet');
+ }catch(e){label.textContent='Server: '+e.message}
+};
+
 setTimeout(()=>{$('#load')?.remove();GameBridge.start()},1000);
 </script><style>.sc{perspective:700px;height:170px;display:flex;align-items:center;justify-content:center;position:relative;margin-top:10px}
 .sc::after{content:"";position:absolute;bottom:4px;width:110px;height:18px;border-radius:50%;background:radial-gradient(#000c,transparent 70%);animation:sd 3s ease-in-out infinite}

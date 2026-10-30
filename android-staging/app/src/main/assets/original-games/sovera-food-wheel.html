@@ -190,8 +190,30 @@ $('ad').style.display='none';
 $('bk').onclick=()=>parent.postMessage({type:'sharika:original-exit'},'*');
 $('tg').onclick=()=>{app.classList.toggle('in');setTimeout(fit,100)};
 $('mu').onclick=()=>modal('Sound effects are not enabled in this secure game build.');
-$('mh').onclick=async()=>{try{const data=await GameBridge.call('history');modal((data.rounds||[]).slice(0,8).map(r=>'Round '+r.round_no+': '+(S[r.index]?.e||'?')).join('\n')||'No completed round yet')}catch(e){modal(e.message)}};
+$('mh').onclick=async()=>{
+ try{
+ const [h,r]=await Promise.all([GameBridge.call('history'),GameBridge.call('rankings')]);
+ const history=(h.rounds||[]).slice(0,10).map(x=>'Round '+x.round_no+': '+(S[x.index]?.e||'?')).join('\n')||'No rounds yet';
+ const top=(r.rankings||[]).slice(0,3).map((x,i)=>(i+1)+'. '+x.name+' · '+fmt(x.total_win)).join('\n')||'No real winners yet';
+ $('mc').style.whiteSpace='pre-line';
+ modal('Last rounds:\n'+history+'\n\n🏆 Daily ranking:\n'+top);
+ }catch(e){modal(e.message)}
+};
 GameBridge.onRefresh((d,now,changed)=>{render(d);if(changed&&d.previous_result){
+  const winners=d.previous_result.top_winners||[];
+  if(winners.length){
+    const parent=$('rp').firstElementChild;parent.replaceChildren();
+    const title=document.createElement('h4');
+    title.textContent='🏆 Round '+d.previous_result.round_no+' — Top 3 verified winners';
+    parent.appendChild(title);
+    for(const [i,w] of winners.entries()){
+      const row=document.createElement('p');
+      row.textContent=['🥇','🥈','🥉'][i]+' '+w.name+' (#'+w.public_id+') · '+fmt(w.total_win)+' coins';
+      parent.appendChild(row);
+    }
+    $('rp').classList.add('show');
+    setTimeout(()=>$('rp').classList.remove('show'),5000);
+  }
   const previousBets=(d.my_bets||[]).filter(b=>b.round_no===d.previous_result.round_no);
   const total=previousBets.reduce((a,b)=>a+(b.payout||0),0);
   if(total>0){$('win').textContent='🎉 WIN '+fmt(total)+' virtual coins';$('win').classList.add('show');setTimeout(()=>$('win').classList.remove('show'),4000)}

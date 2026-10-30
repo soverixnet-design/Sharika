@@ -169,17 +169,42 @@ function showRound(d){
  const spentNode=document.createElement('p');spentNode.textContent='Bet: '+fmt(spent)+' virtual coins';
  const winNode=document.createElement('h3');winNode.textContent='Your winnings: '+fmt(win)+' virtual coins';
  const close=document.createElement('button');close.textContent='Close';close.onclick=()=>$('#pop').style.display='none';
- $('#pb').append(header,sym,bonus,spentNode,winNode,close);
+ const rankTitle=document.createElement('h3');rankTitle.textContent='🏆 Top 3 verified winners';
+ const ranks=document.createElement('div');
+ const winners=(prev.top_winners||[]).slice(0,3);
+ ranks.textContent=winners.length?winners.map((w,i)=>
+ ['🥇','🥈','🥉'][i]+' '+w.name+' (#'+w.public_id+'): '+fmt(w.total_win)).join(' · '):
+ 'No recorded winners in this round';
+ $('#pb').append(header,sym,bonus,spentNode,winNode,rankTitle,ranks,close);
  $('#pop').style.display='flex';setTimeout(()=>$('#pop').style.display='none',4500);
 }
 $('#au').onclick=()=>msg('Auto-betting disabled for wallet safety.');
+$('#ss').textContent='TOP';
+$('.tr').style.cursor='pointer';
+$('.tr').onclick=async()=>{
+ $('#pb').replaceChildren();
+ const close=document.createElement('button');close.textContent='Close';
+ close.onclick=()=>$('#pop').style.display='none';
+ const result=document.createElement('div');result.textContent='Loading verified rankings…';
+ $('#pb').append(result,close);$('#pop').style.display='flex';
+ try{
+ const [h,r]=await Promise.all([GameBridge.call('history'),GameBridge.call('rankings')]);
+ const ranking=(r.rankings||[]).slice(0,10).map((w,i)=>
+ (i+1)+'. '+w.name+' (#'+w.public_id+') '+fmt(w.total_win)).join('\n')||'No winners yet';
+ const history=(h.rounds||[]).slice(0,10).map(x=>
+ '#'+x.round_no+' '+(x.symbols||[]).join(' ')+' '+(x.bonus||'')).join('\n')||'No history';
+ result.style.whiteSpace='pre-line';
+ result.textContent='🏆 Daily real winners\n'+ranking+'\n\n📜 Last rounds\n'+history;
+ }catch(e){result.textContent='Server: '+e.message}
+};
+
 $('#pw').onclick=()=>parent.postMessage({type:'sharika:original-exit'},'*');
 $('#sn').onclick=()=>{muted=!muted;$('#sn').textContent=muted?'🔇':'🔊'};
 $('#ru').onclick=()=>{$('#pb').textContent='Original Jackpot Fruit. All bets and wins are verified by the shared server. +1/+2 add weighted fruit results, x2/x3 multiply winning fruit results, and JP distributes half of the actual reserved virtual-coin pool proportionally among round wagers. The pool starts at zero and grows by 5% of real wager amounts. Auto-play and demo top-ups are disabled.';
  const b=document.createElement('button');b.textContent='Close';b.onclick=()=>$('#pop').style.display='none';$('#pb').appendChild(b);$('#pop').style.display='flex'};
 GameBridge.onRefresh(async(d,now,changed)=>{
  redraw(d);if(changed)showRound(d);
- try{const st=await GameBridge.call('stats');$('#td').textContent=fmt(st.won)}catch(e){}
+ $('#td').textContent=fmt(d.today_won);
 });
 GameBridge.onError(e=>msg('Server: '+e));
 setInterval(()=>{const d=GameBridge.get();if(d)$('#tm').textContent=Math.max(0,Math.ceil((d.round.bet_closes_ms-GameBridge.now())/1000))||'--'},200);
