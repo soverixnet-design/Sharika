@@ -1,16 +1,15 @@
-name: Sharika staging backend (D1 and Worker)
+name: Sharika staging backend (verified D1 and Worker)
 
 on:
   workflow_dispatch:
     inputs:
       operation:
-        description: 'Choose a safe staging operation (never changes the live app)'
+        description: 'Manual Sharika staging only; never apply old D1 migrations'
         type: choice
         required: true
         default: verify-only
         options:
           - verify-only
-          - create-tables
           - deploy-staging-worker
 
 permissions:
@@ -22,20 +21,20 @@ concurrency:
 
 jobs:
   initialize:
-    name: Check and optionally initialize isolated staging D1
+    name: Validate isolated Sharika staging and optionally deploy Worker
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: cloudflare
     steps:
-      - name: Checkout reviewed staging candidate at a pinned commit
+      - name: Checkout reviewed candidate at immutable commit
         uses: actions/checkout@v4
         with:
-          ref: 98de712a20a2b7c37c1ff3fff5b94483afbd54a5
+          ref: cd060fffec65b6e52d8f17d3428f88de2f60e4c4
           persist-credentials: false
 
-      - name: Refuse any target other than the approved isolated staging account and D1
+      - name: Refuse non-staging Cloudflare target, D1, origins and Firebase project
         run: |
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
@@ -45,7 +44,7 @@ jobs:
                 c.account_id !== "d81cf7c48fb9b36d468cb0a08720cd74" ||
                 c.vars?.SHARIKA_ENV !== "staging" ||
                 c.d1_databases?.length !== 1 ||
-                db.binding !== "DB" ||
+                db?.binding !== "DB" ||
                 db.database_name !== "sharika-staging" ||
                 db.database_id !== "b2c62252-12a5-4740-90c7-01a536d9a39a" ||
                 c.workers_dev !== true ||
@@ -56,39 +55,38 @@ jobs:
             console.log("APPROVED_SHARIKA_STAGING_D1_ONLY");
           '
 
-      - name: Test Worker source without any remote writes
+      - name: Set up Node.js for Worker checks
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run Worker tests
+
+      - name: Validate Worker source and test transactions
         run: npm run check
 
-      - name: Validate SQL against an in-memory SQLite database
+      - name: Test all migrations in disposable memory (NEVER remote)
         run: |
           python3 - <<'PY'
-          from pathlib import Path
           import sqlite3
-          sql = Path('migrations/0001_initial.sql').read_text()
-          conn = sqlite3.connect(':memory:')
-          conn.executescript(sql)
-          tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-          assert 'sharika_users' in tables and 'sharika_wallet_ledger' in tables
-          print(f"SHARIKA_D1_LOCAL_SCHEMA_OK: {len(tables)} tables")
+          from pathlib import Path
+          db = sqlite3.connect(':memory:')
+          files = sorted(Path('migrations').glob('*.sql'))
+          assert files, 'No staging SQL migrations found'
+          for file in files:
+              db.executescript(file.read_text())
+          names = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          required = {'sharika_users', 'sharika_wallet_ledger', 'sharika_gift_events',
+                      'sharika_game_bets', 'sharika_original_game_bets',
+                      'sharika_manual_recharge_reviews'}
+          assert required <= names, required - names
+          print('IN_MEMORY_SCHEMA_OK', len(names), 'tables', len(files), 'migrations')
           PY
 
-      - name: Apply migrations to isolated remote D1 only (schema mode)
-        if: ${{ inputs.operation == 'create-tables' }}
-        env:
-          CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::Missing GitHub Actions secret CLOUDFLARE_API_TOKEN"
-            exit 1
-          fi
-          npx --yes wrangler@4 d1 migrations apply sharika-staging --remote --config wrangler.jsonc
+      - name: Check Worker bundle without uploading
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
 
-      - name: Confirm existing staging D1 schema before Worker deployment
+      # Remote d1_migrations records only 0001 although later tables exist.
+      # DO NOT apply or mark any remote migration in this workflow.
+      - name: Verify existing remote staging tables without D1 writes
         if: ${{ inputs.operation == 'deploy-staging-worker' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
@@ -98,13 +96,13 @@ jobs:
             echo "::error::Missing GitHub Actions secret CLOUDFLARE_API_TOKEN"
             exit 1
           fi
-          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS count FROM sharika_users"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT (SELECT COUNT(*) FROM sharika_users) AS users, (SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger, (SELECT COUNT(*) FROM sharika_original_game_bets) AS original_bets, (SELECT COUNT(*) FROM sharika_manual_recharge_reviews) AS reviews"
 
-      - name: Deploy only sharika-api-staging to workers.dev (protected APIs remain closed)
+      - name: Deploy only sharika-api-staging to workers.dev (no database migration)
         if: ${{ inputs.operation == 'deploy-staging-worker' }}
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: d81cf7c48fb9b36d468cb0a08720cd74
           workingDirectory: cloudflare
-          command: deploy --config wrangler.jsonc
+          command: deploy --config wrangler.jsonc --keep-vars
