@@ -153,6 +153,17 @@ https://support.google.com/googleplay/android-developer/answer/9858738?hl=en
 
 Important: Whether a virtual random-reward mechanic needs additional local
 restrictions still depends on the countries where it is offered. Do not
-represent the PR as legal clearance. The staging D1 migration-journal drift
-and unapplied 0014 rewards schema must be resolved before even a staging
-Lucky Gift transaction is allowed.
+represent the PR as legal clearance. **0014 was manually applied as additive schema-only SQL to the isolated
+`sharika-staging` D1 on 2026-10-30.** Before and after read-only counts
+both showed `users=2, gift_transactions=5, gift_events=5,
+wallet_ledger=20, lucky_outcomes=0`. New recipient/room reward and diamond
+accrual tables all have zero rows. No test gift was spent; no user balance
+changed. A D1 Time Travel bookmark was captured before the migration.
+The legacy migration journal was not altered. Do not run automatic historical
+migrations until journal drift is reconciled.
+
+**Deployment boundary:** Latest virtual-only source and Android odds
+disclosure are only in this draft PR. The staging Worker remains on an older,
+disabled version; `SHARIKA_LUCKY_GIFTS_ENABLED=false` in the branch.
+Before enabling, deploy and verify the reviewed Worker and Android staging
+build, and use controlled test accounts for end-to-end gift checks.
