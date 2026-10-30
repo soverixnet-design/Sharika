@@ -2,6 +2,7 @@
 // Every request is authenticated by the outer Worker with a verified Firebase JWT.
 // Only explicitly audited seller inventory and verified grants may credit wallets.
 import { handleSellerAdmin } from './sellers.mjs';
+import { handleBannerAdmin } from './banners.mjs';
 import { handleDailyAdmin } from './daily.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
@@ -96,6 +97,10 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if (operation.startsWith('sellers')) return await handleSellerAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
+  if(operation==='banners'||/^banners\/[1-9][0-9]{0,8}$/.test(operation))
+    return await handleBannerAdmin({
+      request,env,uid,role:actor.role,operation,cors,reply,fail
+    });
 
   // Support agents may reply to real user conversations, with explicit scope.
   const supportReply=/^support\/([0-9]{8})\/reply$/.exec(operation);
