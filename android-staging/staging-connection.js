@@ -30,7 +30,7 @@
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let busyRooms = false, framePoll = null, giftPoll = null, chatPoll = null;
+  let busyRooms = false, framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -759,6 +759,41 @@
           frame.close();
           await syncFrame(room,frame);
           frame.toast(action==='lock'?'Seat locked':'Seat unlocked');
+        } else if((action==='inv'||action==='invite') && seat>0) {
+          if(!owner)throw new Error('Only the room owner may invite members');
+          const data=await api('GET','/rooms/'+room.id+'/members');
+          const listeners=(data.members||[]).filter(m=>
+            m.seat_no===null&&m.user_id!==room.owner_id&&m.sharika_users?.public_id
+          );
+          frame.open('<h3>🎤 Invite to mic seat '+seat+'</h3>'+
+            '<div id="sh-invite-list"></div>');
+          const list=frame.$('sh-invite-list');
+          if(!list)return;
+          if(!listeners.length) {
+            list.textContent='No audience members available to invite';
+            return;
+          }
+          for(const listener of listeners) {
+            const button=frame.document.createElement('button');
+            button.className='row';
+            button.textContent=(listener.sharika_users.name||'Member')+
+              ' · ID '+listener.sharika_users.public_id;
+            button.onclick=async()=>{
+              if(button.disabled)return;
+              button.disabled=true;
+              try {
+                await api('POST','/rooms/'+room.id+'/invitations',{
+                  seat_no:seat,target_public_id:listener.sharika_users.public_id
+                });
+                frame.close();
+                frame.toast('Mic invitation sent');
+              }catch(error) {
+                button.disabled=false;
+                frame.toast('Invite not sent: '+errText(error));
+              }
+            };
+            list.append(button);
+          }
         } else if(action==='take' && seat>0) {
           await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
           frame.close(); await syncFrame(room,frame);
@@ -874,6 +909,59 @@
         saveButton.disabled=false;
       }
     },true);
+    // Audience invitations stay in the existing room sheet. The invitee
+    // explicitly accepts or declines before their verified mic seat changes.
+    let displayedInviteAt=0;
+    let pollingInvite=false;
+    async function pollSeatInvite() {
+      if(pollingInvite||window.cur?.id!==room.id)return;
+      pollingInvite=true;
+      try {
+        const data=await api('GET','/rooms/'+room.id+'/invitations');
+        const invite=data.invite;
+        if(!invite||!Number.isInteger(invite.seat_no)||
+           invite.invited_at_ms===displayedInviteAt)return;
+        // Keep gift, settings and moderation sheets usable while inviting.
+        if(frame.$('bg')?.classList.contains('on') ||
+           frame.$('sheet')?.classList.contains('on'))return;
+        displayedInviteAt=invite.invited_at_ms;
+        const seat=invite.seat_no;
+        frame.open('<h3>🎤 Mic seat invitation</h3>'+
+          '<div class="row">The room owner invited you to seat '+seat+'.</div>'+
+          '<button id="sh-accept-invite" class="row">Accept</button>'+
+          '<button id="sh-decline-invite" class="row">Decline</button>');
+        for(const [id,accept] of [
+          ['sh-accept-invite',true],['sh-decline-invite',false]
+        ]) {
+          const button=frame.$(id);
+          if(!button)continue;
+          button.onclick=async()=>{
+            if(button.disabled)return;
+            button.disabled=true;
+            try {
+              await api('POST','/rooms/'+room.id+'/invitations/respond',{
+                seat_no:seat,accept
+              });
+              frame.close();
+              if(accept) {
+                await syncFrame(room,frame);
+                await connectVoice(room.id);
+                frame.toast('Joined microphone seat '+seat);
+              } else frame.toast('Mic invitation declined');
+            }catch(error) {
+              // Expired or taken seats can be retried with a fresh invite.
+              frame.toast('Invitation unavailable: '+errText(error));
+              frame.close();
+            }
+          };
+        }
+      }finally{pollingInvite=false;}
+    }
+    if(invitePoll)clearInterval(invitePoll);
+    invitePoll=setInterval(()=>{
+      if(window.cur?.id===room.id)pollSeatInvite().catch(()=>{});
+    },10000);
+    pollSeatInvite().catch(()=>{});
     // Mirror the verified room conversation into the original chat area.
     // No local-only send, simulated user, or repeated history on reconnect.
     async function pollRoomChat() {
@@ -1045,6 +1133,7 @@
         if(framePoll){clearInterval(framePoll);framePoll=null;}
         if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
         if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
         await releaseVoice();
         await api('POST','/rooms/'+prior.id+'/leave',{});
       }
@@ -1061,6 +1150,7 @@
     if(framePoll){clearInterval(framePoll);framePoll=null;}
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
     if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
     releaseVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
     if(session)heartbeatPresence(null);
