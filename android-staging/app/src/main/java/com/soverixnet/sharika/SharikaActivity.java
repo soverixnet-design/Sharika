@@ -66,6 +66,14 @@ public final class SharikaActivity extends Activity {
         super.onCreate(state);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        // Let the app background reach the physical top edge on phones with a
+        // camera cutout. CSS keeps interactive controls below safe-area insets.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams window = getWindow().getAttributes();
+            window.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(window);
+        }
         getWindow().setNavigationBarColor(Color.rgb(10, 7, 29));
         auth = FirebaseAuth.getInstance();
         credentials = CredentialManager.create(this);
