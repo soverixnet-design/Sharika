@@ -612,6 +612,11 @@
     frame.U=[];
     frame.G=[];
     frame.sendGift=function(){ frame.toast('Use the verified gift box Send button'); };
+    // The original room list derived fake IDs from names. Use D1 public IDs.
+    frame.sid=function(seat){
+      const id=String(seat?.public_id||'');
+      return /^[0-9]{8}$/.test(id)?id:'';
+    };
     frame.others=function(){return (frame.seats||[]).filter(s=>s&&!s.empty&&!s.lock);};
     // Only the server may enable Lucky Gifts, and never for a minor.
     frame.__minor=profile?.minor!==false;
@@ -856,6 +861,68 @@
     if(typeof originalMemberSheet==='function')frame.userSheet=function(user,search) {
       originalMemberSheet(user,search);
       const sheet=frame.$('sheet');
+      const verifiedId=String(user?.id||'');
+      const verified=/^[0-9]{8}$/.test(verifiedId);
+      const profileButton=sheet?.querySelector('button.act[data-a="pf"]');
+      if(profileButton)profileButton.onclick=async()=>{
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        if(profileButton.disabled)return;
+        profileButton.disabled=true;
+        try {
+          const member=await api('GET','/users/'+verifiedId);
+          frame.open('<h3>👤 Verified member profile</h3>'+
+            '<div id="sh-member-profile"></div>');
+          const panel=frame.$('sh-member-profile');
+          if(panel) {
+            const name=frame.document.createElement('div');
+            name.className='row';
+            name.textContent=String(member.name||'Member')+' · ID '+String(member.id);
+            const details=frame.document.createElement('div');
+            details.className='lbl';
+            details.textContent='Country: '+String(member.country||'Not set')+
+              ' · Wealth Lv '+Number(member.wealth_level||0)+
+              ' · Charm Lv '+Number(member.charm_level||0);
+            panel.append(name,details);
+          }
+        }catch(error) {
+          profileButton.disabled=false;
+          frame.toast('Profile unavailable: '+errText(error));
+        }
+      };
+      const followButton=sheet?.querySelector('button.act[data-a="fo"]');
+      if(followButton) {
+        // Never toggle a local-only follow state before the backend confirms.
+        followButton.disabled=true;
+        followButton.textContent='Checking follow…';
+        if(verified)api('GET','/users/'+verifiedId+'/follow').then(status=>{
+          if(!followButton.isConnected)return;
+          followButton.dataset.following=status.following?'true':'false';
+          followButton.textContent=status.following?'✅ Following':'➕ Follow';
+          followButton.disabled=false;
+        }).catch(error=>{
+          if(!followButton.isConnected)return;
+          followButton.textContent='Follow unavailable';
+          followButton.title=errText(error);
+        });
+        else followButton.textContent='ID unavailable';
+        followButton.onclick=async()=>{
+          if(followButton.disabled||!verified)return;
+          const following=followButton.dataset.following==='true';
+          followButton.disabled=true;
+          try {
+            const status=await api(following?'DELETE':'PUT',
+              '/users/'+verifiedId+'/follow');
+            if(!followButton.isConnected)return;
+            followButton.dataset.following=status.following?'true':'false';
+            followButton.textContent=status.following?'✅ Following':'➕ Follow';
+            frame.FOL[verifiedId]=!!status.following;
+          }catch(error) {
+            frame.toast('Follow update failed: '+errText(error));
+          }finally {
+            if(followButton.isConnected)followButton.disabled=false;
+          }
+        };
+      }
       const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
       if(inviteButton)inviteButton.onclick=async()=>{
         if(inviteButton.disabled)return;
