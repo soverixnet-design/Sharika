@@ -1022,10 +1022,9 @@
       if(requestNo===rankingRequest)view.textContent='Rankings unavailable: '+errText(error);
     }
   };
-  // Each uploaded original gets its own compact card. The uploaded HTML
-  // scripts still use demo wallets/random results, so we show a clearly
-  // marked visual-only preview until those mechanics have been moved to D1.
-  // Never accept their local wallet postMessage events as currency.
+  // Each uploaded original gets its own compact card. The uploaded HTML layouts are retained, but their local finance logic is
+  // removed. A strict source-checked bridge calls only authenticated API routes.
+  // Never accept wallet amounts or winner results from child messages.
   const originalGameCards=[
     {id:'sovera-food',name:'Sovera Food Wheel',tag:'🎡 Classic',
       image:'file:///android_asset/food-wheel-original-card.png',
@@ -1033,7 +1032,7 @@
     {id:'night-food',name:'Night Food Wheel',tag:'🌙 Night',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/night-food-wheel.html'},
-    {id:'jackpot',name:'Jackpot Fruit',tag:'🎰 Jackpot',
+    {id:'jackpot-fruit',name:'Jackpot Fruit',tag:'🎰 Jackpot',
       image:'file:///android_asset/jackpot-fruit-original-card.png',
       page:'file:///android_asset/original-games/jackpot-fruit.html'}
   ];
@@ -1047,7 +1046,7 @@
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
         '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
-        'Original graphics · server wallet integration pending</p>';
+        'Original graphics · live virtual-coin server rounds</p>';
       const grid=sheet.querySelector('#sh-original-grid');
       originalGameCards.forEach(item=>{
         const card=doc.createElement('button');
@@ -1074,22 +1073,56 @@
         grid.appendChild(card);
       });
     }
+    let currentGameFrame=null;
+    const view=doc.defaultView||window;
     function preview(item){
+      currentGameFrame=null;
       sheet.innerHTML='<div class="grab"></div>'+
         '<button id="sh-original-back" type="button" '+
         'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
         'background:#351164;color:#fff">← All games</button>'+
         '<h3 style="margin:8px 0"></h3>'+
-        '<p style="background:#6a270e;border:1px solid #fbbf24;border-radius:10px;'+
-        'padding:10px;font-size:12px;color:#fff">Original design preview only. '+
-        'Betting is disabled until verified server-coin integration.</p>'+
-        '<img id="sh-original-preview" alt="Original game cover" '+
-        'style="display:block;width:100%;height:auto;max-height:59vh;object-fit:contain;'+
-        'border:1px solid #a56dff;border-radius:12px">';
+        '<div id="sh-original-host" style="width:100%;height:min(74vh,750px);'+
+        'min-height:380px;border:1px solid #a56dff;border-radius:12px;'+
+        'overflow:hidden;background:#100424"></div>';
       sheet.querySelector('h3').textContent=item.name;
-      sheet.querySelector('#sh-original-back').onclick=catalog;
-      sheet.querySelector('#sh-original-preview').src=item.image;
+      sheet.querySelector('#sh-original-back').onclick=()=>{currentGameFrame=null;catalog()};
+      const gameFrame=doc.createElement('iframe');
+      gameFrame.src=item.page;
+      gameFrame.setAttribute('title',item.name);
+      gameFrame.style.cssText='width:100%;height:100%;border:0;display:block';
+      gameFrame.setAttribute('referrerpolicy','no-referrer');
+      sheet.querySelector('#sh-original-host').appendChild(gameFrame);
+      currentGameFrame={element:gameFrame,item};
     }
+    // Child frame has no Firebase session, no native bridge, no wallet setter.
+    // Only the active exact iframe can request one of these fixed operations.
+    view.addEventListener('message',async function onOriginalGameMessage(event){
+      const current=currentGameFrame;
+      if(!current||event.source!==current.element.contentWindow||!session)return;
+      const data=event.data;
+      if(!data||typeof data!=='object')return;
+      if(data.type==='sharika:original-exit'){currentGameFrame=null;catalog();return;}
+      if(data.type!=='sharika:original-request')return;
+      const permitted=['state','history','stats','rankings','bet'];
+      if(data.game!==current.item.id||!permitted.includes(data.action)||
+         !Number.isSafeInteger(data.id)||data.id<1)return;
+      const method=data.action==='bet'?'POST':'GET';
+      if(data.method!==method)return;
+      const target=current.element.contentWindow;
+      if(!target)return;
+      try{
+        const result=await api(method,'/original-games/'+current.item.id+'/'+data.action,
+          data.action==='bet'?data.body:undefined);
+        // If the user changed games mid-request, do not send any data to it.
+        if(!session||currentGameFrame!==current)return;
+        target.postMessage({type:'sharika:original-response',id:data.id,ok:true,value:result},'*');
+        if(data.action==='bet')reloadWallet().catch(()=>{});
+      }catch(error){
+        if(!session||currentGameFrame!==current)return;
+        target.postMessage({type:'sharika:original-response',id:data.id,ok:false,error:errText(error)},'*');
+      }
+    });
     catalog();
     overlay.classList.add('on');
   }

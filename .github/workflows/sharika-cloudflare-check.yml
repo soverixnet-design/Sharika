@@ -4,6 +4,7 @@ on:
     branches:
       - feature/sharika-cloudflare-d1-foundation-20261029
       - feature/sharika-android-staging-20261030
+      - feature/sharika-original-games-cards-20261030
     paths:
       - 'cloudflare/**'
       - '.github/workflows/sharika-cloudflare-check.yml'
@@ -56,6 +57,32 @@ jobs:
           assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='tester'").fetchone()[0] == 590
           assert db.execute("SELECT COUNT(*) FROM sharika_wallet_ledger").fetchone()[0] == 3
           print('All 9 Food Wheel sectors allowed; existing ledger preserved')
+          # Three uploaded original game cards use a separate backend and
+          # never overwrite or erase the previous game-ledger history.
+          db.execute("UPDATE sharika_users SET coins=5000 WHERE auth_uid='tester'")
+          db.execute("INSERT INTO sharika_original_game_rounds(id,game,round_no,starts_ms,bet_closes_ms,closes_ms,seed_hex,commit_sha256) VALUES('sovera-food:88','sovera-food',88,?,?,?,?,?)",
+                     (now,now+30000,now+40000,'e'*64,'f'*64))
+          db.execute("INSERT INTO sharika_original_game_bets(game,round_no,round_id,user_uid,pick_index,amount,request_id) VALUES('sovera-food',88,'sovera-food:88','tester',7,100,'orig-test-bet-000001')")
+          assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='tester'").fetchone()[0] == 4900
+          try:
+              db.execute("INSERT INTO sharika_original_game_bets(game,round_no,round_id,user_uid,pick_index,amount,request_id) VALUES('sovera-food',88,'sovera-food:88','tester',7,100,'orig-test-bet-000001')")
+              raise AssertionError('Original bet replay allowed')
+          except sqlite3.IntegrityError:
+              pass
+          db.execute("UPDATE sharika_original_game_bets SET status='settled',payout=500,result_json='{}',settled_at=datetime('now') WHERE request_id='orig-test-bet-000001'")
+          assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='tester'").fetchone()[0] == 5400
+          assert db.execute("SELECT COUNT(*) FROM sharika_wallet_ledger WHERE reason LIKE 'original_game_%'").fetchone()[0] == 2
+          db.execute("INSERT INTO sharika_original_game_rounds(id,game,round_no,starts_ms,bet_closes_ms,closes_ms,seed_hex,commit_sha256) VALUES('night-food:89','night-food',89,?,?,?,?,?)",
+                     (now,now+30000,now+40000,'a'*64,'b'*64))
+          db.execute("INSERT INTO sharika_original_game_bets(game,round_no,round_id,user_uid,pick_index,amount,request_id) VALUES('night-food',89,'night-food:89','tester',9,25,'orig-night-group-0001')")
+          assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='tester'").fetchone()[0] == 5375
+          db.execute("INSERT INTO sharika_original_game_rounds(id,game,round_no,starts_ms,bet_closes_ms,closes_ms,seed_hex,commit_sha256) VALUES('jackpot-fruit:90','jackpot-fruit',90,?,?,?,?,?)",
+                     (now,now+30000,now+40000,'c'*64,'d'*64))
+          db.execute("INSERT INTO sharika_original_game_bets(game,round_no,round_id,user_uid,pick_index,amount,request_id) VALUES('jackpot-fruit',90,'jackpot-fruit:90','tester',7,1000,'orig-jackpot-test-0001')")
+          assert db.execute("SELECT coins FROM sharika_original_game_pools WHERE game='jackpot-fruit'").fetchone()[0] == 50
+          db.execute("INSERT INTO sharika_original_jackpot_budgets(round_id,budget,total_stake) VALUES('jackpot-fruit:90',25,1000)")
+          assert db.execute("SELECT coins FROM sharika_original_game_pools WHERE game='jackpot-fruit'").fetchone()[0] == 25
+          print('Original Food/Night/Jackpot atomic ledger, idempotency and pool verified')
           print('Game debit/payout ledger and replay protection verified')
           print('Sharika D1 schema valid:', len(tables), 'tables')
           PY

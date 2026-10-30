@@ -328,6 +328,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/me"))
             return method.equals("GET") || method.equals("POST") || method.equals("PATCH");
@@ -345,6 +347,10 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/(state|history|rounds|stats|rankings)$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/bet$"))
+            return method.equals("POST");
+        if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/(state|history|stats|rankings)$"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/bet$"))
             return method.equals("POST");
         if (path.equals("/api/v1/games")) return method.equals("GET");
         if (path.equals("/api/v1/rooms"))

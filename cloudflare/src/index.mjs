@@ -2,6 +2,7 @@ import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
+import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -326,6 +327,17 @@ export async function handleRequest(request, env) {
       }
       return fail('method_not_allowed',405,cors);
     }
+    // The three uploaded original games have independent, synchronized rounds.
+    // Reuse the authenticated user's existing virtual-coin wallet and D1 ledger.
+    if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='original-games'){
+      await assertActive(env.DB,uid);
+      if(parts.length===3&&request.method==='GET')
+        return reply({games:['sovera-food','night-food','jackpot-fruit'],virtual_coins_only:true},200,cors);
+      if(parts.length===5)
+        return await handleOriginalGameRequest({request,db:env.DB,uid,game:parts[3],
+          action:parts[4],reply,fail,cors});
+      return fail('original_game_route_not_found',404,cors);
+    }
     // Authenticated UTC-synchronized virtual-coin games. The D1 migration
     // owns the atomic debit/payout triggers and exactly-once settlement.
     if (parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='games') {
@@ -356,6 +368,7 @@ export async function handleRequest(request, env) {
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       await assertActive(env.DB, uid);
       await settleDueBets(env.DB,uid);
+      await settleOriginalDueBets(env.DB);
       const user = await me(env.DB,uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
