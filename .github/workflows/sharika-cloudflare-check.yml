@@ -41,6 +41,15 @@ jobs:
           import time
           now = int(time.time()*1000) - 2000  # Round is safely open before SQLite checks it
           db.execute("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES (10000001,'tester','Tester','2000-01-01',0,200)")
+          db.execute("INSERT INTO sharika_rooms(id,owner_id,name) VALUES ('10000001','tester','Room')")
+          assert db.execute("SELECT seat_frame_style FROM sharika_rooms WHERE id='10000001'").fetchone()[0] == 'grad'
+          db.execute("UPDATE sharika_rooms SET seat_frame_style='neon' WHERE id='10000001'")
+          assert db.execute("SELECT seat_frame_style FROM sharika_rooms WHERE id='10000001'").fetchone()[0] == 'neon'
+          try:
+              db.execute("UPDATE sharika_rooms SET seat_frame_style='invalid' WHERE id='10000001'")
+              raise AssertionError('Invalid decorative frame was accepted')
+          except sqlite3.IntegrityError:
+              pass
           db.execute("INSERT INTO sharika_game_rounds(id,game,round_no,starts_ms,bet_closes_ms,closes_ms,seed_hex,commit_sha256) VALUES ('food-wheel:1','food-wheel',1,?,?,?,?,?)",
                      (now,now+30000,now+40000,'a'*64,'b'*64))
           db.execute("INSERT INTO sharika_game_bets(game,round_no,round_id,user_uid,stake,pick_index,request_id) VALUES ('food-wheel',1,'food-wheel:1','tester',50,2,'test-game-request-12345')")
