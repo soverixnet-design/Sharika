@@ -88,3 +88,31 @@ test('new history and personal stats endpoints require adult and reveal no demo 
   assert.equal(await settleAllDueBets(db),0);
   assert.equal(db.calls.some(x=>x.sql.includes('INSERT INTO sharika_game_bets')),false);
 });
+
+test('classic game bet replay remains idempotent after its round has closed',async()=>{
+  const roundNo=Math.floor(Date.now()/40000)-1;
+  const prior={id:42,game:'food-wheel',round_no:roundNo,
+    round_id:'food-wheel:'+roundNo,stake:100,pick_index:3,
+    status:'accepted',payout:0,result_json:null,created_at:'2026-10-30'};
+  const db=fakeDb();
+  const originalPrepare=db.prepare.bind(db);
+  let originalBet=prior;
+  db.prepare=function(sql){
+    if(sql.startsWith('SELECT * FROM sharika_game_bets WHERE user_uid=? AND request_id=?')){
+      return {bind(){return this;},async first(){return originalBet;}};
+    }
+    return originalPrepare(sql);
+  };
+  const input={round_no:roundNo,stake:100,pick:3,request_id:'game:old-round-retry-1234'};
+  const replay=await handleGameRequest(args(db,'food-wheel','bet','POST',input));
+  assert.equal(replay.status,200);
+  assert.equal((await replay.json()).duplicate,true);
+  assert.equal(db.calls.some(c=>c.sql.includes('INSERT INTO sharika_game_bets')),false);
+  const changed=await handleGameRequest(args(db,'food-wheel','bet','POST',{...input,pick:2}));
+  assert.equal(changed.status,409);
+  assert.equal((await changed.json()).error,'idempotency_conflict');
+  originalBet=null;
+  const late=await handleGameRequest(args(db,'food-wheel','bet','POST',input));
+  assert.equal(late.status,409);
+  assert.equal((await late.json()).error,'betting_closed');
+});
