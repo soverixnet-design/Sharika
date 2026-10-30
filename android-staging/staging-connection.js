@@ -6,6 +6,24 @@
  */
 (function () {
   'use strict';
+  // This override is loaded only by the Android staging shell. Keep the
+  // original HTML design unchanged while allowing it to fill phone screens.
+  function fitAndroidViewport(doc, roomFrame) {
+    if (!doc || !doc.head || doc.getElementById('sharika-android-viewport')) return;
+    const style = doc.createElement('style');
+    style.id = 'sharika-android-viewport';
+    style.textContent = [
+      'html,body{width:100%!important;max-width:none!important;margin:0!important}',
+      '.app{width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important}',
+      roomFrame ? '' : [
+        'html{padding-top:0!important;padding-bottom:0!important}',
+        '#v-home,#v-rank,#v-msg{padding-top:calc(10px + env(safe-area-inset-top,0px))!important}',
+        '.auth .aw{padding-top:calc(28px + env(safe-area-inset-top,0px))!important}'
+      ].join('')
+    ].join('');
+    doc.head.appendChild(style);
+  }
+  fitAndroidViewport(document, false);
   const ACCOUNT_KEY = 'vr_accts_v1';
   const META_KEY = 'sharika_staging_registration_v1';
   const COLORS = ['#9b4dff,#4c1d95','#ff3dc8,#9d174d','#0ea5e9,#075985','#10b981,#065f46'];
@@ -476,6 +494,7 @@
   }
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
+    if (frame && frame.document) fitAndroidViewport(frame.document, true);
     if(!frame || !frame.seats || !window.cur || window.cur.id!==room.id) return;
     frame.tick=function(){};
     frame.U=[];
