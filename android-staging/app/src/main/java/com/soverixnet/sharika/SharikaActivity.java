@@ -330,6 +330,10 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
+        // Only a numeric cursor on the verified room-chat route may carry a
+        // query string. All other arbitrary query parameters stay blocked.
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/chat\\?after=(0|[1-9][0-9]{0,11})$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/presence/heartbeat")) return method.equals("POST");
         if (path.equals("/api/v1/me"))
@@ -365,6 +369,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/chat$"))
+            return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/(join|leave)$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/moderate$"))
