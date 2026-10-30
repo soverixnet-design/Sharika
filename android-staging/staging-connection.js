@@ -62,6 +62,209 @@
     return native('api', { method, path: '/api/v1' + path, body });
   }
 
+
+  // Original Sovera effects: packed locally into the isolated Android APK
+  // from a pinned source commit, never fetched from a random URL or user input.
+  const SOVERA_FRAMES = [
+    {id:'phoenix-fire',name:'Phoenix Fire',art:'phoenix.png'},
+    {id:'ice-wings',name:'Ice Wings',art:'ice.png'},
+    {id:'royal-dragon',name:'Royal Dragon',art:'dragon.png'},
+    {id:'vip7',name:'Sovera VIP7',art:'vip7.webp'},
+    {id:'royal-gold',name:'Royal Gold',art:'royal-gold.webp'},
+    {id:'violet-love',name:'Violet Love',art:'violet-love.webp'},
+    {id:'ice-admin',name:'Ice Admin',art:'ice-admin.webp'},
+    {id:'golden-dragon',name:'Golden Dragon',art:'dragon-gold.webp'},
+    {id:'ice-dragon',name:'Ice Dragon',art:'ice-dragon.webp'},
+    {id:'violet-phoenix',name:'Violet Phoenix',art:'violet-phoenix.webp'},
+    {id:'castle-flag',name:'Castle Flag',art:'royal-gold.webp'},
+    {id:'lion-queen',name:'Lion Queen',art:'phoenix.png'},
+    {id:'phoenix-queen',name:'Phoenix Queen',art:'phoenix.png'},
+    {id:'tiger-queen',name:'Tiger Queen',art:'royal-gold.webp'}
+  ];
+  const SOVERA_ENTRIES = [
+    {id:'phoenix',name:'Phoenix arrival',art:'phoenix-entry.webp',still:'phoenix-entry.webp',ms:3200},
+    {id:'dragon-queen',name:'Dragon Queen',art:'dragon-queen-entry.webp',still:'dragon-queen-entry.webp',ms:5000},
+    {id:'ice-king',name:'Ice King',art:'ice-king-entry.webp',still:'ice-king-still.webp',ms:9000},
+    {id:'castle-flag',name:'Castle Flag',art:'castle-entry.webp',still:'castle-entry.webp',ms:7000},
+    {id:'lion-queen',name:'Lion Queen',art:'lion-queen-entry.webp',still:'lion-queen-still.webp',ms:10600},
+    {id:'phoenix-queen',name:'Phoenix Queen',art:'phoenix-queen-entry.webp',still:'phoenix-queen-still.webp',ms:13800},
+    {id:'tiger-queen',name:'Tiger Queen',art:'tiger-queen-entry.webp',still:'tiger-queen-still.webp',ms:12000}
+  ];
+  function frameArt(key){return SOVERA_FRAMES.find(f=>f.id===key);}
+  function entryArt(key){return SOVERA_ENTRIES.find(f=>f.id===key);}
+  function effectPath(file){return './sovera-effects/'+file;}
+  function cosmeticCss(doc){
+    if(!doc || doc.getElementById('sh-sovera-cosmetics'))return;
+    const style=doc.createElement('style');
+    style.id='sh-sovera-cosmetics';
+    style.textContent=[
+      '.sh-sovera-frame.fxr{position:absolute!important;top:50%!important;left:50%!important;',
+      'right:auto!important;bottom:auto!important;inset:auto!important;',
+      'width:172%!important;height:172%!important;transform:translate(-50%,-50%)!important;',
+      'z-index:9!important;border:0!important;border-radius:0!important;',
+      'background-size:contain!important;background-position:center!important;',
+      'background-repeat:no-repeat!important;-webkit-mask:none!important;mask:none!important;',
+      'pointer-events:none!important;animation:shSoGlow 3s ease-in-out infinite!important}',
+      '.sh-sovera-frame::after{content:none!important}',
+      '#v-me .mav{position:relative;overflow:visible!important}',
+      '#v-me .mav>.sh-sovera-frame{width:157%!important;height:157%!important}',
+      '.pavw{overflow:visible!important}',
+      '.pavw>.sh-sovera-frame{width:180%!important;height:180%!important}',
+      '@keyframes shSoGlow{50%{filter:brightness(1.18) drop-shadow(0 0 6px #ffe6a055)}}',
+      '.sh-sovera-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}',
+      '.sh-sovera-item{min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;',
+      'border:1px solid #6b61ad;background:#211747;border-radius:14px;color:#fff;padding:10px 4px;',
+      'font-size:11px;font-weight:700}',
+      '.sh-sovera-item[aria-pressed="true"]{border:2px solid #ffdb70;background:#423068}',
+      '.sh-sovera-item img{object-fit:contain;width:72px;height:72px;max-width:100%}',
+      '.sh-sovera-preview{position:relative;width:72px;height:72px;border-radius:50%;',
+      'display:grid;place-items:center;background:linear-gradient(135deg,#8149c8,#26104a);',
+      'font-size:30px;margin:4px 0}',
+      '.sh-sovera-preview .sh-sovera-frame.fxr{width:170%!important;height:170%!important}',
+      '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
+      'pointer-events:none;display:flex;justify-content:center;align-items:center;',
+      'background:radial-gradient(circle,#251054a8,transparent 70%)}',
+      '.sh-sovera-entry-cover img{width:min(95vw,560px);height:80vh;object-fit:contain;',
+      'filter:drop-shadow(0 0 18px #e6c6ff80)}',
+      '.sh-sovera-entry-cover button{position:absolute;top:20px;right:18px;',
+      'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
+      'background:#25134a;font-size:22px;width:40px;height:40px}',
+      '@media(prefers-reduced-motion:reduce){.sh-sovera-frame.fxr{animation:none!important}}'
+    ].join('');
+    doc.head.appendChild(style);
+  }
+  function frameTag(key){
+    const item=frameArt(key);
+    if(!item)return '';
+    // Only pinned package filenames are used; never interpolate user URLs.
+    return '<i class="fxr sh-sovera-frame" aria-hidden="true" '+
+      'style="background-image:url('+effectPath(item.art)+')"></i>';
+  }
+  function playSoveraEntry(doc,key){
+    const choice=entryArt(key);
+    if(!doc||!choice)return;
+    cosmeticCss(doc);
+    doc.querySelector('.sh-sovera-entry-cover')?.remove();
+    const cover=doc.createElement('div');
+    cover.className='sh-sovera-entry-cover';
+    const img=doc.createElement('img');
+    img.alt=choice.name+' entry animation';
+    img.src=effectPath(doc.defaultView?.matchMedia?.('(prefers-reduced-motion:reduce)')?.matches
+      ?choice.still:choice.art);
+    const close=doc.createElement('button');
+    close.type='button';close.textContent='×';close.setAttribute('aria-label','Close entry animation');
+    close.onclick=()=>cover.remove();
+    cover.append(img,close);
+    doc.body.appendChild(cover);
+    doc.defaultView?.setTimeout(()=>cover.remove(),choice.ms);
+  }
+  function decorateRoomSeats(frame){
+    const doc=frame?.document;
+    if(!doc)return;
+    cosmeticCss(doc);
+    for(const seat of frame.seats||[]){
+      if(!seat||seat.empty||seat.lock)continue;
+      const el=frame.seatEl?.(seat.i);
+      const avatar=el?.querySelector('.av');
+      if(!avatar)continue;
+      avatar.querySelector('.sh-sovera-frame')?.remove();
+      const item=frameArt(seat.frame_style);
+      if(!item)continue;
+      avatar.style.position='relative';
+      const decoration=doc.createElement('i');
+      decoration.className='fxr sh-sovera-frame';
+      decoration.setAttribute('aria-hidden','true');
+      decoration.style.backgroundImage='url('+effectPath(item.art)+')';
+      avatar.appendChild(decoration);
+    }
+  }
+  function wireSoveraRoomFrames(frame){
+    if(!frame||frame.__soveraRoomFrames)return;
+    frame.__soveraRoomFrames=true;
+    cosmeticCss(frame.document);
+    const normal=frame.render;
+    if(typeof normal==='function')frame.render=function(){
+      normal.apply(this,arguments);
+      decorateRoomSeats(frame);
+    };
+  }
+  function styleSelectionSheet(kind){
+    if(!session){window.showAuth('welcome');return;}
+    cosmeticCss(document);
+    const isEntry=kind==='entry_style';
+    const title=isEntry?'✨ Original Sovera Entry':'🖼️ Original Sovera Avatar Frames';
+    const catalog=isEntry?SOVERA_ENTRIES:SOVERA_FRAMES;
+    window.openSheet('<h3>'+title+'</h3><div id="sh-sovera-list" class="sh-sovera-grid"></div>'+
+      '<p style="font-size:12px;color:#c9bbed">Free cosmetic selection. No coins charged. Your choice is saved to your verified profile.</p>');
+    const node=document.getElementById('sh-sovera-list');
+    if(!node)return;
+    const current=isEntry?profile?.entry_style:profile?.frame_style;
+    const choices=[{id:'',name:'None',art:''},...catalog];
+    for(const item of choices){
+      const button=document.createElement('button');
+      button.className='sh-sovera-item';
+      button.type='button';
+      button.setAttribute('aria-pressed',String((current||'')===item.id));
+      if(isEntry){
+        const img=document.createElement('img');
+        if(item.art)img.src=effectPath(item.still||item.art);
+        else img.alt='No entry effect';
+        button.appendChild(img);
+      }else{
+        const preview=document.createElement('div');
+        preview.className='sh-sovera-preview';
+        preview.textContent='👤';
+        if(item.art){
+          const ring=document.createElement('i');
+          ring.className='fxr sh-sovera-frame';
+          ring.style.backgroundImage='url('+effectPath(item.art)+')';
+          preview.appendChild(ring);
+        }
+        button.appendChild(preview);
+      }
+      const label=document.createElement('span');
+      label.textContent=item.name;
+      button.appendChild(label);
+      if(isEntry&&item.id){
+        const preview=document.createElement('button');
+        preview.type='button';preview.className='act';preview.textContent='▶ Preview';
+        preview.style.cssText='font-size:11px;padding:7px;border-radius:10px;color:white;background:#43337e';
+        preview.onclick=e=>{e.preventDefault();e.stopPropagation();playSoveraEntry(document,item.id);};
+        // Place preview separately so interactive controls are not nested.
+        const group=document.createElement('div');
+        group.append(button,preview);
+        node.appendChild(group);
+      }else node.appendChild(button);
+      button.onclick=async()=>{
+        if(button.disabled)return;
+        button.disabled=true;
+        try{
+          const saved=await api('PATCH','/me',{[kind]:item.id});
+          profile=saved;
+          if(window.A){
+            window.A.frame=saved.frame_style||'';
+            window.A.entry=saved.entry_style||'';
+            window.A.frameImg=null;
+            window.saveA();
+            window.renderMe();
+          }
+          window.closeSheet();
+          toast((isEntry?'Entry':'Frame')+' saved to your verified profile ✓');
+        }catch(error){toast('Effect not saved: '+errText(error));button.disabled=false;}
+      };
+    }
+  }
+  cosmeticCss(document);
+  window.frEl=function(){return frameTag(window.A?.frame||'');};
+  window.frameSheet=function(){styleSelectionSheet('frame_style');};
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('[data-m="entry"]');
+    if(button){
+      event.preventDefault();event.stopImmediatePropagation();
+      styleSelectionSheet('entry_style');
+    }
+  },true);
+
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
   let sfuState = null;
   async function waitIce(peer) {
@@ -332,6 +535,7 @@
         id: current.public_id, name: current.name, pic: current.pic || null,
         country: current.country || '', dob: current.birthdate || '',
         minor: !!current.minor, cover: current.cover || null, bio: current.bio || '',
+        frame: current.frame_style || '', entry: current.entry_style || '', frameImg: null,
         myRoom: null, claim: { d:'', streak:0 }
       },
       state: { coins:current.coins || 0, dia:current.diamonds || 0, xp:current.xp || 0 }
@@ -581,7 +785,8 @@
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,
-      muted:room.owner_id===session?.user?.id&&localMic===false,talk:false};
+      muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
+      frame_style:owner.frame_style||'',entry_style:owner.entry_style||''};
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
@@ -589,9 +794,11 @@
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
           n:user.name,e:'👤',i:member.seat_no,user_id:member.user_id,public_id:user.public_id,
-          muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false
+          muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
+          frame_style:user.frame_style||'',entry_style:user.entry_style||''
         };
-      else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level});
+      else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level,
+        frame_style:user.frame_style||'',entry_style:user.entry_style||''});
     }
     for(const seatNo of data.locked_seats||[]) {
       if(Number.isInteger(seatNo)&&seatNo>0&&seatNo<slots.length&&slots[seatNo].empty)
@@ -603,6 +810,25 @@
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
     frame.render();
+    const present=new Set((data.members||[]).map(m=>m.user_id));
+    if(!frame.__soveraSeenMembers){
+      frame.__soveraSeenMembers=present;
+      // Local user sees the selected entry on initial room visit.
+      const first=(data.members||[]).find(m=>m.user_id===session?.user?.id);
+      if(first?.sharika_users?.entry_style){
+        playSoveraEntry(frame.document,first.sharika_users.entry_style);
+      }
+    }else{
+      for(const item of data.members||[]){
+        if(!frame.__soveraSeenMembers.has(item.user_id)&&
+           item.user_id!==session?.user?.id&&
+           item.sharika_users?.entry_style){
+          playSoveraEntry(frame.document,item.sharika_users.entry_style);
+          break;
+        }
+      }
+      frame.__soveraSeenMembers=present;
+    }
   }
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
@@ -1276,6 +1502,7 @@
         if(target.isConnected)target.textContent='Room ranking unavailable: '+errText(error);
       }
     };
+    wireSoveraRoomFrames(frame);
     await syncFrame(room,frame);
     try {
       const voice=await connectVoice(room.id);
