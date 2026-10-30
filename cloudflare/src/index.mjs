@@ -1,5 +1,6 @@
 import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
+import { handleAdminOperation } from './admin.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -112,6 +113,9 @@ export async function handleRequest(request, env) {
   const uid = actor.uid;
   const parts = path.split('/').filter(Boolean);
   try {
+    if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
+      request, env, uid, path, cors, reply, fail
+    });
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
