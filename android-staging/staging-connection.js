@@ -289,6 +289,7 @@
     };
     balance = { ...local.state };
     session = { email: account.email, user: { id:current.user_id, email:account.email } };
+    startPresence();
     try {
       localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local]));
       localStorage.setItem('vr_state_v2', JSON.stringify(balance));
@@ -438,6 +439,21 @@
   window.RS = function () { return {...balance}; };
   window.addCoins = function () { toast('Coin changes require the verified server'); };
   window.addDia = function () { toast('Diamond changes require the verified server'); };
+  // Authenticated users only: a backgrounded app disappears after 90 seconds.
+  let presenceTimer=null;
+  async function heartbeatPresence(roomId) {
+    if(!session)return;
+    try {
+      await api('POST','/presence/heartbeat',{
+        room_id:roomId===undefined?(window.cur?.id||null):roomId
+      });
+    }catch(error){console.warn('Sharika presence:',errText(error));}
+  }
+  function startPresence(){
+    if(presenceTimer)clearInterval(presenceTimer);
+    heartbeatPresence(null);
+    presenceTimer=setInterval(()=>heartbeatPresence(),25000);
+  }
   async function reloadWallet() {
     const wallet = await api('GET','/wallet');
     balance = {coins:Number(wallet.coins)||0,dia:Number(wallet.diamonds)||0,xp:Number(wallet.xp)||0};
@@ -686,6 +702,7 @@
     if(!session){ window.showAuth('welcome'); return; }
     try {
       await api('POST','/rooms/'+room.id+'/join',{});
+      heartbeatPresence(room.id);
       const iframe=document.getElementById('rf');
       iframe.onload=()=>attachFrame(room).catch(error=>toast(errText(error)));
       originalOpenRoom(room);
@@ -698,6 +715,7 @@
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
     disconnectVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
+    if(session)heartbeatPresence(null);
     const iframe=document.getElementById('rf');
     if(iframe) iframe.onload=null;
     originalLeaveRoom();
@@ -1134,6 +1152,7 @@
   const originalLogout=window.logout;
   window.logout=function(){
     if(window.cur)window.leaveRoom();
+    if(presenceTimer){clearInterval(presenceTimer);presenceTimer=null;}
     session=null;profile=null;balance={coins:0,dia:0,xp:0};
     native('signOut').catch(()=>{});
     cleanLocalFakeState();

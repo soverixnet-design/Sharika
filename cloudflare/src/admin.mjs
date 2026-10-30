@@ -259,6 +259,21 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     const result=await readGiftRankings(env.DB,period,kind);
     return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
   }
+  // Read only verified Android activity. The dedicated Durable Object expires
+  // stale entries automatically; never infer online counts from saved members.
+  async function presence() {
+    if(!env.VOICE_ROOMS)return null;
+    try {
+      const result=await env.VOICE_ROOMS
+        .getByName('sharika:presence:staging').presenceStats();
+      if(!Number.isSafeInteger(result?.online_users) ||
+         !Number.isSafeInteger(result?.live_rooms))return null;
+      return result;
+    } catch(error) {
+      console.warn('sharika_presence_unavailable',error?.message);
+      return null;
+    }
+  }
   if (operation === 'dashboard') {
     const totals = await env.DB.prepare(
       'SELECT (SELECT COUNT(*) FROM sharika_users) AS users, ' +
@@ -268,7 +283,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       '(SELECT COALESCE(SUM(coins),0) FROM sharika_users) AS coins_total, ' +
       '(SELECT COALESCE(SUM(diamonds),0) FROM sharika_users) AS diamonds_total'
     ).first();
-    return reply({ ...totals, online_users:null, live_rooms:null,
+    const tracking=await presence();
+    return reply({ ...totals, online_users:tracking?.online_users??null,
+      live_rooms:tracking?.live_rooms??null, presence_window_seconds:tracking?.window_seconds??null,
       coins_total:FINANCE_ROLES.has(actor.role) ? totals.coins_total : null,
       diamonds_total:FINANCE_ROLES.has(actor.role) ? totals.diamonds_total : null,
       read_only:true }, 200, cors);
@@ -285,7 +302,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       '(SELECT COUNT(*) FROM sharika_gifts WHERE active=1) AS active_gifts,'+
       '(SELECT COUNT(*) FROM sharika_admin_roles) AS admins'
     ).first();
-    return reply({ ...totals, read_only:true, live_presence_tracked:false },200,cors);
+    const tracking=await presence();
+    return reply({ ...totals,read_only:true,live_presence_tracked:!!tracking,
+      online_users:tracking?.online_users??null,live_rooms:tracking?.live_rooms??null },200,cors);
   }
   const membersRoute=/^rooms\/([0-9]{8})\/members$/.exec(operation);
   if (membersRoute) {

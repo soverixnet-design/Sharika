@@ -47,6 +47,26 @@ async function handle(role, path, method='GET', body) {
   return {status:result.status,data:await result.json(),calls};
 }
 
+test('admin dashboard returns real heartbeat counts and no fabricated online totals',async()=>{
+  const fake=mock('super');
+  const request=new Request('https://api.example.test/api/v1/admin/dashboard');
+  const result=await handleAdminOperation({
+    request,env:{DB:fake.db,VOICE_ROOMS:{getByName:(name)=>{
+      assert.equal(name,'sharika:presence:staging');
+      return {async presenceStats(){return {online_users:5,live_rooms:2,window_seconds:90};}};
+    }}},uid:'firebase_uid',path:new URL(request.url).pathname,cors:{},
+    reply:(payload,status)=>Response.json(payload,{status}),
+    fail:(error,status)=>Response.json({error},{status})
+  });
+  assert.equal(result.status,200);
+  const data=await result.json();
+  assert.equal(data.online_users,5);
+  assert.equal(data.live_rooms,2);
+  assert.equal(data.presence_window_seconds,90);
+  const untracked=await handle('super','/api/v1/admin/dashboard');
+  assert.equal(untracked.data.online_users,null);
+  assert.equal(untracked.data.live_rooms,null);
+});
 test('no registered role means 403 even with a verified Firebase actor',async()=>{
   const response=await handle(null,'/api/v1/admin/status');
   assert.equal(response.status,403);

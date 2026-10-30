@@ -118,6 +118,23 @@ export async function handleRequest(request, env) {
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
       request, env, uid, path, cors, reply, fail
     });
+    // Authenticated presence is independent of microphone permission. This
+    // allows the admin panel to count listeners as well as speakers.
+    if (path === '/api/v1/presence/heartbeat' && request.method === 'POST') {
+      await assertActive(env.DB,uid);
+      if(!env.VOICE_ROOMS)return fail('presence_unavailable',503,cors);
+      const body=await readBody(request);
+      const roomId=body.room_id==null ? null : body.room_id;
+      if(roomId!==null) {
+        if(typeof roomId!=='string'||!PUBLIC_ID.test(roomId))
+          return fail('invalid_presence_room',400,cors);
+        const {member}=await roomAndMember(env.DB,roomId,uid);
+        if(!member)return fail('join_room_first',403,cors);
+      }
+      const coordinator=env.VOICE_ROOMS.getByName('sharika:presence:staging');
+      await coordinator.presenceTouch(uid,roomId);
+      return reply({ok:true,window_seconds:90},200,cors);
+    }
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
