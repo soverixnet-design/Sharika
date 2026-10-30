@@ -1,6 +1,13 @@
 // Server-only Lucky Gift draws. Preserve the original Sharika odds (basis points).
 // 0x 70.2%, 1x 15%, 2x 8%, 5x 4%, 10x 2.5%, 50x 0.3%.
 // Only cryptographic randomness on the Worker may select outcomes.
+// CASHOUT COMPLIANCE HOLD: Sharika coins have real-world redeemable value.
+// A feature flag must not turn on chance-based cash payouts before the actual
+// gambling licenses, store certification, verified adult identity and
+// licensed-territory enforcement have been completed and independently reviewed.
+// Removing this hold requires a separate reviewed source-code release.
+export const CASHOUT_LUCKY_GIFTS_BLOCKED = true;
+
 export const LUCKY_ODDS = Object.freeze([
   Object.freeze({ multiplier: 0, weight: 7020 }),
   Object.freeze({ multiplier: 1, weight: 1500 }),
