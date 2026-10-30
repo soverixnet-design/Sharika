@@ -1689,7 +1689,10 @@
         room.name=result.room.name;
         room.seat_count=result.room.seat_count;
         room.th=result.room.theme;
-        await syncFrame(room,frame);
+        // Saving is already committed; a temporary refresh outage must not
+        // incorrectly tell the owner that the room change was lost.
+        await syncFrame(room,frame).catch(error=>
+          console.warn('Seat count saved; member refresh delayed:',errText(error)));
         await reloadRooms();
         if(frame.$('cnt'))frame.$('cnt').textContent=String(room.seat_count+1);
         if(note.isConnected)note.textContent='Saved ✓ '+String(room.seat_count+1)+' total seats';
