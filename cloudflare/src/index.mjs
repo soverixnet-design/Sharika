@@ -562,7 +562,7 @@ export async function handleRequest(request, env) {
             id:e.id,quantity:e.quantity,price_coins:e.price_coins,
             created_at:e.created_at,sender_id:publicId(e.sender_no),
             recipient_id:publicId(e.recipient_no),name:e.name,emoji:e.emoji,
-            lucky:e.tab===2&&luckyEnabled?{payout_coins:Number(e.payout_coins)||0:
+            lucky:e.tab===2&&luckyEnabled?{payout_coins:Number(e.payout_coins)||0,
               max_multiplier:Number(e.max_multiplier)||0}:null
           }))},200,cors);
         }
