@@ -240,6 +240,8 @@
         button.disabled=true;
         try{
           const saved=await api('PATCH','/me',{[kind]:item.id});
+          if(!Object.prototype.hasOwnProperty.call(saved,kind)||
+             saved[kind]!==item.id)throw new Error('Profile effects server update is pending');
           profile=saved;
           if(window.A){
             window.A.frame=saved.frame_style||'';
