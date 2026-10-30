@@ -8,6 +8,20 @@
 // Removing this hold requires a separate reviewed source-code release.
 export const CASHOUT_LUCKY_GIFTS_BLOCKED = true;
 
+export function luckyGiftBenefits(priceCoins, quantity, recipientCount) {
+  if (![priceCoins,quantity,recipientCount].every(Number.isSafeInteger) ||
+      priceCoins<1 || quantity<1 || quantity>10 ||
+      recipientCount<1 || recipientCount>20)
+    throw new RangeError('invalid_lucky_gift_benefits');
+  const perRecipientHundredths=priceCoins*quantity*5; // 5% diamonds
+  const roomRewardHundredths=priceCoins*quantity*recipientCount; // 1% coins
+  if (!Number.isSafeInteger(perRecipientHundredths) ||
+      !Number.isSafeInteger(roomRewardHundredths))
+    throw new RangeError('lucky_benefit_exceeds_safe_integer');
+  return {recipient_hundredths:perRecipientHundredths,
+    room_hundredths:roomRewardHundredths};
+}
+
 export const LUCKY_ODDS = Object.freeze([
   Object.freeze({ multiplier: 0, weight: 7020 }),
   Object.freeze({ multiplier: 1, weight: 1500 }),
