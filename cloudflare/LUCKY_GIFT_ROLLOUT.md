@@ -99,3 +99,27 @@ legally cleared for cashout until they pass the same review.
 
 The present APK contains the Lucky Gift client code, but Lucky may remain
 hidden until the staging feature flag is intentionally enabled.
+
+## Recipient and room revenue share (source-only draft)
+
+Owner's Lucky Gift rules (2026-10-30):
+- Sender pays the full gift price **once** from the existing Sharika wallet.
+  The 5% receiver and 1% room rewards create no extra sender debit.
+- Every selected recipient earns **5% of that recipient's gift price in
+  diamond units** (1 coin of gift face value = 1 diamond for percentage
+  calculation). This is an earning-unit rule, not a promise of equal cash value.
+- The hosting ROOM earns **1% of the whole transaction in coin units**.
+  The amount belongs to the room's audited balance, **not** automatically
+  to the room owner's personal cashout wallet.
+- Sender's original stochastic 0x/1x/2x/5x/10x/50x payout remains separate.
+  Receiver and room shares are independent of whether the sender wins.
+- Entitlements are stored in hundredths: for example 5 spent coins accrue
+  0.25 receiver diamonds and 0.05 room coins. This avoids rounding small
+  gifts down to zero forever. Whole diamonds are credited to the recipient's
+  wallet by an atomic SQL trigger with immutable ledger records. Room fractional
+  entitlements stay in the room ledger, not withdrawable without further policy.
+- New additive migration: `0014_lucky_reward_shares.sql`. Not applied to
+  the existing staging D1; migration journal must be reconciled first.
+- This is DORMANT implementation only. `CASHOUT_LUCKY_GIFTS_BLOCKED` remains
+  `true` and `SHARIKA_LUCKY_GIFTS_ENABLED` remains `false`. No new
+  real-money chance rewards have been activated.
