@@ -196,6 +196,18 @@ test('only the verified room owner can save room settings in D1',async()=>{
         body:JSON.stringify({name:'Fresh Room',seat_count:10,theme:'../../unsafe'})
       }),{DB:buildDb(owner),FIREBASE_PROJECT_ID:project});
     assert.equal(invalidTheme.status,400);
+    const frameSaved=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001',{
+        method:'PATCH',headers:{Authorization:'Bearer '+await token()},
+        body:JSON.stringify({seat_frame_style:'neon'})
+      }),{DB:buildDb(owner),FIREBASE_PROJECT_ID:project});
+    assert.equal(frameSaved.status,200);
+    const invalidFrame=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001',{
+        method:'PATCH',headers:{Authorization:'Bearer '+await token()},
+        body:JSON.stringify({seat_frame_style:'../../wrong'})
+      }),{DB:buildDb(owner),FIREBASE_PROJECT_ID:project});
+    assert.equal(invalidFrame.status,400);
   }finally{globalThis.fetch=originalFetch;}
 });
 
@@ -790,6 +802,7 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
     const memberSnapshot=await members.json();
     assert.equal(memberSnapshot.seat_count,12,
       'room seat count is returned for other members to refresh their view');
+    assert.equal(memberSnapshot.seat_frame_style,'grad');
     assert.deepEqual(memberSnapshot.locked_seats,[3]);
     const notJoined=await handleRequest(new Request(
       'https://example.test/api/v1/rooms/10000001/members',{headers}),
