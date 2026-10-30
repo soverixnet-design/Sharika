@@ -5,6 +5,8 @@ import { DurableObject } from 'cloudflare:workers';
 export class SharikaVoiceRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
+    this.sharikaDb=env.DB;
+    this.seatTasks=Promise.resolve();
     ctx.blockConcurrencyWhile(async () => {
       this.ctx.storage.sql.exec(
         'CREATE TABLE IF NOT EXISTS voice_sessions (' +
@@ -33,6 +35,11 @@ export class SharikaVoiceRoom extends DurableObject {
       );
       this.ctx.storage.sql.exec(
         'CREATE INDEX IF NOT EXISTS room_chat_by_user ON room_chat(uid, id)'
+      );
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_seat_locks (' +
+        'seat_no INTEGER PRIMARY KEY CHECK(seat_no BETWEEN 1 AND 20), ' +
+        'locked_at_ms INTEGER NOT NULL)'
       );
     });
   }
@@ -117,6 +124,69 @@ export class SharikaVoiceRoom extends DurableObject {
     }
     return true;
   }
+  // Serialize seat taking and owner locking through the SAME room coordinator.
+  // D1 still enforces unique occupied seats; SQLite DO locks survive restarts.
+  async withSeatGate(work) {
+    const operation=this.seatTasks.catch(()=>{}).then(work);
+    this.seatTasks=operation.catch(()=>{});
+    return operation;
+  }
+
+  async lockedSeats() {
+    return this.ctx.storage.sql.exec(
+      'SELECT seat_no AS seatNo FROM room_seat_locks ORDER BY seat_no'
+    ).toArray().map(row=>Number(row.seatNo));
+  }
+
+  async changeMemberSeat(roomId,uid,seat) {
+    return this.withSeatGate(async()=>{
+      if(seat!==null) {
+        const locked=this.ctx.storage.sql.exec(
+          'SELECT 1 AS locked FROM room_seat_locks WHERE seat_no=?',seat
+        ).toArray()[0];
+        if(locked)return {error:'seat_locked'};
+      }
+      const db=this.sharikaDb;
+      const changed=await db.prepare(
+        'UPDATE sharika_room_members SET seat_no=? WHERE room_id=? AND user_id=?'
+      ).bind(seat,roomId,uid).run();
+      if(!changed.meta?.changes)return {error:'join_room_first'};
+      const member=await db.prepare(
+        'SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?'
+      ).bind(roomId,uid).first();
+      return {member};
+    });
+  }
+
+  async changeSeatLock(roomId,seat,locked) {
+    return this.withSeatGate(async()=>{
+      if(locked) {
+        const occupied=await this.sharikaDb.prepare(
+          'SELECT user_id FROM sharika_room_members WHERE room_id=? AND seat_no=?'
+        ).bind(roomId,seat).first();
+        if(occupied)return {error:'seat_occupied'};
+        this.ctx.storage.sql.exec(
+          'INSERT OR IGNORE INTO room_seat_locks(seat_no,locked_at_ms) VALUES(?,?)',
+          seat,Date.now()
+        );
+      } else {
+        this.ctx.storage.sql.exec(
+          'DELETE FROM room_seat_locks WHERE seat_no=?',seat
+        );
+      }
+      return {locked_seats:await this.lockedSeats()};
+    });
+  }
+
+  async dropSeatLocksAbove(seatCount) {
+    return this.withSeatGate(async()=>{
+      this.ctx.storage.sql.exec(
+        'DELETE FROM room_seat_locks WHERE seat_no>?',seatCount
+      );
+      return true;
+    });
+  }
+
   // Presence is touched by the authenticated Android app every 25 seconds.
   // Stale sessions expire after 90 seconds, even after a crash or network loss.
   async publishedFor(uid) {
