@@ -1086,6 +1086,10 @@
       sfuState.media?.getAudioTracks()[0]?.enabled :
       voiceRoomId===room.id&&voiceRoom ?
         voiceRoom.localParticipant.isMicrophoneEnabled : undefined;
+    // A room's seat limit belongs to the server, not iframe localStorage.
+    // This also updates guests who remain in the room while its owner edits it.
+    if(Number.isInteger(data.seat_count)&&data.seat_count>=4&&data.seat_count<=20)
+      room.seat_count=data.seat_count;
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,
@@ -1141,6 +1145,28 @@
     const frame=document.getElementById('rf')?.contentWindow;
     if (frame && frame.document) fitAndroidViewport(frame.document, true);
     if(!frame || !frame.seats || !window.cur || window.cur.id!==room.id) return;
+    // Add depth to the existing Sharika seat artwork without replacing its
+    // markup, member avatars, frame effects, click controls or room layout.
+    if(!frame.document.getElementById('sharika-seat-depth')){
+      const seatStyle=frame.document.createElement('style');
+      seatStyle.id='sharika-seat-depth';
+      seatStyle.textContent=[
+        '.seat .av{transform-style:preserve-3d;transition:transform .18s ease,filter .18s ease}',
+        '.seat:not(.empty):not(.lock) .av{filter:drop-shadow(0 8px 7px rgba(4,2,19,.42))}',
+        '.seat .face{border:2px solid rgba(255,255,255,.38);box-shadow:inset 0 4px 6px rgba(255,255,255,.23),inset 0 -10px 16px rgba(10,3,39,.47),0 5px 0 rgba(8,4,27,.55),0 12px 19px rgba(0,0,0,.48)}',
+        '.seat .ring{filter:drop-shadow(0 0 5px rgba(255,220,146,.45))}',
+        '.seat.empty .face{background:linear-gradient(150deg,rgba(255,255,255,.19),rgba(32,17,75,.66))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.13),inset 0 -7px 12px rgba(8,4,34,.48),0 4px 0 rgba(8,4,27,.4)}',
+        '.seat.lock .face{background:linear-gradient(145deg,rgba(63,49,114,.8),rgba(17,11,47,.9))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.12),0 5px 0 rgba(8,4,27,.48)}',
+        '.seat.talk .av{filter:drop-shadow(0 0 12px rgba(72,255,183,.75))}',
+        '.seat:active .av{transform:translateY(2px) scale(.96)}',
+        '.seat:focus-visible .av{outline:2px solid #ffe08b;outline-offset:6px}',
+        '.step button{background:linear-gradient(145deg,rgba(255,255,255,.27),rgba(75,44,152,.85));box-shadow:inset 0 2px 0 rgba(255,255,255,.32),0 4px 0 rgba(20,9,63,.6)}',
+        '.fr button{background:linear-gradient(160deg,rgba(255,255,255,.19),rgba(51,31,109,.82));box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 3px 0 rgba(17,9,57,.5)}',
+        '.fr button.sel{box-shadow:0 0 13px rgba(255,215,123,.38),inset 0 1px 0 rgba(255,255,255,.3)}',
+        '@media (prefers-reduced-motion:reduce){.seat .av{transition:none}}'
+      ].join('');
+      frame.document.head.appendChild(seatStyle);
+    }
     frame.tick=function(){};
     frame.U=[];
     frame.G=[];
@@ -1621,6 +1647,66 @@
         if(target.isConnected)target.textContent='Room rewards unavailable: '+errText(error);
       }
     };
+    // The original +/- controls updated only iframe-local S.n. A rejoin then
+    // restored the old D1 limit. Persist each tap before updating the visual.
+    let seatCountSaveBusy=false;
+    frame.document.addEventListener('click',async event=>{
+      const control=event.target.closest?.('#mn,#pl');
+      if(!control||!frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Seat arrangement'))return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if(room.owner_id!==session?.user?.id){
+        frame.toast('Only the room owner can change seats');return;
+      }
+      if(seatCountSaveBusy)return;
+      const oldCount=Number(room.seat_count);
+      if(!Number.isInteger(oldCount)||oldCount<4||oldCount>20){
+        frame.toast('Refresh the room before editing seats');return;
+      }
+      const requested=oldCount+(control.id==='pl'?1:-1);
+      if(requested<4||requested>20){
+        frame.toast('Choose between 5 and 21 total seats');return;
+      }
+      seatCountSaveBusy=true;
+      const buttons=[frame.$('mn'),frame.$('pl')].filter(Boolean);
+      buttons.forEach(button=>{button.disabled=true;});
+      let note=frame.$('sharika-seat-save-state');
+      if(!note){
+        note=frame.document.createElement('div');
+        note.id='sharika-seat-save-state';
+        note.setAttribute('role','status');
+        note.style.cssText='text-align:center;font-size:12px;min-height:20px;color:#fbe6ae;padding:4px';
+        frame.$('sheet')?.querySelector('.step')?.after(note);
+      }
+      note.textContent='Saving seat count…';
+      try{
+        const result=await api('PATCH','/rooms/'+room.id,{
+          name:room.name||'My Sharika room',seat_count:requested,
+          theme:room.th||'mid'
+        });
+        if(!Number.isInteger(result.room?.seat_count)||result.room.seat_count!==requested)
+          throw new Error('Server did not confirm the new seat count');
+        room.name=result.room.name;
+        room.seat_count=result.room.seat_count;
+        room.th=result.room.theme;
+        await syncFrame(room,frame);
+        await reloadRooms();
+        if(frame.$('cnt'))frame.$('cnt').textContent=String(room.seat_count+1);
+        if(note.isConnected)note.textContent='Saved ✓ '+String(room.seat_count+1)+' total seats';
+        frame.toast('Seat count saved to room ✓');
+      }catch(error){
+        await syncFrame(room,frame).catch(()=>{});
+        const detail=errText(error);
+        const message=detail.includes('seats_occupied_above_new_limit')
+          ?'Move guests from the highest seats before reducing the room'
+          :'Seat count not saved: '+detail;
+        if(note.isConnected)note.textContent=message;
+        frame.toast(message);
+      }finally{
+        seatCountSaveBusy=false;
+        buttons.forEach(button=>{if(button.isConnected)button.disabled=false;});
+      }
+    },true);
     // The existing room-settings sheet is reused. Its original Save action
     // runs only after the authenticated D1 owner update succeeds.
     const roomButton=frame.$ && frame.$('roomBtn');
