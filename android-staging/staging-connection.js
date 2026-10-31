@@ -838,6 +838,33 @@
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
   const SHARIKA_ICE_CONFIG={iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]};
   let sfuState = null;
+  // Android WebView may block a remote track's first autoplay attempt.
+  // A later genuine room tap must retry playback synchronously in that gesture.
+  function resumeRoomAudio() {
+    if(sfuState && !sfuState.closed) {
+      for(const audio of sfuState.audioElements) {
+        if(audio.isConnected && audio.srcObject && audio.paused)
+          audio.play().catch(()=>{});
+      }
+    }
+    if(voiceRoom && voiceRoomId && typeof voiceRoom.startAudio==='function')
+      voiceRoom.startAudio().catch(()=>{});
+  }
+  const roomAudioGestureDocs=new WeakSet();
+  function bindRoomAudioGesture(doc) {
+    if(!doc || roomAudioGestureDocs.has(doc))return;
+    roomAudioGestureDocs.add(doc);
+    doc.addEventListener('pointerdown',resumeRoomAudio,{capture:true,passive:true});
+    doc.addEventListener('keydown',resumeRoomAudio,true);
+  }
+  bindRoomAudioGesture(document);
+  const roomAudioFrame=document.getElementById('rf');
+  if(roomAudioFrame) {
+    roomAudioFrame.addEventListener('load',()=>{
+      try{bindRoomAudioGesture(roomAudioFrame.contentDocument);}catch(_){}
+    });
+    try{bindRoomAudioGesture(roomAudioFrame.contentDocument);}catch(_){}
+  }
   let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;
   function recoverSfuPublication(state,reason) {
     if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||state.recoveryTimer)return;
@@ -896,7 +923,13 @@
     audio.srcObject=new MediaStream([event.track]);
     document.body.appendChild(audio);
     state.audioElements.add(audio);
-    audio.play().catch(()=>{ /* Android may require a user tap for playback */ });
+    audio.play().catch(error=>{
+      if(error?.name==='NotAllowedError' && !state.audioUnlockPrompted) {
+        state.audioUnlockPrompted=true;
+        document.getElementById('rf')?.contentWindow?.toast?.(
+          'Tap anywhere in the room to hear other speakers.');
+      }
+    });
     event.track.addEventListener('ended',()=>{
       state.audioElements.delete(audio);audio.pause();audio.remove();
     },{once:true});
