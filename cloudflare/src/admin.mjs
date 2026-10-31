@@ -103,7 +103,10 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
 
   if(operation==='cosmetics'||operation==='cosmetics/grant')
     return await handleCosmeticAdmin({
-      request,db:env.DB,uid,role:actor.role,path,readBody,reply,fail,cors
+      request,db:env.DB,uid,role:actor.role,path,
+      readBody:async req=>{const raw=await req.text();
+        if(raw.length>8192)throw Error('body_too_large');return JSON.parse(raw||'{}');},
+      reply,fail,cors
     });
   if(operation==='exchange-rate')return await handleAdminExchangeRate({
     request,db:env.DB,uid,role:actor.role,reply,fail,cors
