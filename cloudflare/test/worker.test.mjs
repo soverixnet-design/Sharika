@@ -456,7 +456,7 @@ test('room gifts require Firebase auth and a verified room membership',async()=>
   }finally{globalThis.fetch=prior;}
 });
 
-test('regular gift sending uses catalog price and atomically settles one coin debit with recipient XP',async()=>{
+test('regular gift atomically debits sender and credits 10% to the room owner exactly once',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
     const uid='firebase:'+project+':secure-user';
@@ -486,19 +486,26 @@ test('regular gift sending uses catalog price and atomically settles one coin de
     const json=await res.json();
     assert.equal(json.spent_coins,50);
     assert.equal(json.room_reward_coins,5);
+    assert.equal(json.owner_reward_coins,5);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.equal(stmts.length,7);
+    assert.equal(stmts.length,9);
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);
     assert.equal(stmts[5].values[2],uid);
     assert.match(stmts[6].sql,/sharika_regular_room_rewards/);
     assert.equal(stmts[6].values[3],500);
+    assert.match(stmts[7].sql,/UPDATE sharika_users SET coins=CASE/);
+    assert.equal(stmts[7].values[1],5);
+    assert.equal(stmts[7].values[2],uid);
+    assert.match(stmts[8].sql,/room_gift_reward/);
+    assert.match(stmts[8].sql,/roomgift:/);
+    assert.equal(stmts[8].values[1],5);
   }finally{globalThis.fetch=prior;}
 });
 
-test('room rewards show immutable 10% ordinary-gift shares, never personal wallet credit',async()=>{
+test('room rewards show audited ordinary-gift shares and actual owner wallet credits',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
     const uid='firebase:'+project+':secure-user';
@@ -513,6 +520,8 @@ test('room rewards show immutable 10% ordinary-gift shares, never personal walle
         stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
       if(sql.includes('FROM sharika_regular_room_rewards WHERE room_id='))
         stmt.first=async()=>({points:1234});
+      if(sql.includes('SUM(l.delta)'))
+        stmt.first=async()=>({coins:10});
       return stmt;
     };
     const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/rewards',{
@@ -524,9 +533,57 @@ test('room rewards show immutable 10% ordinary-gift shares, never personal walle
     assert.equal(data.regular_reward_hundredths,1234);
     assert.equal(data.reward_coins,12);
     assert.equal(data.reward_fraction_hundredths,34);
-    assert.equal(data.owner_wallet_credited,false);
+    assert.equal(data.owner_wallet_credited,true);
+    assert.equal(data.owner_wallet_credited_coins,10);
+    assert.equal(data.owner_wallet_credit_enabled,true);
     assert.equal(data.withdrawal_enabled,false);
     assert.equal(db.calls.some(x=>x[1]?.includes?.('sharika_lucky_room_rewards')),false);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('replayed gift request returns original owner credit without a second wallet mutation',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    let recordedRoom='10000001';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:1955,diamonds:0});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:uid});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
+      if(sql.includes('recipient_ids_json,total_coins'))
+        stmt.first=async()=>({id:71,room_id:recordedRoom,gift_id:9,quantity:5,
+          recipient_ids_json:'["10000001"]',total_coins:50});
+      if(sql.includes('FROM sharika_regular_room_rewards WHERE transaction_id='))
+        stmt.first=async()=>({reward_hundredths:500});
+      if(sql.includes("reason='room_gift_reward'"))
+        stmt.first=async()=>({delta:5});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:9,quantity:5,
+        recipient_public_ids:['10000001'],request_id:'gift_atomic_12345678'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    const body=await res.json();
+    assert.equal(body.duplicate,true);
+    assert.equal(body.owner_reward_coins,5);
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+    // Reusing the same request ID for a different room cannot redirect a
+    // prior transaction's 10% owner reward.
+    recordedRoom='10000002';
+    const otherRoom=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:9,quantity:5,
+        recipient_public_ids:['10000001'],request_id:'gift_atomic_12345678'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(otherRoom.status,409);
+    assert.equal((await otherRoom.json()).error,'idempotency_conflict');
   }finally{globalThis.fetch=prior;}
 });
 
