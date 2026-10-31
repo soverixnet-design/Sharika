@@ -7,6 +7,7 @@ on:
       - feature/sharika-original-games-cards-20261030
       - feature/sharika-lucky-gifts-20261030
       - feature/sharika-staff-seller-entry-20261031
+      - fix/sharika-original-games-20261031
       - fix/sharika-two-way-mic-direct-seat-20261031
     paths:
       - 'android-staging/**'
