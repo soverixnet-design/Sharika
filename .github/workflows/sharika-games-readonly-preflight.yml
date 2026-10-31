@@ -1,0 +1,53 @@
+name: Sharika original games D1 read-only preflight
+
+on:
+  push:
+    branches:
+      - fix/sharika-original-games-20261031
+    paths:
+      - '.github/workflows/sharika-games-readonly-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-staging-schema:
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assert exact read-only staging database target
+        run: |
+          test "$GITHUB_REF" = "refs/heads/fix/sharika-original-games-20261031"
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            const c=JSON.parse(readFileSync("wrangler.jsonc","utf8"));
+            const db=c.d1_databases;
+            if(c.name!=="sharika-api-staging" ||
+               c.account_id!=="d81cf7c48fb9b36d468cb0a08720cd74" ||
+               c.vars?.SHARIKA_ENV!=="staging" ||
+               c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=="false" ||
+               db?.length!==1 || db[0].database_name!=="sharika-staging" ||
+               db[0].database_id!=="b2c62252-12a5-4740-90c7-01a536d9a39a")
+              throw Error("Non-staging D1 target rejected");
+          '
+          test -n "$CLOUDFLARE_API_TOKEN"
+      - name: Read only original games tables and triggers
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT type,name FROM sqlite_master WHERE name IN ('sharika_users','sharika_wallet_ledger','sharika_original_game_rounds','sharika_original_game_bets','sharika_original_game_pools','sharika_original_jackpot_budgets','sharika_original_bet_validate','sharika_original_bet_debit','sharika_original_bet_payout','sharika_original_jackpot_reserve') ORDER BY type,name;"
+      - name: Read only migrations recorded by D1
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM d1_migrations ORDER BY id;"
+      - name: Read only original game bet column names
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name,type FROM pragma_table_info('sharika_original_game_bets') ORDER BY cid;"
