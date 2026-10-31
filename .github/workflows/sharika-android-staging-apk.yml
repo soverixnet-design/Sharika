@@ -10,8 +10,13 @@ on:
       - fix/sharika-original-games-20261031
       - fix/sharika-seller-wallet-split-20261031
       - fix/sharika-two-way-mic-direct-seat-20261031
+      - feature/sharika-profile-headwear-20261031
     paths:
       - 'android-staging/**'
+      - 'app/index.html'
+      - 'app/profile-ornaments.js'
+      - 'app/profile-ornaments.css'
+      - 'app/profile-headwear/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
   workflow_dispatch:
 
@@ -174,6 +179,18 @@ jobs:
             unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/sovera-effects/$effect"
           done
           echo 'SOVERA_FRAMES_ENTRIES_IN_APK_VERIFIED'
+
+      - name: Verify seven animated headwear loops are packaged offline
+        run: |
+          node --check ../app/profile-ornaments.js
+          for frame in vip-gold coin-seller ruby-heart sapphire-crystal rainbow-floral golden-welcome shadow-crown; do
+            test -s "../app/profile-headwear/$frame.webp"
+            strings "../app/profile-headwear/$frame.webp" | grep -F 'ANIM'
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/profile-headwear/$frame.webp"
+          done
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/profile-ornaments.js'
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/profile-ornaments.css'
+          echo 'SHARIKA_SEVEN_ANIMATED_HEADWEAR_FRAMES_VERIFIED'
 
       - name: Check original game cards and HTML are packaged in the staging APK
         run: |

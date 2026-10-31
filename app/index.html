@@ -894,5 +894,7 @@ el.querySelectorAll(".pp").forEach(function(p){p.onclick=function(){var u=t.filt
 el.querySelectorAll(".cpp").forEach(function(p){p.onclick=function(){end();setTimeout(function(){try{openProfile({id:p.dataset.c,n:p.dataset.n,e:p.dataset.e,lv:50})}catch(e){}},700)}})};
 var sp=document.createElement("div");sp.className="spk";var E=["✦","✧","✨","⭐"];for(var i=0;i<12;i++){var q=document.createElement("i");q.textContent=E[i%4];q.style.left=(Math.random()*95)+"%";q.style.fontSize=(10+Math.random()*10)+"px";q.style.color="#ffe9b0";q.style.animationDuration=(9+Math.random()*9)+"s";q.style.animationDelay=(-Math.random()*12)+"s";sp.appendChild(q)}
 document.getElementById("app").appendChild(sp)})()</script><script src="./connection.js"></script>
+<link rel="stylesheet" href="./profile-ornaments.css">
+<script src="./profile-ornaments.js"></script>
 </body>
 </html>
