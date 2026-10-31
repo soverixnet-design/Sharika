@@ -95,6 +95,7 @@
     return new Promise((resolve, reject) => {
       const id = String(++seq);
       const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
+        action === 'googleSignIn' ? 150000 :
         action === 'api' && payload?.method === 'PUT' && payload?.path === '/api/v1/me/avatar'
           ? 90000 : 25000;
       const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, timeoutMs);
@@ -1508,13 +1509,35 @@
       return {ok:true,acct:local};
     } catch (error) { return {ok:false,msg:errText(error)}; }
   };
+  let googleLoginBusy = false;
+  function googleLoginError(error) {
+    const message=errText(error);
+    if(message==='google_sign_in_cancelled'||/GetCredentialCancellationException/i.test(message))
+      return 'Google sign-in was cancelled. Tap Continue with Google to retry.';
+    if(message==='google_account_not_available'||/NoCredentialException/i.test(message))
+      return 'No Google account available. Add an account in Android settings and try again.';
+    if(/Request timed out/i.test(message))
+      return 'Google sign-in timed out. Check your internet connection and try again.';
+    if(/developer.error|developer_error|ApiException:\s*10|configuration|misconfigured/i.test(message))
+      return 'Google sign-in configuration needs updating. Contact the Sharika tester.';
+    return message;
+  }
   async function googleLogin() {
+    if(googleLoginBusy)return;
+    googleLoginBusy=true;
+    const button=document.getElementById('wg');
+    if(button)button.disabled=true;
     try {
       toast('Opening Google account picker…');
-      const account = await native('googleSignIn');
-      const local = await authenticated(account);
+      const account=await native('googleSignIn');
+      const local=await authenticated(account);
       window.enter(local,'Signed in to Sharika staging');
-    } catch (error) { toast(errText(error)); }
+    } catch (error) { toast(googleLoginError(error)); }
+    finally{
+      googleLoginBusy=false;
+      const currentButton=document.getElementById('wg');
+      if(currentButton)currentButton.disabled=false;
+    }
   }
 
   // Keep original login imagery, forms, colors, and navigation.
@@ -1629,7 +1652,7 @@
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/cover\?v=[0-9]+$/.test(value)
       ?value:null;
   }
-  async function jpegRoomPreview(file){
+  async function jpegRoomPreview(file,forTheme=false){
     if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
       throw new Error('Choose an image smaller than 15 MB');
     const blobUrl=URL.createObjectURL(file);
@@ -1643,17 +1666,20 @@
       });
       const sourceWidth=photo.naturalWidth,sourceHeight=photo.naturalHeight;
       if(!sourceWidth||!sourceHeight)throw new Error('Invalid image dimensions');
+      if(forTheme&&Math.min(sourceWidth,sourceHeight)<720)
+        throw new Error('For a clear room theme, choose a photo at least 720 px on its shorter side');
       const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
       if(!ctx)throw new Error('Image editor is unavailable');
-      for(const side of [900,720,600,480,360,280]){
+      // Keep near-HD detail for tall mobile wallpapers; shrink only if needed.
+      for(const side of [1800,1600,1440,1280,1080,900,720,600]){
         const scale=Math.min(1,side/Math.max(sourceWidth,sourceHeight));
         canvas.width=Math.max(1,Math.round(sourceWidth*scale));
         canvas.height=Math.max(1,Math.round(sourceHeight*scale));
         ctx.fillStyle='#161029';ctx.fillRect(0,0,canvas.width,canvas.height);
         ctx.drawImage(photo,0,0,canvas.width,canvas.height);
-        for(const quality of [.76,.60,.45]){
+        for(const quality of [.86,.78,.70,.62]){
           const preview=canvas.toDataURL('image/jpeg',quality);
-          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=120023)
+          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=320023)
             return preview;
         }
       }
@@ -1677,7 +1703,7 @@
       coverUploadBusy=true;
       toast('Preparing your room photo…');
       try{
-        const image_data=await jpegRoomPreview(file);
+        const image_data=await jpegRoomPreview(file,useAsTheme);
         const saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
         room.cover_url=verifiedCoverUrl(saved.cover_url);
         if(frame?.S)frame.S.pic=room.cover_url;
@@ -1836,6 +1862,15 @@
     frame.S.theme=palette;
     frame.S.bg=sharedImage;
     frame.S.frame=chosenSeatFrame;
+    const roomApp=frame.$?.('app');
+    if(roomApp){
+      // Keep the verified, shared wallpaper in a sharp image layer rather
+      // than enlarging a compressed thumbnail behind heavy dark overlays.
+      roomApp.classList.toggle('sharika-hd-room-bg',!!sharedImage);
+      if(sharedImage)
+        roomApp.style.setProperty('--sharika-shared-wallpaper','url("'+sharedImage+'")');
+      else roomApp.style.removeProperty('--sharika-shared-wallpaper');
+    }
     if(themeChanged&&typeof frame.applyTheme==='function')frame.applyTheme();
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));

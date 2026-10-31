@@ -38,6 +38,8 @@ import androidx.credentials.GetCredentialRequest;
 import androidx.credentials.GetCredentialResponse;
 import androidx.credentials.exceptions.ClearCredentialException;
 import androidx.credentials.exceptions.GetCredentialException;
+import androidx.credentials.exceptions.GetCredentialCancellationException;
+import androidx.credentials.exceptions.NoCredentialException;
 
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
@@ -550,7 +552,11 @@ public final class SharikaActivity extends Activity {
                     }
                     @Override public void onError(GetCredentialException error) {
                         googlePending = false;
-                        sendResult(id, result(false,null,safe(error)));
+                        final String message = error instanceof GetCredentialCancellationException
+                            ? "google_sign_in_cancelled" :
+                            error instanceof NoCredentialException
+                            ? "google_account_not_available" : safe(error);
+                        sendResult(id, result(false,null,message));
                     }
                 });
         } catch (Exception error) {
