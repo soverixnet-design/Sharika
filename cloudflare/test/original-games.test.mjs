@@ -190,8 +190,18 @@ test('all three original games announce at most three verified winners for ten s
   assert.equal(topThree('night-food',state(n,1)).winners.length,3);
   assert.equal(topThree('jackpot-fruit',state(n,8)).winners.length,3);
   assert.equal(topThree('jackpot-fruit',state(n+1,1,[])),null,'no demo winners');
-  assert.match(adapter,/winnerBannerTimer=view\.setTimeout\(\(\)=>\{banner\.remove\(\);winnerBannerTimer=null;\},10000\)/);
-  assert.match(adapter,/line\.textContent=\['🥇','🥈','🥉'\]/);
+  assert.match(adapter,/winnerBannerTimer=view\.setTimeout\(clearWinnerBanner/);
+  assert.match(adapter,/winnerBannerStepTimer=view\.setInterval/);
+  assert.match(adapter,/verifiedAvatarUrl\(winner\.pic\)/);
+  assert.match(adapter,/sh-win-go/);
+  assert.match(adapter,/shWinSlide/);
+  assert.doesNotMatch(adapter,/parent\.postMessage\(\{type:'akira:game-win'/);
+});
+
+test('win banner uses verified player avatars from the original-game result API',()=>{
+  const source=readFileSync(new URL('../src/original-games.mjs',import.meta.url),'utf8');
+  assert.match(source,/SELECT u\.public_no,u\.name,u\.pic,SUM\(b\.payout\)/);
+  assert.match(source,/name:u\.name,pic:u\.pic,total_win:u\.total_win/);
 });
 
 test('verified original game settlement refreshes the shared profile and room wallet',()=>{

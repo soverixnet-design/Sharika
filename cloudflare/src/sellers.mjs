@@ -95,7 +95,9 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
       "SELECT auth_uid,coins,status FROM sharika_users WHERE public_no=?"
     ).bind(Number(publicId)).first();
     if(!recipient||recipient.status!=='active')return fail('recipient_unavailable',404,cors);
-    if(recipient.auth_uid===uid)return fail('cannot_recharge_self',403,cors);
+    // Seller stock may be credited to the seller's own verified wallet.
+    // It is still debited atomically and recorded in the same immutable ledger.
+    const selfRecharge=recipient.auth_uid===uid;
     const existing=await env.DB.prepare(
       'SELECT t.amount,t.target_uid,t.id FROM sharika_coin_seller_transfers t '+
       'WHERE t.seller_uid=? AND t.request_id=?'
@@ -108,7 +110,8 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
       ).bind(uid).first();
       return reply({duplicate:true,transfer_id:existing.id,
         available_coins:stock?.available_coins??0,recipient_public_id:publicId,
-        sender_public_id:showId(actor.public_no),coins:amount},200,cors);
+        sender_public_id:showId(actor.public_no),coins:amount,
+        self_recharge:selfRecharge},200,cors);
     }
     if(Number(seller.available_coins)<amount)return fail('seller_stock_insufficient',409,cors);
     if(Number(recipient.coins)>MAX_USER_BALANCE-amount)
@@ -116,9 +119,11 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
     const creditId='seller-credit:'+uid+':'+requestId;
     let referralCredit;
     try{
-      referralCredit=await rechargeReferralStatements({
-        db:env.DB,recipientUid:recipient.auth_uid,sellerUid:uid,requestId,amount
-      });
+      // Do not mint a referral commission from a seller's own stock recharge.
+      referralCredit=selfRecharge?{bonus:0,statements:[]}:
+        await rechargeReferralStatements({
+          db:env.DB,recipientUid:recipient.auth_uid,sellerUid:uid,requestId,amount
+        });
     }catch(error){
       if(error.message==='inviter_balance_limit')
         return fail('inviter_balance_limit',409,cors);
@@ -153,6 +158,7 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
       recipient_public_id:publicId,
       sender_public_id:showId(actor.public_no),
       available_coins:saved.stock_after,
+      self_recharge:selfRecharge,
       referral_bonus_coins:referralCredit.bonus},201,cors);
   }
   return fail('seller_method_not_allowed',405,cors);

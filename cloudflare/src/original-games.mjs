@@ -113,13 +113,13 @@ async function currentState(db,uid,game){
   if(prev){
     // Real winners only. Never manufacture leaderboard names or balances.
     const winners=await db.prepare(
-      "SELECT u.public_no,u.name,SUM(b.payout) AS total_win FROM sharika_original_game_bets b "+
+      "SELECT u.public_no,u.name,u.pic,SUM(b.payout) AS total_win FROM sharika_original_game_bets b "+
       "JOIN sharika_users u ON u.auth_uid=b.user_uid WHERE b.round_id=? "+
       "AND b.status='settled' AND b.payout>0 GROUP BY b.user_uid "+
       "ORDER BY total_win DESC,u.public_no LIMIT 3").bind(prev.id).all();
     previous={round_no:prev.round_no,...await originalOutcome(prev),
       top_winners:(winners.results||[]).map(u=>({
-        public_id:String(u.public_no).padStart(8,'0'),name:u.name,total_win:u.total_win
+        public_id:String(u.public_no).padStart(8,'0'),name:u.name,pic:u.pic,total_win:u.total_win
       }))};
   }
   const wallet=await userCoins(db,uid);

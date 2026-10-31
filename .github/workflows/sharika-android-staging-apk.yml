@@ -10,7 +10,12 @@ on:
       - fix/sharika-original-games-20261031
       - fix/sharika-admin-exchange-rate-20261031
       - fix/sharika-seller-wallet-split-20261031
+      - fix/sharika-seller-self-recharge-wallet-ui-20261031
+      - fix/sharika-profile-save-recovery-20261031
+      - fix/sharika-shared-room-themes-20261031
       - fix/sharika-two-way-mic-direct-seat-20261031
+      - feature/sharika-greedy-wheel-20261031
+      - feature/sharika-greedy-wheel-current-20261031
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
@@ -115,6 +120,15 @@ jobs:
               !bridge.includes('event.source!==current.element.contentWindow')||
               !bridge.includes("id:'jackpot-fruit'"))
             throw Error('Original game card/iframe source checking missing');
+          const greedy='app/src/main/assets/greedy-wheel/';
+          const greedyHtml=fs.readFileSync(greedy+'index.html','utf8');
+          const greedyBridge=fs.readFileSync(greedy+'sharika-bridge.js','utf8');
+          if(!bridge.includes("id:'greedy-wheel'")||
+             !greedyHtml.includes('sharika-bridge.js')||
+             greedyHtml.includes('__PORT_8080__')||
+             !greedyBridge.includes('sharika:greedy-request')||
+             !greedyBridge.includes('window.WebSocket=BridgeSocket'))
+            throw Error('Greedy Wheel is not protected by authenticated bridge');
           console.log('SHARIKA_THREE_ORIGINAL_GAMES_SERVER_BRIDGE_VERIFIED');
           console.log('SHARIKA_ORIGINAL_UI_AND_ISOLATED_BRIDGE_VERIFIED');
           NODE
@@ -186,6 +200,14 @@ jobs:
             unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/original-games/$game.html"
           done
           echo 'THREE_ORIGINAL_GAMES_PACKAGED'
+
+      - name: Verify uploaded Greedy Wheel visuals and bridge ship in APK
+        run: |
+          for asset in index.html game.js style.css sharika-bridge.js img/shrimp.webp img/fish.webp img/chicken.webp img/steak.webp img/cabbage.webp img/carrot.webp img/corn.webp img/tomato.webp img/salad.webp img/pizza.webp; do
+            test -s "app/src/main/assets/greedy-wheel/$asset"
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/greedy-wheel/$asset"
+          done
+          echo 'GREEDY_WHEEL_UI_PACKAGED'
 
       - name: Check Food Wheel card is packaged in the staging APK
         run: |

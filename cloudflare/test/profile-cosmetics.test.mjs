@@ -162,6 +162,12 @@ test('cosmetics and profile uploads do not accumulate effects or cross accounts'
   assert.match(adapter,/avatar\.classList\.toggle\('sh-has-sovera-frame',!!item\)/);
   assert.match(adapter,/const accountId=session\.user\.id/);
   assert.match(adapter,/saved\?\.public_id!==publicId/);
+  assert.match(adapter,/const previousPic=verifiedAvatarUrl\(profile\.pic\)/);
+  assert.match(adapter,/const checked=await api\('GET','\/me'\)\.catch/);
+  assert.match(adapter,/Photo saved; local redraw deferred/);
+  assert.match(adapter,/sharika-profile-save-status/);
+  const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
+  assert.match(worker,/const writes=await env\.DB\.batch\(\[/);
   assert.match(adapter,/document\.getElementById\('rf'\)\?\.contentWindow!==frame/);
 });
 
