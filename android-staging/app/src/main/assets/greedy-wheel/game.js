@@ -812,6 +812,12 @@
     S.balance = 0; renderBalance();
     toast(t('connecting'));
     connect();
+  } else if (qs.get('sheet') === '1') {
+    // In the authenticated Sharika sheet, a missing parent bridge must fail
+    // closed. Never show the supplied demonstration's fake coins or bots.
+    S.mode = 'online'; S.phase = 'connecting'; S.balance = 0;
+    S.history = []; S.myBets = new Array(N).fill(0);
+    renderBalance(); renderHub(); toast(t('offline'), 6000);
   } else {
     S.history = Array.from({ length: 20 }, (_, k) => ({ round: S.round - 1 - k, idx: pickRandom() })).filter((h) => h.round > 0);
     emit('ready', { version: API.version, mode: 'demo' });

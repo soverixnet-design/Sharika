@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {webcrypto,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import {greedyOutcome,greedyPayout,settleGreedyDueBets,handleGreedyRequest} from '../src/greedy-wheel.mjs';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
@@ -132,4 +133,44 @@ test('Android iframe always uses authenticated parent bridge, not fake local mon
   assert.match(bridge,/crypto\.getRandomValues/);
   assert.match(adapter,/current\.item\.id==='greedy-wheel'/);
   assert.match(adapter,/\/greedy-wheel\/.*data\.action/);
+});
+
+test('opening Greedy mid-result shows the already settled outcome immediately',async()=>{
+  const root=new URL('../../android-staging/app/src/main/assets/greedy-wheel/',import.meta.url);
+  const bridge=readFileSync(new URL('sharika-bridge.js',root),'utf8');
+  const listeners=new Map(),queued=[];
+  let request;
+  const parent={postMessage(message){request=message;}};
+  const window={WebSocket:class NativeWebSocket{},parent,
+    addEventListener(name,callback){listeners.set(name,callback);}};
+  runInNewContext(bridge,{window,crypto:webcrypto,Uint8Array,
+    setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>2,clearInterval:()=>{},
+    queueMicrotask:callback=>queued.push(callback)});
+  const socket=new window.WebSocket('wss://sharika-greedy.invalid/ws?demo=1');
+  const seen=[];
+  socket.onmessage=event=>seen.push(JSON.parse(event.data));
+  queued.shift()();
+  assert.equal(request.action,'state');
+  const now=Date.now();
+  listeners.get('message')({source:parent,data:{type:'sharika:greedy-response',
+    id:request.id,ok:true,value:{serverTime:now,balance:1234,
+      user:{id:'10000001',name:'Adult'},config:{chips:[1000]},history:[],
+      myBets:Array(8).fill(0),state:{round:44,phase:'result',
+        endsAt:now+1000,totals:Array(8).fill(0),resultId:'corn'},
+      result:{round:44,resultId:'corn',endsAt:now+1000,
+        you:{bet:1000,win:5000,balance:1234},top:[]}}
+  }});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(seen.map(x=>x.t),['hello','result']);
+  assert.equal(seen[1].you.win,5000);
+  socket.close();
+});
+
+test('packaged Greedy sheet cannot fall back to fake demo coins when bridge is missing',()=>{
+  const source=readFileSync(new URL('../../android-staging/app/src/main/assets/greedy-wheel/game.js',import.meta.url),'utf8');
+  const guard=source.indexOf("else if (qs.get('sheet') === '1')");
+  assert.ok(guard>0);
+  const branch=source.slice(guard,source.indexOf('} else {',guard));
+  assert.match(branch,/S\.balance = 0/);
+  assert.doesNotMatch(branch,/demoStartBetting/);
 });

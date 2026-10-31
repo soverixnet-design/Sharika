@@ -504,13 +504,20 @@ public final class SharikaActivity extends Activity {
         // query string. All other arbitrary query parameters stay blocked.
         if (path.matches("^/api/v1/rooms/[0-9]{8}/chat\\?after=(0|[1-9][0-9]{0,11})$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/entries\\?after=(0|[1-9][0-9]{0,11})$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/presence/heartbeat")) return method.equals("POST");
         if (path.equals("/api/v1/me/avatar")) return method.equals("PUT");
         if (path.equals("/api/v1/me"))
             return method.equals("GET") || method.equals("POST") || method.equals("PATCH");
         if (path.equals("/api/v1/banners")) return method.equals("GET");
+        if (path.equals("/api/v1/events")) return method.equals("GET");
+        if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
+        if (path.equals("/api/v1/cosmetics/purchase") ||
+            path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
         if (path.equals("/api/v1/wallet")) return method.equals("GET");
+        if (path.equals("/api/v1/wallet/exchange-rate")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange")) return method.equals("POST");
         if (path.equals("/api/v1/follows") || path.equals("/api/v1/messages") ||
             path.equals("/api/v1/gifts")) return method.equals("GET");
@@ -547,6 +554,8 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}$"))
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))
             return method.equals("PUT");

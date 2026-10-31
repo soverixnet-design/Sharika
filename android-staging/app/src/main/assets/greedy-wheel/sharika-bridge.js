@@ -32,8 +32,15 @@
     if(!socket.initialized){
       socket.initialized=true;
       socket.round=st.round;socket.phase=st.phase;
+      socket.balance=data.balance;
       emit(socket,{t:'hello',serverTime:data.serverTime,user:data.user,balance:data.balance,
         config:data.config,history:data.history,state:st,myBets:data.myBets});
+      // A player can open the sheet halfway through a round. Show the real
+      // server result immediately instead of waiting for the next round.
+      if(st.phase==='spinning')emit(socket,{t:'spin',serverTime:data.serverTime,
+        round:st.round,endsAt:st.endsAt,resultId:st.resultId,totals:st.totals});
+      if(st.phase==='result'&&data.result)
+        emit(socket,{t:'result',serverTime:data.serverTime,...data.result});
       return;
     }
     if(socket.round!==st.round){socket.round=st.round;socket.phase=null;}
