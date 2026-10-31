@@ -10,8 +10,13 @@ on:
       - fix/sharika-original-games-20261031
       - fix/sharika-seller-wallet-split-20261031
       - fix/sharika-two-way-mic-direct-seat-20261031
+      - feature/sharika-profile-headwear-20261031
     paths:
       - 'android-staging/**'
+      - 'app/index.html'
+      - 'app/profile-ornaments.js'
+      - 'app/profile-ornaments.css'
+      - 'app/profile-headwear/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
   workflow_dispatch:
 

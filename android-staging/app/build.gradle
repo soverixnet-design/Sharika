@@ -63,6 +63,11 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }
+    from(rootProject.file('../app/profile-ornaments.js'))
+    from(rootProject.file('../app/profile-ornaments.css'))
+    from(rootProject.file('../app/profile-headwear')) {
+        into 'profile-headwear'
+    }
     into(sharikaUiAssets)
 }
 android.sourceSets.main.assets.srcDir(sharikaUiAssets)
