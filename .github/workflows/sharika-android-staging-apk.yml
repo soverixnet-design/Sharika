@@ -11,6 +11,7 @@ on:
       - fix/sharika-admin-exchange-rate-20261031
       - fix/sharika-seller-wallet-split-20261031
       - fix/sharika-seller-self-recharge-wallet-ui-20261031
+      - fix/sharika-profile-save-recovery-20261031
       - fix/sharika-two-way-mic-direct-seat-20261031
     paths:
       - 'android-staging/**'
