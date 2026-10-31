@@ -42,6 +42,21 @@ test('users without a mic seat cannot publish or mint a publisher session',async
   assert.equal(r.status,403);
   assert.equal((await r.json()).error,'voice_publish_forbidden');
 });
+test('unmuted guest on an open mic seat can publish without any invitation',async()=>{
+  const r=await handleVoiceOperation({...base,uid:'u2',member:{seat_no:3,muted:0},
+    operation:'config',request:req('GET','config')});
+  assert.equal(r.status,200);
+  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true});
+});
+test('listener and muted seated guest cannot publish microphone audio',async()=>{
+  for(const guest of [{seat_no:null,muted:0},{seat_no:3,muted:1}]){
+    const r=await handleVoiceOperation({...base,uid:'u2',member:guest,
+      operation:'session',request:req('POST','session',{mode:'publish'})});
+    assert.equal(r.status,403);
+    assert.equal((await r.json()).error,'voice_publish_forbidden');
+  }
+});
+
 test('publish rejects invalid SDP and arbitrary track names without calling SFU',async()=>{
   const r=await handleVoiceOperation({...base,operation:'publish',
     request:req('POST','publish',{
