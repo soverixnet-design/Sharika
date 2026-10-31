@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/sharika-lucky-gifts-20261030
+      - fix/sharika-original-games-20261031
     paths:
       - '.github/workflows/sharika-worker-staging-publish.yml'
 
@@ -34,7 +35,10 @@ jobs:
         env:
           EXPECTED_REF: refs/heads/feature/sharika-lucky-gifts-20261030
         run: |
-          test "$GITHUB_REF" = "$EXPECTED_REF"
+          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ]; then
+            echo "::error::Refusing unexpected ref $GITHUB_REF"
+            exit 1
+          fi
           node --input-type=module -e '
             import {readFileSync} from "node:fs";
             const c=JSON.parse(readFileSync("wrangler.jsonc","utf8"));
@@ -63,9 +67,9 @@ jobs:
           fi
       - name: Run backend tests
         run: npm run check
-      - name: Verify D1 already has the seat-frame migration
+      - name: Verify staging D1 has exchange settings before publish
         run: |
-          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT seat_frame_style FROM sharika_rooms LIMIT 1"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT diamonds_per_unit,coins_per_unit,revision FROM sharika_exchange_rate WHERE id=1"
       - name: Bundle and inspect without publishing
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
       - name: Deploy only the existing staging Worker (never run migrations)
