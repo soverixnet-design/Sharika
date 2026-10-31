@@ -21,6 +21,16 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['cosmetics','✨','Frames, Entry & Name Tags']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='premium')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='cosmetics');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['premium','👑','VIP / SVIP / Noble']);
+  }
+  if(!NAV_ALL.some(item=>item[0]==='bonds')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='premium');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['bonds','💞','CP & Friendship Gifts']);
+  }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -743,6 +753,184 @@
   // Revive the former placeholder Store and Medals pages too.
   P.store=P.cosmetics;
   P.md=P.cosmetics;
+
+  // Premium policies are stored in D1, not localStorage. Super Admin can
+  // enable/disable all three acquisition routes and configure every tier.
+  P.premium=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>👑 VIP / SVIP / Noble</h3>'+
+      '<p class="n">Automatic gift/level qualification, coin purchases and admin grants '+
+      'have independent switches. Changes affect new eligibility immediately; '+
+      'past wallet receipts remain unchanged.</p><div id="sh-premium-settings">Loading…</div></div>'+
+      '<div class="card"><h3>🔎 Member lookup & admin grant</h3>'+
+      '<p class="n">Use the real eight-digit Sharika ID. Only Super Admin can grant or revoke.</p>'+
+      '<input class="field" id="sh-premium-id" inputmode="numeric" maxlength="8" placeholder="8-digit user ID">'+
+      '<button class="btn" id="sh-premium-lookup" type="button">Check member</button>'+
+      '<div id="sh-premium-member" class="n"></div>'+
+      (role==='super'?'<div class="row"><label>Grant tier <select id="sh-premium-grant-tier">'+
+        '<option value="vip">VIP</option><option value="svip">SVIP</option>'+
+        '<option value="noble">Noble</option><option value="none">Revoke manual/purchased tier</option>'+
+        '</select></label><label>Days <input id="sh-premium-grant-days" class="field" '+
+        'type="number" min="1" max="365" value="30"></label></div>'+
+        '<button class="btn s" id="sh-premium-grant" type="button">Confirm admin assignment</button>':'')+
+      '<div id="sh-premium-result" role="status" class="n"></div></div>';
+    const settingsRoot=byId('sh-premium-settings'),result=byId('sh-premium-result');
+    let data;
+    try{data=await api('GET','premium');}
+    catch(error){settingsRoot.textContent='Premium config unavailable: '+error.message;return;}
+    if(!settingsRoot.isConnected)return;
+    const controls=[
+      ['purchase_enabled','Coin purchases'],['admin_grant_enabled','Admin grants'],
+      ['auto_enabled','Automatic qualification'],['auto_by_level','Qualify by wealth level'],
+      ['auto_by_gifts','Qualify by gifts sent']
+    ];
+    settingsRoot.innerHTML='<div class="row" style="display:flex;flex-wrap:wrap;gap:15px">'+
+      controls.map(([key,label])=>'<label><input type="checkbox" data-pr-policy="'+key+'" '+
+        (data.config.policy[key]?'checked':'')+(role==='super'?'':' disabled')+'> '+label+'</label>').join('')+
+      '</div><div style="overflow-x:auto"><table style="width:100%;min-width:630px;text-align:left">'+
+      '<thead><tr><th>Tier</th><th>Wealth Lv.</th><th>Gift coins</th><th>Buy price</th>'+
+      '<th>Days</th><th>Daily bonus</th></tr></thead><tbody>'+
+      (data.config.tiers||[]).map(t=>'<tr data-premium-tier="'+esc(t.tier)+'"><td><b>'+esc(t.tier.toUpperCase())+'</b></td>'+
+        [['min_wealth_level',t.min_wealth_level],['min_gift_coins',t.min_gift_coins],
+          ['price_coins',t.price_coins],['duration_days',t.duration_days],
+          ['daily_bonus_coins',t.daily_bonus_coins]].map(([key,value])=>
+          '<td><input type="number" inputmode="numeric" class="field" '+
+          'data-premium-field="'+key+'" style="width:95px" min="0" value="'+esc(value)+'" '+
+          (role==='super'?'':'disabled')+'></td>').join('')+'</tr>').join('')+
+      '</tbody></table></div>'+
+      (role==='super'?'<button class="btn s" id="sh-premium-save" type="button">Save premium rules</button>':'')+
+      '<p class="n" id="sh-premium-config-note">UTC day reset · bonus claims recorded in wallet ledger.</p>';
+    byId('sh-premium-save')?.addEventListener('click',async event=>{
+      const button=event.currentTarget;
+      const policy=Object.fromEntries(controls.map(([key])=>
+        [key,!!settingsRoot.querySelector('[data-pr-policy="'+key+'"]')?.checked]));
+      const tiers=[...settingsRoot.querySelectorAll('[data-premium-tier]')].map(row=>{
+        const entry={tier:row.dataset.premiumTier};
+        row.querySelectorAll('[data-premium-field]').forEach(field=>{
+          entry[field.dataset.premiumField]=Number(field.value);
+        });
+        return entry;
+      });
+      if(!window.confirm('Save premium purchase, grant and automatic qualification rules?'))return;
+      button.disabled=true;
+      try{await api('PATCH','premium',{policy,tiers});
+        byId('sh-premium-config-note').textContent='Premium configuration saved and audited ✓';
+      }catch(error){byId('sh-premium-config-note').textContent='Not saved: '+error.message;}
+      finally{button.disabled=false;}
+    });
+    async function lookup(){
+      const id=byId('sh-premium-id')?.value.trim()||'';
+      if(!/^[0-9]{8}$/.test(id)){result.textContent='Enter a verified 8-digit ID';return;}
+      const member=byId('sh-premium-member');member.textContent='Checking…';
+      try{
+        const response=await api('GET','premium?public_id='+id);
+        const person=response.member;
+        member.textContent=person?'ID '+id+' · '+person.tier.toUpperCase()+
+          ' · '+person.source+' · Wealth Lv.'+person.wealth_level+
+          ' · Sent gifts '+fmt(person.gift_coins)+' coins':'Member unavailable';
+      }catch(error){member.textContent='Member unavailable: '+error.message;}
+    }
+    byId('sh-premium-lookup').onclick=lookup;
+    byId('sh-premium-grant')?.addEventListener('click',async event=>{
+      const id=byId('sh-premium-id')?.value.trim()||'';
+      const tier=byId('sh-premium-grant-tier')?.value;
+      const days=Number(byId('sh-premium-grant-days')?.value);
+      if(!/^[0-9]{8}$/.test(id)||!['vip','svip','noble','none'].includes(tier)||
+        (tier!=='none'&&(!Number.isInteger(days)||days<1||days>365))){
+        result.textContent='Check the ID and duration (1–365 days).';return;
+      }
+      if(!window.confirm(tier==='none'?'Revoke the assigned membership for '+id+'?':
+        'Grant '+tier.toUpperCase()+' to '+id+' for '+days+' days?'))return;
+      event.currentTarget.disabled=true;
+      try{await api('POST','premium/grant',{public_id:id,tier,duration_days:days});
+        result.textContent='Membership updated and audited ✓';await lookup();
+      }catch(error){result.textContent='Not changed: '+error.message;}
+      finally{if(event.currentTarget.isConnected)event.currentTarget.disabled=false;}
+    });
+  };
+
+  // CP/Friendship policy is independent of ordinary room gifts. Only the
+  // verified Super Admin can change prices or enabled status; Finance reads.
+  P.bonds=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>💞 Royal CP & Friendship Gifts</h3>'+
+      '<p class="n">CP is one active partner per person. Friendship supports multiple partners. '+
+      'Each gift holds coins until accepted; decline/expiry creates a ledger refund.</p>'+
+      '<div id="sh-admin-bond-policy">Loading verified bond rules…</div></div>'+
+      '<div class="card"><h3>🎁 CP / Friendship Gift Catalog</h3>'+
+      '<div id="sh-admin-bond-gifts">Loading gift prices…</div></div>'+
+      '<div class="card"><h3>📜 Recent Relationship Audit</h3>'+
+      '<div id="sh-admin-bond-audit">Loading…</div></div>';
+    const policyRoot=byId('sh-admin-bond-policy');
+    const giftRoot=byId('sh-admin-bond-gifts');
+    const auditRoot=byId('sh-admin-bond-audit');
+    let data;
+    try{data=await api('GET','bonds');}
+    catch(error){policyRoot.textContent='Bond settings unavailable: '+error.message;
+      giftRoot.textContent='Deployment and migration 0029 must be ready.';return;}
+    if(!root.isConnected)return;
+    const editable=role==='super';
+    const policy=data.policy||{};
+    const control=(field,label,checked)=>'<label style="display:flex;align-items:center;gap:10px;margin:12px 0">'+
+      '<input type="checkbox" id="sh-bond-'+field+'" '+(checked?'checked ':'')+
+      (editable?'':'disabled ')+'>'+esc(label)+'</label>';
+    policyRoot.innerHTML=control('cp','Enable CP gifts',policy.cp_enabled)+
+      control('friendship','Enable Friendship gifts',policy.friendship_enabled)+
+      '<label>Invitation expiry (hours, 1–168) '+
+      '<input id="sh-bond-expiry" type="number" class="field" min="1" max="168" '+
+      'value="'+esc(policy.expiry_hours)+'" '+(editable?'':'disabled')+'></label>'+
+      (editable?'<button class="btn s" id="sh-bond-policy-save" type="button">Save CP & Friendship policy</button>':'')+
+      '<p class="n" id="sh-bond-policy-note">Only future invitations use a changed expiry period.</p>';
+    byId('sh-bond-policy-save')?.addEventListener('click',async event=>{
+      const expiry_hours=Number(byId('sh-bond-expiry').value);
+      if(!Number.isSafeInteger(expiry_hours)||expiry_hours<1||expiry_hours>168){
+        byId('sh-bond-policy-note').textContent='Choose 1–168 hours.';return;}
+      if(!window.confirm('Save relationship invitation rules?'))return;
+      const button=event.currentTarget;button.disabled=true;
+      try{await api('PATCH','bonds',{
+        cp_enabled:byId('sh-bond-cp').checked,
+        friendship_enabled:byId('sh-bond-friendship').checked,expiry_hours});
+        byId('sh-bond-policy-note').textContent='Saved and audited ✓';
+      }catch(error){byId('sh-bond-policy-note').textContent='Not saved: '+error.message;}
+      finally{if(button.isConnected)button.disabled=false;}
+    });
+    giftRoot.replaceChildren();
+    for(const gift of data.gifts||[]){
+      const row=document.createElement('div');
+      row.className='row';row.style.cssText='padding:12px 0;border-bottom:1px solid #ffffff25;'+
+        'display:flex;flex-wrap:wrap;gap:9px;align-items:center';
+      const label=document.createElement('strong');
+      label.textContent=(gift.type==='cp'?'💗 CP':'🤝 Friendship')+' · '+gift.emoji+' '+gift.name;
+      const price=document.createElement('input');price.type='number';price.min='1';
+      price.max='1000000000';price.className='field';price.value=gift.price_coins;
+      price.style.width='125px';price.disabled=!editable;
+      const active=document.createElement('input');active.type='checkbox';
+      active.checked=gift.active;active.disabled=!editable;
+      const activeLabel=document.createElement('label');activeLabel.textContent='Active ';
+      activeLabel.appendChild(active);
+      row.append(label,price,activeLabel);
+      if(editable){const save=document.createElement('button');save.type='button';
+        save.className='btn s';save.textContent='Save gift';
+        save.onclick=async()=>{
+          const value=Number(price.value);
+          if(!Number.isSafeInteger(value)||value<1||value>1_000_000_000){
+            note('Gift price must be between 1 and 1,000,000,000 coins');return;}
+          if(!window.confirm('Save '+gift.name+' price and availability?'))return;
+          save.disabled=true;
+          try{await api('PATCH','bonds/gifts/'+gift.id,{price_coins:value,active:active.checked});
+            note('Bond gift saved and audited ✓');
+          }catch(error){note('Not saved: '+error.message);}
+          finally{save.disabled=false;}
+        };row.appendChild(save);}
+      giftRoot.appendChild(row);
+    }
+    const audit=data.audit||[];
+    auditRoot.innerHTML=audit.length?audit.map(entry=>
+      '<div class="n" style="padding:7px 0;border-bottom:1px solid #ffffff20">'+
+      esc(entry.action)+' · ID '+esc(entry.actor_id)+' · '+
+      esc(new Date(entry.created_at_ms).toLocaleString())+'</div>').join(''):
+      '<p class="n">No relationship activity recorded yet.</p>';
+  };
 
   P.sellers=async function(){
     const root=byId('pg');
@@ -1599,7 +1787,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

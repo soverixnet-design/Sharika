@@ -107,7 +107,10 @@ test('verified profile photos follow the same public ID into room avatars and me
   assert.match(adapter,/decorateRoomPeople\(frame\)/);
   assert.match(adapter,/decorateGiftRecipients\(frame\)/);
   assert.match(adapter,/roomAvatarForPublicId\(frame,item\.sender_id\)/);
-  assert.match(adapter,/inboxPhotos=new Map/);
+  assert.match(adapter,/inboxPeople=new Map/);
+  assert.match(adapter,/paintVerifiedAvatar\(avatar,person\.pic,document\)/);
+  assert.match(adapter,/frameArt\(person\.frame_style\)/);
+  assert.match(adapter,/medalArt\(person\.medal_style\)/);
   assert.match(adapter,/roomFrame\.render\?\.\(\)/);
 });
 
