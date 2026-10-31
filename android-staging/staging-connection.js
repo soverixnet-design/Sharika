@@ -889,27 +889,38 @@
       mic.classList.toggle('off',!enabled);
     }
   }
+  async function restartMicrophone(roomId) {
+    if(!roomId)throw new Error('Join a voice room first');
+    const config=await api('GET','/rooms/'+roomId+'/voice/config');
+    if(!config.publish)throw new Error('Take an unlocked mic seat first');
+    voiceRecoveryAttempts=0;
+    const result=await connectVoice(roomId);
+    if(!result.publishing)throw new Error('Microphone connection not ready; tap again');
+    if(sfuState?.roomId===roomId){
+      const track=sfuState.media?.getAudioTracks()[0];
+      if(!track||track.readyState!=='live')throw new Error('Microphone capture unavailable');
+      track.enabled=true;
+    } else if(voiceRoomId===roomId&&voiceRoom){
+      await voiceRoom.localParticipant.setMicrophoneEnabled(true);
+    } else throw new Error('Microphone transport not available');
+    markLocalMicrophone(true);
+    return true;
+  }
   async function toggleVoice() {
     if(sfuState) {
       const failed=sfuState.recoveryExhausted||
         ['failed','disconnected'].includes(sfuState.publishPC?.connectionState);
-      if(failed&&sfuState.media){
-        const roomId=sfuState.roomId;
-        voiceRecoveryAttempts=0;
-        await connectVoice(roomId);
-        const resumed=sfuState?.media?.getAudioTracks()[0];
-        if(!resumed)throw new Error('Microphone reconnect unavailable');
-        resumed.enabled=true;
-        markLocalMicrophone(true);
-        return true;
-      }
       const track=sfuState.media?.getAudioTracks()[0];
-      if(!track)throw new Error('Take an available mic seat first');
+      // Permission may have been granted after the first room connection
+      // attempt; the mic button must be able to establish a publisher then.
+      if(failed||!track||track.readyState!=='live')
+        return restartMicrophone(sfuState.roomId);
       track.enabled=!track.enabled;
       markLocalMicrophone(track.enabled);
       return track.enabled;
     }
-    if(!voiceRoom || !voiceRoomId)throw new Error('Voice connection is not available');
+    if(!voiceRoom || !voiceRoomId)
+      return restartMicrophone(window.cur?.id||wantedVoiceRoom);
     const currently=voiceRoom.localParticipant.isMicrophoneEnabled;
     await voiceRoom.localParticipant.setMicrophoneEnabled(!currently);
     markLocalMicrophone(!currently);
