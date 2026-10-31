@@ -4,6 +4,7 @@
 import { handleSellerAdmin } from './sellers.mjs';
 import { handleBannerAdmin } from './banners.mjs';
 import { handleDailyAdmin } from './daily.mjs';
+import { handleEventAdmin } from './events.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
 import { handleAdminExchangeRate } from './exchange-rate.mjs';
@@ -101,6 +102,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     actor={...actor,role:proxy};
   }
 
+  if(operation==='events'||/^events\/[1-9][0-9]*(?:\/award)?$/.test(operation))
+    return await handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if(operation==='cosmetics'||operation==='cosmetics/grant')
     return await handleCosmeticAdmin({
       request,db:env.DB,uid,role:actor.role,path,
