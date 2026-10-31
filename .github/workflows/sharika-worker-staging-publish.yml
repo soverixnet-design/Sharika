@@ -1,0 +1,72 @@
+name: Sharika staged Worker publish (no database migrations)
+
+on:
+  push:
+    branches:
+      - feature/sharika-lucky-gifts-20261030
+    paths:
+      - '.github/workflows/sharika-worker-staging-publish.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging-only:
+    name: Validate, then update isolated staging Worker
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse any non-staging destination
+        env:
+          EXPECTED_REF: refs/heads/feature/sharika-lucky-gifts-20261030
+        run: |
+          test "$GITHUB_REF" = "$EXPECTED_REF"
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            const c=JSON.parse(readFileSync("wrangler.jsonc","utf8"));
+            const db=c.d1_databases;
+            const b=c.durable_objects?.bindings;
+            const required=c.secrets?.required||[];
+            if(c.name!=="sharika-api-staging" ||
+               c.account_id!=="d81cf7c48fb9b36d468cb0a08720cd74" ||
+               c.vars?.SHARIKA_ENV!=="staging" ||
+               c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=="false" ||
+               c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=="false" ||
+               c.keep_vars!==true ||
+               db?.length!==1 || db[0].binding!=="DB" ||
+               db[0].database_name!=="sharika-staging" ||
+               db[0].database_id!=="b2c62252-12a5-4740-90c7-01a536d9a39a" ||
+               b?.length!==1 || b[0].name!=="VOICE_ROOMS" ||
+               b[0].class_name!=="SharikaVoiceRoom" ||
+               !required.includes("REALTIME_SFU_APP_ID") ||
+               !required.includes("REALTIME_SFU_APP_SECRET"))
+              throw new Error("Unsafe Worker environment or missing voice-secret protections");
+            console.log("Verified isolated staging Worker and existing bindings");
+          '
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Staging deploy requires an existing CLOUDFLARE_API_TOKEN secret."
+            exit 1
+          fi
+      - name: Run backend tests
+        run: npm run check
+      - name: Verify D1 already has the seat-frame migration
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT seat_frame_style FROM sharika_rooms LIMIT 1"
+      - name: Bundle and inspect without publishing
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
+      - name: Deploy only the existing staging Worker (never run migrations)
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc

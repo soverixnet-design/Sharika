@@ -2,14 +2,27 @@ package com.soverixnet.sharika;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.ImageDecoder;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
+import android.util.Base64;
+import android.util.Size;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -35,6 +48,8 @@ import org.json.JSONObject;
 import org.json.JSONException;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -54,11 +69,15 @@ import java.util.concurrent.Executors;
 public final class SharikaActivity extends Activity {
     private static final String STAGING_API = "https://sharika-api-staging.soverixnet.workers.dev";
     private static final int MIC_PERMISSION_REQUEST = 3412;
+    private static final int IMAGE_PICKER_REQUEST = 3413;
+    private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
     private final ExecutorService io = Executors.newFixedThreadPool(2);
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
     private PermissionRequest pendingMic;
+    private ValueCallback<Uri[]> pendingImageSelection;
+    private String pendingProfilePhotoId;
     private boolean googlePending;
     // Firebase reload contacts the identity server; refreshing on every
     // 1.6-second live-game poll causes overlapping network calls.
@@ -103,9 +122,159 @@ public final class SharikaActivity extends Activity {
             @Override public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> requestMicrophone(request));
             }
+            @Override public boolean onShowFileChooser(WebView view,
+                    ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
+                // Android grants access only to the selected image. Do not
+                // request blanket READ_MEDIA_IMAGES or storage permissions.
+                if (pendingImageSelection != null) pendingImageSelection.onReceiveValue(null);
+                pendingImageSelection = callback;
+                Intent chooser = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                chooser.addCategory(Intent.CATEGORY_OPENABLE);
+                chooser.setType("image/*");
+                chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                try {
+                    startActivityForResult(chooser, IMAGE_PICKER_REQUEST);
+                    return true;
+                } catch (RuntimeException error) {
+                    pendingImageSelection = null;
+                    callback.onReceiveValue(null);
+                    return true;
+                }
+            }
         });
         setContentView(browser, new ViewGroup.LayoutParams(-1, -1));
         browser.loadUrl("file:///android_asset/index.html");
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PROFILE_PHOTO_PICKER_REQUEST) {
+            final String id = pendingProfilePhotoId;
+            pendingProfilePhotoId = null;
+            if (id == null) return;
+            Uri uri = resultCode == Activity.RESULT_OK && data != null ? data.getData() : null;
+            if (uri == null) {
+                sendResult(id, result(false,null,"profile_photo_cancelled"));
+                return;
+            }
+            io.execute(() -> {
+                try {
+                    JSONObject image = object();
+                    image.put("image_data", makeProfileJpeg(uri));
+                    sendResult(id, result(true,image,null));
+                } catch (Exception error) {
+                    sendResult(id, result(false,null,safe(error)));
+                }
+            });
+            return;
+        }
+        if (requestCode != IMAGE_PICKER_REQUEST) return;
+        ValueCallback<Uri[]> callback = pendingImageSelection;
+        pendingImageSelection = null;
+        if (callback == null) return;
+        Uri selected = resultCode == Activity.RESULT_OK && data != null ? data.getData() : null;
+        callback.onReceiveValue(selected == null ? null : new Uri[]{selected});
+    }
+
+
+    // Selected-media access only. This avoids browser-specific file:// canvas
+    // decoding failures and works with JPEG, PNG and Android's HEIC photos.
+    // No full gallery/storage permission is ever requested.
+    private void pickNativeProfilePhoto(String id) {
+        if (auth.getCurrentUser() == null) {
+            sendResult(id, result(false,null,"login_required")); return;
+        }
+        if (pendingProfilePhotoId != null) {
+            sendResult(id, result(false,null,"profile_photo_picker_busy")); return;
+        }
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        picker.setType("image/*");
+        picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        pendingProfilePhotoId = id;
+        try {
+            startActivityForResult(picker, PROFILE_PHOTO_PICKER_REQUEST);
+        } catch (RuntimeException error) {
+            pendingProfilePhotoId = null;
+            sendResult(id, result(false,null,"gallery_unavailable"));
+        }
+    }
+
+    private Bitmap decodeProfilePhoto(Uri uri) throws IOException {
+        String type = getContentResolver().getType(uri);
+        if (type != null && !type.startsWith("image/"))
+            throw new IOException("Choose an image from the gallery");
+        try (Cursor cursor = getContentResolver().query(uri,
+                new String[]{OpenableColumns.SIZE}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)
+                    && cursor.getLong(0) > 15L * 1024 * 1024)
+                throw new IOException("Choose a photo smaller than 15 MB");
+        } catch (SecurityException error) {
+            throw new IOException("Gallery photo permission expired");
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            ImageDecoder.Source source = ImageDecoder.createSource(getContentResolver(), uri);
+            return ImageDecoder.decodeBitmap(source, (decoder, info, imageSource) -> {
+                Size dimensions = info.getSize();
+                float fraction = Math.min(1f, 960f /
+                    Math.max(dimensions.getWidth(), dimensions.getHeight()));
+                decoder.setTargetSize(Math.max(1, Math.round(dimensions.getWidth() * fraction)),
+                    Math.max(1, Math.round(dimensions.getHeight() * fraction)));
+                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+            });
+        }
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        try (InputStream stream = getContentResolver().openInputStream(uri)) {
+            if (stream == null) throw new IOException("Gallery photo unavailable");
+            BitmapFactory.decodeStream(stream, null, bounds);
+        }
+        if (bounds.outWidth < 1 || bounds.outHeight < 1)
+            throw new IOException("Invalid gallery image");
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = 1;
+        while ((Math.max(bounds.outWidth,bounds.outHeight) / options.inSampleSize) > 960)
+            options.inSampleSize *= 2;
+        try (InputStream stream = getContentResolver().openInputStream(uri)) {
+            if (stream == null) throw new IOException("Gallery photo unavailable");
+            Bitmap bitmap = BitmapFactory.decodeStream(stream, null, options);
+            if (bitmap == null) throw new IOException("Could not decode gallery photo");
+            return bitmap;
+        }
+    }
+
+    private String makeProfileJpeg(Uri uri) throws IOException {
+        Bitmap source = decodeProfilePhoto(uri);
+        try {
+            if (source.getWidth() < 1 || source.getHeight() < 1)
+                throw new IOException("Invalid gallery photo");
+            for (int maximum : new int[]{880,720,560,440,320,240}) {
+                float scale = Math.min(1f, maximum /
+                    (float)Math.max(source.getWidth(),source.getHeight()));
+                int width=Math.max(1,Math.round(source.getWidth()*scale));
+                int height=Math.max(1,Math.round(source.getHeight()*scale));
+                Bitmap output=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+                try {
+                    Canvas canvas=new Canvas(output);
+                    canvas.drawColor(Color.rgb(22,16,41));
+                    canvas.drawBitmap(source,null,new Rect(0,0,width,height),
+                        new Paint(Paint.FILTER_BITMAP_FLAG));
+                    for (int quality : new int[]{78,65,50,38}) {
+                        ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+                        if (!output.compress(Bitmap.CompressFormat.JPEG,quality,bytes))
+                            throw new IOException("Could not prepare profile photo");
+                        if (bytes.size() > 32 && bytes.size() <= 88000)
+                            return "data:image/jpeg;base64,"+
+                                Base64.encodeToString(bytes.toByteArray(),Base64.NO_WRAP);
+                    }
+                } finally {
+                    output.recycle();
+                }
+            }
+            throw new IOException("Photo is too large after resizing");
+        } finally {
+            source.recycle();
+        }
     }
 
     private void requestMicrophone(PermissionRequest request) {
@@ -217,6 +386,7 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, identity(null), null));
                 break;
             case "api": callStagingApi(id, data); break;
+            case "pickProfilePhoto": pickNativeProfilePhoto(id); break;
             default: sendResult(id, result(false, null, "unsupported_action"));
         }
     }
@@ -330,10 +500,16 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
+        // Only a numeric cursor on the verified room-chat route may carry a
+        // query string. All other arbitrary query parameters stay blocked.
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/chat\\?after=(0|[1-9][0-9]{0,11})$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/presence/heartbeat")) return method.equals("POST");
+        if (path.equals("/api/v1/me/avatar")) return method.equals("PUT");
         if (path.equals("/api/v1/me"))
             return method.equals("GET") || method.equals("POST") || method.equals("PATCH");
+        if (path.equals("/api/v1/banners")) return method.equals("GET");
         if (path.equals("/api/v1/wallet")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange")) return method.equals("POST");
         if (path.equals("/api/v1/follows") || path.equals("/api/v1/messages") ||
@@ -357,7 +533,9 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
         if (path.equals("/api/v1/daily/check-in")) return method.equals("POST");
-        if (path.equals("/api/v1/sellers") || path.equals("/api/v1/sellers/me")) return method.equals("GET");
+        if (path.equals("/api/v1/sellers") || path.equals("/api/v1/sellers/me") ||
+            path.equals("/api/v1/sellers/transfers") || path.equals("/api/v1/sellers/allocations"))
+            return method.equals("GET");
         if (path.equals("/api/v1/sellers/transfer")) return method.equals("POST");
         if (path.equals("/api/v1/rooms"))
             return method.equals("GET") || method.equals("POST");
@@ -365,6 +543,16 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))
+            return method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/locks$"))
+            return method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/invitations$"))
+            return method.equals("GET") || method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/invitations/respond$"))
+            return method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/chat$"))
+            return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/(join|leave)$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/moderate$"))

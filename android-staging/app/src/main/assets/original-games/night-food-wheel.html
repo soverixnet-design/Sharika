@@ -11,7 +11,7 @@ html,body{height:100%}body{background:radial-gradient(circle at 50% 30%,#4a1450,
 #t{font-size:clamp(28px,10vw,44px);color:gold}#ctr small{font-size:11px}
 #msg{height:24px;font-weight:700;color:gold;opacity:0;transition:.3s;text-align:center}
 #hist{display:flex;gap:6px;background:#0004;padding:6px 10px;border-radius:30px;min-height:46px;align-items:center}#hist span{background:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:20px}
-#chips{display:flex;gap:10px;margin:12px 0}#chips button{width:72px;height:56px;border-radius:14px;border:3px solid #fff6;background:#fff2;color:#fff;font-weight:800;font-size:16px}#chips .on{background:gold;color:#222;border-color:#fff;transform:translateY(-4px)}
+#chips{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:12px 0}#chips button{width:72px;height:56px;border-radius:14px;border:3px solid #fff6;background:#fff2;color:#fff;font-weight:800;font-size:16px}#chips .on{background:gold;color:#222;border-color:#fff;transform:translateY(-4px)}
 #foot{font-weight:700;margin-top:4px}
 #grp{display:flex;gap:12px;margin:6px 0 2px}.g{position:relative;background:#fff;color:#222;border:3px solid gold;border-radius:16px;padding:8px 16px;font-weight:800;font-size:15px}.g u{position:absolute;top:-10px;right:-6px;background:#e33;color:#fff;font-size:11px;padding:1px 6px;border-radius:9px;text-decoration:none}.g u:empty{display:none}#act{display:flex;gap:10px;align-items:center;margin-top:6px}#act button{border:0;border-radius:22px;padding:10px 18px;font-weight:800;font-size:16px;background:#2c2;color:#fff}#act button.off{background:#555}#load{position:fixed;inset:0;z-index:9;background:radial-gradient(circle at 50% 35%,#5a1a6e,#0d0418 75%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:20px}#load h1{font-size:30px;color:gold;text-shadow:0 0 18px #f90}#load .e{font-size:64px;animation:sp 2s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}#lb{width:70%;max-width:320px;height:12px;background:#fff3;border-radius:8px;overflow:hidden}#lbar{height:100%;width:0;background:linear-gradient(90deg,gold,#f60);transition:width 1s linear}#av{width:40px;height:40px;border-radius:50%;background:#fff3;border:2px solid gold;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:22px;cursor:pointer}#av img,.wa img{width:100%;height:100%;object-fit:cover}#win{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%) scale(0);z-index:8;background:linear-gradient(#ffd23f,#ff8a00);color:#3a1500;border-radius:24px;padding:20px 30px;text-align:center;font-weight:800;transition:.3s;box-shadow:0 0 40px #ffb300;border:4px solid #fff}#win.show{transform:translate(-50%,-50%) scale(1)}.wa{width:84px;height:84px;border-radius:50%;margin:0 auto 8px;border:4px solid #fff;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center;font-size:44px}.wm{font-size:28px}#wheel{transform-style:preserve-3d;transform:perspective(1000px) rotateX(16deg);margin:8px auto 22px}
 #wheel::after{content:"";position:absolute;left:8%;right:8%;bottom:-4%;height:12%;background:radial-gradient(#0009,transparent 70%);transform:translateZ(-30px);filter:blur(6px);pointer-events:none}
@@ -89,7 +89,8 @@ const GameBridge=(()=>{
 
 const C={items:[['🌭',10],['🍢',15],['🍗',25],['🥩',45],['🥕',5],['🌽',5],['🥬',5],['🍅',5]]};
 const $=s=>document.querySelector(s),fmt=n=>Number(n||0).toLocaleString('en-US');
-const chips=[10000,100000,500000,1000000];
+const chips=[1000,10000,100000,1000000,10000000];
+const chipLabel=c=>c>=1000000?(c/1000000)+'M':c>=1000?(c/1000)+'K':String(c);
 let chip=chips[0],bets=Array(10).fill(0),lastSeen=null,busy=false,muted=false;
 const w=$('#wheel');
 C.items.forEach((it,i)=>{const a=(i*45-90)*Math.PI/180,d=document.createElement('div');d.className='it';
@@ -97,7 +98,7 @@ C.items.forEach((it,i)=>{const a=(i*45-90)*Math.PI/180,d=document.createElement(
  d.innerHTML='<b>'+it[0]+'</b><i>x'+it[1]+'</i><u></u>';
  d.onclick=()=>place(i);w.appendChild(d)});
 const its=[...document.querySelectorAll('.it')];
-$('#chips').innerHTML=chips.map((c,i)=>'<button class="'+(i?'':'on')+'" data-c="'+c+'">'+fmt(c)+'</button>').join('');
+$('#chips').innerHTML=chips.map((c,i)=>'<button class="'+(i?'':'on')+'" data-c="'+c+'">'+chipLabel(c)+'</button>').join('');
 document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{
  chip=Number(b.dataset.c);document.querySelectorAll('#chips button').forEach(x=>x.classList.toggle('on',x===b));
 });
@@ -113,9 +114,18 @@ function redraw(d){
  const prev=d.previous_result;
  if(prev){
  its[prev.index]?.classList.add('hl');
- const top=(prev.top_winners||[]).slice(0,3).map((w,i)=>['🥇','🥈','🥉'][i]+' '+w.name+' '+fmt(w.total_win)).join(' · ');
- $('#hist').textContent='Last result: '+C.items[prev.index][0]+' · #'+prev.round_no+
-   (top?' · Real winners: '+top:' · No recorded winners yet');
+ const top=(prev.top_winners||[]).slice(0,3).map((w,i)=>
+   ['🥇','🥈','🥉'][i]+' '+(w.name||'User')+' (#'+w.public_id+') · '+fmt(w.total_win)+' coins');
+ const history=$('#hist');
+ history.style.cssText='flex-direction:column;align-items:center;justify-content:center;'+
+   'text-align:center;white-space:normal;line-height:1.35;gap:4px;padding:8px 10px';
+ history.replaceChildren();
+ const last=document.createElement('div');
+ last.textContent='🎡 Last result: '+C.items[prev.index][0]+' · Round '+prev.round_no;
+ const winners=document.createElement('div');
+ winners.style.cssText='font-size:12px;color:#ffe49a;font-weight:700;overflow-wrap:anywhere';
+ winners.textContent=top.length?'🏆 Round Top 3: '+top.join(' · '):'🏆 No verified winners in this round yet';
+ history.append(last,winners);
 }
 }
 async function place(index){

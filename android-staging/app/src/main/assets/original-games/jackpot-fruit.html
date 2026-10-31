@@ -117,15 +117,25 @@ const GameBridge=(()=>{
 
 const $=s=>document.querySelector(s),fmt=n=>Number(n||0).toLocaleString('en-US');
 const F=[['🍋',5],['🍇',5],['🥝',5],['🍒',40],0,['🍑',5],['🍉',20],['🍌',10],['🍓',10]];
-const RING=[0,1,2,5,8,7,6,3],CH=[10000,100000,500000,1000000];
+const RING=[0,1,2,5,8,7,6,3],CH=[1000,10000,100000,1000000,10000000];
+const chipLabel=c=>c>=1000000?(c/1000000)+'M':c>=1000?(c/1000)+'K':String(c);
 let chip=CH[0],bets=Array(9).fill(0),busy=false,muted=false,latestSeen=null;
+const verifiedWinners=document.createElement('div');
+verifiedWinners.id='og-top3';
+verifiedWinners.setAttribute('role','status');
+verifiedWinners.setAttribute('aria-live','polite');
+verifiedWinners.style.cssText='margin:8px 0 1px;padding:8px 10px;border:1px solid #ffd34f77;'+
+  'background:#180a39;border-radius:12px;color:#ffe5a2;font-weight:700;'+
+  'font-size:12px;line-height:1.45;text-align:center;overflow-wrap:anywhere';
+verifiedWinners.textContent='🏆 Awaiting verified round winners';
+$('#rs').insertAdjacentElement('afterend',verifiedWinners);
 const tiles=F.map((f,i)=>{
  const d=document.createElement('button');d.className='t'+(i===3||i===6||i===7||i===8?' p':'');
  if(f){d.innerHTML='<b>'+f[0]+'</b><i>'+f[1]+' times</i><u></u>';d.onclick=()=>place(i)}
  else {d.id='tm';d.className='';d.disabled=true}
  $('#g').appendChild(d);return d;
 });
-$('#ch').innerHTML=CH.map((c,i)=>'<div class="cw"><button class="'+(i?'':'on')+'" data-c="'+c+'">'+['🔵','🟡','🟠','🟣'][i]+' '+fmt(c)+'</button><i class="am"></i></div>').join('');
+$('#ch').innerHTML=CH.map((c,i)=>'<div class="cw"><button class="'+(i?'':'on')+'" data-c="'+c+'">'+['🔵','🟡','🟠','🟣','🔴'][i]+' '+chipLabel(c)+'</button><i class="am"></i></div>').join('');
 document.querySelectorAll('#ch button').forEach(b=>b.onclick=()=>{chip=Number(b.dataset.c);document.querySelectorAll('#ch button').forEach(v=>v.classList.toggle('on',b===v))});
 function msg(t){$('#msg').textContent=t;clearTimeout(msg.id);msg.id=setTimeout(()=>$('#msg').textContent='',3000)}
 async function place(tileIndex){
@@ -144,6 +154,11 @@ function redraw(d){
  tiles.forEach((v,i)=>{v.classList.remove('hl');const u=v.querySelector('u');if(u)u.textContent=bets[i]?fmt(bets[i]):''});
  const prev=d.previous_result;
  if(prev){
+ const top=(prev.top_winners||[]).slice(0,3).map((w,i)=>
+   ['🥇','🥈','🥉'][i]+' '+(w.name||'User')+' (#'+w.public_id+') · '+fmt(w.total_win));
+ verifiedWinners.textContent=top.length?
+   '🏆 Round '+prev.round_no+' Top 3: '+top.join(' · '):
+   '🏆 Round '+prev.round_no+': No verified winners recorded';
  const pos=prev.positions||[prev.index];pos.forEach(i=>tiles[RING[i]]?.classList.add('hl'));
  $('#rs').innerHTML='<b>Result</b>'+pos.map(i=>'<span>'+F[RING[i]][0]+'</span>').join('');
  document.querySelectorAll('#rl div').forEach(x=>x.classList.remove('h'));
@@ -160,7 +175,9 @@ function showRound(d){
  const prior=(d.my_bets||[]).filter(b=>b.round_no===prev.round_no);
  const spent=prior.reduce((x,b)=>x+Number(b.amount||0),0);
  const win=prior.reduce((x,b)=>x+Number(b.payout||0),0);
- if(!spent)return;
+ // All players should see genuine top winners, including non-betting viewers.
+ // The round overlay must not depend on this viewer's personal wager.
+ if(!spent&&!(prev.top_winners||[]).length)return;
  const emojis=(prev.positions||[prev.index]).map(i=>F[RING[i]][0]).join(' ');
  $('#pb').replaceChildren();
  const header=document.createElement('h3');header.textContent='Round '+prev.round_no+' · Verified result';

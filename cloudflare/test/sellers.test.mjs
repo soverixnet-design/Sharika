@@ -10,7 +10,7 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
         bind(...args){this.args=args;return this;},
         async first(){
           state.queries.push({sql,args:this.args||[]});
-          if(sql.includes('FROM sharika_users WHERE auth_uid=?'))return actor?{auth_uid:'seller1',minor}:null;
+          if(sql.includes('FROM sharika_users WHERE auth_uid=?'))return actor?{auth_uid:'seller1',public_no:10000003,minor}:null;
           if(sql.includes('FROM sharika_coin_sellers WHERE seller_uid=?'))
             return seller?{active:1,available_coins:stock}:null;
           if(sql.includes('FROM sharika_users WHERE public_no=?'))
@@ -23,7 +23,18 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
           if(sql.includes('SELECT auth_uid,status,minor FROM sharika_users'))return actor?{auth_uid:'seller1',status:'active',minor}:null;
           return null;
         },
-        async all(){return {results:[]}}
+        async all(){
+          state.queries.push({sql,args:this.args||[]});
+          if(sql.includes('FROM sharika_coin_seller_transfers t ')){
+            return {results:[{id:7,sender_no:10000003,seller_no:10000003,
+              recipient_no:10000002,amount:250,stock_after:2750,created_at:'2026-10-30'}]};
+          }
+          if(sql.includes('FROM sharika_coin_seller_allocations a ')){
+            return {results:[{id:5,sender_no:10000001,seller_no:10000003,
+              amount:3000,stock_after:3000,created_at:'2026-10-30'}]};
+          }
+          return {results:[]};
+        }
       };
       return statement;
     },
@@ -82,9 +93,36 @@ test('verified seller transfer changes stock, user wallet, immutable ledger in o
   const {DB,state}=mockDB();
   const result=await app(DB,'POST','/api/v1/sellers/transfer',validTransfer);
   assert.equal(result.status,201);
+  assert.equal(result.data.sender_public_id,'10000003');
   assert.equal(state.batch.length,1);
   assert.equal(state.batch[0].length,4);
   assert.ok(state.queries.some(q=>q.sql.includes('sharika_coin_seller_transfers')));
+});
+test('seller transfer list shows verified sender and recipient IDs, scoped to caller',async()=>{
+  const {DB,state}=mockDB();
+  const result=await app(DB,'GET','/api/v1/sellers/transfers');
+  assert.equal(result.status,200);
+  assert.equal(result.data.transfers[0].sender_public_id,'10000003');
+  assert.equal(result.data.transfers[0].recipient_public_id,'10000002');
+  assert.ok(state.queries.some(q=>q.sql.includes('WHERE t.seller_uid=?')&&q.args[0]==='seller1'));
+  assert.equal(state.batch.length,0);
+});
+test('seller wallet shows stock allocations with admin sender ID',async()=>{
+  const {DB,state}=mockDB();
+  const result=await app(DB,'GET','/api/v1/sellers/allocations');
+  assert.equal(result.status,200);
+  assert.equal(result.data.allocations[0].sender_public_id,'10000001');
+  assert.equal(result.data.allocations[0].seller_public_id,'10000003');
+  assert.ok(state.queries.some(q=>q.sql.includes('WHERE a.seller_uid=?')&&q.args[0]==='seller1'));
+  assert.equal(state.batch.length,0);
+});
+test('admin transfers and allocations keep public IDs visible without wallet mutation',async()=>{
+  const {DB,state}=mockDB();
+  const history=await admin(DB,'finance','GET','sellers/transfers');
+  const credits=await admin(DB,'finance','GET','sellers/allocations');
+  assert.equal(history.data.transfers[0].sender_public_id,'10000003');
+  assert.equal(credits.data.allocations[0].seller_public_id,'10000003');
+  assert.equal(state.batch.length,0);
 });
 test('idempotent transfer never credits twice',async()=>{
   const {DB,state}=mockDB({duplicate:true});

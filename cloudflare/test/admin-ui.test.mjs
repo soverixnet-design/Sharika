@@ -18,3 +18,20 @@ test('ranking UI exposes verified recharge, room, rich and charm kinds',()=>{
   assert.match(source,/No approved recharges recorded for this period/);
   assert.doesNotMatch(source,/window\.D\.users=\[\{.*demo/);
 });
+
+test('moderation panel renders signed-in reports and opens the real Support Inbox',()=>{
+  assert.match(source,/P\.mod=async function\(\)/);
+  assert.match(source,/api\('GET','reports'\)/);
+  assert.match(source,/reports\.length/);
+  assert.match(source,/details\.textContent=String\(report\.body\|\|'\'\)/);
+  assert.match(source,/window\.V='support';window\.shell\(\)/);
+});
+
+test('gift audit panel displays real backend settlements, including fractional room and diamond accrual',()=>{
+  assert.match(source,/id="gift-settlement-list"/);
+  assert.match(source,/api\('GET','gift-settlements'\)/);
+  assert.match(source,/room_reward_hundredths/);
+  assert.match(source,/recipient_diamond_hundredths/);
+  assert.match(source,/lucky_payout_coins/);
+  assert.match(source,/Only Super Admin and Finance roles can view wallet settlements/);
+});

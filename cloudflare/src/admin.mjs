@@ -2,6 +2,7 @@
 // Every request is authenticated by the outer Worker with a verified Firebase JWT.
 // Only explicitly audited seller inventory and verified grants may credit wallets.
 import { handleSellerAdmin } from './sellers.mjs';
+import { handleBannerAdmin } from './banners.mjs';
 import { handleDailyAdmin } from './daily.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
@@ -96,6 +97,10 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if (operation.startsWith('sellers')) return await handleSellerAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
+  if(operation==='banners'||/^banners\/[1-9][0-9]{0,8}$/.test(operation))
+    return await handleBannerAdmin({
+      request,env,uid,role:actor.role,operation,cors,reply,fail
+    });
 
   // Support agents may reply to real user conversations, with explicit scope.
   const supportReply=/^support\/([0-9]{8})\/reply$/.exec(operation);
@@ -244,6 +249,23 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     return fail('admin_write_not_enabled',405,cors);
   }
 
+  // Authenticated user reports use the verified Support Inbox.
+  // Moderators get read-only triage; audited Super Admin blocks stay separate.
+  if(operation==='reports' && request.method==='GET'){
+    const denied=allowed(actor.role,new Set(['super','support']),fail,cors);
+    if(denied)return denied;
+    const rows=values(await env.DB.prepare(
+      'SELECT m.id,m.body,m.created_at,u.public_no AS reporter_no '+
+      'FROM sharika_support_messages m '+
+      'JOIN sharika_users u ON u.auth_uid=m.user_id '+
+      "WHERE m.sender_role='user' AND m.body LIKE '[Sharika report]%' "+
+      'ORDER BY m.id DESC LIMIT 100'
+    ).all());
+    return reply({reports:rows.map(row=>({
+      id:row.id,reporter_public_id:id(row.reporter_no),
+      body:row.body,created_at:row.created_at
+    })),read_only:true,limited_to:100},200,cors);
+  }
   if(operation==='support') {
     const denied=allowed(actor.role,new Set(['super','support']),fail,cors);
     if(denied)return denied;
@@ -386,6 +408,45 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     const rows = values(await stmt.all());
     return reply({ ledger:rows.map(l => ({ ...l, public_id:id(l.public_no), public_no:undefined })),
       limited_to:100, read_only:true }, 200, cors);
+  }
+  // A transaction-level audit view, including fractional room and recipient
+  // entitlements. Each source is 0-or-1 row per transaction except the
+  // recipient aggregate, so multiple recipients cannot multiply the spend.
+  if (operation === 'gift-settlements' && request.method === 'GET') {
+    const denied=allowed(actor.role,FINANCE_ROLES,fail,cors);
+    if(denied)return denied;
+    const rows=values(await env.DB.prepare(
+      'SELECT t.id,t.room_id,t.quantity,t.total_coins,t.created_at,'+
+      's.public_no AS sender_no,g.name,g.emoji,g.tab,'+
+      'o.payout_coins,o.max_multiplier,'+
+      'lr.reward_hundredths AS lucky_room_hundredths,'+
+      'rr.reward_hundredths AS regular_room_hundredths,'+
+      '(SELECT COALESCE(SUM(x.earned_hundredths),0) '+
+      'FROM sharika_lucky_recipient_rewards x WHERE x.transaction_id=t.id) '+
+      'AS recipient_hundredths,'+
+      '(SELECT COUNT(*) FROM sharika_gift_events e WHERE e.transaction_id=t.id) '+
+      'AS recipient_count '+
+      'FROM sharika_gift_transactions t '+
+      'JOIN sharika_users s ON s.auth_uid=t.sender_uid '+
+      'JOIN sharika_gifts g ON g.id=t.gift_id '+
+      'LEFT JOIN sharika_lucky_gift_outcomes o ON o.transaction_id=t.id '+
+      'LEFT JOIN sharika_lucky_room_rewards lr ON lr.transaction_id=t.id '+
+      'LEFT JOIN sharika_regular_room_rewards rr ON rr.transaction_id=t.id '+
+      'ORDER BY t.id DESC LIMIT 100'
+    ).all());
+    return reply({settlements:rows.map(row=>({
+      transaction_id:row.id,created_at:row.created_at,room_id:row.room_id,
+      sender_id:id(row.sender_no),gift:row.name,emoji:row.emoji,
+      kind:row.tab===2?'lucky':'regular',quantity:Number(row.quantity),
+      recipient_count:Number(row.recipient_count),
+      spent_coins:Number(row.total_coins),
+      lucky_payout_coins:row.payout_coins==null?null:Number(row.payout_coins),
+      lucky_max_multiplier:row.max_multiplier==null?null:Number(row.max_multiplier),
+      recipient_diamond_hundredths:Number(row.recipient_hundredths),
+      room_reward_hundredths:Number(row.lucky_room_hundredths??row.regular_room_hundredths??0),
+      room_reward_status:'room_accrued_not_owner_paid'
+    })),limited_to:100,read_only:true,
+      note:'Fractional diamond accrual is not the same as whole diamonds credited to a wallet. Room shares are room-only, not automatically paid to a user.'},200,cors);
   }
   if (operation === 'gift-events' && request.method === 'GET') {
     const denied=allowed(actor.role,FINANCE_ROLES,fail,cors);

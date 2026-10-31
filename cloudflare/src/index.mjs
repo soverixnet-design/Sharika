@@ -2,15 +2,31 @@ import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
+import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
+const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset']);
+const ROOM_SEAT_FRAMES = new Set(['grad','gold','neon','sq']);
 const MAX_BODY = 20_000;
+const PROFILE_FRAMES = new Set([
+  '', 'phoenix-fire', 'ice-wings', 'royal-dragon', 'vip7',
+  'royal-gold', 'violet-love', 'ice-admin', 'golden-dragon',
+  'ice-dragon', 'violet-phoenix', 'castle-flag',
+  'lion-queen', 'phoenix-queen', 'tiger-queen'
+]);
+const PROFILE_MEDALS = new Set(['', 'bronze', 'silver', 'gold', 'top-host']);
+const PROFILE_NAME_TAGS = new Set(['', 'legend']);
+const PROFILE_ENTRIES = new Set([
+  '', 'phoenix', 'dragon-queen', 'ice-king', 'castle-flag',
+  'lion-queen', 'phoenix-queen', 'tiger-queen'
+]);
 const enc = new TextEncoder();
 
 function reply(payload, status = 200, cors = {}) {
@@ -25,6 +41,8 @@ function showProfile(user) {
     user_id: user.auth_uid, public_id: publicId(user.public_no),
     name: user.name, country: user.country, birthdate: user.birthdate,
     minor: !!user.minor, pic: user.pic, cover: user.cover, bio: user.bio,
+    frame_style: user.frame_style || '', entry_style: user.entry_style || '',
+    medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '',
     coins: user.coins, diamonds: user.diamonds, xp: user.xp,
     wealth_level: user.wealth_level, charm_level: user.charm_level, status: user.status
   };
@@ -95,11 +113,44 @@ async function createVoiceToken(env, uid, room, publish, owner) {
 }
 
 export async function handleRequest(request, env) {
-  const cors = corsFor(request, env);
-  if (!cors) return fail('origin_forbidden', 403);
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+  const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
+  const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
+  // Public image thumbnails support anonymous GET; edits remain authenticated.
+  // all mutations continue through strict origin and Firebase checks.
+  const cors = (coverPath || avatarPath) && request.method==='GET'
+    ? {'access-control-allow-origin':'*'} : corsFor(request, env);
+  if (!cors) return fail('origin_forbidden', 403);
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+  // The image is a public room-card asset; mutation is owner-authenticated
+  // further below. No Firebase tokens or profile data are exposed here.
+  if(coverPath && request.method==='GET') {
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const image=await env.DB.prepare(
+      'SELECT mime,image_base64,version FROM sharika_room_covers WHERE room_id=?'
+    ).bind(coverPath[1]).first();
+    if(!image)return fail('room_cover_not_found',404,cors);
+    const binary=atob(image.image_base64);
+    const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  if(avatarPath && request.method==='GET') {
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const image=await env.DB.prepare(
+      'SELECT a.image_base64 FROM sharika_user_avatars a '+
+      'JOIN sharika_users u ON u.auth_uid=a.auth_uid WHERE u.public_no=? AND u.status=?'
+    ).bind(Number(avatarPath[1]),'active').first();
+    if(!image)return fail('avatar_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
   if (path === '/health' && request.method === 'GET') {
     // A database-only diagnostic for staging. Authentication remains unavailable
     // until FIREBASE_PROJECT_ID is explicitly configured for protected endpoints.
@@ -148,6 +199,49 @@ export async function handleRequest(request, env) {
       await coordinator.presenceTouch(uid,roomId);
       return reply({ok:true,window_seconds:90},200,cors);
     }
+    if(path === '/api/v1/me/avatar' && request.method==='PUT') {
+      const user=await assertActive(env.DB,uid);
+      const len=Number(request.headers.get('content-length')||0);
+      if(len>125000)return fail('avatar_too_large',413,cors);
+      const raw=await request.text();
+      if(raw.length>125000)return fail('avatar_too_large',413,cors);
+      let body;
+      try{body=JSON.parse(raw||'{}');}catch(_){return fail('invalid_avatar',400,cors);}
+      if(!body||typeof body!=='object'||Array.isArray(body)||
+         typeof body.image_data!=='string'||!body.image_data.startsWith('data:image/jpeg;base64,'))
+        return fail('invalid_avatar',400,cors);
+      const imageBase64=body.image_data.slice('data:image/jpeg;base64,'.length);
+      if(imageBase64.length<16||imageBase64.length>120000||
+         !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64))
+        return fail('invalid_avatar',400,cors);
+      let binary;
+      try{binary=atob(imageBase64);}catch(_){return fail('invalid_avatar',400,cors);}
+      if(binary.length<32||binary.length>90000||
+         binary.charCodeAt(0)!==255||binary.charCodeAt(1)!==216||
+         binary.charCodeAt(2)!==255||
+         binary.charCodeAt(binary.length-2)!==255||
+         binary.charCodeAt(binary.length-1)!==217)
+        return fail('invalid_avatar',400,cors);
+      const written=await env.DB.prepare(
+        'INSERT INTO sharika_user_avatars(auth_uid,mime,image_base64,image_bytes) '+
+        "VALUES(?,'image/jpeg',?,?) ON CONFLICT(auth_uid) DO UPDATE SET "+
+        'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
+        "version=MIN(sharika_user_avatars.version+1,1000000000),updated_at=datetime('now') "+
+        "WHERE sharika_user_avatars.updated_at<=datetime('now','-20 seconds')"
+      ).bind(uid,imageBase64,binary.length).run();
+      if(!written.meta?.changes)return fail('avatar_rate_limited',429,cors);
+      const image=await env.DB.prepare(
+        'SELECT version FROM sharika_user_avatars WHERE auth_uid=?'
+      ).bind(uid).first();
+      const pic=url.origin+'/api/v1/users/'+publicId(user.public_no)+'/avatar?v='+image.version;
+      await env.DB.prepare("UPDATE sharika_users SET pic=?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
+        .bind(pic,uid).run();
+      return reply(showProfile(await me(env.DB,uid)),200,cors);
+    }
+    if(path==='/api/v1/banners' && request.method==='GET') {
+      await assertActive(env.DB,uid);
+      return reply({banners:await listPublicBanners(env.DB)},200,cors);
+    }
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
@@ -185,10 +279,30 @@ export async function handleRequest(request, env) {
       if (request.method === 'PATCH') {
         await assertActive(env.DB, uid);
         const body = await readBody(request);
-        if (body.birthdate !== undefined || body.coins !== undefined || body.status !== undefined || body.diamonds !== undefined) return fail('protected_field', 403, cors);
+        if (body.birthdate !== undefined || body.coins !== undefined || body.status !== undefined || body.diamonds !== undefined || body.public_no !== undefined || body.auth_uid !== undefined) return fail('protected_field', 403, cors);
         const changes = {};
         for (const [key, limit] of Object.entries({ name: 80, country: 16, pic: 2048, cover: 2048, bio: 500 })) {
           if (body[key] !== undefined) changes[key] = txt(body[key], limit) || (key === 'name' ? null : '');
+        }
+        if (body.frame_style !== undefined) {
+          if (typeof body.frame_style !== 'string' || !PROFILE_FRAMES.has(body.frame_style))
+            return fail('invalid_frame_style', 400, cors);
+          changes.frame_style = body.frame_style;
+        }
+        if (body.entry_style !== undefined) {
+          if (typeof body.entry_style !== 'string' || !PROFILE_ENTRIES.has(body.entry_style))
+            return fail('invalid_entry_style', 400, cors);
+          changes.entry_style = body.entry_style;
+        }
+        if (body.medal_style !== undefined) {
+          if (typeof body.medal_style !== 'string' || !PROFILE_MEDALS.has(body.medal_style))
+            return fail('invalid_medal_style', 400, cors);
+          changes.medal_style = body.medal_style;
+        }
+        if (body.name_tag_style !== undefined) {
+          if (typeof body.name_tag_style !== 'string' || !PROFILE_NAME_TAGS.has(body.name_tag_style))
+            return fail('invalid_name_tag_style', 400, cors);
+          changes.name_tag_style = body.name_tag_style;
         }
         if (!Object.keys(changes).length || changes.name === null) return fail('invalid_profile', 400, cors);
         const keys = Object.keys(changes);
@@ -202,7 +316,9 @@ export async function handleRequest(request, env) {
       await assertActive(env.DB, uid);
       const user = await env.DB.prepare('SELECT * FROM sharika_users WHERE public_no=?').bind(Number(parts[3])).first();
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
-        wealth_level: user.wealth_level, charm_level: user.charm_level }, 200, cors)
+        wealth_level: user.wealth_level, charm_level: user.charm_level,
+        frame_style: user.frame_style || '', entry_style: user.entry_style || '',
+        medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '' }, 200, cors)
         : fail('not_found', 404, cors);
     }
     // Real follow graph. Identity always comes from the verified Firebase token.
@@ -398,12 +514,17 @@ export async function handleRequest(request, env) {
       return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {
-      await assertActive(env.DB, uid);
+      const viewer = await assertActive(env.DB, uid);
+      const luckyAllowed = env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
+        nonRedeemableLuckyEconomy(env) && !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
       const result = await env.DB.prepare(
         'SELECT id,name,emoji,tab,price_coins,image_url,animation_url ' +
-        'FROM sharika_gifts WHERE active=1 ORDER BY id LIMIT 100'
-      ).all();
-      return reply({ gifts:result.results || [], read_only:true }, 200, cors);
+        'FROM sharika_gifts WHERE active=1 AND (tab IN (0,1) OR (tab=2 AND ?=1)) ORDER BY id LIMIT 100'
+      ).bind(luckyAllowed ? 1 : 0).all();
+      return reply({ gifts:result.results || [], lucky_enabled:luckyAllowed,
+        lucky_odds:luckyAllowed ? LUCKY_ODDS.map(x=>({
+          multiplier:x.multiplier,probability_percent:x.weight/100
+        })) : [],read_only:true }, 200, cors);
     }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       await assertActive(env.DB, uid);
@@ -453,10 +574,56 @@ export async function handleRequest(request, env) {
       return reply({coins:updated.coins,diamonds:updated.diamonds,
         spent_diamonds:diamonds,credited_coins:coins,duplicate:false},200,cors);
     }
+    if(coverPath && request.method==='PUT') {
+      await assertActive(env.DB,uid);
+      const roomId=coverPath[1];
+      const room=await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?')
+        .bind(roomId).first();
+      if(!room)return fail('room_not_found',404,cors);
+      if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+      const contentLength=Number(request.headers.get('content-length')||0);
+      if(contentLength>125000)return fail('room_cover_too_large',413,cors);
+      const raw=await request.text();
+      if(raw.length>125000)return fail('room_cover_too_large',413,cors);
+      let body;
+      try{body=JSON.parse(raw||'{}');}catch(_){return fail('invalid_room_cover',400,cors);}
+      if(!body||typeof body!=='object'||Array.isArray(body)||
+         typeof body.image_data!=='string'||!body.image_data.startsWith('data:image/jpeg;base64,'))
+        return fail('invalid_room_cover',400,cors);
+      const imageBase64=body.image_data.slice('data:image/jpeg;base64,'.length);
+      if(imageBase64.length<16||imageBase64.length>120000||
+         !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64))
+        return fail('invalid_room_cover',400,cors);
+      let binary;
+      try{binary=atob(imageBase64);}catch(_){return fail('invalid_room_cover',400,cors);}
+      if(binary.length<32||binary.length>90000||
+         binary.charCodeAt(0)!==255||binary.charCodeAt(1)!==216||
+         binary.charCodeAt(2)!==255||
+         binary.charCodeAt(binary.length-2)!==255||
+         binary.charCodeAt(binary.length-1)!==217)
+        return fail('invalid_room_cover',400,cors);
+      const saved=await env.DB.prepare(
+        'INSERT INTO sharika_room_covers(room_id,mime,image_base64,image_bytes) '+
+        "VALUES(?,'image/jpeg',?,?) ON CONFLICT(room_id) DO UPDATE SET "+
+        'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
+        "version=MIN(sharika_room_covers.version+1,1000000000),updated_at=datetime('now') "+
+        "WHERE sharika_room_covers.updated_at<=datetime('now','-20 seconds')"
+      ).bind(roomId,imageBase64,binary.length).run();
+      if(!saved.meta?.changes)return fail('room_cover_rate_limited',429,cors);
+      const row=await env.DB.prepare(
+        'SELECT version,image_bytes FROM sharika_room_covers WHERE room_id=?'
+      ).bind(roomId).first();
+      return reply({room_id:roomId,cover_url:url.origin+path+'?v='+row.version,
+        cover_version:row.version,image_bytes:row.image_bytes},200,cors);
+    }
     if (path === '/api/v1/rooms') {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {
-        const rows = await env.DB.prepare('SELECT * FROM sharika_rooms ORDER BY created_at DESC LIMIT 100').all();
+        const rows=await env.DB.prepare(
+          'SELECT r.*,c.version AS cover_version FROM sharika_rooms r '+
+          'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
+          'ORDER BY r.created_at DESC LIMIT 100'
+        ).all();
         // One verified room presence snapshot for all displayed cards.
         let online={};
         if(env.VOICE_ROOMS) {
@@ -466,7 +633,9 @@ export async function handleRequest(request, env) {
           } catch(error) {console.warn('room_presence_unavailable',error?.message);}
         }
         return reply({rooms:(rows.results||[]).map(r=>({
-          ...r,online_count:Number(online?.[r.id])||0
+          ...r,cover_url:r.cover_version?url.origin+'/api/v1/rooms/'+r.id+
+            '/cover?v='+r.cover_version:null,
+          online_count:Number(online?.[r.id])||0
         }))},200,cors);
       }
       if (request.method === 'POST') {
@@ -499,13 +668,19 @@ export async function handleRequest(request, env) {
       const body=await readBody(request);
       const name=body.name===undefined ? room.name : txt(body.name,100);
       const seatCount=body.seat_count===undefined ? room.seat_count : body.seat_count;
-      if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20)
+      const theme=body.theme===undefined ? (room.theme||'mid') : body.theme;
+      const seatFrame=body.seat_frame_style===undefined
+        ? (room.seat_frame_style||'grad') : body.seat_frame_style;
+      if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20 ||
+         !ROOM_THEMES.has(theme) || !ROOM_SEAT_FRAMES.has(seatFrame))
         return fail('invalid_room_settings',400,cors);
       const updated=await env.DB.prepare(
-        'UPDATE sharika_rooms SET name=?,seat_count=? WHERE id=? AND owner_id=? '+
+        'UPDATE sharika_rooms SET name=?,seat_count=?,theme=?,seat_frame_style=? WHERE id=? AND owner_id=? '+
         'AND NOT EXISTS (SELECT 1 FROM sharika_room_members WHERE room_id=? AND seat_no>?)'
-      ).bind(name,seatCount,roomId,uid,roomId,seatCount).run();
+      ).bind(name,seatCount,theme,seatFrame,roomId,uid,roomId,seatCount).run();
       if(!updated.meta?.changes)return fail('seats_occupied_above_new_limit',409,cors);
+      if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+        .dropSeatLocksAbove(seatCount);
       return reply({room:await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?')
         .bind(roomId).first()},200,cors);
     }
@@ -514,6 +689,74 @@ export async function handleRequest(request, env) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // An owner may invite an unseated, verified member to an unlocked mic seat.
+      if(parts.length===5 && action==='invitations') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_invites_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET')return reply(await coordinator.seatInvitePending(uid),200,cors);
+        if(request.method==='POST') {
+          if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+          const body=await readBody(request);
+          if(!Number.isInteger(body.seat_no)||body.seat_no<1||
+             body.seat_no>room.seat_count||
+             typeof body.target_public_id!=='string'||!PUBLIC_ID.test(body.target_public_id))
+            return fail('invalid_invitation',400,cors);
+          const target=await env.DB.prepare(
+            'SELECT u.auth_uid,u.status,m.seat_no FROM sharika_room_members m '+
+            'JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? AND u.public_no=?'
+          ).bind(roomId,Number(body.target_public_id)).first();
+          if(!target||target.status!=='active'||target.auth_uid===uid||
+             target.seat_no!==null)return fail('invite_target_unavailable',409,cors);
+          const result=await coordinator.seatInviteSend(roomId,uid,target.auth_uid,body.seat_no);
+          if(result.error)return fail(result.error,
+            result.error==='invite_rate_limited'?429:409,cors);
+          return reply({invitation:result},201,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
+      if(parts.length===6 && action==='invitations' &&
+         parts[5]==='respond' && request.method==='POST') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_invites_unavailable',503,cors);
+        const body=await readBody(request);
+        if(!Number.isInteger(body.seat_no)||body.seat_no<1||
+           body.seat_no>room.seat_count||typeof body.accept!=='boolean')
+          return fail('invalid_invitation_response',400,cors);
+        const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .seatInviteRespond(roomId,uid,body.seat_no,body.accept);
+        if(result.error)return fail(result.error,
+          result.error==='invite_not_found'?404:409,cors);
+        return reply(result,200,cors);
+      }
+      // Text chat is real-time room data, not a browser-only fake conversation.
+      // Only verified members may read or send, and the Worker supplies identity.
+      if (parts.length === 5 && action === 'chat') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_chat_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET') {
+          const raw=url.searchParams.get('after')||'0';
+          if(!/^[0-9]{1,12}$/.test(raw) || !Number.isSafeInteger(Number(raw)))
+            return fail('invalid_chat_cursor',400,cors);
+          return reply(await coordinator.roomChatRead(Number(raw)),200,cors);
+        }
+        if(request.method==='POST') {
+          const payload=await readBody(request);
+          const message=typeof payload.body==='string'?payload.body.trim():'';
+          const requestId=typeof payload.request_id==='string'?payload.request_id.trim():'';
+          if(!message||message.length>300||
+             !/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
+            return fail('invalid_room_message',400,cors);
+          const user=await assertActive(env.DB,uid);
+          const result=await coordinator.roomChatSend(uid,publicId(user.public_no),
+            txt(user.name,80)||'Member',message,requestId);
+          if(result.error)return fail(result.error,
+            result.error==='message_rate_limited'?429:409,cors);
+          return reply(result,result.duplicate?200:201,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       if (parts.length === 5 && action === 'join' && request.method === 'POST') {
         const ban=await env.DB.prepare(
           'SELECT banned_until_ms FROM sharika_room_bans WHERE room_id=? AND user_id=?'
@@ -534,26 +777,58 @@ export async function handleRequest(request, env) {
         } else {
           await env.DB.prepare('DELETE FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId, uid).run();
         }
+        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .seatInviteClear(uid);
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
+      // Ordinary gift shares belong to the audited room ledger, not the
+      // owner's personal wallet. Lucky Gift's separate 1% remains unchanged.
+      if (parts.length===5 && action==='rewards' && request.method==='GET') {
+        if(!member)return fail('join_room_first',403,cors);
+        const regular=await env.DB.prepare(
+          'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
+          'FROM sharika_regular_room_rewards WHERE room_id=?'
+        ).bind(roomId).first();
+        const regularPoints=Number(regular?.points)||0;
+        const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
+          nonRedeemableLuckyEconomy(env);
+        const lucky=luckyEnabled?await env.DB.prepare(
+          'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
+          'FROM sharika_lucky_room_rewards WHERE room_id=?'
+        ).bind(roomId).first():null;
+        const luckyPoints=Number(lucky?.points)||0;
+        const points=regularPoints+luckyPoints;
+        return reply({room_id:roomId,reward_coins:Math.floor(points/100),
+          reward_fraction_hundredths:points%100,reward_hundredths:points,
+          regular_reward_hundredths:regularPoints,lucky_reward_hundredths:luckyPoints,
+          regular_gift_percent:10,lucky_gift_percent:1,
+          owner_wallet_credited:false,withdrawal_enabled:false},200,cors);
+      }
       // Gift sending uses the real D1 catalog and an all-or-nothing ledger.
-      // Lucky/random-payout items stay off until their fair game engine exists.
+      // Lucky/random-payout items remain blocked pending cashout compliance.
       if (parts.length===5 && action==='gifts') {
         if(!member)return fail('join_room_first',403,cors);
         if(request.method==='GET') {
+          const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
+            nonRedeemableLuckyEconomy(env);
           const rows=await env.DB.prepare(
             'SELECT e.id,e.quantity,e.price_coins,e.created_at,'+
             'su.public_no AS sender_no,ru.public_no AS recipient_no,'+
-            'g.name,g.emoji FROM sharika_gift_events e '+
+            (luckyEnabled?'g.name,g.emoji,g.tab,lo.payout_coins,lo.max_multiplier ':
+              'g.name,g.emoji,g.tab,NULL AS payout_coins,NULL AS max_multiplier ')+
+            'FROM sharika_gift_events e '+
             'JOIN sharika_users su ON su.auth_uid=e.sender_uid '+
             'JOIN sharika_users ru ON ru.auth_uid=e.recipient_uid '+
             'JOIN sharika_gifts g ON g.id=e.gift_id '+
+            (luckyEnabled?'LEFT JOIN sharika_lucky_gift_outcomes lo ON lo.transaction_id=e.transaction_id ':'')+
             'WHERE e.room_id=? ORDER BY e.id DESC LIMIT 40'
           ).bind(roomId).all();
           return reply({events:(rows.results||[]).reverse().map(e=>({
             id:e.id,quantity:e.quantity,price_coins:e.price_coins,
             created_at:e.created_at,sender_id:publicId(e.sender_no),
-            recipient_id:publicId(e.recipient_no),name:e.name,emoji:e.emoji
+            recipient_id:publicId(e.recipient_no),name:e.name,emoji:e.emoji,
+            lucky:e.tab===2&&luckyEnabled?{payout_coins:Number(e.payout_coins)||0,
+              max_multiplier:Number(e.max_multiplier)||0}:null
           }))},200,cors);
         }
         if(request.method==='POST') {
@@ -578,12 +853,22 @@ export async function handleRequest(request, env) {
                 existing.recipient_ids_json!==JSON.stringify(ids))
               return fail('idempotency_conflict',409,cors);
             const wallet=await me(env.DB,uid);
+            const regularShare=await env.DB.prepare(
+              'SELECT reward_hundredths FROM sharika_regular_room_rewards WHERE transaction_id=?'
+            ).bind(existing.id).first();
+            const outcome=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true'
+              ?await env.DB.prepare(
+                'SELECT payout_coins,max_multiplier FROM sharika_lucky_gift_outcomes WHERE transaction_id=?'
+              ).bind(existing.id).first():null;
             return reply({duplicate:true,transaction_id:existing.id,
-              coins:wallet.coins,spent_coins:existing.total_coins},200,cors);
+              coins:wallet.coins,spent_coins:existing.total_coins,
+              room_reward_coins:Number(regularShare?.reward_hundredths||0)/100,
+              lucky:outcome?{payout_coins:outcome.payout_coins,
+                max_multiplier:outcome.max_multiplier}:null},200,cors);
           }
           const gift=await env.DB.prepare(
             'SELECT id,name,emoji,tab,price_coins FROM sharika_gifts '+
-            'WHERE id=? AND active=1 AND tab IN (0,1)'
+            'WHERE id=? AND active=1 AND tab IN (0,1,2)'
           ).bind(giftId).first();
           if(!gift)return fail('gift_unavailable',404,cors);
           const recipients=await env.DB.prepare(
@@ -599,6 +884,19 @@ export async function handleRequest(request, env) {
           if(!Number.isSafeInteger(spend)||spend<1||spend>100000000)
             return fail('gift_amount_exceeds_limit',400,cors);
           const sender=await assertActive(env.DB,uid);
+          let lucky=null,benefits=null;
+          if(gift.tab===2) {
+            if(env.SHARIKA_LUCKY_GIFTS_ENABLED!=='true')
+              return fail('lucky_gifts_disabled',503,cors);
+            if(!nonRedeemableLuckyEconomy(env))
+              return fail('lucky_requires_non_redeemable_coins',403,cors);
+            if(sender.minor || !(ageFromDate(sender.birthdate)>=18))
+              return fail('lucky_gifts_adult_only',403,cors);
+            lucky=drawLuckyGift(Number(gift.price_coins),quantity*ids.length);
+            benefits=luckyGiftBenefits(Number(gift.price_coins),quantity,ids.length);
+            if(!Number.isSafeInteger(sender.coins-spend+lucky.payout_coins))
+              return fail('lucky_wallet_limit',400,cors);
+          }
           if(sender.coins<spend)return fail('insufficient_coins',409,cors);
           const recent=await env.DB.prepare(
             "SELECT COUNT(*) AS n FROM sharika_gift_transactions WHERE sender_uid=? "+
@@ -625,6 +923,24 @@ export async function handleRequest(request, env) {
               "AS INTEGER)) WHERE auth_uid=?"
             ).bind(uid,uid)
           ];
+          if(lucky) {
+            if(lucky.payout_coins>0) {
+              statements.push(env.DB.prepare(
+                "UPDATE sharika_users SET coins=coins+?,updated_at=datetime('now') "+
+                "WHERE auth_uid=? AND status='active'"
+              ).bind(lucky.payout_coins,uid));
+              statements.push(env.DB.prepare(
+                "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+                "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'lucky_gift_reward',?)"
+              ).bind(uid,lucky.payout_coins,uid,'lucky:'+requestId));
+            }
+            statements.push(env.DB.prepare(
+              'INSERT INTO sharika_lucky_gift_outcomes(transaction_id,sender_uid,'+
+              'payout_coins,max_multiplier,rolls_json) VALUES('+
+              '(SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?,?,?)'
+            ).bind(uid,requestId,uid,lucky.payout_coins,lucky.max_multiplier,
+              JSON.stringify(lucky.rolls)));
+          }
           for(const recipient of found) {
             const xp=Number(gift.price_coins)*quantity;
             statements.push(env.DB.prepare(
@@ -637,7 +953,23 @@ export async function handleRequest(request, env) {
               "charm_level=MAX(charm_level,1+CAST((xp+?)/1000 AS INTEGER)),"+
               "updated_at=datetime('now') WHERE auth_uid=?"
             ).bind(xp,xp,recipient.auth_uid));
+            if(benefits)statements.push(env.DB.prepare(
+              'INSERT INTO sharika_lucky_recipient_rewards(transaction_id,recipient_uid,'+
+              'earned_hundredths) VALUES('+
+              '(SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
+            ).bind(uid,requestId,recipient.auth_uid,benefits.recipient_hundredths));
           }
+          if(benefits)statements.push(env.DB.prepare(
+            'INSERT INTO sharika_lucky_room_rewards(transaction_id,room_id,reward_hundredths) '+
+            'VALUES((SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
+          ).bind(uid,requestId,roomId,benefits.room_hundredths));
+          // A verified 10% room share is recorded for every ordinary gift.
+          // Its D1 trigger checks the full settled transaction amount.
+          const regularRewardHundredths=gift.tab===2?0:spend*10;
+          if(regularRewardHundredths)statements.push(env.DB.prepare(
+            'INSERT INTO sharika_regular_room_rewards(transaction_id,room_id,reward_hundredths) '+
+            'VALUES((SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
+          ).bind(uid,requestId,roomId,regularRewardHundredths));
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
@@ -646,7 +978,11 @@ export async function handleRequest(request, env) {
           return reply({duplicate:false,transaction_id:saved.id,
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
-            quantity},201,cors);
+            quantity,room_reward_coins:regularRewardHundredths/100,
+            lucky:lucky?{payout_coins:lucky.payout_coins,
+              max_multiplier:lucky.max_multiplier,
+              recipient_reward_diamonds:benefits.recipient_hundredths/100,
+              room_reward_coins:benefits.room_hundredths/100}:null},201,cors);
         }
         return fail('method_not_allowed',405,cors);
       }
@@ -660,21 +996,50 @@ export async function handleRequest(request, env) {
         return handleRoomModeration({
           request,env,uid,room,roomId,reply,fail,cors,readBody
         });
+      if (parts.length===5 && action==='locks' && request.method==='PUT') {
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
+        const body=await readBody(request);
+        if(!Number.isInteger(body.seat_no)||body.seat_no<1||
+           body.seat_no>room.seat_count||typeof body.locked!=='boolean')
+          return fail('invalid_seat_lock',400,cors);
+        const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .changeSeatLock(roomId,body.seat_no,body.locked);
+        if(result.error)return fail(result.error,409,cors);
+        return reply(result,200,cors);
+      }
       if (parts.length === 5 && action === 'seat' && request.method === 'PUT') {
-        const body = await readBody(request);
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
+        const body=await readBody(request);
         const seat = body.seat_no === null ? null : Number(body.seat_no);
-        if (seat !== null && (!Number.isInteger(seat) || seat < 1 || seat > room.seat_count)) return fail('invalid_seat', 400, cors);
-        await env.DB.prepare('UPDATE sharika_room_members SET seat_no=? WHERE room_id=? AND user_id=?').bind(seat,roomId,uid).run();
-        const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
-        return reply({ member: saved }, 200, cors);
+        if (seat !== null && (!Number.isInteger(seat) || seat < 1 ||
+          seat > room.seat_count)) return fail('invalid_seat', 400, cors);
+        const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .changeMemberSeat(roomId,uid,seat);
+        if(result.error)return fail(result.error,
+          result.error==='seat_locked'?409:403,cors);
+        return reply(result,200,cors);
       }
       if (parts.length === 5 && action === 'members' && request.method === 'GET') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,
-          u.public_no,u.name,u.pic,u.wealth_level FROM sharika_room_members m
+          u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
-        return reply({ room: roomId, members: (result.results || []).map(x => ({
+        const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .lockedSeats();
+        return reply({ room: roomId,
+          // Room capacity is authoritative in D1; all joined devices must
+          // receive current capacity even when their room card is cached.
+          seat_count:room.seat_count,
+          seat_frame_style:room.seat_frame_style||'grad',
+          locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
+          members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
-          sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level }
+          sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
+            frame_style: x.frame_style || '', entry_style: x.entry_style || '',
+            medal_style: x.medal_style || '', name_tag_style: x.name_tag_style || '' }
         })) }, 200, cors);
       }
       if (parts.length === 5 && action === 'voice-token' && request.method === 'POST') {

@@ -22,6 +22,10 @@ function mock(role) {
           return {users:1,rooms:1,active_gifts:0,ledger_entries:1,coins_total:2000,diamonds_total:0};
         },
         async all() {
+          if(sql.includes("m.body LIKE '[Sharika report]%'")) return {results:[{
+            id:57,reporter_no:10000002,created_at:'2026-10-31 02:00:00',
+            body:'[Sharika report] user ID 10000003 · Member\\nReason: Spam messages'
+          }]};
           if (sql.includes('FROM sharika_users')) return {results:[{
             public_no:10000001,name:'Owner',country:'BD',coins:2000,diamonds:0,
             wealth_level:1,charm_level:1,status:'active',created_at:'2026-10-30'
@@ -137,6 +141,66 @@ test('gift history is real D1 data and available only to finance or super roles'
   assert.equal(denied.data.error,'admin_permission_denied');
 });
 
+test('settlement audit is read-only and inaccessible to support staff',async()=>{
+  const finance=await handle('finance','/api/v1/admin/gift-settlements');
+  assert.equal(finance.status,200);
+  assert.deepEqual(finance.data.settlements,[]);
+  assert.equal(finance.data.limited_to,100);
+  assert.equal(finance.data.read_only,true);
+  assert.ok(!finance.calls.some(c=>c.batch));
+  const denied=await handle('support','/api/v1/admin/gift-settlements');
+  assert.equal(denied.status,403);
+  assert.equal(denied.data.error,'admin_permission_denied');
+  assert.equal(denied.calls.length,1);
+});
+
+test('gift settlement maps exact Lucky/regular room and recipient entitlement without fan-out',async()=>{
+  const seen=[];
+  const db={prepare(sql){
+    seen.push(sql);
+    return {
+      bind(){return this;},
+      async first(){return {role:'finance',public_no:10000001,name:'Auditor'};},
+      async all(){return {results:[
+        {id:31,room_id:'12345678',sender_no:10000002,name:'Rose',emoji:'🌹',
+          tab:2,quantity:2,total_coins:120,created_at:'2026-10-31 02:00:00',
+          payout_coins:240,max_multiplier:2,lucky_room_hundredths:120,
+          regular_room_hundredths:null,recipient_hundredths:600,recipient_count:1},
+        {id:30,room_id:'12345678',sender_no:10000003,name:'Flower',emoji:'🌼',
+          tab:0,quantity:1,total_coins:200,created_at:'2026-10-31 01:00:00',
+          payout_coins:null,max_multiplier:null,lucky_room_hundredths:null,
+          regular_room_hundredths:2000,recipient_hundredths:0,recipient_count:3}
+      ]};}
+    };
+  }};
+  const request=new Request('https://api.example.test/api/v1/admin/gift-settlements');
+  const response=await handleAdminOperation({request,env:{DB:db},uid:'finance_uid',
+    path:new URL(request.url).pathname,cors:{},
+    reply:(payload,status)=>Response.json(payload,{status}),
+    fail:(error,status)=>Response.json({error},{status})});
+  assert.equal(response.status,200);
+  const body=await response.json();
+  assert.equal(body.settlements.length,2);
+  assert.deepEqual(body.settlements.map(s=>({
+    id:s.transaction_id,kind:s.kind,payout:s.lucky_payout_coins,
+    recipients:s.recipient_count,room:s.room_reward_hundredths,
+    recipient:s.recipient_diamond_hundredths
+  })),[
+    {id:31,kind:'lucky',payout:240,recipients:1,room:120,recipient:600},
+    {id:30,kind:'regular',payout:null,recipients:3,room:2000,recipient:0}
+  ]);
+  assert.equal(body.settlements[0].sender_id,'10000002');
+  assert.equal(body.settlements[0].spent_coins,120);
+  assert.equal(body.settlements[0].room_reward_status,'room_accrued_not_owner_paid');
+  const sql=seen[1];
+  assert.match(sql,/LEFT JOIN sharika_lucky_gift_outcomes o/);
+  assert.match(sql,/LEFT JOIN sharika_regular_room_rewards rr/);
+  assert.match(sql,/LEFT JOIN sharika_lucky_room_rewards lr/);
+  assert.match(sql,/SUM\(x\.earned_hundredths\)/);
+  assert.match(sql,/COUNT\(\*\) FROM sharika_gift_events e/);
+  assert.match(sql,/ORDER BY t\.id DESC LIMIT 100/);
+  assert.doesNotMatch(sql,/JOIN sharika_gift_events e ON e.transaction_id=t.id/);
+});
 test('admin gift rankings are read-only and finance-role gated',async()=>{
   const yes=await handle('finance','/api/v1/admin/rankings?kind=room&period=daily');
   assert.equal(yes.status,200);
@@ -189,4 +253,18 @@ test('Top Recharge counts verified seller/manual credits only, not signup or gam
   assert.doesNotMatch(sqlText,/signup_welcome|game_win|referral_bonus/);
   assert.equal(bound.length,2);
   assert.equal(await readGiftRankings(db,'weekly','unsupported'),null);
+});
+
+test('only support/super can triage verified reports without editing wallet data',async()=>{
+  const support=await handle('support','/api/v1/admin/reports');
+  assert.equal(support.status,200);
+  assert.equal(support.data.read_only,true);
+  assert.equal(support.data.reports[0].reporter_public_id,'10000002');
+  assert.equal(support.data.reports[0].id,57);
+  assert.match(support.data.reports[0].body,/Sharika report/);
+  assert.ok(!support.calls.some(c=>c.batch));
+  assert.equal((await handle('super','/api/v1/admin/reports')).status,200);
+  const blocked=await handle('finance','/api/v1/admin/reports');
+  assert.equal(blocked.status,403);
+  assert.equal(blocked.data.error,'admin_permission_denied');
 });

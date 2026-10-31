@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,webcrypto} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {ORIGINAL_ROUND_MS,originalOutcome,originalPayout,handleOriginalGameRequest} from '../src/original-games.mjs';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
@@ -92,4 +93,114 @@ test('accepted original-game bets survive a retry after the round closes',async(
   assert.equal(stale.status,409);
   assert.equal((await stale.json()).error,'betting_closed');
   assert.ok(queries.some(sql=>sql.includes('sharika_original_game_bets')));
+});
+
+
+test('Night Food and Jackpot Fruit advertise 1k chips for small verified wallets',async()=>{
+  // A staging account may have only 1,425 coins; the old 10k minimum
+  // prevented any manual wager while Sovera Food Wheel appeared to work.
+  const now=Date.now();
+  const currentRound=Math.floor(now/ORIGINAL_ROUND_MS);
+  const db={prepare(sql){
+    const stmt={
+      bind(...values){this.values=values;return this;},
+      async all(){return {results:[]};},
+      async first(){
+        if(sql.startsWith('SELECT * FROM sharika_original_game_rounds WHERE game=? AND round_no=?'))
+          return {id:'round',game:this.values[0],round_no:currentRound,
+            commit_sha256:commit,seed_hex:seed};
+        if(sql.startsWith('SELECT * FROM sharika_original_game_rounds WHERE game=? AND closes_ms<=?'))
+          return null;
+        if(sql.startsWith('SELECT coins,minor,status FROM sharika_users'))
+          return {coins:1425,minor:0,status:'active'};
+        if(sql.includes('FROM sharika_original_game_bets WHERE user_uid=? AND game=?'))
+          return null;
+        if(sql.includes('FROM sharika_original_game_pools'))
+          return {coins:0};
+        if(sql.includes('COUNT(*) AS bets'))
+          return {bets:0,wagered:0,won:0};
+        throw Error('Unexpected SQL query '+sql);
+      },
+      async run(){throw Error('Read-only game catalog may not write fake balance');}
+    };
+    return stmt;
+  }};
+  const reply=(body,status)=>Response.json(body,{status});
+  const fail=(error,status)=>Response.json({error},{status});
+  for(const game of ['night-food','jackpot-fruit']){
+    const res=await handleOriginalGameRequest({
+      request:new Request('https://sharika.test/api/v1/original-games/'+game+'/state'),
+      db,uid:'verified-user',game,action:'state',reply,fail,cors:{}
+    });
+    assert.equal(res.status,200);
+    const state=await res.json();
+    assert.equal(state.coins,1425);
+    assert.deepEqual(state.chips,[1000,10000,100000,1000000,10000000]);
+    assert.equal(state.virtual_coins_only,true);
+  }
+});
+
+
+test('both offline game layouts use the matching server-backed wager chips',()=>{
+  for(const [page,token] of [
+    ['night-food-wheel.html','const chips=[1000,10000,100000,1000000,10000000];'],
+    ['jackpot-fruit.html','CH=[1000,10000,100000,1000000,10000000];']
+  ]){
+    const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/'+page,import.meta.url),'utf8');
+    assert.ok(html.includes(token),page+' must offer the 1k wallet-compatible chip');
+    assert.match(html,/sharika:original-request/);
+    assert.match(html,/sharika:original-response/);
+    assert.doesNotMatch(html,/https?:\/\/[^\s"'<>]+/);
+  }
+});
+
+
+test('Night Food and Jackpot Fruit show verified round winners to all viewers',()=>{
+  const base=new URL('../../android-staging/app/src/main/assets/original-games/',import.meta.url);
+  const night=readFileSync(new URL('night-food-wheel.html',base),'utf8');
+  const jackpot=readFileSync(new URL('jackpot-fruit.html',base),'utf8');
+  assert.match(night,/Round Top 3:/);
+  assert.match(night,/prev\.top_winners/);
+  assert.match(jackpot,/verifiedWinners\.textContent/);
+  assert.match(jackpot,/prev\.top_winners/);
+  assert.match(jackpot,/if\(!spent&&!?\(prev\.top_winners\|\|\[\]\)\.length\)return/);
+  // The original no-bet guard hid top-three results from spectators.
+  assert.doesNotMatch(jackpot,/if\(!spent\)return;/);
+});
+
+test('all three original games announce at most three verified winners for ten seconds',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=adapter.indexOf('  const announcedOriginalGameRounds=new Map();');
+  const end=adapter.indexOf('  function showGameCard(',start);
+  assert.ok(start>=0&&end>start,'verified ten-second winner gate must exist');
+  const topThree=new Function(adapter.slice(start,end)+';return verifiedOriginalGameTopThree;')();
+  const n=48123456;
+  const winners=[1,2,3,4].map(i=>({
+    public_id:String(10000000+i),name:'Winner '+i,total_win:i*1000
+  }));
+  const state=(round,seconds,items=winners)=>({
+    server_time:(round+1)*40000+seconds*1000,
+    previous_result:{round_no:round,top_winners:items}
+  });
+  assert.equal(topThree('sovera-food',state(n,11)),null,'stale finished round is not reannounced');
+  const latest=topThree('sovera-food',state(n,2));
+  assert.equal(latest.winners.length,3,'real first three only; never fabricate a fourth');
+  assert.equal(latest.winners[0].public_id,'10000001');
+  assert.equal(topThree('sovera-food',state(n,4)),null,'polling cannot replay same result');
+  assert.equal(topThree('night-food',state(n,1)).winners.length,3);
+  assert.equal(topThree('jackpot-fruit',state(n,8)).winners.length,3);
+  assert.equal(topThree('jackpot-fruit',state(n+1,1,[])),null,'no demo winners');
+  assert.match(adapter,/winnerBannerTimer=view\.setTimeout\(\(\)=>\{banner\.remove\(\);winnerBannerTimer=null;\},10000\)/);
+  assert.match(adapter,/line\.textContent=\['🥇','🥈','🥉'\]/);
+});
+
+test('verified original game settlement refreshes the shared profile and room wallet',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.match(adapter,/if\(data\.action==='state'\)\{[\s\S]*?announceRoundWinners\(current\.item\.id,result\)/);
+  assert.match(adapter,/result\.coins!==balance\.coins/);
+  assert.match(adapter,/originalGameWalletRefreshTime>=2500/);
+  assert.match(adapter,/reloadWallet\(\)\.catch\(\(\)=>\{\}\)/);
+  assert.match(adapter,/view\.removeEventListener\('message',onOriginalGameMessage\)/);
+  assert.match(adapter,/if\(!overlay\.classList\.contains\('on'\)\)/);
+  assert.match(adapter,/currentGameFrame\?\.element\?\.remove\(\)/);
 });

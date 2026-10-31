@@ -22,15 +22,67 @@
       ].join('')
     ].join('');
     doc.head.appendChild(style);
+    // Staging-only depth effects: no changes to the owner's original layout,
+    // routes, seat hit targets, labels, or accessibility semantics.
+    const depth=doc.createElement('style');
+    depth.id='sharika-subtle-icon-depth';
+    depth.textContent=roomFrame ? [
+      '.top .ib,.top .room,#bOwn,.dock .rb,.dock .mic,.dock .inp #emo,.dock .inp #imgBtn,.stats .pill{',
+      'box-shadow:inset 0 2px 2px #fff6,inset 0 -5px 8px #070319b3,0 6px 12px #03010b99!important;',
+      'filter:drop-shadow(0 2px 2px #0007);transition:filter .15s ease,box-shadow .15s ease}',
+      '.dock .e3,.top .room .rav,.top .ib svg,.dock .mic{',
+      'filter:drop-shadow(0 3px 2px #05020da8);text-shadow:0 2px 1px #0008,0 -1px 2px #fff6}',
+      '.dock button:active,.top .ib:active{filter:brightness(1.12) drop-shadow(0 1px 2px #0009)}',
+      '@media(prefers-reduced-motion:reduce){.top .ib,.top .room,.dock .rb,.dock .mic{transition:none!important}}'
+    ].join('') : [
+      '.nav .ni span,.qa button span,.hd .logo,.nav .plus,#minib,.acts .act span{',
+      'display:inline-block;filter:drop-shadow(0 3px 2px #04020da8);',
+      'text-shadow:0 2px 1px #0009,0 -1px 2px #fff7}',
+      '.qa button,.nav .ni,.nav .plus,.hd .logo,#minib,.tabs button{',
+      'box-shadow:inset 0 2px 2px #fff5,inset 0 -4px 7px #05011399,0 5px 10px #03010b80;',
+      'transition:filter .15s ease,box-shadow .15s ease}',
+      '.qa button:active,.nav button:active,.tabs button:active{filter:brightness(1.12)}',
+      '#grid .card .bg{box-shadow:inset 0 2px 3px #fff4,inset 0 -8px 15px #05021199}',
+      '#sh-original-grid>button:active{transform:translateY(2px) scale(.98)}',
+      '@media(prefers-reduced-motion:reduce){.qa button,.nav button,.tabs button{transition:none!important}}'
+    ].join('');
+    doc.head.appendChild(depth);
   }
   fitAndroidViewport(document, false);
+  // The original HTML eagerly renders demo rooms and a fake weekly podium
+  // before the native Firebase session check completes. Keep only the
+  // original branded splash visible until the verified state is known.
+  function startVerifiedStartup(){
+    const style=document.createElement('style');
+    style.id='sharika-verified-startup-style';
+    style.textContent=[
+      '#app.sharika-startup-verifying .views,',
+      '#app.sharika-startup-verifying .nav,',
+      '#app.sharika-startup-verifying .auth,',
+      '#app.sharika-startup-verifying #mini{visibility:hidden!important}',
+      '#app.sharika-startup-verifying::after{',
+      'content:"Opening Sharika…";position:absolute;inset:0;z-index:94;',
+      'display:grid;place-items:center;background:linear-gradient(180deg,#1a0b45,#05030f);',
+      'color:#e9dbff;font-size:16px;font-weight:700;pointer-events:none}'
+    ].join('');
+    document.head.appendChild(style);
+    document.getElementById('app')?.classList.add('sharika-startup-verifying');
+  }
+  function finishVerifiedStartup(){
+    document.getElementById('app')?.classList.remove('sharika-startup-verifying');
+  }
+  startVerifiedStartup();
+  // The old splash timer invokes a simulated Top 3 ranking. The verified
+  // ranking screen has its own server API and remains fully available.
+  window.showWeekly=function(done){if(typeof done==='function')done();};
+  document.getElementById('wk')?.remove();
   const ACCOUNT_KEY = 'vr_accts_v1';
   const META_KEY = 'sharika_staging_registration_v1';
   const COLORS = ['#9b4dff,#4c1d95','#ff3dc8,#9d174d','#0ea5e9,#075985','#10b981,#065f46'];
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let busyRooms = false, framePoll = null, giftPoll = null;
+  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -41,7 +93,8 @@
       return Promise.reject(new Error('Android native bridge unavailable'));
     return new Promise((resolve, reject) => {
       const id = String(++seq);
-      const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, 25000);
+      const timeoutMs = action === 'pickProfilePhoto' ? 180000 : 25000;
+      const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, timeoutMs);
       calls.set(id, { resolve, reject, timer });
       try { window.SharikaNative.call(id, action, JSON.stringify(payload || {})); }
       catch (error) { clearTimeout(timer); calls.delete(id); reject(error); }
@@ -61,6 +114,470 @@
   async function api(method, path, body) {
     return native('api', { method, path: '/api/v1' + path, body });
   }
+
+
+  // Original Sovera effects: packed locally into the isolated Android APK
+  // from a pinned source commit, never fetched from a random URL or user input.
+  const SOVERA_FRAMES = [
+    {id:'phoenix-fire',name:'Phoenix Fire',art:'phoenix.png'},
+    {id:'ice-wings',name:'Ice Wings',art:'ice.png'},
+    {id:'royal-dragon',name:'Royal Dragon',art:'dragon.png'},
+    {id:'vip7',name:'Sovera VIP7',art:'vip7.webp'},
+    {id:'royal-gold',name:'Royal Gold',art:'royal-gold.webp'},
+    {id:'violet-love',name:'Violet Love',art:'violet-love.webp'},
+    {id:'ice-admin',name:'Ice Admin',art:'ice-admin.webp'},
+    {id:'golden-dragon',name:'Golden Dragon',art:'dragon-gold.webp'},
+    {id:'ice-dragon',name:'Ice Dragon',art:'ice-dragon.webp'},
+    {id:'violet-phoenix',name:'Violet Phoenix',art:'violet-phoenix.webp'},
+    {id:'castle-flag',name:'Castle Flag',art:'royal-gold.webp'},
+    {id:'lion-queen',name:'Lion Queen',art:'phoenix.png'},
+    {id:'phoenix-queen',name:'Phoenix Queen',art:'phoenix.png'},
+    {id:'tiger-queen',name:'Tiger Queen',art:'royal-gold.webp'}
+  ];
+  const SOVERA_ENTRIES = [
+    {id:'phoenix',name:'Phoenix arrival',art:'phoenix-entry.webp',still:'phoenix-entry.webp',ms:3200},
+    {id:'dragon-queen',name:'Dragon Queen',art:'dragon-queen-entry.webp',still:'dragon-queen-entry.webp',ms:5000},
+    {id:'ice-king',name:'Ice King',art:'ice-king-entry.webp',still:'ice-king-still.webp',ms:9000},
+    {id:'castle-flag',name:'Castle Flag',art:'castle-entry.webp',still:'castle-entry.webp',ms:7000},
+    {id:'lion-queen',name:'Lion Queen',art:'lion-queen-entry.webp',still:'lion-queen-still.webp',ms:10600},
+    {id:'phoenix-queen',name:'Phoenix Queen',art:'phoenix-queen-entry.webp',still:'phoenix-queen-still.webp',ms:13800},
+    {id:'tiger-queen',name:'Tiger Queen',art:'tiger-queen-entry.webp',still:'tiger-queen-still.webp',ms:12000}
+  ];
+  const SOVERA_MEDALS=[
+    {id:'bronze',name:'Bronze medal',art:'bronze.webp',group:'medals'},
+    {id:'silver',name:'Silver medal',art:'silver.webp',group:'medals'},
+    {id:'gold',name:'Gold medal',art:'gold.webp',group:'medals'},
+    {id:'top-host',name:'Top Host decorative art',art:'top-host-medal.webp'}
+  ];
+  const SOVERA_TAGS=[
+    {id:'legend',name:'Sovera Legend decorative nameplate',art:'legend-tag.webp'}
+  ];
+  function medalArt(key){return SOVERA_MEDALS.find(m=>m.id===key);}
+  function nameTagArt(key){return SOVERA_TAGS.find(m=>m.id===key);}
+  function cosmeticMedia(item){return item?.group==='medals'?
+    './sovera-medals/'+item.art:effectPath(item.art);}
+  function frameArt(key){return SOVERA_FRAMES.find(f=>f.id===key);}
+  function entryArt(key){return SOVERA_ENTRIES.find(f=>f.id===key);}
+  function effectPath(file){return './sovera-effects/'+file;}
+  function cosmeticCss(doc){
+    if(!doc || doc.getElementById('sh-sovera-cosmetics'))return;
+    const style=doc.createElement('style');
+    style.id='sh-sovera-cosmetics';
+    style.textContent=[
+      '.sh-sovera-frame.fxr{position:absolute!important;top:50%!important;left:50%!important;',
+      'right:auto!important;bottom:auto!important;',
+      'width:142%!important;height:142%!important;transform:translate(-50%,-50%)!important;',
+      'z-index:9!important;border:0!important;border-radius:0!important;',
+      'background-size:contain!important;background-position:center!important;',
+      'background-repeat:no-repeat!important;-webkit-mask:none!important;mask:none!important;',
+      'pointer-events:none!important;animation:none!important}',
+      '.sh-sovera-frame::after{content:none!important}',
+      '.seat .av.sh-has-sovera-frame{margin-bottom:9px}',
+      '.host .av.sh-has-sovera-frame{margin-bottom:17px}',
+      '#v-me .mav{position:relative;overflow:visible!important;animation:none!important;',
+      'transform:none!important;margin-bottom:25px!important}',
+      '#v-me .mav>div{animation:none!important;transform:none!important}',
+      '#v-me .mav>.sh-sovera-frame{width:138%!important;height:138%!important}',
+      '.pavw{overflow:visible!important;margin-bottom:22px!important}',
+      '.pavw>.sh-sovera-frame{width:142%!important;height:142%!important}',
+      '@keyframes shSoGlow{50%{filter:brightness(1.18) drop-shadow(0 0 6px #ffe6a055)}}',
+      '.sh-sovera-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}',
+      '.sh-sovera-item{min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;',
+      'border:1px solid #6b61ad;background:#211747;border-radius:14px;color:#fff;padding:12px 8px;',
+      'min-height:160px;overflow:hidden;',
+      'font-size:11px;font-weight:700}',
+      '.sh-sovera-item[aria-pressed="true"]{border:2px solid #ffdb70;background:#423068}',
+      '.sh-sovera-item img{object-fit:contain;width:72px;height:72px;max-width:100%}',
+      '.sh-sovera-preview{position:relative;width:96px;height:96px;border-radius:50%;',
+      'display:grid;place-items:center;background:linear-gradient(135deg,#8149c8,#26104a);',
+      'font-size:36px;margin:16px 0 10px}',
+      '.sh-sovera-preview .sh-sovera-frame.fxr{width:137%!important;height:137%!important}',
+      '.sh-sovera-id-effects{display:flex;justify-content:center;align-items:center;gap:8px;margin:6px auto 12px}',
+      '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
+      '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
+      '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
+      'pointer-events:none;display:flex;justify-content:center;align-items:center;',
+      'background:radial-gradient(circle,#251054a8,transparent 70%)}',
+      '.sh-sovera-entry-cover img{width:min(95vw,560px);height:80vh;object-fit:contain;',
+      'filter:drop-shadow(0 0 18px #e6c6ff80)}',
+      '.sh-sovera-entry-cover button{position:absolute;top:20px;right:18px;',
+      'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
+      'background:#25134a;font-size:22px;width:40px;height:40px}',
+      '@media(prefers-reduced-motion:reduce){.sh-sovera-frame.fxr{animation:none!important}}'
+    ].join('');
+    doc.head.appendChild(style);
+  }
+  function frameTag(key){
+    const item=frameArt(key);
+    if(!item)return '';
+    // Only pinned package filenames are used; never interpolate user URLs.
+    return '<i class="fxr sh-sovera-frame" aria-hidden="true" '+
+      'style="background-image:url('+effectPath(item.art)+')"></i>';
+  }
+  function playSoveraEntry(doc,key){
+    const choice=entryArt(key);
+    if(!doc||!choice)return;
+    cosmeticCss(doc);
+    doc.querySelector('.sh-sovera-entry-cover')?.remove();
+    const cover=doc.createElement('div');
+    cover.className='sh-sovera-entry-cover';
+    const img=doc.createElement('img');
+    img.alt=choice.name+' entry animation';
+    img.src=effectPath(doc.defaultView?.matchMedia?.('(prefers-reduced-motion:reduce)')?.matches
+      ?choice.still:choice.art);
+    const close=doc.createElement('button');
+    close.type='button';close.textContent='×';close.setAttribute('aria-label','Close entry animation');
+    close.onclick=()=>cover.remove();
+    cover.append(img,close);
+    doc.body.appendChild(cover);
+    doc.defaultView?.setTimeout(()=>cover.remove(),choice.ms);
+  }
+  // Avatar URLs come only from the authenticated Sharika profile API. Never
+  // render arbitrary user-supplied image URLs in verified room identities.
+  function verifiedAvatarUrl(value){
+    return typeof value==='string' &&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(value)
+      ?value:null;
+  }
+  function paintVerifiedAvatar(node,value,doc){
+    const src=verifiedAvatarUrl(value);
+    if(!node||!doc)return false;
+    if(!src){
+      // A recycled seat or message row must never retain another user's photo.
+      node.querySelector('.sh-verified-avatar-image')?.remove();
+      return false;
+    }
+    if(node.querySelector('.sh-verified-avatar-image')?.dataset.source===src)return true;
+    node.querySelector('.sh-verified-avatar-image')?.remove();
+    // Keep the original emoji underneath until the image has loaded.
+    if(!node.classList.contains('face'))node.style.position='relative';
+    node.style.overflow='hidden';
+    const image=doc.createElement('img');
+    image.className='sh-verified-avatar-image';
+    image.dataset.source=src;
+    image.alt='';
+    image.setAttribute('aria-hidden','true');
+    image.style.cssText='position:absolute;inset:0;width:100%;height:100%;'+
+      'display:block;object-fit:cover;border-radius:inherit;z-index:2;'+
+      'pointer-events:none;opacity:0';
+    image.onload=()=>{image.style.opacity='1';};
+    image.onerror=()=>image.remove();
+    node.appendChild(image);
+    image.src=src;
+    return true;
+  }
+  function roomAvatarForPublicId(frame,id){
+    const key=String(id||'');
+    if(key===profile?.public_id)return verifiedAvatarUrl(profile?.pic);
+    const member=(frame?.seats||[]).find(item=>item?.public_id===key)||
+      (frame?.U||[]).find(item=>item?.id===key);
+    return verifiedAvatarUrl(member?.pic);
+  }
+  function decorateRoomPeople(frame){
+    const doc=frame?.document;
+    for(const row of doc?.querySelectorAll('#ul .urow')||[]){
+      const index=Number(row.dataset.i);
+      if(!Number.isInteger(index)||index<0)continue;
+      const item=row.dataset.t==='m'?frame.seats?.[index]:
+        row.dataset.t==='a'?frame.U?.[index]:null;
+      if(item)paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
+    }
+  }
+  function decorateRoomChat(frame){
+    const doc=frame?.document;
+    for(const message of doc?.querySelectorAll('#chat .msg[data-sh-sender-id]')||[]){
+      paintVerifiedAvatar(message.querySelector('.mav'),
+        roomAvatarForPublicId(frame,message.dataset.shSenderId),doc);
+    }
+  }
+  function decorateGiftRecipients(frame){
+    for(const chip of frame?.document?.querySelectorAll('#sheet .chips .chip[data-r]')||[]){
+      const i=Number(chip.dataset.r);
+      if(!Number.isInteger(i)||i<0)continue;
+      paintVerifiedAvatar(chip.querySelector('.c'),frame.seats?.[i]?.pic,frame.document);
+    }
+  }
+  function decorateRoomSeats(frame){
+    const doc=frame?.document;
+    if(!doc)return;
+    cosmeticCss(doc);
+    for(const seat of frame.seats||[]){
+      if(!seat||seat.empty||seat.lock)continue;
+      const el=frame.seatEl?.(seat.i);
+      const avatar=el?.querySelector('.av');
+      if(!avatar)continue;
+      // The user's stored profile photo follows the same public ID into
+      // owner, guest and mic seats. Frames remain over the circular avatar.
+      paintVerifiedAvatar(el.querySelector('.face'),seat.pic,doc);
+      // Repeated server refreshes must not stack medals over one another.
+      avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
+        .forEach(decoration=>decoration.remove());
+      const item=frameArt(seat.frame_style);
+      const medal=medalArt(seat.medal_style);
+      avatar.classList.toggle('sh-has-sovera-frame',!!item);
+      if(!item&&!medal)continue;
+      avatar.style.position='relative';
+      if(item){
+        const decoration=doc.createElement('i');
+        decoration.className='fxr sh-sovera-frame';
+        decoration.setAttribute('aria-hidden','true');
+        decoration.style.backgroundImage='url('+effectPath(item.art)+')';
+        avatar.appendChild(decoration);
+      }
+      if(medal){
+        const badge=doc.createElement('img');
+        badge.className='sh-sovera-seat-medal';
+        badge.alt='';
+        badge.src=cosmeticMedia(medal);
+        badge.setAttribute('aria-hidden','true');
+        avatar.appendChild(badge);
+      }
+    }
+  }
+  function wireSoveraRoomFrames(frame){
+    if(!frame||frame.__soveraRoomFrames)return;
+    frame.__soveraRoomFrames=true;
+    cosmeticCss(frame.document);
+    const normal=frame.render;
+    if(typeof normal==='function')frame.render=function(){
+      normal.apply(this,arguments);
+      decorateRoomSeats(frame);
+      decorateRoomPeople(frame);
+      decorateRoomChat(frame);
+    };
+    const normalUsers=frame.fillUsers;
+    if(typeof normalUsers==='function')frame.fillUsers=function(){
+      normalUsers.apply(this,arguments);
+      decorateRoomPeople(frame);
+    };
+    const originalGiftSheet=frame.giftSheet;
+    if(typeof originalGiftSheet==='function')frame.giftSheet=function(){
+      originalGiftSheet.apply(this,arguments);
+      decorateGiftRecipients(frame);
+    };
+  }
+  function styleSelectionSheet(kind){
+    if(!session){window.showAuth('welcome');return;}
+    cosmeticCss(document);
+    const isEntry=kind==='entry_style';
+    const isMedal=kind==='medal_style';
+    const isTag=kind==='name_tag_style';
+    const title=isEntry?'✨ Original Sovera Entry':
+      isMedal?'🏅 Original Sovera Medals':
+      isTag?'🎖️ Original Sovera Name Tag':'🖼️ Original Sovera Avatar Frames';
+    const catalog=isEntry?SOVERA_ENTRIES:isMedal?SOVERA_MEDALS:isTag?SOVERA_TAGS:SOVERA_FRAMES;
+    window.openSheet('<h3>'+title+'</h3><div id="sh-sovera-tabs"></div>'+
+      '<div id="sh-sovera-list" class="sh-sovera-grid"></div>'+
+      '<p style="font-size:12px;color:#c9bbed">Free decorative styles; no coins charged and no staff/VIP rank awarded. Your choice is saved on the verified server.</p>');
+    const node=document.getElementById('sh-sovera-list');
+    if(!node)return;
+    const tabs=document.getElementById('sh-sovera-tabs');
+    tabs.style.cssText='display:flex;gap:5px;margin:10px 0;flex-wrap:wrap';
+    for(const option of [
+      ['frame_style','Frames'],['entry_style','Entry'],
+      ['medal_style','Medal'],['name_tag_style','Name Tag']
+    ]){
+      const tab=document.createElement('button');
+      tab.type='button';tab.className='act';tab.textContent=option[1];
+      tab.style.cssText='flex:1;padding:8px 6px;min-width:60px;font-size:12px;border-radius:10px;'+
+        (option[0]===kind?'background:#6a40b7;color:#fff':'background:#2c2357;color:#fff');
+      tab.onclick=()=>styleSelectionSheet(option[0]);
+      tabs.appendChild(tab);
+    }
+    const current=profile?.[kind]||'';
+    const choices=[{id:'',name:'None',art:''},...catalog];
+    for(const item of choices){
+      const button=document.createElement('button');
+      button.className='sh-sovera-item';
+      button.type='button';
+      button.setAttribute('aria-pressed',String((current||'')===item.id));
+      if(isEntry||isMedal||isTag){
+        const img=document.createElement('img');
+        if(item.art)img.src=cosmeticMedia({...item,art:item.still||item.art});
+        else img.alt='No decorative effect';
+        button.appendChild(img);
+      }else{
+        const preview=document.createElement('div');
+        preview.className='sh-sovera-preview';
+        preview.textContent='👤';
+        if(item.art){
+          const ring=document.createElement('i');
+          ring.className='fxr sh-sovera-frame';
+          ring.style.backgroundImage='url('+effectPath(item.art)+')';
+          preview.appendChild(ring);
+        }
+        button.appendChild(preview);
+      }
+      const label=document.createElement('span');
+      label.textContent=item.name;
+      button.appendChild(label);
+      if(isEntry&&item.id){
+        const preview=document.createElement('button');
+        preview.type='button';preview.className='act';preview.textContent='▶ Preview';
+        preview.style.cssText='font-size:11px;padding:7px;border-radius:10px;color:white;background:#43337e';
+        preview.onclick=e=>{e.preventDefault();e.stopPropagation();playSoveraEntry(document,item.id);};
+        // Place preview separately so interactive controls are not nested.
+        const group=document.createElement('div');
+        group.append(button,preview);
+        node.appendChild(group);
+      }else node.appendChild(button);
+      button.onclick=async()=>{
+        if(button.disabled)return;
+        button.disabled=true;
+        try{
+          const saved=await api('PATCH','/me',{[kind]:item.id});
+          if(!Object.prototype.hasOwnProperty.call(saved,kind)||
+             saved[kind]!==item.id)throw new Error('Profile effects server update is pending');
+          profile=saved;
+          if(window.A){
+            window.A.frame=saved.frame_style||'';
+            window.A.entry=saved.entry_style||'';
+            window.A.cosmeticMedal=saved.medal_style||'';
+            window.A.cosmeticTag=saved.name_tag_style||'';
+            window.A.frameImg=null;
+            window.saveA();
+            window.renderMe();
+          }
+          window.closeSheet();
+          toast((isEntry?'Entry':isMedal?'Medal':isTag?'Name tag':'Frame')+
+            ' saved to your verified profile ✓');
+        }catch(error){toast('Effect not saved: '+errText(error));button.disabled=false;}
+      };
+    }
+  }
+  cosmeticCss(document);
+  // The old HTML creates random "Manager" badges locally. Never represent those
+  // as real ranks in staging. Only verified server cosmetics are displayed.
+  window.ownedMedals=function(){return [];};
+  function renderVerifiedIdentity(){
+    const anchor=document.querySelector('#v-me .mid');
+    if(!anchor)return;
+    document.getElementById('sh-sovera-own-identity')?.remove();
+    const medal=medalArt(profile?.medal_style);
+    const tag=nameTagArt(profile?.name_tag_style);
+    if(!medal&&!tag)return;
+    const strip=document.createElement('div');
+    strip.id='sh-sovera-own-identity';strip.className='sh-sovera-id-effects';
+    for(const item of [medal,tag]){
+      if(!item)continue;
+      const img=document.createElement('img');
+      img.src=cosmeticMedia(item);
+      img.alt=item.name+' (decoration only)';
+      img.title=item.name+' · decorative';
+      strip.appendChild(img);
+    }
+    anchor.insertAdjacentElement('afterend',strip);
+  }
+  // A verified seller has two distinct wallets: personal coins in the
+  // original profile, plus this seller-stock entry beside their public ID.
+  let sellerProfileRequest=0;
+  async function renderSellerWalletProfileButton(){
+    const requestNo=++sellerProfileRequest;
+    const id=session?.user?.id;
+    const anchor=document.querySelector('#v-me .mid');
+    document.getElementById('sharika-seller-wallet-entry')?.remove();
+    if(!id||!anchor)return;
+    try{
+      const data=await api('GET','/sellers/me');
+      if(requestNo!==sellerProfileRequest||session?.user?.id!==id||!anchor.isConnected)return;
+      const seller=data.seller;
+      if(!seller)return;
+      const button=document.createElement('button');
+      button.id='sharika-seller-wallet-entry';
+      button.type='button';
+      button.textContent='🪙 Seller Wallet · '+Number(seller.available_coins||0).toLocaleString('en-US')+' coins';
+      button.style.cssText='display:block;margin:8px auto;padding:8px 14px;border:1px solid #f0be55;'+
+        'border-radius:15px;background:#3b225b;color:#fff;font-weight:700;font-size:12px';
+      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true});
+      (document.getElementById('sh-sovera-own-identity')||anchor).insertAdjacentElement('afterend',button);
+    }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
+  }
+  let avatarUploadBusy=false;
+  async function pickProfilePhoto(){
+    if(!session||!profile){toast('Sign in to change your profile photo');return;}
+    if(avatarUploadBusy){toast('Profile photo upload is already running');return;}
+    avatarUploadBusy=true;
+    const accountId=session.user.id;
+    const publicId=profile.public_id;
+    try{
+      toast('Opening your Android photo gallery…');
+      // Use a native, single-image Android picker. It decodes HEIC/JPEG and
+      // produces a bounded JPEG; no broad storage permission is needed.
+      const picked=await native('pickProfilePhoto');
+      if(session?.user?.id!==accountId)throw new Error('Account changed; please select the photo again');
+      const image_data=picked?.image_data;
+      if(typeof image_data!=='string'||!image_data.startsWith('data:image/jpeg;base64,'))
+        throw new Error('Gallery did not return a usable photo');
+      toast('Uploading your profile photo…');
+      const saved=await api('PUT','/me/avatar',{image_data});
+      if(session?.user?.id!==accountId || saved?.public_id!==publicId)
+        throw new Error('Profile changed before photo confirmation');
+      if(!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(saved.pic||''))
+        throw new Error('Profile photo confirmation unavailable');
+      profile=saved;
+      window.A.pic=saved.pic;
+      window.saveA();window.renderMe();
+      // Refresh this same verified ID inside an already open room immediately.
+      const roomFrame=document.getElementById('rf')?.contentWindow;
+      if(window.cur?.id&&roomFrame?.seats){
+        for(const seat of roomFrame.seats)
+          if(seat?.user_id===session.user.id)seat.pic=saved.pic;
+        for(const member of roomFrame.U||[])
+          if(member?.id===saved.public_id)member.pic=saved.pic;
+        roomFrame.render?.();
+        decorateRoomPeople(roomFrame);
+        decorateRoomChat(roomFrame);
+      }
+      toast('Profile photo saved · visible on your ID and room ✓');
+    }catch(error){
+      if(errText(error)!=='profile_photo_cancelled')
+        toast('Profile photo not saved: '+errText(error));
+    }finally{avatarUploadBusy=false;}
+  }
+  // The original HTML photo picker writes only to localStorage. In staging
+  // route every profile photo selection through the verified server wallet ID.
+  document.addEventListener('click',event=>{
+    if(event.target.closest?.('#v-me #pavb, #v-me .mav, #sh #ep')){
+      event.preventDefault();event.stopImmediatePropagation();
+      pickProfilePhoto();
+    }
+  },true);
+  // The original edit form writes only to localStorage. Save verified
+  // profile name/bio through the same Firebase-authenticated D1 profile.
+  document.addEventListener('click',event=>{
+    const save=event.target.closest?.('#sh #es');
+    if(!save)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(!session||!profile){toast('Sign in to edit your profile');return;}
+    const name=document.getElementById('en')?.value?.trim()||'';
+    const bio=document.getElementById('eb')?.value?.trim()||'';
+    if(!name||name.length>80||bio.length>500){toast('Check name and bio length');return;}
+    if(save.disabled)return;
+    save.disabled=true;
+    api('PATCH','/me',{name,bio}).then(saved=>{
+      if(saved.public_id!==profile.public_id)throw new Error('Profile identity mismatch');
+      profile=saved;
+      window.A.name=saved.name;window.A.bio=saved.bio||'';
+      window.saveA();window.closeSheet();window.renderMe();
+      toast('Profile saved to your verified ID ✓');
+    }).catch(error=>toast('Profile not saved: '+errText(error)))
+      .finally(()=>{if(save.isConnected)save.disabled=false;});
+  },true);
+  const priorRenderMe=window.renderMe;
+  if(typeof priorRenderMe==='function')window.renderMe=function(){
+    priorRenderMe.apply(this,arguments);
+    renderVerifiedIdentity();
+    renderSellerWalletProfileButton().catch(()=>{});
+  };
+  window.frEl=function(){return frameTag(window.A?.frame||'');};
+  window.frameSheet=function(){styleSelectionSheet('frame_style');};
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('[data-m="entry"]');
+    if(button){
+      event.preventDefault();event.stopImmediatePropagation();
+      styleSelectionSheet('entry_style');
+    }
+  },true);
 
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
   let sfuState = null;
@@ -146,6 +663,7 @@
         state.media=await navigator.mediaDevices.getUserMedia({
           audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
         });
+        if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
         state.publishPC=new RTCPeerConnection();
         const local=state.media.getAudioTracks()[0];
         const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
@@ -161,6 +679,7 @@
         });
         await state.publishPC.setRemoteDescription(negotiation.sessionDescription);
       }
+      if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
       const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
       state.subscribeId=joined.sessionId;
       state.sessionIds.push(joined.sessionId);
@@ -205,57 +724,104 @@
     voiceRoom=null;voiceRoomId=null;
     await room.disconnect();
   }
+  // One connection transition at a time: seat/poll callbacks can fire together.
+  // Switching rooms or leaving invalidates stale async connection attempts.
+  let voiceOperation=Promise.resolve(),pendingVoice=null,wantedVoiceRoom=null;
+  function releaseVoice() {
+    wantedVoiceRoom=null;
+    const task=voiceOperation.catch(()=>{}).then(()=>disconnectVoice());
+    voiceOperation=task;
+    return task;
+  }
   async function connectVoice(roomId) {
-    const config=await api('GET','/rooms/'+roomId+'/voice/config');
-    await disconnectVoice();
-    if(config.provider==='cloudflare_sfu') {
-      voiceBackend='cloudflare_sfu';
-      return connectSfu(roomId,!!config.publish);
+    if(pendingVoice?.roomId===roomId)return pendingVoice.promise;
+    wantedVoiceRoom=roomId;
+    const task=voiceOperation.catch(()=>{}).then(async()=>{
+      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      const config=await api('GET','/rooms/'+roomId+'/voice/config');
+      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      await disconnectVoice();
+      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      if(config.provider==='cloudflare_sfu') {
+        voiceBackend='cloudflare_sfu';
+        return connectSfu(roomId,!!config.publish);
+      }
+      if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
+      // Keep the isolated LiveKit fallback only when explicitly configured.
+      const info=await api('POST','/rooms/'+roomId+'/voice-token',{});
+      const sdk=await voiceSdk();
+      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      voiceBackend='livekit';
+      const room=new sdk.Room({
+        audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true}
+      });
+      room.on(sdk.RoomEvent.TrackSubscribed,(track)=>{
+        if(track.kind===sdk.Track.Kind.Audio) {
+          const element=track.attach();
+          element.autoplay=true;
+          element.dataset.sharikaVoice='true';
+          document.body.appendChild(element);
+        }
+      });
+      room.on(sdk.RoomEvent.TrackUnsubscribed,(track)=>{
+        track.detach().forEach(node=>node.remove());
+      });
+      room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
+        const frame=document.getElementById('rf')?.contentWindow;
+        if(!frame || !frame.seats)return;
+        const talking=new Set(speakers.map(p=>p.identity));
+        for(const seat of frame.seats){
+          if(seat && seat.user_id)seat.talk=talking.has('sharika:'+seat.user_id);
+        }
+        if(typeof frame.render==='function')frame.render();
+      });
+      try{await room.connect(info.url,info.token);}
+      catch(error){await room.disconnect().catch(()=>{});throw error;}
+      if(wantedVoiceRoom!==roomId) {
+        await room.disconnect().catch(()=>{});
+        return {publishing:false,stale:true};
+      }
+      voiceRoom=room;voiceRoomId=roomId;
+      try{await room.startAudio();}catch(_){}
+      if(info.publish)await room.localParticipant.setMicrophoneEnabled(true);
+      return {publishing:!!info.publish};
+    });
+    voiceOperation=task;
+    pendingVoice={roomId,promise:task};
+    try {
+      const result=await task;
+      if(!result.stale && wantedVoiceRoom===roomId)markLocalMicrophone(!!result.publishing);
+      return result;
+    } finally {
+      if(pendingVoice?.promise===task)pendingVoice=null;
     }
-    if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
-    // Keep the isolated LiveKit fallback only when explicitly configured.
-    const info=await api('POST','/rooms/'+roomId+'/voice-token',{});
-    const sdk=await voiceSdk();
-    voiceBackend='livekit';
-    const room=new sdk.Room({
-      audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true}
-    });
-    room.on(sdk.RoomEvent.TrackSubscribed,(track)=>{
-      if(track.kind===sdk.Track.Kind.Audio) {
-        const element=track.attach();
-        element.autoplay=true;
-        element.dataset.sharikaVoice='true';
-        document.body.appendChild(element);
-      }
-    });
-    room.on(sdk.RoomEvent.TrackUnsubscribed,(track)=>{
-      track.detach().forEach(node=>node.remove());
-    });
-    room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
-      const frame=document.getElementById('rf')?.contentWindow;
-      if(!frame || !frame.seats)return;
-      const talking=new Set(speakers.map(p=>p.identity));
-      for(const seat of frame.seats){
-        if(seat && seat.user_id)seat.talk=talking.has('sharika:'+seat.user_id);
-      }
+  }
+  function markLocalMicrophone(enabled) {
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(!frame||!Array.isArray(frame.seats))return;
+    const localSeat=frame.seats.find(slot=>slot?.user_id===session?.user?.id);
+    if(localSeat) {
+      localSeat.muted=!enabled;
       if(typeof frame.render==='function')frame.render();
-    });
-    await room.connect(info.url,info.token);
-    voiceRoom=room;voiceRoomId=roomId;
-    try{await room.startAudio();}catch(_){}
-    if(info.publish)await room.localParticipant.setMicrophoneEnabled(true);
-    return {publishing:!!info.publish};
+    }
+    const mic=frame.$?.('mic');
+    if(mic) {
+      mic.textContent=enabled?'🎤':'🔇';
+      mic.classList.toggle('off',!enabled);
+    }
   }
   async function toggleVoice() {
     if(sfuState) {
       const track=sfuState.media?.getAudioTracks()[0];
       if(!track)throw new Error('Take an available mic seat first');
       track.enabled=!track.enabled;
+      markLocalMicrophone(track.enabled);
       return track.enabled;
     }
     if(!voiceRoom || !voiceRoomId)throw new Error('Voice connection is not available');
     const currently=voiceRoom.localParticipant.isMicrophoneEnabled;
     await voiceRoom.localParticipant.setMicrophoneEnabled(!currently);
+    markLocalMicrophone(!currently);
     return !currently;
   }
   function cleanLocalFakeState() {
@@ -283,6 +849,9 @@
         id: current.public_id, name: current.name, pic: current.pic || null,
         country: current.country || '', dob: current.birthdate || '',
         minor: !!current.minor, cover: current.cover || null, bio: current.bio || '',
+        frame: current.frame_style || '', entry: current.entry_style || '',
+        cosmeticMedal: current.medal_style || '', cosmeticTag: current.name_tag_style || '',
+        frameImg: null,
         myRoom: null, claim: { d:'', streak:0 }
       },
       state: { coins:current.coins || 0, dia:current.diamonds || 0, xp:current.xp || 0 }
@@ -290,6 +859,7 @@
     balance = { ...local.state };
     session = { email: account.email, user: { id:current.user_id, email:account.email } };
     startPresence();
+    refreshVerifiedBanners().catch(error=>console.warn('Banner refresh unavailable:',errText(error)));
     try {
       localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local]));
       localStorage.setItem('vr_state_v2', JSON.stringify(balance));
@@ -494,50 +1064,230 @@
     window.refresh();
     return wallet;
   }
+  async function refreshWalletAfterConfirmedTransaction(snapshot=null) {
+    const accountId=session?.user?.id;
+    try{await reloadWallet();return true;}
+    catch(error){
+      // Once D1 confirms a debit/credit, never claim it failed just because
+      // a subsequent wallet read or local display refresh had an outage.
+      if(session?.user?.id!==accountId)return false;
+      if(snapshot&&Number.isSafeInteger(snapshot.coins)&&snapshot.coins>=0)
+        balance.coins=snapshot.coins;
+      if(snapshot&&Number.isSafeInteger(snapshot.diamonds)&&snapshot.diamonds>=0)
+        balance.dia=snapshot.diamonds;
+      if(snapshot&&Number.isSafeInteger(snapshot.xp)&&snapshot.xp>=0)
+        balance.xp=snapshot.xp;
+      try{localStorage.setItem('vr_state_v2',JSON.stringify(balance));window.refresh();}
+      catch(e){console.warn('Wallet display refresh deferred:',errText(e));}
+      console.warn('Confirmed transaction; wallet refresh delayed:',errText(error));
+      return false;
+    }
+  }
+  let roomsRequestNo=0;
   async function reloadRooms() {
-    if (busyRooms || !session) return;
-    busyRooms = true;
+    if (!session) return;
+    // Room creation and settings saves must always request a fresh list.
+    // An earlier background poll may finish later, but cannot undo it.
+    const requestNo=++roomsRequestNo;
+    const userId=session.user.id;
     try {
       const data = await api('GET','/rooms');
+      if(requestNo!==roomsRequestNo || session?.user?.id!==userId)return;
       const rows = data.rooms || [];
-      const own = rows.find(r => r.owner_id === session.user.id);
-      window.CFG.rooms = rows.filter(r => r.owner_id !== session.user.id).map((r,i)=>({
+      const own = rows.find(r => r.owner_id === userId);
+      window.CFG.rooms = rows.filter(r => r.owner_id !== userId).map((r,i)=>({
         id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
-        th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count
+        th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
+        seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
-        c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,n:Number(own.online_count)||0
+        c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
+        seat_frame_style:own.seat_frame_style||'grad',
+        n:Number(own.online_count)||0,cover_url:own.cover_url||null
       } : null;
       window.renderRooms();
-    } catch (error) { toast('Rooms unavailable: '+errText(error)); }
-    finally { busyRooms = false; }
+    } catch (error) {
+      if(requestNo===roomsRequestNo && session?.user?.id===userId)
+        toast('Rooms unavailable: '+errText(error));
+    }
   }
+  // Android's system picker grants selected-image access; no blanket
+  // gallery/storage permission or native device file path is exposed to JS.
+  const COVER_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
+  function verifiedCoverUrl(value){
+    return typeof value==='string' &&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/cover\?v=[0-9]+$/.test(value)
+      ?value:null;
+  }
+  async function jpegRoomPreview(file){
+    if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
+      throw new Error('Choose an image smaller than 15 MB');
+    const blobUrl=URL.createObjectURL(file);
+    const photo=new Image();
+    try{
+      await new Promise((resolve,reject)=>{
+        const timeout=setTimeout(()=>reject(new Error('Image loading timed out')),20000);
+        photo.onload=()=>{clearTimeout(timeout);resolve();};
+        photo.onerror=()=>{clearTimeout(timeout);reject(new Error('Image could not be opened'));};
+        photo.src=blobUrl;
+      });
+      const sourceWidth=photo.naturalWidth,sourceHeight=photo.naturalHeight;
+      if(!sourceWidth||!sourceHeight)throw new Error('Invalid image dimensions');
+      const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+      if(!ctx)throw new Error('Image editor is unavailable');
+      for(const side of [900,720,600,480,360,280]){
+        const scale=Math.min(1,side/Math.max(sourceWidth,sourceHeight));
+        canvas.width=Math.max(1,Math.round(sourceWidth*scale));
+        canvas.height=Math.max(1,Math.round(sourceHeight*scale));
+        ctx.fillStyle='#161029';ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(photo,0,0,canvas.width,canvas.height);
+        for(const quality of [.76,.60,.45]){
+          const preview=canvas.toDataURL('image/jpeg',quality);
+          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=120023)
+            return preview;
+        }
+      }
+      throw new Error('Photo too large after resizing');
+    }finally{URL.revokeObjectURL(blobUrl);}
+  }
+  let coverUploadBusy=false;
+  function pickRoomCover(room,frame=null){
+    if(!session||room?.owner_id!==session.user.id){
+      toast('Only the room owner can change its cover photo');return;
+    }
+    if(coverUploadBusy){toast('Room photo upload is already running');return;}
+    const picker=document.createElement('input');
+    picker.type='file';picker.accept='image/*';
+    picker.style.cssText='position:fixed;opacity:0;left:-10000px;top:0';
+    document.body.appendChild(picker);
+    picker.addEventListener('cancel',()=>picker.remove(),{once:true});
+    picker.onchange=async()=>{
+      const file=picker.files?.[0];picker.remove();
+      if(!file)return;
+      coverUploadBusy=true;
+      toast('Preparing your room photo…');
+      try{
+        const image_data=await jpegRoomPreview(file);
+        const saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
+        room.cover_url=verifiedCoverUrl(saved.cover_url);
+        if(frame?.S)frame.S.pic=room.cover_url;
+        const preview=frame?.$?.('pbig');
+        if(preview&&room.cover_url){
+          preview.style.backgroundImage='url("'+room.cover_url+'")';
+          preview.style.backgroundSize='cover';
+          preview.textContent='';
+        }
+        await reloadRooms();
+        toast('Room photo saved · visible on room cards ✓');
+      }catch(error){toast('Room photo not saved: '+errText(error));}
+      finally{coverUploadBusy=false;}
+    };
+    picker.click();
+  }
+  function drawVerifiedRoomCards(){
+    const rooms=[...(window.CFG.rooms||[]),window.A?.myRoom].filter(Boolean);
+    for(const card of document.querySelectorAll('#grid .card[data-id]')){
+      const room=rooms.find(r=>r.id===card.dataset.id);
+      if(!room)continue;
+      const image=verifiedCoverUrl(room.cover_url);
+      if(image){
+        const background=card.querySelector('.bg');
+        if(background){
+          background.style.backgroundImage='linear-gradient(180deg,transparent 35%,rgba(7,4,26,.55)),url("'+image+'")';
+          background.style.backgroundSize='cover';
+          background.style.backgroundPosition='center';
+          const pattern=background.querySelector('.pat');
+          if(pattern)pattern.style.opacity='0';
+        }
+        const emoji=card.querySelector('.emo');if(emoji)emoji.style.display='none';
+      }
+      if(room.owner_id===session?.user?.id&&!card.querySelector('.sh-room-cover-edit')){
+        const button=document.createElement('button');
+        button.type='button';button.className='sh-room-cover-edit';
+        button.textContent='📷 Edit photo';
+        button.setAttribute('aria-label','Add or change room cover photo');
+        button.style.cssText='position:absolute;z-index:30;top:8px;right:8px;'+
+          'border:1px solid #fff9;border-radius:12px;background:#140b35d9;'+
+          'color:#fff;padding:7px 9px;font-size:12px;font-weight:700';
+        button.onpointerdown=e=>e.stopPropagation();
+        button.onclick=e=>{e.preventDefault();e.stopPropagation();pickRoomCover(room);};
+        card.style.position='relative';card.appendChild(button);
+      }
+    }
+  }
+  // Original tab/search handlers call their lexical renderRooms binding rather
+  // than window.renderRooms; observe only direct grid child changes too.
+  const coverGrid=document.getElementById('grid');
+  if(coverGrid)new MutationObserver(()=>drawVerifiedRoomCards())
+    .observe(coverGrid,{childList:true});
+  const originalRenderRoomsWithCards=window.renderRooms;
+  window.renderRooms=function(...args){
+    const result=originalRenderRoomsWithCards.apply(this,args);
+    drawVerifiedRoomCards();
+    return result;
+  };
   async function syncFrame(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
+    // Out-of-order room polls cannot restore stale seats or old cosmetics.
+    const requestNo=(frame.__sharikaSeatSyncNo||0)+1;
+    frame.__sharikaSeatSyncNo=requestNo;
+    const userId=session?.user?.id;
     const [data,owner] = await Promise.all([
       api('GET','/rooms/'+room.id+'/members'),
       api('GET','/users/'+room.id)
     ]);
+    if(frame.__sharikaSeatSyncNo!==requestNo ||
+       !session || session.user.id!==userId || window.cur?.id!==room.id ||
+       document.getElementById('rf')?.contentWindow!==frame)return;
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     const eligible=room.owner_id===session?.user?.id||
       (!!self && self.seat_no!==null && !self.muted);
     if(sfuState?.roomId===room.id && !!sfuState.media!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
+    const localMic=sfuState?.roomId===room.id ?
+      sfuState.media?.getAudioTracks()[0]?.enabled :
+      voiceRoomId===room.id&&voiceRoom ?
+        voiceRoom.localParticipant.isMicrophoneEnabled : undefined;
+    // A room's seat limit belongs to the server, not iframe localStorage.
+    // This also updates guests who remain in the room while its owner edits it.
+    if(Number.isInteger(data.seat_count)&&data.seat_count>=4&&data.seat_count<=20)
+      room.seat_count=data.seat_count;
+    if(['grad','gold','neon','sq'].includes(data.seat_frame_style))
+      room.seat_frame_style=data.seat_frame_style;
+    const chosenSeatFrame=room.seat_frame_style||'grad';
+    if(frame.S.frame!==chosenSeatFrame){
+      frame.S.frame=chosenSeatFrame;
+      if(typeof frame.applyTheme==='function')frame.applyTheme();
+    }
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
-    slots[0]={n:owner.name,e:'👑',i:0,user_id:room.owner_id,public_id:room.id,muted:false,talk:false};
+    slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
+      user_id:room.owner_id,public_id:room.id,
+      muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
+      frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
+      medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
       if(!user || member.user_id===room.owner_id) continue;
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
-          n:user.name,e:'👤',i:member.seat_no,user_id:member.user_id,public_id:user.public_id,
-          muted:!!member.muted,talk:false
+          n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
+          user_id:member.user_id,public_id:user.public_id,
+          muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
+          frame_style:user.frame_style||'',entry_style:user.entry_style||'',
+          medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
-      else audience.push({n:user.name,e:'👤',id:user.public_id,lv:user.wealth_level});
+      else audience.push({n:user.name,e:'👤',id:user.public_id,
+        pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
+        frame_style:user.frame_style||'',entry_style:user.entry_style||'',
+        medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
+    }
+    for(const seatNo of data.locked_seats||[]) {
+      if(Number.isInteger(seatNo)&&seatNo>0&&seatNo<slots.length&&slots[seatNo].empty)
+        slots[seatNo]={lock:1,i:seatNo};
     }
     frame.seats=slots;
     frame.U=audience;
@@ -545,28 +1295,134 @@
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
     frame.render();
+    decorateRoomPeople(frame);
+    decorateRoomChat(frame);
+    const present=new Set((data.members||[]).map(m=>m.user_id));
+    if(!frame.__soveraSeenMembers){
+      frame.__soveraSeenMembers=present;
+      // Local user sees the selected entry on initial room visit.
+      const first=(data.members||[]).find(m=>m.user_id===session?.user?.id);
+      if(first?.sharika_users?.entry_style){
+        playSoveraEntry(frame.document,first.sharika_users.entry_style);
+      }
+    }else{
+      for(const item of data.members||[]){
+        if(!frame.__soveraSeenMembers.has(item.user_id)&&
+           item.user_id!==session?.user?.id&&
+           item.sharika_users?.entry_style){
+          playSoveraEntry(frame.document,item.sharika_users.entry_style);
+          break;
+        }
+      }
+      frame.__soveraSeenMembers=present;
+    }
   }
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
     if (frame && frame.document) fitAndroidViewport(frame.document, true);
     if(!frame || !frame.seats || !window.cur || window.cur.id!==room.id) return;
+    // Add depth to the existing Sharika seat artwork without replacing its
+    // markup, member avatars, frame effects, click controls or room layout.
+    if(!frame.document.getElementById('sharika-seat-depth')){
+      const seatStyle=frame.document.createElement('style');
+      seatStyle.id='sharika-seat-depth';
+      seatStyle.textContent=[
+        '.seat .av{transform-style:preserve-3d;transition:transform .18s ease,filter .18s ease}',
+        '.seat:not(.empty):not(.lock) .av{filter:drop-shadow(0 8px 7px rgba(4,2,19,.42))}',
+        '.seat .face{border:2px solid rgba(255,255,255,.38);box-shadow:inset 0 4px 6px rgba(255,255,255,.23),inset 0 -10px 16px rgba(10,3,39,.47),0 5px 0 rgba(8,4,27,.55),0 12px 19px rgba(0,0,0,.48)}',
+        '.seat .ring{filter:drop-shadow(0 0 5px rgba(255,220,146,.45))}',
+        '.seat.empty .face{background:linear-gradient(150deg,rgba(255,255,255,.19),rgba(32,17,75,.66))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.13),inset 0 -7px 12px rgba(8,4,34,.48),0 4px 0 rgba(8,4,27,.4)}',
+        '.seat.lock .face{background:linear-gradient(145deg,rgba(63,49,114,.8),rgba(17,11,47,.9))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.12),0 5px 0 rgba(8,4,27,.48)}',
+        '.seat.talk .av{filter:drop-shadow(0 0 12px rgba(72,255,183,.75))}',
+        '.seat:active .av{transform:translateY(2px) scale(.96)}',
+        '.seat:focus-visible .av{outline:2px solid #ffe08b;outline-offset:6px}',
+        '.step button{background:linear-gradient(145deg,rgba(255,255,255,.27),rgba(75,44,152,.85));box-shadow:inset 0 2px 0 rgba(255,255,255,.32),0 4px 0 rgba(20,9,63,.6)}',
+        '.fr button{background:linear-gradient(160deg,rgba(255,255,255,.19),rgba(51,31,109,.82));box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 3px 0 rgba(17,9,57,.5)}',
+        '.fr button.sel{box-shadow:0 0 13px rgba(255,215,123,.38),inset 0 1px 0 rgba(255,255,255,.3)}',
+        '@media (prefers-reduced-motion:reduce){.seat .av{transition:none}}'
+      ].join('');
+      frame.document.head.appendChild(seatStyle);
+    }
     frame.tick=function(){};
     frame.U=[];
     frame.G=[];
     frame.sendGift=function(){ frame.toast('Use the verified gift box Send button'); };
+    // The original room list derived fake IDs from names. Use D1 public IDs.
+    frame.sid=function(seat){
+      const id=String(seat?.public_id||'');
+      return /^[0-9]{8}$/.test(id)?id:'';
+    };
     frame.others=function(){return (frame.seats||[]).filter(s=>s&&!s.empty&&!s.lock);};
+    // Only the server may enable Lucky Gifts, and never for a minor.
+    frame.__minor=profile?.minor!==false;
     frame.__luckyOff=true;
     let availableGiftIds=[];
     let giftBusy=false;
+    let pendingGiftRequest=null;
     let lastGiftEventId=null;
+    let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
+    // Report a verified member or room through the existing authenticated
+    // Support Inbox. No fake moderator action and no wallet mutation.
+    function openVerifiedReport(kind,targetId,targetName){
+      if(!session || !/^[0-9]{8}$/.test(String(targetId||''))){
+        frame.toast('Verified report target unavailable');return;
+      }
+      if(kind!=='user'&&kind!=='room')return;
+      if(kind==='user'&&String(targetId)===profile?.public_id){
+        frame.toast('You cannot report your own profile');return;
+      }
+      frame.open('<h3>🚩 Report to Sharika Support</h3>'+
+        '<div id="sh-verified-report"></div>');
+      const box=frame.$('sh-verified-report');
+      if(!box)return;
+      const label=frame.document.createElement('div');
+      label.className='row';
+      label.textContent=(kind==='user'?'User':'Room')+': '+
+        String(targetName||'Unknown')+' · ID '+String(targetId);
+      const reason=frame.document.createElement('textarea');
+      reason.id='sh-verified-report-reason';
+      reason.maxLength=500;
+      reason.rows=4;
+      reason.placeholder='Explain what happened (at least 10 characters)';
+      reason.setAttribute('aria-label','Reason for report');
+      reason.style.cssText='display:block;width:100%;padding:12px;margin:10px 0;'+
+        'border:1px solid #9b82e5;border-radius:12px;background:#17102f;color:white';
+      const submit=frame.document.createElement('button');
+      submit.type='button';submit.className='send';
+      submit.textContent='Send report to support';
+      submit.style.cssText='width:100%;padding:12px;margin-top:7px';
+      submit.onclick=async()=>{
+        const why=reason.value.trim();
+        if(why.length<10){frame.toast('Write at least 10 characters');return;}
+        if(submit.disabled)return;
+        submit.disabled=true;
+        try{
+          await api('POST','/support/messages',{
+            body:'[Sharika report] '+kind+' ID '+String(targetId)+
+              ' · '+String(targetName||'Unknown')+'\nReason: '+why,
+            request_id:'report:'+Date.now().toString(36)+':'+
+              Math.random().toString(36).slice(2)
+          });
+          frame.close();
+          frame.toast('Report sent to verified support ✓');
+        }catch(error){
+          frame.toast('Report not sent: '+errText(error));
+          if(submit.isConnected)submit.disabled=false;
+        }
+      };
+      box.append(label,reason,submit);
+    }
     const giftButton=frame.$ && frame.$('bGift');
     const originalGiftOpen=giftButton && giftButton.onclick;
-    if(giftButton)giftButton.onclick=async ()=>{
+    let directGiftTarget=null;
+    async function openVerifiedGiftBox(recipientOverride=null){
+      directGiftTarget=recipientOverride;
       try{
         const data=await api('GET','/gifts');
-        const gifts=(data.gifts||[]).filter(g=>g.tab===0||g.tab===1);
+        const gifts=(data.gifts||[]).filter(g=>g.tab===0||g.tab===1||
+          (g.tab===2 && data.lucky_enabled===true && profile?.minor===false));
         if(!gifts.length){frame.toast('No active gifts in the catalog yet');return;}
         const htmlSafe=text=>String(text??'').replace(/[&<>"']/g,
           c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -577,14 +1433,66 @@
             ?htmlSafe(url):'';
         };
         availableGiftIds=gifts.map(g=>g.id);
-        frame.gtab=gifts.some(g=>g.tab===0)?0:1;
+        frame.__luckyOff=!gifts.some(g=>g.tab===2);
+        frame.gtab=[0,1,2].find(tab=>gifts.some(g=>g.tab===tab))??0;
         frame.gsel=Math.max(0,gifts.findIndex(g=>g.tab===frame.gtab));
         frame.G=gifts.map(g=>[htmlSafe(g.emoji||'🎁'),Number(g.price_coins),
           htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
-        if(typeof originalGiftOpen==='function')originalGiftOpen.call(giftButton);
-        else frame.toast('Gift box unavailable');
+        if(typeof originalGiftOpen==='function') {
+          originalGiftOpen.call(giftButton);
+          decorateGiftRecipients(frame);
+          if(directGiftTarget) {
+            // Replace the old seat-only recipient chips with the verified
+            // selected person. Sending always uses this exact public ID.
+            const selected=frame.document.createElement('div');
+            selected.className='row';
+            selected.textContent='🎁 Send to '+directGiftTarget.name+
+              ' · ID '+directGiftTarget.id;
+            const chips=frame.$('sheet')?.querySelector('.chips');
+            if(chips)chips.replaceWith(selected);
+            else frame.$('sheet')?.prepend(selected);
+          }
+          // Google Play requires chance-based virtual reward odds next to a
+          // purchase. Preserve the original gift modal, insert text only.
+          frame.document.getElementById('sharika-lucky-odds')?.remove();
+          if(data.lucky_enabled!==true){
+            // Keep the original Lucky tab visible as disabled, so members know
+            // it was not forgotten. No client-side draw or fake coin reward.
+            const tabs=frame.$('sheet')?.querySelector('.gtabs');
+            if(tabs){
+              const locked=frame.document.createElement('button');
+              locked.type='button';
+              locked.disabled=true;
+              locked.setAttribute('aria-label','Lucky Gift unavailable');
+              locked.textContent='🍀 Lucky';
+              locked.title=profile?.minor?'Adults only':'Server approval required';
+              locked.style.opacity='.45';
+              tabs.appendChild(locked);
+              const note=frame.document.createElement('div');
+              note.id='sharika-lucky-status';
+              note.style.cssText='font-size:11px;line-height:1.4;padding:5px;text-align:center;color:#e7d8ff';
+              note.textContent=profile?.minor?
+                'Lucky Gifts are for eligible adults only.':
+                'Lucky Gifts are not active on this staging server yet; ordinary gifts remain available.';
+              tabs.after(note);
+            }
+          }
+          if(data.lucky_enabled===true && Array.isArray(data.lucky_odds)) {
+            const send=frame.document.getElementById('snd');
+            if(send?.parentElement) {
+              const label=frame.document.createElement('div');
+              label.id='sharika-lucky-odds';
+              label.style.cssText='font-size:11px;line-height:1.4;padding:6px;color:#e7d8ff;text-align:center';
+              label.textContent='Lucky Gift odds: '+data.lucky_odds.map(x=>
+                x.multiplier+'x '+x.probability_percent+'%').join(' · ')+
+                '. Virtual rewards only; no cashout or resale.';
+              send.parentElement.insertBefore(label,send);
+            }
+          }
+        } else frame.toast('Gift box unavailable');
       }catch(error){frame.toast('Gift catalog unavailable: '+errText(error));}
-    };
+    }
+    if(giftButton)giftButton.onclick=()=>openVerifiedGiftBox(null);
     // The original gift game debits a local wallet; always intercept before it
     // executes, settle at the server, then use the original gift flight artwork.
     frame.document.addEventListener('click',async event=>{
@@ -593,25 +1501,49 @@
       event.preventDefault();event.stopImmediatePropagation();
       if(giftBusy||!session)return;
       giftBusy=true;button.disabled=true;
+      let giftCommitted=false;
       try{
         const chosen=Number(frame.gsel);
         const giftId=availableGiftIds[chosen];
         const quantity=Number(frame.qty);
         const indices=Array.isArray(frame.rec)?frame.rec:[];
-        const recipients=[...new Set(indices.map(index=>
-          frame.seats?.[Number(index)]?.public_id).filter(Boolean))];
+        const recipients=directGiftTarget
+          ?[directGiftTarget.id]
+          :[...new Set(indices.map(index=>
+            frame.seats?.[Number(index)]?.public_id).filter(Boolean))];
         if(!giftId||!Number.isInteger(quantity)||quantity<1||quantity>10||
           !recipients.length)throw new Error('Select a gift and an occupied seat');
-        const requestId='gift:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+        const fingerprint=JSON.stringify([giftId,quantity,[...recipients].sort()]);
+        const requestId=pendingGiftRequest?.fingerprint===fingerprint
+          ?pendingGiftRequest.requestId:nextWalletRequestId('gift');
+        pendingGiftRequest={fingerprint,requestId};
         const result=await api('POST','/rooms/'+room.id+'/gifts',{
           gift_id:giftId,quantity,recipient_public_ids:recipients,request_id:requestId
         });
-        await reloadWallet();
+        giftCommitted=true;pendingGiftRequest=null;
+        await refreshWalletAfterConfirmedTransaction({coins:result.coins});
         frame.S.coins=balance.coins;
         frame.S.xp=balance.xp;
         frame.close();
-        frame.toast('Gift sent · '+result.spent_coins+' coins charged ✓');
-        for(const index of indices.slice(0,20)){
+        frame.toast('Gift sent · '+result.spent_coins+' coins charged · Room +'+
+        Number(result.room_reward_coins||0).toLocaleString('en-US')+' coins ✓');
+        if(result.lucky) {
+          frame.toast('Lucky Gift: receiver 5% diamonds · room 1% reward');
+        }
+        if(result.lucky && typeof frame.luckyFx==='function') {
+          const confirmed={payout_coins:Number(result.lucky.payout_coins)||0,
+            max_multiplier:Number(result.lucky.max_multiplier)||0};
+          setTimeout(()=>{
+            if(window.cur?.id===room.id)
+              frame.luckyFx(confirmed.payout_coins,confirmed.max_multiplier,
+                frame.G[chosen]||[result.gift.emoji]);
+          },1000);
+        }
+        const animatedIndices=directGiftTarget
+          ?(frame.seats||[]).filter(slot=>slot?.public_id===directGiftTarget.id)
+            .map(slot=>slot.i)
+          :indices;
+        for(const index of animatedIndices.slice(0,20)){
           const slot=frame.seats?.[Number(index)];
           if(!slot||!recipients.includes(slot.public_id))continue;
           for(let n=0;n<Math.min(quantity,2);n++){
@@ -621,7 +1553,11 @@
         }
         const feed=await api('GET','/rooms/'+room.id+'/gifts').catch(()=>null);
         if(feed?.events?.length)lastGiftEventId=Math.max(...feed.events.map(e=>e.id));
-      }catch(error){frame.toast('Gift not sent: '+errText(error));}
+      }catch(error){
+        frame.toast(giftCommitted
+          ?'Gift sent, but screen update delayed: '+errText(error)
+          :'Gift not confirmed; check wallet before retrying: '+errText(error));
+      }
       finally{giftBusy=false;button.disabled=false;}
     },true);
     async function pollGiftEvents(){
@@ -629,13 +1565,17 @@
       const events=data.events||[];
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
       if(lastGiftEventId===null){lastGiftEventId=latest;return;}
+      let receivedGift=false;
       for(const event of events){
         if(event.id<=lastGiftEventId||event.sender_id===profile?.public_id)continue;
+        if(event.recipient_id===profile?.public_id)receivedGift=true;
         const seat=(frame.seats||[]).find(s=>s?.public_id===event.recipient_id);
         if(seat && typeof frame.fly==='function')
           frame.fly(event.emoji,seat.i,0,event.price_coins);
       }
       lastGiftEventId=Math.max(lastGiftEventId,latest);
+      // Recipients see their verified diamond/coin balance after incoming gifts.
+      if(receivedGift)await reloadWallet();
     }
     async function moderateSeat(action,seat) {
       if(room.owner_id!==session?.user?.id)throw new Error('Room owner only');
@@ -656,10 +1596,61 @@
         const target=frame.seats?.[seat];
         const isSelf=target?.user_id===session?.user?.id;
         const owner=room.owner_id===session?.user?.id;
-        if(action==='take' && seat>0) {
+        if((action==='lock'||action==='unlock')&&seat>0) {
+          if(!owner)throw new Error('Room owner only');
+          await api('PUT','/rooms/'+room.id+'/locks',{
+            seat_no:seat,locked:action==='lock'
+          });
+          frame.close();
+          await syncFrame(room,frame);
+          frame.toast(action==='lock'?'Seat locked':'Seat unlocked');
+        } else if((action==='inv'||action==='invite') && seat>0) {
+          if(!owner)throw new Error('Only the room owner may invite members');
+          const data=await api('GET','/rooms/'+room.id+'/members');
+          const listeners=(data.members||[]).filter(m=>
+            m.seat_no===null&&m.user_id!==room.owner_id&&m.sharika_users?.public_id
+          );
+          frame.open('<h3>🎤 Invite to mic seat '+seat+'</h3>'+
+            '<div id="sh-invite-list"></div>');
+          const list=frame.$('sh-invite-list');
+          if(!list)return;
+          if(!listeners.length) {
+            list.textContent='No audience members available to invite';
+            return;
+          }
+          for(const listener of listeners) {
+            const button=frame.document.createElement('button');
+            button.className='row';
+            button.textContent=(listener.sharika_users.name||'Member')+
+              ' · ID '+listener.sharika_users.public_id;
+            button.onclick=async()=>{
+              if(button.disabled)return;
+              button.disabled=true;
+              try {
+                await api('POST','/rooms/'+room.id+'/invitations',{
+                  seat_no:seat,target_public_id:listener.sharika_users.public_id
+                });
+                frame.close();
+                frame.toast('Mic invitation sent');
+              }catch(error) {
+                button.disabled=false;
+                frame.toast('Invite not sent: '+errText(error));
+              }
+            };
+            list.append(button);
+          }
+        } else if(action==='take' && seat>0) {
+          // The owner already occupies seat zero; invite a guest instead.
+          if(owner){await frame.act('inv',seat);return;}
           await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
           frame.close(); await syncFrame(room,frame);
-          const state=await connectVoice(room.id);
+          let state=await connectVoice(room.id);
+          // An in-flight listener connection might have started before the
+          // seat assignment; recheck verified publish permission once.
+          if(!state.publishing) {
+            const current=await api('GET','/rooms/'+room.id+'/voice/config');
+            if(current.publish)state=await connectVoice(room.id);
+          }
           frame.toast(state.publishing?'Microphone enabled':'Listening to room');
         } else if(action==='down' && seat>0) {
           if(!isSelf && owner && target?.user_id) {
@@ -683,21 +1674,400 @@
         } else if(action==='own' && owner) {
           frame.open('<h3>👑 Verified owner controls</h3>'+
             '<div class="row">Tap an occupied seat to mute, unmute, remove from mic or kick a guest.</div>');
+        } else if(action==='prof' && target?.public_id) {
+          const member=await api('GET','/users/'+target.public_id);
+          frame.open('<h3>👤 Verified profile</h3><div id="sh-room-profile"></div>');
+          const node=frame.$('sh-room-profile');
+          if(node) {
+            const avatar=frame.document.createElement('div');
+            avatar.className='sh-sovera-preview';
+            avatar.textContent='👤';
+            paintVerifiedAvatar(avatar,member.pic,frame.document);
+            node.appendChild(avatar);
+            const name=frame.document.createElement('div');
+            name.className='row';
+            name.textContent=(member.name||'Member')+' · ID '+member.id;
+            const detail=frame.document.createElement('div');
+            detail.className='lbl';
+            detail.textContent='Country: '+(member.country||'Not set')+
+              ' · Wealth Lv '+Number(member.wealth_level||0)+
+              ' · Charm Lv '+Number(member.charm_level||0);
+            node.append(name,detail);
+          }
         } else if(action==='gift' && seat>0 && target?.public_id) {
           frame.rec=[seat];
           frame.$('bGift')?.click();
         } else frame.toast('This action is not connected to the verified server yet');
       } catch (error) { frame.toast(errText(error)); }
     };
+    // The room template's audience menu previously changed local demo seats.
+    // Wire those buttons to authenticated server operations instead.
+    const originalMemberSheet=frame.userSheet;
+    if(typeof originalMemberSheet==='function')frame.userSheet=function(user,search) {
+      originalMemberSheet(user,search);
+      const sheet=frame.$('sheet');
+      const photo=user?.seat!=null?frame.seats?.[user.seat]?.pic:
+        frame.U?.[user?.k]?.pic;
+      paintVerifiedAvatar(sheet?.querySelector('.who .ua'),photo,frame.document);
+      const verifiedId=String(user?.id||'');
+      const verified=/^[0-9]{8}$/.test(verifiedId);
+      const profileButton=sheet?.querySelector('button.act[data-a="pf"]');
+      if(profileButton)profileButton.onclick=async()=>{
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        if(profileButton.disabled)return;
+        profileButton.disabled=true;
+        try {
+          const member=await api('GET','/users/'+verifiedId);
+          frame.open('<h3>👤 Verified member profile</h3>'+
+            '<div id="sh-member-profile"></div>');
+          const panel=frame.$('sh-member-profile');
+          if(panel) {
+            cosmeticCss(frame.document);
+            const picture=frame.document.createElement('div');
+            picture.className='sh-sovera-preview';
+            picture.style.cssText='width:94px;height:94px;margin:16px auto;font-size:45px';
+            picture.textContent='👤';
+            paintVerifiedAvatar(picture,member.pic,frame.document);
+            const chosen=frameArt(member.frame_style);
+            if(chosen){
+              const art=frame.document.createElement('i');
+              art.className='fxr sh-sovera-frame';
+              art.style.backgroundImage='url('+effectPath(chosen.art)+')';
+              picture.appendChild(art);
+            }
+            const name=frame.document.createElement('div');
+            name.className='row';
+            name.textContent=String(member.name||'Member')+' · ID '+String(member.id);
+            const details=frame.document.createElement('div');
+            details.className='lbl';
+            details.textContent='Country: '+String(member.country||'Not set')+
+              ' · Wealth Lv '+Number(member.wealth_level||0)+
+              ' · Charm Lv '+Number(member.charm_level||0)+
+              ' · Frame: '+String(chosen?.name||'None')+
+              ' · Entry: '+String(entryArt(member.entry_style)?.name||'None');
+            const strip=frame.document.createElement('div');
+            strip.className='sh-sovera-id-effects';
+            for(const item of [medalArt(member.medal_style),nameTagArt(member.name_tag_style)]){
+              if(!item)continue;
+              const img=frame.document.createElement('img');
+              img.src=cosmeticMedia(item);
+              img.alt=item.name+' (decorative)';
+              strip.appendChild(img);
+            }
+            panel.append(picture,name,details,strip);
+          }
+        }catch(error) {
+          profileButton.disabled=false;
+          frame.toast('Profile unavailable: '+errText(error));
+        }
+      };
+      const followButton=sheet?.querySelector('button.act[data-a="fo"]');
+      if(followButton) {
+        // Never toggle a local-only follow state before the backend confirms.
+        followButton.disabled=true;
+        followButton.textContent='Checking follow…';
+        if(verified)api('GET','/users/'+verifiedId+'/follow').then(status=>{
+          if(!followButton.isConnected)return;
+          followButton.dataset.following=status.following?'true':'false';
+          followButton.textContent=status.following?'✅ Following':'➕ Follow';
+          followButton.disabled=false;
+        }).catch(error=>{
+          if(!followButton.isConnected)return;
+          followButton.textContent='Follow unavailable';
+          followButton.title=errText(error);
+        });
+        else followButton.textContent='ID unavailable';
+        followButton.onclick=async()=>{
+          if(followButton.disabled||!verified)return;
+          const following=followButton.dataset.following==='true';
+          followButton.disabled=true;
+          try {
+            const status=await api(following?'DELETE':'PUT',
+              '/users/'+verifiedId+'/follow');
+            if(!followButton.isConnected)return;
+            followButton.dataset.following=status.following?'true':'false';
+            followButton.textContent=status.following?'✅ Following':'➕ Follow';
+            frame.FOL[verifiedId]=!!status.following;
+          }catch(error) {
+            frame.toast('Follow update failed: '+errText(error));
+          }finally {
+            if(followButton.isConnected)followButton.disabled=false;
+          }
+        };
+      }
+      // Use the same D1 gift catalog and wallet ledger as the room Gift box.
+      // A room audience member may receive a gift without occupying a mic seat.
+      const memberGiftButton=sheet?.querySelector('button.act[data-a="gf"]');
+      if(memberGiftButton)memberGiftButton.onclick=async()=>{
+        if(memberGiftButton.disabled)return;
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        memberGiftButton.disabled=true;
+        try {
+          const members=await api('GET','/rooms/'+room.id+'/members');
+          if(!(members.members||[]).some(member=>
+            member.sharika_users?.public_id===verifiedId))
+            throw new Error('This user has left the room');
+          await openVerifiedGiftBox({id:verifiedId,name:String(user.n||'Member')});
+        }catch(error) {
+          frame.toast('Gift unavailable: '+errText(error));
+        }finally {
+          if(memberGiftButton.isConnected)memberGiftButton.disabled=false;
+        }
+      };
+      // Open the existing authenticated private-message view. Its server
+      // already enforces mutual follow before enabling message sending.
+      const messageButton=frame.document.createElement('button');
+      messageButton.type='button';
+      messageButton.className='act';
+      messageButton.textContent='💬 Message';
+      sheet?.querySelector('.acts')?.appendChild(messageButton);
+      messageButton.onclick=async()=>{
+        if(messageButton.disabled)return;
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        if(verifiedId===profile?.public_id) {
+          frame.toast('Choose another member to message');return;
+        }
+        messageButton.disabled=true;
+        try {
+          const member=await api('GET','/users/'+verifiedId);
+          frame.close();
+          document.getElementById('rw')?.classList.remove('on');
+          const bubble=document.getElementById('minib');
+          if(bubble)bubble.textContent=room.emoji||'🎙️';
+          document.getElementById('mini')?.classList.add('on');
+          window.go('msg');
+          await window.renderMsg();
+          await openPrivateThread(verifiedId,String(member.name||'Member'));
+        }catch(error) {
+          messageButton.disabled=false;
+          frame.toast('Message unavailable: '+errText(error));
+        }
+      };
+      const reportMemberButton=frame.document.createElement('button');
+      reportMemberButton.type='button';
+      reportMemberButton.className='act';
+      reportMemberButton.textContent='🚩 Report';
+      sheet?.querySelector('.acts')?.appendChild(reportMemberButton);
+      reportMemberButton.onclick=()=>{
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        openVerifiedReport('user',verifiedId,String(user.n||'Member'));
+      };
+      const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
+      if(inviteButton)inviteButton.onclick=async()=>{
+        if(inviteButton.disabled)return;
+        if(room.owner_id!==session?.user?.id) {
+          frame.toast('Only the room owner can send a mic invite');return;
+        }
+        const seat=frame.seats.findIndex((item,index)=>
+          index>0&&item?.empty&&!item?.lock
+        );
+        if(seat<1){frame.toast('No open mic seats');return;}
+        inviteButton.disabled=true;
+        try {
+          await api('POST','/rooms/'+room.id+'/invitations',{
+            seat_no:seat,target_public_id:String(user.id)
+          });
+          frame.close();
+          frame.toast('Invitation sent to ID '+String(user.id));
+        }catch(error) {
+          inviteButton.disabled=false;
+          frame.toast('Invite not sent: '+errText(error));
+        }
+      };
+      for(const [code,action] of [['dn','remove_seat'],['kk','kick']]) {
+        const button=sheet?.querySelector('button.act[data-a="'+code+'"]');
+        if(!button)continue;
+        button.onclick=async()=>{
+          if(button.disabled)return;
+          const onSeat=Number.isInteger(user.seat)&&user.seat>0;
+          const target=onSeat?frame.seats[user.seat]:null;
+          const isSelf=target?.user_id===session?.user?.id;
+          if(!isSelf && room.owner_id!==session?.user?.id) {
+            frame.toast('Room owner only');return;
+          }
+          button.disabled=true;
+          try {
+            if(isSelf && action==='remove_seat') {
+              await api('PUT','/rooms/'+room.id+'/seat',{seat_no:null});
+              frame.close();await syncFrame(room,frame);await connectVoice(room.id);
+            }else if(onSeat)await moderateSeat(action,user.seat);
+            else if(action==='kick') {
+              await api('POST','/rooms/'+room.id+'/moderate',{
+                action,target_public_id:String(user.id)
+              });
+              frame.close();await syncFrame(room,frame);
+              frame.toast('Guest removed for 10 minutes');
+            }
+          }catch(error) {
+            button.disabled=false;
+            frame.toast('Action failed: '+errText(error));
+          }
+        };
+      }
+    };
+    // Read the actual D1 room reward ledger. Never expose the old local
+    // claim button, which simulated a wallet mutation.
+    frame.rewardSheet=async function(){
+      frame.open('<h3>💰 Verified Room Reward</h3>'+
+        '<div id="sh-real-room-reward" class="row">Checking room reward…</div>');
+      const target=frame.$('sh-real-room-reward');
+      if(!target)return;
+      try{
+        const rewards=await api('GET','/rooms/'+room.id+'/rewards');
+        const normal=Number(rewards.regular_reward_hundredths||0)/100;
+        const lucky=Number(rewards.lucky_reward_hundredths||0)/100;
+        if(target.isConnected)target.textContent='Ordinary gifts 10%: '+
+          normal.toLocaleString('en-US')+' coins · Lucky Gift 1% (if enabled): '+
+          lucky.toLocaleString('en-US')+' coins. Total: '+
+          (normal+lucky).toLocaleString('en-US')+
+          ' coins. Verified room ledger only; no personal-wallet transfer or withdrawal.';
+      }catch(error){
+        if(target.isConnected)target.textContent='Room rewards unavailable: '+errText(error);
+      }
+    };
+    // The original +/- controls updated only iframe-local S.n. A rejoin then
+    // restored the old D1 limit. Persist each tap before updating the visual.
+    // Unlike the original local-only frame picker, the room's seat frame is
+    // saved in D1 so every guest sees the same decorative ring after rejoin.
+    let seatFrameSaveBusy=false;
+    frame.document.addEventListener('click',async event=>{
+      const choice=event.target.closest?.('.fr button[data-f]');
+      if(!choice||!frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Seat arrangement'))return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if(room.owner_id!==session?.user?.id){frame.toast('Room owner only');return;}
+      if(seatFrameSaveBusy)return;
+      const style=choice.dataset.f;
+      if(!['grad','gold','neon','sq'].includes(style)){frame.toast('Unknown seat frame');return;}
+      if(style===(room.seat_frame_style||'grad'))return;
+      seatFrameSaveBusy=true;
+      frame.$('sheet')?.querySelectorAll('.fr button').forEach(button=>{button.disabled=true;});
+      try{
+        const result=await api('PATCH','/rooms/'+room.id,{
+          name:room.name||'My Sharika room',seat_count:room.seat_count,
+          theme:room.th||'mid',seat_frame_style:style
+        });
+        if(result.room?.seat_frame_style!==style)throw new Error('Seat frame not confirmed by server');
+        room.seat_frame_style=style;
+        frame.S.frame=style;
+        if(typeof frame.applyTheme==='function')frame.applyTheme();
+        if(typeof frame.seatSet==='function')frame.seatSet();
+        await reloadRooms();
+        frame.toast('Seat frame saved for everyone ✓');
+      }catch(error){
+        frame.toast('Seat frame not saved: '+errText(error));
+      }finally{
+        seatFrameSaveBusy=false;
+        frame.$('sheet')?.querySelectorAll('.fr button').forEach(button=>{button.disabled=false;});
+      }
+    },true);
+    let seatCountSaveBusy=false;
+    frame.document.addEventListener('click',async event=>{
+      const control=event.target.closest?.('#mn,#pl');
+      if(!control||!frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Seat arrangement'))return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if(room.owner_id!==session?.user?.id){
+        frame.toast('Only the room owner can change seats');return;
+      }
+      if(seatCountSaveBusy)return;
+      const oldCount=Number(room.seat_count);
+      if(!Number.isInteger(oldCount)||oldCount<4||oldCount>20){
+        frame.toast('Refresh the room before editing seats');return;
+      }
+      const requested=oldCount+(control.id==='pl'?1:-1);
+      if(requested<4||requested>20){
+        frame.toast('Choose between 5 and 21 total seats');return;
+      }
+      seatCountSaveBusy=true;
+      const buttons=[frame.$('mn'),frame.$('pl')].filter(Boolean);
+      buttons.forEach(button=>{button.disabled=true;});
+      let note=frame.$('sharika-seat-save-state');
+      if(!note){
+        note=frame.document.createElement('div');
+        note.id='sharika-seat-save-state';
+        note.setAttribute('role','status');
+        note.style.cssText='text-align:center;font-size:12px;min-height:20px;color:#fbe6ae;padding:4px';
+        frame.$('sheet')?.querySelector('.step')?.after(note);
+      }
+      note.textContent='Saving seat count…';
+      try{
+        const result=await api('PATCH','/rooms/'+room.id,{
+          name:room.name||'My Sharika room',seat_count:requested,
+          theme:room.th||'mid'
+        });
+        if(!Number.isInteger(result.room?.seat_count)||result.room.seat_count!==requested)
+          throw new Error('Server did not confirm the new seat count');
+        room.name=result.room.name;
+        room.seat_count=result.room.seat_count;
+        room.th=result.room.theme;
+        // Saving is already committed; a temporary refresh outage must not
+        // incorrectly tell the owner that the room change was lost.
+        await syncFrame(room,frame).catch(error=>
+          console.warn('Seat count saved; member refresh delayed:',errText(error)));
+        await reloadRooms();
+        if(frame.$('cnt'))frame.$('cnt').textContent=String(room.seat_count+1);
+        if(note.isConnected)note.textContent='Saved ✓ '+String(room.seat_count+1)+' total seats';
+        frame.toast('Seat count saved to room ✓');
+      }catch(error){
+        await syncFrame(room,frame).catch(()=>{});
+        const detail=errText(error);
+        const message=detail.includes('seats_occupied_above_new_limit')
+          ?'Move guests from the highest seats before reducing the room'
+          :'Seat count not saved: '+detail;
+        if(note.isConnected)note.textContent=message;
+        frame.toast(message);
+      }finally{
+        seatCountSaveBusy=false;
+        buttons.forEach(button=>{if(button.isConnected)button.disabled=false;});
+      }
+    },true);
     // The existing room-settings sheet is reused. Its original Save action
     // runs only after the authenticated D1 owner update succeeds.
     const roomButton=frame.$ && frame.$('roomBtn');
     if(roomButton){
       const oldRoomOpen=roomButton.onclick;
       roomButton.onclick=()=>{
-        if(room.owner_id!==session?.user?.id){frame.toast('Only room owner can edit settings');return;}
+        if(room.owner_id!==session?.user?.id){
+          // Guests can inspect and report a room without owner privileges.
+          frame.open('<h3>🎙️ Room information</h3><div id="sh-room-info"></div>');
+          const info=frame.$('sh-room-info');
+          if(info){
+            const label=frame.document.createElement('div');
+            label.className='row';
+            label.textContent=String(room.name||'Room')+' · ID '+String(room.id);
+            const report=frame.document.createElement('button');
+            report.type='button';report.className='send';
+            report.textContent='🚩 Report this room';
+            report.style.cssText='display:block;width:100%;padding:12px;margin:12px 0';
+            report.onclick=()=>openVerifiedReport('room',room.id,room.name);
+            info.append(label,report);
+          }
+          return;
+        }
         if(typeof frame.settings==='function')frame.settings();
         else if(typeof oldRoomOpen==='function')oldRoomOpen.call(roomButton);
+        const rewardLabel=frame.$('rRw')?.querySelector('small');
+        if(rewardLabel)rewardLabel.textContent='10% of ordinary gifts · verified room ledger';
+        const photo=frame.$('pbig');
+        if(photo){
+          if(verifiedCoverUrl(room.cover_url)){
+            photo.style.backgroundImage='url("'+room.cover_url+'")';
+            photo.style.backgroundSize='cover';
+          }
+          photo.title='Choose room photo from gallery';
+          photo.onclick=()=>pickRoomCover(room,frame);
+        }
+        const sheet=frame.$('sheet');
+        if(sheet&&!frame.$('sh-room-photo-action')){
+          const button=frame.document.createElement('button');
+          button.id='sh-room-photo-action';button.type='button';
+          button.className='send';button.textContent='📷 Change room card photo';
+          button.style.cssText='display:block;width:100%;margin:12px 0;padding:12px;border-radius:12px';
+          button.onclick=()=>pickRoomCover(room,frame);
+          const actions=sheet.querySelector('.gbar');
+          sheet.insertBefore(button,actions||null);
+        }
       };
     }
     frame.document.addEventListener('click',async event=>{
@@ -714,9 +2084,13 @@
       }
       saveButton.disabled=true;
       try{
-        const data=await api('PATCH','/rooms/'+room.id,{name,seat_count:newSeatCount});
+        const data=await api('PATCH','/rooms/'+room.id,{
+          name,seat_count:newSeatCount,theme:frame.S.theme||room.th||'mid',
+          seat_frame_style:room.seat_frame_style||'grad'
+        });
         room.name=data.room.name;
         room.seat_count=data.room.seat_count;
+        room.th=data.room.theme;
         if(typeof oldSave==='function')oldSave.call(saveButton);
         await reloadRooms();
         await syncFrame(room,frame);
@@ -728,6 +2102,121 @@
         saveButton.disabled=false;
       }
     },true);
+    // Audience invitations stay in the existing room sheet. The invitee
+    // explicitly accepts or declines before their verified mic seat changes.
+    let displayedInviteAt=0;
+    let pollingInvite=false;
+    async function pollSeatInvite() {
+      if(pollingInvite||window.cur?.id!==room.id)return;
+      pollingInvite=true;
+      try {
+        const data=await api('GET','/rooms/'+room.id+'/invitations');
+        const invite=data.invite;
+        if(!invite||!Number.isInteger(invite.seat_no)||
+           invite.invited_at_ms===displayedInviteAt)return;
+        // Keep gift, settings and moderation sheets usable while inviting.
+        if(frame.$('bg')?.classList.contains('on') ||
+           frame.$('sheet')?.classList.contains('on'))return;
+        displayedInviteAt=invite.invited_at_ms;
+        const seat=invite.seat_no;
+        frame.open('<h3>🎤 Mic seat invitation</h3>'+
+          '<div class="row">The room owner invited you to seat '+seat+'.</div>'+
+          '<button id="sh-accept-invite" class="row">Accept</button>'+
+          '<button id="sh-decline-invite" class="row">Decline</button>');
+        for(const [id,accept] of [
+          ['sh-accept-invite',true],['sh-decline-invite',false]
+        ]) {
+          const button=frame.$(id);
+          if(!button)continue;
+          button.onclick=async()=>{
+            if(button.disabled)return;
+            button.disabled=true;
+            try {
+              await api('POST','/rooms/'+room.id+'/invitations/respond',{
+                seat_no:seat,accept
+              });
+              frame.close();
+              if(accept) {
+                await syncFrame(room,frame);
+                await connectVoice(room.id);
+                frame.toast('Joined microphone seat '+seat);
+              } else frame.toast('Mic invitation declined');
+            }catch(error) {
+              // Expired or taken seats can be retried with a fresh invite.
+              frame.toast('Invitation unavailable: '+errText(error));
+              frame.close();
+            }
+          };
+        }
+      }finally{pollingInvite=false;}
+    }
+    if(invitePoll)clearInterval(invitePoll);
+    invitePoll=setInterval(()=>{
+      if(window.cur?.id===room.id)pollSeatInvite().catch(()=>{});
+    },10000);
+    pollSeatInvite().catch(()=>{});
+    // Mirror the verified room conversation into the original chat area.
+    // No local-only send, simulated user, or repeated history on reconnect.
+    async function pollRoomChat() {
+      if(chatPollInFlight)return chatPollInFlight;
+      const work=(async()=>{
+        if(window.cur?.id!==room.id)return;
+        const data=await api('GET','/rooms/'+room.id+'/chat?after='+lastChatId);
+        if(window.cur?.id!==room.id || !session ||
+           document.getElementById('rf')?.contentWindow!==frame)return;
+        const messages=Array.isArray(data.messages)?data.messages:[];
+        for(const item of messages) {
+          const id=Number(item.id);
+          if(!Number.isSafeInteger(id)||id<=lastChatId)continue;
+          lastChatId=id;
+          const memberPhoto=roomAvatarForPublicId(frame,item.sender_id);
+          frame.msg(String(item.name||'Member'),'👤',String(item.body||''),{
+            me:item.sender_id===profile?.public_id,lv:1
+          });
+          // Room chat uses the same saved avatar as the sender's room ID.
+          const chatRow=frame.document.querySelector('#chat .msg:last-child');
+          if(chatRow)chatRow.dataset.shSenderId=String(item.sender_id||'');
+          paintVerifiedAvatar(chatRow?.querySelector('.mav'),memberPhoto,frame.document);
+        }
+      })();
+      chatPollInFlight=work;
+      try{await work;}finally{if(chatPollInFlight===work)chatPollInFlight=null;}
+    }
+    const messageInput=frame.$ && frame.$('txt');
+    const messageSend=frame.$ && frame.$('sendTxt');
+    async function sendRoomMessage() {
+      const body=messageInput?.value?.trim()||'';
+      if(!body||chatSendBusy)return;
+      if(body.length>300){frame.toast('Room messages must be 300 characters or fewer');return;}
+      chatSendBusy=true;
+      if(messageSend)messageSend.disabled=true;
+      try {
+        const requestId='chat:'+Date.now().toString(36)+':'+
+          Math.random().toString(36).slice(2);
+        await api('POST','/rooms/'+room.id+'/chat',{body,request_id:requestId});
+        if(messageInput?.value?.trim()===body)messageInput.value='';
+        if(typeof frame.updBtn==='function')frame.updBtn();
+        await pollRoomChat();
+      }catch(error){frame.toast('Message not sent: '+errText(error));}
+      finally {
+        chatSendBusy=false;
+        if(messageSend)messageSend.disabled=false;
+      }
+    }
+    if(messageSend)messageSend.onclick=sendRoomMessage;
+    if(messageInput)messageInput.onkeydown=event=>{
+      if(event.key==='Enter'&&!event.shiftKey){
+        event.preventDefault();
+        sendRoomMessage();
+      }
+    };
+    const imageSend=frame.$ && frame.$('imgBtn');
+    if(imageSend)imageSend.onclick=()=>frame.toast('Room photo messages are not online yet');
+    pollRoomChat().catch(error=>frame.toast('Chat unavailable: '+errText(error)));
+    if(chatPoll)clearInterval(chatPoll);
+    chatPoll=setInterval(()=>{
+      if(window.cur?.id===room.id)pollRoomChat().catch(()=>{});
+    },3500);
     const mic=frame.$ && frame.$('mic');
     if(mic) mic.onclick=async ()=>{
       try {
@@ -791,6 +2280,7 @@
         if(target.isConnected)target.textContent='Room ranking unavailable: '+errText(error);
       }
     };
+    wireSoveraRoomFrames(frame);
     await syncFrame(room,frame);
     try {
       const voice=await connectVoice(room.id);
@@ -815,17 +2305,39 @@
   // Block simulated gift/chat bots in the original room HTML only in this
   // packaged staging APK. Do not edit the user's original layout or art.
   if(typeof window.ROOM_HTML === 'string') {
+    window.ROOM_HTML=window.ROOM_HTML.replace('coins:12450,xp:7200','coins:0,xp:0');
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      /var base=\[\{n:"You",e:"😎"\}[\s\S]*?\];\nfor\(var q=0;/,
+      'var base=[];\nfor(var q=0;');
     window.ROOM_HTML=window.ROOM_HTML.replace('setInterval(botGift,28000);','');
     window.ROOM_HTML=window.ROOM_HTML.replace(
       'function others(){return seats.filter(function(s){return s.i>0&&!s.empty&&!s.lock})}',
       'function others(){return seats.filter(function(s){return !s.empty&&!s.lock})}');
     window.ROOM_HTML=window.ROOM_HTML.replace(
       /setInterval\(function\(\)\{var o=others\(\);[\s\S]*?\},9000\);/,'');
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      'msg("Rafi","🧑‍🎤","Greetings to everyone 👋",{ci:1,lv:16});'+
+      'msg("Nusrat","👩‍🦰","Will sing tonight 🎶",{ci:2,lv:19});','');
   }
   const originalOpenRoom=window.openRoom;
   window.openRoom=async function(room) {
     if(!session){ window.showAuth('welcome'); return; }
     try {
+      const prior=window.cur;
+      if(prior?.id===room.id) {
+        document.getElementById('rw')?.classList.add('on');
+        document.getElementById('mini')?.classList.remove('on');
+        return;
+      }
+      // Room-to-room navigation must release old seats, membership and audio.
+      if(prior && prior.id!==room.id) {
+        if(framePoll){clearInterval(framePoll);framePoll=null;}
+        if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
+        if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
+        await releaseVoice();
+        await api('POST','/rooms/'+prior.id+'/leave',{});
+      }
       await api('POST','/rooms/'+room.id+'/join',{});
       heartbeatPresence(room.id);
       const iframe=document.getElementById('rf');
@@ -838,7 +2350,9 @@
     const current=window.cur;
     if(framePoll){clearInterval(framePoll);framePoll=null;}
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
-    disconnectVoice().catch(()=>{});
+    if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
+    releaseVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
     if(session)heartbeatPresence(null);
     const iframe=document.getElementById('rf');
@@ -849,6 +2363,7 @@
   // The rate is fixed on the verified server: 100 diamonds -> 70 coins.
   window.RATE=0.7;
   let selectedRecharge='';let selectedDiamonds=null;let walletOperationBusy=false;
+  let pendingExchangeRequest=null;
   document.addEventListener('click',e=>{
     const exchange=e.target.closest?.('#rcp [data-e]');
     if(exchange){
@@ -865,13 +2380,15 @@
   // Approved Coin Sellers: actual D1 seller rows, never fabricated profiles.
   const sellerEscape=v=>String(v==null?'':v).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  async function showVerifiedCoinSellers(){
-    window.openSheet('<h3>🪙 Coin sellers</h3><div id="sharika-seller-content">Loading approved sellers…</div>');
+  async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
+    window.openSheet('<h3>🪙 '+(walletOnly?'Seller Wallet':'Coin sellers')+
+      '</h3><div id="sharika-seller-content">Loading verified seller data…</div>');
     const root=document.getElementById('sharika-seller-content');
     if(!root)return;
     try{
-      const [directory,mine]=await Promise.all([
-        api('GET','/sellers'),api('GET','/sellers/me')
+      const [directory,mine,transfers,allocations]=await Promise.all([
+        api('GET','/sellers'),api('GET','/sellers/me'),
+        api('GET','/sellers/transfers'),api('GET','/sellers/allocations')
       ]);
       if(!root.isConnected)return;
       const listed=(directory.sellers||[]).map(s=>
@@ -888,8 +2405,25 @@
         '<button class="btn" type="button" id="sharika-seller-send">Transfer coins</button>'+
         '<div id="sharika-seller-note" aria-live="polite"></div></div>':
         self?'<p class="n">Your seller permission is currently suspended.</p>':'';
-      root.innerHTML='<div class="empty">'+(listed||'No approved coin sellers yet.')+'</div>'+me;
+      const historyRows=(transfers.transfers||[]).slice(0,30).map(t=>
+        '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
+        'Transfer #'+sellerEscape(t.id)+' · Sender ID '+sellerEscape(t.sender_public_id)+
+        ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
+        ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('');
+      const stockRows=(allocations.allocations||[]).slice(0,30).map(a=>
+        '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
+        'Allocation #'+sellerEscape(a.id)+' · Admin ID '+sellerEscape(a.sender_public_id)+
+        ' → Seller ID '+sellerEscape(a.seller_public_id)+
+        ' · +'+Number(a.coins||0).toLocaleString('en-US')+' stock coins</div>').join('');
+      root.innerHTML=(walletOnly?'':'<div class="empty">'+
+        (listed||'No approved coin sellers yet.')+'</div>')+me+
+        (self?'<div class="card" style="margin-top:12px;padding:12px"><h4>Coin transfer list</h4>'+
+          '<div id="sharika-seller-history">'+(historyRows||'No transfers yet.')+'</div>'+
+          '<h4>Seller wallet stock allocations</h4>'+(stockRows||'No allocations yet.')+'</div>':'');
+      const targetField=document.getElementById('sharika-seller-target');
+      if(targetField&&/^[0-9]{8}$/.test(targetId))targetField.value=targetId;
       const send=document.getElementById('sharika-seller-send');
+      let pendingSellerTransfer=null;
       if(send)send.addEventListener('click',async()=>{
         const recipient=document.getElementById('sharika-seller-target')?.value.trim()||'';
         const raw=document.getElementById('sharika-seller-amount')?.value.trim()||'';
@@ -900,25 +2434,97 @@
           if(note)note.textContent='Enter a valid eight-digit user ID and 1–1,000,000 coins.';
           return;
         }
-        if(!window.confirm('Transfer '+amount.toLocaleString('en-US')+' coins to user '+recipient+'?'))return;
-        const requestId=nextWalletRequestId('seller');
         send.disabled=true;
+        let transferCommitted=false;
         try{
+          const verified=await api('GET','/users/'+recipient);
+          if(String(verified.id)!==recipient)throw new Error('Recipient verification failed');
+          if(!window.confirm('Send '+amount.toLocaleString('en-US')+' coins to '+
+            String(verified.name||'User')+' (ID '+recipient+')?')){send.disabled=false;return;}
+          const fingerprint=recipient+':'+amount;
+          const requestId=pendingSellerTransfer?.fingerprint===fingerprint
+            ?pendingSellerTransfer.requestId:nextWalletRequestId('seller');
+          pendingSellerTransfer={fingerprint,requestId};
           const result=await api('POST','/sellers/transfer',{
             target_public_id:recipient,coins:amount,request_id:requestId
           });
-          if(note)note.textContent='Transfer #'+result.transfer_id+' complete. Remaining stock: '+
+          transferCommitted=true;pendingSellerTransfer=null;
+          if(note)note.textContent='Transfer #'+result.transfer_id+' from ID '+
+            sellerEscape(result.sender_public_id)+' to ID '+sellerEscape(recipient)+
+            ' complete. Remaining seller stock: '+
             Number(result.available_coins).toLocaleString('en-US')+' coins.';
+          const latest=await api('GET','/sellers/transfers').catch(()=>null);
+          const history=document.getElementById('sharika-seller-history');
+          if(history&&latest)history.innerHTML=(latest.transfers||[]).slice(0,30).map(t=>
+            '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
+            'Transfer #'+sellerEscape(t.id)+' · Sender ID '+sellerEscape(t.sender_public_id)+
+            ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
+            ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('')||'No transfers yet.';
           toast('Coin transfer recorded');
-          await reloadWallet();
+          await refreshWalletAfterConfirmedTransaction();
         }catch(error){
-          if(note)note.textContent=errText(error);
-          send.disabled=false;
+          if(note)note.textContent=(transferCommitted
+            ?'Transfer recorded; display update delayed: '
+            :'Transfer not confirmed; check history before retrying: ')+errText(error);
+          if(!transferCommitted)send.disabled=false;
         }
       });
     }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
   }
 
+
+  // Public banner metadata is populated by verified Super-Admin D1 records.
+  // Keep the original 3D carousel/scroll behavior and never show demo offers.
+  function renderVerifiedBanners(list){
+    const approved=Array.isArray(list)?list.filter(row=>row&&
+      typeof row.title==='string'&&row.title.length<=80&&
+      /^#[0-9a-fA-F]{6}$/.test(row.color_a||'')&&
+      /^#[0-9a-fA-F]{6}$/.test(row.color_b||'')&&
+      ['none','daily','recharge','rank','invite'].includes(row.action)).slice(0,10):[];
+    const cards=approved.map(row=>({
+      t:row.title,s:String(row.subtitle||'').slice(0,160),
+      e:String(row.emoji||'🎉').slice(0,12),
+      c:row.color_a+','+row.color_b,a:row.action
+    }));
+    if(!cards.length)cards.push({t:'Welcome to Sharika',
+      s:'Talk with friends in voice rooms',e:'🎙️',c:'#9b4dff,#0ea5e9',a:'none'});
+    window.CFG.banners=cards;
+    const slide=document.getElementById('ban'),dots=document.getElementById('dots');
+    if(slide)slide.innerHTML=cards.map((row,i)=>
+      '<div class="slide" data-i="'+i+'" style="background:linear-gradient(135deg,'+
+      row.c+')"><b>'+sellerEscape(row.t)+'</b><small>'+sellerEscape(row.s)+
+      '</small><i>'+sellerEscape(row.e)+'</i></div>').join('');
+    if(dots)dots.innerHTML=cards.map((_,i)=>'<u'+(!i?' class="on"':'')+'></u>').join('');
+    window.bi=0;
+  }
+  async function refreshVerifiedBanners(){
+    if(!session)return;
+    const data=await api('GET','/banners');
+    if(session)renderVerifiedBanners(data.banners);
+  }
+  renderVerifiedBanners([]);
+
+  // A verified seller may recharge directly from another real user's ID card.
+  const originalOpenProfile=window.openProfile;
+  if(typeof originalOpenProfile==='function')window.openProfile=function(user){
+    originalOpenProfile.apply(this,arguments);
+    const targetId=String(user?.id||'');
+    const root=document.querySelector('#pfc .pfh .meta');
+    if(!/^[0-9]{8}$/.test(targetId)||!root||!session)return;
+    Promise.all([api('GET','/sellers/me'),api('GET','/users/'+targetId)])
+      .then(([mine,verified])=>{
+        if(!root.isConnected||!mine.seller?.active||String(verified.id)!==targetId)return;
+        const button=document.createElement('button');
+        button.type='button';button.className='act';
+        button.textContent='🪙 Send seller coins to ID '+targetId;
+        button.style.cssText='display:block;margin:8px auto;padding:9px 13px;border-radius:12px';
+        button.onclick=()=>{
+          document.getElementById('pfo')?.classList.remove('on');
+          showVerifiedCoinSellers({walletOnly:true,targetId});
+        };
+        root.insertAdjacentElement('afterend',button);
+      }).catch(()=>{});
+  };
 
   // Original daily reward card retained; values and claim status come from D1.
   let dailyClaimBusy=false;
@@ -1035,13 +2641,20 @@
     if(id==='ec'||id==='pc'){
       if(walletOperationBusy)return;
       walletOperationBusy=true;button.disabled=true;
+      let actionConfirmed=false;
       try{
         if(id==='ec'){
           if(!selectedDiamonds)throw new Error('Select a diamond amount');
+          const requestId=pendingExchangeRequest?.diamonds===selectedDiamonds
+            ?pendingExchangeRequest.requestId:nextWalletRequestId('exchange');
+          pendingExchangeRequest={diamonds:selectedDiamonds,requestId};
           const result=await api('POST','/wallet/exchange',{
-            diamonds:selectedDiamonds,request_id:nextWalletRequestId('exchange')
+            diamonds:selectedDiamonds,request_id:requestId
           });
-          await reloadWallet();
+          actionConfirmed=true;pendingExchangeRequest=null;
+          await refreshWalletAfterConfirmedTransaction({
+            coins:result.coins,diamonds:result.diamonds
+          });
           window.closeSheet();
           toast(result.duplicate?'Exchange already completed':
             'Exchange complete: +'+result.credited_coins+' coins');
@@ -1053,10 +2666,15 @@
               '. Please verify payment and confirm before crediting coins.',
             request_id:nextWalletRequestId('recharge')
           });
+          actionConfirmed=true;
           window.closeSheet();
           toast('Recharge request sent to verified support. No coins added yet.');
         }
-      }catch(error){toast('Request not completed: '+errText(error));}
+      }catch(error){
+        toast(actionConfirmed
+          ?'Request confirmed; screen update delayed: '+errText(error)
+          :'Request not confirmed; check transaction history before retrying: '+errText(error));
+      }
       finally{walletOperationBusy=false;button.disabled=false;}
       return;
     }
@@ -1217,6 +2835,13 @@
           safeMessageHTML(f.public_id)+'</time></div>');
       }
       list.innerHTML=rows.length?rows.join(''):'<div class="empty">No private conversations yet.</div>';
+      // The existing follow APIs return verified profile pictures.
+      // Match by public ID, never by display name or demo avatar.
+      const inboxPhotos=new Map([...following,...followers,...conv]
+        .filter(u=>verifiedAvatarUrl(u.pic))
+        .map(u=>[String(u.public_id),u.pic]));
+      for(const row of list.querySelectorAll('.chatrow[data-private-id]'))
+        paintVerifiedAvatar(row.querySelector('.av'),inboxPhotos.get(row.dataset.privateId),document);
       list.onclick=e=>{
         const row=e.target.closest('.chatrow[data-private-id]');
         if(row)openPrivateThread(row.dataset.privateId,row.dataset.privateName);
@@ -1345,6 +2970,23 @@
       image:'file:///android_asset/jackpot-fruit-original-card.png',
       page:'file:///android_asset/original-games/jackpot-fruit.html'}
   ];
+  // Only announce server-confirmed round winners during the first ten seconds
+  // after settlement. Persist one announcement per game/round across reopens.
+  const announcedOriginalGameRounds=new Map();
+  function verifiedOriginalGameTopThree(game,state){
+    const prev=state?.previous_result;
+    if(!prev||!Number.isSafeInteger(prev.round_no)||prev.round_no<0)return null;
+    const elapsed=Number(state.server_time)-(prev.round_no+1)*40000;
+    if(!Number.isFinite(elapsed)||elapsed<0||elapsed>10000)return null;
+    const winners=Array.isArray(prev.top_winners)?prev.top_winners.slice(0,3)
+      .filter(w=>w&&/^[0-9]{8}$/.test(String(w.public_id||''))&&
+        typeof w.name==='string'&&w.name.trim()&&
+        Number.isSafeInteger(Number(w.total_win))&&Number(w.total_win)>0):[];
+    if(!winners.length||announcedOriginalGameRounds.get(game)===prev.round_no)return null;
+    announcedOriginalGameRounds.set(game,prev.round_no);
+    return {round_no:prev.round_no,winners};
+  }
+  let originalGameWalletRefreshTime=0;
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
     const sheet=doc.getElementById(insideRoom?'sheet':'sh');
@@ -1364,7 +3006,7 @@
         card.style.cssText='display:flex;flex-direction:column;align-items:stretch;'+
           'padding:6px;min-width:0;border:1px solid #e9ba50;border-radius:14px;'+
           'background:linear-gradient(150deg,#381760,#130b32);color:#fff;'+
-          'box-shadow:0 5px 12px #0006;text-align:left;cursor:pointer';
+          'box-shadow:inset 0 2px 2px #fff5,inset 0 -5px 9px #0009,0 9px 16px #0009;text-align:left;cursor:pointer';
         const img=doc.createElement('img');
         img.src=item.image;
         img.alt=item.name;
@@ -1384,8 +3026,44 @@
     }
     let currentGameFrame=null;
     const view=doc.defaultView||window;
+    if(typeof view.__sharikaOriginalGameCleanup==='function')
+      view.__sharikaOriginalGameCleanup();
+    let winnerBannerTimer=null;
+    function clearWinnerBanner(){
+      if(winnerBannerTimer!==null){view.clearTimeout(winnerBannerTimer);winnerBannerTimer=null;}
+      doc.getElementById('sh-verified-original-winners')?.remove();
+    }
+    function announceRoundWinners(game,result){
+      const confirmed=verifiedOriginalGameTopThree(game,result);
+      if(!confirmed)return;
+      clearWinnerBanner();
+      const banner=doc.createElement('div');
+      banner.id='sh-verified-original-winners';
+      banner.setAttribute('role','status');
+      banner.setAttribute('aria-live','polite');
+      banner.style.cssText='position:fixed;top:max(12px,env(safe-area-inset-top));'+
+        'left:5%;width:90%;box-sizing:border-box;z-index:2147483000;'+
+        'padding:11px 13px;border:2px solid #f9d76f;border-radius:18px;'+
+        'background:linear-gradient(130deg,#3a1269,#10082e);'+
+        'box-shadow:0 8px 32px #000b,0 0 20px #f59e0b66;'+
+        'color:#fff;text-align:center;font-weight:700;pointer-events:none';
+      const title=doc.createElement('div');
+      title.textContent='🏆 Round '+confirmed.round_no+' · Top 3 winners';
+      title.style.cssText='font-size:14px;color:#ffe49b;margin-bottom:5px';
+      banner.appendChild(title);
+      for(const [index,winner] of confirmed.winners.entries()){
+        const line=doc.createElement('div');
+        line.style.cssText='font-size:12px;line-height:1.45;overflow-wrap:anywhere';
+        line.textContent=['🥇','🥈','🥉'][index]+' '+
+          winner.name+' · ID '+winner.public_id+' · '+
+          Number(winner.total_win).toLocaleString('en-US')+' coins';
+        banner.appendChild(line);
+      }
+      doc.body.appendChild(banner);
+      winnerBannerTimer=view.setTimeout(()=>{banner.remove();winnerBannerTimer=null;},10000);
+    }
     function preview(item){
-      currentGameFrame=null;
+      currentGameFrame=null;clearWinnerBanner();
       sheet.innerHTML='<div class="grab"></div>'+
         '<button id="sh-original-back" type="button" '+
         'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
@@ -1395,7 +3073,7 @@
         'min-height:380px;border:1px solid #a56dff;border-radius:12px;'+
         'overflow:hidden;background:#100424"></div>';
       sheet.querySelector('h3').textContent=item.name;
-      sheet.querySelector('#sh-original-back').onclick=()=>{currentGameFrame=null;catalog()};
+      sheet.querySelector('#sh-original-back').onclick=()=>{currentGameFrame=null;clearWinnerBanner();catalog()};
       const gameFrame=doc.createElement('iframe');
       gameFrame.src=item.page;
       gameFrame.setAttribute('title',item.name);
@@ -1406,12 +3084,17 @@
     }
     // Child frame has no Firebase session, no native bridge, no wallet setter.
     // Only the active exact iframe can request one of these fixed operations.
-    view.addEventListener('message',async function onOriginalGameMessage(event){
+    const onOriginalGameMessage=async function(event){
       const current=currentGameFrame;
       if(!current||event.source!==current.element.contentWindow||!session)return;
+      if(!overlay.classList.contains('on')){
+        // Closing the sheet must stop the hidden game from polling the server.
+        view.__sharikaOriginalGameCleanup?.();
+        return;
+      }
       const data=event.data;
       if(!data||typeof data!=='object')return;
-      if(data.type==='sharika:original-exit'){currentGameFrame=null;catalog();return;}
+      if(data.type==='sharika:original-exit'){currentGameFrame=null;clearWinnerBanner();catalog();return;}
       if(data.type!=='sharika:original-request')return;
       const permitted=['state','history','stats','rankings','bet'];
       if(data.game!==current.item.id||!permitted.includes(data.action)||
@@ -1426,12 +3109,30 @@
         // If the user changed games mid-request, do not send any data to it.
         if(!session||currentGameFrame!==current)return;
         target.postMessage({type:'sharika:original-response',id:data.id,ok:true,value:result},'*');
+        if(data.action==='state'){
+          announceRoundWinners(current.item.id,result);
+          // A winning round credits D1 on state reads. Refresh the shared
+          // profile/room wallet when its coin balance changes, not just on bets.
+          if(Number.isSafeInteger(result?.coins)&&result.coins>=0&&
+             result.coins!==balance.coins&&
+             Date.now()-originalGameWalletRefreshTime>=2500){
+            originalGameWalletRefreshTime=Date.now();
+            reloadWallet().catch(()=>{});
+          }
+        }
         if(data.action==='bet')reloadWallet().catch(()=>{});
       }catch(error){
         if(!session||currentGameFrame!==current)return;
         target.postMessage({type:'sharika:original-response',id:data.id,ok:false,error:errText(error)},'*');
       }
-    });
+    };
+    view.addEventListener('message',onOriginalGameMessage);
+    view.__sharikaOriginalGameCleanup=()=>{
+      view.removeEventListener('message',onOriginalGameMessage);
+      clearWinnerBanner();
+      currentGameFrame?.element?.remove();
+      currentGameFrame=null;
+    };
     catalog();
     overlay.classList.add('on');
   }
@@ -1537,6 +3238,10 @@
     }catch(error){
       window.showAuth('welcome');
       toast('Sign-in needed: '+errText(error));
+    }finally{
+      // Signed-out users see real Firebase login, signed-in users their D1
+      // home; neither ever sees the old unverified demo between the two.
+      finishVerifiedStartup();
     }
   }
   restore();

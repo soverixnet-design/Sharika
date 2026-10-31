@@ -41,6 +41,15 @@ jobs:
           import time
           now = int(time.time()*1000) - 2000  # Round is safely open before SQLite checks it
           db.execute("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES (10000001,'tester','Tester','2000-01-01',0,200)")
+          db.execute("INSERT INTO sharika_rooms(id,owner_id,name) VALUES ('10000001','tester','Room')")
+          assert db.execute("SELECT seat_frame_style FROM sharika_rooms WHERE id='10000001'").fetchone()[0] == 'grad'
+          db.execute("UPDATE sharika_rooms SET seat_frame_style='neon' WHERE id='10000001'")
+          assert db.execute("SELECT seat_frame_style FROM sharika_rooms WHERE id='10000001'").fetchone()[0] == 'neon'
+          try:
+              db.execute("UPDATE sharika_rooms SET seat_frame_style='invalid' WHERE id='10000001'")
+              raise AssertionError('Invalid decorative frame was accepted')
+          except sqlite3.IntegrityError:
+              pass
           db.execute("INSERT INTO sharika_game_rounds(id,game,round_no,starts_ms,bet_closes_ms,closes_ms,seed_hex,commit_sha256) VALUES ('food-wheel:1','food-wheel',1,?,?,?,?,?)",
                      (now,now+30000,now+40000,'a'*64,'b'*64))
           db.execute("INSERT INTO sharika_game_bets(game,round_no,round_id,user_uid,stake,pick_index,request_id) VALUES ('food-wheel',1,'food-wheel:1','tester',50,2,'test-game-request-12345')")
@@ -85,4 +94,46 @@ jobs:
           print('Original Food/Night/Jackpot atomic ledger, idempotency and pool verified')
           print('Game debit/payout ledger and replay protection verified')
           print('Sharika D1 schema valid:', len(tables), 'tables')
+          PY
+
+      - name: Validate Lucky Gift receiver diamonds and room rewards in isolated SQLite
+        run: |
+          python3 - <<'PY'
+          import pathlib,sqlite3
+          db=sqlite3.connect(':memory:')
+          db.execute('PRAGMA foreign_keys=ON')
+          for path in sorted(pathlib.Path('cloudflare/migrations').glob('*.sql')):
+              db.executescript(path.read_text())
+          db.execute("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(10000001,'sender','Sender','2000-01-01',0,30000)")
+          db.execute("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor) VALUES(10000002,'receiver','Receiver','2000-01-01',0)")
+          db.execute("INSERT INTO sharika_rooms(id,owner_id,name) VALUES('10000001','sender','Room')")
+          for uid in ['sender','receiver']:
+              db.execute("INSERT INTO sharika_room_members(room_id,user_id) VALUES('10000001',?)",(uid,))
+          db.execute("INSERT INTO sharika_gifts(id,name,tab,price_coins,active) VALUES(10,'Lucky',2,10000,1)")
+          db.execute("INSERT INTO sharika_gifts(id,name,tab,price_coins,active) VALUES(11,'Small Lucky',2,5,1)")
+          def settle(request_id,gift_id,price,points):
+              db.execute("UPDATE sharika_users SET coins=coins-? WHERE auth_uid='sender'",(price,))
+              db.execute("INSERT INTO sharika_gift_transactions(sender_uid,room_id,gift_id,quantity,recipient_ids_json,total_coins,request_id) VALUES('sender','10000001',?,1,'[\"10000002\"]',?,?)",(gift_id,price,request_id))
+              tx=db.execute("SELECT id FROM sharika_gift_transactions WHERE request_id=?",(request_id,)).fetchone()[0]
+              db.execute("INSERT INTO sharika_lucky_gift_outcomes(transaction_id,sender_uid,payout_coins,max_multiplier,rolls_json) VALUES(?,'sender',0,0,'{}')",(tx,))
+              db.execute("INSERT INTO sharika_gift_events(transaction_id,room_id,sender_uid,recipient_uid,gift_id,quantity,price_coins) VALUES(?,'10000001','sender','receiver',?,1,?)",(tx,gift_id,price))
+              db.execute("INSERT INTO sharika_lucky_recipient_rewards(transaction_id,recipient_uid,earned_hundredths) VALUES(?,'receiver',?)",(tx,points))
+              db.execute("INSERT INTO sharika_lucky_room_rewards(transaction_id,room_id,reward_hundredths) VALUES(?,'10000001',?)",(tx,price))
+              return tx
+          tx=settle('lucky-share-large-0001',10,10000,50000)
+          assert db.execute("SELECT diamonds FROM sharika_users WHERE auth_uid='receiver'").fetchone()[0]==500
+          assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='sender'").fetchone()[0]==20000
+          assert db.execute("SELECT SUM(reward_hundredths) FROM sharika_lucky_room_rewards").fetchone()[0]==10000
+          try:
+              db.execute("UPDATE sharika_lucky_room_rewards SET reward_hundredths=0 WHERE transaction_id=?",(tx,))
+              raise AssertionError('Room reward was mutable')
+          except sqlite3.IntegrityError: pass
+          for i in range(4):
+              settle('lucky-share-small-'+str(i).zfill(4),11,5,25)
+          assert db.execute("SELECT diamonds FROM sharika_users WHERE auth_uid='receiver'").fetchone()[0]==501
+          assert db.execute("SELECT earned_hundredths,credited_diamonds FROM sharika_lucky_diamond_accruals WHERE recipient_uid='receiver'").fetchone()==(50100,501)
+          assert db.execute("SELECT SUM(reward_hundredths) FROM sharika_lucky_room_rewards").fetchone()[0]==10020
+          assert db.execute("SELECT COUNT(*) FROM sharika_wallet_ledger WHERE reason='lucky_gift_received'").fetchone()[0]==2
+          assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='sender'").fetchone()[0]==19980
+          print('Lucky 5% receiver diamond ledger, fractional accumulation, 1% room reward, immutable records validated')
           PY
