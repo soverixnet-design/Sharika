@@ -2754,7 +2754,51 @@
   let pendingSellerTransfer=null; // retained across sheet reopen for safe network retries
   const sellerEscape=v=>String(v==null?'':v).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  // Seller Wallet styling is scoped to this sheet; the original app design stays intact.
+  function ensureSellerWalletStyle(){
+    if(document.getElementById('sharika-seller-wallet-v2-style'))return;
+    const style=document.createElement('style');
+    style.id='sharika-seller-wallet-v2-style';
+    style.textContent=[
+      '#sharika-seller-content{box-sizing:border-box;width:100%;max-width:100%;color:#f8f7ff;font-family:inherit}',
+      '#sharika-seller-content *{box-sizing:border-box}',
+      '#sharika-seller-content .shw-hero{position:relative;overflow:hidden;padding:21px 18px;border-radius:22px;background:linear-gradient(130deg,#5931a8 0%,#342b9f 55%,#1175b4 100%);border:1px solid #ffffff54;box-shadow:inset 0 2px 1px #ffffff65,0 12px 22px #050c4266;margin:14px 0}',
+      '#sharika-seller-content .shw-hero:after{content:"";position:absolute;right:-42px;top:-55px;width:178px;height:178px;border-radius:50%;background:radial-gradient(circle,#ffcf6d6c 0%,transparent 68%);pointer-events:none}',
+      '#sharika-seller-content .shw-eyebrow{font-size:12px;font-weight:800;letter-spacing:.8px;color:#e6dcff;text-transform:uppercase}',
+      '#sharika-seller-content .shw-stock{font-size:30px;font-weight:900;line-height:1.3;letter-spacing:-.6px;text-shadow:0 2px 8px #0006;overflow-wrap:anywhere}',
+      '#sharika-seller-content .shw-stock small{font-size:14px;font-weight:700;letter-spacing:0;color:#ffdf8b}',
+      '#sharika-seller-content .shw-id{display:inline-flex;align-items:center;gap:7px;border:1px solid #ffffff68;border-radius:999px;padding:7px 11px;background:#ffffff22;font-size:12px;font-weight:700;margin-top:13px}',
+      '#sharika-seller-content .shw-section{background:linear-gradient(160deg,#ffffff1e,#ffffff0b);border:1px solid #ffffff36;box-shadow:inset 0 1px #ffffff32,0 10px 18px #020e3860;border-radius:19px;padding:16px;margin:12px 0}',
+      '#sharika-seller-content .shw-title{margin:0 0 6px;font-size:17px;font-weight:900;color:white}',
+      '#sharika-seller-content .shw-sub{font-size:12px;color:#dcdff9;line-height:1.5;margin:0 0 14px}',
+      '#sharika-seller-content .shw-label{display:block;font-size:12px;font-weight:800;color:#e7ddff;margin:12px 0 6px}',
+      '#sharika-seller-content .shw-control-row{display:flex;gap:8px;align-items:stretch}',
+      '#sharika-seller-content .shw-input{display:block;min-width:0;width:100%;flex:1;border:1px solid #9eaeed!important;border-radius:13px!important;background:#f8f9ff!important;color:#1b2355!important;font-size:16px!important;font-weight:800;padding:13px 12px!important;outline:none!important;box-shadow:inset 0 2px 5px #071b2522!important}',
+      '#sharika-seller-content .shw-input:focus{border-color:#ffd373!important;box-shadow:0 0 0 3px #ffd37342!important}',
+      '#sharika-seller-content .shw-input::placeholder{color:#7782a0;font-weight:500}',
+      '#sharika-seller-content .shw-mini{border:1px solid #ffdb7e88;border-radius:12px;color:#ffecb8;background:#eab94726;font-size:12px;font-weight:800;padding:0 11px;white-space:nowrap}',
+      '#sharika-seller-content .shw-chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:9px}',
+      '#sharika-seller-content .shw-chip{border-radius:11px;border:1px solid #ffffff55;background:#ffffff18;color:#fff;padding:9px 3px;font-size:12px;font-weight:800}',
+      '#sharika-seller-content .shw-chip:active,#sharika-seller-content .shw-mini:active{transform:translateY(1px)}',
+      '#sharika-seller-content .shw-submit{display:block;width:100%;margin-top:16px;border:1px solid #fff2ab;border-radius:15px;padding:14px 12px;color:#392303;font-size:15px;font-weight:900;background:linear-gradient(180deg,#fff0a8,#ffc947 57%,#e5a821);box-shadow:inset 0 2px 2px #fff9,0 7px 14px #050a4066}',
+      '#sharika-seller-content .shw-submit:disabled{opacity:.6;cursor:wait;box-shadow:none}',
+      '#sharika-seller-content .shw-note{margin-top:10px;font-size:12px;line-height:1.5;min-height:1em;overflow-wrap:anywhere}',
+      '#sharika-seller-content .shw-note[data-tone="success"]{color:#a6ffda}',
+      '#sharika-seller-content .shw-note[data-tone="error"]{color:#ffbdbd}',
+      '#sharika-seller-content .shw-note[data-tone="info"]{color:#f9e9bb}',
+      '#sharika-seller-content .shw-details{border-radius:16px;border:1px solid #ffffff35;background:#ffffff11;margin:11px 0;overflow:hidden}',
+      '#sharika-seller-content .shw-details summary{cursor:pointer;padding:14px 15px;font-size:14px;font-weight:900;color:#fff;list-style-position:inside}',
+      '#sharika-seller-content .shw-entry{margin:0 10px 9px;padding:10px 12px;border-radius:12px;background:#ffffff18;border:1px solid #ffffff21;font-size:12px;line-height:1.5;color:#dfe7ff}',
+      '#sharika-seller-content .shw-entry strong{display:block;font-size:13px;color:#fff;margin-bottom:3px}',
+      '#sharika-seller-content .shw-tag{display:inline-block;margin-left:5px;padding:2px 5px;background:#a8ffe233;border-radius:5px;color:#b7ffe7;font-size:10px;font-weight:800}',
+      '#sharika-seller-content .shw-empty{padding:4px 15px 14px;color:#becae9;font-size:12px}',
+      '@media(max-width:360px){#sharika-seller-content .shw-stock{font-size:25px}#sharika-seller-content .shw-section{padding:12px}#sharika-seller-content .shw-mini{padding:0 8px}}',
+      '@media(prefers-reduced-motion:reduce){#sharika-seller-content .shw-chip:active{transform:none}}'
+    ].join('');
+    document.head.appendChild(style);
+  }
   async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
+    if(walletOnly)ensureSellerWalletStyle();
     window.openSheet('<h3>🪙 '+(walletOnly?'Seller Wallet':'Coin sellers')+
       '</h3><div id="sharika-seller-content">Loading verified seller data…</div>');
     const root=document.getElementById('sharika-seller-content');
@@ -2791,94 +2835,151 @@
         });
         return;
       }
-      // Private wallet: server independently verifies the seller permission.
+      // Private wallet: access and every stock movement are verified by the Worker.
       const [mine,transfers,allocations]=await Promise.all([
         api('GET','/sellers/me'),api('GET','/sellers/transfers'),
         api('GET','/sellers/allocations')
       ]);
       if(!root.isConnected)return;
       const self=mine.seller;
+      root.classList.add('sharika-seller-wallet');
       if(!self?.active){
-        root.textContent='Seller Wallet is available only to approved coin sellers.';
+        root.innerHTML='<div class="shw-section">Seller Wallet is available only to approved coin sellers.</div>';
         return;
       }
-      const me=self&&self.active?
-        '<div class="card" style="margin-top:12px;padding:12px">'+
-        '<b>Seller ID '+sellerEscape(self.public_id)+'</b><div style="height:6px"></div>'+
-        '<b id="sharika-seller-stock">Your seller stock: '+Number(self.available_coins||0).toLocaleString('en-US')+' coins</b>'+
-        '<p class="n">Recharge an existing Sharika user with your assigned seller stock.</p>'+
-        '<input id="sharika-seller-target" inputmode="numeric" maxlength="8" placeholder="Recipient 8-digit user ID" aria-label="Recipient user ID">'+
-        '<input id="sharika-seller-amount" inputmode="numeric" placeholder="Coins to send (1–1,000,000)" aria-label="Coins to send">'+
-        '<button class="btn" type="button" id="sharika-seller-send">Transfer coins</button>'+
-        '<div id="sharika-seller-note" aria-live="polite"></div></div>':
-        self?'<p class="n">Your seller permission is currently suspended.</p>':'';
-      const historyRows=(transfers.transfers||[]).slice(0,30).map(t=>
-        '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
-        'Transfer #'+sellerEscape(t.id)+' · Sender ID '+sellerEscape(t.sender_public_id)+
-        ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
-        ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('');
-      const stockRows=(allocations.allocations||[]).slice(0,30).map(a=>
-        '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
-        'Allocation #'+sellerEscape(a.id)+' · Admin ID '+sellerEscape(a.sender_public_id)+
-        ' → Seller ID '+sellerEscape(a.seller_public_id)+
-        ' · +'+Number(a.coins||0).toLocaleString('en-US')+' stock coins</div>').join('');
-      root.innerHTML=me+
-        (self?'<div class="card" style="margin-top:12px;padding:12px"><h4>Coin transfer list</h4>'+
-          '<div id="sharika-seller-history">'+(historyRows||'No transfers yet.')+'</div>'+
-          '<h4>Seller wallet stock allocations</h4>'+(stockRows||'No allocations yet.')+'</div>':'');
+      const coinsText=value=>Number(value||0).toLocaleString('en-US');
+      const transferEntries=rows=>(rows||[]).slice(0,30).map(t=>{
+        const isSelf=t.sender_public_id===t.recipient_public_id;
+        return '<div class="shw-entry"><strong>🪙 '+coinsText(t.coins)+' coins'+
+          (isSelf?'<span class="shw-tag">SELF</span>':'')+'</strong>'+
+          'Transfer #'+sellerEscape(t.id)+' · ID '+sellerEscape(t.sender_public_id)+
+          ' → '+sellerEscape(t.recipient_public_id)+
+          (t.created_at?' · '+sellerEscape(t.created_at):'')+'</div>';
+      }).join('')||'<div class="shw-empty">No transfers yet.</div>';
+      const allocationEntries=(allocations.allocations||[]).slice(0,30).map(a=>
+        '<div class="shw-entry"><strong>✨ +'+coinsText(a.coins)+' stock coins</strong>'+
+        'Allocation #'+sellerEscape(a.id)+' · Admin '+sellerEscape(a.sender_public_id)+
+        ' → Seller '+sellerEscape(a.seller_public_id)+
+        (a.created_at?' · '+sellerEscape(a.created_at):'')+'</div>'
+      ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';
+      root.innerHTML=
+        '<section class="shw-hero">'+
+          '<div class="shw-eyebrow">🪙 Available seller stock</div>'+
+          '<div class="shw-stock"><span id="sharika-seller-stock">'+
+            coinsText(self.available_coins)+'</span> <small>coins</small></div>'+
+          '<div class="shw-id">✓ Verified seller · ID '+sellerEscape(self.public_id)+'</div>'+
+        '</section>'+
+        '<section class="shw-section">'+
+          '<h4 class="shw-title">✨ Send a coin recharge</h4>'+
+          '<p class="shw-sub">Recharge any active Sharika ID, including your own. Coins are deducted from your assigned seller stock.</p>'+
+          '<label class="shw-label" for="sharika-seller-target">Recipient user ID</label>'+
+          '<div class="shw-control-row">'+
+            '<input class="shw-input" id="sharika-seller-target" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="8-digit user ID" aria-label="Recipient user ID">'+
+            '<button class="shw-mini" id="sharika-seller-my-id" type="button">My ID</button>'+
+          '</div>'+
+          '<label class="shw-label" for="sharika-seller-amount">Amount in coins</label>'+
+          '<input class="shw-input" id="sharika-seller-amount" inputmode="numeric" autocomplete="off" placeholder="Enter amount (up to 1,000,000)" aria-label="Coins to recharge">'+
+          '<div class="shw-chips" aria-label="Quick recharge amounts">'+
+            '<button type="button" class="shw-chip" data-seller-amount="1000">1K</button>'+
+            '<button type="button" class="shw-chip" data-seller-amount="10000">10K</button>'+
+            '<button type="button" class="shw-chip" data-seller-amount="100000">100K</button>'+
+            '<button type="button" class="shw-chip" data-seller-amount="1000000">1M</button>'+
+          '</div>'+
+          '<button class="shw-submit" type="button" id="sharika-seller-send">🪙 Confirm coin recharge</button>'+
+          '<div class="shw-note" id="sharika-seller-note" role="status" aria-live="polite"></div>'+
+        '</section>'+
+        '<details class="shw-details"><summary>📜 Transfer history ('+
+          (transfers.transfers||[]).length+')</summary>'+
+          '<div id="sharika-seller-history">'+transferEntries(transfers.transfers)+'</div>'+
+        '</details>'+
+        '<details class="shw-details"><summary>🏦 Stock allocations ('+
+          (allocations.allocations||[]).length+')</summary>'+
+          allocationEntries+'</details>';
       const targetField=document.getElementById('sharika-seller-target');
-      if(targetField&&/^[0-9]{8}$/.test(targetId))targetField.value=targetId;
+      const amountField=document.getElementById('sharika-seller-amount');
+      const note=document.getElementById('sharika-seller-note');
       const send=document.getElementById('sharika-seller-send');
+      if(targetField&&/^[0-9]{8}$/.test(targetId))targetField.value=targetId;
+      document.getElementById('sharika-seller-my-id')?.addEventListener('click',()=>{
+        if(targetField){targetField.value=self.public_id;targetField.focus();}
+      });
+      root.querySelectorAll('[data-seller-amount]').forEach(button=>{
+        button.addEventListener('click',()=>{
+          if(amountField){amountField.value=button.dataset.sellerAmount;amountField.focus();}
+        });
+      });
+      const showNote=(message,tone)=>{
+        if(note){note.textContent=message;note.dataset.tone=tone;}
+      };
+      const sellerError=error=>{
+        const code=errText(error);
+        const messages={
+          seller_stock_insufficient:'Not enough seller stock for this recharge.',
+          recipient_balance_limit:'This user has reached the coin wallet limit.',
+          recipient_unavailable:'Recipient ID not found or inactive.',
+          seller_not_approved:'Your seller permission is not active.',
+          idempotency_conflict:'This recharge attempt has changed. Check history before trying again.',
+          invalid_seller_transfer:'Please enter a valid ID and coin amount.',
+          seller_adult_only:'This account is not eligible for seller transfers.'
+        };
+        return messages[code]||code;
+      };
       if(send)send.addEventListener('click',async()=>{
-        const recipient=document.getElementById('sharika-seller-target')?.value.trim()||'';
-        const raw=document.getElementById('sharika-seller-amount')?.value.trim()||'';
+        const recipient=targetField?.value.trim()||'';
+        const raw=amountField?.value.trim()||'';
         const amount=Number(raw);
-        const note=document.getElementById('sharika-seller-note');
-        if(!/^[0-9]{8}$/.test(recipient)||!/^\d+$/.test(raw)||
+        if(!/^[0-9]{8}$/.test(recipient)||!/^[0-9]+$/.test(raw)||
           !Number.isSafeInteger(amount)||amount<1||amount>1000000){
-          if(note)note.textContent='Enter a valid eight-digit user ID and 1–1,000,000 coins.';
+          showNote('Enter a valid 8-digit ID and an amount from 1 to 1,000,000 coins.','error');
+          return;
+        }
+        if(amount>Number(self.available_coins)){
+          showNote('Insufficient seller stock for this amount.','error');
           return;
         }
         send.disabled=true;
         let transferCommitted=false;
         try{
+          showNote('Verifying recipient…','info');
           const verified=await api('GET','/users/'+recipient);
           if(String(verified.id)!==recipient)throw new Error('Recipient verification failed');
-          if(!window.confirm('Send '+amount.toLocaleString('en-US')+' coins to '+
-            String(verified.name||'User')+' (ID '+recipient+')?')){send.disabled=false;return;}
+          const isSelf=recipient===self.public_id;
+          const message=isSelf?
+            'Recharge your own ID '+recipient+' with '+coinsText(amount)+' coins from seller stock?':
+            'Send '+coinsText(amount)+' coins to '+String(verified.name||'User')+' (ID '+recipient+')?';
+          if(!window.confirm(message)){showNote('Recharge cancelled.','info');return;}
           const fingerprint=session.user.id+':'+recipient+':'+amount;
           const requestId=pendingSellerTransfer?.fingerprint===fingerprint
             ?pendingSellerTransfer.requestId:nextWalletRequestId('seller');
           pendingSellerTransfer={fingerprint,requestId};
+          showNote('Recording recharge securely…','info');
           const result=await api('POST','/sellers/transfer',{
             target_public_id:recipient,coins:amount,request_id:requestId
           });
-          transferCommitted=true;pendingSellerTransfer=null;
-          if(note)note.textContent='Transfer #'+result.transfer_id+' from ID '+
-            sellerEscape(result.sender_public_id)+' to ID '+sellerEscape(recipient)+
-            ' complete. Remaining seller stock: '+
-            Number(result.available_coins).toLocaleString('en-US')+' coins.';
+          transferCommitted=true;
+          pendingSellerTransfer=null;
+          self.available_coins=Number(result.available_coins);
           const stockLabel=document.getElementById('sharika-seller-stock');
-          if(stockLabel)stockLabel.textContent='Your seller stock: '+
-            Number(result.available_coins).toLocaleString('en-US')+' coins';
-          const amountField=document.getElementById('sharika-seller-amount');
+          if(stockLabel)stockLabel.textContent=coinsText(result.available_coins);
           if(amountField)amountField.value='';
+          showNote((result.duplicate?'Already recorded: ':'Success! ')+
+            (result.self_recharge?'Your own wallet':'Recipient ID '+recipient)+
+            ' received '+coinsText(amount)+' coins. Transfer #'+result.transfer_id+
+            '. Remaining stock: '+coinsText(result.available_coins)+'.','success');
+          toast('Coin recharge recorded ✓');
           const latest=await api('GET','/sellers/transfers').catch(()=>null);
           const history=document.getElementById('sharika-seller-history');
-          if(history&&latest)history.innerHTML=(latest.transfers||[]).slice(0,30).map(t=>
-            '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
-            'Transfer #'+sellerEscape(t.id)+' · Sender ID '+sellerEscape(t.sender_public_id)+
-            ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
-            ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('')||'No transfers yet.';
-          toast('Coin transfer recorded');
+          if(history&&latest)history.innerHTML=transferEntries(latest.transfers);
           await refreshWalletAfterConfirmedTransaction();
         }catch(error){
-          if(note)note.textContent=(transferCommitted
-            ?'Transfer recorded; display update delayed: '
-            :'Transfer not confirmed; check history before retrying: ')+errText(error);
+          showNote((transferCommitted?'Recharge saved; display update delayed: ':
+            'Recharge not confirmed. Check history before retrying: ')+
+            sellerError(error),'error');
         }finally{if(send.isConnected)send.disabled=false;}
       });
-    }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
+    }catch(error){
+      if(root.isConnected)root.textContent='Unable to load seller wallet: '+errText(error);
+    }
   }
 
 
