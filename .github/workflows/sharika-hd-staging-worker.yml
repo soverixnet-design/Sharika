@@ -1,0 +1,89 @@
+name: Sharika HD room theme Worker (isolated staging only)
+
+on:
+  push:
+    branches:
+      - feature/sharika-hd-room-themes-staging-20261101
+    paths:
+      - '.github/workflows/sharika-hd-staging-worker.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-hd-room-theme-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  publish-staging:
+    name: Verify schema and publish existing staging Worker only
+    if: github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101'
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse any wrong destination or missing token
+        run: |
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            const c=JSON.parse(readFileSync("cloudflare/wrangler.jsonc","utf8"));
+            if(c.name!=="sharika-api-staging" ||
+               c.account_id!=="d81cf7c48fb9b36d468cb0a08720cd74" ||
+               c.vars?.SHARIKA_ENV!=="staging" ||
+               c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=="false" ||
+               c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=="false" ||
+               c.keep_vars!==true ||
+               c.d1_databases?.length!==1 ||
+               c.d1_databases[0].binding!=="DB" ||
+               c.d1_databases[0].database_name!=="sharika-staging" ||
+               c.d1_databases[0].database_id!=="b2c62252-12a5-4740-90c7-01a536d9a39a" ||
+               c.durable_objects?.bindings?.[0]?.name!=="VOICE_ROOMS" ||
+               c.durable_objects.bindings[0].class_name!=="SharikaVoiceRoom" ||
+               !c.secrets?.required?.includes("REALTIME_SFU_APP_SECRET")) {
+              throw new Error("Refusing unexpected environment, voice bindings or database");
+            }
+          '
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Staging API token is missing"
+            exit 1
+          fi
+      - name: Verify Worker syntax and all application tests
+        run: npm --prefix cloudflare run check
+      - name: Verify migration 0031 already applied to isolated staging D1
+        run: |
+          node --input-type=module -e '
+            const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+            const id="b2c62252-12a5-4740-90c7-01a536d9a39a";
+            const sql="SELECT "+
+              "(SELECT COUNT(*) FROM d1_migrations) AS migration_count,"+
+              "(SELECT COUNT(*) FROM d1_migrations WHERE name=\x270031_room_theme_hd_images.sql\x27) AS hd_migration,"+
+              "(SELECT COUNT(*) FROM sqlite_master WHERE type=\x27table\x27 AND name=\x27sharika_room_theme_images\x27) AS hd_table";
+            const response=await fetch("https://api.cloudflare.com/client/v4/accounts/"+account+
+              "/d1/database/"+id+"/query",{
+              method:"POST",
+              headers:{Authorization:"Bearer "+process.env.CLOUDFLARE_API_TOKEN,
+                "Content-Type":"application/json"},
+              body:JSON.stringify({sql})
+            });
+            const result=await response.json();
+            const state=result.result?.[0]?.results?.[0];
+            if(!response.ok || !result.success || state?.migration_count!==31 ||
+               state?.hd_migration!==1 || state?.hd_table!==1)
+              throw new Error("Staging D1 HD table/migration mismatch; refusing publish");
+            console.log("Migration 0031 and HD table confirmed on staging D1");
+          '
+      - name: Inspect the Worker bundle without publishing
+        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sharika-hd-worker-bundle
+      - name: Deploy only the existing staging API Worker (no migration or admin)
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Verify the public staging health route
+        run: curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
