@@ -5,6 +5,7 @@ on:
       - feature/sharika-cloudflare-d1-foundation-20261029
       - feature/sharika-android-staging-20261030
       - feature/sharika-original-games-cards-20261030
+      - feature/sharika-staff-seller-entry-20261031
     paths:
       - 'cloudflare/**'
       - '.github/workflows/sharika-cloudflare-check.yml'
