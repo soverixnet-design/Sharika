@@ -2956,8 +2956,7 @@
           const result=await api('POST','/sellers/transfer',{
             target_public_id:recipient,coins:amount,request_id:requestId
           });
-          transferCommitted=true;
-          pendingSellerTransfer=null;
+          transferCommitted=true;pendingSellerTransfer=null;
           self.available_coins=Number(result.available_coins);
           const stockLabel=document.getElementById('sharika-seller-stock');
           if(stockLabel)stockLabel.textContent=coinsText(result.available_coins);
