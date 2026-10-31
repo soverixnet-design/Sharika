@@ -2037,6 +2037,7 @@
     let pendingGiftRequest=null;
     let lastGiftEventId=null;
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
+    let pendingChatMessage=null;
     let lastEntryEventId=0,entryPollInFlight=null;
     let lastReactionId=0,reactionPollInFlight=null;
     // Load only the real gift catalog approved in D1 by the admin panel.
@@ -3010,9 +3011,14 @@
       chatSendBusy=true;
       if(messageSend)messageSend.disabled=true;
       try {
-        const requestId='chat:'+Date.now().toString(36)+':'+
-          Math.random().toString(36).slice(2);
-        await api('POST','/rooms/'+room.id+'/chat',{body,request_id:requestId});
+        // Keep the same idempotency key when an acknowledged message times out
+        // on the phone. Retrying that text must not post it twice.
+        if(!pendingChatMessage||pendingChatMessage.body!==body)
+          pendingChatMessage={body,requestId:'chat:'+Date.now().toString(36)+':'+
+            Math.random().toString(36).slice(2)};
+        await api('POST','/rooms/'+room.id+'/chat',
+          {body,request_id:pendingChatMessage.requestId});
+        pendingChatMessage=null;
         if(messageInput?.value?.trim()===body)messageInput.value='';
         if(typeof frame.updBtn==='function')frame.updBtn();
         await pollRoomChat();
@@ -3039,13 +3045,16 @@
     // Other phones replay only short-lived reactions on the authenticated
     // sender's currently occupied seat. Never trust an old seat number.
     let reactionEndpointUnavailable=false;
+    let reactionFailureCount=0,reactionRetryAfterMs=0;
     async function pollRoomReactions(){
-      if(reactionPollInFlight||reactionEndpointUnavailable)return reactionPollInFlight;
+      if(reactionPollInFlight||reactionEndpointUnavailable||Date.now()<reactionRetryAfterMs)
+        return reactionPollInFlight;
       const work=(async()=>{
         if(window.cur?.id!==room.id)return;
         const data=await api('GET','/rooms/'+room.id+'/reactions?after='+lastReactionId);
         if(window.cur?.id!==room.id||!session||
            document.getElementById('rf')?.contentWindow!==frame)return;
+        reactionFailureCount=0;reactionRetryAfterMs=0;
         for(const event of Array.isArray(data.events)?data.events:[]){
           const id=Number(event.id);
           if(!Number.isSafeInteger(id)||id<=lastReactionId)continue;
@@ -3060,10 +3069,18 @@
       })();
       reactionPollInFlight=work;
       try{await work;}catch(error){
-        // Older staging Workers lack reactions; the local user's emoji still
-        // appears on the correct seat, without a stream of error toasts.
-        reactionEndpointUnavailable=true;
-        console.warn('Shared room reactions unavailable:',errText(error));
+        const reason=errText(error);
+        // An outdated APK/Worker may truly lack this route, but a single
+        // network timeout must never permanently disable two-way emojis.
+        if(/staging_route_not_available|reaction_route_not_found|migration_pending/i.test(reason)){
+          reactionEndpointUnavailable=true;
+          console.warn('Shared room reactions unsupported:',reason);
+        }else{
+          reactionFailureCount=Math.min(reactionFailureCount+1,5);
+          reactionRetryAfterMs=Date.now()+Math.min(30000,1000*2**reactionFailureCount);
+          if(reactionFailureCount===1)
+            console.warn('Shared room reactions reconnecting:',reason);
+        }
       }finally{if(reactionPollInFlight===work)reactionPollInFlight=null;}
     }
     if(reactionPoll)clearInterval(reactionPoll);
@@ -4606,12 +4623,22 @@
                 recipient_public_id:id,gift_id:gift.id,request_id:requestId
               });
               pendingBondInvite=null;
-              await reloadWallet();
+              // The invitation/gift is already committed. An unrelated wallet
+              // refresh timeout must not tell someone their gift failed.
+              await reloadWallet().catch(()=>{});
               window.closeSheet();
               toast(result.duplicate?'Gift request already confirmed ✓':activeBond?
                 '💝 Bond gift sent! '+bondFmt(result.spent_coins)+' coins · Pair rank boosted ✓':
                 '💌 Invitation sent! '+bondFmt(result.held_coins)+' coins held until accepted.');
-            }catch(error){toast('Invitation not confirmed: '+errText(error));send.disabled=false;}
+            }catch(error){
+              const reason=errText(error);
+              const hints={bond_invite_pair_pending:'An invitation to this person is already awaiting a reply.',
+                cp_invite_already_pending:'Only one open CP proposal is allowed. Reply to the existing invitation first.',
+                bond_invite_rate_limited:'Daily invitation limit reached (20 in 24 hours). Please try again later.',
+                bond_already_active:'You are already linked. Reopen Gifts to send a pair-ranking gift.',
+                wallet_insufficient:'Not enough coins for this gift.'};
+              toast(hints[reason]||'Invitation not confirmed: '+reason);send.disabled=false;
+            }
           };
           card.append(description,send);giftList.appendChild(card);
         }

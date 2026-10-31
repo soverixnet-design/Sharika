@@ -159,6 +159,80 @@ test('multiple Friendship links work, declined and expired invitations refund ex
   }finally{sqlite.close();}
 });
 
+test('new requests cannot double-hold a pair or leave overlapping CP proposals',async()=>{
+  const {sqlite,call}=stageDB();
+  try{
+    const first=await call('person-0','/bonds/invite','POST',{
+      gift_id:1,recipient_public_id:IDS[1],request_id:'cp-one-request-01'});
+    assert.equal(first.status,201);
+    const held=sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='person-0'").get().coins;
+    const repeated=await call('person-0','/bonds/invite','POST',{
+      gift_id:1,recipient_public_id:IDS[1],request_id:'cp-repeat-req-02'});
+    assert.equal(repeated.status,409);
+    assert.equal(repeated.data.error,'bond_invite_pair_pending');
+    const opposite=await call('person-1','/bonds/invite','POST',{
+      gift_id:1,recipient_public_id:IDS[0],request_id:'cp-opposite-003'});
+    assert.equal(opposite.status,409);
+    const different=await call('person-0','/bonds/invite','POST',{
+      gift_id:1,recipient_public_id:IDS[2],request_id:'cp-another-0004'});
+    assert.equal(different.status,409);
+    assert.equal(different.data.error,'cp_invite_already_pending');
+    assert.equal(sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='person-0'").get().coins,held);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_bond_invites').get().n,1);
+    assert.throws(()=>sqlite.prepare('INSERT INTO sharika_bond_invites'+
+      '(sender_uid,recipient_uid,type,gift_id,held_coins,request_id,created_at_ms,expires_at_ms) '+
+      'VALUES(?,?,?,?,?,?,?,?)').run('person-1','person-0','cp',1,5200,
+      'cp-direct-0005',NOW,NOW+86400000),/bond_invite_pair_pending/);
+    const friendship=await call('person-0','/bonds/invite','POST',{
+      gift_id:3,recipient_public_id:IDS[2],request_id:'friend-one-0006'});
+    assert.equal(friendship.status,201);
+    const reverse=await call('person-2','/bonds/invite','POST',{
+      gift_id:4,recipient_public_id:IDS[0],request_id:'friend-reverse-07'});
+    assert.equal(reverse.status,409);
+    assert.equal(reverse.data.error,'bond_invite_pair_pending');
+  }finally{sqlite.close();}
+});
+
+test('bond invite daily limit prevents spam without debiting the wallet',async()=>{
+  const {sqlite,call}=stageDB();
+  try{
+    const insert=sqlite.prepare('INSERT INTO sharika_bond_invites'+
+      '(sender_uid,recipient_uid,type,gift_id,held_coins,request_id,status,created_at_ms,expires_at_ms) '+
+      "VALUES('person-0','person-1','friendship',3,1200,?,'declined',?,?)");
+    for(let i=0;i<20;i++)insert.run('past-invite-'+String(i).padStart(6,'0'),NOW-1000,NOW+86400000);
+    const before=sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='person-0'").get().coins;
+    const rate=await call('person-0','/bonds/invite','POST',{
+      gift_id:3,recipient_public_id:IDS[2],request_id:'too-many-invites-01'});
+    assert.equal(rate.status,429);
+    assert.equal(rate.data.error,'bond_invite_rate_limited');
+    assert.equal(sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='person-0'").get().coins,before);
+    assert.throws(()=>insert.run('past-invite-over-002',NOW,NOW+86400000),
+      /bond_invite_rate_limited/);
+  }finally{sqlite.close();}
+});
+
+test('incoming bond invitations remain visible beyond 60 outgoing entries',async()=>{
+  const {sqlite,call}=stageDB();
+  try{
+    const incoming=await call('person-1','/bonds/invite','POST',{
+      gift_id:3,recipient_public_id:IDS[0],request_id:'incoming-old-0001'});
+    assert.equal(incoming.status,201);
+    // Simulate a legacy account with numerous previously pending outgoing
+    // invitations. New sends are now bounded to 20 per rolling 24 hours.
+    const insert=sqlite.prepare('INSERT INTO sharika_bond_invites'+
+      '(sender_uid,recipient_uid,type,gift_id,held_coins,request_id,status,created_at_ms,expires_at_ms) '+
+      "VALUES('person-0','person-2','friendship',3,1200,?,'declined',?,?)");
+    for(let i=0;i<61;i++)insert.run('legacy-outgoing-'+String(i).padStart(5,'0'),
+      NOW-(70-i)*86400000,NOW+86400000);
+    sqlite.prepare("UPDATE sharika_bond_invites SET status='pending' WHERE sender_uid='person-0'").run();
+    const inbox=await call('person-0','/bonds/me');
+    assert.equal(inbox.status,200);
+    assert.equal(inbox.data.received.length,1);
+    assert.equal(inbox.data.received[0].id,incoming.data.invite_id);
+    assert.equal(inbox.data.sent.length,60);
+  }finally{sqlite.close();}
+});
+
 test('public profile uses actual follow/visitor/gift records, no fabricated counts',async()=>{
   const {sqlite,d1,call}=stageDB();
   try{
@@ -167,7 +241,11 @@ test('public profile uses actual follow/visitor/gift records, no fabricated coun
     sqlite.prepare('INSERT INTO sharika_follows(follower_uid,followed_uid) VALUES(?,?)')
       .run('person-1','person-0');
     assert.equal((await call('person-1','/bonds/visits/'+IDS[0],'POST',{})).status,200);
+    assert.equal(sqlite.prepare('SELECT last_seen_at_ms FROM sharika_profile_visits').get().last_seen_at_ms,NOW);
     assert.equal((await call('person-1','/bonds/visits/'+IDS[0],'POST',{})).status,200);
+    assert.equal(sqlite.prepare('SELECT last_seen_at_ms FROM sharika_profile_visits').get().last_seen_at_ms,NOW);
+    assert.equal((await call('person-1','/bonds/visits/'+IDS[0],'POST',{},NOW+300001)).status,200);
+    assert.equal(sqlite.prepare('SELECT last_seen_at_ms FROM sharika_profile_visits').get().last_seen_at_ms,NOW+300001);
     const result=await call('person-2','/bonds/profile/'+IDS[0]);
     assert.equal(result.data.followers,1);
     assert.equal(result.data.visitors,1);
@@ -201,6 +279,8 @@ test('Android ID profile, room links, gift tabs and exact native routes are wire
   assert.match(web,/💝 CP/);
   assert.match(web,/🤝 Friends/);
   assert.match(web,/bond_pairs/);
+  assert.match(web,/await reloadWallet\(\)\.catch\(\(\)=>\{\}\)/);
+  assert.match(web,/Daily invitation limit reached \(20 in 24 hours\)/);
   assert.match(web,/\x2fbonds\x2frankings\?type=/);
   assert.match(java,/bonds\/catalog/);
   assert.match(java,/bonds\/invites\/\[1-9\]/);

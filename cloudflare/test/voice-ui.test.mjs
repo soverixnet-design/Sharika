@@ -41,6 +41,21 @@ test('seat emojis follow the authenticated speaker and remote events match the s
   assert.match(ui,/Take an unlocked mic seat to show a seat emoji/);
 });
 
+test('a temporary room reaction network failure retries instead of disabling emojis forever',()=>{
+  assert.match(ui,/reactionFailureCount=0;reactionRetryAfterMs=0/);
+  assert.match(ui,/Date\.now\(\)<reactionRetryAfterMs/);
+  assert.match(ui,/reactionRetryAfterMs=Date\.now\(\)\+Math\.min\(30000,1000\*2\*\*reactionFailureCount\)/);
+  assert.match(ui,/if\(\/staging_route_not_available\|reaction_route_not_found\|migration_pending\/i\.test\(reason\)\)/);
+});
+
+test('room chat keeps an idempotency key across timed-out retries of the same text',()=>{
+  assert.match(ui,/let pendingChatMessage=null/);
+  assert.match(ui,/if\(!pendingChatMessage\|\|pendingChatMessage\.body!==body\)/);
+  assert.match(ui,/request_id:pendingChatMessage\.requestId/);
+  assert.match(ui,/await api\('POST','\/rooms\/'.*\+room\.id\+'\/chat'/s);
+  assert.match(ui,/pendingChatMessage=null;\s*if\(messageInput/);
+});
+
 test('clicked seat profile resolves server ID, not the old seat-zero self shortcut',()=>{
   assert.match(ui,/event\.source!==frame\|\|event\.data\?\.t!=='profile'/);
   assert.match(ui,/event\.stopImmediatePropagation\(\)/);

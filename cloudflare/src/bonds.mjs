@@ -232,7 +232,8 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
     if(!target)return fail('user_not_found',404,cors);
     if(target.auth_uid!==uid)await db.prepare(
       'INSERT INTO sharika_profile_visits(visitor_uid,visited_uid,last_seen_at_ms) VALUES(?,?,?) '+
-      'ON CONFLICT(visitor_uid,visited_uid) DO UPDATE SET last_seen_at_ms=excluded.last_seen_at_ms'
+      'ON CONFLICT(visitor_uid,visited_uid) DO UPDATE SET last_seen_at_ms=excluded.last_seen_at_ms '+
+      'WHERE sharika_profile_visits.last_seen_at_ms<=excluded.last_seen_at_ms-300000'
     ).bind(uid,target.auth_uid,nowMs).run();
     return reply({recorded:target.auth_uid!==uid},200,cors);
   }
@@ -242,18 +243,22 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
   }
   if(path==='/api/v1/bonds/me'&&request.method==='GET'){
     await expireBondInvites(db,nowMs);
-    const result=await db.prepare('SELECT i.*,s.public_no AS sender_no,s.name AS sender_name,'+
+    const inviteSelect='SELECT i.*,s.public_no AS sender_no,s.name AS sender_name,'+
       'r.public_no AS recipient_no,r.name AS recipient_name,g.name AS gift_name,g.emoji '+
       'FROM sharika_bond_invites i '+
       'JOIN sharika_users s ON s.auth_uid=i.sender_uid '+
       'JOIN sharika_users r ON r.auth_uid=i.recipient_uid '+
-      'JOIN sharika_bond_gifts g ON g.id=i.gift_id '+
-      "WHERE (i.sender_uid=? OR i.recipient_uid=?) AND i.status='pending' "+
-      'ORDER BY i.id DESC LIMIT 60').bind(uid,uid).all();
-    const invites=rows(result).map(inviteView);
+      'JOIN sharika_bond_gifts g ON g.id=i.gift_id ';
+    // A busy sender's outgoing list must never push incoming invitations out
+    // of a shared LIMIT, otherwise they cannot be accepted or declined.
+    const [incoming,outgoing]=await Promise.all([
+      db.prepare(inviteSelect+"WHERE i.recipient_uid=? AND i.status='pending' "+
+        'ORDER BY i.id DESC LIMIT 60').bind(uid).all(),
+      db.prepare(inviteSelect+"WHERE i.sender_uid=? AND i.status='pending' "+
+        'ORDER BY i.id DESC LIMIT 60').bind(uid).all()
+    ]);
     return reply({public_id:pid(actor.public_no),profile:await readBondProfile(db,uid),
-      received:invites.filter(i=>i.recipient_id===pid(actor.public_no)),
-      sent:invites.filter(i=>i.sender_id===pid(actor.public_no))},200,cors);
+      received:rows(incoming).map(inviteView),sent:rows(outgoing).map(inviteView)},200,cors);
   }
   // Subsequent CP/Friendship gifts boost an already consenting pair's rank;
   // the relationship is not re-created and coins are charged only once.
@@ -341,6 +346,21 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
     const bound=await db.prepare('SELECT id FROM sharika_bonds WHERE type=? AND pair_key=? '+
       'AND ended_at_ms IS NULL').bind(gift.type,pair.join(':')).first();
     if(bound)return fail('bond_already_active',409,cors);
+    const pendingPair=await db.prepare('SELECT id FROM sharika_bond_invites '+
+      "WHERE status='pending' AND type=? AND expires_at_ms>? "+
+      'AND ((sender_uid=? AND recipient_uid=?) OR (sender_uid=? AND recipient_uid=?)) LIMIT 1')
+      .bind(gift.type,nowMs,uid,target.auth_uid,target.auth_uid,uid).first();
+    if(pendingPair)return fail('bond_invite_pair_pending',409,cors);
+    if(gift.type==='cp'){
+      const pendingCp=await db.prepare('SELECT id FROM sharika_bond_invites '+
+        "WHERE type='cp' AND status='pending' AND expires_at_ms>? "+
+        'AND (sender_uid IN (?,?) OR recipient_uid IN (?,?)) LIMIT 1')
+        .bind(nowMs,uid,target.auth_uid,uid,target.auth_uid).first();
+      if(pendingCp)return fail('cp_invite_already_pending',409,cors);
+    }
+    const sentToday=await db.prepare('SELECT COUNT(*) AS n FROM sharika_bond_invites '+
+      'WHERE sender_uid=? AND created_at_ms>=?').bind(uid,nowMs-86400000).first();
+    if(Number(sentToday?.n||0)>=20)return fail('bond_invite_rate_limited',429,cors);
     if(Number(actor.coins)<Number(gift.price_coins))return fail('wallet_insufficient',409,cors);
     const expires=nowMs+config.policy.expiry_hours*MS_HOUR;
     // The first insert allocates the invite ID; the following statements
