@@ -70,6 +70,11 @@ jobs:
       - name: Verify staging D1 has exchange settings before publish
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT diamonds_per_unit,coins_per_unit,revision FROM sharika_exchange_rate WHERE id=1"
+      - name: Verify only the approved cosmetic shop schema exists
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS seeded_items FROM sharika_cosmetics_catalog"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS owned_items FROM sharika_cosmetic_inventory"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS equipped_items FROM sharika_cosmetic_equipped"
       - name: Bundle and inspect without publishing
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
       - name: Deploy only the existing staging Worker (never run migrations)
