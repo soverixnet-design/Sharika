@@ -236,7 +236,7 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
       return stmt;
     };
     const env={DB:db,FIREBASE_PROJECT_ID:project,
-      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[]})}};
+      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{}})}};
     const ownerToken=await token();
     const guestToken=await token({sub:'room-guest'});
     const patch=(jwt,value)=>handleRequest(new Request(
