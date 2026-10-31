@@ -82,7 +82,7 @@
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null;
+  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -195,15 +195,15 @@
       '.sh-sovera-id-effects{display:flex;justify-content:center;align-items:center;gap:8px;margin:6px auto 12px}',
       '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
       '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
+      '.sh-sovera-seat-tag{position:absolute;z-index:18;left:50%;top:100%;width:104px;height:29px;transform:translateX(-50%);object-fit:contain;pointer-events:none}',
+      '.sh-sovera-user-tag{display:inline-block;width:74px;height:25px;object-fit:contain;margin-left:4px;vertical-align:middle}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
-      'pointer-events:none;display:flex;justify-content:center;align-items:center;',
-      'background:radial-gradient(circle,#251054a8,transparent 70%)}',
-      '.sh-sovera-entry-cover img{width:min(82vw,410px);height:min(65dvh,560px);',
-      'max-width:100%;max-height:100%;object-fit:contain;opacity:0;',
-      'filter:drop-shadow(0 0 12px #e6c6ff80)}',
+      'pointer-events:none;display:block;overflow:hidden;background:#16082f}',
+      '.sh-sovera-entry-cover img{position:absolute;inset:0;width:100%;height:100%;',
+      'max-width:none;max-height:none;object-fit:cover;object-position:center top;',
+      'opacity:0;filter:drop-shadow(0 0 12px #e6c6ff80)}',
       '.sh-sovera-entry-cover.ready img{opacity:1}',
-      '@media(max-height:560px){.sh-sovera-entry-cover img{height:70vh;width:min(58vw,350px)}}',
-      '.sh-sovera-entry-cover button{position:absolute;top:20px;right:18px;',
+      '.sh-sovera-entry-cover button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:18px;',
       'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
       'background:#25134a;font-size:22px;width:40px;height:40px}',
       '@media(prefers-reduced-motion:reduce){.sh-sovera-frame.fxr{animation:none!important}}'
@@ -298,7 +298,15 @@
       if(!Number.isInteger(index)||index<0)continue;
       const item=row.dataset.t==='m'?frame.seats?.[index]:
         row.dataset.t==='a'?frame.U?.[index]:null;
-      if(item)paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
+      if(!item)continue;
+      paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
+      row.querySelector('.sh-sovera-user-tag')?.remove();
+      const tag=nameTagArt(item.name_tag_style);
+      if(tag){
+        const img=doc.createElement('img');
+        img.className='sh-sovera-user-tag';img.alt='Verified name tag';
+        img.src=cosmeticMedia(tag);row.appendChild(img);
+      }
     }
   }
   function decorateRoomChat(frame){
@@ -330,10 +338,12 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
+      el.querySelectorAll('.sh-sovera-seat-tag').forEach(decoration=>decoration.remove());
       const item=frameArt(seat.frame_style);
       const medal=medalArt(seat.medal_style);
+      const nameTag=nameTagArt(seat.name_tag_style);
       avatar.classList.toggle('sh-has-sovera-frame',!!item);
-      if(!item&&!medal)continue;
+      if(!item&&!medal&&!nameTag)continue;
       avatar.style.position='relative';
       if(item){
         const decoration=doc.createElement('i');
@@ -349,6 +359,14 @@
         badge.src=cosmeticMedia(medal);
         badge.setAttribute('aria-hidden','true');
         avatar.appendChild(badge);
+      }
+      if(nameTag){
+        const plaque=doc.createElement('img');
+        plaque.className='sh-sovera-seat-tag';
+        plaque.alt='Verified nameplate';
+        plaque.src=cosmeticMedia(nameTag);
+        el.style.position='relative';
+        el.appendChild(plaque);
       }
     }
   }
@@ -374,7 +392,28 @@
       decorateGiftRecipients(frame);
     };
   }
-  function styleSelectionSheet(kind){
+  let cosmeticCataloguePromise=null;
+  async function loadVerifiedCosmetics(){
+    if(cosmeticCataloguePromise)return cosmeticCataloguePromise;
+    const work=(async()=>{
+      const data=await api('GET','/cosmetics');
+      const items=Array.isArray(data.items)?data.items:[];
+      const lists={frame_style:SOVERA_FRAMES,entry_style:SOVERA_ENTRIES,
+        medal_style:SOVERA_MEDALS,name_tag_style:SOVERA_TAGS};
+      for(const item of items){
+        const list=lists[item.kind];
+        if(!list||typeof item.id!=='string')continue;
+        const alias=item.id.slice(item.kind.length+1);
+        if(list.some(x=>x.id===alias))continue;
+        const art=list.find(x=>x.id===item.art_key);
+        if(art)list.push({...art,id:alias,name:item.name});
+      }
+      return items;
+    })();
+    cosmeticCataloguePromise=work;
+    try{return await work;}finally{cosmeticCataloguePromise=null;}
+  }
+  async function styleSelectionSheet(kind){
     if(!session){window.showAuth('welcome');return;}
     cosmeticCss(document);
     const isEntry=kind==='entry_style';
@@ -386,7 +425,7 @@
     const catalog=isEntry?SOVERA_ENTRIES:isMedal?SOVERA_MEDALS:isTag?SOVERA_TAGS:SOVERA_FRAMES;
     window.openSheet('<h3>'+title+'</h3><div id="sh-sovera-tabs"></div>'+
       '<div id="sh-sovera-list" class="sh-sovera-grid"></div>'+
-      '<p style="font-size:12px;color:#c9bbed">Free decorative styles; no coins charged and no staff/VIP rank awarded. Your choice is saved on the verified server.</p>');
+      '<p style="font-size:12px;color:#c9bbed">Coins are charged only when buying. Owned or Super Admin-granted items can be equipped free. Preview is not ownership.</p>');
     const node=document.getElementById('sh-sovera-list');
     if(!node)return;
     const tabs=document.getElementById('sh-sovera-tabs');
@@ -403,7 +442,16 @@
       tabs.appendChild(tab);
     }
     const current=profile?.[kind]||'';
-    const choices=[{id:'',name:'None',art:''},...catalog];
+    let records;
+    try{records=(await loadVerifiedCosmetics()).filter(x=>x.kind===kind);}
+    catch(error){node.textContent='Cosmetic shop unavailable: '+errText(error);return;}
+    if(!node.isConnected)return;
+    const choices=[{id:'',name:'None',art:'',owned:true},...records.map(row=>{
+      const key=row.id.slice(kind.length+1);
+      const art=catalog.find(x=>x.id===key)||catalog.find(x=>x.id===row.art_key);
+      return {...art,id:key,item_id:row.id,name:row.name,owned:row.owned,
+        active:row.active,price_coins:row.price_coins};
+    })];
     for(const item of choices){
       const button=document.createElement('button');
       button.className='sh-sovera-item';
@@ -429,6 +477,11 @@
       const label=document.createElement('span');
       label.textContent=item.name;
       button.appendChild(label);
+      const price=document.createElement('span');
+      price.textContent=item.owned?'✓ Owned':item.active?
+        '🪙 '+Number(item.price_coins).toLocaleString('en-US'):'Unavailable';
+      button.appendChild(price);
+      button.disabled=!!item.item_id&&!item.owned&&!item.active;
       if(isEntry&&item.id){
         const preview=document.createElement('button');
         preview.type='button';preview.className='act';preview.textContent='▶ Preview';
@@ -441,11 +494,21 @@
       }else node.appendChild(button);
       button.onclick=async()=>{
         if(button.disabled)return;
+        if(item.item_id&&!item.owned&&!window.confirm(
+          'Buy '+item.name+' for '+Number(item.price_coins).toLocaleString('en-US')+
+          ' coins from your verified wallet?'))return;
         button.disabled=true;
         try{
-          const saved=await api('PATCH','/me',{[kind]:item.id});
-          if(!Object.prototype.hasOwnProperty.call(saved,kind)||
-             saved[kind]!==item.id)throw new Error('Profile effects server update is pending');
+          if(item.item_id&&!item.owned){
+            await api('POST','/cosmetics/purchase',{
+              item_id:item.item_id,
+              request_id:'cosmetic:'+Date.now().toString(36)+':'+
+                Math.random().toString(36).slice(2)
+            });
+          }
+          await api('POST','/cosmetics/equip',{kind,item_id:item.item_id||''});
+          const saved=await api('GET','/me');
+          if((saved[kind]||'')!==item.id)throw new Error('Verified equip pending');
           profile=saved;
           if(window.A){
             window.A.frame=saved.frame_style||'';
@@ -458,7 +521,7 @@
           }
           window.closeSheet();
           toast((isEntry?'Entry':isMedal?'Medal':isTag?'Name tag':'Frame')+
-            ' saved to your verified profile ✓');
+            ' equipped from your verified inventory ✓');
         }catch(error){toast('Effect not saved: '+errText(error));button.disabled=false;}
       };
     }
@@ -1400,25 +1463,9 @@
     frame.render();
     decorateRoomPeople(frame);
     decorateRoomChat(frame);
-    const present=new Set((data.members||[]).map(m=>m.user_id));
-    if(!frame.__soveraSeenMembers){
-      frame.__soveraSeenMembers=present;
-      // Local user sees the selected entry on initial room visit.
-      const first=(data.members||[]).find(m=>m.user_id===session?.user?.id);
-      if(first?.sharika_users?.entry_style){
-        playSoveraEntry(frame.document,first.sharika_users.entry_style);
-      }
-    }else{
-      for(const item of data.members||[]){
-        if(!frame.__soveraSeenMembers.has(item.user_id)&&
-           item.user_id!==session?.user?.id&&
-           item.sharika_users?.entry_style){
-          playSoveraEntry(frame.document,item.sharika_users.entry_style);
-          break;
-        }
-      }
-      frame.__soveraSeenMembers=present;
-    }
+    // Arrival effects come from the coordinator's short, verified event
+    // history, not the 15-second seat/member snapshot that misses guests.
+    frame.__soveraSeenMembers=new Set((data.members||[]).map(m=>m.user_id));
   }
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
@@ -1464,6 +1511,7 @@
     let pendingGiftRequest=null;
     let lastGiftEventId=null;
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
+    let lastEntryEventId=0,entryPollInFlight=null;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
     // Report a verified member or room through the existing authenticated
@@ -2412,7 +2460,36 @@
       }
     };
     wireSoveraRoomFrames(frame);
+    await loadVerifiedCosmetics().catch(error=>console.warn('Cosmetic art:',errText(error)));
     await syncFrame(room,frame);
+    // Each phone consumes the same verified room-entry event stream.
+    // Display recent joins once, including this user's own arrival.
+    async function pollRoomEntries(){
+      if(entryPollInFlight)return entryPollInFlight;
+      const work=(async()=>{
+        if(window.cur?.id!==room.id)return;
+        const data=await api('GET','/rooms/'+room.id+'/entries?after='+lastEntryEventId);
+        if(window.cur?.id!==room.id ||
+           document.getElementById('rf')?.contentWindow!==frame)return;
+        for(const event of data.events||[]){
+          const id=Number(event.id);
+          if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
+          lastEntryEventId=id;
+          if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          if(!entryArt(event.entry_style))
+            await loadVerifiedCosmetics().catch(()=>{});
+          if(entryArt(event.entry_style))
+            playSoveraEntry(frame.document,event.entry_style);
+        }
+      })();
+      entryPollInFlight=work;
+      try{return await work;}finally{if(entryPollInFlight===work)entryPollInFlight=null;}
+    }
+    pollRoomEntries().catch(error=>console.warn('Room entries:',errText(error)));
+    if(entryPoll)clearInterval(entryPoll);
+    entryPoll=setInterval(()=>{
+      if(window.cur?.id===room.id)pollRoomEntries().catch(()=>{});
+    },2500);
     try {
       const voice=await connectVoice(room.id);
       frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
@@ -2465,6 +2542,7 @@
         if(framePoll){clearInterval(framePoll);framePoll=null;}
         if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
         if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
         await releaseVoice();
         await api('POST','/rooms/'+prior.id+'/leave',{});
@@ -2482,6 +2560,7 @@
     if(framePoll){clearInterval(framePoll);framePoll=null;}
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
     if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
     releaseVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});

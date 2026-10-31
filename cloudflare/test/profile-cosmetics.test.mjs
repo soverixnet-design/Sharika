@@ -39,6 +39,7 @@ function cosmeticsDb(){
           return {...current};
         return null;
       },
+      async all(){return {results:[]};},
       async run(){
         assert.match(sql,/^UPDATE sharika_users SET /);
         mutations.push(sql);
@@ -51,57 +52,44 @@ function cosmeticsDb(){
   }};
   return db;
 }
-test('original Sovera cosmetics persist on verified profiles without wallet changes',async()=>{
+test('old equipped styles remain visible but free profile-style updates are rejected',async()=>{
   const prior=globalThis.fetch;
   globalThis.fetch=async()=>({ok:true,headers:new Headers({'cache-control':'max-age=300'}),
     json:async()=>({keys:[jwk]})});
   try{
     const db=cosmeticsDb();
+    db.current.frame_style='royal-gold';
+    db.current.entry_style='phoenix-queen';
+    db.current.medal_style='gold';
+    db.current.name_tag_style='legend';
     const headers={Authorization:'Bearer '+await token(),'Content-Type':'application/json'};
     const run=(method,path,body)=>handleRequest(new Request(
       'https://sharika.example/api/v1'+path,{
         method,headers,...(body?{body:JSON.stringify(body)}:{})
       }),{DB:db,FIREBASE_PROJECT_ID:project});
-    let response=await run('PATCH','/me',{
-      frame_style:'royal-gold',entry_style:'phoenix-queen',
-      medal_style:'gold',name_tag_style:'legend'
-    });
+    let response=await run('GET','/me');
     assert.equal(response.status,200);
-    const updated=await response.json();
-    assert.equal(updated.frame_style,'royal-gold');
-    assert.equal(updated.entry_style,'phoenix-queen');
-    assert.equal(updated.medal_style,'gold');
-    assert.equal(updated.name_tag_style,'legend');
-    assert.equal(updated.coins,42);
-    assert.equal(db.mutations.length,1);
+    const saved=await response.json();
+    assert.equal(saved.entry_style,'phoenix-queen');
+    assert.equal(saved.frame_style,'royal-gold');
     response=await run('GET','/users/10000001');
     const publicView=await response.json();
-    assert.equal(publicView.frame_style,'royal-gold');
-    assert.equal(publicView.entry_style,'phoenix-queen');
     assert.equal(publicView.medal_style,'gold');
     assert.equal(publicView.name_tag_style,'legend');
     assert.equal(publicView.coins,undefined);
-    response=await run('PATCH','/me',{frame_style:'https://untrusted.example/frame'});
-    assert.equal(response.status,400);
-    assert.equal(db.mutations.length,1);
-    response=await run('PATCH','/me',{entry_style:'../../script.js'});
-    assert.equal(response.status,400);
-    assert.equal(db.mutations.length,1);
-    response=await run('PATCH','/me',{medal_style:'manager'});
-    assert.equal(response.status,400);
-    assert.equal(db.mutations.length,1);
-    response=await run('PATCH','/me',{name_tag_style:'../../../admin'});
-    assert.equal(response.status,400);
-    assert.equal(db.mutations.length,1);
-    response=await run('PATCH','/me',{coins:5000,frame_style:'vip7'});
-    assert.equal(response.status,403);
-    assert.equal(db.mutations.length,1);
-    response=await run('PATCH','/me',{frame_style:'',entry_style:'',medal_style:'',name_tag_style:''});
+    for(const value of [
+      {frame_style:'vip7'},{entry_style:'phoenix'},{medal_style:'gold'},
+      {name_tag_style:'legend'},{frame_style:''},
+      {entry_style:'../../script.js'},{name_tag_style:'../../../admin'}
+    ]){
+      response=await run('PATCH','/me',value);
+      assert.equal(response.status,403);
+      assert.equal((await response.json()).error,'cosmetic_purchase_or_grant_required');
+    }
+    assert.equal(db.mutations.length,0);
+    response=await run('PATCH','/me',{bio:'real profile update'});
     assert.equal(response.status,200);
-    assert.equal(db.current.frame_style,'');
-    assert.equal(db.current.entry_style,'');
-    assert.equal(db.current.medal_style,'');
-    assert.equal(db.current.name_tag_style,'');
+    assert.equal(db.mutations.length,1);
     assert.equal(db.current.coins,42);
   }finally{globalThis.fetch=prior;}
 });
