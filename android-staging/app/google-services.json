@@ -14,11 +14,35 @@
       },
       "oauth_client": [
         {
+          "client_id": "847262470616-hsc314ms3rrld9v07u4peblne1tadddh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.soverixnet.sharika",
+            "certificate_hash": "ab491a1a905a42bf42417d7b62c658b379f32bb0"
+          }
+        },
+        {
+          "client_id": "847262470616-ihn6ulklqn2r8btnb5k1pj21jg3rtg35.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.soverixnet.sharika",
+            "certificate_hash": "44f00beb6c2695253e69470ef5bbc91570c949d2"
+          }
+        },
+        {
           "client_id": "847262470616-j1l1a8538ts17bv6mdjeepl85qt6m7jo.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.soverixnet.sharika",
             "certificate_hash": "f0b85e32d0057eff76071ffaac47243328813f4b"
+          }
+        },
+        {
+          "client_id": "847262470616-r6ruuqguubr0l2ocdnf0aa8kgjvdmkp2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.soverixnet.sharika",
+            "certificate_hash": "630bb25d9ea2d2c3817eb3a4480f4d9b288b4541"
           }
         },
         {

@@ -89,9 +89,14 @@ jobs:
           const oauth = c.client?.[0]?.oauth_client || [];
           const androidClient = oauth.find(v => v.client_type === 1);
           const webClient = oauth.find(v => v.client_type === 3);
-          if (!androidClient?.android_info?.certificate_hash ||
-              !webClient?.client_id) {
+          const stagingSignerSha1 = 'ab491a1a905a42bf42417d7b62c658b379f32bb0';
+          if (!androidClient?.android_info?.certificate_hash || !webClient?.client_id) {
             throw new Error('Google OAuth client IDs missing from google-services.json');
+          }
+          if (!oauth.some(v => v.client_type === 1 &&
+              v.android_info?.package_name === pkg &&
+              v.android_info?.certificate_hash?.toLowerCase() === stagingSignerSha1)) {
+            throw new Error('Staging APK signing SHA-1 missing from Google OAuth clients');
           }
           console.log('SHARIKA_ANDROID_FIREBASE_IDENTITY_AND_GOOGLE_OAUTH_OK');
           NODE
