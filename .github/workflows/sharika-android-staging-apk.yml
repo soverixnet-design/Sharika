@@ -14,6 +14,7 @@ on:
       - fix/sharika-profile-save-recovery-20261031
       - fix/sharika-two-way-mic-direct-seat-20261031
       - feature/sharika-greedy-wheel-20261031
+      - feature/sharika-greedy-wheel-current-20261031
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
