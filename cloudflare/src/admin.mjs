@@ -409,6 +409,45 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     return reply({ ledger:rows.map(l => ({ ...l, public_id:id(l.public_no), public_no:undefined })),
       limited_to:100, read_only:true }, 200, cors);
   }
+  // A transaction-level audit view, including fractional room and recipient
+  // entitlements. Each source is 0-or-1 row per transaction except the
+  // recipient aggregate, so multiple recipients cannot multiply the spend.
+  if (operation === 'gift-settlements' && request.method === 'GET') {
+    const denied=allowed(actor.role,FINANCE_ROLES,fail,cors);
+    if(denied)return denied;
+    const rows=values(await env.DB.prepare(
+      'SELECT t.id,t.room_id,t.quantity,t.total_coins,t.created_at,'+
+      's.public_no AS sender_no,g.name,g.emoji,g.tab,'+
+      'o.payout_coins,o.max_multiplier,'+
+      'lr.reward_hundredths AS lucky_room_hundredths,'+
+      'rr.reward_hundredths AS regular_room_hundredths,'+
+      '(SELECT COALESCE(SUM(x.earned_hundredths),0) '+
+      'FROM sharika_lucky_recipient_rewards x WHERE x.transaction_id=t.id) '+
+      'AS recipient_hundredths,'+
+      '(SELECT COUNT(*) FROM sharika_gift_events e WHERE e.transaction_id=t.id) '+
+      'AS recipient_count '+
+      'FROM sharika_gift_transactions t '+
+      'JOIN sharika_users s ON s.auth_uid=t.sender_uid '+
+      'JOIN sharika_gifts g ON g.id=t.gift_id '+
+      'LEFT JOIN sharika_lucky_gift_outcomes o ON o.transaction_id=t.id '+
+      'LEFT JOIN sharika_lucky_room_rewards lr ON lr.transaction_id=t.id '+
+      'LEFT JOIN sharika_regular_room_rewards rr ON rr.transaction_id=t.id '+
+      'ORDER BY t.id DESC LIMIT 100'
+    ).all());
+    return reply({settlements:rows.map(row=>({
+      transaction_id:row.id,created_at:row.created_at,room_id:row.room_id,
+      sender_id:id(row.sender_no),gift:row.name,emoji:row.emoji,
+      kind:row.tab===2?'lucky':'regular',quantity:Number(row.quantity),
+      recipient_count:Number(row.recipient_count),
+      spent_coins:Number(row.total_coins),
+      lucky_payout_coins:row.payout_coins==null?null:Number(row.payout_coins),
+      lucky_max_multiplier:row.max_multiplier==null?null:Number(row.max_multiplier),
+      recipient_diamond_hundredths:Number(row.recipient_hundredths),
+      room_reward_hundredths:Number(row.lucky_room_hundredths??row.regular_room_hundredths??0),
+      room_reward_status:'room_accrued_not_owner_paid'
+    })),limited_to:100,read_only:true,
+      note:'Fractional diamond accrual is not the same as whole diamonds credited to a wallet. Room shares are room-only, not automatically paid to a user.'},200,cors);
+  }
   if (operation === 'gift-events' && request.method === 'GET') {
     const denied=allowed(actor.role,FINANCE_ROLES,fail,cors);
     if(denied)return denied;
