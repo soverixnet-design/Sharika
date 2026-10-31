@@ -2490,15 +2490,53 @@
     if(iframe) iframe.onload=null;
     originalLeaveRoom();
   };
-  // Preserve original recharge/exchange artwork, but never use demo balances.
-  // The rate is fixed on the verified server: 100 diamonds -> 70 coins.
+  // Preserve original recharge/exchange artwork and read the exact
+  // Super-Admin controlled exchange quote from the verified Worker.
   window.RATE=0.7;
+  window.SHARIKA_EXCHANGE_FROM=100;
+  window.SHARIKA_EXCHANGE_TO=70;
+  let exchangeRateRevision=1,exchangeRateFetch=null;
+  async function refreshVerifiedExchangeRate(){
+    if(!session)return;
+    if(exchangeRateFetch)return exchangeRateFetch;
+    const viewer=session.user.id;
+    exchangeRateFetch=(async()=>{
+      const quote=await api('GET','/wallet/exchange-rate');
+      if(session?.user?.id!==viewer)return;
+      const from=Number(quote.diamonds_per_unit),to=Number(quote.coins_per_unit);
+      if(!Number.isSafeInteger(from)||from<1||!Number.isSafeInteger(to)||to<1||
+         !Number.isSafeInteger(quote.revision)||quote.revision<1)
+        throw new Error('Invalid verified exchange rate');
+      const changed=window.SHARIKA_EXCHANGE_FROM!==from||
+        window.SHARIKA_EXCHANGE_TO!==to;
+      window.SHARIKA_EXCHANGE_FROM=from;
+      window.SHARIKA_EXCHANGE_TO=to;
+      window.RATE=to/from;
+      exchangeRateRevision=quote.revision;
+      if(changed&&document.getElementById('rcp')?.classList.contains('on')&&
+         window.RCT===1&&typeof window.renderRcp==='function')
+        window.renderRcp();
+    })();
+    try{return await exchangeRateFetch;}
+    finally{exchangeRateFetch=null;}
+  }
+  const originalRechargeSheet=window.rechargeSheet;
+  if(typeof originalRechargeSheet==='function')window.rechargeSheet=function(...args){
+    const value=originalRechargeSheet.apply(this,args);
+    if(args[0]===1)refreshVerifiedExchangeRate().catch(error=>toast(errText(error)));
+    return value;
+  };
+  document.addEventListener('click',event=>{
+    if(event.target.closest?.('#rcp [data-x="1"]'))
+      refreshVerifiedExchangeRate().catch(error=>toast('Exchange rate: '+errText(error)));
+  },true);
   let selectedRecharge='';let selectedDiamonds=null;let walletOperationBusy=false;
   let pendingExchangeRequest=null;
   document.addEventListener('click',e=>{
     const exchange=e.target.closest?.('#rcp [data-e]');
     if(exchange){
-      const presets=[500,1000,5000,20000];
+      const unit=Number(window.SHARIKA_EXCHANGE_FROM)||100;
+      const presets=[500,1000,5000,20000].map(n=>Math.max(unit,Math.ceil(n/unit)*unit));
       selectedDiamonds=presets[Number(exchange.dataset.e)]||null;
     }
     const recharge=e.target.closest?.('#rcp [data-p]');
@@ -2846,7 +2884,8 @@
             ?pendingExchangeRequest.requestId:nextWalletRequestId('exchange');
           pendingExchangeRequest={diamonds:selectedDiamonds,requestId};
           const result=await api('POST','/wallet/exchange',{
-            diamonds:selectedDiamonds,request_id:requestId
+            diamonds:selectedDiamonds,request_id:requestId,
+            exchange_rate_revision:exchangeRateRevision
           });
           actionConfirmed=true;pendingExchangeRequest=null;
           await refreshWalletAfterConfirmedTransaction({
@@ -2868,9 +2907,15 @@
           toast('Recharge request sent to verified support. No coins added yet.');
         }
       }catch(error){
+        const detail=errText(error);
+        if(id==='ec'&&(detail==='exchange_rate_changed'||
+           detail==='exchange_rate_refresh_required')){
+          pendingExchangeRequest=null;
+          refreshVerifiedExchangeRate().catch(()=>{});
+        }
         toast(actionConfirmed
-          ?'Request confirmed; screen update delayed: '+errText(error)
-          :'Request not confirmed; check transaction history before retrying: '+errText(error));
+          ?'Request confirmed; screen update delayed: '+detail
+          :'Request not confirmed; check transaction history before retrying: '+detail);
       }
       finally{walletOperationBusy=false;button.disabled=false;}
       return;
