@@ -35,3 +35,15 @@ test('gift audit panel displays real backend settlements, including fractional r
   assert.match(source,/lucky_payout_coins/);
   assert.match(source,/Only Super Admin and Finance roles can view wallet settlements/);
 });
+
+test('staff accounts use Firebase verification and exact permission-scoped UI controls',()=>{
+  assert.match(source,/api\('POST','staff',/);
+  assert.match(source,/api\('PATCH','staff\/'\+id,/);
+  assert.match(source,/new_staff_id_token:created\.idToken/);
+  assert.match(source,/requestType:'VERIFY_EMAIL'/);
+  assert.match(source,/window\.NAV=role==='staff'/);
+  assert.match(source,/password\.length<12/);
+  assert.match(source,/api\('POST','recharge-user',/);
+  assert.match(source,/pendingAdminCredit\?\.fingerprint===fingerprint/);
+  assert.match(source,/staff permissions/);
+});
