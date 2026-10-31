@@ -520,6 +520,60 @@
     });
   };
 
+  // Packages stay under the existing Finance workflow. The exchange rate
+  // is a real D1 setting: only Super Admin may change it, with a server audit.
+  P.money=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>💎 Diamond Exchange Rate</h3>'+
+      '<p class="n">The current rate applies to NEW diamond exchanges only. '+
+      'Past receipts and coin balances never change retroactively.</p>'+
+      '<div id="sharika-exchange-admin">Loading verified exchange rate…</div></div>'+
+      card('Recharge packages','Verified payment packages are managed separately. No demo credits.');
+    const panel=byId('sharika-exchange-admin');
+    try{
+      const current=await api('GET','exchange-rate');
+      if(!panel?.isConnected)return;
+      const canEdit=role==='super'&&current.editable;
+      panel.innerHTML='<p class="n"><b id="sharika-exchange-current"></b></p>'+
+        (canEdit?'<div class="row">'+
+          '<label>Diamonds <input id="sharika-rate-diamonds" class="field" type="number" min="1" max="10000" step="1" value="'+
+          Number(current.diamonds_per_unit)+'"></label>'+
+          '<label>Coins <input id="sharika-rate-coins" class="field" type="number" min="1" max="10000" step="1" value="'+
+          Number(current.coins_per_unit)+'"></label></div>'+
+          '<button class="btn" id="sharika-rate-save" type="button">Save exchange rate</button>':
+          '<p class="n">'+(current.editable?
+          'Only Super Admin can change this rate.':
+          'Exchange configuration migration is pending. Current 100:70 rate remains active.')+'</p>')+
+        '<p id="sharika-exchange-status" class="n" role="status"></p>';
+      byId('sharika-exchange-current').textContent=
+        'Current: '+current.diamonds_per_unit+' Diamonds = '+
+        current.coins_per_unit+' Coins · Revision '+current.revision;
+      byId('sharika-rate-save')?.addEventListener('click',async event=>{
+        const button=event.currentTarget,status=byId('sharika-exchange-status');
+        const from=Number(byId('sharika-rate-diamonds')?.value);
+        const to=Number(byId('sharika-rate-coins')?.value);
+        if(!Number.isSafeInteger(from)||from<1||from>10000||
+           !Number.isSafeInteger(to)||to<1||to>10000){
+          status.textContent='Enter whole numbers from 1 to 10,000.';return;
+        }
+        if(!window.confirm('Change the rate to '+from+' Diamonds = '+to+
+           ' Coins for future exchanges? This is audited.'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','exchange-rate',{
+            diamonds_per_unit:from,coins_per_unit:to,
+            expected_revision:current.revision
+          });
+          note('Exchange rate saved ✓');
+          await P.money();
+        }catch(error){
+          status.textContent='Rate not changed: '+error.message;
+          button.disabled=false;
+        }
+      });
+    }catch(error){if(panel?.isConnected)panel.textContent='Rate unavailable: '+error.message;}
+  };
+
   P.sellers=async function(){
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>🪙 Verified coin sellers</h3>'+
