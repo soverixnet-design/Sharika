@@ -59,17 +59,17 @@
   function titleLine(name, count) {
     return '<div class="sh-section-title"><h3>' + name + '</h3>' + (count ? '<span>' + count + '</span>' : '') + '</div>';
   }
-  function renderCollection() {
+  function renderCollection(mine) {
     var active = window.A && window.A.frameImg || "";
     var choices = ITEMS.map(function (item) {
-      var can = authorized(item), selected = active === imageOf(item);
+      var can = mine && authorized(item), selected = active === imageOf(item);
       return '<button type="button" class="sh-frame-choice' + (selected ? ' selected' : '') +
         '" data-sh-frame="' + esc(item.id) + '"' + (can ? '' : ' disabled aria-disabled="true"') +
-        ' aria-label="' + esc(item.name + (can ? ", apply frame" : ", role required")) + '">' +
+        ' aria-label="' + esc(item.name + (can ? ", apply frame" : !mine ? ", preview only" : ", role required")) + '">' +
         '<span class="sh-frpreview"><span class="sh-frface">👤</span><img class="sh-frimg" src="' +
         imageOf(item) + '" alt="" loading="lazy"></span>' +
         '<span class="sh-frname">' + esc(item.name) + '</span>' +
-        '<small>' + (selected ? 'Equipped ✓' : can ? 'Tap to equip' : '🔒 Role required') + '</small></button>';
+        '<small>' + (mine && selected ? 'Equipped ✓' : can ? 'Tap to equip' : !mine ? 'Preview only' : '🔒 Role required') + '</small></button>';
     }).join("");
     return '<section class="sh-collection" aria-label="Profile collections">' +
       '<div class="sh-collection-tabs" role="tablist" aria-label="Collection type">' +
@@ -88,7 +88,7 @@
       '<div class="sh-tab-panel" data-sh-panel="impression" hidden>No impressions have been synced to this profile.</div>' +
       '</section>';
   }
-  function sections(m) {
+  function sections(m,mine) {
     var friends = memberList(m && m.friendList);
     var supporters = memberList(m && m.topSupporters);
     var partner = m && m.cpPartner && typeof m.cpPartner === "object" ? m.cpPartner : null;
@@ -113,7 +113,7 @@
         return '<div class="sh-support-card"><b>TOP ' + (i+1) + '</b>' + person(p) + '</div>';
       }).join("") : [1,2,3].map(function (n) {
         return '<div class="sh-support-card empty"><b>TOP ' + n + '</b><span>—</span><small>No data yet</small></div>';
-      }).join("")) + '</div></section>' + renderCollection() + '</div>';
+      }).join("")) + '</div></section>' + renderCollection(mine) + '</div>';
   }
   function cover(m) {
     var src = m && m.cover;
@@ -125,7 +125,7 @@
   if (typeof oldPfHTML === "function") {
     window.pfHTML = function (m,mine) {
       var html = oldPfHTML(m,mine), marker = '<div class="tabs">';
-      return html.indexOf(marker) >= 0 ? html.replace(marker, sections(m) + marker) : html + sections(m);
+      return html.indexOf(marker) >= 0 ? html.replace(marker, sections(m,mine) + marker) : html + sections(m,mine);
     };
   }
   var oldMeHTML = window.meHTML;
@@ -133,7 +133,7 @@
     window.meHTML = function (m) {
       var html = oldMeHTML(m);
       html = html.replace('<div class="mav">', cover(m) + '<div class="mav">');
-      html = html.replace('<div class="tiles">', sections(m) + '<div class="tiles">');
+      html = html.replace('<div class="tiles">', sections(m,true) + '<div class="tiles">');
       return html;
     };
   }
