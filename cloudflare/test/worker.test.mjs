@@ -211,6 +211,61 @@ test('only the verified room owner can save room settings in D1',async()=>{
   }finally{globalThis.fetch=originalFetch;}
 });
 
+test('room themes and gallery backgrounds reach guests through shared room snapshots',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const owner='firebase:'+project+':secure-user';
+    const db=fakeDb(),originalPrepare=db.prepare.bind(db);
+    let theme='mid',coverVersion=0;
+    db.prepare=sql=>{
+      const stmt=originalPrepare(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({
+          id:'10000001',owner_id:owner,name:'Shared Room',
+          theme,seat_count:12,seat_frame_style:'grad'
+        });
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:stmt.values[1],role:'member'});
+      if(sql.startsWith('SELECT version FROM sharika_room_covers'))
+        stmt.first=async()=>coverVersion?{version:coverVersion}:null;
+      if(sql.startsWith('UPDATE sharika_rooms SET'))
+        stmt.run=async()=>{theme=stmt.values[2];return {meta:{changes:1}};};
+      return stmt;
+    };
+    const env={DB:db,FIREBASE_PROJECT_ID:project,
+      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[]})}};
+    const ownerToken=await token();
+    const guestToken=await token({sub:'room-guest'});
+    const patch=(jwt,value)=>handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001',{
+        method:'PATCH',headers:{Authorization:'Bearer '+jwt},
+        body:JSON.stringify({theme:value})
+      }),env);
+    const read=jwt=>handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001/members',{
+        headers:{Authorization:'Bearer '+jwt}
+      }),env);
+    assert.equal((await patch(guestToken,'photo')).status,403);
+    assert.equal((await patch(ownerToken,'photo')).status,409);
+    assert.equal(theme,'mid');
+    coverVersion=9;
+    assert.equal((await patch(ownerToken,'photo')).status,200);
+    const shared=await read(guestToken);
+    assert.equal(shared.status,200);
+    const body=await shared.json();
+    assert.equal(body.theme,'photo');
+    assert.equal(body.theme_background_url,
+      'https://example.test/api/v1/rooms/10000001/cover?v=9');
+    assert.equal((await patch(ownerToken,'ocean')).status,200);
+    const palette=await (await read(guestToken)).json();
+    assert.equal(palette.theme,'ocean');
+    assert.equal(palette.theme_background_url,null);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
 test('support history requires Firebase authentication and scopes reads to the signer',async()=>{
   const anon=await handleRequest(new Request('https://example.test/api/v1/support/messages'),{
     DB:fakeDb(),FIREBASE_PROJECT_ID:project
