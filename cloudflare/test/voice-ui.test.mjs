@@ -20,3 +20,14 @@ test('mic button retries a failed capture or an interrupted uplink',()=>{
   assert.match(ui,/if\(failed\|\|!track\|\|track\.readyState!=='live'\)/);
   assert.match(ui,/return restartMicrophone\(window\.cur\?\.id\|\|wantedVoiceRoom\)/);
 });
+
+test('room palette and gallery photo are authoritative for every joined phone',()=>{
+  assert.match(ui,/api\('GET','\/rooms\/'\+room\.id\+'\/members'\)/);
+  assert.match(ui,/data\.theme_background_url/);
+  assert.match(ui,/frame\.S\.bg=sharedImage/);
+  assert.match(ui,/frame\.S\.theme=palette/);
+  assert.match(ui,/pickRoomCover\(room,frame,true\)/);
+  assert.match(ui,/api\('PATCH','\/rooms\/'\+room\.id,\{theme:nextTheme\}\)/);
+  assert.match(ui,/api\('PATCH','\/rooms\/'\+room\.id,\{theme:'photo'\}\)/);
+  assert.match(ui,/\.app\.hasbg\{background-position:center center!important;background-size:cover!important/);
+});
