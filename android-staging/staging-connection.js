@@ -615,7 +615,8 @@
     console.warn('Sharika mic transport recovery:',reason);
     state.recoveryTimer=setTimeout(()=>{
       state.recoveryTimer=null;
-      if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId)return;
+      if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||
+         state.publishPC?.connectionState==='connected')return;
       connectVoice(state.roomId).catch(error=>{
         document.getElementById('rf')?.contentWindow?.toast?.(
           'Microphone reconnect failed: '+errText(error));
@@ -728,6 +729,7 @@
           if(state.closed||sfuState!==state)return;
           const status=state.publishPC.connectionState;
           if(status==='connected'){
+            if(state.recoveryTimer){clearTimeout(state.recoveryTimer);state.recoveryTimer=null;}
             state.disconnectedAt=0;
             voiceRecoveryAttempts=0;
             markLocalMicrophone(local.readyState==='live'&&local.enabled);
