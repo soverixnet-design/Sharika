@@ -625,7 +625,14 @@
     'color:#ddd0ff;line-height:1.4;word-break:break-word}',
     '#sharika-photo-status[data-state="success"]{color:#91ffd5}',
     '#sharika-photo-status[data-state="error"]{color:#ffc7ca}',
-    '#sharika-photo-status[data-state="pending"]{color:#ffe08d}'
+    '#sharika-photo-status[data-state="pending"]{color:#ffe08d}',
+    '#sharika-profile-save-status{margin:2px 0 12px;color:#d9c8ff;font-size:12px;line-height:1.5;text-align:center}',
+    '#sharika-profile-save-status[data-state="pending"]{color:#ffe08d}',
+    '#sharika-profile-save-status[data-state="success"]{color:#9affd9}',
+    '#sharika-profile-save-status[data-state="error"]{color:#ffc0c8}',
+    '#sharika-photo-preview{cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}',
+    '#sharika-photo-preview:active{transform:scale(.95)}',
+    '#sh.sharika-profile-editor #es:focus-visible,#sharika-photo-preview:focus-visible{outline:3px solid #ffd787;outline-offset:3px}'
   ].join('');
   document.head.appendChild(profileDepthStyle);
   function photoEditStatus(message,state='info'){
@@ -641,10 +648,11 @@
     editBio.maxLength=500;
     const block=document.createElement('div');
     block.id='sharika-photo-editor';
-    const preview=document.createElement('div');
+    const preview=document.createElement('button');
+    preview.type='button';
+    preview.title='Choose a new profile photo';
     preview.id='sharika-photo-preview';
-    preview.setAttribute('role','img');
-    preview.setAttribute('aria-label','Your verified profile photo');
+    preview.setAttribute('aria-label','Choose your profile photo from gallery');
     const safe=verifiedAvatarUrl(profile?.pic);
     if(safe)preview.style.backgroundImage='url("'+safe+'")';
     else preview.textContent='👤';
@@ -662,7 +670,15 @@
     const photo=sheet.querySelector('#ep');
     if(photo)photo.innerHTML='<span>📷</span>Choose photo';
     const save=sheet.querySelector('#es');
-    if(save)save.textContent='✓ Save changes';
+    if(save){
+      save.textContent='✓ Save changes';
+      const saveStatus=document.createElement('div');
+      saveStatus.id='sharika-profile-save-status';
+      saveStatus.setAttribute('role','status');
+      saveStatus.setAttribute('aria-live','polite');
+      saveStatus.textContent='Changes are saved to your verified Sharika ID.';
+      save.after(saveStatus);
+    }
   }
   const originalOpenSheetForProfile=window.openSheet;
   if(typeof originalOpenSheetForProfile==='function')window.openSheet=function(){
@@ -682,6 +698,7 @@
     avatarUploadBusy=true;
     const accountId=session.user.id;
     const publicId=profile.public_id;
+    const previousPic=verifiedAvatarUrl(profile.pic);
     try{
       photoEditStatus('Opening Android gallery…','pending');
       toast('Opening your Android photo gallery…');
@@ -694,7 +711,20 @@
         throw new Error('Gallery did not return a usable photo');
       photoEditStatus('Saving image to your Sharika ID…','pending');
       toast('Uploading your profile photo…');
-      const saved=await api('PUT','/me/avatar',{image_data});
+      let saved;
+      try{
+        saved=await api('PUT','/me/avatar',{image_data});
+      }catch(error){
+        // A mobile timeout can happen after the server committed the upload.
+        // Reconcile the version before telling a user to retry an already saved photo.
+        if(!/timed out|timeout|network|connection|unavailable|http[_ ]?5[0-9]{2}/i.test(errText(error)))
+          throw error;
+        const checked=await api('GET','/me').catch(()=>null);
+        if(checked?.public_id!==publicId ||
+          !verifiedAvatarUrl(checked.pic) || checked.pic===previousPic)
+          throw error;
+        saved=checked;
+      }
       if(session?.user?.id!==accountId || saved?.public_id!==publicId)
         throw new Error('Profile changed before photo confirmation');
       if(!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(saved.pic||''))
@@ -712,7 +742,8 @@
       }
       profile=latest;
       window.A.pic=latest.pic;
-      window.saveA();window.renderMe();
+      try{window.saveA();window.renderMe();}
+      catch(error){console.warn('Photo saved; local redraw deferred:',errText(error));}
       const preview=document.getElementById('sharika-photo-preview');
       if(preview){preview.style.backgroundImage='url("'+latest.pic+'")';preview.textContent='';}
       photoEditStatus(readbackConfirmed?'Photo saved to your ID ✓':
@@ -743,31 +774,47 @@
   // The original HTML photo picker writes only to localStorage. In staging
   // route every profile photo selection through the verified server wallet ID.
   document.addEventListener('click',event=>{
-    if(event.target.closest?.('#v-me #pavb, #v-me .mav, #sh #ep')){
+    if(event.target.closest?.('#v-me #pavb, #v-me .mav, #sh #ep, #sh #sharika-photo-preview')){
       event.preventDefault();event.stopImmediatePropagation();
       pickProfilePhoto();
     }
   },true);
-  // The original edit form writes only to localStorage. Save verified
-  // profile name/bio through the same Firebase-authenticated D1 profile.
-  document.addEventListener('click',event=>{
+  // Profile text edits only complete after a verified D1 response.
+  document.addEventListener('click',async event=>{
     const save=event.target.closest?.('#sh #es');
     if(!save)return;
     event.preventDefault();event.stopImmediatePropagation();
     if(!session||!profile){toast('Sign in to edit your profile');return;}
     const name=document.getElementById('en')?.value?.trim()||'';
     const bio=document.getElementById('eb')?.value?.trim()||'';
-    if(!name||name.length>80||bio.length>500){toast('Check name and bio length');return;}
+    const status=document.getElementById('sharika-profile-save-status');
+    const showStatus=(message,state)=>{
+      if(status){status.textContent=message;status.dataset.state=state;}
+    };
+    if(!name||name.length>80||bio.length>500){
+      showStatus('Check your name (1–80) and bio (up to 500 characters).','error');
+      return;
+    }
     if(save.disabled)return;
+    const accountId=session.user.id,publicId=profile.public_id;
     save.disabled=true;
-    api('PATCH','/me',{name,bio}).then(saved=>{
-      if(saved.public_id!==profile.public_id)throw new Error('Profile identity mismatch');
+    showStatus('Saving your profile to Sharika…','pending');
+    try{
+      const saved=await api('PATCH','/me',{name,bio});
+      if(session?.user?.id!==accountId||saved.public_id!==publicId)
+        throw new Error('Profile identity changed; sign in again');
       profile=saved;
-      window.A.name=saved.name;window.A.bio=saved.bio||'';
-      window.saveA();window.closeSheet();window.renderMe();
+      window.A.name=saved.name;
+      window.A.bio=saved.bio||'';
+      try{window.saveA();window.renderMe();}
+      catch(error){console.warn('Profile saved; display refresh deferred:',errText(error));}
+      showStatus('Profile saved ✓','success');
+      window.closeSheet();
       toast('Profile saved to your verified ID ✓');
-    }).catch(error=>toast('Profile not saved: '+errText(error)))
-      .finally(()=>{if(save.isConnected)save.disabled=false;});
+    }catch(error){
+      showStatus('Not saved: '+errText(error),'error');
+      toast('Profile not saved: '+errText(error));
+    }finally{if(save.isConnected)save.disabled=false;}
   },true);
   const priorRenderMe=window.renderMe;
   if(typeof priorRenderMe==='function')window.renderMe=function(){
