@@ -51,6 +51,9 @@ jobs:
       - name: Count real original game bets without user identifiers
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT game,status,COUNT(*) AS bets FROM sharika_original_game_bets GROUP BY game,status ORDER BY game,status;"
+      - name: Check aggregate eligible wallets without user identifiers
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS users, MIN(coins) AS min_coins, MAX(coins) AS max_coins, SUM(CASE WHEN status='active' AND minor=0 AND coins>=1000 THEN 1 ELSE 0 END) AS adults_with_1k_coins FROM sharika_users;"
       - name: Count guest seat and mute state without user identifiers
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS room_members, SUM(CASE WHEN role!='owner' AND seat_no IS NOT NULL THEN 1 ELSE 0 END) AS seated_guests, SUM(CASE WHEN role!='owner' AND seat_no IS NOT NULL AND muted=1 THEN 1 ELSE 0 END) AS muted_seated_guests, SUM(CASE WHEN role!='owner' AND seat_no IS NULL THEN 1 ELSE 0 END) AS audience_members FROM sharika_room_members;"
