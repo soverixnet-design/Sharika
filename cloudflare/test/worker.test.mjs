@@ -1102,13 +1102,18 @@ test('profile avatar validates JPEG, persists only to own ID, and rate limits re
         const stmt=original(sql);
         if(sql.includes('SELECT * FROM sharika_users WHERE auth_uid'))
           stmt.first=async()=>({auth_uid:userId,public_no:10000001,name:'Guest',status:'active',pic:userPic});
-        if(sql.startsWith('INSERT INTO sharika_user_avatars'))
-          stmt.run=async()=>{db.calls.push(['avatar_run',sql,stmt.values]);return {meta:{changes}};};
-        if(sql.startsWith('SELECT version FROM sharika_user_avatars'))
-          stmt.first=async()=>({version:2});
-        if(sql.startsWith('UPDATE sharika_users SET pic='))
-          stmt.run=async()=>{userPic=stmt.values[0];db.calls.push(['profile_pic',sql,stmt.values]);return {meta:{changes:1}};};
         return stmt;
+      };
+      db.batch=async stmts=>{
+        db.calls.push(['avatar_batch',stmts]);
+        assert.equal(stmts.length,2);
+        assert.match(stmts[0].sql,/^INSERT INTO sharika_user_avatars/);
+        assert.deepEqual(stmts[0].values.slice(0,1),[userId]);
+        assert.match(stmts[1].sql,/^UPDATE sharika_users SET pic=/);
+        assert.equal(stmts[1].values[1],userId);
+        assert.equal(stmts[1].values[2],userId);
+        if(changes)userPic=stmts[1].values[0]+'2';
+        return [{meta:{changes}},{meta:{changes:1}}];
       };
       return db;
     }
@@ -1120,13 +1125,12 @@ test('profile avatar validates JPEG, persists only to own ID, and rate limits re
     const invalid=await handleRequest(await req('data:image/png;base64,'+jpeg.toString('base64')),
       {DB:invalidDb,FIREBASE_PROJECT_ID:project});
     assert.equal(invalid.status,400);
-    assert.equal(invalidDb.calls.some(c=>c[0]==='avatar_run'),false);
+    assert.equal(invalidDb.calls.some(c=>c[0]==='avatar_batch'),false);
     const goodDb=dbWithUser();
     const saved=await handleRequest(await req(image_data),{DB:goodDb,FIREBASE_PROJECT_ID:project});
     assert.equal(saved.status,200);
     assert.equal((await saved.json()).pic,'https://example.test/api/v1/users/10000001/avatar?v=2');
-    assert.equal(goodDb.calls.some(c=>c[0]==='avatar_run'),true);
-    assert.equal(goodDb.calls.some(c=>c[0]==='profile_pic'),true);
+    assert.equal(goodDb.calls.some(c=>c[0]==='avatar_batch'),true);
     const limited=await handleRequest(await req(image_data),{
       DB:dbWithUser(0),FIREBASE_PROJECT_ID:project
     });
