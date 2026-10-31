@@ -1629,7 +1629,12 @@
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/cover\?v=[0-9]+$/.test(value)
       ?value:null;
   }
-  async function jpegRoomPreview(file){
+  function verifiedThemeUrl(value){
+    return typeof value==='string' &&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/(cover|theme-image)\?v=[0-9]+$/.test(value)
+      ?value:null;
+  }
+  async function jpegRoomPreview(file,highDefinition=false){
     if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
       throw new Error('Choose an image smaller than 15 MB');
     const blobUrl=URL.createObjectURL(file);
@@ -1645,15 +1650,21 @@
       if(!sourceWidth||!sourceHeight)throw new Error('Invalid image dimensions');
       const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
       if(!ctx)throw new Error('Image editor is unavailable');
-      for(const side of [900,720,600,480,360,280]){
+      const sides=highDefinition?[1920,1600,1440,1280,1080,900]:
+        [900,720,600,480,360,280];
+      const qualities=highDefinition?[.90,.82,.74,.64]:[.76,.60,.45];
+      const maxLength=highDefinition?600023:120023;
+      for(const side of sides){
         const scale=Math.min(1,side/Math.max(sourceWidth,sourceHeight));
         canvas.width=Math.max(1,Math.round(sourceWidth*scale));
         canvas.height=Math.max(1,Math.round(sourceHeight*scale));
+        ctx.imageSmoothingEnabled=true;
+        ctx.imageSmoothingQuality='high';
         ctx.fillStyle='#161029';ctx.fillRect(0,0,canvas.width,canvas.height);
         ctx.drawImage(photo,0,0,canvas.width,canvas.height);
-        for(const quality of [.76,.60,.45]){
+        for(const quality of qualities){
           const preview=canvas.toDataURL('image/jpeg',quality);
-          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=120023)
+          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=maxLength)
             return preview;
         }
       }
@@ -1677,6 +1688,12 @@
       coverUploadBusy=true;
       toast('Preparing your room photo…');
       try{
+        // The full-room wallpaper needs far more detail than the small card.
+        // Keep both assets separate, but retain the existing card-cover route.
+        if(useAsTheme || room.th==='photo'){
+          const hd_image_data=await jpegRoomPreview(file,true);
+          await api('PUT','/rooms/'+room.id+'/theme-image',{image_data:hd_image_data});
+        }
         const image_data=await jpegRoomPreview(file);
         const saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
         room.cover_url=verifiedCoverUrl(saved.cover_url);
@@ -1828,7 +1845,7 @@
     const chosenTheme=['mid','gold','ocean','rose','forest','sunset','photo']
       .includes(data.theme)?data.theme:'mid';
     const sharedImage=chosenTheme==='photo'
-      ?verifiedCoverUrl(data.theme_background_url):null;
+      ?verifiedThemeUrl(data.theme_background_url):null;
     const palette=chosenTheme==='photo'?'mid':chosenTheme;
     const themeChanged=room.th!==chosenTheme||frame.S.theme!==palette||
       frame.S.bg!==sharedImage||frame.S.frame!==chosenSeatFrame;

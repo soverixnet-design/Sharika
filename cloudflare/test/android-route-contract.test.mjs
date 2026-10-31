@@ -33,6 +33,15 @@ test('room-entry polling permits only a bounded numeric cursor before generic qu
   assert.doesNotMatch(routes,/path\.equals\("\/api\/v1\/admin\/events"\)/);
 });
 
+test('HD room backgrounds are saved through an owner-authenticated route and displayed for guests',()=>{
+  assert.match(routes,/rooms\/\[0-9\]\{8\}\/theme-image\$"\)\)\s*return method\.equals\("PUT"\)/);
+  assert.match(app,/api\('PUT','\/rooms\/'\+room\.id\+'\/theme-image'/);
+  assert.match(app,/verifiedThemeUrl\(data\.theme_background_url\)/);
+  assert.match(app,/highDefinition\?\[1920,1600,1440,1280,1080,900\]/);
+  assert.match(worker,/SELECT image_base64 FROM sharika_room_theme_images WHERE room_id=/);
+  assert.match(worker,/room_owner_only/);
+});
+
 test('room emoji sync is confined to authenticated room reactions and bounded cursors',()=>{
   const cursor=routes.indexOf('/reactions\\\\?after=');
   const reject=routes.indexOf('if (path.contains("?")) return false;');

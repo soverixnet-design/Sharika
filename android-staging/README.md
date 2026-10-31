@@ -148,6 +148,18 @@ and checks the expected SHA-1 before publishing an artifact. It refuses to
 fall back to an ephemeral debug certificate. A production/Play release
 requires its own separate fingerprint and private key.
 
+**Current Google sign-in configuration check (1 November 2026):** The Android
+OAuth certificate hash embedded in `app/google-services.json` is
+`f0b85e32d0057eff76071ffaac47243328813f4b`, but the stable staging
+APK signer verified by CI is
+`ab491a1a905a42bf42417d7b62c658b379f32bb0`. Verify that the latter
+SHA-1 **and its SHA-256** are registered against
+`com.soverixnet.sharika` in the Firebase project and that the Google sign-in
+provider is enabled. Then download the refreshed `google-services.json` from
+Firebase, replace this file, rebuild, and test the account picker on a real
+phone. Do **not** edit an OAuth certificate hash or client ID in the JSON by
+hand: registration is controlled server-side by Google.
+
 
 ## New staging profile and room controls (not the live app)
 

@@ -650,6 +650,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))
             return method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/theme-image$"))
+            return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/locks$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/invitations$"))
@@ -729,10 +731,11 @@ public final class SharikaActivity extends Activity {
             // Photo uploads carry an optimized JPEG across a mobile connection.
             // Keep normal requests short, but allow a slower gallery save to
             // finish and return its server commit confirmation.
-            boolean savingAvatar = method.equals("PUT") &&
-                path.equals("/api/v1/me/avatar");
-            connection.setConnectTimeout(savingAvatar ? 20000 : 12000);
-            connection.setReadTimeout(savingAvatar ? 60000 : 12000);
+            boolean savingImage = method.equals("PUT") &&
+                (path.equals("/api/v1/me/avatar") ||
+                 path.matches("^/api/v1/rooms/[0-9]{8}/(cover|theme-image)$"));
+            connection.setConnectTimeout(savingImage ? 20000 : 12000);
+            connection.setReadTimeout(savingImage ? 60000 : 12000);
             connection.setRequestProperty("Accept","application/json");
             connection.setRequestProperty("Authorization","Bearer " + jwt);
             if (body != null) {

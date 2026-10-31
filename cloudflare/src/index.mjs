@@ -122,10 +122,11 @@ export async function handleRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
+  const themeImagePath=/^\/api\/v1\/rooms\/([0-9]{8})\/theme-image$/.exec(path);
   const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
   // Public image thumbnails support anonymous GET; edits remain authenticated.
   // all mutations continue through strict origin and Firebase checks.
-  const cors = (coverPath || avatarPath) && request.method==='GET'
+  const cors = (coverPath || themeImagePath || avatarPath) && request.method==='GET'
     ? {'access-control-allow-origin':'*'} : corsFor(request, env);
   if (!cors) return fail('origin_forbidden', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -139,6 +140,20 @@ export async function handleRequest(request, env) {
     if(!image)return fail('room_cover_not_found',404,cors);
     const binary=atob(image.image_base64);
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  // HD room wallpaper is separate from the small card thumbnail, so a large
+  // picture is not stretched into a blurry full-screen background.
+  if(themeImagePath && request.method==='GET') {
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const image=await env.DB.prepare(
+      'SELECT image_base64 FROM sharika_room_theme_images WHERE room_id=?'
+    ).bind(themeImagePath[1]).first();
+    if(!image)return fail('room_theme_image_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
     return new Response(bytes,{status:200,headers:{
       'content-type':'image/jpeg','cache-control':'public, max-age=3600',
       'x-content-type-options':'nosniff',...cors
@@ -698,6 +713,49 @@ export async function handleRequest(request, env) {
       return reply({room_id:roomId,cover_url:url.origin+path+'?v='+row.version,
         cover_version:row.version,image_bytes:row.image_bytes},200,cors);
     }
+    if(themeImagePath && request.method==='PUT') {
+      await assertActive(env.DB,uid);
+      const roomId=themeImagePath[1];
+      const room=await env.DB.prepare('SELECT owner_id FROM sharika_rooms WHERE id=?')
+        .bind(roomId).first();
+      if(!room)return fail('room_not_found',404,cors);
+      if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+      const contentLength=Number(request.headers.get('content-length')||0);
+      if(contentLength>620000)return fail('room_theme_image_too_large',413,cors);
+      const raw=await request.text();
+      if(raw.length>620000)return fail('room_theme_image_too_large',413,cors);
+      let body;
+      try{body=JSON.parse(raw||'{}');}catch(_){return fail('invalid_room_theme_image',400,cors);}
+      if(!body||typeof body!=='object'||Array.isArray(body)||
+         typeof body.image_data!=='string'||!body.image_data.startsWith('data:image/jpeg;base64,'))
+        return fail('invalid_room_theme_image',400,cors);
+      const imageBase64=body.image_data.slice('data:image/jpeg;base64,'.length);
+      if(imageBase64.length<16||imageBase64.length>600000||
+         !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64))
+        return fail('invalid_room_theme_image',400,cors);
+      let binary;
+      try{binary=atob(imageBase64);}catch(_){return fail('invalid_room_theme_image',400,cors);}
+      if(binary.length<32||binary.length>450000||
+         binary.charCodeAt(0)!==255||binary.charCodeAt(1)!==216||
+         binary.charCodeAt(2)!==255||
+         binary.charCodeAt(binary.length-2)!==255||
+         binary.charCodeAt(binary.length-1)!==217)
+        return fail('invalid_room_theme_image',400,cors);
+      const saved=await env.DB.prepare(
+        'INSERT INTO sharika_room_theme_images(room_id,mime,image_base64,image_bytes) '+
+        "VALUES(?,'image/jpeg',?,?) ON CONFLICT(room_id) DO UPDATE SET "+
+        'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
+        "version=MIN(sharika_room_theme_images.version+1,1000000000),updated_at=datetime('now') "+
+        "WHERE sharika_room_theme_images.updated_at<=datetime('now','-20 seconds')"
+      ).bind(roomId,imageBase64,binary.length).run();
+      if(!saved.meta?.changes)return fail('room_theme_image_rate_limited',429,cors);
+      const row=await env.DB.prepare(
+        'SELECT version,image_bytes FROM sharika_room_theme_images WHERE room_id=?'
+      ).bind(roomId).first();
+      return reply({room_id:roomId,
+        theme_background_url:url.origin+path+'?v='+row.version,
+        theme_version:row.version,image_bytes:row.image_bytes},200,cors);
+    }
     if (path === '/api/v1/rooms') {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {
@@ -1207,13 +1265,18 @@ export async function handleRequest(request, env) {
         // Room color and owner-selected photo are shared room state. Return
         // them with every member poll, so guests already inside and late
         // joiners see the same background without trusting localStorage.
-        const cover=room.theme==='photo' ? await env.DB.prepare(
+        const wallpaper=room.theme==='photo' ? await env.DB.prepare(
+          'SELECT version FROM sharika_room_theme_images WHERE room_id=?'
+        ).bind(roomId).first() : null;
+        const cover=room.theme==='photo' && !wallpaper?.version ? await env.DB.prepare(
           'SELECT version FROM sharika_room_covers WHERE room_id=?'
         ).bind(roomId).first() : null;
         return reply({ room: roomId,
           theme:ROOM_THEMES.has(room.theme)?room.theme:'mid',
-          theme_background_url:cover?.version
-            ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null,
+          theme_background_url:wallpaper?.version
+            ? url.origin+'/api/v1/rooms/'+roomId+'/theme-image?v='+wallpaper.version
+            :cover?.version
+              ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null,
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.
           seat_count:room.seat_count,

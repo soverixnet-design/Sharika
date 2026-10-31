@@ -217,7 +217,7 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
   try{
     const owner='firebase:'+project+':secure-user';
     const db=fakeDb(),originalPrepare=db.prepare.bind(db);
-    let theme='mid',coverVersion=0;
+    let theme='mid',coverVersion=0,wallpaperVersion=0;
     db.prepare=sql=>{
       const stmt=originalPrepare(sql);
       if(sql.includes('FROM sharika_users WHERE auth_uid'))
@@ -231,6 +231,8 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
         stmt.first=async()=>({room_id:'10000001',user_id:stmt.values[1],role:'member'});
       if(sql.startsWith('SELECT version FROM sharika_room_covers'))
         stmt.first=async()=>coverVersion?{version:coverVersion}:null;
+      if(sql.startsWith('SELECT version FROM sharika_room_theme_images'))
+        stmt.first=async()=>wallpaperVersion?{version:wallpaperVersion}:null;
       if(sql.startsWith('UPDATE sharika_rooms SET'))
         stmt.run=async()=>{theme=stmt.values[2];return {meta:{changes:1}};};
       return stmt;
@@ -259,6 +261,10 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
     assert.equal(body.theme,'photo');
     assert.equal(body.theme_background_url,
       'https://example.test/api/v1/rooms/10000001/cover?v=9');
+    wallpaperVersion=3;
+    const hdShared=await (await read(guestToken)).json();
+    assert.equal(hdShared.theme_background_url,
+      'https://example.test/api/v1/rooms/10000001/theme-image?v=3');
     assert.equal((await patch(ownerToken,'ocean')).status,200);
     const palette=await (await read(guestToken)).json();
     assert.equal(palette.theme,'ocean');
@@ -1210,6 +1216,68 @@ test('room owner can upload a bounded photo and non-owners cannot change it',asy
     const repeat=await handleRequest(await request(image_data),
       {DB:makeDb(actor,0),FIREBASE_PROJECT_ID:project});
     assert.equal(repeat.status,429);
+  }finally{globalThis.fetch=prevFetch;}
+});
+
+test('HD room wallpaper uses its own bounded image and never replaces the card thumbnail',async()=>{
+  const jpeg=Buffer.from([255,216,255,...Array(120).fill(7),255,217]);
+  const image_data='data:image/jpeg;base64,'+jpeg.toString('base64');
+  const path='https://example.test/api/v1/rooms/10000001/theme-image';
+  const unauthDb=fakeDb();
+  const unauth=await handleRequest(new Request(path,{
+    method:'PUT',body:JSON.stringify({image_data})
+  }),{DB:unauthDb,FIREBASE_PROJECT_ID:project});
+  assert.equal(unauth.status,401);
+  assert.equal(unauthDb.calls.some(c=>c[0]==='run'),false);
+
+  const prevFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const owner='firebase:'+project+':secure-user';
+    function dbFor(actualOwner,changes=1){
+      const db=fakeDb(),previous=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=previous(sql);
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({status:'active'});
+        if(sql.startsWith('SELECT owner_id FROM sharika_rooms WHERE id=?'))
+          stmt.first=async()=>({owner_id:actualOwner});
+        if(sql.startsWith('SELECT image_base64 FROM sharika_room_theme_images'))
+          stmt.first=async()=>({image_base64:jpeg.toString('base64')});
+        if(sql.startsWith('INSERT INTO sharika_room_theme_images'))
+          stmt.run=async()=>{db.calls.push(['theme_run',sql,stmt.values]);return {meta:{changes}};};
+        if(sql.startsWith('SELECT version,image_bytes FROM sharika_room_theme_images'))
+          stmt.first=async()=>({version:3,image_bytes:jpeg.length});
+        return stmt;
+      };
+      return db;
+    }
+    const publicImage=await handleRequest(new Request(path,{
+      headers:{Origin:'https://untrusted.example'}
+    }),{DB:dbFor(owner),FIREBASE_PROJECT_ID:project});
+    assert.equal(publicImage.status,200);
+    assert.equal(publicImage.headers.get('access-control-allow-origin'),'*');
+    assert.equal(publicImage.headers.get('content-type'),'image/jpeg');
+    assert.deepEqual(Buffer.from(await publicImage.arrayBuffer()),jpeg);
+
+    async function save(db,payload=image_data){
+      return handleRequest(new Request(path,{
+        method:'PUT',headers:{Authorization:'Bearer '+await token()},
+        body:JSON.stringify({image_data:payload})
+      }),{DB:db,FIREBASE_PROJECT_ID:project});
+    }
+    const outsider=dbFor('other-user');
+    assert.equal((await save(outsider)).status,403);
+    assert.equal(outsider.calls.some(c=>c[0]==='theme_run'),false);
+    assert.equal((await save(dbFor(owner),'data:image/png;base64,'+jpeg.toString('base64'))).status,400);
+    const ownDb=dbFor(owner),saved=await save(ownDb);
+    assert.equal(saved.status,200);
+    const body=await saved.json();
+    assert.equal(body.theme_background_url,path+'?v=3');
+    assert.equal(body.image_bytes,jpeg.length);
+    assert.equal(ownDb.calls.some(c=>c[0]==='theme_run'),true);
+    assert.equal(ownDb.calls.some(c=>c[0]==='cover_run'),false);
+    assert.equal((await save(dbFor(owner,0))).status,429);
   }finally{globalThis.fetch=prevFetch;}
 });
 
