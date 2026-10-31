@@ -3462,6 +3462,128 @@
   // The supplied HTML contains a simulated weekly podium. Never display it
   // as real winners while this staging app uses verified server data.
   window.showWeekly=function(done){if(typeof done==='function')done();};
+  // Ranking artwork: keep every uploaded face centered and clipped to its
+  // circular frame, including portrait photos with a taller source ratio.
+  const rankAvatarStyle=document.createElement('style');
+  rankAvatarStyle.id='sharika-verified-rank-avatar';
+  rankAvatarStyle.textContent=[
+    '#rb .rr .ra{position:relative!important;box-sizing:border-box!important;',
+    'flex:0 0 68px!important;width:68px!important;height:68px!important;',
+    'min-width:68px!important;min-height:68px!important;max-width:68px!important;',
+    'max-height:68px!important;aspect-ratio:1!important;',
+    'border-radius:50%!important;overflow:hidden!important;',
+    'border:3px solid #eac4ff!important;line-height:1!important;',
+    'box-shadow:inset 0 3px 6px #2d175c99,0 0 0 3px #9862de88,',
+    '0 6px 12px #100b4080!important}',
+    '#rb .rr .ra>img{display:block!important;position:absolute!important;',
+    'inset:0!important;width:100%!important;height:100%!important;',
+    'min-width:100%!important;max-width:100%!important;max-height:100%!important;',
+    'object-fit:cover!important;object-position:50% 32%!important;',
+    'border-radius:50%!important;aspect-ratio:1!important}',
+    '#rb .rr[data-rank-user]{cursor:pointer;touch-action:manipulation}',
+    '#rb .rr[data-rank-user]:active{transform:translateY(2px);filter:brightness(1.12)}',
+    '#rb .rr[data-rank-user]:focus-visible{outline:3px solid #ffd875;outline-offset:3px}',
+    '#pfo .sh-ranked-profile .pavw{width:118px;height:118px}',
+    '#pfo .sh-ranked-profile .pav3{overflow:hidden!important;border-radius:50%!important;',
+    'background-position:50% 32%!important;background-size:cover!important;',
+    'box-shadow:inset 0 3px 6px #120b3955,0 9px 24px #0007}',
+    '#pfo .sh-ranked-profile .pavr{filter:drop-shadow(0 0 12px #d8afff)}',
+    '#pfo .sh-ranked-profile .meta span{font-size:13px}',
+    '#pfo .sh-ranked-profile .sh-profile-note{margin:18px 0 12px;padding:13px;',
+    'border:1px solid #ae90ed;border-radius:18px;',
+    'background:linear-gradient(140deg,#483577,#251c54);color:#eee4ff;text-align:center}',
+    '#pfo .sh-ranked-profile .pbtn button{color:#fff;border:1px solid #e9c2ff;',
+    'background:linear-gradient(150deg,#a96af3,#6036b7);',
+    'box-shadow:inset 0 2px 1px #fff6,0 5px 0 #352078}',
+    '#pfo .sh-ranked-profile .pbtn button:active{transform:translateY(3px)}',
+    '#pfo .sh-ranked-profile .pbtn button:disabled{opacity:.6}'
+  ].join('');
+  document.head.appendChild(rankAvatarStyle);
+
+  let rankProfileRequest=0;
+  async function openVerifiedRankProfile(publicId){
+    const id=String(publicId||'');
+    if(!/^[0-9]{8}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
+    if(id===profile?.public_id){
+      document.getElementById('pfo')?.classList.remove('on');
+      window.go('me');return;
+    }
+    const panel=document.getElementById('pfo'),root=document.getElementById('pfc');
+    if(!panel||!root)return;
+    const requestNo=++rankProfileRequest;
+    panel.classList.add('on');panel.scrollTop=0;
+    root.innerHTML='<div class="empty">Loading verified profile for ID '+id+'…</div>';
+    try{
+      // A verified profile must come from D1. The original demo model
+      // fabricates age, followers and pictures and must not be used here.
+      const person=await api('GET','/users/'+id);
+      if(requestNo!==rankProfileRequest||!panel.classList.contains('on'))return;
+      if(String(person.id)!==id)throw new Error('Profile ID does not match');
+      const face=verifiedAvatarUrl(person.pic);
+      const wealth=Math.max(0,Number(person.wealth_level)||0);
+      const charm=Math.max(0,Number(person.charm_level)||0);
+      root.innerHTML='<div class="pf sh-ranked-profile">'+
+        '<div class="cov"></div><div class="pfh"><div class="pavw">'+
+        '<div class="pavr" style="--g1:#ffdc7b;--g2:#a06bff"></div>'+
+        '<div class="pav3" id="sh-ranked-avatar" role="img" aria-label="Profile photo"></div>'+
+        '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
+        '<div class="meta"><span>🆔 '+id+'</span>'+
+        (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
+        '</div></div><div class="lvs">'+
+        '<div class="lvc w"><b>💰 Wealth level</b><div class="big3">'+
+        wealth+'</div><small>Verified profile level</small></div>'+
+        '<div class="lvc c"><b>💗 Charm level</b><div class="big3">'+
+        charm+'</div><small>Verified profile level</small></div></div>'+
+        '<div class="sh-profile-note">This is the real Sharika profile for ID '+id+
+        '. Only server-verified details are shown.</div>'+
+        '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
+        'Loading follow status…</button></div>'+
+        '<div id="sh-ranked-seller-action"></div></div>';
+      const avatar=root.querySelector('#sh-ranked-avatar');
+      if(face)avatar.style.backgroundImage='url("'+face+'")';
+      else avatar.textContent='👤';
+      const follow=root.querySelector('#sh-ranked-follow');
+      async function loadFollowing(){
+        const data=await api('GET','/users/'+id+'/follow');
+        if(requestNo!==rankProfileRequest||!follow.isConnected)return;
+        const following=!!data.following;
+        follow.disabled=false;
+        follow.textContent=following?'✓ Following':'＋ Follow';
+        follow.onclick=async()=>{
+          follow.disabled=true;
+          try{
+            await api(following?'DELETE':'PUT','/users/'+id+'/follow');
+            await loadFollowing();
+          }catch(error){
+            toast('Follow action failed: '+errText(error));
+            if(follow.isConnected)follow.disabled=false;
+          }
+        };
+      }
+      loadFollowing().catch(error=>{
+        if(follow.isConnected)follow.textContent='Follow unavailable';
+        console.warn('Verified follow status unavailable:',errText(error));
+      });
+      api('GET','/sellers/me').then(mine=>{
+        if(requestNo!==rankProfileRequest||!root.isConnected||!mine.seller?.active)return;
+        const action=root.querySelector('#sh-ranked-seller-action');
+        if(!action)return;
+        const button=document.createElement('button');
+        button.type='button';button.className='act';
+        button.style.cssText='display:block;width:100%;border-radius:18px;margin:14px auto;padding:12px';
+        button.textContent='🪙 Send seller coins to ID '+id;
+        button.onclick=()=>{
+          panel.classList.remove('on');
+          showVerifiedCoinSellers({walletOnly:true,targetId:id});
+        };
+        action.appendChild(button);
+      }).catch(()=>{});
+    }catch(error){
+      if(requestNo===rankProfileRequest&&panel.classList.contains('on'))
+        root.textContent='Unable to open verified profile: '+errText(error);
+    }
+  }
+
   let rankingRequest=0;
   window.renderRank=async function(){
     const view=document.getElementById('rb');
@@ -3515,15 +3637,32 @@
         row.querySelector('.n').textContent=String(leader.rank);
         const avatar=row.querySelector('.ra');
         if(kind==='room')avatar.textContent=leader.emoji||'🎙️';
-        else if(leader.pic){
-          const img=document.createElement('img');
-          img.src=leader.pic;img.alt='';
-          img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';
-          avatar.appendChild(img);
-        }else avatar.textContent='👤';
+        else{
+          const photo=verifiedAvatarUrl(leader.pic);
+          if(photo){
+            const img=document.createElement('img');
+            img.src=photo;img.alt='';img.loading='lazy';
+            img.onerror=()=>{img.remove();avatar.textContent='👤';};
+            avatar.appendChild(img);
+          }else avatar.textContent='👤';
+        }
         row.querySelector('.rn b').textContent=leader.name||'User';
         row.querySelector('.sid').textContent=kind==='room'?leader.room_id:leader.public_id;
         row.querySelector('.amt').textContent=Number(leader.total||0).toLocaleString('en-US');
+        // Ranking user IDs, names and photos all open the same verified ID.
+        // Room-ranking IDs are room IDs and are deliberately not treated as users.
+        const target=String(kind==='room'?'':leader.public_id||'');
+        if(/^[0-9]{8}$/.test(target)){
+          row.dataset.rankUser=target;
+          row.tabIndex=0;row.setAttribute('role','button');
+          row.setAttribute('aria-label','Open profile for ID '+target);
+          row.onclick=()=>openVerifiedRankProfile(target);
+          row.onkeydown=event=>{
+            if(event.key==='Enter'||event.key===' '){
+              event.preventDefault();openVerifiedRankProfile(target);
+            }
+          };
+        }
         view.appendChild(row);
       }
     }catch(error){
