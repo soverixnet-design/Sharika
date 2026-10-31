@@ -93,7 +93,9 @@
       return Promise.reject(new Error('Android native bridge unavailable'));
     return new Promise((resolve, reject) => {
       const id = String(++seq);
-      const timeoutMs = action === 'pickProfilePhoto' ? 180000 : 25000;
+      const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
+        action === 'api' && payload?.method === 'PUT' && payload?.path === '/api/v1/me/avatar'
+          ? 90000 : 25000;
       const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, timeoutMs);
       calls.set(id, { resolve, reject, timer });
       try { window.SharikaNative.call(id, action, JSON.stringify(payload || {})); }
@@ -573,6 +575,106 @@
       (document.getElementById('sh-sovera-own-identity')||anchor).insertAdjacentElement('afterend',button);
     }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
   }
+
+  // Keep Sharika's existing profile layout; give its edit controls a
+  // tactile 3D finish, and show the server-backed photo before saving text.
+  const profileDepthStyle=document.createElement('style');
+  profileDepthStyle.id='sharika-profile-edit-depth';
+  profileDepthStyle.textContent=[
+    '#v-me .edp,#v-me .pick{color:#fff!important;font-weight:800!important;',
+    'background:linear-gradient(155deg,#c5abff 0%,#915aff 18%,#6535d0 68%,#47238c 100%)!important;',
+    'border:1px solid #dccaff!important;border-radius:20px!important;',
+    'box-shadow:inset 0 2px 1px #ffffff99,inset 0 -3px 3px #31106799,',
+    '0 6px 0 #3c207e,0 12px 20px #3e197344!important;',
+    'text-shadow:0 2px 3px #25105699;transition:transform .12s,box-shadow .12s}',
+    '#v-me .edp:active,#v-me .pick:active{transform:translateY(4px);',
+    'box-shadow:inset 0 2px 3px #2b1265,0 2px 0 #3c207e!important}',
+    '#sh.sharika-profile-editor{background:linear-gradient(155deg,#413078,#241548 72%,#170c30);',
+    'border-top:2px solid #a78bfa;box-shadow:0 -15px 40px #130b30b3;padding-top:17px}',
+    '#sh.sharika-profile-editor h3{font-size:20px;color:#fff;margin:0 0 14px;',
+    'text-shadow:0 2px 8px #1c0a4f}',
+    '#sh.sharika-profile-editor .lbl{font-size:13px;color:#dfd2ff;font-weight:700}',
+    '#sh.sharika-profile-editor .field{background:linear-gradient(#21133f,#302056);',
+    'border:1px solid #8864ca;border-radius:17px;box-shadow:inset 0 3px 7px #0d072a80,',
+    '0 2px 0 #ad82f944;padding:14px;color:#fff}',
+    '#sh.sharika-profile-editor .field:focus{outline:2px solid #d6a8ff;outline-offset:1px}',
+    '#sh.sharika-profile-editor .act{min-height:87px;border:1px solid #c4a4ff;',
+    'border-radius:19px;color:#fff;font-weight:800;font-size:13px;',
+    'background:linear-gradient(155deg,#ae83ff,#7142d3 48%,#472781);',
+    'box-shadow:inset 0 2px 1px #ffffff88,0 5px 0 #321969,0 12px 17px #08041355}',
+    '#sh.sharika-profile-editor .act:active{transform:translateY(4px);',
+    'box-shadow:inset 0 2px 5px #220f4d,0 1px 0 #321969}',
+    '#sh.sharika-profile-editor #es{font-size:17px;color:#fff;',
+    'background:linear-gradient(155deg,#e0b8ff,#9c5aff 35%,#672fc3 80%);',
+    'border:1px solid #dfbcff;box-shadow:inset 0 2px 1px #ffffffa0,',
+    '0 6px 0 #3a1d78,0 12px 18px #0d052c80;margin:22px 0 12px}',
+    '#sh.sharika-profile-editor #es:active{transform:translateY(4px);',
+    'box-shadow:inset 0 2px 5px #331a6c,0 1px 0 #3a1d78}',
+    '#sh.sharika-profile-editor button:disabled{opacity:.55}',
+    '#sharika-photo-editor{display:flex;align-items:center;gap:15px;',
+    'padding:12px;margin:8px 0 17px;border-radius:23px;',
+    'background:linear-gradient(140deg,#6340a8,#31215b);',
+    'border:1px solid #af94ec;box-shadow:inset 0 2px 0 #ffffff44,0 6px 13px #13092e70}',
+    '#sharika-photo-preview{width:73px;height:73px;flex:none;border-radius:50%;',
+    'background:linear-gradient(150deg,#b388ff,#fa7dce) center/cover;',
+    'border:4px solid #ffe5a2;box-shadow:inset 0 3px 5px #29134466,',
+    '0 5px 0 #835ca8,0 9px 13px #110a2580;display:grid;place-items:center;font-size:34px}',
+    '#sharika-photo-copy{min-width:0;flex:1}',
+    '#sharika-photo-copy b{display:block;font-size:14px;color:#fff}',
+    '#sharika-photo-status{display:block;font-size:12px;margin-top:6px;',
+    'color:#ddd0ff;line-height:1.4;word-break:break-word}',
+    '#sharika-photo-status[data-state="success"]{color:#91ffd5}',
+    '#sharika-photo-status[data-state="error"]{color:#ffc7ca}',
+    '#sharika-photo-status[data-state="pending"]{color:#ffe08d}'
+  ].join('');
+  document.head.appendChild(profileDepthStyle);
+  function photoEditStatus(message,state='info'){
+    const status=document.getElementById('sharika-photo-status');
+    if(status){status.textContent=message;status.dataset.state=state;}
+  }
+  function applyProfileEditDepth(){
+    const sheet=document.getElementById('sh');
+    const editName=sheet?.querySelector('#en'),editBio=sheet?.querySelector('#eb');
+    if(!editName||!editBio||sheet.querySelector('#sharika-photo-editor'))return;
+    sheet.classList.add('sharika-profile-editor');
+    editName.maxLength=80;
+    editBio.maxLength=500;
+    const block=document.createElement('div');
+    block.id='sharika-photo-editor';
+    const preview=document.createElement('div');
+    preview.id='sharika-photo-preview';
+    preview.setAttribute('role','img');
+    preview.setAttribute('aria-label','Your verified profile photo');
+    const safe=verifiedAvatarUrl(profile?.pic);
+    if(safe)preview.style.backgroundImage='url("'+safe+'")';
+    else preview.textContent='👤';
+    const copy=document.createElement('div');
+    copy.id='sharika-photo-copy';
+    const heading=document.createElement('b');
+    heading.textContent='My profile photo';
+    const status=document.createElement('span');
+    status.id='sharika-photo-status';
+    status.setAttribute('role','status');
+    status.textContent='Tap Change photo to select from gallery';
+    copy.append(heading,status);
+    block.append(preview,copy);
+    sheet.querySelector('.lbl')?.before(block);
+    const photo=sheet.querySelector('#ep');
+    if(photo)photo.innerHTML='<span>📷</span>Choose photo';
+    const save=sheet.querySelector('#es');
+    if(save)save.textContent='✓ Save changes';
+  }
+  const originalOpenSheetForProfile=window.openSheet;
+  if(typeof originalOpenSheetForProfile==='function')window.openSheet=function(){
+    document.getElementById('sh')?.classList.remove('sharika-profile-editor');
+    return originalOpenSheetForProfile.apply(this,arguments);
+  };
+  const originalEditSheetForProfile=window.editSheet;
+  if(typeof originalEditSheetForProfile==='function')window.editSheet=function(){
+    originalEditSheetForProfile.apply(this,arguments);
+    applyProfileEditDepth();
+  };
+
   let avatarUploadBusy=false;
   async function pickProfilePhoto(){
     if(!session||!profile){toast('Sign in to change your profile photo');return;}
@@ -581,6 +683,7 @@
     const accountId=session.user.id;
     const publicId=profile.public_id;
     try{
+      photoEditStatus('Opening Android gallery…','pending');
       toast('Opening your Android photo gallery…');
       // Use a native, single-image Android picker. It decodes HEIC/JPEG and
       // produces a bounded JPEG; no broad storage permission is needed.
@@ -589,15 +692,31 @@
       const image_data=picked?.image_data;
       if(typeof image_data!=='string'||!image_data.startsWith('data:image/jpeg;base64,'))
         throw new Error('Gallery did not return a usable photo');
+      photoEditStatus('Saving image to your Sharika ID…','pending');
       toast('Uploading your profile photo…');
       const saved=await api('PUT','/me/avatar',{image_data});
       if(session?.user?.id!==accountId || saved?.public_id!==publicId)
         throw new Error('Profile changed before photo confirmation');
       if(!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(saved.pic||''))
         throw new Error('Profile photo confirmation unavailable');
-      profile=saved;
-      window.A.pic=saved.pic;
+      // Confirm the assigned ID and new version from the server; a retryable
+      // readback outage must not falsely negate a completed upload.
+      let latest=saved,readbackConfirmed=false;
+      try{
+        const checked=await api('GET','/me');
+        if(checked.public_id!==publicId||checked.pic!==saved.pic)
+          throw new Error('photo_save_verification_mismatch');
+        latest=checked;readbackConfirmed=true;
+      }catch(error){
+        console.warn('Photo saved, readback unavailable:',errText(error));
+      }
+      profile=latest;
+      window.A.pic=latest.pic;
       window.saveA();window.renderMe();
+      const preview=document.getElementById('sharika-photo-preview');
+      if(preview){preview.style.backgroundImage='url("'+latest.pic+'")';preview.textContent='';}
+      photoEditStatus(readbackConfirmed?'Photo saved to your ID ✓':
+        'Photo uploaded; final server check pending','success');
       // Refresh this same verified ID inside an already open room immediately.
       const roomFrame=document.getElementById('rf')?.contentWindow;
       if(window.cur?.id&&roomFrame?.seats){
@@ -609,10 +728,16 @@
         decorateRoomPeople(roomFrame);
         decorateRoomChat(roomFrame);
       }
-      toast('Profile photo saved · visible on your ID and room ✓');
+      toast('Profile photo saved to your Sharika ID ✓');
     }catch(error){
-      if(errText(error)!=='profile_photo_cancelled')
-        toast('Profile photo not saved: '+errText(error));
+      if(errText(error)==='profile_photo_cancelled'){
+        photoEditStatus('No photo selected. Your old photo is unchanged.');
+      }else{
+        const detail=errText(error);
+        const hint=detail==='avatar_rate_limited'?'Wait 20 seconds and retry.':detail;
+        photoEditStatus('Not saved: '+hint,'error');
+        toast('Profile photo not saved: '+hint);
+      }
     }finally{avatarUploadBusy=false;}
   }
   // The original HTML photo picker writes only to localStorage. In staging
