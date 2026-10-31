@@ -5,13 +5,13 @@
   "use strict";
   var ASSET = "./profile-headwear/";
   var ITEMS = [
-    {id:"sh-vip", name:"VIP Gold", file:"vip-gold.png", role:"vip"},
-    {id:"sh-seller", name:"Coin Seller", file:"coin-seller.png", role:"seller"},
-    {id:"sh-ruby", name:"Ruby Heart", file:"ruby-heart.png"},
-    {id:"sh-sapphire", name:"Sapphire", file:"sapphire-crystal.png"},
-    {id:"sh-rainbow", name:"Rainbow", file:"rainbow-floral.png"},
-    {id:"sh-welcome", name:"Golden Welcome", file:"golden-welcome.png"},
-    {id:"sh-shadow", name:"Shadow Crown", file:"shadow-crown.png"}
+    {id:"sh-vip", name:"VIP Gold", file:"vip-gold.webp", role:"vip"},
+    {id:"sh-seller", name:"Coin Seller", file:"coin-seller.webp", role:"seller"},
+    {id:"sh-ruby", name:"Ruby Heart", file:"ruby-heart.webp"},
+    {id:"sh-sapphire", name:"Sapphire", file:"sapphire-crystal.webp"},
+    {id:"sh-rainbow", name:"Rainbow", file:"rainbow-floral.webp"},
+    {id:"sh-welcome", name:"Golden Welcome", file:"golden-welcome.webp"},
+    {id:"sh-shadow", name:"Shadow Crown", file:"shadow-crown.webp"}
   ];
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {

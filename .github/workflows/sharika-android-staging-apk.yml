@@ -180,6 +180,18 @@ jobs:
           done
           echo 'SOVERA_FRAMES_ENTRIES_IN_APK_VERIFIED'
 
+      - name: Verify seven animated headwear loops are packaged offline
+        run: |
+          node --check ../app/profile-ornaments.js
+          for frame in vip-gold coin-seller ruby-heart sapphire-crystal rainbow-floral golden-welcome shadow-crown; do
+            test -s "../app/profile-headwear/$frame.webp"
+            strings "../app/profile-headwear/$frame.webp" | grep -F 'ANIM'
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/profile-headwear/$frame.webp"
+          done
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/profile-ornaments.js'
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/profile-ornaments.css'
+          echo 'SHARIKA_SEVEN_ANIMATED_HEADWEAR_FRAMES_VERIFIED'
+
       - name: Check original game cards and HTML are packaged in the staging APK
         run: |
           for card in food-wheel-original-card.png jackpot-fruit-original-card.png; do

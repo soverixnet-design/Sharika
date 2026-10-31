@@ -78,3 +78,7 @@
 @keyframes shCoverSweep{0%,100%{transform:translateX(-45%)}50%{transform:translateX(45%)}}
 @media(max-width:360px){.sh-frpreview{height:76px;width:76px}.sh-cp-panel{padding:10px}.sh-frame-grid{gap:6px}}
 @media(prefers-reduced-motion:reduce){.sh-frimg,.fxr.fxi,.sh-heart-mark,#v-me .sh-profile-cover:after{animation:none!important}}
+
+/* Original video motion comes from the 4-second looping WebP itself. */
+.sh-frame-choice .sh-frimg{animation:none!important;filter:none!important;transform:none!important}
+.fxr.fxi[style*="profile-headwear/"]{animation:none!important;filter:none!important;transform:none!important}
