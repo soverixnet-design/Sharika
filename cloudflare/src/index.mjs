@@ -186,7 +186,8 @@ export async function handleRequest(request, env) {
     if (path==='/api/v1/invites') return await handleInviteApp({
       request, env, uid, path, cors, reply, fail
     });
-    if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in') return await handleDailyApp({
+    if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
+        path==='/api/v1/daily/tasks/claim') return await handleDailyApp({
       request, env, uid, path, cors, reply, fail
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
