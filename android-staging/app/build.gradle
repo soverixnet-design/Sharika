@@ -61,6 +61,9 @@ def sharikaUiAssets = layout.buildDirectory.dir('generated/sharika-ui-assets')
 tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/index.html'))
     from(rootProject.file('back-navigation.js'))
+    from(rootProject.file('royal-premium.js'))
+    from(rootProject.file('royal-premium.css'))
+    from(rootProject.file('royal-palace.png'))
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }

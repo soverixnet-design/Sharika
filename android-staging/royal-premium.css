@@ -1,0 +1,379 @@
+/*
+ * Sharika Royal Premium UI skin (Android staging only)
+ * Deliberately visual-only: existing element IDs, data attributes, events,
+ * business logic, room themes, and server adapters remain untouched.
+ */
+html.royal-premium {
+  color-scheme: dark;
+  --royal-ink:#080317;
+  --royal-night:#100625;
+  --royal-purple:#55209a;
+  --royal-violet:#9651ee;
+  --royal-gold:#f6cc70;
+  --royal-champagne:#ffe7ae;
+  --royal-border:rgba(249,206,112,.38);
+  --royal-glass:rgba(29,12,62,.78);
+  --royal-shadow:0 12px 28px rgba(2,0,10,.42);
+  --bg1:#190931;
+  --bg2:#080316;
+  --a:#9350eb;
+  --b:#cb68e7;
+  --gold:#f6cc70;
+  --mu:#c0afd9;
+  --line:rgba(245,205,124,.23);
+  --glass:rgba(123,67,180,.13);
+}
+html.royal-premium body {
+  background:#05010e;
+  color:#fdf7ff;
+  -webkit-font-smoothing:antialiased;
+}
+html.royal-root .app {
+  background:
+    radial-gradient(ellipse at 15% 2%,rgba(155,82,241,.25),transparent 43%),
+    radial-gradient(ellipse at 100% 52%,rgba(238,172,80,.075),transparent 48%),
+    linear-gradient(165deg,#17082f,#0c0420 48%,#070213);
+}
+html.royal-root .b1 { background:#8b34db;opacity:.2; }
+html.royal-root .b2 { background:#9a6027;opacity:.12; }
+html.royal-root .view { scrollbar-width:none; }
+html.royal-root .view.on { animation:royal-enter .3s cubic-bezier(.22,1,.36,1) both; }
+html.royal-root .hd { padding-top:4px;gap:11px; }
+html.royal-root .hd h1 {font-size:16px;letter-spacing:.12px;background:linear-gradient(100deg,#fff6e3,#ffe0a0 65%,#e0c4fa);-webkit-background-clip:text;background-clip:text;color:transparent;}
+html.royal-root .hd h1 small {-webkit-text-fill-color:#bda9d8;font-size:10px;line-height:1.5;letter-spacing:0;}
+html.royal-root .logo {
+  border:1.5px solid var(--royal-gold);
+  box-shadow:0 0 0 3px rgba(250,207,113,.12),0 5px 16px rgba(0,0,0,.5),inset 0 1px 0 #fff8;
+}
+html.royal-root .pill {
+  background:linear-gradient(145deg,rgba(101,57,157,.74),rgba(32,12,59,.85));
+  border:1px solid var(--royal-border);
+  color:var(--royal-champagne);
+  box-shadow:inset 0 1px 0 #fff3,0 4px 12px #0005;
+}
+html.royal-root .srch {
+  height:48px;margin:2px 0 15px;border-radius:19px;
+  background:linear-gradient(145deg,rgba(44,21,80,.92),rgba(20,8,42,.9));
+  border:1px solid rgba(247,205,124,.4);
+  box-shadow:inset 0 2px 6px #0006,0 4px 14px #0002;
+}
+html.royal-root .srch:focus-within {border-color:#ffe5a7;box-shadow:0 0 0 3px rgba(251,211,127,.14);}
+html.royal-root .slide {
+  border:1.5px solid rgba(255,223,147,.7);border-radius:23px;
+  box-shadow:0 9px 22px #0007,inset 0 1px 0 #fff6;
+  overflow:hidden;
+}
+html.royal-root .dots u {background:rgba(254,224,173,.25);}
+html.royal-root .dots u.on {background:linear-gradient(90deg,#a76df1,#ffda83);box-shadow:0 0 10px #ffce75a0;}
+html.royal-root .qa {gap:9px;margin-bottom:17px;}
+html.royal-root .qa button,html.royal-root .menu button {
+  min-height:76px;position:relative;overflow:hidden;
+  background:linear-gradient(150deg,rgba(85,40,136,.88),rgba(31,12,60,.95));
+  color:#fdf5ff;border:1px solid var(--royal-border);border-radius:17px;
+  box-shadow:0 5px 0 rgba(7,2,20,.85),inset 0 1px 0 rgba(255,230,168,.22);
+  transition:transform .14s,box-shadow .14s;
+}
+html.royal-root .qa button::before,html.royal-root .tiles button::before {
+  content:"";pointer-events:none;position:absolute;inset:0 0 auto;height:45%;
+  background:linear-gradient(rgba(255,255,255,.11),transparent);
+}
+html.royal-root .qa button span {filter:drop-shadow(0 5px 3px #0008);font-size:25px;}
+html.royal-root .qa button:active,html.royal-root .menu button:active {transform:translateY(3px);box-shadow:0 2px 0 #04000e;}
+html.royal-root .tabs {gap:7px;padding:1px 0 4px;}
+html.royal-root .tabs button {
+  background:rgba(31,14,60,.92);border:1px solid rgba(249,209,125,.27);
+  color:#c9b7de;border-radius:18px;min-height:37px;
+}
+html.royal-root .tabs button.on {
+  color:#321541;background:linear-gradient(145deg,#ffedae,#e7ab47);
+  border-color:#ffefbd;font-weight:800;
+  box-shadow:0 3px 0 #81501a,0 6px 14px #0006,inset 0 1px 0 #fff9;
+}
+html.royal-root .grid {gap:16px 12px;}
+html.royal-root .card .bg {
+  border:1.5px solid rgba(255,214,139,.72);
+  box-shadow:inset 0 2px 0 #fff6,inset 0 -36px 35px #03000cad,0 0 0 1px #7a4d3060,0 8px 20px #0007;
+}
+html.royal-root .card .edge {background:linear-gradient(#56318a,#10031f);filter:blur(4px);}
+html.royal-root .card .live {border:1px solid rgba(255,225,166,.3);background:rgba(14,4,31,.7);backdrop-filter:blur(7px);}
+html.royal-root .card .info b {color:#fff8e9;text-shadow:0 2px 7px #000;}
+html.royal-root .card .info small {color:#eee0ff;}
+html.royal-root .nav,html.royal-root .app.lite .nav {
+  background:linear-gradient(165deg,rgba(52,24,88,.98),rgba(19,7,43,.98));
+  border:1.5px solid rgba(245,205,127,.61);
+  box-shadow:0 0 0 1px #fff1,inset 0 1px 0 #fff4,0 -3px 25px #0009;
+  border-radius:24px;height:68px;
+}
+html.royal-root .ni,html.royal-root .app.lite .ni {color:#b7a1cf;min-height:46px;justify-content:center;}
+html.royal-root .ni.on,html.royal-root .app.lite .ni.on {color:#ffe0a0;font-weight:800;}
+html.royal-root .ni span {filter:drop-shadow(0 3px 3px #0008);font-size:23px;}
+html.royal-root .ni.on span {filter:drop-shadow(0 0 9px #ffd781a9);}
+html.royal-root .plus {
+  background:linear-gradient(160deg,#ffedb3,#f6bf5e 48%,#b77118);
+  color:#3c1650;border:3px solid #fff2c7;
+  box-shadow:0 6px 0 #6b3d14,0 10px 20px #0009,inset 0 2px 0 #fffc;
+  animation:royal-crest 3.5s ease-in-out infinite;
+}
+html.royal-root .plus:active {transform:translateY(4px);box-shadow:0 2px 0 #6b3d14;}
+/* Ranking: retain server-backed ranks/podium, replace mismatched electric blue. */
+html.royal-root #v-rank {
+  color:#fff8ec;
+  background:linear-gradient(180deg,rgba(12,3,31,.56),rgba(9,3,23,.85) 64%),
+    url("royal-palace.png") center top/cover #100628;
+}
+html.royal-root .rtop {background:rgba(24,8,52,.95);border-bottom:1px solid var(--royal-border);box-shadow:0 5px 18px #0005;}
+html.royal-root #rt button {color:#b9a2d2;}
+html.royal-root #rt button.on {color:#ffe19c;}
+html.royal-root #rt button.on::after {background:linear-gradient(90deg,#edb753,#fff0b9);}
+html.royal-root .seg {background:rgba(8,3,25,.7);border:1px solid rgba(246,206,123,.45);box-shadow:inset 0 3px 10px #0007;}
+html.royal-root .seg button {color:#c7b0df;}
+html.royal-root .seg button.on {background:linear-gradient(145deg,#f9da8a,#cb8b31);color:#3f1c40;box-shadow:0 3px 0 #6f4517;font-weight:900;}
+html.royal-root .beam2 {background:linear-gradient(rgba(255,212,123,.3),transparent);}
+html.royal-root .dais {box-shadow:0 2px 0 #fff9,0 12px 26px #000a,0 0 32px #dca54a40;}
+html.royal-root .rr {
+  background:linear-gradient(140deg,rgba(58,23,99,.96),rgba(21,7,48,.96));
+  border:1px solid rgba(247,201,115,.45);
+  box-shadow:0 5px 0 #090217,0 8px 19px #0005,inset 0 1px 0 #fff2;
+}
+html.royal-root .rr.me {background:linear-gradient(120deg,#503071,#2c124c);border-color:#ffe29a;}
+html.royal-root .rr .ra {border:2px solid #dcb569;box-shadow:0 4px 0 #331c4c;}
+html.royal-root .rr>b.n {color:#f3cb77;}
+html.royal-root .pp .gr {box-shadow:0 0 20px #e8b84c65,0 5px 0 #100421;}
+/* Main profile: replace unrelated lavender light skin without changing controls. */
+html.royal-root #v-me {
+  color:#fff6ec;
+  background:linear-gradient(180deg,rgba(18,6,42,.54),rgba(11,3,28,.9) 43%,#0a031e),
+    url("royal-palace.png") center top/100% auto no-repeat #0b031c;
+}
+html.royal-root .mtop {color:#ffdd92;}
+html.royal-root .mb {background:rgba(25,8,57,.83);color:#f9d992;border:1px solid var(--royal-border);box-shadow:inset 0 1px 0 #fff2;}
+html.royal-root .mav {
+  padding:5px;background:conic-gradient(#fff4ba,#bc7224,#ffe4a0,#8c4cd3,#f9c663,#fff4ba);
+  box-shadow:0 5px 0 #7a491d,0 12px 27px #000a,0 0 34px #d9a95766;
+  animation:royal-float 5.5s ease-in-out infinite;
+}
+html.royal-root .mav div {border:3px solid #2d0c51;box-shadow:inset 0 0 0 2px #eecf72;}
+html.royal-root .mnm {color:#fff2da;text-shadow:0 3px 8px #000b;}
+html.royal-root .mid {color:#d8c1ea;}
+html.royal-root .cap {background:rgba(26,9,52,.78);border:1px solid var(--royal-border);}
+html.royal-root .svp,html.royal-root .edp,html.royal-root .pick {
+  color:#ffe4a8;background:linear-gradient(150deg,rgba(80,32,127,.94),rgba(30,11,66,.95));
+  border:1px solid rgba(247,202,115,.65);
+  box-shadow:inset 0 1px 0 #fff3,0 5px 0 #090319;
+}
+html.royal-root .edp {font-weight:800;}
+html.royal-root .mst {margin-top:22px;padding:12px 4px;border:1px solid rgba(245,204,122,.25);border-radius:20px;background:rgba(12,4,31,.6);}
+html.royal-root .mst b {color:#ffe3a1;text-shadow:0 2px 4px #000;font-size:26px;}
+html.royal-root .mst small {color:#baa7d4;font-size:13px;}
+html.royal-root .tiles button {
+  position:relative;overflow:hidden;color:#fff0d0;
+  border:1px solid rgba(246,202,117,.48);border-radius:19px;
+  background:linear-gradient(160deg,#572790,#210d46);
+  box-shadow:0 5px 0 #080217,0 8px 18px #0006,inset 0 1px 0 #fff3;
+}
+html.royal-root .tiles button span {filter:drop-shadow(0 5px 3px #0008);}
+html.royal-root .wl {
+  color:#fff0cf;background:linear-gradient(120deg,#654093,#301157 58%,#6c3f46);
+  border:1.5px solid #edc471;box-shadow:0 6px 0 #10031b,0 10px 20px #0007,inset 0 1px 0 #fff4;
+}
+html.royal-root .ml2 {
+  background:linear-gradient(160deg,rgba(57,23,94,.95),rgba(20,7,47,.96));
+  border:1px solid rgba(247,202,116,.35);
+  box-shadow:0 8px 25px #0006;
+}
+html.royal-root .mr {color:#f5e8ff;border-bottom-color:rgba(246,205,118,.19);min-height:55px;}
+html.royal-root .mr:last-child {border-bottom:0;}
+/* Messages, other-user profile, generic sheets and authenticated screens. */
+html.royal-root #v-msg {background:radial-gradient(ellipse at top,#281147,#0a031d 78%);}
+html.royal-root .chatrow {
+  background:linear-gradient(140deg,rgba(74,31,116,.7),rgba(24,8,51,.94));
+  border:1px solid rgba(243,199,112,.32);border-radius:19px;
+  padding:11px 12px;margin-bottom:9px;box-shadow:0 4px 0 #080218;
+}
+html.royal-root .chatrow .av {border:2px solid #dfb668;box-shadow:0 3px 10px #0008;}
+html.royal-root .thread {background:linear-gradient(155deg,#18072e,#080218);}
+html.royal-root .thh {background:rgba(50,18,83,.93);border-bottom:1px solid var(--royal-border);}
+html.royal-root .bub {border:1px solid rgba(244,204,128,.2);box-shadow:0 4px 9px #0005;}
+html.royal-root .bub.me,html.royal-root .tin button {background:linear-gradient(145deg,#8443ca,#512080);}
+html.royal-root .tin {background:rgba(20,6,44,.95);border-top:1px solid var(--royal-border);}
+html.royal-root .pfo {
+  color:#fff9ed;
+  background:linear-gradient(180deg,rgba(22,7,49,.62),rgba(8,2,20,.96) 44%),
+    url("royal-palace.png") center top/100% auto no-repeat #080318;
+}
+html.royal-root .pfx,html.royal-root .cvb {color:#ffe4a3;background:rgba(22,7,49,.8);border:1px solid var(--royal-border);}
+html.royal-root .cov {border-bottom:2px solid #dcb561;box-shadow:0 12px 18px #0006;}
+html.royal-root .pav3 {border:4px solid #190725;}
+html.royal-root .pavw {filter:drop-shadow(0 5px 10px #0009);}
+html.royal-root .lvc,html.royal-root .st4,html.royal-root .gw div,html.royal-root .bdg div {
+  border:1px solid rgba(248,205,125,.37);background:linear-gradient(140deg,rgba(73,30,108,.77),rgba(24,8,50,.9));
+  box-shadow:0 4px 0 #0a031c,inset 0 1px 0 #fff2;
+}
+html.royal-root .pbtn button {color:#ffe8bc;background:linear-gradient(145deg,#553085,#261147);border:1px solid #ad8352;}
+html.royal-root .pbtn button.p {background:linear-gradient(145deg,#f7d98d,#b87d2b);color:#2a1233;font-weight:800;}
+html.royal-root .sh,html.royal-root .auth .acard {
+  background:linear-gradient(165deg,#34135c,#18082e 52%,#0c031d);
+  border:1px solid rgba(249,208,129,.52);border-bottom:0;
+  box-shadow:0 -10px 42px #0009,inset 0 1px 0 #fff3;
+}
+html.royal-root .sh {border-radius:28px 28px 0 0;}
+html.royal-root .sh h3 {color:#ffe1a1;font-size:18px;}
+html.royal-root .row {border-bottom-color:rgba(247,201,124,.2);}
+html.royal-root .g4 button,html.royal-root .alt button {
+  background:linear-gradient(150deg,rgba(103,43,147,.75),rgba(33,12,69,.94));
+  border:1px solid rgba(246,203,123,.39);
+  box-shadow:0 4px 0 #09021c;
+}
+html.royal-root .field {background:#100625;color:#fff8f2;border-color:rgba(246,204,127,.4);}
+html.royal-root .field:focus {outline:2px solid rgba(255,217,147,.4);outline-offset:1px;}
+html.royal-root .auth {
+  background:linear-gradient(180deg,rgba(19,5,41,.64),rgba(8,2,23,.96)),
+    url("royal-palace.png") center/cover #0d0423;
+}
+html.royal-root .a3,html.royal-root .a3i {filter:drop-shadow(0 0 19px #e3b5658a);}
+html.royal-root .atabs {border-color:var(--royal-border);}
+html.royal-root .atabs button.on,html.royal-root .big,html.royal-root .cta.or {
+  background:linear-gradient(150deg,#fbe6a3,#dba347 66%,#a96820);color:#37133d;
+  box-shadow:0 5px 0 #754315,inset 0 1px 0 #fff9;
+}
+html.royal-root .splash {background:linear-gradient(165deg,#321454,#0b031d);}
+html.royal-root .splash .l3i {filter:drop-shadow(0 0 28px #ddb366);}
+html.royal-root .rcp {color:#fff6df;background:linear-gradient(165deg,#1c0a36,#09021d);}
+html.royal-root .rcw {background:#1c0a36;}
+html.royal-root .rcw button {background:#2d124d;color:#ffdb8a;border-color:#bd9051;}
+html.royal-root .rch {background:linear-gradient(135deg,#48217a,#18072f);border-bottom:1px solid #d0a35e;}
+html.royal-root .rct button.on {color:#ffe8b1;}
+html.royal-root .rct button.on::after {background:#f5c875;}
+html.royal-root .gc {color:#3d1a26;background:linear-gradient(165deg,#fff0ae,#f2bb59 55%,#b2752b);box-shadow:0 6px 0 #6e3e12;}
+html.royal-root .dm,html.royal-root .rh span,html.royal-root .pk {
+  color:#ffebc4;background:linear-gradient(145deg,rgba(70,28,110,.94),rgba(28,9,54,.96));
+  border:1px solid rgba(244,202,124,.4);
+  box-shadow:0 5px 0 #0a031b;
+}
+html.royal-root .pk p,html.royal-root .rate {color:#c6b1d8;}
+html.royal-root .pk button {color:#ffe9c4;background:rgba(26,9,54,.89);border:1px solid rgba(246,200,117,.3);}
+html.royal-root .cta.bl {background:linear-gradient(145deg,#7b44bc,#3c166e);box-shadow:0 5px 0 #20063a;}
+html.royal-root .rk {border-color:rgba(244,200,113,.48);background:rgba(40,13,75,.5);}
+html.royal-root .rk div {border-bottom-color:rgba(244,200,113,.25);}
+html.royal-root .mini button {background:linear-gradient(145deg,#a46be1,#3e1568);border-color:#f6d27a;}
+
+/* Room iframe: chrome is gold and purple; custom owner themes and photos win. */
+html.royal-room .app.royal-default-room {
+  background:linear-gradient(180deg,rgba(7,2,23,.34),rgba(9,2,23,.63) 56%,rgba(4,1,14,.93)),
+    url("royal-palace.png") center/cover no-repeat #100524 !important;
+}
+html.royal-room .app.hasbg { /* User-owned custom wallpaper remains unmodified. */ }
+html.royal-room .top {padding:calc(11px + env(safe-area-inset-top,0px)) 12px 7px;gap:7px;}
+html.royal-room .ib {
+  background:linear-gradient(155deg,#5c2e93,#290f50);
+  border:1px solid #d9aa5d;box-shadow:0 4px 0 #120421,0 9px 16px #0007,inset 0 2px 0 #ffffff44;
+}
+html.royal-room #bOwn {
+  background:linear-gradient(145deg,#fff1af,#d39a37);
+  color:#4a1b47;border-color:#fff2b6;
+  box-shadow:0 4px 0 #81501f,0 8px 18px #0008,inset 0 1px 0 #fffe;
+}
+html.royal-room .room {
+  border:1px solid rgba(246,203,119,.65);
+  background:linear-gradient(145deg,rgba(67,25,105,.89),rgba(21,6,47,.9));
+  box-shadow:0 4px 0 #09031c,0 8px 20px #0006,inset 0 1px 0 #fff4;
+}
+html.royal-room .rav {border:1px solid #f1cc7d;box-shadow:0 3px 0 #3b195d;}
+html.royal-room .rt b {color:#ffedcb;}
+html.royal-room .rt small {color:#c7b3d9;}
+html.royal-room .stats {gap:7px;padding-top:5px;padding-bottom:7px;}
+html.royal-room .pill {background:rgba(25,9,53,.86);border-color:rgba(244,199,118,.42);color:#e1d0f0;}
+html.royal-room .pill i {color:#ffdda0;}
+html.royal-room .stage {padding:12px 12px 10px;}
+html.royal-room .stage::before {
+  top:0;height:240px;width:96%;pointer-events:none;
+  background:radial-gradient(ellipse at center top,rgba(255,219,155,.27),transparent 68%);
+}
+html.royal-room .stage::after {
+  content:"";position:sticky;display:block;bottom:0;left:0;width:100%;
+  height:10px;margin-top:24px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(239,179,91,.17),transparent 72%);
+  pointer-events:none;
+}
+html.royal-room .host {margin-top:18px;margin-bottom:19px;}
+html.royal-room .host .av {filter:drop-shadow(0 0 13px #e8be665e) drop-shadow(0 10px 8px #000b);}
+html.royal-room .seat .face {border-color:rgba(255,230,167,.66);box-shadow:inset 0 2px 8px #fff4,inset 0 -12px 19px #0008,0 8px 18px #0008;}
+html.royal-room .seat .nm {
+  color:#ffecc5;background:linear-gradient(145deg,rgba(61,22,98,.89),rgba(11,3,31,.9));
+  border:1px solid rgba(242,194,111,.39);box-shadow:0 3px 0 #0c031c;
+}
+html.royal-room .crown {filter:drop-shadow(0 3px 4px #0009) drop-shadow(0 0 7px #ffce75);}
+html.royal-room .chatw {margin:0 10px;}
+html.royal-room .mb {background:rgba(18,7,38,.82);border-color:rgba(248,213,149,.26);}
+html.royal-room .msg.me .mb {background:linear-gradient(145deg,rgba(99,39,162,.88),rgba(47,12,88,.92));border-color:#b58b64;}
+html.royal-room .mn {color:#ffe4a0;}
+html.royal-room .dock {
+  background:linear-gradient(180deg,transparent,rgba(15,4,36,.94) 26%,rgba(9,2,24,.99));
+  padding:9px 9px calc(14px + env(safe-area-inset-bottom,0px));
+  border-top:1px solid rgba(249,212,141,.13);
+}
+html.royal-room .irow {gap:6px;}
+html.royal-room .inp {
+  height:48px;background:linear-gradient(145deg,rgba(34,13,67,.94),rgba(11,4,33,.96));
+  border-color:rgba(250,213,138,.47);box-shadow:inset 0 2px 5px #0006,0 3px 8px #0004;
+}
+html.royal-room .inp:focus-within {border-color:#ffe6b0;box-shadow:0 0 0 2px rgba(249,203,119,.15);}
+html.royal-room .rb {
+  border-color:#d6a95e;background:linear-gradient(150deg,#622995,#2b1051);
+  box-shadow:0 5px 0 #0d031e,0 8px 13px #0008,inset 0 1px 0 #fff5;
+}
+html.royal-room #bGift {background:linear-gradient(150deg,#db9b5c,#8b3a5a);box-shadow:0 5px 0 #4f2133,0 8px 13px #0008,inset 0 1px 0 #fff5;}
+html.royal-room #bGame {background:linear-gradient(150deg,#a35cce,#552184);box-shadow:0 5px 0 #2c0e51,0 8px 13px #0008,inset 0 1px 0 #fff5;}
+html.royal-room #bMsg {background:linear-gradient(150deg,#8664cf,#3d1b7c);}
+html.royal-room .mic:not(.off) {
+  background:linear-gradient(155deg,#ffe49e,#e4ad53 58%,#9e6224);
+  color:#3e1a4d;border:2px solid #fff1b6;
+  box-shadow:0 5px 0 #6a3b1a,0 8px 18px #0008,inset 0 2px 0 #fff9;
+  animation:royal-mic-glow 3.2s ease-in-out infinite;
+}
+html.royal-room .sheet {
+  background:linear-gradient(165deg,#3a1660,#1b0935 52%,#0c031f);
+  border-top:1px solid #e3b66b;box-shadow:0 -10px 32px #000a;
+}
+html.royal-room .sheet h3 {font-size:18px;color:#ffe3ad;}
+html.royal-room .tray {background:rgba(28,11,61,.96);border-color:#ab805c;}
+html.royal-room .act,html.royal-room .gf,html.royal-room .fr button {
+  background:linear-gradient(160deg,rgba(94,42,136,.8),rgba(28,10,61,.96));
+  border:1px solid rgba(244,199,114,.43);
+  box-shadow:0 4px 0 #0a031e,inset 0 1px 0 #fff3;
+}
+html.royal-room .gf {padding-top:12px;min-height:94px;border-radius:17px;}
+html.royal-room .gf span {filter:drop-shadow(0 6px 4px #0008) drop-shadow(0 0 5px #f7ca844d);}
+html.royal-room .gf.sel {background:linear-gradient(160deg,rgba(168,103,43,.72),rgba(62,22,85,.95));border-color:#ffe19b;box-shadow:0 5px 0 #71421c,0 0 18px #ffcf7560;}
+html.royal-room .gifts {gap:9px;}
+html.royal-room .chip.sel .c {border-color:#ffe3a0;box-shadow:0 0 14px #e8bd6b70;}
+html.royal-room .send {color:#381744;background:linear-gradient(145deg,#fff0ac,#dba340 65%,#a26620);box-shadow:0 5px 0 #694018;}
+html.royal-room .etabs button,html.royal-room .gtabs button.sel {
+  border-color:rgba(246,200,117,.45);
+}
+html.royal-room .etabs button.sel,html.royal-room .gtabs button.sel {color:#fce4ad;background:rgba(116,59,147,.57);}
+html.royal-room .rwc {background:linear-gradient(145deg,#ffedb0,#dda54f);box-shadow:0 5px 0 #774b16;}
+html.royal-room .toast {border-color:#f0c779;color:#ffe3a6;background:rgba(29,10,55,.96);}
+/* Small-screen ergonomics, keyboard focus, accessibility and battery. */
+html.royal-premium button:focus-visible,html.royal-premium input:focus-visible {outline:2px solid #ffdf97;outline-offset:2px;}
+html.royal-root .nav .ni,html.royal-room .rb,html.royal-room .ib {touch-action:manipulation;}
+@media (max-width:365px){
+  html.royal-root .qa {gap:6px;}
+  html.royal-root .qa button {font-size:10px;min-height:69px;}
+  html.royal-root .tiles {gap:6px;}
+  html.royal-room .top {gap:5px;padding-left:8px;padding-right:8px;}
+  html.royal-room .ib {width:33px;height:36px;}
+  html.royal-room .rb {width:38px;height:40px;}
+  html.royal-room .mic {width:44px;height:44px;}
+  html.royal-room .irow {gap:4px;}
+}
+@media (prefers-reduced-motion:reduce){
+  html.royal-premium .sway,html.royal-premium .host .av,html.royal-premium .mav,
+  html.royal-premium .plus,html.royal-premium .mic,html.royal-premium .crown,
+  html.royal-premium .blob,html.royal-premium .pavr,html.royal-premium .wave,
+  html.royal-premium .gf.sel span,html.royal-premium .seat.talk .wave {animation:none!important;transition:none!important;}
+}
+@keyframes royal-enter {from{opacity:.8;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@keyframes royal-float {50%{transform:translateY(-4px)}}
+@keyframes royal-crest {50%{box-shadow:0 6px 0 #6b3d14,0 0 25px #e6b85e8a,inset 0 2px 0 #fffc}}
+@keyframes royal-mic-glow {50%{box-shadow:0 5px 0 #6a3b1a,0 0 19px #fbd17c88,inset 0 2px 0 #fff9}}

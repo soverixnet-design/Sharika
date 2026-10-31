@@ -129,6 +129,13 @@ public final class SharikaActivity extends Activity {
                     "var s=document.createElement('script');s.id='sharika-android-back';" +
                     "s.src='./back-navigation.js';document.head.appendChild(s);}})()",
                     null);
+                // Visual-only Royal Premium layer; the native bridge and
+                // verified voice/wallet/game adapters are intentionally untouched.
+                view.evaluateJavascript(
+                    "(function(){if(!document.getElementById('sharika-royal-ui')){" +
+                    "var s=document.createElement('script');s.id='sharika-royal-ui';" +
+                    "s.src='./royal-premium.js';document.head.appendChild(s);}})()",
+                    null);
             }
         });
         browser.setWebChromeClient(new WebChromeClient() {
