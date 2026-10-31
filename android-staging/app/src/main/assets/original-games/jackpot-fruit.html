@@ -67,11 +67,16 @@ body{background:radial-gradient(circle at 50% 20%,#4b1a7a,#12061f 75%);color:#ff
  * permission to credit local coins. Its only mutation is an authenticated bet. */
 const GameBridge=(()=>{
   const game=document.documentElement.getAttribute('data-original-game');
-  const pending=new Map();let seq=0;
+  const pending=new Map();
+  let seq=0,state=null,receivedAt=Date.now(),activeRefresh=null,refreshAgain=false;
+  let betRevision=0,uncertainBet=null,started=false;
+  let refreshHandler=()=>{},errorHandler=()=>{};
   window.addEventListener('message',e=>{
     if(e.source!==window.parent||!e.data||e.data.type!=='sharika:original-response')return;
-    const p=pending.get(e.data.id);if(!p)return;
-    clearTimeout(p.timeout);pending.delete(e.data.id);
+    const p=pending.get(e.data.id);
+    if(!p)return;
+    clearTimeout(p.timeout);
+    pending.delete(e.data.id);
     if(e.data.ok)p.resolve(e.data.value||{});
     else p.reject(Error(e.data.error||'server_unavailable'));
   });
@@ -79,37 +84,105 @@ const GameBridge=(()=>{
     return new Promise((resolve,reject)=>{
       if(window.parent===window){reject(Error('Open this game from Sharika app'));return;}
       const id=++seq;
-      const timeout=setTimeout(()=>{pending.delete(id);reject(Error('server_timeout'));},18000);
+      const timeout=setTimeout(()=>{
+        pending.delete(id);
+        reject(Error('server_timeout'));
+      },15000);
       pending.set(id,{resolve,reject,timeout});
       window.parent.postMessage({type:'sharika:original-request',id,game,action,method,body},'*');
     });
   }
-  let state=null,prev=-1,busy=false;
-  let refreshHandler=()=>{},errorHandler=()=>{};
-  const clock=()=>state?Date.now()+(state.server_time-Date.nowAtReceive)-0:Date.now();
-  // Timestamp offset remains stable across local time ticks.
-  let receivedAt=Date.now();
-  function now(){return state?Date.now()+(state.server_time-receivedAt):Date.now();}
-  async function refresh(){
-    if(busy)return;
-    busy=true;
-    try{
-      const data=await call('state');
-      const previousRound=state?.previous_result?.round_no;
-      state=data;receivedAt=Date.now();
-      refreshHandler(data,now(),previousRound!==data.previous_result?.round_no);
-    }catch(e){errorHandler(e.message||'Unable to reach server');}
-    finally{busy=false;}
+  function now(){
+    return state?Date.now()+(state.server_time-receivedAt):Date.now();
+  }
+  function refresh(){
+    if(activeRefresh){refreshAgain=true;return activeRefresh;}
+    activeRefresh=(async()=>{
+      const revisionAtRequest=betRevision;
+      try{
+        const data=await call('state');
+        // A state request begun before a successful bet may return an old
+        // balance. Never replace a confirmed receipt with that stale state.
+        if(revisionAtRequest!==betRevision){refreshAgain=true;return state;}
+        const previousRound=state?.previous_result?.round_no;
+        state=data;
+        receivedAt=Date.now();
+        refreshHandler(data,now(),previousRound!==data.previous_result?.round_no);
+        return data;
+      }catch(e){
+        errorHandler(e.message||'Unable to reach server');
+        return null;
+      }finally{
+        activeRefresh=null;
+        if(refreshAgain){
+          refreshAgain=false;
+          Promise.resolve().then(refresh);
+        }
+      }
+    })();
+    return activeRefresh;
   }
   function onRefresh(fn){refreshHandler=fn;}
   function onError(fn){errorHandler=fn;}
-  async function bet(pick,amount){
-    if(!state||now()>=state.round.bet_closes_ms)throw Error('Betting closed');
-    const request_id='og:'+game+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,13);
-    const result=await call('bet','POST',{round_no:state.round.round_no,pick,amount,request_id});
-    await refresh();return result;
+  function updateFromReceipt(result,request){
+    if(!state)return;
+    betRevision++;
+    const previousRound=state.round.round_no;
+    let myBets=Array.isArray(state.my_bets)?state.my_bets.slice():[];
+    if(previousRound===request.round_no&&
+       !myBets.some(b=>Number(b.id)===Number(result.bet_id))){
+      myBets.unshift({
+        id:result.bet_id,round_no:request.round_no,pick_index:request.pick,
+        amount:request.amount,status:'accepted',payout:0
+      });
+    }
+    const confirmedAt=now();
+    state={...state,
+      server_time:confirmedAt,
+      coins:Number.isSafeInteger(result.coins)?result.coins:state.coins,
+      my_bets:myBets
+    };
+    receivedAt=Date.now();
+    refreshHandler(state,now(),false);
   }
-  function start(){refresh();setInterval(refresh,1550);}
+  async function bet(pick,amount){
+    if(!state)throw Error('Connecting to the verified game server. Please wait.');
+    let request=uncertainBet;
+    if(request){
+      if(request.pick!==pick||request.amount!==amount){
+        throw Error('Previous bet not confirmed. Tap the same choice to verify it without another charge.');
+      }
+    }else{
+      if(now()>=state.round.bet_closes_ms)throw Error('Betting closed. Wait for the next round.');
+      request={
+        round_no:state.round.round_no,pick,amount,
+        request_id:'og:'+game+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,13)
+      };
+    }
+    try{
+      const result=await call('bet','POST',request);
+      uncertainBet=null;
+      updateFromReceipt(result,request);
+      // The POST receipt confirms debit immediately. Poll wallet/history
+      // separately so a slow GET never blocks the next manual selection.
+      void refresh();
+      return result;
+    }catch(e){
+      const known=/^(betting_closed|insufficient_coins|invalid_bet|game_adult_only|profile_required|idempotency_conflict)$/;
+      if(known.test(String(e.message||''))){
+        uncertainBet=null;
+        throw e;
+      }
+      uncertainBet=request;
+      throw Error('Bet confirmation delayed. Tap the same choice again to check without a second charge.');
+    }
+  }
+  function start(){
+    if(started)return;
+    started=true;
+    void refresh();
+    setInterval(refresh,1550);
+  }
   function get(){return state;}
   return {call,refresh,bet,onRefresh,onError,now,start,get};
 })();
