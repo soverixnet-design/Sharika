@@ -233,20 +233,25 @@ export async function handleRequest(request, env) {
          binary.charCodeAt(binary.length-2)!==255||
          binary.charCodeAt(binary.length-1)!==217)
         return fail('invalid_avatar',400,cors);
-      const written=await env.DB.prepare(
-        'INSERT INTO sharika_user_avatars(auth_uid,mime,image_base64,image_bytes) '+
-        "VALUES(?,'image/jpeg',?,?) ON CONFLICT(auth_uid) DO UPDATE SET "+
-        'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
-        "version=MIN(sharika_user_avatars.version+1,1000000000),updated_at=datetime('now') "+
-        "WHERE sharika_user_avatars.updated_at<=datetime('now','-20 seconds')"
-      ).bind(uid,imageBase64,binary.length).run();
-      if(!written.meta?.changes)return fail('avatar_rate_limited',429,cors);
-      const image=await env.DB.prepare(
-        'SELECT version FROM sharika_user_avatars WHERE auth_uid=?'
-      ).bind(uid).first();
-      const pic=url.origin+'/api/v1/users/'+publicId(user.public_no)+'/avatar?v='+image.version;
-      await env.DB.prepare("UPDATE sharika_users SET pic=?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
-        .bind(pic,uid).run();
+      // Commit the image and its profile URL together. If either write fails,
+      // D1 rolls back the batch, so users do not get an uploaded-but-unsaved photo.
+      const picPrefix=url.origin+'/api/v1/users/'+publicId(user.public_no)+'/avatar?v=';
+      const writes=await env.DB.batch([
+        env.DB.prepare(
+          'INSERT INTO sharika_user_avatars(auth_uid,mime,image_base64,image_bytes) '+
+          "VALUES(?,'image/jpeg',?,?) ON CONFLICT(auth_uid) DO UPDATE SET "+
+          'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
+          "version=MIN(sharika_user_avatars.version+1,1000000000),updated_at=datetime('now') "+
+          "WHERE sharika_user_avatars.updated_at<=datetime('now','-20 seconds')"
+        ).bind(uid,imageBase64,binary.length),
+        env.DB.prepare(
+          "UPDATE sharika_users SET pic=? || "+
+          "(SELECT CAST(version AS TEXT) FROM sharika_user_avatars WHERE auth_uid=?),"+
+          "updated_at=datetime('now') WHERE auth_uid=? AND status='active'"
+        ).bind(picPrefix,uid,uid)
+      ]);
+      if(!writes[0]?.meta?.changes)return fail('avatar_rate_limited',429,cors);
+      if(!writes[1]?.meta?.changes)return fail('profile_unavailable',409,cors);
       return reply(showProfile(await me(env.DB,uid)),200,cors);
     }
     if(path==='/api/v1/banners' && request.method==='GET') {
