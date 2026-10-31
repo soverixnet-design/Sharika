@@ -301,7 +301,12 @@ jobs:
             adb shell am start -W -n com.soverixnet.sharika/.SharikaActivity
             sleep 12
             adb shell pidof com.soverixnet.sharika
-            adb exec-out screencap -p > royal-qa/login-screen.png
+            adb exec-out screencap -p > royal-qa/startup-12s.png
+            sleep 18
+            adb exec-out screencap -p > royal-qa/startup-30s.png
+            adb shell uiautomator dump /sdcard/royal-startup.xml
+            adb shell cat /sdcard/royal-startup.xml > royal-qa/startup-30s.xml
+            adb logcat -d -v brief -s chromium:V AndroidRuntime:E > royal-qa/chromium-log.txt
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             adb exec-out screencap -p > royal-qa/back-pressed.png
