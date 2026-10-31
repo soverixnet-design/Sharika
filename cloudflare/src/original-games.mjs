@@ -200,6 +200,9 @@ export async function handleOriginalGameRequest({request,db,uid,game,action,repl
     const n=roundNo(Date.now()),t=clock(n);
     if(b.round_no!==n||Date.now()>=t.bet_closes_ms)
       return fail('betting_closed',409,cors);
+    // A completed earlier round may still have an unsettled winning wager.
+    // Credit those verified payouts before the D1 debit trigger checks funds.
+    if(wallet.coins<b.amount)await settleOriginalDueBets(db);
     const round=await ensureRound(db,game,n);
     try{
       await db.prepare('INSERT INTO sharika_original_game_bets(game,round_no,round_id,user_uid,pick_index,amount,request_id) VALUES(?,?,?,?,?,?,?)')
