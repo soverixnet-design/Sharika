@@ -5,6 +5,7 @@ on:
     branches:
       - feature/sharika-lucky-gifts-20261030
       - fix/sharika-original-games-20261031
+      - fix/sharika-seller-self-recharge-wallet-ui-20261031
     paths:
       - '.github/workflows/sharika-worker-staging-publish.yml'
 
@@ -35,7 +36,7 @@ jobs:
         env:
           EXPECTED_REF: refs/heads/feature/sharika-lucky-gifts-20261030
         run: |
-          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ]; then
+          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-seller-self-recharge-wallet-ui-20261031" ]; then
             echo "::error::Refusing unexpected ref $GITHUB_REF"
             exit 1
           fi
