@@ -166,6 +166,61 @@ test('opening Greedy mid-result shows the already settled outcome immediately',a
   socket.close();
 });
 
+
+test('Greedy lost receipts are retried by ID and cannot double-charge a later tap',async()=>{
+  const bridge=readFileSync(new URL('../../android-staging/app/src/main/assets/greedy-wheel/sharika-bridge.js',import.meta.url),'utf8');
+  const listeners=new Map(),requests=[],timers=new Map(),seen=[];
+  let timerId=0;
+  const parent={postMessage(data){requests.push(data);}};
+  const window={WebSocket:class NativeSocket{},parent,
+    addEventListener(name,fn){listeners.set(name,fn);}};
+  runInNewContext(bridge,{window,crypto:webcrypto,Uint8Array,
+    setTimeout(fn){timers.set(++timerId,fn);return timerId;},
+    clearTimeout(id){timers.delete(id);},
+    setInterval:()=>1,clearInterval:()=>{},
+    queueMicrotask:()=>{}});
+  const socket=new window.WebSocket('wss://sharika-greedy.invalid/ws?test=1');
+  socket.readyState=1;
+  socket.onmessage=event=>seen.push(JSON.parse(event.data));
+  const send=(reqId,itemId)=>socket.send(JSON.stringify({
+    t:'bet',reqId,round:321,itemId,amount:1000
+  }));
+  const flush=()=>new Promise(resolve=>setImmediate(resolve));
+  function timeoutNext(){
+    const first=timers.entries().next().value;
+    assert.ok(first,'a pending bridge timeout must exist');
+    timers.delete(first[0]);first[1]();
+  }
+  send(1,'fish');
+  const betRequests=()=>requests.filter(m=>m.action==='bet');
+  assert.equal(betRequests().length,1);
+  const originalId=betRequests()[0].body.request_id;
+  timeoutNext();await flush();
+  assert.equal(betRequests().length,2);
+  assert.equal(betRequests()[1].body.request_id,originalId);
+  timeoutNext();await flush();
+  assert.ok(seen.some(m=>m.t==='bet_err'&&m.reqId===1&&m.code==='BET_UNCONFIRMED'));
+  send(2,'chicken');
+  assert.equal(betRequests().length,2);
+  assert.ok(seen.some(m=>m.t==='bet_err'&&m.reqId===2&&m.code==='BET_UNCONFIRMED'));
+  // A server read finishes, so the bridge automatically confirms the
+  // uncertain old request_id before accepting any new coin debit.
+  const stateRead=requests.find(m=>m.action==='state');
+  assert.ok(stateRead);
+  listeners.get('message')({source:parent,data:{type:'sharika:greedy-response',
+    id:stateRead.id,ok:false,error:'temporary_network_failure'}});
+  await flush();
+  assert.equal(betRequests().length,3);
+  assert.equal(betRequests()[2].body.request_id,originalId);
+  listeners.get('message')({source:parent,data:{type:'sharika:greedy-response',
+    id:betRequests()[2].id,ok:true,value:{balance:99000}}});
+  await flush();
+  send(3,'chicken');
+  assert.equal(betRequests().length,4);
+  assert.notEqual(betRequests()[3].body.request_id,originalId);
+  socket.close();
+});
+
 test('packaged Greedy sheet cannot fall back to fake demo coins when bridge is missing',()=>{
   const source=readFileSync(new URL('../../android-staging/app/src/main/assets/greedy-wheel/game.js',import.meta.url),'utf8');
   const guard=source.indexOf("else if (qs.get('sheet') === '1')");
