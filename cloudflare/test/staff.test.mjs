@@ -18,13 +18,14 @@ function mock({
         bind(...args){this.args=args;return this;},
         async first(){
           state.queries.push({sql,args:this.args});
+          if(sql.includes('FROM sharika_admin_staff_accounts WHERE auth_uid=? OR login_email=?'))
+            return null;
           if(sql.includes('FROM sharika_admin_staff_accounts WHERE auth_uid=?'))
             return staff;
           if(sql.includes('FROM sharika_admin_direct_recharges g ')&&
              sql.includes('WHERE g.actor_uid=?'))return existing;
           if(sql.includes('FROM sharika_users WHERE public_no=?'))return target;
           if(sql.includes('FROM sharika_admin_roles WHERE auth_uid=?'))return account;
-          if(sql.includes('FROM sharika_admin_staff_accounts WHERE auth_uid=? OR login_email=?'))return null;
           if(sql.includes('FROM sharika_admin_staff_accounts WHERE id=?'))
             return {id:7,login_email:'helper@example.test'};
           if(sql.includes('SELECT id,balance_after FROM sharika_admin_direct_recharges'))
