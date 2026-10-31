@@ -6,6 +6,7 @@ on:
       - feature/sharika-android-staging-20261030
       - feature/sharika-original-games-cards-20261030
       - feature/sharika-staff-seller-entry-20261031
+      - fix/sharika-two-way-mic-direct-seat-20261031
     paths:
       - 'cloudflare/**'
       - '.github/workflows/sharika-cloudflare-check.yml'
@@ -28,6 +29,8 @@ jobs:
           node-version: '22'
       - name: Syntax and unit checks
         run: npm --prefix cloudflare run check
+      - name: Verify direct guest seat claim and unique occupancy in SQLite
+        run: python3 cloudflare/test/seat-schema-check.py
       - name: Verify staff quotas and immutable direct coin grants in SQLite
         run: python3 cloudflare/test/staff-schema-check.py
       - name: Validate isolated SQLite schema in-memory
