@@ -11,6 +11,7 @@ on:
         options:
           - verify-only
           - deploy-staging-worker
+          - deploy-greedy-wheel-staging
 
 permissions:
   contents: read
@@ -22,6 +23,7 @@ concurrency:
 jobs:
   initialize:
     name: Validate isolated Sharika staging and optionally deploy Worker
+    if: ${{ inputs.operation != 'deploy-greedy-wheel-staging' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -107,3 +109,144 @@ jobs:
           accountId: d81cf7c48fb9b36d468cb0a08720cd74
           workingDirectory: cloudflare
           command: deploy --config wrangler.jsonc --keep-vars
+
+  greedy-wheel-staging:
+    name: Manually roll out only Greedy Wheel to isolated staging
+    concurrency:
+      group: sharika-isolated-staging-worker-publish
+      cancel-in-progress: false
+    # The existing D1 initialization workflow and its branch restrictions remain intact.
+    # No push, PR, or other action can publish this feature.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.operation == 'deploy-greedy-wheel-staging' }}
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Checkout pinned Greedy Wheel candidate (never default-branch app code)
+        uses: actions/checkout@v4
+        with:
+          ref: 2bf91cf4ebd4856c4e7ddc9c4f7238b7b8d40149
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Greedy Worker and wallet transaction tests
+        run: npm run check
+      - name: Verify isolated Greedy schema in disposable local SQLite
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          db=sqlite3.connect(':memory:')
+          for migration in ['0001_initial.sql','0026_greedy_wheel.sql']:
+              db.executescript(Path('migrations',migration).read_text())
+          actual={row[0] for row in db.execute(
+              "SELECT name FROM sqlite_master WHERE name LIKE 'sharika_greedy_%'")}
+          expected={'sharika_greedy_rounds','sharika_greedy_bets',
+                    'sharika_greedy_bet_validate','sharika_greedy_bet_debit',
+                    'sharika_greedy_bet_payout','sharika_greedy_pending',
+                    'sharika_greedy_user','sharika_greedy_winners'}
+          assert expected <= actual, expected-actual
+          print('Validated isolated Greedy schema without any remote write')
+          PY
+      - name: Refuse deployment if the shared staging base has new unmerged changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module -e '
+            const base=encodeURIComponent("fix/sharika-profile-save-recovery-20261031");
+            const url="https://api.github.com/repos/"+process.env.GITHUB_REPOSITORY+
+              "/compare/"+base+"...2bf91cf4ebd4856c4e7ddc9c4f7238b7b8d40149";
+            const res=await fetch(url,{headers:{
+              Authorization:"Bearer "+process.env.GH_TOKEN,
+              Accept:"application/vnd.github+json"}});
+            const body=await res.json();
+            if(!res.ok||!["ahead","identical"].includes(body.status))
+              throw Error("Shared staging branch has unmerged changes; stop and update this feature before publishing");
+            console.log("Greedy branch includes all current shared staging commits");
+          '
+      - name: Require the exact isolated staging target and existing deployment secret
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN GitHub Actions secret is required."
+            exit 1
+          fi
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            const c=JSON.parse(readFileSync("wrangler.jsonc","utf8"));
+            const d=c.d1_databases?.[0];
+            if(c.name!=="sharika-api-staging" ||
+               c.account_id!=="d81cf7c48fb9b36d468cb0a08720cd74" ||
+               c.vars?.SHARIKA_ENV!=="staging" ||
+               c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=="false" ||
+               c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=="false" ||
+               c.keep_vars!==true ||
+               c.workers_dev!==true ||
+               c.vars?.FIREBASE_PROJECT_ID!=="sharika-voice-chat-app" ||
+               c.vars?.ALLOWED_ORIGINS!=="" ||
+               c.d1_databases?.length!==1 ||
+               d?.binding!=="DB" ||
+               c.durable_objects?.bindings?.[0]?.name!=="VOICE_ROOMS" ||
+               c.durable_objects?.bindings?.[0]?.class_name!=="SharikaVoiceRoom" ||
+               d?.database_name!=="sharika-staging" ||
+               d?.database_id!=="b2c62252-12a5-4740-90c7-01a536d9a39a")
+              throw Error("Unexpected staging Worker/D1 target; refusing rollout");
+            console.log("Staging-only configuration verified");
+          '
+      - name: Record a recoverable D1 Time Travel bookmark before changing schema
+        run: |
+          node --input-type=module -e '
+            const url="https://api.cloudflare.com/client/v4/accounts/"+
+              process.env.CLOUDFLARE_ACCOUNT_ID+
+              "/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/time_travel/bookmark";
+            const res=await fetch(url,{headers:{Authorization:"Bearer "+process.env.CLOUDFLARE_API_TOKEN}});
+            const body=await res.json();
+            if(!res.ok||!body.success||!body.result?.bookmark)
+              throw Error("D1 rollback bookmark unavailable; aborting deployment");
+            console.log("Pre-migration D1 bookmark: "+body.result.bookmark);
+          '
+      - name: Check Greedy migration prerequisites without modifying balances
+        run: |
+          node --input-type=module -e '
+            const url="https://api.cloudflare.com/client/v4/accounts/"+
+              process.env.CLOUDFLARE_ACCOUNT_ID+
+              "/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query";
+            const sql="SELECT name FROM sqlite_master WHERE type=\u0027table\u0027 "+
+              "AND name IN (\u0027sharika_users\u0027,\u0027sharika_wallet_ledger\u0027)";
+            const res=await fetch(url,{method:"POST",
+              headers:{Authorization:"Bearer "+process.env.CLOUDFLARE_API_TOKEN,
+                "Content-Type":"application/json"},body:JSON.stringify({sql})});
+            const body=await res.json();
+            if(!res.ok||!body.success||body.result?.[0]?.results?.length!==2)
+              throw Error("Staging wallet schema prerequisites missing");
+            console.log("Verified existing user and immutable wallet ledger tables");
+          '
+      - name: Apply only migration 0026 (never apply the untracked migration backlog)
+        run: npx --yes wrangler@4 d1 execute sharika-staging --remote --file migrations/0026_greedy_wheel.sql --config wrangler.jsonc
+      - name: Assert only the new Greedy tables and triggers are present
+        run: |
+          node --input-type=module -e '
+            const url="https://api.cloudflare.com/client/v4/accounts/"+
+              process.env.CLOUDFLARE_ACCOUNT_ID+
+              "/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query";
+            const sql="SELECT name FROM sqlite_master WHERE name IN ("+
+              "\u0027sharika_greedy_rounds\u0027,\u0027sharika_greedy_bets\u0027,"+
+              "\u0027sharika_greedy_bet_validate\u0027,\u0027sharika_greedy_bet_debit\u0027,"+
+              "\u0027sharika_greedy_bet_payout\u0027)";
+            const res=await fetch(url,{method:"POST",
+              headers:{Authorization:"Bearer "+process.env.CLOUDFLARE_API_TOKEN,
+                "Content-Type":"application/json"},body:JSON.stringify({sql})});
+            const body=await res.json();
+            if(!res.ok||!body.success||body.result?.[0]?.results?.length!==5)
+              throw Error("Greedy schema verification failed; not publishing Worker");
+            console.log("Verified 2 Greedy tables and 3 triggers");
+          '
+      - name: Bundle and inspect Worker without publishing
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-greedy-staging-bundle
+      - name: Publish only the isolated staging Worker
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
