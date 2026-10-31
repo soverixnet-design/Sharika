@@ -1416,6 +1416,176 @@
     root.innerHTML=card('Sharika staging','Firebase login and D1 role enforcement active. Only audited, authenticated wallet operations are permitted.');
   };
 
+
+  // Real event manager: replaces the template's simulated Events and Prizes tables.
+  // Event winners are paid only after the published event ends, by exact verified ID.
+  const EVENT_KINDS={
+    gift_race:'🎁 Gift race',room_battle:'🎙️ Room ranking battle',
+    recharge_bonus:'🪙 Recharge campaign',game_tournament:'🎮 Game tournament',
+    invite_campaign:'🤝 Invite campaign',checkin_festival:'📅 Check-in festival',
+    festival:'🎊 Festival',custom:'✨ Custom event'
+  };
+  function eventLocal(iso){
+    const time=new Date(iso);
+    if(!Number.isFinite(+time))return '';
+    return new Date(time.getTime()-time.getTimezoneOffset()*60000)
+      .toISOString().slice(0,16);
+  }
+  P.events=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>🎉 Verified Events & Rewards</h3>'+
+      '<p class="n">Events appear in the app as soon as they are published. '+
+      'Set UTC event dates and prize coins; select real winning user IDs only after the event ends. '+
+      'Every winner is paid once through the server wallet and immutable ledger.</p>'+
+      '<div id="sh-event-stats">Loading verified events…</div></div>'+
+      (role==='super'?'<div class="card" style="border:1px solid #edc668;border-radius:19px;'+
+      'box-shadow:0 8px 20px #553ba026"><h3 id="sh-event-form-title">✨ Create event</h3>'+
+      '<div class="row">'+
+      '<label>Title<input class="field" id="sh-ev-title" maxlength="100" placeholder="Weekend Gift Race"></label>'+
+      '<label>Type<select class="field" id="sh-ev-kind">'+
+      Object.entries(EVENT_KINDS).map(([key,label])=>'<option value="'+key+'">'+esc(label)+'</option>').join('')+
+      '</select></label></div>'+
+      '<label>Description / rules<textarea class="field" id="sh-ev-desc" maxlength="1000" rows="3" '+
+      'placeholder="Describe the ranking and how winners are chosen"></textarea></label>'+
+      '<div class="row"><label>Starts (local time)<input class="field" id="sh-ev-start" type="datetime-local"></label>'+
+      '<label>Ends (local time)<input class="field" id="sh-ev-end" type="datetime-local"></label>'+
+      '<label>Status<select class="field" id="sh-ev-status">'+
+      '<option value="draft">Draft (hidden)</option><option value="published">Publish in app</option>'+
+      '<option value="cancelled">Cancelled</option></select></label></div>'+
+      '<div class="row"><label>🥇 Rank 1 coins<input class="field" type="number" id="sh-ev-p1" min="0" max="1000000" value="10000"></label>'+
+      '<label>🥈 Rank 2 coins<input class="field" type="number" id="sh-ev-p2" min="0" max="1000000" value="5000"></label>'+
+      '<label>🥉 Rank 3 coins<input class="field" type="number" id="sh-ev-p3" min="0" max="1000000" value="2500"></label></div>'+
+      '<button class="btn s" type="button" id="sh-event-save">Create event</button>'+
+      ' <button class="btn" type="button" id="sh-event-clear">Clear form</button>'+
+      '<p class="n" id="sh-event-note">Use 0 to disable a prize. Awarded events are locked to protect old receipts.</p>'+
+      '</div>':'')+
+      '<div id="sh-event-list">Loading…</div>';
+    let data;
+    try{data=await api('GET','events');}
+    catch(error){
+      byId('sh-event-list').textContent='Events unavailable: '+error.message;
+      byId('sh-event-stats').textContent='Could not read event records.';
+      return;
+    }
+    const all=data.events||[];
+    byId('sh-event-stats').innerHTML='<b>'+fmt(all.length)+'</b> real events · '+
+      '<b>'+fmt(all.filter(e=>e.status==='live').length)+'</b> live · '+
+      '<b>'+fmt(all.reduce((sum,e)=>sum+(e.awards||[]).length,0))+'</b> paid prizes';
+    const list=byId('sh-event-list');
+    if(!all.length)list.innerHTML=card('No events yet',
+      'Create an event above. No demo competitions or prize payments are enabled.');
+    else list.innerHTML=all.map(e=>{
+      const awarded=e.awards||[];
+      const labels=['🥇','🥈','🥉'];
+      const schedule=esc(new Date(e.starts_at).toLocaleString())+' — '+
+        esc(new Date(e.ends_at).toLocaleString());
+      const prizes=labels.map((medal,i)=>{
+        const receipt=awarded.find(a=>a.rank===i+1);
+        const coins=Number(e.prizes?.[i]||0);
+        if(!coins)return '<span class="n">'+medal+' No prize</span>';
+        return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">'+
+          '<b>'+medal+' '+fmt(coins)+' 🪙</b> '+
+          (receipt?'<span class="n">✓ Paid to '+esc(receipt.public_id)+
+             ' ('+esc(receipt.name)+')</span>':
+           role==='super'&&e.status==='ended'?
+             '<input class="field" style="max-width:145px" inputmode="numeric" maxlength="8" '+
+             'placeholder="8-digit user ID" id="sh-ev-recipient-'+e.id+'-'+(i+1)+'">'+
+             '<button type="button" class="btn s" data-sh-event-award="'+e.id+'" '+
+             'data-sh-event-rank="'+(i+1)+'">Pay verified winner</button>':
+             '<span class="n">Pending · ends first</span>')+'</div>';
+      }).join('');
+      return '<div class="card" style="border:1px solid #9d7be4;border-radius:22px;'+
+        'background:linear-gradient(140deg,#fff,#f6f0ff);box-shadow:0 7px 0 #d2c2ef">'+
+        '<h3>🏆 '+esc(e.title)+' <small>#'+e.id+'</small></h3>'+
+        '<p class="n">'+esc(EVENT_KINDS[e.kind]||e.kind)+' · <b>'+esc(e.status.toUpperCase())+'</b></p>'+
+        '<p class="n">'+schedule+'</p><p>'+esc(e.description||'No rules entered')+'</p>'+
+        '<div>'+prizes+'</div>'+
+        (role==='super'&&!e.locked?
+          '<button class="btn" type="button" data-sh-event-edit="'+e.id+'">Edit event / prizes</button>':
+          e.locked?'<p class="n">🔒 Paid event cannot be edited.</p>':'')+
+        '</div>';
+    }).join('');
+    let editing=null;
+    const now=new Date(),tomorrow=new Date(now.getTime()+86400000);
+    function clear(){
+      editing=null;
+      byId('sh-event-form-title')?.replaceChildren(document.createTextNode('✨ Create event'));
+      byId('sh-ev-title').value='';
+      byId('sh-ev-kind').value='gift_race';
+      byId('sh-ev-desc').value='';
+      byId('sh-ev-start').value=eventLocal(now.toISOString());
+      byId('sh-ev-end').value=eventLocal(tomorrow.toISOString());
+      byId('sh-ev-status').value='draft';
+      ['10000','5000','2500'].forEach((v,i)=>byId('sh-ev-p'+(i+1)).value=v);
+      byId('sh-event-save').textContent='Create event';
+    }
+    if(role==='super'){
+      clear();
+      byId('sh-event-clear').onclick=clear;
+      list.querySelectorAll('[data-sh-event-edit]').forEach(button=>button.onclick=()=>{
+        const e=all.find(row=>row.id===Number(button.dataset.shEventEdit));
+        if(!e||e.locked)return;
+        editing=e.id;
+        byId('sh-event-form-title').textContent='✏️ Edit '+e.title;
+        byId('sh-ev-title').value=e.title;
+        byId('sh-ev-kind').value=e.kind;
+        byId('sh-ev-desc').value=e.description||'';
+        byId('sh-ev-start').value=eventLocal(e.starts_at);
+        byId('sh-ev-end').value=eventLocal(e.ends_at);
+        byId('sh-ev-status').value=e.published?'published':e.status;
+        (e.prizes||[]).forEach((n,i)=>byId('sh-ev-p'+(i+1)).value=n);
+        byId('sh-event-save').textContent='Save event changes';
+        byId('sh-event-form-title').scrollIntoView({behavior:'smooth',block:'start'});
+      });
+      byId('sh-event-save').onclick=async event=>{
+        const hint=byId('sh-event-note');
+        const p=[1,2,3].map(i=>{
+          const raw=byId('sh-ev-p'+i).value.trim();
+          return /^\d+$/.test(raw)?Number(raw):NaN;
+        });
+        const start=Date.parse(byId('sh-ev-start').value);
+        const end=Date.parse(byId('sh-ev-end').value);
+        if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start||
+          end-start>366*86400000||p.some(n=>!Number.isSafeInteger(n)||n<0||n>1000000)||
+          !p.some(n=>n>0)){
+          hint.textContent='Use valid dates (max 366 days) and prize coins from 0–1,000,000.';return;
+        }
+        const payload={title:byId('sh-ev-title').value.trim(),kind:byId('sh-ev-kind').value,
+          description:byId('sh-ev-desc').value.trim(),starts_at:new Date(start).toISOString(),
+          ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p};
+        if(payload.title.length<3){hint.textContent='Enter an event name of at least 3 characters.';return;}
+        if(!window.confirm((editing?'Update event #'+editing:'Create this event')+
+          ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;
+        const button=event.currentTarget;button.disabled=true;
+        try{
+          await api(editing?'PATCH':'POST',editing?'events/'+editing:'events',payload);
+          note('Event saved to verified server ✓');
+          await P.events();
+        }catch(error){hint.textContent='Event save failed: '+error.message;}
+        finally{button.disabled=false;}
+      };
+      list.querySelectorAll('[data-sh-event-award]').forEach(button=>button.onclick=async event=>{
+        const id=Number(button.dataset.shEventAward),rank=Number(button.dataset.shEventRank);
+        const input=byId('sh-ev-recipient-'+id+'-'+rank);
+        const public_id=input?.value.trim()||'';
+        if(!/^\d{8}$/.test(public_id)){note('Enter the exact 8-digit winning user ID');return;}
+        const prize=Number(all.find(e=>e.id===id)?.prizes?.[rank-1]||0);
+        if(!window.confirm('Pay '+fmt(prize)+' real wallet coins to user '+public_id+
+          ' for event #'+id+' rank '+rank+'? This cannot be undone.'))return;
+        // Preserve request ID across a network retry so one tap cannot double credit.
+        button.dataset.requestId=button.dataset.requestId||
+          'event-award:'+id+':'+rank+':'+crypto.randomUUID();
+        button.disabled=true;
+        try{
+          const result=await api('POST','events/'+id+'/award',{
+            rank,public_id,request_id:button.dataset.requestId});
+          note(result.duplicate?'Already credited ✓':fmt(result.coins)+' coins paid ✓');
+          await P.events();
+        }catch(error){note('Prize not paid: '+error.message);button.disabled=false;}
+      });
+    }
+  };
+
   const verifiedDashboard=P.dash;
   P.dash=async function(){
     if(role!=='staff')return verifiedDashboard();
@@ -1429,7 +1599,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
