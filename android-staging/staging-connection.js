@@ -599,6 +599,29 @@
 
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
   let sfuState = null;
+  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;
+  function recoverSfuPublication(state,reason) {
+    if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||state.recoveryTimer)return;
+    if(voiceRecoveryRoom!==state.roomId){voiceRecoveryRoom=state.roomId;voiceRecoveryAttempts=0;}
+    if(voiceRecoveryAttempts>=3) {
+      if(!state.recoveryExhausted){
+        state.recoveryExhausted=true;
+        document.getElementById('rf')?.contentWindow?.toast?.(
+          'Microphone network disconnected. Tap the mic to retry.');
+      }
+      return;
+    }
+    const delay=[1200,3000,6000][voiceRecoveryAttempts++];
+    console.warn('Sharika mic transport recovery:',reason);
+    state.recoveryTimer=setTimeout(()=>{
+      state.recoveryTimer=null;
+      if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId)return;
+      connectVoice(state.roomId).catch(error=>{
+        document.getElementById('rf')?.contentWindow?.toast?.(
+          'Microphone reconnect failed: '+errText(error));
+      });
+    },delay);
+  }
   async function waitIce(peer) {
     if (peer.iceGatheringState === 'complete') return;
     await new Promise((resolve,reject) => {
@@ -615,6 +638,7 @@
     sfuState=null;
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
+    if(state.recoveryTimer)clearTimeout(state.recoveryTimer);
     for(const element of state.audioElements){element.pause();element.srcObject=null;element.remove();}
     if(state.media)for(const track of state.media.getTracks())track.stop();
     for(const pc of [state.publishPC,state.receivePC])if(pc)pc.close();
@@ -673,7 +697,8 @@
     const state={
       roomId,closed:false,sessionIds:[],publishPC:null,receivePC:null,
       media:null,audioElements:new Set(),remoteMids:new Map(),
-      subscribed:new Set(),subscribeId:null,timer:null,syncing:false
+      subscribed:new Set(),subscribeId:null,timer:null,syncing:false,
+      startedAt:Date.now(),disconnectedAt:0,recoveryTimer:null,recoveryExhausted:false
     };
     sfuState=state;
     try {
@@ -696,6 +721,29 @@
           mid:transceiver.mid,trackName:'microphone'
         });
         await state.publishPC.setRemoteDescription(negotiation.sessionDescription);
+        state.startedAt=Date.now();
+        // A successful signaling response is not proof that the microphone
+        // media path is connected. Monitor ICE and show/retry a broken uplink.
+        const checkPublisher=()=>{
+          if(state.closed||sfuState!==state)return;
+          const status=state.publishPC.connectionState;
+          if(status==='connected'){
+            state.disconnectedAt=0;
+            voiceRecoveryAttempts=0;
+            markLocalMicrophone(local.readyState==='live'&&local.enabled);
+          } else if(status==='disconnected'){
+            if(!state.disconnectedAt)state.disconnectedAt=Date.now();
+          } else if(status==='failed'){
+            markLocalMicrophone(false);
+            recoverSfuPublication(state,'publisher connection failed');
+          }
+        };
+        state.publishPC.addEventListener('connectionstatechange',checkPublisher);
+        state.publishPC.addEventListener('iceconnectionstatechange',checkPublisher);
+        local.addEventListener('ended',()=>{
+          if(!state.closed)recoverSfuPublication(state,'microphone track ended');
+        },{once:true});
+        checkPublisher();
       }
       if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
       const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
@@ -710,6 +758,17 @@
         if(state.closed)return;
         api('POST','/rooms/'+roomId+'/voice/heartbeat',{sessionIds:state.sessionIds}).catch(()=>{});
         subscribeSfu(state).catch(()=>{});
+        if(state.publishPC){
+          const pc=state.publishPC,connection=pc.connectionState;
+          const broken=connection==='failed'||pc.iceConnectionState==='failed'||
+            (connection==='disconnected'&&state.disconnectedAt&&Date.now()-state.disconnectedAt>12000)||
+            (connection!=='connected'&&Date.now()-state.startedAt>30000)||
+            state.media?.getAudioTracks()[0]?.readyState==='ended';
+          if(broken){
+            markLocalMicrophone(false);
+            recoverSfuPublication(state,'publisher media path unavailable');
+          }
+        }
       },8000);
       return {publishing:canPublish};
     }catch(error){
@@ -830,6 +889,18 @@
   }
   async function toggleVoice() {
     if(sfuState) {
+      const failed=sfuState.recoveryExhausted||
+        ['failed','disconnected'].includes(sfuState.publishPC?.connectionState);
+      if(failed&&sfuState.media){
+        const roomId=sfuState.roomId;
+        voiceRecoveryAttempts=0;
+        await connectVoice(roomId);
+        const resumed=sfuState?.media?.getAudioTracks()[0];
+        if(!resumed)throw new Error('Microphone reconnect unavailable');
+        resumed.enabled=true;
+        markLocalMicrophone(true);
+        return true;
+      }
       const track=sfuState.media?.getAudioTracks()[0];
       if(!track)throw new Error('Take an available mic seat first');
       track.enabled=!track.enabled;
@@ -1718,6 +1789,34 @@
         } else frame.toast('This action is not connected to the verified server yet');
       } catch (error) { frame.toast(errText(error)); }
     };
+    // A verified guest taps any open/unlocked seat to sit immediately.
+    // This bypasses the old demo "Seat a guest" menu; owner invitations remain optional.
+    let directSeatBusy=false;
+    frame.document.addEventListener('click',async event=>{
+      const button=event.target.closest?.('.seat.empty[data-i]');
+      if(!button||!frame.document.querySelector('#grid')?.contains(button) ||
+         room.owner_id===session?.user?.id)return;
+      const seat=Number(button.dataset.i);
+      if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      if(directSeatBusy)return;
+      directSeatBusy=true;button.disabled=true;
+      try{
+        await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
+        await syncFrame(room,frame);
+        let joined=await connectVoice(room.id);
+        if(!joined.publishing){
+          const current=await api('GET','/rooms/'+room.id+'/voice/config');
+          if(current.publish)joined=await connectVoice(room.id);
+        }
+        frame.toast(joined.publishing?'Joined mic seat '+seat+' · microphone on':
+          'Joined seat '+seat+' · microphone connecting');
+      }catch(error){frame.toast('Unable to take seat: '+errText(error));}
+      finally{
+        directSeatBusy=false;
+        if(button.isConnected)button.disabled=false;
+      }
+    },true);
     // The room template's audience menu previously changed local demo seats.
     // Wire those buttons to authenticated server operations instead.
     const originalMemberSheet=frame.userSheet;
