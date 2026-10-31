@@ -28,6 +28,8 @@ jobs:
           node-version: '22'
       - name: Syntax and unit checks
         run: npm --prefix cloudflare run check
+      - name: Verify staff quotas and immutable direct coin grants in SQLite
+        run: python3 cloudflare/test/staff-schema-check.py
       - name: Validate isolated SQLite schema in-memory
         run: |
           python3 - <<'PY'
