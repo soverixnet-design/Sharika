@@ -8,6 +8,7 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp} from './cosmetics.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
@@ -510,6 +511,13 @@ export async function handleRequest(request, env) {
           action:parts[4],reply,fail,cors});
       return fail('original_game_route_not_found',404,cors);
     }
+    if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='greedy-wheel'){
+      await assertActive(env.DB,uid);
+      if(parts.length===4)
+        return await handleGreedyRequest({request,db:env.DB,uid,
+          action:parts[3],reply,fail,cors});
+      return fail('greedy_route_not_found',404,cors);
+    }
     // Authenticated UTC-synchronized virtual-coin games. The D1 migration
     // owns the atomic debit/payout triggers and exactly-once settlement.
     if (parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='games') {
@@ -546,6 +554,7 @@ export async function handleRequest(request, env) {
       await assertActive(env.DB, uid);
       await settleDueBets(env.DB,uid);
       await settleOriginalDueBets(env.DB);
+      await settleGreedyDueBets(env.DB);
       const user = await me(env.DB,uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();

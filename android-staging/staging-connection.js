@@ -3681,7 +3681,10 @@
       page:'file:///android_asset/original-games/night-food-wheel.html'},
     {id:'jackpot-fruit',name:'Jackpot Fruit',tag:'🎰 Jackpot',
       image:'file:///android_asset/jackpot-fruit-original-card.png',
-      page:'file:///android_asset/original-games/jackpot-fruit.html'}
+      page:'file:///android_asset/original-games/jackpot-fruit.html'},
+    {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
+      image:'file:///android_asset/greedy-wheel/img/pizza.webp',
+      page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'}
   ];
   // Only announce server-confirmed round winners during the first ten seconds
   // after settlement. Persist one announcement per game/round across reopens.
@@ -3807,6 +3810,36 @@
       }
       const data=event.data;
       if(!data||typeof data!=='object')return;
+      if(current.item.id==='greedy-wheel'){
+        if(data.source==='greedy-game'&&data.type==='close'){
+          currentGameFrame=null;clearWinnerBanner();catalog();return;
+        }
+        if(data.source==='greedy-game'&&data.type==='topup'){
+          showToast('Open Wallet from your profile to recharge');return;
+        }
+        if(data.type!=='sharika:greedy-request'||
+          !Number.isSafeInteger(data.id)||data.id<1||
+          !['state','bet','records'].includes(data.action))return;
+        const target=current.element.contentWindow;
+        const method=data.action==='bet'?'POST':'GET';
+        try{
+          const result=await api(method,'/greedy-wheel/'+data.action,
+            data.action==='bet'?data.body:undefined);
+          if(!session||currentGameFrame!==current)return;
+          target.postMessage({type:'sharika:greedy-response',id:data.id,ok:true,value:result},'*');
+          if(data.action==='bet'||(data.action==='state'&&
+            Number.isSafeInteger(result?.balance)&&result.balance!==balance.coins&&
+            Date.now()-originalGameWalletRefreshTime>=2500)){
+            originalGameWalletRefreshTime=Date.now();
+            reloadWallet().catch(()=>{});
+          }
+        }catch(error){
+          if(!session||currentGameFrame!==current)return;
+          target.postMessage({type:'sharika:greedy-response',id:data.id,
+            ok:false,error:errText(error)},'*');
+        }
+        return;
+      }
       if(data.type==='sharika:original-exit'){currentGameFrame=null;clearWinnerBanner();catalog();return;}
       if(data.type!=='sharika:original-request')return;
       const permitted=['state','history','stats','rankings','bet'];
