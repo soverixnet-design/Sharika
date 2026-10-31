@@ -4,6 +4,7 @@ import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
+import { handleEventApp } from './events.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
@@ -180,6 +181,9 @@ export async function handleRequest(request, env) {
       if(result)return result;
       return fail('cosmetic_route_not_found',404,cors);
     }
+    if(path==='/api/v1/events') return await handleEventApp({
+      request,env,uid,path,cors,reply,fail
+    });
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
       request, env, uid, path, cors, reply, fail
     });
