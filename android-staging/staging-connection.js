@@ -1848,8 +1848,8 @@
         frame.S.coins=balance.coins;
         frame.S.xp=balance.xp;
         frame.close();
-        frame.toast('Gift sent · '+result.spent_coins+' coins charged · Room +'+
-        Number(result.room_reward_coins||0).toLocaleString('en-US')+' coins ✓');
+        frame.toast('Gift sent · '+result.spent_coins+' coins charged · Room reward 10% · Owner +'+
+          Number(result.owner_reward_coins||0).toLocaleString('en-US')+' coins ✓');
         if(result.lucky) {
           frame.toast('Lucky Gift: receiver 5% diamonds · room 1% reward');
         }
@@ -1889,16 +1889,21 @@
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
       if(lastGiftEventId===null){lastGiftEventId=latest;return;}
       let receivedGift=false;
+      let sawNewGift=false;
       for(const event of events){
-        if(event.id<=lastGiftEventId||event.sender_id===profile?.public_id)continue;
+        if(event.id<=lastGiftEventId)continue;
+        sawNewGift=true;
+        if(event.sender_id===profile?.public_id)continue;
         if(event.recipient_id===profile?.public_id)receivedGift=true;
         const seat=(frame.seats||[]).find(s=>s?.public_id===event.recipient_id);
         if(seat && typeof frame.fly==='function')
           frame.fly(event.emoji,seat.i,0,event.price_coins);
       }
       lastGiftEventId=Math.max(lastGiftEventId,latest);
-      // Recipients see their verified diamond/coin balance after incoming gifts.
-      if(receivedGift)await reloadWallet();
+      // The owner also sees the verified 10% gift reward in the coin wallet
+      // when somebody sends a gift to another user in this room.
+      if(receivedGift||(sawNewGift&&room.owner_id===session?.user?.id))
+        await reloadWallet();
     }
     async function moderateSeat(action,seat) {
       if(room.owner_id!==session?.user?.id)throw new Error('Room owner only');
@@ -2267,11 +2272,12 @@
         const rewards=await api('GET','/rooms/'+room.id+'/rewards');
         const normal=Number(rewards.regular_reward_hundredths||0)/100;
         const lucky=Number(rewards.lucky_reward_hundredths||0)/100;
-        if(target.isConnected)target.textContent='Ordinary gifts 10%: '+
-          normal.toLocaleString('en-US')+' coins · Lucky Gift 1% (if enabled): '+
-          lucky.toLocaleString('en-US')+' coins. Total: '+
-          (normal+lucky).toLocaleString('en-US')+
-          ' coins. Verified room ledger only; no personal-wallet transfer or withdrawal.';
+        const paid=Number(rewards.owner_wallet_credited_coins||0);
+        if(target.isConnected)target.textContent='Ordinary gift room reward 10%: '+
+          normal.toLocaleString('en-US')+' coins · Paid to room owner wallet: '+
+          paid.toLocaleString('en-US')+' coins · Lucky Gift room share 1% (if enabled): '+
+          lucky.toLocaleString('en-US')+' coins. New ordinary gifts automatically credit whole coins to the owner. '+
+          'The recorded room total is not a second claimable balance.';
       }catch(error){
         if(target.isConnected)target.textContent='Room rewards unavailable: '+errText(error);
       }

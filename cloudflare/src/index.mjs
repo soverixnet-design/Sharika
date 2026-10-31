@@ -854,8 +854,10 @@ export async function handleRequest(request, env) {
           .seatInviteClear(uid);
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
-      // Ordinary gift shares belong to the audited room ledger, not the
-      // owner's personal wallet. Lucky Gift's separate 1% remains unchanged.
+      // Ordinary gifts earn a 10% room share. Newly settled gifts also credit
+      // whole coins once to the owner's audited personal wallet; the room
+      // ledger remains a report, not another claimable balance.
+      // Lucky Gifts retain their separate 1% rule.
       if (parts.length===5 && action==='rewards' && request.method==='GET') {
         if(!member)return fail('join_room_first',403,cors);
         const regular=await env.DB.prepare(
@@ -871,11 +873,20 @@ export async function handleRequest(request, env) {
         ).bind(roomId).first():null;
         const luckyPoints=Number(lucky?.points)||0;
         const points=regularPoints+luckyPoints;
+        const credited=await env.DB.prepare(
+          "SELECT COALESCE(SUM(l.delta),0) AS coins FROM sharika_gift_transactions t "+
+          "JOIN sharika_wallet_ledger l ON l.auth_uid=? AND l.currency='coins' "+
+          "AND l.reason='room_gift_reward' AND l.request_id=('roomgift:'||t.id) "+
+          "WHERE t.room_id=?"
+        ).bind(room.owner_id,roomId).first();
+        const ownerWalletCreditedCoins=Number(credited?.coins)||0;
         return reply({room_id:roomId,reward_coins:Math.floor(points/100),
           reward_fraction_hundredths:points%100,reward_hundredths:points,
           regular_reward_hundredths:regularPoints,lucky_reward_hundredths:luckyPoints,
           regular_gift_percent:10,lucky_gift_percent:1,
-          owner_wallet_credited:false,withdrawal_enabled:false},200,cors);
+          owner_wallet_credited:ownerWalletCreditedCoins>0,
+          owner_wallet_credited_coins:ownerWalletCreditedCoins,
+          owner_wallet_credit_enabled:true,withdrawal_enabled:false},200,cors);
       }
       // Gift sending uses the real D1 catalog and an all-or-nothing ledger.
       // Lucky/random-payout items remain blocked pending cashout compliance.
@@ -918,17 +929,23 @@ export async function handleRequest(request, env) {
             return fail('invalid_gift_request',400,cors);
           const ids=[...requested].sort();
           const existing=await env.DB.prepare(
-            'SELECT id,gift_id,quantity,recipient_ids_json,total_coins '+
+            'SELECT id,room_id,gift_id,quantity,recipient_ids_json,total_coins '+
             'FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
           ).bind(uid,requestId).first();
           if(existing){
-            if(existing.gift_id!==giftId||existing.quantity!==quantity||
+            if(existing.room_id!==roomId||existing.gift_id!==giftId||
+               existing.quantity!==quantity||
                 existing.recipient_ids_json!==JSON.stringify(ids))
               return fail('idempotency_conflict',409,cors);
             const wallet=await me(env.DB,uid);
             const regularShare=await env.DB.prepare(
               'SELECT reward_hundredths FROM sharika_regular_room_rewards WHERE transaction_id=?'
             ).bind(existing.id).first();
+            const ownerCredit=await env.DB.prepare(
+              "SELECT delta FROM sharika_wallet_ledger WHERE auth_uid=? "+
+              "AND currency='coins' AND reason='room_gift_reward' "+
+              "AND request_id=('roomgift:'||?)"
+            ).bind(room.owner_id,existing.id).first();
             const outcome=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true'
               ?await env.DB.prepare(
                 'SELECT payout_coins,max_multiplier FROM sharika_lucky_gift_outcomes WHERE transaction_id=?'
@@ -936,6 +953,7 @@ export async function handleRequest(request, env) {
             return reply({duplicate:true,transaction_id:existing.id,
               coins:wallet.coins,spent_coins:existing.total_coins,
               room_reward_coins:Number(regularShare?.reward_hundredths||0)/100,
+              owner_reward_coins:Number(ownerCredit?.delta)||0,
               lucky:outcome?{payout_coins:outcome.payout_coins,
                 max_multiplier:outcome.max_multiplier}:null},200,cors);
           }
@@ -1043,6 +1061,22 @@ export async function handleRequest(request, env) {
             'INSERT INTO sharika_regular_room_rewards(transaction_id,room_id,reward_hundredths) '+
             'VALUES((SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
           ).bind(uid,requestId,roomId,regularRewardHundredths));
+          // The room ledger retains the exact 10% share in hundredths.
+          // Whole coins are also credited once to the room owner's wallet
+          // in this same atomic gift settlement (no second claim).
+          const ownerRewardCoins=gift.tab===2?0:Math.floor(spend/10);
+          if(ownerRewardCoins>0){
+            statements.push(env.DB.prepare(
+              "UPDATE sharika_users SET coins=CASE WHEN status='active' AND coins<=? "+
+              "THEN coins+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?"
+            ).bind(Number.MAX_SAFE_INTEGER-ownerRewardCoins,ownerRewardCoins,room.owner_id));
+            statements.push(env.DB.prepare(
+              "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+              "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),"+
+              "'room_gift_reward','roomgift:'||(SELECT id FROM sharika_gift_transactions "+
+              "WHERE sender_uid=? AND request_id=?))"
+            ).bind(room.owner_id,ownerRewardCoins,room.owner_id,uid,requestId));
+          }
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
@@ -1052,6 +1086,7 @@ export async function handleRequest(request, env) {
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
             quantity,room_reward_coins:regularRewardHundredths/100,
+            owner_reward_coins:ownerRewardCoins,
             lucky:lucky?{payout_coins:lucky.payout_coins,
               max_multiplier:lucky.max_multiplier,
               recipient_reward_diamonds:benefits.recipient_hundredths/100,
