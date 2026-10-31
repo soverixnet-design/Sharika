@@ -4,6 +4,7 @@ import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
+import { handlePremiumApp } from './premium.mjs';
 import { handleEventApp } from './events.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
@@ -194,6 +195,10 @@ export async function handleRequest(request, env) {
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
         path==='/api/v1/daily/tasks/claim') return await handleDailyApp({
       request, env, uid, path, cors, reply, fail
+    });
+    if(path==='/api/v1/premium'||path==='/api/v1/premium/purchase'||
+       path==='/api/v1/premium/daily/claim')return await handlePremiumApp({
+      request,env,uid,path,cors,reply,fail
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
       request, env, uid, path, cors, reply, fail
