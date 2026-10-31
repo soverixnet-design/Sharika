@@ -12,6 +12,17 @@ const PUBLIC=/^[0-9]{8}$/;
 const safeAmount=x=>Number.isSafeInteger(x)&&x>=1&&x<=1000000;
 const values=x=>x?.results||[];
 const invalid=(fail,cors)=>fail('invalid_cosmetic_request',400,cors);
+// Reuse the exact same equipped-style resolution in room/profile, ranking,
+// follower and message cards. Only fixed, known column names reach SQL.
+export function publicAppearanceSelect(){
+ return 'u.frame_style,u.medal_style,u.name_tag_style,'+
+  ['frame_style','medal_style','name_tag_style'].map(kind=>
+   `COALESCE((SELECT CASE WHEN x.item_id IS NULL THEN '' `+
+   `ELSE substr(x.item_id,instr(x.item_id,':')+1) END `+
+   `FROM sharika_cosmetic_equipped x WHERE x.auth_uid=u.auth_uid `+
+   `AND x.kind='${kind}'),u.${kind},'') AS equipped_${kind}`
+  ).join(',');
+}
 export async function readEquipped(db,uid){
  let rows;
  try{rows=values(await db.prepare('SELECT kind,item_id FROM sharika_cosmetic_equipped WHERE auth_uid=?')

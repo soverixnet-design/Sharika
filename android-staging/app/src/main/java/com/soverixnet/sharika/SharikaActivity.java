@@ -494,7 +494,7 @@ public final class SharikaActivity extends Activity {
             return false;
         // A fixed-origin bridge, with explicit route/method allowlisting.
         // No /admin, arbitrary URLs, billing, redirects or platform credentials.
-        if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(rich|charm|room|recharge)$"))
+        if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(lucky|rich|charm|room|recharge)$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");

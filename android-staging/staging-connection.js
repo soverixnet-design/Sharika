@@ -1812,6 +1812,7 @@
     // The original non-owner profile model invents age, gifts, followers and
     // badges. Do not present those demo numbers as verified public records.
     paintVerifiedAvatar(root.querySelector('.pfh .pav3'),member.pic,document);
+    decorateVerifiedPublicProfile(root,member);
     const meta=root.querySelector('.pfh .meta');
     if(meta){
       for(const item of [...meta.children].slice(1))item.remove();
@@ -4053,13 +4054,37 @@
           safeMessageHTML(f.public_id)+'</time></div>');
       }
       list.innerHTML=rows.length?rows.join(''):'<div class="empty">No private conversations yet.</div>';
-      // The existing follow APIs return verified profile pictures.
-      // Match by public ID, never by display name or demo avatar.
-      const inboxPhotos=new Map([...following,...followers,...conv]
-        .filter(u=>verifiedAvatarUrl(u.pic))
-        .map(u=>[String(u.public_id),u.pic]));
-      for(const row of list.querySelectorAll('.chatrow[data-private-id]'))
-        paintVerifiedAvatar(row.querySelector('.av'),inboxPhotos.get(row.dataset.privateId),document);
+      // Inbox/follower avatars share the same verified equipped cosmetics as
+      // rankings, public profile and the voice-room seats.
+      cosmeticCss(document);
+      const inboxPeople=new Map([...following,...followers,...conv]
+        .map(u=>[String(u.public_id),u]));
+      for(const row of list.querySelectorAll('.chatrow[data-private-id]')){
+        const person=inboxPeople.get(row.dataset.privateId);
+        const avatar=row.querySelector('.av');
+        if(!avatar||!person)continue;
+        paintVerifiedAvatar(avatar,person.pic,document);
+        const frame=frameArt(person.frame_style),medal=medalArt(person.medal_style),
+          tag=nameTagArt(person.name_tag_style);
+        if(!frame&&!medal&&!tag)continue;
+        const wrap=document.createElement('span');
+        wrap.className='sh-royal-inbox-wrap';
+        avatar.replaceWith(wrap);
+        wrap.appendChild(avatar);
+        if(frame)wrap.insertAdjacentHTML('beforeend',frameTag(frame.id));
+        if(medal){
+          const badge=document.createElement('img');
+          badge.className='sh-royal-medal';
+          badge.src=cosmeticMedia(medal);badge.alt=medal.name;
+          wrap.appendChild(badge);
+        }
+        if(tag){
+          const badge=document.createElement('img');
+          badge.className='sh-royal-inbox-tag';
+          badge.src=cosmeticMedia(tag);badge.alt=tag.name;
+          row.querySelector('b')?.insertAdjacentElement('afterend',badge);
+        }
+      }
       list.onclick=e=>{
         const row=e.target.closest('.chatrow[data-private-id]');
         if(row)openPrivateThread(row.dataset.privateId,row.dataset.privateName);
@@ -4144,6 +4169,224 @@
   ].join('');
   document.head.appendChild(rankAvatarStyle);
 
+  // Keep Sharika's original screens, tab order and purple base. Only the
+  // verified ranking surface receives a royal, responsive 3D treatment.
+  const royalRankingStyle=document.createElement('style');
+  royalRankingStyle.id='sharika-royal-ranking';
+  royalRankingStyle.textContent=[
+    '#v-rank{background:radial-gradient(ellipse at 50% 0%,#49418d8e,transparent 46%),',
+    'radial-gradient(ellipse at 95% 32%,#5146af54,transparent 50%),',
+    'linear-gradient(180deg,#20235e 0%,#101046 45%,#080a29 100%)!important}',
+    '#v-rank .rtop{background:linear-gradient(135deg,#322467e8,#1b194ce8)!important;',
+    'border-bottom:1px solid #d6bd6d45;box-shadow:0 9px 25px #08062299!important}',
+    '#v-rank #rt{gap:8px!important;padding:5px 7px 9px!important;align-items:center}',
+    '#v-rank #rt button{font-size:12px!important;font-weight:800!important;',
+    'color:#cdbce9!important;background:linear-gradient(#50417b,#2b245a)!important;',
+    'border:1px solid #9983c866!important;border-radius:13px!important;',
+    'padding:10px 12px!important;box-shadow:inset 0 1px 0 #fff4,0 4px 0 #100f35!important;',
+    'transition:background .2s,transform .14s,color .2s!important}',
+    '#v-rank #rt button.on{background:linear-gradient(145deg,#fff2b6,#ffcf65 45%,#e38a30)!important;',
+    'color:#543263!important;border-color:#ffeab1!important;',
+    'box-shadow:inset 0 2px 1px #fff9,0 4px 0 #9b5a25,0 0 15px #ffc75d75!important}',
+    '#v-rank #rt button.on::after{display:none!important}',
+    '#v-rank .seg{width:min(370px,90%)!important;max-width:90%!important;',
+    'margin:16px auto 8px!important;padding:5px!important;',
+    'background:linear-gradient(145deg,#4e4382,#292253)!important;',
+    'border:1px solid #c7aae189!important;',
+    'box-shadow:inset 0 2px 3px #fff3,0 6px 15px #07071d8c!important}',
+    '#v-rank .seg button{font-size:13px!important;font-weight:800!important;',
+    'padding:11px 0!important;color:#e8daff!important}',
+    '#v-rank .seg button.on{background:linear-gradient(155deg,#ffe8a5,#f9b94b,#d87635)!important;',
+    'color:#392451!important;text-shadow:0 1px 0 #fff9!important;',
+    'box-shadow:0 4px 0 #8e4e21,0 0 16px #ffce7280!important}',
+    '#v-rank #rb{padding:4px 12px 124px!important;max-width:690px;margin:0 auto}',
+    '#rb .sh-royal-hero{position:relative;overflow:hidden;margin:15px 0 13px;',
+    'border:1px solid #e9c775ab;border-radius:28px;',
+    'background:radial-gradient(circle at 50% -10%,#8d67c36b,transparent 58%),',
+    'linear-gradient(155deg,#403471,#241a51 60%,#19173f);',
+    'box-shadow:inset 0 2px 1px #ffffff4a,inset 0 -3px 0 #120b35,',
+    '0 10px 23px #0304168e;padding:18px 10px 16px}',
+    '#rb .sh-royal-hero:before{content:"✦            ✧     ✦";position:absolute;',
+    'top:10px;left:8%;width:84%;text-align:center;font-size:13px;letter-spacing:15px;',
+    'color:#ffe3a281;pointer-events:none}',
+    '#rb .sh-royal-kicker{text-align:center;font-size:10px;letter-spacing:2px;',
+    'font-weight:900;color:#eecb7c;text-transform:uppercase}',
+    '#rb .sh-royal-title{text-align:center;margin:5px 0 3px;',
+    'font-size:clamp(19px,6vw,27px);font-weight:950;letter-spacing:.5px;',
+    'color:#fff1c2;text-shadow:0 2px 0 #61355f,0 0 17px #ffc36c75}',
+    '#rb .sh-royal-sub{text-align:center;font-size:11px;line-height:1.45;',
+    'color:#d0beed;max-width:300px;margin:0 auto 10px}',
+    '#rb .sh-royal-podium{display:grid;grid-template-columns:minmax(0,1fr) 1.17fr minmax(0,1fr);',
+    'gap:6px;align-items:end;margin:16px 0 0}',
+    '#rb .sh-royal-podium-card{position:relative;min-width:0;display:flex;',
+    'flex-direction:column;align-items:center;gap:6px;justify-content:flex-end;',
+    'text-align:center;padding:20px 3px 11px;border-radius:22px 22px 18px 18px;',
+    'background:linear-gradient(155deg,#6b5796b5,#3d306eb8 55%,#292256f2);',
+    'border:1px solid #a5a1dd77;box-shadow:inset 0 2px 1px #fff6,0 5px 0 #191337;',
+    'color:#fff;touch-action:manipulation}',
+    '#rb .sh-royal-podium-card.first{grid-column:2;grid-row:1;min-height:203px;',
+    'padding-top:28px;background:linear-gradient(155deg,#9471bc,#533a83 62%,#342361);',
+    'border:2px solid #ffe19a;box-shadow:inset 0 2px 2px #fff8,0 6px 0 #ad6c27,',
+    '0 0 26px #ffca6d69}',
+    '#rb .sh-royal-podium-card.second{grid-column:1;grid-row:1;min-height:171px}',
+    '#rb .sh-royal-podium-card.third{grid-column:3;grid-row:1;min-height:166px}',
+    '#rb .sh-royal-podium-card:focus-visible{outline:3px solid #fff5b7;outline-offset:4px}',
+    '#rb .sh-royal-place{position:absolute;top:-16px;left:50%;transform:translateX(-50%);',
+    'font-size:25px;filter:drop-shadow(0 3px 3px #0a062d);white-space:nowrap}',
+    '#rb .sh-royal-avatar{position:relative;flex:none;display:grid;place-items:center;',
+    'width:58px;height:58px;margin:4px auto;isolation:isolate}',
+    '#rb .first .sh-royal-avatar{width:78px;height:78px}',
+    '#rb .sh-royal-face{display:grid;place-items:center;width:100%;height:100%;',
+    'border-radius:50%;font-size:27px;overflow:hidden;',
+    'background:linear-gradient(145deg,#aa54d3,#dc3ead);border:3px solid #ebcffb;',
+    'box-shadow:inset 0 2px 9px #1a083d,0 0 0 3px #8363bcaa}',
+    '#rb .first .sh-royal-face{border-color:#ffe6a0;box-shadow:0 0 0 3px #bc813e,',
+    '0 0 18px #ffe29b9c}',
+    '#rb .sh-royal-face img{width:100%;height:100%;display:block;object-fit:cover;',
+    'object-position:center 32%;border-radius:50%}',
+    '#rb .sh-royal-avatar>.sh-sovera-frame{width:160%!important;height:160%!important;',
+    'z-index:2!important}',
+    '#rb .sh-royal-avatar>.sh-royal-medal{position:absolute;right:-14px;bottom:-12px;',
+    'z-index:4;width:29px;height:29px;object-fit:contain;filter:drop-shadow(0 2px 2px #140936)}',
+    '#rb .sh-royal-name{font-weight:900;font-size:clamp(10px,3.1vw,14px);',
+    'max-width:100%;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;',
+    'padding:0 2px;text-shadow:0 1px 2px #100927}',
+    '#rb .sh-royal-id{font-size:9px;letter-spacing:.3px;color:#e5d8fa;',
+    'background:#180e3e80;border:1px solid #ffffff44;border-radius:11px;',
+    'padding:3px 5px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}',
+    '#rb .sh-royal-amount{font-size:12px;font-weight:900;color:#ffe29d;',
+    'text-shadow:0 2px 2px #5e3c0b;white-space:nowrap}',
+    '#rb .sh-royal-member-tag{display:block;max-width:86px;max-height:22px;',
+    'object-fit:contain;margin:0 auto}',
+    '#rb .sh-royal-divider{display:flex;align-items:center;gap:10px;',
+    'font-size:11px;font-weight:900;letter-spacing:1px;color:#e0c889;',
+    'margin:18px 10px 10px;text-transform:uppercase}',
+    '#rb .sh-royal-divider:before,#rb .sh-royal-divider:after{content:"";height:1px;',
+    'flex:1;background:linear-gradient(90deg,transparent,#eac98399,transparent)}',
+    '#rb .rr.sh-royal-row{position:relative;margin:10px 0!important;',
+    'padding:14px 13px!important;gap:12px!important;border-radius:23px!important;',
+    'background:linear-gradient(150deg,#51447fae,#26235fe8)!important;',
+    'border:1px solid #aeb1e499!important;box-shadow:inset 0 2px 1px #ffffff45,',
+    '0 6px 0 #0a0c2d,0 12px 18px #03051d79!important}',
+    '#rb .rr.sh-royal-row.me{border-color:#ffde91!important;box-shadow:',
+    'inset 0 2px 1px #fff5,0 6px 0 #835028,0 0 16px #f6bf5457!important}',
+    '#rb .rr.sh-royal-row>.n{flex:none;width:28px!important;height:36px;display:grid;',
+    'place-items:center;border-radius:12px;background:linear-gradient(#ffe6a0,#ef9c31);',
+    'box-shadow:0 4px 0 #9e501c;color:#5f3170;font-size:15px!important}',
+    '#rb .rr.sh-royal-row .sh-royal-avatar{width:58px;height:58px;margin:0}',
+    '#rb .rr.sh-royal-row .rn{flex:1;min-width:0}',
+    '#rb .rr.sh-royal-row .rn b{font-size:14px!important;color:#fff!important}',
+    '#rb .rr.sh-royal-row .idl{margin-top:5px;font-size:11px;color:#e3d4ff}',
+    '#rb .rr.sh-royal-row .rv{flex:none;margin:0;font-size:13px!important;',
+    'color:#ffda91;font-weight:900}',
+    '#rb .rr.sh-royal-row .rv .cn{width:17px;height:17px}',
+    '#rb .sh-royal-empty{margin:16px 0;padding:24px 18px;border-radius:24px;',
+    'text-align:center;color:#e8dff7;background:linear-gradient(150deg,#4c3a7d,#242052);',
+    'border:1px solid #c5a46a89;box-shadow:inset 0 2px 1px #fff3,0 8px 20px #09062182}',
+    '#rb .sh-royal-empty strong{display:block;font-size:15px;color:#ffe6ad;margin:8px 0}',
+    '#pfo .sh-ranked-profile .pavw>.sh-sovera-frame{z-index:4!important}',
+    '#pfo .sh-ranked-profile .sh-royal-profile-effects{display:flex;align-items:center;',
+    'justify-content:center;gap:8px;max-width:100%;margin:5px auto 15px}',
+    '#pfo .sh-ranked-profile .sh-royal-profile-effects img{max-width:94px;',
+    'height:40px;object-fit:contain;filter:drop-shadow(0 2px 3px #2d1158)}',
+    '#v-msg .chatrow .sh-royal-inbox-wrap{display:block;position:relative;',
+    'width:48px;height:48px;flex:0 0 48px;overflow:visible}',
+    '#v-msg .chatrow .sh-royal-inbox-wrap>.av{width:48px;height:48px;',
+    'border:2px solid #ead5ff;box-shadow:0 0 9px #b37dff80;overflow:hidden}',
+    '#v-msg .chatrow .sh-royal-inbox-wrap>.sh-sovera-frame{width:148%!important;',
+    'height:148%!important;z-index:3!important}',
+    '#v-msg .chatrow .sh-royal-inbox-wrap>.sh-royal-medal{position:absolute;',
+    'right:-9px;bottom:-8px;width:21px;height:21px;z-index:5;object-fit:contain}',
+    '#v-msg .chatrow .sh-royal-inbox-tag{display:block;width:64px;height:19px;',
+    'object-fit:contain;margin:1px 0}',
+    '@media(max-width:365px){#rb .sh-royal-podium{gap:4px}',
+    '#rb .sh-royal-podium-card{padding-left:1px;padding-right:1px}',
+    '#rb .sh-royal-name{font-size:10px}#rb .rr.sh-royal-row{gap:8px!important}',
+    '#rb .rr.sh-royal-row .sh-royal-avatar{width:49px;height:49px}',
+    '#rb .rr.sh-royal-row .rv{font-size:11px!important}}',
+    '@media(prefers-reduced-motion:reduce){#v-rank #rt button{transition:none!important}}'
+  ].join('');
+  document.head.appendChild(royalRankingStyle);
+
+  // One authoritative appearance helper powers both podium and list cards.
+  // Unknown/unequipped server keys never become untrusted remote media URLs.
+  function royalRankAvatar(leader,isRoom=false){
+    const wrap=document.createElement('div');
+    wrap.className='sh-royal-avatar';
+    const face=document.createElement('div');
+    face.className='sh-royal-face';
+    if(isRoom)face.textContent=leader.emoji||'🎙️';
+    else{
+      const url=verifiedAvatarUrl(leader.pic);
+      if(url){
+        const photo=document.createElement('img');
+        photo.src=url;photo.alt='';photo.loading='lazy';
+        photo.onerror=()=>{photo.remove();face.textContent='👤';};
+        face.appendChild(photo);
+      }else face.textContent='👤';
+    }
+    wrap.appendChild(face);
+    if(!isRoom){
+      const frame=frameArt(leader.frame_style);
+      if(frame){
+        const art=document.createElement('i');
+        art.className='fxr sh-sovera-frame';
+        art.setAttribute('aria-hidden','true');
+        art.style.backgroundImage='url("'+effectPath(frame.art)+'")';
+        wrap.appendChild(art);
+      }
+      const medal=medalArt(leader.medal_style);
+      if(medal){
+        const badge=document.createElement('img');
+        badge.className='sh-royal-medal';
+        badge.src=cosmeticMedia(medal);badge.alt=medal.name;
+        wrap.appendChild(badge);
+      }
+    }
+    return wrap;
+  }
+  function royalRankNameTag(leader){
+    const tag=nameTagArt(leader.name_tag_style);
+    if(!tag)return null;
+    const image=document.createElement('img');
+    image.className='sh-royal-member-tag';
+    image.src=cosmeticMedia(tag);image.alt=tag.name;
+    return image;
+  }
+  function royalRankAction(node,leader,isRoom){
+    const target=String(isRoom?'':leader.public_id||'');
+    if(!/^[0-9]{8}$/.test(target))return;
+    node.dataset.rankUser=target;
+    node.tabIndex=0;node.setAttribute('role','button');
+    node.setAttribute('aria-label','Open profile for ID '+target);
+    node.onclick=()=>openVerifiedRankProfile(target);
+    node.onkeydown=event=>{
+      if(event.key==='Enter'||event.key===' '){
+        event.preventDefault();openVerifiedRankProfile(target);
+      }
+    };
+  }
+  function decorateVerifiedPublicProfile(root,person){
+    if(!root||!person)return;
+    cosmeticCss(document);
+    const wrapper=root.querySelector('.pfh .pavw');
+    if(wrapper){
+      wrapper.querySelectorAll('.sh-sovera-frame').forEach(x=>x.remove());
+      const frame=frameTag(person.frame_style);
+      if(frame)wrapper.insertAdjacentHTML('beforeend',frame);
+    }
+    root.querySelector('.sh-royal-profile-effects')?.remove();
+    const effects=document.createElement('div');
+    effects.className='sh-royal-profile-effects';
+    for(const item of [medalArt(person.medal_style),nameTagArt(person.name_tag_style)]){
+      if(!item)continue;
+      const artwork=document.createElement('img');
+      artwork.src=cosmeticMedia(item);artwork.alt=item.name;
+      effects.appendChild(artwork);
+    }
+    if(effects.children.length)root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',effects);
+  }
+
   let rankProfileRequest=0;
   async function openVerifiedRankProfile(publicId){
     const id=String(publicId||'');
@@ -4186,6 +4429,7 @@
       const avatar=root.querySelector('#sh-ranked-avatar');
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
+      decorateVerifiedPublicProfile(root,person);
       const follow=root.querySelector('#sh-ranked-follow');
       async function loadFollowing(){
         const data=await api('GET','/users/'+id+'/follow');
@@ -4243,16 +4487,30 @@
     }
     const requestNo=++rankingRequest;
     const periods=['daily','weekly','monthly'];
-    const kinds={0:'recharge',1:'rich',2:'charm',3:'room'};
+    // Original navigation order: Lucky, Rich, Charm, Room, Noble, Play,
+    // Recharge. Never show Recharge data when the member tapped Lucky.
+    const categories={
+      0:{kind:'lucky',icon:'🎰',title:'Lucky Gift',description:'Verified lucky gift winnings'},
+      1:{kind:'rich',icon:'💎',title:'Rich',description:'Verified gifts sent to other members'},
+      2:{kind:'charm',icon:'💗',title:'Charm',description:'Verified gifts received'},
+      3:{kind:'room',icon:'🎙️',title:'Room',description:'Gifts sent in each voice room'},
+      6:{kind:'recharge',icon:'🪙',title:'Recharge',description:'Approved coin recharge totals'}
+    };
     const period=periods[window.rper]||'weekly';
-    const kind=kinds[window.rtab];
-    view.innerHTML='<div class="empty">Loading verified rankings…</div>';
-    if(!kind){
-      view.innerHTML='<div class="empty">This ranking has no verified server results yet.</div>';
+    const selected=categories[window.rtab];
+    const kind=selected?.kind;
+    view.innerHTML='<div class="sh-royal-empty">✦ Loading verified royal rankings…</div>';
+    if(!selected){
+      const name={4:'Noble',5:'Play'}[window.rtab]||'This';
+      view.innerHTML='<div class="sh-royal-empty"><span aria-hidden="true">👑</span>'+
+        '<strong>'+name+' ranking</strong>'+
+        'This category is awaiting its verified ranking service. No demo users or '+
+        'Recharge results are shown as '+name+' winners.</div>';
       return;
     }
     if(!session){
-      view.innerHTML='<div class="empty">Sign in to see verified rankings.</div>';
+      view.innerHTML='<div class="sh-royal-empty"><strong>Sign in required</strong>'+
+        'Sign in to see verified rankings.</div>';
       return;
     }
     try{
@@ -4260,53 +4518,88 @@
       if(requestNo!==rankingRequest)return;
       const leaders=Array.isArray(data.leaders)?data.leaders:[];
       view.textContent='';
-      if(!leaders.length){
-        view.innerHTML='<div class="empty">No settled gifts recorded in this period yet.</div>';
-        return;
+      cosmeticCss(document);
+      const isRoom=kind==='room';
+      const fmt=n=>Number(n||0).toLocaleString('en-US');
+      const hero=document.createElement('section');
+      hero.className='sh-royal-hero';
+      const kicker=document.createElement('div');
+      kicker.className='sh-royal-kicker';
+      kicker.textContent='✦ Sharika Royal Ranking ✦';
+      const heading=document.createElement('h2');
+      heading.className='sh-royal-title';
+      heading.textContent=selected.icon+' '+selected.title+' Champions';
+      const description=document.createElement('p');
+      description.className='sh-royal-sub';
+      description.textContent=selected.description+' · '+period.toUpperCase()+' · UTC';
+      hero.append(kicker,heading,description);
+      if(leaders.length){
+        const podium=document.createElement('div');
+        podium.className='sh-royal-podium';
+        for(const leader of leaders.slice(0,3)){
+          const place=Number(leader.rank);
+          if(![1,2,3].includes(place))continue;
+          const card=document.createElement('article');
+          card.className='sh-royal-podium-card '+
+            ({1:'first',2:'second',3:'third'}[place]);
+          const trophy=document.createElement('span');
+          trophy.className='sh-royal-place';
+          trophy.textContent={1:'👑',2:'🥈',3:'🥉'}[place];
+          trophy.setAttribute('aria-label','Rank '+place);
+          const avatar=royalRankAvatar(leader,isRoom);
+          const name=document.createElement('div');
+          name.className='sh-royal-name';
+          name.textContent=leader.name|| (isRoom?'Voice room':'Member');
+          name.title=name.textContent;
+          const id=document.createElement('div');
+          id.className='sh-royal-id';
+          id.textContent='ID '+String(isRoom?leader.room_id:leader.public_id||'');
+          const amount=document.createElement('div');
+          amount.className='sh-royal-amount';
+          amount.textContent='🪙 '+fmt(leader.total);
+          card.append(trophy,avatar,name,id,amount);
+          const tag=!isRoom&&royalRankNameTag(leader);
+          if(tag)card.appendChild(tag);
+          royalRankAction(card,leader,isRoom);
+          if(leader.public_id&&leader.public_id===profile?.public_id)
+            card.classList.add('me');
+          podium.appendChild(card);
+        }
+        hero.appendChild(podium);
       }
-      const info=document.createElement('div');
-      info.className='empty';
-      info.textContent=kind==='recharge'?'Approved recharge coins · verified server ranking':
-        kind==='rich'?'Gift coins sent · verified server ranking':
-        kind==='charm'?'Gift coins received · verified server ranking':
-        'Gift coins sent in each room · verified server ranking';
-      view.appendChild(info);
-      for(const leader of leaders){
+      view.appendChild(hero);
+      if(!leaders.length){
+        const empty=document.createElement('div');
+        empty.className='sh-royal-empty';
+        empty.innerHTML='<span aria-hidden="true">✨</span>'+
+          '<strong>No verified winners yet</strong>'+
+          'When real activity is settled on the server, this ranking will fill automatically.';
+        view.appendChild(empty);return;
+      }
+      if(leaders.length>3){
+        const line=document.createElement('div');
+        line.className='sh-royal-divider';
+        line.textContent='✦ Rising Stars ✦';
+        view.appendChild(line);
+      }
+      for(const leader of leaders.slice(3)){
         const row=document.createElement('div');
-        row.className='rr'+(leader.public_id&&leader.public_id===profile?.public_id?' me':'');
+        row.className='rr sh-royal-row'+
+          (leader.public_id&&leader.public_id===profile?.public_id?' me':'');
         row.innerHTML='<b class="n"></b><div class="ra"></div>'+
           '<div class="rn"><b></b><span class="idl"><i class="idb">ID</i>'+
           '<span class="sid"></span></span></div>'+
           '<div class="rv"><i class="cn"></i><span class="amt"></span></div>';
         row.querySelector('.n').textContent=String(leader.rank);
-        const avatar=row.querySelector('.ra');
-        if(kind==='room')avatar.textContent=leader.emoji||'🎙️';
-        else{
-          const photo=verifiedAvatarUrl(leader.pic);
-          if(photo){
-            const img=document.createElement('img');
-            img.src=photo;img.alt='';img.loading='lazy';
-            img.onerror=()=>{img.remove();avatar.textContent='👤';};
-            avatar.appendChild(img);
-          }else avatar.textContent='👤';
-        }
+        row.querySelector('.ra').replaceWith(royalRankAvatar(leader,isRoom));
         row.querySelector('.rn b').textContent=leader.name||'User';
-        row.querySelector('.sid').textContent=kind==='room'?leader.room_id:leader.public_id;
-        row.querySelector('.amt').textContent=Number(leader.total||0).toLocaleString('en-US');
+        row.querySelector('.sid').textContent=isRoom?leader.room_id:leader.public_id;
+        row.querySelector('.amt').textContent=fmt(leader.total);
+        const tag=!isRoom&&royalRankNameTag(leader);
+        if(tag)row.querySelector('.rn')?.appendChild(tag);
         // Ranking user IDs, names and photos all open the same verified ID.
         // Room-ranking IDs are room IDs and are deliberately not treated as users.
-        const target=String(kind==='room'?'':leader.public_id||'');
-        if(/^[0-9]{8}$/.test(target)){
-          row.dataset.rankUser=target;
-          row.tabIndex=0;row.setAttribute('role','button');
-          row.setAttribute('aria-label','Open profile for ID '+target);
-          row.onclick=()=>openVerifiedRankProfile(target);
-          row.onkeydown=event=>{
-            if(event.key==='Enter'||event.key===' '){
-              event.preventDefault();openVerifiedRankProfile(target);
-            }
-          };
-        }
+        royalRankAction(row,leader,isRoom);
         view.appendChild(row);
       }
     }catch(error){
