@@ -19,6 +19,7 @@ on:
       - feature/sharika-greedy-integrated-staging-20261031
       - feature/sharika-royal-premium-ui-20261031
       - feature/sharika-option1-reference-polish-20261031
+      - fix/sharika-remote-audio-unlock-staging-20261101
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
@@ -270,7 +271,7 @@ jobs:
   royal-emulator-smoke:
     name: Royal UI emulator launch and Back smoke test
     # Only the isolated Option 1 candidate; no live app or staging data writes.
-    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031'
+    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101'
     needs: debug-apk
     runs-on: ubuntu-latest
     timeout-minutes: 25
