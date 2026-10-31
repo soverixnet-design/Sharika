@@ -1491,7 +1491,7 @@
     }finally{URL.revokeObjectURL(blobUrl);}
   }
   let coverUploadBusy=false;
-  function pickRoomCover(room,frame=null){
+  function pickRoomCover(room,frame=null,useAsTheme=false){
     if(!session||room?.owner_id!==session.user.id){
       toast('Only the room owner can change its cover photo');return;
     }
@@ -1517,9 +1517,25 @@
           preview.style.backgroundSize='cover';
           preview.textContent='';
         }
-        await reloadRooms();
-        toast('Room photo saved · visible on room cards ✓');
-      }catch(error){toast('Room photo not saved: '+errText(error));}
+        if(useAsTheme){
+          // Gallery artwork is a verified room image, never a device-local
+          // data URL. Reuse its versioned room-cover asset for all guests.
+          const result=await api('PATCH','/rooms/'+room.id,{theme:'photo'});
+          if(result.room?.theme!=='photo')
+            throw new Error('Shared room background was not confirmed');
+          room.th='photo';
+          if(frame?.S && window.cur?.id===room.id)
+            await syncFrame(room,frame).catch(error=>
+              console.warn('Theme saved; room refresh delayed:',errText(error)));
+        }
+        await reloadRooms().catch(error=>
+          console.warn('Room photo saved; card refresh delayed:',errText(error)));
+        if(useAsTheme && frame?.$?.('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))
+          frame.themeSheet();
+        toast(useAsTheme?'Room background saved for everyone ✓':
+          'Room photo saved · visible on room cards ✓');
+      }catch(error){toast((useAsTheme?'Room background':'Room photo')+
+        ' not fully saved: '+errText(error));}
       finally{coverUploadBusy=false;}
     };
     picker.click();
@@ -1595,10 +1611,20 @@
     if(['grad','gold','neon','sq'].includes(data.seat_frame_style))
       room.seat_frame_style=data.seat_frame_style;
     const chosenSeatFrame=room.seat_frame_style||'grad';
-    if(frame.S.frame!==chosenSeatFrame){
-      frame.S.frame=chosenSeatFrame;
-      if(typeof frame.applyTheme==='function')frame.applyTheme();
-    }
+    // Theme is authoritative in the shared room snapshot. Neither the
+    // owner's phone nor a guest's stale localStorage may override it.
+    const chosenTheme=['mid','gold','ocean','rose','forest','sunset','photo']
+      .includes(data.theme)?data.theme:'mid';
+    const sharedImage=chosenTheme==='photo'
+      ?verifiedCoverUrl(data.theme_background_url):null;
+    const palette=chosenTheme==='photo'?'mid':chosenTheme;
+    const themeChanged=room.th!==chosenTheme||frame.S.theme!==palette||
+      frame.S.bg!==sharedImage||frame.S.frame!==chosenSeatFrame;
+    room.th=chosenTheme;
+    frame.S.theme=palette;
+    frame.S.bg=sharedImage;
+    frame.S.frame=chosenSeatFrame;
+    if(themeChanged&&typeof frame.applyTheme==='function')frame.applyTheme();
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
@@ -1649,6 +1675,10 @@
       const seatStyle=frame.document.createElement('style');
       seatStyle.id='sharika-seat-depth';
       seatStyle.textContent=[
+        // Gallery themes stay on the room's background layer. Seat buttons,
+        // gift controls and message composer remain above and clickable.
+        '.app.hasbg{background-position:center center!important;background-size:cover!important;background-repeat:no-repeat!important}',
+        '.app.hasbg .blob{opacity:.08}',
         '.seat .av{transform-style:preserve-3d;transition:transform .18s ease,filter .18s ease}',
         '.seat:not(.empty):not(.lock) .av{filter:drop-shadow(0 8px 7px rgba(4,2,19,.42))}',
         '.seat .face{border:2px solid rgba(255,255,255,.38);box-shadow:inset 0 4px 6px rgba(255,255,255,.23),inset 0 -10px 16px rgba(10,3,39,.47),0 5px 0 rgba(8,4,27,.55),0 12px 19px rgba(0,0,0,.48)}',
@@ -1664,6 +1694,32 @@
         '@media (prefers-reduced-motion:reduce){.seat .av{transition:none}}'
       ].join('');
       frame.document.head.appendChild(seatStyle);
+    }
+    // Keep the original 3D theme tiles while explaining their shared scope.
+    const originalThemeSheet=frame.themeSheet;
+    if(typeof originalThemeSheet==='function'){
+      frame.themeSheet=function(...args){
+        const result=originalThemeSheet.apply(this,args);
+        const gallery=frame.$('gal');
+        if(gallery){
+          const caption=gallery.querySelector('small');
+          if(caption)caption.textContent=room.th==='photo'
+            ?'Shared with everyone · also updates the room card photo'
+            :'Choose a photo · all room members will see it';
+          if(room.th==='photo'){
+            gallery.style.background='linear-gradient(125deg,rgba(156,99,255,.25),rgba(41,22,83,.85))';
+            gallery.style.border='1px solid rgba(233,207,255,.56)';
+          }
+          const note=frame.document.createElement('div');
+          note.setAttribute('role','status');
+          note.style.cssText='margin:8px 0 12px;padding:11px 12px;border-radius:13px;'+
+            'border:1px solid rgba(203,179,255,.22);background:rgba(35,20,78,.58);'+
+            'color:#d9cef8;font-size:12px;line-height:1.45';
+          note.textContent='✓ Theme changes are saved to this room and shown to everyone.';
+          gallery.after(note);
+        }
+        return result;
+      };
     }
     frame.tick=function(){};
     frame.U=[];
@@ -2427,6 +2483,47 @@
         }
       };
     }
+    // The original theme sheet stores themes/photos only on this device.
+    // Intercept its controls before local handlers run and commit every
+    // change to the verified owner-only room endpoint instead.
+    let sharedThemeBusy=false;
+    frame.document.addEventListener('click',async event=>{
+      const control=event.target.closest?.('button.th,#gal,#rmbg');
+      if(!control||!frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if(room.owner_id!==session?.user?.id){
+        frame.toast('Only the room owner can change themes');return;
+      }
+      if(sharedThemeBusy)return;
+      if(control.id==='gal'){
+        pickRoomCover(room,frame,true);
+        return;
+      }
+      const nextTheme=control.id==='rmbg'?'mid':control.dataset.id;
+      if(!['mid','gold','ocean','rose','forest','sunset'].includes(nextTheme))return;
+      sharedThemeBusy=true;
+      frame.$('sheet')?.querySelectorAll('button.th,#rmbg').forEach(x=>{x.disabled=true;});
+      try{
+        const result=await api('PATCH','/rooms/'+room.id,{theme:nextTheme});
+        if(result.room?.theme!==nextTheme)
+          throw new Error('Room theme not confirmed by server');
+        room.th=nextTheme;
+        if(window.cur?.id===room.id)
+          await syncFrame(room,frame).catch(error=>
+            console.warn('Theme saved; sync delayed:',errText(error)));
+        await reloadRooms().catch(()=>{});
+        if(frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))
+          frame.themeSheet();
+        frame.toast('Room theme updated for everyone ✓');
+      }catch(error){
+        await syncFrame(room,frame).catch(()=>{});
+        frame.toast('Room theme not saved: '+errText(error));
+      }finally{
+        sharedThemeBusy=false;
+        frame.$('sheet')?.querySelectorAll('button.th,#rmbg').forEach(x=>{x.disabled=false;});
+      }
+    },true);
     frame.document.addEventListener('click',async event=>{
       const saveButton=event.target.closest?.('#save');
       if(!saveButton || !frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Room settings'))return;
@@ -2442,7 +2539,7 @@
       saveButton.disabled=true;
       try{
         const data=await api('PATCH','/rooms/'+room.id,{
-          name,seat_count:newSeatCount,theme:frame.S.theme||room.th||'mid',
+          name,seat_count:newSeatCount,theme:room.th||'mid',
           seat_frame_style:room.seat_frame_style||'grad'
         });
         room.name=data.room.name;
