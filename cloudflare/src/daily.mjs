@@ -1,4 +1,5 @@
-// Verified Sharika daily check-in and read-only task activity.
+import {dailyTaskStatus,claimDailyTask,dailyTaskAdminStatus,saveDailyTaskConfig,validTaskRewards} from './daily-tasks.mjs';
+// Verified Sharika daily check-in and independently claimable UTC-day tasks.
 // D1 unique UTC day, immutable receipt, wallet credit and ledger commit as one batch.
 const MAX_BALANCE=1_000_000_000_000;
 const CONFIG_FIELDS=['day1','day2','day3','day4','day5','day6','day7'];
@@ -28,7 +29,8 @@ function nextStreak(last,now){
   return last&&last.utc_day===previousDay(now)?(Number(last.streak)%7)+1:1;
 }
 export async function handleDailyApp({request,env,uid,path,cors,reply,fail,now=new Date()}){
-  if(path!=='/api/v1/daily'&&path!=='/api/v1/daily/check-in')
+  if(path!=='/api/v1/daily'&&path!=='/api/v1/daily/check-in'&&
+     path!=='/api/v1/daily/tasks/claim')
     return null;
   const user=await env.DB.prepare(
     "SELECT auth_uid,public_no,coins,status FROM sharika_users WHERE auth_uid=?"
@@ -36,28 +38,21 @@ export async function handleDailyApp({request,env,uid,path,cors,reply,fail,now=n
   if(!user||user.status!=='active')return fail('profile_unavailable',403,cors);
   const today=dayText(now);
   if(path==='/api/v1/daily'&&request.method==='GET'){
-    const [settings,last,follow,gift]=await Promise.all([
-      config(env.DB),lastClaim(env.DB,uid),
-      env.DB.prepare(
-        'SELECT COUNT(*) AS n FROM sharika_follows '+
-        'WHERE follower_uid=? AND created_at>=? AND created_at<?'
-      ).bind(uid,today+' 00:00:00',nextDayText(now)+' 00:00:00').first(),
-      env.DB.prepare(
-        'SELECT COUNT(*) AS n FROM sharika_gift_events '+
-        'WHERE sender_uid=? AND sender_uid<>recipient_uid '+
-        'AND created_at>=? AND created_at<?'
-      ).bind(uid,today+' 00:00:00',nextDayText(now)+' 00:00:00').first()
+    const [settings,last,taskState]=await Promise.all([
+      config(env.DB),lastClaim(env.DB,uid),dailyTaskStatus(env.DB,uid,now)
     ]);
     const rewards=safeConfig(settings),claimed=last?.utc_day===today;
     const index=claimed?Number(last.streak):nextStreak(last,now);
     return reply({utc_day:today,claimed_today:claimed,
       streak:claimed?Number(last.streak):last?.utc_day===previousDay(now)?Number(last.streak):0,
       next_day:index,rewards,claimed:claimed?receipt(last):null,
-      tasks:[{key:'follow',title:'Follow a new friend today',completed:Number(follow?.n||0)>0,count:Number(follow?.n)||0,reward_enabled:false},
-        {key:'gift',title:'Send a gift to another user today',completed:Number(gift?.n||0)>0,count:Number(gift?.n)||0,reward_enabled:false}],
-      wallet_coins:Number(user.coins)||0,day_boundary:'UTC',
+      ...taskState,
+      wallet_coins:Number(user.coins)||0,
       invite_code:String(user.public_no).padStart(8,'0'),invite_rewards_enabled:false
     },200,cors);
+  }
+  if(path==='/api/v1/daily/tasks/claim'&&request.method==='POST'){
+    return claimDailyTask({request,env,uid,now,user,cors,reply,fail});
   }
   if(path==='/api/v1/daily/check-in'&&request.method==='POST'){
     const [settings,last]=await Promise.all([config(env.DB),lastClaim(env.DB,uid)]);
@@ -97,13 +92,16 @@ export async function handleDailyAdmin({request,env,uid,actor,operation,cors,rep
     return fail('admin_permission_denied',403,cors);
   const settings=await config(env.DB);
   if(request.method==='GET'){
-    const counts=await env.DB.prepare(
-      'SELECT COUNT(*) AS claims,COALESCE(SUM(reward_coins),0) AS total_coins '+
-      'FROM sharika_daily_checkins WHERE utc_day=?'
-    ).bind(dayText(new Date())).first();
+    const [counts,tasks]=await Promise.all([
+      env.DB.prepare(
+        'SELECT COUNT(*) AS claims,COALESCE(SUM(reward_coins),0) AS total_coins '+
+        'FROM sharika_daily_checkins WHERE utc_day=?'
+      ).bind(dayText(new Date())).first(),
+      dailyTaskAdminStatus(env.DB)
+    ]);
     return reply({rewards:safeConfig(settings),utc_day:dayText(new Date()),
       claims_today:Number(counts?.claims)||0,coins_awarded_today:Number(counts?.total_coins)||0,
-      read_only:actor.role!=='super',day_boundary:'UTC'},200,cors);
+      ...tasks,read_only:actor.role!=='super',day_boundary:'UTC'},200,cors);
   }
   if(request.method==='PATCH'&&actor.role==='super'){
     let payload;
@@ -112,6 +110,12 @@ export async function handleDailyAdmin({request,env,uid,actor,operation,cors,rep
       if(raw.length>4096)return fail('daily_body_too_large',413,cors);
       payload=JSON.parse(raw);
     }catch(_){return fail('invalid_daily_json',400,cors);}
+    if(payload?.task_rewards!==undefined){
+      if(!validTaskRewards(payload.task_rewards))
+        return fail('invalid_daily_task_rewards',400,cors);
+      const values=await saveDailyTaskConfig(env.DB,uid,payload.task_rewards);
+      return reply({updated:true,task_rewards:values},200,cors);
+    }
     const rewards=payload?.rewards;
     if(!Array.isArray(rewards)||rewards.length!==7||
       rewards.some(n=>!Number.isSafeInteger(n)||n<1||n>1000))
