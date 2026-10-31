@@ -252,7 +252,11 @@ export async function handleGameRequest({request,db,uid,game,action,reply,fail,c
     }
     if(roundNo!==round.round_no||Date.now()>=round.bet_closes_ms)
       return fail('betting_closed',409,cors);
-    if(user.coins<stake)return fail('insufficient_coins',409,cors);
+    // Earlier winning bets are settled just above. The user snapshot from
+    // before settlement is stale and can incorrectly reject a funded bet.
+    const funded=await db.prepare('SELECT coins FROM sharika_users WHERE auth_uid=?')
+      .bind(uid).first();
+    if(!funded||funded.coins<stake)return fail('insufficient_coins',409,cors);
     try{
       await db.prepare('INSERT INTO sharika_game_bets '+
         '(game,round_no,round_id,user_uid,stake,pick_index,request_id) '+

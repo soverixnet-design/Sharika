@@ -254,3 +254,62 @@ test('all three original games retry timed-out bets once with the same request I
     assert.equal(bridge.get().coins,2000,page+' shows the confirmed real wallet receipt');
   }
 });
+
+
+test('original Food Wheel settles prior confirmed winnings before a new coin debit',async()=>{
+  const oldNow=Date.now;
+  const fixed=Math.floor(oldNow()/ORIGINAL_ROUND_MS)*ORIGINAL_ROUND_MS+1000;
+  Date.now=()=>fixed;
+  try{
+    const round=Math.floor(fixed/ORIGINAL_ROUND_MS);
+    let coins=0,paid=false,inserted=false;
+    const db={prepare(sql){
+      return {
+        bind(){return this;},
+        async first(){
+          if(sql.startsWith('SELECT coins,minor,status FROM sharika_users'))
+            return {coins,minor:0,status:'active'};
+          if(sql.startsWith('SELECT * FROM sharika_original_game_bets WHERE user_uid=?'))
+            return null;
+          if(sql.startsWith('SELECT * FROM sharika_original_game_rounds WHERE game=? AND round_no=?'))
+            return {id:'sovera-food:'+round,game:'sovera-food',round_no:round,
+              seed_hex:seed,commit_sha256:commit};
+          if(sql.startsWith('SELECT id FROM sharika_original_game_bets'))
+            return {id:902};
+          throw Error('Unexpected original-game read: '+sql);
+        },
+        async all(){
+          if(sql.includes("WHERE b.status='accepted' AND r.closes_ms<=?"))
+            return {results:[{id:901,game:'sovera-food',round_id:'sovera-food:'+(round-1),
+              round_no:round-1,pick_index:0,amount:50,seed_hex:seed,
+              commit_sha256:commit,closes_ms:fixed-1000}]};
+          throw Error('Unexpected original-game list: '+sql);
+        },
+        async run(){
+          if(sql.startsWith("UPDATE sharika_original_game_bets SET status='settled'")){
+            paid=true;coins=2000;return {meta:{changes:1}};
+          }
+          if(sql.startsWith('INSERT INTO sharika_original_game_bets(')){
+            assert.equal(paid,true,'prior wins must settle before the debit');
+            if(coins<1000)throw Error('insufficient_balance');
+            coins-=1000;inserted=true;
+            return {meta:{changes:1}};
+          }
+          throw Error('Unexpected original-game write: '+sql);
+        }
+      };
+    }};
+    const response=await handleOriginalGameRequest({
+      request:new Request('https://sharika.test/api/v1/original-games/sovera-food/bet',{
+        method:'POST',body:JSON.stringify({round_no:round,pick:1,amount:1000,
+          request_id:'original-funded-bet-12345'})
+      }),
+      db,uid:'verified-user',game:'sovera-food',action:'bet',
+      reply:(data,status)=>Response.json(data,{status}),
+      fail:(error,status)=>Response.json({error},{status}),cors:{}
+    });
+    assert.equal(response.status,201);
+    assert.equal((await response.json()).coins,1000);
+    assert.equal(paid,true);assert.equal(inserted,true);
+  }finally{Date.now=oldNow;}
+});

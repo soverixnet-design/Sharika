@@ -617,6 +617,10 @@
       resetBoardForBetting();
       if (S.auto) setTimeout(() => repeatBets(true), 300);
       emit('round_start', { round: S.round, balance: S.balance });
+    } else if (Array.isArray(st.myBets) && st.myBets.length === N) {
+      // A delayed-but-accepted bet can arrive after the first receipt timed
+      // out. The next verified server snapshot must repair its chip totals.
+      S.myBets = st.myBets;
     }
     S.allBets = st.totals || S.allBets;
     S.online = st.online; $('onlineCount').textContent = st.online;
@@ -661,7 +665,8 @@
       case 'bet_err': {
         S.pending.delete(m.reqId);
         if (typeof m.balance === 'number') { S.balance = m.balance; renderBalance(); }
-        const map = { INSUFFICIENT_BALANCE: t('noCoins'), BETTING_CLOSED: t('betClosed'), ROUND_CHANGED: t('betClosed'), MAX_BET: t('maxBet') };
+        const map = { INSUFFICIENT_BALANCE: t('noCoins'), BETTING_CLOSED: t('betClosed'), ROUND_CHANGED: t('betClosed'), MAX_BET: t('maxBet'),
+          BET_UNCONFIRMED: 'Verifying your previous bet. Please wait; no new wager was sent.' };
         toast(map[m.code] || t('walletErr'));
         if (m.code === 'INSUFFICIENT_BALANCE') emit('insufficient_balance', { balance: S.balance });
         break;

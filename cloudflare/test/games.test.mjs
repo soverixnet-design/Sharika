@@ -117,6 +117,28 @@ test('classic game bet replay remains idempotent after its round has closed',asy
   assert.equal((await late.json()).error,'betting_closed');
 });
 
+
+test('a newly settled win can fund the next bet without a stale balance rejection',async()=>{
+  const originalNow=Date.now;
+  const fixed=Math.floor(originalNow()/40000)*40000+1000;
+  Date.now=()=>fixed;
+  try{
+    const db=fakeDb({coins:0});
+    const prepare=db.prepare.bind(db);
+    db.prepare=sql=>{
+      if(sql==='SELECT coins FROM sharika_users WHERE auth_uid=?')
+        return {bind(){return this;},async first(){return {coins:2000};}};
+      return prepare(sql);
+    };
+    const n=Math.floor(fixed/40000);
+    const response=await handleGameRequest(args(db,'food-wheel','bet','POST',{
+      stake:1000,round_no:n,pick:2,request_id:'game:post-win-funds-12345'
+    }));
+    assert.equal(response.status,201);
+    assert.equal(db.calls.filter(c=>c.sql.startsWith('INSERT INTO sharika_game_bets')).length,1);
+  }finally{Date.now=originalNow;}
+});
+
 test('two simultaneous identical bet requests return the single accepted bet',async()=>{
   const originalNow=Date.now;
   const fixed=Math.floor(originalNow()/40000)*40000+1000;
