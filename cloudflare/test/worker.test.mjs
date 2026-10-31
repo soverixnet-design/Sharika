@@ -371,6 +371,64 @@ test('replayed exchange request with a different amount is rejected',async()=>{
   }finally{globalThis.fetch=originalFetch;}
 });
 
+test('exchange retry after an admin rate change returns the original credited coins',async()=>{
+  const originalFetch=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',minor:0,coins:2350,diamonds:0});
+      if(sql.includes("currency='diamonds'")&&sql.includes("reason='diamond_exchange'"))
+        stmt.first=async()=>({id:23,delta:-500});
+      if(sql.includes("currency='coins'")&&sql.includes("reason='diamond_exchange'"))
+        stmt.first=async()=>({id:24,delta:350});
+      if(sql.includes('FROM sharika_exchange_rate'))
+        stmt.first=async()=>({diamonds_per_unit:100,coins_per_unit:100,revision:2});
+      return stmt;
+    };
+    const response=await handleRequest(new Request('https://example.test/api/v1/wallet/exchange',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({diamonds:500,request_id:'exchange_rate_retry_123'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(response.status,200);
+    const receipt=await response.json();
+    assert.equal(receipt.credited_coins,350);
+    assert.equal(receipt.duplicate,true);
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+  }finally{globalThis.fetch=originalFetch;}
+});
+test('changed rate demands the fresh revision and credits the new ratio',async()=>{
+  const originalFetch=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',minor:0,coins:2000,diamonds:500});
+      if(sql.includes('FROM sharika_exchange_rate'))
+        stmt.first=async()=>({diamonds_per_unit:100,coins_per_unit:100,revision:2});
+      return stmt;
+    };
+    const send=(revision)=>handleRequest(new Request('https://example.test/api/v1/wallet/exchange',{
+      method:'POST',headers:{Authorization:'Bearer '+tokenValue},
+      body:JSON.stringify({diamonds:100,request_id:'exchange_rate_new_1234',
+        exchange_rate_revision:revision})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    const tokenValue=await token();
+    const stale=await send(1);
+    assert.equal(stale.status,409);
+    assert.equal((await stale.json()).error,'exchange_rate_changed');
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+    const fresh=await send(2);
+    assert.equal(fresh.status,200);
+    assert.equal((await fresh.json()).credited_coins,100);
+    const batch=db.calls.find(c=>c[0]==='batch');
+    assert.equal(batch[1].length,4);
+    assert.match(batch[1][2].sql,/SELECT revision FROM sharika_exchange_rate/);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
 test('room gifts require Firebase auth and a verified room membership',async()=>{
   const anon=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
     method:'POST',body:JSON.stringify({gift_id:9,quantity:1,
