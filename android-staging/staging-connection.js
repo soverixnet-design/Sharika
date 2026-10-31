@@ -879,6 +879,7 @@
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
     if(state.recoveryTimer)clearTimeout(state.recoveryTimer);
+    state.stopPlaybackRecovery?.();
     for(const element of state.audioElements){element.pause();element.srcObject=null;element.remove();}
     if(state.media)for(const track of state.media.getTracks())track.stop();
     for(const pc of [state.publishPC,state.receivePC])if(pc)pc.close();
@@ -886,6 +887,28 @@
       try {await api('POST','/rooms/'+state.roomId+'/voice/leave',{sessionIds:state.sessionIds});}
       catch (_) { /* stale sessions expire in the coordinator */ }
     }
+  }
+  // A room runs inside an iframe. A blocked autoplay promise must be retried
+  // from a genuine tap inside THAT document, not just from the parent page.
+  function installRemotePlaybackRecovery(state) {
+    const roomDocument=document.getElementById('rf')?.contentDocument;
+    const documents=[document,roomDocument].filter((doc,index,all)=>
+      doc && all.indexOf(doc)===index);
+    const retry=()=>{
+      if(state.closed)return;
+      for(const audio of state.audioElements){
+        if(!audio.isConnected||!audio.srcObject||!audio.paused)continue;
+        audio.play().catch(()=>{ /* retry on the next user gesture */ });
+      }
+    };
+    for(const doc of documents)doc.addEventListener('click',retry,true);
+    document.addEventListener('visibilitychange',retry);
+    window.addEventListener('pageshow',retry);
+    state.stopPlaybackRecovery=()=>{
+      for(const doc of documents)doc.removeEventListener('click',retry,true);
+      document.removeEventListener('visibilitychange',retry);
+      window.removeEventListener('pageshow',retry);
+    };
   }
   function addAudioTrack(state,event) {
     if(state.closed)return;
@@ -896,7 +919,17 @@
     audio.srcObject=new MediaStream([event.track]);
     document.body.appendChild(audio);
     state.audioElements.add(audio);
-    audio.play().catch(()=>{ /* Android may require a user tap for playback */ });
+    audio.play().catch(error=>{
+      if(state.closed)return;
+      // A rejected play() is not proof that the remote speaker is muted.
+      // Prompt once; the iframe click handler resumes all paused tracks.
+      if(error?.name==='NotAllowedError' && !state.playbackHintShown){
+        state.playbackHintShown=true;
+        document.getElementById('rf')?.contentWindow?.toast?.(
+          'Tap anywhere in the room to enable incoming voice audio.');
+      }
+      console.warn('Sharika remote audio playback:',errText(error));
+    });
     event.track.addEventListener('ended',()=>{
       state.audioElements.delete(audio);audio.pause();audio.remove();
     },{once:true});
@@ -992,6 +1025,7 @@
       state.sessionIds.push(joined.sessionId);
       state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
       state.receivePC.ontrack=event=>addAudioTrack(state,event);
+      installRemotePlaybackRecovery(state);
       await subscribeSfu(state);
       // Refresh both presence and publications; do not consume room resources
       // on a tight per-frame timer.
