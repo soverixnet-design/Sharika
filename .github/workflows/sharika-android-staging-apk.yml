@@ -296,7 +296,6 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
             mkdir -p royal-qa
             adb install -r staging-apk/app-debug.apk
             adb shell am start -W -n com.soverixnet.sharika/.SharikaActivity
@@ -307,12 +306,8 @@ jobs:
             sleep 3
             adb exec-out screencap -p > royal-qa/back-pressed.png
             adb shell pidof com.soverixnet.sharika
-            for attempt in 1 2 3; do
-              adb shell uiautomator dump /sdcard/royal-window.xml >/dev/null 2>&1 || true
-              adb shell cat /sdcard/royal-window.xml > royal-qa/back-dialog.xml 2>/dev/null || true
-              if grep -Fq 'Exit Sharika?' royal-qa/back-dialog.xml; then break; fi
-              sleep 2
-            done
+            adb shell uiautomator dump /sdcard/royal-window.xml
+            adb shell cat /sdcard/royal-window.xml > royal-qa/back-dialog.xml
             grep -Fq 'Exit Sharika?' royal-qa/back-dialog.xml
             echo 'SHARIKA_ANDROID_EMULATOR_START_AND_BACK_CONFIRM_OK'
 
