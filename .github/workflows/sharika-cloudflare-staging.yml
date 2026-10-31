@@ -118,6 +118,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Refuse deployment if the shared staging base has new unmerged changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module -e '
+            const base=encodeURIComponent("fix/sharika-profile-save-recovery-20261031");
+            const url="https://api.github.com/repos/"+process.env.GITHUB_REPOSITORY+
+              "/compare/"+base+"..."+process.env.GITHUB_SHA;
+            const res=await fetch(url,{headers:{
+              Authorization:"Bearer "+process.env.GH_TOKEN,
+              Accept:"application/vnd.github+json"}});
+            const body=await res.json();
+            if(!res.ok||!["ahead","identical"].includes(body.status))
+              throw Error("Shared staging branch has unmerged changes; stop and update this feature before publishing");
+            console.log("Greedy branch includes all current shared staging commits");
+          '
       - name: Require the exact isolated staging target and existing deployment secret
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
@@ -154,7 +170,20 @@ jobs:
           '
       - name: Check Greedy migration prerequisites without modifying balances
         run: |
-          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_users','sharika_wallet_ledger') ORDER BY name"
+          node --input-type=module -e '
+            const url="https://api.cloudflare.com/client/v4/accounts/"+
+              process.env.CLOUDFLARE_ACCOUNT_ID+
+              "/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query";
+            const sql="SELECT name FROM sqlite_master WHERE type=\u0027table\u0027 "+
+              "AND name IN (\u0027sharika_users\u0027,\u0027sharika_wallet_ledger\u0027)";
+            const res=await fetch(url,{method:"POST",
+              headers:{Authorization:"Bearer "+process.env.CLOUDFLARE_API_TOKEN,
+                "Content-Type":"application/json"},body:JSON.stringify({sql})});
+            const body=await res.json();
+            if(!res.ok||!body.success||body.result?.[0]?.results?.length!==2)
+              throw Error("Staging wallet schema prerequisites missing");
+            console.log("Verified existing user and immutable wallet ledger tables");
+          '
       - name: Apply only migration 0026 (never apply the untracked migration backlog)
         run: npx --yes wrangler@4 d1 execute sharika-staging --remote --file migrations/0026_greedy_wheel.sql --config wrangler.jsonc
       - name: Assert only the new Greedy tables and triggers are present
