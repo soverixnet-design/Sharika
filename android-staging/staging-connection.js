@@ -3749,39 +3749,114 @@
     const view=doc.defaultView||window;
     if(typeof view.__sharikaOriginalGameCleanup==='function')
       view.__sharikaOriginalGameCleanup();
+    // A game result may be announced only after the verified D1 settlement.
+    // Each winning player gets a compact top-slide card; the game UI underneath
+    // is untouched, and no child iframe may provide winner names or amounts.
     let winnerBannerTimer=null;
+    let winnerBannerStepTimer=null;
     function clearWinnerBanner(){
       if(winnerBannerTimer!==null){view.clearTimeout(winnerBannerTimer);winnerBannerTimer=null;}
+      if(winnerBannerStepTimer!==null){view.clearInterval(winnerBannerStepTimer);winnerBannerStepTimer=null;}
       doc.getElementById('sh-verified-original-winners')?.remove();
+    }
+    function ensureWinnerBannerStyle(){
+      if(doc.getElementById('sh-verified-win-style'))return;
+      const style=doc.createElement('style');
+      style.id='sh-verified-win-style';
+      style.textContent=[
+        '#sh-verified-original-winners{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;width:min(82vw,560px);max-width:calc(100vw - 44px);z-index:2147483000;pointer-events:none;filter:drop-shadow(0 10px 18px #000b);animation:shWinSlide .65s cubic-bezier(.18,1.4,.36,1) both}',
+        '#sh-verified-original-winners .sh-win-pill{position:relative;isolation:isolate;display:flex;align-items:center;gap:8px;min-height:62px;padding:6px 7px;border:2px solid #ffdf75;border-radius:46px;background:linear-gradient(110deg,#276578,#1b8c97 52%,#1baea6);box-shadow:inset 0 2px 4px #ffffff66,inset 0 -5px 10px #064c6299,0 0 12px #f7d46eaa;color:#fff}',
+        '#sh-verified-original-winners .sh-win-wing{position:absolute;z-index:-1;top:-20px;width:108px;height:105px;filter:drop-shadow(0 2px 2px #ad6f25)}',
+        '#sh-verified-original-winners .sh-win-left{left:-76px;animation:shWinWingLeft 1.15s ease-in-out infinite alternate}',
+        '#sh-verified-original-winners .sh-win-right{right:-76px;transform:scaleX(-1);animation:shWinWingRight 1.15s ease-in-out infinite alternate}',
+        '#sh-verified-original-winners .sh-win-crown{position:absolute;top:-31px;left:50%;transform:translateX(-50%);font-size:28px;filter:drop-shadow(0 2px 5px #e5a132);line-height:1}',
+        '#sh-verified-original-winners .sh-win-avatar{display:grid;place-items:center;flex:none;width:50px;height:50px;border:2px solid #f9d676;border-radius:50%;background:#10263f;box-shadow:0 2px 8px #001d3699;overflow:hidden;font-size:27px}',
+        '#sh-verified-original-winners .sh-win-avatar img{width:100%;height:100%;object-fit:cover}',
+        '#sh-verified-original-winners .sh-win-copy{flex:1;min-width:0;text-shadow:0 2px 4px #063b5e}',
+        '#sh-verified-original-winners .sh-win-name{display:block;font-size:11px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        '#sh-verified-original-winners .sh-win-number{display:block;font-size:clamp(17px,4.6vw,25px);font-weight:1000;line-height:1.14;white-space:nowrap}',
+        '#sh-verified-original-winners .sh-win-number em{font-style:normal;color:#ffe27a}',
+        '#sh-verified-original-winners .sh-win-game{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:50%;background:#00bcbc;border:2px dotted #ffe998;font-size:25px;box-shadow:inset 0 0 9px #00383c}',
+        '#sh-verified-original-winners .sh-win-go{pointer-events:auto;flex:none;display:grid;place-items:center;width:47px;height:47px;padding:0;border:3px solid #fbe49d;border-radius:50%;background:radial-gradient(circle at 30% 28%,#fff8c7,#e5a837 68%,#b36d18);color:#9e3a03;font:1000 17px system-ui;box-shadow:0 2px 6px #31230d;cursor:pointer}',
+        '@keyframes shWinSlide{0%{transform:translate(-50%,-170%) scale(.88);opacity:0}65%{transform:translate(-50%,5%) scale(1.03);opacity:1}100%{transform:translate(-50%,0) scale(1);opacity:1}}',
+        '@keyframes shWinWingLeft{to{transform:rotate(-8deg)}}@keyframes shWinWingRight{to{transform:scaleX(-1) rotate(-8deg)}}',
+        '@media(max-width:360px){#sh-verified-original-winners .sh-win-pill{gap:5px;min-height:56px;padding:5px}#sh-verified-original-winners .sh-win-avatar{width:43px;height:43px}#sh-verified-original-winners .sh-win-game{width:35px;height:35px;font-size:21px}#sh-verified-original-winners .sh-win-go{width:41px;height:41px;font-size:15px}#sh-verified-original-winners .sh-win-wing{width:85px;left:-62px}#sh-verified-original-winners .sh-win-right{left:auto;right:-62px}}',
+        '@media(prefers-reduced-motion:reduce){#sh-verified-original-winners,#sh-verified-original-winners .sh-win-wing{animation:none!important}}'
+      ].join('');
+      doc.head.appendChild(style);
+    }
+    function winnerWing(side){
+      const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox','0 0 120 112');
+      svg.setAttribute('aria-hidden','true');
+      svg.classList.add('sh-win-wing','sh-win-'+side);
+      const gradient='shWinFeather-'+side;
+      svg.innerHTML='<defs><linearGradient id="'+gradient+'" x1="0" y1="0" x2="1" y2="1">'+
+        '<stop offset="0" stop-color="#fffbe7"/><stop offset=".5" stop-color="#f6cb67"/>'+
+        '<stop offset="1" stop-color="#c87938"/></linearGradient></defs>'+
+        '<path d="M117 91 Q78 80 6 3 Q29 54 78 80 Q34 60 4 28 Q19 75 82 93 Q38 85 15 64 Q41 103 117 98Z" fill="url(#'+gradient+')" stroke="#ad6b27" stroke-width="2"/>'+
+        '<path d="M110 90 Q55 51 15 8 M105 94 Q50 72 12 33 M106 98 Q61 94 19 67" stroke="#fff9de" stroke-width="3" fill="none" opacity=".85"/>';
+      return svg;
     }
     function announceRoundWinners(game,result){
       const confirmed=verifiedOriginalGameTopThree(game,result);
       if(!confirmed)return;
       clearWinnerBanner();
+      ensureWinnerBannerStyle();
       const banner=doc.createElement('div');
       banner.id='sh-verified-original-winners';
       banner.setAttribute('role','status');
       banner.setAttribute('aria-live','polite');
-      banner.style.cssText='position:fixed;top:max(12px,env(safe-area-inset-top));'+
-        'left:5%;width:90%;box-sizing:border-box;z-index:2147483000;'+
-        'padding:11px 13px;border:2px solid #f9d76f;border-radius:18px;'+
-        'background:linear-gradient(130deg,#3a1269,#10082e);'+
-        'box-shadow:0 8px 32px #000b,0 0 20px #f59e0b66;'+
-        'color:#fff;text-align:center;font-weight:700;pointer-events:none';
-      const title=doc.createElement('div');
-      title.textContent='🏆 Round '+confirmed.round_no+' · Top 3 winners';
-      title.style.cssText='font-size:14px;color:#ffe49b;margin-bottom:5px';
-      banner.appendChild(title);
-      for(const [index,winner] of confirmed.winners.entries()){
-        const line=doc.createElement('div');
-        line.style.cssText='font-size:12px;line-height:1.45;overflow-wrap:anywhere';
-        line.textContent=['🥇','🥈','🥉'][index]+' '+
-          winner.name+' · ID '+winner.public_id+' · '+
-          Number(winner.total_win).toLocaleString('en-US')+' coins';
-        banner.appendChild(line);
+      const gameIcon=game==='jackpot-fruit'?'🎰':game==='night-food'?'🌙':'🎡';
+      let currentIndex=0;
+      function paint(winner){
+        const pill=doc.createElement('div');
+        pill.className='sh-win-pill';
+        const crown=doc.createElement('span');
+        crown.className='sh-win-crown';crown.textContent='👑';
+        const avatar=doc.createElement('span');
+        avatar.className='sh-win-avatar';
+        const avatarSrc=verifiedAvatarUrl(winner.pic);
+        if(avatarSrc){
+          const photo=doc.createElement('img');
+          photo.src=avatarSrc;photo.alt='';
+          photo.onerror=()=>{avatar.textContent='👤';};
+          avatar.appendChild(photo);
+        }else avatar.textContent='👤';
+        const copy=doc.createElement('span');
+        copy.className='sh-win-copy';
+        const name=doc.createElement('span');
+        name.className='sh-win-name';name.textContent=winner.name;
+        const number=doc.createElement('strong');
+        number.className='sh-win-number';
+        number.append('WIN ');
+        const amount=doc.createElement('em');
+        amount.textContent='🪙'+Number(winner.total_win).toLocaleString('en-US');
+        number.appendChild(amount);copy.append(name,number);
+        const gameBadge=doc.createElement('span');
+        gameBadge.className='sh-win-game';gameBadge.textContent=gameIcon;
+        const go=doc.createElement('button');
+        go.type='button';go.className='sh-win-go';go.textContent='GO';
+        go.setAttribute('aria-label','Return to '+(currentGameFrame?.item?.name||'game'));
+        go.onclick=()=>{
+          clearWinnerBanner();
+          currentGameFrame?.element?.scrollIntoView({block:'nearest',behavior:'smooth'});
+        };
+        pill.append(winnerWing('left'),winnerWing('right'),crown,avatar,copy,gameBadge,go);
+        banner.replaceChildren(pill);
       }
+      paint(confirmed.winners[currentIndex]);
       doc.body.appendChild(banner);
-      winnerBannerTimer=view.setTimeout(()=>{banner.remove();winnerBannerTimer=null;},10000);
+      if(confirmed.winners.length>1){
+        winnerBannerStepTimer=view.setInterval(()=>{
+          currentIndex+=1;
+          if(currentIndex>=confirmed.winners.length){
+            view.clearInterval(winnerBannerStepTimer);winnerBannerStepTimer=null;
+          }else paint(confirmed.winners[currentIndex]);
+        },3000);
+      }
+      winnerBannerTimer=view.setTimeout(clearWinnerBanner,
+        Math.min(9500,confirmed.winners.length*3200));
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
