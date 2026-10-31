@@ -52,3 +52,34 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/paintVerifiedAvatar\(root\.querySelector\('\.pfh \.pav3'\),member\.pic,document\)/);
   assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+publicId\+'\/follow'\)/);
 });
+
+
+test('blocked incoming audio retries on a tap inside the room iframe and cleans up',()=>{
+  const begin=ui.indexOf('  function installRemotePlaybackRecovery(state) {');
+  const end=ui.indexOf('  function addAudioTrack(state,event) {',begin);
+  assert.ok(begin!==-1 && end>begin,'recovery helper must be in the voice adapter');
+  function emitter(){
+    const listeners=new Map();
+    return {
+      addEventListener(name,fn){if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name).add(fn)},
+      removeEventListener(name,fn){listeners.get(name)?.delete(fn)},
+      emit(name){for(const fn of listeners.get(name)||[])fn()},
+      count(name){return listeners.get(name)?.size||0}
+    };
+  }
+  const roomDoc=emitter(),rootDoc=emitter(),windowMock=emitter();
+  rootDoc.getElementById=id=>id==='rf'?{contentDocument:roomDoc}:null;
+  const body=ui.slice(begin,end);
+  const install=new Function('document','window',body+'; return installRemotePlaybackRecovery;')(
+    rootDoc,windowMock);
+  let resumed=0;
+  const audio={paused:true,isConnected:true,srcObject:{},play(){resumed++;return Promise.resolve()}};
+  const state={closed:false,audioElements:new Set([audio])};
+  install(state);
+  assert.equal(roomDoc.count('click'),1,'room iframe should own a tap retry listener');
+  roomDoc.emit('click');
+  assert.equal(resumed,1,'one tap should retry the paused incoming track');
+  state.stopPlaybackRecovery();
+  roomDoc.emit('click');
+  assert.equal(resumed,1,'leaving the room should remove the retry listener');
+});
