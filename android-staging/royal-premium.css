@@ -379,3 +379,193 @@ html.royal-root .nav .ni,html.royal-room .rb,html.royal-room .ib {touch-action:m
 @keyframes royal-float {50%{transform:translateY(-4px)}}
 @keyframes royal-crest {50%{box-shadow:0 6px 0 #6b3d14,0 0 25px #e6b85e8a,inset 0 2px 0 #fffc}}
 @keyframes royal-mic-glow {50%{box-shadow:0 5px 0 #6a3b1a,0 0 19px #fbd17c88,inset 0 2px 0 #fff9}}
+/* Option 1 reference refinement (2026-10-31).
+ * CSS-only: styling existing, functional controls; no mock data, new wallet
+ * balances, navigation interception, or changes to room-owner wallpapers.
+ */
+html.royal-root .auth.on:not(.w) {
+  background:
+    linear-gradient(180deg,rgba(9,2,28,.22) 0%,rgba(14,3,37,.28) 28%,
+      rgba(13,3,31,.86) 62%,#080218 100%),
+    url("royal-palace.png") center top/cover no-repeat #110525;
+}
+html.royal-root .auth:not(.w) .aw {
+  padding:calc(23px + env(safe-area-inset-top,0px)) 21px
+    calc(34px + env(safe-area-inset-bottom,0px));
+}
+html.royal-root .auth:not(.w) .a3i {
+  width:108px;height:108px;object-fit:cover;margin-bottom:12px;
+  border:3px solid #f9d78c;
+  box-shadow:0 0 0 4px #321047d9,0 0 0 5px #ffe4a389,
+    0 14px 32px #060112d9,0 0 35px #f4b95c7a;
+}
+html.royal-root .auth:not(.w) .aw h1 {
+  max-width:340px;margin:0 auto;
+  font-family:Georgia,"Times New Roman",serif;
+  font-size:clamp(30px,8vw,39px);line-height:1.08;letter-spacing:.2px;
+  color:#ffdea0;text-shadow:0 2px 2px #542b23,0 5px 18px #020008,
+    0 0 22px #eca84b75;
+}
+html.royal-root .auth:not(.w) .aw > p {
+  color:#eee0f9;font-size:12px;letter-spacing:1.15px;
+  text-shadow:0 2px 8px #010005;margin:8px 0 20px;
+}
+html.royal-root .auth:not(.w) .atabs {
+  max-width:370px;margin:0 auto 13px;padding:4px;border-radius:26px;
+  background:linear-gradient(120deg,#160728de,#32104dcf,#150624e8);
+  border:1px solid #d4a15b9e;box-shadow:inset 0 1px 0 #fff4,0 6px 19px #0006;
+}
+html.royal-root .auth:not(.w) .atabs button {
+  min-height:38px;border-radius:23px;font-size:14px;color:#e9cde9;
+}
+html.royal-root .auth:not(.w) .atabs button.on {
+  color:#fff7e8;
+  background:linear-gradient(160deg,#b858d0,#812fba 62%,#512077);
+  border:1px solid #ffd989b8;
+  box-shadow:0 0 16px #ec83e18a,inset 0 1px 0 #fff5;
+}
+html.royal-root .auth:not(.w) .acard {
+  border-radius:24px;padding:15px 17px 19px;
+  background:linear-gradient(160deg,#220b3be8,#160727ee 75%,#1b0a32eb);
+  border:1.5px solid #e4b875a8;
+  box-shadow:0 8px 28px #0008,inset 0 1px 0 #ffdda63b;
+}
+html.royal-root .auth:not(.w) .acard .lbl {
+  color:#f5dfc5;font-size:12px;font-weight:600;letter-spacing:.15px;
+}
+html.royal-root .auth:not(.w) .acard .field {
+  min-height:48px;border-radius:16px;padding:12px 15px;
+  color:#fff8eb;background:linear-gradient(115deg,#130620ed,#29113eeb);
+  border:1px solid #d7a86b8c;box-shadow:inset 0 2px 6px #0007;
+}
+html.royal-root .auth:not(.w) .acard .field:focus {
+  outline:none;border-color:#ffde9a;
+  box-shadow:0 0 0 3px #f9c6752e,inset 0 2px 6px #0006;
+}
+html.royal-root .auth:not(.w) .pw .eye {
+  color:#f7cd87;min-width:42px;min-height:42px;
+}
+html.royal-root .auth:not(.w) .acard .big {
+  min-height:51px;border:1px solid #fff0bd;border-radius:30px;
+  font-family:Georgia,"Times New Roman",serif;font-size:18px;
+  letter-spacing:.15px;box-shadow:0 5px 0 #784614,0 9px 20px #0009,
+    inset 0 2px 0 #fff9;
+}
+html.royal-root .auth:not(.w) .apic {
+  border:3px solid #f9d789;box-shadow:0 0 0 3px #9f65ad5e,0 6px 18px #0009;
+}
+html.royal-root .auth:not(.w) .alt button {min-height:42px;border-radius:18px;}
+html.royal-root #v-msg .hd {
+  margin-bottom:13px;padding-bottom:10px;
+  border-bottom:1px solid #f5c77752;
+}
+html.royal-root #v-msg .hd h1 {
+  font-family:Georgia,"Times New Roman",serif;
+  color:#ffe6a9;font-size:23px;
+  -webkit-text-fill-color:#ffe6a9;
+}
+html.royal-root #v-msg .chatrow {
+  min-height:64px;border-radius:17px;align-items:center;
+  box-shadow:0 5px 0 #0b031e,0 9px 20px #0004,inset 0 1px 0 #ffdf8e23;
+}
+html.royal-root #v-me .mav {
+  border-radius:50%;outline:1px solid #fff2b8;
+  outline-offset:2px;
+}
+html.royal-root #v-me .ml2 {
+  border-radius:21px;overflow:hidden;
+  box-shadow:0 8px 24px #0006,inset 0 1px 0 #fff2;
+}
+html.royal-root #v-rank .pp .gr {
+  border:2px solid #ffe4a7;
+  box-shadow:0 0 0 3px #4a195bab,0 10px 28px #000a,
+    0 0 22px #f3c4717e;
+}
+html.royal-room .sheet {
+  border:1px solid #e2b871;border-bottom:0;
+  border-radius:27px 27px 0 0;
+}
+html.royal-room .sheet .pic {
+  padding:11px 2px 15px;gap:13px;
+  border-bottom:1px solid #e6b56b4d;margin-bottom:6px;
+}
+html.royal-room .sheet .pic .big {
+  width:88px;height:88px;border-radius:18px;
+  border:2px solid #ffda94;
+  box-shadow:0 0 0 3px #ad69c34a,0 9px 18px #0009;
+}
+html.royal-room .sheet .pic .big i {
+  color:#261133;background:#f9d485;border:1px solid #fff3bf;
+  box-shadow:0 2px 8px #0008;
+}
+html.royal-room .sheet .themes {
+  grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;
+}
+html.royal-room .sheet .th {
+  min-width:0;height:76px;border-radius:13px;
+  border:1.5px solid #deb97b96;
+  box-shadow:inset 0 -22px 22px #0802179c,0 4px 10px #0006;
+  font-size:10px;line-height:1.2;padding:0 2px 7px;
+}
+html.royal-room .sheet .th.sel {
+  border:2px solid #ffecb6;
+  box-shadow:inset 0 -22px 22px #0802179c,0 0 0 2px #f9c46d53,
+    0 0 16px #f5d47b8e;
+}
+html.royal-room .sheet .row {
+  border-bottom-color:#dcb16b53;padding:15px 2px;
+}
+html.royal-room .sheet .row small {color:#cdb9de;}
+html.royal-room .sheet .gbar .send {
+  min-height:48px;border-radius:18px;font-size:15px;
+  border:1px solid #ffe9ad;
+}
+html.royal-room .sheet .fr button {
+  border-radius:15px;min-height:72px;
+  border:1px solid #d4a7668c;
+}
+html.royal-room .sheet .fr button.sel {
+  border-color:#ffe4a0;box-shadow:0 0 16px #f4c8796c;
+}
+html.royal-room .sheet .gifts .gf {
+  border-radius:16px;min-height:96px;
+  box-shadow:0 4px 0 #09021a,0 7px 15px #0006,inset 0 1px 0 #fff3;
+}
+html.royal-room .sheet .gifts .gf.sel {
+  box-shadow:0 5px 0 #81501d,0 0 20px #f2c9768f,inset 0 1px 0 #fff7;
+}
+@media(max-width:350px) {
+  html.royal-root .auth:not(.w) .aw {padding-left:12px;padding-right:12px;}
+  html.royal-root .auth:not(.w) .aw h1 {font-size:30px;}
+  html.royal-room .sheet .themes {gap:4px;}
+  html.royal-room .sheet .th {height:66px;font-size:9px;}
+}
+
+/* Compact Android touch ergonomics: keep chat readable on narrow phones.
+ * Layout-only; existing room button IDs and handlers are unchanged. */
+html.royal-root .tabs button,
+html.royal-root .auth:not(.w) .atabs button,
+html.royal-root .auth:not(.w) .alt button,
+html.royal-root .auth:not(.w) .pw .eye,
+html.royal-root .nav .ni {
+  min-height:48px;
+}
+html.royal-room .rb,
+html.royal-room .mic {
+  width:48px;height:48px;min-width:48px;min-height:48px;
+}
+html.royal-room .inp {min-height:48px;}
+@media (max-width:390px) {
+  html.royal-room .irow {
+    flex-wrap:wrap;justify-content:space-between;
+    column-gap:8px;row-gap:9px;
+  }
+  html.royal-room .irow > .inp {
+    flex:0 0 100%;width:100%;min-width:0;
+  }
+  html.royal-room .irow > .rb,
+  html.royal-room .irow > .mic {
+    flex:0 0 48px;width:48px;height:48px;
+    min-width:48px;min-height:48px;
+  }
+}
