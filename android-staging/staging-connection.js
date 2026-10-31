@@ -195,6 +195,8 @@
       '.sh-sovera-id-effects{display:flex;justify-content:center;align-items:center;gap:8px;margin:6px auto 12px}',
       '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
       '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
+      '.sh-sovera-seat-tag{position:absolute;z-index:18;left:50%;top:100%;width:104px;height:29px;transform:translateX(-50%);object-fit:contain;pointer-events:none}',
+      '.sh-sovera-user-tag{display:inline-block;width:74px;height:25px;object-fit:contain;margin-left:4px;vertical-align:middle}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
       'pointer-events:none;display:block;overflow:hidden;background:#16082f}',
       '.sh-sovera-entry-cover img{position:absolute;inset:0;width:100%;height:100%;',
@@ -296,7 +298,15 @@
       if(!Number.isInteger(index)||index<0)continue;
       const item=row.dataset.t==='m'?frame.seats?.[index]:
         row.dataset.t==='a'?frame.U?.[index]:null;
-      if(item)paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
+      if(!item)continue;
+      paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
+      row.querySelector('.sh-sovera-user-tag')?.remove();
+      const tag=nameTagArt(item.name_tag_style);
+      if(tag){
+        const img=doc.createElement('img');
+        img.className='sh-sovera-user-tag';img.alt='Verified name tag';
+        img.src=cosmeticMedia(tag);row.appendChild(img);
+      }
     }
   }
   function decorateRoomChat(frame){
@@ -328,10 +338,12 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
+      el.querySelectorAll('.sh-sovera-seat-tag').forEach(decoration=>decoration.remove());
       const item=frameArt(seat.frame_style);
       const medal=medalArt(seat.medal_style);
+      const nameTag=nameTagArt(seat.name_tag_style);
       avatar.classList.toggle('sh-has-sovera-frame',!!item);
-      if(!item&&!medal)continue;
+      if(!item&&!medal&&!nameTag)continue;
       avatar.style.position='relative';
       if(item){
         const decoration=doc.createElement('i');
@@ -347,6 +359,14 @@
         badge.src=cosmeticMedia(medal);
         badge.setAttribute('aria-hidden','true');
         avatar.appendChild(badge);
+      }
+      if(nameTag){
+        const plaque=doc.createElement('img');
+        plaque.className='sh-sovera-seat-tag';
+        plaque.alt='Verified nameplate';
+        plaque.src=cosmeticMedia(nameTag);
+        el.style.position='relative';
+        el.appendChild(plaque);
       }
     }
   }
