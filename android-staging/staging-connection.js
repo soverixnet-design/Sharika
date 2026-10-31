@@ -2966,35 +2966,163 @@
   };
 
   // Original daily reward card retained; values and claim status come from D1.
+  // Existing Sharika bottom sheet, with a premium raised/gold-frame finish.
+  const dailyDepth=document.createElement('style');
+  dailyDepth.id='sharika-daily-3d-styles';
+  dailyDepth.textContent=[
+    '#sh.sharika-daily-3d{background:radial-gradient(ellipse at 90% 0%,#7757d3 0,transparent 35%),',
+    'linear-gradient(160deg,#252c88 0%,#181e64 62%,#0d1348 100%);',
+    'border-top:3px solid #ffeaa0;border-radius:31px 31px 0 0;',
+    'box-shadow:0 -12px 46px #7351ff99,inset 0 5px 0 #ffffff44;max-height:90%}',
+    '#sh.sharika-daily-3d h3{font-size:22px;color:#fff;text-shadow:0 3px 9px #08083f;',
+    'margin:3px 0 14px;font-weight:900}',
+    '#sh-daily-hero{border-radius:24px;padding:16px;margin-bottom:15px;',
+    'border:2px solid #ffe28a;background:linear-gradient(145deg,#6847bc,#283a94 65%,#18205f);',
+    'box-shadow:inset 0 3px 0 #ffffff60,inset 0 -3px 6px #0d114b,',
+    '0 7px 0 #8c59a8,0 15px 25px #090a3c88;position:relative;overflow:hidden}',
+    '#sh-daily-hero:before{content:"✦";position:absolute;right:10px;top:-16px;',
+    'color:#ffeab7;font-size:80px;opacity:.18;pointer-events:none}',
+    '#sh-daily-hero b{display:block;color:#fff3bf;font-size:18px;text-shadow:0 2px 6px #0009}',
+    '#sh-daily-hero small{display:block;color:#f0e9ff;margin-top:5px;font-size:12px}',
+    '#sh-daily-reset{color:#ffecb0;font-size:12px;margin-top:10px;font-weight:700}',
+    '#sh-daily-days{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));',
+    'gap:10px;margin:13px 0 20px}',
+    '#sh-daily-days .sh-day-tile{min-width:0;padding:12px 2px 10px;border-radius:20px;',
+    'background:linear-gradient(150deg,#4154a5,#283178 68%,#1a2359);',
+    'border:1px solid #6e82d3;text-align:center;color:#fff4c5;',
+    'box-shadow:inset 0 2px 0 #ffffff55,0 5px 0 #141c55,0 9px 13px #080b3790}',
+    '#sh-daily-days .sh-day-tile.current{border:2px solid #ffdb61;',
+    'background:linear-gradient(150deg,#b875f5,#5740b3 55%,#353a96);',
+    'box-shadow:inset 0 2px 1px #ffffffb0,0 5px 0 #8052a6,',
+    '0 0 17px #f9d76eaa,0 11px 22px #130c4777}',
+    '#sh-daily-days .sh-day-tile.collected{opacity:.68;filter:saturate(.5)}',
+    '#sh-daily-days .sh-day-icon{display:block;font-size:28px;filter:drop-shadow(0 4px 3px #120c49);',
+    'margin:0 auto 5px}',
+    '#sh-daily-days .sh-day-name{display:block;font-size:12px;font-weight:700}',
+    '#sh-daily-days .sh-day-coins{display:block;color:#ffe782;font-size:13px;font-weight:900}',
+    '#sh.sharika-daily-3d #cl{border:2px solid #fff1b9;border-radius:25px;',
+    'background:linear-gradient(155deg,#ffe892,#ffb82b 40%,#d68116);',
+    'color:#563000;font-size:18px;font-weight:900;',
+    'box-shadow:inset 0 3px 0 #ffffffb8,0 6px 0 #915211,0 14px 25px #080c3880}',
+    '#sh.sharika-daily-3d #cl:disabled{background:linear-gradient(#7365b0,#4e428d);',
+    'border-color:#a5a3d5;color:#e6e2ff;box-shadow:inset 0 2px 0 #ffffff42,0 4px 0 #373367}',
+    '#sh-daily-activities{margin-top:22px}',
+    '#sh-daily-activities h4{color:#ffebb4;font-size:18px;margin:0 0 13px}',
+    '#sh-daily-activities .sh-task-card{display:flex;align-items:center;gap:10px;',
+    'border:1px solid #b59de0;border-radius:20px;padding:12px 11px;margin:12px 0;',
+    'background:linear-gradient(145deg,#4a428f,#242968 68%,#1b2056);',
+    'box-shadow:inset 0 2px 0 #ffffff45,0 5px 0 #15164a,0 9px 17px #070a3580}',
+    '#sh-daily-activities .sh-task-icon{flex:none;width:43px;height:43px;border-radius:15px;',
+    'display:grid;place-items:center;font-size:26px;background:linear-gradient(#ffda77,#b574d9);',
+    'box-shadow:inset 0 2px 1px #fff8,0 4px 0 #3a2d7e}',
+    '#sh-daily-activities .sh-task-text{flex:1;min-width:0;font-size:13px;color:#fff}',
+    '#sh-daily-activities .sh-task-text strong{display:block;line-height:1.35}',
+    '#sh-daily-activities .sh-task-text small{color:#fce6a8;font-size:12px}',
+    '#sh-daily-activities .sh-task-claim{flex:none;border:1px solid #fff5bd;',
+    'border-radius:13px;color:#4e2d00;background:linear-gradient(#ffeb93,#ebad28);',
+    'font-weight:900;padding:11px 12px;',
+    'box-shadow:inset 0 2px 0 #fff9d4,0 4px 0 #92601c}',
+    '#sh-daily-activities .sh-task-claim:disabled{background:#454878;color:#c6c5de;',
+    'border-color:#767bb2;box-shadow:none}',
+    '#sh-daily-activities .sh-task-claim:active:not(:disabled),',
+    '#sh.sharika-daily-3d #cl:active:not(:disabled){transform:translateY(4px);box-shadow:0 1px 0 #5a3673}',
+    '#sh-daily-foot{font-size:12px;color:#bdc3ed;padding:12px 3px 2px}'
+  ].join('');
+  document.head.appendChild(dailyDepth);
+  let dailyResetTimer=null;
+  const oldOpenSheetDaily=window.openSheet;
+  if(typeof oldOpenSheetDaily==='function')window.openSheet=function(){
+    const sheet=document.getElementById('sh');
+    sheet?.classList.remove('sharika-daily-3d');
+    if(dailyResetTimer){clearInterval(dailyResetTimer);dailyResetTimer=null;}
+    return oldOpenSheetDaily.apply(this,arguments);
+  };
+  function setDailyClock(resetUtc){
+    const resetTime=Date.parse(resetUtc);
+    if(!Number.isFinite(resetTime))return;
+    if(dailyResetTimer)clearInterval(dailyResetTimer);
+    const tick=()=>{
+      const node=document.getElementById('sh-daily-reset');
+      if(!node?.isConnected){clearInterval(dailyResetTimer);dailyResetTimer=null;return;}
+      const seconds=Math.max(0,Math.ceil((resetTime-Date.now())/1000));
+      if(seconds<=0){clearInterval(dailyResetTimer);dailyResetTimer=null;showVerifiedDailySheet();return;}
+      const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60);
+      node.textContent='🔄 New tasks in '+h+'h '+String(m).padStart(2,'0')+'m · Resets at 00:00 UTC';
+    };
+    tick();dailyResetTimer=setInterval(tick,30000);
+  }
+
   let dailyClaimBusy=false;
   async function showVerifiedDailySheet(){
     if(!session){window.showAuth('welcome');return;}
-    window.openSheet('<h3>🎁 Daily check-in</h3>'+
-      '<div id="sharika-daily-content" aria-live="polite">Loading verified daily rewards…</div>');
+    window.openSheet('<h3>🎁 Daily Task Center</h3>'+
+      '<div id="sharika-daily-content" aria-live="polite">Loading daily rewards…</div>');
+    document.getElementById('sh')?.classList.add('sharika-daily-3d');
     const root=document.getElementById('sharika-daily-content');
     if(!root)return;
     try{
       const data=await api('GET','/daily');
       if(!root.isConnected)return;
-      const steps=(data.rewards||[]).map((coins,i)=>
-        '<button type="button" class="'+(data.next_day===i+1&&!data.claimed_today?'sel':'')+
-        '" disabled style="'+(data.claimed_today&&data.claimed?.streak===i+1?'opacity:.6;':'')+'">'+
-        '<span>'+(i===6?'🎁':'🪙')+'</span>Day '+(i+1)+'<br>'+
-        Number(coins).toLocaleString('en-US')+'</button>').join('');
+      const steps=(data.rewards||[]).map((coins,i)=>{
+        const day=i+1;
+        const current=day===data.next_day;
+        const collected=!!data.claimed_today&&day===data.claimed?.streak;
+        return '<div class="sh-day-tile'+(current?' current':'')+(collected?' collected':'')+'">'+
+          '<span class="sh-day-icon">'+(day===7?'🎁':'🪙')+'</span>'+
+          '<span class="sh-day-name">Day '+day+(collected?' ✓':'')+'</span>'+
+          '<span class="sh-day-coins">'+Number(coins).toLocaleString('en-US')+'</span></div>';
+      }).join('');
       const claim=data.claimed_today?
-        '<button class="big" id="cl" disabled style="opacity:.5">Today reward already claimed ✓</button>':
-        '<button class="big" id="cl">🪙 '+Number(data.rewards?.[data.next_day-1]||0).toLocaleString('en-US')+
-        ' Get coins</button>';
-      const tasks=(data.tasks||[]).map(t=>
-        '<div class="row"><span>'+(t.completed?'✅ ':'☑️ ')+sellerEscape(t.title)+
-        '</span><b>'+(t.completed?'Done':'Pending')+'</b></div>').join('');
-      root.innerHTML='<div class="g4">'+steps+'</div>'+claim+
-        '<p class="n">Your streak: '+Number(data.streak||0)+' days · Resets after a missed UTC day.</p>'+
-        '<div class="card" style="margin-top:12px;padding:12px"><b>Today’s activity</b>'+
-        (tasks||'<p class="n">No task activity available.</p>')+
-        '<p class="n">Task progress is verified; separate task coin rewards are not enabled.</p></div>';
+        '<button class="big" id="cl" disabled>✓ Today’s check-in claimed</button>':
+        '<button class="big" id="cl">🪙 Claim '+Number(data.rewards?.[data.next_day-1]||0).toLocaleString('en-US')+' coins</button>';
+      const tasks=(data.tasks||[]).filter(t=>['follow','gift'].includes(t.key)).map(t=>{
+        const claimLabel=t.claimed?'Collected ✓':t.completed?'Claim':'Pending';
+        return '<div class="sh-task-card"><span class="sh-task-icon">'+
+          (t.key==='follow'?'🤝':'🎁')+'</span><div class="sh-task-text"><strong>'+
+          sellerEscape(t.title)+'</strong><small>'+
+          (t.claimed?'Today’s coins received':t.completed?'Completed · reward ready':'Complete this task to unlock')+
+          ' · 🪙 '+Number(t.reward_coins||0).toLocaleString('en-US')+'</small></div>'+
+          '<button type="button" class="sh-task-claim" data-sh-daily-task="'+
+          sellerEscape(t.key)+'"'+(!t.completed||t.claimed?' disabled':'')+'>'+
+          claimLabel+'</button></div>';
+      }).join('');
+      root.innerHTML='<div id="sh-daily-hero"><b>✨ Daily Rewards</b>'+
+        '<small>Complete real activities, collect coins and return every day.</small>'+
+        '<div id="sh-daily-reset">Calculating reset time…</div></div>'+
+        '<div id="sh-daily-days">'+steps+'</div>'+claim+
+        '<p class="n" style="margin-top:17px;color:#dcd5ff">🔥 Check-in streak: '+
+        Number(data.streak||0)+' day(s). Miss a UTC day and your streak restarts at Day 1.</p>'+
+        '<div id="sh-daily-activities"><h4>⭐ Today’s Tasks</h4>'+
+        (tasks||'<p>Tasks unavailable</p>')+'</div>'+
+        '<p id="sh-daily-foot">Rewards can be claimed once per task per UTC day. '+
+        'Tomorrow tasks reset automatically; your previous coins remain in your wallet.</p>';
+      setDailyClock(data.next_reset_utc);
     }catch(error){if(root.isConnected)root.textContent='Daily rewards unavailable: '+errText(error);}
   }
+  let dailyTaskClaimBusy=false;
+  async function claimVerifiedDailyTask(key,button){
+    if(dailyTaskClaimBusy||!['follow','gift'].includes(key))return;
+    dailyTaskClaimBusy=true;button.disabled=true;
+    let confirmed=false;
+    try{
+      const result=await api('POST','/daily/tasks/claim',{task_key:key});
+      confirmed=true;
+      toast(result.duplicate?'Already collected today ✓':
+        '+'+Number(result.reward_coins||0).toLocaleString('en-US')+' task coins received 🎉');
+      await reloadWallet().catch(error=>console.warn('Task reward display refresh pending:',errText(error)));
+    }catch(error){
+      toast('Task coin claim failed: '+errText(error));
+    }finally{
+      dailyTaskClaimBusy=false;
+      if(confirmed||button.isConnected)await showVerifiedDailySheet();
+    }
+  }
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('[data-sh-daily-task]');
+    if(!button)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    claimVerifiedDailyTask(button.dataset.shDailyTask,button);
+  },true);
   async function claimVerifiedDaily(){
     if(dailyClaimBusy)return;
     dailyClaimBusy=true;

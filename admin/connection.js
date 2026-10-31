@@ -482,6 +482,11 @@
       '<div class="row" id="daily-config-fields">Loading…</div>'+
       (role==='super'?'<button class="btn s" id="daily-save" type="button">Save reward amounts</button>':'')+
       '<p class="n" id="daily-note">Only Super Admin may edit future rewards (1–1,000 coins per day). Previous claims never change.</p></div>'+
+      '<div class="card"><h3>✨ Daily Task Coins</h3>'+
+      '<p class="n">Each verified activity can be claimed once per UTC day. Tasks reset every UTC midnight; coin receipts never reset.</p>'+
+      '<div class="row" id="daily-task-admin-fields">Loading…</div>'+
+      (role==='super'?'<button class="btn s" id="daily-task-save" type="button">Save task coins</button>':'')+
+      '<p class="n" id="daily-task-admin-note">Only Super Admin can edit future Follow/Gift task rewards.</p></div>'+
       '<div class="card"><h3>🤝 Verified invites</h3>'+
       '<p class="n">Verified referral signup: inviter +5,000 coins, new user starts with 10,000 coins. Later approved coin-seller recharge: inviter +5%.</p>'+
       '<div id="daily-invite-report">Loading verified referrals…</div></div>';
@@ -495,6 +500,15 @@
         '<label style="display:inline-grid;gap:5px"><span>Day '+(i+1)+'</span>'+
         '<input type="number" class="field" min="1" max="1000" id="daily-day-'+(i+1)+
         '" value="'+esc(reward)+'" '+(role==='super'?'':'disabled')+'></label>').join('');
+      const taskPanel=byId('daily-task-admin-fields');
+      const rewards=result.task_rewards||{};
+      taskPanel.innerHTML=[['follow','🤝 Follow a friend'],['gift','🎁 Send a gift']]
+        .map(([key,title])=>'<label style="display:inline-grid;gap:5px"><span>'+
+        title+'</span><input type="number" class="field" min="1" max="1000" '+
+        'id="daily-task-'+key+'" value="'+esc(rewards[key]||'')+'" '+
+        (role==='super'?'':'disabled')+'></label>').join('')+
+        '<p class="n">Task coins paid today: '+fmt(result.task_coins_awarded_today)+
+        ' · Claims: '+fmt(result.task_claims_today)+'</p>';
     }catch(error){stats.textContent=error.message;fields.textContent='Rewards unavailable.';return;}
     try{
       const invites=await api('GET','invites');
@@ -521,6 +535,23 @@
         await api('PATCH','daily',{rewards});
         note.textContent='Daily rewards saved and audited. Future claims use the new values.';
       }catch(error){note.textContent='Update failed: '+error.message;}
+      finally{button.disabled=false;}
+    });
+    byId('daily-task-save')?.addEventListener('click',async event=>{
+      const follow=byId('daily-task-follow')?.value.trim()||'';
+      const gift=byId('daily-task-gift')?.value.trim()||'';
+      const task_rewards={follow:Number(follow),gift:Number(gift)};
+      const hint=byId('daily-task-admin-note');
+      if(!/^\d+$/.test(follow)||!/^\d+$/.test(gift)||
+        Object.values(task_rewards).some(n=>!Number.isSafeInteger(n)||n<1||n>1000)){
+        hint.textContent='Use 1–1,000 whole coins for each task.';return;
+      }
+      if(!window.confirm('Save future task rewards? Existing receipts stay unchanged.'))return;
+      const button=event.currentTarget;button.disabled=true;
+      try{
+        await api('PATCH','daily',{task_rewards});
+        hint.textContent='Task coin amounts saved and audited. Tomorrow and unclaimed tasks use these amounts.';
+      }catch(error){hint.textContent='Update failed: '+error.message;}
       finally{button.disabled=false;}
     });
   };

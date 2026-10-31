@@ -18,6 +18,9 @@ function fixture({status='active',last=null,coins=500,config=REWARDS,claims=3}={
             return {auth_uid:'alice',public_no:10000001,coins,status};
           if(sql.includes('FROM sharika_daily_reward_config'))
             return Object.fromEntries(config.map((v,i)=>['day'+(i+1),v]));
+          if(sql.includes('FROM sharika_daily_task_config'))
+            return {follow_coins:50,gift_coins:100};
+          if(sql.includes('FROM sharika_daily_task_claims'))return null;
           if(sql.includes('FROM sharika_daily_checkins'))
             return last;
           if(sql.includes('FROM sharika_follows'))return {n:1};
@@ -25,7 +28,8 @@ function fixture({status='active',last=null,coins=500,config=REWARDS,claims=3}={
           if(sql.includes('SELECT coins FROM sharika_users'))return {coins:coins+100};
           if(sql.includes('COUNT(*) AS claims'))return {claims,total_coins:300};
           return null;
-        }
+        },
+        async all(){return {results:[]};}
       };
     },
     async batch(stmts){state.batch.push(stmts.map(s=>({sql:s.sql,args:s.args})));return stmts.map(()=>({success:true}));}
@@ -55,6 +59,10 @@ test('daily status shows verified UTC day, real wallet, and actual task counters
   assert.deepEqual(x.data.rewards,REWARDS);
   assert.equal(x.data.tasks[0].completed,true);
   assert.equal(x.data.tasks[1].completed,false);
+  assert.equal(x.data.tasks[0].reward_enabled,true);
+  assert.equal(x.data.tasks[0].reward_coins,50);
+  assert.equal(x.data.tasks[0].claimed,false);
+  assert.equal(x.data.next_reset_utc,'2026-10-31T00:00:00.000Z');
   assert.equal(x.data.invite_rewards_enabled,false);
   assert.equal(f.state.batch.length,0);
 });
