@@ -17,6 +17,7 @@ on:
       - feature/sharika-greedy-wheel-20261031
       - feature/sharika-greedy-wheel-current-20261031
       - feature/sharika-greedy-integrated-staging-20261031
+      - feature/sharika-royal-premium-ui-20261031
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
@@ -134,6 +135,30 @@ jobs:
           console.log('SHARIKA_ORIGINAL_UI_AND_ISOLATED_BRIDGE_VERIFIED');
           NODE
 
+      - name: Validate Royal Premium visual-only layer
+        run: |
+          node --check royal-premium.js
+          test -s royal-premium.css
+          test -s royal-palace.png
+          node - <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('royal-premium.js', 'utf8');
+          const css = fs.readFileSync('royal-premium.css', 'utf8');
+          const gradle = fs.readFileSync('app/build.gradle', 'utf8');
+          const java = fs.readFileSync('app/src/main/java/com/soverixnet/sharika/SharikaActivity.java', 'utf8');
+          if (!js.includes('iframe.addEventListener(\'load\', styleRoom') ||
+              !js.includes("settings.theme === 'mid' && !settings.bg") ||
+              !css.includes('html.royal-root') ||
+              !css.includes('html.royal-room') ||
+              !css.includes('prefers-reduced-motion:reduce') ||
+              !['royal-premium.js', 'royal-premium.css', 'royal-palace.png'].every(s => gradle.includes(s)) ||
+              !java.includes("s.src='./royal-premium.js'") ||
+              !java.includes("s.src='./back-navigation.js'")) {
+            throw new Error('Royal Premium packaging/theme safety check failed');
+          }
+          console.log('SHARIKA_ROYAL_VISUAL_LAYER_STATIC_CHECKS_OK');
+          NODE
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -215,6 +240,13 @@ jobs:
           test -s app/src/main/assets/food-wheel-card.jpg
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/food-wheel-card.jpg'
           echo 'FOOD_WHEEL_CARD_IN_APK_VERIFIED'
+
+      - name: Confirm Royal Premium assets are bundled inside APK
+        run: |
+          for asset in royal-premium.js royal-premium.css royal-palace.png; do
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/$asset"
+          done
+          echo 'SHARIKA_ROYAL_PREMIUM_APK_ASSETS_VERIFIED'
 
       - name: Print signing fingerprint for this exact APK
         run: |
