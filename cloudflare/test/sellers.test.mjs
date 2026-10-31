@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleSellerApp, handleSellerAdmin } from '../src/sellers.mjs';
+import {readFileSync} from 'node:fs';
 
-function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplicate=false}={}){
+function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplicate=false,selfRecipient=false}={}){
   const state={batch:[],queries:[]};
   const DB={
     prepare(sql){
@@ -14,17 +15,23 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
           if(sql.includes('FROM sharika_coin_sellers WHERE seller_uid=?'))
             return seller?{active:1,available_coins:stock}:null;
           if(sql.includes('FROM sharika_users WHERE public_no=?'))
-            return recipient?{auth_uid:'recipient2',coins:20,status:'active'}:null;
+            return recipient?{auth_uid:selfRecipient?'seller1':'recipient2',coins:20,status:'active'}:null;
           if(sql.includes('FROM sharika_coin_seller_transfers t'))return duplicate?{id:12,amount:200,target_uid:'recipient2'}:null;
           if(sql.includes('SELECT id,stock_after FROM sharika_coin_seller_transfers'))return {id:12,stock_after:stock-200};
           if(sql.includes('SELECT id,amount,stock_after,seller_uid FROM sharika_coin_seller_allocations'))return null;
           if(sql.includes('SELECT s.seller_uid'))return seller?{seller_uid:'seller1',active:1,available_coins:stock}:null;
           if(sql.includes('SELECT id,stock_after FROM sharika_coin_seller_allocations'))return {id:13,stock_after:stock+200};
+          if(sql.includes('FROM sharika_coin_sellers s JOIN sharika_users u'))
+            return {public_no:10000003,name:'Approved Seller',pic:null,
+              active:1,available_coins:stock};
           if(sql.includes('SELECT auth_uid,status,minor FROM sharika_users'))return actor?{auth_uid:'seller1',status:'active',minor}:null;
           return null;
         },
         async all(){
           state.queries.push({sql,args:this.args||[]});
+          if(sql.includes('FROM sharika_coin_sellers s JOIN sharika_users u'))
+            return {results:[{public_no:10000003,name:'Approved Seller',pic:null,
+              active:1,available_coins:stock}]};
           if(sql.includes('FROM sharika_coin_seller_transfers t ')){
             return {results:[{id:7,sender_no:10000003,seller_no:10000003,
               recipient_no:10000002,amount:250,stock_after:2750,created_at:'2026-10-30'}]};
@@ -65,11 +72,29 @@ const validAllocation={
   seller_public_id:'10000002',coins:200,request_id:'seller-allocate-test-1'
 };
 
-test('seller listing and profile are real database reads',async()=>{
+test('public seller list shows verified IDs but hides wallet stock',async()=>{
   const {DB,state}=mockDB();
-  assert.equal((await app(DB,'GET','/api/v1/sellers')).status,200);
-  assert.equal((await app(DB,'GET','/api/v1/sellers/me')).status,200);
+  const list=await app(DB,'GET','/api/v1/sellers');
+  assert.equal(list.status,200);
+  assert.deepEqual(list.data.sellers,[{
+    public_id:'10000003',name:'Approved Seller',pic:null
+  }]);
+  assert.ok(state.queries.some(q=>q.sql.includes("WHERE s.active=1")));
+  assert.ok(!state.queries.some(q=>q.sql.includes('SELECT u.public_no,u.name,u.pic,s.active,s.available_coins')));
+  const mine=await app(DB,'GET','/api/v1/sellers/me');
+  assert.equal(mine.status,200);
+  assert.equal(mine.data.seller.available_coins,3000);
   assert.equal(state.batch.length,0);
+});
+test('seller directory is read-only and recharge exists only in private wallet UI',()=>{
+  const source=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const entry=source.indexOf('async function showVerifiedCoinSellers');
+  const directory=source.slice(source.indexOf('if(!walletOnly){',entry),
+    source.indexOf('// Private wallet:',entry));
+  assert.match(directory,/api\('GET','\/sellers'\)/);
+  assert.doesNotMatch(directory,/\/sellers\/transfers|\/sellers\/allocations|sharika-seller-send/);
+  assert.match(source,/button\.id='sharika-recharge-seller-wallet'/);
+  assert.match(source,/button\.onclick=\(\)=>showVerifiedCoinSellers\(\{walletOnly:true\}\)/);
 });
 test('invalid seller transfer cannot touch any wallet',async()=>{
   const {DB,state}=mockDB();
@@ -82,6 +107,15 @@ test('invalid seller transfer cannot touch any wallet',async()=>{
 test('unapproved seller cannot transfer coins',async()=>{
   const {DB,state}=mockDB({seller:false});
   assert.equal((await app(DB,'POST','/api/v1/sellers/transfer',validTransfer)).status,403);
+  assert.equal(state.batch.length,0);
+});
+test('seller cannot turn assigned stock into personal coins without admin authorization',async()=>{
+  const {DB,state}=mockDB({selfRecipient:true});
+  const result=await app(DB,'POST','/api/v1/sellers/transfer',{
+    ...validTransfer,target_public_id:'10000003'
+  });
+  assert.equal(result.status,403);
+  assert.equal(result.data.error,'cannot_recharge_self');
   assert.equal(state.batch.length,0);
 });
 test('seller stock insufficient rejects without touching user coins',async()=>{
