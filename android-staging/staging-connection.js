@@ -598,6 +598,7 @@
   },true);
 
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
+  const SHARIKA_ICE_CONFIG={iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]};
   let sfuState = null;
   let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;
   function recoverSfuPublication(state,reason) {
@@ -708,7 +709,7 @@
           audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
         });
         if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
-        state.publishPC=new RTCPeerConnection();
+        state.publishPC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
         const local=state.media.getAudioTracks()[0];
         const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
         const offer=await state.publishPC.createOffer();
@@ -751,7 +752,7 @@
       const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
       state.subscribeId=joined.sessionId;
       state.sessionIds.push(joined.sessionId);
-      state.receivePC=new RTCPeerConnection();
+      state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
       state.receivePC.ontrack=event=>addAudioTrack(state,event);
       await subscribeSfu(state);
       // Refresh both presence and publications; do not consume room resources
