@@ -709,6 +709,10 @@
     }catch(error){status.textContent='Cosmetics unavailable: '+error.message;}
   };
 
+  // Revive the former placeholder Store and Medals pages too.
+  P.store=P.cosmetics;
+  P.md=P.cosmetics;
+
   P.sellers=async function(){
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>🪙 Verified coin sellers</h3>'+
@@ -1394,7 +1398,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','rech','gifts','cosmetics','rank','audit','admins','system','banners'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
