@@ -668,7 +668,10 @@
       '<option value="1">Luxury</option><option value="2">Lucky</option></select>'+
       '<button type="button" id="gift-create" class="btn s">Add gift</button></div></div>':'')+
       '<div class="card"><h3>Real gift catalog</h3><div id="gift-list">Loading…</div></div>'+
-      '<div class="card"><h3>Verified gift transactions</h3><div id="gift-event-list">Loading…</div></div>';
+      '<div class="card"><h3>Verified gift transactions</h3><div id="gift-event-list">Loading…</div></div>'+
+      '<div class="card"><h3>Gift wallet settlement audit</h3>'+
+      '<p class="n">Read-only D1 transaction audit. Recipient diamonds may include fractional accrual; room shares are not credited to the owner wallet.</p>'+
+      '<div id="gift-settlement-list">Loading…</div></div>';
     const list=byId('gift-list');
     async function refresh() {
       list.textContent='Loading catalog…';
@@ -727,6 +730,24 @@
           ]));
       }catch(error){giftHistory.textContent='Gift history unavailable: '+error.message;}
     }else giftHistory.textContent='Only Super Admin and Finance roles can view gift transactions.';
+    const giftSettlements=byId('gift-settlement-list');
+    if(role==='super'||role==='finance') {
+      try {
+        const data=await api('GET','gift-settlements');
+        const diamondAmount=hundredths=>(Number(hundredths||0)/100).toFixed(2);
+        giftSettlements.innerHTML=window.T(
+          ['Time / #','Room','Sender','Gift','Recipients','Spent coins','Lucky payout','Recipient diamond accrual','Room share (coins)'],
+          (data.settlements||[]).map(e=>[
+            esc(e.created_at)+' / #'+fmt(e.transaction_id),
+            esc(e.room_id),esc(e.sender_id),
+            esc(e.emoji)+' '+esc(e.gift)+' ('+esc(e.kind)+')',
+            fmt(e.recipient_count),fmt(e.spent_coins),
+            e.lucky_payout_coins===null?'—':fmt(e.lucky_payout_coins),
+            diamondAmount(e.recipient_diamond_hundredths),
+            diamondAmount(e.room_reward_hundredths)
+          ]));
+      }catch(error){giftSettlements.textContent='Settlement audit unavailable: '+error.message;}
+    }else giftSettlements.textContent='Only Super Admin and Finance roles can view wallet settlements.';
   };
   P.audit=async function () {
     const root=byId('pg');root.innerHTML=card('Admin audit','Loading…');
