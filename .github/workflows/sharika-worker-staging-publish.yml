@@ -80,7 +80,33 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT follow_coins,gift_coins FROM sharika_daily_task_config WHERE key='standard'"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS task_claims FROM sharika_daily_task_claims"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS task_config_audit FROM sharika_daily_task_config_audit"
+      - name: Verify isolated staging event rewards schema before publish
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS events FROM sharika_events"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS awards FROM sharika_event_awards"
       - name: Bundle and inspect without publishing
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
       - name: Deploy only the existing staging Worker (never run migrations)
         run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify separate staging admin Worker destination
+        run: |
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            const c=JSON.parse(readFileSync("wrangler.admin.jsonc","utf8"));
+            if(c.name!=="sharika-admin-staging" ||
+               c.account_id!=="d81cf7c48fb9b36d468cb0a08720cd74" ||
+               c.vars?.SHARIKA_ENV!=="staging" ||
+               c.services?.length!==1 ||
+               c.services[0].binding!=="SHARIKA_API" ||
+               c.services[0].service!=="sharika-api-staging") {
+              throw new Error("Unexpected admin Worker destination");
+            }
+          '
+      - name: Bundle original admin design and authenticated connector
+        run: |
+          cp ../admin/index.html src/admin-index.html
+          cp ../admin/connection.js src/admin-connection.txt
+          node --check ../admin/connection.js
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc --outdir /tmp/sharika-staging-admin-bundle
+      - name: Publish separate staging admin Worker
+        run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
