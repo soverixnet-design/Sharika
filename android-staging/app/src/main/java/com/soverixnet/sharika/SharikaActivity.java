@@ -547,6 +547,9 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/invites")) return method.equals("GET");
         if (path.equals("/api/v1/daily/check-in")) return method.equals("POST");
         if (path.equals("/api/v1/daily/tasks/claim")) return method.equals("POST");
+        if (path.equals("/api/v1/premium")) return method.equals("GET");
+        if (path.equals("/api/v1/premium/purchase") ||
+            path.equals("/api/v1/premium/daily/claim")) return method.equals("POST");
         if (path.equals("/api/v1/sellers") || path.equals("/api/v1/sellers/me") ||
             path.equals("/api/v1/sellers/transfers") || path.equals("/api/v1/sellers/allocations"))
             return method.equals("GET");
