@@ -18,6 +18,7 @@ on:
       - feature/sharika-greedy-wheel-current-20261031
       - feature/sharika-greedy-integrated-staging-20261031
       - feature/sharika-royal-premium-ui-20261031
+      - feature/sharika-option1-reference-polish-20261031
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
