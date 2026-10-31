@@ -82,7 +82,8 @@
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null;
+  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null,
+    reactionPoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -564,14 +565,16 @@
       const data=await api('GET','/sellers/me');
       if(requestNo!==sellerProfileRequest||session?.user?.id!==id||!anchor.isConnected)return;
       const seller=data.seller;
-      if(!seller)return;
+      if(!seller?.active)return;
       const button=document.createElement('button');
       button.id='sharika-seller-wallet-entry';
       button.type='button';
-      button.textContent='🪙 Seller Wallet · '+Number(seller.available_coins||0).toLocaleString('en-US')+' coins';
+      button.textContent='🪙 Recharge my ID · Seller stock '+
+        Number(seller.available_coins||0).toLocaleString('en-US');
       button.style.cssText='display:block;margin:8px auto;padding:8px 14px;border:1px solid #f0be55;'+
         'border-radius:15px;background:#3b225b;color:#fff;font-weight:700;font-size:12px';
-      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true});
+      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true,
+        targetId:profile?.public_id||''});
       (document.getElementById('sh-sovera-own-identity')||anchor).insertAdjacentElement('afterend',button);
     }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
   }
@@ -1665,6 +1668,120 @@
     // history, not the 15-second seat/member snapshot that misses guests.
     frame.__soveraSeenMembers=new Set((data.members||[]).map(m=>m.user_id));
   }
+  // Profile identity always follows the authenticated room member ID. The
+  // original HTML treated seat zero as "my profile" even in another's room.
+  async function openVerifiedRoomMemberProfile(publicId,roomId,seatNo=null) {
+    if(!session||!/^[0-9]{8}$/.test(String(publicId||''))||window.cur?.id!==roomId)
+      throw new Error('Verified room profile unavailable');
+    const member=await api('GET','/users/'+publicId);
+    if(String(member.id)!==String(publicId)||window.cur?.id!==roomId)
+      throw new Error('Room member identity changed');
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(Number.isInteger(seatNo) && seatNo>=0 &&
+       String(frame?.seats?.[seatNo]?.public_id||'')!==String(publicId))
+      throw new Error('Seat occupant has changed');
+    window.openProfile({id:String(member.id),n:String(member.name||'Member'),
+      e:'👤',lv:Number(member.wealth_level)||1});
+    const root=document.getElementById('pfc');
+    if(!root)return;
+    // The original non-owner profile model invents age, gifts, followers and
+    // badges. Do not present those demo numbers as verified public records.
+    paintVerifiedAvatar(root.querySelector('.pfh .pav3'),member.pic,document);
+    const meta=root.querySelector('.pfh .meta');
+    if(meta){
+      for(const item of [...meta.children].slice(1))item.remove();
+      if(member.country){
+        const country=document.createElement('span');
+        country.textContent=String(member.country);
+        meta.appendChild(country);
+      }
+    }
+    const bio=root.querySelector('.pfh .bio');
+    if(bio)bio.textContent='Verified Sharika member';
+    const levels=root.querySelectorAll('.lvc .big3');
+    if(levels[0])levels[0].textContent=Number(member.wealth_level)||1;
+    if(levels[1])levels[1].textContent=Number(member.charm_level)||1;
+    root.querySelectorAll('.lvc .lvb').forEach(el=>el.style.display='none');
+    const fakeStats=root.querySelector('.st4');
+    if(fakeStats)fakeStats.style.display='none';
+    const fakeTabs=root.querySelector('.tabs');
+    if(fakeTabs) {
+      fakeTabs.style.display='none';
+      let next=fakeTabs.nextElementSibling;
+      while(next){next.style.display='none';next=next.nextElementSibling;}
+    }
+    const follow=root.querySelector('#pfol');
+    if(follow){
+      if(publicId===profile?.public_id)follow.style.display='none';
+      else {
+        follow.disabled=true;follow.textContent='Checking follow…';
+        async function refreshFollow(){
+          const status=await api('GET','/users/'+publicId+'/follow');
+          if(!follow.isConnected)return;
+          const following=!!status.following;
+          follow.textContent=following?'✓ Following':'+ Follow';
+          follow.disabled=false;
+          follow.onclick=async()=>{
+            follow.disabled=true;
+            try{await api(following?'DELETE':'PUT','/users/'+publicId+'/follow');
+              await refreshFollow();}
+            catch(error){toast('Follow unavailable: '+errText(error));
+              if(follow.isConnected)follow.disabled=false;}
+          };
+        }
+        refreshFollow().catch(error=>{
+          if(follow.isConnected)follow.textContent='Follow unavailable';
+          console.warn('Member follow unavailable:',errText(error));
+        });
+      }
+    }
+    const message=root.querySelector('#pmsg');
+    if(message)message.onclick=async()=>{
+      if(publicId===profile?.public_id){toast('Choose another member');return;}
+      message.disabled=true;
+      try{
+        document.getElementById('pfo')?.classList.remove('on');
+        document.getElementById('rw')?.classList.remove('on');
+        document.getElementById('mini')?.classList.add('on');
+        window.go('msg');await window.renderMsg();
+        await openPrivateThread(publicId,String(member.name||'Member'));
+      }catch(error){toast('Message unavailable: '+errText(error));}
+      finally{if(message.isConnected)message.disabled=false;}
+    };
+    const gift=root.querySelector('#pgift');
+    if(gift)gift.onclick=async()=>{
+      const currentFrame=document.getElementById('rf')?.contentWindow;
+      if(window.cur?.id!==roomId||!currentFrame?.__sharikaOpenVerifiedGiftBox){
+        toast('Join the member’s room to send a gift');return;
+      }
+      document.getElementById('pfo')?.classList.remove('on');
+      await currentFrame.__sharikaOpenVerifiedGiftBox({
+        id:publicId,name:String(member.name||'Member')
+      });
+    };
+    const more=root.querySelector('#pmore');
+    if(more)more.onclick=()=>{
+      const currentFrame=document.getElementById('rf')?.contentWindow;
+      document.getElementById('pfo')?.classList.remove('on');
+      currentFrame?.__sharikaReportMember?.(publicId,String(member.name||'Member'));
+    };
+  }
+  if(typeof window.addEventListener==='function')window.addEventListener('message',event=>{
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(event.source!==frame||event.data?.t!=='profile')return;
+    // Capture before the original handler's incorrect seat===0 self shortcut.
+    event.stopImmediatePropagation();
+    const roomId=window.cur?.id;
+    const user=event.data?.u;
+    const seat=Number.isInteger(user?.seat)&&user.seat>=0?user.seat:null;
+    const id=seat!==null?frame?.seats?.[seat]?.public_id:
+      (frame?.U||[]).some(u=>u?.id===user?.id)?user.id:null;
+    if(!roomId||!/^[0-9]{8}$/.test(String(id||''))){
+      toast('Verified room member unavailable');return;
+    }
+    openVerifiedRoomMemberProfile(id,roomId,seat).catch(error=>
+      toast('Profile unavailable: '+errText(error)));
+  },true);
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
     if (frame && frame.document) fitAndroidViewport(frame.document, true);
@@ -1740,6 +1857,7 @@
     let lastGiftEventId=null;
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     let lastEntryEventId=0,entryPollInFlight=null;
+    let lastReactionId=0,reactionPollInFlight=null;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
     // Report a verified member or room through the existing authenticated
@@ -1793,6 +1911,7 @@
       };
       box.append(label,reason,submit);
     }
+    frame.__sharikaReportMember=(id,name)=>openVerifiedReport('user',id,name);
     const giftButton=frame.$ && frame.$('bGift');
     const originalGiftOpen=giftButton && giftButton.onclick;
     let directGiftTarget=null;
@@ -1871,6 +1990,7 @@
         } else frame.toast('Gift box unavailable');
       }catch(error){frame.toast('Gift catalog unavailable: '+errText(error));}
     }
+    frame.__sharikaOpenVerifiedGiftBox=openVerifiedGiftBox;
     if(giftButton)giftButton.onclick=()=>openVerifiedGiftBox(null);
     // The original gift game debits a local wallet; always intercept before it
     // executes, settle at the server, then use the original gift flight artwork.
@@ -2045,7 +2165,7 @@
             await connectVoice(room.id);
             frame.toast('Seat released; listening only');
           } else throw new Error('You can only leave your own seat');
-        } else if(action==='mute' && seat>0) {
+        } else if(action==='mute' && seat>=0) {
           if(owner && target?.user_id && !isSelf)
             await moderateSeat(target.muted?'unmute':'mute',seat);
           else if(isSelf) {
@@ -2059,30 +2179,72 @@
           frame.open('<h3>👑 Verified owner controls</h3>'+
             '<div class="row">Tap an occupied seat to mute, unmute, remove from mic or kick a guest.</div>');
         } else if(action==='prof' && target?.public_id) {
-          const member=await api('GET','/users/'+target.public_id);
-          frame.open('<h3>👤 Verified profile</h3><div id="sh-room-profile"></div>');
-          const node=frame.$('sh-room-profile');
-          if(node) {
-            const avatar=frame.document.createElement('div');
-            avatar.className='sh-sovera-preview';
-            avatar.textContent='👤';
-            paintVerifiedAvatar(avatar,member.pic,frame.document);
-            node.appendChild(avatar);
-            const name=frame.document.createElement('div');
-            name.className='row';
-            name.textContent=(member.name||'Member')+' · ID '+member.id;
-            const detail=frame.document.createElement('div');
-            detail.className='lbl';
-            detail.textContent='Country: '+(member.country||'Not set')+
-              ' · Wealth Lv '+Number(member.wealth_level||0)+
-              ' · Charm Lv '+Number(member.charm_level||0);
-            node.append(name,detail);
-          }
-        } else if(action==='gift' && seat>0 && target?.public_id) {
-          frame.rec=[seat];
-          frame.$('bGift')?.click();
+          frame.close();
+          await openVerifiedRoomMemberProfile(target.public_id,room.id,seat);
+        } else if(action==='gift' && target?.public_id) {
+          await openVerifiedGiftBox({id:target.public_id,name:target.n||'Member'});
         } else frame.toast('This action is not connected to the verified server yet');
       } catch (error) { frame.toast(errText(error)); }
+    };
+    // The stock room menu displays a fake "ID 482915" for seat zero and
+    // grants the owner menu to anybody tapping it. Keep the same sheet design
+    // but attach each visible action to the real occupied seat and its user.
+    const originalSeatSheet=frame.seatSheet;
+    frame.seatSheet=function(index){
+      const result=originalSeatSheet(index);
+      const selected=frame.seats?.[index];
+      if(!selected)return result;
+      const owner=room.owner_id===session?.user?.id;
+      const self=selected.user_id===session?.user?.id;
+      const sheet=frame.$('sheet');
+      if(selected.empty||selected.lock){
+        if(!owner&&selected.lock&&sheet){
+          sheet.innerHTML='<div class="grab"></div><h3>🔒 Seat locked</h3>';
+        }
+        return result;
+      }
+      const id=String(selected.public_id||'');
+      const detail=sheet?.querySelector('.who small');
+      if(detail)detail.textContent='ID '+id+' · '+(index===0?'Room owner':'Mic seat '+index);
+      const actions=sheet?.querySelector('.acts');
+      if(!actions)return result;
+      actions.textContent='';
+      const options=[['prof','👤','Profile']];
+      options.push(['gift','🎁','Gift']);
+      if(self)options.push(['mute',selected.muted?'🔊':'🔇',
+        selected.muted?'Unmute':'Mute']);
+      if(self&&index>0)options.push(['down','⬇️','Leave mic']);
+      if(owner&&index===0)options.push(['own','⚙️','Manage']);
+      if(owner&&index>0&&!self)options.push(
+        ['mute',selected.muted?'🔊':'🔇',selected.muted?'Unmute':'Mute'],
+        ['down','⬇️','Remove from mic'],['lock','🔒','Lock seat'],
+        ['kick','🚫','Kick out']);
+      for(const [action,icon,label] of options){
+        const button=frame.document.createElement('button');
+        button.className='act'+(action==='kick'?' dg':'');
+        const picture=frame.document.createElement('span');
+        picture.textContent=icon;
+        button.append(picture,frame.document.createTextNode(label));
+        button.onclick=()=>frame.act(action,index);
+        actions.appendChild(button);
+      }
+      return result;
+    };
+    const originalSeatEmoji=frame.seatEmoji;
+    // Original emoji box invokes seatEmoji(0,...) on every device. Resolve
+    // the currently logged-in user's actual mic seat before animating.
+    frame.seatEmoji=function(_ignoredIndex,emoji){
+      const mine=frame.seats?.find(slot=>slot?.user_id===session?.user?.id);
+      if(!mine||mine.empty||mine.lock){
+        frame.toast('Take an unlocked mic seat to show a seat emoji');return;
+      }
+      if(!Array.isArray(emoji)||!frame.ER?.some(item=>item[0]===emoji[0]))return;
+      originalSeatEmoji(mine.i,emoji);
+      const requestId='reaction:'+Date.now().toString(36)+':'+
+        Math.random().toString(36).slice(2);
+      api('POST','/rooms/'+room.id+'/reactions',{
+        emoji:emoji[0],request_id:requestId
+      }).catch(error=>frame.toast('Emoji shown locally: '+errText(error)));
     };
     // A verified guest taps any open/unlocked seat to sit immediately.
     // This bypasses the old demo "Seat a guest" menu; owner invitations remain optional.
@@ -2671,6 +2833,41 @@
     chatPoll=setInterval(()=>{
       if(window.cur?.id===room.id)pollRoomChat().catch(()=>{});
     },3500);
+    // Other phones replay only short-lived reactions on the authenticated
+    // sender's currently occupied seat. Never trust an old seat number.
+    let reactionEndpointUnavailable=false;
+    async function pollRoomReactions(){
+      if(reactionPollInFlight||reactionEndpointUnavailable)return reactionPollInFlight;
+      const work=(async()=>{
+        if(window.cur?.id!==room.id)return;
+        const data=await api('GET','/rooms/'+room.id+'/reactions?after='+lastReactionId);
+        if(window.cur?.id!==room.id||!session||
+           document.getElementById('rf')?.contentWindow!==frame)return;
+        for(const event of Array.isArray(data.events)?data.events:[]){
+          const id=Number(event.id);
+          if(!Number.isSafeInteger(id)||id<=lastReactionId)continue;
+          lastReactionId=id;
+          if(event.public_id===profile?.public_id)continue;
+          const target=frame.seats?.find(slot=>slot?.public_id===event.public_id);
+          const emoji=frame.ER?.find(item=>item[0]===event.emoji);
+          if(target&&!target.empty&&!target.lock&&emoji&&
+             Math.abs(Date.now()-Number(event.created_at_ms))<=6000)
+            originalSeatEmoji(target.i,emoji);
+        }
+      })();
+      reactionPollInFlight=work;
+      try{await work;}catch(error){
+        // Older staging Workers lack reactions; the local user's emoji still
+        // appears on the correct seat, without a stream of error toasts.
+        reactionEndpointUnavailable=true;
+        console.warn('Shared room reactions unavailable:',errText(error));
+      }finally{if(reactionPollInFlight===work)reactionPollInFlight=null;}
+    }
+    if(reactionPoll)clearInterval(reactionPoll);
+    reactionPoll=setInterval(()=>{
+      if(window.cur?.id===room.id)pollRoomReactions().catch(()=>{});
+    },2200);
+    pollRoomReactions().catch(()=>{});
     const mic=frame.$ && frame.$('mic');
     if(mic) mic.onclick=async ()=>{
       try {
@@ -2818,6 +3015,7 @@
         if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
         if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
         if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
+        if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
         await releaseVoice();
         await api('POST','/rooms/'+prior.id+'/leave',{});
@@ -2836,6 +3034,7 @@
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
     if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
         if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
+    if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
     releaseVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
@@ -3020,7 +3219,7 @@
           '<div class="shw-id">✓ Verified seller · ID '+sellerEscape(self.public_id)+'</div>'+
         '</section>'+
         '<section class="shw-section">'+
-          '<h4 class="shw-title">✨ Send a coin recharge</h4>'+
+          '<h4 class="shw-title">✨ Recharge my ID or another user</h4>'+
           '<p class="shw-sub">Recharge any active Sharika ID, including your own. Coins are deducted from your assigned seller stock.</p>'+
           '<label class="shw-label" for="sharika-seller-target">Recipient user ID</label>'+
           '<div class="shw-control-row">'+
@@ -3049,7 +3248,10 @@
       const amountField=document.getElementById('sharika-seller-amount');
       const note=document.getElementById('sharika-seller-note');
       const send=document.getElementById('sharika-seller-send');
-      if(targetField&&/^[0-9]{8}$/.test(targetId))targetField.value=targetId;
+      // A seller's own verified ID is the default recipient. Other users
+      // remain reachable by entering their eight-digit ID explicitly.
+      if(targetField)targetField.value=/^[0-9]{8}$/.test(targetId)
+        ?targetId:self.public_id;
       document.getElementById('sharika-seller-my-id')?.addEventListener('click',()=>{
         if(targetField){targetField.value=self.public_id;targetField.focus();}
       });

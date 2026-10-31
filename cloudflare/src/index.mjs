@@ -830,6 +830,38 @@ export async function handleRequest(request, env) {
         }
         return fail('method_not_allowed',405,cors);
       }
+      // Ephemeral room-wide emoji reactions: authenticate both the sender and
+      // their current mic seat. Clients never choose another member's ID.
+      if(parts.length===5 && action==='reactions') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_reactions_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET') {
+          const after=url.searchParams.get('after')||'0';
+          if(!/^[0-9]{1,12}$/.test(after)||!Number.isSafeInteger(Number(after)))
+            return fail('invalid_reaction_cursor',400,cors);
+          return reply(await coordinator.roomReactionRead(Number(after)),200,cors);
+        }
+        if(request.method==='POST') {
+          if(room.owner_id!==uid &&
+             (!Number.isInteger(member.seat_no)||member.seat_no<1))
+            return fail('take_mic_seat_first',403,cors);
+          const body=await readBody(request);
+          const permitted=new Set(['😂','😍','😎','🔥','👏','🎉','😭','😡',
+            '🥳','😘','🤩','👍','🙏','💯','😴','💖']);
+          if(typeof body.emoji!=='string'||!permitted.has(body.emoji)||
+             typeof body.request_id!=='string'||
+             !/^[a-zA-Z0-9:_-]{12,80}$/.test(body.request_id))
+            return fail('invalid_seat_reaction',400,cors);
+          const sender=await assertActive(env.DB,uid);
+          const result=await coordinator.roomReactionSend(uid,publicId(sender.public_no),
+            body.emoji,body.request_id);
+          if(result.error)return fail(result.error,
+            result.error==='reaction_rate_limited'?429:409,cors);
+          return reply(result,result.duplicate?200:201,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       if (parts.length === 5 && action === 'join' && request.method === 'POST') {
         const ban=await env.DB.prepare(
           'SELECT banned_until_ms FROM sharika_room_bans WHERE room_id=? AND user_id=?'

@@ -506,6 +506,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/entries\\?after=(0|[1-9][0-9]{0,11})$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/reactions\\?after=(0|[1-9][0-9]{0,11})$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/presence/heartbeat")) return method.equals("POST");
         if (path.equals("/api/v1/me/avatar")) return method.equals("PUT");
@@ -566,6 +568,8 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}/invitations/respond$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/chat$"))
+            return method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/reactions$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/(join|leave)$"))
             return method.equals("POST");

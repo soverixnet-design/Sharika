@@ -908,6 +908,70 @@ test('room chat denies unverified requests before reaching the coordinator',asyn
   assert.equal(response.status,401);
 });
 
+test('room seat emojis use verified sender ID, require a real mic seat and reject forged reactions',async()=>{
+  const oldFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user',roomId='10000001';
+    const headers={Authorization:'Bearer '+await token()};
+    const url='https://example.test/api/v1/rooms/'+roomId+'/reactions';
+    const calls=[];
+    const rooms={getByName(name){
+      assert.equal(name,'sharika:'+roomId);
+      return {
+        async roomReactionRead(after){calls.push(['read',after]);return {events:[]};},
+        async roomReactionSend(...args){
+          calls.push(['send',...args]);
+          return {event:{id:4,public_id:args[1],emoji:args[2],created_at_ms:Date.now()},
+            duplicate:false};
+        }
+      };
+    }};
+    const dbFor=(seat,owner='another-user')=>{
+      const db=fakeDb(),prior=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const statement=prior(sql);
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id=?'))
+          statement.first=async()=>({id:roomId,owner_id:owner,seat_count:12});
+        if(sql.includes('FROM sharika_room_members WHERE room_id=?'))
+          statement.first=async()=>seat===undefined?null:
+            {user_id:uid,seat_no:seat,role:'member'};
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          statement.first=async()=>({auth_uid:uid,status:'active',
+            public_no:10000003,name:'Real Speaker'});
+        return statement;
+      };
+      return db;
+    };
+    const post=body=>new Request(url,{method:'POST',headers,
+      body:JSON.stringify(body)});
+    const valid={emoji:'😍',request_id:'reaction:device-test-001',
+      sender_id:'10000001',seat_no:0};
+    const env=seat=>({DB:dbFor(seat),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    const noRoom=await handleRequest(post(valid),env(undefined));
+    assert.equal(noRoom.status,403);
+    const audience=await handleRequest(post(valid),env(null));
+    assert.equal(audience.status,403);
+    assert.equal((await audience.json()).error,'take_mic_seat_first');
+    const fake=await handleRequest(post({...valid,emoji:'🪙'}),env(9));
+    assert.equal(fake.status,400);
+    assert.equal(calls.length,0);
+    const posted=await handleRequest(post(valid),env(9));
+    assert.equal(posted.status,201);
+    assert.equal((await posted.json()).event.public_id,'10000003');
+    assert.deepEqual(calls[0],['send',uid,'10000003','😍',valid.request_id]);
+    const read=await handleRequest(new Request(url+'?after=4',{headers}),env(9));
+    assert.equal(read.status,200);
+    assert.deepEqual(calls[1],['read',4]);
+    const badCursor=await handleRequest(new Request(url+'?after=-1',{headers}),env(9));
+    assert.equal(badCursor.status,400);
+    const owner=await handleRequest(post(valid),{
+      DB:dbFor(null,uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(owner.status,201,'room owners are allowed to react from seat zero');
+  }finally{globalThis.fetch=oldFetch;}
+});
+
 
 test('room seat locks are owner-only and stop seat claims on the server',async()=>{
   const oldFetch=globalThis.fetch;

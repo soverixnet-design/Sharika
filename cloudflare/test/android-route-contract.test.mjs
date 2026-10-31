@@ -32,3 +32,14 @@ test('room-entry polling permits only a bounded numeric cursor before generic qu
   assert.match(routes,/path\.contains\("\.\."\)/);
   assert.doesNotMatch(routes,/path\.equals\("\/api\/v1\/admin\/events"\)/);
 });
+
+test('room emoji sync is confined to authenticated room reactions and bounded cursors',()=>{
+  const cursor=routes.indexOf('/reactions\\\\?after=');
+  const reject=routes.indexOf('if (path.contains("?")) return false;');
+  assert.ok(cursor>=0&&cursor<reject,'reaction cursor must precede query rejection');
+  assert.match(routes,/rooms\/\[0-9\]\{8\}\/reactions\$"\)\)\s*return method\.equals\("POST"\)/);
+  assert.match(app,/api\('POST','\/rooms\/'\+room\.id\+'\/reactions'/);
+  assert.match(app,/api\('GET','\/rooms\/'\+room\.id\+'\/reactions\?after='/);
+  assert.match(worker,/action==='reactions'/);
+  assert.match(worker,/take_mic_seat_first/);
+});
