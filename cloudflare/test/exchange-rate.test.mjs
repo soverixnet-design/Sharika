@@ -98,6 +98,13 @@ test('stale revision and missing migration never write any settings',async()=>{
   assert.equal(pending.status,503);
   assert.equal(missing.state.batch.length,0);
 });
+test('percentages entered by admin use an exact 100-diamond unit',()=>{
+  for(const percent of [1,25,50,70,100,125,500,10000]){
+    const rate={diamonds_per_unit:100,coins_per_unit:percent};
+    assert.equal(exchangeCredit(100,rate),percent);
+    assert.equal(exchangeCredit(300,rate),percent*3);
+  }
+});
 test('Exchange screen and admin panel use the same verified rate, never demo balances',()=>{
   const app=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const html=readFileSync(new URL('../../app/index.html',import.meta.url),'utf8');
@@ -108,4 +115,12 @@ test('Exchange screen and admin panel use the same verified rate, never demo bal
   assert.match(html,/window\.SHARIKA_EXCHANGE_TO/);
   assert.match(panel,/P\.money=async function/);
   assert.match(panel,/PATCH','exchange-rate'/);
+  assert.match(panel,/sharika-exchange-percent/);
+  assert.match(panel,/sharika-percent-minus/);
+  assert.match(panel,/sharika-percent-plus/);
+  assert.match(panel,/diamonds_per_unit:100,coins_per_unit:percent/);
+  assert.doesNotMatch(panel,/id="sharika-rate-diamonds"/);
+  assert.doesNotMatch(panel,/id="sharika-rate-coins"/);
+  assert.doesNotThrow(()=>new Function(panel));
+
 });

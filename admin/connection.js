@@ -524,54 +524,83 @@
   // is a real D1 setting: only Super Admin may change it, with a server audit.
   P.money=async function(){
     const root=byId('pg');
-    root.innerHTML='<div class="card"><h3>💎 Diamond Exchange Rate</h3>'+
-      '<p class="n">The current rate applies to NEW diamond exchanges only. '+
-      'Past receipts and coin balances never change retroactively.</p>'+
-      '<div id="sharika-exchange-admin">Loading verified exchange rate…</div></div>'+
+    root.innerHTML='<div class="card"><h3>💎 Diamond Exchange Percentage</h3>'+
+      '<p class="n">Set one percentage. For example, 70% gives 70 coins for every 100 diamonds. '+
+      'Changes apply only to new exchanges; completed receipts and balances are unchanged.</p>'+
+      '<div id="sharika-exchange-admin">Loading verified exchange percentage…</div></div>'+
       card('Recharge packages','Verified payment packages are managed separately. No demo credits.');
     const panel=byId('sharika-exchange-admin');
     try{
       const current=await api('GET','exchange-rate');
       if(!panel?.isConnected)return;
+      const currentPercent=Number((100*Number(current.coins_per_unit)/
+        Number(current.diamonds_per_unit)).toFixed(2));
       const canEdit=role==='super'&&current.editable;
       panel.innerHTML='<p class="n"><b id="sharika-exchange-current"></b></p>'+
-        (canEdit?'<div class="row">'+
-          '<label>Diamonds <input id="sharika-rate-diamonds" class="field" type="number" min="1" max="10000" step="1" value="'+
-          Number(current.diamonds_per_unit)+'"></label>'+
-          '<label>Coins <input id="sharika-rate-coins" class="field" type="number" min="1" max="10000" step="1" value="'+
-          Number(current.coins_per_unit)+'"></label></div>'+
-          '<button class="btn" id="sharika-rate-save" type="button">Save exchange rate</button>':
+        (canEdit?'<label for="sharika-exchange-percent">Exchange Percentage (%)</label>'+
+          '<div class="row">'+
+          '<button class="btn s" type="button" id="sharika-percent-minus" aria-label="Decrease percentage">−</button>'+
+          '<input id="sharika-exchange-percent" class="field" type="number" min="1" max="10000" step="1" inputmode="numeric" value="'+
+          Math.round(currentPercent)+'" aria-label="Exchange percentage">'+
+          '<span>%</span>'+
+          '<button class="btn s" type="button" id="sharika-percent-plus" aria-label="Increase percentage">+</button></div>'+
+          '<p class="n" id="sharika-percent-preview" aria-live="polite"></p>'+
+          '<button class="btn" id="sharika-rate-save" type="button">Save percentage</button>':
           '<p class="n">'+(current.editable?
-          'Only Super Admin can change this rate.':
-          'Exchange configuration migration is pending. Current 100:70 rate remains active.')+'</p>')+
+          'Only Super Admin can change this percentage.':
+          'Exchange settings migration is pending. The existing rate remains active.')+'</p>')+
         '<p id="sharika-exchange-status" class="n" role="status"></p>';
       byId('sharika-exchange-current').textContent=
-        'Current: '+current.diamonds_per_unit+' Diamonds = '+
-        current.coins_per_unit+' Coins · Revision '+current.revision;
+        'Current: '+currentPercent+'% · Revision '+current.revision;
+      const input=byId('sharika-exchange-percent');
+      const status=byId('sharika-exchange-status');
+      const preview=byId('sharika-percent-preview');
+      const validPercent=value=>Number.isSafeInteger(value)&&value>=1&&value<=10000;
+      const showPreview=()=>{
+        if(!preview)return;
+        const percent=Number(input?.value);
+        preview.textContent=input?.value!==''&&validPercent(percent)
+          ?'100 💎 = '+percent+' 🪙'
+          :'Enter a whole percentage between 1 and 10,000.';
+      };
+      input?.addEventListener('input',showPreview);
+      for(const [id,delta] of [['sharika-percent-minus',-1],['sharika-percent-plus',1]]){
+        byId(id)?.addEventListener('click',()=>{
+          const value=Number(input.value);
+          input.value=String(Math.max(1,Math.min(10000,
+            (validPercent(value)?value:70)+delta)));
+          showPreview();
+        });
+      }
+      showPreview();
       byId('sharika-rate-save')?.addEventListener('click',async event=>{
-        const button=event.currentTarget,status=byId('sharika-exchange-status');
-        const from=Number(byId('sharika-rate-diamonds')?.value);
-        const to=Number(byId('sharika-rate-coins')?.value);
-        if(!Number.isSafeInteger(from)||from<1||from>10000||
-           !Number.isSafeInteger(to)||to<1||to>10000){
-          status.textContent='Enter whole numbers from 1 to 10,000.';return;
+        const button=event.currentTarget;
+        const percent=Number(input.value);
+        if(input.value===''||!validPercent(percent)){
+          status.textContent='Enter a whole percentage between 1 and 10,000.';return;
         }
-        if(!window.confirm('Change the rate to '+from+' Diamonds = '+to+
-           ' Coins for future exchanges? This is audited.'))return;
+        if(percent===currentPercent){
+          status.textContent='This percentage is already active.';return;
+        }
+        if(!window.confirm('Set diamond exchange to '+percent+
+           '%? 100 Diamonds will give '+percent+
+           ' Coins on future exchanges. This is audited.'))return;
         button.disabled=true;
         try{
+          // Keep the existing audited D1 exchange API. The admin edits only
+          // the percentage; the server uses an exact 100-diamond denominator.
           await api('PATCH','exchange-rate',{
-            diamonds_per_unit:from,coins_per_unit:to,
+            diamonds_per_unit:100,coins_per_unit:percent,
             expected_revision:current.revision
           });
-          note('Exchange rate saved ✓');
+          note('Exchange percentage saved ✓');
           await P.money();
         }catch(error){
-          status.textContent='Rate not changed: '+error.message;
+          status.textContent='Percentage not changed: '+error.message;
           button.disabled=false;
         }
       });
-    }catch(error){if(panel?.isConnected)panel.textContent='Rate unavailable: '+error.message;}
+    }catch(error){if(panel?.isConnected)panel.textContent='Percentage unavailable: '+error.message;}
   };
 
   P.sellers=async function(){
