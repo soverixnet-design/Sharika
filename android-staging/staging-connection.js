@@ -198,8 +198,11 @@
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
       'pointer-events:none;display:flex;justify-content:center;align-items:center;',
       'background:radial-gradient(circle,#251054a8,transparent 70%)}',
-      '.sh-sovera-entry-cover img{width:min(95vw,560px);height:80vh;object-fit:contain;',
-      'filter:drop-shadow(0 0 18px #e6c6ff80)}',
+      '.sh-sovera-entry-cover img{width:min(82vw,410px);height:min(65dvh,560px);',
+      'max-width:100%;max-height:100%;object-fit:contain;opacity:0;',
+      'filter:drop-shadow(0 0 12px #e6c6ff80)}',
+      '.sh-sovera-entry-cover.ready img{opacity:1}',
+      '@media(max-height:560px){.sh-sovera-entry-cover img{height:70vh;width:min(58vw,350px)}}',
       '.sh-sovera-entry-cover button{position:absolute;top:20px;right:18px;',
       'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
       'background:#25134a;font-size:22px;width:40px;height:40px}',
@@ -223,14 +226,29 @@
     cover.className='sh-sovera-entry-cover';
     const img=doc.createElement('img');
     img.alt=choice.name+' entry animation';
-    img.src=effectPath(doc.defaultView?.matchMedia?.('(prefers-reduced-motion:reduce)')?.matches
-      ?choice.still:choice.art);
+    // Begin the display timer after image bytes load. Large animated WebP
+    // files used to expire on slow phones before the first frame appeared.
+    let started=false;
+    img.addEventListener('load',()=>{
+      if(started||!cover.isConnected)return;
+      started=true;
+      cover.classList.add('ready');
+      doc.defaultView?.setTimeout(()=>cover.remove(),choice.ms);
+    },{once:true});
+    img.addEventListener('error',()=>cover.remove(),{once:true});
     const close=doc.createElement('button');
     close.type='button';close.textContent='×';close.setAttribute('aria-label','Close entry animation');
     close.onclick=()=>cover.remove();
     cover.append(img,close);
     doc.body.appendChild(cover);
-    doc.defaultView?.setTimeout(()=>cover.remove(),choice.ms);
+    img.src=effectPath(doc.defaultView?.matchMedia?.('(prefers-reduced-motion:reduce)')?.matches
+      ?choice.still:choice.art);
+    // Bound the network wait without truncating a successfully loaded effect.
+    const timeout=doc.defaultView?.setTimeout(()=>{
+      if(!started)cover.remove();
+    },20000);
+    img.addEventListener('load',()=>doc.defaultView?.clearTimeout(timeout),{once:true});
+    img.addEventListener('error',()=>doc.defaultView?.clearTimeout(timeout),{once:true});
   }
   // Avatar URLs come only from the authenticated Sharika profile API. Never
   // render arbitrary user-supplied image URLs in verified room identities.
@@ -2378,6 +2396,7 @@
   }
 
   // Approved Coin Sellers: actual D1 seller rows, never fabricated profiles.
+  let pendingSellerTransfer=null; // retained across sheet reopen for safe network retries
   const sellerEscape=v=>String(v==null?'':v).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
@@ -2398,7 +2417,7 @@
       const self=mine.seller;
       const me=self&&self.active?
         '<div class="card" style="margin-top:12px;padding:12px">'+
-        '<b>Your seller stock: '+Number(self.available_coins||0).toLocaleString('en-US')+' coins</b>'+
+        '<b id="sharika-seller-stock">Your seller stock: '+Number(self.available_coins||0).toLocaleString('en-US')+' coins</b>'+
         '<p class="n">Recharge an existing Sharika user with your assigned seller stock.</p>'+
         '<input id="sharika-seller-target" inputmode="numeric" maxlength="8" placeholder="Recipient 8-digit user ID" aria-label="Recipient user ID">'+
         '<input id="sharika-seller-amount" inputmode="numeric" placeholder="Coins to send (1–1,000,000)" aria-label="Coins to send">'+
@@ -2423,7 +2442,6 @@
       const targetField=document.getElementById('sharika-seller-target');
       if(targetField&&/^[0-9]{8}$/.test(targetId))targetField.value=targetId;
       const send=document.getElementById('sharika-seller-send');
-      let pendingSellerTransfer=null;
       if(send)send.addEventListener('click',async()=>{
         const recipient=document.getElementById('sharika-seller-target')?.value.trim()||'';
         const raw=document.getElementById('sharika-seller-amount')?.value.trim()||'';
@@ -2441,7 +2459,7 @@
           if(String(verified.id)!==recipient)throw new Error('Recipient verification failed');
           if(!window.confirm('Send '+amount.toLocaleString('en-US')+' coins to '+
             String(verified.name||'User')+' (ID '+recipient+')?')){send.disabled=false;return;}
-          const fingerprint=recipient+':'+amount;
+          const fingerprint=session.user.id+':'+recipient+':'+amount;
           const requestId=pendingSellerTransfer?.fingerprint===fingerprint
             ?pendingSellerTransfer.requestId:nextWalletRequestId('seller');
           pendingSellerTransfer={fingerprint,requestId};
@@ -2453,6 +2471,11 @@
             sellerEscape(result.sender_public_id)+' to ID '+sellerEscape(recipient)+
             ' complete. Remaining seller stock: '+
             Number(result.available_coins).toLocaleString('en-US')+' coins.';
+          const stockLabel=document.getElementById('sharika-seller-stock');
+          if(stockLabel)stockLabel.textContent='Your seller stock: '+
+            Number(result.available_coins).toLocaleString('en-US')+' coins';
+          const amountField=document.getElementById('sharika-seller-amount');
+          if(amountField)amountField.value='';
           const latest=await api('GET','/sellers/transfers').catch(()=>null);
           const history=document.getElementById('sharika-seller-history');
           if(history&&latest)history.innerHTML=(latest.transfers||[]).slice(0,30).map(t=>
@@ -2466,8 +2489,7 @@
           if(note)note.textContent=(transferCommitted
             ?'Transfer recorded; display update delayed: '
             :'Transfer not confirmed; check history before retrying: ')+errText(error);
-          if(!transferCommitted)send.disabled=false;
-        }
+        }finally{if(send.isConnected)send.disabled=false;}
       });
     }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
   }
