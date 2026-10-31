@@ -3823,87 +3823,128 @@
   let supportBusy=false;
   let activePrivateId=null;
   let canSendPrivate=false;
+  // A late poll for a previous conversation must never repaint a newer one.
+  let messageThreadEpoch=0, messageFetchSeq=0;
+  function messageThreadCurrent(epoch,publicId,fetchSeq) {
+    return !!session && epoch===messageThreadEpoch &&
+      (fetchSeq===undefined || fetchSeq===messageFetchSeq) &&
+      activePrivateId===publicId &&
+      !!document.getElementById('th')?.classList.contains('on');
+  }
+  function preserveMessageScroll(container,render) {
+    const before=container.scrollTop;
+    const nearBottom=container.scrollHeight-container.clientHeight-before<=64;
+    render();
+    container.scrollTop=nearBottom?container.scrollHeight:before;
+  }
+  function clearMessageDraft() {
+    const input=document.getElementById('ti');
+    if(input)input.value='';
+  }
   const safeMessageHTML=value=>String(value??'').replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   async function loadSupportMessages(){
     const container=document.getElementById('tb');
     if(!container||!session)return;
+    const epoch=messageThreadEpoch,fetchSeq=++messageFetchSeq;
     const data=await api('GET','/support/messages');
-    container.textContent='';
-    for(const message of data.messages||[]){
-      const bubble=document.createElement('div');
-      bubble.className='bub '+(message.sender_role==='user'?'me':'th');
-      bubble.textContent=message.body;
-      container.appendChild(bubble);
-    }
-    container.scrollTop=container.scrollHeight;
+    if(!messageThreadCurrent(epoch,null,fetchSeq))return;
+    preserveMessageScroll(container,()=>{
+      container.textContent='';
+      for(const message of data.messages||[]){
+        const bubble=document.createElement('div');
+        bubble.className='bub '+(message.sender_role==='user'?'me':'th');
+        bubble.textContent=message.body;
+        container.appendChild(bubble);
+      }
+    });
   }
   async function openSupportThread(){
-    activePrivateId=null;canSendPrivate=false;
-    const restoredSend=document.getElementById('ts');if(restoredSend)restoredSend.disabled=false;
     if(!session){window.showAuth('welcome');return;}
+    const epoch=++messageThreadEpoch;
+    activePrivateId=null;canSendPrivate=false;
+    clearMessageDraft();
+    const restoredSend=document.getElementById('ts');if(restoredSend)restoredSend.disabled=false;
     document.getElementById('th')?.classList.add('on');
     document.getElementById('thn').textContent='🎧 Customer service';
     const container=document.getElementById('tb');
     container.textContent='Loading support messages…';
     try{await loadSupportMessages();}
-    catch(error){container.textContent='Messages unavailable: '+errText(error);}
+    catch(error){
+      if(messageThreadCurrent(epoch,null))
+        container.textContent='Messages unavailable: '+errText(error);
+    }
+    if(!messageThreadCurrent(epoch,null))return;
     if(supportPoll)clearInterval(supportPoll);
     supportPoll=setInterval(()=>{
-      if(!session||!document.getElementById('th')?.classList.contains('on'))return;
+      if(!session||!document.getElementById('th')?.classList.contains('on')||
+         !messageThreadCurrent(epoch,null))return;
       loadSupportMessages().catch(()=>{});
     },15000);
   }
   async function loadPrivateMessages(publicId){
-    const data=await api('GET','/messages/'+encodeURIComponent(publicId));
+    const id=String(publicId);
+    const epoch=messageThreadEpoch,fetchSeq=++messageFetchSeq;
+    const [data,status]=await Promise.all([
+      api('GET','/messages/'+encodeURIComponent(id)),
+      api('GET','/users/'+encodeURIComponent(id)+'/follow')
+    ]);
+    if(!messageThreadCurrent(epoch,id,fetchSeq))return;
     const container=document.getElementById('tb');
     if(!container)return;
-    container.textContent='';
-    for(const m of data.messages||[]){
-      const bubble=document.createElement('div');
-      bubble.className='bub '+(m.from_me?'me':'th');
-      bubble.textContent=m.body;
-      container.appendChild(bubble);
-    }
-    const status=await api('GET','/users/'+encodeURIComponent(publicId)+'/follow');
     canSendPrivate=!!status.mutual;
-    const hint=document.createElement('div');
-    hint.className='bub th';
-    hint.textContent=canSendPrivate?'Both users follow each other. Chat enabled.':
-      status.following?'You follow this user. Waiting for them to follow back.':
-      'Follow this user to request a private conversation.';
-    container.appendChild(hint);
-    const followButton=document.createElement('button');
-    followButton.type='button';
-    followButton.className='btn';
-    followButton.textContent=status.following?'Unfollow':'Follow';
-    followButton.onclick=async()=>{
-      followButton.disabled=true;
-      try{
-        await api(status.following?'DELETE':'PUT','/users/'+encodeURIComponent(publicId)+'/follow');
-        await loadPrivateMessages(publicId);
-        window.renderMsg();
-      }catch(error){toast('Follow failed: '+errText(error));followButton.disabled=false;}
-    };
-    container.appendChild(followButton);
+    preserveMessageScroll(container,()=>{
+      container.textContent='';
+      for(const m of data.messages||[]){
+        const bubble=document.createElement('div');
+        bubble.className='bub '+(m.from_me?'me':'th');
+        bubble.textContent=m.body;
+        container.appendChild(bubble);
+      }
+      const hint=document.createElement('div');
+      hint.className='bub th';
+      hint.textContent=canSendPrivate?'Both users follow each other. Chat enabled.':
+        status.following?'You follow this user. Waiting for them to follow back.':
+        'Follow this user to request a private conversation.';
+      container.appendChild(hint);
+      const followButton=document.createElement('button');
+      followButton.type='button';
+      followButton.className='btn';
+      followButton.textContent=status.following?'Unfollow':'Follow';
+      followButton.onclick=async()=>{
+        followButton.disabled=true;
+        try{
+          await api(status.following?'DELETE':'PUT','/users/'+encodeURIComponent(id)+'/follow');
+          await loadPrivateMessages(id);
+          window.renderMsg();
+        }catch(error){toast('Follow failed: '+errText(error));followButton.disabled=false;}
+      };
+      container.appendChild(followButton);
+    });
     const sendButton=document.getElementById('ts');
     if(sendButton)sendButton.disabled=!canSendPrivate;
-    container.scrollTop=container.scrollHeight;
   }
   async function openPrivateThread(publicId,name){
     if(!session){window.showAuth('welcome');return;}
     if(!/^[0-9]{8}$/.test(String(publicId))){toast('Invalid 8-digit user ID');return;}
+    const epoch=++messageThreadEpoch;
     activePrivateId=String(publicId);canSendPrivate=false;
+    clearMessageDraft();
     const guardedSend=document.getElementById('ts');if(guardedSend)guardedSend.disabled=true;
     document.getElementById('th')?.classList.add('on');
     document.getElementById('thn').textContent='💬 '+name+' · '+publicId;
     document.getElementById('tb').textContent='Loading conversation…';
     try{await loadPrivateMessages(activePrivateId);}
-    catch(error){document.getElementById('tb').textContent=errText(error);}
+    catch(error){
+      if(messageThreadCurrent(epoch,String(publicId)))
+        document.getElementById('tb').textContent=errText(error);
+    }
+    if(!messageThreadCurrent(epoch,String(publicId)))return;
     if(supportPoll)clearInterval(supportPoll);
     supportPoll=setInterval(()=>{
-      if(!session||!document.getElementById('th')?.classList.contains('on'))return;
-      loadPrivateMessages(activePrivateId).catch(()=>{});
+      if(!session||!document.getElementById('th')?.classList.contains('on')||
+         !messageThreadCurrent(epoch,String(publicId)))return;
+      loadPrivateMessages(String(publicId)).catch(()=>{});
     },15000);
   }
   window.renderMsg=async function(){
@@ -3982,19 +4023,24 @@
     const body=supportInput?.value?.trim()||'';
     if(!body)return;
     if(body.length>1000){toast('Message is too long');return;}
+    const targetId=activePrivateId,epoch=messageThreadEpoch;
     supportBusy=true;
     if(supportSendButton)supportSendButton.disabled=true;
     try{
       const request_id='usr:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
-      if(activePrivateId){
+      if(targetId){
         if(!canSendPrivate)throw new Error('mutual_follow_required');
-        await api('POST','/messages/'+encodeURIComponent(activePrivateId),{body,request_id});
-        supportInput.value='';
-        await loadPrivateMessages(activePrivateId);
+        await api('POST','/messages/'+encodeURIComponent(targetId),{body,request_id});
+        if(messageThreadCurrent(epoch,targetId)){
+          supportInput.value='';
+          await loadPrivateMessages(targetId);
+        }
       }else{
         await api('POST','/support/messages',{body,request_id});
-        supportInput.value='';
-        await loadSupportMessages();
+        if(messageThreadCurrent(epoch,null)){
+          supportInput.value='';
+          await loadSupportMessages();
+        }
       }
     }catch(error){toast('Message not sent: '+errText(error));}
     finally{supportBusy=false;if(supportSendButton)supportSendButton.disabled=!!activePrivateId&&!canSendPrivate;}
@@ -4005,9 +4051,11 @@
   };
   const supportBackButton=document.getElementById('thb');
   if(supportBackButton)supportBackButton.onclick=()=>{
+    ++messageThreadEpoch;
     document.getElementById('th')?.classList.remove('on');
     if(supportPoll){clearInterval(supportPoll);supportPoll=null;}
     activePrivateId=null;canSendPrivate=false;
+    clearMessageDraft();
     if(supportSendButton)supportSendButton.disabled=false;
     window.renderMsg();
   };
