@@ -664,21 +664,21 @@ export async function handleRequest(request, env) {
       if(!room)return fail('room_not_found',404,cors);
       if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
       const contentLength=Number(request.headers.get('content-length')||0);
-      if(contentLength>125000)return fail('room_cover_too_large',413,cors);
+      if(contentLength>320100)return fail('room_cover_too_large',413,cors);
       const raw=await request.text();
-      if(raw.length>125000)return fail('room_cover_too_large',413,cors);
+      if(raw.length>320100)return fail('room_cover_too_large',413,cors);
       let body;
       try{body=JSON.parse(raw||'{}');}catch(_){return fail('invalid_room_cover',400,cors);}
       if(!body||typeof body!=='object'||Array.isArray(body)||
          typeof body.image_data!=='string'||!body.image_data.startsWith('data:image/jpeg;base64,'))
         return fail('invalid_room_cover',400,cors);
       const imageBase64=body.image_data.slice('data:image/jpeg;base64,'.length);
-      if(imageBase64.length<16||imageBase64.length>120000||
+      if(imageBase64.length<16||imageBase64.length>320000||
          !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64))
         return fail('invalid_room_cover',400,cors);
       let binary;
       try{binary=atob(imageBase64);}catch(_){return fail('invalid_room_cover',400,cors);}
-      if(binary.length<32||binary.length>90000||
+      if(binary.length<32||binary.length>240000||
          binary.charCodeAt(0)!==255||binary.charCodeAt(1)!==216||
          binary.charCodeAt(2)!==255||
          binary.charCodeAt(binary.length-2)!==255||
