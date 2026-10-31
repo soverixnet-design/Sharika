@@ -52,3 +52,13 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/paintVerifiedAvatar\(root\.querySelector\('\.pfh \.pav3'\),member\.pic,document\)/);
   assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+publicId\+'\/follow'\)/);
 });
+
+test('room gestures retry blocked incoming audio in both the app and room iframe',()=>{
+  assert.match(ui,/function resumeRoomAudio\(\)/);
+  assert.match(ui,/audio\.isConnected && audio\.srcObject && audio\.paused/);
+  assert.match(ui,/doc\.addEventListener\('pointerdown',resumeRoomAudio/);
+  assert.match(ui,/roomAudioFrame\.addEventListener\('load'/);
+  assert.match(ui,/bindRoomAudioGesture\(roomAudioFrame\.contentDocument\)/);
+  assert.match(ui,/audio\.play\(\)\.catch\(error=>/);
+  assert.match(ui,/voiceRoom\.startAudio\(\)\.catch/);
+});
