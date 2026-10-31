@@ -9,6 +9,7 @@ import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
+import {readEquipped,readRoomEquipped,handleCosmeticApp} from './cosmetics.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
@@ -171,6 +172,14 @@ export async function handleRequest(request, env) {
   const uid = actor.uid;
   const parts = path.split('/').filter(Boolean);
   try {
+    if(path==='/api/v1/cosmetics'||path.startsWith('/api/v1/cosmetics/')){
+      await assertActive(env.DB,uid);
+      const result=await handleCosmeticApp({
+        request,db:env.DB,uid,path,readBody,reply,fail,cors
+      });
+      if(result)return result;
+      return fail('cosmetic_route_not_found',404,cors);
+    }
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
       request, env, uid, path, cors, reply, fail
     });
@@ -246,7 +255,7 @@ export async function handleRequest(request, env) {
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
-        return user ? reply(showProfile(user), 200, cors) : fail('profile_not_found', 404, cors);
+        return user ? reply({...showProfile(user),...await readEquipped(env.DB,uid)},200,cors) : fail('profile_not_found',404,cors);
       }
       if (request.method === 'POST') {
         const already = await me(env.DB, uid);
@@ -281,6 +290,10 @@ export async function handleRequest(request, env) {
         await assertActive(env.DB, uid);
         const body = await readBody(request);
         if (body.birthdate !== undefined || body.coins !== undefined || body.status !== undefined || body.diamonds !== undefined || body.public_no !== undefined || body.auth_uid !== undefined) return fail('protected_field', 403, cors);
+        // Cosmetics now require verified inventory; old APKs cannot unlock any
+        // style by patching the public profile fields directly.
+        if(['frame_style','entry_style','medal_style','name_tag_style'].some(k=>body[k]!==undefined))
+          return fail('cosmetic_purchase_or_grant_required',403,cors);
         const changes = {};
         for (const [key, limit] of Object.entries({ name: 80, country: 16, pic: 2048, cover: 2048, bio: 500 })) {
           if (body[key] !== undefined) changes[key] = txt(body[key], limit) || (key === 'name' ? null : '');
@@ -309,7 +322,7 @@ export async function handleRequest(request, env) {
         const keys = Object.keys(changes);
         await env.DB.prepare('UPDATE sharika_users SET ' + keys.map(x => x + '=?').join(',') + `,updated_at=datetime('now') WHERE auth_uid=?`)
           .bind(...keys.map(k => changes[k]), uid).run();
-        return reply(showProfile(await me(env.DB, uid)), 200, cors);
+        return reply({...showProfile(await me(env.DB,uid)),...await readEquipped(env.DB,uid)},200,cors);
       }
     }
     if (parts[0] === 'api' && parts[1] === 'v1' && parts[2] === 'users' && PUBLIC_ID.test(parts[3] || '') &&
@@ -319,7 +332,8 @@ export async function handleRequest(request, env) {
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
         wealth_level: user.wealth_level, charm_level: user.charm_level,
         frame_style: user.frame_style || '', entry_style: user.entry_style || '',
-        medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '' }, 200, cors)
+        medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '',
+        ...await readEquipped(env.DB,user.auth_uid) }, 200, cors)
         : fail('not_found', 404, cors);
     }
     // Real follow graph. Identity always comes from the verified Firebase token.
@@ -802,6 +816,16 @@ export async function handleRequest(request, env) {
             .bind(roomId, uid).run();
         }
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
+        // Room-wide arrival event uses the verified equipped style and ID.
+        // Its coordinator retains a short event history for other phones.
+        if(env.VOICE_ROOMS){
+          const entrant=await assertActive(env.DB,uid);
+          const equipped=await readEquipped(env.DB,uid);
+          const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
+            ?equipped.entry_style:(entrant.entry_style||'');
+          if(entry)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+            .roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry);
+        }
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
       }
       if (parts.length === 5 && action === 'leave' && request.method === 'POST') {
@@ -1055,6 +1079,15 @@ export async function handleRequest(request, env) {
           result.error==='seat_locked'?409:403,cors);
         return reply(result,200,cors);
       }
+      if(parts.length===5 && action==='entries' && request.method==='GET'){
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_entries_unavailable',503,cors);
+        const after=url.searchParams.get('after')||'0';
+        if(!/^[0-9]{1,12}$/.test(after)||!Number.isSafeInteger(Number(after)))
+          return fail('invalid_entry_cursor',400,cors);
+        return reply(await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .roomEntryRead(Number(after)),200,cors);
+      }
       if (parts.length === 5 && action === 'members' && request.method === 'GET') {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
@@ -1063,6 +1096,7 @@ export async function handleRequest(request, env) {
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
+        const equipped=await readRoomEquipped(env.DB,roomId);
         return reply({ room: roomId,
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.
@@ -1073,7 +1107,8 @@ export async function handleRequest(request, env) {
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
             frame_style: x.frame_style || '', entry_style: x.entry_style || '',
-            medal_style: x.medal_style || '', name_tag_style: x.name_tag_style || '' }
+            medal_style: x.medal_style || '', name_tag_style: x.name_tag_style || '',
+            ...(equipped.get(x.user_id)||{}) }
         })) }, 200, cors);
       }
       if (parts.length === 5 && action === 'voice-token' && request.method === 'POST') {
