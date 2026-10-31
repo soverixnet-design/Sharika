@@ -196,14 +196,12 @@
       '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
       '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
-      'pointer-events:none;display:flex;justify-content:center;align-items:center;',
-      'background:radial-gradient(circle,#251054a8,transparent 70%)}',
-      '.sh-sovera-entry-cover img{width:min(82vw,410px);height:min(65dvh,560px);',
-      'max-width:100%;max-height:100%;object-fit:contain;opacity:0;',
-      'filter:drop-shadow(0 0 12px #e6c6ff80)}',
+      'pointer-events:none;display:block;overflow:hidden;background:#16082f}',
+      '.sh-sovera-entry-cover img{position:absolute;inset:0;width:100%;height:100%;',
+      'max-width:none;max-height:none;object-fit:cover;object-position:center top;',
+      'opacity:0;filter:drop-shadow(0 0 12px #e6c6ff80)}',
       '.sh-sovera-entry-cover.ready img{opacity:1}',
-      '@media(max-height:560px){.sh-sovera-entry-cover img{height:70vh;width:min(58vw,350px)}}',
-      '.sh-sovera-entry-cover button{position:absolute;top:20px;right:18px;',
+      '.sh-sovera-entry-cover button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:18px;',
       'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
       'background:#25134a;font-size:22px;width:40px;height:40px}',
       '@media(prefers-reduced-motion:reduce){.sh-sovera-frame.fxr{animation:none!important}}'
@@ -374,7 +372,28 @@
       decorateGiftRecipients(frame);
     };
   }
-  function styleSelectionSheet(kind){
+  let cosmeticCataloguePromise=null;
+  async function loadVerifiedCosmetics(){
+    if(cosmeticCataloguePromise)return cosmeticCataloguePromise;
+    const work=(async()=>{
+      const data=await api('GET','/cosmetics');
+      const items=Array.isArray(data.items)?data.items:[];
+      const lists={frame_style:SOVERA_FRAMES,entry_style:SOVERA_ENTRIES,
+        medal_style:SOVERA_MEDALS,name_tag_style:SOVERA_TAGS};
+      for(const item of items){
+        const list=lists[item.kind];
+        if(!list||typeof item.id!=='string')continue;
+        const alias=item.id.slice(item.kind.length+1);
+        if(list.some(x=>x.id===alias))continue;
+        const art=list.find(x=>x.id===item.art_key);
+        if(art)list.push({...art,id:alias,name:item.name});
+      }
+      return items;
+    })();
+    cosmeticCataloguePromise=work;
+    try{return await work;}finally{cosmeticCataloguePromise=null;}
+  }
+  async function styleSelectionSheet(kind){
     if(!session){window.showAuth('welcome');return;}
     cosmeticCss(document);
     const isEntry=kind==='entry_style';
@@ -386,7 +405,7 @@
     const catalog=isEntry?SOVERA_ENTRIES:isMedal?SOVERA_MEDALS:isTag?SOVERA_TAGS:SOVERA_FRAMES;
     window.openSheet('<h3>'+title+'</h3><div id="sh-sovera-tabs"></div>'+
       '<div id="sh-sovera-list" class="sh-sovera-grid"></div>'+
-      '<p style="font-size:12px;color:#c9bbed">Free decorative styles; no coins charged and no staff/VIP rank awarded. Your choice is saved on the verified server.</p>');
+      '<p style="font-size:12px;color:#c9bbed">Coins are charged only when buying. Owned or Super Admin-granted items can be equipped free. Preview is not ownership.</p>');
     const node=document.getElementById('sh-sovera-list');
     if(!node)return;
     const tabs=document.getElementById('sh-sovera-tabs');
@@ -403,7 +422,16 @@
       tabs.appendChild(tab);
     }
     const current=profile?.[kind]||'';
-    const choices=[{id:'',name:'None',art:''},...catalog];
+    let records;
+    try{records=(await loadVerifiedCosmetics()).filter(x=>x.kind===kind);}
+    catch(error){node.textContent='Cosmetic shop unavailable: '+errText(error);return;}
+    if(!node.isConnected)return;
+    const choices=[{id:'',name:'None',art:'',owned:true},...records.map(row=>{
+      const key=row.id.slice(kind.length+1);
+      const art=catalog.find(x=>x.id===key)||catalog.find(x=>x.id===row.art_key);
+      return {...art,id:key,item_id:row.id,name:row.name,owned:row.owned,
+        active:row.active,price_coins:row.price_coins};
+    })];
     for(const item of choices){
       const button=document.createElement('button');
       button.className='sh-sovera-item';
@@ -429,6 +457,11 @@
       const label=document.createElement('span');
       label.textContent=item.name;
       button.appendChild(label);
+      const price=document.createElement('span');
+      price.textContent=item.owned?'✓ Owned':item.active?
+        '🪙 '+Number(item.price_coins).toLocaleString('en-US'):'Unavailable';
+      button.appendChild(price);
+      button.disabled=!!item.item_id&&!item.owned&&!item.active;
       if(isEntry&&item.id){
         const preview=document.createElement('button');
         preview.type='button';preview.className='act';preview.textContent='▶ Preview';
@@ -441,11 +474,21 @@
       }else node.appendChild(button);
       button.onclick=async()=>{
         if(button.disabled)return;
+        if(item.item_id&&!item.owned&&!window.confirm(
+          'Buy '+item.name+' for '+Number(item.price_coins).toLocaleString('en-US')+
+          ' coins from your verified wallet?'))return;
         button.disabled=true;
         try{
-          const saved=await api('PATCH','/me',{[kind]:item.id});
-          if(!Object.prototype.hasOwnProperty.call(saved,kind)||
-             saved[kind]!==item.id)throw new Error('Profile effects server update is pending');
+          if(item.item_id&&!item.owned){
+            await api('POST','/cosmetics/purchase',{
+              item_id:item.item_id,
+              request_id:'cosmetic:'+Date.now().toString(36)+':'+
+                Math.random().toString(36).slice(2)
+            });
+          }
+          await api('POST','/cosmetics/equip',{kind,item_id:item.item_id||''});
+          const saved=await api('GET','/me');
+          if((saved[kind]||'')!==item.id)throw new Error('Verified equip pending');
           profile=saved;
           if(window.A){
             window.A.frame=saved.frame_style||'';
@@ -458,7 +501,7 @@
           }
           window.closeSheet();
           toast((isEntry?'Entry':isMedal?'Medal':isTag?'Name tag':'Frame')+
-            ' saved to your verified profile ✓');
+            ' equipped from your verified inventory ✓');
         }catch(error){toast('Effect not saved: '+errText(error));button.disabled=false;}
       };
     }
