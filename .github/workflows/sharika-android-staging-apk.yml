@@ -266,3 +266,61 @@ jobs:
           path: android-staging/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+  royal-emulator-smoke:
+    name: Royal UI emulator launch and Back smoke test
+    # Only the isolated Option 1 candidate; no live app or staging data writes.
+    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031'
+    needs: debug-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download the APK from the successful staging build
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: staging-apk
+
+      - name: Permit emulator hardware acceleration
+        run: |
+          test -e /dev/kvm
+          sudo chmod 0666 /dev/kvm
+
+      - name: Launch Sharika in Android emulator and check native Back
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            set -euo pipefail
+            mkdir -p royal-qa
+            adb install -r staging-apk/app-debug.apk
+            adb shell am start -W -n com.soverixnet.sharika/.SharikaActivity
+            sleep 12
+            adb shell pidof com.soverixnet.sharika
+            adb exec-out screencap -p > royal-qa/login-screen.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            adb exec-out screencap -p > royal-qa/back-pressed.png
+            adb shell pidof com.soverixnet.sharika
+            for attempt in 1 2 3; do
+              adb shell uiautomator dump /sdcard/royal-window.xml >/dev/null 2>&1 || true
+              adb shell cat /sdcard/royal-window.xml > royal-qa/back-dialog.xml 2>/dev/null || true
+              if grep -Fq 'Exit Sharika?' royal-qa/back-dialog.xml; then break; fi
+              sleep 2
+            done
+            grep -Fq 'Exit Sharika?' royal-qa/back-dialog.xml
+            echo 'SHARIKA_ANDROID_EMULATOR_START_AND_BACK_CONFIRM_OK'
+
+      - name: Save emulator evidence even if UI test fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Royal-Emulator-Smoke
+          path: royal-qa/
+          if-no-files-found: warn
+          retention-days: 7
