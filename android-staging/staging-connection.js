@@ -2518,18 +2518,51 @@
     const root=document.getElementById('sharika-seller-content');
     if(!root)return;
     try{
-      const [directory,mine,transfers,allocations]=await Promise.all([
-        api('GET','/sellers'),api('GET','/sellers/me'),
-        api('GET','/sellers/transfers'),api('GET','/sellers/allocations')
+      if(!walletOnly){
+        // Public directory only. Never fetch private stock, allocations or
+        // transfers, and never render a recharge control on this screen.
+        const directory=await api('GET','/sellers');
+        if(!root.isConnected)return;
+        const listed=(directory.sellers||[]).map(s=>{
+          const photo=verifiedAvatarUrl(s.pic);
+          return '<div class="card" style="display:flex;align-items:center;gap:11px;'+
+            'padding:12px;margin:9px 0;border-radius:16px;'+
+            'background:linear-gradient(110deg,#b878f6,#8140e5);color:#fff">'+
+            (photo?'<img src="'+sellerEscape(photo)+'" alt="" style="width:54px;'+
+              'height:54px;border-radius:50%;object-fit:cover;flex-shrink:0">':
+              '<span style="font-size:31px;flex-shrink:0">🪙</span>')+
+            '<div style="min-width:0;flex:1"><b>'+sellerEscape(s.name||'Coin seller')+
+            '</b><div style="font-size:12px;margin-top:5px">ID '+
+            sellerEscape(s.public_id)+'</div></div>'+
+            '<button class="btn" type="button" data-seller-copy="'+
+            sellerEscape(s.public_id)+'" style="padding:8px 10px;flex-shrink:0">'+
+            'Copy ID</button></div>';
+        }).join('');
+        root.innerHTML='<p class="n">Approved coin sellers · verified Sharika IDs</p>'+
+          (listed||'<div class="empty">No approved coin sellers yet.</div>');
+        root.querySelectorAll('[data-seller-copy]').forEach(button=>{
+          button.onclick=async()=>{
+            const id=button.dataset.sellerCopy;
+            try{await navigator.clipboard.writeText(id);toast('Seller ID copied ✓');}
+            catch(_){toast('Seller ID: '+id);}
+          };
+        });
+        return;
+      }
+      // Private wallet: server independently verifies the seller permission.
+      const [mine,transfers,allocations]=await Promise.all([
+        api('GET','/sellers/me'),api('GET','/sellers/transfers'),
+        api('GET','/sellers/allocations')
       ]);
       if(!root.isConnected)return;
-      const listed=(directory.sellers||[]).map(s=>
-        '<div class="opt" style="padding:10px;border-radius:12px">'+
-        '<b>🪙 '+sellerEscape(s.name||'Coin seller')+'</b> · ID '+
-        sellerEscape(s.public_id)+'</div>').join('');
       const self=mine.seller;
+      if(!self?.active){
+        root.textContent='Seller Wallet is available only to approved coin sellers.';
+        return;
+      }
       const me=self&&self.active?
         '<div class="card" style="margin-top:12px;padding:12px">'+
+        '<b>Seller ID '+sellerEscape(self.public_id)+'</b><div style="height:6px"></div>'+
         '<b id="sharika-seller-stock">Your seller stock: '+Number(self.available_coins||0).toLocaleString('en-US')+' coins</b>'+
         '<p class="n">Recharge an existing Sharika user with your assigned seller stock.</p>'+
         '<input id="sharika-seller-target" inputmode="numeric" maxlength="8" placeholder="Recipient 8-digit user ID" aria-label="Recipient user ID">'+
@@ -2547,8 +2580,7 @@
         'Allocation #'+sellerEscape(a.id)+' · Admin ID '+sellerEscape(a.sender_public_id)+
         ' → Seller ID '+sellerEscape(a.seller_public_id)+
         ' · +'+Number(a.coins||0).toLocaleString('en-US')+' stock coins</div>').join('');
-      root.innerHTML=(walletOnly?'':'<div class="empty">'+
-        (listed||'No approved coin sellers yet.')+'</div>')+me+
+      root.innerHTML=me+
         (self?'<div class="card" style="margin-top:12px;padding:12px"><h4>Coin transfer list</h4>'+
           '<div id="sharika-seller-history">'+(historyRows||'No transfers yet.')+'</div>'+
           '<h4>Seller wallet stock allocations</h4>'+(stockRows||'No allocations yet.')+'</div>':'');
@@ -2605,6 +2637,36 @@
         }finally{if(send.isConnected)send.disabled=false;}
       });
     }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
+  }
+
+
+  // Keep the original Recharge screen and show the independent Seller Wallet
+  // button there only for authenticated, approved sellers.
+  let sellerWalletButtonCheck=false;
+  function mountRechargeSellerWallet(){
+    const listButton=document.querySelector('#rcp #rcl2');
+    if(!listButton||!session?.user?.id||sellerWalletButtonCheck||
+       listButton.previousElementSibling?.id==='sharika-recharge-seller-wallet')return;
+    sellerWalletButtonCheck=true;
+    const viewer=session.user.id;
+    api('GET','/sellers/me').then(data=>{
+      if(!data.seller?.active||session?.user?.id!==viewer||
+         !listButton.isConnected||
+         document.getElementById('sharika-recharge-seller-wallet'))return;
+      const button=document.createElement('button');
+      button.type='button';
+      button.id='sharika-recharge-seller-wallet';
+      button.className='cta bl';
+      button.textContent='Seller Wallet';
+      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true});
+      listButton.before(button);
+    }).catch(()=>{}).finally(()=>{sellerWalletButtonCheck=false;});
+  }
+  const rechargeRoot=document.getElementById('rcp');
+  if(rechargeRoot){
+    new MutationObserver(mountRechargeSellerWallet).observe(rechargeRoot,{
+      childList:true,subtree:false
+    });
   }
 
 
