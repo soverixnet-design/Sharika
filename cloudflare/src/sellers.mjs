@@ -22,6 +22,10 @@ function sellerView(row){
   return {public_id:showId(row.public_no),name:row.name,pic:row.pic||null,
     active:!!row.active,available_coins:Number(row.available_coins)||0};
 }
+// The public seller directory contains identity only, never private stock.
+function publicSellerView(row){
+  return {public_id:showId(row.public_no),name:row.name,pic:row.pic||null};
+}
 export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
   if(!path.startsWith('/api/v1/sellers'))return null;
   const actor=await env.DB.prepare(
@@ -30,11 +34,11 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
   if(!actor)return fail('profile_unavailable',403,cors);
   if(path==='/api/v1/sellers'&&request.method==='GET'){
     const rows=resultRows(await env.DB.prepare(
-      "SELECT u.public_no,u.name,u.pic,s.active,s.available_coins "+
+      "SELECT u.public_no,u.name,u.pic "+
       "FROM sharika_coin_sellers s JOIN sharika_users u ON u.auth_uid=s.seller_uid "+
       "WHERE s.active=1 AND u.status='active' ORDER BY u.public_no LIMIT 100"
     ).all());
-    return reply({sellers:rows.map(sellerView),read_only:true},200,cors);
+    return reply({sellers:rows.map(publicSellerView),read_only:true},200,cors);
   }
   if(path==='/api/v1/sellers/me'&&request.method==='GET'){
     const row=await env.DB.prepare(
