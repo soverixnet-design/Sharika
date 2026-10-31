@@ -96,7 +96,9 @@
       const id = String(++seq);
       const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
         action === 'googleSignIn' ? 150000 :
-        action === 'api' && payload?.method === 'PUT' && payload?.path === '/api/v1/me/avatar'
+        action === 'api' && payload?.method === 'PUT' &&
+          (payload?.path === '/api/v1/me/avatar' ||
+           /^\/api\/v1\/rooms\/[0-9]{8}\/cover$/.test(payload?.path || ''))
           ? 90000 : 25000;
       const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, timeoutMs);
       calls.set(id, { resolve, reject, timer });
