@@ -112,6 +112,9 @@ jobs:
 
   greedy-wheel-staging:
     name: Manually roll out only Greedy Wheel to isolated staging
+    concurrency:
+      group: sharika-isolated-staging-worker-publish
+      cancel-in-progress: false
     # The existing D1 initialization workflow and its branch restrictions remain intact.
     # No push, PR, or other action can publish this feature.
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.operation == 'deploy-greedy-wheel-staging' }}
