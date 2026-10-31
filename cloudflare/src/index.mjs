@@ -14,7 +14,7 @@ import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
-const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset']);
+const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset','photo']);
 const ROOM_SEAT_FRAMES = new Set(['grad','gold','neon','sq']);
 const MAX_BODY = 20_000;
 const PROFILE_FRAMES = new Set([
@@ -728,6 +728,12 @@ export async function handleRequest(request, env) {
       if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20 ||
          !ROOM_THEMES.has(theme) || !ROOM_SEAT_FRAMES.has(seatFrame))
         return fail('invalid_room_settings',400,cors);
+      if(theme==='photo'){
+        const photo=await env.DB.prepare(
+          'SELECT version FROM sharika_room_covers WHERE room_id=?'
+        ).bind(roomId).first();
+        if(!photo?.version)return fail('room_theme_photo_missing',409,cors);
+      }
       const updated=await env.DB.prepare(
         'UPDATE sharika_rooms SET name=?,seat_count=?,theme=?,seat_frame_style=? WHERE id=? AND owner_id=? '+
         'AND NOT EXISTS (SELECT 1 FROM sharika_room_members WHERE room_id=? AND seat_no>?)'
@@ -1138,7 +1144,16 @@ export async function handleRequest(request, env) {
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
         const equipped=await readRoomEquipped(env.DB,roomId);
+        // Room color and owner-selected photo are shared room state. Return
+        // them with every member poll, so guests already inside and late
+        // joiners see the same background without trusting localStorage.
+        const cover=room.theme==='photo' ? await env.DB.prepare(
+          'SELECT version FROM sharika_room_covers WHERE room_id=?'
+        ).bind(roomId).first() : null;
         return reply({ room: roomId,
+          theme:ROOM_THEMES.has(room.theme)?room.theme:'mid',
+          theme_background_url:cover?.version
+            ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null,
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.
           seat_count:room.seat_count,
