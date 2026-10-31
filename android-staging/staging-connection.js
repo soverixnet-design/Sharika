@@ -82,7 +82,7 @@
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null;
+  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -1443,25 +1443,9 @@
     frame.render();
     decorateRoomPeople(frame);
     decorateRoomChat(frame);
-    const present=new Set((data.members||[]).map(m=>m.user_id));
-    if(!frame.__soveraSeenMembers){
-      frame.__soveraSeenMembers=present;
-      // Local user sees the selected entry on initial room visit.
-      const first=(data.members||[]).find(m=>m.user_id===session?.user?.id);
-      if(first?.sharika_users?.entry_style){
-        playSoveraEntry(frame.document,first.sharika_users.entry_style);
-      }
-    }else{
-      for(const item of data.members||[]){
-        if(!frame.__soveraSeenMembers.has(item.user_id)&&
-           item.user_id!==session?.user?.id&&
-           item.sharika_users?.entry_style){
-          playSoveraEntry(frame.document,item.sharika_users.entry_style);
-          break;
-        }
-      }
-      frame.__soveraSeenMembers=present;
-    }
+    // Arrival effects come from the coordinator's short, verified event
+    // history, not the 15-second seat/member snapshot that misses guests.
+    frame.__soveraSeenMembers=new Set((data.members||[]).map(m=>m.user_id));
   }
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
@@ -1507,6 +1491,7 @@
     let pendingGiftRequest=null;
     let lastGiftEventId=null;
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
+    let lastEntryEventId=0,entryPollInFlight=null;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
     // Report a verified member or room through the existing authenticated
@@ -2455,7 +2440,36 @@
       }
     };
     wireSoveraRoomFrames(frame);
+    await loadVerifiedCosmetics().catch(error=>console.warn('Cosmetic art:',errText(error)));
     await syncFrame(room,frame);
+    // Each phone consumes the same verified room-entry event stream.
+    // Display recent joins once, including this user's own arrival.
+    async function pollRoomEntries(){
+      if(entryPollInFlight)return entryPollInFlight;
+      const work=(async()=>{
+        if(window.cur?.id!==room.id)return;
+        const data=await api('GET','/rooms/'+room.id+'/entries?after='+lastEntryEventId);
+        if(window.cur?.id!==room.id ||
+           document.getElementById('rf')?.contentWindow!==frame)return;
+        for(const event of data.events||[]){
+          const id=Number(event.id);
+          if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
+          lastEntryEventId=id;
+          if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          if(!entryArt(event.entry_style))
+            await loadVerifiedCosmetics().catch(()=>{});
+          if(entryArt(event.entry_style))
+            playSoveraEntry(frame.document,event.entry_style);
+        }
+      })();
+      entryPollInFlight=work;
+      try{return await work;}finally{if(entryPollInFlight===work)entryPollInFlight=null;}
+    }
+    pollRoomEntries().catch(error=>console.warn('Room entries:',errText(error)));
+    if(entryPoll)clearInterval(entryPoll);
+    entryPoll=setInterval(()=>{
+      if(window.cur?.id===room.id)pollRoomEntries().catch(()=>{});
+    },2500);
     try {
       const voice=await connectVoice(room.id);
       frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
@@ -2508,6 +2522,7 @@
         if(framePoll){clearInterval(framePoll);framePoll=null;}
         if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
         if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
         await releaseVoice();
         await api('POST','/rooms/'+prior.id+'/leave',{});
@@ -2525,6 +2540,7 @@
     if(framePoll){clearInterval(framePoll);framePoll=null;}
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
     if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
+        if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
     releaseVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
