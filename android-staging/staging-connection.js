@@ -1654,7 +1654,7 @@
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/cover\?v=[0-9]+$/.test(value)
       ?value:null;
   }
-  async function jpegRoomPreview(file,forTheme=false){
+  async function jpegRoomPreview(file,forTheme=false,legacy=false){
     if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
       throw new Error('Choose an image smaller than 15 MB');
     const blobUrl=URL.createObjectURL(file);
@@ -1672,16 +1672,20 @@
         throw new Error('For a clear room theme, choose a photo at least 720 px on its shorter side');
       const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
       if(!ctx)throw new Error('Image editor is unavailable');
-      // Keep near-HD detail for tall mobile wallpapers; shrink only if needed.
-      for(const side of [1800,1600,1440,1280,1080,900,720,600]){
+      // Keep near-HD detail when the staging Worker supports it.
+      const sides=legacy?[900,720,600,480,360,280]:
+        [1800,1600,1440,1280,1080,900,720,600];
+      const qualities=legacy?[.76,.60,.45]:[.86,.78,.70,.62];
+      const maxLength=legacy?120023:320023;
+      for(const side of sides){
         const scale=Math.min(1,side/Math.max(sourceWidth,sourceHeight));
         canvas.width=Math.max(1,Math.round(sourceWidth*scale));
         canvas.height=Math.max(1,Math.round(sourceHeight*scale));
         ctx.fillStyle='#161029';ctx.fillRect(0,0,canvas.width,canvas.height);
         ctx.drawImage(photo,0,0,canvas.width,canvas.height);
-        for(const quality of [.86,.78,.70,.62]){
+        for(const quality of qualities){
           const preview=canvas.toDataURL('image/jpeg',quality);
-          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=320023)
+          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=maxLength)
             return preview;
         }
       }
@@ -1706,7 +1710,17 @@
       toast('Preparing your room photo…');
       try{
         const image_data=await jpegRoomPreview(file,useAsTheme);
-        const saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
+        let saved,standardQualityOnly=false;
+        try{
+          saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
+        }catch(error){
+          if(errText(error)!=='room_cover_too_large')throw error;
+          // An older staging Worker still only accepts 90 KB JPEGs.
+          // Do not break room-photo editing while its HD rollout is pending.
+          const compatible=await jpegRoomPreview(file,useAsTheme,true);
+          saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data:compatible});
+          standardQualityOnly=true;
+        }
         room.cover_url=verifiedCoverUrl(saved.cover_url);
         if(frame?.S)frame.S.pic=room.cover_url;
         const preview=frame?.$?.('pbig');
@@ -1730,7 +1744,8 @@
           console.warn('Room photo saved; card refresh delayed:',errText(error)));
         if(useAsTheme && frame?.$?.('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))
           frame.themeSheet();
-        toast(useAsTheme?'Room background saved for everyone ✓':
+        toast(standardQualityOnly?'Room saved at standard quality · HD server update pending':
+          useAsTheme?'Room background saved for everyone ✓':
           'Room photo saved · visible on room cards ✓');
       }catch(error){toast((useAsTheme?'Room background':'Room photo')+
         ' not fully saved: '+errText(error));}

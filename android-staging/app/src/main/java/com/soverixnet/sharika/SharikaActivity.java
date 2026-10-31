@@ -737,8 +737,11 @@ public final class SharikaActivity extends Activity {
             // finish and return its server commit confirmation.
             boolean savingAvatar = method.equals("PUT") &&
                 path.equals("/api/v1/me/avatar");
-            connection.setConnectTimeout(savingAvatar ? 20000 : 12000);
-            connection.setReadTimeout(savingAvatar ? 60000 : 12000);
+            boolean savingRoomPhoto = method.equals("PUT") &&
+                path.matches("^/api/v1/rooms/[0-9]{8}/cover$");
+            boolean savingPhoto = savingAvatar || savingRoomPhoto;
+            connection.setConnectTimeout(savingPhoto ? 20000 : 12000);
+            connection.setReadTimeout(savingPhoto ? 60000 : 12000);
             connection.setRequestProperty("Accept","application/json");
             connection.setRequestProperty("Authorization","Bearer " + jwt);
             if (body != null) {
