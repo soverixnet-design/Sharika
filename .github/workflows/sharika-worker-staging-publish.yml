@@ -8,6 +8,9 @@ on:
       - fix/sharika-seller-self-recharge-wallet-ui-20261031
     paths:
       - '.github/workflows/sharika-worker-staging-publish.yml'
+      - 'cloudflare/src/sellers.mjs'
+      - 'cloudflare/test/sellers.test.mjs'
+      - 'android-staging/staging-connection.js'
 
 permissions:
   contents: read
