@@ -8,6 +8,7 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
@@ -535,44 +536,77 @@ export async function handleRequest(request, env) {
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
       return reply({ coins: user.coins, diamonds: user.diamonds, xp: user.xp, ledger: rows.results || [] }, 200, cors);
     }
-    // Atomic diamond-to-coin conversion: 100 diamonds -> 70 coins.
-    // Cloudflare D1 batch is a single transaction; a constraint or duplicate
-    // request rolls back both balances and BOTH immutable ledger entries.
+    // Exchange terms are quoted by the server and editable only by Super
+    // Admin. Without the new D1 table, existing 100:70 terms still apply.
+    if(path==='/api/v1/wallet/exchange-rate'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      return reply(respondRate(await readExchangeRate(env.DB)),200,cors);
+    }
+    // A D1 batch atomically moves diamonds to coins and writes immutable
+    // ledger entries. Replays return the ORIGINAL coins, even after rate edits.
     if (path === '/api/v1/wallet/exchange' && request.method === 'POST') {
       const user=await assertActive(env.DB,uid);
       if(user.minor)return fail('exchange_adult_only',403,cors);
       const body=await readBody(request);
       const diamonds=body.diamonds;
       const requestId=typeof body.request_id==='string'?body.request_id.trim():'';
-      if(!Number.isSafeInteger(diamonds)||diamonds<100||diamonds>1000000||
-        diamonds%100!==0||!/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
+      if(!Number.isSafeInteger(diamonds)||diamonds<1||diamonds>1000000||
+        !/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
         return fail('invalid_exchange',400,cors);
       const txid='exchange:'+requestId;
       const prior=await env.DB.prepare(
         "SELECT id,delta FROM sharika_wallet_ledger WHERE auth_uid=? AND currency='diamonds' AND request_id=? AND reason='diamond_exchange'"
       ).bind(uid,txid).first();
-      if(prior) {
+      if(prior){
         if(Number(prior.delta)!==-diamonds)return fail('idempotency_conflict',409,cors);
+        const receipt=await env.DB.prepare(
+          "SELECT delta FROM sharika_wallet_ledger WHERE auth_uid=? AND currency='coins' AND request_id=? AND reason='diamond_exchange'"
+        ).bind(uid,txid).first();
+        if(!receipt||!Number.isSafeInteger(Number(receipt.delta))||Number(receipt.delta)<=0)
+          throw Error('exchange_receipt_incomplete');
         const saved=await me(env.DB,uid);
         return reply({coins:saved.coins,diamonds:saved.diamonds,
-          spent_diamonds:diamonds,credited_coins:diamonds/100*70,duplicate:true},200,cors);
+          spent_diamonds:diamonds,credited_coins:Number(receipt.delta),duplicate:true},200,cors);
       }
+      const rate=await readExchangeRate(env.DB);
+      if(body.exchange_rate_revision!==undefined&&
+         (!Number.isSafeInteger(body.exchange_rate_revision)||
+          body.exchange_rate_revision!==rate.revision))
+        return fail('exchange_rate_changed',409,cors);
+      // Older APKs have no rate revision. Once admins edit the rate, they
+      // must upgrade rather than accept a different rate silently.
+      if(rate.revision>1&&body.exchange_rate_revision===undefined)
+        return fail('exchange_rate_refresh_required',409,cors);
+      const coins=exchangeCredit(diamonds,rate);
+      if(coins===null)return fail('invalid_exchange',400,cors);
       if(user.diamonds<diamonds)return fail('insufficient_diamonds',409,cors);
-      const coins=diamonds/100*70;
-      await env.DB.batch([
-        env.DB.prepare("UPDATE sharika_users SET diamonds=CASE WHEN status='active' THEN diamonds-? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
-          .bind(diamonds,uid),
-        env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
-          "VALUES(?,'diamonds',?,(SELECT diamonds FROM sharika_users WHERE auth_uid=?),'diamond_exchange',?)").bind(uid,-diamonds,uid,txid),
-        env.DB.prepare("UPDATE sharika_users SET coins=CASE WHEN status='active' THEN coins+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
-          .bind(coins,uid),
-        env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
-          "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'diamond_exchange',?)")
-          .bind(uid,coins,uid,txid)
-      ]);
+      if(user.coins>1000000000000-coins)return fail('coin_balance_limit',409,cors);
+      const coinChange="UPDATE sharika_users SET coins=CASE WHEN status='active' "+
+        "AND coins+?<=1000000000000 "+
+        (rate.persisted?"AND (SELECT revision FROM sharika_exchange_rate WHERE id=1)=? ":"")+
+        "THEN coins+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?";
+      const creditArgs=rate.persisted?[coins,rate.revision,coins,uid]:[coins,coins,uid];
+      try{
+        await env.DB.batch([
+          env.DB.prepare("UPDATE sharika_users SET diamonds=CASE WHEN status='active' AND diamonds>=? THEN diamonds-? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
+            .bind(diamonds,diamonds,uid),
+          env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+            "VALUES(?,'diamonds',?,(SELECT diamonds FROM sharika_users WHERE auth_uid=?),'diamond_exchange',?)")
+            .bind(uid,-diamonds,uid,txid),
+          env.DB.prepare(coinChange).bind(...creditArgs),
+          env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+            "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'diamond_exchange',?)")
+            .bind(uid,coins,uid,txid)
+        ]);
+      }catch(error){
+        if(rate.persisted&&/CHECK constraint/i.test(String(error?.message||error)))
+          return fail('exchange_rate_changed_or_balance_insufficient',409,cors);
+        throw error;
+      }
       const updated=await me(env.DB,uid);
       return reply({coins:updated.coins,diamonds:updated.diamonds,
-        spent_diamonds:diamonds,credited_coins:coins,duplicate:false},200,cors);
+        spent_diamonds:diamonds,credited_coins:coins,duplicate:false,
+        exchange_rate_revision:rate.revision},200,cors);
     }
     if(coverPath && request.method==='PUT') {
       await assertActive(env.DB,uid);

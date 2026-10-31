@@ -6,6 +6,7 @@ import { handleBannerAdmin } from './banners.mjs';
 import { handleDailyAdmin } from './daily.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
+import { handleAdminExchangeRate } from './exchange-rate.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -99,6 +100,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     actor={...actor,role:proxy};
   }
 
+  if(operation==='exchange-rate')return await handleAdminExchangeRate({
+    request,db:env.DB,uid,role:actor.role,reply,fail,cors
+  });
   if (operation.startsWith('recharges')) return await handleRechargeAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
