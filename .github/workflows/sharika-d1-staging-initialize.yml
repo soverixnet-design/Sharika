@@ -130,7 +130,7 @@ jobs:
       - name: Checkout pinned Greedy Wheel candidate (never default-branch app code)
         uses: actions/checkout@v4
         with:
-          ref: 9967a5a70b5a3597c8a649d526fe0467a7d1da9b
+          ref: f9dc697e3cc4cf7796a0c5b99c1b61ddc4291407
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -166,7 +166,7 @@ jobs:
             for(const branch of bases){
               const base=encodeURIComponent(branch);
               const url="https://api.github.com/repos/"+process.env.GITHUB_REPOSITORY+
-                "/compare/"+base+"...9967a5a70b5a3597c8a649d526fe0467a7d1da9b";
+                "/compare/"+base+"...f9dc697e3cc4cf7796a0c5b99c1b61ddc4291407";
               const res=await fetch(url,{headers:{
                 Authorization:"Bearer "+process.env.GH_TOKEN,
                 Accept:"application/vnd.github+json"}});
