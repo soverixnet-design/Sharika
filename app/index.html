@@ -371,7 +371,7 @@ var RCT=0,RATE=1,N=function(n){return Number(n).toLocaleString("en-US")};
 function addDia(n){var s=ls("vr_state_v2",{});s.dia=(s.dia==null?2500:s.dia)+n;try{localStorage.setItem("vr_state_v2",JSON.stringify(s))}catch(e){}refresh()}
 function rechargeSheet(tab){var A_=ADM();if(A_&&A_.flags&&A_.flags.recharge===false){toast("Recharge is temporarily closed");return}RCT=tab===1?1:0;renderRcp();$("rcp").classList.add("on")}
 function renderRcp(){
-  var A2=ADM(),P=(A2&&A2.t&&A2.t.pk?A2.t.pk.filter(function(r){return r.on}).map(function(r){return[r.coins,r.price]}):[[1000,"$0.99"],[5500,"$4.99"],[12000,"$9.99"],[65000,"$49.99"]]),X=[500,1000,5000,20000],h;
+  var A2=ADM(),P=(A2&&A2.t&&A2.t.pk?A2.t.pk.filter(function(r){return r.on}).map(function(r){return[r.coins,r.price]}):[[1000,"$0.99"],[5500,"$4.99"],[12000,"$9.99"],[65000,"$49.99"]]),X=[500,1000,5000,20000].map(function(n){var u=Number(window.SHARIKA_EXCHANGE_FROM)||100;return Math.max(u,Math.ceil(n/u)*u)}),h;
   h='<div class="rcw"><button id="rcl">🌐 English ⌄</button></div><div class="rch"><button class="bk" id="rcb">‹ Back</button><div class="rct"><button data-x="0" class="'+(RCT?"":"on")+'">Recharge</button><button data-x="1" class="'+(RCT?"on":"")+'">Exchange</button></div></div><div class="rcb">';
   h+='<div class="gc"><small>My gold coins</small><b>🪙 '+N(coins())+'</b><i>ID '+A.id+'</i></div><div class="dm"><span>💎 Your diamonds</span><span>'+N(RS().dia)+'</span></div>';
   if(!RCT){
@@ -379,7 +379,7 @@ function renderRcp(){
     '<button class="cta bl" id="rcs">Contact recharge support</button><button class="cta or" id="rcl2">Coin seller list</button>'+
     '<details class="rk"><summary>🏆 Recharge, sending and receiving rankings</summary>'+CFG.people.slice(0,5).map(function(p,i){return'<div><span>'+(i+1)+'. '+p[1]+' '+esc(p[0])+'</span><b>🪙 '+rf(CFG.wealth[i])+'</b></div>'}).join("")+'</details>';
   }else{
-    h+='<div class="rh"><h3>Diamond exchange</h3></div><div class="rate">Rate: 1 💎 = '+bn(RATE)+' 🪙</div><div class="pk"><p>Buy gold coins with diamonds.</p>'+X.map(function(d,i){return'<button data-e="'+i+'"><span>💎 '+N(d)+'</span><em>🪙 '+N(d*RATE)+' ›</em></button>'}).join("")+'</div>';
+    h+='<div class="rh"><h3>Diamond exchange</h3></div><div class="rate">Rate: '+(window.SHARIKA_EXCHANGE_FROM||100)+' 💎 = '+(window.SHARIKA_EXCHANGE_TO||70)+' 🪙</div><div class="pk"><p>Buy gold coins with diamonds.</p>'+X.map(function(d,i){return'<button data-e="'+i+'"><span>💎 '+N(d)+'</span><em>🪙 '+N(d*RATE)+' ›</em></button>'}).join("")+'</div>';
   }
   $("rcp").innerHTML=h+'</div>';
   $("rcb").onclick=function(){$("rcp").classList.remove("on")};
