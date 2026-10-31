@@ -83,6 +83,37 @@ export async function readBondProfile(db,targetUid){
     gift_value_sent:Number(sent?.total||0)+Number(bondSent?.total||0)};
 }
 
+async function readBondSocialActivity(db,targetUid){
+  const followerSql='SELECT u.public_no,u.name,u.pic,'+
+    equipped('u','frame_style')+' AS frame_style,'+
+    equipped('u','medal_style')+' AS medal_style '+
+    'FROM sharika_follows f JOIN sharika_users u ON u.auth_uid=';
+  const [followers,following,gifters]=await Promise.all([
+    db.prepare(followerSql+'f.follower_uid WHERE f.followed_uid=? '+
+      "AND u.status='active' ORDER BY f.created_at DESC LIMIT 12").bind(targetUid).all(),
+    db.prepare(followerSql+'f.followed_uid WHERE f.follower_uid=? '+
+      "AND u.status='active' ORDER BY f.created_at DESC LIMIT 12").bind(targetUid).all(),
+    db.prepare('SELECT u.public_no,u.name,u.pic,'+
+      equipped('u','frame_style')+' AS frame_style,'+
+      equipped('u','medal_style')+' AS medal_style,g.gift_name,g.emoji,g.coins '+
+      'FROM (SELECT e.sender_uid AS sender_uid,x.name AS gift_name,x.emoji AS emoji,'+
+      'e.price_coins*e.quantity AS coins,e.created_at AS at FROM sharika_gift_events e '+
+      'JOIN sharika_gifts x ON x.id=e.gift_id WHERE e.recipient_uid=? '+
+      'UNION ALL SELECT e.sender_uid,x.name,x.emoji,e.value_coins,'+
+      "datetime(e.created_at_ms/1000,'unixepoch') FROM sharika_bond_gift_events e "+
+      'JOIN sharika_bond_gifts x ON x.id=e.gift_id WHERE e.recipient_uid=? '+
+      ') g JOIN sharika_users u ON u.auth_uid=g.sender_uid '+
+      "WHERE u.status='active' ORDER BY g.at DESC LIMIT 20")
+      .bind(targetUid,targetUid).all()
+  ]);
+  const userView=u=>({id:pid(u.public_no),name:u.name,pic:u.pic,
+    frame_style:u.frame_style||'',medal_style:u.medal_style||''});
+  return {followers_preview:rows(followers).map(userView),
+    following_preview:rows(following).map(userView),
+    recent_gifters:rows(gifters).map(row=>({...userView(row),gift_name:row.gift_name,
+      emoji:row.emoji,coins:Number(row.coins)}))};
+}
+
 export async function roomBondPairs(db,roomId){
   const list=await db.prepare('SELECT b.id,b.type,ua.public_no AS a_id,ub.public_no AS b_id '+
     'FROM sharika_bonds b '+
@@ -189,7 +220,10 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
     const target=await db.prepare("SELECT auth_uid FROM sharika_users WHERE public_no=? AND status='active'")
       .bind(Number(profileMatch[1])).first();
     if(!target)return fail('user_not_found',404,cors);
-    return reply({public_id:profileMatch[1],...(await readBondProfile(db,target.auth_uid))},200,cors);
+    const [summary,activity]=await Promise.all([
+      readBondProfile(db,target.auth_uid),readBondSocialActivity(db,target.auth_uid)
+    ]);
+    return reply({public_id:profileMatch[1],...summary,...activity},200,cors);
   }
   const visitMatch=/^\/api\/v1\/bonds\/visits\/([0-9]{8})$/.exec(path);
   if(visitMatch&&request.method==='POST'){
@@ -368,9 +402,9 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
     statements.push(
       db.prepare("UPDATE sharika_bond_invites SET status='accepted',resolved_at_ms=? "+
         "WHERE id=? AND status='pending' AND expires_at_ms>?").bind(nowMs,bondId,nowMs),
-      db.prepare('INSERT INTO sharika_bond_gift_events(bond_id,invite_id,sender_uid,recipient_uid,'+
-        'type,value_coins,created_at_ms) VALUES(?,?,?,?,?,?,?)')
-        .bind(bondId,bondId,invite.sender_uid,uid,invite.type,invite.held_coins,nowMs),
+      db.prepare('INSERT INTO sharika_bond_gift_events(bond_id,invite_id,gift_id,sender_uid,recipient_uid,'+
+        'type,value_coins,created_at_ms) VALUES(?,?,?,?,?,?,?,?)')
+        .bind(bondId,bondId,invite.gift_id,invite.sender_uid,uid,invite.type,invite.held_coins,nowMs),
       db.prepare('INSERT INTO sharika_bond_audit(actor_uid,action,invite_id,bond_id,details_json,created_at_ms) '+
         "VALUES(?,'accepted',?,?,?,?)").bind(uid,bondId,bondId,'{}',nowMs)
     );

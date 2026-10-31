@@ -84,6 +84,9 @@ test('CP invite is held once, bound only on recipient approval, and cannot link 
     const accepted=await call('person-1','/bonds/invites/'+issued.data.invite_id+'/respond',
       'POST',{accept:true});
     assert.equal(accepted.status,201);
+    const publicDetail=await call('person-2','/bonds/profile/'+IDS[1]);
+    assert.equal(publicDetail.data.recent_gifters[0].id,IDS[0]);
+    assert.equal(publicDetail.data.recent_gifters[0].coins,5200);
     assert.equal((await readBondProfile(d1,'person-0')).cp.partner.id,IDS[1]);
     assert.equal((await readBondProfile(d1,'person-1')).cp.partner.id,IDS[0]);
     assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_active_cp_slots').get().n,2);

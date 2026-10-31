@@ -4496,6 +4496,12 @@
       '@keyframes shBondPulse{50%{transform:scale(1.13);filter:drop-shadow(0 0 22px #ff9bd5)}}',
       '.sh-bond-friendlist{display:flex;flex-wrap:wrap;gap:7px}',
       '.sh-bond-friend{display:flex;align-items:center;gap:7px;border-radius:999px;background:#7bbaff22;border:1px solid #a7dcff88;color:#fff;padding:7px 10px;font-size:11px;font-weight:800}',
+      '.sh-bond-social-list{display:flex;flex-direction:column;gap:7px}',
+      '.sh-bond-social-user{display:flex;align-items:center;gap:9px;text-align:left;border:1px solid #ffffff4f;border-radius:14px;background:#fff1;padding:7px;color:#fff;font:inherit}',
+      '.sh-bond-social-user .sh-bond-avatar{width:42px;height:42px;font-size:20px;flex:none}',
+      '.sh-bond-social-user .sh-bond-avatar .sh-sovera-frame{inset:-20%;width:140%!important;height:140%!important}',
+      '.sh-bond-social-user strong{display:block;font-size:12px}',
+      '.sh-bond-social-user small{display:block;font-size:10px;color:#f7d0ab}',
       '.sh-bond-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}',
       '.sh-bond-button{padding:11px 6px;border:1px solid #ffe6a6;border-radius:15px;background:linear-gradient(165deg,#cf70d1,#7a319a 60%,#4a236c);color:#fff;font-weight:900;font-size:12px;box-shadow:inset 0 2px #fff7,0 5px 0 #2a0b46;min-height:45px}',
       '.sh-bond-button.blue{background:linear-gradient(160deg,#67c8f8,#285eab 65%,#232e73);border-color:#bce9ff}',
@@ -4745,6 +4751,34 @@
       giftTotals.textContent='🎁 Received 🪙 '+bondFmt(data.gift_value_received)+
         '  ·  Sent 🪙 '+bondFmt(data.gift_value_sent);
       panel.appendChild(giftTotals);
+      for(const sectionInfo of [
+        {key:'recent_gifters',title:'🎁 Who sent gifts',type:'gifts'},
+        {key:'followers_preview',title:'💖 Followers',type:'followers'},
+        {key:'following_preview',title:'✨ Following',type:'following'}]){
+        const section=document.createElement('section');section.className='sh-bond-section '+
+          (sectionInfo.type==='followers'?'friends':'');
+        const heading=document.createElement('h3');heading.textContent=sectionInfo.title;
+        section.appendChild(heading);
+        const list=document.createElement('div');list.className='sh-bond-social-list';
+        for(const personEntry of data[sectionInfo.key]||[]){
+          const row=document.createElement('button');row.type='button';
+          row.className='sh-bond-social-user';
+          const avatar=bondPerson(personEntry,false).querySelector('.sh-bond-avatar');
+          const detail=document.createElement('span');
+          const name=document.createElement('strong');name.textContent=personEntry.name;
+          const sub=document.createElement('small');sub.textContent='ID '+personEntry.id+
+            (sectionInfo.type==='gifts'?' · '+personEntry.emoji+' '+personEntry.gift_name+
+              ' · 🪙 '+bondFmt(personEntry.coins):'');
+          detail.append(name,sub);row.append(avatar,detail);
+          row.onclick=()=>openVerifiedRankProfile(personEntry.id);
+          list.appendChild(row);
+        }
+        if(!list.children.length){const empty=document.createElement('p');
+          empty.className='sh-bond-muted';
+          empty.textContent=sectionInfo.type==='gifts'?'No verified gifts yet.':
+            'No verified members to show yet.';list.appendChild(empty);}
+        section.appendChild(list);panel.appendChild(section);
+      }
       const cp=document.createElement('section');cp.className='sh-bond-section';
       const cpTitle=document.createElement('h3');cpTitle.textContent='💗 CP · Rose Gold Promise';
       const couple=document.createElement('div');couple.className='sh-bond-couple';
@@ -4774,6 +4808,11 @@
         empty.className='sh-bond-muted';empty.textContent='Friendship gifts connect multiple friends.';
         friendList.appendChild(empty);}
       friends.appendChild(friendList);panel.appendChild(friends);
+      // Keep the couple/friendship portrait immediately below the stats;
+      // longer gift/follower histories belong beneath those primary cards.
+      [...panel.querySelectorAll('.sh-bond-section')]
+        .filter(section=>section.querySelector('.sh-bond-social-list'))
+        .forEach(section=>panel.appendChild(section));
       const actions=document.createElement('div');actions.className='sh-bond-actions';
       const gift=document.createElement('button');gift.className='sh-bond-button';
       gift.textContent='🎁 CP / Friends Gifts';gift.onclick=()=>showBondGiftSheet(
