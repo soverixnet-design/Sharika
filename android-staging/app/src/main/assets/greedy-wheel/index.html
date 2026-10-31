@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Greedy Wheel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;700;800&family=Lilita+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div class="sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="tb-left">
+      <button class="icon-btn" id="btnHistory" aria-label="History">
+        <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <button class="icon-btn" id="btnHelp" aria-label="Help">?</button>
+    </div>
+    <div class="logo">
+      <span class="logo-main">GREEDY</span>
+      <span class="logo-sub" id="lblRoundTop">রাউন্ড <b id="roundNo">1</b></span>
+    </div>
+    <div class="tb-right">
+      <button class="icon-btn" id="btnSound" aria-label="Sound">
+        <svg id="icoSoundOn" viewBox="0 0 24 24" width="20" height="20"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg id="icoSoundOff" viewBox="0 0 24 24" width="20" height="20"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 9l6 6M22 9l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="icon-btn" id="btnBack" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- info strip -->
+  <div class="infostrip">
+    <div class="online"><span class="dot"></span><span id="onlineCount">0</span> <span id="lblOnline">জন খেলছে</span></div>
+    <div class="lastwin"><span id="lblWin">শেষ জয়</span> <span class="coin"></span><b id="lastWin">0</b></div>
+  </div>
+
+  <!-- Wheel -->
+  <main class="stage" id="stage">
+    <div class="wheel" id="wheel">
+      <div class="rim"><div class="bulbs" id="bulbs"></div></div>
+      <div class="side-tag left" id="tagLeft">সবজি</div>
+      <div class="side-tag right" id="tagRight">মাংস</div>
+      <svg class="spokes" viewBox="0 0 100 100" aria-hidden="true"><g id="spokeLines"></g></svg>
+      <div class="hub" id="hub">
+        <div class="hub-ring">
+          <div class="hub-plate">
+            <div class="hub-label" id="hubLabel">বেট করো</div>
+            <div class="hub-time" id="hubTime">30</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- history strip -->
+  <div class="history">
+    <span class="history-title" id="lblResult">ফলাফল</span>
+    <div class="history-track" id="history"></div>
+    <button class="more" id="btnHistory2" aria-label="History">›</button>
+  </div>
+
+  <!-- Bottom controls -->
+  <footer class="bottom">
+    <div class="chips" id="chips"></div>
+    <div class="bottom-row">
+      <div class="me-box">
+        <img id="userAvatar" class="avatar" alt="">
+        <div class="me-info">
+          <div class="me-name" id="userName">Player</div>
+          <div class="me-bal"><span class="coin"></span><b id="balance">0</b></div>
+        </div>
+        <button class="topup" id="btnTopup" aria-label="Top up">+</button>
+      </div>
+      <div class="rev-box">
+        <div class="rev-title" id="lblToday">আজকের আয়</div>
+        <div class="me-bal"><span class="coin"></span><b id="todayRev">0</b></div>
+      </div>
+      <div class="btn-col">
+        <button class="pill-btn" id="btnRepeat">আবার</button>
+        <button class="pill-btn auto" id="btnAuto">অটো</button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Result popup -->
+  <div class="modal" id="resultModal" hidden>
+    <div class="card result">
+      <div class="ribbon"><span id="lblRoundRes">রাউন্ড</span> <b id="resRound">1</b> <span id="lblResSuffix">ফলাফল</span></div>
+      <div class="card-timer" id="resTimer">5</div>
+      <div class="res-head">
+        <div class="res-big"><img id="resIcon" alt=""></div>
+        <div class="res-name" id="resName"></div>
+      </div>
+      <div class="res-stats">
+        <div><small id="lblEarn">এই রাউন্ডে জয়</small><b><span class="coin"></span><span id="resEarn">0</span></b></div>
+        <div><small id="lblBets">এই রাউন্ডে বেট</small><b><span class="coin"></span><span id="resBet">0</span></b></div>
+      </div>
+      <div class="rank-title" id="lblRank">এই রাউন্ডের সেরা</div>
+      <div class="ranks" id="ranks"></div>
+    </div>
+  </div>
+
+  <!-- History panel -->
+  <div class="modal" id="historyModal" hidden>
+    <div class="card panel">
+      <button class="close" id="btnHistoryClose" aria-label="Close">×</button>
+      <div class="tabs">
+        <button class="tab active" data-tab="results" id="tabResults">ফলাফল হিস্ট্রি</button>
+        <button class="tab" data-tab="records" id="tabRecords">আমার রেকর্ড</button>
+      </div>
+      <div class="tab-body" id="histResults"></div>
+      <div class="tab-body" id="histRecords" hidden></div>
+    </div>
+  </div>
+
+  <!-- Help popup -->
+  <div class="modal" id="helpModal" hidden>
+    <div class="card panel help">
+      <button class="close" id="btnHelpClose" aria-label="Close">×</button>
+      <h2 id="helpTitle">কীভাবে খেলবে</h2>
+      <ol id="helpList"></ol>
+      <div class="odds" id="oddsTable"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+<!-- The parent app authenticates each request and the D1 server owns all coins. -->
+<script src="sharika-bridge.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
