@@ -28,7 +28,9 @@ function fixture({follow=1,gift=0,receipt=null,coins=500,taskRewards={follow:50,
           return null;
         },
         async all(){
-          return {results:Object.values(state.receipts)};
+          state.queries.push({sql,args:this.args});
+          return {results:Object.values(state.receipts).filter(row=>
+            !row.utc_day||row.utc_day===this.args[1])};
         }
       };
     },
@@ -52,7 +54,7 @@ async function claim(f,key,now=NOW){
   return {status:response.status,data:await response.json()};
 }
 test('task progress and claimed status reset at UTC midnight, not localStorage',async()=>{
-  const f=fixture({follow:1,gift:0,receipt:{task_key:'follow',reward_coins:50}});
+  const f=fixture({follow:1,gift:0,receipt:{task_key:'follow',utc_day:'2026-10-30',reward_coins:50}});
   const before=await dailyTaskStatus(f.db,'alice',NOW);
   assert.equal(before.tasks[0].completed,true);
   assert.equal(before.tasks[0].claimed,true);
@@ -62,7 +64,8 @@ test('task progress and claimed status reset at UTC midnight, not localStorage',
   const dayFilter=f.state.queries.find(x=>x.sql.includes('FROM sharika_daily_task_claims'));
   assert.deepEqual(dayFilter.args,['alice','2026-10-30']);
   const followingDay=new Date('2026-10-31T00:02:00Z');
-  await dailyTaskStatus(f.db,'alice',followingDay);
+  const after=await dailyTaskStatus(f.db,'alice',followingDay);
+  assert.equal(after.tasks[0].claimed,false);
   const nextQuery=f.state.queries.filter(x=>x.sql.includes('FROM sharika_follows')).at(-1);
   assert.deepEqual(nextQuery.args,['alice','2026-10-31 00:00:00','2026-11-01 00:00:00']);
 });
