@@ -3094,11 +3094,78 @@
         Number(data.streak||0)+' day(s). Miss a UTC day and your streak restarts at Day 1.</p>'+
         '<div id="sh-daily-activities"><h4>⭐ Today’s Tasks</h4>'+
         (tasks||'<p>Tasks unavailable</p>')+'</div>'+
+        '<button type="button" id="sh-event-launch" style="display:block;width:100%;margin:18px 0;'+
+        'padding:15px;border-radius:19px;border:2px solid #ffdb7c;background:linear-gradient(155deg,#a64bff,#573ac4);'+
+        'color:#fff;font-size:17px;font-weight:900;box-shadow:0 6px 0 #332179,0 11px 20px #100d4c">'+
+        '🏆 Events & Rewards →</button>'+
         '<p id="sh-daily-foot">Rewards can be claimed once per task per UTC day. '+
         'Tomorrow tasks reset automatically; your previous coins remain in your wallet.</p>';
       setDailyClock(data.next_reset_utc);
     }catch(error){if(root.isConnected)root.textContent='Daily rewards unavailable: '+errText(error);}
   }
+
+  // Server-published events only: no fake leaderboards, self-reported scores or client coins.
+  async function showVerifiedEventSheet(){
+    if(!session){window.showAuth('welcome');return;}
+    window.openSheet('<h3>🏆 Events & Rewards</h3>'+
+      '<div id="sh-event-app-list" aria-live="polite">Loading verified events…</div>');
+    document.getElementById('sh')?.classList.add('sharika-daily-3d');
+    const root=document.getElementById('sh-event-app-list');
+    if(!root)return;
+    try{
+      const result=await api('GET','/events');
+      if(!root.isConnected)return;
+      const events=(result.events||[]).filter(e=>e.published);
+      const fmtEventDate=iso=>{
+        const date=new Date(iso);
+        return Number.isFinite(+date)?date.toLocaleString('en-US',{month:'short',day:'numeric',
+          year:'numeric',hour:'2-digit',minute:'2-digit'}):'Unknown date';
+      };
+      root.innerHTML='<div id="sh-daily-hero"><b>✨ Sharika Official Events</b>'+
+        '<small>Participate during event time. Verified winners receive real wallet coins '+
+        'when the event is settled by Admin.</small></div>'+
+        (events.length?events.map(e=>{
+          const status=e.status==='live'?'🔴 LIVE':e.status==='scheduled'?'⏰ UPCOMING':'✅ ENDED';
+          const tiers=(e.prizes||[]).map((coins,i)=>Number(coins)>0?
+            '<span style="padding:6px 8px;border:1px solid #f6da8f;border-radius:12px;'+
+            'background:#20134e;font-size:13px;color:#ffe88a">'+
+            (['🥇','🥈','🥉'][i]||'🏅')+' '+Number(coins).toLocaleString('en-US')+' coins</span>':'').join(' ');
+          const winners=(e.awards||[]).map(a=>'<div style="font-size:13px;padding:5px 0;'+
+            'color:#d9ffdf">✓ Rank '+Number(a.rank)+' · '+sellerEscape(a.name)+
+            ' (ID '+sellerEscape(a.public_id)+') received '+Number(a.coins).toLocaleString('en-US')+
+            ' coins</div>').join('');
+          return '<section style="margin:13px 0 18px;padding:17px 14px;border-radius:22px;'+
+            'background:linear-gradient(145deg,#5e459d,#232a72);border:2px solid #f1ca73;'+
+            'box-shadow:inset 0 2px 0 #ffffff48,0 6px 0 #302164,0 10px 18px #090b3e88">'+
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
+            '<strong style="color:#fff;font-size:17px">'+sellerEscape(e.title)+'</strong>'+
+            '<b style="font-size:11px;color:#ffe0a9">'+status+'</b></div>'+
+            '<p style="color:#e6daff;margin:8px 0;font-size:12px">'+
+            sellerEscape(fmtEventDate(e.starts_at))+' — '+sellerEscape(fmtEventDate(e.ends_at))+'</p>'+
+            '<p style="color:#fff;margin:10px 0;white-space:pre-wrap;font-size:13px">'+
+            sellerEscape(e.description||'Official event')+'</p>'+
+            '<div style="display:flex;flex-wrap:wrap;gap:5px;margin:12px 0">'+tiers+'</div>'+
+            (winners?'<div style="border-top:1px solid #ffffff44;padding-top:8px">'+winners+'</div>':
+            '<small style="color:#e8dcff">Rewards are paid to verified winners after the event ends.</small>')+
+            '</section>';
+        }).join(''):'<div id="sh-daily-hero"><b>No events yet</b>'+
+          '<small>New events will appear here when Admin publishes them.</small></div>')+
+        '<button type="button" id="sh-event-back" style="width:100%;padding:12px;'+
+        'background:#ffdb72;color:#3c2771;font-weight:900;border-radius:14px;border:0">'+
+        '← Daily Task Center</button>';
+    }catch(error){
+      if(root.isConnected)root.textContent='Events unavailable: '+errText(error);
+    }
+  }
+  window.showVerifiedEvents=showVerifiedEventSheet;
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('#sh-event-launch,#sh-event-back');
+    if(!button)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(button.id==='sh-event-back')showVerifiedDailySheet();
+    else showVerifiedEventSheet();
+  },true);
+
   let dailyTaskClaimBusy=false;
   async function claimVerifiedDailyTask(key,button){
     if(dailyTaskClaimBusy||!['follow','gift'].includes(key))return;
