@@ -157,9 +157,24 @@ export class SharikaVoiceRoom extends DurableObject {
         if(locked)return {error:'seat_locked'};
       }
       const db=this.sharikaDb;
-      const changed=await db.prepare(
-        'UPDATE sharika_room_members SET seat_no=? WHERE room_id=? AND user_id=?'
-      ).bind(seat,roomId,uid).run();
+      if(seat!==null){
+        // Any joined guest may claim an unlocked, empty seat without invite.
+        // The same Durable Object gate serializes this with owner locking.
+        const occupant=await db.prepare(
+          'SELECT user_id FROM sharika_room_members WHERE room_id=? AND seat_no=?'
+        ).bind(roomId,seat).first();
+        if(occupant&&occupant.user_id!==uid)return {error:'seat_occupied'};
+      }
+      let changed;
+      try{
+        changed=await db.prepare(
+          'UPDATE sharika_room_members SET seat_no=? WHERE room_id=? AND user_id=?'
+        ).bind(seat,roomId,uid).run();
+      }catch(error){
+        if(seat!==null&&/UNIQUE constraint/i.test(String(error?.message)))
+          return {error:'seat_occupied'};
+        throw error;
+      }
       if(!changed.meta?.changes)return {error:'join_room_first'};
       const member=await db.prepare(
         'SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?'
