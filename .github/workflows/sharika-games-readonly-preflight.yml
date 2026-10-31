@@ -45,6 +45,9 @@ jobs:
       - name: Read only original games tables and triggers
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT type,name FROM sqlite_master WHERE name IN ('sharika_users','sharika_wallet_ledger','sharika_original_game_rounds','sharika_original_game_bets','sharika_original_game_pools','sharika_original_jackpot_budgets','sharika_original_bet_validate','sharika_original_bet_debit','sharika_original_bet_payout','sharika_original_jackpot_reserve') ORDER BY type,name;"
+      - name: Read only all Sharika schema objects before Worker deployment
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT type,name FROM sqlite_master WHERE name LIKE 'sharika_%' ORDER BY type,name;"
       - name: Read only migrations recorded by D1
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM d1_migrations ORDER BY id;"
