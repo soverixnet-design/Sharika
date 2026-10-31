@@ -99,6 +99,7 @@ html.royal-root .card .live {border:1px solid rgba(255,225,166,.3);background:rg
 html.royal-root .card .info b {color:#fff8e9;text-shadow:0 2px 7px #000;}
 html.royal-root .card .info small {color:#eee0ff;}
 html.royal-root .nav,html.royal-root .app.lite .nav {
+  bottom:10px; /* Root html already reserves the safe-area inset. */
   background:linear-gradient(165deg,rgba(52,24,88,.98),rgba(19,7,43,.98));
   border:1.5px solid rgba(245,205,127,.61);
   box-shadow:0 0 0 1px #fff1,inset 0 1px 0 #fff4,0 -3px 25px #0009;
@@ -121,7 +122,7 @@ html.royal-root #v-rank {
   background:linear-gradient(180deg,rgba(12,3,31,.56),rgba(9,3,23,.85) 64%),
     url("royal-palace.png") center top/cover #100628;
 }
-html.royal-root .rtop {background:rgba(24,8,52,.95);border-bottom:1px solid var(--royal-border);box-shadow:0 5px 18px #0005;}
+html.royal-root .rtop {padding-top:12px;background:rgba(24,8,52,.95);border-bottom:1px solid var(--royal-border);box-shadow:0 5px 18px #0005;}
 html.royal-root #rt button {color:#b9a2d2;}
 html.royal-root #rt button.on {color:#ffe19c;}
 html.royal-root #rt button.on::after {background:linear-gradient(90deg,#edb753,#fff0b9);}
@@ -145,7 +146,7 @@ html.royal-root #v-me {
   background:linear-gradient(180deg,rgba(18,6,42,.54),rgba(11,3,28,.9) 43%,#0a031e),
     url("royal-palace.png") center top/100% auto no-repeat #0b031c;
 }
-html.royal-root .mtop {color:#ffdd92;}
+html.royal-root .mtop {color:#ffdd92;padding-top:12px;}
 html.royal-root .mb {background:rgba(25,8,57,.83);color:#f9d992;border:1px solid var(--royal-border);box-shadow:inset 0 1px 0 #fff2;}
 html.royal-root .mav {
   padding:5px;background:conic-gradient(#fff4ba,#bc7224,#ffe4a0,#8c4cd3,#f9c663,#fff4ba);
@@ -195,12 +196,13 @@ html.royal-root .thread {background:linear-gradient(155deg,#18072e,#080218);}
 html.royal-root .thh {background:rgba(50,18,83,.93);border-bottom:1px solid var(--royal-border);}
 html.royal-root .bub {border:1px solid rgba(244,204,128,.2);box-shadow:0 4px 9px #0005;}
 html.royal-root .bub.me,html.royal-root .tin button {background:linear-gradient(145deg,#8443ca,#512080);}
-html.royal-root .tin {background:rgba(20,6,44,.95);border-top:1px solid var(--royal-border);}
+html.royal-root .tin {padding-bottom:12px;background:rgba(20,6,44,.95);border-top:1px solid var(--royal-border);}
 html.royal-root .pfo {
   color:#fff9ed;
   background:linear-gradient(180deg,rgba(22,7,49,.62),rgba(8,2,20,.96) 44%),
     url("royal-palace.png") center top/100% auto no-repeat #080318;
 }
+html.royal-root .pfx {top:14px;}
 html.royal-root .pfx,html.royal-root .cvb {color:#ffe4a3;background:rgba(22,7,49,.8);border:1px solid var(--royal-border);}
 html.royal-root .cov {border-bottom:2px solid #dcb561;box-shadow:0 12px 18px #0006;}
 html.royal-root .pav3 {border:4px solid #190725;}
@@ -239,7 +241,7 @@ html.royal-root .atabs button.on,html.royal-root .big,html.royal-root .cta.or {
 html.royal-root .splash {background:linear-gradient(165deg,#321454,#0b031d);}
 html.royal-root .splash .l3i {filter:drop-shadow(0 0 28px #ddb366);}
 html.royal-root .rcp {color:#fff6df;background:linear-gradient(165deg,#1c0a36,#09021d);}
-html.royal-root .rcw {background:#1c0a36;}
+html.royal-root .rcw {background:#1c0a36;padding-top:12px;}
 html.royal-root .rcw button {background:#2d124d;color:#ffdb8a;border-color:#bd9051;}
 html.royal-root .rch {background:linear-gradient(135deg,#48217a,#18072f);border-bottom:1px solid #d0a35e;}
 html.royal-root .rct button.on {color:#ffe8b1;}
@@ -263,7 +265,7 @@ html.royal-room .app.royal-default-room {
     url("royal-palace.png") center/cover no-repeat #100524 !important;
 }
 html.royal-room .app.hasbg { /* User-owned custom wallpaper remains unmodified. */ }
-html.royal-room .top {padding:calc(11px + env(safe-area-inset-top,0px)) 12px 7px;gap:7px;}
+html.royal-room .top {padding:11px 12px 7px;gap:7px;}
 html.royal-room .ib {
   background:linear-gradient(155deg,#5c2e93,#290f50);
   border:1px solid #d9aa5d;box-shadow:0 4px 0 #120421,0 9px 16px #0007,inset 0 2px 0 #ffffff44;
@@ -309,7 +311,7 @@ html.royal-room .msg.me .mb {background:linear-gradient(145deg,rgba(99,39,162,.8
 html.royal-room .mn {color:#ffe4a0;}
 html.royal-room .dock {
   background:linear-gradient(180deg,transparent,rgba(15,4,36,.94) 26%,rgba(9,2,24,.99));
-  padding:9px 9px calc(14px + env(safe-area-inset-bottom,0px));
+  padding:9px 9px 14px;
   border-top:1px solid rgba(249,212,141,.13);
 }
 html.royal-room .irow {gap:6px;}
