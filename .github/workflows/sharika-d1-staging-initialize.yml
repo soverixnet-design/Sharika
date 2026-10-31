@@ -130,7 +130,7 @@ jobs:
       - name: Checkout pinned Greedy Wheel candidate (never default-branch app code)
         uses: actions/checkout@v4
         with:
-          ref: 2bf91cf4ebd4856c4e7ddc9c4f7238b7b8d40149
+          ref: 9967a5a70b5a3597c8a649d526fe0467a7d1da9b
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -143,7 +143,7 @@ jobs:
           import sqlite3
           from pathlib import Path
           db=sqlite3.connect(':memory:')
-          for migration in ['0001_initial.sql','0026_greedy_wheel.sql']:
+          for migration in ['0001_initial.sql','0026_admin_events_rewards.sql','0027_greedy_wheel.sql']:
               db.executescript(Path('migrations',migration).read_text())
           actual={row[0] for row in db.execute(
               "SELECT name FROM sqlite_master WHERE name LIKE 'sharika_greedy_%'")}
@@ -159,16 +159,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module -e '
-            const base=encodeURIComponent("fix/sharika-profile-save-recovery-20261031");
-            const url="https://api.github.com/repos/"+process.env.GITHUB_REPOSITORY+
-              "/compare/"+base+"...2bf91cf4ebd4856c4e7ddc9c4f7238b7b8d40149";
-            const res=await fetch(url,{headers:{
-              Authorization:"Bearer "+process.env.GH_TOKEN,
-              Accept:"application/vnd.github+json"}});
-            const body=await res.json();
-            if(!res.ok||!["ahead","identical"].includes(body.status))
-              throw Error("Shared staging branch has unmerged changes; stop and update this feature before publishing");
-            console.log("Greedy branch includes all current shared staging commits");
+            const bases=[
+              "fix/sharika-original-games-20261031",
+              "fix/sharika-shared-room-themes-20261031",
+              "fix/sharika-profile-save-recovery-20261031"];
+            for(const branch of bases){
+              const base=encodeURIComponent(branch);
+              const url="https://api.github.com/repos/"+process.env.GITHUB_REPOSITORY+
+                "/compare/"+base+"...9967a5a70b5a3597c8a649d526fe0467a7d1da9b";
+              const res=await fetch(url,{headers:{
+                Authorization:"Bearer "+process.env.GH_TOKEN,
+                Accept:"application/vnd.github+json"}});
+              const body=await res.json();
+              if(!res.ok||!["ahead","identical"].includes(body.status))
+                throw Error(branch+" has unmerged changes; reconcile before staging publish");
+              console.log("Candidate includes latest "+branch);
+            }
           '
       - name: Require the exact isolated staging target and existing deployment secret
         run: |
@@ -217,17 +223,18 @@ jobs:
               process.env.CLOUDFLARE_ACCOUNT_ID+
               "/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query";
             const sql="SELECT name FROM sqlite_master WHERE type=\u0027table\u0027 "+
-              "AND name IN (\u0027sharika_users\u0027,\u0027sharika_wallet_ledger\u0027)";
+              "AND name IN (\u0027sharika_users\u0027,\u0027sharika_wallet_ledger\u0027,"+
+              "\u0027sharika_events\u0027,\u0027sharika_event_awards\u0027)";
             const res=await fetch(url,{method:"POST",
               headers:{Authorization:"Bearer "+process.env.CLOUDFLARE_API_TOKEN,
                 "Content-Type":"application/json"},body:JSON.stringify({sql})});
             const body=await res.json();
-            if(!res.ok||!body.success||body.result?.[0]?.results?.length!==2)
+            if(!res.ok||!body.success||body.result?.[0]?.results?.length!==4)
               throw Error("Staging wallet schema prerequisites missing");
             console.log("Verified existing user and immutable wallet ledger tables");
           '
       - name: Apply only migration 0026 (never apply the untracked migration backlog)
-        run: npx --yes wrangler@4 d1 execute sharika-staging --remote --file migrations/0026_greedy_wheel.sql --config wrangler.jsonc
+        run: npx --yes wrangler@4 d1 execute sharika-staging --remote --file migrations/0027_greedy_wheel.sql --config wrangler.jsonc
       - name: Assert only the new Greedy tables and triggers are present
         run: |
           node --input-type=module -e '
