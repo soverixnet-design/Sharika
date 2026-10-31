@@ -204,3 +204,43 @@ test('verified original game settlement refreshes the shared profile and room wa
   assert.match(adapter,/if\(!overlay\.classList\.contains\('on'\)\)/);
   assert.match(adapter,/currentGameFrame\?\.element\?\.remove\(\)/);
 });
+
+test('all three original games retry timed-out bets once with the same request ID',async()=>{
+  const base=new URL('../../android-staging/app/src/main/assets/original-games/',import.meta.url);
+  for(const [page,game] of [
+    ['sovera-food-wheel.html','sovera-food'],
+    ['night-food-wheel.html','night-food'],
+    ['jackpot-fruit.html','jackpot-fruit']
+  ]){
+    const html=readFileSync(new URL(page,base),'utf8');
+    const start=html.indexOf('const GameBridge=(()=>{');
+    const tail=html.indexOf('  return {call,refresh,bet,onRefresh,onError,now,start,get};',start);
+    const end=html.indexOf('})();',tail)+5;
+    assert.ok(start>=0&&tail>start&&end>tail,'bridge exists in '+page);
+    const listeners=[],attempts=[];
+    const parent={postMessage(message){
+      const response={type:'sharika:original-response',id:message.id,ok:true,value:{}};
+      if(message.action==='state'){
+        response.value={server_time:Date.now(),round:{
+          round_no:9,bet_closes_ms:Date.now()+20000
+        },my_bets:[],coins:3000,previous_result:null};
+      }else if(message.action==='bet'){
+        attempts.push(message.body);
+        if(attempts.length===1){response.ok=false;response.error='server_timeout';}
+        else response.value={bet_id:81,coins:2000,round_no:9,duplicate:true};
+      }else throw Error('Unexpected bridge action '+message.action);
+      queueMicrotask(()=>listeners.forEach(listener=>listener({source:parent,data:response})));
+    }};
+    const window={parent,addEventListener(_type,listener){listeners.push(listener);}};
+    const document={documentElement:{getAttribute:()=>game}};
+    const bridge=new Function('window','document','setTimeout','clearTimeout',
+      html.slice(start,end)+';return GameBridge;')(window,document,setTimeout,clearTimeout);
+    await bridge.refresh();
+    const receipt=await bridge.bet(2,1000);
+    assert.equal(receipt.bet_id,81,page);
+    assert.equal(attempts.length,2,page+' should retry exactly once');
+    assert.equal(attempts[0].request_id,attempts[1].request_id,
+      page+' must never create a new charge on retry');
+    assert.equal(bridge.get().coins,2000,page+' shows the confirmed real wallet receipt');
+  }
+});

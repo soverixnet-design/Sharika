@@ -159,23 +159,30 @@ const GameBridge=(()=>{
         request_id:'og:'+game+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,13)
       };
     }
-    try{
-      const result=await call('bet','POST',request);
-      uncertainBet=null;
-      updateFromReceipt(result,request);
-      // The POST receipt confirms debit immediately. Poll wallet/history
-      // separately so a slow GET never blocks the next manual selection.
-      void refresh();
-      return result;
-    }catch(e){
-      const known=/^(betting_closed|insufficient_coins|invalid_bet|game_adult_only|profile_required|idempotency_conflict)$/;
-      if(known.test(String(e.message||''))){
-        uncertainBet=null;
-        throw e;
+    // A timed-out native request may already have debited the wallet.
+    // Replay the SAME request_id once: the Worker returns its original receipt
+    // and never inserts a second bet for this request.
+    const known=/^(betting_closed|insufficient_coins|invalid_bet|game_adult_only|profile_required|idempotency_conflict)$/;
+    let result;
+    for(let attempt=0;attempt<2;attempt++){
+      try{
+        result=await call('bet','POST',request);
+        break;
+      }catch(e){
+        if(known.test(String(e.message||''))){
+          uncertainBet=null;
+          throw e;
+        }
+        if(attempt===0)continue;
+        uncertainBet=request;
+        throw Error('Bet confirmation delayed. Tap the same choice again to check without a second charge.');
       }
-      uncertainBet=request;
-      throw Error('Bet confirmation delayed. Tap the same choice again to check without a second charge.');
     }
+    uncertainBet=null;
+    updateFromReceipt(result,request);
+    // Poll in the background; confirmed bet taps never wait for the wallet GET.
+    void refresh();
+    return result;
   }
   function start(){
     if(started)return;
