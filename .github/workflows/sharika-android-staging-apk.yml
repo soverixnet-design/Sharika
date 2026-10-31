@@ -290,9 +290,9 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
-          target: google_apis
+          target: default
           arch: x86_64
-          profile: pixel_5
+          profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
@@ -308,6 +308,7 @@ jobs:
             adb shell pidof com.soverixnet.sharika
             adb shell uiautomator dump /sdcard/royal-window.xml
             adb shell cat /sdcard/royal-window.xml > royal-qa/back-dialog.xml
+            grep -Eo 'text="[^"]*"' royal-qa/back-dialog.xml | head -n 24
             grep -Fq 'Exit Sharika?' royal-qa/back-dialog.xml
             echo 'SHARIKA_ANDROID_EMULATOR_START_AND_BACK_CONFIRM_OK'
 
