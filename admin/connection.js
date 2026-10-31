@@ -9,6 +9,18 @@
   const API = window.location.origin;
   const FIREBASE_KEY = "AIzaSyAuKw-SVccI_bN4GSC6tOEC1yUm6lkBxQA";
   const SESSION_KEY = 'sharika_admin_firebase_staging_v1';
+  const FIREBASE_PROJECT='sharika-voice-chat-app';
+  const STAFF_SCOPES={
+    view_users:'View users',view_rooms:'View rooms',
+    view_sellers:'View seller records',view_ledger:'View wallet ledger',
+    support_reply:'Support inbox and reply',coin_recharge:'Credit user coins'
+  };
+  const NAV_ALL=(window.NAV||[]).slice();
+  const allowedStaffPage={
+    dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
+    ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
+  };
+  let pendingAdminCredit=null;
   let session = null;
   let role = null;
   let identity = null;
@@ -61,10 +73,14 @@
   }
   async function verifyAdmin() {
     const status = await api('GET','status');
-    if (!['super','support','finance'].includes(status.role))
+    if (!['super','support','finance','staff'].includes(status.role))
       throw new Error('Admin role not assigned');
     role = status.role;
     identity = status;
+    window.NAV=role==='staff'?NAV_ALL.filter(item=>
+      !item[0]||Object.prototype.hasOwnProperty.call(allowedStaffPage,item[0])&&
+      (!allowedStaffPage[item[0]]||status.permissions?.includes(allowedStaffPage[item[0]]))
+    ):NAV_ALL.slice();
     window.ME = session.email || status.name || 'Administrator';
     return status;
   }
@@ -760,12 +776,111 @@
   };
   P.admins=async function () {
     const root=byId('pg');root.innerHTML=card('Admin roles','Loading…');
+    if(role!=='super'){root.innerHTML=card('Admin accounts','Super Admin permission required.');return;}
     try {
-      const data=await api('GET','roles');
-      root.innerHTML='<div class="card"><p class="n">Roles are assigned by the trusted Cloudflare operator. Self-promotion is disabled.</p>'+
+      const [data,team]=await Promise.all([api('GET','roles'),api('GET','staff')]);
+      const scopeFields=(prefix,id,selected=[])=>Object.entries(STAFF_SCOPES).map(([key,label])=>
+        '<label style="display:inline-flex;gap:6px;align-items:center;margin:6px 12px 6px 0">'+
+        '<input type="checkbox" data-staff-scope="'+esc(key)+'" data-staff-group="'+esc(id)+
+        '"'+(selected.includes(key)?' checked':'')+'> '+esc(label)+'</label>').join('');
+      const staffList=(team.staff||[]).map(item=>
+        '<div class="card" data-staff-card="'+item.id+'" style="margin:12px 0">'+
+        '<h4>'+esc(item.name)+' · '+esc(item.email)+'</h4>'+
+        '<p class="n">Staff #'+fmt(item.id)+' · Created '+esc(item.created_at)+'</p>'+
+        '<div>'+scopeFields('edit',item.id,item.permissions||[])+'</div>'+
+        '<div class="row"><label>Max staff coins/day <input inputmode="numeric" data-staff-limit="'+item.id+
+        '" value="'+esc(item.daily_coin_limit)+'"></label>'+
+        '<label><input type="checkbox" data-staff-active="'+item.id+'"'+(item.active?' checked':'')+
+        '> Login enabled</label>'+
+        '<button class="btn s" type="button" data-staff-save="'+item.id+'">Save permissions</button></div>'+
+        '</div>').join('');
+      root.innerHTML='<div class="card"><h3>Protected application administrators</h3>'+
+        '<p class="n">Existing Super, Finance and Support accounts are protected; staff users cannot promote themselves.</p>'+
         window.T(['User ID','Name','Role','Assigned'],(data.admins||[]).map(a=>[
-          esc(a.public_id),esc(a.name),esc(a.role),esc(a.assigned_at)]))+'</div>';
-    }catch(error){root.innerHTML=card('Admin roles unavailable',error.message);}
+          esc(a.public_id),esc(a.name),esc(a.role),esc(a.assigned_at)]))+'</div>'+
+        '<div class="card"><h3>➕ Create staff login</h3>'+
+        '<p class="n">Uses Firebase email/password. Passwords never reach the Sharika server or D1. Staff must verify their email before signing in.</p>'+
+        '<div class="row"><input id="staff-name" maxlength="80" placeholder="Staff display name" aria-label="Staff name">'+
+        '<input id="staff-email" type="email" placeholder="Staff email" aria-label="Staff email">'+
+        '<input id="staff-password" type="password" minlength="12" autocomplete="new-password" placeholder="Temporary password (12+ characters)" aria-label="Staff password"></div>'+
+        '<div>'+scopeFields('new','new')+'</div>'+
+        '<div class="row"><label>Daily recharge limit <input id="staff-limit" inputmode="numeric" value="0"></label>'+
+        '<button class="btn s" id="staff-create" type="button">Create account and invite</button></div>'+
+        '<p class="n">Give each staff member a unique password privately. Revoke access at any time below.</p>'+
+        '<p id="staff-note" class="n" aria-live="polite"></p></div>'+
+        '<div class="card"><h3>Staff accounts and per-action permissions</h3>'+
+        (staffList||'<p class="n">No staff accounts yet.</p>')+'</div>';
+      const note=byId('staff-note');
+      function picked(group){
+        return Array.from(root.querySelectorAll('[data-staff-group="'+group+'"]:checked'))
+          .map(field=>field.dataset.staffScope);
+      }
+      function validateLimit(raw,permissions){
+        const limit=Number(raw);
+        if(!/^\d+$/.test(raw)||!Number.isSafeInteger(limit)||limit<0||limit>10000000||
+           (permissions.includes('coin_recharge')&&limit<1))
+          throw new Error('Set a daily limit of 1–10,000,000 coins when recharge permission is enabled.');
+        return limit;
+      }
+      const create=byId('staff-create');
+      create.onclick=async()=>{
+        if(create.disabled)return;
+        const name=byId('staff-name').value.trim();
+        const email=byId('staff-email').value.trim().toLowerCase();
+        const password=byId('staff-password').value;
+        const permissions=picked('new');
+        let limit;
+        try{limit=validateLimit(byId('staff-limit').value.trim(),permissions);}
+        catch(error){note.textContent=error.message;return;}
+        if(name.length<1||name.length>80||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
+           password.length<12||password.length>128){
+          note.textContent='Enter staff name, valid email and password of 12–128 characters.';return;
+        }
+        if(!window.confirm('Create Firebase login '+email+' with ONLY the selected staff permissions?'))return;
+        create.disabled=true;
+        note.textContent='Creating Firebase account…';
+        let created;
+        try{
+          created=await firebase('accounts:signUp',{email,password,returnSecureToken:true},false);
+          byId('staff-password').value='';
+          if(!created.idToken||!created.localId)throw new Error('Firebase did not return a verified account ID');
+          note.textContent='Saving restricted staff permission…';
+          await api('POST','staff',{
+            name,email,new_staff_id_token:created.idToken,
+            permissions,daily_coin_limit:limit
+          });
+          let emailSent=true;
+          try{await firebase('accounts:sendOobCode',{
+            requestType:'VERIFY_EMAIL',idToken:created.idToken
+          },false);}catch(_){emailSent=false;}
+          await P.admins();
+          const feedback=byId('staff-note');
+          if(feedback)feedback.textContent=emailSent?
+            'Staff login created. Ask '+email+' to verify the email and then sign in.':
+            'Staff created, but verification email failed. Ask them to request a new verification email.';
+        }catch(error){
+          note.textContent=(created?.localId?'Firebase account created; staff access may need an administrator review: ':
+            'Staff not created: ')+error.message;
+        }finally{if(create.isConnected)create.disabled=false;}
+      };
+      root.querySelectorAll('[data-staff-save]').forEach(button=>{
+        button.onclick=async()=>{
+          const id=button.dataset.staffSave;
+          const permissions=picked(id);
+          const raw=root.querySelector('[data-staff-limit="'+id+'"]').value.trim();
+          let limit;
+          try{limit=validateLimit(raw,permissions);}
+          catch(error){note.textContent=error.message;return;}
+          const active=root.querySelector('[data-staff-active="'+id+'"]').checked;
+          if(!window.confirm((active?'Enable':'Suspend')+' staff #'+id+' with the selected permissions?'))return;
+          button.disabled=true;
+          try{await api('PATCH','staff/'+id,{permissions,daily_coin_limit:limit,active});
+            await P.admins();
+          }catch(error){note.textContent='Staff permissions not updated: '+error.message;}
+          finally{if(button.isConnected)button.disabled=false;}
+        };
+      });
+    }catch(error){root.innerHTML=card('Admin staff management unavailable',error.message);}
   };
   P.rank=async function () {
     const root=byId('pg');
@@ -826,8 +941,73 @@
         'These are persisted counts, not live presence. No fake online-user figures.');
     }catch(error){root.innerHTML=card('Analytics unavailable',error.message);}
   };
+  async function mountDirectRecharge(root){
+    const section=document.createElement('div');
+    section.className='card';
+    section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
+      '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
+      '<div class="row"><input id="direct-user" maxlength="8" inputmode="numeric" placeholder="Recipient 8-digit user ID" aria-label="User ID">'+
+      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (1–1,000,000)" aria-label="Coin amount"></div>'+
+      '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
+      '<button id="direct-submit" class="btn s" type="button">Credit user wallet</button></div>'+
+      '<p id="direct-note" class="n" aria-live="polite"></p>'+
+      '<h4>Verified direct credit history</h4><div id="direct-history">Loading…</div>';
+    root.insertBefore(section,root.firstChild);
+    const note=byId('direct-note'),history=byId('direct-history');
+    async function refreshHistory(){
+      try{
+        const response=await api('GET','recharge-user');
+        history.innerHTML=window.T(['Transaction','Recipient','Coins','Balance','Reason','Time'],
+          (response.grants||[]).map(item=>[
+            fmt(item.id),esc(item.recipient_id),fmt(item.coins),
+            fmt(item.balance_after),esc(item.reason),esc(item.created_at)]));
+        if(role==='staff')note.textContent='Your daily allowed limit: '+
+          fmt(response.daily_coin_limit)+' coins.';
+      }catch(error){history.textContent='Credit history unavailable: '+error.message;}
+    }
+    const button=byId('direct-submit');
+    button.onclick=async()=>{
+      if(button.disabled)return;
+      const target=byId('direct-user').value.trim();
+      const raw=byId('direct-coins').value.trim();
+      const amount=Number(raw);
+      const reason=byId('direct-reason').value.trim();
+      if(!/^[0-9]{8}$/.test(target)||!/^[0-9]+$/.test(raw)||
+         !Number.isSafeInteger(amount)||amount<1||amount>1000000||
+         reason.length<8||reason.length>200){
+        note.textContent='Enter 8-digit ID, 1–1,000,000 coins and an 8–200 character reason.';return;
+      }
+      if(!window.confirm('Credit '+fmt(amount)+' real coins to user '+target+
+        '? Reason: '+reason+'\nThis grant is permanently audited.'))return;
+      const fingerprint=target+':'+amount+':'+reason;
+      const requestId=pendingAdminCredit?.fingerprint===fingerprint?
+        pendingAdminCredit.requestId:
+        'admin-credit:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+      pendingAdminCredit={fingerprint,requestId};
+      button.disabled=true;note.textContent='Submitting one auditable coin credit…';
+      try{
+        const result=await api('POST','recharge-user',{
+          target_public_id:target,coins:amount,reason,request_id:requestId
+        });
+        pendingAdminCredit=null;
+        note.textContent=(result.duplicate?'Already credited (safe retry). ':'Credit confirmed. ')+
+          'Transaction #'+result.transaction_id+' · New wallet '+fmt(result.balance_after)+' coins.';
+        byId('direct-coins').value='';
+        await refreshHistory();
+      }catch(error){
+        note.textContent='Not confirmed; check credit history, then retry the SAME amount and reason. '+error.message;
+      }finally{button.disabled=false;}
+    };
+    await refreshHistory();
+  }
+
   P.rech=async function(){
     const root=byId('pg');
+    if(role==='staff'&&identity?.permissions?.includes('coin_recharge')){
+      root.innerHTML='';
+      await mountDirectRecharge(root);
+      return;
+    }
     if(role!=='super'&&role!=='finance'){
       root.innerHTML=card('Recharge requests','Only verified Finance or Super Admin can approve payments.');
       return;
@@ -880,7 +1060,7 @@
       if(busy)return;
       const idRaw=byId('rc-request-id').value.trim();
       const id=Number(idRaw);
-      if(!/^\\d+$/.test(idRaw)||!Number.isSafeInteger(id)||id<1){
+      if(!/^\d+$/.test(idRaw)||!Number.isSafeInteger(id)||id<1){
         note.textContent='Select a genuine pending support request first.';return;
       }
       let data={support_message_id:id},question;
@@ -888,7 +1068,7 @@
         const raw=byId('rc-amount').value.trim(),coins=Number(raw);
         const method=byId('rc-method').value.trim();
         const reference=byId('rc-reference').value.trim();
-        if(!/^\\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000||
+        if(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000||
             method.length<2||reference.length<6||!byId('rc-verified').checked){
           note.textContent='Enter a valid coin amount, payment method, receipt ID, and check verified payment.';return;
         }
@@ -921,6 +1101,7 @@
     byId('rc-approve').onclick=()=>review('approve');
     byId('rc-reject').onclick=()=>review('reject');
     await refresh();
+    if(role==='super')await mountDirectRecharge(root);
   };
 
   P.banners=async function(){
@@ -1009,6 +1190,15 @@
   P.system=async function () {
     const root=byId('pg');
     root.innerHTML=card('Sharika staging','Firebase login and D1 role enforcement active. Only audited, authenticated wallet operations are permitted.');
+  };
+
+  const verifiedDashboard=P.dash;
+  P.dash=async function(){
+    if(role!=='staff')return verifiedDashboard();
+    const granted=(identity?.permissions||[]).map(p=>STAFF_SCOPES[p]).filter(Boolean);
+    byId('pg').innerHTML='<div class="card"><h3>Restricted staff dashboard</h3>'+
+      '<p class="n">Verified Firebase staff login. Only your assigned modules are available. Financial actions are audited.</p>'+
+      '<p>'+esc(granted.join(' · ')||'No permissions assigned')+'</p></div>';
   };
 
   // The original visual-only dashboard includes demo pages. Replace every
