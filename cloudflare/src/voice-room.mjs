@@ -37,6 +37,12 @@ export class SharikaVoiceRoom extends DurableObject {
         'CREATE INDEX IF NOT EXISTS room_chat_by_user ON room_chat(uid, id)'
       );
       this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_entry_events ('+
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT NOT NULL, '+
+        'public_id TEXT NOT NULL, display_name TEXT NOT NULL, '+
+        'entry_style TEXT NOT NULL, created_at_ms INTEGER NOT NULL)'
+      );
+      this.ctx.storage.sql.exec(
         'CREATE TABLE IF NOT EXISTS room_seat_locks (' +
         'seat_no INTEGER PRIMARY KEY CHECK(seat_no BETWEEN 1 AND 20), ' +
         'locked_at_ms INTEGER NOT NULL)'
@@ -363,6 +369,35 @@ export class SharikaVoiceRoom extends DurableObject {
     );
     return {message:{id,sender_id:publicId,name:displayName,body,created_at_ms:now},
       duplicate:false};
+  }
+
+  // Every room attendee reads the same server-authored entry events; join
+  // animations cannot be forged with a client-only decorative style.
+  async roomEntryAnnounce(uid,publicId,displayName,style) {
+    if(!style)return {announced:false};
+    const now=Date.now();
+    const recent=this.ctx.storage.sql.exec(
+      'SELECT created_at_ms FROM room_entry_events WHERE uid=? ORDER BY id DESC LIMIT 1',uid
+    ).toArray()[0];
+    if(recent && now-Number(recent.created_at_ms)<4000)return {announced:false};
+    this.ctx.storage.sql.exec(
+      'INSERT INTO room_entry_events(uid,public_id,display_name,entry_style,created_at_ms) VALUES(?,?,?,?,?)',
+      uid,publicId,displayName,style,now
+    );
+    this.ctx.storage.sql.exec(
+      'DELETE FROM room_entry_events WHERE id < '+
+      '(SELECT id FROM room_entry_events ORDER BY id DESC LIMIT 1 OFFSET 99)'
+    );
+    return {announced:true};
+  }
+  async roomEntryRead(afterId) {
+    const safeAfter=Number.isSafeInteger(afterId)&&afterId>=0?afterId:0;
+    const events=this.ctx.storage.sql.exec(
+      'SELECT id,public_id AS user_id,display_name AS name,entry_style,created_at_ms '+
+      'FROM room_entry_events WHERE id>? AND created_at_ms>=? '+
+      'ORDER BY id DESC LIMIT 30',safeAfter,Date.now()-30_000
+    ).toArray().reverse();
+    return {events};
   }
 
   async presenceTouch(uid, roomId) {
