@@ -20,3 +20,35 @@ test('mic button retries a failed capture or an interrupted uplink',()=>{
   assert.match(ui,/if\(failed\|\|!track\|\|track\.readyState!=='live'\)/);
   assert.match(ui,/return restartMicrophone\(window\.cur\?\.id\|\|wantedVoiceRoom\)/);
 });
+
+test('room palette and gallery photo are authoritative for every joined phone',()=>{
+  assert.match(ui,/api\('GET','\/rooms\/'\+room\.id\+'\/members'\)/);
+  assert.match(ui,/data\.theme_background_url/);
+  assert.match(ui,/frame\.S\.bg=sharedImage/);
+  assert.match(ui,/frame\.S\.theme=palette/);
+  assert.match(ui,/pickRoomCover\(room,frame,true\)/);
+  assert.match(ui,/api\('PATCH','\/rooms\/'\+room\.id,\{theme:nextTheme\}\)/);
+  assert.match(ui,/api\('PATCH','\/rooms\/'\+room\.id,\{theme:'photo'\}\)/);
+  assert.match(ui,/\.app\.hasbg\{background-position:center center!important;background-size:cover!important/);
+});
+
+test('seat emojis follow the authenticated speaker and remote events match the same public ID',()=>{
+  assert.match(ui,/frame\.seatEmoji=function\(_ignoredIndex,emoji\)/);
+  assert.match(ui,/frame\.seats\?\.find\(slot=>slot\?\.user_id===session\?\.user\?\.id\)/);
+  assert.match(ui,/originalSeatEmoji\(mine\.i,emoji\)/);
+  assert.match(ui,/frame\.seats\?\.find\(slot=>slot\?\.public_id===event\.public_id\)/);
+  assert.match(ui,/originalSeatEmoji\(target\.i,emoji\)/);
+  assert.match(ui,/Take an unlocked mic seat to show a seat emoji/);
+});
+
+test('clicked seat profile resolves server ID, not the old seat-zero self shortcut',()=>{
+  assert.match(ui,/event\.source!==frame\|\|event\.data\?\.t!=='profile'/);
+  assert.match(ui,/event\.stopImmediatePropagation\(\)/);
+  assert.match(ui,/api\('GET','\/users\/'\+publicId\)/);
+  assert.match(ui,/Seat occupant has changed/);
+  assert.match(ui,/detail\.textContent='ID '\+id/);
+  assert.match(ui,/frame\.act\(action,index\)/);
+  assert.match(ui,/fakeStats\.style\.display='none'/);
+  assert.match(ui,/paintVerifiedAvatar\(root\.querySelector\('\.pfh \.pav3'\),member\.pic,document\)/);
+  assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+publicId\+'\/follow'\)/);
+});

@@ -2,6 +2,7 @@ package com.soverixnet.sharika;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.content.pm.PackageManager;
@@ -75,6 +76,8 @@ public final class SharikaActivity extends Activity {
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
+    private boolean backInProgress;
+    private Runnable unregisterModernBack;
     private PermissionRequest pendingMic;
     private ValueCallback<Uri[]> pendingImageSelection;
     private String pendingProfilePhotoId;
@@ -117,6 +120,16 @@ public final class SharikaActivity extends Activity {
                 String destination = request.getUrl().toString();
                 return !destination.startsWith("file:///android_asset/");
             }
+            @Override public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                if (!"file:///android_asset/index.html".equals(url)) return;
+                // Inject only into the packaged staging UI, never a remote page.
+                view.evaluateJavascript(
+                    "(function(){if(!document.getElementById('sharika-android-back')){" +
+                    "var s=document.createElement('script');s.id='sharika-android-back';" +
+                    "s.src='./back-navigation.js';document.head.appendChild(s);}})()",
+                    null);
+            }
         });
         browser.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(PermissionRequest request) {
@@ -144,6 +157,59 @@ public final class SharikaActivity extends Activity {
         });
         setContentView(browser, new ViewGroup.LayoutParams(-1, -1));
         browser.loadUrl("file:///android_asset/index.html");
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            unregisterModernBack = Api33BackHandler.register(this);
+        }
+    }
+
+    // One route handles the hardware Back key and Android 13+ back gestures.
+    @Override @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        handleSystemBack();
+    }
+
+    private void handleSystemBack() {
+        if (backInProgress || isFinishing() || isDestroyed()) return;
+        if (browser == null) { confirmExit(); return; }
+        backInProgress = true;
+        browser.evaluateJavascript(
+            "(function(){try{return typeof window.sharikaHandleAndroidBack==='function'" +
+            "?window.sharikaHandleAndroidBack():'exit';}catch(e){return 'exit';}})()",
+            result -> {
+                backInProgress = false;
+                if (!isFinishing() && !isDestroyed() && !"\"handled\"".equals(result)) {
+                    confirmExit();
+                }
+            });
+    }
+
+    private void confirmExit() {
+        if (isFinishing() || isDestroyed()) return;
+        new AlertDialog.Builder(this)
+            .setTitle("Exit Sharika?")
+            .setMessage("Do you want to exit the app? An active voice room will disconnect.")
+            .setNegativeButton("Stay", null)
+            .setPositiveButton("Exit", (dialog, which) -> {
+                if (browser == null) { finish(); return; }
+                // Best-effort voice/seat cleanup through the existing room
+                // lifecycle. Never make the Back button instantly quit a room.
+                browser.evaluateJavascript(
+                    "(function(){try{if(window.cur&&typeof window.leaveRoom==='function')" +
+                    "window.leaveRoom();}catch(e){}})()", null);
+                browser.postDelayed(this::finish, 400);
+            })
+            .show();
+    }
+
+    // Keep API 33-only types isolated for Android 8-12 installations.
+    private static final class Api33BackHandler {
+        static Runnable register(SharikaActivity activity) {
+            android.window.OnBackInvokedCallback callback = activity::handleSystemBack;
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+            return () -> activity.getOnBackInvokedDispatcher()
+                .unregisterOnBackInvokedCallback(callback);
+        }
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -504,13 +570,22 @@ public final class SharikaActivity extends Activity {
         // query string. All other arbitrary query parameters stay blocked.
         if (path.matches("^/api/v1/rooms/[0-9]{8}/chat\\?after=(0|[1-9][0-9]{0,11})$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/entries\\?after=(0|[1-9][0-9]{0,11})$"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/reactions\\?after=(0|[1-9][0-9]{0,11})$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/presence/heartbeat")) return method.equals("POST");
         if (path.equals("/api/v1/me/avatar")) return method.equals("PUT");
         if (path.equals("/api/v1/me"))
             return method.equals("GET") || method.equals("POST") || method.equals("PATCH");
         if (path.equals("/api/v1/banners")) return method.equals("GET");
+        if (path.equals("/api/v1/events")) return method.equals("GET");
+        if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
+        if (path.equals("/api/v1/cosmetics/purchase") ||
+            path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
         if (path.equals("/api/v1/wallet")) return method.equals("GET");
+        if (path.equals("/api/v1/wallet/exchange-rate")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange")) return method.equals("POST");
         if (path.equals("/api/v1/follows") || path.equals("/api/v1/messages") ||
             path.equals("/api/v1/gifts")) return method.equals("GET");
@@ -529,6 +604,10 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/bet$"))
             return method.equals("POST");
+        if (path.matches("^/api/v1/greedy-wheel/(state|records)$"))
+            return method.equals("GET");
+        if (path.equals("/api/v1/greedy-wheel/bet"))
+            return method.equals("POST");
         if (path.equals("/api/v1/games")) return method.equals("GET");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
@@ -544,6 +623,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
+            return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/locks$"))
@@ -553,6 +634,8 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}/invitations/respond$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/chat$"))
+            return method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/reactions$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/(join|leave)$"))
             return method.equals("POST");
@@ -662,6 +745,10 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (unregisterModernBack != null) {
+            unregisterModernBack.run();
+            unregisterModernBack = null;
+        }
         if (pendingMic != null) { pendingMic.deny(); pendingMic = null; }
         if (browser != null) {
             browser.removeJavascriptInterface("SharikaNative");

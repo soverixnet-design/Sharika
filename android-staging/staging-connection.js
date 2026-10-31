@@ -82,7 +82,8 @@
   const calls = new Map();
   let seq = 0, session = null, profile = null;
   let balance = { coins: 0, dia: 0, xp: 0 };
-  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null;
+  let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null,
+    reactionPoll = null;
   let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
   let voiceBackend = null;
 
@@ -564,14 +565,16 @@
       const data=await api('GET','/sellers/me');
       if(requestNo!==sellerProfileRequest||session?.user?.id!==id||!anchor.isConnected)return;
       const seller=data.seller;
-      if(!seller)return;
+      if(!seller?.active)return;
       const button=document.createElement('button');
       button.id='sharika-seller-wallet-entry';
       button.type='button';
-      button.textContent='🪙 Seller Wallet · '+Number(seller.available_coins||0).toLocaleString('en-US')+' coins';
+      button.textContent='🪙 Recharge my ID · Seller stock '+
+        Number(seller.available_coins||0).toLocaleString('en-US');
       button.style.cssText='display:block;margin:8px auto;padding:8px 14px;border:1px solid #f0be55;'+
         'border-radius:15px;background:#3b225b;color:#fff;font-weight:700;font-size:12px';
-      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true});
+      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true,
+        targetId:profile?.public_id||''});
       (document.getElementById('sh-sovera-own-identity')||anchor).insertAdjacentElement('afterend',button);
     }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
   }
@@ -625,7 +628,14 @@
     'color:#ddd0ff;line-height:1.4;word-break:break-word}',
     '#sharika-photo-status[data-state="success"]{color:#91ffd5}',
     '#sharika-photo-status[data-state="error"]{color:#ffc7ca}',
-    '#sharika-photo-status[data-state="pending"]{color:#ffe08d}'
+    '#sharika-photo-status[data-state="pending"]{color:#ffe08d}',
+    '#sharika-profile-save-status{margin:2px 0 12px;color:#d9c8ff;font-size:12px;line-height:1.5;text-align:center}',
+    '#sharika-profile-save-status[data-state="pending"]{color:#ffe08d}',
+    '#sharika-profile-save-status[data-state="success"]{color:#9affd9}',
+    '#sharika-profile-save-status[data-state="error"]{color:#ffc0c8}',
+    '#sharika-photo-preview{cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}',
+    '#sharika-photo-preview:active{transform:scale(.95)}',
+    '#sh.sharika-profile-editor #es:focus-visible,#sharika-photo-preview:focus-visible{outline:3px solid #ffd787;outline-offset:3px}'
   ].join('');
   document.head.appendChild(profileDepthStyle);
   function photoEditStatus(message,state='info'){
@@ -641,10 +651,11 @@
     editBio.maxLength=500;
     const block=document.createElement('div');
     block.id='sharika-photo-editor';
-    const preview=document.createElement('div');
+    const preview=document.createElement('button');
+    preview.type='button';
+    preview.title='Choose a new profile photo';
     preview.id='sharika-photo-preview';
-    preview.setAttribute('role','img');
-    preview.setAttribute('aria-label','Your verified profile photo');
+    preview.setAttribute('aria-label','Choose your profile photo from gallery');
     const safe=verifiedAvatarUrl(profile?.pic);
     if(safe)preview.style.backgroundImage='url("'+safe+'")';
     else preview.textContent='👤';
@@ -662,7 +673,15 @@
     const photo=sheet.querySelector('#ep');
     if(photo)photo.innerHTML='<span>📷</span>Choose photo';
     const save=sheet.querySelector('#es');
-    if(save)save.textContent='✓ Save changes';
+    if(save){
+      save.textContent='✓ Save changes';
+      const saveStatus=document.createElement('div');
+      saveStatus.id='sharika-profile-save-status';
+      saveStatus.setAttribute('role','status');
+      saveStatus.setAttribute('aria-live','polite');
+      saveStatus.textContent='Changes are saved to your verified Sharika ID.';
+      save.after(saveStatus);
+    }
   }
   const originalOpenSheetForProfile=window.openSheet;
   if(typeof originalOpenSheetForProfile==='function')window.openSheet=function(){
@@ -682,6 +701,7 @@
     avatarUploadBusy=true;
     const accountId=session.user.id;
     const publicId=profile.public_id;
+    const previousPic=verifiedAvatarUrl(profile.pic);
     try{
       photoEditStatus('Opening Android gallery…','pending');
       toast('Opening your Android photo gallery…');
@@ -694,7 +714,20 @@
         throw new Error('Gallery did not return a usable photo');
       photoEditStatus('Saving image to your Sharika ID…','pending');
       toast('Uploading your profile photo…');
-      const saved=await api('PUT','/me/avatar',{image_data});
+      let saved;
+      try{
+        saved=await api('PUT','/me/avatar',{image_data});
+      }catch(error){
+        // A mobile timeout can happen after the server committed the upload.
+        // Reconcile the version before telling a user to retry an already saved photo.
+        if(!/timed out|timeout|network|connection|unavailable|http[_ ]?5[0-9]{2}/i.test(errText(error)))
+          throw error;
+        const checked=await api('GET','/me').catch(()=>null);
+        if(checked?.public_id!==publicId ||
+          !verifiedAvatarUrl(checked.pic) || checked.pic===previousPic)
+          throw error;
+        saved=checked;
+      }
       if(session?.user?.id!==accountId || saved?.public_id!==publicId)
         throw new Error('Profile changed before photo confirmation');
       if(!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(saved.pic||''))
@@ -712,7 +745,8 @@
       }
       profile=latest;
       window.A.pic=latest.pic;
-      window.saveA();window.renderMe();
+      try{window.saveA();window.renderMe();}
+      catch(error){console.warn('Photo saved; local redraw deferred:',errText(error));}
       const preview=document.getElementById('sharika-photo-preview');
       if(preview){preview.style.backgroundImage='url("'+latest.pic+'")';preview.textContent='';}
       photoEditStatus(readbackConfirmed?'Photo saved to your ID ✓':
@@ -743,31 +777,47 @@
   // The original HTML photo picker writes only to localStorage. In staging
   // route every profile photo selection through the verified server wallet ID.
   document.addEventListener('click',event=>{
-    if(event.target.closest?.('#v-me #pavb, #v-me .mav, #sh #ep')){
+    if(event.target.closest?.('#v-me #pavb, #v-me .mav, #sh #ep, #sh #sharika-photo-preview')){
       event.preventDefault();event.stopImmediatePropagation();
       pickProfilePhoto();
     }
   },true);
-  // The original edit form writes only to localStorage. Save verified
-  // profile name/bio through the same Firebase-authenticated D1 profile.
-  document.addEventListener('click',event=>{
+  // Profile text edits only complete after a verified D1 response.
+  document.addEventListener('click',async event=>{
     const save=event.target.closest?.('#sh #es');
     if(!save)return;
     event.preventDefault();event.stopImmediatePropagation();
     if(!session||!profile){toast('Sign in to edit your profile');return;}
     const name=document.getElementById('en')?.value?.trim()||'';
     const bio=document.getElementById('eb')?.value?.trim()||'';
-    if(!name||name.length>80||bio.length>500){toast('Check name and bio length');return;}
+    const status=document.getElementById('sharika-profile-save-status');
+    const showStatus=(message,state)=>{
+      if(status){status.textContent=message;status.dataset.state=state;}
+    };
+    if(!name||name.length>80||bio.length>500){
+      showStatus('Check your name (1–80) and bio (up to 500 characters).','error');
+      return;
+    }
     if(save.disabled)return;
+    const accountId=session.user.id,publicId=profile.public_id;
     save.disabled=true;
-    api('PATCH','/me',{name,bio}).then(saved=>{
-      if(saved.public_id!==profile.public_id)throw new Error('Profile identity mismatch');
+    showStatus('Saving your profile to Sharika…','pending');
+    try{
+      const saved=await api('PATCH','/me',{name,bio});
+      if(session?.user?.id!==accountId||saved.public_id!==publicId)
+        throw new Error('Profile identity changed; sign in again');
       profile=saved;
-      window.A.name=saved.name;window.A.bio=saved.bio||'';
-      window.saveA();window.closeSheet();window.renderMe();
+      window.A.name=saved.name;
+      window.A.bio=saved.bio||'';
+      try{window.saveA();window.renderMe();}
+      catch(error){console.warn('Profile saved; display refresh deferred:',errText(error));}
+      showStatus('Profile saved ✓','success');
+      window.closeSheet();
       toast('Profile saved to your verified ID ✓');
-    }).catch(error=>toast('Profile not saved: '+errText(error)))
-      .finally(()=>{if(save.isConnected)save.disabled=false;});
+    }catch(error){
+      showStatus('Not saved: '+errText(error),'error');
+      toast('Profile not saved: '+errText(error));
+    }finally{if(save.isConnected)save.disabled=false;}
   },true);
   const priorRenderMe=window.renderMe;
   if(typeof priorRenderMe==='function')window.renderMe=function(){
@@ -1444,7 +1494,7 @@
     }finally{URL.revokeObjectURL(blobUrl);}
   }
   let coverUploadBusy=false;
-  function pickRoomCover(room,frame=null){
+  function pickRoomCover(room,frame=null,useAsTheme=false){
     if(!session||room?.owner_id!==session.user.id){
       toast('Only the room owner can change its cover photo');return;
     }
@@ -1470,9 +1520,25 @@
           preview.style.backgroundSize='cover';
           preview.textContent='';
         }
-        await reloadRooms();
-        toast('Room photo saved · visible on room cards ✓');
-      }catch(error){toast('Room photo not saved: '+errText(error));}
+        if(useAsTheme){
+          // Gallery artwork is a verified room image, never a device-local
+          // data URL. Reuse its versioned room-cover asset for all guests.
+          const result=await api('PATCH','/rooms/'+room.id,{theme:'photo'});
+          if(result.room?.theme!=='photo')
+            throw new Error('Shared room background was not confirmed');
+          room.th='photo';
+          if(frame?.S && window.cur?.id===room.id)
+            await syncFrame(room,frame).catch(error=>
+              console.warn('Theme saved; room refresh delayed:',errText(error)));
+        }
+        await reloadRooms().catch(error=>
+          console.warn('Room photo saved; card refresh delayed:',errText(error)));
+        if(useAsTheme && frame?.$?.('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))
+          frame.themeSheet();
+        toast(useAsTheme?'Room background saved for everyone ✓':
+          'Room photo saved · visible on room cards ✓');
+      }catch(error){toast((useAsTheme?'Room background':'Room photo')+
+        ' not fully saved: '+errText(error));}
       finally{coverUploadBusy=false;}
     };
     picker.click();
@@ -1548,10 +1614,20 @@
     if(['grad','gold','neon','sq'].includes(data.seat_frame_style))
       room.seat_frame_style=data.seat_frame_style;
     const chosenSeatFrame=room.seat_frame_style||'grad';
-    if(frame.S.frame!==chosenSeatFrame){
-      frame.S.frame=chosenSeatFrame;
-      if(typeof frame.applyTheme==='function')frame.applyTheme();
-    }
+    // Theme is authoritative in the shared room snapshot. Neither the
+    // owner's phone nor a guest's stale localStorage may override it.
+    const chosenTheme=['mid','gold','ocean','rose','forest','sunset','photo']
+      .includes(data.theme)?data.theme:'mid';
+    const sharedImage=chosenTheme==='photo'
+      ?verifiedCoverUrl(data.theme_background_url):null;
+    const palette=chosenTheme==='photo'?'mid':chosenTheme;
+    const themeChanged=room.th!==chosenTheme||frame.S.theme!==palette||
+      frame.S.bg!==sharedImage||frame.S.frame!==chosenSeatFrame;
+    room.th=chosenTheme;
+    frame.S.theme=palette;
+    frame.S.bg=sharedImage;
+    frame.S.frame=chosenSeatFrame;
+    if(themeChanged&&typeof frame.applyTheme==='function')frame.applyTheme();
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
@@ -1592,6 +1668,120 @@
     // history, not the 15-second seat/member snapshot that misses guests.
     frame.__soveraSeenMembers=new Set((data.members||[]).map(m=>m.user_id));
   }
+  // Profile identity always follows the authenticated room member ID. The
+  // original HTML treated seat zero as "my profile" even in another's room.
+  async function openVerifiedRoomMemberProfile(publicId,roomId,seatNo=null) {
+    if(!session||!/^[0-9]{8}$/.test(String(publicId||''))||window.cur?.id!==roomId)
+      throw new Error('Verified room profile unavailable');
+    const member=await api('GET','/users/'+publicId);
+    if(String(member.id)!==String(publicId)||window.cur?.id!==roomId)
+      throw new Error('Room member identity changed');
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(Number.isInteger(seatNo) && seatNo>=0 &&
+       String(frame?.seats?.[seatNo]?.public_id||'')!==String(publicId))
+      throw new Error('Seat occupant has changed');
+    window.openProfile({id:String(member.id),n:String(member.name||'Member'),
+      e:'👤',lv:Number(member.wealth_level)||1});
+    const root=document.getElementById('pfc');
+    if(!root)return;
+    // The original non-owner profile model invents age, gifts, followers and
+    // badges. Do not present those demo numbers as verified public records.
+    paintVerifiedAvatar(root.querySelector('.pfh .pav3'),member.pic,document);
+    const meta=root.querySelector('.pfh .meta');
+    if(meta){
+      for(const item of [...meta.children].slice(1))item.remove();
+      if(member.country){
+        const country=document.createElement('span');
+        country.textContent=String(member.country);
+        meta.appendChild(country);
+      }
+    }
+    const bio=root.querySelector('.pfh .bio');
+    if(bio)bio.textContent='Verified Sharika member';
+    const levels=root.querySelectorAll('.lvc .big3');
+    if(levels[0])levels[0].textContent=Number(member.wealth_level)||1;
+    if(levels[1])levels[1].textContent=Number(member.charm_level)||1;
+    root.querySelectorAll('.lvc .lvb').forEach(el=>el.style.display='none');
+    const fakeStats=root.querySelector('.st4');
+    if(fakeStats)fakeStats.style.display='none';
+    const fakeTabs=root.querySelector('.tabs');
+    if(fakeTabs) {
+      fakeTabs.style.display='none';
+      let next=fakeTabs.nextElementSibling;
+      while(next){next.style.display='none';next=next.nextElementSibling;}
+    }
+    const follow=root.querySelector('#pfol');
+    if(follow){
+      if(publicId===profile?.public_id)follow.style.display='none';
+      else {
+        follow.disabled=true;follow.textContent='Checking follow…';
+        async function refreshFollow(){
+          const status=await api('GET','/users/'+publicId+'/follow');
+          if(!follow.isConnected)return;
+          const following=!!status.following;
+          follow.textContent=following?'✓ Following':'+ Follow';
+          follow.disabled=false;
+          follow.onclick=async()=>{
+            follow.disabled=true;
+            try{await api(following?'DELETE':'PUT','/users/'+publicId+'/follow');
+              await refreshFollow();}
+            catch(error){toast('Follow unavailable: '+errText(error));
+              if(follow.isConnected)follow.disabled=false;}
+          };
+        }
+        refreshFollow().catch(error=>{
+          if(follow.isConnected)follow.textContent='Follow unavailable';
+          console.warn('Member follow unavailable:',errText(error));
+        });
+      }
+    }
+    const message=root.querySelector('#pmsg');
+    if(message)message.onclick=async()=>{
+      if(publicId===profile?.public_id){toast('Choose another member');return;}
+      message.disabled=true;
+      try{
+        document.getElementById('pfo')?.classList.remove('on');
+        document.getElementById('rw')?.classList.remove('on');
+        document.getElementById('mini')?.classList.add('on');
+        window.go('msg');await window.renderMsg();
+        await openPrivateThread(publicId,String(member.name||'Member'));
+      }catch(error){toast('Message unavailable: '+errText(error));}
+      finally{if(message.isConnected)message.disabled=false;}
+    };
+    const gift=root.querySelector('#pgift');
+    if(gift)gift.onclick=async()=>{
+      const currentFrame=document.getElementById('rf')?.contentWindow;
+      if(window.cur?.id!==roomId||!currentFrame?.__sharikaOpenVerifiedGiftBox){
+        toast('Join the member’s room to send a gift');return;
+      }
+      document.getElementById('pfo')?.classList.remove('on');
+      await currentFrame.__sharikaOpenVerifiedGiftBox({
+        id:publicId,name:String(member.name||'Member')
+      });
+    };
+    const more=root.querySelector('#pmore');
+    if(more)more.onclick=()=>{
+      const currentFrame=document.getElementById('rf')?.contentWindow;
+      document.getElementById('pfo')?.classList.remove('on');
+      currentFrame?.__sharikaReportMember?.(publicId,String(member.name||'Member'));
+    };
+  }
+  if(typeof window.addEventListener==='function')window.addEventListener('message',event=>{
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(event.source!==frame||event.data?.t!=='profile')return;
+    // Capture before the original handler's incorrect seat===0 self shortcut.
+    event.stopImmediatePropagation();
+    const roomId=window.cur?.id;
+    const user=event.data?.u;
+    const seat=Number.isInteger(user?.seat)&&user.seat>=0?user.seat:null;
+    const id=seat!==null?frame?.seats?.[seat]?.public_id:
+      (frame?.U||[]).some(u=>u?.id===user?.id)?user.id:null;
+    if(!roomId||!/^[0-9]{8}$/.test(String(id||''))){
+      toast('Verified room member unavailable');return;
+    }
+    openVerifiedRoomMemberProfile(id,roomId,seat).catch(error=>
+      toast('Profile unavailable: '+errText(error)));
+  },true);
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
     if (frame && frame.document) fitAndroidViewport(frame.document, true);
@@ -1602,6 +1792,10 @@
       const seatStyle=frame.document.createElement('style');
       seatStyle.id='sharika-seat-depth';
       seatStyle.textContent=[
+        // Gallery themes stay on the room's background layer. Seat buttons,
+        // gift controls and message composer remain above and clickable.
+        '.app.hasbg{background-position:center center!important;background-size:cover!important;background-repeat:no-repeat!important}',
+        '.app.hasbg .blob{opacity:.08}',
         '.seat .av{transform-style:preserve-3d;transition:transform .18s ease,filter .18s ease}',
         '.seat:not(.empty):not(.lock) .av{filter:drop-shadow(0 8px 7px rgba(4,2,19,.42))}',
         '.seat .face{border:2px solid rgba(255,255,255,.38);box-shadow:inset 0 4px 6px rgba(255,255,255,.23),inset 0 -10px 16px rgba(10,3,39,.47),0 5px 0 rgba(8,4,27,.55),0 12px 19px rgba(0,0,0,.48)}',
@@ -1617,6 +1811,32 @@
         '@media (prefers-reduced-motion:reduce){.seat .av{transition:none}}'
       ].join('');
       frame.document.head.appendChild(seatStyle);
+    }
+    // Keep the original 3D theme tiles while explaining their shared scope.
+    const originalThemeSheet=frame.themeSheet;
+    if(typeof originalThemeSheet==='function'){
+      frame.themeSheet=function(...args){
+        const result=originalThemeSheet.apply(this,args);
+        const gallery=frame.$('gal');
+        if(gallery){
+          const caption=gallery.querySelector('small');
+          if(caption)caption.textContent=room.th==='photo'
+            ?'Shared with everyone · also updates the room card photo'
+            :'Choose a photo · all room members will see it';
+          if(room.th==='photo'){
+            gallery.style.background='linear-gradient(125deg,rgba(156,99,255,.25),rgba(41,22,83,.85))';
+            gallery.style.border='1px solid rgba(233,207,255,.56)';
+          }
+          const note=frame.document.createElement('div');
+          note.setAttribute('role','status');
+          note.style.cssText='margin:8px 0 12px;padding:11px 12px;border-radius:13px;'+
+            'border:1px solid rgba(203,179,255,.22);background:rgba(35,20,78,.58);'+
+            'color:#d9cef8;font-size:12px;line-height:1.45';
+          note.textContent='✓ Theme changes are saved to this room and shown to everyone.';
+          gallery.after(note);
+        }
+        return result;
+      };
     }
     frame.tick=function(){};
     frame.U=[];
@@ -1637,6 +1857,7 @@
     let lastGiftEventId=null;
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     let lastEntryEventId=0,entryPollInFlight=null;
+    let lastReactionId=0,reactionPollInFlight=null;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
     // Report a verified member or room through the existing authenticated
@@ -1690,6 +1911,7 @@
       };
       box.append(label,reason,submit);
     }
+    frame.__sharikaReportMember=(id,name)=>openVerifiedReport('user',id,name);
     const giftButton=frame.$ && frame.$('bGift');
     const originalGiftOpen=giftButton && giftButton.onclick;
     let directGiftTarget=null;
@@ -1768,6 +1990,7 @@
         } else frame.toast('Gift box unavailable');
       }catch(error){frame.toast('Gift catalog unavailable: '+errText(error));}
     }
+    frame.__sharikaOpenVerifiedGiftBox=openVerifiedGiftBox;
     if(giftButton)giftButton.onclick=()=>openVerifiedGiftBox(null);
     // The original gift game debits a local wallet; always intercept before it
     // executes, settle at the server, then use the original gift flight artwork.
@@ -1801,8 +2024,8 @@
         frame.S.coins=balance.coins;
         frame.S.xp=balance.xp;
         frame.close();
-        frame.toast('Gift sent · '+result.spent_coins+' coins charged · Room +'+
-        Number(result.room_reward_coins||0).toLocaleString('en-US')+' coins ✓');
+        frame.toast('Gift sent · '+result.spent_coins+' coins charged · Room reward 10% · Owner +'+
+          Number(result.owner_reward_coins||0).toLocaleString('en-US')+' coins ✓');
         if(result.lucky) {
           frame.toast('Lucky Gift: receiver 5% diamonds · room 1% reward');
         }
@@ -1842,16 +2065,21 @@
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
       if(lastGiftEventId===null){lastGiftEventId=latest;return;}
       let receivedGift=false;
+      let sawNewGift=false;
       for(const event of events){
-        if(event.id<=lastGiftEventId||event.sender_id===profile?.public_id)continue;
+        if(event.id<=lastGiftEventId)continue;
+        sawNewGift=true;
+        if(event.sender_id===profile?.public_id)continue;
         if(event.recipient_id===profile?.public_id)receivedGift=true;
         const seat=(frame.seats||[]).find(s=>s?.public_id===event.recipient_id);
         if(seat && typeof frame.fly==='function')
           frame.fly(event.emoji,seat.i,0,event.price_coins);
       }
       lastGiftEventId=Math.max(lastGiftEventId,latest);
-      // Recipients see their verified diamond/coin balance after incoming gifts.
-      if(receivedGift)await reloadWallet();
+      // The owner also sees the verified 10% gift reward in the coin wallet
+      // when somebody sends a gift to another user in this room.
+      if(receivedGift||(sawNewGift&&room.owner_id===session?.user?.id))
+        await reloadWallet();
     }
     async function moderateSeat(action,seat) {
       if(room.owner_id!==session?.user?.id)throw new Error('Room owner only');
@@ -1937,7 +2165,7 @@
             await connectVoice(room.id);
             frame.toast('Seat released; listening only');
           } else throw new Error('You can only leave your own seat');
-        } else if(action==='mute' && seat>0) {
+        } else if(action==='mute' && seat>=0) {
           if(owner && target?.user_id && !isSelf)
             await moderateSeat(target.muted?'unmute':'mute',seat);
           else if(isSelf) {
@@ -1951,30 +2179,72 @@
           frame.open('<h3>👑 Verified owner controls</h3>'+
             '<div class="row">Tap an occupied seat to mute, unmute, remove from mic or kick a guest.</div>');
         } else if(action==='prof' && target?.public_id) {
-          const member=await api('GET','/users/'+target.public_id);
-          frame.open('<h3>👤 Verified profile</h3><div id="sh-room-profile"></div>');
-          const node=frame.$('sh-room-profile');
-          if(node) {
-            const avatar=frame.document.createElement('div');
-            avatar.className='sh-sovera-preview';
-            avatar.textContent='👤';
-            paintVerifiedAvatar(avatar,member.pic,frame.document);
-            node.appendChild(avatar);
-            const name=frame.document.createElement('div');
-            name.className='row';
-            name.textContent=(member.name||'Member')+' · ID '+member.id;
-            const detail=frame.document.createElement('div');
-            detail.className='lbl';
-            detail.textContent='Country: '+(member.country||'Not set')+
-              ' · Wealth Lv '+Number(member.wealth_level||0)+
-              ' · Charm Lv '+Number(member.charm_level||0);
-            node.append(name,detail);
-          }
-        } else if(action==='gift' && seat>0 && target?.public_id) {
-          frame.rec=[seat];
-          frame.$('bGift')?.click();
+          frame.close();
+          await openVerifiedRoomMemberProfile(target.public_id,room.id,seat);
+        } else if(action==='gift' && target?.public_id) {
+          await openVerifiedGiftBox({id:target.public_id,name:target.n||'Member'});
         } else frame.toast('This action is not connected to the verified server yet');
       } catch (error) { frame.toast(errText(error)); }
+    };
+    // The stock room menu displays a fake "ID 482915" for seat zero and
+    // grants the owner menu to anybody tapping it. Keep the same sheet design
+    // but attach each visible action to the real occupied seat and its user.
+    const originalSeatSheet=frame.seatSheet;
+    frame.seatSheet=function(index){
+      const result=originalSeatSheet(index);
+      const selected=frame.seats?.[index];
+      if(!selected)return result;
+      const owner=room.owner_id===session?.user?.id;
+      const self=selected.user_id===session?.user?.id;
+      const sheet=frame.$('sheet');
+      if(selected.empty||selected.lock){
+        if(!owner&&selected.lock&&sheet){
+          sheet.innerHTML='<div class="grab"></div><h3>🔒 Seat locked</h3>';
+        }
+        return result;
+      }
+      const id=String(selected.public_id||'');
+      const detail=sheet?.querySelector('.who small');
+      if(detail)detail.textContent='ID '+id+' · '+(index===0?'Room owner':'Mic seat '+index);
+      const actions=sheet?.querySelector('.acts');
+      if(!actions)return result;
+      actions.textContent='';
+      const options=[['prof','👤','Profile']];
+      options.push(['gift','🎁','Gift']);
+      if(self)options.push(['mute',selected.muted?'🔊':'🔇',
+        selected.muted?'Unmute':'Mute']);
+      if(self&&index>0)options.push(['down','⬇️','Leave mic']);
+      if(owner&&index===0)options.push(['own','⚙️','Manage']);
+      if(owner&&index>0&&!self)options.push(
+        ['mute',selected.muted?'🔊':'🔇',selected.muted?'Unmute':'Mute'],
+        ['down','⬇️','Remove from mic'],['lock','🔒','Lock seat'],
+        ['kick','🚫','Kick out']);
+      for(const [action,icon,label] of options){
+        const button=frame.document.createElement('button');
+        button.className='act'+(action==='kick'?' dg':'');
+        const picture=frame.document.createElement('span');
+        picture.textContent=icon;
+        button.append(picture,frame.document.createTextNode(label));
+        button.onclick=()=>frame.act(action,index);
+        actions.appendChild(button);
+      }
+      return result;
+    };
+    const originalSeatEmoji=frame.seatEmoji;
+    // Original emoji box invokes seatEmoji(0,...) on every device. Resolve
+    // the currently logged-in user's actual mic seat before animating.
+    frame.seatEmoji=function(_ignoredIndex,emoji){
+      const mine=frame.seats?.find(slot=>slot?.user_id===session?.user?.id);
+      if(!mine||mine.empty||mine.lock){
+        frame.toast('Take an unlocked mic seat to show a seat emoji');return;
+      }
+      if(!Array.isArray(emoji)||!frame.ER?.some(item=>item[0]===emoji[0]))return;
+      originalSeatEmoji(mine.i,emoji);
+      const requestId='reaction:'+Date.now().toString(36)+':'+
+        Math.random().toString(36).slice(2);
+      api('POST','/rooms/'+room.id+'/reactions',{
+        emoji:emoji[0],request_id:requestId
+      }).catch(error=>frame.toast('Emoji shown locally: '+errText(error)));
     };
     // A verified guest taps any open/unlocked seat to sit immediately.
     // This bypasses the old demo "Seat a guest" menu; owner invitations remain optional.
@@ -2220,11 +2490,12 @@
         const rewards=await api('GET','/rooms/'+room.id+'/rewards');
         const normal=Number(rewards.regular_reward_hundredths||0)/100;
         const lucky=Number(rewards.lucky_reward_hundredths||0)/100;
-        if(target.isConnected)target.textContent='Ordinary gifts 10%: '+
-          normal.toLocaleString('en-US')+' coins · Lucky Gift 1% (if enabled): '+
-          lucky.toLocaleString('en-US')+' coins. Total: '+
-          (normal+lucky).toLocaleString('en-US')+
-          ' coins. Verified room ledger only; no personal-wallet transfer or withdrawal.';
+        const paid=Number(rewards.owner_wallet_credited_coins||0);
+        if(target.isConnected)target.textContent='Ordinary gift room reward 10%: '+
+          normal.toLocaleString('en-US')+' coins · Paid to room owner wallet: '+
+          paid.toLocaleString('en-US')+' coins · Lucky Gift room share 1% (if enabled): '+
+          lucky.toLocaleString('en-US')+' coins. New ordinary gifts automatically credit whole coins to the owner. '+
+          'The recorded room total is not a second claimable balance.';
       }catch(error){
         if(target.isConnected)target.textContent='Room rewards unavailable: '+errText(error);
       }
@@ -2374,6 +2645,47 @@
         }
       };
     }
+    // The original theme sheet stores themes/photos only on this device.
+    // Intercept its controls before local handlers run and commit every
+    // change to the verified owner-only room endpoint instead.
+    let sharedThemeBusy=false;
+    frame.document.addEventListener('click',async event=>{
+      const control=event.target.closest?.('button.th,#gal,#rmbg');
+      if(!control||!frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if(room.owner_id!==session?.user?.id){
+        frame.toast('Only the room owner can change themes');return;
+      }
+      if(sharedThemeBusy)return;
+      if(control.id==='gal'){
+        pickRoomCover(room,frame,true);
+        return;
+      }
+      const nextTheme=control.id==='rmbg'?'mid':control.dataset.id;
+      if(!['mid','gold','ocean','rose','forest','sunset'].includes(nextTheme))return;
+      sharedThemeBusy=true;
+      frame.$('sheet')?.querySelectorAll('button.th,#rmbg').forEach(x=>{x.disabled=true;});
+      try{
+        const result=await api('PATCH','/rooms/'+room.id,{theme:nextTheme});
+        if(result.room?.theme!==nextTheme)
+          throw new Error('Room theme not confirmed by server');
+        room.th=nextTheme;
+        if(window.cur?.id===room.id)
+          await syncFrame(room,frame).catch(error=>
+            console.warn('Theme saved; sync delayed:',errText(error)));
+        await reloadRooms().catch(()=>{});
+        if(frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))
+          frame.themeSheet();
+        frame.toast('Room theme updated for everyone ✓');
+      }catch(error){
+        await syncFrame(room,frame).catch(()=>{});
+        frame.toast('Room theme not saved: '+errText(error));
+      }finally{
+        sharedThemeBusy=false;
+        frame.$('sheet')?.querySelectorAll('button.th,#rmbg').forEach(x=>{x.disabled=false;});
+      }
+    },true);
     frame.document.addEventListener('click',async event=>{
       const saveButton=event.target.closest?.('#save');
       if(!saveButton || !frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Room settings'))return;
@@ -2389,7 +2701,7 @@
       saveButton.disabled=true;
       try{
         const data=await api('PATCH','/rooms/'+room.id,{
-          name,seat_count:newSeatCount,theme:frame.S.theme||room.th||'mid',
+          name,seat_count:newSeatCount,theme:room.th||'mid',
           seat_frame_style:room.seat_frame_style||'grad'
         });
         room.name=data.room.name;
@@ -2521,6 +2833,41 @@
     chatPoll=setInterval(()=>{
       if(window.cur?.id===room.id)pollRoomChat().catch(()=>{});
     },3500);
+    // Other phones replay only short-lived reactions on the authenticated
+    // sender's currently occupied seat. Never trust an old seat number.
+    let reactionEndpointUnavailable=false;
+    async function pollRoomReactions(){
+      if(reactionPollInFlight||reactionEndpointUnavailable)return reactionPollInFlight;
+      const work=(async()=>{
+        if(window.cur?.id!==room.id)return;
+        const data=await api('GET','/rooms/'+room.id+'/reactions?after='+lastReactionId);
+        if(window.cur?.id!==room.id||!session||
+           document.getElementById('rf')?.contentWindow!==frame)return;
+        for(const event of Array.isArray(data.events)?data.events:[]){
+          const id=Number(event.id);
+          if(!Number.isSafeInteger(id)||id<=lastReactionId)continue;
+          lastReactionId=id;
+          if(event.public_id===profile?.public_id)continue;
+          const target=frame.seats?.find(slot=>slot?.public_id===event.public_id);
+          const emoji=frame.ER?.find(item=>item[0]===event.emoji);
+          if(target&&!target.empty&&!target.lock&&emoji&&
+             Math.abs(Date.now()-Number(event.created_at_ms))<=6000)
+            originalSeatEmoji(target.i,emoji);
+        }
+      })();
+      reactionPollInFlight=work;
+      try{await work;}catch(error){
+        // Older staging Workers lack reactions; the local user's emoji still
+        // appears on the correct seat, without a stream of error toasts.
+        reactionEndpointUnavailable=true;
+        console.warn('Shared room reactions unavailable:',errText(error));
+      }finally{if(reactionPollInFlight===work)reactionPollInFlight=null;}
+    }
+    if(reactionPoll)clearInterval(reactionPoll);
+    reactionPoll=setInterval(()=>{
+      if(window.cur?.id===room.id)pollRoomReactions().catch(()=>{});
+    },2200);
+    pollRoomReactions().catch(()=>{});
     const mic=frame.$ && frame.$('mic');
     if(mic) mic.onclick=async ()=>{
       try {
@@ -2668,6 +3015,7 @@
         if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
         if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
         if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
+        if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
         await releaseVoice();
         await api('POST','/rooms/'+prior.id+'/leave',{});
@@ -2686,6 +3034,7 @@
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
     if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
         if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
+    if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
     releaseVoice().catch(()=>{});
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
@@ -2754,7 +3103,51 @@
   let pendingSellerTransfer=null; // retained across sheet reopen for safe network retries
   const sellerEscape=v=>String(v==null?'':v).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  // Seller Wallet styling is scoped to this sheet; the original app design stays intact.
+  function ensureSellerWalletStyle(){
+    if(document.getElementById('sharika-seller-wallet-v2-style'))return;
+    const style=document.createElement('style');
+    style.id='sharika-seller-wallet-v2-style';
+    style.textContent=[
+      '#sharika-seller-content{box-sizing:border-box;width:100%;max-width:100%;color:#f8f7ff;font-family:inherit}',
+      '#sharika-seller-content *{box-sizing:border-box}',
+      '#sharika-seller-content .shw-hero{position:relative;overflow:hidden;padding:21px 18px;border-radius:22px;background:linear-gradient(130deg,#5931a8 0%,#342b9f 55%,#1175b4 100%);border:1px solid #ffffff54;box-shadow:inset 0 2px 1px #ffffff65,0 12px 22px #050c4266;margin:14px 0}',
+      '#sharika-seller-content .shw-hero:after{content:"";position:absolute;right:-42px;top:-55px;width:178px;height:178px;border-radius:50%;background:radial-gradient(circle,#ffcf6d6c 0%,transparent 68%);pointer-events:none}',
+      '#sharika-seller-content .shw-eyebrow{font-size:12px;font-weight:800;letter-spacing:.8px;color:#e6dcff;text-transform:uppercase}',
+      '#sharika-seller-content .shw-stock{font-size:30px;font-weight:900;line-height:1.3;letter-spacing:-.6px;text-shadow:0 2px 8px #0006;overflow-wrap:anywhere}',
+      '#sharika-seller-content .shw-stock small{font-size:14px;font-weight:700;letter-spacing:0;color:#ffdf8b}',
+      '#sharika-seller-content .shw-id{display:inline-flex;align-items:center;gap:7px;border:1px solid #ffffff68;border-radius:999px;padding:7px 11px;background:#ffffff22;font-size:12px;font-weight:700;margin-top:13px}',
+      '#sharika-seller-content .shw-section{background:linear-gradient(160deg,#ffffff1e,#ffffff0b);border:1px solid #ffffff36;box-shadow:inset 0 1px #ffffff32,0 10px 18px #020e3860;border-radius:19px;padding:16px;margin:12px 0}',
+      '#sharika-seller-content .shw-title{margin:0 0 6px;font-size:17px;font-weight:900;color:white}',
+      '#sharika-seller-content .shw-sub{font-size:12px;color:#dcdff9;line-height:1.5;margin:0 0 14px}',
+      '#sharika-seller-content .shw-label{display:block;font-size:12px;font-weight:800;color:#e7ddff;margin:12px 0 6px}',
+      '#sharika-seller-content .shw-control-row{display:flex;gap:8px;align-items:stretch}',
+      '#sharika-seller-content .shw-input{display:block;min-width:0;width:100%;flex:1;border:1px solid #9eaeed!important;border-radius:13px!important;background:#f8f9ff!important;color:#1b2355!important;font-size:16px!important;font-weight:800;padding:13px 12px!important;outline:none!important;box-shadow:inset 0 2px 5px #071b2522!important}',
+      '#sharika-seller-content .shw-input:focus{border-color:#ffd373!important;box-shadow:0 0 0 3px #ffd37342!important}',
+      '#sharika-seller-content .shw-input::placeholder{color:#7782a0;font-weight:500}',
+      '#sharika-seller-content .shw-mini{border:1px solid #ffdb7e88;border-radius:12px;color:#ffecb8;background:#eab94726;font-size:12px;font-weight:800;padding:0 11px;white-space:nowrap}',
+      '#sharika-seller-content .shw-chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:9px}',
+      '#sharika-seller-content .shw-chip{border-radius:11px;border:1px solid #ffffff55;background:#ffffff18;color:#fff;padding:9px 3px;font-size:12px;font-weight:800}',
+      '#sharika-seller-content .shw-chip:active,#sharika-seller-content .shw-mini:active{transform:translateY(1px)}',
+      '#sharika-seller-content .shw-submit{display:block;width:100%;margin-top:16px;border:1px solid #fff2ab;border-radius:15px;padding:14px 12px;color:#392303;font-size:15px;font-weight:900;background:linear-gradient(180deg,#fff0a8,#ffc947 57%,#e5a821);box-shadow:inset 0 2px 2px #fff9,0 7px 14px #050a4066}',
+      '#sharika-seller-content .shw-submit:disabled{opacity:.6;cursor:wait;box-shadow:none}',
+      '#sharika-seller-content .shw-note{margin-top:10px;font-size:12px;line-height:1.5;min-height:1em;overflow-wrap:anywhere}',
+      '#sharika-seller-content .shw-note[data-tone="success"]{color:#a6ffda}',
+      '#sharika-seller-content .shw-note[data-tone="error"]{color:#ffbdbd}',
+      '#sharika-seller-content .shw-note[data-tone="info"]{color:#f9e9bb}',
+      '#sharika-seller-content .shw-details{border-radius:16px;border:1px solid #ffffff35;background:#ffffff11;margin:11px 0;overflow:hidden}',
+      '#sharika-seller-content .shw-details summary{cursor:pointer;padding:14px 15px;font-size:14px;font-weight:900;color:#fff;list-style-position:inside}',
+      '#sharika-seller-content .shw-entry{margin:0 10px 9px;padding:10px 12px;border-radius:12px;background:#ffffff18;border:1px solid #ffffff21;font-size:12px;line-height:1.5;color:#dfe7ff}',
+      '#sharika-seller-content .shw-entry strong{display:block;font-size:13px;color:#fff;margin-bottom:3px}',
+      '#sharika-seller-content .shw-tag{display:inline-block;margin-left:5px;padding:2px 5px;background:#a8ffe233;border-radius:5px;color:#b7ffe7;font-size:10px;font-weight:800}',
+      '#sharika-seller-content .shw-empty{padding:4px 15px 14px;color:#becae9;font-size:12px}',
+      '@media(max-width:360px){#sharika-seller-content .shw-stock{font-size:25px}#sharika-seller-content .shw-section{padding:12px}#sharika-seller-content .shw-mini{padding:0 8px}}',
+      '@media(prefers-reduced-motion:reduce){#sharika-seller-content .shw-chip:active{transform:none}}'
+    ].join('');
+    document.head.appendChild(style);
+  }
   async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
+    if(walletOnly)ensureSellerWalletStyle();
     window.openSheet('<h3>🪙 '+(walletOnly?'Seller Wallet':'Coin sellers')+
       '</h3><div id="sharika-seller-content">Loading verified seller data…</div>');
     const root=document.getElementById('sharika-seller-content');
@@ -2791,94 +3184,153 @@
         });
         return;
       }
-      // Private wallet: server independently verifies the seller permission.
+      // Private wallet: access and every stock movement are verified by the Worker.
       const [mine,transfers,allocations]=await Promise.all([
         api('GET','/sellers/me'),api('GET','/sellers/transfers'),
         api('GET','/sellers/allocations')
       ]);
       if(!root.isConnected)return;
       const self=mine.seller;
+      root.classList.add('sharika-seller-wallet');
       if(!self?.active){
-        root.textContent='Seller Wallet is available only to approved coin sellers.';
+        root.innerHTML='<div class="shw-section">Seller Wallet is available only to approved coin sellers.</div>';
         return;
       }
-      const me=self&&self.active?
-        '<div class="card" style="margin-top:12px;padding:12px">'+
-        '<b>Seller ID '+sellerEscape(self.public_id)+'</b><div style="height:6px"></div>'+
-        '<b id="sharika-seller-stock">Your seller stock: '+Number(self.available_coins||0).toLocaleString('en-US')+' coins</b>'+
-        '<p class="n">Recharge an existing Sharika user with your assigned seller stock.</p>'+
-        '<input id="sharika-seller-target" inputmode="numeric" maxlength="8" placeholder="Recipient 8-digit user ID" aria-label="Recipient user ID">'+
-        '<input id="sharika-seller-amount" inputmode="numeric" placeholder="Coins to send (1–1,000,000)" aria-label="Coins to send">'+
-        '<button class="btn" type="button" id="sharika-seller-send">Transfer coins</button>'+
-        '<div id="sharika-seller-note" aria-live="polite"></div></div>':
-        self?'<p class="n">Your seller permission is currently suspended.</p>':'';
-      const historyRows=(transfers.transfers||[]).slice(0,30).map(t=>
-        '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
-        'Transfer #'+sellerEscape(t.id)+' · Sender ID '+sellerEscape(t.sender_public_id)+
-        ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
-        ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('');
-      const stockRows=(allocations.allocations||[]).slice(0,30).map(a=>
-        '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
-        'Allocation #'+sellerEscape(a.id)+' · Admin ID '+sellerEscape(a.sender_public_id)+
-        ' → Seller ID '+sellerEscape(a.seller_public_id)+
-        ' · +'+Number(a.coins||0).toLocaleString('en-US')+' stock coins</div>').join('');
-      root.innerHTML=me+
-        (self?'<div class="card" style="margin-top:12px;padding:12px"><h4>Coin transfer list</h4>'+
-          '<div id="sharika-seller-history">'+(historyRows||'No transfers yet.')+'</div>'+
-          '<h4>Seller wallet stock allocations</h4>'+(stockRows||'No allocations yet.')+'</div>':'');
+      const coinsText=value=>Number(value||0).toLocaleString('en-US');
+      const transferEntries=rows=>(rows||[]).slice(0,30).map(t=>{
+        const isSelf=t.sender_public_id===t.recipient_public_id;
+        return '<div class="shw-entry"><strong>🪙 '+coinsText(t.coins)+' coins'+
+          (isSelf?'<span class="shw-tag">SELF</span>':'')+'</strong>'+
+          'Transfer #'+sellerEscape(t.id)+' · ID '+sellerEscape(t.sender_public_id)+
+          ' → '+sellerEscape(t.recipient_public_id)+
+          (t.created_at?' · '+sellerEscape(t.created_at):'')+'</div>';
+      }).join('')||'<div class="shw-empty">No transfers yet.</div>';
+      const allocationEntries=(allocations.allocations||[]).slice(0,30).map(a=>
+        '<div class="shw-entry"><strong>✨ +'+coinsText(a.coins)+' stock coins</strong>'+
+        'Allocation #'+sellerEscape(a.id)+' · Admin '+sellerEscape(a.sender_public_id)+
+        ' → Seller '+sellerEscape(a.seller_public_id)+
+        (a.created_at?' · '+sellerEscape(a.created_at):'')+'</div>'
+      ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';
+      root.innerHTML=
+        '<section class="shw-hero">'+
+          '<div class="shw-eyebrow">🪙 Available seller stock</div>'+
+          '<div class="shw-stock"><span id="sharika-seller-stock">'+
+            coinsText(self.available_coins)+'</span> <small>coins</small></div>'+
+          '<div class="shw-id">✓ Verified seller · ID '+sellerEscape(self.public_id)+'</div>'+
+        '</section>'+
+        '<section class="shw-section">'+
+          '<h4 class="shw-title">✨ Recharge my ID or another user</h4>'+
+          '<p class="shw-sub">Recharge any active Sharika ID, including your own. Coins are deducted from your assigned seller stock.</p>'+
+          '<label class="shw-label" for="sharika-seller-target">Recipient user ID</label>'+
+          '<div class="shw-control-row">'+
+            '<input class="shw-input" id="sharika-seller-target" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="8-digit user ID" aria-label="Recipient user ID">'+
+            '<button class="shw-mini" id="sharika-seller-my-id" type="button">My ID</button>'+
+          '</div>'+
+          '<label class="shw-label" for="sharika-seller-amount">Amount in coins</label>'+
+          '<input class="shw-input" id="sharika-seller-amount" inputmode="numeric" autocomplete="off" placeholder="Enter amount (up to 1,000,000)" aria-label="Coins to recharge">'+
+          '<div class="shw-chips" aria-label="Quick recharge amounts">'+
+            '<button type="button" class="shw-chip" data-seller-amount="1000">1K</button>'+
+            '<button type="button" class="shw-chip" data-seller-amount="10000">10K</button>'+
+            '<button type="button" class="shw-chip" data-seller-amount="100000">100K</button>'+
+            '<button type="button" class="shw-chip" data-seller-amount="1000000">1M</button>'+
+          '</div>'+
+          '<button class="shw-submit" type="button" id="sharika-seller-send">🪙 Confirm coin recharge</button>'+
+          '<div class="shw-note" id="sharika-seller-note" role="status" aria-live="polite"></div>'+
+        '</section>'+
+        '<details class="shw-details"><summary>📜 Transfer history ('+
+          (transfers.transfers||[]).length+')</summary>'+
+          '<div id="sharika-seller-history">'+transferEntries(transfers.transfers)+'</div>'+
+        '</details>'+
+        '<details class="shw-details"><summary>🏦 Stock allocations ('+
+          (allocations.allocations||[]).length+')</summary>'+
+          allocationEntries+'</details>';
       const targetField=document.getElementById('sharika-seller-target');
-      if(targetField&&/^[0-9]{8}$/.test(targetId))targetField.value=targetId;
+      const amountField=document.getElementById('sharika-seller-amount');
+      const note=document.getElementById('sharika-seller-note');
       const send=document.getElementById('sharika-seller-send');
+      // A seller's own verified ID is the default recipient. Other users
+      // remain reachable by entering their eight-digit ID explicitly.
+      if(targetField)targetField.value=/^[0-9]{8}$/.test(targetId)
+        ?targetId:self.public_id;
+      document.getElementById('sharika-seller-my-id')?.addEventListener('click',()=>{
+        if(targetField){targetField.value=self.public_id;targetField.focus();}
+      });
+      root.querySelectorAll('[data-seller-amount]').forEach(button=>{
+        button.addEventListener('click',()=>{
+          if(amountField){amountField.value=button.dataset.sellerAmount;amountField.focus();}
+        });
+      });
+      const showNote=(message,tone)=>{
+        if(note){note.textContent=message;note.dataset.tone=tone;}
+      };
+      const sellerError=error=>{
+        const code=errText(error);
+        const messages={
+          seller_stock_insufficient:'Not enough seller stock for this recharge.',
+          recipient_balance_limit:'This user has reached the coin wallet limit.',
+          recipient_unavailable:'Recipient ID not found or inactive.',
+          seller_not_approved:'Your seller permission is not active.',
+          idempotency_conflict:'This recharge attempt has changed. Check history before trying again.',
+          invalid_seller_transfer:'Please enter a valid ID and coin amount.',
+          seller_adult_only:'This account is not eligible for seller transfers.'
+        };
+        return messages[code]||code;
+      };
       if(send)send.addEventListener('click',async()=>{
-        const recipient=document.getElementById('sharika-seller-target')?.value.trim()||'';
-        const raw=document.getElementById('sharika-seller-amount')?.value.trim()||'';
+        const recipient=targetField?.value.trim()||'';
+        const raw=amountField?.value.trim()||'';
         const amount=Number(raw);
-        const note=document.getElementById('sharika-seller-note');
-        if(!/^[0-9]{8}$/.test(recipient)||!/^\d+$/.test(raw)||
+        if(!/^[0-9]{8}$/.test(recipient)||!/^[0-9]+$/.test(raw)||
           !Number.isSafeInteger(amount)||amount<1||amount>1000000){
-          if(note)note.textContent='Enter a valid eight-digit user ID and 1–1,000,000 coins.';
+          showNote('Enter a valid 8-digit ID and an amount from 1 to 1,000,000 coins.','error');
+          return;
+        }
+        if(amount>Number(self.available_coins)){
+          showNote('Insufficient seller stock for this amount.','error');
           return;
         }
         send.disabled=true;
         let transferCommitted=false;
         try{
+          showNote('Verifying recipient…','info');
           const verified=await api('GET','/users/'+recipient);
           if(String(verified.id)!==recipient)throw new Error('Recipient verification failed');
-          if(!window.confirm('Send '+amount.toLocaleString('en-US')+' coins to '+
-            String(verified.name||'User')+' (ID '+recipient+')?')){send.disabled=false;return;}
+          const isSelf=recipient===self.public_id;
+          const message=isSelf?
+            'Recharge your own ID '+recipient+' with '+coinsText(amount)+' coins from seller stock?':
+            'Send '+coinsText(amount)+' coins to '+String(verified.name||'User')+' (ID '+recipient+')?';
+          if(!window.confirm(message)){showNote('Recharge cancelled.','info');return;}
           const fingerprint=session.user.id+':'+recipient+':'+amount;
           const requestId=pendingSellerTransfer?.fingerprint===fingerprint
             ?pendingSellerTransfer.requestId:nextWalletRequestId('seller');
           pendingSellerTransfer={fingerprint,requestId};
+          showNote('Recording recharge securely…','info');
           const result=await api('POST','/sellers/transfer',{
             target_public_id:recipient,coins:amount,request_id:requestId
           });
           transferCommitted=true;pendingSellerTransfer=null;
-          if(note)note.textContent='Transfer #'+result.transfer_id+' from ID '+
-            sellerEscape(result.sender_public_id)+' to ID '+sellerEscape(recipient)+
-            ' complete. Remaining seller stock: '+
-            Number(result.available_coins).toLocaleString('en-US')+' coins.';
+          self.available_coins=Number(result.available_coins);
           const stockLabel=document.getElementById('sharika-seller-stock');
-          if(stockLabel)stockLabel.textContent='Your seller stock: '+
-            Number(result.available_coins).toLocaleString('en-US')+' coins';
-          const amountField=document.getElementById('sharika-seller-amount');
+          if(stockLabel)stockLabel.textContent=coinsText(result.available_coins);
           if(amountField)amountField.value='';
+          showNote((result.duplicate?'Already recorded: ':'Success! ')+
+            (result.self_recharge?'Your own wallet':'Recipient ID '+recipient)+
+            ' received '+coinsText(amount)+' coins. Transfer #'+result.transfer_id+
+            '. Remaining stock: '+coinsText(result.available_coins)+'.','success');
+          toast('Coin recharge recorded ✓');
           const latest=await api('GET','/sellers/transfers').catch(()=>null);
           const history=document.getElementById('sharika-seller-history');
-          if(history&&latest)history.innerHTML=(latest.transfers||[]).slice(0,30).map(t=>
-            '<div class="opt" style="padding:8px 10px;border-radius:10px">'+
-            'Transfer #'+sellerEscape(t.id)+' · Sender ID '+sellerEscape(t.sender_public_id)+
-            ' → Recipient ID '+sellerEscape(t.recipient_public_id)+
-            ' · '+Number(t.coins||0).toLocaleString('en-US')+' coins</div>').join('')||'No transfers yet.';
-          toast('Coin transfer recorded');
+          if(history&&latest)history.innerHTML=transferEntries(latest.transfers);
           await refreshWalletAfterConfirmedTransaction();
         }catch(error){
-          if(note)note.textContent=(transferCommitted
-            ?'Transfer recorded; display update delayed: '
-            :'Transfer not confirmed; check history before retrying: ')+errText(error);
+          showNote((transferCommitted?'Recharge saved; display update delayed: ':
+            'Recharge not confirmed. Check history before retrying: ')+
+            sellerError(error),'error');
         }finally{if(send.isConnected)send.disabled=false;}
       });
-    }catch(error){if(root.isConnected)root.textContent='Unable to load sellers: '+errText(error);}
+    }catch(error){
+      if(root.isConnected)root.textContent='Unable to load seller wallet: '+errText(error);
+    }
   }
 
 
@@ -3748,7 +4200,10 @@
       page:'file:///android_asset/original-games/night-food-wheel.html'},
     {id:'jackpot-fruit',name:'Jackpot Fruit',tag:'🎰 Jackpot',
       image:'file:///android_asset/jackpot-fruit-original-card.png',
-      page:'file:///android_asset/original-games/jackpot-fruit.html'}
+      page:'file:///android_asset/original-games/jackpot-fruit.html'},
+    {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
+      image:'file:///android_asset/greedy-wheel/img/pizza.webp',
+      page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'}
   ];
   // Only announce server-confirmed round winners during the first ten seconds
   // after settlement. Persist one announcement per game/round across reopens.
@@ -3808,39 +4263,114 @@
     const view=doc.defaultView||window;
     if(typeof view.__sharikaOriginalGameCleanup==='function')
       view.__sharikaOriginalGameCleanup();
+    // A game result may be announced only after the verified D1 settlement.
+    // Each winning player gets a compact top-slide card; the game UI underneath
+    // is untouched, and no child iframe may provide winner names or amounts.
     let winnerBannerTimer=null;
+    let winnerBannerStepTimer=null;
     function clearWinnerBanner(){
       if(winnerBannerTimer!==null){view.clearTimeout(winnerBannerTimer);winnerBannerTimer=null;}
+      if(winnerBannerStepTimer!==null){view.clearInterval(winnerBannerStepTimer);winnerBannerStepTimer=null;}
       doc.getElementById('sh-verified-original-winners')?.remove();
+    }
+    function ensureWinnerBannerStyle(){
+      if(doc.getElementById('sh-verified-win-style'))return;
+      const style=doc.createElement('style');
+      style.id='sh-verified-win-style';
+      style.textContent=[
+        '#sh-verified-original-winners{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;width:min(82vw,560px);max-width:calc(100vw - 44px);z-index:2147483000;pointer-events:none;filter:drop-shadow(0 10px 18px #000b);animation:shWinSlide .65s cubic-bezier(.18,1.4,.36,1) both}',
+        '#sh-verified-original-winners .sh-win-pill{position:relative;isolation:isolate;display:flex;align-items:center;gap:8px;min-height:62px;padding:6px 7px;border:2px solid #ffdf75;border-radius:46px;background:linear-gradient(110deg,#276578,#1b8c97 52%,#1baea6);box-shadow:inset 0 2px 4px #ffffff66,inset 0 -5px 10px #064c6299,0 0 12px #f7d46eaa;color:#fff}',
+        '#sh-verified-original-winners .sh-win-wing{position:absolute;z-index:-1;top:-20px;width:108px;height:105px;filter:drop-shadow(0 2px 2px #ad6f25)}',
+        '#sh-verified-original-winners .sh-win-left{left:-76px;animation:shWinWingLeft 1.15s ease-in-out infinite alternate}',
+        '#sh-verified-original-winners .sh-win-right{right:-76px;transform:scaleX(-1);animation:shWinWingRight 1.15s ease-in-out infinite alternate}',
+        '#sh-verified-original-winners .sh-win-crown{position:absolute;top:-31px;left:50%;transform:translateX(-50%);font-size:28px;filter:drop-shadow(0 2px 5px #e5a132);line-height:1}',
+        '#sh-verified-original-winners .sh-win-avatar{display:grid;place-items:center;flex:none;width:50px;height:50px;border:2px solid #f9d676;border-radius:50%;background:#10263f;box-shadow:0 2px 8px #001d3699;overflow:hidden;font-size:27px}',
+        '#sh-verified-original-winners .sh-win-avatar img{width:100%;height:100%;object-fit:cover}',
+        '#sh-verified-original-winners .sh-win-copy{flex:1;min-width:0;text-shadow:0 2px 4px #063b5e}',
+        '#sh-verified-original-winners .sh-win-name{display:block;font-size:11px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        '#sh-verified-original-winners .sh-win-number{display:block;font-size:clamp(17px,4.6vw,25px);font-weight:1000;line-height:1.14;white-space:nowrap}',
+        '#sh-verified-original-winners .sh-win-number em{font-style:normal;color:#ffe27a}',
+        '#sh-verified-original-winners .sh-win-game{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:50%;background:#00bcbc;border:2px dotted #ffe998;font-size:25px;box-shadow:inset 0 0 9px #00383c}',
+        '#sh-verified-original-winners .sh-win-go{pointer-events:auto;flex:none;display:grid;place-items:center;width:47px;height:47px;padding:0;border:3px solid #fbe49d;border-radius:50%;background:radial-gradient(circle at 30% 28%,#fff8c7,#e5a837 68%,#b36d18);color:#9e3a03;font:1000 17px system-ui;box-shadow:0 2px 6px #31230d;cursor:pointer}',
+        '@keyframes shWinSlide{0%{transform:translate(-50%,-170%) scale(.88);opacity:0}65%{transform:translate(-50%,5%) scale(1.03);opacity:1}100%{transform:translate(-50%,0) scale(1);opacity:1}}',
+        '@keyframes shWinWingLeft{to{transform:rotate(-8deg)}}@keyframes shWinWingRight{to{transform:scaleX(-1) rotate(-8deg)}}',
+        '@media(max-width:360px){#sh-verified-original-winners .sh-win-pill{gap:5px;min-height:56px;padding:5px}#sh-verified-original-winners .sh-win-avatar{width:43px;height:43px}#sh-verified-original-winners .sh-win-game{width:35px;height:35px;font-size:21px}#sh-verified-original-winners .sh-win-go{width:41px;height:41px;font-size:15px}#sh-verified-original-winners .sh-win-wing{width:85px;left:-62px}#sh-verified-original-winners .sh-win-right{left:auto;right:-62px}}',
+        '@media(prefers-reduced-motion:reduce){#sh-verified-original-winners,#sh-verified-original-winners .sh-win-wing{animation:none!important}}'
+      ].join('');
+      doc.head.appendChild(style);
+    }
+    function winnerWing(side){
+      const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox','0 0 120 112');
+      svg.setAttribute('aria-hidden','true');
+      svg.classList.add('sh-win-wing','sh-win-'+side);
+      const gradient='shWinFeather-'+side;
+      svg.innerHTML='<defs><linearGradient id="'+gradient+'" x1="0" y1="0" x2="1" y2="1">'+
+        '<stop offset="0" stop-color="#fffbe7"/><stop offset=".5" stop-color="#f6cb67"/>'+
+        '<stop offset="1" stop-color="#c87938"/></linearGradient></defs>'+
+        '<path d="M117 91 Q78 80 6 3 Q29 54 78 80 Q34 60 4 28 Q19 75 82 93 Q38 85 15 64 Q41 103 117 98Z" fill="url(#'+gradient+')" stroke="#ad6b27" stroke-width="2"/>'+
+        '<path d="M110 90 Q55 51 15 8 M105 94 Q50 72 12 33 M106 98 Q61 94 19 67" stroke="#fff9de" stroke-width="3" fill="none" opacity=".85"/>';
+      return svg;
     }
     function announceRoundWinners(game,result){
       const confirmed=verifiedOriginalGameTopThree(game,result);
       if(!confirmed)return;
       clearWinnerBanner();
+      ensureWinnerBannerStyle();
       const banner=doc.createElement('div');
       banner.id='sh-verified-original-winners';
       banner.setAttribute('role','status');
       banner.setAttribute('aria-live','polite');
-      banner.style.cssText='position:fixed;top:max(12px,env(safe-area-inset-top));'+
-        'left:5%;width:90%;box-sizing:border-box;z-index:2147483000;'+
-        'padding:11px 13px;border:2px solid #f9d76f;border-radius:18px;'+
-        'background:linear-gradient(130deg,#3a1269,#10082e);'+
-        'box-shadow:0 8px 32px #000b,0 0 20px #f59e0b66;'+
-        'color:#fff;text-align:center;font-weight:700;pointer-events:none';
-      const title=doc.createElement('div');
-      title.textContent='🏆 Round '+confirmed.round_no+' · Top 3 winners';
-      title.style.cssText='font-size:14px;color:#ffe49b;margin-bottom:5px';
-      banner.appendChild(title);
-      for(const [index,winner] of confirmed.winners.entries()){
-        const line=doc.createElement('div');
-        line.style.cssText='font-size:12px;line-height:1.45;overflow-wrap:anywhere';
-        line.textContent=['🥇','🥈','🥉'][index]+' '+
-          winner.name+' · ID '+winner.public_id+' · '+
-          Number(winner.total_win).toLocaleString('en-US')+' coins';
-        banner.appendChild(line);
+      const gameIcon=game==='jackpot-fruit'?'🎰':game==='night-food'?'🌙':'🎡';
+      let currentIndex=0;
+      function paint(winner){
+        const pill=doc.createElement('div');
+        pill.className='sh-win-pill';
+        const crown=doc.createElement('span');
+        crown.className='sh-win-crown';crown.textContent='👑';
+        const avatar=doc.createElement('span');
+        avatar.className='sh-win-avatar';
+        const avatarSrc=verifiedAvatarUrl(winner.pic);
+        if(avatarSrc){
+          const photo=doc.createElement('img');
+          photo.src=avatarSrc;photo.alt='';
+          photo.onerror=()=>{avatar.textContent='👤';};
+          avatar.appendChild(photo);
+        }else avatar.textContent='👤';
+        const copy=doc.createElement('span');
+        copy.className='sh-win-copy';
+        const name=doc.createElement('span');
+        name.className='sh-win-name';name.textContent=winner.name;
+        const number=doc.createElement('strong');
+        number.className='sh-win-number';
+        number.append('WIN ');
+        const amount=doc.createElement('em');
+        amount.textContent='🪙'+Number(winner.total_win).toLocaleString('en-US');
+        number.appendChild(amount);copy.append(name,number);
+        const gameBadge=doc.createElement('span');
+        gameBadge.className='sh-win-game';gameBadge.textContent=gameIcon;
+        const go=doc.createElement('button');
+        go.type='button';go.className='sh-win-go';go.textContent='GO';
+        go.setAttribute('aria-label','Return to '+(currentGameFrame?.item?.name||'game'));
+        go.onclick=()=>{
+          clearWinnerBanner();
+          currentGameFrame?.element?.scrollIntoView({block:'nearest',behavior:'smooth'});
+        };
+        pill.append(winnerWing('left'),winnerWing('right'),crown,avatar,copy,gameBadge,go);
+        banner.replaceChildren(pill);
       }
+      paint(confirmed.winners[currentIndex]);
       doc.body.appendChild(banner);
-      winnerBannerTimer=view.setTimeout(()=>{banner.remove();winnerBannerTimer=null;},10000);
+      if(confirmed.winners.length>1){
+        winnerBannerStepTimer=view.setInterval(()=>{
+          currentIndex+=1;
+          if(currentIndex>=confirmed.winners.length){
+            view.clearInterval(winnerBannerStepTimer);winnerBannerStepTimer=null;
+          }else paint(confirmed.winners[currentIndex]);
+        },3000);
+      }
+      winnerBannerTimer=view.setTimeout(clearWinnerBanner,
+        Math.min(9500,confirmed.winners.length*3200));
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
@@ -3874,6 +4404,36 @@
       }
       const data=event.data;
       if(!data||typeof data!=='object')return;
+      if(current.item.id==='greedy-wheel'){
+        if(data.source==='greedy-game'&&data.type==='close'){
+          currentGameFrame=null;clearWinnerBanner();catalog();return;
+        }
+        if(data.source==='greedy-game'&&data.type==='topup'){
+          showToast('Open Wallet from your profile to recharge');return;
+        }
+        if(data.type!=='sharika:greedy-request'||
+          !Number.isSafeInteger(data.id)||data.id<1||
+          !['state','bet','records'].includes(data.action))return;
+        const target=current.element.contentWindow;
+        const method=data.action==='bet'?'POST':'GET';
+        try{
+          const result=await api(method,'/greedy-wheel/'+data.action,
+            data.action==='bet'?data.body:undefined);
+          if(!session||currentGameFrame!==current)return;
+          target.postMessage({type:'sharika:greedy-response',id:data.id,ok:true,value:result},'*');
+          if(data.action==='bet'||(data.action==='state'&&
+            Number.isSafeInteger(result?.balance)&&result.balance!==balance.coins&&
+            Date.now()-originalGameWalletRefreshTime>=2500)){
+            originalGameWalletRefreshTime=Date.now();
+            reloadWallet().catch(()=>{});
+          }
+        }catch(error){
+          if(!session||currentGameFrame!==current)return;
+          target.postMessage({type:'sharika:greedy-response',id:data.id,
+            ok:false,error:errText(error)},'*');
+        }
+        return;
+      }
       if(data.type==='sharika:original-exit'){currentGameFrame=null;clearWinnerBanner();catalog();return;}
       if(data.type!=='sharika:original-request')return;
       const permitted=['state','history','stats','rankings','bet'];

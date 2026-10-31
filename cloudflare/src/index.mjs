@@ -9,13 +9,14 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp} from './cosmetics.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
-const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset']);
+const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset','photo']);
 const ROOM_SEAT_FRAMES = new Set(['grad','gold','neon','sq']);
 const MAX_BODY = 20_000;
 const PROFILE_FRAMES = new Set([
@@ -237,20 +238,25 @@ export async function handleRequest(request, env) {
          binary.charCodeAt(binary.length-2)!==255||
          binary.charCodeAt(binary.length-1)!==217)
         return fail('invalid_avatar',400,cors);
-      const written=await env.DB.prepare(
-        'INSERT INTO sharika_user_avatars(auth_uid,mime,image_base64,image_bytes) '+
-        "VALUES(?,'image/jpeg',?,?) ON CONFLICT(auth_uid) DO UPDATE SET "+
-        'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
-        "version=MIN(sharika_user_avatars.version+1,1000000000),updated_at=datetime('now') "+
-        "WHERE sharika_user_avatars.updated_at<=datetime('now','-20 seconds')"
-      ).bind(uid,imageBase64,binary.length).run();
-      if(!written.meta?.changes)return fail('avatar_rate_limited',429,cors);
-      const image=await env.DB.prepare(
-        'SELECT version FROM sharika_user_avatars WHERE auth_uid=?'
-      ).bind(uid).first();
-      const pic=url.origin+'/api/v1/users/'+publicId(user.public_no)+'/avatar?v='+image.version;
-      await env.DB.prepare("UPDATE sharika_users SET pic=?,updated_at=datetime('now') WHERE auth_uid=? AND status='active'")
-        .bind(pic,uid).run();
+      // Commit the image and its profile URL together. If either write fails,
+      // D1 rolls back the batch, so users do not get an uploaded-but-unsaved photo.
+      const picPrefix=url.origin+'/api/v1/users/'+publicId(user.public_no)+'/avatar?v=';
+      const writes=await env.DB.batch([
+        env.DB.prepare(
+          'INSERT INTO sharika_user_avatars(auth_uid,mime,image_base64,image_bytes) '+
+          "VALUES(?,'image/jpeg',?,?) ON CONFLICT(auth_uid) DO UPDATE SET "+
+          'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
+          "version=MIN(sharika_user_avatars.version+1,1000000000),updated_at=datetime('now') "+
+          "WHERE sharika_user_avatars.updated_at<=datetime('now','-20 seconds')"
+        ).bind(uid,imageBase64,binary.length),
+        env.DB.prepare(
+          "UPDATE sharika_users SET pic=? || "+
+          "(SELECT CAST(version AS TEXT) FROM sharika_user_avatars WHERE auth_uid=?),"+
+          "updated_at=datetime('now') WHERE auth_uid=? AND status='active'"
+        ).bind(picPrefix,uid,uid)
+      ]);
+      if(!writes[0]?.meta?.changes)return fail('avatar_rate_limited',429,cors);
+      if(!writes[1]?.meta?.changes)return fail('profile_unavailable',409,cors);
       return reply(showProfile(await me(env.DB,uid)),200,cors);
     }
     if(path==='/api/v1/banners' && request.method==='GET') {
@@ -514,6 +520,13 @@ export async function handleRequest(request, env) {
           action:parts[4],reply,fail,cors});
       return fail('original_game_route_not_found',404,cors);
     }
+    if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='greedy-wheel'){
+      await assertActive(env.DB,uid);
+      if(parts.length===4)
+        return await handleGreedyRequest({request,db:env.DB,uid,
+          action:parts[3],reply,fail,cors});
+      return fail('greedy_route_not_found',404,cors);
+    }
     // Authenticated UTC-synchronized virtual-coin games. The D1 migration
     // owns the atomic debit/payout triggers and exactly-once settlement.
     if (parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='games') {
@@ -550,6 +563,7 @@ export async function handleRequest(request, env) {
       await assertActive(env.DB, uid);
       await settleDueBets(env.DB,uid);
       await settleOriginalDueBets(env.DB);
+      await settleGreedyDueBets(env.DB);
       const user = await me(env.DB,uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
@@ -727,6 +741,12 @@ export async function handleRequest(request, env) {
       if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20 ||
          !ROOM_THEMES.has(theme) || !ROOM_SEAT_FRAMES.has(seatFrame))
         return fail('invalid_room_settings',400,cors);
+      if(theme==='photo'){
+        const photo=await env.DB.prepare(
+          'SELECT version FROM sharika_room_covers WHERE room_id=?'
+        ).bind(roomId).first();
+        if(!photo?.version)return fail('room_theme_photo_missing',409,cors);
+      }
       const updated=await env.DB.prepare(
         'UPDATE sharika_rooms SET name=?,seat_count=?,theme=?,seat_frame_style=? WHERE id=? AND owner_id=? '+
         'AND NOT EXISTS (SELECT 1 FROM sharika_room_members WHERE room_id=? AND seat_no>?)'
@@ -810,6 +830,38 @@ export async function handleRequest(request, env) {
         }
         return fail('method_not_allowed',405,cors);
       }
+      // Ephemeral room-wide emoji reactions: authenticate both the sender and
+      // their current mic seat. Clients never choose another member's ID.
+      if(parts.length===5 && action==='reactions') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_reactions_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET') {
+          const after=url.searchParams.get('after')||'0';
+          if(!/^[0-9]{1,12}$/.test(after)||!Number.isSafeInteger(Number(after)))
+            return fail('invalid_reaction_cursor',400,cors);
+          return reply(await coordinator.roomReactionRead(Number(after)),200,cors);
+        }
+        if(request.method==='POST') {
+          if(room.owner_id!==uid &&
+             (!Number.isInteger(member.seat_no)||member.seat_no<1))
+            return fail('take_mic_seat_first',403,cors);
+          const body=await readBody(request);
+          const permitted=new Set(['😂','😍','😎','🔥','👏','🎉','😭','😡',
+            '🥳','😘','🤩','👍','🙏','💯','😴','💖']);
+          if(typeof body.emoji!=='string'||!permitted.has(body.emoji)||
+             typeof body.request_id!=='string'||
+             !/^[a-zA-Z0-9:_-]{12,80}$/.test(body.request_id))
+            return fail('invalid_seat_reaction',400,cors);
+          const sender=await assertActive(env.DB,uid);
+          const result=await coordinator.roomReactionSend(uid,publicId(sender.public_no),
+            body.emoji,body.request_id);
+          if(result.error)return fail(result.error,
+            result.error==='reaction_rate_limited'?429:409,cors);
+          return reply(result,result.duplicate?200:201,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       if (parts.length === 5 && action === 'join' && request.method === 'POST') {
         const ban=await env.DB.prepare(
           'SELECT banned_until_ms FROM sharika_room_bans WHERE room_id=? AND user_id=?'
@@ -844,8 +896,10 @@ export async function handleRequest(request, env) {
           .seatInviteClear(uid);
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
-      // Ordinary gift shares belong to the audited room ledger, not the
-      // owner's personal wallet. Lucky Gift's separate 1% remains unchanged.
+      // Ordinary gifts earn a 10% room share. Newly settled gifts also credit
+      // whole coins once to the owner's audited personal wallet; the room
+      // ledger remains a report, not another claimable balance.
+      // Lucky Gifts retain their separate 1% rule.
       if (parts.length===5 && action==='rewards' && request.method==='GET') {
         if(!member)return fail('join_room_first',403,cors);
         const regular=await env.DB.prepare(
@@ -861,11 +915,20 @@ export async function handleRequest(request, env) {
         ).bind(roomId).first():null;
         const luckyPoints=Number(lucky?.points)||0;
         const points=regularPoints+luckyPoints;
+        const credited=await env.DB.prepare(
+          "SELECT COALESCE(SUM(l.delta),0) AS coins FROM sharika_gift_transactions t "+
+          "JOIN sharika_wallet_ledger l ON l.auth_uid=? AND l.currency='coins' "+
+          "AND l.reason='room_gift_reward' AND l.request_id=('roomgift:'||t.id) "+
+          "WHERE t.room_id=?"
+        ).bind(room.owner_id,roomId).first();
+        const ownerWalletCreditedCoins=Number(credited?.coins)||0;
         return reply({room_id:roomId,reward_coins:Math.floor(points/100),
           reward_fraction_hundredths:points%100,reward_hundredths:points,
           regular_reward_hundredths:regularPoints,lucky_reward_hundredths:luckyPoints,
           regular_gift_percent:10,lucky_gift_percent:1,
-          owner_wallet_credited:false,withdrawal_enabled:false},200,cors);
+          owner_wallet_credited:ownerWalletCreditedCoins>0,
+          owner_wallet_credited_coins:ownerWalletCreditedCoins,
+          owner_wallet_credit_enabled:true,withdrawal_enabled:false},200,cors);
       }
       // Gift sending uses the real D1 catalog and an all-or-nothing ledger.
       // Lucky/random-payout items remain blocked pending cashout compliance.
@@ -908,17 +971,23 @@ export async function handleRequest(request, env) {
             return fail('invalid_gift_request',400,cors);
           const ids=[...requested].sort();
           const existing=await env.DB.prepare(
-            'SELECT id,gift_id,quantity,recipient_ids_json,total_coins '+
+            'SELECT id,room_id,gift_id,quantity,recipient_ids_json,total_coins '+
             'FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
           ).bind(uid,requestId).first();
           if(existing){
-            if(existing.gift_id!==giftId||existing.quantity!==quantity||
+            if(existing.room_id!==roomId||existing.gift_id!==giftId||
+               existing.quantity!==quantity||
                 existing.recipient_ids_json!==JSON.stringify(ids))
               return fail('idempotency_conflict',409,cors);
             const wallet=await me(env.DB,uid);
             const regularShare=await env.DB.prepare(
               'SELECT reward_hundredths FROM sharika_regular_room_rewards WHERE transaction_id=?'
             ).bind(existing.id).first();
+            const ownerCredit=await env.DB.prepare(
+              "SELECT delta FROM sharika_wallet_ledger WHERE auth_uid=? "+
+              "AND currency='coins' AND reason='room_gift_reward' "+
+              "AND request_id=('roomgift:'||?)"
+            ).bind(room.owner_id,existing.id).first();
             const outcome=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true'
               ?await env.DB.prepare(
                 'SELECT payout_coins,max_multiplier FROM sharika_lucky_gift_outcomes WHERE transaction_id=?'
@@ -926,6 +995,7 @@ export async function handleRequest(request, env) {
             return reply({duplicate:true,transaction_id:existing.id,
               coins:wallet.coins,spent_coins:existing.total_coins,
               room_reward_coins:Number(regularShare?.reward_hundredths||0)/100,
+              owner_reward_coins:Number(ownerCredit?.delta)||0,
               lucky:outcome?{payout_coins:outcome.payout_coins,
                 max_multiplier:outcome.max_multiplier}:null},200,cors);
           }
@@ -1033,6 +1103,22 @@ export async function handleRequest(request, env) {
             'INSERT INTO sharika_regular_room_rewards(transaction_id,room_id,reward_hundredths) '+
             'VALUES((SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
           ).bind(uid,requestId,roomId,regularRewardHundredths));
+          // The room ledger retains the exact 10% share in hundredths.
+          // Whole coins are also credited once to the room owner's wallet
+          // in this same atomic gift settlement (no second claim).
+          const ownerRewardCoins=gift.tab===2?0:Math.floor(spend/10);
+          if(ownerRewardCoins>0){
+            statements.push(env.DB.prepare(
+              "UPDATE sharika_users SET coins=CASE WHEN status='active' AND coins<=? "+
+              "THEN coins+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?"
+            ).bind(Number.MAX_SAFE_INTEGER-ownerRewardCoins,ownerRewardCoins,room.owner_id));
+            statements.push(env.DB.prepare(
+              "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+              "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),"+
+              "'room_gift_reward','roomgift:'||(SELECT id FROM sharika_gift_transactions "+
+              "WHERE sender_uid=? AND request_id=?))"
+            ).bind(room.owner_id,ownerRewardCoins,room.owner_id,uid,requestId));
+          }
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
@@ -1042,6 +1128,7 @@ export async function handleRequest(request, env) {
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
             quantity,room_reward_coins:regularRewardHundredths/100,
+            owner_reward_coins:ownerRewardCoins,
             lucky:lucky?{payout_coins:lucky.payout_coins,
               max_multiplier:lucky.max_multiplier,
               recipient_reward_diamonds:benefits.recipient_hundredths/100,
@@ -1102,7 +1189,16 @@ export async function handleRequest(request, env) {
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
         const equipped=await readRoomEquipped(env.DB,roomId);
+        // Room color and owner-selected photo are shared room state. Return
+        // them with every member poll, so guests already inside and late
+        // joiners see the same background without trusting localStorage.
+        const cover=room.theme==='photo' ? await env.DB.prepare(
+          'SELECT version FROM sharika_room_covers WHERE room_id=?'
+        ).bind(roomId).first() : null;
         return reply({ room: roomId,
+          theme:ROOM_THEMES.has(room.theme)?room.theme:'mid',
+          theme_background_url:cover?.version
+            ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null,
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.
           seat_count:room.seat_count,

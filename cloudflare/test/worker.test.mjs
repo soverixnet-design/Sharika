@@ -211,6 +211,61 @@ test('only the verified room owner can save room settings in D1',async()=>{
   }finally{globalThis.fetch=originalFetch;}
 });
 
+test('room themes and gallery backgrounds reach guests through shared room snapshots',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const owner='firebase:'+project+':secure-user';
+    const db=fakeDb(),originalPrepare=db.prepare.bind(db);
+    let theme='mid',coverVersion=0;
+    db.prepare=sql=>{
+      const stmt=originalPrepare(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({
+          id:'10000001',owner_id:owner,name:'Shared Room',
+          theme,seat_count:12,seat_frame_style:'grad'
+        });
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:stmt.values[1],role:'member'});
+      if(sql.startsWith('SELECT version FROM sharika_room_covers'))
+        stmt.first=async()=>coverVersion?{version:coverVersion}:null;
+      if(sql.startsWith('UPDATE sharika_rooms SET'))
+        stmt.run=async()=>{theme=stmt.values[2];return {meta:{changes:1}};};
+      return stmt;
+    };
+    const env={DB:db,FIREBASE_PROJECT_ID:project,
+      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{}})}};
+    const ownerToken=await token();
+    const guestToken=await token({sub:'room-guest'});
+    const patch=(jwt,value)=>handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001',{
+        method:'PATCH',headers:{Authorization:'Bearer '+jwt},
+        body:JSON.stringify({theme:value})
+      }),env);
+    const read=jwt=>handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001/members',{
+        headers:{Authorization:'Bearer '+jwt}
+      }),env);
+    assert.equal((await patch(guestToken,'photo')).status,403);
+    assert.equal((await patch(ownerToken,'photo')).status,409);
+    assert.equal(theme,'mid');
+    coverVersion=9;
+    assert.equal((await patch(ownerToken,'photo')).status,200);
+    const shared=await read(guestToken);
+    assert.equal(shared.status,200);
+    const body=await shared.json();
+    assert.equal(body.theme,'photo');
+    assert.equal(body.theme_background_url,
+      'https://example.test/api/v1/rooms/10000001/cover?v=9');
+    assert.equal((await patch(ownerToken,'ocean')).status,200);
+    const palette=await (await read(guestToken)).json();
+    assert.equal(palette.theme,'ocean');
+    assert.equal(palette.theme_background_url,null);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
 test('support history requires Firebase authentication and scopes reads to the signer',async()=>{
   const anon=await handleRequest(new Request('https://example.test/api/v1/support/messages'),{
     DB:fakeDb(),FIREBASE_PROJECT_ID:project
@@ -456,7 +511,7 @@ test('room gifts require Firebase auth and a verified room membership',async()=>
   }finally{globalThis.fetch=prior;}
 });
 
-test('regular gift sending uses catalog price and atomically settles one coin debit with recipient XP',async()=>{
+test('regular gift atomically debits sender and credits 10% to the room owner exactly once',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
     const uid='firebase:'+project+':secure-user';
@@ -486,19 +541,26 @@ test('regular gift sending uses catalog price and atomically settles one coin de
     const json=await res.json();
     assert.equal(json.spent_coins,50);
     assert.equal(json.room_reward_coins,5);
+    assert.equal(json.owner_reward_coins,5);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.equal(stmts.length,7);
+    assert.equal(stmts.length,9);
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);
     assert.equal(stmts[5].values[2],uid);
     assert.match(stmts[6].sql,/sharika_regular_room_rewards/);
     assert.equal(stmts[6].values[3],500);
+    assert.match(stmts[7].sql,/UPDATE sharika_users SET coins=CASE/);
+    assert.equal(stmts[7].values[1],5);
+    assert.equal(stmts[7].values[2],uid);
+    assert.match(stmts[8].sql,/room_gift_reward/);
+    assert.match(stmts[8].sql,/roomgift:/);
+    assert.equal(stmts[8].values[1],5);
   }finally{globalThis.fetch=prior;}
 });
 
-test('room rewards show immutable 10% ordinary-gift shares, never personal wallet credit',async()=>{
+test('room rewards show audited ordinary-gift shares and actual owner wallet credits',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
     const uid='firebase:'+project+':secure-user';
@@ -513,6 +575,8 @@ test('room rewards show immutable 10% ordinary-gift shares, never personal walle
         stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
       if(sql.includes('FROM sharika_regular_room_rewards WHERE room_id='))
         stmt.first=async()=>({points:1234});
+      if(sql.includes('SUM(l.delta)'))
+        stmt.first=async()=>({coins:10});
       return stmt;
     };
     const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/rewards',{
@@ -524,9 +588,57 @@ test('room rewards show immutable 10% ordinary-gift shares, never personal walle
     assert.equal(data.regular_reward_hundredths,1234);
     assert.equal(data.reward_coins,12);
     assert.equal(data.reward_fraction_hundredths,34);
-    assert.equal(data.owner_wallet_credited,false);
+    assert.equal(data.owner_wallet_credited,true);
+    assert.equal(data.owner_wallet_credited_coins,10);
+    assert.equal(data.owner_wallet_credit_enabled,true);
     assert.equal(data.withdrawal_enabled,false);
     assert.equal(db.calls.some(x=>x[1]?.includes?.('sharika_lucky_room_rewards')),false);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('replayed gift request returns original owner credit without a second wallet mutation',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    let recordedRoom='10000001';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:1955,diamonds:0});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:uid});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
+      if(sql.includes('recipient_ids_json,total_coins'))
+        stmt.first=async()=>({id:71,room_id:recordedRoom,gift_id:9,quantity:5,
+          recipient_ids_json:'["10000001"]',total_coins:50});
+      if(sql.includes('FROM sharika_regular_room_rewards WHERE transaction_id='))
+        stmt.first=async()=>({reward_hundredths:500});
+      if(sql.includes("reason='room_gift_reward'"))
+        stmt.first=async()=>({delta:5});
+      return stmt;
+    };
+    const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:9,quantity:5,
+        recipient_public_ids:['10000001'],request_id:'gift_atomic_12345678'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(res.status,200);
+    const body=await res.json();
+    assert.equal(body.duplicate,true);
+    assert.equal(body.owner_reward_coins,5);
+    assert.equal(db.calls.some(c=>c[0]==='batch'),false);
+    // Reusing the same request ID for a different room cannot redirect a
+    // prior transaction's 10% owner reward.
+    recordedRoom='10000002';
+    const otherRoom=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:9,quantity:5,
+        recipient_public_ids:['10000001'],request_id:'gift_atomic_12345678'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(otherRoom.status,409);
+    assert.equal((await otherRoom.json()).error,'idempotency_conflict');
   }finally{globalThis.fetch=prior;}
 });
 
@@ -794,6 +906,70 @@ test('room chat denies unverified requests before reaching the coordinator',asyn
       method:'POST',body:JSON.stringify({body:'hello'})}),
     {DB:fakeDb(),FIREBASE_PROJECT_ID:project});
   assert.equal(response.status,401);
+});
+
+test('room seat emojis use verified sender ID, require a real mic seat and reject forged reactions',async()=>{
+  const oldFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user',roomId='10000001';
+    const headers={Authorization:'Bearer '+await token()};
+    const url='https://example.test/api/v1/rooms/'+roomId+'/reactions';
+    const calls=[];
+    const rooms={getByName(name){
+      assert.equal(name,'sharika:'+roomId);
+      return {
+        async roomReactionRead(after){calls.push(['read',after]);return {events:[]};},
+        async roomReactionSend(...args){
+          calls.push(['send',...args]);
+          return {event:{id:4,public_id:args[1],emoji:args[2],created_at_ms:Date.now()},
+            duplicate:false};
+        }
+      };
+    }};
+    const dbFor=(seat,owner='another-user')=>{
+      const db=fakeDb(),prior=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const statement=prior(sql);
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id=?'))
+          statement.first=async()=>({id:roomId,owner_id:owner,seat_count:12});
+        if(sql.includes('FROM sharika_room_members WHERE room_id=?'))
+          statement.first=async()=>seat===undefined?null:
+            {user_id:uid,seat_no:seat,role:'member'};
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          statement.first=async()=>({auth_uid:uid,status:'active',
+            public_no:10000003,name:'Real Speaker'});
+        return statement;
+      };
+      return db;
+    };
+    const post=body=>new Request(url,{method:'POST',headers,
+      body:JSON.stringify(body)});
+    const valid={emoji:'😍',request_id:'reaction:device-test-001',
+      sender_id:'10000001',seat_no:0};
+    const env=seat=>({DB:dbFor(seat),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    const noRoom=await handleRequest(post(valid),env(undefined));
+    assert.equal(noRoom.status,403);
+    const audience=await handleRequest(post(valid),env(null));
+    assert.equal(audience.status,403);
+    assert.equal((await audience.json()).error,'take_mic_seat_first');
+    const fake=await handleRequest(post({...valid,emoji:'🪙'}),env(9));
+    assert.equal(fake.status,400);
+    assert.equal(calls.length,0);
+    const posted=await handleRequest(post(valid),env(9));
+    assert.equal(posted.status,201);
+    assert.equal((await posted.json()).event.public_id,'10000003');
+    assert.deepEqual(calls[0],['send',uid,'10000003','😍',valid.request_id]);
+    const read=await handleRequest(new Request(url+'?after=4',{headers}),env(9));
+    assert.equal(read.status,200);
+    assert.deepEqual(calls[1],['read',4]);
+    const badCursor=await handleRequest(new Request(url+'?after=-1',{headers}),env(9));
+    assert.equal(badCursor.status,400);
+    const owner=await handleRequest(post(valid),{
+      DB:dbFor(null,uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(owner.status,201,'room owners are allowed to react from seat zero');
+  }finally{globalThis.fetch=oldFetch;}
 });
 
 
@@ -1102,13 +1278,18 @@ test('profile avatar validates JPEG, persists only to own ID, and rate limits re
         const stmt=original(sql);
         if(sql.includes('SELECT * FROM sharika_users WHERE auth_uid'))
           stmt.first=async()=>({auth_uid:userId,public_no:10000001,name:'Guest',status:'active',pic:userPic});
-        if(sql.startsWith('INSERT INTO sharika_user_avatars'))
-          stmt.run=async()=>{db.calls.push(['avatar_run',sql,stmt.values]);return {meta:{changes}};};
-        if(sql.startsWith('SELECT version FROM sharika_user_avatars'))
-          stmt.first=async()=>({version:2});
-        if(sql.startsWith('UPDATE sharika_users SET pic='))
-          stmt.run=async()=>{userPic=stmt.values[0];db.calls.push(['profile_pic',sql,stmt.values]);return {meta:{changes:1}};};
         return stmt;
+      };
+      db.batch=async stmts=>{
+        db.calls.push(['avatar_batch',stmts]);
+        assert.equal(stmts.length,2);
+        assert.match(stmts[0].sql,/^INSERT INTO sharika_user_avatars/);
+        assert.deepEqual(stmts[0].values.slice(0,1),[userId]);
+        assert.match(stmts[1].sql,/^UPDATE sharika_users SET pic=/);
+        assert.equal(stmts[1].values[1],userId);
+        assert.equal(stmts[1].values[2],userId);
+        if(changes)userPic=stmts[1].values[0]+'2';
+        return [{meta:{changes}},{meta:{changes:1}}];
       };
       return db;
     }
@@ -1120,13 +1301,12 @@ test('profile avatar validates JPEG, persists only to own ID, and rate limits re
     const invalid=await handleRequest(await req('data:image/png;base64,'+jpeg.toString('base64')),
       {DB:invalidDb,FIREBASE_PROJECT_ID:project});
     assert.equal(invalid.status,400);
-    assert.equal(invalidDb.calls.some(c=>c[0]==='avatar_run'),false);
+    assert.equal(invalidDb.calls.some(c=>c[0]==='avatar_batch'),false);
     const goodDb=dbWithUser();
     const saved=await handleRequest(await req(image_data),{DB:goodDb,FIREBASE_PROJECT_ID:project});
     assert.equal(saved.status,200);
     assert.equal((await saved.json()).pic,'https://example.test/api/v1/users/10000001/avatar?v=2');
-    assert.equal(goodDb.calls.some(c=>c[0]==='avatar_run'),true);
-    assert.equal(goodDb.calls.some(c=>c[0]==='profile_pic'),true);
+    assert.equal(goodDb.calls.some(c=>c[0]==='avatar_batch'),true);
     const limited=await handleRequest(await req(image_data),{
       DB:dbWithUser(0),FIREBASE_PROJECT_ID:project
     });

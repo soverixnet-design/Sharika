@@ -1,5 +1,30 @@
 # Sharika Android staging alpha — original Sharika UI
 
+## Greedy Wheel (isolated staging candidate, 2026-10-31)
+
+The supplied `greedy-wheel-full(1).zip` now appears as the fourth card in the
+original Home/room Games sheet. Its original HTML, CSS, JS, and ten food images
+are copied under `app/src/main/assets/greedy-wheel/`. The other three game
+screens and the original Sharika app/room design remain unchanged.
+
+`sharika-bridge.js` keeps the wheel in **online-only** mode. It transports
+state, bet, and records requests to the authenticated Android parent, whose
+native Firebase bridge only permits exact `/api/v1/greedy-wheel/*` routes.
+All wagers and payouts use the existing staging D1 user `coins` balance and
+immutable wallet ledger. There are no fake players, simulated coin grants, or
+independent local-wallet balances in this app integration. The supplied
+standalone Node server is not deployed; an equivalent D1 handler lives in
+`cloudflare/src/greedy-wheel.mjs`.
+
+**Required deployment order:** apply the new staging migration
+`cloudflare/migrations/0027_greedy_wheel.sql`, deploy the updated staging
+Worker, then build/test the Android staging APK. A newly built APK pointed at
+the old Worker cannot take Greedy bets; no existing live service is changed by
+this branch. Verify actual two-device betting, result timing, and ledger
+reconciliation before any user rollout. This implementation is restricted to
+non-redeemable virtual coins and verified adult staging accounts; paid gaming
+or public store distribution requires separate legal and platform review.
+
 ## Android Firebase bridge route allowlist
 
 The native shell explicitly permits only known signed-in staging API routes:

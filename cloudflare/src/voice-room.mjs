@@ -42,6 +42,14 @@ export class SharikaVoiceRoom extends DurableObject {
         'public_id TEXT NOT NULL, display_name TEXT NOT NULL, '+
         'entry_style TEXT NOT NULL, created_at_ms INTEGER NOT NULL)'
       );
+      // Short-lived seat emojis belong to their authenticated sender, not to
+      // whichever user happens to occupy seat zero on another phone.
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_seat_reactions ('+
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT NOT NULL, '+
+        'public_id TEXT NOT NULL, emoji TEXT NOT NULL, '+
+        'request_id TEXT NOT NULL UNIQUE, created_at_ms INTEGER NOT NULL)'
+      );
       this.ctx.storage.sql.exec(
         'CREATE TABLE IF NOT EXISTS room_seat_locks (' +
         'seat_no INTEGER PRIMARY KEY CHECK(seat_no BETWEEN 1 AND 20), ' +
@@ -398,6 +406,44 @@ export class SharikaVoiceRoom extends DurableObject {
       'ORDER BY id DESC LIMIT 30',safeAfter,Date.now()-30_000
     ).toArray().reverse();
     return {events};
+  }
+
+  async roomReactionSend(uid, publicId, emoji, requestId) {
+    const previous=this.ctx.storage.sql.exec(
+      'SELECT id,uid,public_id,emoji,created_at_ms FROM room_seat_reactions '+
+      'WHERE request_id=?',requestId
+    ).toArray()[0];
+    if(previous){
+      if(previous.uid!==uid||previous.emoji!==emoji)return {error:'reaction_request_conflict'};
+      const {uid: _privateUid,...event}=previous;
+      return {event,duplicate:true};
+    }
+    const now=Date.now();
+    const recent=this.ctx.storage.sql.exec(
+      'SELECT created_at_ms FROM room_seat_reactions WHERE uid=? ORDER BY id DESC LIMIT 1',uid
+    ).toArray()[0];
+    if(recent&&now-Number(recent.created_at_ms)<900)
+      return {error:'reaction_rate_limited'};
+    this.ctx.storage.sql.exec(
+      'INSERT INTO room_seat_reactions(uid,public_id,emoji,request_id,created_at_ms) '+
+      'VALUES(?,?,?,?,?)',uid,publicId,emoji,requestId,now
+    );
+    const id=Number(this.ctx.storage.sql.exec(
+      'SELECT last_insert_rowid() AS id'
+    ).toArray()[0].id);
+    this.ctx.storage.sql.exec(
+      'DELETE FROM room_seat_reactions WHERE id < '+
+      '(SELECT id FROM room_seat_reactions ORDER BY id DESC LIMIT 1 OFFSET 99)'
+    );
+    return {event:{id,public_id:publicId,emoji,created_at_ms:now},duplicate:false};
+  }
+  async roomReactionRead(afterId) {
+    const after=Number.isSafeInteger(afterId)&&afterId>=0?afterId:0;
+    return {events:this.ctx.storage.sql.exec(
+      'SELECT id,public_id,emoji,created_at_ms FROM room_seat_reactions '+
+      'WHERE id>? AND created_at_ms>=? ORDER BY id DESC LIMIT 40',
+      after,Date.now()-6_000
+    ).toArray().reverse()};
   }
 
   async presenceTouch(uid, roomId) {
