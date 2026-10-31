@@ -26,6 +26,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['premium','👑','VIP / SVIP / Noble']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='bonds')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='premium');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['bonds','💞','CP & Friendship Gifts']);
+  }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -842,6 +847,89 @@
       }catch(error){result.textContent='Not changed: '+error.message;}
       finally{if(event.currentTarget.isConnected)event.currentTarget.disabled=false;}
     });
+  };
+
+  // CP/Friendship policy is independent of ordinary room gifts. Only the
+  // verified Super Admin can change prices or enabled status; Finance reads.
+  P.bonds=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>💞 Royal CP & Friendship Gifts</h3>'+
+      '<p class="n">CP is one active partner per person. Friendship supports multiple partners. '+
+      'Each gift holds coins until accepted; decline/expiry creates a ledger refund.</p>'+
+      '<div id="sh-admin-bond-policy">Loading verified bond rules…</div></div>'+
+      '<div class="card"><h3>🎁 CP / Friendship Gift Catalog</h3>'+
+      '<div id="sh-admin-bond-gifts">Loading gift prices…</div></div>'+
+      '<div class="card"><h3>📜 Recent Relationship Audit</h3>'+
+      '<div id="sh-admin-bond-audit">Loading…</div></div>';
+    const policyRoot=byId('sh-admin-bond-policy');
+    const giftRoot=byId('sh-admin-bond-gifts');
+    const auditRoot=byId('sh-admin-bond-audit');
+    let data;
+    try{data=await api('GET','bonds');}
+    catch(error){policyRoot.textContent='Bond settings unavailable: '+error.message;
+      giftRoot.textContent='Deployment and migration 0029 must be ready.';return;}
+    if(!root.isConnected)return;
+    const editable=role==='super';
+    const policy=data.policy||{};
+    const control=(field,label,checked)=>'<label style="display:flex;align-items:center;gap:10px;margin:12px 0">'+
+      '<input type="checkbox" id="sh-bond-'+field+'" '+(checked?'checked ':'')+
+      (editable?'':'disabled ')+'>'+esc(label)+'</label>';
+    policyRoot.innerHTML=control('cp','Enable CP gifts',policy.cp_enabled)+
+      control('friendship','Enable Friendship gifts',policy.friendship_enabled)+
+      '<label>Invitation expiry (hours, 1–168) '+
+      '<input id="sh-bond-expiry" type="number" class="field" min="1" max="168" '+
+      'value="'+esc(policy.expiry_hours)+'" '+(editable?'':'disabled')+'></label>'+
+      (editable?'<button class="btn s" id="sh-bond-policy-save" type="button">Save CP & Friendship policy</button>':'')+
+      '<p class="n" id="sh-bond-policy-note">Only future invitations use a changed expiry period.</p>';
+    byId('sh-bond-policy-save')?.addEventListener('click',async event=>{
+      const expiry_hours=Number(byId('sh-bond-expiry').value);
+      if(!Number.isSafeInteger(expiry_hours)||expiry_hours<1||expiry_hours>168){
+        byId('sh-bond-policy-note').textContent='Choose 1–168 hours.';return;}
+      if(!window.confirm('Save relationship invitation rules?'))return;
+      const button=event.currentTarget;button.disabled=true;
+      try{await api('PATCH','bonds',{
+        cp_enabled:byId('sh-bond-cp').checked,
+        friendship_enabled:byId('sh-bond-friendship').checked,expiry_hours});
+        byId('sh-bond-policy-note').textContent='Saved and audited ✓';
+      }catch(error){byId('sh-bond-policy-note').textContent='Not saved: '+error.message;}
+      finally{if(button.isConnected)button.disabled=false;}
+    });
+    giftRoot.replaceChildren();
+    for(const gift of data.gifts||[]){
+      const row=document.createElement('div');
+      row.className='row';row.style.cssText='padding:12px 0;border-bottom:1px solid #ffffff25;'+
+        'display:flex;flex-wrap:wrap;gap:9px;align-items:center';
+      const label=document.createElement('strong');
+      label.textContent=(gift.type==='cp'?'💗 CP':'🤝 Friendship')+' · '+gift.emoji+' '+gift.name;
+      const price=document.createElement('input');price.type='number';price.min='1';
+      price.max='1000000000';price.className='field';price.value=gift.price_coins;
+      price.style.width='125px';price.disabled=!editable;
+      const active=document.createElement('input');active.type='checkbox';
+      active.checked=gift.active;active.disabled=!editable;
+      const activeLabel=document.createElement('label');activeLabel.textContent='Active ';
+      activeLabel.appendChild(active);
+      row.append(label,price,activeLabel);
+      if(editable){const save=document.createElement('button');save.type='button';
+        save.className='btn s';save.textContent='Save gift';
+        save.onclick=async()=>{
+          const value=Number(price.value);
+          if(!Number.isSafeInteger(value)||value<1||value>1_000_000_000){
+            note('Gift price must be between 1 and 1,000,000,000 coins');return;}
+          if(!window.confirm('Save '+gift.name+' price and availability?'))return;
+          save.disabled=true;
+          try{await api('PATCH','bonds/gifts/'+gift.id,{price_coins:value,active:active.checked});
+            note('Bond gift saved and audited ✓');
+          }catch(error){note('Not saved: '+error.message);}
+          finally{save.disabled=false;}
+        };row.appendChild(save);}
+      giftRoot.appendChild(row);
+    }
+    const audit=data.audit||[];
+    auditRoot.innerHTML=audit.length?audit.map(entry=>
+      '<div class="n" style="padding:7px 0;border-bottom:1px solid #ffffff20">'+
+      esc(entry.action)+' · ID '+esc(entry.actor_id)+' · '+
+      esc(new Date(entry.created_at_ms).toLocaleString())+'</div>').join(''):
+      '<p class="n">No relationship activity recorded yet.</p>';
   };
 
   P.sellers=async function(){
@@ -1699,7 +1787,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

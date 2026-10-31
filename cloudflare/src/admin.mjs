@@ -5,6 +5,7 @@ import { handleSellerAdmin } from './sellers.mjs';
 import { handleBannerAdmin } from './banners.mjs';
 import { handleDailyAdmin } from './daily.mjs';
 import { handlePremiumAdmin } from './premium.mjs';
+import { handleBondAdmin } from './bonds.mjs';
 import { handleEventAdmin } from './events.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
@@ -142,6 +143,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     return await handlePremiumAdmin({
       request,env,uid,actor,operation,cors,reply,fail
     });
+  if(operation==='bonds'||/^bonds\/gifts\/[1-9][0-9]{0,9}$/.test(operation))
+    return await handleBondAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if (operation.startsWith('sellers')) return await handleSellerAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
