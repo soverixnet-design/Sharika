@@ -16,6 +16,11 @@
     support_reply:'Support inbox and reply',coin_recharge:'Credit user coins'
   };
   const NAV_ALL=(window.NAV||[]).slice();
+  if(!NAV_ALL.some(item=>item[0]==='cosmetics')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='gifts');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['cosmetics','✨','Frames, Entry & Name Tags']);
+  }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -601,6 +606,107 @@
         }
       });
     }catch(error){if(panel?.isConnected)panel.textContent='Percentage unavailable: '+error.message;}
+  };
+
+  P.cosmetics=async function(){
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Frames, entry and name tags','Only Super Admin can manage prices or grant free styles to an ID.');
+      return;
+    }
+    const art={
+      frame_style:['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love',
+        'ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen'],
+      entry_style:['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen'],
+      medal_style:['bronze','silver','gold','top-host'],name_tag_style:['legend']
+    };
+    const kinds=Object.keys(art);
+    const options=(list,selected)=>list.map(v=>'<option value="'+esc(v)+'"'+
+      (v===selected?' selected':'')+'>'+esc(v.replaceAll('_',' '))+'</option>').join('');
+    root.innerHTML=card('Verified cosmetic inventory',
+      'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
+      '<div id="sh-cosmetic-list">Loading server catalogue…</div>'+
+      '<div class="card"><h3>Add new catalog item</h3>'+
+      '<div class="row"><select class="field" id="sh-cos-kind">'+options(kinds,'entry_style')+'</select>'+
+      '<input class="field" id="sh-cos-slug" maxlength="39" placeholder="New item ID (e.g. royal-arrival)"></div>'+
+      '<div class="row"><input class="field" id="sh-cos-name" maxlength="80" placeholder="Display name">'+
+      '<input class="field" id="sh-cos-price" type="number" min="1" max="1000000" placeholder="Coin price"></div>'+
+      '<div class="row"><label>Existing bundled artwork <select class="field" id="sh-cos-art"></select></label>'+
+      '<button class="btn s" type="button" id="sh-cos-create">Add item</button></div>'+
+      '<p class="n">New catalogue IDs may reuse a bundled entry/frame asset. Truly new art requires including its animation or image in an app update.</p></div>'+
+      '<div class="card"><h3>Give a cosmetic free to any verified Sharika ID</h3>'+
+      '<div class="row"><input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" placeholder="8-digit recipient ID">'+
+      '<select class="field" id="sh-cos-grant-item"></select>'+
+      '<button class="btn s" type="button" id="sh-cos-grant">Give to ID · No coin charge</button></div></div>'+
+      '<p class="n" role="status" id="sh-cos-note"></p>';
+    const status=byId('sh-cos-note'),kind=byId('sh-cos-kind'),artSelect=byId('sh-cos-art');
+    function fillArt(){artSelect.innerHTML=options(art[kind.value]||[],'');}
+    kind.onchange=fillArt;fillArt();
+    try{
+      const data=await api('GET','cosmetics');
+      if(!root.isConnected)return;
+      const items=Array.isArray(data.items)?data.items:[];
+      byId('sh-cos-grant-item').innerHTML=items.map(item=>
+        '<option value="'+esc(item.id)+'">'+esc(item.name+' · '+item.id)+'</option>').join('');
+      const list=byId('sh-cosmetic-list');
+      list.innerHTML=items.map(item=>'<div class="card"><h4>'+esc(item.id)+'</h4>'+
+        '<div class="row"><label>Name <input class="field" data-cos-field="name" data-id="'+esc(item.id)+'" value="'+esc(item.name)+'"></label>'+
+        '<label>Price coins <input class="field" type="number" min="1" max="1000000" data-cos-field="price" data-id="'+esc(item.id)+'" value="'+Number(item.price_coins)+'"></label></div>'+
+        '<div class="row"><label>Artwork <select class="field" data-cos-field="art" data-id="'+esc(item.id)+'">'+
+        options(art[item.kind]||[],item.art_key)+'</select></label>'+
+        '<label><input type="checkbox" data-cos-field="active" data-id="'+esc(item.id)+'"'+
+        (item.active?' checked':'')+'> Available to buy</label>'+
+        '<button class="btn s" type="button" data-cos-save="'+esc(item.id)+'">Save</button></div></div>').join('')||
+        card('No catalogue','No cosmetic items have been seeded yet.');
+      const field=(id,name)=>Array.from(list.querySelectorAll('[data-cos-field]'))
+        .find(x=>x.dataset.id===id&&x.dataset.cosField===name);
+      list.querySelectorAll('[data-cos-save]').forEach(button=>{
+        button.onclick=async()=>{
+          const id=button.dataset.cosSave;
+          const item=items.find(x=>x.id===id);
+          const price=Number(field(id,'price')?.value);
+          if(!item||!Number.isSafeInteger(price)||price<1||price>1000000){
+            status.textContent='Enter a coin price from 1 to 1,000,000.';return;
+          }
+          button.disabled=true;
+          try{
+            await api('PATCH','cosmetics',{
+              item_id:id,kind:item.kind,name:field(id,'name').value.trim(),
+              price_coins:price,art_key:field(id,'art').value,
+              active:field(id,'active').checked
+            });
+            status.textContent='Saved and audited: '+id;
+          }catch(error){status.textContent='Not saved: '+error.message;}
+          finally{button.disabled=false;}
+        };
+      });
+      byId('sh-cos-create').onclick=async event=>{
+        const button=event.currentTarget;
+        const price=Number(byId('sh-cos-price').value);
+        const payload={kind:kind.value,slug:byId('sh-cos-slug').value.trim(),
+          name:byId('sh-cos-name').value.trim(),art_key:artSelect.value,
+          price_coins:price};
+        if(!/^[a-z0-9][a-z0-9-]{2,39}$/.test(payload.slug)||!Number.isSafeInteger(price)||
+           price<1||price>1000000){status.textContent='Enter a valid slug and positive coin price.';return;}
+        button.disabled=true;
+        try{await api('POST','cosmetics',payload);await P.cosmetics();note('Cosmetic added');}
+        catch(error){status.textContent='Not added: '+error.message;button.disabled=false;}
+      };
+      byId('sh-cos-grant').onclick=async event=>{
+        const button=event.currentTarget;
+        const id=byId('sh-cos-user').value.trim(),itemId=byId('sh-cos-grant-item').value;
+        if(!/^[0-9]{8}$/.test(id)||!itemId){
+          status.textContent='Enter a verified 8-digit ID and select one cosmetic.';return;
+        }
+        if(!window.confirm('Give '+itemId+' to user ID '+id+' for FREE? This is audited.'))return;
+        button.disabled=true;
+        try{
+          const given=await api('POST','cosmetics/grant',{public_id:id,item_id:itemId});
+          status.textContent=(given.duplicate?'Already owned: ':'Granted free to ')+id+' · '+itemId;
+        }catch(error){status.textContent='Grant failed: '+error.message;}
+        finally{button.disabled=false;}
+      };
+    }catch(error){status.textContent='Cosmetics unavailable: '+error.message;}
   };
 
   P.sellers=async function(){
@@ -1288,7 +1394,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','rech','gifts','rank','audit','admins','system','banners'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','rech','gifts','cosmetics','rank','audit','admins','system','banners'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
