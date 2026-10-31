@@ -540,3 +540,32 @@ html.royal-room .sheet .gifts .gf.sel {
   html.royal-room .sheet .themes {gap:4px;}
   html.royal-room .sheet .th {height:66px;font-size:9px;}
 }
+
+/* Compact Android touch ergonomics: keep chat readable on narrow phones.
+ * Layout-only; existing room button IDs and handlers are unchanged. */
+html.royal-root .tabs button,
+html.royal-root .auth:not(.w) .atabs button,
+html.royal-root .auth:not(.w) .alt button,
+html.royal-root .auth:not(.w) .pw .eye,
+html.royal-root .nav .ni {
+  min-height:48px;
+}
+html.royal-room .rb,
+html.royal-room .mic {
+  width:48px;height:48px;min-width:48px;min-height:48px;
+}
+html.royal-room .inp {min-height:48px;}
+@media (max-width:390px) {
+  html.royal-room .irow {
+    flex-wrap:wrap;justify-content:space-between;
+    column-gap:8px;row-gap:9px;
+  }
+  html.royal-room .irow > .inp {
+    flex:0 0 100%;width:100%;min-width:0;
+  }
+  html.royal-room .irow > .rb,
+  html.royal-room .irow > .mic {
+    flex:0 0 48px;width:48px;height:48px;
+    min-width:48px;min-height:48px;
+  }
+}
