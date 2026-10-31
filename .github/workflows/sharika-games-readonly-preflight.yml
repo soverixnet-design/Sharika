@@ -48,6 +48,12 @@ jobs:
       - name: Read only all Sharika schema objects before Worker deployment
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT type,name FROM sqlite_master WHERE name LIKE 'sharika_%' ORDER BY type,name;"
+      - name: Count real original game bets without user identifiers
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT game,status,COUNT(*) AS bets FROM sharika_original_game_bets GROUP BY game,status ORDER BY game,status;"
+      - name: Count guest seat and mute state without user identifiers
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS room_members, SUM(CASE WHEN role!='owner' AND seat_no IS NOT NULL THEN 1 ELSE 0 END) AS seated_guests, SUM(CASE WHEN role!='owner' AND seat_no IS NOT NULL AND muted=1 THEN 1 ELSE 0 END) AS muted_seated_guests, SUM(CASE WHEN role!='owner' AND seat_no IS NULL THEN 1 ELSE 0 END) AS audience_members FROM sharika_room_members;"
       - name: Read only migrations recorded by D1
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM d1_migrations ORDER BY id;"
