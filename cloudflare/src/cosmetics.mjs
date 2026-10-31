@@ -52,7 +52,7 @@ async function stock(db,uid,all=false){
 }
 export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail,cors}){
  if(path==='/api/v1/cosmetics'&&request.method==='GET')
-  return reply({items:await stock(db,uid)},200,cors);
+  return reply({items:await stock(db,uid,true)},200,cors);
  if(path==='/api/v1/cosmetics/purchase'&&request.method==='POST'){
   const body=await readBody(request);
   const itemId=body.item_id,requestId=body.request_id;
