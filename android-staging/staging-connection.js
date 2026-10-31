@@ -536,6 +536,15 @@
   function renderVerifiedIdentity(){
     const anchor=document.querySelector('#v-me .mid');
     if(!anchor)return;
+    // Tapping the public ID opens the separate rich ID detail profile,
+    // never redirects back to the wallet/settings Main Profile.
+    anchor.setAttribute('role','button');anchor.tabIndex=0;
+    anchor.title='Open my detailed public profile';
+    anchor.style.cursor='pointer';
+    anchor.onclick=()=>{if(profile?.public_id)openVerifiedRankProfile(profile.public_id);};
+    anchor.onkeydown=event=>{
+      if(event.key==='Enter'||event.key===' '){event.preventDefault();anchor.click();}
+    };
     document.getElementById('sh-sovera-own-identity')?.remove();
     const medal=medalArt(profile?.medal_style);
     const tag=nameTagArt(profile?.name_tag_style);
@@ -1710,6 +1719,48 @@
     drawVerifiedRoomCards();
     return result;
   };
+  function decorateBondSeatOverlay(frame,pairs){
+    const doc=frame?.document;
+    if(!doc?.body)return;
+    doc.getElementById('sh-bond-seat-links')?.remove();
+    const active=(pairs||[]).filter(pair=>
+      (frame.seats||[]).some(s=>s?.public_id===pair.a_id)&&
+      (frame.seats||[]).some(s=>s?.public_id===pair.b_id)).slice(0,9);
+    if(!active.length)return;
+    const NS='http://www.w3.org/2000/svg';
+    const width=doc.documentElement.scrollWidth;
+    const height=doc.documentElement.scrollHeight;
+    const svg=doc.createElementNS(NS,'svg');svg.id='sh-bond-seat-links';
+    svg.setAttribute('viewBox','0 0 '+width+' '+height);
+    svg.setAttribute('aria-hidden','true');
+    svg.style.cssText='position:absolute;top:0;left:0;width:'+width+'px;height:'+height+
+      'px;z-index:6;pointer-events:none;overflow:visible;opacity:.95';
+    for(const pair of active){
+      const seatA=frame.seats.find(s=>s?.public_id===pair.a_id);
+      const seatB=frame.seats.find(s=>s?.public_id===pair.b_id);
+      const faceA=frame.seatEl?.(seatA.i)?.querySelector('.av');
+      const faceB=frame.seatEl?.(seatB.i)?.querySelector('.av');
+      if(!faceA||!faceB)continue;
+      const a=faceA.getBoundingClientRect(),b=faceB.getBoundingClientRect();
+      const x1=a.left+a.width/2+frame.scrollX,y1=a.top+a.height/2+frame.scrollY;
+      const x2=b.left+b.width/2+frame.scrollX,y2=b.top+b.height/2+frame.scrollY;
+      const midX=(x1+x2)/2,midY=(y1+y2)/2-24;
+      const path=doc.createElementNS(NS,'path');
+      path.setAttribute('d','M '+x1+' '+y1+' Q '+midX+' '+(midY-16)+' '+x2+' '+y2);
+      path.setAttribute('stroke',pair.type==='cp'?'#ff9bc9':'#8edaff');
+      path.setAttribute('stroke-width',pair.type==='cp'?'3':'2');
+      path.setAttribute('stroke-dasharray',pair.type==='cp'?'':'5 5');
+      path.setAttribute('fill','none');path.setAttribute('opacity','.72');
+      path.style.filter='drop-shadow(0 0 5px '+(pair.type==='cp'?'#ff60b4':'#5ed7ff')+')';
+      const icon=doc.createElementNS(NS,'text');
+      icon.setAttribute('x',midX);icon.setAttribute('y',midY);
+      icon.setAttribute('text-anchor','middle');icon.setAttribute('font-size','29');
+      icon.style.filter='drop-shadow(0 3px 7px #10031d)';
+      icon.textContent=pair.type==='cp'?'💞':'🤝';
+      svg.append(path,icon);
+    }
+    doc.body.appendChild(svg);
+  }
   async function syncFrame(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
     // Out-of-order room polls cannot restore stale seats or old cosmetics.
@@ -1789,6 +1840,8 @@
     frame.render();
     decorateRoomPeople(frame);
     decorateRoomChat(frame);
+    if(typeof decorateBondSeatOverlay==='function')
+      decorateBondSeatOverlay(frame,data.bond_pairs);
     // Arrival effects come from the coordinator's short, verified event
     // history, not the 15-second seat/member snapshot that misses guests.
     frame.__soveraSeenMembers=new Set((data.members||[]).map(m=>m.user_id));
@@ -1891,6 +1944,8 @@
       document.getElementById('pfo')?.classList.remove('on');
       currentFrame?.__sharikaReportMember?.(publicId,String(member.name||'Member'));
     };
+    mountBondDetails(root,String(publicId),member).catch(error=>
+      console.warn('Bond ID profile:',errText(error)));
   }
   if(typeof window.addEventListener==='function')window.addEventListener('message',event=>{
     const frame=document.getElementById('rf')?.contentWindow;
@@ -2047,7 +2102,7 @@
         const data=await api('GET','/gifts');
         const gifts=(data.gifts||[]).filter(g=>g.tab===0||g.tab===1||
           (g.tab===2 && data.lucky_enabled===true && profile?.minor===false));
-        if(!gifts.length){frame.toast('No active gifts in the catalog yet');return;}
+        if(!gifts.length){showBondGiftSheet(directGiftTarget,'cp');return;}
         const htmlSafe=text=>String(text??'').replace(/[&<>"']/g,
           c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const imageSafe=value=>{
@@ -2075,6 +2130,28 @@
             const chips=frame.$('sheet')?.querySelector('.chips');
             if(chips)chips.replaceWith(selected);
             else frame.$('sheet')?.prepend(selected);
+          }
+          // CP/Friendship gifts are verified consent invitations and do not
+          // pass through the ordinary room-gift sender or its local wallet.
+          const bondTabs=frame.$('sheet')?.querySelector('.gtabs')||
+            frame.document.getElementById('snd')?.parentElement;
+          if(bondTabs){
+            for(const choice of [{type:'cp',label:'💝 CP'},{type:'friendship',label:'🤝 Friends'}]){
+              const button=frame.document.createElement('button');
+              button.type='button';button.className='sh-bond-gift-tab';
+              button.textContent=choice.label;
+              button.style.cssText='padding:8px 10px;border:1px solid #ffdfb0;'+
+                'border-radius:13px;color:#fff;background:linear-gradient(145deg,#a94da8,#44217b);'+
+                'font-size:12px;font-weight:900;margin:3px';
+              button.onclick=()=>{
+                const selected=(frame.rec||[]).map(index=>frame.seats?.[Number(index)])
+                  .find(seat=>seat?.public_id&&seat.public_id!==profile?.public_id);
+                const person=directGiftTarget||
+                  (selected?{id:selected.public_id,name:selected.n}:null);
+                frame.close();showBondGiftSheet(person,choice.type);
+              };
+              bondTabs.appendChild(button);
+            }
           }
           // Google Play requires chance-based virtual reward odds next to a
           // purchase. Preserve the original gift modal, insert text only.
@@ -4387,14 +4464,346 @@
     if(effects.children.length)root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',effects);
   }
 
+  // Royal CP / Friendship is shown on the ID detail profile only. The main
+  // account, wallet, recharge and settings profile is intentionally unchanged.
+  function bondStyles(){
+    if(document.getElementById('sh-bond-royal-style'))return;
+    const sheet=document.createElement('style');sheet.id='sh-bond-royal-style';
+    sheet.textContent=[
+      '.sh-bond-panel,.sh-bond-sheet{font-family:inherit;color:#fff;box-sizing:border-box}',
+      '.sh-bond-panel{padding:10px 13px 23px;background:linear-gradient(170deg,#1c103e,#120827 80%);border-radius:25px;margin:12px 0 20px;border:1px solid #dfabff55}',
+      '.sh-bond-hero{position:relative;text-align:center;padding:22px 11px 18px;margin:4px 0 13px;border-radius:22px;overflow:hidden;background:radial-gradient(ellipse at 50% -15%,#e77c9d88,transparent 55%),linear-gradient(148deg,#5a174f,#270d46 65%,#0f0b2f);border:1px solid #ffd4b587;box-shadow:inset 0 2px 0 #fff6,0 10px 21px #05011899}',
+      '.sh-bond-hero:after{content:"✦  ✧  ✦";position:absolute;right:10px;top:7px;color:#ffd0a0aa;letter-spacing:9px;font-size:15px;pointer-events:none}',
+      '.sh-bond-kicker{font-size:10px;font-weight:900;letter-spacing:2px;color:#ffd99c;text-transform:uppercase}',
+      '.sh-bond-title{font-size:25px;font-weight:1000;letter-spacing:-.4px;color:#fff0d7;text-shadow:0 3px 0 #180a26,0 0 18px #ff99c5;margin:7px 0}',
+      '.sh-bond-sub{font-size:12px;color:#e9c8eb;line-height:1.45}',
+      '.sh-bond-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:12px 0}',
+      '.sh-bond-stat{padding:11px 3px;background:linear-gradient(135deg,#48305f,#27173f);border:1px solid #ffe6b968;border-radius:15px;text-align:center;box-shadow:inset 0 1px #fff5}',
+      '.sh-bond-stat strong{display:block;color:#ffe4ab;font-size:19px;font-weight:900}',
+      '.sh-bond-stat span{display:block;font-size:10px;color:#e5d3f6;margin-top:3px}',
+      '.sh-bond-section{margin:13px 0;padding:13px;border-radius:20px;background:linear-gradient(140deg,#351437,#240d34);border:1px solid #ffa1be70;box-shadow:inset 0 2px #fff3,0 8px 17px #08021788}',
+      '.sh-bond-section.friends{background:linear-gradient(135deg,#10294d,#14163f);border-color:#8cceff85}',
+      '.sh-bond-section h3{margin:0 0 10px;font-size:15px;color:#ffe3ae;font-weight:900}',
+      '.sh-bond-section.friends h3{color:#c3e8ff}',
+      '.sh-bond-couple{display:grid;grid-template-columns:minmax(0,1fr) 52px minmax(0,1fr);align-items:center;gap:4px}',
+      '.sh-bond-person{border:0;background:none;color:#fff;font:inherit;min-width:0;padding:5px 2px;display:flex;align-items:center;flex-direction:column;gap:5px}',
+      '.sh-bond-person strong{font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sh-bond-person small{font-size:10px;color:#eec9d7}',
+      '.sh-bond-avatar{width:67px;height:67px;position:relative;display:grid;place-items:center;border-radius:50%;background:linear-gradient(145deg,#a140c5,#362164);border:3px solid #ffe2ad;box-shadow:0 0 0 3px #a1487e,0 7px 13px #02011099;font-size:30px}',
+      '.sh-bond-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}',
+      '.sh-bond-avatar .sh-sovera-frame{position:absolute;inset:-20%;width:140%!important;height:140%!important;z-index:3;pointer-events:none}',
+      '.sh-bond-heart{font-size:38px;text-align:center;filter:drop-shadow(0 0 15px #ff6cbd);animation:shBondPulse 2.5s ease-in-out infinite}',
+      '@keyframes shBondPulse{50%{transform:scale(1.13);filter:drop-shadow(0 0 22px #ff9bd5)}}',
+      '.sh-bond-friendlist{display:flex;flex-wrap:wrap;gap:7px}',
+      '.sh-bond-friend{display:flex;align-items:center;gap:7px;border-radius:999px;background:#7bbaff22;border:1px solid #a7dcff88;color:#fff;padding:7px 10px;font-size:11px;font-weight:800}',
+      '.sh-bond-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}',
+      '.sh-bond-button{padding:11px 6px;border:1px solid #ffe6a6;border-radius:15px;background:linear-gradient(165deg,#cf70d1,#7a319a 60%,#4a236c);color:#fff;font-weight:900;font-size:12px;box-shadow:inset 0 2px #fff7,0 5px 0 #2a0b46;min-height:45px}',
+      '.sh-bond-button.blue{background:linear-gradient(160deg,#67c8f8,#285eab 65%,#232e73);border-color:#bce9ff}',
+      '.sh-bond-button.gold{background:linear-gradient(155deg,#ffdfa8,#e8a84c 75%,#b97f30);color:#40221e}',
+      '.sh-bond-button:disabled{opacity:.55}.sh-bond-button:focus-visible{outline:3px solid #fff;outline-offset:3px}',
+      '.sh-bond-muted{font-size:12px;line-height:1.5;color:#d8cee7;text-align:center;padding:6px}',
+      '.sh-bond-sheet .sh-bond-section{margin:9px 0}.sh-bond-input{box-sizing:border-box;width:100%;font-size:16px;padding:12px;color:#fff;background:#190d32;border-radius:13px;border:1px solid #f4b5d7}',
+      '.sh-bond-gift{display:flex;align-items:center;justify-content:space-between;gap:9px;margin:9px 0;padding:12px;border-radius:16px;border:1px solid #ffd2b96b;background:#fff1}',
+      '.sh-bond-gift strong{font-size:13px}.sh-bond-gift small{font-size:11px;color:#ffdfa8}',
+      '.sh-bond-invite{margin:9px 0;padding:11px;border-radius:15px;border:1px solid #ffd6af77;background:#fff1;font-size:12px}',
+      '.sh-bond-invite .sh-bond-actions{margin-top:8px}',
+      '.sh-bond-rankrow{display:flex;align-items:center;justify-content:space-between;gap:7px;border-radius:19px;padding:11px 8px;margin:11px 0;background:linear-gradient(125deg,#4b2049,#292359);border:1px solid #ffdc9d91;box-shadow:0 6px 15px #09021d99}',
+      '.sh-bond-rankrow.friends{background:linear-gradient(125deg,#14476a,#20235e);border-color:#9edaf7}',
+      '.sh-bond-rankrow .sh-bond-person{flex:1}.sh-bond-rankrow .sh-bond-avatar{width:49px;height:49px;font-size:22px}',
+      '.sh-bond-rankrow .sh-bond-heart{font-size:20px}',
+      '@media(prefers-reduced-motion:reduce){.sh-bond-heart{animation:none}}'
+    ].join('');
+    document.head.appendChild(sheet);
+  }
+  const bondFmt=n=>Number(n||0).toLocaleString('en-US');
+  let pendingBondInvite=null;
+  function bondPerson(person,open=true){
+    const button=document.createElement('button');button.type='button';button.className='sh-bond-person';
+    const avatar=document.createElement('span');avatar.className='sh-bond-avatar';
+    const img=verifiedAvatarUrl(person?.pic);
+    if(img){const photo=document.createElement('img');photo.alt='';photo.src=img;avatar.appendChild(photo);}
+    else avatar.textContent='👤';
+    const frame=frameArt(person?.frame_style);
+    if(frame){const art=document.createElement('i');art.className='sh-sovera-frame';
+      art.style.backgroundImage='url("'+effectPath(frame.art)+'")';avatar.appendChild(art);}
+    const name=document.createElement('strong');name.textContent=person?.name||'No partner';
+    const id=document.createElement('small');id.textContent=person?.id?'ID '+person.id:'Awaiting invitation';
+    button.append(avatar,name,id);
+    if(open&&/^[0-9]{8}$/.test(String(person?.id||'')))
+      button.onclick=()=>openVerifiedRankProfile(person.id);
+    else button.disabled=true;
+    return button;
+  }
+  async function showBondGiftSheet(initialTarget=null,type='cp'){
+    if(!session){toast('Sign in to send relationship gifts');return;}
+    bondStyles();
+    window.openSheet('<h3>💝 CP & Friendship Gifts</h3><div id="sh-bond-gift-sheet" class="sh-bond-sheet">Loading verified gifts…</div>');
+    const root=document.getElementById('sh-bond-gift-sheet');if(!root)return;
+    try{
+      const [config,mine]=await Promise.all([
+        api('GET','/bonds/catalog'),api('GET','/bonds/me').catch(()=>null)
+      ]);
+      if(!root.isConnected)return;
+      root.replaceChildren();
+      const hero=document.createElement('div');hero.className='sh-bond-hero';
+      hero.innerHTML='<div class="sh-bond-kicker">✦ ROYAL BOND COLLECTION ✦</div>'+
+        '<div class="sh-bond-title">💗 CP · 🤝 Friendship</div>'+
+        '<div class="sh-bond-sub">Both people must agree. No link is created until accepted.</div>';
+      root.appendChild(hero);
+      const label=document.createElement('label');label.textContent='Recipient ID';
+      label.style.cssText='display:block;color:#ffe1ad;margin:11px 0 5px;font-weight:800';
+      const input=document.createElement('input');input.className='sh-bond-input';
+      input.inputMode='numeric';input.maxLength=8;input.placeholder='Enter exact 8-digit member ID';
+      input.value=initialTarget?.id||'';
+      root.append(label,input);
+      const frame=document.getElementById('rf')?.contentWindow;
+      const suggestions=[...(frame?.seats||[])].filter(s=>s?.public_id&&s.public_id!==profile?.public_id);
+      if(suggestions.length){
+        const chooser=document.createElement('select');chooser.className='sh-bond-input';
+        chooser.style.marginTop='7px';
+        const blank=document.createElement('option');blank.value='';blank.textContent='Or choose a room member';
+        chooser.appendChild(blank);
+        for(const seat of suggestions){const option=document.createElement('option');
+          option.value=seat.public_id;option.textContent=seat.n+' · '+seat.public_id;
+          chooser.appendChild(option);}
+        chooser.onchange=()=>{if(chooser.value)input.value=chooser.value;};root.appendChild(chooser);
+      }
+      const tabs=document.createElement('div');tabs.className='sh-bond-actions';
+      const giftList=document.createElement('div');
+      const render=selected=>{
+        giftList.replaceChildren();
+        const allowed=config.policy?.[selected+'_enabled'];
+        const gifts=(config.gifts||[]).filter(g=>g.type===selected&&g.active);
+        if(!allowed||!gifts.length){giftList.textContent='This gift type is disabled by the admin.';return;}
+        for(const gift of gifts){
+          const card=document.createElement('div');card.className='sh-bond-gift';
+          const description=document.createElement('div');
+          const title=document.createElement('strong');title.textContent=gift.emoji+' '+gift.name;
+          const price=document.createElement('small');price.style.display='block';
+          price.textContent='🪙 '+bondFmt(gift.price_coins)+' · held until acceptance';
+          description.append(title,price);
+          const send=document.createElement('button');send.type='button';send.className='sh-bond-button '+
+            (selected==='friendship'?'blue':'');send.textContent='Send invite';
+          send.onclick=async()=>{
+            const id=input.value.trim();
+            if(!/^[0-9]{8}$/.test(id)||id===profile?.public_id){
+              toast('Choose another member’s valid 8-digit ID');return;}
+            const fingerprint=id+':'+gift.id;
+            const requestId=pendingBondInvite?.fingerprint===fingerprint?
+              pendingBondInvite.requestId:nextWalletRequestId('bond');
+            pendingBondInvite={fingerprint,requestId};send.disabled=true;
+            try{
+              const activeBond=selected==='cp'
+                ?mine?.profile?.cp?.partner?.id===id
+                :(mine?.profile?.friendships||[]).some(friend=>friend.partner?.id===id);
+              const result=await api('POST',activeBond?'/bonds/gift':'/bonds/invite',{
+                recipient_public_id:id,gift_id:gift.id,request_id:requestId
+              });
+              pendingBondInvite=null;
+              await reloadWallet();
+              window.closeSheet();
+              toast(result.duplicate?'Gift request already confirmed ✓':activeBond?
+                '💝 Bond gift sent! '+bondFmt(result.spent_coins)+' coins · Pair rank boosted ✓':
+                '💌 Invitation sent! '+bondFmt(result.held_coins)+' coins held until accepted.');
+            }catch(error){toast('Invitation not confirmed: '+errText(error));send.disabled=false;}
+          };
+          card.append(description,send);giftList.appendChild(card);
+        }
+      };
+      for(const item of [{id:'cp',label:'💝 CP Gifts'},{id:'friendship',label:'🤝 Friendship'}]){
+        const button=document.createElement('button');button.type='button';button.className='sh-bond-button '+
+          (item.id==='friendship'?'blue':'');button.textContent=item.label;
+        button.onclick=()=>render(item.id);tabs.appendChild(button);
+      }
+      root.append(tabs,giftList);
+      const note=document.createElement('p');note.className='sh-bond-muted';
+      note.textContent='Declined or expired invitations refund held coins automatically. One CP partner, multiple friends. Invitation expires after '+config.policy.expiry_hours+' hours.';
+      root.appendChild(note);render(type==='friendship'?'friendship':'cp');
+    }catch(error){root.textContent='Gift catalog unavailable: '+errText(error);}
+  }
+  async function showBondInbox(){
+    if(!session)return;
+    bondStyles();
+    window.openSheet('<h3>💌 Relationship Invitations</h3><div class="sh-bond-sheet" id="sh-bond-inbox">Loading invitations…</div>');
+    const root=document.getElementById('sh-bond-inbox');
+    try{
+      const data=await api('GET','/bonds/me');if(!root?.isConnected)return;
+      root.replaceChildren();
+      const notice=document.createElement('div');notice.className='sh-bond-hero';
+      notice.innerHTML='<div class="sh-bond-kicker">✦ PRIVATE INVITATIONS ✦</div>'+
+        '<div class="sh-bond-title">💌 CP & Friends</div>'+
+        '<div class="sh-bond-sub">Accept only invitations you want.</div>';
+      root.appendChild(notice);
+      for(const invite of data.received||[]){
+        const row=document.createElement('div');row.className='sh-bond-invite';
+        row.textContent=invite.emoji+' '+invite.sender_name+' · ID '+invite.sender_id+
+          ' invited you to '+(invite.type==='cp'?'CP 💗':'Friendship 🤝')+
+          ' · Gift '+bondFmt(invite.held_coins)+' coins';
+        const actions=document.createElement('div');actions.className='sh-bond-actions';
+        for(const accept of [true,false]){
+          const button=document.createElement('button');button.type='button';
+          button.className='sh-bond-button '+(accept?'gold':'blue');
+          button.textContent=accept?'✓ Accept':'✕ Decline';
+          button.onclick=async()=>{
+            [...actions.querySelectorAll('button')].forEach(b=>b.disabled=true);
+            try{await api('POST','/bonds/invites/'+invite.id+'/respond',{accept});
+              toast(accept?'Relationship linked ✓':'Invitation declined and coins refunded ✓');
+              await showBondInbox();
+            }catch(error){toast('Could not respond: '+errText(error));
+              [...actions.querySelectorAll('button')].forEach(b=>b.disabled=false);}
+          };actions.appendChild(button);
+        }
+        row.appendChild(actions);root.appendChild(row);
+      }
+      for(const invite of data.sent||[]){const row=document.createElement('div');
+        row.className='sh-bond-invite';
+        row.textContent='⏳ Sent to '+invite.recipient_name+' · '+invite.recipient_id+
+          ' · '+bondFmt(invite.held_coins)+' coins held until reply';root.appendChild(row);}
+      if(!(data.received?.length||data.sent?.length)){
+        const empty=document.createElement('p');empty.className='sh-bond-muted';
+        empty.textContent='No pending CP or Friendship invitations.';root.appendChild(empty);}
+    }catch(error){if(root?.isConnected)root.textContent='Invitations unavailable: '+errText(error);}
+  }
+  async function showBondRanking(type='cp',period='weekly'){
+    bondStyles();
+    window.openSheet('<h3>👑 Royal Relationship Ranking</h3><div class="sh-bond-sheet" id="sh-bond-rank">Loading ranking…</div>');
+    const root=document.getElementById('sh-bond-rank');if(!root)return;
+    const render=async(kind,range)=>{
+      root.textContent='Loading verified pair ranking…';
+      try{
+        const result=await api('GET','/bonds/rankings?type='+kind+'&period='+range);
+        if(!root.isConnected)return;
+        root.replaceChildren();
+        const hero=document.createElement('div');hero.className='sh-bond-hero';
+        hero.innerHTML='<div class="sh-bond-kicker">✦ ROYAL PAIR LEAGUE ✦</div>'+
+          '<div class="sh-bond-title">'+(kind==='cp'?'💞 CP Royalty':'🤝 Friendship Royalty')+'</div>'+
+          '<div class="sh-bond-sub">Verified accepted gift value · '+range.toUpperCase()+' · UTC</div>';
+        root.appendChild(hero);
+        const kinds=document.createElement('div');kinds.className='sh-bond-actions';
+        for(const k of ['cp','friendship']){
+          const button=document.createElement('button');button.type='button';
+          button.className='sh-bond-button '+(k==='friendship'?'blue':'');
+          button.textContent=k==='cp'?'💗 CP':'🤝 Friendship';
+          button.onclick=()=>render(k,range);kinds.appendChild(button);
+        }root.appendChild(kinds);
+        const dates=document.createElement('div');dates.className='sh-bond-actions';
+        dates.style.gridTemplateColumns='repeat(3,minmax(0,1fr))';
+        for(const p of ['daily','weekly','monthly']){
+          const button=document.createElement('button');button.type='button';
+          button.className='sh-bond-button '+(range===p?'gold':'blue');button.textContent=p;
+          button.onclick=()=>render(kind,p);dates.appendChild(button);
+        }root.appendChild(dates);
+        if(!result.leaders?.length){const empty=document.createElement('p');
+          empty.className='sh-bond-muted';empty.textContent='No verified pairs have ranked in this period yet.';
+          root.appendChild(empty);}
+        for(const pair of result.leaders||[]){
+          const row=document.createElement('div');row.className='sh-bond-rankrow '+
+            (kind==='friendship'?'friends':'');
+          const rank=document.createElement('strong');rank.textContent='#'+pair.rank;
+          rank.style.cssText='color:#ffe3a5;font-size:14px';row.appendChild(rank);
+          row.appendChild(bondPerson(pair.a));
+          const middle=document.createElement('span');middle.className='sh-bond-heart';
+          middle.textContent=kind==='cp'?'💗':'🤝';row.appendChild(middle);
+          row.appendChild(bondPerson(pair.b));
+          const score=document.createElement('small');score.textContent='🪙'+bondFmt(pair.total);
+          score.style.color='#ffe3a5';row.appendChild(score);
+          root.appendChild(row);
+        }
+      }catch(error){if(root.isConnected)root.textContent='Ranking unavailable: '+errText(error);}
+    };
+    await render(type,period);
+  }
+  async function mountBondDetails(root,id,person){
+    if(!root||!root.isConnected)return;
+    bondStyles();
+    root.querySelector('.sh-bond-panel')?.remove();
+    const panel=document.createElement('section');panel.className='sh-bond-panel';
+    const intro=document.createElement('div');intro.className='sh-bond-hero';
+    intro.innerHTML='<div class="sh-bond-kicker">✦ SHARIKA ROYAL ID ✦</div>'+
+      '<div class="sh-bond-title">💗 Royal Connections</div>'+
+      '<div class="sh-bond-sub">Real followers · Gifts · CP · Friendship</div>';
+    panel.appendChild(intro);
+    const loading=document.createElement('p');loading.className='sh-bond-muted';
+    loading.textContent='Loading verified relationship details…';panel.appendChild(loading);
+    root.appendChild(panel);
+    try{
+      await api('POST','/bonds/visits/'+id).catch(()=>{});
+      const data=await api('GET','/bonds/profile/'+id);
+      if(!panel.isConnected||String(data.public_id)!==id)return;
+      loading.remove();
+      const stats=document.createElement('div');stats.className='sh-bond-stats';
+      for(const [value,label] of [
+        [data.followers,'Followers'],[data.following,'Following'],[data.visitors,'Visitors'],
+        [data.gifts_received,'Gifts received'],[data.gifts_sent,'Gifts sent'],
+        [data.friendships?.length||0,'Friends']]){
+        const stat=document.createElement('div');stat.className='sh-bond-stat';
+        const count=document.createElement('strong');count.textContent=bondFmt(value);
+        const text=document.createElement('span');text.textContent=label;
+        stat.append(count,text);stats.appendChild(stat);
+      }panel.appendChild(stats);
+      const giftTotals=document.createElement('p');giftTotals.className='sh-bond-muted';
+      giftTotals.textContent='🎁 Received 🪙 '+bondFmt(data.gift_value_received)+
+        '  ·  Sent 🪙 '+bondFmt(data.gift_value_sent);
+      panel.appendChild(giftTotals);
+      const cp=document.createElement('section');cp.className='sh-bond-section';
+      const cpTitle=document.createElement('h3');cpTitle.textContent='💗 CP · Rose Gold Promise';
+      const couple=document.createElement('div');couple.className='sh-bond-couple';
+      couple.appendChild(bondPerson({id,name:person?.name,pic:person?.pic,
+        frame_style:person?.frame_style},false));
+      const heart=document.createElement('span');heart.className='sh-bond-heart';
+      heart.textContent='💞';couple.appendChild(heart);
+      couple.appendChild(bondPerson(data.cp?.partner||null));
+      cp.append(cpTitle,couple);
+      const cpHint=document.createElement('div');cpHint.className='sh-bond-muted';
+      cpHint.textContent=data.cp?'Together since '+new Date(data.cp.created_at_ms).toLocaleDateString():
+        'One CP partner at a time · Accept a Rose Promise gift to bind';
+      cp.appendChild(cpHint);panel.appendChild(cp);
+      const friends=document.createElement('section');friends.className='sh-bond-section friends';
+      const friendTitle=document.createElement('h3');
+      friendTitle.textContent='🤝 Friendship Palace · '+(data.friendships?.length||0);
+      friends.appendChild(friendTitle);
+      const friendList=document.createElement('div');friendList.className='sh-bond-friendlist';
+      for(const friendship of data.friendships||[]){
+        const button=document.createElement('button');button.type='button';
+        button.className='sh-bond-friend';
+        button.textContent='💙 '+friendship.partner.name+' · '+friendship.partner.id;
+        button.onclick=()=>openVerifiedRankProfile(friendship.partner.id);
+        friendList.appendChild(button);
+      }
+      if(!friendList.children.length){const empty=document.createElement('p');
+        empty.className='sh-bond-muted';empty.textContent='Friendship gifts connect multiple friends.';
+        friendList.appendChild(empty);}
+      friends.appendChild(friendList);panel.appendChild(friends);
+      const actions=document.createElement('div');actions.className='sh-bond-actions';
+      const gift=document.createElement('button');gift.className='sh-bond-button';
+      gift.textContent='🎁 CP / Friends Gifts';gift.onclick=()=>showBondGiftSheet(
+        id===profile?.public_id?null:{id,name:person?.name});
+      const rank=document.createElement('button');rank.className='sh-bond-button blue';
+      rank.textContent='🏆 Pair Ranking';rank.onclick=()=>showBondRanking('cp','weekly');
+      actions.append(gift,rank);
+      if(id===profile?.public_id){
+        const inbox=document.createElement('button');inbox.className='sh-bond-button gold';
+        inbox.textContent='💌 Invitations';inbox.onclick=showBondInbox;actions.appendChild(inbox);
+        for(const bound of [data.cp,...(data.friendships||[])].filter(Boolean)){
+          const leave=document.createElement('button');leave.className='sh-bond-button blue';
+          leave.textContent='✕ Unbind '+(bound.type==='cp'?'CP':'Friend')+' · '+bound.partner.name;
+          leave.onclick=async()=>{
+            if(!window.confirm('End '+bound.type+' relationship with '+bound.partner.name+'?'))return;
+            leave.disabled=true;
+            try{await api('POST','/bonds/'+bound.id+'/unbind',{});
+              toast('Relationship ended ✓');await mountBondDetails(root,id,person);
+            }catch(error){toast('Unbind failed: '+errText(error));leave.disabled=false;}
+          };actions.appendChild(leave);
+        }
+      }
+      panel.appendChild(actions);
+    }catch(error){loading.textContent='Connections unavailable: '+errText(error);}
+  }
+
   let rankProfileRequest=0;
   async function openVerifiedRankProfile(publicId){
     const id=String(publicId||'');
     if(!/^[0-9]{8}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
-    if(id===profile?.public_id){
-      document.getElementById('pfo')?.classList.remove('on');
-      window.go('me');return;
-    }
     const panel=document.getElementById('pfo'),root=document.getElementById('pfc');
     if(!panel||!root)return;
     const requestNo=++rankProfileRequest;
@@ -4430,6 +4839,8 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       decorateVerifiedPublicProfile(root,person);
+      mountBondDetails(root,id,person).catch(error=>
+        console.warn('Ranked ID bond details:',errText(error)));
       const follow=root.querySelector('#sh-ranked-follow');
       async function loadFollowing(){
         const data=await api('GET','/users/'+id+'/follow');
@@ -4448,7 +4859,9 @@
           }
         };
       }
-      loadFollowing().catch(error=>{
+      if(id===profile?.public_id){
+        follow.style.display='none';
+      }else loadFollowing().catch(error=>{
         if(follow.isConnected)follow.textContent='Follow unavailable';
         console.warn('Verified follow status unavailable:',errText(error));
       });
@@ -4477,6 +4890,24 @@
     const view=document.getElementById('rb');
     if(!view)return;
     const rankView=document.getElementById('v-rank');
+    if(rankView&&!document.getElementById('sh-bond-rank-shortcuts')){
+      bondStyles();
+      const shortcuts=document.createElement('div');
+      shortcuts.id='sh-bond-rank-shortcuts';
+      shortcuts.style.cssText='display:flex;justify-content:center;gap:9px;padding:11px 13px;'+
+        'margin:5px auto;max-width:550px';
+      for(const item of [{type:'cp',label:'💗 CP Royal Ranking'},
+        {type:'friendship',label:'🤝 Friendship Ranking'}]){
+        const button=document.createElement('button');button.className='sh-bond-button '+
+          (item.type==='friendship'?'blue':'');button.type='button';
+        button.textContent=item.label;
+        button.onclick=()=>showBondRanking(item.type,'weekly');
+        shortcuts.appendChild(button);
+      }
+      const anchor=rankView.querySelector('#rb');
+      if(anchor)rankView.insertBefore(shortcuts,anchor);
+      else rankView.appendChild(shortcuts);
+    }
     if(rankView&&!document.getElementById('wgb')){
       const weeklyButton=document.createElement('button');
       weeklyButton.id='wgb';

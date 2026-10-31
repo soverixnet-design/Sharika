@@ -5,6 +5,7 @@ import { handleSellerApp } from './sellers.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp } from './premium.mjs';
+import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import { handleEventApp } from './events.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
@@ -175,6 +176,9 @@ export async function handleRequest(request, env) {
   const uid = actor.uid;
   const parts = path.split('/').filter(Boolean);
   try {
+    if(path.startsWith('/api/v1/bonds'))return await handleBondApp({
+      request,env,uid,path,cors,reply,fail
+    });
     if(path==='/api/v1/cosmetics'||path.startsWith('/api/v1/cosmetics/')){
       await assertActive(env.DB,uid);
       const result=await handleCosmeticApp({
@@ -1215,6 +1219,7 @@ export async function handleRequest(request, env) {
           seat_count:room.seat_count,
           seat_frame_style:room.seat_frame_style||'grad',
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
+          bond_pairs:await roomBondPairs(env.DB,roomId),
           members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
@@ -1249,5 +1254,11 @@ export async function handleRequest(request, env) {
   }
 }
 
-export default { fetch: handleRequest };
+export default {
+  fetch:handleRequest,
+  scheduled(_event,env,context){
+    if(env.DB)context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
+      .catch(error=>console.error('bond_expiry_cron_error',error.message)));
+  }
+};
 export { publicId, ageFromDate };

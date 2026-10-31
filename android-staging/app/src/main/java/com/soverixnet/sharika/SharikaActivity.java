@@ -496,6 +496,8 @@ public final class SharikaActivity extends Activity {
         // No /admin, arbitrary URLs, billing, redirects or platform credentials.
         if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(lucky|rich|charm|room|recharge)$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/bonds/rankings\\?type=(cp|friendship)&period=(daily|weekly|monthly)$"))
+            return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
@@ -550,6 +552,17 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/premium")) return method.equals("GET");
         if (path.equals("/api/v1/premium/purchase") ||
             path.equals("/api/v1/premium/daily/claim")) return method.equals("POST");
+        if (path.equals("/api/v1/bonds/catalog") || path.equals("/api/v1/bonds/me"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/bonds/profile/[0-9]{8}$") ||
+            path.matches("^/api/v1/bonds/room/[0-9]{8}$"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/bonds/visits/[0-9]{8}$") ||
+            path.equals("/api/v1/bonds/invite") ||
+            path.equals("/api/v1/bonds/gift") ||
+            path.matches("^/api/v1/bonds/invites/[1-9][0-9]{0,11}/respond$") ||
+            path.matches("^/api/v1/bonds/[1-9][0-9]{0,11}/unbind$"))
+            return method.equals("POST");
         if (path.equals("/api/v1/sellers") || path.equals("/api/v1/sellers/me") ||
             path.equals("/api/v1/sellers/transfers") || path.equals("/api/v1/sellers/allocations"))
             return method.equals("GET");
