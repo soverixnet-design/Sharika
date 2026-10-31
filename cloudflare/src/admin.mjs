@@ -6,6 +6,7 @@ import { handleBannerAdmin } from './banners.mjs';
 import { handleDailyAdmin } from './daily.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
+import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
 const FINANCE_ROLES = new Set(['super', 'finance']);
@@ -75,15 +76,28 @@ export async function readGiftRankings(db, period, kind) {
 
 export async function handleAdminOperation({ request, env, uid, path, cors, reply, fail }) {
   if (!path.startsWith(ADMIN_PREFIX)) return null;
-  const actor = await env.DB.prepare(
+  let actor = await env.DB.prepare(
     "SELECT a.role,u.public_no,u.name FROM sharika_admin_roles a " +
     "JOIN sharika_users u ON u.auth_uid=a.auth_uid " +
     "WHERE a.auth_uid=? AND u.status='active' " +
     "AND a.role IN ('super','support','finance')"
   ).bind(uid).first();
+  if (!actor) actor=await lookupStaffActor(env.DB,uid);
   if (!actor) return fail('admin_forbidden', 403, cors);
   const operation = path.slice(ADMIN_PREFIX.length);
   const url = new URL(request.url);
+  // Staff identity retains its true role on status and restricted writes.
+  // The only routes delegated to legacy handlers are exact allow-listed
+  // read/reply operations, and they can never acquire Super-Admin writes.
+  const staffAction=await handleStaffAdmin({
+    request,env,uid,actor,operation,cors,reply,fail
+  });
+  if(staffAction)return staffAction;
+  if(actor.role==='staff'&&operation!=='status'){
+    const proxy=staffProxyRole(actor,request.method,operation);
+    if(!proxy)return fail('admin_permission_denied',403,cors);
+    actor={...actor,role:proxy};
+  }
 
   if (operation.startsWith('recharges')) return await handleRechargeAdmin({
     request, env, uid, actor, operation, cors, reply, fail
@@ -295,10 +309,17 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       messages},200,cors);
   }
   if (operation === 'status') {
-    return reply({ role:actor.role, name:actor.name, public_id:id(actor.public_no),
-      environment:'staging', read_only:actor.role!=='super',
-      write_scopes:actor.role==='super'?['user_status','gift_catalog','support_reply','seller_approval','seller_stock_allocation','daily_reward_config']:
-        actor.role==='support'?['support_reply']:[] }, 200, cors);
+    const staff=actor.role==='staff';
+    return reply({ role:actor.role,name:actor.name,
+      public_id:staff?null:id(actor.public_no),
+      environment:'staging',
+      permissions:staff?actor.permissions:null,
+      daily_coin_limit:staff?actor.daily_coin_limit:null,
+      read_only:staff?!actor.permissions.some(p=>['coin_recharge','support_reply'].includes(p)):actor.role!=='super',
+      write_scopes:staff?actor.permissions.filter(p=>['coin_recharge','support_reply'].includes(p)):
+        actor.role==='super'?['user_status','gift_catalog','support_reply','seller_approval',
+          'seller_stock_allocation','daily_reward_config','coin_recharge','staff_manage']:
+          actor.role==='support'?['support_reply']:[] }, 200, cors);
   }
   if (operation === 'rankings' && request.method === 'GET') {
     const denied=allowed(actor.role,FINANCE_ROLES,fail,cors);
