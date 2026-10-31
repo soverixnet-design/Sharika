@@ -4,6 +4,8 @@ import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
+import { handlePremiumApp } from './premium.mjs';
+import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import { handleEventApp } from './events.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
@@ -11,7 +13,7 @@ import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
-import {readEquipped,readRoomEquipped,handleCosmeticApp} from './cosmetics.mjs';
+import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
@@ -174,6 +176,9 @@ export async function handleRequest(request, env) {
   const uid = actor.uid;
   const parts = path.split('/').filter(Boolean);
   try {
+    if(path.startsWith('/api/v1/bonds'))return await handleBondApp({
+      request,env,uid,path,cors,reply,fail
+    });
     if(path==='/api/v1/cosmetics'||path.startsWith('/api/v1/cosmetics/')){
       await assertActive(env.DB,uid);
       const result=await handleCosmeticApp({
@@ -194,6 +199,10 @@ export async function handleRequest(request, env) {
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
         path==='/api/v1/daily/tasks/claim') return await handleDailyApp({
       request, env, uid, path, cors, reply, fail
+    });
+    if(path==='/api/v1/premium'||path==='/api/v1/premium/purchase'||
+       path==='/api/v1/premium/daily/claim')return await handlePremiumApp({
+      request,env,uid,path,cors,reply,fail
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
       request, env, uid, path, cors, reply, fail
@@ -351,21 +360,23 @@ export async function handleRequest(request, env) {
     if (path === '/api/v1/follows' && request.method === 'GET') {
       await assertActive(env.DB, uid);
       const following=await env.DB.prepare(
-        'SELECT u.public_no,u.name,u.pic,'+
+        'SELECT u.public_no,u.name,u.pic,'+publicAppearanceSelect()+','+
         'EXISTS(SELECT 1 FROM sharika_follows x WHERE x.follower_uid=u.auth_uid '+
         'AND x.followed_uid=?) AS follows_me FROM sharika_follows f '+
         'JOIN sharika_users u ON u.auth_uid=f.followed_uid '+
         "WHERE f.follower_uid=? AND u.status='active' ORDER BY f.created_at DESC LIMIT 100"
       ).bind(uid,uid).all();
       const followers=await env.DB.prepare(
-        'SELECT u.public_no,u.name,u.pic FROM sharika_follows f '+
+        'SELECT u.public_no,u.name,u.pic,'+publicAppearanceSelect()+' FROM sharika_follows f '+
         'JOIN sharika_users u ON u.auth_uid=f.follower_uid '+
         "WHERE f.followed_uid=? AND u.status='active' ORDER BY f.created_at DESC LIMIT 100"
       ).bind(uid).all();
-      return reply({following:(following.results||[]).map(u=>({...u,
-        public_id:publicId(u.public_no),public_no:undefined})),
-        followers:(followers.results||[]).map(u=>({...u,
-        public_id:publicId(u.public_no),public_no:undefined}))},200,cors);
+      const showFollow=u=>({...u,public_id:publicId(u.public_no),public_no:undefined,
+        frame_style:u.equipped_frame_style??u.frame_style??'',
+        medal_style:u.equipped_medal_style??u.medal_style??'',
+        name_tag_style:u.equipped_name_tag_style??u.name_tag_style??''});
+      return reply({following:(following.results||[]).map(showFollow),
+        followers:(followers.results||[]).map(showFollow)},200,cors);
     }
     if(parts.length===5 && parts[0]==='api' && parts[1]==='v1' &&
        parts[2]==='users' && PUBLIC_ID.test(parts[3]) && parts[4]==='follow') {
@@ -397,7 +408,8 @@ export async function handleRequest(request, env) {
     if(path==='/api/v1/messages' && request.method==='GET') {
       await assertActive(env.DB,uid);
       const rows=await env.DB.prepare(
-        'SELECT m.id,m.body,m.created_at,u.public_no,u.name '+
+        'SELECT m.id,m.body,m.created_at,u.public_no,u.name,u.pic,'+
+        publicAppearanceSelect()+' '+
         'FROM sharika_private_messages m JOIN sharika_users u ON u.auth_uid='+
         'CASE WHEN m.sender_uid=? THEN m.recipient_uid ELSE m.sender_uid END '+
         'WHERE m.sender_uid=? OR m.recipient_uid=? ORDER BY m.id DESC LIMIT 200'
@@ -408,7 +420,10 @@ export async function handleRequest(request, env) {
         if(seen.has(other))continue;
         seen.add(other);
         conversations.push({public_id:other,name:item.name,
-          last_body:item.body,last_at:item.created_at});
+          last_body:item.body,last_at:item.created_at,pic:item.pic||null,
+          frame_style:item.equipped_frame_style??item.frame_style??'',
+          medal_style:item.equipped_medal_style??item.medal_style??'',
+          name_tag_style:item.equipped_name_tag_style??item.name_tag_style??''});
         if(conversations.length>=100)break;
       }
       return reply({conversations},200,cors);
@@ -1204,6 +1219,7 @@ export async function handleRequest(request, env) {
           seat_count:room.seat_count,
           seat_frame_style:room.seat_frame_style||'grad',
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
+          bond_pairs:await roomBondPairs(env.DB,roomId),
           members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
@@ -1238,5 +1254,11 @@ export async function handleRequest(request, env) {
   }
 }
 
-export default { fetch: handleRequest };
+export default {
+  fetch:handleRequest,
+  scheduled(_event,env,context){
+    if(env.DB)context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
+      .catch(error=>console.error('bond_expiry_cron_error',error.message)));
+  }
+};
 export { publicId, ageFromDate };
