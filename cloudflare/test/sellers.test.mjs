@@ -8,6 +8,7 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
   const DB={
     prepare(sql){
       const statement={
+        sql,
         bind(...args){this.args=args;return this;},
         async first(){
           state.queries.push({sql,args:this.args||[]});
@@ -16,7 +17,7 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
             return seller?{active:1,available_coins:stock}:null;
           if(sql.includes('FROM sharika_users WHERE public_no=?'))
             return recipient?{auth_uid:selfRecipient?'seller1':'recipient2',coins:20,status:'active'}:null;
-          if(sql.includes('FROM sharika_coin_seller_transfers t'))return duplicate?{id:12,amount:200,target_uid:'recipient2'}:null;
+          if(sql.includes('FROM sharika_coin_seller_transfers t'))return duplicate?{id:12,amount:200,target_uid:selfRecipient?'seller1':'recipient2'}:null;
           if(sql.includes('SELECT id,stock_after FROM sharika_coin_seller_transfers'))return {id:12,stock_after:stock-200};
           if(sql.includes('SELECT id,amount,stock_after,seller_uid FROM sharika_coin_seller_allocations'))return null;
           if(sql.includes('SELECT s.seller_uid'))return seller?{seller_uid:'seller1',active:1,available_coins:stock}:null;
@@ -109,13 +110,45 @@ test('unapproved seller cannot transfer coins',async()=>{
   assert.equal((await app(DB,'POST','/api/v1/sellers/transfer',validTransfer)).status,403);
   assert.equal(state.batch.length,0);
 });
-test('seller cannot turn assigned stock into personal coins without admin authorization',async()=>{
+test('seller can recharge own verified ID, debiting stock and crediting personal coins once',async()=>{
   const {DB,state}=mockDB({selfRecipient:true});
   const result=await app(DB,'POST','/api/v1/sellers/transfer',{
     ...validTransfer,target_public_id:'10000003'
   });
-  assert.equal(result.status,403);
-  assert.equal(result.data.error,'cannot_recharge_self');
+  assert.equal(result.status,201);
+  assert.equal(result.data.self_recharge,true);
+  assert.equal(result.data.recipient_public_id,'10000003');
+  assert.equal(result.data.referral_bonus_coins,0);
+  assert.equal(state.batch.length,1);
+  assert.equal(state.batch[0].length,4);
+  const [stockDebit,walletCredit,transferRecord,walletLedger]=state.batch[0];
+  assert.match(stockDebit.sql,/UPDATE sharika_coin_sellers/);
+  assert.deepEqual(stockDebit.args,[200,200,'seller1']);
+  assert.match(walletCredit.sql,/UPDATE sharika_users/);
+  assert.equal(walletCredit.args[2],'seller1');
+  assert.match(transferRecord.sql,/INSERT INTO sharika_coin_seller_transfers/);
+  assert.equal(transferRecord.args[1],'seller1');
+  assert.match(walletLedger.sql,/INSERT INTO sharika_wallet_ledger/);
+  assert.equal(walletLedger.args[0],'seller1');
+  assert.equal(state.queries.some(q=>q.sql.includes('sharika_referrals')),false);
+});
+test('repeated self recharge request is idempotent and cannot credit twice',async()=>{
+  const {DB,state}=mockDB({selfRecipient:true,duplicate:true});
+  const result=await app(DB,'POST','/api/v1/sellers/transfer',{
+    ...validTransfer,target_public_id:'10000003'
+  });
+  assert.equal(result.status,200);
+  assert.equal(result.data.duplicate,true);
+  assert.equal(result.data.self_recharge,true);
+  assert.equal(state.batch.length,0);
+});
+test('seller cannot self recharge beyond stock',async()=>{
+  const {DB,state}=mockDB({selfRecipient:true,stock:199});
+  const result=await app(DB,'POST','/api/v1/sellers/transfer',{
+    ...validTransfer,target_public_id:'10000003'
+  });
+  assert.equal(result.status,409);
+  assert.equal(result.data.error,'seller_stock_insufficient');
   assert.equal(state.batch.length,0);
 });
 test('seller stock insufficient rejects without touching user coins',async()=>{
