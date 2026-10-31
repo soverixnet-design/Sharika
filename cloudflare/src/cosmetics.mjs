@@ -13,16 +13,22 @@ const safeAmount=x=>Number.isSafeInteger(x)&&x>=1&&x<=1000000;
 const values=x=>x?.results||[];
 const invalid=(fail,cors)=>fail('invalid_cosmetic_request',400,cors);
 export async function readEquipped(db,uid){
- const rows=values(await db.prepare('SELECT kind,item_id FROM sharika_cosmetic_equipped WHERE auth_uid=?')
-  .bind(uid).all());
+ let rows;
+ try{rows=values(await db.prepare('SELECT kind,item_id FROM sharika_cosmetic_equipped WHERE auth_uid=?')
+  .bind(uid).all());}
+ catch(error){if(/no such table:\s*sharika_cosmetic_equipped/i.test(String(error?.message||error)))
+  return {};throw error;}
  return Object.fromEntries(rows.filter(row=>KINDS.has(row.kind))
    .map(row=>[row.kind,row.item_id?row.item_id.split(':').slice(1).join(':'):'']));
 }
 export async function readRoomEquipped(db,roomId){
- const rows=values(await db.prepare(
+ let rows;
+ try{rows=values(await db.prepare(
   'SELECT e.auth_uid,e.kind,e.item_id FROM sharika_cosmetic_equipped e '+
   'JOIN sharika_room_members m ON m.user_id=e.auth_uid WHERE m.room_id=?'
- ).bind(roomId).all());
+ ).bind(roomId).all());}
+ catch(error){if(/no such table:\s*sharika_cosmetic_equipped/i.test(String(error?.message||error)))
+  return new Map();throw error;}
  const map=new Map();
  for(const row of rows){
   if(!KINDS.has(row.kind))continue;
