@@ -619,8 +619,13 @@ public final class SharikaActivity extends Activity {
         try {
             connection = (HttpURLConnection) new URL(STAGING_API + path).openConnection();
             connection.setRequestMethod(method);
-            connection.setConnectTimeout(12000);
-            connection.setReadTimeout(12000);
+            // Photo uploads carry an optimized JPEG across a mobile connection.
+            // Keep normal requests short, but allow a slower gallery save to
+            // finish and return its server commit confirmation.
+            boolean savingAvatar = method.equals("PUT") &&
+                path.equals("/api/v1/me/avatar");
+            connection.setConnectTimeout(savingAvatar ? 20000 : 12000);
+            connection.setReadTimeout(savingAvatar ? 60000 : 12000);
             connection.setRequestProperty("Accept","application/json");
             connection.setRequestProperty("Authorization","Bearer " + jwt);
             if (body != null) {
