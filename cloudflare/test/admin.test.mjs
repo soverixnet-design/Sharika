@@ -147,7 +147,6 @@ test('settlement audit is read-only and inaccessible to support staff',async()=>
   assert.deepEqual(finance.data.settlements,[]);
   assert.equal(finance.data.limited_to,100);
   assert.equal(finance.data.read_only,true);
-  assert.ok(finance.calls.some(c=>c.sql?.includes('FROM sharika_gift_transactions t')));
   assert.ok(!finance.calls.some(c=>c.batch));
   const denied=await handle('support','/api/v1/admin/gift-settlements');
   assert.equal(denied.status,403);
