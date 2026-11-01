@@ -209,7 +209,8 @@ export async function handleRequest(request, env) {
       request, env, uid, path, cors, reply, fail
     });
     if (path==='/api/v1/invites'||path==='/api/v1/invites/redeem'||
-        path==='/api/v1/invites/rankings') return await handleInviteApp({
+        path==='/api/v1/invites/rankings'||path==='/api/v1/invites/withdrawals')
+      return await handleInviteApp({
       request, env, uid, path, cors, reply, fail
     });
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||

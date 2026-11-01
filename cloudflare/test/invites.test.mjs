@@ -92,8 +92,12 @@ test('real inviter dashboard exposes public IDs, actual bonus totals and no priv
   assert.equal(data.invited_by,'10000003');
   assert.equal(data.signup_bonus_coins,0);
   assert.equal(data.recharge_bonus_coins,0);
-  assert.equal(data.signup_inviter_reward,5000);
-  assert.equal(data.signup_invitee_reward,10000);
+  assert.equal(data.signup_inviter_reward,100000);
+  assert.equal(data.signup_invitee_reward,100000);
+  assert.equal(data.invite_usd_cents_per_verified_user,10);
+  assert.deepEqual(data.withdrawal_options_cents,[5000,10000]);
+  assert.equal(data.recharge_coins_per_usd,500000);
+  assert.equal(data.first_recharge_bonus_percent,40);
   assert.equal(data.recharge_bonus_percent,5);
   assert.equal(data.bonus_enabled,true);
   assert.equal(JSON.stringify(data).includes('alice'),false);
@@ -122,19 +126,21 @@ test('finance may read referral records, support cannot',async()=>{
   assert.equal(f.state.writes,0);
 });
 
-test('invited registration has exactly 10,000 starting coins and one 5,000 inviter grant',()=>{
+test('invited registration grants 100,000 coins to both and a pending 10¢ earning',()=>{
   const f=mock();
   assert.equal(signupCoins(false),2000);
-  assert.equal(signupCoins(true),10000);
+  assert.equal(signupCoins(true),100000);
   const statements=signupReferralStatements({db:f.DB,uid:'new-user',inviterUid:'bob'});
-  assert.equal(statements.length,3);
+  assert.equal(statements.length,4);
   assert.match(statements[0].sql,/INSERT INTO sharika_referrals/);
   assert.deepEqual(statements[0].args,['new-user','bob']);
   assert.match(statements[1].sql,/UPDATE sharika_users/);
-  assert.equal(statements[1].args[1],5000);
+  assert.equal(statements[1].args[1],100000);
   assert.match(statements[2].sql,/sharika_wallet_ledger/);
-  assert.equal(statements[2].args[1],5000);
+  assert.equal(statements[2].args[1],100000);
   assert.equal(statements[2].args[3],'referral-signup:new-user');
+  assert.match(statements[3].sql,/sharika_invite_usd_earnings/);
+  assert.deepEqual(statements[3].args,['new-user','bob',10]);
 });
 test('verified seller recharge rewards exactly 5 percent, rounded down',async()=>{
   const f=mock();
@@ -179,17 +185,18 @@ test('newly created account redeems one verified inviter and both coins are in o
   assert.equal(response.status,201);
   const result=await response.json();
   assert.equal(result.invited_by,'10000002');
-  assert.equal(result.inviter_reward,5000);
-  assert.equal(result.invitee_extra_coins,8000);
-  assert.equal(result.invitee_total_signup_coins,10000);
+  assert.equal(result.inviter_reward,100000);
+  assert.equal(result.invitee_extra_coins,98000);
+  assert.equal(result.invitee_total_signup_coins,100000);
   assert.equal(f.state.batches.length,1);
   const statements=f.state.batches[0];
-  assert.equal(statements.length,5);
+  assert.equal(statements.length,6);
   assert.match(statements[0].sql,/INSERT INTO sharika_referrals/);
   assert.deepEqual(statements[0].args,['alice','bob']);
-  assert.equal(statements[1].args[1],5000);
-  assert.equal(statements[3].args[1],8000);
-  assert.equal(statements[4].args[3],'referral-claim:alice');
+  assert.equal(statements[1].args[1],100000);
+  assert.equal(statements[3].args[2],10);
+  assert.equal(statements[4].args[1],98000);
+  assert.equal(statements[5].args[3],'referral-claim:alice');
   assert.equal(JSON.stringify(result).includes('bob'),false);
 });
 

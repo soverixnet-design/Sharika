@@ -70,25 +70,29 @@ test('request without verified receipt confirmation cannot mint coins',async()=>
   assert.equal((await call(f.DB,'recharges/approve',{...approved,coins:1000001})).status,400);
   assert.equal(f.state.batches.length,0);
 });
-test('manual approval is one atomic grant, ledger receipt, audit and 5% commission',async()=>{
+test('manual approval atomically grants 40% first recharge and 5% inviter commission',async()=>{
   const f=mock();
   const response=await call(f.DB,'recharges/approve',approved);
   const result=await response.json();
   assert.equal(response.status,201);
   assert.equal(result.credited_coins,1000);
   assert.equal(result.referral_bonus_coins,50);
+  assert.equal(result.first_recharge_bonus_coins,400);
   assert.equal(f.state.batches.length,1);
   const queries=f.state.batches[0];
-  assert.equal(queries.length,7);
+  assert.equal(queries.length,10);
   assert.match(queries[0].sql,/INSERT INTO sharika_manual_recharge_reviews/);
   assert.match(queries[1].sql,/UPDATE sharika_users/);
   assert.equal(queries[1].args[1],1000);
   assert.match(queries[2].sql,/sharika_wallet_ledger/);
   assert.equal(queries[2].args[1],1000);
-  assert.equal(queries[3].args[1],50);
-  assert.equal(queries[4].args[1],50);
-  assert.match(queries[5].sql,/sharika_support_messages/);
-  assert.match(queries[6].sql,/sharika_admin_audit/);
+  assert.match(queries[3].sql,/sharika_first_recharge_bonuses/);
+  assert.equal(queries[4].args[1],400);
+  assert.equal(queries[5].args[1],400);
+  assert.equal(queries[6].args[1],50);
+  assert.equal(queries[7].args[1],50);
+  assert.match(queries[8].sql,/sharika_support_messages/);
+  assert.match(queries[9].sql,/sharika_admin_audit/);
 });
 test('a repeat review returns same result without another batch',async()=>{
   const f=mock({review:{support_message_id:71,user_uid:'new-user',status:'approved',

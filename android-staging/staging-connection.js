@@ -3727,6 +3727,8 @@
           showNote((result.duplicate?'Already recorded: ':'Success! ')+
             (result.self_recharge?'Your own wallet':'Recipient ID '+recipient)+
             ' received '+coinsText(amount)+' coins. Transfer #'+result.transfer_id+
+            (Number(result.first_recharge_bonus_coins)>0?
+              '. 🎁 First recharge bonus +'+coinsText(result.first_recharge_bonus_coins)+' coins':'')+
             '. Remaining stock: '+coinsText(result.available_coins)+'.','success');
           toast('Coin recharge recorded ✓');
           const latest=await api('GET','/sellers/transfers').catch(()=>null);
@@ -4134,6 +4136,12 @@
       '#sh-invite-page .sh-invite-rankrow em{font-style:normal;color:#ffe082;font-weight:900}',
       '#sh-invite-page .sh-invite-alert{font-size:12px;color:#ffe2a1;',
       'padding:11px;border-radius:12px;background:#120b2d;border:1px solid #ffdc7b77}',
+      '#sh-invite-page .sh-invite-cash{border:2px solid #e5b950;border-radius:21px;',
+      'padding:14px;margin:16px 0;background:linear-gradient(145deg,#422260,#1d1248);',
+      'box-shadow:0 7px 0 #201135,inset 0 2px #fff5}',
+      '#sh-invite-page .sh-invite-cash-grid{display:grid;grid-template-columns:1fr 1fr;',
+      'gap:8px;margin:10px 0}',
+      '#sh-invite-page .sh-invite-cash button:disabled{opacity:.5;filter:grayscale(.35)}',
       '#sh-invite-newbie{position:fixed;inset:0;z-index:2147483550;',
       'display:flex;align-items:center;justify-content:center;padding:18px;',
       'background:#080319d9;backdrop-filter:blur(8px)}',
@@ -4187,6 +4195,31 @@
       }
     };
   }
+  function bindInviteWithdraw(root){
+    const buttons=[...root.querySelectorAll('[data-sh-invite-withdraw]')];
+    for(const button of buttons){
+      button.onclick=async()=>{
+        if(button.disabled)return;
+        const amount=Number(button.dataset.shInviteWithdraw);
+        if(![5000,10000].includes(amount))return;
+        const status=root.querySelector('#sh-invite-withdraw-status');
+        for(const item of buttons)item.disabled=true;
+        if(status)status.textContent='Submitting your $'+(amount/100)+' withdrawal request…';
+        try{
+          const result=await api('POST','/invites/withdrawals',{
+            amount_cents:amount,request_id:nextWalletRequestId('invite-withdraw')
+          });
+          if(!result?.requested&&!result?.duplicate)
+            throw new Error('Withdrawal not submitted');
+          toast('$'+(amount/100)+' withdrawal request submitted for manual review ✓');
+          if(document.getElementById('sh-invite-page'))await showVerifiedInviteSheet();
+        }catch(error){
+          if(status)status.textContent='Request unavailable: '+errText(error);
+          for(const item of buttons)item.disabled=false;
+        }
+      };
+    }
+  }
   async function maybeShowNewUserInviteWelcome(){
     if(!session||!profile||document.getElementById('sh-invite-newbie'))return;
     const publicId=String(profile.public_id||'');
@@ -4212,6 +4245,12 @@
       '<div style="color:#ffe27b;font-size:28px;font-weight:900">🪙 '+
       Number(info.signup_invitee_reward||0).toLocaleString('en-US')+'</div>'+
       '<p>Total starting coins with a valid friend invite</p>'+
+      '<div style="border:2px solid #ffe4a2;border-radius:19px;padding:10px;'+
+      'background:#3d135c;margin:12px 0">'+
+      '<div style="font-weight:900;color:#ffdf8c">🎁 FIRST RECHARGE CHEST</div>'+
+      '<div style="font-size:23px;color:#fff6b7;font-weight:900">500K + 200K</div>'+
+      '<p>For the first verified $1-equivalent recharge (500,000 coins), '+
+      'unlock 200,000 extra coins once. Other amounts earn 40%.</p></div>'+
       (info.claim_eligible?'<p>Have an invitation code? Claim your remaining '+
        extra.toLocaleString('en-US')+' bonus coins within '+
        Number(info.claim_window_hours||48)+' hours of registering.</p>'+
@@ -4225,8 +4264,8 @@
         'Your invitation claim period has ended.')+'</p>')+
       '<button class="sh-invite-gold" id="sh-invite-welcome-explore" type="button" '+
       'style="width:100%;margin-top:13px">👑 Explore Invite Rewards</button>'+
-      '<p style="margin:12px 0 0;font-size:11px">Other chest, rank and cash prizes '+
-      'are not enabled until the official reward rules are announced.</p></div>';
+      '<p style="margin:12px 0 0;font-size:11px">Invite cash earnings need '+
+      'finance review. No automatic USD payout is connected yet.</p></div>';
     document.body.appendChild(overlay);
     try{localStorage.setItem(seenKey,'seen');}catch(_){}
     overlay.querySelector('.sh-invite-welcome-close').onclick=()=>overlay.remove();
@@ -4274,20 +4313,27 @@
       const inviteReward=fmt(result.signup_inviter_reward);
       const newcomerReward=fmt(result.signup_invitee_reward);
       const percent=Number(result.recharge_bonus_percent)||0;
+      const money=cents=>'$'+(Math.max(0,Number(cents)||0)/100).toFixed(2);
+      const cash=result.cash_balance||{};
+      const withdrawable=Math.max(0,Number(cash.available_cents)||0);
+      const newUserBonus=Math.floor(Number(result.recharge_coins_per_usd||500000)*
+        Number(result.first_recharge_bonus_percent||40)/100);
       const history=(result.referrals||[]).slice(0,50).map(r=>
         '<div class="sh-invite-rankrow"><span>✓</span><b>'+
         sellerEscape(r.name||'Member')+'<small>ID '+sellerEscape(r.public_id)+
         '</small></b><em>Joined</em></div>').join('');
       panel.innerHTML='<h2 class="sh-invite-title">✨ Invite once, earn together</h2>'+
-        '<p class="sh-invite-sub">Share your verified invitation code with friends. '+
-        'Every real account can be linked to one inviter only.</p>'+
+        '<p class="sh-invite-sub">Each verified invite credits 100,000 coins to YOUR '+
+        'main coin wallet and 100,000 coins to your new friend. Your $0.10 '+
+        'cash earning is tracked separately as Pending until reviewed.</p>'+
         '<div class="sh-invite-rewards">'+
         '<div class="sh-invite-reward"><span>🪙</span><strong>'+inviteReward+
-        '</strong><small>Your signup bonus</small></div>'+
+        '</strong><small>You get per invited friend</small></div>'+
         '<div class="sh-invite-reward"><span>💝</span><strong>'+newcomerReward+
-        '</strong><small>Friend’s total starting coins</small></div>'+
-        '<div class="sh-invite-reward"><span>👑</span><strong>'+percent+
-        '%</strong><small>Verified recharge bonus</small></div></div>'+
+        '</strong><small>Friend gets with valid invite</small></div>'+
+        '<div class="sh-invite-reward"><span>💵</span><strong>'+
+        money(result.invite_usd_cents_per_verified_user||10)+
+        '</strong><small>USD per verified invite · review first</small></div></div>'+
         '<div class="sh-invite-code"><div><small>YOUR INVITE CODE</small>'+
         '<strong>'+sellerEscape(invite)+'</strong></div>'+
         '<button class="sh-invite-gold" id="sharika-copy-invite" type="button">COPY</button></div>'+
@@ -4305,6 +4351,39 @@
         '<div class="sh-invite-stat"><strong>'+fmt(Number(result.signup_bonus_coins||0)+
         Number(result.recharge_bonus_coins||0))+
         '</strong><small>Total invite reward coins</small></div></div>'+
+        '<div class="sh-invite-cash"><h2 class="sh-invite-title">💵 Invite & Earn Dollars</h2>'+
+        '<p class="sh-invite-sub">10 verified referrals = $1. Each account counts once. '+
+        'Cash reward requires anti-fraud review.</p>'+
+        '<div class="sh-invite-stats">'+
+        '<div class="sh-invite-stat"><strong>'+money(cash.pending_cents)+
+        '</strong><small>Pending review</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+money(withdrawable)+
+        '</strong><small>Available to request</small></div></div>'+
+        '<div class="sh-invite-cash-grid">'+
+        '<button type="button" data-sh-invite-withdraw="5000" class="sh-invite-gold" '+
+        (withdrawable<5000||profile?.minor?'disabled':'')+'>Withdraw $50</button>'+
+        '<button type="button" data-sh-invite-withdraw="10000" class="sh-invite-gold" '+
+        (withdrawable<10000||profile?.minor?'disabled':'')+'>Withdraw $100</button></div>'+
+        '<p id="sh-invite-withdraw-status" class="sh-invite-alert">Withdrawal requests '+
+        'require finance review and an externally verified payout. No automatic money '+
+        'transfer is connected yet.</p>'+
+        (result.withdrawals||[]).map(w=>'<div class="sh-invite-rankrow">'+
+          '<span>#'+fmt(w.id)+'</span><b>'+money(w.amount_cents)+
+          '<small>Requested '+sellerEscape(w.created_at||'')+'</small></b><em>'+
+          sellerEscape(w.status)+'</em></div>').join('')+
+        '<button type="button" class="sh-invite-gold" id="sh-invite-support" '+
+        'style="width:100%;margin-top:10px">💬 Contact Support for payout details</button></div>'+
+        '<div class="sh-invite-cash"><h2 class="sh-invite-title">🎁 First Recharge Bonus</h2>'+
+        '<p class="sh-invite-sub">Recharge equivalent: $1 = 🪙 '+
+        fmt(result.recharge_coins_per_usd||500000)+'. The first verified recharge '+
+        'gets '+Number(result.first_recharge_bonus_percent||40)+'% EXTRA once.</p>'+
+        '<div class="sh-invite-rewards"><div class="sh-invite-reward"><span>💳</span><strong>500K</strong><small>Recharge coins</small></div>'+
+        '<div class="sh-invite-reward"><span>🎊</span><strong>'+fmt(newUserBonus)+
+        '</strong><small>Bonus coins</small></div>'+
+        '<div class="sh-invite-reward"><span>👑</span><strong>'+percent+
+        '%</strong><small>Inviter recharge reward</small></div></div>'+
+        '<p class="sh-invite-alert">First recharge is counted only after approved '+
+        'seller or finance verification; seller self-recharges do not qualify.</p></div>'+
         '<h2 class="sh-invite-title">How invitation works</h2>'+
         '<div class="sh-invite-rule">① Copy or share your 8-digit ID invite code.</div>'+
         '<div class="sh-invite-rule">② Your friend creates a verified Sharika account.</div>'+
@@ -4312,8 +4391,10 @@
         Number(result.claim_window_hours||48)+' hours of account creation.</div>'+
         '<div class="sh-invite-rule">④ After verification, one-time referral rewards are '+
         'recorded in the actual coin wallets.</div>'+
-        '<div class="sh-invite-rule">⑤ Approved coin-seller recharges earn the inviter '+
-        percent+'% under the current verified reward rules.</div>'+
+        '<div class="sh-invite-rule">⑤ The inviter receives '+percent+
+        '% of eligible verified recharge coins and '+
+        money(result.invite_usd_cents_per_verified_user||10)+
+        ' pending USD earnings per referral. Cash is reviewed separately.</div>'+
         (result.claim_eligible?'<div class="sh-invite-panel">'+
         '<h2 class="sh-invite-title">🎁 New User Bonus</h2>'+
         '<p class="sh-invite-sub">Have a friend’s invite code? Enter it before your window expires.</p>'+
@@ -4326,8 +4407,8 @@
           sellerEscape(result.invited_by)+'</p>':'')+
         '<h2 class="sh-invite-title">Verified invited friends</h2>'+
         (history||'<p class="sh-invite-alert">No verified referrals yet.</p>')+
-        '<p class="sh-invite-alert">Rank rewards and USD prizes are not enabled until '+
-        'the official admin rules are confirmed.</p></div>';
+        '<p class="sh-invite-alert">Ranking cash prizes are separate from the regular '+
+        '$0.10 per verified referral and have not been configured.</p></div>';
       root.querySelector('#sharika-copy-invite').onclick=async()=>{
         try{await native('copyInviteCode',{code:invite});toast('Invite code copied ✓');}
         catch(error){toast('Copy unavailable: '+errText(error));}
@@ -4339,13 +4420,17 @@
         try{await native('shareInvite',{text});}
         catch(error){toast('Share unavailable: '+errText(error));}
       };
+      root.addEventListener('click',event=>{
+        if(!event.target.closest?.('#sh-invite-support'))return;
+        root.remove();openSupportThread();
+      });
       const body=root.querySelector('#sh-invite-tab-body');
       const overview=body.innerHTML;
       const overviewButton=root.querySelector('#sh-invite-tab-overview');
       const rankButton=root.querySelector('#sh-invite-tab-ranking');
       overviewButton.onclick=()=>{
         overviewButton.classList.add('on');rankButton.classList.remove('on');
-        body.innerHTML=overview;bindInviteRedeem(body);
+        body.innerHTML=overview;bindInviteRedeem(body);bindInviteWithdraw(body);
       };
       rankButton.onclick=async()=>{
         overviewButton.classList.remove('on');rankButton.classList.add('on');
@@ -4359,13 +4444,14 @@
             ((ranking.leaders||[]).map(r=>'<div class="sh-invite-rankrow">'+
               '<span>#'+Number(r.rank)+'</span><b>'+sellerEscape(r.name||'Member')+
               '<small>ID '+sellerEscape(r.id)+'</small></b><em>'+
-              fmt(r.total_invites)+' invited</em></div>').join('')||
+              fmt(r.total_invites)+' invited · '+money(r.estimated_usd_cents)+
+              ' pending</em></div>').join('')||
               '<p class="sh-invite-alert">No ranking entries yet.</p>')+
-            '<p class="sh-invite-alert">Prizes will appear after official '+
-            'administrator approval. No USD prize is promised.</p></div>';
+            '<p class="sh-invite-alert">Dollar estimates assume verified accounts; '+
+            'cash approval is required. Separate rank prizes are not enabled.</p></div>';
         }catch(error){if(body.isConnected)body.textContent='Ranking unavailable: '+errText(error);}
       };
-      bindInviteRedeem(body);
+      bindInviteRedeem(body);bindInviteWithdraw(body);
     }catch(error){if(panel.isConnected)panel.textContent='Invite tracking unavailable: '+errText(error);}
   }
   window.dailySheet=showVerifiedDailySheet;

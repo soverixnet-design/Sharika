@@ -371,11 +371,12 @@ var RCT=0,RATE=1,N=function(n){return Number(n).toLocaleString("en-US")};
 function addDia(n){var s=ls("vr_state_v2",{});s.dia=(s.dia==null?2500:s.dia)+n;try{localStorage.setItem("vr_state_v2",JSON.stringify(s))}catch(e){}refresh()}
 function rechargeSheet(tab){var A_=ADM();if(A_&&A_.flags&&A_.flags.recharge===false){toast("Recharge is temporarily closed");return}RCT=tab===1?1:0;renderRcp();$("rcp").classList.add("on")}
 function renderRcp(){
-  var A2=ADM(),P=(A2&&A2.t&&A2.t.pk?A2.t.pk.filter(function(r){return r.on}).map(function(r){return[r.coins,r.price]}):[[1000,"$0.99"],[5500,"$4.99"],[12000,"$9.99"],[65000,"$49.99"]]),X=[500,1000,5000,20000].map(function(n){var u=Number(window.SHARIKA_EXCHANGE_FROM)||100;return Math.max(u,Math.ceil(n/u)*u)}),h;
+  var A2=ADM(),P=(A2&&A2.t&&A2.t.pk?A2.t.pk.filter(function(r){return r.on}).map(function(r){return[r.coins,r.price]}):[[500000,"$1"],[1000000,"$2"]]),X=[500,1000,5000,20000].map(function(n){var u=Number(window.SHARIKA_EXCHANGE_FROM)||100;return Math.max(u,Math.ceil(n/u)*u)}),h;
   h='<div class="rcw"><button id="rcl">🌐 English ⌄</button></div><div class="rch"><button class="bk" id="rcb">‹ Back</button><div class="rct"><button data-x="0" class="'+(RCT?"":"on")+'">Recharge</button><button data-x="1" class="'+(RCT?"on":"")+'">Exchange</button></div></div><div class="rcb">';
   h+='<div class="gc"><small>My gold coins</small><b>🪙 '+N(coins())+'</b><i>ID '+A.id+'</i></div><div class="dm"><span>💎 Your diamonds</span><span>'+N(RS().dia)+'</span></div>';
   if(!RCT){
     h+='<div class="rh"><h3>Recharge packages</h3><span>🇧🇩 Bangladesh</span></div><div class="pk"><p>Choose a package and send a recharge request for approval.</p>'+P.map(function(p,i){return'<button data-p="'+i+'"><span>🪙 '+N(p[0])+' Coins</span><em>'+p[1]+' ›</em></button>'}).join("")+'</div>'+
+    '<div class="pk" style="margin-top:10px;border:2px solid #ffd97b;border-radius:18px;padding:12px;background:#37124e"><b style="color:#ffe18a">🎁 First Recharge Chest</b><p style="margin:7px 0;color:#f5e1ff">$1 equivalent = 🪙 500,000 recharge coins + 🪙 200,000 first-recharge bonus. Your first verified recharge receives 40% extra coins once. No coins are granted until payment is approved.</p></div>'+
     '<button class="cta bl" id="rcs">Contact recharge support</button><button class="cta or" id="rcl2">Coin seller list</button>'+
     '<details class="rk"><summary>🏆 Recharge, sending and receiving rankings</summary>'+CFG.people.slice(0,5).map(function(p,i){return'<div><span>'+(i+1)+'. '+p[1]+' '+esc(p[0])+'</span><b>🪙 '+rf(CFG.wealth[i])+'</b></div>'}).join("")+'</details>';
   }else{
