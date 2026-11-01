@@ -62,6 +62,6 @@ test('isolated migration enforces one first-recharge bonus and one USD earning p
     import.meta.url),'utf8');
   assert.match(sql,/sharika_first_recharge_bonuses\s*\(\s*recipient_uid TEXT PRIMARY KEY/i);
   assert.match(sql,/sharika_invite_usd_earnings\s*\(\s*referred_uid TEXT PRIMARY KEY/i);
-  assert.match(sql,/CHECK\(amount_cents IN \(5000,10000\)\)/);
+  assert.match(sql,/CHECK\(amount_cents BETWEEN 1000 AND 1000000\)/);
   assert.match(sql,/status IN \('pending','paid','rejected'\)/);
 });

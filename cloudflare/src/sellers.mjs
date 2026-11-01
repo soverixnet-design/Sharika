@@ -1,5 +1,6 @@
 import { rechargeReferralStatements } from './invites.mjs';
 import { firstRechargeBonusStatements } from './first-recharge.mjs';
+import {readInviteRules} from './invite-rules.mjs';
 // Sharika staging: approved coin sellers with a separate audited stock ledger.
 // No seller may mint coins, spend another seller's stock, or grant admin roles.
 const PUBLIC_ID=/^[0-9]{8}$/;
@@ -120,15 +121,16 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
     const creditId='seller-credit:'+uid+':'+requestId;
     let referralCredit,firstRecharge;
     try{
+      const rules=await readInviteRules(env.DB);
       // Do not mint a referral commission from a seller's own stock recharge.
       referralCredit=selfRecharge?{bonus:0,statements:[]}:
         await rechargeReferralStatements({
-          db:env.DB,recipientUid:recipient.auth_uid,sellerUid:uid,requestId,amount
+          db:env.DB,recipientUid:recipient.auth_uid,sellerUid:uid,requestId,amount,rules
         });
       firstRecharge=selfRecharge?{bonus:0,statements:[]}:
         await firstRechargeBonusStatements({
           db:env.DB,recipientUid:recipient.auth_uid,kind:'seller',
-          reference:uid+':'+requestId,coins:amount,balance:recipient.coins
+          reference:uid+':'+requestId,coins:amount,balance:recipient.coins,rules
         });
     }catch(error){
       if(error.message==='inviter_balance_limit')

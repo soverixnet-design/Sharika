@@ -3,6 +3,7 @@
 // Explicit finance/admin verification is required before one atomic coin grant.
 import { rechargeReferralStatements } from './invites.mjs';
 import { firstRechargeBonusStatements } from './first-recharge.mjs';
+import {readInviteRules} from './invite-rules.mjs';
 const MAX_RECHARGE=1_000_000;
 const MAX_BALANCE=1_000_000_000_000;
 const PUBLIC_ID=n=>String(n).padStart(8,'0');
@@ -85,13 +86,14 @@ export async function handleRechargeAdmin({request,env,uid,actor,operation,cors,
     if(used)return fail('payment_reference_already_used',409,cors);
     let referral,firstRecharge;
     try{
+      const rules=await readInviteRules(env.DB);
       referral=await rechargeReferralStatements({
         db:env.DB,recipientUid:target.user_id,sellerUid:'manual',
-        requestId:String(id),amount:coins
+        requestId:String(id),amount:coins,rules
       });
       firstRecharge=await firstRechargeBonusStatements({
         db:env.DB,recipientUid:target.user_id,kind:'manual',reference:String(id),
-        coins,balance:target.coins
+        coins,balance:target.coins,rules
       });
     }catch(error){
       if(error.message==='inviter_balance_limit')return fail('inviter_balance_limit',409,cors);

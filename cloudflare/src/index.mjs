@@ -8,6 +8,8 @@ import { handlePremiumApp } from './premium.mjs';
 import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import { handleEventApp } from './events.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
+import {readInviteRules} from './invite-rules.mjs';
+import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
@@ -78,7 +80,7 @@ function corsFor(request, env) {
   return {
     'access-control-allow-origin': origin, 'vary': 'Origin',
     'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
-    'access-control-allow-headers': 'authorization,content-type,idempotency-key',
+    'access-control-allow-headers': 'authorization,content-type,idempotency-key,x-sharika-device-proof',
   };
 }
 async function me(db, uid) {
@@ -209,6 +211,7 @@ export async function handleRequest(request, env) {
       request, env, uid, path, cors, reply, fail
     });
     if (path==='/api/v1/invites'||path==='/api/v1/invites/redeem'||
+        path==='/api/v1/invites/device'||
         path==='/api/v1/invites/rankings'||path==='/api/v1/invites/withdrawals')
       return await handleInviteApp({
       request, env, uid, path, cors, reply, fail
@@ -308,20 +311,32 @@ export async function handleRequest(request, env) {
           db:env.DB,uid,inviteCode:body.invite_code,fail,cors
         });
         if(referral.error)return referral.error;
-        const welcomeCoins=signupCoins(!!referral.inviter);
+        const rules=await readInviteRules(env.DB);
+        const deviceDigest=await inviteDeviceDigest(request,env);
+        const device=await inviteDeviceBinding(env.DB,uid,deviceDigest);
+        const inviterDevice=referral.inviter?await env.DB.prepare('SELECT device_digest,invite_eligible '+
+          'FROM sharika_invite_devices WHERE user_uid=?').bind(referral.inviter.auth_uid).first():null;
+        const verifiedReferral=!!(referral.inviter&&device.eligible&&
+          inviterDevice?.invite_eligible===1&&inviterDevice.device_digest!==deviceDigest);
+        const welcomeCoins=signupCoins(verifiedReferral,rules);
         const registration=[
           env.DB.prepare(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,country,pic,coins)
             VALUES((SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users),?,?,?,?,?,?,?)`)
             .bind(uid,name,body.birthdate,age<18?1:0,country,pic,welcomeCoins),
           env.DB.prepare(`INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id)
             VALUES(?,'coins',?,?,?,?)`)
-            .bind(uid,welcomeCoins,welcomeCoins,referral.inviter?'signup_invited':'signup_welcome','signup:'+uid)
+            .bind(uid,welcomeCoins,welcomeCoins,verifiedReferral?'signup_invited':'signup_welcome','signup:'+uid)
         ];
-        if(referral.inviter)registration.push(...signupReferralStatements({
-          db:env.DB,uid,inviterUid:referral.inviter.auth_uid
+        if(verifiedReferral)registration.push(...signupReferralStatements({
+          db:env.DB,uid,inviterUid:referral.inviter.auth_uid,rules
         }));
+        registration.push(...device.statements);
         await env.DB.batch(registration);
-        return reply(showProfile(await me(env.DB, uid)), 201, cors);
+        return reply({...showProfile(await me(env.DB, uid)),
+          invite_eligible:device.eligible,
+          invite_bonused:verifiedReferral,
+          invite_ineligible_reason:referral.inviter&&!verifiedReferral?
+            (device.reason||'inviter_device_not_verified'):null},201,cors);
       }
       if (request.method === 'PATCH') {
         await assertActive(env.DB, uid);

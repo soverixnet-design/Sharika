@@ -23,6 +23,10 @@ function mock({inviter=true,active=true,self=false,profile=true,referred=true,
             return profile?{public_no:10000001,created_at:createdAt}:null;
           if(sql.includes('SELECT inviter_uid FROM sharika_referrals WHERE referred_uid'))
             return linked?{inviter_uid:'bob'}:null;
+          if(sql.includes('SELECT invite_eligible,device_digest FROM sharika_invite_devices'))
+            return {invite_eligible:1,device_digest:'d'.repeat(64)};
+          if(sql.includes('SELECT device_digest FROM sharika_invite_devices'))
+            return null;
           if(sql.includes("SELECT 1 AS active FROM sharika_users"))
             return profile&&active?{active:1}:null;
           if(sql.includes("COUNT(*) AS n FROM sharika_referrals"))
@@ -173,9 +177,11 @@ test('no commission without an active referrer or at less than 20 coin recharge'
 
 const redemption=(fixture,inviteCode='10000002')=>handleInviteApp({
   request:new Request('https://example.test/api/v1/invites/redeem',{
-    method:'POST',headers:{'content-type':'application/json'},
+    method:'POST',headers:{'content-type':'application/json',
+      'x-sharika-device-proof':'a'.repeat(64)},
     body:JSON.stringify({invite_code:inviteCode})
-  }),env:{DB:fixture.DB},uid:'alice',path:'/api/v1/invites/redeem',
+  }),env:{DB:fixture.DB,INVITE_DEVICE_PEPPER:'test-secret-device-pepper-at-least-32-characters'},
+  uid:'alice',path:'/api/v1/invites/redeem',
   cors:{},reply,fail
 });
 
@@ -190,13 +196,14 @@ test('newly created account redeems one verified inviter and both coins are in o
   assert.equal(result.invitee_total_signup_coins,100000);
   assert.equal(f.state.batches.length,1);
   const statements=f.state.batches[0];
-  assert.equal(statements.length,6);
+  assert.equal(statements.length,7);
   assert.match(statements[0].sql,/INSERT INTO sharika_referrals/);
   assert.deepEqual(statements[0].args,['alice','bob']);
   assert.equal(statements[1].args[1],100000);
   assert.equal(statements[3].args[2],10);
-  assert.equal(statements[4].args[1],98000);
-  assert.equal(statements[5].args[3],'referral-claim:alice');
+  assert.match(statements[4].sql,/INSERT INTO sharika_invite_devices/);
+  assert.equal(statements[5].args[1],98000);
+  assert.equal(statements[6].args[3],'referral-claim:alice');
   assert.equal(JSON.stringify(result).includes('bob'),false);
 });
 
