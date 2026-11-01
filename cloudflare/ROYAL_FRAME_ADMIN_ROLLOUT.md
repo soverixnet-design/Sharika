@@ -21,22 +21,30 @@ frame, medal, role or any admin permission.
 
 ## Server prerequisites
 
-As inspected on 1 November 2026, `sharika-staging` had only 14 ordinary frames
+At the start of 1 November 2026, `sharika-staging` had only 14 ordinary frames
 and no bundled Royal Role or SVIP frames in `sharika_cosmetics_catalog`; its
 `d1_migrations` table ended at `0033_notifications.sql`. The required additive
-catalogue migrations are:
+catalogue migrations were:
 
 - `0034_svip_animated_assets.sql`: 35 VIP/SVIP/Noble animations, inactive.
 - `0035_cp_weekly_rewards.sql`: unrelated, **disabled** CP weekly receipts;
   required only when applying all pending migrations in filename order.
 - `0036_royal_role_frame_catalog.sql`: 62 Royal Role frames, inactive.
 
+**Staging database status (verified 1 November 2026):** All three migrations
+above have now been applied to the existing `sharika-staging` database, with
+matching journal entries through migration `0036`. A D1 Time Travel bookmark
+was recorded beforehand. Read-back confirmed 62 Royal Role frames and 35
+VIP/SVIP/Noble cosmetics in the catalog, all 97 inactive, with CP auto-award
+and CP rewards disabled. This is **not** a production rollout, and the Admin
+Worker UI has **not** been redeployed by the database migration.
+
 Do not run an unreviewed `d1 migrations apply --remote` or rebuild the D1
 database. **Back up the exact staging database, compare the migration journal
 and schema, and apply only reviewed additive migrations in order.** A previous
 checkpoint identified migration-journal drift; that warning still matters.
 Verify the 97 bundled items are in the catalogue before announcing they are
-available for grants. Newly seeded items are **not** open to coin purchases
+available for grants in any other environment. Newly seeded items are **not** open to coin purchases
 unless Super Admin explicitly enables them.
 
 The staging Admin Worker embeds `admin/connection.js` into its compiled script.
