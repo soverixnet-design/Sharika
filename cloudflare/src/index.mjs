@@ -9,6 +9,8 @@ import { handlePremiumApp } from './premium.mjs';
 import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import { handleEventApp } from './events.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
+import { inviteSettings, deviceDigest, deviceAllowed, deviceRegistrationStatement,
+  signupCashStatements, publicInviteLanding } from './invite-upgrade.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
@@ -185,6 +187,8 @@ export async function handleRequest(request, env, ctx) {
         auth_configured: !!env.FIREBASE_PROJECT_ID }, 200, cors);
     } catch (_) { return fail('database_unavailable', 503, cors); }
   }
+  const landing=publicInviteLanding(request,path);
+  if(landing)return landing;
   if (!env.DB || !env.FIREBASE_PROJECT_ID) return fail('not_configured', 503, cors);
   let actor;
   try { actor = await verifyFirebaseToken(request.headers.get('authorization'), env.FIREBASE_PROJECT_ID); }
@@ -213,8 +217,8 @@ export async function handleRequest(request, env, ctx) {
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
       request, env, uid, path, cors, reply, fail, ctx
     });
-    if (path==='/api/v1/invites') return await handleInviteApp({
-      request, env, uid, path, cors, reply, fail
+    if (path.startsWith('/api/v1/invites')) return await handleInviteApp({
+      request, env, uid, path, cors, reply, fail, ctx
     });
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
         path==='/api/v1/daily/tasks/claim') return await handleDailyApp({
@@ -311,12 +315,19 @@ export async function handleRequest(request, env, ctx) {
         if (!name || age === null) return fail('invalid_profile', 400, cors);
         const country = txt(body.country, 16);
         const pic = txt(body.pic, 2048) || null;
-        // A referral may only be attributed at initial account registration.
+        // Referrals can also be claimed after registration, within the admin-set window.
         const referral=await resolveInviter({
           db:env.DB,uid,inviteCode:body.invite_code,fail,cors
         });
         if(referral.error)return referral.error;
-        const welcomeCoins=signupCoins(!!referral.inviter);
+        const inviteConfig=await inviteSettings(env.DB);
+        if(referral.inviter && !Number(inviteConfig.enabled))
+          return fail('invites_disabled',403,cors);
+        const digest=await deviceDigest(request,env);
+        const eligibleDevice=digest&&await deviceAllowed(env.DB,uid,digest);
+        if(referral.inviter && !eligibleDevice)
+          return fail('device_reward_already_used',403,cors);
+        const welcomeCoins=signupCoins(!!referral.inviter,inviteConfig);
         const registration=[
           env.DB.prepare(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,country,pic,coins)
             VALUES((SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users),?,?,?,?,?,?,?)`)
@@ -325,9 +336,20 @@ export async function handleRequest(request, env, ctx) {
             VALUES(?,'coins',?,?,?,?)`)
             .bind(uid,welcomeCoins,welcomeCoins,referral.inviter?'signup_invited':'signup_welcome','signup:'+uid)
         ];
-        if(referral.inviter)registration.push(...signupReferralStatements({
-          db:env.DB,uid,inviterUid:referral.inviter.auth_uid
-        }));
+        if(eligibleDevice)
+          registration.push(deviceRegistrationStatement(env.DB,uid,digest));
+        if(referral.inviter){
+          registration.push(...signupReferralStatements({
+            db:env.DB,uid,inviterUid:referral.inviter.auth_uid,config:inviteConfig
+          }));
+          const inviterFull=await env.DB.prepare(
+            "SELECT minor FROM sharika_users WHERE auth_uid=?"
+          ).bind(referral.inviter.auth_uid).first();
+          registration.push(...signupCashStatements({
+            db:env.DB,uid,inviterUid:referral.inviter.auth_uid,
+            config:inviteConfig,inviterMinor:!!inviterFull?.minor,inviteeMinor:age<18
+          }));
+        }
         await env.DB.batch(registration);
         return reply(showProfile(await me(env.DB, uid)), 201, cors);
       }

@@ -12,6 +12,8 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
         bind(...args){this.args=args;return this;},
         async first(){
           state.queries.push({sql,args:this.args||[]});
+          if(sql.includes('SELECT * FROM sharika_invite_settings'))
+            return {enabled:1,recharge_percent:5};
           if(sql.includes('FROM sharika_users WHERE auth_uid=?'))return actor?{auth_uid:'seller1',public_no:10000003,minor}:null;
           if(sql.includes('FROM sharika_coin_sellers WHERE seller_uid=?'))
             return seller?{active:1,available_coins:stock}:null;
