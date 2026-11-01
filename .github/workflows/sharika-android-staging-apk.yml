@@ -27,6 +27,7 @@ on:
       - feature/sharika-royal-premium-bonds-integration-20261101
       - feature/sharika-hd-room-themes-staging-20261101
       - feature/sharika-weekly-opening-single-user-20261101
+      - feature/sharika-royal-shop-backpack-20261101
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
@@ -147,6 +148,25 @@ jobs:
             throw Error('Greedy Wheel is not protected by authenticated bridge');
           console.log('SHARIKA_THREE_ORIGINAL_GAMES_SERVER_BRIDGE_VERIFIED');
           console.log('SHARIKA_ORIGINAL_UI_AND_ISOLATED_BRIDGE_VERIFIED');
+          NODE
+
+      - name: Validate Royal Shop and Backpack packaging
+        run: |
+          test -s royal-shop-bg.png
+          test -s royal-backpack-bg.png
+          test -s royal-market.css
+          node - <<'NODE'
+          const fs=require('fs');
+          const js=fs.readFileSync('staging-connection.js','utf8');
+          const gradle=fs.readFileSync('app/build.gradle','utf8');
+          for(const asset of ['royal-shop-bg.png','royal-backpack-bg.png','royal-market.css'])
+            if(!gradle.includes(asset))throw Error('Missing market asset: '+asset);
+          if(!js.includes("api('POST','/cosmetics/purchase'") ||
+             !js.includes("api('POST','/cosmetics/equip'") ||
+             !js.includes('sharikaOpenRoyalMarket') ||
+             !js.includes('sharikaCloseRoyalMarket'))
+            throw Error('Verified marketplace operations not packaged');
+          console.log('SHARIKA_ROYAL_MARKET_ASSETS_AND_API_OK');
           NODE
 
       - name: Validate Royal Premium visual-only layer
