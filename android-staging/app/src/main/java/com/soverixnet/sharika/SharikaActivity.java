@@ -44,6 +44,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 import org.json.JSONObject;
 import org.json.JSONException;
@@ -72,6 +73,7 @@ public final class SharikaActivity extends Activity {
     private static final int MIC_PERMISSION_REQUEST = 3412;
     private static final int IMAGE_PICKER_REQUEST = 3413;
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 3415;
     private final ExecutorService io = Executors.newFixedThreadPool(2);
     private FirebaseAuth auth;
     private CredentialManager credentials;
@@ -457,6 +459,29 @@ public final class SharikaActivity extends Activity {
                         @Override public void onError(ClearCredentialException error) {}
                     });
                 sendResult(id, result(true, identity(null), null));
+                break;
+            case "pushToken":
+                // A token is a device identifier, never an FCM server credential.
+                if (auth.getCurrentUser() == null) {
+                    sendResult(id, result(false,null,"login_required")); break;
+                }
+                if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATION_PERMISSION_REQUEST);
+                }
+                FirebaseMessaging.getInstance().getToken().addOnCompleteListener(this, task -> {
+                    if (!task.isSuccessful() || task.getResult() == null) {
+                        sendResult(id, result(false,null,"fcm_device_token_unavailable")); return;
+                    }
+                    JSONObject payload = object();
+                    try { payload.put("token",task.getResult()); }
+                    catch (JSONException error) {
+                        sendResult(id,result(false,null,"invalid_fcm_device_token"));return;
+                    }
+                    sendResult(id,result(true,payload,null));
+                });
                 break;
             case "api": callStagingApi(id, data); break;
             case "pickProfilePhoto": pickNativeProfilePhoto(id); break;

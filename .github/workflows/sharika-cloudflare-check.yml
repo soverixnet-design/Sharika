@@ -4,6 +4,7 @@ on:
     branches:
       - feature/sharika-cloudflare-d1-foundation-20261029
       - feature/sharika-android-staging-20261030
+      - feature/sharika-notifications-20261101
       - feature/sharika-original-games-cards-20261030
       - feature/sharika-staff-seller-entry-20261031
       - fix/sharika-two-way-mic-direct-seat-20261031
