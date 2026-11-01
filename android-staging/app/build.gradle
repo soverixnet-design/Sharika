@@ -63,6 +63,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     // Owner-provided royal profile art; keep the original JPEG and PNG intact.
     from(rootProject.file('../app/main-profile-bg.jpg'))
     from(rootProject.file('../app/main-profile-icons.webp'))
+    from(rootProject.file('../app/invite-royal-chest.webp'))
     from(rootProject.file('back-navigation.js'))
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))

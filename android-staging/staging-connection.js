@@ -4163,6 +4163,23 @@
       '#sh-invite-page .sh-invite-panel::before{content:"✦  👑  ✦";',
       'display:block;text-align:center;margin:-13px auto 7px;color:#ffe087;',
       'font-size:21px;letter-spacing:8px;text-shadow:0 2px 7px #efb321b8}',
+      '#sh-invite-page .sh-invite-royal-banner{position:relative;overflow:hidden;',
+      'min-height:285px;border:2px solid #f8d57c;border-radius:24px;margin:2px 0 16px;',
+      'background:#23083c url("main-profile-bg.jpg") center top/100% auto no-repeat;',
+      'box-shadow:inset 0 0 0 3px #622a76,0 8px 19px #0a0414aa;',
+      'display:flex;flex-direction:column;justify-content:flex-end;align-items:center;',
+      'text-align:center;padding:15px 12px 17px}',
+      '#sh-invite-page .sh-invite-chest{width:min(100%,245px);height:175px;',
+      'display:flex;align-items:center;justify-content:center;',
+      'filter:drop-shadow(0 7px 9px #1b0029aa)}',
+      '#sh-invite-page .sh-invite-chest img{max-width:100%;max-height:100%;',
+      'width:auto;height:auto;object-fit:contain;display:block}',
+      '#sh-invite-page .sh-invite-royal-banner h2{font-size:clamp(23px,6vw,32px);',
+      'line-height:1.1;margin:0;color:#ffefb1;text-shadow:0 3px 5px #260026,0 0 12px #e4ad55}',
+      '#sh-invite-page .sh-invite-royal-banner p{margin:7px 0 0;font-size:12px;',
+      'color:#fff1dc;text-shadow:0 1px 4px #16051c}',
+      '#sh-invite-page .sh-invite-royal-banner .sh-invite-royal-mark{font-size:10px;',
+      'color:#ffe08b;font-weight:900;letter-spacing:2px;margin-bottom:6px}',
       '#sh-invite-page .sh-invite-title{text-align:center;font-size:20px;',
       'font-weight:900;color:#ffdfa1;margin:0 0 9px;',
       'text-shadow:0 2px #3e155b,0 0 15px #ffbd4c88}',
@@ -4222,6 +4239,17 @@
       'box-shadow:0 7px 0 #201135,inset 0 2px #fff5}',
       '#sh-invite-page .sh-invite-cash-grid{display:grid;grid-template-columns:1fr 1fr;',
       'gap:8px;margin:10px 0}',
+      '#sh-invite-page [hidden]{display:none!important}',
+      '#sh-invite-page .sh-invite-withdraw-trigger{display:block;width:100%;margin:12px 0 5px}',
+      '#sh-invite-page .sh-invite-withdraw-hint{font-size:11px;color:#f0d9ff;',
+      'line-height:1.5;text-align:center;margin:6px 2px 12px}',
+      '#sh-invite-page .sh-invite-withdraw-form{margin:14px 0 0;padding:14px 12px;',
+      'border:2px solid #e5b950;border-radius:19px;background:#240e41}',
+      '#sh-invite-page .sh-invite-withdraw-form h3{text-align:center;',
+      'font-size:16px;margin:0 0 9px;color:#ffe3a0}',
+      '#sh-invite-page .sh-invite-withdraw-form label{display:block;font-size:12px;',
+      'color:#f6e0ff;margin-top:8px}',
+      '#sh-invite-page .sh-invite-withdraw-form .sh-invite-entry{margin:4px 0 8px}',
       '#sh-invite-page .sh-invite-cash button:disabled{opacity:.5;filter:grayscale(.35)}',
       '#sh-invite-newbie{position:fixed;inset:0;z-index:2147483550;',
       'display:flex;align-items:center;justify-content:center;padding:18px;',
@@ -4233,6 +4261,9 @@
       'linear-gradient(150deg,#751a54,#38104d 63%,#1a0f44);',
       'box-shadow:0 0 35px #eaa84988,inset 0 3px #fff8}',
       '#sh-invite-newbie .sh-invite-chests{font-size:35px;letter-spacing:5px;margin:12px 0}',
+      '#sh-invite-newbie .sh-invite-welcome-art{width:min(100%,235px);height:auto;',
+      'max-height:210px;object-fit:contain;margin:0 auto;display:block;',
+      'filter:drop-shadow(0 7px 14px #10001bc7)}',
       '#sh-invite-newbie h2{font-size:24px;margin:6px 0;color:#ffeaad}',
       '#sh-invite-newbie p{font-size:13px;line-height:1.5;color:#fae8f5}',
       '#sh-invite-newbie .sh-invite-welcome-close{position:absolute;right:11px;top:9px;',
@@ -4277,10 +4308,30 @@
     };
   }
   function bindInviteWithdraw(root){
+    const open=root.querySelector('#sh-invite-open-withdraw');
+    const form=root.querySelector('#sh-invite-withdraw-form');
+    if(open&&form){
+      open.setAttribute('aria-expanded','false');
+      open.onclick=()=>{
+        if(open.disabled)return;
+        const reveal=form.hidden;
+        form.hidden=!reveal;
+        open.setAttribute('aria-expanded',String(reveal));
+        if(reveal){
+          form.querySelector('input')?.focus({preventScroll:true});
+          form.scrollIntoView({block:'nearest',behavior:'auto'});
+        }
+      };
+      form.querySelector('#sh-invite-withdraw-cancel')?.addEventListener('click',()=>{
+        form.hidden=true;
+        open.setAttribute('aria-expanded','false');
+        open.focus({preventScroll:true});
+      });
+    }
     const buttons=[...root.querySelectorAll('[data-sh-invite-withdraw]')];
     for(const button of buttons){
       button.onclick=async()=>{
-        if(button.disabled)return;
+        if(button.disabled||!form||form.hidden)return;
         const amount=Number(button.dataset.shInviteWithdraw);
         if(!Number.isSafeInteger(amount)||amount<1000)return;
         const status=root.querySelector('#sh-invite-withdraw-status');
@@ -4330,7 +4381,7 @@
     overlay.innerHTML='<div class="sh-invite-welcome">'+
       '<button class="sh-invite-welcome-close" type="button" aria-label="Close">×</button>'+
       '<div style="font-size:30px">✨ 👑 ✨</div><h2>New User Royal Bonus</h2>'+
-      '<div class="sh-invite-chests">🧰 🎁 💎 🏆</div>'+
+      '<img class="sh-invite-welcome-art" src="invite-royal-chest.webp" alt="">'+
       '<p>Welcome to Sharika! New members can unlock a one-time invite reward '+
       'through a verified friend.</p>'+
       '<div style="color:#ffe27b;font-size:28px;font-weight:900">🪙 '+
@@ -4414,13 +4465,22 @@
       const money=cents=>'$'+(Math.max(0,Number(cents)||0)/100).toFixed(2);
       const cash=result.cash_balance||{};
       const withdrawable=Math.max(0,Number(cash.available_cents)||0);
+      const withdrawalChoices=[...new Set((result.withdrawal_options_cents||[5000,10000])
+        .map(Number).filter(n=>Number.isSafeInteger(n)&&n>=1000))].sort((a,b)=>a-b);
+      const minimumWithdrawal=withdrawalChoices[0]||5000;
+      const canWithdraw=!profile?.minor&&withdrawable>=minimumWithdrawal;
       const newUserBonus=Math.floor(Number(result.recharge_coins_per_usd||500000)*
         Number(result.first_recharge_bonus_percent||40)/100);
       const history=(result.referrals||[]).slice(0,50).map(r=>
         '<div class="sh-invite-rankrow"><span>✓</span><b>'+
         sellerEscape(r.name||'Member')+'<small>ID '+sellerEscape(r.public_id)+
         '</small></b><em>Joined</em></div>').join('');
-      panel.innerHTML='<h2 class="sh-invite-title">✨ Invite once, earn together</h2>'+
+      panel.innerHTML='<div class="sh-invite-royal-banner">'+
+        '<div class="sh-invite-chest"><img src="invite-royal-chest.webp" alt=""></div>'+
+        '<div class="sh-invite-royal-mark">✦ SHARIKA ROYAL INVITATION ✦</div>'+
+        '<h2>Invite Friends<br>Earn Royal Rewards</h2>'+
+        '<p>One friend · Two coin bonuses · Real reward tracking</p></div>'+
+        '<h2 class="sh-invite-title">✨ Invite once, earn together</h2>'+
         '<p class="sh-invite-sub">Each eligible invite earns '+inviteReward+
         ' coins for you and '+newcomerReward+' coins for your friend. Your '+
         money(result.invite_usd_cents_per_verified_user??0)+
@@ -4462,25 +4522,36 @@
         '</strong><small>Pending review</small></div>'+
         '<div class="sh-invite-stat"><strong>'+money(withdrawable)+
         '</strong><small>Available to request</small></div></div>'+
-        '<div class="sh-invite-cash-grid">'+
-        '<button type="button" data-sh-invite-withdraw="'+
-        Number(result.withdrawal_options_cents?.[0]||5000)+'" class="sh-invite-gold" '+
-        (withdrawable<Number(result.withdrawal_options_cents?.[0]||5000)||profile?.minor?'disabled':'')+
-        '>Withdraw '+money(result.withdrawal_options_cents?.[0]||5000)+'</button>'+
-        '<button type="button" data-sh-invite-withdraw="'+
-        Number(result.withdrawal_options_cents?.[1]||10000)+'" class="sh-invite-gold" '+
-        (withdrawable<Number(result.withdrawal_options_cents?.[1]||10000)||profile?.minor?'disabled':'')+
-        '>Withdraw '+money(result.withdrawal_options_cents?.[1]||10000)+'</button></div>'+
-        '<div class="sh-invite-panel"><h3>🏦 Bank transfer details</h3>'+
-        '<p class="sh-invite-sub">Enter your own bank account. Your request goes to '+
-        'the finance admin; money is transferred manually after verification.</p>'+
+        '<button type="button" id="sh-invite-open-withdraw" class="sh-invite-gold '+
+        'sh-invite-withdraw-trigger" aria-controls="sh-invite-withdraw-form" '+
+        (canWithdraw?'':'disabled')+'>Withdraw</button>'+
+        '<p class="sh-invite-withdraw-hint">'+
+        (profile?.minor?'Cash withdrawal is not available for minor accounts.':
+        canWithdraw?'Choose an available amount after opening Withdraw.':
+        'Withdraw unlocks at '+money(minimumWithdrawal)+
+        ' approved USD. Your pending earnings are not withdrawable yet.')+'</p>'+
+        '<div id="sh-invite-withdraw-form" class="sh-invite-withdraw-form" hidden>'+
+        '<h3>🏦 Bank transfer request</h3>'+
+        '<p class="sh-invite-sub">Your bank details are sent privately to the finance '+
+        'admin after you submit a withdrawal request. Payout is manual.</p>'+
+        '<label for="sh-withdraw-bank">Bank name</label>'+
         '<input id="sh-withdraw-bank" class="sh-invite-entry" maxlength="100" autocomplete="organization" placeholder="Bank name">'+
-        '<input id="sh-withdraw-holder" class="sh-invite-entry" maxlength="100" autocomplete="name" placeholder="Account holder name">'+
+        '<label for="sh-withdraw-holder">Account holder name</label>'+
+        '<input id="sh-withdraw-holder" class="sh-invite-entry" maxlength="100" autocomplete="name" placeholder="Name on bank account">'+
+        '<label for="sh-withdraw-number">Bank account number</label>'+
         '<input id="sh-withdraw-number" class="sh-invite-entry" maxlength="40" inputmode="numeric" autocomplete="off" placeholder="Bank account number">'+
-        '<input id="sh-withdraw-branch" class="sh-invite-entry" maxlength="100" autocomplete="off" placeholder="Bank branch"></div>'+
-        '<p id="sh-invite-withdraw-status" class="sh-invite-alert">Withdrawal requests '+
-        'require finance review and an externally verified payout. No automatic money '+
-        'transfer is connected yet.</p>'+
+        '<label for="sh-withdraw-branch">Bank branch</label>'+
+        '<input id="sh-withdraw-branch" class="sh-invite-entry" maxlength="100" autocomplete="off" placeholder="Bank branch">'+
+        '<p class="sh-invite-sub">Select the amount to request:</p>'+
+        '<div class="sh-invite-cash-grid">'+withdrawalChoices.map(amount=>
+          '<button type="button" data-sh-invite-withdraw="'+amount+
+          '" class="sh-invite-gold" '+
+          (withdrawable<amount?'disabled':'')+'>Request '+money(amount)+'</button>'
+        ).join('')+'</div>'+
+        '<p id="sh-invite-withdraw-status" class="sh-invite-alert" role="status">'+
+        'Requests are checked by finance before any manual bank transfer.</p>'+
+        '<button type="button" class="sh-invite-gold" id="sh-invite-withdraw-cancel" '+
+        'style="width:100%;margin-top:9px">Cancel</button></div>'+
         (result.withdrawals||[]).map(w=>'<div class="sh-invite-rankrow">'+
           '<span>#'+fmt(w.id)+'</span><b>'+money(w.amount_cents)+
           '<small>Requested '+sellerEscape(w.created_at||'')+'</small></b><em>'+
@@ -5832,12 +5903,42 @@
     return {round_no:prev.round_no,winners};
   }
   let originalGameWalletRefreshTime=0;
+  function originalGameFullscreenStyle(doc){
+    if(doc.getElementById('sh-original-fullscreen-style'))return;
+    const style=doc.createElement('style');
+    style.id='sh-original-fullscreen-style';
+    style.textContent=[
+      '#shb.sh-original-fullscreen,#bg.sh-original-fullscreen{position:fixed!important;',
+      'inset:0!important;width:100%!important;height:100%!important;',
+      'z-index:2147482000!important;align-items:stretch!important;',
+      'background:#100424!important;backdrop-filter:none!important}',
+      '#shb.sh-original-fullscreen #sh,#bg.sh-original-fullscreen #sheet{',
+      'display:flex!important;flex-direction:column!important;flex:1!important;',
+      'width:100%!important;height:100%!important;max-height:none!important;',
+      'min-height:0!important;overflow:hidden!important;margin:0!important;',
+      'padding:calc(8px + env(safe-area-inset-top,0px)) 10px ',
+      'calc(12px + env(safe-area-inset-bottom,0px))!important;',
+      'border:0!important;border-radius:0!important;animation:none!important;',
+      'transform:none!important;box-sizing:border-box!important}',
+      '#sh-original-host{flex:1!important;min-height:0!important;height:auto!important;',
+      'max-height:none!important;overflow:hidden!important}',
+      '#sh-original-host iframe{width:100%!important;height:100%!important;',
+      'border:0!important;display:block!important}',
+      '#sh-original-back{flex:none;align-self:flex-start;min-height:40px}',
+      '#sh-original-game-title{flex:none;font-size:17px;margin:8px 0!important;',
+      'color:#ffe4a0;line-height:1.25}',
+      '@media(prefers-reduced-motion:reduce){#sh-original-host *{animation:none!important}}'
+    ].join('');
+    doc.head.appendChild(style);
+  }
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
     const sheet=doc.getElementById(insideRoom?'sheet':'sh');
     const overlay=doc.getElementById(insideRoom?'bg':'shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
+    originalGameFullscreenStyle(doc);
     function catalog(){
+      overlay.classList.remove('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div><h3>🎮 Original Games</h3>'+
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
@@ -5984,13 +6085,14 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
+      overlay.classList.add('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div>'+
         '<button id="sh-original-back" type="button" '+
         'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
         'background:#351164;color:#fff">← All games</button>'+
-        '<h3 style="margin:8px 0"></h3>'+
-        '<div id="sh-original-host" style="width:100%;height:min(74vh,750px);'+
-        'min-height:380px;border:1px solid #a56dff;border-radius:12px;'+
+        '<h3 id="sh-original-game-title"></h3>'+
+        '<div id="sh-original-host" style="width:100%;'+
+        'min-height:0;border:1px solid #a56dff;border-radius:12px;'+
         'overflow:hidden;background:#100424"></div>';
       sheet.querySelector('h3').textContent=item.name;
       sheet.querySelector('#sh-original-back').onclick=()=>{currentGameFrame=null;clearWinnerBanner();catalog()};
@@ -6077,11 +6179,17 @@
       }
     };
     view.addEventListener('message',onOriginalGameMessage);
+    const hiddenObserver=new MutationObserver(()=>{
+      if(!overlay.classList.contains('on'))view.__sharikaOriginalGameCleanup?.();
+    });
+    hiddenObserver.observe(overlay,{attributes:true,attributeFilter:['class']});
     view.__sharikaOriginalGameCleanup=()=>{
+      hiddenObserver.disconnect();
       view.removeEventListener('message',onOriginalGameMessage);
       clearWinnerBanner();
       currentGameFrame?.element?.remove();
       currentGameFrame=null;
+      overlay.classList.remove('sh-original-fullscreen');
     };
     catalog();
     overlay.classList.add('on');

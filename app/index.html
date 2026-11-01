@@ -388,7 +388,20 @@ function RS(){return Object.assign({coins:12450,xp:7200,dia:2500},ls("vr_state_v
 function coins(){return RS().coins}
 function level(){return 1+Math.floor(RS().xp/1000)}
 function addCoins(n){var s=ls("vr_state_v2",{});s.coins=(s.coins==null?12450:s.coins)+n;try{localStorage.setItem("vr_state_v2",JSON.stringify(s))}catch(e){}refresh()}
-function refresh(){syncAcct();if($("rcp").classList.contains("on"))renderRcp();$("hc").textContent="🪙 "+bn(coins());if($("v-me").classList.contains("on"))renderMe()}
+function refresh(){
+  syncAcct();
+  if($("rcp").classList.contains("on"))renderRcp();
+  $("hc").textContent="🪙 "+bn(coins());
+  // A game balance poll must not replace the entire visible profile DOM:
+  // that reset scroll/focus and made the screen appear to jump on phones.
+  if($("v-me").classList.contains("on")){
+    var values=$("v-me").querySelectorAll(".mp-wallet-block strong");
+    if(values.length===2){
+      values[0].textContent=fmt(coins());
+      values[1].textContent=fmt(RS().dia||0);
+    }else renderMe();
+  }
+}
 function toast(t){var x=$("toast");x.textContent=t;x.style.display="block";clearTimeout(x.t);x.t=setTimeout(function(){x.style.display="none"},1800)}
 function openSheet(h){$("sh").innerHTML='<div class="grab"></div>'+h;$("shb").classList.add("on")}
 function closeSheet(){$("shb").classList.remove("on")}
@@ -648,7 +661,14 @@ function meHTML(m){
     feature('svip','svip','SVIP Club')+feature('invite','invite','Invite Friends')+
     feature('cp','cp','CP &amp; Friendship')+feature('set','settings','Settings')+'</section>';
 }
-function renderMe(){var m=myModel(),r=$("v-me");r.innerHTML=meHTML(m);pfWire(r,m,true);
+function renderMe(){var m=myModel(),r=$("v-me"),at=r.scrollTop;r.innerHTML=meHTML(m);pfWire(r,m,true);
+  r.scrollTop=at;
+  var portrait=r.querySelector(".mp-face img");
+  if(portrait)portrait.addEventListener("error",function(){
+    if(!portrait.isConnected)return;
+    var fallback=document.createElement("span");fallback.textContent="👤";
+    fallback.setAttribute("aria-hidden","true");portrait.replaceWith(fallback);
+  },{once:true});
   $("mback").onclick=function(){go("home")};
   $("m-svip-label").onclick=function(){if(typeof window.showPremiumSheet==='function')window.showPremiumSheet();else toast("Open SVIP Club below")};
   $("m-quick-edit").onclick=editSheet;$("m-quick-settings").onclick=settingsSheet;
