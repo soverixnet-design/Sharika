@@ -11,6 +11,8 @@ function mock({requestExists=true,review=null,receiptUsed=false,active=true,invi
         bind(...values){this.args=values;return this;},
         async first(){
           state.queries.push({sql,args:this.args});
+          if(sql.includes('SELECT * FROM sharika_invite_settings'))
+            return {enabled:1,recharge_percent:5};
           if(sql.startsWith('SELECT m.id,m.user_id'))
             return requestExists?{id:71,user_id:'new-user',public_no:10000017,
               name:'New User',coins:100,status:active?'active':'blocked',
