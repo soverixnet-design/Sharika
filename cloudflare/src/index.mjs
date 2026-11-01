@@ -218,7 +218,7 @@ export async function handleRequest(request, env, ctx) {
       request, env, uid, path, cors, reply, fail, ctx
     });
     if (path.startsWith('/api/v1/invites')) return await handleInviteApp({
-      request, env, uid, path, cors, reply, fail
+      request, env, uid, path, cors, reply, fail, ctx
     });
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
         path==='/api/v1/daily/tasks/claim') return await handleDailyApp({

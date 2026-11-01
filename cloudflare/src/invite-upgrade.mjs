@@ -1,5 +1,6 @@
 // Sharika invite extension: device-bound referral attribution and manual USD redemption.
 // Cash rewards are promotional, OFF by default, and never execute a bank transfer.
+import {notifyUser,deliverNotification} from './notifications.mjs';
 const ID = /^[0-9]{8}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const textEncoder = new TextEncoder();
@@ -197,7 +198,31 @@ async function decryptBank(env,row){
     {name:'AES-GCM',iv:unb64(row.bank_iv)},key,unb64(row.bank_ciphertext));
   return JSON.parse(new TextDecoder().decode(plaintext));
 }
-export async function requestCashout({request,env,uid,cors,reply,fail}){
+async function notifyPayoutAdmins(env,uid,requestId,ctx){
+  // Financial details are available only from the authenticated admin inbox.
+  // A notification alerts the owner without leaking bank account information.
+  try{
+    const admins=rows(await env.DB.prepare(
+      'SELECT r.auth_uid FROM sharika_admin_roles r JOIN sharika_users u ON u.auth_uid=r.auth_uid '+
+      "WHERE r.role='super' AND u.status='active' LIMIT 10"
+    ).all());
+    for(const admin of admins){
+      try{
+        const {notification,created}=await notifyUser(env.DB,{
+          recipientUid:admin.auth_uid,kind:'system',
+          title:'Bank withdrawal request',
+          body:'A member requested a USD bank payout. Review the Invites & USD Payouts admin inbox.',
+          dedupeKey:'invite-cashout:'+requestId,createdBy:uid
+        });
+        if(created && ctx?.waitUntil){
+          ctx.waitUntil(deliverNotification(env,notification).catch(error=>
+            console.error('invite_payout_push',String(error.message||error))));
+        }
+      }catch(error){console.error('invite_payout_notice',String(error.message||error));}
+    }
+  }catch(error){console.error('invite_payout_notice_lookup',String(error.message||error));}
+}
+export async function requestCashout({request,env,uid,cors,reply,fail,ctx}){
   if(request.method!=='POST')return fail('invite_method_not_allowed',405,cors);
   const settings=await inviteSettings(env.DB);
   if(!Number(settings.withdrawals_enabled)||!Number(settings.cash_enabled))
@@ -250,14 +275,15 @@ export async function requestCashout({request,env,uid,cors,reply,fail}){
       return fail('cashout_conflict',409,cors);
     throw error;
   }
+  await notifyPayoutAdmins(env,uid,body.request_id,ctx);
   return reply({id:body.request_id,status:'pending',
     amount_cents:amount,cash_balance_cents:await balance(env.DB,uid)},201,cors);
 }
-export async function handleInviteUpgrade({request,env,uid,path,cors,reply,fail}){
+export async function handleInviteUpgrade({request,env,uid,path,cors,reply,fail,ctx}){
   if(path==='/api/v1/invites/claim')
     return claimInvite({request,env,uid,cors,reply,fail});
   if(path==='/api/v1/invites/withdrawals')
-    return requestCashout({request,env,uid,cors,reply,fail});
+    return requestCashout({request,env,uid,cors,reply,fail,ctx});
   return null;
 }
 const CONFIG_LIMITS={

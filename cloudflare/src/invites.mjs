@@ -67,8 +67,8 @@ export async function resolveInviter({db,uid,inviteCode,fail,cors}){
     return {error:fail('cannot_invite_self',403,cors)};
   return {inviter};
 }
-export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
-  if(path!=='/api/v1/invites')return handleInviteUpgrade({request,env,uid,path,cors,reply,fail});
+export async function handleInviteApp({request,env,uid,path,cors,reply,fail,ctx}){
+  if(path!=='/api/v1/invites')return handleInviteUpgrade({request,env,uid,path,cors,reply,fail,ctx});
   if(request.method!=='GET')return fail('invite_method_not_allowed',405,cors);
   const user=await env.DB.prepare(
     "SELECT public_no FROM sharika_users WHERE auth_uid=? AND status='active'"
