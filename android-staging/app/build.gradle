@@ -68,6 +68,10 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))
     from(rootProject.file('royal-palace.png'))
+    // Pre-rendered premium static backgrounds keep WebView scrolling smooth.
+    from(rootProject.file('royal-shop-bg.png'))
+    from(rootProject.file('royal-backpack-bg.png'))
+    from(rootProject.file('royal-market.css'))
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }

@@ -1,0 +1,48 @@
+/* Sharika Royal Shop & My Backpack — Android staging only. */
+#sh-royal-market{position:fixed;inset:0;z-index:130;display:flex;flex-direction:column;overflow:hidden;color:#fff4de;background:#100722 center/cover no-repeat;isolation:isolate;font-family:system-ui,'Noto Sans Bengali',sans-serif;box-sizing:border-box}
+#sh-royal-market[hidden]{display:none!important}
+#sh-royal-market[data-mode="shop"]{background-image:linear-gradient(180deg,#10052555,#10051a22 25%,#10051a99 100%),url('./royal-shop-bg.png')}
+#sh-royal-market[data-mode="backpack"]{background-image:linear-gradient(180deg,#10052555,#10051a22 25%,#10051a99 100%),url('./royal-backpack-bg.png')}
+#sh-royal-market *,#sh-royal-market *:before,#sh-royal-market *:after{box-sizing:border-box}
+#sh-royal-market button{font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#sh-royal-market button:disabled{cursor:default;opacity:.64}
+#sh-royal-market .sh-rm-top{flex:none;padding:calc(9px + env(safe-area-inset-top,0px)) 13px 11px;background:linear-gradient(180deg,#120526ed,#1a0a39c7);border-bottom:1px solid #eebf66a8;box-shadow:0 6px 20px #0501109e}
+#sh-royal-market .sh-rm-head{display:flex;align-items:center;gap:9px}
+#sh-royal-market .sh-rm-back{width:40px;height:40px;flex:none;border:1px solid #fbd575ae;border-radius:12px;color:#ffdf97;background:#30135de8;font-size:24px}
+#sh-royal-market .sh-rm-title{flex:1;min-width:0;text-align:center;font-size:22px;line-height:1.2;font-weight:900;letter-spacing:.2px;color:#ffe2a0;text-shadow:0 2px 8px #000,0 0 15px #c47bff88}
+#sh-royal-market .sh-rm-coin{flex:none;max-width:118px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:7px 9px;border:1px solid #ffe197a8;border-radius:22px;background:#170a39d9;color:#ffe69a;font-size:12px;font-weight:800}
+#sh-royal-market .sh-rm-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:13px}
+#sh-royal-market .sh-rm-tab{min-width:0;min-height:37px;border-radius:12px;border:1px solid #b783e6a6;background:#2c1857e0;color:#d5bef9;font-weight:750;font-size:14px}
+#sh-royal-market .sh-rm-tab[aria-selected="true"]{background:linear-gradient(125deg,#fff1a6,#e8ad46 55%,#a85c21);border-color:#fff2b4;color:#34113a;box-shadow:0 3px 12px #eeb95955}
+#sh-royal-market .sh-rm-summary{padding:8px 14px;flex:none;background:#11072bc9;border-bottom:1px solid #ab78df8c;min-height:39px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:#ead4ff}
+#sh-royal-market .sh-rm-body{display:flex;flex:1;min-height:0;position:relative}
+#sh-royal-market .sh-rm-cats{width:94px;min-width:94px;max-width:94px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#a58cc1 transparent;border-right:1px solid #ffe3a265;background:linear-gradient(180deg,#170b42ec,#281258e7);padding:9px 5px 13px;display:flex;flex-direction:column;gap:7px;align-items:stretch}
+#sh-royal-market .sh-rm-cat{min-height:91px;padding:8px 4px;border:1px solid transparent;border-radius:13px;background:#271b57c0;color:#e9dcff;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;font-size:11px;font-weight:730;line-height:1.2;text-align:center;overflow-wrap:anywhere}
+#sh-royal-market .sh-rm-cat[aria-current="true"]{border-color:#ffec9e;background:linear-gradient(140deg,#ffe38f,#df9b31);color:#371036;box-shadow:0 3px 8px #0006}
+#sh-royal-market .sh-rm-cat-icon{font-size:31px;display:grid;place-items:center;width:54px;height:54px;flex:none;border-radius:50%;background:radial-gradient(circle at 40% 35%,#9c67dd,#331058 80%);border:2px solid #ffdd83;box-shadow:inset 0 0 0 2px #693d82,0 3px 7px #0007}
+#sh-royal-market .sh-rm-cat[aria-current="true"] .sh-rm-cat-icon{background:radial-gradient(circle at 40% 35%,#9a50d3,#210b48 78%);color:#fff}
+#sh-royal-market .sh-rm-content{flex:1;min-width:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 9px calc(20px + env(safe-area-inset-bottom,0px));scrollbar-width:thin;scrollbar-color:#c6a2ed transparent}
+#sh-royal-market .sh-rm-section{display:flex;align-items:center;gap:6px;margin:1px 0 11px;font-size:14px;font-weight:800;color:#ffe5aa;text-shadow:0 2px 6px #000}
+#sh-royal-market .sh-rm-section::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,#f8d884aa,transparent)}
+#sh-royal-market .sh-rm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;align-content:start}
+#sh-royal-market .sh-rm-card{min-width:0;border-radius:13px;border:1px solid #e7b96890;background:linear-gradient(160deg,#35205eea,#150b32f5);box-shadow:inset 0 1px 0 #fff2,0 4px 12px #0500139c;padding:7px;display:flex;flex-direction:column;gap:5px;overflow:hidden}
+#sh-royal-market .sh-rm-preview{height:116px;min-height:116px;border-radius:10px;display:grid;place-items:center;position:relative;background:radial-gradient(ellipse at 50% 40%,#9f62d66b,#32154f5c 58%,#130c2ba8);overflow:hidden}
+#sh-royal-market .sh-rm-preview>img{max-height:105px;max-width:96%;object-fit:contain;filter:drop-shadow(0 3px 5px #0009)}
+#sh-royal-market .sh-rm-frame-icon{position:relative;width:85px;height:85px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(145deg,#4c2576,#110a30);border:2px solid #e4bf70;font-size:44px}
+#sh-royal-market .sh-rm-frame-icon img{width:132%;height:132%;position:absolute;left:-16%;top:-16%;object-fit:contain;pointer-events:none}
+#sh-royal-market .sh-rm-owned{position:absolute;top:5px;left:5px;border-radius:8px;background:#22b08fe5;color:#fff;font-size:10px;padding:2px 5px;font-weight:800}
+#sh-royal-market .sh-rm-name{font-weight:800;font-size:12px;line-height:1.25;min-height:30px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+#sh-royal-market .sh-rm-price{color:#ffe5a7;font-size:12px;font-weight:750;min-height:18px}
+#sh-royal-market .sh-rm-ops{display:flex;gap:4px;margin-top:auto;align-items:stretch}
+#sh-royal-market .sh-rm-btn{flex:1;min-width:0;border:1px solid #ffeca1;border-radius:10px;min-height:35px;padding:4px 3px;background:linear-gradient(180deg,#fff3b4,#f0b546 55%,#d27f23);color:#3f1931;font-size:11px;font-weight:850}
+#sh-royal-market .sh-rm-btn-secondary{background:#392069de;color:#fff0ca;border-color:#a77bdd}
+#sh-royal-market .sh-rm-empty{border:1px solid #e8bd8175;border-radius:18px;padding:26px 15px;max-width:350px;margin:28px auto;text-align:center;background:#1b0c3be5;box-shadow:0 7px 20px #0901128a}
+#sh-royal-market .sh-rm-empty-icon{font-size:40px;margin-bottom:10px}
+#sh-royal-market .sh-rm-empty strong{font-size:16px;display:block;color:#ffe3a2}
+#sh-royal-market .sh-rm-empty p{font-size:12px;color:#d5c5ef;line-height:1.5}
+#sh-royal-market .sh-rm-info{color:#f0d7ff;background:#240d47dd;border:1px solid #d9a9f477;border-radius:12px;padding:9px;margin-top:12px;font-size:12px;line-height:1.5}
+#sh-royal-market .sh-rm-loading{font-size:13px;padding:20px;text-align:center;color:#f1dbb6}
+.sh-royal-home-shortcuts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:9px 12px!important}
+.sh-royal-home-shortcuts button{border:1px solid #ffdf89!important;border-radius:14px!important;padding:9px 6px!important;background:linear-gradient(120deg,#3a166c,#7a347e)!important;color:#ffe4ab!important;font-weight:800!important;box-shadow:inset 0 1px 0 #fff3,0 3px 9px #08031e99!important}
+@media(max-width:355px){#sh-royal-market .sh-rm-cats{width:81px;min-width:81px;max-width:81px}#sh-royal-market .sh-rm-cat{font-size:10px}#sh-royal-market .sh-rm-cat-icon{width:47px;height:47px;font-size:27px}#sh-royal-market .sh-rm-preview{height:101px;min-height:101px}#sh-royal-market .sh-rm-title{font-size:19px}#sh-royal-market .sh-rm-coin{max-width:91px;font-size:10px}}
+@media(prefers-reduced-motion:reduce){#sh-royal-market *{animation:none!important;transition:none!important}}

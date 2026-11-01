@@ -762,6 +762,271 @@
     }
   }
   cosmeticCss(document);
+  // Royal marketplace. Every price, ownership flag and equipped state comes
+  // from the verified Worker; the UI never creates inventory on its own.
+  const ROYAL_CATEGORIES=[
+    {key:'car',label:'Cars',icon:'🏎️'},
+    {key:'frame_style',label:'Photo Frames',icon:'🖼️'},
+    {key:'entry_style',label:'Entrance',icon:'✨'},
+    {key:'ring',label:'Rings',icon:'💞'},
+    {key:'name_tag_style',label:'Name Plates',icon:'🏷️'},
+    {key:'special_id',label:'Special IDs',icon:'👑'},
+    {key:'profile_bg',label:'Profile Background',icon:'🏰'},
+    {key:'bubble',label:'Chat Bubbles',icon:'💬'},
+    {key:'track',label:'Tracks',icon:'🎼'},
+    {key:'medal_style',label:'Medals',icon:'🏅'},
+    {key:'event_title',label:'Event Titles',icon:'🌟'}
+  ];
+  const ROYAL_KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
+  let royalMarket=null,royalMarketRequest=0,royalMarketBusy=false;
+  function marketEl(tag,className,textValue){
+    const element=document.createElement(tag);
+    if(className)element.className=className;
+    if(textValue!==undefined)element.textContent=String(textValue);
+    return element;
+  }
+  function royalMarketStyle(){
+    if(document.getElementById('sh-royal-market-css'))return;
+    const stylesheet=document.createElement('link');
+    stylesheet.id='sh-royal-market-css';
+    stylesheet.rel='stylesheet';
+    stylesheet.href='./royal-market.css';
+    document.head.appendChild(stylesheet);
+  }
+  function closeRoyalMarket(){
+    royalMarketRequest++;
+    if(royalMarket?.root){
+      royalMarket.root.hidden=true;
+      royalMarket.root.setAttribute('aria-hidden','true');
+    }
+    royalMarket=null;
+  }
+  window.sharikaCloseRoyalMarket=closeRoyalMarket;
+  function marketCategoryArt(row){
+    const key=String(row.id||'').slice(String(row.kind||'').length+1);
+    const sources={frame_style:SOVERA_FRAMES,entry_style:SOVERA_ENTRIES,
+      medal_style:SOVERA_MEDALS,name_tag_style:SOVERA_TAGS};
+    const art=sources[row.kind]?.find(x=>x.id===key)||
+      sources[row.kind]?.find(x=>x.id===row.art_key);
+    return art||null;
+  }
+  function marketUpdateLocalProfile(saved){
+    profile=saved;
+    if(!window.A)return;
+    window.A.frame=saved.frame_style||'';
+    window.A.entry=saved.entry_style||'';
+    window.A.cosmeticMedal=saved.medal_style||'';
+    window.A.cosmeticTag=saved.name_tag_style||'';
+    window.A.frameImg=null;
+    if(typeof window.saveA==='function')window.saveA();
+    if(typeof window.renderMe==='function')window.renderMe();
+  }
+  function marketRender(){
+    const state=royalMarket;
+    if(!state||state.root.hidden)return;
+    state.root.dataset.mode=state.mode;
+    state.root.querySelector('.sh-rm-title').textContent=state.mode==='shop'?'✦ Sharika Shop ✦':'✦ My Backpack ✦';
+    state.root.querySelector('.sh-rm-coin').textContent='🪙 '+Number(balance.coins||0).toLocaleString('en-US');
+    for(const tab of state.root.querySelectorAll('.sh-rm-tab'))
+      tab.setAttribute('aria-selected',String(tab.dataset.mode===state.mode));
+    const ownedCount=state.items.filter(x=>x.owned).length;
+    state.root.querySelector('.sh-rm-summary').textContent=state.mode==='shop'?
+      'Premium collection · Official items only':
+      'My collection · '+ownedCount+' owned item'+(ownedCount===1?'':'s');
+    const categories=state.root.querySelector('.sh-rm-cats');
+    const categoryScroll=categories.scrollTop;
+    categories.replaceChildren();
+    for(const category of ROYAL_CATEGORIES){
+      const btn=marketEl('button','sh-rm-cat');
+      btn.type='button';btn.dataset.category=category.key;
+      btn.setAttribute('aria-current',String(category.key===state.category));
+      btn.append(marketEl('span','sh-rm-cat-icon',category.icon),
+        marketEl('span','',category.label));
+      btn.addEventListener('click',()=>{
+        if(royalMarketBusy)return;
+        state.category=category.key;
+        marketRender();
+      });
+      categories.appendChild(btn);
+    }
+    categories.scrollTop=categoryScroll;
+    const content=state.root.querySelector('.sh-rm-content');
+    content.replaceChildren();
+    const category=ROYAL_CATEGORIES.find(x=>x.key===state.category)||ROYAL_CATEGORIES[1];
+    content.appendChild(marketEl('div','sh-rm-section',category.icon+' '+category.label));
+    if(state.loading){content.appendChild(marketEl('p','sh-rm-loading','Loading verified collection…'));return;}
+    if(state.error){
+      const message=marketEl('div','sh-rm-empty');
+      message.append(marketEl('div','sh-rm-empty-icon','⚠️'),
+        marketEl('strong','','Collection unavailable'),marketEl('p','',state.error));
+      const retry=marketEl('button','sh-rm-btn','Retry');
+      retry.onclick=()=>marketReload();message.appendChild(retry);content.appendChild(message);
+      return;
+    }
+    const found=state.items.filter(x=>x.kind===state.category&&
+      (state.mode==='shop'?x.active||x.owned:x.owned));
+    if(!found.length){
+      const message=marketEl('div','sh-rm-empty');
+      message.append(marketEl('div','sh-rm-empty-icon',state.mode==='shop'?'✨':'🎒'),
+        marketEl('strong','',state.mode==='shop'?'Official items coming soon':'Your backpack is empty'),
+        marketEl('p','',state.mode==='shop'?
+          'This category will appear when official items are added by the admin.':
+          'Purchased and admin-awarded items will appear here automatically.'));
+      if(state.mode==='backpack'){
+        const shop=marketEl('button','sh-rm-btn','Explore Shop');
+        shop.onclick=()=>{state.mode='shop';marketRender();};message.appendChild(shop);
+      }
+      content.appendChild(message);return;
+    }
+    const grid=marketEl('div','sh-rm-grid');
+    content.appendChild(grid);
+    for(const item of found){
+      const card=marketEl('article','sh-rm-card');
+      const preview=marketEl('div','sh-rm-preview');
+      const art=marketCategoryArt(item);
+      if(item.kind==='frame_style'){
+        const holder=marketEl('div','sh-rm-frame-icon','👤');
+        if(art?.art){const picture=marketEl('img');picture.src=effectPath(art.art);
+          picture.alt='';picture.loading='lazy';holder.appendChild(picture);}
+        preview.appendChild(holder);
+      }else if(art?.art){
+        const picture=marketEl('img');picture.src=cosmeticMedia({...art,art:art.still||art.art});
+        picture.alt=item.name;picture.loading='lazy';preview.appendChild(picture);
+      }else preview.appendChild(marketEl('span','','👑'));
+      if(item.owned)preview.appendChild(marketEl('span','sh-rm-owned',item.equipped?'✓ In use':'✓ Owned'));
+      const label=marketEl('div','sh-rm-name',item.name);
+      const price=marketEl('div','sh-rm-price',item.owned?
+        (item.equipped?'✓ Equipped':'✓ In backpack'):
+        '🪙 '+Number(item.price_coins||0).toLocaleString('en-US'));
+      const ops=marketEl('div','sh-rm-ops');
+      const primary=marketEl('button','sh-rm-btn');
+      primary.type='button';
+      if(state.mode==='shop'){
+        primary.textContent=item.owned?'Use':'Purchase';
+        primary.onclick=()=>item.owned?marketEquip(item,false):marketPurchase(item);
+      }else{
+        primary.textContent=item.equipped?'Take Off':'Use';
+        primary.onclick=()=>marketEquip(item,!!item.equipped);
+      }
+      primary.disabled=royalMarketBusy||!!item.equipped&&state.mode==='shop';
+      ops.appendChild(primary);
+      if(item.kind==='entry_style'&&art){
+        const previewBtn=marketEl('button','sh-rm-btn sh-rm-btn-secondary','▶');
+        previewBtn.title='Preview entrance';previewBtn.setAttribute('aria-label','Preview '+item.name);
+        previewBtn.onclick=()=>playSoveraEntry(document,art.id);
+        ops.appendChild(previewBtn);
+      }
+      card.append(preview,label,price,ops);grid.appendChild(card);
+    }
+    content.appendChild(marketEl('div','sh-rm-info',
+      'Purchases use your verified coin wallet. Only owned official items can be worn.'));
+  }
+  async function marketReload(){
+    const state=royalMarket;
+    if(!state||!session)return;
+    const request=++royalMarketRequest,account=session.user?.id;
+    state.loading=true;state.error='';marketRender();
+    try{
+      const items=await loadVerifiedCosmetics();
+      if(request!==royalMarketRequest||session?.user?.id!==account||royalMarket!==state)return;
+      state.items=items;state.loading=false;marketRender();
+    }catch(error){
+      if(request!==royalMarketRequest||royalMarket!==state)return;
+      state.loading=false;state.error=errText(error);marketRender();
+    }
+  }
+  async function marketPurchase(item){
+    if(royalMarketBusy||!session||!item.active||item.owned)return;
+    const price=Number(item.price_coins||0);
+    if(!Number.isSafeInteger(price)||price<=0)return;
+    if(!window.confirm('Purchase '+item.name+' for '+price.toLocaleString('en-US')+
+      ' coins? This will debit your verified wallet.'))return;
+    const account=session.user?.id;
+    royalMarketBusy=true;marketRender();
+    let purchase;
+    try{
+      purchase=await api('POST','/cosmetics/purchase',{
+        item_id:item.id,request_id:'cosmetic:'+Date.now().toString(36)+':'+
+          Math.random().toString(36).slice(2,12)
+      });
+    }catch(error){toast('Purchase failed: '+errText(error));}
+    if(purchase&&session?.user?.id===account){
+      await refreshWalletAfterConfirmedTransaction({coins:Number(purchase.coins)});
+      toast(item.name+' added to your backpack ✓');
+    }
+    royalMarketBusy=false;
+    if(royalMarket&&session?.user?.id===account)await marketReload();
+  }
+  async function marketEquip(item,takeOff){
+    if(royalMarketBusy||!session||!item.owned||!ROYAL_KINDS.has(item.kind))return;
+    const account=session.user?.id;
+    royalMarketBusy=true;marketRender();
+    try{
+      await api('POST','/cosmetics/equip',{kind:item.kind,item_id:takeOff?'':item.id});
+      const saved=await api('GET','/me');
+      if(session?.user?.id!==account)return;
+      const expected=takeOff?'':item.id.slice(item.kind.length+1);
+      if((saved[item.kind]||'')!==expected)throw new Error('Equip status not confirmed');
+      marketUpdateLocalProfile(saved);
+      toast(takeOff?'Item removed ✓':item.name+' equipped ✓');
+    }catch(error){toast('Could not update item: '+errText(error));}
+    finally{
+      royalMarketBusy=false;
+      if(royalMarket&&session?.user?.id===account)await marketReload();
+    }
+  }
+  function openRoyalMarket(mode='shop',category='frame_style'){
+    if(!session){window.showAuth('welcome');return;}
+    royalMarketStyle();
+    let root=document.getElementById('sh-royal-market');
+    if(!root){
+      root=marketEl('section');root.id='sh-royal-market';
+      root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');
+      root.setAttribute('aria-label','Sharika Shop and My Backpack');
+      const top=marketEl('header','sh-rm-top');
+      const head=marketEl('div','sh-rm-head');
+      const back=marketEl('button','sh-rm-back','‹');back.type='button';
+      back.setAttribute('aria-label','Close Shop');back.onclick=closeRoyalMarket;
+      head.append(back,marketEl('div','sh-rm-title'),marketEl('span','sh-rm-coin'));
+      const switcher=marketEl('nav','sh-rm-switch');
+      for(const [key,title] of [['shop','👑 Shop'],['backpack','🎒 My Backpack']]){
+        const tab=marketEl('button','sh-rm-tab',title);tab.type='button';
+        tab.dataset.mode=key;tab.onclick=()=>{
+          if(royalMarketBusy||!royalMarket)return;
+          royalMarket.mode=key;marketRender();
+        };
+        switcher.appendChild(tab);
+      }
+      top.append(head,switcher);
+      const body=marketEl('div','sh-rm-body');
+      body.append(marketEl('aside','sh-rm-cats'),marketEl('main','sh-rm-content'));
+      root.append(top,marketEl('div','sh-rm-summary'),body);
+      document.body.appendChild(root);
+    }
+    root.hidden=false;root.setAttribute('aria-hidden','false');
+    royalMarket={root,mode:mode==='backpack'?'backpack':'shop',
+      category:ROYAL_CATEGORIES.some(x=>x.key===category)?category:'frame_style',
+      loading:true,error:'',items:[]};
+    marketRender();marketReload();
+  }
+  window.sharikaOpenRoyalMarket=openRoyalMarket;
+  // Two explicit shortcuts on the home screen; both work from the user's
+  // existing verified session, and remain separate from the original tabs.
+  function mountRoyalMarketShortcuts(){
+    const quick=document.querySelector('#v-home .qa');
+    if(!quick||document.getElementById('sh-royal-home-shortcuts'))return;
+    const bar=marketEl('div','sh-royal-home-shortcuts');
+    bar.id='sh-royal-home-shortcuts';
+    for(const [mode,label] of [['shop','👑 Sharika Shop'],['backpack','🎒 My Backpack']]){
+      const button=marketEl('button','',label);button.type='button';
+      button.onclick=()=>openRoyalMarket(mode);
+      bar.appendChild(button);
+    }
+    quick.insertAdjacentElement('afterend',bar);
+  }
+  royalMarketStyle();
+  mountRoyalMarketShortcuts();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountRoyalMarketShortcuts,{once:true});
   // The old HTML creates random "Manager" badges locally. Never represent those
   // as real ranks in staging. Only verified server cosmetics are displayed.
   window.ownedMedals=function(){return [];};
@@ -1233,17 +1498,7 @@
       styleSelectionSheet('medal_style').catch(error=>toast(errText(error)));
       return;
     }
-    window.openSheet('<h3>👑 My Collection</h3><p class="lbl">Verified cosmetic items and rewards</p>'+
-      '<div class="acts" style="grid-template-columns:1fr 1fr">'+
-      '<button class="act" id="mp-shop-frame"><span>🖼️</span>Frames</button>'+
-      '<button class="act" id="mp-shop-entry"><span>✨</span>Entry Effects</button>'+
-      '<button class="act" id="mp-shop-medal"><span>🏅</span>Medals</button>'+
-      '<button class="act" id="mp-shop-tag"><span>👑</span>Name Tags</button></div>');
-    for(const [suffix,kind] of [['frame','frame_style'],['entry','entry_style'],
-      ['medal','medal_style'],['tag','name_tag_style']]){
-      const item=document.getElementById('mp-shop-'+suffix);
-      if(item)item.onclick=()=>styleSelectionSheet(kind).catch(error=>toast(errText(error)));
-    }
+    openRoyalMarket('shop');
   },true);
   // Both the old SVIP shortcut and the new profile badge open the one verified
   // membership screen. No localStorage coin minting or demo tier changes.

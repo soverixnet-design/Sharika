@@ -54,6 +54,18 @@
       return 'exit';
     }
 
+    // Keep Android Back inside the new Royal Shop/Backpack before navigating
+    // the profile/home screen behind the full-screen collection.
+    var royalMarket = get('sh-royal-market');
+    if (royalMarket && !royalMarket.hidden) {
+      if (typeof window.sharikaCloseRoyalMarket === 'function') {
+        window.sharikaCloseRoyalMarket();
+      } else {
+        royalMarket.hidden = true;
+      }
+      return 'handled';
+    }
+
     if (dismissSheet(document, 'shb', 'sh')) return 'handled';
     if (isOpen(get('pfo'))) {
       get('pfo').classList.remove('on');
