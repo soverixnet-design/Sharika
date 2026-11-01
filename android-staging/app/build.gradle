@@ -60,6 +60,9 @@ dependencies {
 def sharikaUiAssets = layout.buildDirectory.dir('generated/sharika-ui-assets')
 tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/index.html'))
+    // Owner-provided royal profile art; keep the original JPEG and PNG intact.
+    from(rootProject.file('../app/main-profile-bg.jpg'))
+    from(rootProject.file('../app/main-profile-icons.webp'))
     from(rootProject.file('back-navigation.js'))
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))

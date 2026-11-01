@@ -698,9 +698,22 @@
   let premiumProfileRequest=0;
   async function mountPremiumProfileEntry(){
     const anchor=document.querySelector('#v-me .mid');
+    const heroTier=document.getElementById('m-svip-label');
     const requestNo=++premiumProfileRequest;
     document.getElementById('sharika-premium-profile-entry')?.remove();
     if(!anchor||!session)return;
+    if(heroTier){
+      heroTier.textContent='Member';
+      heroTier.onclick=()=>showPremiumSheet().catch(error=>toast(errText(error)));
+      const who=session.user.id;
+      try{
+        const data=await api('GET','/premium');
+        if(!heroTier.isConnected||requestNo!==premiumProfileRequest||session?.user?.id!==who)return;
+        const tier=String(data.status?.tier||'none').toUpperCase();
+        heroTier.textContent=tier==='NONE'?'Member':'👑 '+tier;
+      }catch(error){console.warn('Premium tier pending:',errText(error));}
+      return;
+    }
     const button=document.createElement('button');
     button.type='button';button.id='sharika-premium-profile-entry';
     button.textContent='👑 VIP · SVIP · Noble';
@@ -1050,12 +1063,61 @@
     }finally{if(save.isConnected)save.disabled=false;}
   },true);
   const priorRenderMe=window.renderMe;
+  let mainProfileStatsRequest=0;
+  async function renderVerifiedMainProfileStats(){
+    const anchor=document.querySelector('#v-me .mid');
+    const id=profile?.public_id;
+    const requestNo=++mainProfileStatsRequest;
+    if(!anchor||!session||!/^[0-9]{8}$/.test(String(id||'')))return;
+    for(const [kind,key] of [['wealth','wealth_level'],['charm','charm_level']]){
+      const value=Number(profile[key]);
+      const el=document.querySelector('#v-me [data-profile-level="'+kind+'"]');
+      if(el&&Number.isSafeInteger(value)&&value>=1)el.textContent=String(value);
+    }
+    try{
+      const data=await api('GET','/bonds/profile/'+id);
+      if(requestNo!==mainProfileStatsRequest||profile?.public_id!==id||!anchor.isConnected)return;
+      for(const key of ['followers','following','visitors']){
+        const el=document.querySelector('#v-me [data-profile-stat="'+key+'"]');
+        const count=Number(data[key]);
+        if(el&&Number.isSafeInteger(count)&&count>=0)
+          el.textContent=count.toLocaleString('en-US');
+      }
+    }catch(error){console.warn('Verified profile counters unavailable:',errText(error));}
+  }
   if(typeof priorRenderMe==='function')window.renderMe=function(){
     priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
+    renderVerifiedMainProfileStats().catch(()=>{});
     renderSellerWalletProfileButton().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
   };
+  // Main profile screenshot: these tiles open the existing, verified features.
+  // Capture early so the old placeholder "coming soon" handler never fires.
+  document.addEventListener('click',event=>{
+    const tile=event.target.closest?.('#v-me [data-m="store"],#v-me #mbd,#v-me [data-m="cp"]');
+    if(!tile)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(tile.dataset.m==='cp'){
+      if(profile?.public_id)openVerifiedRankProfile(profile.public_id);
+      return;
+    }
+    if(tile.id==='mbd'){
+      styleSelectionSheet('medal_style').catch(error=>toast(errText(error)));
+      return;
+    }
+    window.openSheet('<h3>👑 My Collection</h3><p class="lbl">Verified cosmetic items and rewards</p>'+
+      '<div class="acts" style="grid-template-columns:1fr 1fr">'+
+      '<button class="act" id="mp-shop-frame"><span>🖼️</span>Frames</button>'+
+      '<button class="act" id="mp-shop-entry"><span>✨</span>Entry Effects</button>'+
+      '<button class="act" id="mp-shop-medal"><span>🏅</span>Medals</button>'+
+      '<button class="act" id="mp-shop-tag"><span>👑</span>Name Tags</button></div>');
+    for(const [suffix,kind] of [['frame','frame_style'],['entry','entry_style'],
+      ['medal','medal_style'],['tag','name_tag_style']]){
+      const item=document.getElementById('mp-shop-'+suffix);
+      if(item)item.onclick=()=>styleSelectionSheet(kind).catch(error=>toast(errText(error)));
+    }
+  },true);
   // Both the old SVIP shortcut and the new profile badge open the one verified
   // membership screen. No localStorage coin minting or demo tier changes.
   document.addEventListener('click',event=>{

@@ -173,6 +173,98 @@ select.field{appearance:none;-webkit-appearance:none}select.field option{color:#
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.tiles button{border:0;border-radius:22px;padding:16px 2px 13px;background:linear-gradient(#f8f4ff,#e6dcfb);box-shadow:0 5px 0 #cdbff0;color:#3b2a8c;font-size:14px}.tiles span{display:block;font-size:34px;margin-bottom:6px}
 .wl{display:flex;justify-content:space-between;align-items:center;margin:16px 0;padding:24px 20px;border-radius:26px;border:0;width:100%;background:linear-gradient(#f8f4ff,#e8defc);box-shadow:0 6px 0 #cdbff0;color:#2a1b5e;font-size:20px}.wl b{font-weight:800}.wl em{font-style:normal;color:#b8780a;font-weight:600;font-size:18px}
 .ml2{background:#fff;border-radius:28px;padding:4px 20px;box-shadow:0 8px 24px rgba(110,80,200,.12)}.mr{display:flex;width:100%;justify-content:space-between;align-items:center;border:0;background:none;padding:19px 0;border-bottom:1px solid #eee8fa;font-size:18px;color:#3b2a8c}.mr:last-child{border:0}.mr i{font-style:normal;color:#8a84ad}
+/* Owner-supplied Sharika Royal main-profile artwork (only the Me tab).
+   All profile values and menu actions continue to use authenticated state. */
+#v-me{background:#10041e url('main-profile-bg.jpg') top center/100% auto no-repeat;color:#fff1d2;padding:0 14px 110px;overflow-x:hidden}
+#v-me .mtop{height:58px;display:grid;grid-template-columns:50px 1fr auto;gap:4px;align-items:center;
+  position:relative;z-index:2;padding:calc(6px + env(safe-area-inset-top,0px)) 2px 6px;
+  margin:0 -14px;background:rgba(19,4,32,.91);border-bottom:1px solid #e6a75a55}
+#v-me .mp-title{font-size:19px;font-weight:800;color:#ffe5ab;text-align:center;letter-spacing:.2px}
+#v-me .mp-top-actions{display:flex;align-items:center;gap:1px;padding-right:7px}
+#v-me .mp-top-btn{width:36px;height:35px;display:grid;place-items:center;background:none;border:0;
+  color:#ffdd91;font-size:24px;padding:0;cursor:pointer}
+#v-me .mp-hero{text-align:center;padding:8px 0 0}
+#v-me .mp-portrait{position:relative;width:208px;height:208px;margin:0 auto}
+#v-me .mp-face{position:absolute;left:38px;top:47px;width:132px;height:132px;border-radius:50%;
+  background:linear-gradient(145deg,#9e83d8,#4d2568);border:3px solid #edca81;overflow:hidden;
+  display:grid;place-items:center;color:#fff;font-size:64px;box-shadow:0 0 18px #b87cfc8c}
+#v-me .mp-face img{width:100%;height:100%;object-fit:cover;display:block}
+#v-me .mp-frame{position:absolute;inset:0;z-index:1;background-image:url('main-profile-icons.webp');
+  background-size:400% 300%;background-position:66.6667% 0;pointer-events:none;
+  filter:drop-shadow(0 0 7px #fbbf5a88)}
+#v-me .mp-svip-label{position:absolute;z-index:2;left:50%;bottom:11px;transform:translateX(-50%);
+  white-space:nowrap;border:1px solid #eec36e;border-radius:15px;padding:3px 13px;font-size:11px;
+  font-weight:800;color:#ffe4a2;background:linear-gradient(110deg,#3a135a,#6a2593,#39104d);
+  box-shadow:0 3px 9px #120219}
+#v-me .mp-name{font-size:24px;font-weight:800;text-align:center;line-height:1.2;margin:2px 0 6px;
+  color:#fff8f7;text-shadow:0 2px 4px #000a;overflow-wrap:anywhere}
+#v-me .mp-idline{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap}
+#v-me .mid{margin:0;border:1px solid #f3ca65;border-radius:20px;background:#120721a8;
+  padding:5px 12px;font-size:12px;color:#ffe3a4;font-weight:700;white-space:nowrap;
+  cursor:pointer;box-shadow:inset 0 1px 0 #ffffff22}
+#v-me .mp-copy{border:0;background:transparent;color:#ffe59b;font-size:18px;padding:2px 3px}
+#v-me .mp-special-id{border:1px solid #e15fff;border-radius:15px;background:#5b176d6b;
+  padding:5px 10px;color:#ffcfff;box-shadow:0 0 9px #da59ed88;font-size:10px;font-weight:700}
+#v-me .mp-levels{display:flex;justify-content:center;gap:9px;flex-wrap:wrap;margin:12px 0 10px}
+#v-me .mp-level{display:flex;align-items:center;justify-content:center;gap:6px;border-radius:22px;
+  padding:4px 9px 4px 4px;font-size:11px;font-weight:800;color:#ffe5ba;background:#1a092dbf;
+  border:1px solid #bc4fb8;box-shadow:0 0 9px #b453ed55}
+#v-me .mp-level.received{border-color:#4d84df;color:#9ceaff}
+#v-me .mp-level .mp-icon{width:28px;height:28px}
+#v-me .mp-hero-edit{min-width:148px;height:38px;border:1.5px solid #fff1a2;border-radius:28px;
+  background:linear-gradient(120deg,#64332c,#27101f 48%,#a3642c);color:#ffebba;
+  box-shadow:inset 0 2px 6px #ffe1a266,0 0 10px #eeaa4f88;font-size:14px;font-weight:800}
+#v-me .mp-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  margin:17px 0 10px;padding:14px 4px;background:#180c2cbf;border:1px solid #936c9866;
+  border-radius:15px;box-shadow:inset 0 0 20px #07001d80}
+#v-me .mp-stat{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;
+  border-right:1px solid #e6a8ee44}
+#v-me .mp-stat:last-child{border-right:0}
+#v-me .mp-stat .stat-mark{color:#cbb4df;font-size:18px;line-height:1.1}
+#v-me .mp-stat b{font-size:20px;color:#f2e8ff;font-weight:800;font-variant-numeric:tabular-nums}
+#v-me .mp-stat small{font-size:11px;color:#c7a6de}
+#v-me .mp-wallet{display:flex;align-items:center;gap:6px;width:100%;margin:10px 0 18px;
+  padding:10px 9px 10px 7px;border-radius:17px;border:2px solid #f6d278;
+  background:linear-gradient(115deg,#77494d88,#281025dd 56%,#96562f77);
+  box-shadow:inset 0 0 20px #edac7766,0 0 12px #a5664860;color:#fff4d5}
+#v-me .mp-wallet-block{display:flex;align-items:center;gap:4px;flex:1;min-width:0;text-align:left}
+#v-me .mp-wallet-block .mp-icon{width:45px;height:45px;flex:none}
+#v-me .mp-wallet-block small{display:block;font-size:10px;color:#ffeadc}
+#v-me .mp-wallet-block strong{display:block;font-size:18px;font-weight:850;color:#ffdc81}
+#v-me .mp-wallet-divider{height:40px;border-left:1px solid #d8b6cc88}
+#v-me .mp-wallet-open{flex:none;border:1px solid #ffdd8d;border-radius:22px;
+  background:linear-gradient(#fff2b4,#dc932d);color:#422204;padding:10px;font-size:12px;font-weight:800;
+  box-shadow:inset 0 2px 0 #ffffff88}
+#v-me .mp-section-heading{display:flex;gap:9px;align-items:center;margin:14px 0 9px;
+  color:#ffdfa4;font-size:16px;font-weight:800;text-align:left}
+#v-me .mp-section-heading::after{content:'';height:1px;background:#e9b86f7d;flex:1}
+#v-me .mp-collection{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+#v-me .mp-tile{min-width:0;border:1px solid #b9829b99;border-radius:13px;padding:6px 0 9px;
+  background:linear-gradient(145deg,#7f443e61,#1e092e 60%,#59234d9c);color:#fff4e7;
+  box-shadow:inset 0 1px 0 #ffe4ae33,0 3px 6px #0007;font-size:11px;font-weight:700}
+#v-me .mp-tile .mp-icon{display:block;width:min(68px,100%);height:auto;aspect-ratio:1;margin:0 auto 3px}
+#v-me .mp-features{display:grid;gap:6px;padding-bottom:16px}
+#v-me .mp-feature{display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  min-height:48px;padding:3px 12px 3px 7px;border:1px solid #c77aaf88;border-left-color:#f5ca8d;
+  border-radius:13px;background:linear-gradient(95deg,#70432c77,#29152de0 34%,#371a4bdc);
+  color:#f6eaff;box-shadow:inset 0 1px 0 #ffffff2d,0 3px 8px #0008;
+  font-size:13px;font-weight:700}
+#v-me .mp-feature .mp-icon{width:41px;height:41px;flex:none}
+#v-me .mp-feature .mp-chevron{margin-left:auto;color:#d6a4eb;font-size:21px;font-weight:400}
+#v-me .mp-icon{display:block;flex:none;aspect-ratio:1;background-image:url('main-profile-icons.webp');
+  background-repeat:no-repeat;background-size:400% 300%;filter:drop-shadow(0 2px 4px #0005)}
+#v-me .mp-icon.shop{background-position:0 0}#v-me .mp-icon.badges{background-position:33.333% 0}
+#v-me .mp-icon.frames{background-position:66.666% 0}#v-me .mp-icon.tasks{background-position:100% 0}
+#v-me .mp-icon.room{background-position:0 50%}#v-me .mp-icon.entry{background-position:33.333% 50%}
+#v-me .mp-icon.svip{background-position:66.666% 50%}#v-me .mp-icon.invite{background-position:100% 50%}
+#v-me .mp-icon.cp{background-position:0 100%}#v-me .mp-icon.settings{background-position:33.333% 100%}
+#v-me .mp-icon.coins{background-position:66.666% 100%}#v-me .mp-icon.diamonds{background-position:100% 100%}
+#v-me button:focus-visible{outline:2px solid #fff3b7;outline-offset:2px}
+.app.lite:has(#v-me.on) .nav{background:linear-gradient(#1b092b,#13041d)!important;border-top:1px solid #b9816a80!important}
+.app.lite:has(#v-me.on) .nav .ni.on{color:#ffd989!important;text-shadow:0 0 10px #feb849}
+@media(max-width:350px){#v-me .mp-portrait{width:186px;height:186px}#v-me .mp-face{left:34px;top:43px;width:118px;height:118px}
+  #v-me .mp-wallet-block .mp-icon{width:37px;height:37px}#v-me .mp-wallet-block strong{font-size:15px}
+  #v-me .mp-wallet-open{padding:8px 7px;font-size:11px}}
 #v-rank{background:linear-gradient(#1a6ae0,#0b3a9e 45%,#072970);padding:0 0 120px;color:#fff}
 .rtop{display:flex;align-items:center;gap:6px;padding:calc(12px + env(safe-area-inset-top,0px)) 10px 12px;position:sticky;top:0;z-index:5;background:#1763d8}
 .rbk{border:0;background:none;font-size:30px;padding:0 6px;color:#fff;line-height:1}
@@ -515,19 +607,52 @@ function pfWire(root,m,mine){
   }
 }
 function meHTML(m){
-  var av=m.pic?'style="background-image:url('+m.pic+')"':'';
-  return'<div class="mtop"><button class="mb" id="mback">‹ Back</button><button class="mb" id="mlang">🌐 English ⌄</button></div>'+
-  '<div class="mav"><div '+av+'>'+(m.pic?'':m.e)+'</div></div><div class="mnm">'+esc(m.n)+'</div>'+medalStrip(m.id)+'<div class="mid" id="pid">ID: '+m.id+'</div>'+
-  '<div class="lps"><div class="cap"><span class="lp s">⬆ Sent Lv.'+m.wl+'</span><span class="lp r">⬇ Received Lv.'+m.cl+'</span></div><span class="svp">SVIP 1</span></div>'+
-  '<button class="edp" id="pe">✎ Edit profile</button>'+
-  '<div class="mst"><div><b>'+fmt(m.fl)+'</b><small>Followers</small></div><div><b>'+fmt(m.fg)+'</b><small>Following</small></div><div><b>'+fmt(A.vis||0)+'</b><small>Visitors</small></div></div>'+
-  '<button class="pick" id="pavb">📷 '+(m.pic?'Change profile photo':'Choose profile photo')+'</button>'+
-  '<div class="tiles"><button data-m="store"><span>🛍️</span>Shop</button><button id="mbd"><span>🏅</span>Badges</button><button data-m="frame"><span>🖼️</span>Frame</button><button data-m="daily"><span>🎯</span>Tasks</button></div>'+
-  '<button class="wl" id="wr"><b>Wallet ›</b><span><em>🪙 '+coins().toLocaleString("en-US")+'</em> &nbsp; <em>💎 '+(RS().dia||0).toLocaleString("en-US")+'</em></span></button>'+
-  '<div class="ml2"><button class="mr" data-m="home"><span>🎙️ My room</span><i>›</i></button><button class="mr" data-m="entry"><span>✨ Entry</span><i>›</i></button><button class="mr" data-m="svip"><span>👑 SVIP</span><i>›</i></button><button class="mr" data-m="invite"><span>🤝 Invite</span><i>›</i></button><button class="mr" data-m="set"><span>⚙️ Settings</span><i>›</i></button></div>';
+  var icon=function(k){return'<span class="mp-icon '+k+'" aria-hidden="true"></span>'};
+  var feature=function(k,t,label){return'<button type="button" class="mp-feature" data-m="'+k+'">'+
+    icon(t)+'<span>'+label+'</span><span class="mp-chevron" aria-hidden="true">›</span></button>'};
+  return'<header class="mtop"><button class="mp-top-btn" id="mback" aria-label="Back to home">‹</button>'+
+    '<strong class="mp-title">My Profile</strong><div class="mp-top-actions">'+
+    '<button class="mp-top-btn" id="m-quick-edit" aria-label="Edit profile">✎</button>'+
+    '<button class="mp-top-btn" id="m-quick-settings" aria-label="Settings">⚙</button></div></header>'+
+    '<section class="mp-hero"><div class="mp-portrait">'+
+    '<button class="mp-face" id="pavb" aria-label="Change profile picture">'+
+    (m.pic?'<img src="'+esc(m.pic)+'" alt="My profile picture">':'<span aria-hidden="true">👤</span>')+
+    '</button><span class="mp-frame" aria-hidden="true"></span>'+
+    '<button type="button" class="mp-svip-label" id="m-svip-label">Member</button></div>'+
+    '<h1 class="mp-name">'+esc(m.n)+'</h1>'+
+    '<div class="mp-idline"><span class="mid" id="pid">ID '+esc(m.id)+'</span>'+
+    '<button class="mp-copy" id="mp-copy-id" aria-label="Copy my ID">▢</button>'+
+    (A.cosmeticTag?'<span class="mp-special-id" id="m-special-id">'+esc(A.cosmeticTag)+'</span>':'')+'</div>'+
+    medalStrip(m.id)+'<div class="mp-levels">'+
+    '<span class="mp-level">'+icon('cp')+'Sent&nbsp; Lv. <b data-profile-level="wealth">'+fmt(m.wl)+'</b></span>'+
+    '<span class="mp-level received">'+icon('diamonds')+'Received&nbsp; Lv. <b data-profile-level="charm">'+fmt(m.cl)+'</b></span></div>'+
+    '<button class="mp-hero-edit" id="pe">Edit Profile</button></section>'+
+    '<section class="mp-stats" aria-label="Profile statistics">'+
+    '<div class="mp-stat"><span class="stat-mark">♟</span><b data-profile-stat="followers">'+fmt(m.fl)+'</b><small>Followers</small></div>'+
+    '<div class="mp-stat"><span class="stat-mark">♟</span><b data-profile-stat="following">'+fmt(m.fg)+'</b><small>Following</small></div>'+
+    '<div class="mp-stat"><span class="stat-mark">◉</span><b data-profile-stat="visitors">'+fmt(A.vis||0)+'</b><small>Visitors</small></div></section>'+
+    '<section class="mp-wallet" aria-label="My virtual wallet">'+
+    '<div class="mp-wallet-block">'+icon('coins')+'<div><small>Coins</small><strong>'+fmt(coins())+'</strong></div></div>'+
+    '<span class="mp-wallet-divider"></span><div class="mp-wallet-block">'+icon('diamonds')+
+    '<div><small>Diamonds</small><strong>'+fmt(RS().dia||0)+'</strong></div></div>'+
+    '<button type="button" class="mp-wallet-open" id="wr">Wallet ›</button></section>'+
+    '<div class="mp-section-heading"><span aria-hidden="true">♛</span> My Collection</div>'+
+    '<section class="mp-collection" aria-label="My collection">'+
+    '<button class="mp-tile" data-m="store">'+icon('shop')+'Shop</button>'+
+    '<button class="mp-tile" id="mbd">'+icon('badges')+'Badges</button>'+
+    '<button class="mp-tile" data-m="frame">'+icon('frames')+'Frames</button>'+
+    '<button class="mp-tile" data-m="daily">'+icon('tasks')+'Daily Tasks</button></section>'+
+    '<div class="mp-section-heading"><span aria-hidden="true">⚙</span> Account &amp; Features</div>'+
+    '<section class="mp-features" aria-label="Account and features">'+
+    feature('home','room','My Room')+feature('entry','entry','Entry Effects')+
+    feature('svip','svip','SVIP Club')+feature('invite','invite','Invite Friends')+
+    feature('cp','cp','CP &amp; Friendship')+feature('set','settings','Settings')+'</section>';
 }
 function renderMe(){var m=myModel(),r=$("v-me");r.innerHTML=meHTML(m);pfWire(r,m,true);
-  $("mback").onclick=function(){go("home")};$("mlang").onclick=function(){toast("More languages are coming soon")};
+  $("mback").onclick=function(){go("home")};
+  $("m-svip-label").onclick=function(){if(typeof window.showPremiumSheet==='function')window.showPremiumSheet();else toast("Open SVIP Club below")};
+  $("m-quick-edit").onclick=editSheet;$("m-quick-settings").onclick=settingsSheet;
+  $("mp-copy-id").onclick=function(){try{navigator.clipboard.writeText(String(m.id));toast("ID copied ✓")}catch(e){toast("ID: "+m.id)}};
   $("mbd").onclick=function(){openSheet('<h3>🏅 Badges</h3><div class="bdg">'+badgesOf(m).map(function(b){return'<div class="'+(b[2]?"":"off")+'"><span>'+b[0]+'</span>'+b[1]+'</div>'}).join("")+'</div>')};
 }
 function openProfile(u){ptab=0;gsub=0;var m=otherModel(u);$("pfc").innerHTML=pfHTML(m,false);pfWire($("pfc"),m,false);$("pfo").classList.add("on");$("pfo").scrollTop=0}
