@@ -136,4 +136,12 @@ test('invite settings write requires super admin, every integer in supported ran
   });
   assert.equal(allowed.status,200);
   assert.equal(f.batches.length,1);
+  const unsafe=await handleInviteAdminUpgrade({
+    request:request('/api/v1/admin/invites','PATCH',{
+      ...settings,cash_enabled:1,invitee_cash_cents:100}),
+    env:{DB:f.db},uid:'admin',actor:{role:'super'},
+    operation:'invites',cors:{},reply,fail
+  });
+  assert.equal(unsafe.status,503);
+  assert.equal(f.batches.length,1);
 });

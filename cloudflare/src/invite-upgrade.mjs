@@ -318,6 +318,12 @@ export async function handleInviteAdminUpgrade({request,env,uid,actor,operation,
          !Object.hasOwn(data,k)||!Number.isSafeInteger(data[k])||
          data[k]<CONFIG_LIMITS[k][0]||data[k]>CONFIG_LIMITS[k][1]))
       return fail('invalid_invite_settings',400,cors);
+    // Never allow a real-dollar campaign or withdrawal inbox to be enabled
+    // before bank data can be encrypted with a configured server-side key.
+    if((data.withdrawals_enabled ||
+        (data.cash_enabled && (data.inviter_cash_cents||data.invitee_cash_cents))) &&
+       !await encryptionKey(env))
+      return fail('payout_encryption_unavailable',503,cors);
     const keys=Object.keys(CONFIG_LIMITS);
     await env.DB.batch([
       env.DB.prepare(
