@@ -324,17 +324,18 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
 </style>
 <link rel="stylesheet" href="./golden-home.css">
 <link rel="stylesheet" href="./royal-profile.css">
+<script src="./room-discovery.js"></script>
 </head>
 <body>
 <div class="app golden-home" id="app">
 <i class="blob b1"></i><i class="blob b2"></i>
 <div class="views">
  <section class="view on" id="v-home">
-  <div class="hd"><img class="logo" data-logo alt="Sharika"><h1>Sharika Voice Chat App<small>Voice rooms for chat, songs and games</small></h1><span class="pill" id="hc"></span></div>
+  <div class="hd"><img class="logo" data-logo alt="Sharika"><h1>Sharika Voice Chat App<small>Voice rooms for chat, songs and games</small></h1><span class="pill" id="hc"></span><button class="top-recharge" id="qr" type="button" title="Recharge your coins">＋<small>Recharge</small></button></div>
   <div class="srch">🔍<input id="q" placeholder="Search room name or ID" autocomplete="off"></div>
   <div class="ban" id="ban"></div><div class="dots" id="dots"></div>
-  <div class="qa"><button id="qd"><span>🎁</span>Daily reward</button><button id="qr"><span>💎</span>Recharge</button><button id="qg"><span>🎮</span>Games</button><button id="qi"><span>🤝</span>Invite</button></div>
-  <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My room</button></div>
+  <div class="qa"><button id="qd"><span class="home-icon hi-reward" aria-hidden="true"></span>Daily reward</button><button id="qg"><span class="home-icon hi-games" aria-hidden="true"></span>Games</button><button id="qi"><span class="home-icon hi-invite" aria-hidden="true"></span>Invite</button></div>
+  <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My room</button><button>🕘 History</button></div>
   <div class="grid" id="grid"></div>
  </section>
  <section class="view" id="v-rank"><div class="rtop"><button class="rbk" id="rbk">‹</button><div id="rt"><button>Lucky</button><button class="on">Rich</button><button>Charm</button><button>Room</button><button>Noble</button><button>Play</button><button>Recharge</button></div></div><div class="seg" id="rp"><button>Daily</button><button class="on">Weekly</button><button>Monthly</button></div><div id="rb"></div></section>
@@ -367,7 +368,7 @@ var esc=function(t){return String(t).replace(/[&<>"]/g,function(c){return{"&":"&
 var fmt=function(n){return n>=1e6?bn((n/1e6).toFixed(1))+"M":n>=1e3?bn((n/1e3).toFixed(1))+"K":bn(n)};
 /* ===== Config: this data will come from the server/admin later ===== */
 var CFG={
- banners:[{t:"Daily check-in reward",s:"Join daily, win coins",e:"🎁",c:"#f59e0b,#ff3dc8",a:"daily"},{t:"Double coins on first recharge",s:"Limited time offer",e:"💎",c:"#9b4dff,#0ea5e9",a:"recharge"},{t:"Room ranking event",s:"Be the best room and win prizes",e:"🏆",c:"#10b981,#3b82f6",a:"rank"}],
+ banners:[{t:"Welcome to Sharika",s:"Talk with friends in voice rooms",e:"🎙️",c:"#5f311d,#d8a558",a:"welcome"},{t:"Daily check-in reward",s:"Return daily to collect coins",e:"🎁",c:"#5b331d,#b98037",a:"daily"},{t:"Room ranking event",s:"Join the golden room challenge",e:"🏆",c:"#75492d,#cca45e",a:"rank"}],
  rooms:[
  {id:"10482915",name:"Chat House ✨",emoji:"🎙️",c:"#9b4dff,#4c1d95",n:128,host:"Rafi",tag:"Chat",mics:["😎","👩‍🦰","🧔"],th:"mid"},
  {id:"10551230",name:"Song Night 🎶",emoji:"🎤",c:"#ff3dc8,#9d174d",n:342,host:"Nusrat",tag:"Songs",mics:["👩‍🦰","🧑‍🎤","👧"],th:"rose"},
@@ -421,7 +422,7 @@ var bi=0,bpause=false;
 applyAdmin();$("ban").innerHTML=CFG.banners.map(function(b,i){return'<div class="slide" data-i="'+i+'" style="'+(b.img?"background:linear-gradient(90deg,rgba(0,0,0,.6),transparent),url("+b.img+") center/cover":"background:linear-gradient(135deg,"+b.c+")")+'"><b>'+esc(b.t)+'</b><small>'+esc(b.s)+'</small><i>'+(b.img?"":b.e)+'</i></div>'}).join("");
 $("dots").innerHTML=CFG.banners.map(function(_,i){return"<u"+(i?"":' class="on"')+"></u>"}).join("");
 $("ban").onscroll=function(){var w=this.children[0].offsetWidth+10;bi=Math.round(this.scrollLeft/w);document.querySelectorAll("#dots u").forEach(function(d,i){d.classList.toggle("on",i===bi)})};
-$("ban").onclick=function(e){var s=e.target.closest(".slide");if(!s)return;var a=CFG.banners[+s.dataset.i].a;if(a==="daily")dailySheet();if(a==="recharge")rechargeSheet();if(a==="rank")go("rank");if(a==="invite")inviteSheet()};
+$("ban").onclick=function(e){var s=e.target.closest(".slide");if(!s)return;var a=CFG.banners[+s.dataset.i].a;if(a==="welcome")$("q").focus();if(a==="daily")dailySheet();if(a==="recharge")rechargeSheet();if(a==="rank")go("rank");if(a==="invite")inviteSheet()};
 $("ban").addEventListener("touchstart",function(){bpause=true});$("ban").addEventListener("touchend",function(){setTimeout(function(){bpause=false},3000)});
 setInterval(function(){if(bpause||!$("v-home").classList.contains("on"))return;bi=(bi+1)%CFG.banners.length;var b=$("ban");b.scrollTo({left:bi*(b.children[0].offsetWidth+10),behavior:"smooth"})},4200);
 /* ===== Room card (3D) ===== */
@@ -429,16 +430,21 @@ var tab=0;
 function myR(){return Object.assign({id:A.id,n:1,host:A.name,tag:"My room",mics:["😎"]},A.myRoom)}
 function roomList(){
   var q=($("q").value||"").trim().toLowerCase(),L=CFG.rooms.slice();if(A.myRoom)L.unshift(myR());
-  if(tab===0)L.sort(function(a,b){return b.n-a.n});if(tab===1)L.reverse();if(tab===2)L=A.myRoom?[myR()]:[];
-  if(q)L=L.filter(function(r){return r.name.toLowerCase().indexOf(q)>-1||r.id.indexOf(q)>-1});return L;
+  if(tab===2)L=A.myRoom?[myR()]:[];
+  else if(window.SharikaDiscovery)L=SharikaDiscovery.sortRooms(L,CFG.viewerCountry||A.country,tab===1?'new':tab===3?'history':'popular',CFG.roomHistoryIds||[]);
+  if(q)L=L.filter(function(r){return String(r.name||'').toLowerCase().indexOf(q)>-1||String(r.id).indexOf(q)>-1});return L;
 }
 function cardHTML(r,i){
-  var pat=new Array(14).join(r.emoji+" ");
-  return'<div class="card" data-id="'+r.id+'" style="animation-delay:'+i*.06+'s"><div class="sway" style="animation-delay:-'+(i*.7)%5+'s"><div class="tilt"><i class="edge"></i><div class="bg" style="background:linear-gradient(150deg,'+r.c+')"><span class="pat">'+pat+'</span><i class="shine"></i></div><div class="emo">'+r.emoji+'</div><div class="live"><u></u><u></u><u></u>LIVE</div><div class="info"><b>'+esc(r.name)+'</b><small>🆔 '+r.id+' · 🔥 '+bn(r.n)+'</small><div class="mics">'+r.mics.map(function(m){return"<i>"+m+"</i>"}).join("")+'<em>'+esc(r.tag)+'</em></div></div></div></div></div>';
+  var pat=new Array(14).join((r.emoji||'🎙️')+" ");
+  var flag=window.SharikaDiscovery?SharikaDiscovery.flagForCountry(r.owner_country||r.country):'';
+  var country=esc(r.owner_country||r.country||'');
+  var countryBadge=flag?'<span class="room-country" title="Owner country: '+country+'" aria-label="Owner country: '+country+'">'+flag+'</span>':'';
+  var cover=typeof r.cover_url==='string'&&/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/\d{8}\/cover\?v=\d+$/.test(r.cover_url)?';background-image:url('+r.cover_url+');background-size:cover;background-position:center':'';
+  return'<div class="card" role="button" tabindex="0" aria-label="Join '+esc(r.name)+'" data-id="'+esc(r.id)+'" style="animation-delay:'+i*.06+'s"><div class="sway" style="animation-delay:-'+(i*.7)%5+'s"><div class="tilt"><i class="edge"></i><div class="bg" style="background:linear-gradient(150deg,'+r.c+')'+cover+'"><span class="pat">'+pat+'</span><i class="shine"></i></div><div class="emo">'+esc(r.emoji||'🎙️')+'</div><div class="live"><u></u><u></u><u></u>LIVE</div>'+countryBadge+'<div class="info"><b>'+esc(r.name)+'</b><small>ID '+esc(r.id)+' · 🔥 '+bn(Number(r.n)||0)+'</small><div class="mics">'+(r.mics||[]).map(function(m){return"<i>"+esc(m)+"</i>"}).join("")+'<em>'+esc(r.tag||'Voice Room')+'</em></div></div></div></div></div>';
 }
 function renderRooms(){
   var L=roomList(),g=$("grid");
-  g.innerHTML=L.length?L.map(cardHTML).join(""):'<div class="empty">'+(tab===2?"You do not have a room yet.<br>Create your own room!<button class=\"big\" id=\"mk\">🎙️ Create room</button>":"No rooms found")+'</div>';
+  g.innerHTML=L.length?L.map(cardHTML).join(""):'<div class="empty">'+(tab===2?"You do not have a room yet.<br>Create your own room!<button class=\"big\" id=\"mk\">🎙️ Create room</button>":tab===3?"No rooms visited yet. Enter a room to see it here.":"No rooms found")+'</div>';
   if($("mk"))$("mk").onclick=createSheet;
 }
 $("q").oninput=renderRooms;
@@ -448,6 +454,7 @@ function tl(e){var c=e.target.closest&&e.target.closest(".card");if(!c)return;va
 function tr(e){var c=e.target.closest&&e.target.closest(".card");if(!c)return;var t=c.querySelector(".tilt");t.style.setProperty("--ry","0deg");t.style.setProperty("--rx","0deg")}
 G.addEventListener("pointermove",tl);G.addEventListener("pointerdown",tl);G.addEventListener("pointerup",tr);G.addEventListener("pointercancel",tr);G.addEventListener("pointerleave",tr,true);
 G.addEventListener("click",function(e){var c=e.target.closest(".card");if(!c)return;var r=roomList().filter(function(x){return x.id===c.dataset.id})[0];if(r)openRoom(r)});
+G.addEventListener("keydown",function(e){if(e.key!=='Enter'&&e.key!==' ')return;var c=e.target.closest('.card');if(c){e.preventDefault();c.click()}});
 /* ===== Entering the room ===== */
 var cur=null;
 function openRoom(r){var rf=$("rf");var w=JSON.stringify(JSON.stringify({name:r.name,emoji:r.emoji,theme:r.th,id:r.id,minor:!!A.minor})).replace(/</g,"\\u003c");rf.srcdoc=ROOM_HTML.replace("<head>","<head><script>window.name="+w+"<\/script>");$("rw").classList.add("on");$("mini").classList.remove("on");cur=r}
@@ -517,10 +524,10 @@ function rf(n){var x=n>=1e6?(n/1e6).toFixed(2).replace(/\.?0+$/,"")+"m":n>=1e3?(
 
 /* ===== Weekly Top 3 (shown when the app opens; new stars every week) ===== */
 function weekInfo(){var d=new Date(),day=(d.getDay()+6)%7,mon=new Date(d.getFullYear(),d.getMonth(),d.getDate()-day),sun=new Date(mon.getTime()+6*864e5),f=function(x){return x.toLocaleDateString("en-US",{month:"short",day:"numeric"})};return{n:Math.floor(mon.getTime()/(7*864e5)),label:f(mon)+" - "+f(sun)}}
-function weeklyTop3(){var w=weekInfo(),A=ADM(),P=CFG.people,i0=(w.n*3)%P.length,top=[];for(var i=0;i<3;i++){var k=(i0+i*2)%P.length,p=P[k];top.push({n:p[0],e:p[1],id:String(30000000+hsh(p[0])%60000000),v:Math.round(CFG.wealth[(i*3+w.n)%10]*6.2),lv:60-i*5})}
+function weeklyTop3(){var w=weekInfo(),A=ADM(),P=CFG.people||[],i0=(w.n*3)%P.length,top=[];if(P.length<3||!CFG.wealth||!CFG.wealth.length)return top;for(var i=0;i<3;i++){var k=(i0+i*2)%P.length,p=P[k];if(!p)continue;top.push({n:p[0],e:p[1],id:String(30000000+hsh(p[0])%60000000),v:Math.round((CFG.wealth[(i*3+w.n)%CFG.wealth.length]||0)*6.2),lv:60-i*5})}
   top.sort(function(a,b){return b.v-a.v});return top}
 function showWeekly(done){var A=ADM(),k=A&&A.kv&&A.kv.rk;if(k&&k.wk===false){done();return}
-  var w=weekInfo(),t=weeklyTop3(),sec=Math.max(3,(k&&+k.wksec)||6),el=document.createElement("div");el.id="wk";
+  var w=weekInfo(),t=weeklyTop3(),sec=Math.max(3,(k&&+k.wksec)||6),el=document.createElement("div");if(t.length<3){done();return}el.id="wk";
   var pod=function(u,c){return'<div class="pp '+c+'" data-u="'+u.id+'"><div class="gr"><div>'+u.e+'</div></div><b>'+esc(u.n)+'</b><span class="idl"><i class="idb">ID</i>'+u.id+'</span><div class="cv"><i class="cn"></i>'+rf(u.v)+'</div></div>'};
   el.innerHTML='<div class="wkh">🏆 This Week Top 3<small>'+w.label+' · New stars every week</small></div><div class="pod2 wkp"><div class="beam2"></div>'+wingSVG()+pod(t[1],"p2")+pod(t[0],"p1")+pod(t[2],"p3")+'<div class="dais"></div></div><button class="wkb" id="wkb">Continue</button><div class="wkt"><u style="animation-duration:'+sec+'s"></u></div>';
   $("app").appendChild(el);var fin=false;function end(){if(fin)return;fin=true;el.classList.add("out");setTimeout(function(){el.remove();done()},500)}
@@ -991,6 +998,7 @@ $("rw").classList.add("on");$("mini").classList.remove("on");cur=r};
 var SE={0:["💎","🪙","✨","⭐"],1:["💖","💞","🌹","✨"],2:["🏠","🎙️","🌟","🎶"]};
 showWeekly=function(done){var A2=ADM(),k=A2&&A2.kv&&A2.kv.rk;if(k&&k.wk===false){done();return}
 var w=weekInfo(),t=weeklyTop3(),P=CFG.people,R=CFG.rooms.slice().sort(function(a,b){return b.n-a.n})[0],c0=(w.n*2+1)%P.length,pa=P[c0],pb=P[(c0+3)%P.length];
+if(t.length<3||!R||!pa||!pb){done();return}
 var cid=function(p){return String(30000000+hsh(p[0])%60000000)},per=Math.max(3.5,((k&&+k.wksec)||6)/2);
 var pod=function(u,c){return'<div class="pp '+c+'" data-u="'+u.id+'"><div class="gr"><div>'+u.e+'</div></div><b>'+esc(u.n)+'</b><span class="idl"><i class="idb">ID</i>'+u.id+'</span><div class="cv"><i class="cn"></i>'+rf(u.v)+'</div></div>'};
 var cp=function(p){return'<div class="cpp" data-c="'+cid(p)+'" data-n="'+esc(p[0])+'" data-e="'+p[1]+'"><div class="gr"><div>'+p[1]+'</div></div><b>'+esc(p[0])+'</b><span class="idl"><i class="idb">ID</i>'+cid(p)+'</span></div>'};

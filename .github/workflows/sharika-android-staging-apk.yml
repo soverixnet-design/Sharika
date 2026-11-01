@@ -303,6 +303,15 @@ jobs:
           done
           echo 'SHARIKA_ROYAL_PREMIUM_APK_ASSETS_VERIFIED'
 
+      - name: Confirm Champagne Gold Home and room discovery assets are bundled
+        run: |
+          for asset in champagne-home-background.webp champagne-home-icons.webp golden-home.css room-discovery.js; do
+            test -s "../app/$asset"
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/$asset"
+          done
+          node --check ../app/room-discovery.js
+          echo 'SHARIKA_CHAMPAGNE_HOME_APK_ASSETS_VERIFIED'
+
       - name: Print signing fingerprint for this exact APK
         run: |
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"

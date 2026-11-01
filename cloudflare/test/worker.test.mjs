@@ -114,6 +114,31 @@ test('verified but unregistered users cannot read someone else wallet', async ()
     assert.equal((await response.json()).error, 'profile_not_found');
   } finally { globalThis.fetch = originalFetch; }
 });
+test('room discovery returns each verified room owner account country for its flag',async()=>{
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),prior=db.prepare.bind(db),queries=[];
+    db.prepare=sql=>{
+      queries.push(sql);
+      const stmt=prior(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.includes('FROM sharika_rooms r'))
+        stmt.all=async()=>({results:[{
+          id:'10000001',name:'Dhaka Room',owner_id:'firebase:owner',
+          owner_country:'BD',created_at:'2026-01-01',cover_version:null
+        }]});
+      return stmt;
+    };
+    const result=await handleRequest(new Request('https://example.test/api/v1/rooms',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(result.status,200);
+    assert.equal((await result.json()).rooms[0].owner_country,'BD');
+    assert.ok(queries.some(sql=>sql.includes('LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id')));
+  }finally{globalThis.fetch=originalFetch;}
+});
 test('unimplemented money-changing endpoints fail closed', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = certFetch;

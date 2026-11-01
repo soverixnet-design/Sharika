@@ -1097,19 +1097,10 @@
     marketRender();marketReload();
   }
   window.sharikaOpenRoyalMarket=openRoyalMarket;
-  // Two explicit shortcuts on the home screen; both work from the user's
-  // existing verified session, and remain separate from the original tabs.
+  // The champagne-gold Home has three shortcuts only. Keep the full royal
+  // market available through its other app/profile entry points.
   function mountRoyalMarketShortcuts(){
-    const quick=document.querySelector('#v-home .qa');
-    if(!quick||document.getElementById('sh-royal-home-shortcuts'))return;
-    const bar=marketEl('div','sh-royal-home-shortcuts');
-    bar.id='sh-royal-home-shortcuts';
-    for(const [mode,label] of [['shop','👑 Sharika Shop'],['backpack','🎒 My Backpack']]){
-      const button=marketEl('button','',label);button.type='button';
-      button.onclick=()=>openRoyalMarket(mode);
-      bar.appendChild(button);
-    }
-    quick.insertAdjacentElement('afterend',bar);
+    document.getElementById('sh-royal-home-shortcuts')?.remove();
   }
   royalMarketStyle();
   mountRoyalMarketShortcuts();
@@ -2321,17 +2312,22 @@
       if(requestNo!==roomsRequestNo || session?.user?.id!==userId)return;
       const rows = data.rooms || [];
       const own = rows.find(r => r.owner_id === userId);
+      const discovery=window.SharikaDiscovery;
+      window.CFG.viewerCountry=profile?.country||'';
+      window.CFG.roomHistoryIds=discovery?discovery.readHistory(window.localStorage,userId):[];
       window.CFG.rooms = rows.filter(r => r.owner_id !== userId).map((r,i)=>({
         id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
-        seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null
+        seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
+        owner_country:r.owner_country||'',created_at:r.created_at||''
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
         c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
         seat_frame_style:own.seat_frame_style||'grad',
-        n:Number(own.online_count)||0,cover_url:own.cover_url||null
+        n:Number(own.online_count)||0,cover_url:own.cover_url||null,
+        owner_country:own.owner_country||profile?.country||'',created_at:own.created_at||''
       } : null;
       window.renderRooms();
     } catch (error) {
@@ -4072,6 +4068,13 @@
         await api('POST','/rooms/'+prior.id+'/leave',{});
       }
       await api('POST','/rooms/'+room.id+'/join',{});
+      // Record only confirmed joins; keep History private to this verified
+      // account on this device (a failed join must not appear in History).
+      if(window.SharikaDiscovery){
+        window.CFG.roomHistoryIds=window.SharikaDiscovery.recordVisit(
+          window.localStorage,session.user.id,room.id);
+        window.renderRooms();
+      }
       heartbeatPresence(room.id);
       const iframe=document.getElementById('rf');
       iframe.onload=()=>attachFrame(room).catch(error=>toast(errText(error)));

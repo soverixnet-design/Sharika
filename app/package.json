@@ -1,0 +1,8 @@
+{
+  "name": "sharika-android-home-preview",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node preview-server.mjs"
+  }
+}

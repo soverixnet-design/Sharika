@@ -1,7 +1,11 @@
-/* Sharika Home — exact owner-supplied golden fantasy artwork.
-   Scope the image and legibility treatment to Home; retain every other page. */
+/* Sharika Home — selected champagne-gold / espresso design (option 2).
+   Keep the existing Royal Profile, room interiors and other screens intact. */
 .app.golden-home {
-  background: #8e562f url('./golden-home-background.jpg') center center / cover no-repeat;
+  background-color: #28150f;
+  background-image: url('./champagne-home-background.webp'), url('./golden-home-background.jpg');
+  background-position: center center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 
 .app.golden-home #v-home {
@@ -10,64 +14,149 @@
   animation: fi .3s ease both;
 }
 
-.app.golden-home .blob { opacity: .12; }
+.app.golden-home .blob { opacity: .045; }
 
 .app.golden-home #v-home .hd {
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 225, 158, .48);
-  background: rgba(25, 17, 63, .69);
-  box-shadow: 0 10px 24px rgba(48, 24, 12, .25);
-  backdrop-filter: blur(10px);
+  margin: 4px 0 13px;
+  padding: 9px 10px;
+  min-height: 68px;
+  border-radius: 19px;
+  border: 1.5px solid #d7ad72;
+  background: rgba(39, 24, 21, .84);
+  box-shadow: 0 6px 28px rgba(4, 2, 2, .48), inset 0 1px 0 #ffe0a04d;
+  backdrop-filter: blur(14px);
 }
-.app.golden-home #v-home .hd h1 small { color: #f9ddb0; }
+.app.golden-home #v-home .hd .logo {
+  width: 44px; height: 44px; border-radius: 50%; flex: none;
+  border: 2px solid #ffe1a2;
+  box-shadow: 0 0 0 3px #725028,0 4px 9px #0008;
+}
+.app.golden-home #v-home .hd h1 {
+  min-width: 0; color: #ffe8bd; font-size: 14.5px; line-height: 1.2;
+  background: none; -webkit-text-fill-color: #ffe8bd;
+}
+.app.golden-home #v-home .hd h1 small { color: #e5c9ae; -webkit-text-fill-color: #e5c9ae; font-size: 9px; margin-top: 3px; }
 .app.golden-home #v-home .pill {
-  color: #ffe6ad;
-  background: rgba(67, 44, 92, .85);
-  border-color: rgba(255, 226, 157, .5);
+  padding: 6px 8px; max-width: 78px; overflow: hidden;
+  color: #ffe3a3; font-size: 11px;
+  background: #4c372dcf;
+  border-color: #d6ac79;
+}
+.app.golden-home #v-home .top-recharge {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 44px; height: 45px; flex: none; border-radius: 15px;
+  color: #583315; font-size: 24px; font-weight: 900; line-height: 1;
+  border: 1.5px solid #fff1c8;
+  background: linear-gradient(160deg, #fff3c5 0%, #e7bd71 50%, #ab6c36 100%);
+  box-shadow: inset 0 1px 2px #fff9,0 4px 11px #0008;
+}
+.app.golden-home #v-home .top-recharge small {
+  font-size: 7px; line-height: 1.3; font-weight: 800;
 }
 
 .app.golden-home #v-home .srch {
-  background: rgba(29, 24, 81, .82);
-  border-color: rgba(255, 225, 158, .52);
-  box-shadow: 0 8px 22px rgba(52, 27, 19, .25);
-  backdrop-filter: blur(9px);
+  height: 45px;
+  background: rgba(36, 23, 20, .84);
+  border: 1px solid #ae825f;
+  box-shadow: 0 8px 22px rgba(17, 7, 4, .3),inset 0 1px 0 #f8d9aa30;
+  backdrop-filter: blur(12px);
 }
-.app.golden-home #v-home .srch input::placeholder { color: #e8d7ed; }
+.app.golden-home #v-home .srch input::placeholder { color: #e8d0b7; }
+
+.app.golden-home #v-home .slide {
+  border: 1.5px solid #e9c68e;
+  box-shadow: 0 7px 22px #0e0506a6,inset 0 1px 0 #ffffff70;
+}
+.app.golden-home #v-home .slide b {color: #fff1d6;}
+.app.golden-home #v-home .dots u.on { background: #fbdba2; }
+
+.app.golden-home #v-home .qa {grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;}
 
 .app.golden-home #v-home .qa button {
-  color: #fff;
-  background: rgba(31, 23, 81, .86);
-  border: 1px solid rgba(255, 222, 153, .44);
-  box-shadow: 0 9px 20px rgba(47, 20, 23, .3);
-  backdrop-filter: blur(9px);
+  min-height: 91px; color: #ffeaca; font-weight: 650; font-size: 12px;
+  background: rgba(48, 29, 27, .88);
+  border: 1.5px solid #ba8d66;
+  border-radius: 19px;
+  box-shadow: 0 8px 21px #0d0607a8,inset 0 1px 0 #f0d6aa42;
+  backdrop-filter: blur(12px);
+}
+.app.golden-home #v-home .qa .home-icon {
+  width: 46px; height: 46px; display: block; background-image: url('./champagne-home-icons.webp');
+  background-size: 200% 200%; background-repeat: no-repeat;
+  font-size: 0; filter: drop-shadow(0 5px 5px #0006);
+}
+.app.golden-home #v-home .qa .hi-reward {background-position: 0% 0%;}
+.app.golden-home #v-home .qa .hi-games {background-position: 100% 0%;}
+.app.golden-home #v-home .qa .hi-invite {background-position: 0% 100%;}
+.app.golden-home #v-home .qa button:focus-visible,
+.app.golden-home #v-home .card:focus-visible,
+.app.golden-home #v-home .top-recharge:focus-visible {
+  outline: 3px solid #ffefc4; outline-offset: 3px;
 }
 .app.golden-home #v-home .tabs button {
-  color: #fbe9c6;
-  background: rgba(31, 23, 81, .86);
-  border-color: rgba(255, 222, 153, .4);
-  backdrop-filter: blur(9px);
+  color: #ffeaca;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  background: rgba(43, 27, 24, .88);
+  border-color: #a57b56;
+  backdrop-filter: blur(12px);
 }
 .app.golden-home #v-home .tabs button.on {
-  color: #fff;
-  background: #9c38d9;
-  border-color: #f6c453;
+  color: #48250a;
+  background: linear-gradient(180deg, #fff1c4, #dfac54 72%, #9d6331);
+  border-color: #fff1bd;
+  box-shadow: 0 3px 12px #e8af4680;
+}
+.app.golden-home #v-home .grid {gap: 14px 10px;}
+.app.golden-home #v-home .card {height: 187px;}
+.app.golden-home #v-home .card .tilt {
+  border: 1.5px solid #e5bb78;
+  box-shadow: 0 14px 24px #000a,inset 0 1px 0 #ffecb7a8;
+}
+.app.golden-home #v-home .card .bg {border-radius: 24px;}
+.app.golden-home #v-home .card .info {
+  left: 9px;right: 8px;bottom: 8px;
+  padding: 19px 6px 5px;
+  border-radius: 0 0 18px 18px;
+  background: linear-gradient(180deg, transparent, #1d0e0ac9 38%, #1d0e0ae0);
+}
+.app.golden-home #v-home .card .info b {font-size: 13px;color: #fff1d7;}
+.app.golden-home #v-home .card .info small {font-size: 9px;color: #ffe6b7;}
+.app.golden-home #v-home .card .room-country {
+  position: absolute; top: 9px;right: 9px;transform: translateZ(46px);
+  min-width: 28px; height: 23px; display: grid;place-items: center;
+  font-size: 20px; line-height: 1; border-radius: 7px;
+  background: rgba(24, 14, 12, .75);border: 1px solid #f5d4a1;
+  box-shadow: 0 3px 9px #0009;
 }
 .app.golden-home #v-home .empty {
   color: #fbe9c6;
-  background: rgba(31, 23, 81, .82);
-  border: 1px solid rgba(255, 222, 153, .4);
+  background: rgba(43, 27, 24, .9);
+  border: 1px solid #c8a072;
   border-radius: 20px;
 }
 
 .app.golden-home .nav {
-  background: rgba(23, 15, 62, .9);
-  border: 1px solid rgba(255, 214, 137, .6);
-  box-shadow: 0 9px 28px rgba(54, 25, 16, .38);
+  background: rgba(27, 16, 17, .95);
+  border: 1.5px solid #d6ab6b;
+  box-shadow: 0 9px 28px #080405ad,inset 0 1px 0 #ffe4a847;
 }
-.app.golden-home .nav .ni { color: #e5d4ef; }
-.app.golden-home .nav .ni.on { color: #fff; }
+.app.golden-home .nav .ni { color: #dbc5ad; }
+.app.golden-home .nav .ni.on { color: #ffdf9a; }
+.app.golden-home .nav .ni.on span {filter: drop-shadow(0 0 6px #ffd27a);}
+.app.golden-home .nav .plus {
+  color: #5c2e0b;border: 3px solid #ffe6a8;
+  background: linear-gradient(145deg,#fff4c9,#dba258 76%,#915221);
+  box-shadow:0 7px 15px #0009,inset 0 2px 2px #fff9;
+}
+
+@media (max-width: 365px) {
+  .app.golden-home #v-home .hd h1 {font-size: 12px;}
+  .app.golden-home #v-home .hd h1 small {font-size: 8px;}
+  .app.golden-home #v-home .pill {padding: 5px;max-width: 60px;}
+  .app.golden-home #v-home .tabs button {padding: 8px 7px;font-size: 10px;}
+  .app.golden-home #v-home .card {height: 172px;}
+}
 
 @media (prefers-reduced-motion: reduce) {
   .app.golden-home #v-home { animation: none; }

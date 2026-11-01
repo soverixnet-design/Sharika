@@ -843,8 +843,9 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {
         const rows=await env.DB.prepare(
-          'SELECT r.*,c.version AS cover_version FROM sharika_rooms r '+
+          'SELECT r.*,c.version AS cover_version,u.country AS owner_country FROM sharika_rooms r '+
           'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
+          'LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id '+
           'ORDER BY r.created_at DESC LIMIT 100'
         ).all();
         // One verified room presence snapshot for all displayed cards.
