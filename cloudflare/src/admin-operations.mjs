@@ -10,7 +10,7 @@ export async function handleOperationalRead({request,env,actor,operation,cors,re
       environment:'staging',server_time:new Date().toISOString(),
       d1_bound:!!env.DB,voice_rooms_bound:!!env.VOICE_ROOMS,
       lucky_gifts_enabled:String(env.SHARIKA_LUCKY_GIFTS_ENABLED)==='true',
-      cash_redeemable_coins:false,
+      cash_redeemable_coins:String(env.SHARIKA_COINS_CASH_REDEEMABLE)==='true',
       connected_pages:['users','rooms','sellers','support','recharges','ledger',
         'gifts','cosmetics','premium','bonds','rankings','events','banners','special_ids'],
       protected_settings_read_only:true

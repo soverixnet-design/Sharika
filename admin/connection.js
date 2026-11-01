@@ -2080,7 +2080,7 @@
       root.innerHTML='<div class="card"><h3>Server-enforced feature switches</h3>'+
         window.T(['Feature','Verified state'],[
           ['Lucky gifts',st.lucky_gifts_enabled?'Enabled':'Disabled'],
-          ['Cash-redeemable coins','Disabled by design']
+          ['Cash-redeemable coins',st.cash_redeemable_coins?'Enabled':'Disabled']
         ])+'<p class="n">These are read-only safety switches. Editing requires a separately reviewed server deployment; no fake on/off controls are shown.</p></div>';
     }catch(error){root.innerHTML=card('Feature status unavailable',error.message);}
   };
