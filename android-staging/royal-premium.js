@@ -20,6 +20,12 @@
     stylesheet.rel = 'stylesheet';
     stylesheet.href = SHEET_URL;
     doc.head.appendChild(stylesheet);
+    // Scoped Winged Royal Gold layer. The Main Profile screen is excluded by CSS.
+    var winged = doc.createElement('link');
+    winged.id = 'sharika-winged-theme-style';
+    winged.rel = 'stylesheet';
+    winged.href = 'file:///android_asset/royal-winged-theme.css';
+    doc.head.appendChild(winged);
   }
 
   function styleRoom() {

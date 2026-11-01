@@ -35,6 +35,7 @@ on:
       - feature/sharika-cp-weekly-rewards-20261101
       - feature/sharika-royal-frame-admin-grants-20261101
       - feature/sharika-master-integration-20261101
+      - feature/sharika-winged-royal-unlimited-seller-20261102
       - feature/sharika-royal-profile-20261101
       - fix/sharika-google-login-hd-room-themes-20261101
       - fix/sharika-games-bet-integrity-20261101

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { handleSellerApp, handleSellerAdmin } from '../src/sellers.mjs';
 import {readFileSync} from 'node:fs';
 
-function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplicate=false,selfRecipient=false}={}){
+function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplicate=false,selfRecipient=false,unlimited=false}={}){
   const state={batch:[],queries:[]};
   const DB={
     prepare(sql){
@@ -14,17 +14,17 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
           state.queries.push({sql,args:this.args||[]});
           if(sql.includes('FROM sharika_users WHERE auth_uid=?'))return actor?{auth_uid:'seller1',public_no:10000003,minor}:null;
           if(sql.includes('FROM sharika_coin_sellers WHERE seller_uid=?'))
-            return seller?{active:1,available_coins:stock}:null;
+            return seller?{active:1,available_coins:stock,unlimited_stock:unlimited?1:0}:null;
           if(sql.includes('FROM sharika_users WHERE public_no=?'))
             return recipient?{auth_uid:selfRecipient?'seller1':'recipient2',coins:20,status:'active'}:null;
           if(sql.includes('FROM sharika_coin_seller_transfers t'))return duplicate?{id:12,amount:200,target_uid:selfRecipient?'seller1':'recipient2'}:null;
           if(sql.includes('SELECT id,stock_after FROM sharika_coin_seller_transfers'))return {id:12,stock_after:stock-200};
           if(sql.includes('SELECT id,amount,stock_after,seller_uid FROM sharika_coin_seller_allocations'))return null;
-          if(sql.includes('SELECT s.seller_uid'))return seller?{seller_uid:'seller1',active:1,available_coins:stock}:null;
+          if(sql.includes('SELECT s.seller_uid'))return seller?{seller_uid:'seller1',active:1,available_coins:stock,unlimited_stock:unlimited?1:0}:null;
           if(sql.includes('SELECT id,stock_after FROM sharika_coin_seller_allocations'))return {id:13,stock_after:stock+200};
           if(sql.includes('FROM sharika_coin_sellers s JOIN sharika_users u'))
             return {public_no:10000003,name:'Approved Seller',pic:null,
-              active:1,available_coins:stock};
+              active:1,available_coins:stock,unlimited_stock:unlimited?1:0};
           if(sql.includes('SELECT auth_uid,status,minor FROM sharika_users'))return actor?{auth_uid:'seller1',status:'active',minor}:null;
           return null;
         },
@@ -32,7 +32,7 @@ function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplic
           state.queries.push({sql,args:this.args||[]});
           if(sql.includes('FROM sharika_coin_sellers s JOIN sharika_users u'))
             return {results:[{public_no:10000003,name:'Approved Seller',pic:null,
-              active:1,available_coins:stock}]};
+              active:1,available_coins:stock,unlimited_stock:unlimited?1:0}]};
           if(sql.includes('FROM sharika_coin_seller_transfers t ')){
             return {results:[{id:7,sender_no:10000003,seller_no:10000003,
               recipient_no:10000002,amount:250,stock_after:2750,created_at:'2026-10-30'}]};
@@ -223,4 +223,38 @@ test('super-admin allocation is audited and no user wallet changes',async()=>{
   const result=await admin(DB,'super','POST','sellers/allocate',validAllocation);
   assert.equal(result.status,201);
   assert.equal(state.batch[0].length,3);
+});
+
+test('only Super Admin can enable unlimited seller stock with a recorded reason',async()=>{
+  const {DB,state}=mockDB();
+  const body={seller_public_id:'10000003',unlimited_stock:true,reason:'Approved testing account'};
+  const forbidden=await admin(DB,'finance','POST','sellers/stock-mode',body);
+  assert.equal(forbidden.status,403);
+  assert.equal(state.batch.length,0);
+  const result=await admin(DB,'super','POST','sellers/stock-mode',body);
+  assert.equal(result.status,200);
+  assert.equal(result.data.unlimited_stock,true);
+  assert.equal(state.batch.length,1);
+  assert.match(state.batch[0][0].sql,/UPDATE sharika_coin_sellers SET unlimited_stock/);
+  assert.match(state.batch[0][1].sql,/sharika_coin_seller_stock_mode_audit/);
+});
+test('unlimited seller can credit despite zero reserve, but transfer remains ledgered',async()=>{
+  const {DB,state}=mockDB({stock:0,unlimited:true,selfRecipient:true});
+  const result=await app(DB,'POST','/api/v1/sellers/transfer',{
+    ...validTransfer,target_public_id:'10000003'
+  });
+  assert.equal(result.status,201);
+  assert.equal(result.data.unlimited_stock,true);
+  assert.equal(state.batch.length,1);
+  assert.match(state.batch[0][0].sql,/unlimited_stock=1/);
+  assert.match(state.batch[0][2].sql,/sharika_coin_seller_transfers/);
+  assert.match(state.batch[0][3].sql,/sharika_wallet_ledger/);
+});
+test('unlimited mode cannot be used to exceed per-transfer safety ceiling',async()=>{
+  const {DB,state}=mockDB({stock:0,unlimited:true});
+  const result=await app(DB,'POST','/api/v1/sellers/transfer',{
+    ...validTransfer,coins:1000001
+  });
+  assert.equal(result.status,400);
+  assert.equal(state.batch.length,0);
 });

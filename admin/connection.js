@@ -1367,6 +1367,9 @@
         '<button type="button" class="btn s" id="seller-suspend">Suspend</button></div>'+
         '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000)">'+
         '<button type="button" class="btn s" id="seller-allocate">Allocate stock</button></div>'+
+         '<div class="row"><button type="button" class="btn s" id="seller-unlimited-on">Enable ∞ stock</button>'+
+         '<button type="button" class="btn s" id="seller-unlimited-off">Disable ∞ stock</button></div>'+
+         '<p class="n">Unlimited mode is Super Admin-only. Every transfer is still logged. Maximum 1M coins per transfer.</p>'+
         '<p class="n" id="seller-note">Only Super Admin can approve sellers and allocate inventory.</p></div>':'');
     const table=byId('seller-list'),transfers=byId('seller-transfers'),
       allocations=byId('seller-allocations');
@@ -1380,7 +1383,8 @@
         ]);
         table.innerHTML=window.T(['ID','Name','Status','Available stock','Updated'],(list.sellers||[]).map(s=>
           [esc(s.public_id),esc(s.name),s.active?'Approved':'Suspended',
-           fmt(s.available_coins),esc(s.updated_at||'')]));
+           s.unlimited_stock?'∞ Unlimited · reserve '+fmt(s.available_coins):fmt(s.available_coins),
+           esc(s.updated_at||'')]));
         transfers.innerHTML=window.T(['#','Sender ID','Recipient ID','Coins','Stock after','Time'],
           (history.transfers||[]).map(t=>[
             esc(t.id),esc(t.sender_public_id),esc(t.recipient_public_id),
@@ -1411,17 +1415,29 @@
       if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000)){
         note.textContent='Allocate 1–1,000,000 coins per request.';return;
       }
+      const isStockMode=kind==='unlimited_on'||kind==='unlimited_off';
+      const reason=isStockMode?window.prompt('Reason for unlimited stock change (8–200 characters):',''):null;
+      if(isStockMode&&(!reason||reason.trim().length<8||reason.trim().length>200)){
+        note.textContent='A reason of 8–200 characters is required.';return;
+      }
       const message=kind==='allocate'
         ?'Add '+fmt(coins)+' coins to the SELLER STOCK of '+sellerId+'? This does not debit any user.'
-        :(kind==='approve'?'Approve':'Suspend')+' coin seller '+sellerId+'?';
+        :isStockMode
+          ?(kind==='unlimited_on'?'ENABLE':'DISABLE')+' unlimited stock for seller '+sellerId+
+            '? The change is audited and requires Super Admin authority.'
+          :(kind==='approve'?'Approve':'Suspend')+' coin seller '+sellerId+'?';
       if(!window.confirm(message))return;
       busy=true;button.disabled=true;note.textContent='Submitting verified request…';
       try{
         const payload=kind==='allocate'
           ?{seller_public_id:sellerId,coins,request_id:'admin-seller:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2)}
-          :{target_public_id:sellerId,active:kind==='approve'};
-        const result=await api('POST',kind==='allocate'?'sellers/allocate':'sellers',payload);
+          :isStockMode
+            ?{seller_public_id:sellerId,unlimited_stock:kind==='unlimited_on',reason:reason.trim()}
+            :{target_public_id:sellerId,active:kind==='approve'};
+        const endpoint=kind==='allocate'?'sellers/allocate':isStockMode?'sellers/stock-mode':'sellers';
+        const result=await api('POST',endpoint,payload);
         note.textContent=kind==='allocate'?'Allocated '+fmt(coins)+' stock coins. New stock '+fmt(result.available_coins)+'.':
+          isStockMode?'Seller '+sellerId+' unlimited stock '+(result.unlimited_stock?'enabled':'disabled')+' and audited.':
           'Seller '+sellerId+' '+(kind==='approve'?'approved':'suspended')+'.';
         await refresh();
       }catch(error){note.textContent='Request rejected: '+error.message;}
@@ -1430,6 +1446,8 @@
     byId('seller-approve')?.addEventListener('click',e=>act(e.currentTarget,'approve'));
     byId('seller-suspend')?.addEventListener('click',e=>act(e.currentTarget,'suspend'));
     byId('seller-allocate')?.addEventListener('click',e=>act(e.currentTarget,'allocate'));
+    byId('seller-unlimited-on')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_on'));
+    byId('seller-unlimited-off')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_off'));
   };
 
   P.ledger=async function () {

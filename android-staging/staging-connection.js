@@ -4264,6 +4264,7 @@
       ]);
       if(!root.isConnected)return;
       const self=mine.seller;
+      const unlimited=!!self?.unlimited_stock;
       root.classList.add('sharika-seller-wallet');
       if(!self?.active){
         root.innerHTML='<div class="shw-section">Seller Wallet is available only to approved coin sellers.</div>';
@@ -4289,15 +4290,17 @@
       ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';
       root.innerHTML=
         '<section class="shw-hero">'+
-          '<div class="shw-eyebrow">🪙 Available seller stock</div>'+
+          '<div class="shw-eyebrow">🪙 '+(unlimited?'Unlimited seller stock':'Available seller stock')+'</div>'+
           '<div class="shw-stock"><span id="sharika-seller-stock">'+
-            coinsText(self.available_coins)+'</span> <small>coins</small></div>'+
+            (unlimited?'∞':coinsText(self.available_coins))+'</span> <small>'+(unlimited?'Admin approved':'coins')+'</small></div>'+
           '<div class="shw-id">✓ Verified seller · ID '+
             sellerEscape(visibleSellerId(self.public_id))+'</div>'+
         '</section>'+
         '<section class="shw-section">'+
           '<h4 class="shw-title">✨ Recharge my ID or another user</h4>'+
-          '<p class="shw-sub">Recharge any active Sharika ID, including your own. Coins are deducted from your assigned seller stock.</p>'+
+          '<p class="shw-sub">Recharge any active Sharika ID, including your own. '+
+             (unlimited?'Admin-approved unlimited stock: transfers remain recorded and audited.':
+             'Coins are deducted from your assigned seller stock.')+'</p>'+
           '<label class="shw-label" for="sharika-seller-target">Recipient user ID</label>'+
           '<div class="shw-control-row">'+
             '<input class="shw-input" id="sharika-seller-target" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Member or Special ID" aria-label="Recipient user ID">'+
@@ -4362,7 +4365,7 @@
           showNote('Enter a member or Special ID and 1 to 1,000,000 coins.','error');
           return;
         }
-        if(amount>Number(self.available_coins)){
+        if(!unlimited&&amount>Number(self.available_coins)){
           showNote('Insufficient seller stock for this amount.','error');
           return;
         }
@@ -4376,7 +4379,8 @@
           const visibleRecipient=String(verified.display_id||entered);
           const isSelf=recipient===self.public_id;
           const message=isSelf?
-            'Recharge your own ID '+visibleRecipient+' with '+coinsText(amount)+' coins from seller stock?':
+            'Recharge your own ID '+visibleRecipient+' with '+coinsText(amount)+
+               (unlimited?' coins using unlimited seller stock?':' coins from seller stock?'):
             'Send '+coinsText(amount)+' coins to '+String(verified.name||'User')+' (ID '+visibleRecipient+')?';
           if(!window.confirm(message)){showNote('Recharge cancelled.','info');return;}
           const fingerprint=session.user.id+':'+recipient+':'+amount;
@@ -4390,14 +4394,15 @@
           transferCommitted=true;pendingSellerTransfer=null;
           self.available_coins=Number(result.available_coins);
           const stockLabel=document.getElementById('sharika-seller-stock');
-          if(stockLabel)stockLabel.textContent=coinsText(result.available_coins);
+          if(stockLabel)stockLabel.textContent=result.unlimited_stock?'∞':coinsText(result.available_coins);
           if(amountField)amountField.value='';
           showNote((result.duplicate?'Already recorded: ':'Success! ')+
             (result.self_recharge?'Your own wallet':'Recipient ID '+visibleRecipient)+
             ' received '+coinsText(amount)+' coins. Transfer #'+result.transfer_id+
             (Number(result.first_recharge_bonus_coins)>0?
               '. 🎁 First recharge bonus +'+coinsText(result.first_recharge_bonus_coins)+' coins':'')+
-            '. Remaining stock: '+coinsText(result.available_coins)+'.','success');
+            (result.unlimited_stock?'. Unlimited seller mode audited.':
+               '. Remaining stock: '+coinsText(result.available_coins)+'.'),'success');
           toast('Coin recharge recorded ✓');
           const latest=await api('GET','/sellers/transfers').catch(()=>null);
           const history=document.getElementById('sharika-seller-history');
