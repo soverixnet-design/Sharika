@@ -31,6 +31,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['bonds','💞','CP & Friendship Gifts']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='specialIds')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='premium');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['specialIds','💎','Special IDs']);
+  }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -95,7 +100,7 @@
     window.NAV=role==='staff'?NAV_ALL.filter(item=>
       !item[0]||Object.prototype.hasOwnProperty.call(allowedStaffPage,item[0])&&
       (!allowedStaffPage[item[0]]||status.permissions?.includes(allowedStaffPage[item[0]]))
-    ):NAV_ALL.slice();
+    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'));
     window.ME = session.email || status.name || 'Administrator';
     return status;
   }
@@ -407,6 +412,174 @@
         'These counts come from the same D1 database used by the Android app. The panel is read-only.');
     } catch (error) { root.innerHTML=card('Dashboard unavailable',error.message); }
   };
+
+  // Option 2: real verified Neon Special ID management with a live profile preview.
+  const sidStyle=document.createElement('style');
+  sidStyle.textContent=`
+    .sid-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(285px,.8fr);gap:18px}
+    .sid-preview,.sid-editor{border:1px solid rgba(149,92,255,.45);border-radius:22px;
+      background:#120d2b;padding:22px;min-width:0}
+    .sid-preview{background:radial-gradient(circle at 30% 8%,#283e92 0,#170e43 45%,#100a28 100%);
+      box-shadow:inset 0 0 42px #342074}
+    .sid-eyebrow{color:#c7b8ff;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+    .sid-face{width:128px;height:128px;border-radius:50%;margin:30px auto 12px;
+      border:4px solid #8a78ff;box-shadow:0 0 0 5px #221653,0 0 28px #595cff;
+      display:grid;place-items:center;background:#291e57;overflow:hidden;font-size:40px;font-weight:900}
+    .sid-face img{width:100%;height:100%;object-fit:cover}
+    .sid-name{text-align:center;font-size:30px;font-weight:800;color:white}
+    .sid-plate{max-width:430px;margin:18px auto 8px;padding:16px 20px;border:2px solid #ac78ff;
+      border-radius:18px;background:linear-gradient(90deg,#341058,#5725ae,#1647ba);
+      box-shadow:0 0 20px #7f45ff,inset 0 0 24px #6c45cb;text-align:center}
+    .sid-plate small{display:block;letter-spacing:.18em;color:#d8c6ff;font-size:12px}
+    .sid-plate strong{font-size:clamp(30px,4vw,55px);line-height:1.25;color:#f6f0ff;
+      letter-spacing:.08em;text-shadow:0 0 18px #93d5ff}
+    .sid-caption{text-align:center;color:#b5a7dc;font-size:12px;margin-top:12px}
+    .sid-room{display:flex;gap:13px;align-items:center;margin-top:28px;border-top:1px solid #514181;
+      padding-top:20px}
+    .sid-seat{min-width:64px;display:grid;justify-items:center;gap:4px;color:#ddc7ff;font-size:12px}
+    .sid-seat-ring{height:54px;width:54px;border-radius:50%;border:2px solid #a175ff;
+      background:#231945;box-shadow:0 0 13px #6f4bcb;display:grid;place-items:center;overflow:hidden}
+    .sid-seat-ring img{width:100%;height:100%;object-fit:cover}
+    .sid-editor label{color:#d9d1ff;font-size:13px;font-weight:700}
+    .sid-editor input,.sid-editor select{background:#0e102f;border:1px solid #574384;
+      color:white;border-radius:12px;margin:7px 0 13px}
+    .sid-editor input:focus,.sid-editor select:focus{border-color:#2adfff}
+    .sid-edit-title{font-size:25px;font-weight:800;margin-bottom:8px}
+    .sid-hint,.sid-status{color:#aeb1d5;font-size:13px;line-height:1.5}
+    .sid-status{min-height:24px;margin:8px 0}
+    .sid-action{border:0;border-radius:13px;padding:13px 18px;font-weight:800;color:white;
+      background:linear-gradient(100deg,#bf39f4,#5a65ff,#19cce0);width:100%}
+    .sid-action:disabled{opacity:.43;cursor:not-allowed}
+    .sid-ghost{background:transparent;border:1px solid #8159cd;padding:11px;
+      border-radius:12px;color:#d5c8ff;width:100%;margin:3px 0 10px}
+    .sid-list{margin-top:18px;display:flex;gap:9px;flex-wrap:wrap}
+    .sid-person{border:1px solid #423568;background:#1d173e;padding:8px 12px;
+      border-radius:12px;color:#ece7ff;text-align:left}
+    .sid-person[aria-pressed="true"]{border-color:#15cde7;box-shadow:0 0 0 1px #15cde7}
+    .sid-special-label{font-size:10px;color:#c5a9ff}
+    @media(max-width:1000px){.sid-layout{grid-template-columns:1fr}.sid-preview,.sid-editor{padding:16px}}
+  `;
+  document.head.appendChild(sidStyle);
+  P.specialIds=async function(){
+    const root=byId('pg');
+    if(role!=='super'){root.innerHTML=card('Special IDs','Super Admin permission required.');return;}
+    root.innerHTML='<div class="card"><h3>Find verified member</h3><div class="row">'+
+      '<input id="sid-search" placeholder="Account ID, Special ID or name" autocomplete="off">'+
+      '<button class="btn s" id="sid-find">Search</button></div>'+
+      '<div class="sid-hint" id="sid-list-note">Loading verified members…</div>'+
+      '<div class="sid-list" id="sid-list"></div></div>'+
+      '<div class="sid-layout"><section class="sid-preview" aria-label="Public profile preview">'+
+      '<div class="sid-eyebrow">Public Profile Preview</div>'+
+      '<div id="sid-avatar" class="sid-face">?</div>'+
+      '<div id="sid-name" class="sid-name">Select a member</div>'+
+      '<div class="sid-plate"><small>SPECIAL ID</small><strong id="sid-plate">—</strong></div>'+
+      '<p class="sid-caption">Neon ID displayed on profile and room seats</p>'+
+      '<div class="sid-room"><div class="sid-seat"><div class="sid-seat-ring" id="sid-seat-face">?</div>'+
+      '<span id="sid-seat-id">—</span></div>'+
+      '<div class="sid-hint">Room seat preview · permanent account remains unchanged</div></div>'+
+      '</section><section class="sid-editor"><h2 class="sid-edit-title">Assign Special ID</h2>'+
+      '<p class="sid-hint">Only verified Sharika accounts can receive a unique ID.</p>'+
+      '<label for="sid-account">Permanent Account ID</label>'+
+      '<input id="sid-account" readonly placeholder="Select a verified member">'+
+      '<label for="sid-value">Special ID (4–7 digits)</label>'+
+      '<input id="sid-value" inputmode="numeric" maxlength="7" autocomplete="off" placeholder="777777">'+
+      '<label for="sid-days">Duration</label><select id="sid-days">'+
+      '<option value="30">30 days</option><option value="7">7 days</option>'+
+      '<option value="90">90 days</option><option value="">Permanent</option></select>'+
+      '<label>Frame</label><input readonly value="Neon Purple–Blue">'+
+      '<button type="button" class="sid-ghost" id="sid-check">Check availability</button>'+
+      '<button type="button" class="sid-action" id="sid-save" disabled>Save Special ID</button>'+
+      '<p class="sid-status" id="sid-status" role="status"></p>'+
+      '<button type="button" class="sid-ghost" id="sid-revoke" disabled>Revoke Special ID</button>'+
+      '</section></div>';
+    let people=[],selected=null;
+    const input=byId('sid-search'),list=byId('sid-list'),status=byId('sid-status');
+    const value=byId('sid-value'),save=byId('sid-save'),revoke=byId('sid-revoke');
+    const faceHtml=user=>{
+      const pic=typeof user?.pic==='string'&&/^https:\/\//.test(user.pic)?user.pic:'';
+      return pic?'<img src="'+esc(pic)+'" alt="">':esc((user?.name||'?').slice(0,1).toUpperCase());
+    };
+    function preview(){
+      const display=value.value.trim()||selected?.special_id||'—';
+      byId('sid-name').textContent=selected?.name||'Select a member';
+      byId('sid-account').value=selected?.public_id||'';
+      byId('sid-avatar').innerHTML=faceHtml(selected);
+      byId('sid-seat-face').innerHTML=faceHtml(selected);
+      byId('sid-plate').textContent=display;
+      byId('sid-seat-id').textContent=display;
+      save.disabled=!selected||selected.status!=='active'||!/^[0-9]{4,7}$/.test(value.value.trim());
+      revoke.disabled=!selected||!selected.special_id;
+    }
+    async function search(){
+      list.replaceChildren();byId('sid-list-note').textContent='Loading verified members…';
+      try{
+        const data=await api('GET','special-ids?q='+encodeURIComponent(input.value.trim()));
+        if(!list.isConnected)return;
+        people=Array.isArray(data.users)?data.users:[];
+        byId('sid-list-note').textContent=people.length?
+          'Select the account that will own this Special ID.':'No verified members found.';
+        for(const person of people){
+          const button=document.createElement('button');button.type='button';
+          button.className='sid-person';button.dataset.id=person.public_id;
+          button.setAttribute('aria-pressed',String(selected?.public_id===person.public_id));
+          button.textContent=person.name+' · '+person.public_id+
+            (person.special_id?' · ★ '+person.special_id:'');
+          button.onclick=()=>{
+            selected=person;value.value=person.special_id||'';
+            status.textContent='';
+            for(const b of list.children)b.setAttribute('aria-pressed',
+              String(b===button));
+            preview();
+          };
+          list.appendChild(button);
+        }
+      }catch(error){byId('sid-list-note').textContent='Search unavailable: '+error.message;}
+    }
+    byId('sid-find').onclick=search;
+    let timer;input.oninput=()=>{clearTimeout(timer);timer=setTimeout(search,300);};
+    value.oninput=()=>{status.textContent='';preview();};
+    byId('sid-check').onclick=async()=>{
+      const proposed=value.value.trim();
+      if(!/^[0-9]{4,7}$/.test(proposed)){status.textContent='Use 4–7 numeric digits.';return;}
+      try{
+        const response=await api('GET','special-ids/availability?value='+encodeURIComponent(proposed));
+        status.textContent=response.available?'Available ✓':
+          selected?.special_id===proposed?'Assigned to this member.':'This ID is reserved.';
+      }catch(error){status.textContent='Availability check failed: '+error.message;}
+    };
+    save.onclick=async()=>{
+      if(save.disabled||!selected)return;
+      const specialId=value.value.trim(),accountId=selected.public_id;
+      if(!window.confirm('Assign Special ID '+specialId+' to '+accountId+'?'))return;
+      save.disabled=true;status.textContent='Saving on Sharika server…';
+      try{
+        const days=byId('sid-days').value;
+        const result=await api('POST','special-ids',{
+          public_id:accountId,special_id:specialId,
+          duration_days:days===''?null:Number(days),frame:'neon'
+        });
+        selected.special_id=result.special_id;selected.frame='neon';
+        selected.expires_at=result.expires_at;
+        status.textContent='Saved ✓ The public profile will show '+result.special_id;
+        note('Special ID assigned successfully');
+        await search();preview();
+      }catch(error){status.textContent='Not saved: '+error.message;preview();}
+    };
+    revoke.onclick=async()=>{
+      if(!selected?.special_id)return;
+      const accountId=selected.public_id;
+      if(!window.confirm('Revoke Special ID from account '+accountId+'?'))return;
+      revoke.disabled=true;
+      try{
+        await api('PATCH','special-ids/'+accountId+'/revoke',{});
+        selected.special_id=null;selected.expires_at=null;value.value='';
+        status.textContent='Revoked. Permanent Account ID is unchanged.';
+        await search();preview();
+      }catch(error){status.textContent='Revoke failed: '+error.message;preview();}
+    };
+    preview();await search();
+  };
+
   P.users=async function () {
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>Verified users</h3><div class="row">'+

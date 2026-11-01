@@ -12,6 +12,7 @@ import { handleRechargeAdmin } from './recharges.mjs';
 import { handleAdminExchangeRate } from './exchange-rate.mjs';
 import { handleCosmeticAdmin,publicAppearanceSelect } from './cosmetics.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
+import { handleSpecialAdmin } from './special-ids.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
 const FINANCE_ROLES = new Set(['super', 'finance']);
@@ -118,6 +119,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     actor={...actor,role:proxy};
   }
 
+  if(operation.startsWith('special-ids'))
+    return await handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if(operation==='events'||/^events\/[1-9][0-9]*(?:\/award)?$/.test(operation))
     return await handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if(operation==='cosmetics'||operation==='cosmetics/grant')

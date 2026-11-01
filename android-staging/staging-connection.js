@@ -199,6 +199,14 @@
       '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
       '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
       '.sh-sovera-seat-tag{position:absolute;z-index:18;left:50%;top:100%;width:104px;height:29px;transform:translateX(-50%);object-fit:contain;pointer-events:none}',
+      '.sh-neon-profile-id{display:block;width:max-content;max-width:94%;margin:7px auto 12px;padding:7px 18px;',
+      'color:#f6ebff;font-size:20px;font-weight:900;letter-spacing:.14em;border:2px solid #c287ff;',
+      'border-radius:14px;background:linear-gradient(100deg,#3b1362,#6330ca,#1562b5);',
+      'box-shadow:0 0 16px #9250ff9c,inset 0 0 14px #758cff70;text-shadow:0 0 9px #8bf1ff}',
+      '.sh-neon-profile-id::before{content:"SPECIAL ID";display:block;font-size:9px;letter-spacing:.2em;text-align:center;color:#d1bbff}',
+      '.sh-neon-seat-id{position:absolute;z-index:20;bottom:-20px;left:50%;transform:translateX(-50%);',
+      'padding:2px 7px;font-size:10px;line-height:1.2;font-weight:900;white-space:nowrap;color:#fff;',
+      'border:1px solid #b980ff;border-radius:9px;background:#5624af;box-shadow:0 0 10px #824cff}',
       '.sh-sovera-user-tag{display:inline-block;width:74px;height:25px;object-fit:contain;margin-left:4px;vertical-align:middle}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
       'pointer-events:none;display:block;overflow:hidden;background:#16082f}',
@@ -341,7 +349,11 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag').forEach(decoration=>decoration.remove());
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id').forEach(decoration=>decoration.remove());
+      if(seat.special_id){
+        const badge=doc.createElement('span');badge.className='sh-neon-seat-id';
+        badge.textContent=seat.special_id;el.style.position='relative';el.appendChild(badge);
+      }
       const item=frameArt(seat.frame_style);
       const medal=medalArt(seat.medal_style);
       const nameTag=nameTagArt(seat.name_tag_style);
@@ -546,6 +558,13 @@
       if(event.key==='Enter'||event.key===' '){event.preventDefault();anchor.click();}
     };
     document.getElementById('sh-sovera-own-identity')?.remove();
+    document.getElementById('sh-neon-own-id')?.remove();
+    if(profile?.special_id){
+      const plaque=document.createElement('span');
+      plaque.id='sh-neon-own-id';plaque.className='sh-neon-profile-id';
+      plaque.textContent=profile.special_id;
+      anchor.insertAdjacentElement('afterend',plaque);
+    }
     const medal=medalArt(profile?.medal_style);
     const tag=nameTagArt(profile?.name_tag_style);
     if(!medal&&!tag)return;
@@ -1857,7 +1876,7 @@
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
-      user_id:room.owner_id,public_id:room.id,
+      user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
@@ -1868,12 +1887,13 @@
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
           n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
-          user_id:member.user_id,public_id:user.public_id,
+          user_id:member.user_id,public_id:user.public_id,special_id:user.special_id||null,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
       else audience.push({n:user.name,e:'👤',id:user.public_id,
+         special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
         medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
@@ -4945,7 +4965,7 @@
       const rank=document.createElement('button');rank.className='sh-bond-button blue';
       rank.textContent='🏆 Pair Ranking';rank.onclick=()=>showBondRanking('cp','weekly');
       actions.append(gift,rank);
-      if(id===profile?.public_id){
+      if(canonicalId===profile?.public_id){
         const inbox=document.createElement('button');inbox.className='sh-bond-button gold';
         inbox.textContent='💌 Invitations';inbox.onclick=showBondInbox;actions.appendChild(inbox);
         for(const bound of [data.cp,...(data.friendships||[])].filter(Boolean)){
@@ -4967,7 +4987,7 @@
   let rankProfileRequest=0;
   async function openVerifiedRankProfile(publicId){
     const id=String(publicId||'');
-    if(!/^[0-9]{8}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
+    if(!/^[0-9]{4,8}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
     const panel=document.getElementById('pfo'),root=document.getElementById('pfc');
     if(!panel||!root)return;
     const requestNo=++rankProfileRequest;
@@ -4978,7 +4998,9 @@
       // fabricates age, followers and pictures and must not be used here.
       const person=await api('GET','/users/'+id);
       if(requestNo!==rankProfileRequest||!panel.classList.contains('on'))return;
-      if(String(person.id)!==id)throw new Error('Profile ID does not match');
+      if(String(person.id)!==id && String(person.special_id)!==id)
+         throw new Error('Profile ID does not match');
+       const canonicalId=String(person.id),displayId=String(person.display_id||person.id);
       const face=verifiedAvatarUrl(person.pic);
       const wealth=Math.max(0,Number(person.wealth_level)||0);
       const charm=Math.max(0,Number(person.charm_level)||0);
@@ -4987,14 +5009,14 @@
         '<div class="pavr" style="--g1:#ffdc7b;--g2:#a06bff"></div>'+
         '<div class="pav3" id="sh-ranked-avatar" role="img" aria-label="Profile photo"></div>'+
         '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
-        '<div class="meta"><span>🆔 '+id+'</span>'+
+        '<div class="meta"><span>🆔 '+sellerEscape(displayId)+'</span>'+
         (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
         '</div></div><div class="lvs">'+
         '<div class="lvc w"><b>💰 Wealth level</b><div class="big3">'+
         wealth+'</div><small>Verified profile level</small></div>'+
         '<div class="lvc c"><b>💗 Charm level</b><div class="big3">'+
         charm+'</div><small>Verified profile level</small></div></div>'+
-        '<div class="sh-profile-note">This is the real Sharika profile for ID '+id+
+        '<div class="sh-profile-note">This is the real Sharika profile for ID '+sellerEscape(displayId)+
         '. Only server-verified details are shown.</div>'+
         '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
         'Loading follow status…</button></div>'+
@@ -5003,11 +5025,11 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       decorateVerifiedPublicProfile(root,person);
-      mountBondDetails(root,id,person).catch(error=>
+      mountBondDetails(root,canonicalId,person).catch(error=>
         console.warn('Ranked ID bond details:',errText(error)));
       const follow=root.querySelector('#sh-ranked-follow');
       async function loadFollowing(){
-        const data=await api('GET','/users/'+id+'/follow');
+        const data=await api('GET','/users/'+canonicalId+'/follow');
         if(requestNo!==rankProfileRequest||!follow.isConnected)return;
         const following=!!data.following;
         follow.disabled=false;
@@ -5015,7 +5037,7 @@
         follow.onclick=async()=>{
           follow.disabled=true;
           try{
-            await api(following?'DELETE':'PUT','/users/'+id+'/follow');
+            await api(following?'DELETE':'PUT','/users/'+canonicalId+'/follow');
             await loadFollowing();
           }catch(error){
             toast('Follow action failed: '+errText(error));
@@ -5039,7 +5061,7 @@
         button.textContent='🪙 Send seller coins to ID '+id;
         button.onclick=()=>{
           panel.classList.remove('on');
-          showVerifiedCoinSellers({walletOnly:true,targetId:id});
+          showVerifiedCoinSellers({walletOnly:true,targetId:canonicalId});
         };
         action.appendChild(button);
       }).catch(()=>{});

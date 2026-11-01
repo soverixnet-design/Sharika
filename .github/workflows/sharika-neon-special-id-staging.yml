@@ -1,0 +1,131 @@
+name: Sharika Neon Special ID rollout (isolated staging only)
+on:
+  push:
+    branches:
+      - feature/sharika-neon-special-id-20261101
+    paths:
+      - '.github/workflows/sharika-neon-special-id-staging.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  publish-neon:
+    name: Verify, migrate 0032 and publish staging API + admin
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse unexpected branch, Workers, project, secrets or D1
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const api=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          const admin=JSON.parse(readFileSync('cloudflare/wrangler.admin.jsonc','utf8'));
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-neon-special-id-20261101' ||
+             !process.env.CLOUDFLARE_API_TOKEN ||
+             api.name!=='sharika-api-staging' ||
+             api.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74' ||
+             api.vars?.SHARIKA_ENV!=='staging' ||
+             api.vars?.FIREBASE_PROJECT_ID!=='sharika-voice-chat-app' ||
+             api.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false' ||
+             api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             api.keep_vars!==true ||
+             api.d1_databases?.length!==1 ||
+             api.d1_databases[0].binding!=='DB' ||
+             api.d1_databases[0].database_name!=='sharika-staging' ||
+             api.d1_databases[0].database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a' ||
+             api.durable_objects?.bindings?.[0]?.name!=='VOICE_ROOMS' ||
+             api.durable_objects.bindings[0].class_name!=='SharikaVoiceRoom' ||
+             !api.secrets?.required?.includes('REALTIME_SFU_APP_SECRET') ||
+             admin.name!=='sharika-admin-staging' ||
+             admin.account_id!==api.account_id ||
+             admin.vars?.SHARIKA_ENV!=='staging' ||
+             admin.services?.length!==1 ||
+             admin.services[0].binding!=='SHARIKA_API' ||
+             admin.services[0].service!=='sharika-api-staging')
+            throw Error('Staging scope protection failed: not publishing');
+          console.log('Exact isolated Sharika staging Workers and D1 verified');
+          NODE
+      - name: Syntax and unit tests
+        run: npm --prefix cloudflare run check
+      - name: Verify existing 31 migrations and the new table is absent
+        run: |
+          node --input-type=module - <<'NODE'
+          const url='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const sql="SELECT (SELECT COUNT(*) FROM d1_migrations) AS count,"+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE name='0031_room_theme_hd_images.sql') AS hd,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sharika_room_theme_images') AS hd_table,"+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE name='0032_special_ids.sql') AS special,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sharika_special_ids') AS special_table";
+          const response=await fetch(url,{method:'POST',headers:{
+            Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'},body:JSON.stringify({sql})});
+          const result=await response.json();
+          const row=result.result?.[0]?.results?.[0];
+          if(!response.ok||!result.success||row?.count!==31||row?.hd!==1||
+             row?.hd_table!==1||row?.special!==0||row?.special_table!==0)
+            throw Error('Migration journal or isolated staging schema differs: manual review required');
+          console.log('Previous HD schema preserved; only migration 0032 pending');
+          NODE
+      - name: Verify D1 time-travel recovery bookmark is available
+        run: |
+          node --input-type=module - <<'NODE'
+          const url='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/time_travel/bookmark';
+          const response=await fetch(url,{headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN}});
+          const data=await response.json();
+          if(!response.ok||!data.success||!data.result?.bookmark)
+            throw Error('No D1 recovery bookmark available; not changing schema');
+          console.log('D1 rollback bookmark available (value not logged)');
+          NODE
+      - name: Apply only the reviewed additive 0032 Special IDs migration
+        run: npx --yes wrangler@4 d1 migrations apply sharika-staging --remote --config cloudflare/wrangler.jsonc
+      - name: Verify new schema and journal before either Worker publish
+        run: |
+          node --input-type=module - <<'NODE'
+          const url='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const sql="SELECT (SELECT COUNT(*) FROM d1_migrations) AS count,"+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE name='0032_special_ids.sql') AS special,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE name='sharika_special_ids' AND type='table') AS special_table";
+          const response=await fetch(url,{method:'POST',headers:{
+            Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'},body:JSON.stringify({sql})});
+          const data=await response.json(),row=data.result?.[0]?.results?.[0];
+          if(!response.ok||!data.success||row?.count!==32||row?.special!==1||row?.special_table!==1)
+            throw Error('Special ID schema not verified; refusing Worker deployments');
+          console.log('Migration 0032 and table verified');
+          NODE
+      - name: Inspect API bundle without deployment
+        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sharika-neon-api-bundle
+      - name: Publish existing isolated staging API Worker
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Bundle real admin design and authenticated connector
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --check admin/connection.js
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sharika-neon-admin-bundle
+      - name: Publish existing isolated staging admin Worker
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Smoke test both staging services, not production
+        run: |
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js | grep -F 'Special IDs' > /dev/null
+          echo 'SHARIKA_NEON_SPECIAL_ID_STAGING_ADMIN_AND_API_OK'

@@ -14,10 +14,12 @@ import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
+import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
+const PUBLIC_OR_SPECIAL_ID = /^[0-9]{4,8}$/;
 const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset','photo']);
 const ROOM_SEAT_FRAMES = new Set(['grad','gold','neon','sq']);
 const MAX_BODY = 20_000;
@@ -290,7 +292,12 @@ export async function handleRequest(request, env) {
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
-        return user ? reply({...showProfile(user),...await readEquipped(env.DB,uid)},200,cors) : fail('profile_not_found',404,cors);
+        if(!user)return fail('profile_not_found',404,cors);
+        const special=await activeSpecial(env.DB,uid);
+        return reply({...showProfile(user),...await readEquipped(env.DB,uid),
+          special_id:special?.special_id||null,
+          display_id:special?.special_id||publicId(user.public_no),
+          special_frame:special?.frame||null},200,cors);
       }
       if (request.method === 'POST') {
         const already = await me(env.DB, uid);
@@ -357,14 +364,25 @@ export async function handleRequest(request, env) {
         const keys = Object.keys(changes);
         await env.DB.prepare('UPDATE sharika_users SET ' + keys.map(x => x + '=?').join(',') + `,updated_at=datetime('now') WHERE auth_uid=?`)
           .bind(...keys.map(k => changes[k]), uid).run();
-        return reply({...showProfile(await me(env.DB,uid)),...await readEquipped(env.DB,uid)},200,cors);
+        const current=await me(env.DB,uid);
+        const special=await activeSpecial(env.DB,uid);
+        return reply({...showProfile(current),...await readEquipped(env.DB,uid),
+          special_id:special?.special_id||null,
+          display_id:special?.special_id||publicId(current.public_no),
+          special_frame:special?.frame||null},200,cors);
       }
     }
-    if (parts[0] === 'api' && parts[1] === 'v1' && parts[2] === 'users' && PUBLIC_ID.test(parts[3] || '') &&
+    if (parts[0] === 'api' && parts[1] === 'v1' && parts[2] === 'users' && PUBLIC_OR_SPECIAL_ID.test(parts[3] || '') &&
         parts.length === 4 && request.method === 'GET') {
       await assertActive(env.DB, uid);
-      const user = await env.DB.prepare('SELECT * FROM sharika_users WHERE public_no=?').bind(Number(parts[3])).first();
+      const user = await env.DB.prepare('SELECT u.* FROM sharika_users u '+
+        'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+        "WHERE u.public_no=? OR (s.special_id=? AND (s.expires_at IS NULL OR s.expires_at>datetime('now'))) LIMIT 1")
+        .bind(Number(parts[3]),parts[3]).first();
+      const special=user?await activeSpecial(env.DB,user.auth_uid):null;
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
+        special_id:special?.special_id||null,display_id:special?.special_id||publicId(user.public_no),
+        special_frame:special?.frame||null,
         wealth_level: user.wealth_level, charm_level: user.charm_level,
         frame_style: user.frame_style || '', entry_style: user.entry_style || '',
         medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '',
@@ -1257,7 +1275,8 @@ export async function handleRequest(request, env) {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,
-          u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style FROM sharika_room_members m
+          u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style,
+          ${activeSpecialSelect('u')} FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
@@ -1286,6 +1305,7 @@ export async function handleRequest(request, env) {
           members: (result.results || []).map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
+            special_id:x.special_id||null,display_id:x.special_id||publicId(x.public_no),
             frame_style: x.frame_style || '', entry_style: x.entry_style || '',
             medal_style: x.medal_style || '', name_tag_style: x.name_tag_style || '',
             ...(equipped.get(x.user_id)||{}) }

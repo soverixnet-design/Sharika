@@ -35,7 +35,8 @@ function cosmeticsDb(){
       async first(){
         if(sql.startsWith('SELECT * FROM sharika_users WHERE auth_uid'))
           return {...current};
-        if(sql.startsWith('SELECT * FROM sharika_users WHERE public_no'))
+        if(sql.startsWith('SELECT * FROM sharika_users WHERE public_no') ||
+           sql.startsWith('SELECT u.* FROM sharika_users u '))
           return {...current};
         return null;
       },
