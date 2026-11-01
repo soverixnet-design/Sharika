@@ -1393,6 +1393,12 @@
     } catch (_) {}
     return local;
   }
+  async function pendingInviteCode(){
+    try{
+      const result=await native('inviteCode');
+      return /^[0-9]{8}$/.test(result.invite_code||'')?result.invite_code:'';
+    }catch(_){return '';}
+  }
   function cachedSignup(email) {
     try {
       const record = JSON.parse(localStorage.getItem(META_KEY) || 'null');
@@ -1422,6 +1428,10 @@
       const name = layer.querySelector('[name="name"]');
       name.value = account.displayName || '';
       layer.querySelector('[name="invite_code"]').value=cachedSignup(account.email)?.invite_code||'';
+      pendingInviteCode().then(code=>{
+        const input=layer.querySelector('[name="invite_code"]');
+        if(input&&!input.value)input.value=code;
+      });
       let finished = false;
       function close() { if (finished) return; finished = true; layer.remove(); }
       layer.querySelector('#stage-profile-cancel').onclick = () => {
@@ -1436,7 +1446,7 @@
             name:form.elements.name.value.trim(),
             birthdate:birthdateFromUi(form.elements.birthdate.value),
             country:form.elements.country.value.trim(),
-            invite_code:form.elements.invite_code.value.trim()
+            invite_code:form.elements.invite_code.value.trim()||await pendingInviteCode()
           };
           const saved = await api('POST','/me',data);
           close(); resolve(saved);
@@ -1456,7 +1466,7 @@
         try{
           const saved = await api('POST','/me',{
             name:cached.name,birthdate:cached.dob,country:cached.country||'',
-            invite_code:cached.invite_code||''
+            invite_code:cached.invite_code||await pendingInviteCode()
           });
           try{localStorage.removeItem(META_KEY);}catch(_){}
           return saved;
@@ -1499,6 +1509,10 @@
     const inviteObserver=new MutationObserver(ensureInviteCodeInput);
     inviteObserver.observe(inviteAuthRoot,{childList:true});
     ensureInviteCodeInput();
+    pendingInviteCode().then(code=>{
+      const input=document.getElementById('stage-invite-code');
+      if(input&&code&&!input.value)input.value=code;
+    });
   }
 
   window.API.signup = async function (form) {
@@ -1511,7 +1525,7 @@
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
           email:form.key.trim(), name:form.name, dob:form.dob, country:form.country,
-          invite_code:document.getElementById('stage-invite-code')?.value.trim()||''
+          invite_code:document.getElementById('stage-invite-code')?.value.trim()||await pendingInviteCode()
         }));
       } catch (_) {}
       return { ok:false, msg:result.verificationSent ?
@@ -3953,7 +3967,7 @@
   async function showVerifiedInviteSheet(){
     if(!session){window.showAuth('welcome');return;}
     window.openSheet('<h3>🤝 Invite a friend</h3>'+
-      '<div id="sharika-invite-data" aria-live="polite">Loading verified invites…</div>');
+      '<div id="sharika-invite-data" aria-live="polite">Loading your rewards…</div>');
     const root=document.getElementById('sharika-invite-data');
     if(!root)return;
     try{
@@ -3961,33 +3975,120 @@
       if(!root.isConnected)return;
       const invite=String(result.invite_code||'');
       if(!/^[0-9]{8}$/.test(invite))throw new Error('Verified ID unavailable');
+      const config=result.settings||{};
+      const cash=Number(result.cash_balance_cents||0);
+      const money=value=>'$'+(Number(value||0)/100).toFixed(2);
       const referrals=(result.referrals||[]).map(r=>
         '<div class="row"><span>ID '+sellerEscape(r.public_id)+'</span>'+
         '<b>'+sellerEscape(r.name)+'</b></div>').join('');
-      root.innerHTML='<p class="n">New invite signup: you earn 5,000 coins; your friend starts with 10,000 coins. You also earn 5% of their verified coin-seller recharges.</p>'+
-        '<div class="idp" style="margin-top:12px">Your invite code: <b>'+
-        sellerEscape(invite)+'</b></div>'+
-        '<div class="row"><span>Friends who joined</span><b>'+
-        Number(result.total_invites||0).toLocaleString('en-US')+'</b></div>'+
-        '<div class="row"><span>Signup invite rewards earned</span><b>'+
-        Number(result.signup_bonus_coins||0).toLocaleString('en-US')+' coins</b></div>'+
-        '<div class="row"><span>5% recharge rewards earned</span><b>'+
-        Number(result.recharge_bonus_coins||0).toLocaleString('en-US')+' coins</b></div>'+
-        (result.invited_by?'<p class="n">You joined with code '+sellerEscape(result.invited_by)+'</p>':'')+
-        (referrals?'<div class="card" style="padding:12px;margin-top:12px">'+
-        '<b>Verified referrals</b>'+referrals+'</div>':'')+
-        '<button class="big" id="sharika-share-invite">📤 Share code</button>';
+      const claim=result.can_claim&&!result.invited_by ?
+        '<form id="sharika-invite-claim" style="margin-top:12px">'+
+          '<b>Have an invite code?</b><p class="n">Enter it within '+
+          Number(config.claim_hours||48)+' hours of joining.</p>'+
+          '<input class="field" name="invite_code" required maxlength="8" '+
+          'pattern="[0-9]{8}" inputmode="numeric" placeholder="8-digit invite code" '+
+          'style="width:100%;box-sizing:border-box;margin:8px 0">'+
+          '<button class="big" type="submit">✅ Claim invite rewards</button></form>'
+        :'<p class="n">'+(result.invited_by?
+          'Invited by '+sellerEscape(result.invited_by):
+          result.already_invited?'Invite already linked':
+          result.claim_requires_device?'Rewards require one eligible Android device':
+          'Invite code window has ended')+'</p>';
+      const cashout=config.withdrawals_enabled&&!result.cashout_requires_adult?
+        '<form id="sharika-invite-cashout" style="margin-top:12px">'+
+          '<b>Request bank withdrawal</b><p class="n">Minimum '+money(config.min_withdraw_cents)+
+          '. Your request goes to Sharika Admin for manual payment approval.</p>'+
+          '<label class="n">Amount (USD)<input class="field" name="amount" type="number" '+
+          'min="'+(Number(config.min_withdraw_cents||100)/100).toFixed(2)+
+          '" step="0.01" required placeholder="Amount in USD" style="width:100%"></label>'+
+          '<label class="n">Bank name<input class="field" name="bank_name" required maxlength="90" style="width:100%"></label>'+
+          '<label class="n">Account holder<input class="field" name="account_name" required maxlength="100" style="width:100%"></label>'+
+          '<label class="n">Account / IBAN<input class="field" name="account_number" required minlength="6" maxlength="48" style="width:100%"></label>'+
+          '<label class="n">Country code (e.g. BD)<input class="field" name="payout_country" required minlength="2" maxlength="2" style="width:100%"></label>'+
+          '<button class="big" type="submit">💵 Send withdrawal request</button></form>'
+        :'<p class="n">'+(result.cashout_requires_adult?
+          'Cash withdrawals are available only to adults.':
+          'USD withdrawals are currently disabled by Admin.')+'</p>';
+      const withdrawals=(result.cashouts||[]).map(w=>
+        '<div class="row"><span>'+money(w.amount_cents)+' · ****'+
+        sellerEscape(w.bank_last4)+' · '+sellerEscape(w.created_at)+'</span><b>'+
+        sellerEscape(w.status)+'</b></div>').join('');
+      root.innerHTML=
+        '<div class="card" style="padding:15px;border:1px solid #e8bc70;border-radius:18px;'+
+        'background:linear-gradient(135deg,#44226e,#23153d)">'+
+        '<b style="color:#ffe19a">Your invite code</b><div class="idp">'+sellerEscape(invite)+'</div>'+
+        '<p class="n">Share your link. Your friend can use your code for up to '+
+        Number(config.claim_hours||48)+' hours after registration.</p>'+
+        '<button class="big" id="sharika-share-invite">📤 Share invite link</button></div>'+
+        '<div class="row"><span>Verified friends</span><b>'+Number(result.total_invites||0)+'</b></div>'+
+        '<div class="row"><span>Signup coins earned</span><b>'+
+        Number(result.signup_bonus_coins||0).toLocaleString('en-US')+'</b></div>'+
+        '<div class="row"><span>Recharge coins earned</span><b>'+
+        Number(result.recharge_bonus_coins||0).toLocaleString('en-US')+'</b></div>'+
+        '<div class="card" style="margin-top:10px;padding:12px"><h3>Invite code</h3>'+claim+'</div>'+
+        '<div class="card" style="margin-top:10px;padding:12px"><h3>💵 Invite dollars</h3>'+
+        '<div class="idp">'+money(cash)+'</div>'+
+        '<p class="n">Cash rewards: inviter '+money(config.inviter_cash_cents)+
+        ', new user '+money(config.invitee_cash_cents)+
+        '. '+(config.cash_enabled?'Enabled':'Disabled by Admin')+'</p>'+
+        cashout+'</div>'+
+        (withdrawals?'<div class="card" style="padding:12px;margin-top:10px"><b>Withdrawal history</b>'+
+        withdrawals+'</div>':'')+
+        (referrals?'<div class="card" style="padding:12px;margin-top:10px"><b>Verified referrals</b>'+
+        referrals+'</div>':'');
       document.getElementById('sharika-share-invite')?.addEventListener('click',async()=>{
-        const message='Join me on Sharika Voice Chat! Enter my invite code '+invite+
-          ' when creating your account.';
+        const message='Join me on Sharika Voice Chat! Invite code '+invite+
+          '. Open '+result.share_url;
         try{
-          if(navigator.share)await navigator.share({text:message});
+          if(navigator.share)await navigator.share({title:'Sharika invite',text:message,url:result.share_url});
           else if(navigator.clipboard)await navigator.clipboard.writeText(message);
-          else{toast('Invite code: '+invite);return;}
-          toast('Invite code shared');
+          else{toast(message);return;}
+          toast('Invite link shared');
         }catch(_){toast('Invite code: '+invite);}
       });
-    }catch(error){if(root.isConnected)root.textContent='Invite tracking unavailable: '+errText(error);}
+      const inviteCode=await pendingInviteCode();
+      const claimForm=root.querySelector('#sharika-invite-claim');
+      if(claimForm){
+        if(inviteCode)claimForm.elements.invite_code.value=inviteCode;
+        claimForm.addEventListener('submit',async event=>{
+          event.preventDefault();
+          const btn=claimForm.querySelector('[type=submit]');
+          if(btn.disabled)return;
+          btn.disabled=true;
+          try{
+            await api('POST','/invites/claim',{invite_code:claimForm.elements.invite_code.value.trim()});
+            toast('Invite rewards linked successfully ✓');
+            await reloadWallet();await showVerifiedInviteSheet();
+          }catch(error){toast('Invite claim failed: '+errText(error));btn.disabled=false;}
+        });
+      }
+      const cashForm=root.querySelector('#sharika-invite-cashout');
+      if(cashForm)cashForm.addEventListener('submit',async event=>{
+        event.preventDefault();
+        const btn=cashForm.querySelector('[type=submit]');
+        if(btn.disabled)return;
+        const amount=Math.round(Number(cashForm.elements.amount.value)*100);
+        if(!Number.isSafeInteger(amount)||amount>cash){
+          toast('Check your available USD balance');return;
+        }
+        if(!window.confirm('Send '+money(amount)+' withdrawal request for manual bank transfer?'))return;
+        btn.disabled=true;
+        try{
+          const uuid=()=>{const a=crypto.getRandomValues(new Uint8Array(16));a[6]=(a[6]&15)|64;a[8]=(a[8]&63)|128;
+            return Array.from(a,(v,i)=>v.toString(16).padStart(2,'0')+
+              ([3,5,7,9].includes(i)?'-':'')).join('');};
+          await api('POST','/invites/withdrawals',{
+            request_id:uuid(),amount_cents:amount,
+            bank_name:cashForm.elements.bank_name.value.trim(),
+            account_name:cashForm.elements.account_name.value.trim(),
+            account_number:cashForm.elements.account_number.value.trim(),
+            payout_country:cashForm.elements.payout_country.value.trim().toUpperCase()
+          });
+          toast('Request sent to Sharika Admin ✓');
+          await showVerifiedInviteSheet();
+        }catch(error){toast('Withdrawal request failed: '+errText(error));btn.disabled=false;}
+      });
+    }catch(error){if(root.isConnected)root.textContent='Invite service unavailable: '+errText(error);}
   }
   window.dailySheet=showVerifiedDailySheet;
   window.inviteSheet=showVerifiedInviteSheet;

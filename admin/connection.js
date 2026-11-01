@@ -31,6 +31,10 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['bonds','💞','CP & Friendship Gifts']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='invites')){
+    const i=NAV_ALL.findIndex(row=>row[0]==='daily');
+    NAV_ALL.splice(i<0?NAV_ALL.length:i,0,['invites','🤝','Invites & USD Payouts']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='specialIds')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='premium');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -1778,6 +1782,97 @@
     }catch(error){root.innerHTML=card('Banners unavailable',error.message);}
   };
 
+
+  P.invites=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h3>🤝 Invite Rewards & USD Payouts</h3>'+
+      '<p class="n">One reward account per device. Manual transfer requests are reviewed here.</p>'+
+      '<div id="invite-metrics">Loading…</div></div>'+
+      '<div class="card"><h3>Admin reward settings</h3><div id="invite-fields"></div>'+
+      '<p class="n" id="invite-status">Changes affect only future credits. USD amounts are in cents (100 = $1).</p></div>'+
+      '<div class="card"><h3>💵 Bank withdrawal inbox</h3><div id="invite-withdrawals">Loading…</div></div>';
+    try{
+      const [summary,inbox]=await Promise.all([
+        api('GET','invites'),api('GET','invites/withdrawals')
+      ]);
+      byId('invite-metrics').innerHTML=window.T(['Metric','Value'],[
+        ['Verified referrals',fmt(summary.total_invites)],
+        ['Total USD rewards', '$'+(Number(summary.cash_awarded_cents||0)/100).toFixed(2)],
+        ['Pending bank requests',fmt(summary.pending_withdrawals)]
+      ])+window.T(['Inviter ID','Friend ID','Joined'],(summary.referrals||[]).map(r=>[
+        esc(r.inviter_public_id),esc(r.referred_public_id),esc(r.joined_at)
+      ]));
+      const fields=[
+        ['enabled','Referral program enabled',1],
+        ['claim_hours','Claim window (hours)',0],
+        ['inviter_coins','Inviter bonus coins',0],
+        ['invitee_total_coins','Invited user starting coins',0],
+        ['recharge_percent','Recharge commission %',0],
+        ['cash_enabled','Dollar rewards enabled',1],
+        ['inviter_cash_cents','Inviter bonus cents',0],
+        ['invitee_cash_cents','Invited user bonus cents',0],
+        ['withdrawals_enabled','Bank requests enabled',1],
+        ['min_withdraw_cents','Minimum withdrawal cents',0]
+      ];
+      const cfg=summary.settings||{};
+      byId('invite-fields').innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">'+
+        fields.map(([key,label,toggle])=>
+          '<label style="display:grid;gap:4px"><span>'+esc(label)+'</span>'+
+          (toggle?'<select class="field" id="invite-'+key+'" '+(role==='super'?'':'disabled')+'>'+
+            '<option value="0" '+(Number(cfg[key])===0?'selected':'')+'>Off</option>'+
+            '<option value="1" '+(Number(cfg[key])===1?'selected':'')+'>On</option></select>':
+            '<input class="field" type="number" step="1" id="invite-'+key+
+            '" value="'+esc(cfg[key])+'" '+(role==='super'?'':'disabled')+'>')+
+          '</label>').join('')+'</div>'+
+        (role==='super'?'<button type="button" class="btn s" id="invite-save">Save invite settings</button>':
+          '<p class="n">Super Admin access is required to edit.</p>');
+      byId('invite-save')?.addEventListener('click',async e=>{
+        const payload={};
+        for(const [key] of fields){
+          const value=byId('invite-'+key).value.trim();
+          if(!/^[0-9]+$/.test(value)){byId('invite-status').textContent='Use whole numbers.';return;}
+          payload[key]=Number(value);
+        }
+        if(!window.confirm('Save future invite reward rules?'))return;
+        const btn=e.currentTarget;btn.disabled=true;
+        try{await api('PATCH','invites',payload);note('Invite settings saved');await P.invites();}
+        catch(error){byId('invite-status').textContent=error.message;btn.disabled=false;}
+      });
+      const list=byId('invite-withdrawals');
+      const entries=inbox.withdrawals||[];
+      list.innerHTML=entries.length?entries.map(w=>{
+        const b=w.bank||{};
+        return '<div class="card" style="margin:8px 0;padding:12px"><b>ID '+esc(w.public_id)+
+          ' · '+esc(w.name)+'</b><p class="n">'+
+          '$'+(Number(w.amount_cents)/100).toFixed(2)+' · '+esc(w.status)+
+          ' · '+esc(w.created_at)+'</p>'+
+          (w.status==='pending'?'<p class="n">Bank: '+esc(b.bank_name||b.error||'unavailable')+
+            ' · Account holder: '+esc(b.account_name||'')+
+            ' · Account / IBAN: '+esc(b.account_number||'')+
+            ' · Country: '+esc(b.payout_country||'')+'</p>':'')+
+          (w.status==='pending'&&role==='super'?
+            '<button class="btn s" data-invite-action="paid" data-id="'+esc(w.id)+'">Mark Paid</button> '+
+            '<button class="btn s" data-invite-action="rejected" data-id="'+esc(w.id)+'">Reject / Refund</button>':'')+
+          (w.transfer_reference?'<p class="n">Bank reference: '+esc(w.transfer_reference)+'</p>':'')+'</div>';
+      }).join(''):'<p class="n">No withdrawal requests have been submitted.</p>';
+      list.querySelectorAll('[data-invite-action]').forEach(btn=>btn.onclick=async()=>{
+        const action=btn.dataset.inviteAction,id=btn.dataset.id;
+        const ref=action==='paid'?(window.prompt('Enter bank transfer reference after payment:','')||''):'';
+        if(action==='paid'&&ref.trim().length<4)return;
+        const why=action==='rejected'?(window.prompt('Reason for rejection:','')||''):'';
+        if(!window.confirm(action==='paid'?'Confirm this transfer was already sent?':
+          'Reject and refund reserved dollars to this user?'))return;
+        btn.disabled=true;
+        try{
+          await api('POST','invites/withdrawals/'+id+'/decision',{
+            action,transfer_reference:ref.trim(),note:why.trim()
+          });
+          note('Withdrawal '+action);await P.invites();
+        }catch(error){note('Decision failed: '+error.message);btn.disabled=false;}
+      });
+    }catch(error){root.innerHTML=card('Invite administration unavailable',error.message);}
+  };
+
   P.system=async function () {
     const root=byId('pg');
     root.innerHTML=card('Sharika staging','Firebase login and D1 role enforcement active. Only audited, authenticated wallet operations are permitted.');
@@ -1983,7 +2078,7 @@
   P.promo=function(){
     verifiedHub('Invite codes & promotions',
       'Real invite links and referral rewards are managed under Check-in, Tasks & Invites. Generic coupon redemption is not yet connected; no simulated promo codes are issued.',
-      [['Open verified Invite settings','daily'],['Create event campaign','events']]);
+      [['Open verified Invite settings','invites'],['Create event campaign','events']]);
   };
   P.themes=async function(){
     const root=byId('pg');root.innerHTML=card('Room themes','Reading real room theme usage…');
@@ -2089,7 +2184,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','levels','promo','themes','rr','games','winb','lucky','config','flags'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','invites','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','levels','promo','themes','rr','games','winb','lucky','config','flags'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

@@ -15,6 +15,7 @@ import android.graphics.Rect;
 import android.graphics.ImageDecoder;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.util.Base64;
 import android.util.Size;
 import android.os.Bundle;
@@ -44,6 +45,9 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.auth.FirebaseUser;
+import com.android.installreferrer.api.InstallReferrerClient;
+import com.android.installreferrer.api.InstallReferrerStateListener;
+import com.android.installreferrer.api.ReferrerDetails;
 
 import org.json.JSONObject;
 import org.json.JSONException;
@@ -82,6 +86,7 @@ public final class SharikaActivity extends Activity {
     private ValueCallback<Uri[]> pendingImageSelection;
     private String pendingProfilePhotoId;
     private boolean googlePending;
+    private volatile String pendingReferralCode="";
     // Firebase reload contacts the identity server; refreshing on every
     // 1.6-second live-game poll causes overlapping network calls.
     private volatile String recentlyVerifiedUserId;
@@ -90,6 +95,8 @@ public final class SharikaActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        captureReferralIntent(getIntent());
+        readPlayInstallReferral();
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN);
         // Let the app background reach the physical top edge on phones with a
@@ -459,6 +466,11 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, identity(null), null));
                 break;
             case "api": callStagingApi(id, data); break;
+            case "inviteCode":
+                JSONObject ref=object();
+                try{ref.put("invite_code",pendingReferralCode);}catch(JSONException ignored){}
+                sendResult(id,result(true,ref,null));
+                break;
             case "pickProfilePhoto": pickNativeProfilePhoto(id); break;
             default: sendResult(id, result(false, null, "unsupported_action"));
         }
@@ -559,6 +571,49 @@ public final class SharikaActivity extends Activity {
         }
     }
 
+    private static String validatedInviteCode(String value){
+        return value != null && value.matches("[0-9]{8}") ? value : "";
+    }
+
+    private void captureReferralIntent(Intent intent){
+        if(intent==null||intent.getData()==null)return;
+        Uri uri=intent.getData();
+        if("sharika".equals(uri.getScheme()) && "invite".equals(uri.getHost())){
+            String segment=uri.getLastPathSegment();
+            if(!validatedInviteCode(segment).isEmpty())
+                pendingReferralCode=segment;
+        }
+    }
+
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);
+        setIntent(intent);
+        captureReferralIntent(intent);
+    }
+
+    private void readPlayInstallReferral(){
+        final InstallReferrerClient referrer=InstallReferrerClient.newBuilder(this).build();
+        try{
+            referrer.startConnection(new InstallReferrerStateListener(){
+                @Override public void onInstallReferrerSetupFinished(int responseCode){
+                    try{
+                        if(responseCode==InstallReferrerClient.InstallReferrerResponse.OK){
+                            ReferrerDetails details=referrer.getInstallReferrer();
+                            String ref=details.getInstallReferrer();
+                            String code=Uri.parse("https://sharika.invalid/?"+ref)
+                                .getQueryParameter("sharika_invite");
+                            if(!validatedInviteCode(code).isEmpty() && pendingReferralCode.isEmpty())
+                                pendingReferralCode=code;
+                        }
+                    }catch(Exception ignored){
+                        // Direct APK installs do not have a Google Play referrer.
+                    }finally{try{referrer.endConnection();}catch(Exception ignored){}}
+                }
+                @Override public void onInstallReferrerServiceDisconnected(){}
+            });
+        }catch(Exception ignored){}
+    }
+
     private boolean allowedApi(String method, String path) {
         if (path == null || !path.startsWith("/api/v1/") ||
             path.contains("%") || path.contains("#") || path.contains("..") ||
@@ -620,6 +675,8 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/games")) return method.equals("GET");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
+        if (path.equals("/api/v1/invites/claim") ||
+            path.equals("/api/v1/invites/withdrawals"))return method.equals("POST");
         if (path.equals("/api/v1/daily/check-in")) return method.equals("POST");
         if (path.equals("/api/v1/daily/tasks/claim")) return method.equals("POST");
         if (path.equals("/api/v1/premium")) return method.equals("GET");
@@ -738,6 +795,13 @@ public final class SharikaActivity extends Activity {
             connection.setReadTimeout(savingImage ? 60000 : 12000);
             connection.setRequestProperty("Accept","application/json");
             connection.setRequestProperty("Authorization","Bearer " + jwt);
+            // Injected by native code, never by WebView JS. D1 stores a hash,
+            // not the raw device identifier. Modified APKs still require
+            // server-side Play Integrity before production cash rewards.
+            String androidId=Settings.Secure.getString(
+                getContentResolver(),Settings.Secure.ANDROID_ID);
+            if(androidId!=null && androidId.matches("[a-fA-F0-9]{16}"))
+                connection.setRequestProperty("X-Sharika-Device",androidId);
             if (body != null) {
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type","application/json; charset=utf-8");

@@ -139,7 +139,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if (operation.startsWith('recharges')) return await handleRechargeAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
-  if (operation==='invites') return await handleInviteAdmin({
+  if (operation==='invites'||operation.startsWith('invites/')) return await handleInviteAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
   if (operation==='daily') return await handleDailyAdmin({

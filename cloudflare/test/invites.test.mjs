@@ -11,6 +11,16 @@ function mock({inviter=true,active=true,self=false,profile=true,referred=true}={
         bind(...args){this.args=args;return this;},
         async first(){
           state.queries.push({sql,args:this.args});
+          if(sql.includes('SELECT * FROM sharika_invite_settings'))
+            return {enabled:1,claim_hours:48,inviter_coins:5000,invitee_total_coins:10000,
+              recharge_percent:5,cash_enabled:0,inviter_cash_cents:0,
+              invitee_cash_cents:0,withdrawals_enabled:0,min_withdraw_cents:100};
+          if(sql.includes("SELECT created_at,minor FROM sharika_users"))
+            return {created_at:'2026-11-01 00:00:00',minor:0};
+          if(sql.includes('SELECT 1 AS yes FROM sharika_referrals'))return null;
+          if(sql.includes('SELECT COALESCE(SUM(delta_cents),0)'))return {cents:0};
+          if(sql.includes('SELECT COUNT(*) AS pending FROM sharika_invite_withdrawals'))return {pending:0};
+          if(sql.includes('SELECT COALESCE(SUM(CASE WHEN delta_cents>0'))return {awarded_cents:0};
           if(sql.includes('SELECT u.auth_uid,u.status,u.coins FROM sharika_referrals'))
             return referred?{auth_uid:'bob',status:active?'active':'blocked',coins:500}:null;
           if(sql.includes("SELECT auth_uid,public_no,status FROM sharika_users"))
@@ -25,6 +35,7 @@ function mock({inviter=true,active=true,self=false,profile=true,referred=true}={
         },
         async all(){
           state.queries.push({sql,args:this.args});
+          if(sql.includes('FROM sharika_invite_withdrawals'))return {results:[]};
           if(sql.includes('WHERE r.inviter_uid=?'))return {results:[
             {public_no:10000010,name:'Friend A',created_at:'2026-10-30 01:00:00'}
           ]};
