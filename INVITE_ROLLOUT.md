@@ -47,10 +47,9 @@ modify the existing production app, Sovera, Akira, or payment accounts.
 ## Migration and secrets (REVIEW BEFORE ANY RUN)
 1. Take a **recoverable backup** of the isolated `sharika-staging` D1 database.
 2. **Reconcile the existing migration-journal drift** first. The prior repository
-   documents that `d1_migrations` may list only 0001 even when newer tables
-   already exist. Do not blindly run all old migrations or rebuild tables.
-3. Verify requirements 0001–0032 are present, then manually apply only the
-   additive `cloudflare/migrations/0033_invite_cashout.sql` migration in staging.
+   previously recorded a D1 journal mismatch. A read-only check on 1 Nov 2026 now sees `0033_notifications.sql` as the latest migration. Confirm the entire schema/journal again before any write. Do not blindly run old migrations or rebuild tables.
+3. Verify requirements 0001–0033 (including Notifications) are present, then manually apply only the
+   additive `cloudflare/migrations/0034_invite_cashout.sql` migration in staging.
    Review table names and trigger behavior on a cloned database first.
 4. Set Worker secret `REFERRAL_PAYOUT_KEY` to a securely generated **32-byte
    random AES key, standard base64 encoded**. Keep a recoverable backup of the
