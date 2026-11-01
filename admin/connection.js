@@ -29,7 +29,7 @@
   if(!NAV_ALL.some(item=>item[0]==='bonds')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='premium');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
-      ['bonds','💞','CP & Friendship Gifts']);
+      ['bonds','💞','CP Ranking, Rewards & Gifts']);
   }
   if(!NAV_ALL.some(item=>item[0]==='specialIds')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='premium');
@@ -1036,6 +1036,80 @@
 
   // CP/Friendship policy is independent of ordinary room gifts. Only the
   // verified Super Admin can change prices or enabled status; Finance reads.
+  async function renderCpRewardAdmin(){
+    const root=byId('sh-cp-reward-settings');if(!root)return;
+    let data;
+    try{data=await api('GET','bonds/rewards');}
+    catch(error){root.textContent='CP rewards unavailable: '+error.message+
+      ' (staging migration 0035 may be pending)';return;}
+    if(!root.isConnected)return;
+    const editable=role==='super';
+    const items=data.assets||[];
+    const options=(kind,selected)=>'<option value="">No '+(kind==='frame_style'?'frame':'medal')+'</option>'+
+      items.filter(x=>x.kind===kind).map(x=>'<option value="'+esc(x.id)+'" '+
+        (x.id===selected?'selected':'')+'>'+esc(x.name)+'</option>').join('');
+    const rows=(data.rules||[]).map(rule=>'<div class="row" style="align-items:end;'+
+      'border-bottom:1px solid #ffffff24;padding:10px 0;flex-wrap:wrap">'+
+      '<strong style="min-width:65px">TOP '+rule.rank+'</strong>'+
+      '<label>Coins each<input class="field" style="width:120px" type="number" min="0" max="1000000" '+
+      'id="sh-cp-coins-'+rule.rank+'" value="'+esc(rule.coins_each)+'" '+(editable?'':'disabled')+'></label>'+
+      '<label>Special frame<select class="field" id="sh-cp-frame-'+rule.rank+'" '+
+      (editable?'':'disabled')+'>'+options('frame_style',rule.frame_item_id)+'</select></label>'+
+      '<label>Medal<select class="field" id="sh-cp-medal-'+rule.rank+'" '+
+      (editable?'':'disabled')+'>'+options('medal_style',rule.medal_item_id)+'</select></label></div>').join('');
+    const last=data.last_week||{};
+    root.innerHTML='<p class="n">Each partner receives the configured coins, special frame and medal. '+
+      'Frames/medals are permanent Store entitlements, not replacements for purchased items. '+
+      'Changes affect future settlement only; paid weeks are immutable.</p>'+
+      '<label><input type="checkbox" id="sh-cp-enabled" '+(data.policy?.enabled?'checked ':'')+
+      (editable?'':'disabled')+'> Enable weekly CP rewards</label><br>'+
+      '<label><input type="checkbox" id="sh-cp-auto" '+(data.policy?.auto_award?'checked ':'')+
+      (editable?'':'disabled')+'> Automatically settle after a full eligible week</label>'+
+      '<p class="n">Automatic rewards begin with the next complete UTC Monday–Sunday week when first activated. '+
+      'Previous weeks require an explicit Super Admin action.</p>'+rows+
+      (editable?'<button class="btn s" type="button" id="sh-cp-rewards-save">Save TOP 1–7 prizes</button> ':'')+
+      '<p class="n" id="sh-cp-rewards-note">'+(data.policy?.enabled?'Rewards enabled':'Rewards disabled')+'</p>'+
+      '<div class="card"><h3>🏆 Last completed week</h3><p class="n">'+
+      new Date(last.start_ms).toISOString().slice(0,10)+' · '+
+      (last.awarded?'Awarded and locked':'Not yet awarded')+'</p>'+
+      (last.leaders||[]).map(pair=>'<p class="n">#'+pair.rank+' · '+
+        esc(pair.a.name)+' & '+esc(pair.b.name)+' · '+fmt(pair.total)+' verified CP coins</p>').join('')+
+      (!(last.leaders||[]).length?'<p class="n">No eligible verified CP pairs.</p>':'')+
+      (editable?'<button type="button" class="btn s" id="sh-cp-award-last" '+
+        (!data.policy?.enabled||last.awarded?'disabled':'')+'>Award last completed week once</button>':'')+'</div>'+
+      '<div class="card"><h3>📜 Weekly payout receipts</h3>'+
+      (data.history||[]).map(batch=>'<p class="n">'+
+        new Date(Number(batch.week_start_ms)).toISOString().slice(0,10)+' · '+
+        Number(batch.winner_count)+' CP pairs · '+esc(batch.issued_by)+'</p>').join('')+
+      (!(data.history||[]).length?'<p class="n">No paid weeks yet.</p>':'')+'</div>';
+    byId('sh-cp-rewards-save')?.addEventListener('click',async event=>{
+      const rules=[];
+      for(let rank=1;rank<=7;rank++){
+        const coins_each=Number(byId('sh-cp-coins-'+rank).value);
+        if(!Number.isSafeInteger(coins_each)||coins_each<0||coins_each>1_000_000){
+          byId('sh-cp-rewards-note').textContent='Coins must be 0–1,000,000 per partner.';return;}
+        rules.push({rank,coins_each,frame_item_id:byId('sh-cp-frame-'+rank).value||null,
+          medal_item_id:byId('sh-cp-medal-'+rank).value||null});
+      }
+      const enabled=byId('sh-cp-enabled').checked,auto_award=byId('sh-cp-auto').checked;
+      if(!window.confirm('Save weekly CP TOP 1–7 reward rules?'))return;
+      const button=event.currentTarget;button.disabled=true;
+      try{await api('PATCH','bonds/rewards',{enabled,auto_award,rules});
+        note('CP reward rules saved ✓');await renderCpRewardAdmin();}
+      catch(error){byId('sh-cp-rewards-note').textContent='Not saved: '+error.message;
+        button.disabled=false;}
+    });
+    byId('sh-cp-award-last')?.addEventListener('click',async event=>{
+      if(!window.confirm('FINAL CONFIRMATION: Credit BOTH partners of each eligible TOP 1–7 CP pair '+
+        'and grant configured frames/medals for the completed UTC week? This cannot be undone.'))return;
+      const button=event.currentTarget;button.disabled=true;
+      try{const result=await api('POST','bonds/rewards/settle',{confirm:true});
+        note(result.duplicate?'This week was already awarded':
+          'CP reward complete · '+result.winner_count+' pairs');await renderCpRewardAdmin();}
+      catch(error){note('Not awarded: '+error.message);button.disabled=false;}
+    });
+  }
+
   P.bonds=async function(){
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>💞 Royal CP & Friendship Gifts</h3>'+
@@ -1044,8 +1118,11 @@
       '<div id="sh-admin-bond-policy">Loading verified bond rules…</div></div>'+
       '<div class="card"><h3>🎁 CP / Friendship Gift Catalog</h3>'+
       '<div id="sh-admin-bond-gifts">Loading gift prices…</div></div>'+
+      '<div class="card"><h3>👑 CP TOP 1–7 Weekly Ranking Rewards</h3>'+
+      '<div id="sh-cp-reward-settings">Loading reward rules…</div></div>'+
       '<div class="card"><h3>📜 Recent Relationship Audit</h3>'+
       '<div id="sh-admin-bond-audit">Loading…</div></div>';
+    void renderCpRewardAdmin();
     const policyRoot=byId('sh-admin-bond-policy');
     const giftRoot=byId('sh-admin-bond-gifts');
     const auditRoot=byId('sh-admin-bond-audit');
