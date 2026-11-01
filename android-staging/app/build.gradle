@@ -56,11 +56,13 @@ dependencies {
 }
 
  
-// Package the exact original Sharika HTML and CSS without changing the live
-// app's app/index.html. Only the Android staging copy gets the D1 adapter.
+// Package Sharika's homepage assets for Android. The staging-specific connection
+// adapter replaces only connection.js in the packaged copy.
 def sharikaUiAssets = layout.buildDirectory.dir('generated/sharika-ui-assets')
 tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/index.html'))
+    from(rootProject.file('../app/golden-home-background.jpg'))
+    from(rootProject.file('../app/golden-home.css'))
     from(rootProject.file('back-navigation.js'))
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))
