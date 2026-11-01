@@ -1,4 +1,6 @@
 import { rechargeReferralStatements } from './invites.mjs';
+import { firstRechargeBonusStatements } from './first-recharge.mjs';
+import {readInviteRules} from './invite-rules.mjs';
 // Sharika staging: approved coin sellers with a separate audited stock ledger.
 // No seller may mint coins, spend another seller's stock, or grant admin roles.
 const PUBLIC_ID=/^[0-9]{8}$/;
@@ -117,16 +119,24 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
     if(Number(recipient.coins)>MAX_USER_BALANCE-amount)
       return fail('recipient_balance_limit',409,cors);
     const creditId='seller-credit:'+uid+':'+requestId;
-    let referralCredit;
+    let referralCredit,firstRecharge;
     try{
+      const rules=await readInviteRules(env.DB);
       // Do not mint a referral commission from a seller's own stock recharge.
       referralCredit=selfRecharge?{bonus:0,statements:[]}:
         await rechargeReferralStatements({
-          db:env.DB,recipientUid:recipient.auth_uid,sellerUid:uid,requestId,amount
+          db:env.DB,recipientUid:recipient.auth_uid,sellerUid:uid,requestId,amount,rules
+        });
+      firstRecharge=selfRecharge?{bonus:0,statements:[]}:
+        await firstRechargeBonusStatements({
+          db:env.DB,recipientUid:recipient.auth_uid,kind:'seller',
+          reference:uid+':'+requestId,coins:amount,balance:recipient.coins,rules
         });
     }catch(error){
       if(error.message==='inviter_balance_limit')
         return fail('inviter_balance_limit',409,cors);
+      if(error.message==='recipient_balance_limit')
+        return fail('recipient_balance_limit',409,cors);
       throw error;
     }
     await env.DB.batch([
@@ -148,6 +158,7 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
         'INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) '+
         "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'seller_recharge',?)"
       ).bind(recipient.auth_uid,amount,recipient.auth_uid,creditId),
+      ...firstRecharge.statements,
       ...referralCredit.statements
     ]);
     const saved=await env.DB.prepare(
@@ -159,7 +170,8 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
       sender_public_id:showId(actor.public_no),
       available_coins:saved.stock_after,
       self_recharge:selfRecharge,
-      referral_bonus_coins:referralCredit.bonus},201,cors);
+      referral_bonus_coins:referralCredit.bonus,
+      first_recharge_bonus_coins:firstRecharge.bonus},201,cors);
   }
   return fail('seller_method_not_allowed',405,cors);
 }

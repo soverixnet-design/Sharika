@@ -15,6 +15,7 @@ import android.graphics.Rect;
 import android.graphics.ImageDecoder;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.util.Base64;
 import android.util.Size;
 import android.os.Bundle;
@@ -57,6 +58,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -460,6 +462,34 @@ public final class SharikaActivity extends Activity {
                 break;
             case "api": callStagingApi(id, data); break;
             case "pickProfilePhoto": pickNativeProfilePhoto(id); break;
+            case "copyInviteCode":
+                String inviteCode = data.optString("code", "");
+                if (!inviteCode.matches("[0-9]{8}")) {
+                    sendResult(id, result(false, null, "invalid_invite_code"));
+                    break;
+                }
+                android.content.ClipboardManager clipboard =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Sharika invite code", inviteCode));
+                sendResult(id, result(true, object(), null));
+                break;
+            case "shareInvite":
+                String invitation = data.optString("text", "");
+                if (invitation.length() < 10 || invitation.length() > 320 ||
+                    !invitation.startsWith("Join me on Sharika")) {
+                    sendResult(id, result(false, null, "invalid_invite_message"));
+                    break;
+                }
+                Intent share = new Intent(Intent.ACTION_SEND);
+                share.setType("text/plain");
+                share.putExtra(Intent.EXTRA_TEXT, invitation);
+                try {
+                    startActivity(Intent.createChooser(share, "Invite friends to Sharika"));
+                    sendResult(id, result(true, object(), null));
+                } catch (Exception error) {
+                    sendResult(id, result(false, null, "share_unavailable"));
+                }
+                break;
             default: sendResult(id, result(false, null, "unsupported_action"));
         }
     }
@@ -620,6 +650,11 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/games")) return method.equals("GET");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
+        if (path.equals("/api/v1/invites/rankings")) return method.equals("GET");
+        if (path.equals("/api/v1/invites/redeem")) return method.equals("POST");
+        if (path.equals("/api/v1/invites/device")) return method.equals("POST");
+        if (path.equals("/api/v1/invites/withdrawals"))
+            return method.equals("GET") || method.equals("POST");
         if (path.equals("/api/v1/daily/check-in")) return method.equals("POST");
         if (path.equals("/api/v1/daily/tasks/claim")) return method.equals("POST");
         if (path.equals("/api/v1/premium")) return method.equals("GET");
@@ -649,6 +684,8 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))
+            return method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/theme-image$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/locks$"))
             return method.equals("PUT");
@@ -729,12 +766,28 @@ public final class SharikaActivity extends Activity {
             // Photo uploads carry an optimized JPEG across a mobile connection.
             // Keep normal requests short, but allow a slower gallery save to
             // finish and return its server commit confirmation.
-            boolean savingAvatar = method.equals("PUT") &&
-                path.equals("/api/v1/me/avatar");
-            connection.setConnectTimeout(savingAvatar ? 20000 : 12000);
-            connection.setReadTimeout(savingAvatar ? 60000 : 12000);
+            boolean savingImage = method.equals("PUT") &&
+                (path.equals("/api/v1/me/avatar") ||
+                 path.matches("^/api/v1/rooms/[0-9]{8}/(cover|theme-image)$"));
+            connection.setConnectTimeout(savingImage ? 20000 : 12000);
+            connection.setReadTimeout(savingImage ? 60000 : 12000);
             connection.setRequestProperty("Accept","application/json");
             connection.setRequestProperty("Authorization","Bearer " + jwt);
+            // ANDROID_ID is scoped to app signing key + Android user, and is
+            // NOT a secure hardware attestation. Hash locally; Worker HMACs it
+            // again with a server-only pepper. Never send the raw identifier.
+            try {
+                String androidId=Settings.Secure.getString(getContentResolver(),
+                    Settings.Secure.ANDROID_ID);
+                if (androidId!=null && !androidId.isEmpty()) {
+                    byte[] proof=MessageDigest.getInstance("SHA-256").digest(
+                        (getPackageName()+":"+androidId).getBytes(StandardCharsets.UTF_8));
+                    StringBuilder hexProof=new StringBuilder(64);
+                    for(byte value:proof)hexProof.append(String.format(java.util.Locale.ROOT,
+                        "%02x",value&0xff));
+                    connection.setRequestProperty("x-sharika-device-proof",hexProof.toString());
+                }
+            } catch(Exception ignored) { /* No proof means no invite cash eligibility. */ }
             if (body != null) {
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type","application/json; charset=utf-8");

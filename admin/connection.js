@@ -498,8 +498,16 @@
       (role==='super'?'<button class="btn s" id="daily-task-save" type="button">Save task coins</button>':'')+
       '<p class="n" id="daily-task-admin-note">Only Super Admin can edit future Follow/Gift task rewards.</p></div>'+
       '<div class="card"><h3>🤝 Verified invites</h3>'+
-      '<p class="n">Verified referral signup: inviter +5,000 coins, new user starts with 10,000 coins. Later approved coin-seller recharge: inviter +5%.</p>'+
-      '<div id="daily-invite-report">Loading verified referrals…</div></div>';
+      '<p class="n">Current rates are shown below. Only future verified grants use updated settings; historical coin and USD receipts remain unchanged.</p>'+
+      '<div id="daily-invite-report">Loading verified referrals…</div></div>'+
+      '<div class="card"><h3>⚙️ Invitation, recharge & payout settings</h3>'+
+      '<p class="n">Super Admin may edit all reward values. USD options are in cents (5000 = $50). Changes apply to future transactions only.</p>'+
+      '<div class="row" id="daily-invite-rules-fields">Loading…</div>'+
+      (role==='super'?'<button class="btn s" id="daily-invite-rules-save" type="button">Save all invite rules</button>':'')+
+      '<p class="n" id="daily-invite-rules-status"></p></div>'+
+      '<div class="card"><h3>💵 Invite USD review & withdrawals</h3>'+
+      '<p class="n">Dollar earnings must be screened for fake accounts. Do NOT mark a withdrawal paid before external payout and identity verification. Coin balances do not convert to cash.</p>'+
+      '<div id="daily-invite-cash">Loading pending USD entries…</div></div>';
     const stats=byId('daily-stats'),fields=byId('daily-config-fields'),note=byId('daily-note');
     try{
       const result=await api('GET','daily');
@@ -528,8 +536,132 @@
       byId('daily-invite-report').innerHTML='<p class="n">Total verified invites: <b>'+
         fmt(invites.total_invites)+'</b></p>'+
         window.T(['Bonus type','Coin rewards credited','Transactions'],
-          (invites.bonus_totals||[]).map(r=>[esc(r.reason),fmt(r.coins),fmt(r.count)]))+table;
+          (invites.bonus_totals||[]).map(r=>[esc(r.reason),fmt(r.coins),fmt(r.count)]))+
+        window.T(['Cash earning state','US cents','Referrals'],
+          (invites.usd_earning_totals||[]).map(r=>[esc(r.status),fmt(r.cents),fmt(r.count)]))+table;
     }catch(error){byId('daily-invite-report').textContent=error.message;}
+    const ruleSpecs=[
+      ['inviter_coins','Inviter coins',0,1000000],
+      ['invitee_coins','New member coins',2000,1000000],
+      ['invite_usd_cents','Inviter USD cents',0,10000],
+      ['inviter_recharge_percent','Referrer recharge %',0,50],
+      ['first_recharge_percent','First recharge bonus %',0,100],
+      ['recharge_coins_per_usd','Coins per $1',1000,1000000],
+      ['withdrawal_option_1_cents','Withdrawal #1 cents',1000,1000000],
+      ['withdrawal_option_2_cents','Withdrawal #2 cents',1000,1000000],
+      ['claim_window_hours','Invitation claim hours',1,168]
+    ];
+    try{
+      const loaded=await api('GET','invites/rules');
+      const config=loaded.rules||{};
+      byId('daily-invite-rules-fields').innerHTML=ruleSpecs.map(([key,label,min,max])=>
+        '<label style="display:inline-grid;gap:5px"><span>'+esc(label)+'</span>'+
+        '<input type="number" class="field" min="'+min+'" max="'+max+'" step="1" ' +
+        'id="sh-invite-config-'+key+'" value="'+esc(config[key])+'" '+
+        (role==='super'?'':'disabled')+'></label>').join('');
+      byId('daily-invite-rules-status').textContent='Version '+fmt(config.version)+
+        ' · Changes take effect after Save.';
+      byId('daily-invite-rules-save')?.addEventListener('click',async event=>{
+        const button=event.currentTarget;
+        const next={};
+        for(const [key] of ruleSpecs){
+          const raw=byId('sh-invite-config-'+key)?.value.trim()||'';
+          if(!/^\d+$/.test(raw)){note('Enter whole numbers for all invite settings');return;}
+          next[key]=Number(raw);
+        }
+        if(next.withdrawal_option_1_cents>=next.withdrawal_option_2_cents){
+          note('Withdrawal option #1 must be less than #2');return;
+        }
+        if(!window.confirm('Apply these rates to all FUTURE Sharika invitations, first recharges and withdrawal requests?'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','invites/rules',{rules:next,expected_version:Number(config.version)});
+          note('Reward settings saved for future verified transactions.');
+          await P.daily();
+        }catch(error){note('Invite rule save failed: '+error.message);button.disabled=false;}
+      });
+    }catch(error){byId('daily-invite-rules-fields').textContent='Settings unavailable: '+error.message;}
+    const reviewPanel=byId('daily-invite-cash');
+    try{
+      const [earningData,withdrawData,inboxData]=await Promise.all([
+        api('GET','invites/earnings'),api('GET','invites/withdrawals'),
+        api('GET','invites/inbox')
+      ]);
+      const earn=(earningData.earnings||[]).filter(x=>x.status==='pending');
+      const withdrawals=(withdrawData.withdrawals||[]).filter(x=>x.status==='pending');
+      const unread=(inboxData.messages||[]).filter(x=>x.status==='pending');
+      reviewPanel.innerHTML='<h4>🔔 Owner finance inbox · '+fmt(unread.length)+
+        ' waiting bank withdrawal messages</h4>'+
+        (unread.length?window.T(['Message','User ID','Requested'],unread.map(x=>[
+          '🏦 Bank withdrawal #'+fmt(x.withdrawal_id)+' · $'+
+          (Number(x.amount_cents)/100).toFixed(2),esc(x.user_id),
+          esc(x.created_at||'')])):'<p class="n">No new bank withdrawal requests.</p>')+
+        '<h4>Pending referral cash earnings</h4>'+
+        window.T(['Inviter','New user','USD','Review'],earn.map(x=>[
+          esc(x.inviter_id),esc(x.referred_id),'$'+(x.amount_cents/100).toFixed(2),
+          '<button class="btn s" type="button" data-invite-verify="'+esc(x.referred_id)+
+          '" data-approve="yes">Approve</button> '+
+          '<button class="btn s" type="button" data-invite-verify="'+esc(x.referred_id)+
+          '" data-approve="no">Reject</button>'
+        ]))+'<h4>Pending withdrawal requests</h4>'+
+        window.T(['Request','User ID','USD','Bank / finance review'],withdrawals.map(x=>[
+          fmt(x.id),esc(x.public_id),'$'+(x.amount_cents/100).toFixed(2),
+          '<span>🏦 •••• '+esc(x.bank_account_last4||'not supplied')+'</span> ' +
+          '<button class="btn s" type="button" data-invite-bank="'+fmt(x.id)+'">View bank details</button> '+
+          '<button class="btn s" type="button" data-invite-withdraw-review="'+fmt(x.id)+
+          '" data-review-status="paid">Confirm paid</button> '+
+          '<button class="btn s" type="button" data-invite-withdraw-review="'+fmt(x.id)+
+          '" data-review-status="rejected">Reject</button>'
+        ]))+'<p class="n">Only completed external payments may be marked paid. '+
+        'This panel does not initiate a bank or mobile-money transfer.</p>'+
+        '<div id="sh-invite-bank-detail" class="n" aria-live="polite"></div>';
+      reviewPanel.onclick=async event=>{
+        const earning=event.target.closest('[data-invite-verify]');
+        const payout=event.target.closest('[data-invite-withdraw-review]');
+        const bank=event.target.closest('[data-invite-bank]');
+        if(!earning&&!payout&&!bank)return;
+        const button=earning||payout||bank;if(button.disabled)return;
+        button.disabled=true;
+        try{
+          if(bank){
+            const detail=await api('GET','invites/withdrawals/'+bank.dataset.inviteBank);
+            const record=detail.bank||{};
+            byId('sh-invite-bank-detail').innerHTML='<div class="card">'+
+              '<b>🔐 Restricted bank transfer instructions · #'+fmt(detail.id)+'</b>'+
+              '<p>Name: '+esc(detail.name)+' · User '+esc(detail.user_id)+'</p>'+
+              '<p>Bank: '+esc(record.bank_name)+'</p>'+
+              '<p>Account holder: '+esc(record.account_holder)+'</p>'+
+              '<p>Account number: '+esc(record.account_number)+'</p>'+
+              '<p>Branch: '+esc(record.branch)+'</p>'+
+              '<p>Amount: $'+(Number(detail.amount_cents)/100).toFixed(2)+'</p>'+
+              '<p>Transfer manually outside Sharika, then record the payment reference.</p></div>';
+          }else if(earning){
+            const approved=earning.dataset.approve==='yes';
+            if(!window.confirm((approved?'Approve':'Reject')+' USD earning from '+
+              earning.dataset.inviteVerify+' after checking the real account?'))return;
+            await api('POST','invites/earnings/verify',{
+              referred_public_id:earning.dataset.inviteVerify,approved
+            });
+          }else{
+            const paid=payout.dataset.reviewStatus==='paid';
+            let reference='';
+            if(paid){
+              if(!window.confirm('Have you VERIFIED the identity and ALREADY PAID this '+
+                'withdrawal outside Sharika? This will NOT transfer funds.'))return;
+              reference=(window.prompt('Enter the confirmed external payment transaction ID')||'').trim();
+              if(!/^[A-Za-z0-9:/._-]{8,120}$/.test(reference))throw Error('Valid payment reference required');
+            }else if(!window.confirm('Reject this withdrawal and release its reserved USD?'))return;
+            await api('POST','invites/withdrawals/review',{
+              withdrawal_id:Number(payout.dataset.inviteWithdrawReview),
+              status:paid?'paid':'rejected',payment_reference:reference,
+              confirm_identity_verified:paid,confirm_external_payment:paid
+            });
+          }
+          await P.daily();
+        }catch(error){note('Cash review failed: '+error.message);}
+        finally{button.disabled=false;}
+      };
+    }catch(error){reviewPanel.textContent='Cash review unavailable: '+error.message;}
     if(role!=='super')return;
     byId('daily-save')?.addEventListener('click',async event=>{
       const rewards=Array.from({length:7},(_,i)=>{
@@ -1502,7 +1634,8 @@
         const result=await api('POST','recharges/'+kind,data);
         note.textContent=kind==='approve'?
           (result.duplicate?'Already approved; no extra coins credited.':
-            'Approved: +'+fmt(result.credited_coins)+' coins; inviter bonus +'+
+            'Approved: +'+fmt(result.credited_coins)+' coins; first recharge bonus +'+
+              fmt(result.first_recharge_bonus_coins)+'; inviter bonus +'+
               fmt(result.referral_bonus_coins)+' coins.') :
           'Request rejected; zero coins credited.';
         byId('rc-verified').checked=false;

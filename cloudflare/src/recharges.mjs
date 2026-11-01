@@ -2,6 +2,8 @@
 // money is NEVER inferred from a client message or an unverified receipt.
 // Explicit finance/admin verification is required before one atomic coin grant.
 import { rechargeReferralStatements } from './invites.mjs';
+import { firstRechargeBonusStatements } from './first-recharge.mjs';
+import {readInviteRules} from './invite-rules.mjs';
 const MAX_RECHARGE=1_000_000;
 const MAX_BALANCE=1_000_000_000_000;
 const PUBLIC_ID=n=>String(n).padStart(8,'0');
@@ -82,14 +84,20 @@ export async function handleRechargeAdmin({request,env,uid,actor,operation,cors,
       "AND lower(payment_reference)=lower(?)"
     ).bind(method,reference).first();
     if(used)return fail('payment_reference_already_used',409,cors);
-    let referral;
+    let referral,firstRecharge;
     try{
+      const rules=await readInviteRules(env.DB);
       referral=await rechargeReferralStatements({
         db:env.DB,recipientUid:target.user_id,sellerUid:'manual',
-        requestId:String(id),amount:coins
+        requestId:String(id),amount:coins,rules
+      });
+      firstRecharge=await firstRechargeBonusStatements({
+        db:env.DB,recipientUid:target.user_id,kind:'manual',reference:String(id),
+        coins,balance:target.coins,rules
       });
     }catch(error){
       if(error.message==='inviter_balance_limit')return fail('inviter_balance_limit',409,cors);
+      if(error.message==='recipient_balance_limit')return fail('recipient_balance_limit',409,cors);
       throw error;
     }
     await env.DB.batch([
@@ -103,6 +111,7 @@ export async function handleRechargeAdmin({request,env,uid,actor,operation,cors,
       env.DB.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
         "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'manual_recharge',?)"
       ).bind(target.user_id,coins,target.user_id,'manual-recharge:'+id),
+      ...firstRecharge.statements,
       ...referral.statements,
       env.DB.prepare(
         "INSERT INTO sharika_support_messages(user_id,sender_uid,sender_role,body,request_id) "+
@@ -113,12 +122,14 @@ export async function handleRechargeAdmin({request,env,uid,actor,operation,cors,
       env.DB.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
         .bind(uid,'manual_recharge_approved',JSON.stringify({
           request_id:id,target_public_id:PUBLIC_ID(target.public_no),
-          coins,method,referral_bonus_coins:referral.bonus
+          coins,method,referral_bonus_coins:referral.bonus,
+          first_recharge_bonus_coins:firstRecharge.bonus
         }))
     ]);
     return reply({approved:true,duplicate:false,request_id:id,
       recipient_public_id:PUBLIC_ID(target.public_no),credited_coins:coins,
-      referral_bonus_coins:referral.bonus},201,cors);
+      referral_bonus_coins:referral.bonus,
+      first_recharge_bonus_coins:firstRecharge.bonus},201,cors);
   }
   if(operation==='recharges/reject'&&request.method==='POST'){
     let data;

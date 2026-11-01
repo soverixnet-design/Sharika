@@ -468,6 +468,17 @@ export class SharikaVoiceRoom extends DurableObject {
     return Object.fromEntries(rows.map(r=>[r.roomId,Number(r.onlineCount)||0]));
   }
 
+  // D1 membership records survive an Android process being killed. Expose a
+  // verified, short-lived room roster so seats do not display dead sessions.
+  async presenceRoomMembers(roomId) {
+    const now=Date.now();
+    this.ctx.storage.sql.exec('DELETE FROM app_presence WHERE last_seen < ?',now-90_000);
+    return this.ctx.storage.sql.exec(
+      'SELECT uid FROM app_presence WHERE room_id=? AND last_seen>=? LIMIT 100',
+      roomId,now-90_000
+    ).toArray().map(row=>String(row.uid));
+  }
+
   async presenceStats() {
     const now=Date.now();
     this.ctx.storage.sql.exec('DELETE FROM app_presence WHERE last_seen < ?',now-90_000);

@@ -163,13 +163,16 @@ test('seller stock insufficient rejects without touching user coins',async()=>{
   assert.equal((await app(DB,'POST','/api/v1/sellers/transfer',validTransfer)).status,409);
   assert.equal(state.batch.length,0);
 });
-test('verified seller transfer changes stock, user wallet, immutable ledger in one batch',async()=>{
+test('verified seller transfer grants one-time 40% bonus in the same wallet batch',async()=>{
   const {DB,state}=mockDB();
   const result=await app(DB,'POST','/api/v1/sellers/transfer',validTransfer);
   assert.equal(result.status,201);
   assert.equal(result.data.sender_public_id,'10000003');
+  assert.equal(result.data.first_recharge_bonus_coins,80);
   assert.equal(state.batch.length,1);
-  assert.equal(state.batch[0].length,4);
+  assert.equal(state.batch[0].length,7);
+  assert.match(state.batch[0][4].sql,/sharika_first_recharge_bonuses/);
+  assert.equal(state.batch[0][5].args[1],80);
   assert.ok(state.queries.some(q=>q.sql.includes('sharika_coin_seller_transfers')));
 });
 test('seller transfer list shows verified sender and recipient IDs, scoped to caller',async()=>{

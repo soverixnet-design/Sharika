@@ -294,6 +294,111 @@
       (frame?.U||[]).find(item=>item?.id===key);
     return verifiedAvatarUrl(member?.pic);
   }
+  // A gift is a relationship between two real people, not just an emoji
+  // flying toward an anonymous seat. Small gifts appear above the chat dock;
+  // only verified Luxury (catalog tab 1) gifts get a ten-second royal parade.
+  const FEATURED_GIFT_TAB=1;
+  function giftPresentationCss(doc){
+    if(doc.getElementById('sh-gift-presentation-style'))return;
+    const style=doc.createElement('style');
+    style.id='sh-gift-presentation-style';
+    style.textContent=[
+      '.sh-gift-live{position:fixed;bottom:calc(92px + env(safe-area-inset-bottom,0px));',
+      'left:12px;right:12px;max-width:480px;margin:auto;z-index:85;pointer-events:none;',
+      'padding:10px 12px;border-radius:16px;background:linear-gradient(120deg,#2c184bdc,#140d36ed);',
+      'border:1px solid #e7b767;color:#fff3d0;box-shadow:0 8px 25px #090419bd;',
+      'font-size:12px;line-height:1.45;text-align:center;overflow-wrap:anywhere}',
+      '.sh-gift-live strong{color:#ffe69d}',
+      '.sh-gift-parade{position:fixed;z-index:90;top:calc(193px + env(safe-area-inset-top,0px));',
+      'left:10px;width:calc(100% - 20px);max-width:540px;box-sizing:border-box;',
+      'padding:9px 11px 12px;border-radius:23px;border:2px solid #ffe3a0;',
+      'background:radial-gradient(ellipse at 50% 0%,#bd4cad88,transparent 72%),',
+      'linear-gradient(135deg,#581d6e,#290f58 55%,#111b55);pointer-events:none;',
+      'box-shadow:0 10px 28px #07041bd9,inset 0 2px 2px #ffffff66,0 0 20px #ffc86c87;',
+      'color:#fff2d4;animation:shGiftParade 10s linear forwards}',
+      '@keyframes shGiftParade{0%{transform:translateX(110vw);opacity:0}',
+      '16%{transform:translateX(0);opacity:1}82%{transform:translateX(0);opacity:1}',
+      '100%{transform:translateX(-110vw);opacity:0}}',
+      '.sh-gift-parade-title{text-align:center;color:#ffdf87;font-size:12px;',
+      'letter-spacing:1.1px;font-weight:900;text-shadow:0 2px 7px #110522}',
+      '.sh-gift-parade-people{display:grid;grid-template-columns:minmax(0,1fr) 63px minmax(0,1fr);',
+      'gap:4px;align-items:center;text-align:center;margin-top:6px}',
+      '.sh-gift-person{min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px}',
+      '.sh-gift-avatar{position:relative;display:grid;place-items:center;overflow:hidden;',
+      'width:40px;height:40px;border-radius:50%;border:2px solid #ffe5a5;',
+      'background:linear-gradient(135deg,#be55d9,#4832a2);font-size:23px}',
+      '.sh-gift-person strong{display:block;width:100%;overflow:hidden;',
+      'text-overflow:ellipsis;white-space:nowrap;font-size:12px}',
+      '.sh-gift-person small{font-size:10px;color:#e5d0fc}',
+      '.sh-gift-present{display:flex;flex-direction:column;align-items:center;',
+      'justify-content:center;gap:2px;font-size:11px;color:#ffe7a7}',
+      '.sh-gift-present b{font-size:25px;line-height:1.1}',
+      '.sh-gift-parade-caption{text-align:center;font-size:11px;margin-top:7px;',
+      'color:#fff5d8;font-weight:800;overflow-wrap:anywhere}',
+      '@media(max-width:350px){.sh-gift-parade-people{grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr)}',
+      '.sh-gift-parade{padding:8px 7px}.sh-gift-avatar{width:35px;height:35px}}',
+      '@media(prefers-reduced-motion:reduce){.sh-gift-parade{animation:none}}'
+    ].join('');
+    doc.head.appendChild(style);
+  }
+  function giftParticipant(doc,name,id,pic){
+    const user=doc.createElement('span');user.className='sh-gift-person';
+    const photo=doc.createElement('span');photo.className='sh-gift-avatar';
+    photo.textContent='👤';paintVerifiedAvatar(photo,pic,doc);
+    const label=doc.createElement('strong');label.textContent=String(name||'Member').slice(0,80);
+    const number=doc.createElement('small');number.textContent='ID '+String(id||'');
+    user.append(photo,label,number);return user;
+  }
+  function giftEventValue(event){
+    return Math.max(0,(Number(event?.price_coins)||0)*(Number(event?.quantity)||0));
+  }
+  function giftEventText(event){
+    return String(event?.sender_name||'Member')+' (ID '+event.sender_id+') sent '+
+      String(event.emoji||'🎁')+' '+String(event.name||'Gift')+' ×'+
+      String(event.quantity||1)+' to '+String(event.recipient_name||'Member')+
+      ' (ID '+event.recipient_id+') · 🪙 '+giftEventValue(event).toLocaleString('en-US');
+  }
+  function queueGiftPresentation(frame,event,featured=false){
+    const doc=frame?.document;
+    if(!doc?.body)return;
+    giftPresentationCss(doc);
+    const queueKey=featured?'__shFeaturedGiftQueue':'__shGiftNoticeQueue';
+    const busyKey=featured?'__shFeaturedGiftBusy':'__shGiftNoticeBusy';
+    const queue=frame[queueKey]||(frame[queueKey]=[]);
+    if(queue.length<12)queue.push(event);
+    if(frame[busyKey])return;
+    function next(){
+      const item=queue.shift();
+      if(!item){frame[busyKey]=false;return;}
+      frame[busyKey]=true;
+      const box=doc.createElement('aside');
+      if(featured){
+        box.className='sh-gift-parade';
+        box.setAttribute('aria-label','Large gift celebration');
+        const heading=doc.createElement('div');heading.className='sh-gift-parade-title';
+        heading.textContent='👑 SHARIKA GIFT CONGRATULATIONS 👑';
+        const people=doc.createElement('div');people.className='sh-gift-parade-people';
+        const present=doc.createElement('div');present.className='sh-gift-present';
+        const emoji=doc.createElement('b');emoji.textContent=String(item.emoji||'🎁');
+        const amount=doc.createElement('span');amount.textContent='×'+String(item.quantity||1);
+        present.append(emoji,amount);
+        people.append(giftParticipant(doc,item.sender_name,item.sender_id,item.sender_pic),
+          present,giftParticipant(doc,item.recipient_name,item.recipient_id,item.recipient_pic));
+        const caption=doc.createElement('div');caption.className='sh-gift-parade-caption';
+        caption.textContent=String(item.sender_name||'Member')+' gifted '+
+          String(item.name||'Gift')+' to '+String(item.recipient_name||'Member')+
+          ' · 🪙 '+giftEventValue(item).toLocaleString('en-US');
+        box.append(heading,people,caption);
+      }else{
+        box.className='sh-gift-live';
+        box.textContent='🎁 '+giftEventText(item);
+        box.setAttribute('role','status');
+      }
+      doc.body.appendChild(box);
+      frame.setTimeout(()=>{box.remove();next();},featured?10000:4700);
+    }
+    next();
+  }
   function decorateRoomPeople(frame){
     const doc=frame?.document;
     for(const row of doc?.querySelectorAll('#ul .urow')||[]){
@@ -593,9 +698,22 @@
   let premiumProfileRequest=0;
   async function mountPremiumProfileEntry(){
     const anchor=document.querySelector('#v-me .mid');
+    const heroTier=document.getElementById('m-svip-label');
     const requestNo=++premiumProfileRequest;
     document.getElementById('sharika-premium-profile-entry')?.remove();
     if(!anchor||!session)return;
+    if(heroTier){
+      heroTier.textContent='Member';
+      heroTier.onclick=()=>showPremiumSheet().catch(error=>toast(errText(error)));
+      const who=session.user.id;
+      try{
+        const data=await api('GET','/premium');
+        if(!heroTier.isConnected||requestNo!==premiumProfileRequest||session?.user?.id!==who)return;
+        const tier=String(data.status?.tier||'none').toUpperCase();
+        heroTier.textContent=tier==='NONE'?'Member':'👑 '+tier;
+      }catch(error){console.warn('Premium tier pending:',errText(error));}
+      return;
+    }
     const button=document.createElement('button');
     button.type='button';button.id='sharika-premium-profile-entry';
     button.textContent='👑 VIP · SVIP · Noble';
@@ -945,12 +1063,61 @@
     }finally{if(save.isConnected)save.disabled=false;}
   },true);
   const priorRenderMe=window.renderMe;
+  let mainProfileStatsRequest=0;
+  async function renderVerifiedMainProfileStats(){
+    const anchor=document.querySelector('#v-me .mid');
+    const id=profile?.public_id;
+    const requestNo=++mainProfileStatsRequest;
+    if(!anchor||!session||!/^[0-9]{8}$/.test(String(id||'')))return;
+    for(const [kind,key] of [['wealth','wealth_level'],['charm','charm_level']]){
+      const value=Number(profile[key]);
+      const el=document.querySelector('#v-me [data-profile-level="'+kind+'"]');
+      if(el&&Number.isSafeInteger(value)&&value>=1)el.textContent=String(value);
+    }
+    try{
+      const data=await api('GET','/bonds/profile/'+id);
+      if(requestNo!==mainProfileStatsRequest||profile?.public_id!==id||!anchor.isConnected)return;
+      for(const key of ['followers','following','visitors']){
+        const el=document.querySelector('#v-me [data-profile-stat="'+key+'"]');
+        const count=Number(data[key]);
+        if(el&&Number.isSafeInteger(count)&&count>=0)
+          el.textContent=count.toLocaleString('en-US');
+      }
+    }catch(error){console.warn('Verified profile counters unavailable:',errText(error));}
+  }
   if(typeof priorRenderMe==='function')window.renderMe=function(){
     priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
+    renderVerifiedMainProfileStats().catch(()=>{});
     renderSellerWalletProfileButton().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
   };
+  // Main profile screenshot: these tiles open the existing, verified features.
+  // Capture early so the old placeholder "coming soon" handler never fires.
+  document.addEventListener('click',event=>{
+    const tile=event.target.closest?.('#v-me [data-m="store"],#v-me #mbd,#v-me [data-m="cp"]');
+    if(!tile)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(tile.dataset.m==='cp'){
+      if(profile?.public_id)openVerifiedRankProfile(profile.public_id);
+      return;
+    }
+    if(tile.id==='mbd'){
+      styleSelectionSheet('medal_style').catch(error=>toast(errText(error)));
+      return;
+    }
+    window.openSheet('<h3>👑 My Collection</h3><p class="lbl">Verified cosmetic items and rewards</p>'+
+      '<div class="acts" style="grid-template-columns:1fr 1fr">'+
+      '<button class="act" id="mp-shop-frame"><span>🖼️</span>Frames</button>'+
+      '<button class="act" id="mp-shop-entry"><span>✨</span>Entry Effects</button>'+
+      '<button class="act" id="mp-shop-medal"><span>🏅</span>Medals</button>'+
+      '<button class="act" id="mp-shop-tag"><span>👑</span>Name Tags</button></div>');
+    for(const [suffix,kind] of [['frame','frame_style'],['entry','entry_style'],
+      ['medal','medal_style'],['tag','name_tag_style']]){
+      const item=document.getElementById('mp-shop-'+suffix);
+      if(item)item.onclick=()=>styleSelectionSheet(kind).catch(error=>toast(errText(error)));
+    }
+  },true);
   // Both the old SVIP shortcut and the new profile badge open the one verified
   // membership screen. No localStorage coin minting or demo tier changes.
   document.addEventListener('click',event=>{
@@ -1461,6 +1628,8 @@
     local.p.myRoom = window.A.myRoom || null;
     local.state = {...balance};
     try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local])); } catch (_) {}
+    // Show the real new-member referral offer after the authenticated home loads.
+    setTimeout(maybeShowNewUserInviteWelcome,2200);
     return local;
   }
 
@@ -1565,6 +1734,13 @@
       if(!window.cur && document.visibilityState==='visible')reloadRooms().catch(()=>{});
     },25000);
   }
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState!=='visible'||!session)return;
+    heartbeatPresence();
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(window.cur?.id && frame?.seats)
+      syncFrame(window.cur,frame).catch(()=>{});
+  });
   async function reloadWallet() {
     const wallet = await api('GET','/wallet');
     balance = {coins:Number(wallet.coins)||0,dia:Number(wallet.diamonds)||0,xp:Number(wallet.xp)||0};
@@ -1629,7 +1805,12 @@
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/cover\?v=[0-9]+$/.test(value)
       ?value:null;
   }
-  async function jpegRoomPreview(file){
+  function verifiedThemeUrl(value){
+    return typeof value==='string' &&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/(cover|theme-image)\?v=[0-9]+$/.test(value)
+      ?value:null;
+  }
+  async function jpegRoomPreview(file,highDefinition=false){
     if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
       throw new Error('Choose an image smaller than 15 MB');
     const blobUrl=URL.createObjectURL(file);
@@ -1645,15 +1826,21 @@
       if(!sourceWidth||!sourceHeight)throw new Error('Invalid image dimensions');
       const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
       if(!ctx)throw new Error('Image editor is unavailable');
-      for(const side of [900,720,600,480,360,280]){
+      const sides=highDefinition?[1920,1600,1440,1280,1080,900]:
+        [900,720,600,480,360,280];
+      const qualities=highDefinition?[.90,.82,.74,.64]:[.76,.60,.45];
+      const maxLength=highDefinition?600023:120023;
+      for(const side of sides){
         const scale=Math.min(1,side/Math.max(sourceWidth,sourceHeight));
         canvas.width=Math.max(1,Math.round(sourceWidth*scale));
         canvas.height=Math.max(1,Math.round(sourceHeight*scale));
+        ctx.imageSmoothingEnabled=true;
+        ctx.imageSmoothingQuality='high';
         ctx.fillStyle='#161029';ctx.fillRect(0,0,canvas.width,canvas.height);
         ctx.drawImage(photo,0,0,canvas.width,canvas.height);
-        for(const quality of [.76,.60,.45]){
+        for(const quality of qualities){
           const preview=canvas.toDataURL('image/jpeg',quality);
-          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=120023)
+          if(preview.startsWith('data:image/jpeg;base64,')&&preview.length<=maxLength)
             return preview;
         }
       }
@@ -1677,6 +1864,12 @@
       coverUploadBusy=true;
       toast('Preparing your room photo…');
       try{
+        // The full-room wallpaper needs far more detail than the small card.
+        // Keep both assets separate, but retain the existing card-cover route.
+        if(useAsTheme || room.th==='photo'){
+          const hd_image_data=await jpegRoomPreview(file,true);
+          await api('PUT','/rooms/'+room.id+'/theme-image',{image_data:hd_image_data});
+        }
         const image_data=await jpegRoomPreview(file);
         const saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
         room.cover_url=verifiedCoverUrl(saved.cover_url);
@@ -1828,7 +2021,7 @@
     const chosenTheme=['mid','gold','ocean','rose','forest','sunset','photo']
       .includes(data.theme)?data.theme:'mid';
     const sharedImage=chosenTheme==='photo'
-      ?verifiedCoverUrl(data.theme_background_url):null;
+      ?verifiedThemeUrl(data.theme_background_url):null;
     const palette=chosenTheme==='photo'?'mid':chosenTheme;
     const themeChanged=room.th!==chosenTheme||frame.S.theme!==palette||
       frame.S.bg!==sharedImage||frame.S.frame!==chosenSeatFrame;
@@ -2069,6 +2262,7 @@
     let giftBusy=false;
     let pendingGiftRequest=null;
     let lastGiftEventId=null;
+    const shownGiftEvents=new Set();
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     let pendingChatMessage=null;
     let lastEntryEventId=0,entryPollInFlight=null;
@@ -2287,8 +2481,10 @@
               frame.fly(result.gift.emoji,Number(index),n*180,Number(frame.G[chosen]?.[1]||0));
           }
         }
-        const feed=await api('GET','/rooms/'+room.id+'/gifts').catch(()=>null);
-        if(feed?.events?.length)lastGiftEventId=Math.max(...feed.events.map(e=>e.id));
+        // Show the same verified sender → recipient notice on the sender's
+        // phone too. Do not advance the cursor past this newly sent event.
+        await pollGiftEvents(result.duplicate?null:result.transaction_id).catch(error=>
+          console.warn('Gift celebration delayed:',errText(error)));
       }catch(error){
         frame.toast(giftCommitted
           ?'Gift sent, but screen update delayed: '+errText(error)
@@ -2296,16 +2492,40 @@
       }
       finally{giftBusy=false;button.disabled=false;}
     },true);
-    async function pollGiftEvents(){
+    function presentVerifiedGift(event){
+      const id=Number(event.id);
+      if(!Number.isSafeInteger(id)||shownGiftEvents.has(id))return;
+      shownGiftEvents.add(id);
+      if(shownGiftEvents.size>100)shownGiftEvents.clear();
+      queueGiftPresentation(frame,event);
+      if(Number(event.tab)===FEATURED_GIFT_TAB)
+        queueGiftPresentation(frame,event,true);
+    }
+    async function pollGiftEvents(ownTransactionId=null){
       const data=await api('GET','/rooms/'+room.id+'/gifts');
       const events=data.events||[];
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
-      if(lastGiftEventId===null){lastGiftEventId=latest;return;}
+      if(lastGiftEventId===null){
+        lastGiftEventId=latest;
+        // A send can finish before the first poll. Show only the confirmed
+        // transaction, never replay the room's old history to a new joiner.
+        if(ownTransactionId!==null)for(const event of events){
+          if(String(event.transaction_id)!==String(ownTransactionId))continue;
+          presentVerifiedGift(event);
+        }
+        return;
+      }
       let receivedGift=false;
       let sawNewGift=false;
       for(const event of events){
-        if(event.id<=lastGiftEventId)continue;
+        if(event.id<=lastGiftEventId){
+          if(ownTransactionId!==null &&
+             String(event.transaction_id)===String(ownTransactionId))
+            presentVerifiedGift(event);
+          continue;
+        }
         sawNewGift=true;
+        presentVerifiedGift(event);
         if(event.sender_id===profile?.public_id)continue;
         if(event.recipient_id===profile?.public_id)receivedGift=true;
         const seat=(frame.seats||[]).find(s=>s?.public_id===event.recipient_id);
@@ -3230,7 +3450,7 @@
           toast('The room owner removed you from the room');
         }
       });
-    },15000);
+    },8000);
     if(giftPoll)clearInterval(giftPoll);
     pollGiftEvents().catch(()=>{});
     giftPoll=setInterval(()=>{if(window.cur?.id===room.id)pollGiftEvents().catch(()=>{});},5000);
@@ -3327,9 +3547,28 @@
     finally{exchangeRateFetch=null;}
   }
   const originalRechargeSheet=window.rechargeSheet;
+  let verifiedRechargeFetch=null;
+  async function refreshVerifiedRechargeRate(){
+    if(!session)return;
+    if(verifiedRechargeFetch)return verifiedRechargeFetch;
+    verifiedRechargeFetch=(async()=>{
+      const result=await api('GET','/invites');
+      const rate=Number(result.recharge_coins_per_usd);
+      const bonus=Number(result.first_recharge_bonus_percent);
+      if(!Number.isSafeInteger(rate)||rate<1000||rate>1000000||
+         !Number.isSafeInteger(bonus)||bonus<0||bonus>100)return;
+      window.SHARIKA_RECHARGE_COINS_PER_USD=rate;
+      window.SHARIKA_FIRST_RECHARGE_BONUS_PERCENT=bonus;
+      window.SHARIKA_VERIFIED_RECHARGE_RATE=true;
+      if(document.getElementById('rcp')?.classList.contains('on')&&
+         window.RCT===0&&typeof window.renderRcp==='function')window.renderRcp();
+    })();
+    try{return await verifiedRechargeFetch;}finally{verifiedRechargeFetch=null;}
+  }
   if(typeof originalRechargeSheet==='function')window.rechargeSheet=function(...args){
     const value=originalRechargeSheet.apply(this,args);
     if(args[0]===1)refreshVerifiedExchangeRate().catch(error=>toast(errText(error)));
+    else refreshVerifiedRechargeRate().catch(error=>toast('Recharge rates unavailable: '+errText(error)));
     return value;
   };
   document.addEventListener('click',event=>{
@@ -3569,6 +3808,8 @@
           showNote((result.duplicate?'Already recorded: ':'Success! ')+
             (result.self_recharge?'Your own wallet':'Recipient ID '+recipient)+
             ' received '+coinsText(amount)+' coins. Transfer #'+result.transfer_id+
+            (Number(result.first_recharge_bonus_coins)>0?
+              '. 🎁 First recharge bonus +'+coinsText(result.first_recharge_bonus_coins)+' coins':'')+
             '. Remaining stock: '+coinsText(result.available_coins)+'.','success');
           toast('Coin recharge recorded ✓');
           const latest=await api('GET','/sellers/transfers').catch(()=>null);
@@ -3648,27 +3889,9 @@
   }
   renderVerifiedBanners([]);
 
-  // A verified seller may recharge directly from another real user's ID card.
-  const originalOpenProfile=window.openProfile;
-  if(typeof originalOpenProfile==='function')window.openProfile=function(user){
-    originalOpenProfile.apply(this,arguments);
-    const targetId=String(user?.id||'');
-    const root=document.querySelector('#pfc .pfh .meta');
-    if(!/^[0-9]{8}$/.test(targetId)||!root||!session)return;
-    Promise.all([api('GET','/sellers/me'),api('GET','/users/'+targetId)])
-      .then(([mine,verified])=>{
-        if(!root.isConnected||!mine.seller?.active||String(verified.id)!==targetId)return;
-        const button=document.createElement('button');
-        button.type='button';button.className='act';
-        button.textContent='🪙 Send seller coins to ID '+targetId;
-        button.style.cssText='display:block;margin:8px auto;padding:9px 13px;border-radius:12px';
-        button.onclick=()=>{
-          document.getElementById('pfo')?.classList.remove('on');
-          showVerifiedCoinSellers({walletOnly:true,targetId});
-        };
-        root.insertAdjacentElement('afterend',button);
-      }).catch(()=>{});
-  };
+  // Seller tools belong only in the verified seller's own wallet/profile.
+  // Showing a seller action on a stranger's public ID falsely suggests that
+  // recipient has an approved seller role.
 
   // Original daily reward card retained; values and claim status come from D1.
   // Existing Sharika bottom sheet, with a premium raised/gold-frame finish.
@@ -3913,44 +4136,509 @@
       await showVerifiedDailySheet();
     }finally{dailyClaimBusy=false;}
   }
+  function verifiedInviteStyles(){
+    if(document.getElementById('sharika-invite-royal-style'))return;
+    const style=document.createElement('style');
+    style.id='sharika-invite-royal-style';
+    style.textContent=[
+      '#sh-invite-page{position:fixed;inset:0;z-index:2147483500;overflow-y:auto;',
+      'background:radial-gradient(circle at 50% -12%,#a535c977,transparent 47%),',
+      'linear-gradient(180deg,#3c086d,#25074a 57%,#150934);color:#fff9dc;',
+      'padding:calc(16px + env(safe-area-inset-top,0px)) 12px ',
+      'calc(95px + env(safe-area-inset-bottom,0px));box-sizing:border-box;',
+      'font-family:inherit;overscroll-behavior:contain}',
+      '#sh-invite-page *{box-sizing:border-box}',
+      '#sh-invite-page .sh-invite-head{display:flex;align-items:center;gap:10px;',
+      'margin-bottom:13px}',
+      '#sh-invite-page .sh-invite-back{width:42px;height:42px;border-radius:50%;',
+      'background:#240d43;border:2px solid #f7d771;color:#ffe6a6;font-size:25px}',
+      '#sh-invite-page h1{font-size:23px;margin:0;color:#fff0b4;line-height:1.2}',
+      '#sh-invite-page .sh-invite-kicker{letter-spacing:2px;font-size:10px;',
+      'font-weight:900;color:#ffc76c}',
+      '#sh-invite-page .sh-invite-panel{position:relative;padding:18px 13px;',
+      'border:3px solid #f4cb64;border-radius:24px;margin:12px 0 18px;',
+      'background:radial-gradient(ellipse at 50% 0%,#8c3eacaa,transparent 60%),',
+      'linear-gradient(135deg,#501279ee,#250b55f5);',
+      'box-shadow:inset 0 2px #fff7,0 10px 0 #6a3688,0 16px 29px #0b051bb8}',
+      '#sh-invite-page .sh-invite-panel::before{content:"✦  👑  ✦";',
+      'display:block;text-align:center;margin:-13px auto 7px;color:#ffe087;',
+      'font-size:21px;letter-spacing:8px;text-shadow:0 2px 7px #efb321b8}',
+      '#sh-invite-page .sh-invite-royal-banner{position:relative;overflow:hidden;',
+      'min-height:285px;border:2px solid #f8d57c;border-radius:24px;margin:2px 0 16px;',
+      'background:#23083c url("main-profile-bg.jpg") center top/100% auto no-repeat;',
+      'box-shadow:inset 0 0 0 3px #622a76,0 8px 19px #0a0414aa;',
+      'display:flex;flex-direction:column;justify-content:flex-end;align-items:center;',
+      'text-align:center;padding:15px 12px 17px}',
+      '#sh-invite-page .sh-invite-chest{width:min(100%,245px);height:175px;',
+      'display:flex;align-items:center;justify-content:center;',
+      'filter:drop-shadow(0 7px 9px #1b0029aa)}',
+      '#sh-invite-page .sh-invite-chest img{max-width:100%;max-height:100%;',
+      'width:auto;height:auto;object-fit:contain;display:block}',
+      '#sh-invite-page .sh-invite-royal-banner h2{font-size:clamp(23px,6vw,32px);',
+      'line-height:1.1;margin:0;color:#ffefb1;text-shadow:0 3px 5px #260026,0 0 12px #e4ad55}',
+      '#sh-invite-page .sh-invite-royal-banner p{margin:7px 0 0;font-size:12px;',
+      'color:#fff1dc;text-shadow:0 1px 4px #16051c}',
+      '#sh-invite-page .sh-invite-royal-banner .sh-invite-royal-mark{font-size:10px;',
+      'color:#ffe08b;font-weight:900;letter-spacing:2px;margin-bottom:6px}',
+      '#sh-invite-page .sh-invite-title{text-align:center;font-size:20px;',
+      'font-weight:900;color:#ffdfa1;margin:0 0 9px;',
+      'text-shadow:0 2px #3e155b,0 0 15px #ffbd4c88}',
+      '#sh-invite-page .sh-invite-sub{font-size:12px;line-height:1.45;',
+      'color:#eddbff;text-align:center;margin:0 0 13px}',
+      '#sh-invite-page .sh-invite-rewards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));',
+      'gap:8px;margin:13px 0}',
+      '#sh-invite-page .sh-invite-reward{min-width:0;text-align:center;border:1px solid #ffe39b;',
+      'border-radius:17px;padding:10px 4px;background:linear-gradient(150deg,#7435a1,#3a1466);',
+      'box-shadow:inset 0 2px #ffffff4e,0 5px #1d0e40}',
+      '#sh-invite-page .sh-invite-reward span{display:block;font-size:25px;margin-bottom:6px}',
+      '#sh-invite-page .sh-invite-reward strong{display:block;font-size:clamp(13px,4vw,20px);',
+      'color:#ffeb7e;overflow-wrap:anywhere}',
+      '#sh-invite-page .sh-invite-reward small{display:block;margin-top:4px;',
+      'font-size:10px;color:#ebd6ff}',
+      '#sh-invite-page .sh-invite-code{display:flex;align-items:center;gap:10px;',
+      'border:2px solid #ffca66;border-radius:19px;padding:10px;',
+      'background:#2b104f;margin:15px 0}',
+      '#sh-invite-page .sh-invite-code div{flex:1;min-width:0}',
+      '#sh-invite-page .sh-invite-code small{display:block;color:#bca8d9}',
+      '#sh-invite-page .sh-invite-code strong{font-size:24px;color:#ffe33a;letter-spacing:1px}',
+      '#sh-invite-page .sh-invite-gold{border:2px solid #fff0a0;color:#512300;',
+      'background:linear-gradient(170deg,#fff29e,#ffbf33 53%,#d97a13);',
+      'border-radius:999px;padding:10px 18px;font-size:14px;font-weight:900;',
+      'box-shadow:inset 0 2px #fff8,0 5px #8d421b;cursor:pointer}',
+      '#sh-invite-page .sh-invite-share{display:block;width:100%;margin:12px 0;',
+      'font-size:17px;padding:13px 16px}',
+      '#sh-invite-page .sh-invite-tabs{display:grid;grid-template-columns:1fr 1fr;',
+      'gap:5px;border:1px solid #e3b0f5;border-radius:17px;padding:4px;background:#1d0b3c}',
+      '#sh-invite-page .sh-invite-tabs button{border:0;border-radius:13px;',
+      'font-size:13px;font-weight:900;padding:11px 4px;background:transparent;color:#d7b2eb}',
+      '#sh-invite-page .sh-invite-tabs button.on{background:linear-gradient(#ffe988,#edaa21);',
+      'color:#522447;box-shadow:0 3px #874619}',
+      '#sh-invite-page .sh-invite-stats{display:grid;grid-template-columns:1fr 1fr;',
+      'gap:8px;margin:13px 0}',
+      '#sh-invite-page .sh-invite-stat{text-align:center;background:#4e258555;',
+      'border:1px solid #ffc87b88;padding:12px 6px;border-radius:16px}',
+      '#sh-invite-page .sh-invite-stat strong{display:block;font-size:21px;color:#ffe38e}',
+      '#sh-invite-page .sh-invite-stat small{font-size:11px;color:#decaed}',
+      '#sh-invite-page .sh-invite-rule{font-size:12px;line-height:1.65;color:#eadcf9;',
+      'padding:9px 12px;border-left:3px solid #ffce7f;margin:7px 0;background:#1d0a3680}',
+      '#sh-invite-page .sh-invite-entry{width:100%;padding:14px 12px;',
+      'border:2px solid #ffd75a;border-radius:15px;background:#2a124f;',
+      'color:white;font-size:17px;outline:0;margin:9px 0}',
+      '#sh-invite-page .sh-invite-entry::placeholder{color:#b9a0cb}',
+      '#sh-invite-page .sh-invite-rankrow{display:flex;align-items:center;gap:11px;',
+      'border:1px solid #a566d9;border-radius:14px;padding:10px;margin:7px 0;',
+      'background:linear-gradient(100deg,#583186,#32145d)}',
+      '#sh-invite-page .sh-invite-rankrow span{min-width:35px;color:#ffd875;font-weight:900}',
+      '#sh-invite-page .sh-invite-rankrow b{flex:1;min-width:0;font-size:12px}',
+      '#sh-invite-page .sh-invite-rankrow small{display:block;color:#dcbcf0}',
+      '#sh-invite-page .sh-invite-rankrow em{font-style:normal;color:#ffe082;font-weight:900}',
+      '#sh-invite-page .sh-invite-alert{font-size:12px;color:#ffe2a1;',
+      'padding:11px;border-radius:12px;background:#120b2d;border:1px solid #ffdc7b77}',
+      '#sh-invite-page .sh-invite-cash{border:2px solid #e5b950;border-radius:21px;',
+      'padding:14px;margin:16px 0;background:linear-gradient(145deg,#422260,#1d1248);',
+      'box-shadow:0 7px 0 #201135,inset 0 2px #fff5}',
+      '#sh-invite-page .sh-invite-cash-grid{display:grid;grid-template-columns:1fr 1fr;',
+      'gap:8px;margin:10px 0}',
+      '#sh-invite-page [hidden]{display:none!important}',
+      '#sh-invite-page .sh-invite-withdraw-trigger{display:block;width:100%;margin:12px 0 5px}',
+      '#sh-invite-page .sh-invite-withdraw-hint{font-size:11px;color:#f0d9ff;',
+      'line-height:1.5;text-align:center;margin:6px 2px 12px}',
+      '#sh-invite-page .sh-invite-withdraw-form{margin:14px 0 0;padding:14px 12px;',
+      'border:2px solid #e5b950;border-radius:19px;background:#240e41}',
+      '#sh-invite-page .sh-invite-withdraw-form h3{text-align:center;',
+      'font-size:16px;margin:0 0 9px;color:#ffe3a0}',
+      '#sh-invite-page .sh-invite-withdraw-form label{display:block;font-size:12px;',
+      'color:#f6e0ff;margin-top:8px}',
+      '#sh-invite-page .sh-invite-withdraw-form .sh-invite-entry{margin:4px 0 8px}',
+      '#sh-invite-page .sh-invite-cash button:disabled{opacity:.5;filter:grayscale(.35)}',
+      '#sh-invite-newbie{position:fixed;inset:0;z-index:2147483550;',
+      'display:flex;align-items:center;justify-content:center;padding:18px;',
+      'background:#080319d9;backdrop-filter:blur(8px)}',
+      '#sh-invite-newbie .sh-invite-welcome{position:relative;width:min(100%,420px);',
+      'max-height:93vh;overflow-y:auto;text-align:center;padding:26px 19px;',
+      'border:3px solid #ffe493;border-radius:32px;',
+      'background:radial-gradient(circle at 50% 0%,#eb7b3f80,transparent 45%),',
+      'linear-gradient(150deg,#751a54,#38104d 63%,#1a0f44);',
+      'box-shadow:0 0 35px #eaa84988,inset 0 3px #fff8}',
+      '#sh-invite-newbie .sh-invite-chests{font-size:35px;letter-spacing:5px;margin:12px 0}',
+      '#sh-invite-newbie .sh-invite-welcome-art{width:min(100%,235px);height:auto;',
+      'max-height:210px;object-fit:contain;margin:0 auto;display:block;',
+      'filter:drop-shadow(0 7px 14px #10001bc7)}',
+      '#sh-invite-newbie h2{font-size:24px;margin:6px 0;color:#ffeaad}',
+      '#sh-invite-newbie p{font-size:13px;line-height:1.5;color:#fae8f5}',
+      '#sh-invite-newbie .sh-invite-welcome-close{position:absolute;right:11px;top:9px;',
+      'background:transparent;border:0;color:#ffe7aa;font-size:28px}',
+      '#sh-invite-newbie .sh-invite-welcome-input{width:100%;margin:12px 0;',
+      'padding:14px;border:1px solid #ffdc80;border-radius:15px;',
+      'background:#39134b;color:#fff;font-size:16px;text-align:center}',
+      '#sh-invite-newbie .sh-invite-gold{border:2px solid #ffeca3;border-radius:28px;',
+      'padding:12px;color:#5e2500;background:linear-gradient(#ffe987,#f6a322,#d8730d);',
+      'font-size:16px;font-weight:900;box-shadow:inset 0 2px #fff9,0 5px #722d22}',
+      '#sh-invite-newbie .sh-invite-gold:disabled{opacity:.65}',
+      '@media(max-width:350px){#sh-invite-page .sh-invite-rewards{gap:4px}',
+      '#sh-invite-page .sh-invite-reward{padding:8px 2px}}'
+    ].join('');
+    document.head.appendChild(style);
+  }
+  async function redeemVerifiedInvite(code){
+    if(!/^[0-9]{8}$/.test(String(code||'')))
+      throw new Error('Enter the full 8-digit invitation code');
+    const result=await api('POST','/invites/redeem',{invite_code:String(code)});
+    if(!result?.claimed)throw new Error('Invitation could not be confirmed');
+    await reloadWallet();
+    return result;
+  }
+  function bindInviteRedeem(root){
+    const button=root.querySelector('#sh-invite-redeem');
+    const field=root.querySelector('#sh-invite-redeem-code');
+    const status=root.querySelector('#sh-invite-redeem-status');
+    if(!button||!field)return;
+    button.onclick=async()=>{
+      button.disabled=true;
+      if(status)status.textContent='Checking invitation…';
+      try{
+        const result=await redeemVerifiedInvite(field.value.trim());
+        toast('Invite verified! '+Number(result.invitee_extra_coins||0).toLocaleString('en-US')+
+          ' bonus coins added ✓');
+        if(document.getElementById('sh-invite-page'))await showVerifiedInviteSheet();
+      }catch(error){
+        if(status)status.textContent='Could not claim: '+errText(error);
+        button.disabled=false;
+      }
+    };
+  }
+  function bindInviteWithdraw(root){
+    const open=root.querySelector('#sh-invite-open-withdraw');
+    const form=root.querySelector('#sh-invite-withdraw-form');
+    if(open&&form){
+      open.setAttribute('aria-expanded','false');
+      open.onclick=()=>{
+        if(open.disabled)return;
+        const reveal=form.hidden;
+        form.hidden=!reveal;
+        open.setAttribute('aria-expanded',String(reveal));
+        if(reveal){
+          form.querySelector('input')?.focus({preventScroll:true});
+          form.scrollIntoView({block:'nearest',behavior:'auto'});
+        }
+      };
+      form.querySelector('#sh-invite-withdraw-cancel')?.addEventListener('click',()=>{
+        form.hidden=true;
+        open.setAttribute('aria-expanded','false');
+        open.focus({preventScroll:true});
+      });
+    }
+    const buttons=[...root.querySelectorAll('[data-sh-invite-withdraw]')];
+    for(const button of buttons){
+      button.onclick=async()=>{
+        if(button.disabled||!form||form.hidden)return;
+        const amount=Number(button.dataset.shInviteWithdraw);
+        if(!Number.isSafeInteger(amount)||amount<1000)return;
+        const status=root.querySelector('#sh-invite-withdraw-status');
+        const getValue=id=>root.querySelector('#sh-withdraw-'+id)?.value.trim()||'';
+        const bank_name=getValue('bank');
+        const account_holder=getValue('holder');
+        const account_number=getValue('number');
+        const branch=getValue('branch');
+        if(!bank_name||!account_holder||!account_number||!branch){
+          if(status)status.textContent='Enter your bank, account holder, account number and branch first.';
+          return;
+        }
+        for(const item of buttons)item.disabled=true;
+        if(status)status.textContent='Submitting your $'+(amount/100)+' withdrawal request…';
+        try{
+          const result=await api('POST','/invites/withdrawals',{
+            amount_cents:amount,request_id:nextWalletRequestId('invite-withdraw'),
+            payout_method:'bank',bank_name,account_holder,account_number,branch
+          });
+          if(!result?.requested&&!result?.duplicate)
+            throw new Error('Withdrawal not submitted');
+          toast('$'+(amount/100)+' withdrawal request submitted for manual review ✓');
+          if(document.getElementById('sh-invite-page'))await showVerifiedInviteSheet();
+        }catch(error){
+          if(status)status.textContent='Request unavailable: '+errText(error);
+          for(const item of buttons)item.disabled=false;
+        }
+      };
+    }
+  }
+  async function maybeShowNewUserInviteWelcome(){
+    if(!session||!profile||document.getElementById('sh-invite-newbie'))return;
+    const publicId=String(profile.public_id||'');
+    if(!/^[0-9]{8}$/.test(publicId))return;
+    const seenKey='sh-invite-welcome-v1-'+publicId;
+    try{if(localStorage.getItem(seenKey)==='seen')return;}catch(_){}
+    let info;
+    try{info=await api('GET','/invites');}catch(_){return;}
+    if(!session||String(profile?.public_id)!==publicId||!info?.new_user)return;
+    verifiedInviteStyles();
+    const overlay=document.createElement('section');
+    overlay.id='sh-invite-newbie';
+    overlay.setAttribute('role','dialog');
+    overlay.setAttribute('aria-modal','true');
+    overlay.setAttribute('aria-label','New member welcome bonus');
+    const extra=Math.max(0,Number(info.signup_invitee_reward||0)-2000);
+    overlay.innerHTML='<div class="sh-invite-welcome">'+
+      '<button class="sh-invite-welcome-close" type="button" aria-label="Close">×</button>'+
+      '<div style="font-size:30px">✨ 👑 ✨</div><h2>New User Royal Bonus</h2>'+
+      '<img class="sh-invite-welcome-art" src="invite-royal-chest.webp" alt="">'+
+      '<p>Welcome to Sharika! New members can unlock a one-time invite reward '+
+      'through a verified friend.</p>'+
+      '<div style="color:#ffe27b;font-size:28px;font-weight:900">🪙 '+
+      Number(info.signup_invitee_reward||0).toLocaleString('en-US')+'</div>'+
+      '<p>Total starting coins with a valid friend invite</p>'+
+      '<div style="border:2px solid #ffe4a2;border-radius:19px;padding:10px;'+
+      'background:#3d135c;margin:12px 0">'+
+      '<div style="font-weight:900;color:#ffdf8c">🎁 FIRST RECHARGE CHEST</div>'+
+      '<div style="font-size:23px;color:#fff6b7;font-weight:900">'+
+      Number(info.recharge_coins_per_usd||500000).toLocaleString('en-US')+' + '+
+      Math.floor(Number(info.recharge_coins_per_usd||500000)*
+        Number(info.first_recharge_bonus_percent??40)/100).toLocaleString('en-US')+'</div>'+
+      '<p>For the first verified $1-equivalent recharge, unlock '+
+      Number(info.first_recharge_bonus_percent??40)+'% extra coins once.</p></div>'+
+      (info.claim_eligible?'<p>Have an invitation code? Claim your remaining '+
+       extra.toLocaleString('en-US')+' bonus coins within '+
+       Number(info.claim_window_hours||48)+' hours of registering.</p>'+
+       '<input class="sh-invite-welcome-input" inputmode="numeric" maxlength="8" '+
+       'autocomplete="off" placeholder="Enter 8-digit invitation code" '+
+       'aria-label="Invitation code">'+
+       '<p id="sh-invite-welcome-error" aria-live="polite"></p>'+
+       '<button class="sh-invite-gold" id="sh-invite-welcome-claim" type="button" '+
+       'style="width:100%">🎁 Confirm & Claim</button>':
+       '<p>'+(info.invited_by?'✓ Your invitation is already linked.':
+        'Your invitation claim period has ended.')+'</p>')+
+      '<button class="sh-invite-gold" id="sh-invite-welcome-explore" type="button" '+
+      'style="width:100%;margin-top:13px">👑 Explore Invite Rewards</button>'+
+      '<p style="margin:12px 0 0;font-size:11px">Invite cash earnings need '+
+      'finance review. No automatic USD payout is connected yet.</p></div>';
+    document.body.appendChild(overlay);
+    try{localStorage.setItem(seenKey,'seen');}catch(_){}
+    overlay.querySelector('.sh-invite-welcome-close').onclick=()=>overlay.remove();
+    overlay.querySelector('#sh-invite-welcome-explore').onclick=()=>{
+      overlay.remove();showVerifiedInviteSheet();
+    };
+    const claim=overlay.querySelector('#sh-invite-welcome-claim');
+    if(claim)claim.onclick=async()=>{
+      claim.disabled=true;
+      const errorView=overlay.querySelector('#sh-invite-welcome-error');
+      try{
+        const code=overlay.querySelector('.sh-invite-welcome-input').value.trim();
+        const redeemed=await redeemVerifiedInvite(code);
+        overlay.remove();
+        toast('Welcome! '+Number(redeemed.invitee_extra_coins).toLocaleString('en-US')+
+          ' invite bonus coins added ✓');
+      }catch(error){
+        if(errorView)errorView.textContent=errText(error);
+        claim.disabled=false;
+      }
+    };
+  }
   async function showVerifiedInviteSheet(){
     if(!session){window.showAuth('welcome');return;}
-    window.openSheet('<h3>🤝 Invite a friend</h3>'+
-      '<div id="sharika-invite-data" aria-live="polite">Loading verified invites…</div>');
-    const root=document.getElementById('sharika-invite-data');
-    if(!root)return;
+    verifiedInviteStyles();
+    document.getElementById('sh-invite-page')?.remove();
+    const root=document.createElement('section');
+    root.id='sh-invite-page';
+    root.innerHTML='<div class="sh-invite-head">'+
+      '<button class="sh-invite-back" type="button" aria-label="Close invites">‹</button>'+
+      '<div><div class="sh-invite-kicker">✦ SHARIKA ROYAL REWARDS ✦</div>'+
+      '<h1>👑 Invite Friends</h1></div></div>'+
+      '<div class="sh-invite-panel" id="sharika-invite-data" aria-live="polite">'+
+      'Loading verified invite rewards…</div>';
+    document.body.appendChild(root);
+    root.querySelector('.sh-invite-back').onclick=()=>root.remove();
+    const panel=root.querySelector('#sharika-invite-data');
     try{
+      // Bind eligible existing accounts to their first official Android
+      // installation before sharing; the server enforces uniqueness.
+      let deviceStatus=null;
+      try{deviceStatus=await api('POST','/invites/device',{});}catch(_){/* old client */}
       const result=await api('GET','/invites');
       if(!root.isConnected)return;
       const invite=String(result.invite_code||'');
       if(!/^[0-9]{8}$/.test(invite))throw new Error('Verified ID unavailable');
-      const referrals=(result.referrals||[]).map(r=>
-        '<div class="row"><span>ID '+sellerEscape(r.public_id)+'</span>'+
-        '<b>'+sellerEscape(r.name)+'</b></div>').join('');
-      root.innerHTML='<p class="n">New invite signup: you earn 5,000 coins; your friend starts with 10,000 coins. You also earn 5% of their verified coin-seller recharges.</p>'+
-        '<div class="idp" style="margin-top:12px">Your invite code: <b>'+
-        sellerEscape(invite)+'</b></div>'+
-        '<div class="row"><span>Friends who joined</span><b>'+
-        Number(result.total_invites||0).toLocaleString('en-US')+'</b></div>'+
-        '<div class="row"><span>Signup invite rewards earned</span><b>'+
-        Number(result.signup_bonus_coins||0).toLocaleString('en-US')+' coins</b></div>'+
-        '<div class="row"><span>5% recharge rewards earned</span><b>'+
-        Number(result.recharge_bonus_coins||0).toLocaleString('en-US')+' coins</b></div>'+
-        (result.invited_by?'<p class="n">You joined with code '+sellerEscape(result.invited_by)+'</p>':'')+
-        (referrals?'<div class="card" style="padding:12px;margin-top:12px">'+
-        '<b>Verified referrals</b>'+referrals+'</div>':'')+
-        '<button class="big" id="sharika-share-invite">📤 Share code</button>';
-      document.getElementById('sharika-share-invite')?.addEventListener('click',async()=>{
-        const message='Join me on Sharika Voice Chat! Enter my invite code '+invite+
-          ' when creating your account.';
-        try{
-          if(navigator.share)await navigator.share({text:message});
-          else if(navigator.clipboard)await navigator.clipboard.writeText(message);
-          else{toast('Invite code: '+invite);return;}
-          toast('Invite code shared');
-        }catch(_){toast('Invite code: '+invite);}
+      const fmt=n=>Math.max(0,Number(n)||0).toLocaleString('en-US');
+      const total=fmt(result.total_invites);
+      const inviteReward=fmt(result.signup_inviter_reward);
+      const newcomerReward=fmt(result.signup_invitee_reward);
+      const percent=Number(result.recharge_bonus_percent)||0;
+      const money=cents=>'$'+(Math.max(0,Number(cents)||0)/100).toFixed(2);
+      const cash=result.cash_balance||{};
+      const withdrawable=Math.max(0,Number(cash.available_cents)||0);
+      const withdrawalChoices=[...new Set((result.withdrawal_options_cents||[5000,10000])
+        .map(Number).filter(n=>Number.isSafeInteger(n)&&n>=1000))].sort((a,b)=>a-b);
+      const minimumWithdrawal=withdrawalChoices[0]||5000;
+      const canWithdraw=!profile?.minor&&withdrawable>=minimumWithdrawal;
+      const newUserBonus=Math.floor(Number(result.recharge_coins_per_usd||500000)*
+        Number(result.first_recharge_bonus_percent||40)/100);
+      const history=(result.referrals||[]).slice(0,50).map(r=>
+        '<div class="sh-invite-rankrow"><span>✓</span><b>'+
+        sellerEscape(r.name||'Member')+'<small>ID '+sellerEscape(r.public_id)+
+        '</small></b><em>Joined</em></div>').join('');
+      panel.innerHTML='<div class="sh-invite-royal-banner">'+
+        '<div class="sh-invite-chest"><img src="invite-royal-chest.webp" alt=""></div>'+
+        '<div class="sh-invite-royal-mark">✦ SHARIKA ROYAL INVITATION ✦</div>'+
+        '<h2>Invite Friends<br>Earn Royal Rewards</h2>'+
+        '<p>One friend · Two coin bonuses · Real reward tracking</p></div>'+
+        '<h2 class="sh-invite-title">✨ Invite once, earn together</h2>'+
+        '<p class="sh-invite-sub">Each eligible invite earns '+inviteReward+
+        ' coins for you and '+newcomerReward+' coins for your friend. Your '+
+        money(result.invite_usd_cents_per_verified_user??0)+
+        ' cash earning is tracked as Pending until reviewed.</p>'+
+        (deviceStatus&&!deviceStatus.invite_eligible?'<p class="sh-invite-alert">'+
+        '⚠️ This device is not eligible for invitation earnings: '+
+        sellerEscape(deviceStatus.reason||'verification required')+'</p>':'')+
+        '<div class="sh-invite-rewards">'+
+        '<div class="sh-invite-reward"><span>🪙</span><strong>'+inviteReward+
+        '</strong><small>You get per invited friend</small></div>'+
+        '<div class="sh-invite-reward"><span>💝</span><strong>'+newcomerReward+
+        '</strong><small>Friend gets with valid invite</small></div>'+
+        '<div class="sh-invite-reward"><span>💵</span><strong>'+
+        money(result.invite_usd_cents_per_verified_user??0)+
+        '</strong><small>USD per verified invite · review first</small></div></div>'+
+        '<div class="sh-invite-code"><div><small>YOUR INVITE CODE</small>'+
+        '<strong>'+sellerEscape(invite)+'</strong></div>'+
+        '<button class="sh-invite-gold" id="sharika-copy-invite" type="button">COPY</button></div>'+
+        '<button class="sh-invite-gold sh-invite-share" id="sharika-share-invite" type="button">'+
+        '📤 Invite friends · Share</button>'+
+        '<div class="sh-invite-tabs"><button type="button" id="sh-invite-tab-overview" class="on">'+
+        'My Invites</button><button type="button" id="sh-invite-tab-ranking">'+
+        '🏆 Code Rankings</button></div>'+
+        '<div id="sh-invite-tab-body"><div class="sh-invite-stats">'+
+        '<div class="sh-invite-stat"><strong>'+total+'</strong><small>Total invitations</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+fmt(result.signup_bonus_coins)+
+        '</strong><small>Signup coins earned</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+fmt(result.recharge_bonus_coins)+
+        '</strong><small>Recharge coins earned</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+fmt(Number(result.signup_bonus_coins||0)+
+        Number(result.recharge_bonus_coins||0))+
+        '</strong><small>Total invite reward coins</small></div></div>'+
+        '<div class="sh-invite-cash"><h2 class="sh-invite-title">💵 Invite & Earn Dollars</h2>'+
+        '<p class="sh-invite-sub">Earn '+
+        money(result.invite_usd_cents_per_verified_user??0)+
+        ' for each eligible first-device referral. Cash reward requires anti-fraud review.</p>'+
+        '<div class="sh-invite-stats">'+
+        '<div class="sh-invite-stat"><strong>'+money(cash.pending_cents)+
+        '</strong><small>Pending review</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+money(withdrawable)+
+        '</strong><small>Available to request</small></div></div>'+
+        '<button type="button" id="sh-invite-open-withdraw" class="sh-invite-gold '+
+        'sh-invite-withdraw-trigger" aria-controls="sh-invite-withdraw-form" '+
+        (canWithdraw?'':'disabled')+'>Withdraw</button>'+
+        '<p class="sh-invite-withdraw-hint">'+
+        (profile?.minor?'Cash withdrawal is not available for minor accounts.':
+        canWithdraw?'Choose an available amount after opening Withdraw.':
+        'Withdraw unlocks at '+money(minimumWithdrawal)+
+        ' approved USD. Your pending earnings are not withdrawable yet.')+'</p>'+
+        '<div id="sh-invite-withdraw-form" class="sh-invite-withdraw-form" hidden>'+
+        '<h3>🏦 Bank transfer request</h3>'+
+        '<p class="sh-invite-sub">Your bank details are sent privately to the finance '+
+        'admin after you submit a withdrawal request. Payout is manual.</p>'+
+        '<label for="sh-withdraw-bank">Bank name</label>'+
+        '<input id="sh-withdraw-bank" class="sh-invite-entry" maxlength="100" autocomplete="organization" placeholder="Bank name">'+
+        '<label for="sh-withdraw-holder">Account holder name</label>'+
+        '<input id="sh-withdraw-holder" class="sh-invite-entry" maxlength="100" autocomplete="name" placeholder="Name on bank account">'+
+        '<label for="sh-withdraw-number">Bank account number</label>'+
+        '<input id="sh-withdraw-number" class="sh-invite-entry" maxlength="40" inputmode="numeric" autocomplete="off" placeholder="Bank account number">'+
+        '<label for="sh-withdraw-branch">Bank branch</label>'+
+        '<input id="sh-withdraw-branch" class="sh-invite-entry" maxlength="100" autocomplete="off" placeholder="Bank branch">'+
+        '<p class="sh-invite-sub">Select the amount to request:</p>'+
+        '<div class="sh-invite-cash-grid">'+withdrawalChoices.map(amount=>
+          '<button type="button" data-sh-invite-withdraw="'+amount+
+          '" class="sh-invite-gold" '+
+          (withdrawable<amount?'disabled':'')+'>Request '+money(amount)+'</button>'
+        ).join('')+'</div>'+
+        '<p id="sh-invite-withdraw-status" class="sh-invite-alert" role="status">'+
+        'Requests are checked by finance before any manual bank transfer.</p>'+
+        '<button type="button" class="sh-invite-gold" id="sh-invite-withdraw-cancel" '+
+        'style="width:100%;margin-top:9px">Cancel</button></div>'+
+        (result.withdrawals||[]).map(w=>'<div class="sh-invite-rankrow">'+
+          '<span>#'+fmt(w.id)+'</span><b>'+money(w.amount_cents)+
+          '<small>Requested '+sellerEscape(w.created_at||'')+'</small></b><em>'+
+          sellerEscape(w.status)+'</em></div>').join('')+
+        '<button type="button" class="sh-invite-gold" id="sh-invite-support" '+
+        'style="width:100%;margin-top:10px">💬 Contact Support for payout details</button></div>'+
+        '<div class="sh-invite-cash"><h2 class="sh-invite-title">🎁 First Recharge Bonus</h2>'+
+        '<p class="sh-invite-sub">Recharge equivalent: $1 = 🪙 '+
+        fmt(result.recharge_coins_per_usd||500000)+'. The first verified recharge '+
+        'gets '+Number(result.first_recharge_bonus_percent||40)+'% EXTRA once.</p>'+
+        '<div class="sh-invite-rewards"><div class="sh-invite-reward"><span>💳</span><strong>'+
+        fmt(result.recharge_coins_per_usd||500000)+'</strong><small>Recharge coins</small></div>'+
+        '<div class="sh-invite-reward"><span>🎊</span><strong>'+fmt(newUserBonus)+
+        '</strong><small>Bonus coins</small></div>'+
+        '<div class="sh-invite-reward"><span>👑</span><strong>'+percent+
+        '%</strong><small>Inviter recharge reward</small></div></div>'+
+        '<p class="sh-invite-alert">First recharge is counted only after approved '+
+        'seller or finance verification; seller self-recharges do not qualify.</p></div>'+
+        '<h2 class="sh-invite-title">How invitation works</h2>'+
+        '<div class="sh-invite-rule">① Copy or share your 8-digit ID invite code.</div>'+
+        '<div class="sh-invite-rule">② Your friend creates a verified Sharika account.</div>'+
+        '<div class="sh-invite-rule">③ They enter your code during signup or within '+
+        Number(result.claim_window_hours||48)+' hours of account creation.</div>'+
+        '<div class="sh-invite-rule">④ After verification, one-time referral rewards are '+
+        'recorded in the actual coin wallets.</div>'+
+        '<div class="sh-invite-rule">⑤ The inviter receives '+percent+
+        '% of eligible verified recharge coins and '+
+        money(result.invite_usd_cents_per_verified_user??0)+
+        ' pending USD earnings per referral. Cash is reviewed separately.</div>'+
+        (result.claim_eligible?'<div class="sh-invite-panel">'+
+        '<h2 class="sh-invite-title">🎁 New User Bonus</h2>'+
+        '<p class="sh-invite-sub">Have a friend’s invite code? Enter it before your window expires.</p>'+
+        '<input id="sh-invite-redeem-code" class="sh-invite-entry" maxlength="8" '+
+        'inputmode="numeric" autocomplete="off" placeholder="Enter 8-digit invitation code">'+
+        '<button type="button" id="sh-invite-redeem" class="sh-invite-gold sh-invite-share">'+
+        'Confirm invite code</button><p class="sh-invite-alert" id="sh-invite-redeem-status">'+
+        'The same account cannot claim two referral bonuses.</p></div>':
+        result.invited_by?'<p class="sh-invite-alert">✓ You joined with ID '+
+          sellerEscape(result.invited_by)+'</p>':'')+
+        '<h2 class="sh-invite-title">Verified invited friends</h2>'+
+        (history||'<p class="sh-invite-alert">No verified referrals yet.</p>')+
+        '<p class="sh-invite-alert">Ranking cash prizes are separate from the regular '+
+        'per-referral USD earnings and have not been configured.</p></div>';
+      root.querySelector('#sharika-copy-invite').onclick=async()=>{
+        try{await native('copyInviteCode',{code:invite});toast('Invite code copied ✓');}
+        catch(error){toast('Copy unavailable: '+errText(error));}
+      };
+      root.querySelector('#sharika-share-invite').onclick=async()=>{
+        const text='Join me on Sharika Voice Chat! Use my invite code '+invite+
+          ' during registration or within '+Number(result.claim_window_hours||48)+
+          ' hours of creating your account.';
+        try{await native('shareInvite',{text});}
+        catch(error){toast('Share unavailable: '+errText(error));}
+      };
+      root.addEventListener('click',event=>{
+        if(!event.target.closest?.('#sh-invite-support'))return;
+        root.remove();openSupportThread();
       });
-    }catch(error){if(root.isConnected)root.textContent='Invite tracking unavailable: '+errText(error);}
+      const body=root.querySelector('#sh-invite-tab-body');
+      const overview=body.innerHTML;
+      const overviewButton=root.querySelector('#sh-invite-tab-overview');
+      const rankButton=root.querySelector('#sh-invite-tab-ranking');
+      overviewButton.onclick=()=>{
+        overviewButton.classList.add('on');rankButton.classList.remove('on');
+        body.innerHTML=overview;bindInviteRedeem(body);bindInviteWithdraw(body);
+      };
+      rankButton.onclick=async()=>{
+        overviewButton.classList.remove('on');rankButton.classList.add('on');
+        body.innerHTML='<p class="sh-invite-alert">Loading verified monthly ranking…</p>';
+        try{
+          const ranking=await api('GET','/invites/rankings');
+          if(!body.isConnected||!rankButton.classList.contains('on'))return;
+          body.innerHTML='<div class="sh-invite-panel">'+
+            '<h2 class="sh-invite-title">🏆 Monthly Invitation Ranking</h2>'+
+            '<p class="sh-invite-sub">Real accounts invited this month · UTC</p>'+
+            ((ranking.leaders||[]).map(r=>'<div class="sh-invite-rankrow">'+
+              '<span>#'+Number(r.rank)+'</span><b>'+sellerEscape(r.name||'Member')+
+              '<small>ID '+sellerEscape(r.id)+'</small></b><em>'+
+              fmt(r.total_invites)+' invited · '+money(r.estimated_usd_cents)+
+              ' pending</em></div>').join('')||
+              '<p class="sh-invite-alert">No ranking entries yet.</p>')+
+            '<p class="sh-invite-alert">Dollar estimates assume verified accounts; '+
+            'cash approval is required. Separate rank prizes are not enabled.</p></div>';
+        }catch(error){if(body.isConnected)body.textContent='Ranking unavailable: '+errText(error);}
+      };
+      bindInviteRedeem(body);bindInviteWithdraw(body);
+    }catch(error){if(panel.isConnected)panel.textContent='Invite tracking unavailable: '+errText(error);}
   }
   window.dailySheet=showVerifiedDailySheet;
   window.inviteSheet=showVerifiedInviteSheet;
@@ -4460,10 +5148,21 @@
     'border:1px solid #c5a46a89;box-shadow:inset 0 2px 1px #fff3,0 8px 20px #09062182}',
     '#rb .sh-royal-empty strong{display:block;font-size:15px;color:#ffe6ad;margin:8px 0}',
     '#pfo .sh-ranked-profile .pavw>.sh-sovera-frame{z-index:4!important}',
-    '#pfo .sh-ranked-profile .sh-royal-profile-effects{display:flex;align-items:center;',
-    'justify-content:center;gap:8px;max-width:100%;margin:5px auto 15px}',
-    '#pfo .sh-ranked-profile .sh-royal-profile-effects img{max-width:94px;',
-    'height:40px;object-fit:contain;filter:drop-shadow(0 2px 3px #2d1158)}',
+    // Both room-opened and ranking-opened profiles display verified artwork.
+    // The original wide nameplate must never enlarge the phone's viewport.
+    '#pfo{overflow-x:hidden!important;max-width:100vw;box-sizing:border-box}',
+    '#pfo #pfc,#pfo .pf,#pfo .pfh{min-width:0;max-width:100%;box-sizing:border-box}',
+    '#pfo .sh-royal-profile-effects{display:flex;flex-wrap:wrap;align-items:center;',
+    'justify-content:center;gap:8px;width:min(100%,320px);max-width:100%;',
+    'margin:9px auto 16px;overflow:hidden}',
+    '#pfo .sh-royal-profile-effects img{display:block;flex:0 1 auto;',
+    'width:auto;max-width:100%;height:auto;max-height:64px;object-fit:contain;',
+    'filter:drop-shadow(0 2px 3px #2d1158)}',
+    '#pfo .sh-royal-profile-effects img[src*="legend-tag"]{width:min(100%,300px);',
+    'max-height:78px;object-fit:contain}',
+    '#pfo .pfh .pavw{isolation:isolate}',
+    '#pfo .pfh .pav3{overflow:hidden!important;background-size:cover!important;',
+    'background-position:center 30%!important}',
     '#v-msg .chatrow .sh-royal-inbox-wrap{display:block;position:relative;',
     'width:48px;height:48px;flex:0 0 48px;overflow:visible}',
     '#v-msg .chatrow .sh-royal-inbox-wrap>.av{width:48px;height:48px;',
@@ -4981,7 +5680,7 @@
         '. Only server-verified details are shown.</div>'+
         '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
         'Loading follow status…</button></div>'+
-        '<div id="sh-ranked-seller-action"></div></div>';
+        '</div>';
       const avatar=root.querySelector('#sh-ranked-avatar');
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
@@ -5012,20 +5711,6 @@
         if(follow.isConnected)follow.textContent='Follow unavailable';
         console.warn('Verified follow status unavailable:',errText(error));
       });
-      api('GET','/sellers/me').then(mine=>{
-        if(requestNo!==rankProfileRequest||!root.isConnected||!mine.seller?.active)return;
-        const action=root.querySelector('#sh-ranked-seller-action');
-        if(!action)return;
-        const button=document.createElement('button');
-        button.type='button';button.className='act';
-        button.style.cssText='display:block;width:100%;border-radius:18px;margin:14px auto;padding:12px';
-        button.textContent='🪙 Send seller coins to ID '+id;
-        button.onclick=()=>{
-          panel.classList.remove('on');
-          showVerifiedCoinSellers({walletOnly:true,targetId:id});
-        };
-        action.appendChild(button);
-      }).catch(()=>{});
     }catch(error){
       if(requestNo===rankProfileRequest&&panel.classList.contains('on'))
         root.textContent='Unable to open verified profile: '+errText(error);
@@ -5218,12 +5903,42 @@
     return {round_no:prev.round_no,winners};
   }
   let originalGameWalletRefreshTime=0;
+  function originalGameFullscreenStyle(doc){
+    if(doc.getElementById('sh-original-fullscreen-style'))return;
+    const style=doc.createElement('style');
+    style.id='sh-original-fullscreen-style';
+    style.textContent=[
+      '#shb.sh-original-fullscreen,#bg.sh-original-fullscreen{position:fixed!important;',
+      'inset:0!important;width:100%!important;height:100%!important;',
+      'z-index:2147482000!important;align-items:stretch!important;',
+      'background:#100424!important;backdrop-filter:none!important}',
+      '#shb.sh-original-fullscreen #sh,#bg.sh-original-fullscreen #sheet{',
+      'display:flex!important;flex-direction:column!important;flex:1!important;',
+      'width:100%!important;height:100%!important;max-height:none!important;',
+      'min-height:0!important;overflow:hidden!important;margin:0!important;',
+      'padding:calc(8px + env(safe-area-inset-top,0px)) 10px ',
+      'calc(12px + env(safe-area-inset-bottom,0px))!important;',
+      'border:0!important;border-radius:0!important;animation:none!important;',
+      'transform:none!important;box-sizing:border-box!important}',
+      '#sh-original-host{flex:1!important;min-height:0!important;height:auto!important;',
+      'max-height:none!important;overflow:hidden!important}',
+      '#sh-original-host iframe{width:100%!important;height:100%!important;',
+      'border:0!important;display:block!important}',
+      '#sh-original-back{flex:none;align-self:flex-start;min-height:40px}',
+      '#sh-original-game-title{flex:none;font-size:17px;margin:8px 0!important;',
+      'color:#ffe4a0;line-height:1.25}',
+      '@media(prefers-reduced-motion:reduce){#sh-original-host *{animation:none!important}}'
+    ].join('');
+    doc.head.appendChild(style);
+  }
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
     const sheet=doc.getElementById(insideRoom?'sheet':'sh');
     const overlay=doc.getElementById(insideRoom?'bg':'shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
+    originalGameFullscreenStyle(doc);
     function catalog(){
+      overlay.classList.remove('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div><h3>🎮 Original Games</h3>'+
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
@@ -5370,13 +6085,14 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
+      overlay.classList.add('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div>'+
         '<button id="sh-original-back" type="button" '+
         'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
         'background:#351164;color:#fff">← All games</button>'+
-        '<h3 style="margin:8px 0"></h3>'+
-        '<div id="sh-original-host" style="width:100%;height:min(74vh,750px);'+
-        'min-height:380px;border:1px solid #a56dff;border-radius:12px;'+
+        '<h3 id="sh-original-game-title"></h3>'+
+        '<div id="sh-original-host" style="width:100%;'+
+        'min-height:0;border:1px solid #a56dff;border-radius:12px;'+
         'overflow:hidden;background:#100424"></div>';
       sheet.querySelector('h3').textContent=item.name;
       sheet.querySelector('#sh-original-back').onclick=()=>{currentGameFrame=null;clearWinnerBanner();catalog()};
@@ -5463,11 +6179,17 @@
       }
     };
     view.addEventListener('message',onOriginalGameMessage);
+    const hiddenObserver=new MutationObserver(()=>{
+      if(!overlay.classList.contains('on'))view.__sharikaOriginalGameCleanup?.();
+    });
+    hiddenObserver.observe(overlay,{attributes:true,attributeFilter:['class']});
     view.__sharikaOriginalGameCleanup=()=>{
+      hiddenObserver.disconnect();
       view.removeEventListener('message',onOriginalGameMessage);
       clearWinnerBanner();
       currentGameFrame?.element?.remove();
       currentGameFrame=null;
+      overlay.classList.remove('sh-original-fullscreen');
     };
     catalog();
     overlay.classList.add('on');
@@ -5543,6 +6265,8 @@
   window.logout=function(){
     if(window.cur)window.leaveRoom();
     if(presenceTimer){clearInterval(presenceTimer);presenceTimer=null;}
+    document.getElementById('sh-invite-newbie')?.remove();
+    document.getElementById('sh-invite-page')?.remove();
     session=null;profile=null;balance={coins:0,dia:0,xp:0};
     native('signOut').catch(()=>{});
     cleanLocalFakeState();

@@ -226,21 +226,32 @@ function flash(s){$('res').textContent=s;setTimeout(()=>GameBridge.refresh(),200
 function modal(msg){$('mc').textContent=msg;$('md').classList.add('show')}
 $('md').onclick=()=>$('md').classList.remove('show');
 function makeChips(){
-  $('chips').innerHTML=CH.map(c=>'<button class="chip'+(c===chip?' on':'')+'" data-c="'+c+'">🪙<br>'+fmt(c)+'</button>').join('');
+  const container=$('chips');
+  if(container.children.length!==CH.length){
+    container.innerHTML=CH.map(c=>'<button class="chip" data-c="'+c+'">🪙<br>'+fmt(c)+'</button>').join('');
+  }
+  container.querySelectorAll('.chip').forEach(button=>
+    button.classList.toggle('on',Number(button.dataset.c)===chip));
 }
 function render(d){
   const current=d.round.round_no;
   bets={};for(const b of d.my_bets||[])if(b.round_no===current)bets[b.pick_index]=(bets[b.pick_index]||0)+b.amount;
   $('rn').textContent=current;$('bal').textContent=fmt(d.coins);$('rev').textContent=fmt(d.today_won||0);
-  $('pot').textContent='Server';W.classList.toggle('closed',d.round.phase!=='bet');
-  S.forEach((s,i)=>{$('s_'+s.id).querySelector('.am span:last-child').textContent=fmt(bets[i]||0);$('s_'+s.id).classList.remove('hl')});
   const prev=d.previous_result;
+  $('pot').textContent='Server';W.classList.toggle('closed',d.round.phase!=='bet');
+  S.forEach((s,i)=>{
+    const el=$('s_'+s.id);
+    el.querySelector('.am span:last-child').textContent=fmt(bets[i]||0);
+    el.classList.toggle('hl',!!prev&&prev.index===i);
+  });
   if(prev){
-    S[prev.index]&&$('s_'+S[prev.index].id).classList.add('hl');
-    const shown=S[prev.index]||S[0];
-    $('res').innerHTML='<div class="rbx"><span>Last result:</span><i class="nw">'+ic(shown)+'</i><small> Round '+prev.round_no+'</small></div>';
+    if(lastResult!==prev.round_no){
+      const shown=S[prev.index]||S[0];
+      $('res').innerHTML='<div class="rbx"><span>Last result:</span><i class="nw">'+ic(shown)+'</i><small> Round '+prev.round_no+'</small></div>';
+    }
     lastResult=prev.round_no;
-  }else $('res').textContent='Live synchronized round';
+  }else if(lastResult===null&&$('res').textContent!=='Live synchronized round')
+    $('res').textContent='Live synchronized round';
   makeChips();
   const left=Math.max(0,Math.ceil((d.round.bet_closes_ms-GameBridge.now())/1000));
   $('hb').textContent=d.round.phase==='bet'?'Select Time':'SPINNING';
