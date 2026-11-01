@@ -1503,6 +1503,10 @@
       '<div class="lbl">Invite code (optional)</div>'+
       '<input class="field" id="stage-invite-code" maxlength="8" inputmode="numeric" '+
       'placeholder="Inviter 8-digit Sharika ID" autocomplete="off">');
+    pendingInviteCode().then(code=>{
+      const input=auth.querySelector('#stage-invite-code');
+      if(input&&code&&!input.value)input.value=code;
+    });
   }
   const inviteAuthRoot=document.getElementById('au');
   if(inviteAuthRoot){

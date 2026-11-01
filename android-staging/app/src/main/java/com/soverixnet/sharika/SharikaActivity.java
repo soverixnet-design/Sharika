@@ -95,6 +95,7 @@ public final class SharikaActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        restorePendingReferral();
         captureReferralIntent(getIntent());
         readPlayInstallReferral();
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -575,13 +576,33 @@ public final class SharikaActivity extends Activity {
         return value != null && value.matches("[0-9]{8}") ? value : "";
     }
 
+    private void restorePendingReferral(){
+        android.content.SharedPreferences pref=getSharedPreferences("sharika_invite_v1",MODE_PRIVATE);
+        long saved=pref.getLong("saved_ms",0L);
+        if(saved>0L && System.currentTimeMillis()-saved<30L*86400000L)
+            pendingReferralCode=validatedInviteCode(pref.getString("code",""));
+        else pref.edit().clear().apply();
+    }
+
+    private void savePendingReferral(String code){
+        if(validatedInviteCode(code).isEmpty())return;
+        pendingReferralCode=code;
+        getSharedPreferences("sharika_invite_v1",MODE_PRIVATE).edit()
+            .putString("code",code).putLong("saved_ms",System.currentTimeMillis()).apply();
+    }
+
+    private void clearPendingReferral(){
+        pendingReferralCode="";
+        getSharedPreferences("sharika_invite_v1",MODE_PRIVATE).edit().clear().apply();
+    }
+
     private void captureReferralIntent(Intent intent){
         if(intent==null||intent.getData()==null)return;
         Uri uri=intent.getData();
         if("sharika".equals(uri.getScheme()) && "invite".equals(uri.getHost())){
             String segment=uri.getLastPathSegment();
             if(!validatedInviteCode(segment).isEmpty())
-                pendingReferralCode=segment;
+                savePendingReferral(segment);
         }
     }
 
@@ -603,7 +624,7 @@ public final class SharikaActivity extends Activity {
                             String code=Uri.parse("https://sharika.invalid/?"+ref)
                                 .getQueryParameter("sharika_invite");
                             if(!validatedInviteCode(code).isEmpty() && pendingReferralCode.isEmpty())
-                                pendingReferralCode=code;
+                                savePendingReferral(code);
                         }
                     }catch(Exception ignored){
                         // Direct APK installs do not have a Google Play referrer.
@@ -822,6 +843,10 @@ public final class SharikaActivity extends Activity {
             }
             JSONObject payload = new JSONObject(data.toString());
             if (status >= 200 && status < 300) {
+                if(method.equals("POST") &&
+                   (path.equals("/api/v1/me") || path.equals("/api/v1/invites/claim")) &&
+                   body!=null && !validatedInviteCode(body.optString("invite_code","")).isEmpty())
+                    clearPendingReferral();
                 sendResult(id, result(true, payload, null));
             } else {
                 sendResult(id, result(false, null,
