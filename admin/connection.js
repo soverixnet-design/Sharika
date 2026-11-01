@@ -851,6 +851,19 @@
       (v===selected?' selected':'')+'>'+esc(v.replaceAll('_',' '))+'</option>').join('');
     root.innerHTML=card('Verified cosmetic inventory',
       'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
+      '<div class="card"><h3>🎁 Give a frame or medal to a user</h3>'+
+      '<p class="n">Super Admin: enter the real Sharika ID, find the frame or medal, and give it free. '+
+      'Admin-only items can be granted even when Store sales are disabled. The user can equip it from their profile.</p>'+
+      '<input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" '+
+      'placeholder="Recipient Sharika ID (8 digits)" aria-label="Recipient Sharika ID">'+
+      '<div class="row"><select class="field" id="sh-cos-grant-kind" aria-label="Cosmetic category">'+
+      '<option value="frame_style">Frames</option><option value="medal_style">Medals</option>'+
+      '<option value="entry_style">Entry effects</option><option value="name_tag_style">Name tags</option></select>'+
+      '<input class="field" id="sh-cos-grant-filter" type="search" '+
+      'placeholder="Search e.g. Role Frame 28" aria-label="Search cosmetics"></div>'+
+      '<select class="field" id="sh-cos-grant-item" aria-label="Choose a frame or medal"></select>'+
+      '<button class="btn s" type="button" id="sh-cos-grant">Give selected item to ID · Free</button>'+
+      '<p class="n" role="status" id="sh-cos-note"></p></div>'+
       '<div id="sh-cosmetic-list">Loading server catalogue…</div>'+
       '<div class="card"><h3>Add new catalog item</h3>'+
       '<div class="row"><select class="field" id="sh-cos-kind">'+options(kinds,'entry_style')+'</select>'+
@@ -859,12 +872,7 @@
       '<input class="field" id="sh-cos-price" type="number" min="1" max="1000000" placeholder="Coin price"></div>'+
       '<div class="row"><label>Existing bundled artwork <select class="field" id="sh-cos-art"></select></label>'+
       '<button class="btn s" type="button" id="sh-cos-create">Add item</button></div>'+
-      '<p class="n">New catalogue IDs may reuse a bundled entry/frame asset. Truly new art requires including its animation or image in an app update.</p></div>'+
-      '<div class="card"><h3>Give a cosmetic free to any verified Sharika ID</h3>'+
-      '<div class="row"><input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" placeholder="8-digit recipient ID">'+
-      '<select class="field" id="sh-cos-grant-item"></select>'+
-      '<button class="btn s" type="button" id="sh-cos-grant">Give to ID · No coin charge</button></div></div>'+
-      '<p class="n" role="status" id="sh-cos-note"></p>';
+      '<p class="n">New catalogue IDs may reuse a bundled entry/frame asset. Truly new art requires including its animation or image in an app update.</p></div>';
     const status=byId('sh-cos-note'),kind=byId('sh-cos-kind'),artSelect=byId('sh-cos-art');
     function fillArt(){artSelect.innerHTML=options(art[kind.value]||[],'');}
     kind.onchange=fillArt;fillArt();
@@ -872,8 +880,21 @@
       const data=await api('GET','cosmetics');
       if(!root.isConnected)return;
       const items=Array.isArray(data.items)?data.items:[];
-      byId('sh-cos-grant-item').innerHTML=items.map(item=>
-        '<option value="'+esc(item.id)+'">'+esc(item.name+' · '+item.id)+'</option>').join('');
+      const grantKind=byId('sh-cos-grant-kind'),grantFilter=byId('sh-cos-grant-filter');
+      const grantItem=byId('sh-cos-grant-item');
+      function fillGrantItems(){
+        const query=grantFilter.value.trim().toLowerCase();
+        const matches=items.filter(item=>item.kind===grantKind.value&&
+          (!query||(item.name+' '+item.id).toLowerCase().includes(query)));
+        grantItem.innerHTML=matches.length?matches.map(item=>
+          '<option value="'+esc(item.id)+'">'+esc(item.name+' · '+item.id+
+          (item.active?'':' · Admin-only') )+'</option>').join(''):
+          '<option value="">No matching items in server catalogue</option>';
+        grantItem.disabled=matches.length===0;
+      }
+      grantKind.onchange=fillGrantItems;
+      grantFilter.oninput=fillGrantItems;
+      fillGrantItems();
       const list=byId('sh-cosmetic-list');
       list.innerHTML=items.map(item=>'<div class="card"><h4>'+esc(item.id)+'</h4>'+
         '<div class="row"><label>Name <input class="field" data-cos-field="name" data-id="'+esc(item.id)+'" value="'+esc(item.name)+'"></label>'+
@@ -924,7 +945,9 @@
         if(!/^[0-9]{8}$/.test(id)||!itemId){
           status.textContent='Enter a verified 8-digit ID and select one cosmetic.';return;
         }
-        if(!window.confirm('Give '+itemId+' to user ID '+id+' for FREE? This is audited.'))return;
+        const selected=items.find(item=>item.id===itemId);
+        if(!selected||!window.confirm('Give '+selected.name+' to user ID '+id+
+          ' for FREE? The user will own it and can equip it. This is audited.'))return;
         button.disabled=true;
         try{
           const given=await api('POST','cosmetics/grant',{public_id:id,item_id:itemId});
