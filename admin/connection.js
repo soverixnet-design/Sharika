@@ -623,28 +623,35 @@
     await refresh();
   };
   P.rooms=async function () {
-    const root=byId('pg');root.innerHTML=card('Rooms','Loading verified rooms…');
-    try {
+    const root=byId('pg');root.innerHTML=card('Rooms','Loading verified room and live presence…');
+    try{
       const data=await api('GET','rooms');
-      root.innerHTML='<div class="card"><p class="n">Real D1 rooms and saved members. Live presence is not tracked yet.</p>'+
-        window.T(['Room ID','Name','Owner ID','Members','Seats','Inspect'],
-          (data.rooms||[]).map(r=>[
-            esc(r.id),esc(r.name),esc(r.owner_public_id||''),
-            fmt(r.members),fmt(r.seat_count),
-            '<button type="button" class="btn s" data-room-id="'+esc(r.id)+'">Members</button>'
-          ]))+'<div id="room-members-detail"></div></div>';
+      const tracked=data.live_presence_tracked===true;
+      root.innerHTML='<div class="card"><h3>Verified rooms and active visitors</h3>'+
+        '<p class="n">'+(tracked?
+          'Live visitor counts include authenticated activity seen in the last 90 seconds.':
+          'Live activity service is temporarily unavailable; saved members are not online counts.')+
+        '</p><button class="btn" type="button" id="room-refresh">Refresh live counts</button>'+
+        window.T(['Room ID','Name','Owner ID','Online (90s)','Saved members','Seats','Inspect'],
+        (data.rooms||[]).map(r=>[
+          esc(r.id),esc(r.name),esc(r.owner_public_id||''),
+          r.online_count==null?'Untracked':fmt(r.online_count),
+          fmt(r.members),fmt(r.seat_count),
+          '<button type="button" class="btn s" data-room-id="'+esc(r.id)+'">Members</button>'
+        ]))+'<div id="room-members-detail"></div></div>';
       root.onclick=async e=>{
+        if(e.target.closest('#room-refresh')){await P.rooms();return;}
         const button=e.target.closest('button[data-room-id]');
         if(!button||button.disabled)return;
         button.disabled=true;
         const detail=byId('room-members-detail');
-        detail.textContent='Loading members…';
+        detail.textContent='Loading saved membership…';
         try{
-          const data=await api('GET','rooms/'+encodeURIComponent(button.dataset.roomId)+'/members');
-          detail.innerHTML='<h3>Members of '+esc(data.room.name)+' ('+esc(data.room.id)+')</h3>'+
-            '<p class="n">Room membership only; online status is not measured.</p>'+
+          const info=await api('GET','rooms/'+encodeURIComponent(button.dataset.roomId)+'/members');
+          detail.innerHTML='<h3>Members of '+esc(info.room.name)+' ('+esc(info.room.id)+')</h3>'+
+            '<p class="n">Saved room membership only; individual online identity is not inferred.</p>'+
             window.T(['User ID','Name','Room role','Seat','Muted','Joined'],
-              (data.members||[]).map(m=>[
+              (info.members||[]).map(m=>[
                 esc(m.public_id),esc(m.name),esc(m.role),
                 m.seat_no==null?'Audience':fmt(m.seat_no),
                 m.muted?'Yes':'No',esc(m.joined_at)
@@ -654,7 +661,6 @@
       };
     }catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
   };
-
 
   P.daily=async function(){
     const root=byId('pg');
@@ -1956,11 +1962,134 @@
       '<p>'+esc(granted.join(' · ')||'No permissions assigned')+'</p></div>';
   };
 
+  // Recover operational menu pages from the old visual-only template.
+  // Pages that cannot safely mutate the backend remain explicitly read-only.
+  const openVerifiedPage=page=>{window.V=page;window.shell();};
+  function verifiedHub(title,body,links){
+    const root=byId('pg');
+    root.innerHTML=card(title,body);
+    const actions=document.createElement('div');
+    actions.className='card';
+    for(const [label,page] of links){
+      const b=document.createElement('button');
+      b.type='button';b.className='btn s';b.textContent=label;
+      b.style.margin='4px';
+      b.onclick=()=>openVerifiedPage(page);
+      actions.appendChild(b);
+    }
+    root.appendChild(actions);
+  }
+  P.levels=P.premium;
+  P.promo=function(){
+    verifiedHub('Invite codes & promotions',
+      'Real invite links and referral rewards are managed under Check-in, Tasks & Invites. Generic coupon redemption is not yet connected; no simulated promo codes are issued.',
+      [['Open verified Invite settings','daily'],['Create event campaign','events']]);
+  };
+  P.themes=async function(){
+    const root=byId('pg');root.innerHTML=card('Room themes','Reading real room theme usage…');
+    try{
+      const data=await api('GET','theme-usage');
+      root.innerHTML='<div class="card"><h3>Actual room backgrounds in use</h3>'+
+        '<p class="n">Existing room themes are chosen by room owners. Admin-uploaded themes are not available yet; no demo previews are saved.</p>'+
+        window.T(['Theme','Rooms using'],(data.themes||[]).map(t=>[
+          esc(t.theme),fmt(t.rooms)
+        ]))+'<button class="btn s" id="theme-rooms" type="button">Open real rooms</button></div>';
+      byId('theme-rooms').onclick=()=>openVerifiedPage('rooms');
+    }catch(error){root.innerHTML=card('Theme usage unavailable',error.message);}
+  };
+  P.rr=async function(){
+    const root=byId('pg');
+    if(role!=='super'&&role!=='finance'){
+      root.innerHTML=card('Room Reward','Finance or Super Admin access is required.');return;
+    }
+    root.innerHTML=card('Room Reward','Loading audited room gift shares…');
+    try{
+      const data=await api('GET','gift-settlements');
+      root.innerHTML='<div class="card"><h3>Verified room gift accruals</h3>'+
+        '<p class="n">The figures below are room accrual units, not payments to the owner’s wallet. No claim or owner payout is enabled here.</p>'+
+        window.T(['Transaction','Room','Sender','Gift','Spent coins','Room share (1/100 units)','Date'],
+          (data.settlements||[]).map(x=>[
+            fmt(x.transaction_id),esc(x.room_id||'—'),esc(x.sender_id),
+            esc(x.gift),fmt(x.spent_coins),fmt(x.room_reward_hundredths),
+            esc(x.created_at)
+          ]))+'</div>';
+    }catch(error){root.innerHTML=card('Room rewards unavailable',error.message);}
+  };
+  async function readGameMonitor(){
+    if(role!=='super'&&role!=='finance')
+      throw Error('Finance or Super Admin permission is required');
+    return await api('GET','game-monitor');
+  }
+  P.games=async function(){
+    const root=byId('pg');root.innerHTML=card('Games','Loading settled game records…');
+    try{
+      const data=await readGameMonitor();
+      root.innerHTML='<div class="card"><h3>Verified game activity</h3>'+
+        '<p class="n">Real stored bets and settlements only. Gameplay settings cannot be edited here yet.</p>'+
+        window.T(['Engine','Game','Bets','Settled','Winning bets'],
+          (data.games||[]).map(g=>[
+            esc(g.source),esc(g.game),fmt(g.bets),fmt(g.settled),fmt(g.winning_bets)
+          ]))+'<button type="button" id="game-winners" class="btn s">Show settled winners</button></div>';
+      byId('game-winners').onclick=()=>openVerifiedPage('winb');
+    }catch(error){root.innerHTML=card('Game monitoring unavailable',error.message);}
+  };
+  P.winb=async function(){
+    const root=byId('pg');root.innerHTML=card('Win announcements','Loading verified winners…');
+    try{
+      const data=await readGameMonitor();
+      root.innerHTML='<div class="card"><h3>Recent confirmed game wins</h3>'+
+        '<p class="n">This is a verified read-only settlement history. Game win banners are generated inside the app; this page does not issue fake announcements.</p>'+
+        window.T(['User ID','Game','Round','Win coins','Settled UTC'],
+          (data.wins||[]).map(w=>[
+            esc(w.public_id),esc(w.game),fmt(w.round_no),
+            fmt(w.payout_coins),esc(w.settled_at)
+          ]))+'</div>';
+    }catch(error){root.innerHTML=card('Win history unavailable',error.message);}
+  };
+  async function featureHealth(){
+    return await api('GET','feature-health');
+  }
+  P.lucky=async function(){
+    const root=byId('pg');root.innerHTML=card('Lucky gifts','Checking server switch…');
+    try{
+      const state=await featureHealth();
+      verifiedHub('Lucky gifts · '+(state.lucky_gifts_enabled?'Enabled':'Disabled'),
+        state.lucky_gifts_enabled?
+          'The staging API reports Lucky gifts enabled. Use the verified gift catalogue to inspect items.':
+          'The server’s Lucky-gift switch is off. No admin demo toggle can bypass the server safety gate.',
+        [['Open gift catalogue','gifts']]);
+    }catch(error){root.innerHTML=card('Lucky gift status unavailable',error.message);}
+  };
+  P.system=P.config=async function(){
+    const root=byId('pg');root.innerHTML=card('Staging services','Checking verified service bindings…');
+    try{
+      const st=await featureHealth();
+      root.innerHTML='<div class="card"><h3>Verified Sharika staging system</h3>'+
+        window.T(['Service','Observed state'],[
+          ['Environment',esc(st.environment)],
+          ['D1 database',st.d1_bound?'Bound':'Unavailable'],
+          ['Voice room coordinator',st.voice_rooms_bound?'Bound':'Unavailable'],
+          ['Server time (UTC)',esc(st.server_time)]
+        ])+'<p class="n">Service bindings are server-reported. External provider health and end-to-end voice calls need their own tests.</p></div>';
+    }catch(error){root.innerHTML=card('System status unavailable',error.message);}
+  };
+  P.flags=async function(){
+    const root=byId('pg');root.innerHTML=card('Feature switches','Reading protected staging flags…');
+    try{
+      const st=await featureHealth();
+      root.innerHTML='<div class="card"><h3>Server-enforced feature switches</h3>'+
+        window.T(['Feature','Verified state'],[
+          ['Lucky gifts',st.lucky_gifts_enabled?'Enabled':'Disabled'],
+          ['Cash-redeemable coins','Disabled by design']
+        ])+'<p class="n">These are read-only safety switches. Editing requires a separately reviewed server deployment; no fake on/off controls are shown.</p></div>';
+    }catch(error){root.innerHTML=card('Feature status unavailable',error.message);}
+  };
+
   // The original visual-only dashboard includes demo pages. Replace every
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','levels','promo','themes','rr','games','winb','lucky','config','flags'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
