@@ -230,9 +230,10 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
 .wkh{font-size:24px;font-weight:800;text-align:center;background:linear-gradient(90deg,#fff,#f6c453);-webkit-background-clip:text;background-clip:text;color:transparent}.wkh small{display:block;font-size:12.5px;font-weight:600;-webkit-text-fill-color:#cfc4f5;margin-top:4px}
 .wkp{width:100%;margin-top:26px;color:#fff}.wkb{margin-top:auto;border:2px solid #f6c453;background:linear-gradient(#b02cff,#6016c8);color:#fff;border-radius:30px;padding:14px 56px;font-size:17px;font-weight:700;box-shadow:0 0 22px rgba(255,61,200,.5)}.wkt{width:60%;height:4px;border-radius:2px;background:rgba(255,255,255,.18);margin-top:16px;overflow:hidden}.wkt u{display:block;height:100%;background:#f6c453;animation:wkt linear forwards}@keyframes wkt{from{width:100%}to{width:0}}
 </style>
+<link rel="stylesheet" href="./golden-home.css">
 </head>
 <body>
-<div class="app" id="app">
+<div class="app golden-home" id="app">
 <i class="blob b1"></i><i class="blob b2"></i>
 <div class="views">
  <section class="view on" id="v-home">
@@ -306,7 +307,7 @@ function pickImage(max,cb){var f=document.createElement("input");f.type="file";f
 function go(v){
   document.querySelectorAll(".view").forEach(function(s){s.classList.toggle("on",s.id==="v-"+v)});
   document.querySelectorAll(".ni").forEach(function(b){b.classList.toggle("on",b.dataset.v===v)});
-  $("app").classList.toggle("lite",v==="me");if(v==="rank")renderRank();if(v==="msg")renderMsg();if(v==="me")renderMe();
+  $("app").classList.toggle("lite",v==="me");$("app").classList.toggle("golden-home",v==="home");if(v==="rank")renderRank();if(v==="msg")renderMsg();if(v==="me")renderMe();
 }
 document.querySelectorAll(".ni").forEach(function(b){b.onclick=function(){go(b.dataset.v)}});
 /* ===== Banners ===== */

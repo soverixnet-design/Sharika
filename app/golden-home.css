@@ -1,0 +1,74 @@
+/* Sharika Home — exact owner-supplied golden fantasy artwork.
+   Scope the image and legibility treatment to Home; retain every other page. */
+.app.golden-home {
+  background: #8e562f url('./golden-home-background.jpg') center center / cover no-repeat;
+}
+
+.app.golden-home #v-home {
+  background: transparent !important;
+  background-image: none !important;
+  animation: fi .3s ease both;
+}
+
+.app.golden-home .blob { opacity: .12; }
+
+.app.golden-home #v-home .hd {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 225, 158, .48);
+  background: rgba(25, 17, 63, .69);
+  box-shadow: 0 10px 24px rgba(48, 24, 12, .25);
+  backdrop-filter: blur(10px);
+}
+.app.golden-home #v-home .hd h1 small { color: #f9ddb0; }
+.app.golden-home #v-home .pill {
+  color: #ffe6ad;
+  background: rgba(67, 44, 92, .85);
+  border-color: rgba(255, 226, 157, .5);
+}
+
+.app.golden-home #v-home .srch {
+  background: rgba(29, 24, 81, .82);
+  border-color: rgba(255, 225, 158, .52);
+  box-shadow: 0 8px 22px rgba(52, 27, 19, .25);
+  backdrop-filter: blur(9px);
+}
+.app.golden-home #v-home .srch input::placeholder { color: #e8d7ed; }
+
+.app.golden-home #v-home .qa button {
+  color: #fff;
+  background: rgba(31, 23, 81, .86);
+  border: 1px solid rgba(255, 222, 153, .44);
+  box-shadow: 0 9px 20px rgba(47, 20, 23, .3);
+  backdrop-filter: blur(9px);
+}
+.app.golden-home #v-home .tabs button {
+  color: #fbe9c6;
+  background: rgba(31, 23, 81, .86);
+  border-color: rgba(255, 222, 153, .4);
+  backdrop-filter: blur(9px);
+}
+.app.golden-home #v-home .tabs button.on {
+  color: #fff;
+  background: #9c38d9;
+  border-color: #f6c453;
+}
+.app.golden-home #v-home .empty {
+  color: #fbe9c6;
+  background: rgba(31, 23, 81, .82);
+  border: 1px solid rgba(255, 222, 153, .4);
+  border-radius: 20px;
+}
+
+.app.golden-home .nav {
+  background: rgba(23, 15, 62, .9);
+  border: 1px solid rgba(255, 214, 137, .6);
+  box-shadow: 0 9px 28px rgba(54, 25, 16, .38);
+}
+.app.golden-home .nav .ni { color: #e5d4ef; }
+.app.golden-home .nav .ni.on { color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app.golden-home #v-home { animation: none; }
+}
