@@ -492,14 +492,31 @@
         return art?.group===gallery;
       });
     }
-    catch(error){node.textContent='Cosmetic shop unavailable: '+errText(error);return;}
+    catch(error){
+      if(gallery==='all'){
+        node.textContent='Cosmetic shop unavailable: '+errText(error);return;
+      }
+      // Bundled preview artwork is safe to show offline, but does not imply
+      // ownership or permit a client-side equipment/purchase shortcut.
+      records=[];
+      const warning=document.createElement('p');
+      warning.className='lbl';
+      warning.textContent='Gallery preview only. Verified catalogue pending: '+errText(error);
+      node.insertAdjacentElement('beforebegin',warning);
+    }
     if(!node.isConnected)return;
+    const serverArts=new Set(records.map(row=>row.art_key));
+    const serverIds=new Set(records.map(row=>row.id.slice(kind.length+1)));
+    const previews=gallery==='all'?[]:catalog.filter(item=>
+      item.source==='sharika'&&item.group===gallery&&
+      !serverArts.has(item.id)&&!serverIds.has(item.id)
+    ).map(item=>({...item,previewOnly:true,owned:false,active:false}));
     const choices=[{id:'',name:'None',art:'',owned:true},...records.map(row=>{
       const key=row.id.slice(kind.length+1);
       const art=catalog.find(x=>x.id===key)||catalog.find(x=>x.id===row.art_key);
       return {...art,id:key,item_id:row.id,name:row.name,owned:row.owned,
         active:row.active,price_coins:row.price_coins};
-    })];
+    }),...previews];
     for(const item of choices){
       const button=document.createElement('button');
       button.className='sh-sovera-item';
@@ -526,10 +543,11 @@
       label.textContent=item.name;
       button.appendChild(label);
       const price=document.createElement('span');
-      price.textContent=item.owned?'✓ Owned':item.active?
+      price.textContent=item.previewOnly?'Preview only · Admin rollout pending':
+        item.owned?'✓ Owned':item.active?
         '🪙 '+Number(item.price_coins).toLocaleString('en-US'):'Unavailable';
       button.appendChild(price);
-      button.disabled=!!item.item_id&&!item.owned&&!item.active;
+      button.disabled=!!item.previewOnly||!!item.item_id&&!item.owned&&!item.active;
       if(isEntry&&item.id){
         const preview=document.createElement('button');
         preview.type='button';preview.className='act';preview.textContent='▶ Preview';
