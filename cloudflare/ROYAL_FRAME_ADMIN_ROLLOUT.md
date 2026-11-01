@@ -36,8 +36,12 @@ above have now been applied to the existing `sharika-staging` database, with
 matching journal entries through migration `0036`. A D1 Time Travel bookmark
 was recorded beforehand. Read-back confirmed 62 Royal Role frames and 35
 VIP/SVIP/Noble cosmetics in the catalog, all 97 inactive, with CP auto-award
-and CP rewards disabled. This is **not** a production rollout, and the Admin
-Worker UI has **not** been redeployed by the database migration.
+and CP rewards disabled. This is **not** a production rollout. The Admin
+frontend Worker was subsequently deployed from the isolated staging workflow;
+its new grant form and API service binding were confirmed against the live
+`/admin/connection.js` and `/health` endpoints. This does **not** prove a
+successful Firebase Google sign-in or a grant to a real recipient; both still
+require acceptance testing with an authorized Super Admin.
 
 Do not run an unreviewed `d1 migrations apply --remote` or rebuild the D1
 database. **Back up the exact staging database, compare the migration journal
@@ -48,10 +52,12 @@ available for grants in any other environment. Newly seeded items are **not** op
 unless Super Admin explicitly enables them.
 
 The staging Admin Worker embeds `admin/connection.js` into its compiled script.
-An Android APK build or GitHub push does **not** update that Worker. Deploy a
-reviewed `sharika-admin-staging` bundle with its existing `SHARIKA_API` service
-binding, separately from the API Worker, and verify the authenticated Grant
-flow against a test account before using real recipients.
+An Android APK build or ordinary GitHub push does **not** update that Worker.
+The dedicated `.github/workflows/sharika-royal-frames-admin-staging.yml`
+publishes the reviewed `sharika-admin-staging` bundle only, preserving
+its existing `SHARIKA_API` service binding and avoiding API/D1 changes.
+Verify the authenticated Grant flow against a test account before using real
+recipients.
 
 The mobile Firebase Google login popup problem is separate from this catalogue
 rollout. Do not bypass Firebase authentication or the Super Admin D1 role check.
