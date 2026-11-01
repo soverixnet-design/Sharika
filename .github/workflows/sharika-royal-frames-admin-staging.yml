@@ -1,0 +1,77 @@
+name: Sharika Royal frames admin UI (staging only)
+
+on:
+  push:
+    branches:
+      - feature/sharika-royal-frame-admin-grants-20261101
+    paths:
+      - '.github/workflows/sharika-royal-frames-admin-staging.yml'
+      - 'admin/connection.js'
+      - 'admin/index.html'
+      - 'cloudflare/src/admin-frontend-worker.mjs'
+      - 'cloudflare/wrangler.admin.jsonc'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  admin-staging-only:
+    name: Check and publish staging admin frontend only
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse any unexpected branch, Worker, or binding
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            const config=JSON.parse(readFileSync("wrangler.admin.jsonc","utf8"));
+            if(config.name!=="sharika-admin-staging" ||
+               config.account_id!=="d81cf7c48fb9b36d468cb0a08720cd74" ||
+               config.vars?.SHARIKA_ENV!=="staging" ||
+               config.workers_dev!==true ||
+               config.services?.length!==1 ||
+               config.services[0].binding!=="SHARIKA_API" ||
+               config.services[0].service!=="sharika-api-staging" ||
+               config.services[0].environment!=="production") {
+              throw new Error("Refusing to deploy unexpected admin Worker or service binding");
+            }
+          '
+      - name: Test server-side Super Admin grant and catalog constraints
+        run: npm run check
+      - name: Bundle the reviewed admin HTML and connector
+        run: |
+          cp ../admin/index.html src/admin-index.html
+          cp ../admin/connection.js src/admin-connection.txt
+          node --check ../admin/connection.js
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc --outdir /tmp/sharika-royal-frame-admin-bundle
+      - name: Deploy isolated Admin Worker (no API Worker or D1 migrations)
+        run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
+      - name: Verify health and published grant interface
+        run: |
+          curl --fail --silent --show-error --retry 4 https://sharika-admin-staging.soverixnet.workers.dev/health | node -e '
+            let b="";process.stdin.on("data",d=>b+=d).on("end",()=>{
+              const s=JSON.parse(b);
+              if(s.service!=="sharika-admin-staging" || !s.api_service_configured) process.exit(1);
+            });
+          '
+          curl --fail --silent --show-error --retry 4 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js | node -e '
+            let b="";process.stdin.on("data",d=>b+=d).on("end",()=>{
+              if(!b.includes("Give selected item to ID") || !b.includes("sh-cos-grant-item")) process.exit(1);
+            });
+          '
