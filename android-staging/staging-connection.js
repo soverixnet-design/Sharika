@@ -580,57 +580,19 @@
     }
     anchor.insertAdjacentElement('afterend',strip);
   }
-  // A verified seller has two distinct wallets: personal coins in the
-  // original profile, plus this seller-stock entry beside their public ID.
-  let sellerProfileRequest=0;
-  async function renderSellerWalletProfileButton(){
-    const requestNo=++sellerProfileRequest;
-    const id=session?.user?.id;
-    const anchor=document.querySelector('#v-me .mid');
-    document.getElementById('sharika-seller-wallet-entry')?.remove();
-    if(!id||!anchor)return;
-    try{
-      const data=await api('GET','/sellers/me');
-      if(requestNo!==sellerProfileRequest||session?.user?.id!==id||!anchor.isConnected)return;
-      const seller=data.seller;
-      if(!seller?.active)return;
-      const button=document.createElement('button');
-      button.id='sharika-seller-wallet-entry';
-      button.type='button';
-      button.textContent='🪙 Recharge my ID · Seller stock '+
-        Number(seller.available_coins||0).toLocaleString('en-US');
-      button.style.cssText='display:block;margin:8px auto;padding:8px 14px;border:1px solid #f0be55;'+
-        'border-radius:15px;background:#3b225b;color:#fff;font-weight:700;font-size:12px';
-      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true,
-        targetId:profile?.public_id||''});
-      (document.getElementById('sh-sovera-own-identity')||anchor).insertAdjacentElement('afterend',button);
-    }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
-  }
-
   // Premium membership is independent of Wealth/Charm levels. Automatic
   // eligibility and daily credits are computed by the verified D1 Worker.
   let premiumProfileRequest=0;
   async function mountPremiumProfileEntry(){
-    const anchor=document.querySelector('#v-me .mid');
+    const button=document.querySelector('#v-me .profile-svip-badge');
     const requestNo=++premiumProfileRequest;
-    document.getElementById('sharika-premium-profile-entry')?.remove();
-    if(!anchor||!session)return;
-    const button=document.createElement('button');
-    button.type='button';button.id='sharika-premium-profile-entry';
-    button.textContent='👑 VIP · SVIP · Noble';
-    button.style.cssText='display:block;margin:8px auto;padding:9px 15px;border-radius:16px;'+
-      'color:#ffedb1;background:linear-gradient(140deg,#5a2a91,#30215f);'+
-      'border:1px solid #ffe49c;font-weight:800;font-size:13px;'+
-      'box-shadow:inset 0 2px 0 #ffffff35,0 5px 10px #0005';
-    button.onclick=showPremiumSheet;
-    anchor.insertAdjacentElement('afterend',button);
+    if(!button||!session)return;
     const who=session.user.id;
     try{
       const data=await api('GET','/premium');
       if(!button.isConnected||requestNo!==premiumProfileRequest||session?.user?.id!==who)return;
       const tier=String(data.status?.tier||'none').toUpperCase();
-      button.textContent=tier==='NONE'?'👑 VIP · SVIP · Noble':
-        '👑 '+tier+' · Premium benefits';
+      button.textContent=tier==='NONE'?'Member':tier+' Member';
     }catch(error){
       console.warn('Premium status pending staging deployment:',errText(error));
     }
@@ -967,9 +929,17 @@
   if(typeof priorRenderMe==='function')window.renderMe=function(){
     priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
-    renderSellerWalletProfileButton().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
   };
+  // Seller stock is kept inside the verified Seller Wallet flows, not injected
+  // into the visual My Profile header. The seller API and transfer flow remain.
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('#v-me [data-m="cp"]');
+    if(!button)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(profile?.public_id)openVerifiedRankProfile(profile.public_id);
+    else toast('Sign in to view CP & Friendship');
+  },true);
   // Both the old SVIP shortcut and the new profile badge open the one verified
   // membership screen. No localStorage coin minting or demo tier changes.
   document.addEventListener('click',event=>{
@@ -1385,6 +1355,8 @@
     };
     balance = { ...local.state };
     session = { email: account.email, user: { id:current.user_id, email:account.email } };
+    // A restored session can finish while Recharge is already visible.
+    mountRechargeSellerWallet();
     startPresence();
     refreshVerifiedBanners().catch(error=>console.warn('Banner refresh unavailable:',errText(error)));
     try {
@@ -3645,7 +3617,14 @@
       button.textContent='Seller Wallet';
       button.onclick=()=>showVerifiedCoinSellers({walletOnly:true});
       listButton.before(button);
-    }).catch(()=>{}).finally(()=>{sellerWalletButtonCheck=false;});
+    }).catch(()=>{}).finally(()=>{
+      sellerWalletButtonCheck=false;
+      // Switching Recharge/Exchange replaces the button while the seller
+      // check is pending. Recheck the latest screen instead of losing the
+      // wallet entry until the user manually opens Recharge again.
+      if(document.querySelector('#rcp #rcl2')!==listButton)
+        mountRechargeSellerWallet();
+    });
   }
   const rechargeRoot=document.getElementById('rcp');
   if(rechargeRoot){
