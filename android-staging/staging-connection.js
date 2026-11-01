@@ -1119,6 +1119,8 @@
   function renderVerifiedIdentity(){
     const anchor=document.querySelector('#v-me .mid');
     if(!anchor)return;
+    const displayId=String(profile?.special_id||profile?.display_id||profile?.public_id||'');
+    if(/^[0-9]{4,8}$/.test(displayId))anchor.textContent='ID '+displayId+' ▢';
     // Tapping the public ID opens the separate rich ID detail profile,
     // never redirects back to the wallet/settings Main Profile.
     anchor.setAttribute('role','button');anchor.tabIndex=0;
@@ -1133,7 +1135,7 @@
     if(profile?.special_id){
       const plaque=document.createElement('span');
       plaque.id='sh-neon-own-id';plaque.className='sh-neon-profile-id';
-      plaque.textContent=profile.special_id;
+      plaque.textContent='Neon Special ID';
       anchor.insertAdjacentElement('afterend',plaque);
     }
     const medal=medalArt(profile?.medal_style);
@@ -1149,8 +1151,63 @@
       img.title=item.name+' · decorative';
       strip.appendChild(img);
     }
-    anchor.insertAdjacentElement('afterend',strip);
+    // Keep earned medals centered beneath the complete ID row. Putting them
+    // between the ID and special badge spread the identity across the screen.
+    const row=anchor.closest('.profile-id-row');
+    if(row)row.insertAdjacentElement('afterend',strip);
   }
+  async function showVerifiedFollowList(kind){
+    if(!session){window.showAuth('welcome');return;}
+    const title=kind==='followers'?'My Followers':'Following';
+    window.openSheet('<h3>'+title+'</h3><div id="sh-profile-follow-list" '+
+      'aria-live="polite">Loading real accounts…</div>');
+    const list=document.getElementById('sh-profile-follow-list');
+    try{
+      const result=await api('GET','/follows');
+      if(!list?.isConnected)return;
+      const people=Array.isArray(result[kind])?result[kind]:[];
+      list.replaceChildren();
+      if(!people.length){
+        list.textContent=kind==='followers'?'No followers yet.':'Not following anyone yet.';
+        return;
+      }
+      for(const person of people){
+        const canonical=String(person.public_id||'');
+        if(!/^[0-9]{8}$/.test(canonical))continue;
+        const display=String(person.display_id||person.special_id||canonical);
+        const button=document.createElement('button');
+        button.type='button';button.className='row sh-profile-follow-person';
+        button.style.cssText='display:flex;width:100%;align-items:center;gap:12px;'+
+          'text-align:left;cursor:pointer;padding:11px';
+        const avatar=document.createElement('span');
+        avatar.style.cssText='display:grid;place-items:center;width:42px;height:42px;'+
+          'flex:none;border-radius:50%;background:#53226c;background-size:cover;'+
+          'background-position:center;color:#ffdda1';
+        const picture=verifiedAvatarUrl(person.pic);
+        if(picture)avatar.style.backgroundImage='url("'+picture+'")';
+        else avatar.textContent='👤';
+        const label=document.createElement('span');label.style.minWidth='0';
+        const name=document.createElement('strong');name.textContent=person.name||'Sharika Member';
+        name.style.display='block';
+        const id=document.createElement('small');id.textContent='ID '+display;
+        id.style.display='block';id.style.color='#e3c7f2';
+        label.append(name,id);button.append(avatar,label);
+        button.onclick=()=>{
+          window.closeSheet?.();
+          openVerifiedRankProfile(canonical);
+        };
+        list.appendChild(button);
+      }
+    }catch(error){
+      if(list?.isConnected)list.textContent='Unable to load accounts: '+errText(error);
+    }
+  }
+  document.addEventListener('click',event=>{
+    const trigger=event.target.closest?.('#v-me [data-profile-follow]');
+    if(!trigger)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    showVerifiedFollowList(trigger.dataset.profileFollow);
+  },true);
   // Premium membership is independent of Wealth/Charm levels. Automatic
   // eligibility and daily credits are computed by the verified D1 Worker.
   let premiumProfileRequest=0;
@@ -2533,6 +2590,7 @@
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
       user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
+      display_id:owner.display_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
@@ -2544,12 +2602,13 @@
         slots[member.seat_no]={
           n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
           user_id:member.user_id,public_id:user.public_id,special_id:user.special_id||null,
+          display_id:user.display_id||user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
-      else audience.push({n:user.name,e:'👤',id:user.public_id,
-         special_id:user.special_id||null,
+      else audience.push({n:user.name,e:'👤',id:user.display_id||user.public_id,
+         canonical_id:user.public_id,special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
         medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
@@ -2749,10 +2808,13 @@
     frame.U=[];
     frame.G=[];
     frame.sendGift=function(){ frame.toast('Use the verified gift box Send button'); };
-    // The original room list derived fake IDs from names. Use D1 public IDs.
+    // The room list displays the active Special ID, but actions use the
+    // immutable canonical ID after verifying the same room member.
     frame.sid=function(seat){
-      const id=String(seat?.public_id||'');
-      return /^[0-9]{8}$/.test(id)?id:'';
+      const canonical=String(seat?.public_id||'');
+      if(!/^[0-9]{8}$/.test(canonical))return '';
+      const display=String(seat?.display_id||seat?.special_id||canonical);
+      return /^[0-9]{4,8}$/.test(display)?display:canonical;
     };
     frame.others=function(){return (frame.seats||[]).filter(s=>s&&!s.empty&&!s.lock);};
     // Only the server may enable Lucky Gifts, and never for a minor.
@@ -3240,7 +3302,8 @@
       const photo=user?.seat!=null?frame.seats?.[user.seat]?.pic:
         frame.U?.[user?.k]?.pic;
       paintVerifiedAvatar(sheet?.querySelector('.who .ua'),photo,frame.document);
-      const verifiedId=String(user?.id||'');
+      const verifiedId=String(user?.seat!=null?
+        frame.seats?.[user.seat]?.public_id:frame.U?.[user?.k]?.canonical_id||'');
       const verified=/^[0-9]{8}$/.test(verifiedId);
       const profileButton=sheet?.querySelector('button.act[data-a="pf"]');
       if(profileButton)profileButton.onclick=async()=>{
@@ -3268,7 +3331,8 @@
             }
             const name=frame.document.createElement('div');
             name.className='row';
-            name.textContent=String(member.name||'Member')+' · ID '+String(member.id);
+            name.textContent=String(member.name||'Member')+' · ID '+
+              String(member.display_id||member.id);
             const details=frame.document.createElement('div');
             details.className='lbl';
             details.textContent='Country: '+String(member.country||'Not set')+
@@ -5343,7 +5407,7 @@
     const sendButton=document.getElementById('ts');
     if(sendButton)sendButton.disabled=!canSendPrivate;
   }
-  async function openPrivateThread(publicId,name){
+  async function openPrivateThread(publicId,name,displayId=publicId){
     if(!session){window.showAuth('welcome');return;}
     if(!/^[0-9]{8}$/.test(String(publicId))){toast('Invalid 8-digit user ID');return;}
     const epoch=++messageThreadEpoch;
@@ -5351,7 +5415,7 @@
     clearMessageDraft();
     const guardedSend=document.getElementById('ts');if(guardedSend)guardedSend.disabled=true;
     document.getElementById('th')?.classList.add('on');
-    document.getElementById('thn').textContent='💬 '+name+' · '+publicId;
+    document.getElementById('thn').textContent='💬 '+name+' · '+displayId;
     document.getElementById('tb').textContent='Loading conversation…';
     try{await loadPrivateMessages(activePrivateId);}
     catch(error){
@@ -5375,16 +5439,16 @@
       '<div class="av">🎧</div><div><b>Customer service</b>'+
       '<small>Verified Sharika support conversation</small></div><time>›</time></div>'+
       '<div class="row"><input class="field" id="find-user-id" inputmode="numeric" '+
-      'maxlength="8" placeholder="Enter 8-digit user ID" aria-label="Find user by ID">'+
+      'maxlength="8" placeholder="Real or Special ID" aria-label="Find user by real or special ID">'+
       '<button class="btn" type="button" id="find-user-button">Find</button></div>'+
       '<div id="real-inbox">Loading messages…</div>';
     document.getElementById('verified-support-chat').onclick=openSupportThread;
     const find=async()=>{
       const value=document.getElementById('find-user-id').value.trim();
-      if(!/^[0-9]{8}$/.test(value)){toast('Enter an 8-digit user ID');return;}
+      if(!/^[0-9]{4,8}$/.test(value)){toast('Enter a 4–8 digit Sharika ID');return;}
       try{
         const user=await api('GET','/users/'+encodeURIComponent(value));
-        await openPrivateThread(value,user.name);
+        await openPrivateThread(user.id,user.name,user.display_id||user.id);
       }catch(error){toast('User unavailable: '+errText(error));}
     };
     document.getElementById('find-user-button').onclick=find;
@@ -5403,25 +5467,28 @@
       notificationBadges();
       const byId=new Set(conv.map(c=>c.public_id));
       const rows=conv.map(c=>'<div class="chatrow" data-private-id="'+safeMessageHTML(c.public_id)+
+        '" data-private-display="'+safeMessageHTML(c.display_id||c.public_id)+
         '" data-private-name="'+safeMessageHTML(c.name)+'"><div class="av">💬</div><div><b>'+
         safeMessageHTML(c.name)+'</b>'+(Number(c.unread_count)>0?
         '<span style="margin-left:6px;color:#f6d37f;font-weight:800">● '+Number(c.unread_count)+'</span>':'')+
         '<small>'+safeMessageHTML(c.last_body||'')+
-        '</small></div><time>'+safeMessageHTML(c.public_id)+'</time></div>');
+        '</small></div><time>'+safeMessageHTML(c.display_id||c.public_id)+'</time></div>');
       for(const f of following){
         if(byId.has(f.public_id))continue;
         rows.push('<div class="chatrow" data-private-id="'+safeMessageHTML(f.public_id)+
+          '" data-private-display="'+safeMessageHTML(f.display_id||f.public_id)+
           '" data-private-name="'+safeMessageHTML(f.name)+'"><div class="av">👤</div><div><b>'+
           safeMessageHTML(f.name)+'</b><small>'+(f.follows_me?'Mutual follow · Chat ready':
           'Following · Waiting for follow back')+'</small></div><time>'+
-          safeMessageHTML(f.public_id)+'</time></div>');
+          safeMessageHTML(f.display_id||f.public_id)+'</time></div>');
       }
       for(const f of followers){
         if(known.has(f.public_id)||byId.has(f.public_id))continue;
         rows.push('<div class="chatrow" data-private-id="'+safeMessageHTML(f.public_id)+
+          '" data-private-display="'+safeMessageHTML(f.display_id||f.public_id)+
           '" data-private-name="'+safeMessageHTML(f.name)+'"><div class="av">➕</div><div><b>'+
           safeMessageHTML(f.name)+'</b><small>Follows you · Follow back to chat</small></div><time>'+
-          safeMessageHTML(f.public_id)+'</time></div>');
+          safeMessageHTML(f.display_id||f.public_id)+'</time></div>');
       }
       list.innerHTML=rows.length?rows.join(''):'<div class="empty">No private conversations yet.</div>';
       // Inbox/follower avatars share the same verified equipped cosmetics as
@@ -5457,7 +5524,8 @@
       }
       list.onclick=e=>{
         const row=e.target.closest('.chatrow[data-private-id]');
-        if(row)openPrivateThread(row.dataset.privateId,row.dataset.privateName);
+        if(row)openPrivateThread(row.dataset.privateId,row.dataset.privateName,
+          row.dataset.privateDisplay||row.dataset.privateId);
       };
     }catch(error){list.textContent='Messages unavailable: '+errText(error);}
   };
@@ -5860,7 +5928,8 @@
     if(frame){const art=document.createElement('i');art.className='sh-sovera-frame';
       art.style.backgroundImage='url("'+cosmeticMedia(frame)+'")';avatar.appendChild(art);}
     const name=document.createElement('strong');name.textContent=person?.name||'No partner';
-    const id=document.createElement('small');id.textContent=person?.id?'ID '+person.id:'Awaiting invitation';
+    const id=document.createElement('small');id.textContent=person?.id?
+      'ID '+(person.display_id||person.id):'Awaiting invitation';
     button.append(avatar,name,id);
     if(open&&/^[0-9]{8}$/.test(String(person?.id||'')))
       button.onclick=()=>openVerifiedRankProfile(person.id);
@@ -6177,7 +6246,8 @@
           const avatar=bondPerson(personEntry,false).querySelector('.sh-bond-avatar');
           const detail=document.createElement('span');
           const name=document.createElement('strong');name.textContent=personEntry.name;
-          const sub=document.createElement('small');sub.textContent='ID '+personEntry.id+
+          const sub=document.createElement('small');sub.textContent='ID '+
+            (personEntry.display_id||personEntry.id)+
             (sectionInfo.type==='gifts'?' · '+personEntry.emoji+' '+personEntry.gift_name+
               ' · 🪙 '+bondFmt(personEntry.coins):'');
           detail.append(name,sub);row.append(avatar,detail);
@@ -6193,7 +6263,9 @@
       const cp=document.createElement('section');cp.className='sh-bond-section';
       const cpTitle=document.createElement('h3');cpTitle.textContent='💗 CP · Rose Gold Promise';
       const couple=document.createElement('div');couple.className='sh-bond-couple';
-      couple.appendChild(bondPerson({id,name:person?.name,pic:person?.pic,
+      couple.appendChild(bondPerson({id,display_id:person?.display_id||
+        (id===profile?.public_id?(profile?.special_id||profile?.display_id):null),
+        name:person?.name,pic:person?.pic,
         frame_style:person?.frame_style},false));
       const heart=document.createElement('span');heart.className='sh-bond-heart';
       heart.textContent='💞';couple.appendChild(heart);
@@ -6211,7 +6283,8 @@
       for(const friendship of data.friendships||[]){
         const button=document.createElement('button');button.type='button';
         button.className='sh-bond-friend';
-        button.textContent='💙 '+friendship.partner.name+' · '+friendship.partner.id;
+        button.textContent='💙 '+friendship.partner.name+' · '+
+          (friendship.partner.display_id||friendship.partner.id);
         button.onclick=()=>openVerifiedRankProfile(friendship.partner.id);
         friendList.appendChild(button);
       }

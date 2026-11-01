@@ -12,6 +12,10 @@ const equipped=(alias,kind)=>'COALESCE((SELECT CASE WHEN x.item_id IS NULL THEN 
   'FROM sharika_cosmetic_equipped x WHERE x.auth_uid='+alias+'.auth_uid '+
   "AND x.kind='"+kind+"'),"+alias+'.'+kind+",'')";
 
+const activeSpecial=(alias)=>'(SELECT si.special_id FROM sharika_special_ids si '+
+  'WHERE si.auth_uid='+alias+'.auth_uid '+
+  "AND (si.expires_at IS NULL OR si.expires_at>datetime('now')) LIMIT 1)";
+
 async function readPayload(request){
   const raw=await request.text();
   if(raw.length>4096)throw Error('bond_body_too_large');
@@ -39,15 +43,17 @@ function inviteView(row){
 function bondView(row,viewerUid){
   const mine=row.uid_a===viewerUid;
   return {id:Number(row.id),type:row.type,created_at_ms:Number(row.created_at_ms),
-    partner:{id:pid(mine?row.b_no:row.a_no),name:mine?row.b_name:row.a_name,
+    partner:{id:pid(mine?row.b_no:row.a_no),
+      display_id:(mine?row.b_special:row.a_special)||pid(mine?row.b_no:row.a_no),
+      name:mine?row.b_name:row.a_name,
       pic:mine?row.b_pic:row.a_pic,
       frame_style:mine?row.b_frame:row.a_frame,
       medal_style:mine?row.b_medal:row.a_medal}};
 }
 const BOND_SELECT='SELECT b.id,b.type,b.uid_a,b.uid_b,b.created_at_ms,'+
-  'a.public_no AS a_no,a.name AS a_name,a.pic AS a_pic,'+
+  'a.public_no AS a_no,'+activeSpecial('a')+' AS a_special,a.name AS a_name,a.pic AS a_pic,'+
   equipped('a','frame_style')+' AS a_frame,'+equipped('a','medal_style')+' AS a_medal,'+
-  'c.public_no AS b_no,c.name AS b_name,c.pic AS b_pic,'+
+  'c.public_no AS b_no,'+activeSpecial('c')+' AS b_special,c.name AS b_name,c.pic AS b_pic,'+
   equipped('c','frame_style')+' AS b_frame,'+equipped('c','medal_style')+' AS b_medal '+
   'FROM sharika_bonds b JOIN sharika_users a ON a.auth_uid=b.uid_a '+
   'JOIN sharika_users c ON c.auth_uid=b.uid_b ';
@@ -84,7 +90,7 @@ export async function readBondProfile(db,targetUid){
 }
 
 async function readBondSocialActivity(db,targetUid){
-  const followerSql='SELECT u.public_no,u.name,u.pic,'+
+  const followerSql='SELECT u.public_no,'+activeSpecial('u')+' AS special_id,u.name,u.pic,'+
     equipped('u','frame_style')+' AS frame_style,'+
     equipped('u','medal_style')+' AS medal_style '+
     'FROM sharika_follows f JOIN sharika_users u ON u.auth_uid=';
@@ -93,7 +99,7 @@ async function readBondSocialActivity(db,targetUid){
       "AND u.status='active' ORDER BY f.created_at DESC LIMIT 12").bind(targetUid).all(),
     db.prepare(followerSql+'f.followed_uid WHERE f.follower_uid=? '+
       "AND u.status='active' ORDER BY f.created_at DESC LIMIT 12").bind(targetUid).all(),
-    db.prepare('SELECT u.public_no,u.name,u.pic,'+
+    db.prepare('SELECT u.public_no,'+activeSpecial('u')+' AS special_id,u.name,u.pic,'+
       equipped('u','frame_style')+' AS frame_style,'+
       equipped('u','medal_style')+' AS medal_style,g.gift_name,g.emoji,g.coins '+
       'FROM (SELECT e.sender_uid AS sender_uid,x.name AS gift_name,x.emoji AS emoji,'+
@@ -106,7 +112,8 @@ async function readBondSocialActivity(db,targetUid){
       "WHERE u.status='active' ORDER BY g.at DESC LIMIT 20")
       .bind(targetUid,targetUid).all()
   ]);
-  const userView=u=>({id:pid(u.public_no),name:u.name,pic:u.pic,
+  const userView=u=>({id:pid(u.public_no),display_id:u.special_id||pid(u.public_no),
+    name:u.name,pic:u.pic,
     frame_style:u.frame_style||'',medal_style:u.medal_style||''});
   return {followers_preview:rows(followers).map(userView),
     following_preview:rows(following).map(userView),
@@ -139,9 +146,11 @@ export async function readBondRanking(db,type,period,nowMs=Date.now()){
   if(period==='weekly')end.setUTCDate(end.getUTCDate()+7);
   if(period==='monthly')end.setUTCMonth(end.getUTCMonth()+1);
   const list=await db.prepare('SELECT b.id AS bond_id,ua.public_no AS a_id,ua.name AS a_name,'+
-    'ua.pic AS a_pic,'+equipped('ua','frame_style')+' AS a_frame,'+
+    'ua.pic AS a_pic,'+activeSpecial('ua')+' AS a_special,'+
+    equipped('ua','frame_style')+' AS a_frame,'+
     equipped('ua','medal_style')+' AS a_medal,'+
     'ub.public_no AS b_id,ub.name AS b_name,ub.pic AS b_pic,'+
+    activeSpecial('ub')+' AS b_special,'+
     equipped('ub','frame_style')+' AS b_frame,'+
     equipped('ub','medal_style')+' AS b_medal,'+
     'SUM(e.value_coins) AS total FROM sharika_bond_gift_events e '+
@@ -153,9 +162,11 @@ export async function readBondRanking(db,type,period,nowMs=Date.now()){
     .bind(type,start.getTime(),end.getTime()).all();
   return {type,period,source:'verified_accepted_bond_gifts',read_only:true,
     leaders:rows(list).map((r,i)=>({rank:i+1,bond_id:Number(r.bond_id),
-      total:Number(r.total),a:{id:pid(r.a_id),name:r.a_name,pic:r.a_pic,
+      total:Number(r.total),a:{id:pid(r.a_id),display_id:r.a_special||pid(r.a_id),
+        name:r.a_name,pic:r.a_pic,
         frame_style:r.a_frame,medal_style:r.a_medal},
-      b:{id:pid(r.b_id),name:r.b_name,pic:r.b_pic,
+      b:{id:pid(r.b_id),display_id:r.b_special||pid(r.b_id),
+        name:r.b_name,pic:r.b_pic,
         frame_style:r.b_frame,medal_style:r.b_medal}}))};
 }
 

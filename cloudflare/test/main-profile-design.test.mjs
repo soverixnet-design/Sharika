@@ -29,6 +29,12 @@ test('main profile has real identity/wallet anchors and four owner-designed tile
   assert.match(html,/RS\(\)\.dia/);
   assert.match(android,/renderVerifiedMainProfileStats\(\)/);
   assert.match(android,/api\('GET','\/bonds\/profile\/'\+id\)/);
+  assert.match(html,/data-profile-follow="followers"/);
+  assert.match(html,/data-profile-follow="following"/);
+  assert.match(android,/api\('GET','\/follows'\)/);
+  assert.match(android,/anchor\.textContent='ID '\+displayId/);
+  assert.match(android,/plaque\.textContent='Neon Special ID'/);
+  assert.match(royalCss,/#v-me\.profile-royal \.profile-id-row \{[\s\S]*?flex-wrap: nowrap/);
 });
 
 test('Account & Features stays vertically stacked with six wired destinations',()=>{

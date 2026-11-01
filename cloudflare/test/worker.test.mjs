@@ -326,6 +326,57 @@ test('only the authenticated user can list their real following and followers',a
   }finally{globalThis.fetch=prior;}
 });
 
+test('follower lists present active Special ID but retain verified account routing',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.includes('FROM sharika_follows f'))stmt.all=async()=>({results:[
+        {public_no:10000003,name:'VIP Friend',pic:null,special_id:'777777'}
+      ]});
+      return stmt;
+    };
+    const response=await handleRequest(new Request('https://example.test/api/v1/follows',{
+      headers:{Authorization:'Bearer '+await token()}
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(response.status,200);
+    const result=await response.json();
+    for(const kind of ['followers','following']){
+      assert.equal(result[kind][0].public_id,'10000003');
+      assert.equal(result[kind][0].display_id,'777777');
+    }
+  }finally{globalThis.fetch=prior;}
+});
+
+test('special alias follow and private message resolve to one real verified account',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.includes('LEFT JOIN sharika_special_ids'))
+        stmt.first=async()=>({auth_uid:'friend_uid',public_no:10000003,
+          name:'VIP Friend',status:'active',special_id:'777777'});
+      return stmt;
+    };
+    const credentials={Authorization:'Bearer '+await token()};
+    for(const route of ['/api/v1/users/777777/follow','/api/v1/messages/777777']){
+      const response=await handleRequest(new Request('https://example.test'+route,{
+        headers:credentials
+      }),{DB:db,FIREBASE_PROJECT_ID:project});
+      assert.equal(response.status,200,route);
+      const data=await response.json();
+      assert.equal(data.public_id||data.user?.public_id,'10000003');
+      if(route.startsWith('/api/v1/messages'))assert.equal(data.user.display_id,'777777');
+    }
+  }finally{globalThis.fetch=prior;}
+});
+
 test('direct messages reject unilateral follows before storing anything',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
@@ -333,7 +384,8 @@ test('direct messages reject unilateral follows before storing anything',async()
     db.prepare=sql=>{
       const stmt=old(sql);
       if(sql.includes('FROM sharika_users WHERE auth_uid'))stmt.first=async()=>({status:'active'});
-      if(sql.includes('FROM sharika_users WHERE public_no'))stmt.first=async()=>({
+      if(sql.includes('FROM sharika_users WHERE public_no')||
+         sql.includes('FROM sharika_users u LEFT JOIN sharika_special_ids'))stmt.first=async()=>({
         auth_uid:'firebase:'+project+':recipient',public_no:10000003,
         name:'Recipient',status:'active'
       });

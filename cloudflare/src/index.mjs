@@ -424,18 +424,21 @@ export async function handleRequest(request, env, ctx) {
     if (path === '/api/v1/follows' && request.method === 'GET') {
       await assertActive(env.DB, uid);
       const following=await env.DB.prepare(
-        'SELECT u.public_no,u.name,u.pic,'+publicAppearanceSelect()+','+
+        'SELECT u.public_no,u.name,u.pic,'+activeSpecialSelect('u')+','+
+        publicAppearanceSelect()+','+
         'EXISTS(SELECT 1 FROM sharika_follows x WHERE x.follower_uid=u.auth_uid '+
         'AND x.followed_uid=?) AS follows_me FROM sharika_follows f '+
         'JOIN sharika_users u ON u.auth_uid=f.followed_uid '+
         "WHERE f.follower_uid=? AND u.status='active' ORDER BY f.created_at DESC LIMIT 100"
       ).bind(uid,uid).all();
       const followers=await env.DB.prepare(
-        'SELECT u.public_no,u.name,u.pic,'+publicAppearanceSelect()+' FROM sharika_follows f '+
+        'SELECT u.public_no,u.name,u.pic,'+activeSpecialSelect('u')+','+
+        publicAppearanceSelect()+' FROM sharika_follows f '+
         'JOIN sharika_users u ON u.auth_uid=f.follower_uid '+
         "WHERE f.followed_uid=? AND u.status='active' ORDER BY f.created_at DESC LIMIT 100"
       ).bind(uid).all();
-      const showFollow=u=>({...u,public_id:publicId(u.public_no),public_no:undefined,
+      const showFollow=u=>({...u,public_id:publicId(u.public_no),
+        display_id:u.special_id||publicId(u.public_no),public_no:undefined,
         frame_style:u.equipped_frame_style??u.frame_style??'',
         medal_style:u.equipped_medal_style??u.medal_style??'',
         name_tag_style:u.equipped_name_tag_style??u.name_tag_style??''});
@@ -443,11 +446,13 @@ export async function handleRequest(request, env, ctx) {
         followers:(followers.results||[]).map(showFollow)},200,cors);
     }
     if(parts.length===5 && parts[0]==='api' && parts[1]==='v1' &&
-       parts[2]==='users' && PUBLIC_ID.test(parts[3]) && parts[4]==='follow') {
+       parts[2]==='users' && PUBLIC_OR_SPECIAL_ID.test(parts[3]) && parts[4]==='follow') {
       await assertActive(env.DB,uid);
       const target=await env.DB.prepare(
-        "SELECT auth_uid,public_no,name,status FROM sharika_users WHERE public_no=?"
-      ).bind(Number(parts[3])).first();
+        'SELECT u.auth_uid,u.public_no,u.name,u.status FROM sharika_users u '+
+        'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+        "WHERE u.public_no=? OR (s.special_id=? AND (s.expires_at IS NULL OR s.expires_at>datetime('now'))) LIMIT 1"
+      ).bind(Number(parts[3]),parts[3]).first();
       if(!target||target.status!=='active')return fail('user_not_found',404,cors);
       if(target.auth_uid===uid)return fail('cannot_follow_self',400,cors);
       if(request.method==='PUT') {
@@ -473,7 +478,7 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB,uid);
       const rows=await env.DB.prepare(
         'SELECT m.id,m.body,m.created_at,u.auth_uid AS other_uid,u.public_no,u.name,u.pic,'+
-        publicAppearanceSelect()+' '+
+        activeSpecialSelect('u')+','+publicAppearanceSelect()+' '+
         'FROM sharika_private_messages m JOIN sharika_users u ON u.auth_uid='+
         'CASE WHEN m.sender_uid=? THEN m.recipient_uid ELSE m.sender_uid END '+
         'WHERE m.sender_uid=? OR m.recipient_uid=? ORDER BY m.id DESC LIMIT 200'
@@ -483,7 +488,8 @@ export async function handleRequest(request, env, ctx) {
         const other=publicId(item.public_no);
         if(seen.has(other))continue;
         seen.add(other);
-        conversations.push({public_id:other,name:item.name,
+        conversations.push({public_id:other,display_id:item.special_id||other,
+          special_id:item.special_id||null,name:item.name,
           last_body:item.body,last_at:item.created_at,pic:item.pic||null,
           unread_count:0,other_uid:item.other_uid,
           frame_style:item.equipped_frame_style??item.frame_style??'',
@@ -505,12 +511,14 @@ export async function handleRequest(request, env, ctx) {
       }
       return reply({conversations,unread_total:unreadTotal},200,cors);
     }
-    const messagePath=/^\/api\/v1\/messages\/([0-9]{8})$/.exec(path);
+    const messagePath=/^\/api\/v1\/messages\/([0-9]{4,8})$/.exec(path);
     if(messagePath) {
       await assertActive(env.DB,uid);
       const target=await env.DB.prepare(
-        "SELECT auth_uid,public_no,name,status FROM sharika_users WHERE public_no=?"
-      ).bind(Number(messagePath[1])).first();
+        'SELECT u.auth_uid,u.public_no,u.name,u.status,'+activeSpecialSelect('u')+' '+
+        'FROM sharika_users u LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+        "WHERE u.public_no=? OR (s.special_id=? AND (s.expires_at IS NULL OR s.expires_at>datetime('now'))) LIMIT 1"
+      ).bind(Number(messagePath[1]),messagePath[1]).first();
       if(!target||target.status!=='active')return fail('user_not_found',404,cors);
       if(target.auth_uid===uid)return fail('cannot_message_self',400,cors);
       const relations=await env.DB.prepare(
@@ -531,7 +539,8 @@ export async function handleRequest(request, env, ctx) {
           'ON CONFLICT(auth_uid,other_uid) DO UPDATE SET '+
           'last_read_id=MAX(last_read_id,excluded.last_read_id),updated_at=datetime(\'now\')'
         ).bind(uid,target.auth_uid,mostRecent).run();
-        return reply({user:{public_id:publicId(target.public_no),name:target.name},
+        return reply({user:{public_id:publicId(target.public_no),
+          display_id:target.special_id||publicId(target.public_no),name:target.name},
           mutual,messages:(result.results||[]).reverse().map(m=>({
             id:m.id,from_me:m.sender_uid===uid,body:m.body,created_at:m.created_at
           }))},200,cors);

@@ -150,14 +150,19 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 29px;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-height: 34px;
+  max-width: 100%;
+  margin: 3px auto 4px;
 }
 #v-me.profile-royal .mid {
   margin: 0;
   display: inline-block;
-  padding: 4px 14px;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  padding: 6px 12px;
   color: #ffe7a3 !important;
   border: 1px solid #f4cd6d;
   border-radius: 24px;
@@ -167,7 +172,38 @@
   cursor: copy;
   box-shadow: 0 2px 8px #0e0018;
 }
-#v-me.profile-royal #sh-neon-own-id { margin: 0; max-width: 100%; }
+#v-me.profile-royal #sh-neon-own-id {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 46%;
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px solid #d978ff;
+  border-radius: 18px;
+  color: #ffe0ff;
+  background: rgba(67,17,93,.82);
+  box-shadow: 0 0 9px #c956fd66;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+#v-me.profile-royal #sh-neon-own-id::before {content:none}
+#v-me.profile-royal #sh-sovera-own-identity {
+  width: 100%;
+  max-width: 240px;
+  min-height: 0;
+  margin: 3px auto 5px;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+#v-me.profile-royal #sh-sovera-own-identity img {
+  height: 29px;
+  width: auto;
+  max-width: 49%;
+  object-fit: contain;
+}
 #v-me.profile-royal .mdr { margin: 4px 0 0; }
 #v-me.profile-royal .mdr { display: none; }
 #v-me.profile-royal .lps {
@@ -216,8 +252,24 @@
   box-shadow: inset 0 2px 16px #05020d55;
   text-align: center;
 }
-#v-me.profile-royal .mst>div { min-width:0; padding: 0 3px; }
-#v-me.profile-royal .mst>div+div { border-left:1px solid rgba(226,173,248,.27); }
+#v-me.profile-royal .mst>div,
+#v-me.profile-royal .mst>button { min-width:0; padding: 0 3px; }
+#v-me.profile-royal .mst>*+* { border-left:1px solid rgba(226,173,248,.27); }
+#v-me.profile-royal .profile-stat-link {
+  width:100%;
+  border:0;
+  border-radius:0;
+  color:inherit;
+  background:transparent;
+  font:inherit;
+  text-align:center;
+  cursor:pointer;
+}
+#v-me.profile-royal .profile-stat-link:focus-visible {
+  outline:2px solid #ffdc8b;
+  outline-offset:-3px;
+  border-radius:12px;
+}
 #v-me.profile-royal .profile-stat-icon { display:block; font-size:15px; color:#d1b8ff; margin-bottom:2px; }
 #v-me.profile-royal .mst b { display:block; font-size:22px; color:#fff !important; line-height:1.05; }
 #v-me.profile-royal .mst small { display:block; margin-top:3px; font-size:11px; color:#d4bce7 !important; }
