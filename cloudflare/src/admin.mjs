@@ -13,6 +13,7 @@ import { handleAdminExchangeRate } from './exchange-rate.mjs';
 import { handleCosmeticAdmin,publicAppearanceSelect } from './cosmetics.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
+import { handleOperationalRead } from './admin-operations.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
 const FINANCE_ROLES = new Set(['super', 'finance']);
@@ -119,6 +120,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     actor={...actor,role:proxy};
   }
 
+  const operational=await handleOperationalRead({request,env,actor,operation,cors,reply,fail});
+  if(operational)return operational;
   if(operation.startsWith('special-ids'))
     return await handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if(operation==='events'||/^events\/[1-9][0-9]*(?:\/award)?$/.test(operation))
@@ -453,8 +456,21 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       'FROM sharika_rooms r LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id ' +
       'ORDER BY r.created_at DESC LIMIT 100'
     ).all());
-    return reply({ rooms:rows.map(r => ({ ...r, owner_public_id:r.owner_public_no == null ?
-      null : id(r.owner_public_no), owner_public_no:undefined })), read_only:true }, 200, cors);
+    let onlineCounts=null;
+    if(env.VOICE_ROOMS){
+      try{
+        const result=await env.VOICE_ROOMS
+          .getByName('sharika:presence:staging').presenceRoomCounts();
+        if(result&&typeof result==='object'&&!Array.isArray(result))onlineCounts=result;
+      }catch(error){console.warn('sharika_room_presence_unavailable',error?.message);}
+    }
+    return reply({rooms:rows.map(r=>({...r,
+      owner_public_id:r.owner_public_no==null?null:id(r.owner_public_no),
+      owner_public_no:undefined,
+      online_count:onlineCounts===null?null:
+        Math.max(0,Number(onlineCounts[r.id])||0)
+    })),live_presence_tracked:onlineCounts!==null,
+      presence_window_seconds:onlineCounts===null?null:90,read_only:true},200,cors);
   }
   if (operation === 'ledger') {
     const blocked = allowed(actor.role, FINANCE_ROLES, fail, cors);
