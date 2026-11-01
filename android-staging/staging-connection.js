@@ -2313,7 +2313,7 @@
       const rows = data.rooms || [];
       const own = rows.find(r => r.owner_id === userId);
       const discovery=window.SharikaDiscovery;
-      window.CFG.viewerCountry=profile?.country||'';
+      window.CFG.viewerCountry=typeof profile==='undefined'?'':profile?.country||'';
       window.CFG.roomHistoryIds=discovery?discovery.readHistory(window.localStorage,userId):[];
       window.CFG.rooms = rows.filter(r => r.owner_id !== userId).map((r,i)=>({
         id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
@@ -2327,7 +2327,7 @@
         c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
         seat_frame_style:own.seat_frame_style||'grad',
         n:Number(own.online_count)||0,cover_url:own.cover_url||null,
-        owner_country:own.owner_country||profile?.country||'',created_at:own.created_at||''
+        owner_country:own.owner_country||window.CFG.viewerCountry||'',created_at:own.created_at||''
       } : null;
       window.renderRooms();
     } catch (error) {
