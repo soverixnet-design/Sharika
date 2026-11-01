@@ -4725,6 +4725,22 @@
       '.sh-bond-rankrow.friends{background:linear-gradient(125deg,#14476a,#20235e);border-color:#9edaf7}',
       '.sh-bond-rankrow .sh-bond-person{flex:1}.sh-bond-rankrow .sh-bond-avatar{width:49px;height:49px;font-size:22px}',
       '.sh-bond-rankrow .sh-bond-heart{font-size:20px}',
+      '.sh-cp-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:12px 0}',
+      '.sh-cp-tab{min-height:41px;border-radius:999px;border:2px solid #ffe5b1;color:#fff;font-size:12px;font-weight:900;background:linear-gradient(160deg,#9757d3,#5442bb 62%,#36246f);box-shadow:inset 0 2px #fff8,0 4px #17093e}',
+      '.sh-cp-tab.active{color:#60334b;background:linear-gradient(160deg,#fff1b0,#ffb75b 70%,#d86d8d)}',
+      '.sh-cp-timer{padding:9px 12px;text-align:center;color:#ffe0a9;font-weight:900;font-size:13px;letter-spacing:1px;border-radius:20px;background:#3e2570b8;margin:9px 0}',
+      '.sh-cp-toplist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}',
+      '.sh-cp-card{min-width:0;position:relative;border:2px solid #c7a8ff;border-radius:24px;padding:14px 7px 12px;text-align:center;background:radial-gradient(circle at 50% 0,#ffafd7ad,transparent 70%),linear-gradient(150deg,#6f47ac,#302364 65%,#2a1d57);box-shadow:inset 0 2px #fff9,0 8px 16px #140729b0}',
+      '.sh-cp-card.champion{grid-column:1/-1;margin:3px 19px;border-color:#ffdd75;background:radial-gradient(circle at 50% 0,#fff0a5e0,transparent 65%),linear-gradient(150deg,#b44a92,#533296 70%,#2a1e66)}',
+      '.sh-cp-rank-pill{display:inline-block;padding:4px 15px;margin-bottom:4px;border-radius:999px;background:linear-gradient(#ffe5ab,#e8953b);border:2px solid #fff4c2;color:#713134;font-weight:1000;font-size:14px;box-shadow:0 4px 6px #160b2f88}',
+      '.sh-cp-card:not(.champion) .sh-cp-rank-pill{background:linear-gradient(#ffc7f5,#c95cad);color:#fff}',
+      '.sh-cp-card .sh-bond-couple{grid-template-columns:minmax(0,1fr) 32px minmax(0,1fr)}',
+      '.sh-cp-card .sh-bond-heart{font-size:25px}.sh-cp-card .sh-bond-avatar{width:50px;height:50px}',
+      '.sh-cp-card.champion .sh-bond-avatar{width:70px;height:70px}',
+      '.sh-cp-score{color:#ffebbd;font-size:12px;font-weight:900;margin:6px 0 0}',
+      '.sh-cp-reward-list{display:grid;gap:9px;margin:12px 0}',
+      '.sh-cp-reward-item{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #f4c8fc;border-radius:18px;background:linear-gradient(110deg,#9a488b,#33226c)}',
+      '.sh-cp-reward-item strong{display:block;color:#ffeaa2}.sh-cp-reward-item small{display:block;color:#f7dded;margin-top:3px}',
       '@media(prefers-reduced-motion:reduce){.sh-bond-heart{animation:none}}'
     ].join('');
     document.head.appendChild(sheet);
@@ -4892,15 +4908,20 @@
     bondStyles();
     window.openSheet('<h3>👑 Royal Relationship Ranking</h3><div class="sh-bond-sheet" id="sh-bond-rank">Loading ranking…</div>');
     const root=document.getElementById('sh-bond-rank');if(!root)return;
-    const render=async(kind,range)=>{
+    let countdown=null;
+    const render=async(kind,range,view='this')=>{
+      if(countdown){clearInterval(countdown);countdown=null;}
       root.textContent='Loading verified pair ranking…';
       try{
-        const result=await api('GET','/bonds/rankings?type='+kind+'&period='+range);
+        const weeklyCp=kind==='cp'&&range==='weekly';
+        const board=weeklyCp?await api('GET','/bonds/rewards'):null;
+        const result=(!weeklyCp||view==='this')?
+          await api('GET','/bonds/rankings?type='+kind+'&period='+range):null;
         if(!root.isConnected)return;
         root.replaceChildren();
         const hero=document.createElement('div');hero.className='sh-bond-hero';
         hero.innerHTML='<div class="sh-bond-kicker">✦ ROYAL PAIR LEAGUE ✦</div>'+
-          '<div class="sh-bond-title">'+(kind==='cp'?'💞 CP Royalty':'🤝 Friendship Royalty')+'</div>'+
+          '<div class="sh-bond-title">'+(kind==='cp'?'👑 TOP CP':'🤝 Friendship Royalty')+'</div>'+
           '<div class="sh-bond-sub">Verified accepted gift value · '+range.toUpperCase()+' · UTC</div>';
         root.appendChild(hero);
         const kinds=document.createElement('div');kinds.className='sh-bond-actions';
@@ -4917,10 +4938,79 @@
           button.className='sh-bond-button '+(range===p?'gold':'blue');button.textContent=p;
           button.onclick=()=>render(kind,p);dates.appendChild(button);
         }root.appendChild(dates);
-        if(!result.leaders?.length){const empty=document.createElement('p');
+        if(weeklyCp){
+          const tabs=document.createElement('div');tabs.className='sh-cp-tabs';
+          for(const [mode,label] of [['this','This Week'],['last','Last Week'],['reward','🎁 Reward']]){
+            const button=document.createElement('button');button.type='button';
+            button.className='sh-cp-tab'+(mode===view?' active':'');button.textContent=label;
+            button.setAttribute('aria-pressed',String(mode===view));
+            button.onclick=()=>render(kind,range,mode);tabs.appendChild(button);
+          }root.appendChild(tabs);
+          if(view==='this'){
+            const timer=document.createElement('div');timer.className='sh-cp-timer';
+            timer.setAttribute('aria-label','Time until this CP ranking week ends');
+            root.appendChild(timer);
+            const skew=Number(board.server_time_ms)-Date.now();
+            const tick=()=>{
+              if(!timer.isConnected){clearInterval(countdown);countdown=null;return;}
+              let left=Math.max(0,Math.floor((Number(board.next_reset_ms)-Date.now()-skew)/1000));
+              const days=Math.floor(left/86400);left%=86400;
+              const hours=Math.floor(left/3600);left%=3600;
+              const minutes=Math.floor(left/60),seconds=left%60;
+              timer.textContent='⏳ '+days+' Day · '+String(hours).padStart(2,'0')+' Hour · '+
+                String(minutes).padStart(2,'0')+' Min · '+String(seconds).padStart(2,'0')+' Sec';
+            };tick();countdown=setInterval(tick,1000);
+          }
+          if(view==='reward'){
+            const status=document.createElement('p');status.className='sh-bond-muted';
+            status.textContent=board.policy?.enabled?
+              'Each partner receives the prize shown for their pair rank after the week is awarded.':
+              'Rewards are not enabled yet. Super Admin will configure and activate them.';
+            root.appendChild(status);
+            const list=document.createElement('div');list.className='sh-cp-reward-list';
+            for(const rule of board.rules||[]){
+              const row=document.createElement('div');row.className='sh-cp-reward-item';
+              const badge=document.createElement('span');badge.className='sh-cp-rank-pill';
+              badge.textContent='TOP '+rule.rank;
+              const info=document.createElement('div');
+              const name=document.createElement('strong');name.textContent=
+                '🪙 '+bondFmt(rule.coins_each)+' coins · each partner';
+              const items=document.createElement('small');
+              items.textContent='✨ '+(rule.frame_name||'No frame')+'  ·  🏅 '+
+                (rule.medal_name||'No medal');
+              info.append(name,items);row.append(badge,info);list.appendChild(row);
+            }root.appendChild(list);return;
+          }
+          if(view==='last'){
+            const status=document.createElement('p');status.className='sh-bond-muted';
+            status.textContent=board.last_week?.awarded?
+              '🏅 Last week is paid and locked. Historical winners cannot be changed.':
+              'Last week has ended. Rewards are awaiting Super Admin settlement or enabled automation.';
+            root.appendChild(status);
+          }
+        }
+        const leaders=weeklyCp&&view==='last'?(board.last_week?.leaders||[]):(result?.leaders||[]);
+        if(!leaders.length){const empty=document.createElement('p');
           empty.className='sh-bond-muted';empty.textContent='No verified pairs have ranked in this period yet.';
           root.appendChild(empty);}
-        for(const pair of result.leaders||[]){
+        if(weeklyCp&&leaders.length){
+          const stage=document.createElement('div');stage.className='sh-cp-toplist';
+          for(const pair of leaders.slice(0,7)){
+            const card=document.createElement('div');card.className='sh-cp-card'+
+              (pair.rank===1?' champion':'');
+            const badge=document.createElement('div');badge.className='sh-cp-rank-pill';
+            badge.textContent=pair.rank===1?'👑 TOP 1':'TOP '+pair.rank;
+            const couple=document.createElement('div');couple.className='sh-bond-couple';
+            couple.appendChild(bondPerson(pair.a));
+            const heart=document.createElement('span');heart.className='sh-bond-heart';
+            heart.textContent='💗';couple.appendChild(heart);
+            couple.appendChild(bondPerson(pair.b));
+            const score=document.createElement('p');score.className='sh-cp-score';
+            score.textContent='🪙 '+bondFmt(pair.total)+' CP gift value';
+            card.append(badge,couple,score);stage.appendChild(card);
+          }root.appendChild(stage);
+        }
+        for(const pair of weeklyCp?leaders.slice(7):leaders){
           const row=document.createElement('div');row.className='sh-bond-rankrow '+
             (kind==='friendship'?'friends':'');
           const rank=document.createElement('strong');rank.textContent='#'+pair.rank;

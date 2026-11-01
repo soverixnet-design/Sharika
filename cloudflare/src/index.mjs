@@ -7,6 +7,7 @@ import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp } from './premium.mjs';
 import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
+import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
@@ -194,6 +195,12 @@ export async function handleRequest(request, env, ctx) {
   const uid = actor.uid;
   const parts = path.split('/').filter(Boolean);
   try {
+    if(path==='/api/v1/bonds/rewards'&&request.method==='GET'){
+      const active=await env.DB.prepare("SELECT 1 AS ok FROM sharika_users WHERE auth_uid=? AND status='active'")
+        .bind(uid).first();
+      if(!active)return fail('profile_unavailable',403,cors);
+      return reply(await readCpRewardBoard(env.DB),200,cors);
+    }
     if(path.startsWith('/api/v1/bonds'))return await handleBondApp({
       request,env,uid,path,cors,reply,fail
     });
@@ -1390,8 +1397,12 @@ export async function handleRequest(request, env, ctx) {
 export default {
   fetch:handleRequest,
   scheduled(_event,env,context){
-    if(env.DB)context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
-      .catch(error=>console.error('bond_expiry_cron_error',error.message)));
+    if(env.DB){
+      context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
+        .catch(error=>console.error('bond_expiry_cron_error',error.message)));
+      context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true)
+        .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
+    }
   }
 };
 export { publicId, ageFromDate };
