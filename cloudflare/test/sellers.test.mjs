@@ -97,12 +97,14 @@ test('seller directory is read-only and recharge exists only in private wallet U
   assert.match(source,/button\.id='sharika-recharge-seller-wallet'/);
   assert.match(source,/button\.onclick=\(\)=>showVerifiedCoinSellers\(\{walletOnly:true\}\)/);
 });
-test('a verified seller can start recharge from their own profile with their ID selected',()=>{
+test('seller recharge stays in Seller Wallet and defaults to the verified seller ID',()=>{
   const source=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
-  assert.match(source,/button\.textContent='🪙 Recharge my ID · Seller stock '/);
-  assert.match(source,/targetId:profile\?\.public_id\|\|''/);
+  assert.doesNotMatch(source,/button\.textContent='🪙 Recharge my ID · Seller stock '/);
+  assert.match(source,/button\.textContent='Seller Wallet'/);
+  assert.match(source,/data\.seller\?\.active/);
   assert.match(source,/targetField\.value=\/\^\[0-9\]\{8\}\$\/\.test\(targetId\)/);
   assert.match(source,/\?targetId:self\.public_id/);
+  assert.match(source,/if\(document\.querySelector\('#rcp #rcl2'\)!==listButton\)\s*mountRechargeSellerWallet\(\);/);
 });
 test('invalid seller transfer cannot touch any wallet',async()=>{
   const {DB,state}=mockDB();

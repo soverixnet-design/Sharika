@@ -7,6 +7,13 @@
   const NativeWebSocket=window.WebSocket;
   const SERVER='wss://sharika-greedy.invalid';
   const pending=new Map();
+  // Only these explicit rejections prove that no wager was committed.
+  // A timeout/5xx can happen after the D1 debit, so its request ID is kept.
+  const DEFINITIVE_BET_ERRORS=new Set([
+    'INSUFFICIENT_BALANCE','BETTING_CLOSED','MAX_BET',
+    'invalid_bet','games_adult_only','profile_unavailable',
+    'idempotency_conflict','method_not_allowed'
+  ]);
   let nextId=0,activeSocket=null;
 
   function request(action,body){
@@ -72,7 +79,8 @@
     constructor(url){
       if(!String(url).startsWith(SERVER+'/ws'))return new NativeWebSocket(url);
       this.readyState=0;this.initialized=false;this.round=null;this.phase=null;
-      this.balance=null;activeSocket=this;
+      this.balance=null;this.unconfirmedBets=new Map();
+      this.recoveringBet=false;activeSocket=this;
       queueMicrotask(()=>{
         if(this.readyState!==0)return;
         this.readyState=1;this.onopen?.({});
@@ -85,23 +93,61 @@
       this.inFlight=true;
       try{handleState(this,await request('state'));}
       catch(error){emit(this,{t:'error',message:error.message});}
-      finally{this.inFlight=false;}
+      finally{
+        this.inFlight=false;
+        if(this.unconfirmedBets.size)void this.reconcileUnconfirmed();
+      }
+    }
+    async reconcileUnconfirmed(){
+      if(this.readyState!==1||this.recoveringBet||!this.unconfirmedBets.size)return;
+      this.recoveringBet=true;
+      let resolved=false;
+      try{
+        for(const [id,body] of this.unconfirmedBets){
+          try{
+            const receipt=await request('bet',body);
+            this.unconfirmedBets.delete(id);
+            resolved=true;
+            if(Number.isSafeInteger(receipt?.balance)){
+              this.balance=receipt.balance;
+              emit(this,{t:'balance',balance:receipt.balance});
+            }
+          }catch(error){
+            if(!DEFINITIVE_BET_ERRORS.has(error.message||''))break;
+            this.unconfirmedBets.delete(id);
+            resolved=true;
+          }
+        }
+      }finally{
+        this.recoveringBet=false;
+        if(resolved&&this.readyState===1)void this.poll();
+      }
     }
     send(raw){
       if(this.readyState!==1)return;
       let message;try{message=JSON.parse(raw);}catch{return;}
       if(message.t==='bet'){
+        // A missing acknowledgment must never turn the next tap into another
+        // independent debit. Confirm all uncertain requests by ID first.
+        if(this.unconfirmedBets.size){
+          emit(this,{t:'bet_err',reqId:message.reqId,code:'BET_UNCONFIRMED'});
+          return;
+        }
         const body={round:message.round,itemId:message.itemId,amount:message.amount,
           request_id:randomId()};
-        // A timed-out response may already have committed a debit. Retry the
-        // exact same request ID, never a fresh bet, to get its one receipt.
         const submit=()=>request('bet',body);
         submit().catch(error=>error.message==='server_timeout'?submit():Promise.reject(error))
         .then(result=>{
           emit(this,{t:'bet_ok',reqId:message.reqId,...result});
           void this.poll();
         }).catch(error=>{
-          emit(this,{t:'bet_err',reqId:message.reqId,code:error.message});
+          const code=error.message||'server_error';
+          if(!DEFINITIVE_BET_ERRORS.has(code)){
+            // Even after two timeouts, replay this exact ID in the background.
+            this.unconfirmedBets.set(body.request_id,body);
+          }
+          emit(this,{t:'bet_err',reqId:message.reqId,
+            code:this.unconfirmedBets.has(body.request_id)?'BET_UNCONFIRMED':code});
           void this.poll();
         });
       }else if(message.t==='records'){

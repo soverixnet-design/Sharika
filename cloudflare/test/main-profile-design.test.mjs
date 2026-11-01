@@ -6,11 +6,13 @@ const root=new URL('../../',import.meta.url);
 const html=readFileSync(new URL('app/index.html',root),'utf8');
 const android=readFileSync(new URL('android-staging/staging-connection.js',root),'utf8');
 const gradle=readFileSync(new URL('android-staging/app/build.gradle',root),'utf8');
+const royalCss=readFileSync(new URL('app/royal-profile.css',root),'utf8');
 
 test('owner royal profile artwork is shipped as real Android assets',()=>{
-  assert.match(html,/url\('main-profile-bg\.jpg'\)/);
-  assert.match(html,/url\('main-profile-icons\.webp'\)/);
-  for(const filename of ['main-profile-bg.jpg','main-profile-icons.webp']){
+  assert.match(royalCss,/url\('\.\/royal-profile-background\.jpg'\)/);
+  assert.match(royalCss,/url\('\.\/profile-collection-atlas\.webp'\)/);
+  for(const filename of ['royal-profile-background.jpg','profile-collection-atlas.webp',
+    'profile-menu-atlas.webp','profile-crown.webp']){
     assert.ok(statSync(new URL('app/'+filename,root)).size>10_000,filename);
     assert.ok(gradle.includes(`../app/${filename}`),filename);
   }
@@ -18,23 +20,23 @@ test('owner royal profile artwork is shipped as real Android assets',()=>{
 
 test('main profile has real identity/wallet anchors and four owner-designed tiles',()=>{
   for(const selector of ['id="pavb"','class="mid" id="pid"','id="pe"',
-    'id="wr"','id="m-svip-label"','id="mp-copy-id"',
+    'id="wr"','class="profile-svip-badge" data-m="svip"',
     'data-profile-level="wealth"','data-profile-level="charm"',
     'data-profile-stat="followers"','data-profile-stat="following"',
     'data-profile-stat="visitors"','data-m="store"','id="mbd"',
     'data-m="frame"','data-m="daily"'])assert.ok(html.includes(selector),selector);
-  assert.match(html,/fmt\(coins\(\)\)/);
+  assert.match(html,/coins\(\)\.toLocaleString/);
   assert.match(html,/RS\(\)\.dia/);
   assert.match(android,/renderVerifiedMainProfileStats\(\)/);
   assert.match(android,/api\('GET','\/bonds\/profile\/'\+id\)/);
 });
 
 test('Account & Features stays vertically stacked with six wired destinations',()=>{
-  assert.match(html,/#v-me \.mp-features\{display:grid;gap:/);
+  assert.match(royalCss,/#v-me\.profile-royal \.ml2 \{[\s\S]*?flex-direction:column/);
   for(const [action,label] of [['home','My Room'],['entry','Entry Effects'],
     ['svip','SVIP Club'],['invite','Invite Friends'],
     ['cp','CP &amp; Friendship'],['set','Settings']]){
-    assert.ok(html.includes(`feature('${action}'`),label);
+    assert.ok(html.includes(`class="mr" data-m="${action}"`),label);
   }
   assert.match(android,/styleSelectionSheet\('entry_style'\)/);
   assert.match(android,/showPremiumSheet\(\)\.catch/);

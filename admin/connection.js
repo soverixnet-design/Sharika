@@ -29,7 +29,12 @@
   if(!NAV_ALL.some(item=>item[0]==='bonds')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='premium');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
-      ['bonds','💞','CP & Friendship Gifts']);
+      ['bonds','💞','CP Ranking, Rewards & Gifts']);
+  }
+  if(!NAV_ALL.some(item=>item[0]==='specialIds')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='premium');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['specialIds','💎','Special IDs']);
   }
   if(!NAV_ALL.some(item=>item[0]==='opening')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='rank');
@@ -100,7 +105,7 @@
     window.NAV=role==='staff'?NAV_ALL.filter(item=>
       !item[0]||Object.prototype.hasOwnProperty.call(allowedStaffPage,item[0])&&
       (!allowedStaffPage[item[0]]||status.permissions?.includes(allowedStaffPage[item[0]]))
-    ):NAV_ALL.slice();
+    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'));
     window.ME = session.email || status.name || 'Administrator';
     return status;
   }
@@ -412,6 +417,174 @@
         'These counts come from the same D1 database used by the Android app. The panel is read-only.');
     } catch (error) { root.innerHTML=card('Dashboard unavailable',error.message); }
   };
+
+  // Option 2: real verified Neon Special ID management with a live profile preview.
+  const sidStyle=document.createElement('style');
+  sidStyle.textContent=`
+    .sid-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(285px,.8fr);gap:18px}
+    .sid-preview,.sid-editor{border:1px solid rgba(149,92,255,.45);border-radius:22px;
+      background:#120d2b;padding:22px;min-width:0}
+    .sid-preview{background:radial-gradient(circle at 30% 8%,#283e92 0,#170e43 45%,#100a28 100%);
+      box-shadow:inset 0 0 42px #342074}
+    .sid-eyebrow{color:#c7b8ff;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+    .sid-face{width:128px;height:128px;border-radius:50%;margin:30px auto 12px;
+      border:4px solid #8a78ff;box-shadow:0 0 0 5px #221653,0 0 28px #595cff;
+      display:grid;place-items:center;background:#291e57;overflow:hidden;font-size:40px;font-weight:900}
+    .sid-face img{width:100%;height:100%;object-fit:cover}
+    .sid-name{text-align:center;font-size:30px;font-weight:800;color:white}
+    .sid-plate{max-width:430px;margin:18px auto 8px;padding:16px 20px;border:2px solid #ac78ff;
+      border-radius:18px;background:linear-gradient(90deg,#341058,#5725ae,#1647ba);
+      box-shadow:0 0 20px #7f45ff,inset 0 0 24px #6c45cb;text-align:center}
+    .sid-plate small{display:block;letter-spacing:.18em;color:#d8c6ff;font-size:12px}
+    .sid-plate strong{font-size:clamp(30px,4vw,55px);line-height:1.25;color:#f6f0ff;
+      letter-spacing:.08em;text-shadow:0 0 18px #93d5ff}
+    .sid-caption{text-align:center;color:#b5a7dc;font-size:12px;margin-top:12px}
+    .sid-room{display:flex;gap:13px;align-items:center;margin-top:28px;border-top:1px solid #514181;
+      padding-top:20px}
+    .sid-seat{min-width:64px;display:grid;justify-items:center;gap:4px;color:#ddc7ff;font-size:12px}
+    .sid-seat-ring{height:54px;width:54px;border-radius:50%;border:2px solid #a175ff;
+      background:#231945;box-shadow:0 0 13px #6f4bcb;display:grid;place-items:center;overflow:hidden}
+    .sid-seat-ring img{width:100%;height:100%;object-fit:cover}
+    .sid-editor label{color:#d9d1ff;font-size:13px;font-weight:700}
+    .sid-editor input,.sid-editor select{background:#0e102f;border:1px solid #574384;
+      color:white;border-radius:12px;margin:7px 0 13px}
+    .sid-editor input:focus,.sid-editor select:focus{border-color:#2adfff}
+    .sid-edit-title{font-size:25px;font-weight:800;margin-bottom:8px}
+    .sid-hint,.sid-status{color:#aeb1d5;font-size:13px;line-height:1.5}
+    .sid-status{min-height:24px;margin:8px 0}
+    .sid-action{border:0;border-radius:13px;padding:13px 18px;font-weight:800;color:white;
+      background:linear-gradient(100deg,#bf39f4,#5a65ff,#19cce0);width:100%}
+    .sid-action:disabled{opacity:.43;cursor:not-allowed}
+    .sid-ghost{background:transparent;border:1px solid #8159cd;padding:11px;
+      border-radius:12px;color:#d5c8ff;width:100%;margin:3px 0 10px}
+    .sid-list{margin-top:18px;display:flex;gap:9px;flex-wrap:wrap}
+    .sid-person{border:1px solid #423568;background:#1d173e;padding:8px 12px;
+      border-radius:12px;color:#ece7ff;text-align:left}
+    .sid-person[aria-pressed="true"]{border-color:#15cde7;box-shadow:0 0 0 1px #15cde7}
+    .sid-special-label{font-size:10px;color:#c5a9ff}
+    @media(max-width:1000px){.sid-layout{grid-template-columns:1fr}.sid-preview,.sid-editor{padding:16px}}
+  `;
+  document.head.appendChild(sidStyle);
+  P.specialIds=async function(){
+    const root=byId('pg');
+    if(role!=='super'){root.innerHTML=card('Special IDs','Super Admin permission required.');return;}
+    root.innerHTML='<div class="card"><h3>Find verified member</h3><div class="row">'+
+      '<input id="sid-search" placeholder="Account ID, Special ID or name" autocomplete="off">'+
+      '<button class="btn s" id="sid-find">Search</button></div>'+
+      '<div class="sid-hint" id="sid-list-note">Loading verified members…</div>'+
+      '<div class="sid-list" id="sid-list"></div></div>'+
+      '<div class="sid-layout"><section class="sid-preview" aria-label="Public profile preview">'+
+      '<div class="sid-eyebrow">Public Profile Preview</div>'+
+      '<div id="sid-avatar" class="sid-face">?</div>'+
+      '<div id="sid-name" class="sid-name">Select a member</div>'+
+      '<div class="sid-plate"><small>SPECIAL ID</small><strong id="sid-plate">—</strong></div>'+
+      '<p class="sid-caption">Neon ID displayed on profile and room seats</p>'+
+      '<div class="sid-room"><div class="sid-seat"><div class="sid-seat-ring" id="sid-seat-face">?</div>'+
+      '<span id="sid-seat-id">—</span></div>'+
+      '<div class="sid-hint">Room seat preview · permanent account remains unchanged</div></div>'+
+      '</section><section class="sid-editor"><h2 class="sid-edit-title">Assign Special ID</h2>'+
+      '<p class="sid-hint">Only verified Sharika accounts can receive a unique ID.</p>'+
+      '<label for="sid-account">Permanent Account ID</label>'+
+      '<input id="sid-account" readonly placeholder="Select a verified member">'+
+      '<label for="sid-value">Special ID (4–7 digits)</label>'+
+      '<input id="sid-value" inputmode="numeric" maxlength="7" autocomplete="off" placeholder="777777">'+
+      '<label for="sid-days">Duration</label><select id="sid-days">'+
+      '<option value="30">30 days</option><option value="7">7 days</option>'+
+      '<option value="90">90 days</option><option value="">Permanent</option></select>'+
+      '<label>Frame</label><input readonly value="Neon Purple–Blue">'+
+      '<button type="button" class="sid-ghost" id="sid-check">Check availability</button>'+
+      '<button type="button" class="sid-action" id="sid-save" disabled>Save Special ID</button>'+
+      '<p class="sid-status" id="sid-status" role="status"></p>'+
+      '<button type="button" class="sid-ghost" id="sid-revoke" disabled>Revoke Special ID</button>'+
+      '</section></div>';
+    let people=[],selected=null;
+    const input=byId('sid-search'),list=byId('sid-list'),status=byId('sid-status');
+    const value=byId('sid-value'),save=byId('sid-save'),revoke=byId('sid-revoke');
+    const faceHtml=user=>{
+      const pic=typeof user?.pic==='string'&&/^https:\/\//.test(user.pic)?user.pic:'';
+      return pic?'<img src="'+esc(pic)+'" alt="">':esc((user?.name||'?').slice(0,1).toUpperCase());
+    };
+    function preview(){
+      const display=value.value.trim()||selected?.special_id||'—';
+      byId('sid-name').textContent=selected?.name||'Select a member';
+      byId('sid-account').value=selected?.public_id||'';
+      byId('sid-avatar').innerHTML=faceHtml(selected);
+      byId('sid-seat-face').innerHTML=faceHtml(selected);
+      byId('sid-plate').textContent=display;
+      byId('sid-seat-id').textContent=display;
+      save.disabled=!selected||selected.status!=='active'||!/^[0-9]{4,7}$/.test(value.value.trim());
+      revoke.disabled=!selected||!selected.special_id;
+    }
+    async function search(){
+      list.replaceChildren();byId('sid-list-note').textContent='Loading verified members…';
+      try{
+        const data=await api('GET','special-ids?q='+encodeURIComponent(input.value.trim()));
+        if(!list.isConnected)return;
+        people=Array.isArray(data.users)?data.users:[];
+        byId('sid-list-note').textContent=people.length?
+          'Select the account that will own this Special ID.':'No verified members found.';
+        for(const person of people){
+          const button=document.createElement('button');button.type='button';
+          button.className='sid-person';button.dataset.id=person.public_id;
+          button.setAttribute('aria-pressed',String(selected?.public_id===person.public_id));
+          button.textContent=person.name+' · '+person.public_id+
+            (person.special_id?' · ★ '+person.special_id:'');
+          button.onclick=()=>{
+            selected=person;value.value=person.special_id||'';
+            status.textContent='';
+            for(const b of list.children)b.setAttribute('aria-pressed',
+              String(b===button));
+            preview();
+          };
+          list.appendChild(button);
+        }
+      }catch(error){byId('sid-list-note').textContent='Search unavailable: '+error.message;}
+    }
+    byId('sid-find').onclick=search;
+    let timer;input.oninput=()=>{clearTimeout(timer);timer=setTimeout(search,300);};
+    value.oninput=()=>{status.textContent='';preview();};
+    byId('sid-check').onclick=async()=>{
+      const proposed=value.value.trim();
+      if(!/^[0-9]{4,7}$/.test(proposed)){status.textContent='Use 4–7 numeric digits.';return;}
+      try{
+        const response=await api('GET','special-ids/availability?value='+encodeURIComponent(proposed));
+        status.textContent=response.available?'Available ✓':
+          selected?.special_id===proposed?'Assigned to this member.':'This ID is reserved.';
+      }catch(error){status.textContent='Availability check failed: '+error.message;}
+    };
+    save.onclick=async()=>{
+      if(save.disabled||!selected)return;
+      const specialId=value.value.trim(),accountId=selected.public_id;
+      if(!window.confirm('Assign Special ID '+specialId+' to '+accountId+'?'))return;
+      save.disabled=true;status.textContent='Saving on Sharika server…';
+      try{
+        const days=byId('sid-days').value;
+        const result=await api('POST','special-ids',{
+          public_id:accountId,special_id:specialId,
+          duration_days:days===''?null:Number(days),frame:'neon'
+        });
+        selected.special_id=result.special_id;selected.frame='neon';
+        selected.expires_at=result.expires_at;
+        status.textContent='Saved ✓ The public profile will show '+result.special_id;
+        note('Special ID assigned successfully');
+        await search();preview();
+      }catch(error){status.textContent='Not saved: '+error.message;preview();}
+    };
+    revoke.onclick=async()=>{
+      if(!selected?.special_id)return;
+      const accountId=selected.public_id;
+      if(!window.confirm('Revoke Special ID from account '+accountId+'?'))return;
+      revoke.disabled=true;
+      try{
+        await api('PATCH','special-ids/'+accountId+'/revoke',{});
+        selected.special_id=null;selected.expires_at=null;value.value='';
+        status.textContent='Revoked. Permanent Account ID is unchanged.';
+        await search();preview();
+      }catch(error){status.textContent='Revoke failed: '+error.message;preview();}
+    };
+    preview();await search();
+  };
+
   P.users=async function () {
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>Verified users</h3><div class="row">'+
@@ -455,28 +628,35 @@
     await refresh();
   };
   P.rooms=async function () {
-    const root=byId('pg');root.innerHTML=card('Rooms','Loading verified rooms…');
-    try {
+    const root=byId('pg');root.innerHTML=card('Rooms','Loading verified room and live presence…');
+    try{
       const data=await api('GET','rooms');
-      root.innerHTML='<div class="card"><p class="n">Real D1 rooms and saved members. Live presence is not tracked yet.</p>'+
-        window.T(['Room ID','Name','Owner ID','Members','Seats','Inspect'],
-          (data.rooms||[]).map(r=>[
-            esc(r.id),esc(r.name),esc(r.owner_public_id||''),
-            fmt(r.members),fmt(r.seat_count),
-            '<button type="button" class="btn s" data-room-id="'+esc(r.id)+'">Members</button>'
-          ]))+'<div id="room-members-detail"></div></div>';
+      const tracked=data.live_presence_tracked===true;
+      root.innerHTML='<div class="card"><h3>Verified rooms and active visitors</h3>'+
+        '<p class="n">'+(tracked?
+          'Live visitor counts include authenticated activity seen in the last 90 seconds.':
+          'Live activity service is temporarily unavailable; saved members are not online counts.')+
+        '</p><button class="btn" type="button" id="room-refresh">Refresh live counts</button>'+
+        window.T(['Room ID','Name','Owner ID','Online (90s)','Saved members','Seats','Inspect'],
+        (data.rooms||[]).map(r=>[
+          esc(r.id),esc(r.name),esc(r.owner_public_id||''),
+          r.online_count==null?'Untracked':fmt(r.online_count),
+          fmt(r.members),fmt(r.seat_count),
+          '<button type="button" class="btn s" data-room-id="'+esc(r.id)+'">Members</button>'
+        ]))+'<div id="room-members-detail"></div></div>';
       root.onclick=async e=>{
+        if(e.target.closest('#room-refresh')){await P.rooms();return;}
         const button=e.target.closest('button[data-room-id]');
         if(!button||button.disabled)return;
         button.disabled=true;
         const detail=byId('room-members-detail');
-        detail.textContent='Loading members…';
+        detail.textContent='Loading saved membership…';
         try{
-          const data=await api('GET','rooms/'+encodeURIComponent(button.dataset.roomId)+'/members');
-          detail.innerHTML='<h3>Members of '+esc(data.room.name)+' ('+esc(data.room.id)+')</h3>'+
-            '<p class="n">Room membership only; online status is not measured.</p>'+
+          const info=await api('GET','rooms/'+encodeURIComponent(button.dataset.roomId)+'/members');
+          detail.innerHTML='<h3>Members of '+esc(info.room.name)+' ('+esc(info.room.id)+')</h3>'+
+            '<p class="n">Saved room membership only; individual online identity is not inferred.</p>'+
             window.T(['User ID','Name','Room role','Seat','Muted','Joined'],
-              (data.members||[]).map(m=>[
+              (info.members||[]).map(m=>[
                 esc(m.public_id),esc(m.name),esc(m.role),
                 m.seat_no==null?'Audience':fmt(m.seat_no),
                 m.muted?'Yes':'No',esc(m.joined_at)
@@ -486,7 +666,6 @@
       };
     }catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
   };
-
 
   P.daily=async function(){
     const root=byId('pg');
@@ -792,17 +971,36 @@
       root.innerHTML=card('Frames, entry and name tags','Only Super Admin can manage prices or grant free styles to an ID.');
       return;
     }
+    const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
+      prefix+'-'+String(i+1).padStart(2,'0'));
+    const roleFrames=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,63,64]
+      .map(n=>'role-frame-'+String(n).padStart(2,'0'));
     const art={
       frame_style:['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love',
-        'ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen'],
+        'ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
+        'vip5-animated',...numbered('svip-frame',8),'noble-gold-microphone',...roleFrames],
       entry_style:['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen'],
-      medal_style:['bronze','silver','gold','top-host'],name_tag_style:['legend']
+      medal_style:['bronze','silver','gold','top-host',...numbered('svip-medal',8)],
+      name_tag_style:['legend',...numbered('svip-tag',17)]
     };
     const kinds=Object.keys(art);
     const options=(list,selected)=>list.map(v=>'<option value="'+esc(v)+'"'+
       (v===selected?' selected':'')+'>'+esc(v.replaceAll('_',' '))+'</option>').join('');
     root.innerHTML=card('Verified cosmetic inventory',
       'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
+      '<div class="card"><h3>🎁 Give a frame or medal to a user</h3>'+
+      '<p class="n">Super Admin: enter the real Sharika ID, find the frame or medal, and give it free. '+
+      'Admin-only items can be granted even when Store sales are disabled. The user can equip it from their profile.</p>'+
+      '<input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" '+
+      'placeholder="Recipient Sharika ID (8 digits)" aria-label="Recipient Sharika ID">'+
+      '<div class="row"><select class="field" id="sh-cos-grant-kind" aria-label="Cosmetic category">'+
+      '<option value="frame_style">Frames</option><option value="medal_style">Medals</option>'+
+      '<option value="entry_style">Entry effects</option><option value="name_tag_style">Name tags</option></select>'+
+      '<input class="field" id="sh-cos-grant-filter" type="search" '+
+      'placeholder="Search e.g. Role Frame 28" aria-label="Search cosmetics"></div>'+
+      '<select class="field" id="sh-cos-grant-item" aria-label="Choose a frame or medal"></select>'+
+      '<button class="btn s" type="button" id="sh-cos-grant">Give selected item to ID · Free</button>'+
+      '<p class="n" role="status" id="sh-cos-note"></p></div>'+
       '<div id="sh-cosmetic-list">Loading server catalogue…</div>'+
       '<div class="card"><h3>Add new catalog item</h3>'+
       '<div class="row"><select class="field" id="sh-cos-kind">'+options(kinds,'entry_style')+'</select>'+
@@ -811,12 +1009,7 @@
       '<input class="field" id="sh-cos-price" type="number" min="1" max="1000000" placeholder="Coin price"></div>'+
       '<div class="row"><label>Existing bundled artwork <select class="field" id="sh-cos-art"></select></label>'+
       '<button class="btn s" type="button" id="sh-cos-create">Add item</button></div>'+
-      '<p class="n">New catalogue IDs may reuse a bundled entry/frame asset. Truly new art requires including its animation or image in an app update.</p></div>'+
-      '<div class="card"><h3>Give a cosmetic free to any verified Sharika ID</h3>'+
-      '<div class="row"><input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" placeholder="8-digit recipient ID">'+
-      '<select class="field" id="sh-cos-grant-item"></select>'+
-      '<button class="btn s" type="button" id="sh-cos-grant">Give to ID · No coin charge</button></div></div>'+
-      '<p class="n" role="status" id="sh-cos-note"></p>';
+      '<p class="n">New catalogue IDs may reuse a bundled entry/frame asset. Truly new art requires including its animation or image in an app update.</p></div>';
     const status=byId('sh-cos-note'),kind=byId('sh-cos-kind'),artSelect=byId('sh-cos-art');
     function fillArt(){artSelect.innerHTML=options(art[kind.value]||[],'');}
     kind.onchange=fillArt;fillArt();
@@ -824,8 +1017,21 @@
       const data=await api('GET','cosmetics');
       if(!root.isConnected)return;
       const items=Array.isArray(data.items)?data.items:[];
-      byId('sh-cos-grant-item').innerHTML=items.map(item=>
-        '<option value="'+esc(item.id)+'">'+esc(item.name+' · '+item.id)+'</option>').join('');
+      const grantKind=byId('sh-cos-grant-kind'),grantFilter=byId('sh-cos-grant-filter');
+      const grantItem=byId('sh-cos-grant-item');
+      function fillGrantItems(){
+        const query=grantFilter.value.trim().toLowerCase();
+        const matches=items.filter(item=>item.kind===grantKind.value&&
+          (!query||(item.name+' '+item.id).toLowerCase().includes(query)));
+        grantItem.innerHTML=matches.length?matches.map(item=>
+          '<option value="'+esc(item.id)+'">'+esc(item.name+' · '+item.id+
+          (item.active?'':' · Admin-only') )+'</option>').join(''):
+          '<option value="">No matching items in server catalogue</option>';
+        grantItem.disabled=matches.length===0;
+      }
+      grantKind.onchange=fillGrantItems;
+      grantFilter.oninput=fillGrantItems;
+      fillGrantItems();
       const list=byId('sh-cosmetic-list');
       list.innerHTML=items.map(item=>'<div class="card"><h4>'+esc(item.id)+'</h4>'+
         '<div class="row"><label>Name <input class="field" data-cos-field="name" data-id="'+esc(item.id)+'" value="'+esc(item.name)+'"></label>'+
@@ -876,7 +1082,9 @@
         if(!/^[0-9]{8}$/.test(id)||!itemId){
           status.textContent='Enter a verified 8-digit ID and select one cosmetic.';return;
         }
-        if(!window.confirm('Give '+itemId+' to user ID '+id+' for FREE? This is audited.'))return;
+        const selected=items.find(item=>item.id===itemId);
+        if(!selected||!window.confirm('Give '+selected.name+' to user ID '+id+
+          ' for FREE? The user will own it and can equip it. This is audited.'))return;
         button.disabled=true;
         try{
           const given=await api('POST','cosmetics/grant',{public_id:id,item_id:itemId});
@@ -988,6 +1196,80 @@
 
   // CP/Friendship policy is independent of ordinary room gifts. Only the
   // verified Super Admin can change prices or enabled status; Finance reads.
+  async function renderCpRewardAdmin(){
+    const root=byId('sh-cp-reward-settings');if(!root)return;
+    let data;
+    try{data=await api('GET','bonds/rewards');}
+    catch(error){root.textContent='CP rewards unavailable: '+error.message+
+      ' (staging migration 0035 may be pending)';return;}
+    if(!root.isConnected)return;
+    const editable=role==='super';
+    const items=data.assets||[];
+    const options=(kind,selected)=>'<option value="">No '+(kind==='frame_style'?'frame':'medal')+'</option>'+
+      items.filter(x=>x.kind===kind).map(x=>'<option value="'+esc(x.id)+'" '+
+        (x.id===selected?'selected':'')+'>'+esc(x.name)+'</option>').join('');
+    const rows=(data.rules||[]).map(rule=>'<div class="row" style="align-items:end;'+
+      'border-bottom:1px solid #ffffff24;padding:10px 0;flex-wrap:wrap">'+
+      '<strong style="min-width:65px">TOP '+rule.rank+'</strong>'+
+      '<label>Coins each<input class="field" style="width:120px" type="number" min="0" max="1000000" '+
+      'id="sh-cp-coins-'+rule.rank+'" value="'+esc(rule.coins_each)+'" '+(editable?'':'disabled')+'></label>'+
+      '<label>Special frame<select class="field" id="sh-cp-frame-'+rule.rank+'" '+
+      (editable?'':'disabled')+'>'+options('frame_style',rule.frame_item_id)+'</select></label>'+
+      '<label>Medal<select class="field" id="sh-cp-medal-'+rule.rank+'" '+
+      (editable?'':'disabled')+'>'+options('medal_style',rule.medal_item_id)+'</select></label></div>').join('');
+    const last=data.last_week||{};
+    root.innerHTML='<p class="n">Each partner receives the configured coins, special frame and medal. '+
+      'Frames/medals are permanent Store entitlements, not replacements for purchased items. '+
+      'Changes affect future settlement only; paid weeks are immutable.</p>'+
+      '<label><input type="checkbox" id="sh-cp-enabled" '+(data.policy?.enabled?'checked ':'')+
+      (editable?'':'disabled')+'> Enable weekly CP rewards</label><br>'+
+      '<label><input type="checkbox" id="sh-cp-auto" '+(data.policy?.auto_award?'checked ':'')+
+      (editable?'':'disabled')+'> Automatically settle after a full eligible week</label>'+
+      '<p class="n">Automatic rewards begin with the next complete UTC Monday–Sunday week when first activated. '+
+      'Previous weeks require an explicit Super Admin action.</p>'+rows+
+      (editable?'<button class="btn s" type="button" id="sh-cp-rewards-save">Save TOP 1–7 prizes</button> ':'')+
+      '<p class="n" id="sh-cp-rewards-note">'+(data.policy?.enabled?'Rewards enabled':'Rewards disabled')+'</p>'+
+      '<div class="card"><h3>🏆 Last completed week</h3><p class="n">'+
+      new Date(last.start_ms).toISOString().slice(0,10)+' · '+
+      (last.awarded?'Awarded and locked':'Not yet awarded')+'</p>'+
+      (last.leaders||[]).map(pair=>'<p class="n">#'+pair.rank+' · '+
+        esc(pair.a.name)+' & '+esc(pair.b.name)+' · '+fmt(pair.total)+' verified CP coins</p>').join('')+
+      (!(last.leaders||[]).length?'<p class="n">No eligible verified CP pairs.</p>':'')+
+      (editable?'<button type="button" class="btn s" id="sh-cp-award-last" '+
+        (!data.policy?.enabled||last.awarded?'disabled':'')+'>Award last completed week once</button>':'')+'</div>'+
+      '<div class="card"><h3>📜 Weekly payout receipts</h3>'+
+      (data.history||[]).map(batch=>'<p class="n">'+
+        new Date(Number(batch.week_start_ms)).toISOString().slice(0,10)+' · '+
+        Number(batch.winner_count)+' CP pairs · '+esc(batch.issued_by)+'</p>').join('')+
+      (!(data.history||[]).length?'<p class="n">No paid weeks yet.</p>':'')+'</div>';
+    byId('sh-cp-rewards-save')?.addEventListener('click',async event=>{
+      const rules=[];
+      for(let rank=1;rank<=7;rank++){
+        const coins_each=Number(byId('sh-cp-coins-'+rank).value);
+        if(!Number.isSafeInteger(coins_each)||coins_each<0||coins_each>1_000_000){
+          byId('sh-cp-rewards-note').textContent='Coins must be 0–1,000,000 per partner.';return;}
+        rules.push({rank,coins_each,frame_item_id:byId('sh-cp-frame-'+rank).value||null,
+          medal_item_id:byId('sh-cp-medal-'+rank).value||null});
+      }
+      const enabled=byId('sh-cp-enabled').checked,auto_award=byId('sh-cp-auto').checked;
+      if(!window.confirm('Save weekly CP TOP 1–7 reward rules?'))return;
+      const button=event.currentTarget;button.disabled=true;
+      try{await api('PATCH','bonds/rewards',{enabled,auto_award,rules});
+        note('CP reward rules saved ✓');await renderCpRewardAdmin();}
+      catch(error){byId('sh-cp-rewards-note').textContent='Not saved: '+error.message;
+        button.disabled=false;}
+    });
+    byId('sh-cp-award-last')?.addEventListener('click',async event=>{
+      if(!window.confirm('FINAL CONFIRMATION: Credit BOTH partners of each eligible TOP 1–7 CP pair '+
+        'and grant configured frames/medals for the completed UTC week? This cannot be undone.'))return;
+      const button=event.currentTarget;button.disabled=true;
+      try{const result=await api('POST','bonds/rewards/settle',{confirm:true});
+        note(result.duplicate?'This week was already awarded':
+          'CP reward complete · '+result.winner_count+' pairs');await renderCpRewardAdmin();}
+      catch(error){note('Not awarded: '+error.message);button.disabled=false;}
+    });
+  }
+
   P.bonds=async function(){
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>💞 Royal CP & Friendship Gifts</h3>'+
@@ -996,8 +1278,11 @@
       '<div id="sh-admin-bond-policy">Loading verified bond rules…</div></div>'+
       '<div class="card"><h3>🎁 CP / Friendship Gift Catalog</h3>'+
       '<div id="sh-admin-bond-gifts">Loading gift prices…</div></div>'+
+      '<div class="card"><h3>👑 CP TOP 1–7 Weekly Ranking Rewards</h3>'+
+      '<div id="sh-cp-reward-settings">Loading reward rules…</div></div>'+
       '<div class="card"><h3>📜 Recent Relationship Audit</h3>'+
       '<div id="sh-admin-bond-audit">Loading…</div></div>';
+    void renderCpRewardAdmin();
     const policyRoot=byId('sh-admin-bond-policy');
     const giftRoot=byId('sh-admin-bond-gifts');
     const auditRoot=byId('sh-admin-bond-audit');
@@ -1991,11 +2276,214 @@
       '<p>'+esc(granted.join(' · ')||'No permissions assigned')+'</p></div>';
   };
 
+  // Recover operational menu pages from the old visual-only template.
+  // Pages that cannot safely mutate the backend remain explicitly read-only.
+  const openVerifiedPage=page=>{window.V=page;window.shell();};
+  function verifiedHub(title,body,links){
+    const root=byId('pg');
+    root.innerHTML=card(title,body);
+    const actions=document.createElement('div');
+    actions.className='card';
+    for(const [label,page] of links){
+      const b=document.createElement('button');
+      b.type='button';b.className='btn s';b.textContent=label;
+      b.style.margin='4px';
+      b.onclick=()=>openVerifiedPage(page);
+      actions.appendChild(b);
+    }
+    root.appendChild(actions);
+  }
+  P.levels=P.premium;
+  P.promo=function(){
+    verifiedHub('Invite codes & promotions',
+      'Real invite links and referral rewards are managed under Check-in, Tasks & Invites. Generic coupon redemption is not yet connected; no simulated promo codes are issued.',
+      [['Open verified Invite settings','daily'],['Create event campaign','events']]);
+  };
+  P.themes=async function(){
+    const root=byId('pg');root.innerHTML=card('Room themes','Reading real room theme usage…');
+    try{
+      const data=await api('GET','theme-usage');
+      root.innerHTML='<div class="card"><h3>Actual room backgrounds in use</h3>'+
+        '<p class="n">Existing room themes are chosen by room owners. Admin-uploaded themes are not available yet; no demo previews are saved.</p>'+
+        window.T(['Theme','Rooms using'],(data.themes||[]).map(t=>[
+          esc(t.theme),fmt(t.rooms)
+        ]))+'<button class="btn s" id="theme-rooms" type="button">Open real rooms</button></div>';
+      byId('theme-rooms').onclick=()=>openVerifiedPage('rooms');
+    }catch(error){root.innerHTML=card('Theme usage unavailable',error.message);}
+  };
+  P.rr=async function(){
+    const root=byId('pg');
+    if(role!=='super'&&role!=='finance'){
+      root.innerHTML=card('Room Reward','Finance or Super Admin access is required.');return;
+    }
+    root.innerHTML=card('Room Reward','Loading audited room gift shares…');
+    try{
+      const data=await api('GET','gift-settlements');
+      root.innerHTML='<div class="card"><h3>Verified room gift accruals</h3>'+
+        '<p class="n">The figures below are room accrual units, not payments to the owner’s wallet. No claim or owner payout is enabled here.</p>'+
+        window.T(['Transaction','Room','Sender','Gift','Spent coins','Room share (1/100 units)','Date'],
+          (data.settlements||[]).map(x=>[
+            fmt(x.transaction_id),esc(x.room_id||'—'),esc(x.sender_id),
+            esc(x.gift),fmt(x.spent_coins),fmt(x.room_reward_hundredths),
+            esc(x.created_at)
+          ]))+'</div>';
+    }catch(error){root.innerHTML=card('Room rewards unavailable',error.message);}
+  };
+  async function readGameMonitor(){
+    if(role!=='super'&&role!=='finance')
+      throw Error('Finance or Super Admin permission is required');
+    return await api('GET','game-monitor');
+  }
+  P.games=async function(){
+    const root=byId('pg');root.innerHTML=card('Games','Loading settled game records…');
+    try{
+      const data=await readGameMonitor();
+      root.innerHTML='<div class="card"><h3>Verified game activity</h3>'+
+        '<p class="n">Real stored bets and settlements only. Gameplay settings cannot be edited here yet.</p>'+
+        window.T(['Engine','Game','Bets','Settled','Winning bets'],
+          (data.games||[]).map(g=>[
+            esc(g.source),esc(g.game),fmt(g.bets),fmt(g.settled),fmt(g.winning_bets)
+          ]))+'<button type="button" id="game-winners" class="btn s">Show settled winners</button></div>';
+      byId('game-winners').onclick=()=>openVerifiedPage('winb');
+    }catch(error){root.innerHTML=card('Game monitoring unavailable',error.message);}
+  };
+  P.winb=async function(){
+    const root=byId('pg');root.innerHTML=card('Win announcements','Loading verified winners…');
+    try{
+      const data=await readGameMonitor();
+      root.innerHTML='<div class="card"><h3>Recent confirmed game wins</h3>'+
+        '<p class="n">This is a verified read-only settlement history. Game win banners are generated inside the app; this page does not issue fake announcements.</p>'+
+        window.T(['User ID','Game','Round','Win coins','Settled UTC'],
+          (data.wins||[]).map(w=>[
+            esc(w.public_id),esc(w.game),fmt(w.round_no),
+            fmt(w.payout_coins),esc(w.settled_at)
+          ]))+'</div>';
+    }catch(error){root.innerHTML=card('Win history unavailable',error.message);}
+  };
+  async function featureHealth(){
+    return await api('GET','feature-health');
+  }
+  P.lucky=async function(){
+    const root=byId('pg');root.innerHTML=card('Lucky gifts','Checking server switch…');
+    try{
+      const state=await featureHealth();
+      verifiedHub('Lucky gifts · '+(state.lucky_gifts_enabled?'Enabled':'Disabled'),
+        state.lucky_gifts_enabled?
+          'The staging API reports Lucky gifts enabled. Use the verified gift catalogue to inspect items.':
+          'The server’s Lucky-gift switch is off. No admin demo toggle can bypass the server safety gate.',
+        [['Open gift catalogue','gifts']]);
+    }catch(error){root.innerHTML=card('Lucky gift status unavailable',error.message);}
+  };
+  P.system=P.config=async function(){
+    const root=byId('pg');root.innerHTML=card('Staging services','Checking verified service bindings…');
+    try{
+      const st=await featureHealth();
+      root.innerHTML='<div class="card"><h3>Verified Sharika staging system</h3>'+
+        window.T(['Service','Observed state'],[
+          ['Environment',esc(st.environment)],
+          ['D1 database',st.d1_bound?'Bound':'Unavailable'],
+          ['Voice room coordinator',st.voice_rooms_bound?'Bound':'Unavailable'],
+          ['Server time (UTC)',esc(st.server_time)]
+        ])+'<p class="n">Service bindings are server-reported. External provider health and end-to-end voice calls need their own tests.</p></div>';
+    }catch(error){root.innerHTML=card('System status unavailable',error.message);}
+  };
+  P.flags=async function(){
+    const root=byId('pg');root.innerHTML=card('Feature switches','Reading protected staging flags…');
+    try{
+      const st=await featureHealth();
+      root.innerHTML='<div class="card"><h3>Server-enforced feature switches</h3>'+
+        window.T(['Feature','Verified state'],[
+          ['Lucky gifts',st.lucky_gifts_enabled?'Enabled':'Disabled'],
+          ['Cash-redeemable coins',st.cash_redeemable_coins?'Enabled':'Disabled']
+        ])+'<p class="n">These are read-only safety switches. Editing requires a separately reviewed server deployment; no fake on/off controls are shown.</p></div>';
+    }catch(error){root.innerHTML=card('Feature status unavailable',error.message);}
+  };
+
+  // Verified Super Admin notice publisher. Rewards and gifts are automatic
+  // from committed server transactions; admins cannot fabricate coin grants here.
+  P.push=async function(){
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Notifications','Only Super Admin can publish official notices.');return;
+    }
+    root.innerHTML='<div class="card" style="background:linear-gradient(125deg,#251247,#42256c);'+
+      'border:1px solid #be88f3;border-radius:18px;color:#fff">'+
+      '<h3>🔔 Official Notifications</h3><p>Send a real in-app notification to verified '+
+      'Sharika accounts. Rewards and gifts are announced automatically after a server transaction.</p>'+
+      '<p id="sh-push-status">Checking push configuration…</p></div>'+
+      '<div class="card" style="border:1px solid #c2a4ef;border-radius:18px">'+
+      '<h3>📣 Publish new notice</h3><div class="row" style="gap:10px;flex-wrap:wrap">'+
+      '<label>Type <select id="sh-push-kind"><option value="official">Official notice</option>'+
+      '<option value="event">Event announcement</option><option value="system">System update</option></select></label>'+
+      '<label>Recipients <select id="sh-push-audience"><option value="all">All active members</option>'+
+      '<option value="user">One member ID</option></select></label></div>'+
+      '<input id="sh-push-id" class="field" maxlength="8" inputmode="numeric" '+
+      'placeholder="8-digit member ID" style="display:none;margin:9px 0">'+
+      '<input id="sh-push-title" class="field" maxlength="100" '+
+      'placeholder="Notice title (up to 100 characters)" style="margin:9px 0">'+
+      '<textarea id="sh-push-body" maxlength="1000" rows="5" '+
+      'placeholder="Write a clear official notice for members…" '+
+      'style="width:100%;min-height:115px;padding:12px;border-radius:12px"></textarea>'+
+      '<div class="row" style="gap:10px;align-items:center;margin-top:12px">'+
+      '<button type="button" class="btn" id="sh-push-send">Send verified notice</button>'+
+      '<small id="sh-push-feedback"></small></div></div>'+
+      '<div class="card"><h3>Recent verified notices</h3><div id="sh-push-history">Loading…</div></div>';
+    const status=byId('sh-push-status'),history=byId('sh-push-history'),
+      audience=byId('sh-push-audience'),target=byId('sh-push-id'),
+      submit=byId('sh-push-send'),feedback=byId('sh-push-feedback');
+    audience.onchange=()=>{target.style.display=audience.value==='user'?'block':'none';};
+    async function refresh(){
+      try{
+        const data=await api('GET','notifications');
+        status.textContent=data.push_configured?
+          '✅ FCM configured. Android delivery is attempted to registered devices. Registered devices: '+data.registered_devices:
+          '⚠️ Firebase FCM sender not configured on the Worker. In-app inbox delivery works; phone push is not active yet.';
+        const rows=(data.campaigns||[]).map(n=>[
+          esc(n.title),esc(n.kind),esc(n.body),
+          Number(n.recipients)+' member(s)',
+          Number(n.read_count)+' read',
+          Number(n.push_sent_count)+' pushed',esc(n.created_at)
+        ]);
+        history.innerHTML=rows.length?window.T(['Title','Type','Message','Audience','Read','Push','Created'],rows):
+          '<p class="n">No verified notices published yet.</p>';
+      }catch(error){status.textContent='Unable to read status: '+error.message;history.textContent='History unavailable';}
+    }
+    submit.onclick=async()=>{
+      const kind=byId('sh-push-kind').value,title=byId('sh-push-title').value.trim(),
+        body=byId('sh-push-body').value.trim(),targetId=target.value.trim();
+      if(!title||title.length>100||!body||body.length>1000){
+        feedback.textContent='Enter a title and message within the limits.';return;
+      }
+      if(audience.value==='user'&&!/^[0-9]{8}$/.test(targetId)){
+        feedback.textContent='A verified 8-digit member ID is required.';return;
+      }
+      const who=audience.value==='all'?'ALL active members':'member '+targetId;
+      if(!window.confirm('Send this '+kind+' notice to '+who+'?'))return;
+      submit.disabled=true;feedback.textContent='Publishing…';
+      try{
+        const requestId='notification:'+Date.now().toString(36)+':'+
+          Math.random().toString(36).slice(2,14);
+        const result=await api('POST','notifications',{
+          kind,title,body,audience:audience.value,
+          public_id:audience.value==='user'?targetId:null,request_id:requestId
+        });
+        feedback.textContent='Saved for '+result.recipients+' member(s). '+
+          (result.push_configured?
+            'Device pushes succeeded for '+result.push_sent_to_users+' member(s).':
+            'Phone push awaits Firebase configuration.');
+        byId('sh-push-title').value='';byId('sh-push-body').value='';
+        await refresh();
+      }catch(error){feedback.textContent='Not sent: '+error.message;}
+      finally{submit.disabled=false;}
+    };
+    await refresh();
+  };
+
   // The original visual-only dashboard includes demo pages. Replace every
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','opening'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

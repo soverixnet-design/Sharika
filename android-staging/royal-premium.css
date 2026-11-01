@@ -261,10 +261,16 @@ html.royal-root .mini button {background:linear-gradient(145deg,#a46be1,#3e1568)
 
 /* Room iframe: chrome is gold and purple; custom owner themes and photos win. */
 html.royal-room .app.royal-default-room {
-  background:linear-gradient(180deg,rgba(7,2,23,.34),rgba(9,2,23,.63) 56%,rgba(4,1,14,.93)),
-    url("royal-palace.png") center/cover no-repeat #100524 !important;
+  background:linear-gradient(180deg,rgba(7,2,23,.16),rgba(9,2,23,.42) 56%,rgba(4,1,14,.78)),
+    url("royal-palace.png") center top/cover no-repeat #100524 !important;
 }
-html.royal-room .app.hasbg { /* User-owned custom wallpaper remains unmodified. */ }
+/* Versioned, owner-uploaded wallpaper is shared by everyone in the room.
+   Keep it crisp, and shade only enough for seat labels to remain legible. */
+html.royal-room .app.hasbg.sharika-hd-room-bg {
+  background:linear-gradient(180deg,rgba(5,3,20,.10),rgba(5,3,20,.25) 52%,rgba(5,3,20,.55)),
+    var(--sharika-shared-wallpaper) center top/cover no-repeat #080319 !important;
+}
+html.royal-room .app.hasbg.sharika-hd-room-bg .blob {opacity:0;}
 html.royal-room .top {padding:11px 12px 7px;gap:7px;}
 html.royal-room .ib {
   background:linear-gradient(155deg,#5c2e93,#290f50);

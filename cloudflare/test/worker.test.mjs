@@ -1213,6 +1213,25 @@ test('room owner can upload a bounded photo and non-owners cannot change it',asy
     assert.equal(savedBody.cover_url,'https://example.test/api/v1/rooms/10000001/cover?v=2');
     assert.equal(savedBody.image_bytes,jpeg.length);
     assert.equal(ownerDb.calls.some(c=>c[0]==='cover_run'),true);
+    // Full-screen themes need more detail than the old 90 KB card thumbnail.
+    const hdJpeg=Buffer.alloc(230000,3);
+    hdJpeg[0]=255;hdJpeg[1]=216;hdJpeg[2]=255;
+    hdJpeg[hdJpeg.length-2]=255;hdJpeg[hdJpeg.length-1]=217;
+    const hdDb=makeDb(actor);
+    const hdSaved=await handleRequest(await request(
+      'data:image/jpeg;base64,'+hdJpeg.toString('base64')),
+      {DB:hdDb,FIREBASE_PROJECT_ID:project});
+    assert.equal(hdSaved.status,200);
+    assert.equal(hdDb.calls.find(c=>c[0]==='cover_run')[2][2],230000);
+    const tooLargeJpeg=Buffer.alloc(245000,3);
+    tooLargeJpeg[0]=255;tooLargeJpeg[1]=216;tooLargeJpeg[2]=255;
+    tooLargeJpeg[tooLargeJpeg.length-2]=255;tooLargeJpeg[tooLargeJpeg.length-1]=217;
+    const oversizeDb=makeDb(actor);
+    const oversized=await handleRequest(await request(
+      'data:image/jpeg;base64,'+tooLargeJpeg.toString('base64')),
+      {DB:oversizeDb,FIREBASE_PROJECT_ID:project});
+    assert.equal(oversized.status,413);
+    assert.equal(oversizeDb.calls.some(c=>c[0]==='cover_run'),false);
     const repeat=await handleRequest(await request(image_data),
       {DB:makeDb(actor,0),FIREBASE_PROJECT_ID:project});
     assert.equal(repeat.status,429);

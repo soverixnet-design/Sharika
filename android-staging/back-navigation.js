@@ -66,6 +66,11 @@
       return 'handled';
     }
 
+    var notifications = document.querySelector('.sh-notify-panel.on');
+    if (notifications) {
+      notifications.classList.remove('on');
+      return 'handled';
+    }
     if (dismissSheet(document, 'shb', 'sh')) return 'handled';
     if (isOpen(get('pfo'))) {
       get('pfo').classList.remove('on');

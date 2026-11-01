@@ -48,6 +48,7 @@ android {
 dependencies {
     implementation platform('com.google.firebase:firebase-bom:35.1.0')
     implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-messaging'
     // Google sign-in via Android Credential Manager (official Firebase flow).
     implementation 'androidx.credentials:credentials:1.3.0'
     implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'
@@ -55,8 +56,8 @@ dependencies {
 }
 
  
-// Package the exact original Sharika HTML and CSS without changing the live
-// app's app/index.html. Only the Android staging copy gets the D1 adapter.
+// Package Sharika's homepage assets for Android. The staging-specific connection
+// adapter replaces only connection.js in the packaged copy.
 def sharikaUiAssets = layout.buildDirectory.dir('generated/sharika-ui-assets')
 tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/index.html'))
@@ -64,6 +65,13 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/main-profile-bg.jpg'))
     from(rootProject.file('../app/main-profile-icons.webp'))
     from(rootProject.file('../app/invite-royal-chest.webp'))
+    from(rootProject.file('../app/golden-home-background.jpg'))
+    from(rootProject.file('../app/golden-home.css'))
+    from(rootProject.file('../app/royal-profile.css'))
+    from(rootProject.file('../app/royal-profile-background.jpg'))
+    from(rootProject.file('../app/profile-collection-atlas.webp'))
+    from(rootProject.file('../app/profile-menu-atlas.webp'))
+    from(rootProject.file('../app/profile-crown.webp'))
     from(rootProject.file('back-navigation.js'))
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))

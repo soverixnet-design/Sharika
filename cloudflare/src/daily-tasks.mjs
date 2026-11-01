@@ -1,3 +1,4 @@
+import {notifyUser,deliverNotification} from './notifications.mjs';
 // Server-verified repeatable daily tasks, independent from the 7-day login streak.
 // UTC calendar date is the boundary; receipts and wallet ledger are immutable.
 const MAX_BALANCE=1_000_000_000_000;
@@ -60,7 +61,7 @@ export async function dailyTaskStatus(db,uid,now){
     next_reset_utc:nextDay(now).toISOString(),day_boundary:'UTC'
   };
 }
-export async function claimDailyTask({request,env,uid,now,user,cors,reply,fail}){
+export async function claimDailyTask({request,env,uid,now,user,cors,reply,fail,ctx}){
   let body;
   try{
     const raw=await request.text();
@@ -104,6 +105,14 @@ export async function claimDailyTask({request,env,uid,now,user,cors,reply,fail})
   }
   const wallet=await env.DB.prepare('SELECT coins FROM sharika_users WHERE auth_uid=?')
     .bind(uid).first();
+  try{
+    const notice=await notifyUser(env.DB,{recipientUid:uid,kind:'reward',
+      title:'Daily task reward',
+      body:'You earned '+reward+' coins for '+TITLES[key]+'.',
+      dedupeKey:'daily-task:'+today+':'+key});
+    if(notice.created&&notice.notification)
+      ctx?.waitUntil(deliverNotification(env,notice.notification));
+  }catch(error){console.error('daily_task_notice_failed',String(error.message||error));}
   return reply({duplicate:false,task_key:key,reward_coins:reward,
     wallet_coins:Number(wallet?.coins)||0,utc_day:today},201,cors);
 }

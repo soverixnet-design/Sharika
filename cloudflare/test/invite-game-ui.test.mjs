@@ -42,5 +42,6 @@ test('game polling keeps existing chip controls and profile wallet nodes',()=>{
   assert.match(food,/button\.classList\.toggle\('on',Number\(button\.dataset\.c\)===chip\)/);
   assert.match(food,/if\(lastResult!==prev\.round_no\)/);
   assert.match(app,/A game balance poll must not replace the entire visible profile DOM/);
-  assert.match(app,/portrait\.addEventListener\("error"/);
+  assert.match(app,/r\.scrollTop=at/);
+  assert.match(app,/m\.pic\?'':'👤'/);
 });

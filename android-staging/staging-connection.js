@@ -95,7 +95,10 @@
     return new Promise((resolve, reject) => {
       const id = String(++seq);
       const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
-        action === 'api' && payload?.method === 'PUT' && payload?.path === '/api/v1/me/avatar'
+        action === 'googleSignIn' ? 150000 :
+        action === 'api' && payload?.method === 'PUT' &&
+          (payload?.path === '/api/v1/me/avatar' ||
+           /^\/api\/v1\/rooms\/[0-9]{8}\/cover$/.test(payload?.path || ''))
           ? 90000 : 25000;
       const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, timeoutMs);
       calls.set(id, { resolve, reject, timer });
@@ -116,6 +119,25 @@
   };
   async function api(method, path, body) {
     return native('api', { method, path: '/api/v1' + path, body });
+  }
+  // An installed-app invite link can arrive before the signup view exists.
+  // Keep only a validated public inviter ID. The Worker still enforces the
+  // 48-hour/new-device rules; this client never awards coins locally.
+  let deferredInviteCode='';
+  function rememberIncomingInvite(value){
+    const code=String(value||'');
+    if(!/^[0-9]{8}$/.test(code))return;
+    deferredInviteCode=code;
+    for(const input of document.querySelectorAll(
+      '#stage-invite-code,#sharika-stage-profile-setup [name="invite_code"],#sh-invite-redeem-code')){
+      if(!input.value)input.value=code;
+    }
+  }
+  window.SharikaIncomingInvite=rememberIncomingInvite;
+  native('invitePending').then(data=>rememberIncomingInvite(data.code)).catch(()=>{});
+  function clearIncomingInvite(){
+    deferredInviteCode='';
+    native('inviteClear').catch(()=>{});
   }
 
   // A server-verified winner appears ONCE per launch. The backend advances
@@ -282,9 +304,27 @@
   const SOVERA_TAGS=[
     {id:'legend',name:'Sovera Legend decorative nameplate',art:'legend-tag.webp'}
   ];
+  // User-supplied source videos are split into individual transparent,
+  // 3.6-second looping WebP assets. No user URL or HTML is interpolated here.
+  const premiumItem=(id,name,group)=>({id,name,group,source:'sharika',art:id+'.webp'});
+  const premiumRange=(prefix,amount,label,group)=>Array.from({length:amount},(_,i)=>{
+    const number=String(i+1).padStart(2,'0');
+    return premiumItem(prefix+'-'+number,label+' '+(i+1),group);
+  });
+  const roleNumbers=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,63,64];
+  SOVERA_FRAMES.push(
+    premiumItem('vip5-animated','VIP5 Royal Wings','vip'),
+    ...premiumRange('svip-frame',8,'SVIP Animated Frame','svip'),
+    premiumItem('noble-gold-microphone','Noble Gold Microphone','noble'),
+    ...roleNumbers.map(number=>premiumItem('role-frame-'+String(number).padStart(2,'0'),
+      'Royal Role Frame '+number,'role'))
+  );
+  SOVERA_MEDALS.push(...premiumRange('svip-medal',8,'SVIP Animated Medal','svip'));
+  SOVERA_TAGS.push(...premiumRange('svip-tag',17,'SVIP Nameplate','svip'));
   function medalArt(key){return SOVERA_MEDALS.find(m=>m.id===key);}
   function nameTagArt(key){return SOVERA_TAGS.find(m=>m.id===key);}
-  function cosmeticMedia(item){return item?.group==='medals'?
+  function cosmeticMedia(item){return item?.source==='sharika'?
+    './sharika-premium/'+item.art:item?.group==='medals'?
     './sovera-medals/'+item.art:effectPath(item.art);}
   function frameArt(key){return SOVERA_FRAMES.find(f=>f.id===key);}
   function entryArt(key){return SOVERA_ENTRIES.find(f=>f.id===key);}
@@ -313,19 +353,28 @@
       '@keyframes shSoGlow{50%{filter:brightness(1.18) drop-shadow(0 0 6px #ffe6a055)}}',
       '.sh-sovera-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}',
       '.sh-sovera-item{min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;',
-      'border:1px solid #6b61ad;background:#211747;border-radius:14px;color:#fff;padding:12px 8px;',
-      'min-height:160px;overflow:hidden;',
+      'border:1px solid #6b61ad;background:#211747;border-radius:14px;color:#fff;padding:24px 8px 18px;',
+      'min-height:210px;overflow:hidden;',
       'font-size:11px;font-weight:700}',
       '.sh-sovera-item[aria-pressed="true"]{border:2px solid #ffdb70;background:#423068}',
       '.sh-sovera-item img{object-fit:contain;width:72px;height:72px;max-width:100%}',
       '.sh-sovera-preview{position:relative;width:96px;height:96px;border-radius:50%;',
       'display:grid;place-items:center;background:linear-gradient(135deg,#8149c8,#26104a);',
-      'font-size:36px;margin:16px 0 10px}',
-      '.sh-sovera-preview .sh-sovera-frame.fxr{width:137%!important;height:137%!important}',
+      'font-size:36px;margin:24px 0 24px;flex:none;overflow:visible!important}',
+      '.sh-sovera-preview .sh-sovera-frame.fxr{width:137%!important;height:137%!important;',
+      'background-size:contain!important;background-position:center!important}',
       '.sh-sovera-id-effects{display:flex;justify-content:center;align-items:center;gap:8px;margin:6px auto 12px}',
       '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
       '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
       '.sh-sovera-seat-tag{position:absolute;z-index:18;left:50%;top:100%;width:104px;height:29px;transform:translateX(-50%);object-fit:contain;pointer-events:none}',
+      '.sh-neon-profile-id{display:block;width:max-content;max-width:94%;margin:7px auto 12px;padding:7px 18px;',
+      'color:#f6ebff;font-size:20px;font-weight:900;letter-spacing:.14em;border:2px solid #c287ff;',
+      'border-radius:14px;background:linear-gradient(100deg,#3b1362,#6330ca,#1562b5);',
+      'box-shadow:0 0 16px #9250ff9c,inset 0 0 14px #758cff70;text-shadow:0 0 9px #8bf1ff}',
+      '.sh-neon-profile-id::before{content:"SPECIAL ID";display:block;font-size:9px;letter-spacing:.2em;text-align:center;color:#d1bbff}',
+      '.sh-neon-seat-id{position:absolute;z-index:20;bottom:-20px;left:50%;transform:translateX(-50%);',
+      'padding:2px 7px;font-size:10px;line-height:1.2;font-weight:900;white-space:nowrap;color:#fff;',
+      'border:1px solid #b980ff;border-radius:9px;background:#5624af;box-shadow:0 0 10px #824cff}',
       '.sh-sovera-user-tag{display:inline-block;width:74px;height:25px;object-fit:contain;margin-left:4px;vertical-align:middle}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
       'pointer-events:none;display:block;overflow:hidden;background:#16082f}',
@@ -345,7 +394,7 @@
     if(!item)return '';
     // Only pinned package filenames are used; never interpolate user URLs.
     return '<i class="fxr sh-sovera-frame" aria-hidden="true" '+
-      'style="background-image:url('+effectPath(item.art)+')"></i>';
+      'style="background-image:url('+cosmeticMedia(item)+')"></i>';
   }
   function playSoveraEntry(doc,key){
     const choice=entryArt(key);
@@ -573,7 +622,11 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag').forEach(decoration=>decoration.remove());
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id').forEach(decoration=>decoration.remove());
+      if(seat.special_id){
+        const badge=doc.createElement('span');badge.className='sh-neon-seat-id';
+        badge.textContent=seat.special_id;el.style.position='relative';el.appendChild(badge);
+      }
       const item=frameArt(seat.frame_style);
       const medal=medalArt(seat.medal_style);
       const nameTag=nameTagArt(seat.name_tag_style);
@@ -584,7 +637,7 @@
         const decoration=doc.createElement('i');
         decoration.className='fxr sh-sovera-frame';
         decoration.setAttribute('aria-hidden','true');
-        decoration.style.backgroundImage='url('+effectPath(item.art)+')';
+        decoration.style.backgroundImage='url('+cosmeticMedia(item)+')';
         avatar.appendChild(decoration);
       }
       if(medal){
@@ -648,15 +701,17 @@
     cosmeticCataloguePromise=work;
     try{return await work;}finally{cosmeticCataloguePromise=null;}
   }
-  async function styleSelectionSheet(kind){
+  async function styleSelectionSheet(kind,gallery='all'){
     if(!session){window.showAuth('welcome');return;}
     cosmeticCss(document);
     const isEntry=kind==='entry_style';
     const isMedal=kind==='medal_style';
     const isTag=kind==='name_tag_style';
-    const title=isEntry?'✨ Original Sovera Entry':
-      isMedal?'🏅 Original Sovera Medals':
-      isTag?'🎖️ Original Sovera Name Tag':'🖼️ Original Sovera Avatar Frames';
+    const collection=gallery==='svip'?'SVIP Animated':
+      gallery==='noble'?'Noble':gallery==='role'?'Royal Staff': 'Sharika & Sovera';
+    const title=isEntry?'✨ '+collection+' Entry':
+      isMedal?'🏅 '+collection+' Medals':
+      isTag?'🎖️ '+collection+' Name Tags':'🖼️ '+collection+' Avatar Frames';
     const catalog=isEntry?SOVERA_ENTRIES:isMedal?SOVERA_MEDALS:isTag?SOVERA_TAGS:SOVERA_FRAMES;
     window.openSheet('<h3>'+title+'</h3><div id="sh-sovera-tabs"></div>'+
       '<div id="sh-sovera-list" class="sh-sovera-grid"></div>'+
@@ -666,27 +721,57 @@
     const tabs=document.getElementById('sh-sovera-tabs');
     tabs.style.cssText='display:flex;gap:5px;margin:10px 0;flex-wrap:wrap';
     for(const option of [
-      ['frame_style','Frames'],['entry_style','Entry'],
-      ['medal_style','Medal'],['name_tag_style','Name Tag']
+      ['frame_style','Frames','all'],['entry_style','Entry','all'],
+      ['medal_style','Medals','all'],['name_tag_style','Name Tags','all'],
+      ['frame_style','SVIP Frames','svip'],['medal_style','SVIP Medals','svip'],
+      ['name_tag_style','SVIP Tags','svip'],['frame_style','Noble','noble'],
+      ['frame_style','Royal Staff','role']
     ]){
       const tab=document.createElement('button');
       tab.type='button';tab.className='act';tab.textContent=option[1];
       tab.style.cssText='flex:1;padding:8px 6px;min-width:60px;font-size:12px;border-radius:10px;'+
-        (option[0]===kind?'background:#6a40b7;color:#fff':'background:#2c2357;color:#fff');
-      tab.onclick=()=>styleSelectionSheet(option[0]);
+        (option[0]===kind&&option[2]===gallery?'background:#6a40b7;color:#fff':
+          'background:#2c2357;color:#fff');
+      tab.onclick=()=>styleSelectionSheet(option[0],option[2]);
       tabs.appendChild(tab);
     }
     const current=profile?.[kind]||'';
     let records;
-    try{records=(await loadVerifiedCosmetics()).filter(x=>x.kind===kind);}
-    catch(error){node.textContent='Cosmetic shop unavailable: '+errText(error);return;}
+    try{
+      records=(await loadVerifiedCosmetics()).filter(x=>{
+        if(x.kind!==kind)return false;
+        if(gallery==='all')return true;
+        const key=x.id.slice(kind.length+1);
+        const art=catalog.find(item=>item.id===key)||
+          catalog.find(item=>item.id===x.art_key);
+        return art?.group===gallery;
+      });
+    }
+    catch(error){
+      if(gallery==='all'){
+        node.textContent='Cosmetic shop unavailable: '+errText(error);return;
+      }
+      // Bundled preview artwork is safe to show offline, but does not imply
+      // ownership or permit a client-side equipment/purchase shortcut.
+      records=[];
+      const warning=document.createElement('p');
+      warning.className='lbl';
+      warning.textContent='Gallery preview only. Verified catalogue pending: '+errText(error);
+      node.insertAdjacentElement('beforebegin',warning);
+    }
     if(!node.isConnected)return;
+    const serverArts=new Set(records.map(row=>row.art_key));
+    const serverIds=new Set(records.map(row=>row.id.slice(kind.length+1)));
+    const previews=gallery==='all'?[]:catalog.filter(item=>
+      item.source==='sharika'&&item.group===gallery&&
+      !serverArts.has(item.id)&&!serverIds.has(item.id)
+    ).map(item=>({...item,previewOnly:true,owned:false,active:false}));
     const choices=[{id:'',name:'None',art:'',owned:true},...records.map(row=>{
       const key=row.id.slice(kind.length+1);
       const art=catalog.find(x=>x.id===key)||catalog.find(x=>x.id===row.art_key);
       return {...art,id:key,item_id:row.id,name:row.name,owned:row.owned,
         active:row.active,price_coins:row.price_coins};
-    })];
+    }),...previews];
     for(const item of choices){
       const button=document.createElement('button');
       button.className='sh-sovera-item';
@@ -704,7 +789,7 @@
         if(item.art){
           const ring=document.createElement('i');
           ring.className='fxr sh-sovera-frame';
-          ring.style.backgroundImage='url('+effectPath(item.art)+')';
+          ring.style.backgroundImage='url('+cosmeticMedia(item)+')';
           preview.appendChild(ring);
         }
         button.appendChild(preview);
@@ -713,10 +798,11 @@
       label.textContent=item.name;
       button.appendChild(label);
       const price=document.createElement('span');
-      price.textContent=item.owned?'✓ Owned':item.active?
+      price.textContent=item.previewOnly?'Preview only · Admin rollout pending':
+        item.owned?'✓ Owned':item.active?
         '🪙 '+Number(item.price_coins).toLocaleString('en-US'):'Unavailable';
       button.appendChild(price);
-      button.disabled=!!item.item_id&&!item.owned&&!item.active;
+      button.disabled=!!item.previewOnly||!!item.item_id&&!item.owned&&!item.active;
       if(isEntry&&item.id){
         const preview=document.createElement('button');
         preview.type='button';preview.className='act';preview.textContent='▶ Preview';
@@ -1043,6 +1129,13 @@
       if(event.key==='Enter'||event.key===' '){event.preventDefault();anchor.click();}
     };
     document.getElementById('sh-sovera-own-identity')?.remove();
+    document.getElementById('sh-neon-own-id')?.remove();
+    if(profile?.special_id){
+      const plaque=document.createElement('span');
+      plaque.id='sh-neon-own-id';plaque.className='sh-neon-profile-id';
+      plaque.textContent=profile.special_id;
+      anchor.insertAdjacentElement('afterend',plaque);
+    }
     const medal=medalArt(profile?.medal_style);
     const tag=nameTagArt(profile?.name_tag_style);
     if(!medal&&!tag)return;
@@ -1058,70 +1151,19 @@
     }
     anchor.insertAdjacentElement('afterend',strip);
   }
-  // A verified seller has two distinct wallets: personal coins in the
-  // original profile, plus this seller-stock entry beside their public ID.
-  let sellerProfileRequest=0;
-  async function renderSellerWalletProfileButton(){
-    const requestNo=++sellerProfileRequest;
-    const id=session?.user?.id;
-    const anchor=document.querySelector('#v-me .mid');
-    document.getElementById('sharika-seller-wallet-entry')?.remove();
-    if(!id||!anchor)return;
-    try{
-      const data=await api('GET','/sellers/me');
-      if(requestNo!==sellerProfileRequest||session?.user?.id!==id||!anchor.isConnected)return;
-      const seller=data.seller;
-      if(!seller?.active)return;
-      const button=document.createElement('button');
-      button.id='sharika-seller-wallet-entry';
-      button.type='button';
-      button.textContent='🪙 Recharge my ID · Seller stock '+
-        Number(seller.available_coins||0).toLocaleString('en-US');
-      button.style.cssText='display:block;margin:8px auto;padding:8px 14px;border:1px solid #f0be55;'+
-        'border-radius:15px;background:#3b225b;color:#fff;font-weight:700;font-size:12px';
-      button.onclick=()=>showVerifiedCoinSellers({walletOnly:true,
-        targetId:profile?.public_id||''});
-      (document.getElementById('sh-sovera-own-identity')||anchor).insertAdjacentElement('afterend',button);
-    }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
-  }
-
   // Premium membership is independent of Wealth/Charm levels. Automatic
   // eligibility and daily credits are computed by the verified D1 Worker.
   let premiumProfileRequest=0;
   async function mountPremiumProfileEntry(){
-    const anchor=document.querySelector('#v-me .mid');
-    const heroTier=document.getElementById('m-svip-label');
+    const button=document.querySelector('#v-me .profile-svip-badge');
     const requestNo=++premiumProfileRequest;
-    document.getElementById('sharika-premium-profile-entry')?.remove();
-    if(!anchor||!session)return;
-    if(heroTier){
-      heroTier.textContent='Member';
-      heroTier.onclick=()=>showPremiumSheet().catch(error=>toast(errText(error)));
-      const who=session.user.id;
-      try{
-        const data=await api('GET','/premium');
-        if(!heroTier.isConnected||requestNo!==premiumProfileRequest||session?.user?.id!==who)return;
-        const tier=String(data.status?.tier||'none').toUpperCase();
-        heroTier.textContent=tier==='NONE'?'Member':'👑 '+tier;
-      }catch(error){console.warn('Premium tier pending:',errText(error));}
-      return;
-    }
-    const button=document.createElement('button');
-    button.type='button';button.id='sharika-premium-profile-entry';
-    button.textContent='👑 VIP · SVIP · Noble';
-    button.style.cssText='display:block;margin:8px auto;padding:9px 15px;border-radius:16px;'+
-      'color:#ffedb1;background:linear-gradient(140deg,#5a2a91,#30215f);'+
-      'border:1px solid #ffe49c;font-weight:800;font-size:13px;'+
-      'box-shadow:inset 0 2px 0 #ffffff35,0 5px 10px #0005';
-    button.onclick=showPremiumSheet;
-    anchor.insertAdjacentElement('afterend',button);
+    if(!button||!session)return;
     const who=session.user.id;
     try{
       const data=await api('GET','/premium');
       if(!button.isConnected||requestNo!==premiumProfileRequest||session?.user?.id!==who)return;
       const tier=String(data.status?.tier||'none').toUpperCase();
-      button.textContent=tier==='NONE'?'👑 VIP · SVIP · Noble':
-        '👑 '+tier+' · Premium benefits';
+      button.textContent=tier==='NONE'?'Member':tier+' Member';
     }catch(error){
       console.warn('Premium status pending staging deployment:',errText(error));
     }
@@ -1165,6 +1207,17 @@
             '<button class="send" type="button" data-sh-premium-buy="'+item.tier+'">'+
               (active?'Extend ':'Buy ')+item.tier.toUpperCase()+'</button>':'')+'</div>';
       }).join('')+'</div>'+
+      '<div style="margin-top:13px;padding:12px;border:1px solid #e8c178;'+
+        'border-radius:17px;background:linear-gradient(155deg,#57367b,#201746)">'+
+        '<b>✨ SVIP Animated Frames & Medals</b>'+
+        '<div class="lbl">Separate 3.6-second transparent animations. '+
+        'You can preview every item; equip only if owned or granted by Admin.</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'+
+          '<button class="send" type="button" data-sh-premium-gallery="svip:frame_style">🖼️ SVIP Frames</button>'+
+          '<button class="send" type="button" data-sh-premium-gallery="svip:medal_style">🏅 SVIP Medals</button>'+
+          '<button class="send" type="button" data-sh-premium-gallery="svip:name_tag_style">🎖️ SVIP Nameplates</button>'+
+          '<button class="send" type="button" data-sh-premium-gallery="noble:frame_style">👑 Noble Frames</button>'+
+        '</div></div>'+
       '<div style="margin-top:13px;padding:12px;border-radius:16px;background:#231b4a">'+
         '<b>🎁 Premium Daily Coin Bonus</b><div class="lbl">'+
         (status.tier==='none'?'Qualify for a tier to claim daily coins.':
@@ -1175,6 +1228,12 @@
             (status.claimed_today?'Claimed today ✓':'Claim premium coins')+'</button>':'')+
         '</div><p class="lbl" id="sh-premium-status" role="status"></p>';
     const note=root.querySelector('#sh-premium-status');
+    root.querySelectorAll('[data-sh-premium-gallery]').forEach(button=>{
+      button.onclick=()=>{
+        const [gallery,kind]=button.dataset.shPremiumGallery.split(':');
+        styleSelectionSheet(kind,gallery).catch(error=>toast(errText(error)));
+      };
+    });
     root.querySelectorAll('[data-sh-premium-buy]').forEach(button=>{
       button.onclick=async()=>{
         const tier=button.dataset.shPremiumBuy;
@@ -1481,7 +1540,6 @@
     priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
     renderVerifiedMainProfileStats().catch(()=>{});
-    renderSellerWalletProfileButton().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
   };
   // Main profile screenshot: these tiles open the existing, verified features.
@@ -1915,6 +1973,8 @@
     };
     balance = { ...local.state };
     session = { email: account.email, user: { id:current.user_id, email:account.email } };
+    // A restored session can finish while Recharge is already visible.
+    mountRechargeSellerWallet();
     startPresence();
     refreshVerifiedBanners().catch(error=>console.warn('Banner refresh unavailable:',errText(error)));
     try {
@@ -1951,7 +2011,7 @@
       document.body.appendChild(layer);
       const name = layer.querySelector('[name="name"]');
       name.value = account.displayName || '';
-      layer.querySelector('[name="invite_code"]').value=cachedSignup(account.email)?.invite_code||'';
+      layer.querySelector('[name="invite_code"]').value=cachedSignup(account.email)?.invite_code||deferredInviteCode;
       let finished = false;
       function close() { if (finished) return; finished = true; layer.remove(); }
       layer.querySelector('#stage-profile-cancel').onclick = () => {
@@ -1969,6 +2029,7 @@
             invite_code:form.elements.invite_code.value.trim()
           };
           const saved = await api('POST','/me',data);
+          if(data.invite_code)clearIncomingInvite();
           close(); resolve(saved);
         } catch (error) {
           layer.querySelector('#stage-profile-error').textContent = errText(error);
@@ -1986,8 +2047,9 @@
         try{
           const saved = await api('POST','/me',{
             name:cached.name,birthdate:cached.dob,country:cached.country||'',
-            invite_code:cached.invite_code||''
+            invite_code:cached.invite_code||deferredInviteCode
           });
+          if(cached.invite_code||deferredInviteCode)clearIncomingInvite();
           try{localStorage.removeItem(META_KEY);}catch(_){}
           return saved;
         }catch(error){
@@ -2004,6 +2066,7 @@
       throw new Error('Check your email verification link, then sign in again');
     const current = await ensureProfile(account, form);
     const local = remember(account, current);
+    refreshNotifications(false);refreshMessagesBadge();registerPushDevice();
     await Promise.allSettled([reloadWallet(), reloadRooms()]);
     // The original UI's login function reconstructs A from this object;
     // carry the real room back so it does not hide the newly loaded own room.
@@ -2028,6 +2091,7 @@
       '<div class="lbl">Invite code (optional)</div>'+
       '<input class="field" id="stage-invite-code" maxlength="8" inputmode="numeric" '+
       'placeholder="Inviter 8-digit Sharika ID" autocomplete="off">');
+    if(deferredInviteCode)auth.querySelector('#stage-invite-code').value=deferredInviteCode;
   }
   const inviteAuthRoot=document.getElementById('au');
   if(inviteAuthRoot){
@@ -2046,7 +2110,7 @@
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
           email:form.key.trim(), name:form.name, dob:form.dob, country:form.country,
-          invite_code:document.getElementById('stage-invite-code')?.value.trim()||''
+          invite_code:document.getElementById('stage-invite-code')?.value.trim()||deferredInviteCode
         }));
       } catch (_) {}
       return { ok:false, msg:result.verificationSent ?
@@ -2062,13 +2126,35 @@
       return {ok:true,acct:local};
     } catch (error) { return {ok:false,msg:errText(error)}; }
   };
+  let googleLoginBusy = false;
+  function googleLoginError(error) {
+    const message=errText(error);
+    if(message==='google_sign_in_cancelled'||/GetCredentialCancellationException/i.test(message))
+      return 'Google sign-in was cancelled. Tap Continue with Google to retry.';
+    if(message==='google_account_not_available'||/NoCredentialException/i.test(message))
+      return 'No Google account available. Add an account in Android settings and try again.';
+    if(/Request timed out/i.test(message))
+      return 'Google sign-in timed out. Check your internet connection and try again.';
+    if(/developer.error|developer_error|ApiException:\s*10|configuration|misconfigured/i.test(message))
+      return 'Google sign-in configuration needs updating. Contact the Sharika tester.';
+    return message;
+  }
   async function googleLogin() {
+    if(googleLoginBusy)return;
+    googleLoginBusy=true;
+    const button=document.getElementById('wg');
+    if(button)button.disabled=true;
     try {
       toast('Opening Google account picker…');
-      const account = await native('googleSignIn');
-      const local = await authenticated(account);
+      const account=await native('googleSignIn');
+      const local=await authenticated(account);
       window.enter(local,'Signed in to Sharika staging');
-    } catch (error) { toast(errText(error)); }
+    } catch (error) { toast(googleLoginError(error)); }
+    finally{
+      googleLoginBusy=false;
+      const currentButton=document.getElementById('wg');
+      if(currentButton)currentButton.disabled=false;
+    }
   }
 
   // Keep original login imagery, forms, colors, and navigation.
@@ -2195,7 +2281,7 @@
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/(cover|theme-image)\?v=[0-9]+$/.test(value)
       ?value:null;
   }
-  async function jpegRoomPreview(file,highDefinition=false){
+  async function jpegRoomPreview(file,highDefinition=false,legacy=false){
     if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
       throw new Error('Choose an image smaller than 15 MB');
     const blobUrl=URL.createObjectURL(file);
@@ -2209,12 +2295,16 @@
       });
       const sourceWidth=photo.naturalWidth,sourceHeight=photo.naturalHeight;
       if(!sourceWidth||!sourceHeight)throw new Error('Invalid image dimensions');
+    if(highDefinition&&Math.min(sourceWidth,sourceHeight)<720)
+        throw new Error('For a clear room theme, choose a photo at least 720 px on its shorter side');
       const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
       if(!ctx)throw new Error('Image editor is unavailable');
-      const sides=highDefinition?[1920,1600,1440,1280,1080,900]:
-        [900,720,600,480,360,280];
-      const qualities=highDefinition?[.90,.82,.74,.64]:[.76,.60,.45];
-      const maxLength=highDefinition?600023:120023;
+      const sides=legacy?[900,720,600,480,360,280]:
+        highDefinition?[1920,1600,1440,1280,1080,900]:
+        [1800,1600,1440,1280,1080,900,720,600];
+      const qualities=legacy?[.76,.60,.45]:
+        highDefinition?[.90,.82,.74,.64]:[.86,.78,.70,.62];
+      const maxLength=legacy?120023:highDefinition?600023:320023;
       for(const side of sides){
         const scale=Math.min(1,side/Math.max(sourceWidth,sourceHeight));
         canvas.width=Math.max(1,Math.round(sourceWidth*scale));
@@ -2252,11 +2342,25 @@
         // The full-room wallpaper needs far more detail than the small card.
         // Keep both assets separate, but retain the existing card-cover route.
         if(useAsTheme || room.th==='photo'){
-          const hd_image_data=await jpegRoomPreview(file,true);
-          await api('PUT','/rooms/'+room.id+'/theme-image',{image_data:hd_image_data});
+          try{
+            const hd_image_data=await jpegRoomPreview(file,true);
+            await api('PUT','/rooms/'+room.id+'/theme-image',{image_data:hd_image_data});
+          }catch(error){
+            console.warn('HD room theme image not available; using compatible cover:',errText(error));
+          }
         }
         const image_data=await jpegRoomPreview(file);
-        const saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
+        let saved,standardQualityOnly=false;
+        try{
+          saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
+        }catch(error){
+          if(errText(error)!=='room_cover_too_large')throw error;
+          // An older staging Worker still only accepts 90 KB JPEGs.
+          // Do not break room-photo editing while its HD rollout is pending.
+          const compatible=await jpegRoomPreview(file,false,true);
+          saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data:compatible});
+          standardQualityOnly=true;
+        }
         room.cover_url=verifiedCoverUrl(saved.cover_url);
         if(frame?.S)frame.S.pic=room.cover_url;
         const preview=frame?.$?.('pbig');
@@ -2280,7 +2384,8 @@
           console.warn('Room photo saved; card refresh delayed:',errText(error)));
         if(useAsTheme && frame?.$?.('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))
           frame.themeSheet();
-        toast(useAsTheme?'Room background saved for everyone ✓':
+        toast(standardQualityOnly?'Room saved at standard quality · HD server update pending':
+          useAsTheme?'Room background saved for everyone ✓':
           'Room photo saved · visible on room cards ✓');
       }catch(error){toast((useAsTheme?'Room background':'Room photo')+
         ' not fully saved: '+errText(error));}
@@ -2414,11 +2519,20 @@
     frame.S.theme=palette;
     frame.S.bg=sharedImage;
     frame.S.frame=chosenSeatFrame;
+    const roomApp=frame.$?.('app');
+    if(roomApp){
+      // Keep the verified, shared wallpaper in a sharp image layer rather
+      // than enlarging a compressed thumbnail behind heavy dark overlays.
+      roomApp.classList.toggle('sharika-hd-room-bg',!!sharedImage);
+      if(sharedImage)
+        roomApp.style.setProperty('--sharika-shared-wallpaper','url("'+sharedImage+'")');
+      else roomApp.style.removeProperty('--sharika-shared-wallpaper');
+    }
     if(themeChanged&&typeof frame.applyTheme==='function')frame.applyTheme();
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
-      user_id:room.owner_id,public_id:room.id,
+      user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
@@ -2429,12 +2543,13 @@
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
           n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
-          user_id:member.user_id,public_id:user.public_id,
+          user_id:member.user_id,public_id:user.public_id,special_id:user.special_id||null,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
       else audience.push({n:user.name,e:'👤',id:user.public_id,
+         special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
         medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
@@ -3148,7 +3263,7 @@
             if(chosen){
               const art=frame.document.createElement('i');
               art.className='fxr sh-sovera-frame';
-              art.style.backgroundImage='url('+effectPath(chosen.art)+')';
+              art.style.backgroundImage='url('+cosmeticMedia(chosen)+')';
               picture.appendChild(art);
             }
             const name=frame.document.createElement('div');
@@ -4233,7 +4348,14 @@
       button.textContent='Seller Wallet';
       button.onclick=()=>showVerifiedCoinSellers({walletOnly:true});
       listButton.before(button);
-    }).catch(()=>{}).finally(()=>{sellerWalletButtonCheck=false;});
+    }).catch(()=>{}).finally(()=>{
+      sellerWalletButtonCheck=false;
+      // Switching Recharge/Exchange replaces the button while the seller
+      // check is pending. Recheck the latest screen instead of losing the
+      // wallet entry until the user manually opens Recharge again.
+      if(document.querySelector('#rcp #rcl2')!==listButton)
+        mountRechargeSellerWallet();
+    });
   }
   const rechargeRoot=document.getElementById('rcp');
   if(rechargeRoot){
@@ -4670,6 +4792,7 @@
       throw new Error('Enter the full 8-digit invitation code');
     const result=await api('POST','/invites/redeem',{invite_code:String(code)});
     if(!result?.claimed)throw new Error('Invitation could not be confirmed');
+    clearIncomingInvite();
     await reloadWallet();
     return result;
   }
@@ -4678,6 +4801,7 @@
     const field=root.querySelector('#sh-invite-redeem-code');
     const status=root.querySelector('#sh-invite-redeem-status');
     if(!button||!field)return;
+    if(deferredInviteCode&&!field.value)field.value=deferredInviteCode;
     button.onclick=async()=>{
       button.disabled=true;
       if(status)status.textContent='Checking invitation…';
@@ -4985,9 +5109,10 @@
         catch(error){toast('Copy unavailable: '+errText(error));}
       };
       root.querySelector('#sharika-share-invite').onclick=async()=>{
-        const text='Join me on Sharika Voice Chat! Use my invite code '+invite+
-          ' during registration or within '+Number(result.claim_window_hours||48)+
-          ' hours of creating your account.';
+        const text='Join me on Sharika Voice Chat! Invite link: sharika://invite/'+invite+
+          ' (opens the installed app). If the link does not open, enter code '+invite+
+          ' during signup or within '+Number(result.claim_window_hours||48)+
+          ' hours after creating your account.';
         try{await native('shareInvite',{text});}
         catch(error){toast('Share unavailable: '+errText(error));}
       };
@@ -5188,6 +5313,7 @@
     canSendPrivate=!!status.mutual;
     preserveMessageScroll(container,()=>{
       container.textContent='';
+      refreshMessagesBadge();
       for(const m of data.messages||[]){
         const bubble=document.createElement('div');
         bubble.className='bub '+(m.from_me?'me':'th');
@@ -5243,8 +5369,7 @@
   window.renderMsg=async function(){
     const view=document.getElementById('ml');
     if(!view)return;
-    const demoBadge=document.querySelector('.ni[data-v="msg"] em');
-    if(demoBadge)demoBadge.style.display='none';
+    notificationBadges();
     if(!session){view.innerHTML='<div class="empty">Sign in to view your conversations.</div>';return;}
     view.innerHTML='<div class="chatrow" id="verified-support-chat">'+
       '<div class="av">🎧</div><div><b>Customer service</b>'+
@@ -5274,10 +5399,14 @@
       const following=follows.following||[],followers=follows.followers||[];
       const known=new Set(following.map(f=>f.public_id));
       const conv=inbox.conversations||[];
+      messageUnread=Number(inbox.unread_total)||0;
+      notificationBadges();
       const byId=new Set(conv.map(c=>c.public_id));
       const rows=conv.map(c=>'<div class="chatrow" data-private-id="'+safeMessageHTML(c.public_id)+
         '" data-private-name="'+safeMessageHTML(c.name)+'"><div class="av">💬</div><div><b>'+
-        safeMessageHTML(c.name)+'</b><small>'+safeMessageHTML(c.last_body||'')+
+        safeMessageHTML(c.name)+'</b>'+(Number(c.unread_count)>0?
+        '<span style="margin-left:6px;color:#f6d37f;font-weight:800">● '+Number(c.unread_count)+'</span>':'')+
+        '<small>'+safeMessageHTML(c.last_body||'')+
         '</small></div><time>'+safeMessageHTML(c.public_id)+'</time></div>');
       for(const f of following){
         if(byId.has(f.public_id))continue;
@@ -5591,7 +5720,7 @@
         const art=document.createElement('i');
         art.className='fxr sh-sovera-frame';
         art.setAttribute('aria-hidden','true');
-        art.style.backgroundImage='url("'+effectPath(frame.art)+'")';
+        art.style.backgroundImage='url("'+cosmeticMedia(frame)+'")';
         wrap.appendChild(art);
       }
       const medal=medalArt(leader.medal_style);
@@ -5699,6 +5828,22 @@
       '.sh-bond-rankrow.friends{background:linear-gradient(125deg,#14476a,#20235e);border-color:#9edaf7}',
       '.sh-bond-rankrow .sh-bond-person{flex:1}.sh-bond-rankrow .sh-bond-avatar{width:49px;height:49px;font-size:22px}',
       '.sh-bond-rankrow .sh-bond-heart{font-size:20px}',
+      '.sh-cp-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:12px 0}',
+      '.sh-cp-tab{min-height:41px;border-radius:999px;border:2px solid #ffe5b1;color:#fff;font-size:12px;font-weight:900;background:linear-gradient(160deg,#9757d3,#5442bb 62%,#36246f);box-shadow:inset 0 2px #fff8,0 4px #17093e}',
+      '.sh-cp-tab.active{color:#60334b;background:linear-gradient(160deg,#fff1b0,#ffb75b 70%,#d86d8d)}',
+      '.sh-cp-timer{padding:9px 12px;text-align:center;color:#ffe0a9;font-weight:900;font-size:13px;letter-spacing:1px;border-radius:20px;background:#3e2570b8;margin:9px 0}',
+      '.sh-cp-toplist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}',
+      '.sh-cp-card{min-width:0;position:relative;border:2px solid #c7a8ff;border-radius:24px;padding:14px 7px 12px;text-align:center;background:radial-gradient(circle at 50% 0,#ffafd7ad,transparent 70%),linear-gradient(150deg,#6f47ac,#302364 65%,#2a1d57);box-shadow:inset 0 2px #fff9,0 8px 16px #140729b0}',
+      '.sh-cp-card.champion{grid-column:1/-1;margin:3px 19px;border-color:#ffdd75;background:radial-gradient(circle at 50% 0,#fff0a5e0,transparent 65%),linear-gradient(150deg,#b44a92,#533296 70%,#2a1e66)}',
+      '.sh-cp-rank-pill{display:inline-block;padding:4px 15px;margin-bottom:4px;border-radius:999px;background:linear-gradient(#ffe5ab,#e8953b);border:2px solid #fff4c2;color:#713134;font-weight:1000;font-size:14px;box-shadow:0 4px 6px #160b2f88}',
+      '.sh-cp-card:not(.champion) .sh-cp-rank-pill{background:linear-gradient(#ffc7f5,#c95cad);color:#fff}',
+      '.sh-cp-card .sh-bond-couple{grid-template-columns:minmax(0,1fr) 32px minmax(0,1fr)}',
+      '.sh-cp-card .sh-bond-heart{font-size:25px}.sh-cp-card .sh-bond-avatar{width:50px;height:50px}',
+      '.sh-cp-card.champion .sh-bond-avatar{width:70px;height:70px}',
+      '.sh-cp-score{color:#ffebbd;font-size:12px;font-weight:900;margin:6px 0 0}',
+      '.sh-cp-reward-list{display:grid;gap:9px;margin:12px 0}',
+      '.sh-cp-reward-item{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #f4c8fc;border-radius:18px;background:linear-gradient(110deg,#9a488b,#33226c)}',
+      '.sh-cp-reward-item strong{display:block;color:#ffeaa2}.sh-cp-reward-item small{display:block;color:#f7dded;margin-top:3px}',
       '@media(prefers-reduced-motion:reduce){.sh-bond-heart{animation:none}}'
     ].join('');
     document.head.appendChild(sheet);
@@ -5713,7 +5858,7 @@
     else avatar.textContent='👤';
     const frame=frameArt(person?.frame_style);
     if(frame){const art=document.createElement('i');art.className='sh-sovera-frame';
-      art.style.backgroundImage='url("'+effectPath(frame.art)+'")';avatar.appendChild(art);}
+      art.style.backgroundImage='url("'+cosmeticMedia(frame)+'")';avatar.appendChild(art);}
     const name=document.createElement('strong');name.textContent=person?.name||'No partner';
     const id=document.createElement('small');id.textContent=person?.id?'ID '+person.id:'Awaiting invitation';
     button.append(avatar,name,id);
@@ -5866,15 +6011,20 @@
     bondStyles();
     window.openSheet('<h3>👑 Royal Relationship Ranking</h3><div class="sh-bond-sheet" id="sh-bond-rank">Loading ranking…</div>');
     const root=document.getElementById('sh-bond-rank');if(!root)return;
-    const render=async(kind,range)=>{
+    let countdown=null;
+    const render=async(kind,range,view='this')=>{
+      if(countdown){clearInterval(countdown);countdown=null;}
       root.textContent='Loading verified pair ranking…';
       try{
-        const result=await api('GET','/bonds/rankings?type='+kind+'&period='+range);
+        const weeklyCp=kind==='cp'&&range==='weekly';
+        const board=weeklyCp?await api('GET','/bonds/rewards'):null;
+        const result=(!weeklyCp||view==='this')?
+          await api('GET','/bonds/rankings?type='+kind+'&period='+range):null;
         if(!root.isConnected)return;
         root.replaceChildren();
         const hero=document.createElement('div');hero.className='sh-bond-hero';
         hero.innerHTML='<div class="sh-bond-kicker">✦ ROYAL PAIR LEAGUE ✦</div>'+
-          '<div class="sh-bond-title">'+(kind==='cp'?'💞 CP Royalty':'🤝 Friendship Royalty')+'</div>'+
+          '<div class="sh-bond-title">'+(kind==='cp'?'👑 TOP CP':'🤝 Friendship Royalty')+'</div>'+
           '<div class="sh-bond-sub">Verified accepted gift value · '+range.toUpperCase()+' · UTC</div>';
         root.appendChild(hero);
         const kinds=document.createElement('div');kinds.className='sh-bond-actions';
@@ -5891,10 +6041,79 @@
           button.className='sh-bond-button '+(range===p?'gold':'blue');button.textContent=p;
           button.onclick=()=>render(kind,p);dates.appendChild(button);
         }root.appendChild(dates);
-        if(!result.leaders?.length){const empty=document.createElement('p');
+        if(weeklyCp){
+          const tabs=document.createElement('div');tabs.className='sh-cp-tabs';
+          for(const [mode,label] of [['this','This Week'],['last','Last Week'],['reward','🎁 Reward']]){
+            const button=document.createElement('button');button.type='button';
+            button.className='sh-cp-tab'+(mode===view?' active':'');button.textContent=label;
+            button.setAttribute('aria-pressed',String(mode===view));
+            button.onclick=()=>render(kind,range,mode);tabs.appendChild(button);
+          }root.appendChild(tabs);
+          if(view==='this'){
+            const timer=document.createElement('div');timer.className='sh-cp-timer';
+            timer.setAttribute('aria-label','Time until this CP ranking week ends');
+            root.appendChild(timer);
+            const skew=Number(board.server_time_ms)-Date.now();
+            const tick=()=>{
+              if(!timer.isConnected){clearInterval(countdown);countdown=null;return;}
+              let left=Math.max(0,Math.floor((Number(board.next_reset_ms)-Date.now()-skew)/1000));
+              const days=Math.floor(left/86400);left%=86400;
+              const hours=Math.floor(left/3600);left%=3600;
+              const minutes=Math.floor(left/60),seconds=left%60;
+              timer.textContent='⏳ '+days+' Day · '+String(hours).padStart(2,'0')+' Hour · '+
+                String(minutes).padStart(2,'0')+' Min · '+String(seconds).padStart(2,'0')+' Sec';
+            };tick();countdown=setInterval(tick,1000);
+          }
+          if(view==='reward'){
+            const status=document.createElement('p');status.className='sh-bond-muted';
+            status.textContent=board.policy?.enabled?
+              'Each partner receives the prize shown for their pair rank after the week is awarded.':
+              'Rewards are not enabled yet. Super Admin will configure and activate them.';
+            root.appendChild(status);
+            const list=document.createElement('div');list.className='sh-cp-reward-list';
+            for(const rule of board.rules||[]){
+              const row=document.createElement('div');row.className='sh-cp-reward-item';
+              const badge=document.createElement('span');badge.className='sh-cp-rank-pill';
+              badge.textContent='TOP '+rule.rank;
+              const info=document.createElement('div');
+              const name=document.createElement('strong');name.textContent=
+                '🪙 '+bondFmt(rule.coins_each)+' coins · each partner';
+              const items=document.createElement('small');
+              items.textContent='✨ '+(rule.frame_name||'No frame')+'  ·  🏅 '+
+                (rule.medal_name||'No medal');
+              info.append(name,items);row.append(badge,info);list.appendChild(row);
+            }root.appendChild(list);return;
+          }
+          if(view==='last'){
+            const status=document.createElement('p');status.className='sh-bond-muted';
+            status.textContent=board.last_week?.awarded?
+              '🏅 Last week is paid and locked. Historical winners cannot be changed.':
+              'Last week has ended. Rewards are awaiting Super Admin settlement or enabled automation.';
+            root.appendChild(status);
+          }
+        }
+        const leaders=weeklyCp&&view==='last'?(board.last_week?.leaders||[]):(result?.leaders||[]);
+        if(!leaders.length){const empty=document.createElement('p');
           empty.className='sh-bond-muted';empty.textContent='No verified pairs have ranked in this period yet.';
           root.appendChild(empty);}
-        for(const pair of result.leaders||[]){
+        if(weeklyCp&&leaders.length){
+          const stage=document.createElement('div');stage.className='sh-cp-toplist';
+          for(const pair of leaders.slice(0,7)){
+            const card=document.createElement('div');card.className='sh-cp-card'+
+              (pair.rank===1?' champion':'');
+            const badge=document.createElement('div');badge.className='sh-cp-rank-pill';
+            badge.textContent=pair.rank===1?'👑 TOP 1':'TOP '+pair.rank;
+            const couple=document.createElement('div');couple.className='sh-bond-couple';
+            couple.appendChild(bondPerson(pair.a));
+            const heart=document.createElement('span');heart.className='sh-bond-heart';
+            heart.textContent='💗';couple.appendChild(heart);
+            couple.appendChild(bondPerson(pair.b));
+            const score=document.createElement('p');score.className='sh-cp-score';
+            score.textContent='🪙 '+bondFmt(pair.total)+' CP gift value';
+            card.append(badge,couple,score);stage.appendChild(card);
+          }root.appendChild(stage);
+        }
+        for(const pair of weeklyCp?leaders.slice(7):leaders){
           const row=document.createElement('div');row.className='sh-bond-rankrow '+
             (kind==='friendship'?'friends':'');
           const rank=document.createElement('strong');rank.textContent='#'+pair.rank;
@@ -6012,7 +6231,7 @@
       const rank=document.createElement('button');rank.className='sh-bond-button blue';
       rank.textContent='🏆 Pair Ranking';rank.onclick=()=>showBondRanking('cp','weekly');
       actions.append(gift,rank);
-      if(id===profile?.public_id){
+      if(canonicalId===profile?.public_id){
         const inbox=document.createElement('button');inbox.className='sh-bond-button gold';
         inbox.textContent='💌 Invitations';inbox.onclick=showBondInbox;actions.appendChild(inbox);
         for(const bound of [data.cp,...(data.friendships||[])].filter(Boolean)){
@@ -6034,7 +6253,7 @@
   let rankProfileRequest=0;
   async function openVerifiedRankProfile(publicId){
     const id=String(publicId||'');
-    if(!/^[0-9]{8}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
+    if(!/^[0-9]{4,8}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
     const panel=document.getElementById('pfo'),root=document.getElementById('pfc');
     if(!panel||!root)return;
     const requestNo=++rankProfileRequest;
@@ -6045,7 +6264,9 @@
       // fabricates age, followers and pictures and must not be used here.
       const person=await api('GET','/users/'+id);
       if(requestNo!==rankProfileRequest||!panel.classList.contains('on'))return;
-      if(String(person.id)!==id)throw new Error('Profile ID does not match');
+      if(String(person.id)!==id && String(person.special_id)!==id)
+         throw new Error('Profile ID does not match');
+       const canonicalId=String(person.id),displayId=String(person.display_id||person.id);
       const face=verifiedAvatarUrl(person.pic);
       const wealth=Math.max(0,Number(person.wealth_level)||0);
       const charm=Math.max(0,Number(person.charm_level)||0);
@@ -6054,14 +6275,14 @@
         '<div class="pavr" style="--g1:#ffdc7b;--g2:#a06bff"></div>'+
         '<div class="pav3" id="sh-ranked-avatar" role="img" aria-label="Profile photo"></div>'+
         '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
-        '<div class="meta"><span>🆔 '+id+'</span>'+
+        '<div class="meta"><span>🆔 '+sellerEscape(displayId)+'</span>'+
         (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
         '</div></div><div class="lvs">'+
         '<div class="lvc w"><b>💰 Wealth level</b><div class="big3">'+
         wealth+'</div><small>Verified profile level</small></div>'+
         '<div class="lvc c"><b>💗 Charm level</b><div class="big3">'+
         charm+'</div><small>Verified profile level</small></div></div>'+
-        '<div class="sh-profile-note">This is the real Sharika profile for ID '+id+
+        '<div class="sh-profile-note">This is the real Sharika profile for ID '+sellerEscape(displayId)+
         '. Only server-verified details are shown.</div>'+
         '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
         'Loading follow status…</button></div>'+
@@ -6070,11 +6291,11 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       decorateVerifiedPublicProfile(root,person);
-      mountBondDetails(root,id,person).catch(error=>
+      mountBondDetails(root,canonicalId,person).catch(error=>
         console.warn('Ranked ID bond details:',errText(error)));
       const follow=root.querySelector('#sh-ranked-follow');
       async function loadFollowing(){
-        const data=await api('GET','/users/'+id+'/follow');
+        const data=await api('GET','/users/'+canonicalId+'/follow');
         if(requestNo!==rankProfileRequest||!follow.isConnected)return;
         const following=!!data.following;
         follow.disabled=false;
@@ -6082,7 +6303,7 @@
         follow.onclick=async()=>{
           follow.disabled=true;
           try{
-            await api(following?'DELETE':'PUT','/users/'+id+'/follow');
+            await api(following?'DELETE':'PUT','/users/'+canonicalId+'/follow');
             await loadFollowing();
           }catch(error){
             toast('Follow action failed: '+errText(error));
@@ -6646,6 +6867,165 @@
     }
     select('recharge');
   };
+
+  // Real Notifications inbox. Official notices/rewards/gifts/events are not chats.
+  // Message badges count verified unread private messages only.
+  let notificationPanel=null,notificationUnread=0,messageUnread=0,notificationPoll=null;
+  const notificationIcons={official:'📣',event:'🎉',reward:'🏆',gift:'🎁',system:'🔔'};
+  function notificationBadges(){
+    for(const bell of document.querySelectorAll('.sh-notify-bell')){
+      let badge=bell.querySelector('em');
+      if(!badge){badge=document.createElement('em');bell.appendChild(badge);}
+      badge.textContent=notificationUnread>99?'99+':String(notificationUnread);
+      badge.hidden=!notificationUnread;
+    }
+    const badge=document.querySelector('.ni[data-v="msg"] em');
+    if(badge){
+      badge.style.display=messageUnread?'inline-flex':'none';
+      badge.textContent=messageUnread>99?'99+':String(messageUnread);
+    }
+  }
+  function notificationDate(value){
+    if(!value)return '';
+    const d=new Date(String(value).replace(' ','T')+'Z');
+    return Number.isNaN(+d)?'':d.toLocaleString();
+  }
+  function buildNotificationUI(){
+    if(notificationPanel)return;
+    const style=document.createElement('style');
+    style.textContent=[
+      '.sh-notify-bell{position:relative;border:1px solid #e9c46b77;background:#221044;',
+      'color:white;min-width:42px;min-height:42px;border-radius:14px;font-size:22px;',
+      'box-shadow:0 3px 12px #0006;display:flex;align-items:center;justify-content:center}',
+      '.sh-notify-bell em,.ni[data-v="msg"] em{position:absolute;top:-4px;right:-5px;',
+      'min-width:19px;height:19px;border-radius:11px;align-items:center;justify-content:center;',
+      'padding:0 4px;background:#ef3f72;color:white;font:700 11px system-ui;',
+      'border:1px solid #ffeef6;box-sizing:border-box}',
+      '.sh-notify-panel{display:none;position:absolute;inset:0;z-index:75;',
+      'background:linear-gradient(165deg,#190b38,#080315);color:#fff;overflow-y:auto;',
+      'padding:calc(16px + env(safe-area-inset-top,0px)) 16px 110px}',
+      '.sh-notify-panel.on{display:block}.sh-notify-head{display:flex;gap:12px;',
+      'align-items:center;justify-content:space-between;padding-bottom:15px}',
+      '.sh-notify-head h2{font-size:20px;margin:0}.sh-notify-head p{font-size:12px;',
+      'margin:4px 0 0;color:#c3b5de}.sh-notify-action{border:1px solid #e1bc6977;',
+      'color:#fff;background:#3d236c;border-radius:12px;padding:9px 12px;font-size:13px}',
+      '.sh-notify-list{display:grid;gap:10px;margin-top:12px}',
+      '.sh-notify-card{display:flex;text-align:left;gap:12px;width:100%;',
+      'border:1px solid #a986b645;background:#24134a;color:#fff;padding:15px 13px;',
+      'border-radius:16px;align-items:start}.sh-notify-card.unread{',
+      'border-color:#e7b95b;background:#33205a}',
+      '.sh-notify-card b{display:block;font-size:14px}.sh-notify-card small{',
+      'display:block;color:#e6dbf8;margin-top:6px;line-height:1.5}',
+      '.sh-notify-card time{display:block;font-size:11px;color:#ad9ccc;margin-top:7px}',
+      '.sh-notify-card .sh-type{font-size:23px}.sh-notify-empty{text-align:center;',
+      'color:#cabce5;padding:45px 14px;line-height:1.6}'
+    ].join('');
+    document.head.appendChild(style);
+    for(const view of ['#v-home .hd','#v-msg .hd']){
+      const header=document.querySelector(view);
+      if(!header)continue;
+      const button=document.createElement('button');
+      button.type='button';button.className='sh-notify-bell';
+      button.setAttribute('aria-label','Notifications');
+      button.textContent='🔔';button.onclick=showNotifications;
+      header.appendChild(button);
+    }
+    notificationPanel=document.createElement('section');
+    notificationPanel.className='sh-notify-panel';
+    notificationPanel.setAttribute('aria-label','Notifications');
+    notificationPanel.innerHTML='<div class="sh-notify-head">'+
+      '<button class="sh-notify-action" type="button" id="sh-notify-back">‹ Back</button>'+
+      '<div><h2>🔔 Notifications</h2><p>Official notices, rewards, gifts & events</p></div>'+
+      '</div><div class="sh-notify-head">'+
+      '<span id="sh-notify-unread"></span>'+
+      '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
+      '</div><div class="sh-notify-list" id="sh-notify-list"></div>';
+    document.getElementById('app').appendChild(notificationPanel);
+    notificationPanel.querySelector('#sh-notify-back').onclick=()=>{
+      notificationPanel.classList.remove('on');
+    };
+    notificationPanel.querySelector('#sh-notify-readall').onclick=async()=>{
+      if(!session)return;
+      try{
+        await api('POST','/notifications/read-all',{});
+        await refreshNotifications(true);
+      }catch(error){toast('Unable to mark read: '+errText(error));}
+    };
+    notificationBadges();
+  }
+  async function refreshNotifications(render){
+    if(!session)return;
+    try{
+      const data=await api('GET','/notifications');
+      notificationUnread=Number(data.unread_count)||0;
+      notificationBadges();
+      if(render||notificationPanel?.classList.contains('on')){
+        const list=document.getElementById('sh-notify-list');
+        if(!list)return;
+        list.textContent='';
+        const count=document.getElementById('sh-notify-unread');
+        if(count)count.textContent=notificationUnread+' unread';
+        if(!(data.notifications||[]).length){
+          const empty=document.createElement('div');
+          empty.className='sh-notify-empty';
+          empty.textContent='No notifications yet. Official notices and earned rewards will appear here.';
+          list.appendChild(empty);return;
+        }
+        for(const item of data.notifications||[]){
+          const button=document.createElement('button');
+          button.type='button';
+          button.className='sh-notify-card'+(item.read_at?'':' unread');
+          const icon=document.createElement('span');icon.className='sh-type';
+          icon.textContent=notificationIcons[item.kind]||'🔔';
+          const content=document.createElement('span');
+          const title=document.createElement('b');title.textContent=item.title;
+          const body=document.createElement('small');body.textContent=item.body;
+          const date=document.createElement('time');
+          date.textContent=notificationDate(item.created_at)+(item.read_at?'':' · New');
+          content.append(title,body,date);button.append(icon,content);
+          button.onclick=async()=>{
+            if(item.read_at)return;
+            try{await api('PATCH','/notifications/'+item.id+'/read',{});await refreshNotifications(true);}
+            catch(error){toast('Unable to mark read: '+errText(error));}
+          };
+          list.appendChild(button);
+        }
+      }
+    }catch(error){
+      if(render&&notificationPanel?.classList.contains('on')){
+        document.getElementById('sh-notify-list').textContent=
+          'Unable to load notifications: '+errText(error);
+      }
+    }
+  }
+  async function refreshMessagesBadge(){
+    if(!session)return;
+    try{
+      const inbox=await api('GET','/messages');
+      messageUnread=Number(inbox.unread_total)||0;
+      notificationBadges();
+    }catch(_){}
+  }
+  function showNotifications(){
+    if(!session){window.showAuth('welcome');return;}
+    buildNotificationUI();
+    notificationPanel.classList.add('on');
+    refreshNotifications(true);
+  }
+  buildNotificationUI();
+  notificationPoll=setInterval(()=>{
+    if(!session||document.visibilityState==='hidden')return;
+    refreshNotifications(false);
+    refreshMessagesBadge();
+  },30000);
+  async function registerPushDevice(){
+    if(!session)return;
+    try{
+      const result=await native('pushToken');
+      if(result?.token)await api('POST','/notifications/devices',{token:result.token});
+    }catch(error){console.info('Push registration unavailable',errText(error));}
+  }
+
   const originalLogout=window.logout;
   window.logout=function(){
     if(window.cur)window.leaveRoom();
@@ -6653,6 +7033,8 @@
     document.getElementById('sh-invite-newbie')?.remove();
     document.getElementById('sh-invite-page')?.remove();
     session=null;profile=null;balance={coins:0,dia:0,xp:0};
+    notificationUnread=0;messageUnread=0;notificationBadges();
+    notificationPanel?.classList.remove('on');
     native('signOut').catch(()=>{});
     cleanLocalFakeState();
     originalLogout();

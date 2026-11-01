@@ -39,12 +39,15 @@ import androidx.credentials.GetCredentialRequest;
 import androidx.credentials.GetCredentialResponse;
 import androidx.credentials.exceptions.ClearCredentialException;
 import androidx.credentials.exceptions.GetCredentialException;
+import androidx.credentials.exceptions.GetCredentialCancellationException;
+import androidx.credentials.exceptions.NoCredentialException;
 
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 import org.json.JSONObject;
 import org.json.JSONException;
@@ -74,6 +77,7 @@ public final class SharikaActivity extends Activity {
     private static final int MIC_PERMISSION_REQUEST = 3412;
     private static final int IMAGE_PICKER_REQUEST = 3413;
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 3415;
     private final ExecutorService io = Executors.newFixedThreadPool(2);
     private FirebaseAuth auth;
     private CredentialManager credentials;
@@ -84,6 +88,7 @@ public final class SharikaActivity extends Activity {
     private ValueCallback<Uri[]> pendingImageSelection;
     private String pendingProfilePhotoId;
     private boolean googlePending;
+    private String pendingInviteCode = "";
     // Firebase reload contacts the identity server; refreshing on every
     // 1.6-second live-game poll causes overlapping network calls.
     private volatile String recentlyVerifiedUserId;
@@ -92,6 +97,8 @@ public final class SharikaActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        restorePendingInvite();
+        captureInviteLink(getIntent());
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN);
         // Let the app background reach the physical top edge on phones with a
@@ -169,6 +176,34 @@ public final class SharikaActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             unregisterModernBack = Api33BackHandler.register(this);
         }
+    }
+
+    private void restorePendingInvite() {
+        android.content.SharedPreferences pref=getSharedPreferences("sharika_pending_invite",MODE_PRIVATE);
+        long saved=pref.getLong("saved_ms",0L);
+        if(saved>0 && System.currentTimeMillis()-saved<30L*86400000L) {
+            String code=pref.getString("code","");
+            if(code!=null && code.matches("[0-9]{8}"))pendingInviteCode=code;
+        } else pref.edit().clear().apply();
+    }
+
+    private void captureInviteLink(Intent intent) {
+        Uri uri=intent==null?null:intent.getData();
+        if(uri==null || !"sharika".equals(uri.getScheme()) ||
+            !"invite".equals(uri.getHost()))return;
+        String code=uri.getLastPathSegment();
+        if(code==null || !code.matches("[0-9]{8}"))return;
+        pendingInviteCode=code;
+        getSharedPreferences("sharika_pending_invite",MODE_PRIVATE).edit()
+            .putString("code",code).putLong("saved_ms",System.currentTimeMillis()).apply();
+        if(browser!=null)browser.evaluateJavascript(
+            "window.SharikaIncomingInvite && window.SharikaIncomingInvite('"+code+"')",null);
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        captureInviteLink(intent);
     }
 
     // One route handles the hardware Back key and Android 13+ back gestures.
@@ -460,7 +495,41 @@ public final class SharikaActivity extends Activity {
                     });
                 sendResult(id, result(true, identity(null), null));
                 break;
+            case "pushToken":
+                // A token is a device identifier, never an FCM server credential.
+                if (auth.getCurrentUser() == null) {
+                    sendResult(id, result(false,null,"login_required")); break;
+                }
+                if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATION_PERMISSION_REQUEST);
+                }
+                FirebaseMessaging.getInstance().getToken().addOnCompleteListener(this, task -> {
+                    if (!task.isSuccessful() || task.getResult() == null) {
+                        sendResult(id, result(false,null,"fcm_device_token_unavailable")); return;
+                    }
+                    JSONObject payload = object();
+                    try { payload.put("token",task.getResult()); }
+                    catch (JSONException error) {
+                        sendResult(id,result(false,null,"invalid_fcm_device_token"));return;
+                    }
+                    sendResult(id,result(true,payload,null));
+                });
+                break;
             case "api": callStagingApi(id, data); break;
+            case "invitePending":
+                JSONObject pending=object();
+                try { pending.put("code",pendingInviteCode); }
+                catch (JSONException ignored) {}
+                sendResult(id,result(true,pending,null));
+                break;
+            case "inviteClear":
+                pendingInviteCode="";
+                getSharedPreferences("sharika_pending_invite",MODE_PRIVATE).edit().clear().apply();
+                sendResult(id,result(true,object(),null));
+                break;
             case "pickProfilePhoto": pickNativeProfilePhoto(id); break;
             case "copyInviteCode":
                 String inviteCode = data.optString("code", "");
@@ -580,7 +649,11 @@ public final class SharikaActivity extends Activity {
                     }
                     @Override public void onError(GetCredentialException error) {
                         googlePending = false;
-                        sendResult(id, result(false,null,safe(error)));
+                        final String message = error instanceof GetCredentialCancellationException
+                            ? "google_sign_in_cancelled" :
+                            error instanceof NoCredentialException
+                            ? "google_account_not_available" : safe(error);
+                        sendResult(id, result(false,null,message));
                     }
                 });
         } catch (Exception error) {
@@ -661,7 +734,8 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/premium")) return method.equals("GET");
         if (path.equals("/api/v1/premium/purchase") ||
             path.equals("/api/v1/premium/daily/claim")) return method.equals("POST");
-        if (path.equals("/api/v1/bonds/catalog") || path.equals("/api/v1/bonds/me"))
+        if (path.equals("/api/v1/bonds/catalog") || path.equals("/api/v1/bonds/me") ||
+            path.equals("/api/v1/bonds/rewards"))
             return method.equals("GET");
         if (path.matches("^/api/v1/bonds/profile/[0-9]{8}$") ||
             path.matches("^/api/v1/bonds/room/[0-9]{8}$"))

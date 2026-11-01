@@ -1,3 +1,4 @@
+import {notifyUser,deliverNotification} from './notifications.mjs';
 // Server-verified, Super-Admin-controlled staging events and one-time coin prizes.
 // Publication is separate from payment; only an ended published event can pay a rank.
 // Winners are selected explicitly by Super Admin and every credit has a D1 receipt + ledger.
@@ -73,7 +74,21 @@ export async function handleEventApp({request,env,uid,path,cors,reply,fail}){
   if(!active)return fail('profile_unavailable',403,cors);
   return reply(await listEventData(env.DB,false),200,cors);
 }
-export async function handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail}){
+async function announceEvent(env,ctx,id,title,actorUid){
+  const members=await env.DB.prepare(
+    "SELECT auth_uid FROM sharika_users WHERE status='active' ORDER BY public_no LIMIT 500"
+  ).all();
+  for(const member of members.results||[]){
+    try{
+      const notice=await notifyUser(env.DB,{recipientUid:member.auth_uid,
+        kind:'event',title:'New Sharika event',body:String(title).slice(0,100),
+        dedupeKey:'event-published:'+id,createdBy:actorUid});
+      if(notice.created&&notice.notification)
+        ctx?.waitUntil(deliverNotification(env,notice.notification));
+    }catch(error){console.error('event_notice_failed',String(error.message||error));}
+  }
+}
+export async function handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx}){
   if(!/^events(?:\/\d+(?:\/award)?)?$/.test(operation))return null;
   if(!['super','finance'].includes(actor.role))return fail('admin_permission_denied',403,cors);
   const db=env.DB;
@@ -93,14 +108,16 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
         "VALUES(?,'event_created',?)")
         .bind(uid,JSON.stringify({title:body.title.trim(),kind:body.kind,status:body.status}))
     ]);
-    return reply({created:true,id:Number(result[0]?.meta?.last_row_id)||null},201,cors);
+    const newId=Number(result[0]?.meta?.last_row_id)||null;
+    if(newId&&body.status==='published')await announceEvent(env,ctx,newId,body.title.trim(),uid);
+    return reply({created:true,id:newId},201,cors);
   }
   const patch=/^events\/([1-9]\d*)$/.exec(operation);
   if(patch&&request.method==='PATCH'){
     let body;try{body=await parseBody(request);}catch(_){return fail('invalid_event_json',400,cors);}
     if(!validEventPayload(body))return fail('invalid_event_fields',400,cors);
     const id=Number(patch[1]);
-    const existing=await db.prepare('SELECT id FROM sharika_events WHERE id=?').bind(id).first();
+    const existing=await db.prepare('SELECT id,status FROM sharika_events WHERE id=?').bind(id).first();
     if(!existing)return fail('event_not_found',404,cors);
     const paid=await db.prepare('SELECT id FROM sharika_event_awards WHERE event_id=? LIMIT 1').bind(id).first();
     if(paid)return fail('awarded_event_locked',409,cors);
@@ -118,6 +135,8 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
       if(String(error?.message||'').includes('awarded_event_locked'))return fail('awarded_event_locked',409,cors);
       throw error;
     }
+    if(existing.status!=='published'&&body.status==='published')
+      await announceEvent(env,ctx,id,body.title.trim(),uid);
     return reply({updated:true,id},200,cors);
   }
   const award=/^events\/([1-9]\d*)\/award$/.exec(operation);
@@ -180,6 +199,14 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
     }
     const receipt=await db.prepare('SELECT id FROM sharika_event_awards WHERE event_id=? AND rank=?')
       .bind(eventId,rank).first();
+    try{
+      const notice=await notifyUser(db,{recipientUid:recipient.auth_uid,
+        kind:'reward',title:'Event prize awarded',
+        body:'Rank #'+rank+' event prize: '+coins+' coins credited.',
+        dedupeKey:'event-award:'+eventId+':'+rank,createdBy:uid});
+      if(notice.created&&notice.notification)
+        ctx?.waitUntil(deliverNotification(env,notice.notification));
+    }catch(error){console.error('event_award_notice_failed',String(error.message||error));}
     return reply({awarded:true,award_id:receipt?.id,rank,public_id:publicId,coins},201,cors);
   }
   return fail('event_method_not_allowed',405,cors);

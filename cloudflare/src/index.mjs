@@ -1,3 +1,4 @@
+import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from './notifications.mjs';
 import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration } from './moderation.mjs';
@@ -6,6 +7,7 @@ import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp } from './premium.mjs';
 import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
+import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import {readInviteRules} from './invite-rules.mjs';
@@ -17,10 +19,12 @@ import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
+import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
+const PUBLIC_OR_SPECIAL_ID = /^[0-9]{4,8}$/;
 const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset','photo']);
 const ROOM_SEAT_FRAMES = new Set(['grad','gold','neon','sq']);
 const MAX_BODY = 20_000;
@@ -121,7 +125,7 @@ async function createVoiceToken(env, uid, room, publish, owner) {
   return data + '.' + b64url(new Uint8Array(sign));
 }
 
-export async function handleRequest(request, env) {
+export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
@@ -197,6 +201,12 @@ export async function handleRequest(request, env) {
     if(path==='/api/v1/opening/next')return await handleOpeningApp({
       request,env,uid,path,cors,reply,fail
     });
+    if(path==='/api/v1/bonds/rewards'&&request.method==='GET'){
+      const active=await env.DB.prepare("SELECT 1 AS ok FROM sharika_users WHERE auth_uid=? AND status='active'")
+        .bind(uid).first();
+      if(!active)return fail('profile_unavailable',403,cors);
+      return reply(await readCpRewardBoard(env.DB),200,cors);
+    }
     if(path.startsWith('/api/v1/bonds'))return await handleBondApp({
       request,env,uid,path,cors,reply,fail
     });
@@ -211,8 +221,10 @@ export async function handleRequest(request, env) {
     if(path==='/api/v1/events') return await handleEventApp({
       request,env,uid,path,cors,reply,fail
     });
+    if(path==='/api/v1/notifications'||path.startsWith('/api/v1/notifications/'))
+      return await handleNotificationApp({request,env,uid,path,cors,reply,fail});
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
-      request, env, uid, path, cors, reply, fail
+      request, env, uid, path, cors, reply, fail, ctx
     });
     if (path==='/api/v1/invites'||path==='/api/v1/invites/redeem'||
         path==='/api/v1/invites/device'||
@@ -222,7 +234,7 @@ export async function handleRequest(request, env) {
     });
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
         path==='/api/v1/daily/tasks/claim') return await handleDailyApp({
-      request, env, uid, path, cors, reply, fail
+      request, env, uid, path, cors, reply, fail, ctx
     });
     if(path==='/api/v1/premium'||path==='/api/v1/premium/purchase'||
        path==='/api/v1/premium/daily/claim')return await handlePremiumApp({
@@ -299,7 +311,12 @@ export async function handleRequest(request, env) {
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
-        return user ? reply({...showProfile(user),...await readEquipped(env.DB,uid)},200,cors) : fail('profile_not_found',404,cors);
+        if(!user)return fail('profile_not_found',404,cors);
+        const special=await activeSpecial(env.DB,uid);
+        return reply({...showProfile(user),...await readEquipped(env.DB,uid),
+          special_id:special?.special_id||null,
+          display_id:special?.special_id||publicId(user.public_no),
+          special_frame:special?.frame||null},200,cors);
       }
       if (request.method === 'POST') {
         const already = await me(env.DB, uid);
@@ -378,14 +395,25 @@ export async function handleRequest(request, env) {
         const keys = Object.keys(changes);
         await env.DB.prepare('UPDATE sharika_users SET ' + keys.map(x => x + '=?').join(',') + `,updated_at=datetime('now') WHERE auth_uid=?`)
           .bind(...keys.map(k => changes[k]), uid).run();
-        return reply({...showProfile(await me(env.DB,uid)),...await readEquipped(env.DB,uid)},200,cors);
+        const current=await me(env.DB,uid);
+        const special=await activeSpecial(env.DB,uid);
+        return reply({...showProfile(current),...await readEquipped(env.DB,uid),
+          special_id:special?.special_id||null,
+          display_id:special?.special_id||publicId(current.public_no),
+          special_frame:special?.frame||null},200,cors);
       }
     }
-    if (parts[0] === 'api' && parts[1] === 'v1' && parts[2] === 'users' && PUBLIC_ID.test(parts[3] || '') &&
+    if (parts[0] === 'api' && parts[1] === 'v1' && parts[2] === 'users' && PUBLIC_OR_SPECIAL_ID.test(parts[3] || '') &&
         parts.length === 4 && request.method === 'GET') {
       await assertActive(env.DB, uid);
-      const user = await env.DB.prepare('SELECT * FROM sharika_users WHERE public_no=?').bind(Number(parts[3])).first();
+      const user = await env.DB.prepare('SELECT u.* FROM sharika_users u '+
+        'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+        "WHERE u.public_no=? OR (s.special_id=? AND (s.expires_at IS NULL OR s.expires_at>datetime('now'))) LIMIT 1")
+        .bind(Number(parts[3]),parts[3]).first();
+      const special=user?await activeSpecial(env.DB,user.auth_uid):null;
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
+        special_id:special?.special_id||null,display_id:special?.special_id||publicId(user.public_no),
+        special_frame:special?.frame||null,
         wealth_level: user.wealth_level, charm_level: user.charm_level,
         frame_style: user.frame_style || '', entry_style: user.entry_style || '',
         medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '',
@@ -444,7 +472,7 @@ export async function handleRequest(request, env) {
     if(path==='/api/v1/messages' && request.method==='GET') {
       await assertActive(env.DB,uid);
       const rows=await env.DB.prepare(
-        'SELECT m.id,m.body,m.created_at,u.public_no,u.name,u.pic,'+
+        'SELECT m.id,m.body,m.created_at,u.auth_uid AS other_uid,u.public_no,u.name,u.pic,'+
         publicAppearanceSelect()+' '+
         'FROM sharika_private_messages m JOIN sharika_users u ON u.auth_uid='+
         'CASE WHEN m.sender_uid=? THEN m.recipient_uid ELSE m.sender_uid END '+
@@ -457,12 +485,25 @@ export async function handleRequest(request, env) {
         seen.add(other);
         conversations.push({public_id:other,name:item.name,
           last_body:item.body,last_at:item.created_at,pic:item.pic||null,
+          unread_count:0,other_uid:item.other_uid,
           frame_style:item.equipped_frame_style??item.frame_style??'',
           medal_style:item.equipped_medal_style??item.medal_style??'',
           name_tag_style:item.equipped_name_tag_style??item.name_tag_style??''});
         if(conversations.length>=100)break;
       }
-      return reply({conversations},200,cors);
+      const unread=await env.DB.prepare(
+        'SELECT sender_uid AS other_uid,COUNT(*) AS n FROM sharika_private_messages m '+
+        'WHERE recipient_uid=? AND id>COALESCE((SELECT last_read_id FROM sharika_message_reads '+
+        'WHERE auth_uid=? AND other_uid=m.sender_uid),0) GROUP BY sender_uid'
+      ).bind(uid,uid).all();
+      const bySender=new Map((unread.results||[]).map(r=>[r.other_uid,Number(r.n)||0]));
+      let unreadTotal=0;
+      for(const record of unread.results||[])unreadTotal+=Number(record.n)||0;
+      for(const entry of conversations){
+        entry.unread_count=bySender.get(entry.other_uid)||0;
+        delete entry.other_uid;
+      }
+      return reply({conversations,unread_total:unreadTotal},200,cors);
     }
     const messagePath=/^\/api\/v1\/messages\/([0-9]{8})$/.exec(path);
     if(messagePath) {
@@ -483,6 +524,13 @@ export async function handleRequest(request, env) {
           'WHERE (sender_uid=? AND recipient_uid=?) OR (sender_uid=? AND recipient_uid=?) '+
           'ORDER BY id DESC LIMIT 100'
         ).bind(uid,target.auth_uid,target.auth_uid,uid).all();
+        const mostRecent=(result.results||[]).filter(m=>m.sender_uid===target.auth_uid)
+          .reduce((max,m)=>Math.max(max,Number(m.id)||0),0);
+        if(mostRecent)await env.DB.prepare(
+          'INSERT INTO sharika_message_reads(auth_uid,other_uid,last_read_id) VALUES(?,?,?) '+
+          'ON CONFLICT(auth_uid,other_uid) DO UPDATE SET '+
+          'last_read_id=MAX(last_read_id,excluded.last_read_id),updated_at=datetime(\'now\')'
+        ).bind(uid,target.auth_uid,mostRecent).run();
         return reply({user:{public_id:publicId(target.public_no),name:target.name},
           mutual,messages:(result.results||[]).reverse().map(m=>({
             id:m.id,from_me:m.sender_uid===uid,body:m.body,created_at:m.created_at
@@ -515,6 +563,11 @@ export async function handleRequest(request, env) {
           'WHERE request_id=? AND sender_uid=? AND recipient_uid=?'
         ).bind(requestId,uid,target.auth_uid).first();
         if(!saved)return fail('message_request_conflict',409,cors);
+        // New messages remain in Messages; background alerts use type=message.
+        // An unavailable push credential must never prevent the verified message.
+        await pushMessage(env,{recipientUid:target.auth_uid,senderUid:uid,
+          senderName:(await env.DB.prepare('SELECT name FROM sharika_users WHERE auth_uid=?')
+            .bind(uid).first())?.name||'Sharika member',body:message,messageId:saved.id});
         return reply({message:saved},201,cors);
       }
       return fail('method_not_allowed',405,cors);
@@ -700,21 +753,21 @@ export async function handleRequest(request, env) {
       if(!room)return fail('room_not_found',404,cors);
       if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
       const contentLength=Number(request.headers.get('content-length')||0);
-      if(contentLength>125000)return fail('room_cover_too_large',413,cors);
+      if(contentLength>320100)return fail('room_cover_too_large',413,cors);
       const raw=await request.text();
-      if(raw.length>125000)return fail('room_cover_too_large',413,cors);
+      if(raw.length>320100)return fail('room_cover_too_large',413,cors);
       let body;
       try{body=JSON.parse(raw||'{}');}catch(_){return fail('invalid_room_cover',400,cors);}
       if(!body||typeof body!=='object'||Array.isArray(body)||
          typeof body.image_data!=='string'||!body.image_data.startsWith('data:image/jpeg;base64,'))
         return fail('invalid_room_cover',400,cors);
       const imageBase64=body.image_data.slice('data:image/jpeg;base64,'.length);
-      if(imageBase64.length<16||imageBase64.length>120000||
+      if(imageBase64.length<16||imageBase64.length>320000||
          !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64))
         return fail('invalid_room_cover',400,cors);
       let binary;
       try{binary=atob(imageBase64);}catch(_){return fail('invalid_room_cover',400,cors);}
-      if(binary.length<32||binary.length>90000||
+      if(binary.length<32||binary.length>240000||
          binary.charCodeAt(0)!==255||binary.charCodeAt(1)!==216||
          binary.charCodeAt(2)!==255||
          binary.charCodeAt(binary.length-2)!==255||
@@ -1223,6 +1276,28 @@ export async function handleRequest(request, env) {
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
           ).bind(uid,requestId).first();
           const wallet=await me(env.DB,uid);
+          // Gifts become personal notifications only after verified settlement.
+          // Delivery is background work; the gift itself is already committed.
+          for(const recipient of found){
+            try{
+              const notice=await notifyUser(env.DB,{recipientUid:recipient.auth_uid,
+                kind:'gift',title:'Gift received',
+                body:String(sender.name||'A member')+' sent '+quantity+' × '+gift.name,
+                dedupeKey:'gift:'+saved.id+':'+recipient.auth_uid});
+              if(notice.created&&notice.notification)
+                ctx?.waitUntil(deliverNotification(env,notice.notification));
+            }catch(error){console.error('gift_notice_failed',String(error.message||error));}
+          }
+          if(ownerRewardCoins>0){
+            try{
+              const notice=await notifyUser(env.DB,{recipientUid:room.owner_id,
+                kind:'reward',title:'Room gift reward',
+                body:'Your room earned '+ownerRewardCoins+' coins from gifts.',
+                dedupeKey:'room-reward:'+saved.id});
+              if(notice.created&&notice.notification)
+                ctx?.waitUntil(deliverNotification(env,notice.notification));
+            }catch(error){console.error('room_reward_notice_failed',String(error.message||error));}
+          }
           return reply({duplicate:false,transaction_id:saved.id,
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
@@ -1283,7 +1358,8 @@ export async function handleRequest(request, env) {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,m.joined_at,
-          u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style FROM sharika_room_members m
+          u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style,
+          ${activeSpecialSelect('u')} FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
         // A killed Android process may never call /leave. Show active presence
         // (with a 90-second grace period for new joins), without mutating the
@@ -1329,6 +1405,7 @@ export async function handleRequest(request, env) {
           members: visibleMembers.map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
+            special_id:x.special_id||null,display_id:x.special_id||publicId(x.public_no),
             frame_style: x.frame_style || '', entry_style: x.entry_style || '',
             medal_style: x.medal_style || '', name_tag_style: x.name_tag_style || '',
             ...(equipped.get(x.user_id)||{}) }
@@ -1363,8 +1440,12 @@ export async function handleRequest(request, env) {
 export default {
   fetch:handleRequest,
   scheduled(_event,env,context){
-    if(env.DB)context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
-      .catch(error=>console.error('bond_expiry_cron_error',error.message)));
+    if(env.DB){
+      context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
+        .catch(error=>console.error('bond_expiry_cron_error',error.message)));
+      context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true)
+        .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
+    }
   }
 };
 export { publicId, ageFromDate };
