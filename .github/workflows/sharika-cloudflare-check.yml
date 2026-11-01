@@ -143,3 +143,33 @@ jobs:
           assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='sender'").fetchone()[0]==19980
           print('Lucky 5% receiver diamond ledger, fractional accumulation, 1% room reward, immutable records validated')
           PY
+
+  invite-android-compile:
+    name: Compile invite Android bridge (no release)
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/sharika-invites-cashout-20261101'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: android-staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android API 36 for compile
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Compile debug staging app without signing secrets
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Verify compile artifact exists without publishing
+        run: test -s app/build/outputs/apk/debug/app-debug.apk
