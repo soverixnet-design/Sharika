@@ -208,7 +208,8 @@ export async function handleRequest(request, env) {
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
       request, env, uid, path, cors, reply, fail
     });
-    if (path==='/api/v1/invites') return await handleInviteApp({
+    if (path==='/api/v1/invites'||path==='/api/v1/invites/redeem'||
+        path==='/api/v1/invites/rankings') return await handleInviteApp({
       request, env, uid, path, cors, reply, fail
     });
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
@@ -1030,7 +1031,7 @@ export async function handleRequest(request, env) {
             sender_name:e.sender_name,sender_pic:e.sender_pic||null,
             recipient_id:publicId(e.recipient_no),
             recipient_name:e.recipient_name,recipient_pic:e.recipient_pic||null,
-            name:e.name,emoji:e.emoji,
+            name:e.name,emoji:e.emoji,tab:e.tab,
             lucky:e.tab===2&&luckyEnabled?{payout_coins:Number(e.payout_coins)||0,
               max_multiplier:Number(e.max_multiplier)||0}:null
           }))},200,cors);

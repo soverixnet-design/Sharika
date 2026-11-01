@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveInviter,handleInviteApp,handleInviteAdmin,signupCoins,signupReferralStatements,rechargeBonusCoins,rechargeReferralStatements} from '../src/invites.mjs';
+import {resolveInviter,handleInviteApp,handleInviteAdmin,signupCoins,signupReferralStatements,rechargeBonusCoins,rechargeReferralStatements,inviteExpiryMs,inviteRedeemEligible} from '../src/invites.mjs';
 const reply=(data,status)=>Response.json(data,{status});
 const fail=(error,status)=>Response.json({error},{status});
-function mock({inviter=true,active=true,self=false,profile=true,referred=true}={}){
-  const state={queries:[],writes:0};
+function mock({inviter=true,active=true,self=false,profile=true,referred=true,
+  linked=false,createdAt=new Date().toISOString(),coins=2000}={}){
+  const state={queries:[],writes:0,batches:[]};
   const DB={
     prepare(sql){
       return {sql,args:[],
@@ -15,8 +16,15 @@ function mock({inviter=true,active=true,self=false,profile=true,referred=true}={
             return referred?{auth_uid:'bob',status:active?'active':'blocked',coins:500}:null;
           if(sql.includes("SELECT auth_uid,public_no,status FROM sharika_users"))
             return inviter?{auth_uid:self?'alice':'bob',public_no:10000002,status:active?'active':'blocked'}:null;
-          if(sql.includes("SELECT public_no FROM sharika_users WHERE auth_uid"))
-            return profile?{public_no:10000001}:null;
+          if(sql.includes('SELECT auth_uid,public_no,created_at,coins,status FROM sharika_users'))
+            return profile?{auth_uid:'alice',public_no:10000001,created_at:createdAt,
+              coins,status:active?'active':'blocked'}:null;
+          if(sql.includes('SELECT public_no,created_at FROM sharika_users WHERE auth_uid'))
+            return profile?{public_no:10000001,created_at:createdAt}:null;
+          if(sql.includes('SELECT inviter_uid FROM sharika_referrals WHERE referred_uid'))
+            return linked?{inviter_uid:'bob'}:null;
+          if(sql.includes("SELECT 1 AS active FROM sharika_users"))
+            return profile&&active?{active:1}:null;
           if(sql.includes("COUNT(*) AS n FROM sharika_referrals"))
             return {n:2};
           if(sql.includes('JOIN sharika_users u ON u.auth_uid=r.inviter_uid'))
@@ -28,12 +36,19 @@ function mock({inviter=true,active=true,self=false,profile=true,referred=true}={
           if(sql.includes('WHERE r.inviter_uid=?'))return {results:[
             {public_no:10000010,name:'Friend A',created_at:'2026-10-30 01:00:00'}
           ]};
+          if(sql.includes('GROUP BY u.auth_uid ORDER BY invites DESC'))
+            return {results:[{public_no:10000001,name:'Alice',invites:4},
+              {public_no:10000002,name:'Bob',invites:2}]};
           if(sql.includes('JOIN sharika_users a ON a.auth_uid=r.inviter_uid'))
             return {results:[{inviter_no:10000001,referred_no:10000010,created_at:'2026-10-30 01:00:00'}]};
           return {results:[]};
         },
         async run(){state.writes++;return {success:true};}
       };
+    },
+    async batch(statements){
+      state.batches.push(statements.map(s=>({sql:s.sql,args:s.args})));
+      return statements.map(()=>({success:true}));
     }
   };
   return {DB,state};
@@ -148,4 +163,83 @@ test('no commission without an active referrer or at less than 20 coin recharge'
   assert.equal((await rechargeReferralStatements({
     db:mock().DB,recipientUid:'someone',sellerUid:'seller',requestId:'req-123456789',amount:19
   })).bonus,0);
+});
+
+const redemption=(fixture,inviteCode='10000002')=>handleInviteApp({
+  request:new Request('https://example.test/api/v1/invites/redeem',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({invite_code:inviteCode})
+  }),env:{DB:fixture.DB},uid:'alice',path:'/api/v1/invites/redeem',
+  cors:{},reply,fail
+});
+
+test('newly created account redeems one verified inviter and both coins are in one D1 batch',async()=>{
+  const f=mock();
+  const response=await redemption(f);
+  assert.equal(response.status,201);
+  const result=await response.json();
+  assert.equal(result.invited_by,'10000002');
+  assert.equal(result.inviter_reward,5000);
+  assert.equal(result.invitee_extra_coins,8000);
+  assert.equal(result.invitee_total_signup_coins,10000);
+  assert.equal(f.state.batches.length,1);
+  const statements=f.state.batches[0];
+  assert.equal(statements.length,5);
+  assert.match(statements[0].sql,/INSERT INTO sharika_referrals/);
+  assert.deepEqual(statements[0].args,['alice','bob']);
+  assert.equal(statements[1].args[1],5000);
+  assert.equal(statements[3].args[1],8000);
+  assert.equal(statements[4].args[3],'referral-claim:alice');
+  assert.equal(JSON.stringify(result).includes('bob'),false);
+});
+
+test('redemption cannot happen after expiry or for an already-linked account',async()=>{
+  const expired=mock({createdAt:new Date(Date.now()-49*3600_000).toISOString()});
+  assert.equal((await redemption(expired)).status,409);
+  assert.equal(expired.state.batches.length,0);
+  const linked=mock({linked:true});
+  assert.equal((await redemption(linked)).status,409);
+  assert.equal(linked.state.batches.length,0);
+});
+
+test('redemption rejects self-invitation, non-existent code, inactive inviter, and unsafe balances',async()=>{
+  for(const [options,code,status] of [
+    [{self:true},'10000002',403],
+    [{inviter:false},'10000002',404],
+    [{active:false},'10000002',403],
+    [{},'bad',400],
+    [{coins:1_000_000_000_000},'10000002',409]
+  ]){
+    const f=mock(options);
+    const result=await redemption(f,code);
+    assert.equal(result.status,status);
+    assert.equal(f.state.batches.length,0);
+  }
+});
+
+test('claim deadline parses SQLite and ISO timestamps in UTC, and returns correct eligibility',()=>{
+  const sqlite=inviteExpiryMs('2026-11-01 12:00:00');
+  const iso=inviteExpiryMs('2026-11-01T12:00:00Z');
+  assert.equal(sqlite,iso);
+  assert.equal(sqlite,Date.parse('2026-11-03T12:00:00Z'));
+  assert.equal(inviteRedeemEligible({created_at:'2026-11-01 12:00:00',invited_by:null},
+    Date.parse('2026-11-02T00:00:00Z')),true);
+  assert.equal(inviteRedeemEligible({created_at:'2026-11-01 12:00:00',invited_by:'bob'},
+    Date.parse('2026-11-02T00:00:00Z')),false);
+  assert.equal(inviteExpiryMs('invalid'),0);
+});
+
+test('monthly invitation rankings count real referral rows and never promise cash prizes',async()=>{
+  const f=mock();
+  const response=await handleInviteApp({
+    request:new Request('https://example.test/api/v1/invites/rankings'),
+    env:{DB:f.DB},uid:'alice',path:'/api/v1/invites/rankings',cors:{},reply,fail
+  });
+  assert.equal(response.status,200);
+  const result=await response.json();
+  assert.equal(result.period,'monthly');
+  assert.equal(result.prize_status,'not_configured');
+  assert.deepEqual(result.leaders.map(r=>r.id),['10000001','10000002']);
+  assert.deepEqual(result.leaders.map(r=>r.total_invites),[4,2]);
+  assert.equal(f.state.batches.length,0);
 });

@@ -296,8 +296,8 @@
   }
   // A gift is a relationship between two real people, not just an emoji
   // flying toward an anonymous seat. Small gifts appear above the chat dock;
-  // large gifts get a ten-second royal parade across the top of the room.
-  const FEATURED_GIFT_MIN_COINS=1000;
+  // only verified Luxury (catalog tab 1) gifts get a ten-second royal parade.
+  const FEATURED_GIFT_TAB=1;
   function giftPresentationCss(doc){
     if(doc.getElementById('sh-gift-presentation-style'))return;
     const style=doc.createElement('style');
@@ -1566,6 +1566,8 @@
     local.p.myRoom = window.A.myRoom || null;
     local.state = {...balance};
     try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local])); } catch (_) {}
+    // Show the real new-member referral offer after the authenticated home loads.
+    setTimeout(maybeShowNewUserInviteWelcome,2200);
     return local;
   }
 
@@ -2434,7 +2436,7 @@
       shownGiftEvents.add(id);
       if(shownGiftEvents.size>100)shownGiftEvents.clear();
       queueGiftPresentation(frame,event);
-      if(giftEventValue(event)>=FEATURED_GIFT_MIN_COINS)
+      if(Number(event.tab)===FEATURED_GIFT_TAB)
         queueGiftPresentation(frame,event,true);
     }
     async function pollGiftEvents(ownTransactionId=null){
@@ -4051,44 +4053,320 @@
       await showVerifiedDailySheet();
     }finally{dailyClaimBusy=false;}
   }
+  function verifiedInviteStyles(){
+    if(document.getElementById('sharika-invite-royal-style'))return;
+    const style=document.createElement('style');
+    style.id='sharika-invite-royal-style';
+    style.textContent=[
+      '#sh-invite-page{position:fixed;inset:0;z-index:2147483500;overflow-y:auto;',
+      'background:radial-gradient(circle at 50% -12%,#a535c977,transparent 47%),',
+      'linear-gradient(180deg,#3c086d,#25074a 57%,#150934);color:#fff9dc;',
+      'padding:calc(16px + env(safe-area-inset-top,0px)) 12px ',
+      'calc(95px + env(safe-area-inset-bottom,0px));box-sizing:border-box;',
+      'font-family:inherit;overscroll-behavior:contain}',
+      '#sh-invite-page *{box-sizing:border-box}',
+      '#sh-invite-page .sh-invite-head{display:flex;align-items:center;gap:10px;',
+      'margin-bottom:13px}',
+      '#sh-invite-page .sh-invite-back{width:42px;height:42px;border-radius:50%;',
+      'background:#240d43;border:2px solid #f7d771;color:#ffe6a6;font-size:25px}',
+      '#sh-invite-page h1{font-size:23px;margin:0;color:#fff0b4;line-height:1.2}',
+      '#sh-invite-page .sh-invite-kicker{letter-spacing:2px;font-size:10px;',
+      'font-weight:900;color:#ffc76c}',
+      '#sh-invite-page .sh-invite-panel{position:relative;padding:18px 13px;',
+      'border:3px solid #f4cb64;border-radius:24px;margin:12px 0 18px;',
+      'background:radial-gradient(ellipse at 50% 0%,#8c3eacaa,transparent 60%),',
+      'linear-gradient(135deg,#501279ee,#250b55f5);',
+      'box-shadow:inset 0 2px #fff7,0 10px 0 #6a3688,0 16px 29px #0b051bb8}',
+      '#sh-invite-page .sh-invite-panel::before{content:"✦  👑  ✦";',
+      'display:block;text-align:center;margin:-13px auto 7px;color:#ffe087;',
+      'font-size:21px;letter-spacing:8px;text-shadow:0 2px 7px #efb321b8}',
+      '#sh-invite-page .sh-invite-title{text-align:center;font-size:20px;',
+      'font-weight:900;color:#ffdfa1;margin:0 0 9px;',
+      'text-shadow:0 2px #3e155b,0 0 15px #ffbd4c88}',
+      '#sh-invite-page .sh-invite-sub{font-size:12px;line-height:1.45;',
+      'color:#eddbff;text-align:center;margin:0 0 13px}',
+      '#sh-invite-page .sh-invite-rewards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));',
+      'gap:8px;margin:13px 0}',
+      '#sh-invite-page .sh-invite-reward{min-width:0;text-align:center;border:1px solid #ffe39b;',
+      'border-radius:17px;padding:10px 4px;background:linear-gradient(150deg,#7435a1,#3a1466);',
+      'box-shadow:inset 0 2px #ffffff4e,0 5px #1d0e40}',
+      '#sh-invite-page .sh-invite-reward span{display:block;font-size:25px;margin-bottom:6px}',
+      '#sh-invite-page .sh-invite-reward strong{display:block;font-size:clamp(13px,4vw,20px);',
+      'color:#ffeb7e;overflow-wrap:anywhere}',
+      '#sh-invite-page .sh-invite-reward small{display:block;margin-top:4px;',
+      'font-size:10px;color:#ebd6ff}',
+      '#sh-invite-page .sh-invite-code{display:flex;align-items:center;gap:10px;',
+      'border:2px solid #ffca66;border-radius:19px;padding:10px;',
+      'background:#2b104f;margin:15px 0}',
+      '#sh-invite-page .sh-invite-code div{flex:1;min-width:0}',
+      '#sh-invite-page .sh-invite-code small{display:block;color:#bca8d9}',
+      '#sh-invite-page .sh-invite-code strong{font-size:24px;color:#ffe33a;letter-spacing:1px}',
+      '#sh-invite-page .sh-invite-gold{border:2px solid #fff0a0;color:#512300;',
+      'background:linear-gradient(170deg,#fff29e,#ffbf33 53%,#d97a13);',
+      'border-radius:999px;padding:10px 18px;font-size:14px;font-weight:900;',
+      'box-shadow:inset 0 2px #fff8,0 5px #8d421b;cursor:pointer}',
+      '#sh-invite-page .sh-invite-share{display:block;width:100%;margin:12px 0;',
+      'font-size:17px;padding:13px 16px}',
+      '#sh-invite-page .sh-invite-tabs{display:grid;grid-template-columns:1fr 1fr;',
+      'gap:5px;border:1px solid #e3b0f5;border-radius:17px;padding:4px;background:#1d0b3c}',
+      '#sh-invite-page .sh-invite-tabs button{border:0;border-radius:13px;',
+      'font-size:13px;font-weight:900;padding:11px 4px;background:transparent;color:#d7b2eb}',
+      '#sh-invite-page .sh-invite-tabs button.on{background:linear-gradient(#ffe988,#edaa21);',
+      'color:#522447;box-shadow:0 3px #874619}',
+      '#sh-invite-page .sh-invite-stats{display:grid;grid-template-columns:1fr 1fr;',
+      'gap:8px;margin:13px 0}',
+      '#sh-invite-page .sh-invite-stat{text-align:center;background:#4e258555;',
+      'border:1px solid #ffc87b88;padding:12px 6px;border-radius:16px}',
+      '#sh-invite-page .sh-invite-stat strong{display:block;font-size:21px;color:#ffe38e}',
+      '#sh-invite-page .sh-invite-stat small{font-size:11px;color:#decaed}',
+      '#sh-invite-page .sh-invite-rule{font-size:12px;line-height:1.65;color:#eadcf9;',
+      'padding:9px 12px;border-left:3px solid #ffce7f;margin:7px 0;background:#1d0a3680}',
+      '#sh-invite-page .sh-invite-entry{width:100%;padding:14px 12px;',
+      'border:2px solid #ffd75a;border-radius:15px;background:#2a124f;',
+      'color:white;font-size:17px;outline:0;margin:9px 0}',
+      '#sh-invite-page .sh-invite-entry::placeholder{color:#b9a0cb}',
+      '#sh-invite-page .sh-invite-rankrow{display:flex;align-items:center;gap:11px;',
+      'border:1px solid #a566d9;border-radius:14px;padding:10px;margin:7px 0;',
+      'background:linear-gradient(100deg,#583186,#32145d)}',
+      '#sh-invite-page .sh-invite-rankrow span{min-width:35px;color:#ffd875;font-weight:900}',
+      '#sh-invite-page .sh-invite-rankrow b{flex:1;min-width:0;font-size:12px}',
+      '#sh-invite-page .sh-invite-rankrow small{display:block;color:#dcbcf0}',
+      '#sh-invite-page .sh-invite-rankrow em{font-style:normal;color:#ffe082;font-weight:900}',
+      '#sh-invite-page .sh-invite-alert{font-size:12px;color:#ffe2a1;',
+      'padding:11px;border-radius:12px;background:#120b2d;border:1px solid #ffdc7b77}',
+      '#sh-invite-newbie{position:fixed;inset:0;z-index:2147483550;',
+      'display:flex;align-items:center;justify-content:center;padding:18px;',
+      'background:#080319d9;backdrop-filter:blur(8px)}',
+      '#sh-invite-newbie .sh-invite-welcome{position:relative;width:min(100%,420px);',
+      'max-height:93vh;overflow-y:auto;text-align:center;padding:26px 19px;',
+      'border:3px solid #ffe493;border-radius:32px;',
+      'background:radial-gradient(circle at 50% 0%,#eb7b3f80,transparent 45%),',
+      'linear-gradient(150deg,#751a54,#38104d 63%,#1a0f44);',
+      'box-shadow:0 0 35px #eaa84988,inset 0 3px #fff8}',
+      '#sh-invite-newbie .sh-invite-chests{font-size:35px;letter-spacing:5px;margin:12px 0}',
+      '#sh-invite-newbie h2{font-size:24px;margin:6px 0;color:#ffeaad}',
+      '#sh-invite-newbie p{font-size:13px;line-height:1.5;color:#fae8f5}',
+      '#sh-invite-newbie .sh-invite-welcome-close{position:absolute;right:11px;top:9px;',
+      'background:transparent;border:0;color:#ffe7aa;font-size:28px}',
+      '#sh-invite-newbie .sh-invite-welcome-input{width:100%;margin:12px 0;',
+      'padding:14px;border:1px solid #ffdc80;border-radius:15px;',
+      'background:#39134b;color:#fff;font-size:16px;text-align:center}',
+      '#sh-invite-newbie .sh-invite-gold{border:2px solid #ffeca3;border-radius:28px;',
+      'padding:12px;color:#5e2500;background:linear-gradient(#ffe987,#f6a322,#d8730d);',
+      'font-size:16px;font-weight:900;box-shadow:inset 0 2px #fff9,0 5px #722d22}',
+      '#sh-invite-newbie .sh-invite-gold:disabled{opacity:.65}',
+      '@media(max-width:350px){#sh-invite-page .sh-invite-rewards{gap:4px}',
+      '#sh-invite-page .sh-invite-reward{padding:8px 2px}}'
+    ].join('');
+    document.head.appendChild(style);
+  }
+  async function redeemVerifiedInvite(code){
+    if(!/^[0-9]{8}$/.test(String(code||'')))
+      throw new Error('Enter the full 8-digit invitation code');
+    const result=await api('POST','/invites/redeem',{invite_code:String(code)});
+    if(!result?.claimed)throw new Error('Invitation could not be confirmed');
+    await reloadWallet();
+    return result;
+  }
+  function bindInviteRedeem(root){
+    const button=root.querySelector('#sh-invite-redeem');
+    const field=root.querySelector('#sh-invite-redeem-code');
+    const status=root.querySelector('#sh-invite-redeem-status');
+    if(!button||!field)return;
+    button.onclick=async()=>{
+      button.disabled=true;
+      if(status)status.textContent='Checking invitation…';
+      try{
+        const result=await redeemVerifiedInvite(field.value.trim());
+        toast('Invite verified! '+Number(result.invitee_extra_coins||0).toLocaleString('en-US')+
+          ' bonus coins added ✓');
+        if(document.getElementById('sh-invite-page'))await showVerifiedInviteSheet();
+      }catch(error){
+        if(status)status.textContent='Could not claim: '+errText(error);
+        button.disabled=false;
+      }
+    };
+  }
+  async function maybeShowNewUserInviteWelcome(){
+    if(!session||!profile||document.getElementById('sh-invite-newbie'))return;
+    const publicId=String(profile.public_id||'');
+    if(!/^[0-9]{8}$/.test(publicId))return;
+    const seenKey='sh-invite-welcome-v1-'+publicId;
+    try{if(localStorage.getItem(seenKey)==='seen')return;}catch(_){}
+    let info;
+    try{info=await api('GET','/invites');}catch(_){return;}
+    if(!session||String(profile?.public_id)!==publicId||!info?.new_user)return;
+    verifiedInviteStyles();
+    const overlay=document.createElement('section');
+    overlay.id='sh-invite-newbie';
+    overlay.setAttribute('role','dialog');
+    overlay.setAttribute('aria-modal','true');
+    overlay.setAttribute('aria-label','New member welcome bonus');
+    const extra=Math.max(0,Number(info.signup_invitee_reward||0)-2000);
+    overlay.innerHTML='<div class="sh-invite-welcome">'+
+      '<button class="sh-invite-welcome-close" type="button" aria-label="Close">×</button>'+
+      '<div style="font-size:30px">✨ 👑 ✨</div><h2>New User Royal Bonus</h2>'+
+      '<div class="sh-invite-chests">🧰 🎁 💎 🏆</div>'+
+      '<p>Welcome to Sharika! New members can unlock a one-time invite reward '+
+      'through a verified friend.</p>'+
+      '<div style="color:#ffe27b;font-size:28px;font-weight:900">🪙 '+
+      Number(info.signup_invitee_reward||0).toLocaleString('en-US')+'</div>'+
+      '<p>Total starting coins with a valid friend invite</p>'+
+      (info.claim_eligible?'<p>Have an invitation code? Claim your remaining '+
+       extra.toLocaleString('en-US')+' bonus coins within '+
+       Number(info.claim_window_hours||48)+' hours of registering.</p>'+
+       '<input class="sh-invite-welcome-input" inputmode="numeric" maxlength="8" '+
+       'autocomplete="off" placeholder="Enter 8-digit invitation code" '+
+       'aria-label="Invitation code">'+
+       '<p id="sh-invite-welcome-error" aria-live="polite"></p>'+
+       '<button class="sh-invite-gold" id="sh-invite-welcome-claim" type="button" '+
+       'style="width:100%">🎁 Confirm & Claim</button>':
+       '<p>'+(info.invited_by?'✓ Your invitation is already linked.':
+        'Your invitation claim period has ended.')+'</p>')+
+      '<button class="sh-invite-gold" id="sh-invite-welcome-explore" type="button" '+
+      'style="width:100%;margin-top:13px">👑 Explore Invite Rewards</button>'+
+      '<p style="margin:12px 0 0;font-size:11px">Other chest, rank and cash prizes '+
+      'are not enabled until the official reward rules are announced.</p></div>';
+    document.body.appendChild(overlay);
+    try{localStorage.setItem(seenKey,'seen');}catch(_){}
+    overlay.querySelector('.sh-invite-welcome-close').onclick=()=>overlay.remove();
+    overlay.querySelector('#sh-invite-welcome-explore').onclick=()=>{
+      overlay.remove();showVerifiedInviteSheet();
+    };
+    const claim=overlay.querySelector('#sh-invite-welcome-claim');
+    if(claim)claim.onclick=async()=>{
+      claim.disabled=true;
+      const errorView=overlay.querySelector('#sh-invite-welcome-error');
+      try{
+        const code=overlay.querySelector('.sh-invite-welcome-input').value.trim();
+        const redeemed=await redeemVerifiedInvite(code);
+        overlay.remove();
+        toast('Welcome! '+Number(redeemed.invitee_extra_coins).toLocaleString('en-US')+
+          ' invite bonus coins added ✓');
+      }catch(error){
+        if(errorView)errorView.textContent=errText(error);
+        claim.disabled=false;
+      }
+    };
+  }
   async function showVerifiedInviteSheet(){
     if(!session){window.showAuth('welcome');return;}
-    window.openSheet('<h3>🤝 Invite a friend</h3>'+
-      '<div id="sharika-invite-data" aria-live="polite">Loading verified invites…</div>');
-    const root=document.getElementById('sharika-invite-data');
-    if(!root)return;
+    verifiedInviteStyles();
+    document.getElementById('sh-invite-page')?.remove();
+    const root=document.createElement('section');
+    root.id='sh-invite-page';
+    root.innerHTML='<div class="sh-invite-head">'+
+      '<button class="sh-invite-back" type="button" aria-label="Close invites">‹</button>'+
+      '<div><div class="sh-invite-kicker">✦ SHARIKA ROYAL REWARDS ✦</div>'+
+      '<h1>👑 Invite Friends</h1></div></div>'+
+      '<div class="sh-invite-panel" id="sharika-invite-data" aria-live="polite">'+
+      'Loading verified invite rewards…</div>';
+    document.body.appendChild(root);
+    root.querySelector('.sh-invite-back').onclick=()=>root.remove();
+    const panel=root.querySelector('#sharika-invite-data');
     try{
       const result=await api('GET','/invites');
       if(!root.isConnected)return;
       const invite=String(result.invite_code||'');
       if(!/^[0-9]{8}$/.test(invite))throw new Error('Verified ID unavailable');
-      const referrals=(result.referrals||[]).map(r=>
-        '<div class="row"><span>ID '+sellerEscape(r.public_id)+'</span>'+
-        '<b>'+sellerEscape(r.name)+'</b></div>').join('');
-      root.innerHTML='<p class="n">New invite signup: you earn 5,000 coins; your friend starts with 10,000 coins. You also earn 5% of their verified coin-seller recharges.</p>'+
-        '<div class="idp" style="margin-top:12px">Your invite code: <b>'+
-        sellerEscape(invite)+'</b></div>'+
-        '<div class="row"><span>Friends who joined</span><b>'+
-        Number(result.total_invites||0).toLocaleString('en-US')+'</b></div>'+
-        '<div class="row"><span>Signup invite rewards earned</span><b>'+
-        Number(result.signup_bonus_coins||0).toLocaleString('en-US')+' coins</b></div>'+
-        '<div class="row"><span>5% recharge rewards earned</span><b>'+
-        Number(result.recharge_bonus_coins||0).toLocaleString('en-US')+' coins</b></div>'+
-        (result.invited_by?'<p class="n">You joined with code '+sellerEscape(result.invited_by)+'</p>':'')+
-        (referrals?'<div class="card" style="padding:12px;margin-top:12px">'+
-        '<b>Verified referrals</b>'+referrals+'</div>':'')+
-        '<button class="big" id="sharika-share-invite">📤 Share code</button>';
-      document.getElementById('sharika-share-invite')?.addEventListener('click',async()=>{
-        const message='Join me on Sharika Voice Chat! Enter my invite code '+invite+
-          ' when creating your account.';
+      const fmt=n=>Math.max(0,Number(n)||0).toLocaleString('en-US');
+      const total=fmt(result.total_invites);
+      const inviteReward=fmt(result.signup_inviter_reward);
+      const newcomerReward=fmt(result.signup_invitee_reward);
+      const percent=Number(result.recharge_bonus_percent)||0;
+      const history=(result.referrals||[]).slice(0,50).map(r=>
+        '<div class="sh-invite-rankrow"><span>✓</span><b>'+
+        sellerEscape(r.name||'Member')+'<small>ID '+sellerEscape(r.public_id)+
+        '</small></b><em>Joined</em></div>').join('');
+      panel.innerHTML='<h2 class="sh-invite-title">✨ Invite once, earn together</h2>'+
+        '<p class="sh-invite-sub">Share your verified invitation code with friends. '+
+        'Every real account can be linked to one inviter only.</p>'+
+        '<div class="sh-invite-rewards">'+
+        '<div class="sh-invite-reward"><span>🪙</span><strong>'+inviteReward+
+        '</strong><small>Your signup bonus</small></div>'+
+        '<div class="sh-invite-reward"><span>💝</span><strong>'+newcomerReward+
+        '</strong><small>Friend’s total starting coins</small></div>'+
+        '<div class="sh-invite-reward"><span>👑</span><strong>'+percent+
+        '%</strong><small>Verified recharge bonus</small></div></div>'+
+        '<div class="sh-invite-code"><div><small>YOUR INVITE CODE</small>'+
+        '<strong>'+sellerEscape(invite)+'</strong></div>'+
+        '<button class="sh-invite-gold" id="sharika-copy-invite" type="button">COPY</button></div>'+
+        '<button class="sh-invite-gold sh-invite-share" id="sharika-share-invite" type="button">'+
+        '📤 Invite friends · Share</button>'+
+        '<div class="sh-invite-tabs"><button type="button" id="sh-invite-tab-overview" class="on">'+
+        'My Invites</button><button type="button" id="sh-invite-tab-ranking">'+
+        '🏆 Code Rankings</button></div>'+
+        '<div id="sh-invite-tab-body"><div class="sh-invite-stats">'+
+        '<div class="sh-invite-stat"><strong>'+total+'</strong><small>Total invitations</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+fmt(result.signup_bonus_coins)+
+        '</strong><small>Signup coins earned</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+fmt(result.recharge_bonus_coins)+
+        '</strong><small>Recharge coins earned</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+fmt(Number(result.signup_bonus_coins||0)+
+        Number(result.recharge_bonus_coins||0))+
+        '</strong><small>Total invite reward coins</small></div></div>'+
+        '<h2 class="sh-invite-title">How invitation works</h2>'+
+        '<div class="sh-invite-rule">① Copy or share your 8-digit ID invite code.</div>'+
+        '<div class="sh-invite-rule">② Your friend creates a verified Sharika account.</div>'+
+        '<div class="sh-invite-rule">③ They enter your code during signup or within '+
+        Number(result.claim_window_hours||48)+' hours of account creation.</div>'+
+        '<div class="sh-invite-rule">④ After verification, one-time referral rewards are '+
+        'recorded in the actual coin wallets.</div>'+
+        '<div class="sh-invite-rule">⑤ Approved coin-seller recharges earn the inviter '+
+        percent+'% under the current verified reward rules.</div>'+
+        (result.claim_eligible?'<div class="sh-invite-panel">'+
+        '<h2 class="sh-invite-title">🎁 New User Bonus</h2>'+
+        '<p class="sh-invite-sub">Have a friend’s invite code? Enter it before your window expires.</p>'+
+        '<input id="sh-invite-redeem-code" class="sh-invite-entry" maxlength="8" '+
+        'inputmode="numeric" autocomplete="off" placeholder="Enter 8-digit invitation code">'+
+        '<button type="button" id="sh-invite-redeem" class="sh-invite-gold sh-invite-share">'+
+        'Confirm invite code</button><p class="sh-invite-alert" id="sh-invite-redeem-status">'+
+        'The same account cannot claim two referral bonuses.</p></div>':
+        result.invited_by?'<p class="sh-invite-alert">✓ You joined with ID '+
+          sellerEscape(result.invited_by)+'</p>':'')+
+        '<h2 class="sh-invite-title">Verified invited friends</h2>'+
+        (history||'<p class="sh-invite-alert">No verified referrals yet.</p>')+
+        '<p class="sh-invite-alert">Rank rewards and USD prizes are not enabled until '+
+        'the official admin rules are confirmed.</p></div>';
+      root.querySelector('#sharika-copy-invite').onclick=async()=>{
+        try{await native('copyInviteCode',{code:invite});toast('Invite code copied ✓');}
+        catch(error){toast('Copy unavailable: '+errText(error));}
+      };
+      root.querySelector('#sharika-share-invite').onclick=async()=>{
+        const text='Join me on Sharika Voice Chat! Use my invite code '+invite+
+          ' during registration or within '+Number(result.claim_window_hours||48)+
+          ' hours of creating your account.';
+        try{await native('shareInvite',{text});}
+        catch(error){toast('Share unavailable: '+errText(error));}
+      };
+      const body=root.querySelector('#sh-invite-tab-body');
+      const overview=body.innerHTML;
+      const overviewButton=root.querySelector('#sh-invite-tab-overview');
+      const rankButton=root.querySelector('#sh-invite-tab-ranking');
+      overviewButton.onclick=()=>{
+        overviewButton.classList.add('on');rankButton.classList.remove('on');
+        body.innerHTML=overview;bindInviteRedeem(body);
+      };
+      rankButton.onclick=async()=>{
+        overviewButton.classList.remove('on');rankButton.classList.add('on');
+        body.innerHTML='<p class="sh-invite-alert">Loading verified monthly ranking…</p>';
         try{
-          if(navigator.share)await navigator.share({text:message});
-          else if(navigator.clipboard)await navigator.clipboard.writeText(message);
-          else{toast('Invite code: '+invite);return;}
-          toast('Invite code shared');
-        }catch(_){toast('Invite code: '+invite);}
-      });
-    }catch(error){if(root.isConnected)root.textContent='Invite tracking unavailable: '+errText(error);}
+          const ranking=await api('GET','/invites/rankings');
+          if(!body.isConnected||!rankButton.classList.contains('on'))return;
+          body.innerHTML='<div class="sh-invite-panel">'+
+            '<h2 class="sh-invite-title">🏆 Monthly Invitation Ranking</h2>'+
+            '<p class="sh-invite-sub">Real accounts invited this month · UTC</p>'+
+            ((ranking.leaders||[]).map(r=>'<div class="sh-invite-rankrow">'+
+              '<span>#'+Number(r.rank)+'</span><b>'+sellerEscape(r.name||'Member')+
+              '<small>ID '+sellerEscape(r.id)+'</small></b><em>'+
+              fmt(r.total_invites)+' invited</em></div>').join('')||
+              '<p class="sh-invite-alert">No ranking entries yet.</p>')+
+            '<p class="sh-invite-alert">Prizes will appear after official '+
+            'administrator approval. No USD prize is promised.</p></div>';
+        }catch(error){if(body.isConnected)body.textContent='Ranking unavailable: '+errText(error);}
+      };
+      bindInviteRedeem(body);
+    }catch(error){if(panel.isConnected)panel.textContent='Invite tracking unavailable: '+errText(error);}
   }
   window.dailySheet=showVerifiedDailySheet;
   window.inviteSheet=showVerifiedInviteSheet;
@@ -5678,6 +5956,8 @@
   window.logout=function(){
     if(window.cur)window.leaveRoom();
     if(presenceTimer){clearInterval(presenceTimer);presenceTimer=null;}
+    document.getElementById('sh-invite-newbie')?.remove();
+    document.getElementById('sh-invite-page')?.remove();
     session=null;profile=null;balance={coins:0,dia:0,xp:0};
     native('signOut').catch(()=>{});
     cleanLocalFakeState();

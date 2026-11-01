@@ -460,6 +460,34 @@ public final class SharikaActivity extends Activity {
                 break;
             case "api": callStagingApi(id, data); break;
             case "pickProfilePhoto": pickNativeProfilePhoto(id); break;
+            case "copyInviteCode":
+                String inviteCode = data.optString("code", "");
+                if (!inviteCode.matches("[0-9]{8}")) {
+                    sendResult(id, result(false, null, "invalid_invite_code"));
+                    break;
+                }
+                android.content.ClipboardManager clipboard =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Sharika invite code", inviteCode));
+                sendResult(id, result(true, object(), null));
+                break;
+            case "shareInvite":
+                String invitation = data.optString("text", "");
+                if (invitation.length() < 10 || invitation.length() > 320 ||
+                    !invitation.startsWith("Join me on Sharika")) {
+                    sendResult(id, result(false, null, "invalid_invite_message"));
+                    break;
+                }
+                Intent share = new Intent(Intent.ACTION_SEND);
+                share.setType("text/plain");
+                share.putExtra(Intent.EXTRA_TEXT, invitation);
+                try {
+                    startActivity(Intent.createChooser(share, "Invite friends to Sharika"));
+                    sendResult(id, result(true, object(), null));
+                } catch (Exception error) {
+                    sendResult(id, result(false, null, "share_unavailable"));
+                }
+                break;
             default: sendResult(id, result(false, null, "unsupported_action"));
         }
     }
@@ -620,6 +648,8 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/games")) return method.equals("GET");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
+        if (path.equals("/api/v1/invites/rankings")) return method.equals("GET");
+        if (path.equals("/api/v1/invites/redeem")) return method.equals("POST");
         if (path.equals("/api/v1/daily/check-in")) return method.equals("POST");
         if (path.equals("/api/v1/daily/tasks/claim")) return method.equals("POST");
         if (path.equals("/api/v1/premium")) return method.equals("GET");

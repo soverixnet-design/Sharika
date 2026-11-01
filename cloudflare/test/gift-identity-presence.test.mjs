@@ -33,7 +33,8 @@ test('verified gift feed provides identities and the public receipt spells out b
 });
 
 test('top gift parade lasts 10 seconds with avatars and lower receipts remain visible',()=>{
-  assert.match(adapter,/FEATURED_GIFT_MIN_COINS=1000/);
+  assert.match(adapter,/FEATURED_GIFT_TAB=1/);
+  assert.match(adapter,/Number\(event\.tab\)===FEATURED_GIFT_TAB/);
   assert.match(adapter,/animation:shGiftParade 10s linear forwards/);
   assert.match(adapter,/giftParticipant\(doc,item\.sender_name,item\.sender_id,item\.sender_pic\)/);
   assert.match(adapter,/giftParticipant\(doc,item\.recipient_name,item\.recipient_id,item\.recipient_pic\)/);
