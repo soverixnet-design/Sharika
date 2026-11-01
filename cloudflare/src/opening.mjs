@@ -61,7 +61,9 @@ async function getSettings(db){
 }
 
 async function weeklyCandidates(db,week){
-  const common='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,';
+  const special="(SELECT s.special_id FROM sharika_special_ids s WHERE s.auth_uid=u.auth_uid "+
+    "AND (s.expires_at IS NULL OR s.expires_at>datetime('now')) LIMIT 1) AS special_id,";
+  const common='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+special;
   const good=" JOIN sharika_users u ON u.auth_uid=t.user_uid WHERE u.status='active' ";
   const ending=' GROUP BY t.user_uid ORDER BY total DESC,u.public_no ASC LIMIT 15';
   const sent=common+'SUM(t.coins) AS total FROM '+
@@ -87,7 +89,9 @@ async function weeklyCandidates(db,week){
     if(!winner)continue;
     used.add(winner.public_no);
     chosen.push({category:CATEGORIES[category][0],title:CATEGORIES[category][1],
-      public_id:asId(winner.public_no),name:winner.name,pic:winner.pic||null,
+      public_id:asId(winner.public_no),
+      display_id:winner.special_id||asId(winner.public_no),
+      name:winner.name,pic:winner.pic||null,
       total:Number(winner.total)||0,
       wealth_level:winner.wealth_level,charm_level:winner.charm_level});
   }
@@ -107,8 +111,10 @@ export async function handleOpeningApp({request,env,uid,path,cors,reply,fail}){
   if(settings.mode==='custom'){
     let user=null;
     if(settings.custom_user_id){
-      user=await env.DB.prepare('SELECT public_no,name,pic,wealth_level,charm_level FROM sharika_users '+
-        "WHERE public_no=? AND status='active'")
+      user=await env.DB.prepare('SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+
+        "(SELECT s.special_id FROM sharika_special_ids s WHERE s.auth_uid=u.auth_uid "+
+        "AND (s.expires_at IS NULL OR s.expires_at>datetime('now')) LIMIT 1) AS special_id "+
+        "FROM sharika_users u WHERE u.public_no=? AND u.status='active'")
         .bind(Number(settings.custom_user_id)).first();
       if(!user)return reply({show:false,reason:'custom_user_unavailable'},200,cors);
     }
@@ -116,6 +122,7 @@ export async function handleOpeningApp({request,env,uid,path,cors,reply,fail}){
       return reply({show:false,reason:'custom_not_set'},200,cors);
     candidates=[{category:'custom',title:settings.custom_title||'SHARIKA STAR',
       subtitle:settings.custom_subtitle||'',public_id:user?asId(user.public_no):'',
+      display_id:user?(user.special_id||asId(user.public_no)):'',
       name:user?.name||'',pic:settings.custom_image_url||user?.pic||null,
       total:null,wealth_level:user?.wealth_level??null,charm_level:user?.charm_level??null}];
   }else candidates=await weeklyCandidates(env.DB,week);

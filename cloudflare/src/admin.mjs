@@ -55,6 +55,8 @@ export async function readGiftRankings(db, period, kind) {
   // cosmetics, not a locally fabricated frame/medal. Correlated lookups use
   // the unique (auth_uid,kind) index and keep the one-query pagination shape.
   const appearance=publicAppearanceSelect()+',';
+  const special="(SELECT s.special_id FROM sharika_special_ids s WHERE s.auth_uid=u.auth_uid "+
+    "AND (s.expires_at IS NULL OR s.expires_at>datetime('now')) LIMIT 1) AS special_id,";
   let sql;
   if(kind==='room') {
     sql='SELECT r.id AS room_id,r.name,r.emoji,'+value+' AS total '+
@@ -62,7 +64,7 @@ export async function readGiftRankings(db, period, kind) {
       'WHERE e.created_at>=? AND e.created_at<? '+
       'GROUP BY e.room_id ORDER BY total DESC,r.id ASC LIMIT 50';
   } else if(kind==='lucky') {
-    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+appearance+
+    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+special+appearance+
       'SUM(o.payout_coins) AS total FROM sharika_lucky_gift_outcomes o '+
       'JOIN sharika_users u ON u.auth_uid=o.sender_uid '+
       'WHERE o.created_at>=? AND o.created_at<? AND o.payout_coins>0 '+
@@ -70,7 +72,7 @@ export async function readGiftRankings(db, period, kind) {
   } else if(kind==='recharge') {
     // Seller transfers and finance-approved receipts are the only recharge
     // sources. Do not count welcome coins, referral bonuses or game payouts.
-    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+appearance+
+    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+special+appearance+
       'SUM(l.delta) AS total FROM sharika_wallet_ledger l '+
       'JOIN sharika_users u ON u.auth_uid=l.auth_uid '+
       "WHERE l.created_at>=? AND l.created_at<? AND l.currency='coins' "+
@@ -78,7 +80,8 @@ export async function readGiftRankings(db, period, kind) {
       'GROUP BY l.auth_uid ORDER BY total DESC,u.public_no ASC LIMIT 50';
   } else {
     const participant=kind==='rich'?'e.sender_uid':'e.recipient_uid';
-    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+appearance+value+' AS total '+
+    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+special+
+      appearance+value+' AS total '+
       'FROM sharika_gift_events e JOIN sharika_users u ON u.auth_uid='+participant+' '+
       'WHERE e.created_at>=? AND e.created_at<? '+
       'GROUP BY '+participant+' ORDER BY total DESC,u.public_no ASC LIMIT 50';
@@ -87,7 +90,8 @@ export async function readGiftRankings(db, period, kind) {
   const leaders=rows.map((row,i)=>kind==='room'
     ? {rank:i+1,room_id:row.room_id,name:row.name,emoji:row.emoji||'🎙️',
        total:Number(row.total)||0}
-    : {rank:i+1,public_id:id(row.public_no),name:row.name,pic:row.pic||null,
+    : {rank:i+1,public_id:id(row.public_no),display_id:row.special_id||id(row.public_no),
+       name:row.name,pic:row.pic||null,
        total:Number(row.total)||0,wealth_level:row.wealth_level,
        charm_level:row.charm_level,
        frame_style:row.equipped_frame_style??row.frame_style??'',

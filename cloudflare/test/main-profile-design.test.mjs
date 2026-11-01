@@ -7,6 +7,8 @@ const html=readFileSync(new URL('app/index.html',root),'utf8');
 const android=readFileSync(new URL('android-staging/staging-connection.js',root),'utf8');
 const gradle=readFileSync(new URL('android-staging/app/build.gradle',root),'utf8');
 const royalCss=readFileSync(new URL('app/royal-profile.css',root),'utf8');
+const rankings=readFileSync(new URL('cloudflare/src/admin.mjs',root),'utf8');
+const opening=readFileSync(new URL('cloudflare/src/opening.mjs',root),'utf8');
 
 test('owner royal profile artwork is shipped as real Android assets',()=>{
   assert.match(royalCss,/url\('\.\/royal-profile-background\.jpg'\)/);
@@ -47,4 +49,15 @@ test('Account & Features stays vertically stacked with six wired destinations',(
   assert.match(android,/styleSelectionSheet\('entry_style'\)/);
   assert.match(android,/showPremiumSheet\(\)\.catch/);
   assert.match(android,/openVerifiedRankProfile\(profile\.public_id\)/);
+});
+
+test('active Special ID is the copied and displayed identity outside Invite',()=>{
+  assert.match(android,/copy\.id='sh-copy-own-id'/);
+  assert.match(android,/navigator\.clipboard\.writeText\(displayId\)/);
+  assert.match(android,/id\.textContent='ID: '\+\(data\.person\.display_id\|\|data\.person\.public_id\)/);
+  assert.match(android,/leader\.display_id\|\|leader\.public_id/);
+  assert.match(android,/input\.placeholder='Enter member or Special ID'/);
+  assert.match(android,/const target=await api\('GET','\/users\/'\+entered\)/);
+  assert.match(rankings,/display_id:row\.special_id\|\|id\(row\.public_no\)/);
+  assert.match(opening,/display_id:winner\.special_id\|\|asId\(winner\.public_no\)/);
 });

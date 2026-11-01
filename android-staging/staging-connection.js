@@ -226,7 +226,8 @@
       person.append(photo,name);
       if(data.person.public_id){
         const id=document.createElement('div');id.className='sh-o-id';
-        id.textContent='ID: '+data.person.public_id;person.appendChild(id);
+        id.textContent='ID: '+(data.person.display_id||data.person.public_id);
+        person.appendChild(id);
       }
       const brand=document.createElement('div');brand.className='sh-o-brand';
       const originalLogo=document.querySelector('#sp img[data-logo]');
@@ -1120,7 +1121,7 @@
     const anchor=document.querySelector('#v-me .mid');
     if(!anchor)return;
     const displayId=String(profile?.special_id||profile?.display_id||profile?.public_id||'');
-    if(/^[0-9]{4,8}$/.test(displayId))anchor.textContent='ID '+displayId+' ▢';
+    if(/^[0-9]{4,8}$/.test(displayId))anchor.textContent='ID '+displayId;
     // Tapping the public ID opens the separate rich ID detail profile,
     // never redirects back to the wallet/settings Main Profile.
     anchor.setAttribute('role','button');anchor.tabIndex=0;
@@ -1132,11 +1133,24 @@
     };
     document.getElementById('sh-sovera-own-identity')?.remove();
     document.getElementById('sh-neon-own-id')?.remove();
+    document.getElementById('sh-copy-own-id')?.remove();
+    if(/^[0-9]{4,8}$/.test(displayId)){
+      const copy=document.createElement('button');
+      copy.id='sh-copy-own-id';copy.type='button';
+      copy.className='sh-copy-own-id';copy.textContent='▢';
+      copy.title='Copy my visible ID';copy.setAttribute('aria-label','Copy visible ID');
+      copy.onclick=async()=>{
+        try{await navigator.clipboard.writeText(displayId);toast('ID copied ✓');}
+        catch(_error){toast('Your ID: '+displayId);}
+      };
+      anchor.insertAdjacentElement('afterend',copy);
+    }
     if(profile?.special_id){
       const plaque=document.createElement('span');
       plaque.id='sh-neon-own-id';plaque.className='sh-neon-profile-id';
       plaque.textContent='Neon Special ID';
-      anchor.insertAdjacentElement('afterend',plaque);
+      const copy=document.getElementById('sh-copy-own-id');
+      (copy||anchor).insertAdjacentElement('afterend',plaque);
     }
     const medal=medalArt(profile?.medal_style);
     const tag=nameTagArt(profile?.name_tag_style);
@@ -3145,7 +3159,7 @@
             const button=frame.document.createElement('button');
             button.className='row';
             button.textContent=(listener.sharika_users.name||'Member')+
-              ' · ID '+listener.sharika_users.public_id;
+              ' · ID '+(listener.sharika_users.display_id||listener.sharika_users.public_id);
             button.onclick=async()=>{
               if(button.disabled)return;
               button.disabled=true;
@@ -4253,18 +4267,21 @@
         return;
       }
       const coinsText=value=>Number(value||0).toLocaleString('en-US');
+      const visibleSellerId=value=>String(value||'')===profile?.public_id?
+        (profile?.special_id||profile?.display_id||value):value;
       const transferEntries=rows=>(rows||[]).slice(0,30).map(t=>{
         const isSelf=t.sender_public_id===t.recipient_public_id;
         return '<div class="shw-entry"><strong>🪙 '+coinsText(t.coins)+' coins'+
           (isSelf?'<span class="shw-tag">SELF</span>':'')+'</strong>'+
-          'Transfer #'+sellerEscape(t.id)+' · ID '+sellerEscape(t.sender_public_id)+
-          ' → '+sellerEscape(t.recipient_public_id)+
+          'Transfer #'+sellerEscape(t.id)+' · ID '+
+          sellerEscape(visibleSellerId(t.sender_public_id))+
+          ' → '+sellerEscape(visibleSellerId(t.recipient_public_id))+
           (t.created_at?' · '+sellerEscape(t.created_at):'')+'</div>';
       }).join('')||'<div class="shw-empty">No transfers yet.</div>';
       const allocationEntries=(allocations.allocations||[]).slice(0,30).map(a=>
         '<div class="shw-entry"><strong>✨ +'+coinsText(a.coins)+' stock coins</strong>'+
-        'Allocation #'+sellerEscape(a.id)+' · Admin '+sellerEscape(a.sender_public_id)+
-        ' → Seller '+sellerEscape(a.seller_public_id)+
+        'Allocation #'+sellerEscape(a.id)+' · Admin '+sellerEscape(visibleSellerId(a.sender_public_id))+
+        ' → Seller '+sellerEscape(visibleSellerId(a.seller_public_id))+
         (a.created_at?' · '+sellerEscape(a.created_at):'')+'</div>'
       ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';
       root.innerHTML=
@@ -4272,14 +4289,15 @@
           '<div class="shw-eyebrow">🪙 Available seller stock</div>'+
           '<div class="shw-stock"><span id="sharika-seller-stock">'+
             coinsText(self.available_coins)+'</span> <small>coins</small></div>'+
-          '<div class="shw-id">✓ Verified seller · ID '+sellerEscape(self.public_id)+'</div>'+
+          '<div class="shw-id">✓ Verified seller · ID '+
+            sellerEscape(visibleSellerId(self.public_id))+'</div>'+
         '</section>'+
         '<section class="shw-section">'+
           '<h4 class="shw-title">✨ Recharge my ID or another user</h4>'+
           '<p class="shw-sub">Recharge any active Sharika ID, including your own. Coins are deducted from your assigned seller stock.</p>'+
           '<label class="shw-label" for="sharika-seller-target">Recipient user ID</label>'+
           '<div class="shw-control-row">'+
-            '<input class="shw-input" id="sharika-seller-target" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="8-digit user ID" aria-label="Recipient user ID">'+
+            '<input class="shw-input" id="sharika-seller-target" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Member or Special ID" aria-label="Recipient user ID">'+
             '<button class="shw-mini" id="sharika-seller-my-id" type="button">My ID</button>'+
           '</div>'+
           '<label class="shw-label" for="sharika-seller-amount">Amount in coins</label>'+
@@ -4306,10 +4324,10 @@
       const send=document.getElementById('sharika-seller-send');
       // A seller's own verified ID is the default recipient. Other users
       // remain reachable by entering their eight-digit ID explicitly.
-      if(targetField)targetField.value=/^[0-9]{8}$/.test(targetId)
-        ?targetId:self.public_id;
+      if(targetField)targetField.value=/^[0-9]{4,8}$/.test(targetId)
+        ?targetId:visibleSellerId(self.public_id);
       document.getElementById('sharika-seller-my-id')?.addEventListener('click',()=>{
-        if(targetField){targetField.value=self.public_id;targetField.focus();}
+        if(targetField){targetField.value=visibleSellerId(self.public_id);targetField.focus();}
       });
       root.querySelectorAll('[data-seller-amount]').forEach(button=>{
         button.addEventListener('click',()=>{
@@ -4333,12 +4351,12 @@
         return messages[code]||code;
       };
       if(send)send.addEventListener('click',async()=>{
-        const recipient=targetField?.value.trim()||'';
+        const entered=targetField?.value.trim()||'';
         const raw=amountField?.value.trim()||'';
         const amount=Number(raw);
-        if(!/^[0-9]{8}$/.test(recipient)||!/^[0-9]+$/.test(raw)||
+        if(!/^[0-9]{4,8}$/.test(entered)||!/^[0-9]+$/.test(raw)||
           !Number.isSafeInteger(amount)||amount<1||amount>1000000){
-          showNote('Enter a valid 8-digit ID and an amount from 1 to 1,000,000 coins.','error');
+          showNote('Enter a member or Special ID and 1 to 1,000,000 coins.','error');
           return;
         }
         if(amount>Number(self.available_coins)){
@@ -4349,12 +4367,14 @@
         let transferCommitted=false;
         try{
           showNote('Verifying recipient…','info');
-          const verified=await api('GET','/users/'+recipient);
-          if(String(verified.id)!==recipient)throw new Error('Recipient verification failed');
+          const verified=await api('GET','/users/'+entered);
+          const recipient=String(verified.id||'');
+          if(!/^[0-9]{8}$/.test(recipient))throw Error('Recipient verification failed');
+          const visibleRecipient=String(verified.display_id||entered);
           const isSelf=recipient===self.public_id;
           const message=isSelf?
-            'Recharge your own ID '+recipient+' with '+coinsText(amount)+' coins from seller stock?':
-            'Send '+coinsText(amount)+' coins to '+String(verified.name||'User')+' (ID '+recipient+')?';
+            'Recharge your own ID '+visibleRecipient+' with '+coinsText(amount)+' coins from seller stock?':
+            'Send '+coinsText(amount)+' coins to '+String(verified.name||'User')+' (ID '+visibleRecipient+')?';
           if(!window.confirm(message)){showNote('Recharge cancelled.','info');return;}
           const fingerprint=session.user.id+':'+recipient+':'+amount;
           const requestId=pendingSellerTransfer?.fingerprint===fingerprint
@@ -4370,7 +4390,7 @@
           if(stockLabel)stockLabel.textContent=coinsText(result.available_coins);
           if(amountField)amountField.value='';
           showNote((result.duplicate?'Already recorded: ':'Success! ')+
-            (result.self_recharge?'Your own wallet':'Recipient ID '+recipient)+
+            (result.self_recharge?'Your own wallet':'Recipient ID '+visibleRecipient)+
             ' received '+coinsText(amount)+' coins. Transfer #'+result.transfer_id+
             (Number(result.first_recharge_bonus_coins)>0?
               '. 🎁 First recharge bonus +'+coinsText(result.first_recharge_bonus_coins)+' coins':'')+
@@ -5955,8 +5975,9 @@
       const label=document.createElement('label');label.textContent='Recipient ID';
       label.style.cssText='display:block;color:#ffe1ad;margin:11px 0 5px;font-weight:800';
       const input=document.createElement('input');input.className='sh-bond-input';
-      input.inputMode='numeric';input.maxLength=8;input.placeholder='Enter exact 8-digit member ID';
-      input.value=initialTarget?.id||'';
+      input.inputMode='numeric';input.maxLength=8;
+      input.placeholder='Enter member or Special ID';
+      input.value=initialTarget?.display_id||initialTarget?.id||'';
       root.append(label,input);
       const frame=document.getElementById('rf')?.contentWindow;
       const suggestions=[...(frame?.seats||[])].filter(s=>s?.public_id&&s.public_id!==profile?.public_id);
@@ -5966,7 +5987,8 @@
         const blank=document.createElement('option');blank.value='';blank.textContent='Or choose a room member';
         chooser.appendChild(blank);
         for(const seat of suggestions){const option=document.createElement('option');
-          option.value=seat.public_id;option.textContent=seat.n+' · '+seat.public_id;
+          option.value=seat.display_id||seat.public_id;
+          option.textContent=seat.n+' · '+(seat.display_id||seat.public_id);
           chooser.appendChild(option);}
         chooser.onchange=()=>{if(chooser.value)input.value=chooser.value;};root.appendChild(chooser);
       }
@@ -5987,14 +6009,21 @@
           const send=document.createElement('button');send.type='button';send.className='sh-bond-button '+
             (selected==='friendship'?'blue':'');send.textContent='Send invite';
           send.onclick=async()=>{
-            const id=input.value.trim();
-            if(!/^[0-9]{8}$/.test(id)||id===profile?.public_id){
-              toast('Choose another member’s valid 8-digit ID');return;}
-            const fingerprint=id+':'+gift.id;
-            const requestId=pendingBondInvite?.fingerprint===fingerprint?
-              pendingBondInvite.requestId:nextWalletRequestId('bond');
-            pendingBondInvite={fingerprint,requestId};send.disabled=true;
+            const entered=input.value.trim();
+            if(!/^[0-9]{4,8}$/.test(entered)){
+              toast('Enter a valid member or Special ID');return;}
+            send.disabled=true;
             try{
+              // Resolve the visible alias to the immutable server account before
+              // a financial transaction. Coin/gift idempotency stays canonical.
+              const target=await api('GET','/users/'+entered);
+              const id=String(target.id||'');
+              if(!/^[0-9]{8}$/.test(id)||id===profile?.public_id)
+                throw Error('Choose another member’s valid ID');
+              const fingerprint=id+':'+gift.id;
+              const requestId=pendingBondInvite?.fingerprint===fingerprint?
+                pendingBondInvite.requestId:nextWalletRequestId('bond');
+              pendingBondInvite={fingerprint,requestId};
               const activeBond=selected==='cp'
                 ?mine?.profile?.cp?.partner?.id===id
                 :(mine?.profile?.friendships||[]).some(friend=>friend.partner?.id===id);
@@ -6300,11 +6329,11 @@
       const actions=document.createElement('div');actions.className='sh-bond-actions';
       const gift=document.createElement('button');gift.className='sh-bond-button';
       gift.textContent='🎁 CP / Friends Gifts';gift.onclick=()=>showBondGiftSheet(
-        id===profile?.public_id?null:{id,name:person?.name});
+        id===profile?.public_id?null:{id,display_id:person?.display_id,name:person?.name});
       const rank=document.createElement('button');rank.className='sh-bond-button blue';
       rank.textContent='🏆 Pair Ranking';rank.onclick=()=>showBondRanking('cp','weekly');
       actions.append(gift,rank);
-      if(canonicalId===profile?.public_id){
+      if(id===profile?.public_id){
         const inbox=document.createElement('button');inbox.className='sh-bond-button gold';
         inbox.textContent='💌 Invitations';inbox.onclick=showBondInbox;actions.appendChild(inbox);
         for(const bound of [data.cp,...(data.friendships||[])].filter(Boolean)){
@@ -6495,7 +6524,8 @@
           name.title=name.textContent;
           const id=document.createElement('div');
           id.className='sh-royal-id';
-          id.textContent='ID '+String(isRoom?leader.room_id:leader.public_id||'');
+          id.textContent='ID '+String(isRoom?leader.room_id:
+            leader.display_id||leader.public_id||'');
           const amount=document.createElement('div');
           amount.className='sh-royal-amount';
           amount.textContent='🪙 '+fmt(leader.total);
@@ -6535,7 +6565,8 @@
         row.querySelector('.n').textContent=String(leader.rank);
         row.querySelector('.ra').replaceWith(royalRankAvatar(leader,isRoom));
         row.querySelector('.rn b').textContent=leader.name||'User';
-        row.querySelector('.sid').textContent=isRoom?leader.room_id:leader.public_id;
+        row.querySelector('.sid').textContent=isRoom?leader.room_id:
+          leader.display_id||leader.public_id;
         row.querySelector('.amt').textContent=fmt(leader.total);
         const tag=!isRoom&&royalRankNameTag(leader);
         if(tag)row.querySelector('.rn')?.appendChild(tag);
@@ -6917,7 +6948,7 @@
           place.textContent=['🥇','🥈','🥉'][item.rank-1]||'🏅';
           const title=document.createElement('b');
           title.textContent='#'+item.rank+' '+(item.name||'User')+
-            ' · ID '+(kind==='room'?item.room_id:item.public_id);
+            ' · ID '+(kind==='room'?item.room_id:item.display_id||item.public_id);
           const amount=document.createElement('em');
           amount.textContent='🪙 '+Number(item.total||0).toLocaleString('en-US');
           row.append(place,title,amount);

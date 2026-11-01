@@ -189,6 +189,24 @@
   text-align: center;
   white-space: nowrap;
 }
+#v-me.profile-royal #sh-copy-own-id {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #f4cd6d;
+  border-radius: 11px;
+  color: #ffe7a3;
+  background: rgba(25,7,45,.8);
+  font-size: 18px;
+  cursor: copy;
+}
+#v-me.profile-royal #sh-copy-own-id:focus-visible {
+  outline: 2px solid #fff3b8;
+  outline-offset: 2px;
+}
 #v-me.profile-royal #sh-neon-own-id::before {content:none}
 #v-me.profile-royal #sh-sovera-own-identity {
   width: 100%;

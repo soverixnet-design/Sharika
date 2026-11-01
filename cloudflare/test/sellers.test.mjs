@@ -102,8 +102,10 @@ test('seller recharge stays in Seller Wallet and defaults to the verified seller
   assert.doesNotMatch(source,/button\.textContent='🪙 Recharge my ID · Seller stock '/);
   assert.match(source,/button\.textContent='Seller Wallet'/);
   assert.match(source,/data\.seller\?\.active/);
-  assert.match(source,/targetField\.value=\/\^\[0-9\]\{8\}\$\/\.test\(targetId\)/);
-  assert.match(source,/\?targetId:self\.public_id/);
+  assert.match(source,/targetField\.value=\/\^\[0-9\]\{4,8\}\$\/\.test\(targetId\)/);
+  assert.match(source,/\?targetId:visibleSellerId\(self\.public_id\)/);
+  assert.match(source,/const verified=await api\('GET','\/users\/'\+entered\)/);
+  assert.match(source,/target_public_id:recipient,coins:amount/);
   assert.match(source,/if\(document\.querySelector\('#rcp #rcl2'\)!==listButton\)\s*mountRechargeSellerWallet\(\);/);
 });
 test('invalid seller transfer cannot touch any wallet',async()=>{
