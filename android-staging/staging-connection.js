@@ -4081,12 +4081,21 @@
           const uuid=()=>{const a=crypto.getRandomValues(new Uint8Array(16));a[6]=(a[6]&15)|64;a[8]=(a[8]&63)|128;
             return Array.from(a,(v,i)=>v.toString(16).padStart(2,'0')+
               ([3,5,7,9].includes(i)?'-':'')).join('');};
-          await api('POST','/invites/withdrawals',{
-            request_id:uuid(),amount_cents:amount,
+          const details={
+            amount_cents:amount,
             bank_name:cashForm.elements.bank_name.value.trim(),
             account_name:cashForm.elements.account_name.value.trim(),
             account_number:cashForm.elements.account_number.value.trim(),
             payout_country:cashForm.elements.payout_country.value.trim().toUpperCase()
+          };
+          // Retain the idempotency key on a retry after a lost network response.
+          const fingerprint=JSON.stringify(details);
+          if(cashForm.dataset.requestFingerprint!==fingerprint){
+            cashForm.dataset.requestFingerprint=fingerprint;
+            cashForm.dataset.requestId=uuid();
+          }
+          await api('POST','/invites/withdrawals',{
+            request_id:cashForm.dataset.requestId,...details
           });
           toast('Request sent to Sharika Admin ✓');
           await showVerifiedInviteSheet();
