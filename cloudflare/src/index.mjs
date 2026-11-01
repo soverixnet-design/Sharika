@@ -11,6 +11,7 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import {readInviteRules} from './invite-rules.mjs';
 import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
+import { handleOpeningApp } from './opening.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
@@ -193,6 +194,9 @@ export async function handleRequest(request, env) {
   const uid = actor.uid;
   const parts = path.split('/').filter(Boolean);
   try {
+    if(path==='/api/v1/opening/next')return await handleOpeningApp({
+      request,env,uid,path,cors,reply,fail
+    });
     if(path.startsWith('/api/v1/bonds'))return await handleBondApp({
       request,env,uid,path,cors,reply,fail
     });

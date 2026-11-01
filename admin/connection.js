@@ -31,6 +31,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['bonds','💞','CP & Friendship Gifts']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='opening')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='rank');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['opening','🏆','7 Day Opening Screen']);
+  }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -1752,6 +1757,76 @@
     return new Date(time.getTime()-time.getTimezoneOffset()*60000)
       .toISOString().slice(0,16);
   }
+  P.opening=async function(){
+    const root=byId('pg');
+    root.innerHTML=card('7 Day Opening Screen','Loading live settings and last week’s verified winners…');
+    let data;
+    try{data=await api('GET','opening');}
+    catch(error){root.innerHTML=card('Opening screen unavailable',error.message);return;}
+    if(!root.isConnected)return;
+    const c=data.settings||{};
+    const readonly=role!=='super';
+    const shown=data.next_week_winners||[];
+    const preview=shown.length?shown.map((person,index)=>
+      '<div class="card" style="flex:1;min-width:170px;border-color:#d9b055;'+
+      'background:linear-gradient(150deg,#3f0a68,#160828)">'+
+      '<div style="font-size:12px;color:#f5d77c">'+esc(person.title)+'</div>'+
+      '<div style="display:flex;align-items:center;gap:12px;margin:10px 0">'+
+      (person.pic&&/^https:\/\//i.test(person.pic)?
+        '<img src="'+esc(person.pic)+'" alt="User" style="width:48px;height:48px;'+
+        'border:3px solid #edc565;border-radius:50%;object-fit:cover">':
+        '<span style="font-size:36px">👤</span>')+
+      '<div><b>'+esc(person.name)+'</b><small style="display:block;color:#d8c6ff">ID '+
+      esc(person.public_id)+'</small></div></div><b>🏆 '+fmt(person.total)+' coins</b></div>'
+    ).join(''):'<p class="n">No verified previous-week winners yet. The app will skip this spotlight until there is a real result.</p>';
+    root.innerHTML='<div class="card" style="border-color:#e7ba5c">'+
+      '<h3>👑 7 Day Opening Screen — live server control</h3>'+
+      '<p class="n">Each completed Monday–Sunday week selects the verified winners for the next week. '+
+      'One user appears per app launch. Every viewer gets their own rotating order; no automatic slideshow during the 10-second screen.</p>'+
+      '<div class="ft"><div><b>Enable opening screen</b><small>Turn off anytime, takes effect on the next app launch</small></div>'+
+      '<input id="sh-opening-enabled" type="checkbox" style="width:24px;height:24px;margin:0" '+
+      (c.enabled?'checked':'')+(readonly?' disabled':'')+'></div>'+
+      '<div class="g2" style="margin-top:14px">'+
+      '<div><label for="sh-opening-mode">Display mode</label><select id="sh-opening-mode" '+(readonly?'disabled':'')+'>'+
+      '<option value="automatic" '+(c.mode==='automatic'?'selected':'')+'>Automatic weekly top users</option>'+
+      '<option value="custom" '+(c.mode==='custom'?'selected':'')+'>Custom user or special banner</option></select></div>'+
+      '<div><label for="sh-opening-duration">Duration (seconds)</label><input id="sh-opening-duration" '+
+      'type="number" min="3" max="30" value="'+Number(c.duration_seconds||10)+'" '+
+      (readonly?'disabled':'')+'></div></div>'+
+      '<div id="sh-opening-custom"><div class="g2">'+
+      '<div><label for="sh-opening-user">Featured user ID (optional, 8 digits)</label><input id="sh-opening-user" '+
+      'inputmode="numeric" maxlength="8" placeholder="10000001" value="'+esc(c.custom_user_id||'')+'" '+(readonly?'disabled':'')+'></div>'+
+      '<div><label for="sh-opening-title">Custom title</label><input id="sh-opening-title" maxlength="60" '+
+      'placeholder="SHARIKA STAR" value="'+esc(c.custom_title||'')+'" '+(readonly?'disabled':'')+'></div>'+
+      '<div><label for="sh-opening-subtitle">Custom subtitle</label><input id="sh-opening-subtitle" '+
+      'maxlength="100" placeholder="Featured this week" value="'+esc(c.custom_subtitle||'')+'" '+(readonly?'disabled':'')+'></div>'+
+      '<div><label for="sh-opening-image">Custom image HTTPS link</label><input id="sh-opening-image" '+
+      'maxlength="500" placeholder="https://…/banner.jpg" value="'+esc(c.custom_image_url||'')+'" '+(readonly?'disabled':'')+'></div></div></div>'+
+      (readonly?'<p class="n">Only Super Admin can change the opening screen.</p>':
+        '<button id="sh-opening-save" class="btn" type="button">Save & publish opening settings</button>')+
+      '<p class="n" style="margin-top:10px">Settings version '+Number(c.version||1)+
+      ' · Changes apply to the next app opening; no reinstall needed.</p></div>'+
+      '<h3 style="color:#f5d77c;margin:16px 0 10px">Previous week’s verified champions</h3>'+
+      '<div class="row" style="align-items:stretch">'+preview+'</div>';
+    const mode=byId('sh-opening-mode'),custom=byId('sh-opening-custom');
+    const toggleCustom=()=>{custom.style.display=mode.value==='custom'?'':'none';};
+    mode.onchange=toggleCustom;toggleCustom();
+    if(readonly)return;
+    byId('sh-opening-save').onclick=async function(){
+      const button=this;
+      const next={expected_version:Number(c.version),
+        enabled:byId('sh-opening-enabled').checked,mode:mode.value,
+        duration_seconds:Number(byId('sh-opening-duration').value),
+        custom_user_id:byId('sh-opening-user').value.trim(),
+        custom_title:byId('sh-opening-title').value.trim(),
+        custom_subtitle:byId('sh-opening-subtitle').value.trim(),
+        custom_image_url:byId('sh-opening-image').value.trim()};
+      button.disabled=true;
+      try{await api('PATCH','opening',next);note('Opening screen settings saved ✓');await P.opening();}
+      catch(error){note(error.message||'Could not save settings');button.disabled=false;}
+    };
+  };
+
   P.events=async function(){
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>🎉 Verified Events & Rewards</h3>'+
@@ -1920,7 +1995,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','opening'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

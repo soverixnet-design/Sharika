@@ -11,6 +11,7 @@ import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
 import { handleAdminExchangeRate } from './exchange-rate.mjs';
 import { handleCosmeticAdmin,publicAppearanceSelect } from './cosmetics.mjs';
+import { handleOpeningAdmin } from './opening.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -356,7 +357,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       write_scopes:staff?actor.permissions.filter(p=>['coin_recharge','support_reply'].includes(p)):
         actor.role==='super'?['user_status','gift_catalog','support_reply','seller_approval',
           'seller_stock_allocation','daily_reward_config','premium_membership_config',
-          'premium_membership_grant','coin_recharge','staff_manage']:
+          'premium_membership_grant','coin_recharge','staff_manage','opening_settings']:
           actor.role==='support'?['support_reply']:[] }, 200, cors);
   }
   if (operation === 'rankings' && request.method === 'GET') {
@@ -367,6 +368,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     const result=await readGiftRankings(env.DB,period,kind);
     return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
   }
+  if(operation==='opening')return await handleOpeningAdmin({
+    request,env,uid,actor,operation,cors,reply,fail
+  });
   // Read only verified Android activity. The dedicated Durable Object expires
   // stale entries automatically; never infer online counts from saved members.
   async function presence() {

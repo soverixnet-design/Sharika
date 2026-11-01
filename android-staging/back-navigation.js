@@ -36,6 +36,14 @@
   function handleBack() {
     var get = function (id) { return document.getElementById(id); };
 
+    // An opening spotlight is a single dismissible screen, not navigation.
+    var opening = get('sh-opening');
+    if (opening) {
+      var skip = opening.querySelector('.sh-o-skip');
+      if (skip) skip.click();
+      return 'handled';
+    }
+
     // Never navigate through the application behind the login screen.
     if (isOpen(get('au'))) {
       if (window.amode && window.amode !== 'login' &&

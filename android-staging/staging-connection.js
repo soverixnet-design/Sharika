@@ -118,6 +118,133 @@
     return native('api', { method, path: '/api/v1' + path, body });
   }
 
+  // A server-verified winner appears ONCE per launch. The backend advances
+  // each viewer's cursor; the client never invents a ranking or rotates mid-view.
+  let requestedOpening=false;
+  function openingStyles(){
+    if(document.getElementById('sh-opening-styles'))return;
+    const style=document.createElement('style');
+    style.id='sh-opening-styles';
+    style.textContent=[
+      '#sh-opening{position:absolute;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;',
+      'overflow:hidden;color:#ffe9b0;text-align:center;background:radial-gradient(ellipse at 50% 32%,#872eb080,transparent 56%),',
+      'linear-gradient(180deg,#300550e0,#0a0422f7),url("./royal-palace.png") center/cover}',
+      '#sh-opening *{box-sizing:border-box}',
+      '#sh-opening .sh-o-panel{width:100%;height:100%;padding:calc(20px + env(safe-area-inset-top,0px)) 16px ',
+      'calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;gap:7px}',
+      '#sh-opening .sh-o-header{font-size:clamp(29px,9vw,43px);line-height:.97;font-weight:1000;',
+      'letter-spacing:.4px;color:#ffedac;text-shadow:0 2px 0 #873c06,0 5px 0 #4d1767,0 0 28px #ffbf71}',
+      '#sh-opening .sh-o-tag{margin-top:7px;background:linear-gradient(135deg,#3e0962,#7a0ba3,#3e0962);',
+      'border:2px solid #ffc85b;box-shadow:0 3px 0 #531a1c,0 0 18px #ca77ff99;',
+      'color:#fff0a8;border-radius:12px;padding:7px 22px;font-weight:900;font-size:16px;letter-spacing:.4px}',
+      '#sh-opening .sh-o-middle{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;',
+      'justify-content:space-evenly;align-items:center;gap:4px}',
+      '#sh-opening .sh-o-profile{display:flex;flex-direction:column;align-items:center;gap:6px;max-width:100%;}',
+      '#sh-opening .sh-o-photo{width:min(53vw,220px,24vh);height:min(53vw,220px,24vh);max-height:220px;',
+      'border:8px ridge #ffd16d;border-radius:50%;background:radial-gradient(#8d4eb0,#28114a);',
+      'box-shadow:0 0 0 6px #6a1c91,0 0 0 9px #ffdf86,0 0 55px #ffb84baa;',
+      'display:grid;place-items:center;position:relative;font-size:60px}',
+      '#sh-opening .sh-o-photo::before{content:"👑";position:absolute;bottom:90%;left:50%;',
+      'transform:translateX(-50%);font-size:clamp(36px,11vw,58px);filter:drop-shadow(0 4px 6px #341131)}',
+      '#sh-opening .sh-o-photo img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}',
+      '#sh-opening .sh-o-name{margin-top:5px;font-size:clamp(18px,5.4vw,25px);font-weight:900;',
+      'background:linear-gradient(130deg,#3a0755,#74129a,#3a0755);border:2px solid #e4af51;',
+      'border-radius:15px;padding:7px 17px;max-width:92vw;white-space:nowrap;overflow:hidden;',
+      'text-overflow:ellipsis;box-shadow:0 5px 17px #0007}',
+      '#sh-opening .sh-o-id{font-weight:800;color:#ffe28d;background:#2b094d;border:1px solid #efc665;',
+      'border-radius:25px;padding:3px 17px;font-size:14px}',
+      '#sh-opening .sh-o-brand{display:flex;flex-direction:column;align-items:center;gap:1px;',
+      'max-height:31vh;min-height:0}',
+      '#sh-opening .sh-o-brand img{width:min(35vw,165px,16vh);height:min(35vw,165px,16vh);',
+      'border-radius:29%;object-fit:cover;box-shadow:0 0 35px #c45cff8a}',
+      '#sh-opening .sh-o-wordmark{font-size:clamp(30px,9vw,48px);font-weight:1000;font-style:italic;',
+      'color:#ffecac;text-shadow:0 3px #8b3812,0 6px #431067,0 0 24px #ffc868}',
+      '#sh-opening .sh-o-foot{width:100%;display:flex;align-items:center;gap:10px;margin-top:auto}',
+      '#sh-opening .sh-o-time{font-weight:900;font-size:16px;white-space:nowrap}',
+      '#sh-opening .sh-o-track{height:12px;flex:1;background:#1b0738;border:2px solid #ffc95f;',
+      'border-radius:9px;overflow:hidden;box-shadow:0 0 12px #db8b55}',
+      '#sh-opening .sh-o-fill{height:100%;width:100%;background:linear-gradient(90deg,#fcae2f,#fff9ae);',
+      'transform-origin:left;animation:sh-opening-shrink var(--sh-opening-duration) linear forwards}',
+      '@keyframes sh-opening-shrink{to{transform:scaleX(0)}}',
+      '#sh-opening .sh-o-skip{border-radius:22px;border:2px solid #f6ca6e;background:#3d075a;',
+      'color:#ffe9b0;padding:8px 13px;font-weight:900;cursor:pointer}',
+      '@media (max-height:630px){#sh-opening .sh-o-photo{width:120px;height:120px;border-width:5px}',
+      '#sh-opening .sh-o-header{font-size:26px}#sh-opening .sh-o-brand img{width:73px;height:73px}',
+      '#sh-opening .sh-o-wordmark{font-size:27px}#sh-opening .sh-o-tag{padding:4px 12px}}',
+      '@media(prefers-reduced-motion:reduce){#sh-opening .sh-o-fill{animation:none}}'
+    ].join('');
+    document.head.appendChild(style);
+  }
+  function displayOpening(data){
+    return new Promise(resolve=>{
+      if(!data?.show||!data.person||!session){resolve();return;}
+      openingStyles();
+      const app=document.getElementById('app');
+      if(!app){resolve();return;}
+      document.getElementById('sh-opening')?.remove();
+      const layer=document.createElement('section');
+      layer.id='sh-opening';layer.setAttribute('role','dialog');
+      layer.setAttribute('aria-modal','true');
+      layer.setAttribute('aria-label','Sharika weekly top user');
+      const panel=document.createElement('div');panel.className='sh-o-panel';
+      const header=document.createElement('div');header.className='sh-o-header';
+      header.textContent=data.person.category==='custom'?'SHARIKA SPECIAL':'7 DAY TOP USERS';
+      const tag=document.createElement('div');tag.className='sh-o-tag';
+      tag.textContent=data.person.title||'SHARIKA STAR';
+      const middle=document.createElement('div');middle.className='sh-o-middle';
+      const person=document.createElement('div');person.className='sh-o-profile';
+      const photo=document.createElement('div');photo.className='sh-o-photo';
+      const url=String(data.person.pic||'');
+      if(/^https:\/\//i.test(url)||/^data:image\/(jpeg|png|webp);base64,/i.test(url)){
+        const img=document.createElement('img');img.src=url;img.alt='User profile picture';
+        img.onerror=()=>{img.remove();photo.textContent='👤';};photo.appendChild(img);
+      }else photo.textContent='👤';
+      const name=document.createElement('div');name.className='sh-o-name';
+      name.textContent=data.person.name||data.person.subtitle||'Featured Sharika member';
+      person.append(photo,name);
+      if(data.person.public_id){
+        const id=document.createElement('div');id.className='sh-o-id';
+        id.textContent='ID: '+data.person.public_id;person.appendChild(id);
+      }
+      const brand=document.createElement('div');brand.className='sh-o-brand';
+      const originalLogo=document.querySelector('#sp img[data-logo]');
+      if(originalLogo?.src){
+        const logo=document.createElement('img');logo.src=originalLogo.src;
+        logo.alt='Sharika app logo';brand.appendChild(logo);
+      }
+      const word=document.createElement('div');word.className='sh-o-wordmark';
+      word.textContent='Sharika';brand.appendChild(word);
+      middle.append(person,brand);
+      const footer=document.createElement('div');footer.className='sh-o-foot';
+      const clock=document.createElement('span');clock.className='sh-o-time';
+      const track=document.createElement('div');track.className='sh-o-track';
+      const fill=document.createElement('div');fill.className='sh-o-fill';track.appendChild(fill);
+      const skip=document.createElement('button');skip.type='button';
+      skip.className='sh-o-skip';skip.textContent='SKIP »';
+      footer.append(clock,track,skip);panel.append(header,tag,middle,footer);layer.appendChild(panel);
+      app.appendChild(layer);
+      const duration=Math.max(3,Math.min(30,Number(data.duration_seconds)||10));
+      layer.style.setProperty('--sh-opening-duration',duration+'s');
+      const start=Date.now();let ended=false;
+      let timer,timeout;
+      function close(){if(ended)return;ended=true;clearInterval(timer);clearTimeout(timeout);
+        layer.remove();document.dispatchEvent(new Event('sharika:opening-closed'));resolve();}
+      function tick(){clock.textContent='⏱ '+Math.max(0,Math.ceil(duration-(Date.now()-start)/1000))+'s';}
+      skip.onclick=close;tick();timer=setInterval(tick,250);
+      timeout=setTimeout(close,duration*1000);
+    });
+  }
+  async function openingOnLaunch(){
+    if(requestedOpening||!session)return;
+    requestedOpening=true;
+    const startedBy=session.user?.id;
+    try{
+      const data=await api('POST','/opening/next',{});
+      if(session?.user?.id!==startedBy)return;
+      await displayOpening(data);
+    }catch(error){console.warn('Weekly opening unavailable:',errText(error));}
+  }
+
 
   // Original Sovera effects: packed locally into the isolated Android APK
   // from a pinned source commit, never fetched from a random URL or user input.
@@ -1629,7 +1756,10 @@
     local.state = {...balance};
     try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local])); } catch (_) {}
     // Show the real new-member referral offer after the authenticated home loads.
-    setTimeout(maybeShowNewUserInviteWelcome,2200);
+    // The referral newcomer offer follows the one-person 10-second opening,
+    // never obscures the featured user or triggers an extra opening request.
+    setTimeout(()=>openingOnLaunch().finally(()=>
+      setTimeout(maybeShowNewUserInviteWelcome,400)),450);
     return local;
   }
 
