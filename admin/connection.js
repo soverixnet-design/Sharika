@@ -1365,7 +1365,7 @@
         '<div class="row"><input id="seller-id" maxlength="8" inputmode="numeric" placeholder="Seller 8-digit user ID">'+
         '<button type="button" class="btn s" id="seller-approve">Approve</button>'+
         '<button type="button" class="btn s" id="seller-suspend">Suspend</button></div>'+
-        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000)">'+
+        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000,000)">'+
         '<button type="button" class="btn s" id="seller-allocate">Allocate stock</button></div>'+
          '<div class="row"><button type="button" class="btn s" id="seller-unlimited-on">Enable ∞ stock</button>'+
          '<button type="button" class="btn s" id="seller-unlimited-off">Disable ∞ stock</button></div>'+
@@ -1412,8 +1412,8 @@
       if(!/^[0-9]{8}$/.test(sellerId)){
         note.textContent='Enter an existing eight-digit user ID.';return;
       }
-      if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000)){
-        note.textContent='Allocate 1–1,000,000 coins per request.';return;
+      if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000000)){
+        note.textContent='Allocate 1–1,000,000,000 coins, or enable Unlimited Stock.';return;
       }
       const isStockMode=kind==='unlimited_on'||kind==='unlimited_off';
       const reason=isStockMode?window.prompt('Reason for unlimited stock change (8–200 characters):',''):null;

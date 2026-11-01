@@ -2,10 +2,10 @@ import { rechargeReferralStatements } from './invites.mjs';
 import { firstRechargeBonusStatements } from './first-recharge.mjs';
 import {readInviteRules} from './invite-rules.mjs';
 // Sharika staging: approved coin sellers with a separate audited stock ledger.
-// No seller may mint coins, spend another seller's stock, or grant admin roles.
+// Only explicitly authorized unlimited sellers may credit without depleting stock.
 const PUBLIC_ID=/^[0-9]{8}$/;
 const REQUEST_ID=/^[a-zA-Z0-9:_-]{12,80}$/;
-const MAX_TRANSFER=1_000_000;
+const MAX_TRANSFER=1_000_000_000_000;
 const MAX_STOCK=1_000_000_000;
 const MAX_USER_BALANCE=1_000_000_000_000;
 const showId=n=>String(n).padStart(8,'0');
@@ -277,7 +277,7 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
     try{body=await input(request);}catch(error){return jsonFailure(fail,cors,error.message);}
     const id=body.seller_public_id,amount=body.coins,requestId=body.request_id;
     if(typeof id!=='string'||!PUBLIC_ID.test(id)||
-      !Number.isSafeInteger(amount)||amount<1||amount>MAX_TRANSFER||
+      !Number.isSafeInteger(amount)||amount<1||amount>MAX_STOCK||
       typeof requestId!=='string'||!REQUEST_ID.test(requestId))
       return fail('invalid_seller_allocation',400,cors);
     const seller=await env.DB.prepare(

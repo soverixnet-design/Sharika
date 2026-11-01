@@ -250,11 +250,31 @@ test('unlimited seller can credit despite zero reserve, but transfer remains led
   assert.match(state.batch[0][2].sql,/sharika_coin_seller_transfers/);
   assert.match(state.batch[0][3].sql,/sharika_wallet_ledger/);
 });
-test('unlimited mode cannot be used to exceed per-transfer safety ceiling',async()=>{
+test('unlimited mode still rejects amounts beyond wallet capacity',async()=>{
   const {DB,state}=mockDB({stock:0,unlimited:true});
   const result=await app(DB,'POST','/api/v1/sellers/transfer',{
-    ...validTransfer,coins:1000001
+    ...validTransfer,coins:1000000000001
   });
   assert.equal(result.status,400);
   assert.equal(state.batch.length,0);
+});
+
+test('unlimited seller can recharge ten million with zero stock',async()=>{
+  const {DB,state}=mockDB({stock:0,unlimited:true});
+  const result=await app(DB,'POST','/api/v1/sellers/transfer',{...validTransfer,coins:10000000});
+  assert.equal(result.status,201);
+  assert.equal(result.data.coins,10000000);
+  assert.equal(state.batch[0][2].args[2],10000000);
+});
+test('finite seller still needs stock for large transfers',async()=>{
+  const {DB,state}=mockDB({stock:3000});
+  const result=await app(DB,'POST','/api/v1/sellers/transfer',{...validTransfer,coins:10000000});
+  assert.equal(result.data.error,'seller_stock_insufficient');
+  assert.equal(state.batch.length,0);
+});
+test('super admin can allocate ten million and allocation respects stock ceiling',async()=>{
+  const {DB,state}=mockDB();
+  assert.equal((await admin(DB,'super','POST','sellers/allocate',{...validAllocation,coins:10000000})).status,201);
+  assert.equal((await admin(DB,'super','POST','sellers/allocate',{...validAllocation,coins:1000000001})).status,400);
+  assert.equal(state.batch.length,1);
 });

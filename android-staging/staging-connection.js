@@ -4307,7 +4307,7 @@
             '<button class="shw-mini" id="sharika-seller-my-id" type="button">My ID</button>'+
           '</div>'+
           '<label class="shw-label" for="sharika-seller-amount">Amount in coins</label>'+
-          '<input class="shw-input" id="sharika-seller-amount" inputmode="numeric" autocomplete="off" placeholder="Enter amount (up to 1,000,000)" aria-label="Coins to recharge">'+
+          '<input class="shw-input" id="sharika-seller-amount" inputmode="numeric" autocomplete="off" placeholder="Enter coin amount" aria-label="Coins to recharge">'+
           '<div class="shw-chips" aria-label="Quick recharge amounts">'+
             '<button type="button" class="shw-chip" data-seller-amount="1000">1K</button>'+
             '<button type="button" class="shw-chip" data-seller-amount="10000">10K</button>'+
@@ -4361,8 +4361,8 @@
         const raw=amountField?.value.trim()||'';
         const amount=Number(raw);
         if(!/^[0-9]{4,8}$/.test(entered)||!/^[0-9]+$/.test(raw)||
-          !Number.isSafeInteger(amount)||amount<1||amount>1000000){
-          showNote('Enter a member or Special ID and 1 to 1,000,000 coins.','error');
+          !Number.isSafeInteger(amount)||amount<1||amount>1000000000000){
+          showNote('Enter a member or Special ID and a positive whole coin amount (wallet maximum 1 trillion).','error');
           return;
         }
         if(!unlimited&&amount>Number(self.available_coins)){
