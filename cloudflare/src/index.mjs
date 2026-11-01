@@ -1,3 +1,4 @@
+import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from './notifications.mjs';
 import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration } from './moderation.mjs';
@@ -120,7 +121,7 @@ async function createVoiceToken(env, uid, room, publish, owner) {
   return data + '.' + b64url(new Uint8Array(sign));
 }
 
-export async function handleRequest(request, env) {
+export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
@@ -207,15 +208,17 @@ export async function handleRequest(request, env) {
     if(path==='/api/v1/events') return await handleEventApp({
       request,env,uid,path,cors,reply,fail
     });
+    if(path==='/api/v1/notifications'||path.startsWith('/api/v1/notifications/'))
+      return await handleNotificationApp({request,env,uid,path,cors,reply,fail});
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
-      request, env, uid, path, cors, reply, fail
+      request, env, uid, path, cors, reply, fail, ctx
     });
     if (path==='/api/v1/invites') return await handleInviteApp({
       request, env, uid, path, cors, reply, fail
     });
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
         path==='/api/v1/daily/tasks/claim') return await handleDailyApp({
-      request, env, uid, path, cors, reply, fail
+      request, env, uid, path, cors, reply, fail, ctx
     });
     if(path==='/api/v1/premium'||path==='/api/v1/premium/purchase'||
        path==='/api/v1/premium/daily/claim')return await handlePremiumApp({
@@ -441,7 +444,7 @@ export async function handleRequest(request, env) {
     if(path==='/api/v1/messages' && request.method==='GET') {
       await assertActive(env.DB,uid);
       const rows=await env.DB.prepare(
-        'SELECT m.id,m.body,m.created_at,u.public_no,u.name,u.pic,'+
+        'SELECT m.id,m.body,m.created_at,u.auth_uid AS other_uid,u.public_no,u.name,u.pic,'+
         publicAppearanceSelect()+' '+
         'FROM sharika_private_messages m JOIN sharika_users u ON u.auth_uid='+
         'CASE WHEN m.sender_uid=? THEN m.recipient_uid ELSE m.sender_uid END '+
@@ -454,12 +457,25 @@ export async function handleRequest(request, env) {
         seen.add(other);
         conversations.push({public_id:other,name:item.name,
           last_body:item.body,last_at:item.created_at,pic:item.pic||null,
+          unread_count:0,other_uid:item.other_uid,
           frame_style:item.equipped_frame_style??item.frame_style??'',
           medal_style:item.equipped_medal_style??item.medal_style??'',
           name_tag_style:item.equipped_name_tag_style??item.name_tag_style??''});
         if(conversations.length>=100)break;
       }
-      return reply({conversations},200,cors);
+      const unread=await env.DB.prepare(
+        'SELECT sender_uid AS other_uid,COUNT(*) AS n FROM sharika_private_messages m '+
+        'WHERE recipient_uid=? AND id>COALESCE((SELECT last_read_id FROM sharika_message_reads '+
+        'WHERE auth_uid=? AND other_uid=m.sender_uid),0) GROUP BY sender_uid'
+      ).bind(uid,uid).all();
+      const bySender=new Map((unread.results||[]).map(r=>[r.other_uid,Number(r.n)||0]));
+      let unreadTotal=0;
+      for(const record of unread.results||[])unreadTotal+=Number(record.n)||0;
+      for(const entry of conversations){
+        entry.unread_count=bySender.get(entry.other_uid)||0;
+        delete entry.other_uid;
+      }
+      return reply({conversations,unread_total:unreadTotal},200,cors);
     }
     const messagePath=/^\/api\/v1\/messages\/([0-9]{8})$/.exec(path);
     if(messagePath) {
@@ -480,6 +496,13 @@ export async function handleRequest(request, env) {
           'WHERE (sender_uid=? AND recipient_uid=?) OR (sender_uid=? AND recipient_uid=?) '+
           'ORDER BY id DESC LIMIT 100'
         ).bind(uid,target.auth_uid,target.auth_uid,uid).all();
+        const mostRecent=(result.results||[]).filter(m=>m.sender_uid===target.auth_uid)
+          .reduce((max,m)=>Math.max(max,Number(m.id)||0),0);
+        if(mostRecent)await env.DB.prepare(
+          'INSERT INTO sharika_message_reads(auth_uid,other_uid,last_read_id) VALUES(?,?,?) '+
+          'ON CONFLICT(auth_uid,other_uid) DO UPDATE SET '+
+          'last_read_id=MAX(last_read_id,excluded.last_read_id),updated_at=datetime(\'now\')'
+        ).bind(uid,target.auth_uid,mostRecent).run();
         return reply({user:{public_id:publicId(target.public_no),name:target.name},
           mutual,messages:(result.results||[]).reverse().map(m=>({
             id:m.id,from_me:m.sender_uid===uid,body:m.body,created_at:m.created_at
@@ -512,6 +535,11 @@ export async function handleRequest(request, env) {
           'WHERE request_id=? AND sender_uid=? AND recipient_uid=?'
         ).bind(requestId,uid,target.auth_uid).first();
         if(!saved)return fail('message_request_conflict',409,cors);
+        // New messages remain in Messages; background alerts use type=message.
+        // An unavailable push credential must never prevent the verified message.
+        await pushMessage(env,{recipientUid:target.auth_uid,senderUid:uid,
+          senderName:(await env.DB.prepare('SELECT name FROM sharika_users WHERE auth_uid=?')
+            .bind(uid).first())?.name||'Sharika member',body:message,messageId:saved.id});
         return reply({message:saved},201,cors);
       }
       return fail('method_not_allowed',405,cors);
@@ -1215,6 +1243,28 @@ export async function handleRequest(request, env) {
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
           ).bind(uid,requestId).first();
           const wallet=await me(env.DB,uid);
+          // Gifts become personal notifications only after verified settlement.
+          // Delivery is background work; the gift itself is already committed.
+          for(const recipient of found){
+            try{
+              const notice=await notifyUser(env.DB,{recipientUid:recipient.auth_uid,
+                kind:'gift',title:'Gift received',
+                body:String(sender.name||'A member')+' sent '+quantity+' × '+gift.name,
+                dedupeKey:'gift:'+saved.id+':'+recipient.auth_uid});
+              if(notice.created&&notice.notification)
+                ctx?.waitUntil(deliverNotification(env,notice.notification));
+            }catch(error){console.error('gift_notice_failed',String(error.message||error));}
+          }
+          if(ownerRewardCoins>0){
+            try{
+              const notice=await notifyUser(env.DB,{recipientUid:room.owner_id,
+                kind:'reward',title:'Room gift reward',
+                body:'Your room earned '+ownerRewardCoins+' coins from gifts.',
+                dedupeKey:'room-reward:'+saved.id});
+              if(notice.created&&notice.notification)
+                ctx?.waitUntil(deliverNotification(env,notice.notification));
+            }catch(error){console.error('room_reward_notice_failed',String(error.message||error));}
+          }
           return reply({duplicate:false,transaction_id:saved.id,
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,

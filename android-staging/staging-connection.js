@@ -1474,6 +1474,7 @@
       throw new Error('Check your email verification link, then sign in again');
     const current = await ensureProfile(account, form);
     const local = remember(account, current);
+    refreshNotifications(false);refreshMessagesBadge();registerPushDevice();
     await Promise.allSettled([reloadWallet(), reloadRooms()]);
     // The original UI's login function reconstructs A from this object;
     // carry the real room back so it does not hide the newly loaded own room.
@@ -4152,6 +4153,7 @@
     canSendPrivate=!!status.mutual;
     preserveMessageScroll(container,()=>{
       container.textContent='';
+      refreshMessagesBadge();
       for(const m of data.messages||[]){
         const bubble=document.createElement('div');
         bubble.className='bub '+(m.from_me?'me':'th');
@@ -4207,8 +4209,7 @@
   window.renderMsg=async function(){
     const view=document.getElementById('ml');
     if(!view)return;
-    const demoBadge=document.querySelector('.ni[data-v="msg"] em');
-    if(demoBadge)demoBadge.style.display='none';
+    notificationBadges();
     if(!session){view.innerHTML='<div class="empty">Sign in to view your conversations.</div>';return;}
     view.innerHTML='<div class="chatrow" id="verified-support-chat">'+
       '<div class="av">🎧</div><div><b>Customer service</b>'+
@@ -4238,10 +4239,14 @@
       const following=follows.following||[],followers=follows.followers||[];
       const known=new Set(following.map(f=>f.public_id));
       const conv=inbox.conversations||[];
+      messageUnread=Number(inbox.unread_total)||0;
+      notificationBadges();
       const byId=new Set(conv.map(c=>c.public_id));
       const rows=conv.map(c=>'<div class="chatrow" data-private-id="'+safeMessageHTML(c.public_id)+
         '" data-private-name="'+safeMessageHTML(c.name)+'"><div class="av">💬</div><div><b>'+
-        safeMessageHTML(c.name)+'</b><small>'+safeMessageHTML(c.last_body||'')+
+        safeMessageHTML(c.name)+'</b>'+(Number(c.unread_count)>0?
+        '<span style="margin-left:6px;color:#f6d37f;font-weight:800">● '+Number(c.unread_count)+'</span>':'')+
+        '<small>'+safeMessageHTML(c.last_body||'')+
         '</small></div><time>'+safeMessageHTML(c.public_id)+'</time></div>');
       for(const f of following){
         if(byId.has(f.public_id))continue;
@@ -5578,11 +5583,172 @@
     }
     select('recharge');
   };
+
+  // Real Notifications inbox. Official notices/rewards/gifts/events are not chats.
+  // Message badges count verified unread private messages only.
+  let notificationPanel=null,notificationUnread=0,messageUnread=0,notificationPoll=null;
+  const notificationIcons={official:'📣',event:'🎉',reward:'🏆',gift:'🎁',system:'🔔'};
+  function notificationBadges(){
+    for(const bell of document.querySelectorAll('.sh-notify-bell')){
+      let badge=bell.querySelector('em');
+      if(!badge){badge=document.createElement('em');bell.appendChild(badge);}
+      badge.textContent=notificationUnread>99?'99+':String(notificationUnread);
+      badge.hidden=!notificationUnread;
+    }
+    const badge=document.querySelector('.ni[data-v="msg"] em');
+    if(badge){
+      badge.style.display=messageUnread?'inline-flex':'none';
+      badge.textContent=messageUnread>99?'99+':String(messageUnread);
+    }
+  }
+  function notificationDate(value){
+    if(!value)return '';
+    const d=new Date(String(value).replace(' ','T')+'Z');
+    return Number.isNaN(+d)?'':d.toLocaleString();
+  }
+  function buildNotificationUI(){
+    if(notificationPanel)return;
+    const style=document.createElement('style');
+    style.textContent=[
+      '.sh-notify-bell{position:relative;border:1px solid #e9c46b77;background:#221044;',
+      'color:white;min-width:42px;min-height:42px;border-radius:14px;font-size:22px;',
+      'box-shadow:0 3px 12px #0006;display:flex;align-items:center;justify-content:center}',
+      '.sh-notify-bell em,.ni[data-v="msg"] em{position:absolute;top:-4px;right:-5px;',
+      'min-width:19px;height:19px;border-radius:11px;align-items:center;justify-content:center;',
+      'padding:0 4px;background:#ef3f72;color:white;font:700 11px system-ui;',
+      'border:1px solid #ffeef6;box-sizing:border-box}',
+      '.sh-notify-panel{display:none;position:absolute;inset:0;z-index:75;',
+      'background:linear-gradient(165deg,#190b38,#080315);color:#fff;overflow-y:auto;',
+      'padding:calc(16px + env(safe-area-inset-top,0px)) 16px 110px}',
+      '.sh-notify-panel.on{display:block}.sh-notify-head{display:flex;gap:12px;',
+      'align-items:center;justify-content:space-between;padding-bottom:15px}',
+      '.sh-notify-head h2{font-size:20px;margin:0}.sh-notify-head p{font-size:12px;',
+      'margin:4px 0 0;color:#c3b5de}.sh-notify-action{border:1px solid #e1bc6977;',
+      'color:#fff;background:#3d236c;border-radius:12px;padding:9px 12px;font-size:13px}',
+      '.sh-notify-list{display:grid;gap:10px;margin-top:12px}',
+      '.sh-notify-card{display:flex;text-align:left;gap:12px;width:100%;',
+      'border:1px solid #a986b645;background:#24134a;color:#fff;padding:15px 13px;',
+      'border-radius:16px;align-items:start}.sh-notify-card.unread{',
+      'border-color:#e7b95b;background:#33205a}',
+      '.sh-notify-card b{display:block;font-size:14px}.sh-notify-card small{',
+      'display:block;color:#e6dbf8;margin-top:6px;line-height:1.5}',
+      '.sh-notify-card time{display:block;font-size:11px;color:#ad9ccc;margin-top:7px}',
+      '.sh-notify-card .sh-type{font-size:23px}.sh-notify-empty{text-align:center;',
+      'color:#cabce5;padding:45px 14px;line-height:1.6}'
+    ].join('');
+    document.head.appendChild(style);
+    for(const view of ['#v-home .hd','#v-msg .hd']){
+      const header=document.querySelector(view);
+      if(!header)continue;
+      const button=document.createElement('button');
+      button.type='button';button.className='sh-notify-bell';
+      button.setAttribute('aria-label','Notifications');
+      button.textContent='🔔';button.onclick=showNotifications;
+      header.appendChild(button);
+    }
+    notificationPanel=document.createElement('section');
+    notificationPanel.className='sh-notify-panel';
+    notificationPanel.setAttribute('aria-label','Notifications');
+    notificationPanel.innerHTML='<div class="sh-notify-head">'+
+      '<button class="sh-notify-action" type="button" id="sh-notify-back">‹ Back</button>'+
+      '<div><h2>🔔 Notifications</h2><p>Official notices, rewards, gifts & events</p></div>'+
+      '</div><div class="sh-notify-head">'+
+      '<span id="sh-notify-unread"></span>'+
+      '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
+      '</div><div class="sh-notify-list" id="sh-notify-list"></div>';
+    document.getElementById('app').appendChild(notificationPanel);
+    notificationPanel.querySelector('#sh-notify-back').onclick=()=>{
+      notificationPanel.classList.remove('on');
+    };
+    notificationPanel.querySelector('#sh-notify-readall').onclick=async()=>{
+      if(!session)return;
+      try{
+        await api('POST','/notifications/read-all',{});
+        await refreshNotifications(true);
+      }catch(error){toast('Unable to mark read: '+errText(error));}
+    };
+    notificationBadges();
+  }
+  async function refreshNotifications(render){
+    if(!session)return;
+    try{
+      const data=await api('GET','/notifications');
+      notificationUnread=Number(data.unread_count)||0;
+      notificationBadges();
+      if(render||notificationPanel?.classList.contains('on')){
+        const list=document.getElementById('sh-notify-list');
+        if(!list)return;
+        list.textContent='';
+        const count=document.getElementById('sh-notify-unread');
+        if(count)count.textContent=notificationUnread+' unread';
+        if(!(data.notifications||[]).length){
+          const empty=document.createElement('div');
+          empty.className='sh-notify-empty';
+          empty.textContent='No notifications yet. Official notices and earned rewards will appear here.';
+          list.appendChild(empty);return;
+        }
+        for(const item of data.notifications||[]){
+          const button=document.createElement('button');
+          button.type='button';
+          button.className='sh-notify-card'+(item.read_at?'':' unread');
+          const icon=document.createElement('span');icon.className='sh-type';
+          icon.textContent=notificationIcons[item.kind]||'🔔';
+          const content=document.createElement('span');
+          const title=document.createElement('b');title.textContent=item.title;
+          const body=document.createElement('small');body.textContent=item.body;
+          const date=document.createElement('time');
+          date.textContent=notificationDate(item.created_at)+(item.read_at?'':' · New');
+          content.append(title,body,date);button.append(icon,content);
+          button.onclick=async()=>{
+            if(item.read_at)return;
+            try{await api('PATCH','/notifications/'+item.id+'/read',{});await refreshNotifications(true);}
+            catch(error){toast('Unable to mark read: '+errText(error));}
+          };
+          list.appendChild(button);
+        }
+      }
+    }catch(error){
+      if(render&&notificationPanel?.classList.contains('on')){
+        document.getElementById('sh-notify-list').textContent=
+          'Unable to load notifications: '+errText(error);
+      }
+    }
+  }
+  async function refreshMessagesBadge(){
+    if(!session)return;
+    try{
+      const inbox=await api('GET','/messages');
+      messageUnread=Number(inbox.unread_total)||0;
+      notificationBadges();
+    }catch(_){}
+  }
+  function showNotifications(){
+    if(!session){window.showAuth('welcome');return;}
+    buildNotificationUI();
+    notificationPanel.classList.add('on');
+    refreshNotifications(true);
+  }
+  buildNotificationUI();
+  notificationPoll=setInterval(()=>{
+    if(!session||document.visibilityState==='hidden')return;
+    refreshNotifications(false);
+    refreshMessagesBadge();
+  },30000);
+  async function registerPushDevice(){
+    if(!session)return;
+    try{
+      const result=await native('pushToken');
+      if(result?.token)await api('POST','/notifications/devices',{token:result.token});
+    }catch(error){console.info('Push registration unavailable',errText(error));}
+  }
+
   const originalLogout=window.logout;
   window.logout=function(){
     if(window.cur)window.leaveRoom();
     if(presenceTimer){clearInterval(presenceTimer);presenceTimer=null;}
     session=null;profile=null;balance={coins:0,dia:0,xp:0};
+    notificationUnread=0;messageUnread=0;notificationBadges();
+    notificationPanel?.classList.remove('on');
     native('signOut').catch(()=>{});
     cleanLocalFakeState();
     originalLogout();

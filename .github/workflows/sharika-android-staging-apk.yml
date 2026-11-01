@@ -27,6 +27,7 @@ on:
       - feature/sharika-royal-premium-bonds-integration-20261101
       - feature/sharika-hd-room-themes-staging-20261101
       - feature/sharika-neon-special-id-20261101
+      - feature/sharika-notifications-20261101
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'

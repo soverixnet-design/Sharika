@@ -1,3 +1,4 @@
+import {notifyUser,deliverNotification} from './notifications.mjs';
 import {dailyTaskStatus,claimDailyTask,dailyTaskAdminStatus,saveDailyTaskConfig,validTaskRewards} from './daily-tasks.mjs';
 // Verified Sharika daily check-in and independently claimable UTC-day tasks.
 // D1 unique UTC day, immutable receipt, wallet credit and ledger commit as one batch.
@@ -28,7 +29,7 @@ async function lastClaim(db,uid){
 function nextStreak(last,now){
   return last&&last.utc_day===previousDay(now)?(Number(last.streak)%7)+1:1;
 }
-export async function handleDailyApp({request,env,uid,path,cors,reply,fail,now=new Date()}){
+export async function handleDailyApp({request,env,uid,path,cors,reply,fail,ctx,now=new Date()}){
   if(path!=='/api/v1/daily'&&path!=='/api/v1/daily/check-in'&&
      path!=='/api/v1/daily/tasks/claim')
     return null;
@@ -52,7 +53,7 @@ export async function handleDailyApp({request,env,uid,path,cors,reply,fail,now=n
     },200,cors);
   }
   if(path==='/api/v1/daily/tasks/claim'&&request.method==='POST'){
-    return claimDailyTask({request,env,uid,now,user,cors,reply,fail});
+    return claimDailyTask({request,env,uid,now,user,cors,reply,fail,ctx});
   }
   if(path==='/api/v1/daily/check-in'&&request.method==='POST'){
     const [settings,last]=await Promise.all([config(env.DB),lastClaim(env.DB,uid)]);
@@ -78,6 +79,14 @@ export async function handleDailyApp({request,env,uid,path,cors,reply,fail,now=n
     ]);
     const updated=await env.DB.prepare('SELECT coins FROM sharika_users WHERE auth_uid=?')
       .bind(uid).first();
+    try{
+      const notice=await notifyUser(env.DB,{recipientUid:uid,kind:'reward',
+        title:'Daily check-in reward',
+        body:'Day '+index+' check-in complete. You earned '+reward+' coins.',
+        dedupeKey:'daily:'+today});
+      if(notice.created&&notice.notification)
+        ctx?.waitUntil(deliverNotification(env,notice.notification));
+    }catch(error){console.error('daily_notice_failed',String(error.message||error));}
     return reply({duplicate:false,claimed:{utc_day:today,streak:index,reward_coins:reward},
       wallet_coins:Number(updated?.coins)||0},201,cors);
   }

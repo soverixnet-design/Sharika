@@ -2085,11 +2085,91 @@
     }catch(error){root.innerHTML=card('Feature status unavailable',error.message);}
   };
 
+  // Verified Super Admin notice publisher. Rewards and gifts are automatic
+  // from committed server transactions; admins cannot fabricate coin grants here.
+  P.push=async function(){
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Notifications','Only Super Admin can publish official notices.');return;
+    }
+    root.innerHTML='<div class="card" style="background:linear-gradient(125deg,#251247,#42256c);'+
+      'border:1px solid #be88f3;border-radius:18px;color:#fff">'+
+      '<h3>🔔 Official Notifications</h3><p>Send a real in-app notification to verified '+
+      'Sharika accounts. Rewards and gifts are announced automatically after a server transaction.</p>'+
+      '<p id="sh-push-status">Checking push configuration…</p></div>'+
+      '<div class="card" style="border:1px solid #c2a4ef;border-radius:18px">'+
+      '<h3>📣 Publish new notice</h3><div class="row" style="gap:10px;flex-wrap:wrap">'+
+      '<label>Type <select id="sh-push-kind"><option value="official">Official notice</option>'+
+      '<option value="event">Event announcement</option><option value="system">System update</option></select></label>'+
+      '<label>Recipients <select id="sh-push-audience"><option value="all">All active members</option>'+
+      '<option value="user">One member ID</option></select></label></div>'+
+      '<input id="sh-push-id" class="field" maxlength="8" inputmode="numeric" '+
+      'placeholder="8-digit member ID" style="display:none;margin:9px 0">'+
+      '<input id="sh-push-title" class="field" maxlength="100" '+
+      'placeholder="Notice title (up to 100 characters)" style="margin:9px 0">'+
+      '<textarea id="sh-push-body" maxlength="1000" rows="5" '+
+      'placeholder="Write a clear official notice for members…" '+
+      'style="width:100%;min-height:115px;padding:12px;border-radius:12px"></textarea>'+
+      '<div class="row" style="gap:10px;align-items:center;margin-top:12px">'+
+      '<button type="button" class="btn" id="sh-push-send">Send verified notice</button>'+
+      '<small id="sh-push-feedback"></small></div></div>'+
+      '<div class="card"><h3>Recent verified notices</h3><div id="sh-push-history">Loading…</div></div>';
+    const status=byId('sh-push-status'),history=byId('sh-push-history'),
+      audience=byId('sh-push-audience'),target=byId('sh-push-id'),
+      submit=byId('sh-push-send'),feedback=byId('sh-push-feedback');
+    audience.onchange=()=>{target.style.display=audience.value==='user'?'block':'none';};
+    async function refresh(){
+      try{
+        const data=await api('GET','notifications');
+        status.textContent=data.push_configured?
+          '✅ FCM configured. Android delivery is attempted to registered devices. Registered devices: '+data.registered_devices:
+          '⚠️ Firebase FCM sender not configured on the Worker. In-app inbox delivery works; phone push is not active yet.';
+        const rows=(data.campaigns||[]).map(n=>[
+          esc(n.title),esc(n.kind),esc(n.body),
+          Number(n.recipients)+' member(s)',
+          Number(n.read_count)+' read',
+          Number(n.push_sent_count)+' pushed',esc(n.created_at)
+        ]);
+        history.innerHTML=rows.length?window.T(['Title','Type','Message','Audience','Read','Push','Created'],rows):
+          '<p class="n">No verified notices published yet.</p>';
+      }catch(error){status.textContent='Unable to read status: '+error.message;history.textContent='History unavailable';}
+    }
+    submit.onclick=async()=>{
+      const kind=byId('sh-push-kind').value,title=byId('sh-push-title').value.trim(),
+        body=byId('sh-push-body').value.trim(),targetId=target.value.trim();
+      if(!title||title.length>100||!body||body.length>1000){
+        feedback.textContent='Enter a title and message within the limits.';return;
+      }
+      if(audience.value==='user'&&!/^[0-9]{8}$/.test(targetId)){
+        feedback.textContent='A verified 8-digit member ID is required.';return;
+      }
+      const who=audience.value==='all'?'ALL active members':'member '+targetId;
+      if(!window.confirm('Send this '+kind+' notice to '+who+'?'))return;
+      submit.disabled=true;feedback.textContent='Publishing…';
+      try{
+        const requestId='notification:'+Date.now().toString(36)+':'+
+          Math.random().toString(36).slice(2,14);
+        const result=await api('POST','notifications',{
+          kind,title,body,audience:audience.value,
+          public_id:audience.value==='user'?targetId:null,request_id:requestId
+        });
+        feedback.textContent='Saved for '+result.recipients+' member(s). '+
+          (result.push_configured?
+            'Device pushes succeeded for '+result.push_sent_to_users+' member(s).':
+            'Phone push awaits Firebase configuration.');
+        byId('sh-push-title').value='';byId('sh-push-body').value='';
+        await refresh();
+      }catch(error){feedback.textContent='Not sent: '+error.message;}
+      finally{submit.disabled=false;}
+    };
+    await refresh();
+  };
+
   // The original visual-only dashboard includes demo pages. Replace every
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','levels','promo','themes','rr','games','winb','lucky','config','flags'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

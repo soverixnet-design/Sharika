@@ -13,6 +13,7 @@ import { handleAdminExchangeRate } from './exchange-rate.mjs';
 import { handleCosmeticAdmin,publicAppearanceSelect } from './cosmetics.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
+import { handleNotificationAdmin } from './notifications.mjs';
 import { handleOperationalRead } from './admin-operations.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -95,7 +96,7 @@ export async function readGiftRankings(db, period, kind) {
       kind==='lucky'?'verified_lucky_gift_payouts':'settled_gift_events'};
 }
 
-export async function handleAdminOperation({ request, env, uid, path, cors, reply, fail }) {
+export async function handleAdminOperation({ request, env, uid, path, cors, reply, fail, ctx }) {
   if (!path.startsWith(ADMIN_PREFIX)) return null;
   let actor = await env.DB.prepare(
     "SELECT a.role,u.public_no,u.name FROM sharika_admin_roles a " +
@@ -120,12 +121,13 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     actor={...actor,role:proxy};
   }
 
+  if(operation==='notifications')return await handleNotificationAdmin({request,env,uid,actor,operation,cors,reply,fail});
   const operational=await handleOperationalRead({request,env,actor,operation,cors,reply,fail});
   if(operational)return operational;
   if(operation.startsWith('special-ids'))
     return await handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if(operation==='events'||/^events\/[1-9][0-9]*(?:\/award)?$/.test(operation))
-    return await handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail});
+    return await handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='cosmetics'||operation==='cosmetics/grant')
     return await handleCosmeticAdmin({
       request,db:env.DB,uid,role:actor.role,path,
