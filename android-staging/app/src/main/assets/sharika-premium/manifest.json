@@ -1,0 +1,681 @@
+[
+  {
+    "id": "vip5-animated",
+    "kind": "frame_style",
+    "group": "vip",
+    "name": "VIP5 Royal Wings",
+    "art": "vip5-animated.webp"
+  },
+  {
+    "id": "svip-frame-01",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP 1 Animated Frame",
+    "art": "svip-frame-01.webp"
+  },
+  {
+    "id": "svip-frame-02",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP 2 Animated Frame",
+    "art": "svip-frame-02.webp"
+  },
+  {
+    "id": "svip-frame-03",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP 3 Animated Frame",
+    "art": "svip-frame-03.webp"
+  },
+  {
+    "id": "svip-frame-04",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP 4 Animated Frame",
+    "art": "svip-frame-04.webp"
+  },
+  {
+    "id": "svip-frame-05",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP 5 Animated Frame",
+    "art": "svip-frame-05.webp"
+  },
+  {
+    "id": "svip-frame-06",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP 6 Animated Frame",
+    "art": "svip-frame-06.webp"
+  },
+  {
+    "id": "svip-frame-08",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP 8 Animated Frame",
+    "art": "svip-frame-08.webp"
+  },
+  {
+    "id": "svip-frame-07",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP 7 Animated Frame",
+    "art": "svip-frame-07.webp"
+  },
+  {
+    "id": "svip-medal-01",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Animated Medal 1",
+    "art": "svip-medal-01.webp"
+  },
+  {
+    "id": "svip-medal-02",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Animated Medal 2",
+    "art": "svip-medal-02.webp"
+  },
+  {
+    "id": "svip-medal-03",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Animated Medal 3",
+    "art": "svip-medal-03.webp"
+  },
+  {
+    "id": "svip-medal-04",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Animated Medal 4",
+    "art": "svip-medal-04.webp"
+  },
+  {
+    "id": "svip-medal-05",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Animated Medal 5",
+    "art": "svip-medal-05.webp"
+  },
+  {
+    "id": "svip-medal-06",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Animated Medal 6",
+    "art": "svip-medal-06.webp"
+  },
+  {
+    "id": "svip-medal-07",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Animated Medal 7",
+    "art": "svip-medal-07.webp"
+  },
+  {
+    "id": "svip-medal-08",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Animated Medal 8",
+    "art": "svip-medal-08.webp"
+  },
+  {
+    "id": "svip-tag-01",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 1",
+    "art": "svip-tag-01.webp"
+  },
+  {
+    "id": "svip-tag-02",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 2",
+    "art": "svip-tag-02.webp"
+  },
+  {
+    "id": "svip-tag-03",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 3",
+    "art": "svip-tag-03.webp"
+  },
+  {
+    "id": "svip-tag-04",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 4",
+    "art": "svip-tag-04.webp"
+  },
+  {
+    "id": "svip-tag-05",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 5",
+    "art": "svip-tag-05.webp"
+  },
+  {
+    "id": "svip-tag-06",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 6",
+    "art": "svip-tag-06.webp"
+  },
+  {
+    "id": "svip-tag-07",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 7",
+    "art": "svip-tag-07.webp"
+  },
+  {
+    "id": "svip-tag-08",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 8",
+    "art": "svip-tag-08.webp"
+  },
+  {
+    "id": "svip-tag-09",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 9",
+    "art": "svip-tag-09.webp"
+  },
+  {
+    "id": "svip-tag-10",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 10",
+    "art": "svip-tag-10.webp"
+  },
+  {
+    "id": "svip-tag-11",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 11",
+    "art": "svip-tag-11.webp"
+  },
+  {
+    "id": "svip-tag-12",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 12",
+    "art": "svip-tag-12.webp"
+  },
+  {
+    "id": "svip-tag-13",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 13",
+    "art": "svip-tag-13.webp"
+  },
+  {
+    "id": "svip-tag-14",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 14",
+    "art": "svip-tag-14.webp"
+  },
+  {
+    "id": "svip-tag-15",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 15",
+    "art": "svip-tag-15.webp"
+  },
+  {
+    "id": "svip-tag-16",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 16",
+    "art": "svip-tag-16.webp"
+  },
+  {
+    "id": "svip-tag-17",
+    "kind": "name_tag_style",
+    "group": "svip",
+    "name": "SVIP Nameplate 17",
+    "art": "svip-tag-17.webp"
+  },
+  {
+    "id": "role-frame-01",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 01",
+    "art": "role-frame-01.webp"
+  },
+  {
+    "id": "role-frame-02",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 02",
+    "art": "role-frame-02.webp"
+  },
+  {
+    "id": "role-frame-03",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 03",
+    "art": "role-frame-03.webp"
+  },
+  {
+    "id": "role-frame-04",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 04",
+    "art": "role-frame-04.webp"
+  },
+  {
+    "id": "role-frame-05",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 05",
+    "art": "role-frame-05.webp"
+  },
+  {
+    "id": "role-frame-06",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 06",
+    "art": "role-frame-06.webp"
+  },
+  {
+    "id": "role-frame-07",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 07",
+    "art": "role-frame-07.webp"
+  },
+  {
+    "id": "role-frame-08",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 08",
+    "art": "role-frame-08.webp"
+  },
+  {
+    "id": "role-frame-09",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 09",
+    "art": "role-frame-09.webp"
+  },
+  {
+    "id": "role-frame-10",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 10",
+    "art": "role-frame-10.webp"
+  },
+  {
+    "id": "role-frame-11",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 11",
+    "art": "role-frame-11.webp"
+  },
+  {
+    "id": "role-frame-12",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 12",
+    "art": "role-frame-12.webp"
+  },
+  {
+    "id": "role-frame-13",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 13",
+    "art": "role-frame-13.webp"
+  },
+  {
+    "id": "role-frame-14",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 14",
+    "art": "role-frame-14.webp"
+  },
+  {
+    "id": "role-frame-15",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 15",
+    "art": "role-frame-15.webp"
+  },
+  {
+    "id": "role-frame-16",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 16",
+    "art": "role-frame-16.webp"
+  },
+  {
+    "id": "role-frame-17",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 17",
+    "art": "role-frame-17.webp"
+  },
+  {
+    "id": "role-frame-18",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 18",
+    "art": "role-frame-18.webp"
+  },
+  {
+    "id": "role-frame-19",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 19",
+    "art": "role-frame-19.webp"
+  },
+  {
+    "id": "role-frame-20",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 20",
+    "art": "role-frame-20.webp"
+  },
+  {
+    "id": "role-frame-21",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 21",
+    "art": "role-frame-21.webp"
+  },
+  {
+    "id": "role-frame-22",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 22",
+    "art": "role-frame-22.webp"
+  },
+  {
+    "id": "role-frame-23",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 23",
+    "art": "role-frame-23.webp"
+  },
+  {
+    "id": "role-frame-24",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 24",
+    "art": "role-frame-24.webp"
+  },
+  {
+    "id": "role-frame-25",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 25",
+    "art": "role-frame-25.webp"
+  },
+  {
+    "id": "role-frame-26",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 26",
+    "art": "role-frame-26.webp"
+  },
+  {
+    "id": "role-frame-27",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 27",
+    "art": "role-frame-27.webp"
+  },
+  {
+    "id": "role-frame-28",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 28",
+    "art": "role-frame-28.webp"
+  },
+  {
+    "id": "role-frame-29",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 29",
+    "art": "role-frame-29.webp"
+  },
+  {
+    "id": "role-frame-30",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 30",
+    "art": "role-frame-30.webp"
+  },
+  {
+    "id": "role-frame-31",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 31",
+    "art": "role-frame-31.webp"
+  },
+  {
+    "id": "role-frame-32",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 32",
+    "art": "role-frame-32.webp"
+  },
+  {
+    "id": "role-frame-33",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 33",
+    "art": "role-frame-33.webp"
+  },
+  {
+    "id": "role-frame-34",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 34",
+    "art": "role-frame-34.webp"
+  },
+  {
+    "id": "role-frame-35",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 35",
+    "art": "role-frame-35.webp"
+  },
+  {
+    "id": "role-frame-36",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 36",
+    "art": "role-frame-36.webp"
+  },
+  {
+    "id": "role-frame-37",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 37",
+    "art": "role-frame-37.webp"
+  },
+  {
+    "id": "role-frame-38",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 38",
+    "art": "role-frame-38.webp"
+  },
+  {
+    "id": "role-frame-39",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 39",
+    "art": "role-frame-39.webp"
+  },
+  {
+    "id": "role-frame-40",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 40",
+    "art": "role-frame-40.webp"
+  },
+  {
+    "id": "role-frame-41",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 41",
+    "art": "role-frame-41.webp"
+  },
+  {
+    "id": "role-frame-42",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 42",
+    "art": "role-frame-42.webp"
+  },
+  {
+    "id": "role-frame-43",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 43",
+    "art": "role-frame-43.webp"
+  },
+  {
+    "id": "role-frame-44",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 44",
+    "art": "role-frame-44.webp"
+  },
+  {
+    "id": "role-frame-45",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 45",
+    "art": "role-frame-45.webp"
+  },
+  {
+    "id": "role-frame-46",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 46",
+    "art": "role-frame-46.webp"
+  },
+  {
+    "id": "role-frame-47",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 47",
+    "art": "role-frame-47.webp"
+  },
+  {
+    "id": "role-frame-48",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 48",
+    "art": "role-frame-48.webp"
+  },
+  {
+    "id": "role-frame-49",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 49",
+    "art": "role-frame-49.webp"
+  },
+  {
+    "id": "role-frame-50",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 50",
+    "art": "role-frame-50.webp"
+  },
+  {
+    "id": "role-frame-51",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 51",
+    "art": "role-frame-51.webp"
+  },
+  {
+    "id": "role-frame-54",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 54",
+    "art": "role-frame-54.webp"
+  },
+  {
+    "id": "role-frame-55",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 55",
+    "art": "role-frame-55.webp"
+  },
+  {
+    "id": "role-frame-56",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 56",
+    "art": "role-frame-56.webp"
+  },
+  {
+    "id": "role-frame-57",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 57",
+    "art": "role-frame-57.webp"
+  },
+  {
+    "id": "role-frame-58",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 58",
+    "art": "role-frame-58.webp"
+  },
+  {
+    "id": "role-frame-59",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 59",
+    "art": "role-frame-59.webp"
+  },
+  {
+    "id": "role-frame-60",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 60",
+    "art": "role-frame-60.webp"
+  },
+  {
+    "id": "role-frame-61",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 61",
+    "art": "role-frame-61.webp"
+  },
+  {
+    "id": "role-frame-62",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 62",
+    "art": "role-frame-62.webp"
+  },
+  {
+    "id": "role-frame-63",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 63",
+    "art": "role-frame-63.webp"
+  },
+  {
+    "id": "role-frame-64",
+    "kind": "frame_style",
+    "group": "role",
+    "name": "Royal Role Frame 64",
+    "art": "role-frame-64.webp"
+  },
+  {
+    "id": "noble-gold-microphone",
+    "kind": "frame_style",
+    "group": "noble",
+    "name": "Noble Gold Microphone",
+    "art": "noble-gold-microphone.webp"
+  }
+]

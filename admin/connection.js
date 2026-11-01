@@ -834,11 +834,17 @@
       root.innerHTML=card('Frames, entry and name tags','Only Super Admin can manage prices or grant free styles to an ID.');
       return;
     }
+    const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
+      prefix+'-'+String(i+1).padStart(2,'0'));
+    const roleFrames=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,63,64]
+      .map(n=>'role-frame-'+String(n).padStart(2,'0'));
     const art={
       frame_style:['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love',
-        'ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen'],
+        'ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
+        'vip5-animated',...numbered('svip-frame',8),'noble-gold-microphone',...roleFrames],
       entry_style:['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen'],
-      medal_style:['bronze','silver','gold','top-host'],name_tag_style:['legend']
+      medal_style:['bronze','silver','gold','top-host',...numbered('svip-medal',8)],
+      name_tag_style:['legend',...numbered('svip-tag',17)]
     };
     const kinds=Object.keys(art);
     const options=(list,selected)=>list.map(v=>'<option value="'+esc(v)+'"'+

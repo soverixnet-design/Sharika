@@ -29,6 +29,7 @@ on:
       - feature/sharika-neon-special-id-20261101
       - feature/sharika-notifications-20261101
       - feature/sharika-golden-home-20261101
+      - feature/sharika-svip-video-frames-20261101
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
@@ -231,6 +232,15 @@ jobs:
             unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/sovera-effects/$effect"
           done
           echo 'SOVERA_FRAMES_ENTRIES_IN_APK_VERIFIED'
+
+      - name: Verify individual transparent SVIP animations are in the APK
+        run: |
+          test -s app/src/main/assets/sharika-premium/manifest.json
+          for asset in vip5-animated svip-frame-01 svip-frame-08 svip-medal-01 svip-tag-17 noble-gold-microphone role-frame-64; do
+            test -s "app/src/main/assets/sharika-premium/$asset.webp"
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/sharika-premium/$asset.webp"
+          done
+          echo 'SHARIKA_SVIP_ROLE_ANIMATED_ASSETS_VERIFIED'
 
       - name: Check original game cards and HTML are packaged in the staging APK
         run: |

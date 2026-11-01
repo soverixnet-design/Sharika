@@ -1,10 +1,17 @@
 // Server-owned paid cosmetics. Never trust client-side "owned" style flags.
 const KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
+const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
+ prefix+'-'+String(i+1).padStart(2,'0'));
+// Role names printed on the artwork are purely decorative; this catalogue
+// never changes an account's actual staff permissions.
+const roleArt=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,63,64]
+ .map(number=>'role-frame-'+String(number).padStart(2,'0'));
 const KEYS={
- frame_style:new Set(['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love','ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen']),
+ frame_style:new Set(['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love','ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
+  'vip5-animated','noble-gold-microphone',...numbered('svip-frame',8),...roleArt]),
  entry_style:new Set(['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen']),
- medal_style:new Set(['bronze','silver','gold','top-host']),
- name_tag_style:new Set(['legend'])
+ medal_style:new Set(['bronze','silver','gold','top-host',...numbered('svip-medal',8)]),
+ name_tag_style:new Set(['legend',...numbered('svip-tag',17)])
 };
 const ID=/^[a-z0-9][a-z0-9-]{2,39}$/;
 const TX=/^[a-zA-Z0-9:_-]{12,80}$/;

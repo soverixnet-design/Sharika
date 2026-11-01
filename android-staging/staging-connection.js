@@ -155,9 +155,27 @@
   const SOVERA_TAGS=[
     {id:'legend',name:'Sovera Legend decorative nameplate',art:'legend-tag.webp'}
   ];
+  // User-supplied source videos are split into individual transparent,
+  // 3.6-second looping WebP assets. No user URL or HTML is interpolated here.
+  const premiumItem=(id,name,group)=>({id,name,group,source:'sharika',art:id+'.webp'});
+  const premiumRange=(prefix,amount,label,group)=>Array.from({length:amount},(_,i)=>{
+    const number=String(i+1).padStart(2,'0');
+    return premiumItem(prefix+'-'+number,label+' '+(i+1),group);
+  });
+  const roleNumbers=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,63,64];
+  SOVERA_FRAMES.push(
+    premiumItem('vip5-animated','VIP5 Royal Wings','vip'),
+    ...premiumRange('svip-frame',8,'SVIP Animated Frame','svip'),
+    premiumItem('noble-gold-microphone','Noble Gold Microphone','noble'),
+    ...roleNumbers.map(number=>premiumItem('role-frame-'+String(number).padStart(2,'0'),
+      'Royal Role Frame '+number,'role'))
+  );
+  SOVERA_MEDALS.push(...premiumRange('svip-medal',8,'SVIP Animated Medal','svip'));
+  SOVERA_TAGS.push(...premiumRange('svip-tag',17,'SVIP Nameplate','svip'));
   function medalArt(key){return SOVERA_MEDALS.find(m=>m.id===key);}
   function nameTagArt(key){return SOVERA_TAGS.find(m=>m.id===key);}
-  function cosmeticMedia(item){return item?.group==='medals'?
+  function cosmeticMedia(item){return item?.source==='sharika'?
+    './sharika-premium/'+item.art:item?.group==='medals'?
     './sovera-medals/'+item.art:effectPath(item.art);}
   function frameArt(key){return SOVERA_FRAMES.find(f=>f.id===key);}
   function entryArt(key){return SOVERA_ENTRIES.find(f=>f.id===key);}
@@ -226,7 +244,7 @@
     if(!item)return '';
     // Only pinned package filenames are used; never interpolate user URLs.
     return '<i class="fxr sh-sovera-frame" aria-hidden="true" '+
-      'style="background-image:url('+effectPath(item.art)+')"></i>';
+      'style="background-image:url('+cosmeticMedia(item)+')"></i>';
   }
   function playSoveraEntry(doc,key){
     const choice=entryArt(key);
@@ -364,7 +382,7 @@
         const decoration=doc.createElement('i');
         decoration.className='fxr sh-sovera-frame';
         decoration.setAttribute('aria-hidden','true');
-        decoration.style.backgroundImage='url('+effectPath(item.art)+')';
+        decoration.style.backgroundImage='url('+cosmeticMedia(item)+')';
         avatar.appendChild(decoration);
       }
       if(medal){
@@ -428,15 +446,17 @@
     cosmeticCataloguePromise=work;
     try{return await work;}finally{cosmeticCataloguePromise=null;}
   }
-  async function styleSelectionSheet(kind){
+  async function styleSelectionSheet(kind,gallery='all'){
     if(!session){window.showAuth('welcome');return;}
     cosmeticCss(document);
     const isEntry=kind==='entry_style';
     const isMedal=kind==='medal_style';
     const isTag=kind==='name_tag_style';
-    const title=isEntry?'✨ Original Sovera Entry':
-      isMedal?'🏅 Original Sovera Medals':
-      isTag?'🎖️ Original Sovera Name Tag':'🖼️ Original Sovera Avatar Frames';
+    const collection=gallery==='svip'?'SVIP Animated':
+      gallery==='noble'?'Noble':gallery==='role'?'Royal Staff': 'Sharika & Sovera';
+    const title=isEntry?'✨ '+collection+' Entry':
+      isMedal?'🏅 '+collection+' Medals':
+      isTag?'🎖️ '+collection+' Name Tags':'🖼️ '+collection+' Avatar Frames';
     const catalog=isEntry?SOVERA_ENTRIES:isMedal?SOVERA_MEDALS:isTag?SOVERA_TAGS:SOVERA_FRAMES;
     window.openSheet('<h3>'+title+'</h3><div id="sh-sovera-tabs"></div>'+
       '<div id="sh-sovera-list" class="sh-sovera-grid"></div>'+
@@ -446,19 +466,32 @@
     const tabs=document.getElementById('sh-sovera-tabs');
     tabs.style.cssText='display:flex;gap:5px;margin:10px 0;flex-wrap:wrap';
     for(const option of [
-      ['frame_style','Frames'],['entry_style','Entry'],
-      ['medal_style','Medal'],['name_tag_style','Name Tag']
+      ['frame_style','Frames','all'],['entry_style','Entry','all'],
+      ['medal_style','Medals','all'],['name_tag_style','Name Tags','all'],
+      ['frame_style','SVIP Frames','svip'],['medal_style','SVIP Medals','svip'],
+      ['name_tag_style','SVIP Tags','svip'],['frame_style','Noble','noble'],
+      ['frame_style','Royal Staff','role']
     ]){
       const tab=document.createElement('button');
       tab.type='button';tab.className='act';tab.textContent=option[1];
       tab.style.cssText='flex:1;padding:8px 6px;min-width:60px;font-size:12px;border-radius:10px;'+
-        (option[0]===kind?'background:#6a40b7;color:#fff':'background:#2c2357;color:#fff');
-      tab.onclick=()=>styleSelectionSheet(option[0]);
+        (option[0]===kind&&option[2]===gallery?'background:#6a40b7;color:#fff':
+          'background:#2c2357;color:#fff');
+      tab.onclick=()=>styleSelectionSheet(option[0],option[2]);
       tabs.appendChild(tab);
     }
     const current=profile?.[kind]||'';
     let records;
-    try{records=(await loadVerifiedCosmetics()).filter(x=>x.kind===kind);}
+    try{
+      records=(await loadVerifiedCosmetics()).filter(x=>{
+        if(x.kind!==kind)return false;
+        if(gallery==='all')return true;
+        const key=x.id.slice(kind.length+1);
+        const art=catalog.find(item=>item.id===key)||
+          catalog.find(item=>item.id===x.art_key);
+        return art?.group===gallery;
+      });
+    }
     catch(error){node.textContent='Cosmetic shop unavailable: '+errText(error);return;}
     if(!node.isConnected)return;
     const choices=[{id:'',name:'None',art:'',owned:true},...records.map(row=>{
@@ -484,7 +517,7 @@
         if(item.art){
           const ring=document.createElement('i');
           ring.className='fxr sh-sovera-frame';
-          ring.style.backgroundImage='url('+effectPath(item.art)+')';
+          ring.style.backgroundImage='url('+cosmeticMedia(item)+')';
           preview.appendChild(ring);
         }
         button.appendChild(preview);
@@ -674,6 +707,17 @@
             '<button class="send" type="button" data-sh-premium-buy="'+item.tier+'">'+
               (active?'Extend ':'Buy ')+item.tier.toUpperCase()+'</button>':'')+'</div>';
       }).join('')+'</div>'+
+      '<div style="margin-top:13px;padding:12px;border:1px solid #e8c178;'+
+        'border-radius:17px;background:linear-gradient(155deg,#57367b,#201746)">'+
+        '<b>✨ SVIP Animated Frames & Medals</b>'+
+        '<div class="lbl">Separate 3.6-second transparent animations. '+
+        'You can preview every item; equip only if owned or granted by Admin.</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'+
+          '<button class="send" type="button" data-sh-premium-gallery="svip:frame_style">🖼️ SVIP Frames</button>'+
+          '<button class="send" type="button" data-sh-premium-gallery="svip:medal_style">🏅 SVIP Medals</button>'+
+          '<button class="send" type="button" data-sh-premium-gallery="svip:name_tag_style">🎖️ SVIP Nameplates</button>'+
+          '<button class="send" type="button" data-sh-premium-gallery="noble:frame_style">👑 Noble Frames</button>'+
+        '</div></div>'+
       '<div style="margin-top:13px;padding:12px;border-radius:16px;background:#231b4a">'+
         '<b>🎁 Premium Daily Coin Bonus</b><div class="lbl">'+
         (status.tier==='none'?'Qualify for a tier to claim daily coins.':
@@ -684,6 +728,12 @@
             (status.claimed_today?'Claimed today ✓':'Claim premium coins')+'</button>':'')+
         '</div><p class="lbl" id="sh-premium-status" role="status"></p>';
     const note=root.querySelector('#sh-premium-status');
+    root.querySelectorAll('[data-sh-premium-gallery]').forEach(button=>{
+      button.onclick=()=>{
+        const [gallery,kind]=button.dataset.shPremiumGallery.split(':');
+        styleSelectionSheet(kind,gallery).catch(error=>toast(errText(error)));
+      };
+    });
     root.querySelectorAll('[data-sh-premium-buy]').forEach(button=>{
       button.onclick=async()=>{
         const tier=button.dataset.shPremiumBuy;
@@ -2581,7 +2631,7 @@
             if(chosen){
               const art=frame.document.createElement('i');
               art.className='fxr sh-sovera-frame';
-              art.style.backgroundImage='url('+effectPath(chosen.art)+')';
+              art.style.backgroundImage='url('+cosmeticMedia(chosen)+')';
               picture.appendChild(art);
             }
             const name=frame.document.createElement('div');
@@ -4549,7 +4599,7 @@
         const art=document.createElement('i');
         art.className='fxr sh-sovera-frame';
         art.setAttribute('aria-hidden','true');
-        art.style.backgroundImage='url("'+effectPath(frame.art)+'")';
+        art.style.backgroundImage='url("'+cosmeticMedia(frame)+'")';
         wrap.appendChild(art);
       }
       const medal=medalArt(leader.medal_style);
@@ -4671,7 +4721,7 @@
     else avatar.textContent='👤';
     const frame=frameArt(person?.frame_style);
     if(frame){const art=document.createElement('i');art.className='sh-sovera-frame';
-      art.style.backgroundImage='url("'+effectPath(frame.art)+'")';avatar.appendChild(art);}
+      art.style.backgroundImage='url("'+cosmeticMedia(frame)+'")';avatar.appendChild(art);}
     const name=document.createElement('strong');name.textContent=person?.name||'No partner';
     const id=document.createElement('small');id.textContent=person?.id?'ID '+person.id:'Awaiting invitation';
     button.append(avatar,name,id);
