@@ -29,6 +29,7 @@ on:
       - feature/sharika-neon-special-id-20261101
       - feature/sharika-notifications-20261101
       - feature/sharika-golden-home-20261101
+      - feature/sharika-royal-profile-20261101
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'

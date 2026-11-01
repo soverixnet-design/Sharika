@@ -1,0 +1,376 @@
+/* Sharika My Profile: the supplied royal-purple artwork, only on My Profile. */
+.app.royal-profile { overflow: clip !important; }
+#v-me.profile-royal {
+  padding: 0 0 125px !important;
+  color: #fff5dd !important;
+  text-align: left !important;
+  background: #110621 !important;
+}
+
+#v-me.profile-royal .profile-royal-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  padding: 0 13px 24px;
+}
+
+#v-me.profile-royal .profile-royal-page::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 970px;
+  z-index: -1;
+  pointer-events: none;
+  background: url('./royal-profile-background.jpg') center top / 100% 970px no-repeat;
+}
+
+#v-me.profile-royal .profile-royal-page::after {
+  content: '';
+  position: absolute;
+  inset: 870px 0 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, #110621 115px);
+}
+
+#v-me.profile-royal .profile-topbar {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 38px 38px;
+  align-items: center;
+  gap: 7px;
+  height: calc(49px + env(safe-area-inset-top,0px));
+  padding-top: env(safe-area-inset-top,0px);
+  margin: 0 -13px;
+  padding-inline: 13px;
+  border-bottom: 1px solid rgba(255,210,133,.1);
+  background: rgba(20, 6, 33, .58);
+  backdrop-filter: blur(8px);
+  position: relative;
+  z-index: 3;
+}
+
+#v-me.profile-royal .profile-topbar h1 {
+  font-size: 22px;
+  line-height: 1;
+  text-align: center;
+  margin: 0;
+  color: #ffdfab;
+  font-weight: 800;
+  text-shadow: 0 2px 8px #220c2f;
+}
+
+#v-me.profile-royal .profile-top-icon {
+  border: 0;
+  background: none;
+  color: #ffe4a0;
+  padding: 0;
+  width: 38px;
+  height: 42px;
+  font-size: 30px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+#v-me.profile-royal .profile-hero { text-align: center; }
+#v-me.profile-royal .mav {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 116px;
+  height: 116px;
+  margin: 22px auto 0;
+  padding: 5px;
+  border: 3px solid #ffd276;
+  border-radius: 50%;
+  background: linear-gradient(135deg,#eab95b,#8b3599,#ffdf97) !important;
+  box-shadow: 0 0 18px 4px rgba(254,194,91,.55), 0 5px 18px #100021 !important;
+  animation: none !important;
+  cursor: pointer;
+}
+#v-me.profile-royal .mav div {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(145deg,#7c65bb,#292455) center/cover;
+  border: 2px solid rgba(255,232,176,.65);
+  display: grid;
+  place-items: center;
+  font-size: 54px;
+  color: #ebe2ff;
+  animation: none !important;
+}
+#v-me.profile-royal .mav .fxr { z-index: 2; }
+#v-me.profile-royal .profile-avatar-crown {
+  position:absolute;
+  z-index:4;
+  width:138px;
+  height:auto;
+  max-width:none;
+  left:50%;
+  top:-37px;
+  transform:translateX(-50%);
+  pointer-events:none;
+  filter:drop-shadow(0 2px 6px #2b0b4b);
+}
+
+#v-me.profile-royal .profile-svip-badge {
+  position: relative;
+  z-index: 2;
+  display: block;
+  margin: -16px auto 0;
+  padding: 3px 15px 4px;
+  border: 1.5px solid #ffd078;
+  border-radius: 18px;
+  background: linear-gradient(145deg,#4b1b67,#1e1236);
+  box-shadow: 0 3px 11px #120420;
+  color: #ffe8aa;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+#v-me.profile-royal .mnm {
+  margin: 1px 0 3px;
+  font-size: clamp(20px,5.8vw,27px);
+  line-height: 1.1;
+  font-weight: 850;
+  color: #fff !important;
+  text-align: center;
+  text-shadow: 0 3px 8px #090015;
+}
+#v-me.profile-royal .profile-name-edit {
+  vertical-align: middle;
+  border: 0;
+  background: none;
+  color: #d9b9ff;
+  font-size: 20px;
+  padding: 1px 2px;
+}
+#v-me.profile-royal .profile-id-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 29px;
+}
+#v-me.profile-royal .mid {
+  margin: 0;
+  display: inline-block;
+  padding: 4px 14px;
+  color: #ffe7a3 !important;
+  border: 1px solid #f4cd6d;
+  border-radius: 24px;
+  background: rgba(15,6,29,.55);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: copy;
+  box-shadow: 0 2px 8px #0e0018;
+}
+#v-me.profile-royal #sh-neon-own-id { margin: 0; max-width: 100%; }
+#v-me.profile-royal .mdr { margin: 4px 0 0; }
+#v-me.profile-royal .mdr { display: none; }
+#v-me.profile-royal .lps {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 4px auto 6px;
+}
+#v-me.profile-royal .lp {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  padding: 7px 10px;
+  border: 1px solid #ff4fc5;
+  border-radius: 22px;
+  background: rgba(24,6,39,.82) !important;
+  color: #fff0dc !important;
+  box-shadow: 0 0 7px rgba(253,49,219,.25);
+  font-size: 12px;
+  font-weight: 750;
+}
+#v-me.profile-royal .lp.r { border-color: #4a97ff; box-shadow: 0 0 7px #3288f852; }
+#v-me.profile-royal .edp {
+  display: block;
+  width: min(205px,65%);
+  margin: 6px auto 0;
+  padding: 9px 18px;
+  color: #fff3d0 !important;
+  font-size: 15px;
+  font-weight: 800;
+  border: 2px solid #f5ce73 !important;
+  border-radius: 27px;
+  background: linear-gradient(180deg,#956044,#3e1d29) !important;
+  box-shadow: 0 0 17px #f7ad684f, inset 0 1px 1px #fff9 !important;
+}
+
+#v-me.profile-royal .mst {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  margin: 9px 0 10px;
+  padding: 7px 2px;
+  border: 1px solid rgba(226,163,217,.32);
+  border-radius: 17px;
+  background: rgba(15,7,28,.75);
+  box-shadow: inset 0 2px 16px #05020d55;
+  text-align: center;
+}
+#v-me.profile-royal .mst>div { min-width:0; padding: 0 3px; }
+#v-me.profile-royal .mst>div+div { border-left:1px solid rgba(226,173,248,.27); }
+#v-me.profile-royal .profile-stat-icon { display:block; font-size:15px; color:#d1b8ff; margin-bottom:2px; }
+#v-me.profile-royal .mst b { display:block; font-size:22px; color:#fff !important; line-height:1.05; }
+#v-me.profile-royal .mst small { display:block; margin-top:3px; font-size:11px; color:#d4bce7 !important; }
+
+#v-me.profile-royal .wl {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:5px;
+  padding:14px 9px;
+  margin: 0 0 15px;
+  width:100%;
+  min-height:82px;
+  border:2px solid #ffdb83 !important;
+  border-radius:20px !important;
+  background: linear-gradient(130deg,rgba(143,80,74,.68),rgba(57,23,63,.87)),rgba(45,16,43,.86) !important;
+  box-shadow: 0 0 15px #edb55e55,inset 0 1px 8px #f8d59442 !important;
+  color:#fff0dc !important;
+  text-align:left;
+}
+#v-me.profile-royal .profile-wallet-pair { display:flex; align-items:center; min-width:0; gap:5px; }
+#v-me.profile-royal .profile-wallet-symbol { font-size:29px; line-height:1; flex:none; }
+#v-me.profile-royal .profile-wallet-pair small { display:block; color:#f5dfd4; font-size:10px; }
+#v-me.profile-royal .profile-wallet-pair strong { display:block; color:#ffe089; font-size:clamp(12px,3.4vw,18px); white-space:nowrap; }
+#v-me.profile-royal .profile-wallet-action {
+  display:block;
+  flex:none;
+  padding:10px 9px;
+  border-radius:23px;
+  border:1.5px solid #ffecad;
+  background:linear-gradient(180deg,#ffea9f,#d39230);
+  box-shadow:0 3px 8px #2d102b99;
+  color:#3f230c;
+  font-size:12px;
+  font-weight:850;
+}
+
+#v-me.profile-royal .profile-section { margin: 16px 0 0; }
+#v-me.profile-royal .profile-section-title {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  white-space:nowrap;
+  margin: 0 0 9px;
+  color:#ffdfa4;
+  font-weight:850;
+  font-size:18px;
+  text-shadow:0 2px 6px #120320;
+}
+#v-me.profile-royal .profile-section-title::after { content:''; flex:1; height:1px; background:rgba(247,199,125,.5); }
+#v-me.profile-royal .tiles { display:grid; grid-template-columns:repeat(4,minmax(0,1fr));gap:7px; }
+#v-me.profile-royal .tiles button {
+  min-width:0;
+  min-height:103px;
+  padding:5px 2px 8px;
+  border:1px solid #bd7ca0 !important;
+  border-radius:15px !important;
+  background:linear-gradient(150deg,rgba(86,47,71,.86),rgba(34,12,50,.95)) !important;
+  box-shadow:inset 0 1px 4px #ffdca655,0 3px 11px #10031977 !important;
+  color:#fff5e9 !important;
+  font-size:11.5px;
+  font-weight:750;
+  text-align:center;
+}
+#v-me.profile-royal .tiles span.profile-collection-icon {
+  display:block !important;
+  width:65px !important;
+  height:65px !important;
+  margin:0 auto 2px !important;
+  background-image:url('./profile-collection-atlas.webp') !important;
+  background-size:200% 200% !important;
+  background-repeat:no-repeat !important;
+  box-shadow:none !important;
+  border-radius:0 !important;
+  transform:none !important;
+}
+#v-me.profile-royal .pc-shop { background-position:0 0 !important; }
+#v-me.profile-royal .pc-badges { background-position:100% 0 !important; }
+#v-me.profile-royal .pc-frames { background-position:0 100% !important; }
+#v-me.profile-royal .pc-daily { background-position:100% 100% !important; }
+
+#v-me.profile-royal .profile-account { margin-top:17px; }
+#v-me.profile-royal .ml2 {
+  padding:0;
+  border:0 !important;
+  border-radius:0 !important;
+  box-shadow:none !important;
+  background:transparent !important;
+  backdrop-filter:none !important;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+#v-me.profile-royal .mr {
+  display:flex;
+  width:100%;
+  min-height:56px;
+  justify-content:flex-start;
+  align-items:center;
+  gap:11px;
+  padding:5px 12px;
+  border:1px solid #b17cb5 !important;
+  border-left-color:#f5c36a !important;
+  border-radius:16px !important;
+  background:linear-gradient(105deg,rgba(83,42,64,.88),rgba(54,25,70,.92)) !important;
+  color:#f8e9f4 !important;
+  font-size:15px;
+  font-weight:700;
+  text-align:left !important;
+  box-shadow:inset 0 1px 4px #e8a8dd2c,0 2px 8px #0d031744 !important;
+}
+#v-me.profile-royal .mr>span:nth-child(2) { flex:1; min-width:0; }
+#v-me.profile-royal .mr i { margin-left:auto; color:#d8afe8 !important; font-size:26px; font-weight:400; }
+#v-me.profile-royal .profile-menu-icon {
+  width:43px;
+  height:43px;
+  display:block;
+  flex:none;
+  background-image:url('./profile-menu-atlas.webp');
+  background-size:200% 300%;
+  background-repeat:no-repeat;
+  border-radius:11px;
+}
+#v-me.profile-royal .pm-room {background-position:0 0}
+#v-me.profile-royal .pm-entry {background-position:100% 0}
+#v-me.profile-royal .pm-svip {background-position:0 50%}
+#v-me.profile-royal .pm-invite {background-position:100% 50%}
+#v-me.profile-royal .pm-cp {background-position:0 100%}
+#v-me.profile-royal .pm-settings {background-position:100% 100%}
+
+.app.royal-profile .nav {
+  background:rgba(21,9,33,.92) !important;
+  border-color:rgba(245,197,118,.42) !important;
+  box-shadow:0 8px 25px #080013a3 !important;
+}
+.app.royal-profile .ni { color:#ccb8d5 !important; }
+.app.royal-profile .ni.on { color:#ffdc8b !important; }
+.app.royal-profile .plus {
+  border:3px solid #ffe29d !important;
+  background:linear-gradient(145deg,#7f2d94,#da7d2d) !important;
+  box-shadow:0 3px 0 #7a3b19,0 0 16px #eabd5e66 !important;
+}
+
+@media (max-width:370px) {
+  #v-me.profile-royal .profile-royal-page {padding-inline:9px}
+  #v-me.profile-royal .profile-topbar {margin-inline:-9px;padding-inline:9px}
+  #v-me.profile-royal .tiles {gap:5px}
+  #v-me.profile-royal .tiles button {font-size:10px}
+  #v-me.profile-royal .tiles span.profile-collection-icon {width:56px!important;height:56px!important}
+  #v-me.profile-royal .lp {padding:6px 7px;font-size:10.5px}
+  #v-me.profile-royal .profile-wallet-symbol {font-size:22px}
+  #v-me.profile-royal .profile-wallet-action {padding:9px 7px;font-size:11px}
+}
+@media (prefers-reduced-motion:reduce) {
+  #v-me.profile-royal .mav,#v-me.profile-royal .mav div {animation:none!important}
+}

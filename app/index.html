@@ -231,6 +231,7 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
 .wkp{width:100%;margin-top:26px;color:#fff}.wkb{margin-top:auto;border:2px solid #f6c453;background:linear-gradient(#b02cff,#6016c8);color:#fff;border-radius:30px;padding:14px 56px;font-size:17px;font-weight:700;box-shadow:0 0 22px rgba(255,61,200,.5)}.wkt{width:60%;height:4px;border-radius:2px;background:rgba(255,255,255,.18);margin-top:16px;overflow:hidden}.wkt u{display:block;height:100%;background:#f6c453;animation:wkt linear forwards}@keyframes wkt{from{width:100%}to{width:0}}
 </style>
 <link rel="stylesheet" href="./golden-home.css">
+<link rel="stylesheet" href="./royal-profile.css">
 </head>
 <body>
 <div class="app golden-home" id="app">
@@ -246,7 +247,7 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
  </section>
  <section class="view" id="v-rank"><div class="rtop"><button class="rbk" id="rbk">‹</button><div id="rt"><button>Lucky</button><button class="on">Rich</button><button>Charm</button><button>Room</button><button>Noble</button><button>Play</button><button>Recharge</button></div></div><div class="seg" id="rp"><button>Daily</button><button class="on">Weekly</button><button>Monthly</button></div><div id="rb"></div></section>
  <section class="view" id="v-msg"><div class="hd"><div class="logo">💬</div><h1>Messages<small>Your conversations</small></h1></div><div id="ml"></div></section>
- <section class="view" id="v-me"></section>
+ <section class="view profile-royal" id="v-me"></section>
 </div>
 <div class="nav">
  <button class="ni on" data-v="home"><span>🏠</span>Home</button>
@@ -307,7 +308,7 @@ function pickImage(max,cb){var f=document.createElement("input");f.type="file";f
 function go(v){
   document.querySelectorAll(".view").forEach(function(s){s.classList.toggle("on",s.id==="v-"+v)});
   document.querySelectorAll(".ni").forEach(function(b){b.classList.toggle("on",b.dataset.v===v)});
-  $("app").classList.toggle("lite",v==="me");$("app").classList.toggle("golden-home",v==="home");if(v==="rank")renderRank();if(v==="msg")renderMsg();if(v==="me")renderMe();
+  $("app").classList.remove("lite");$("app").classList.toggle("royal-profile",v==="me");$("app").classList.toggle("golden-home",v==="home");if(v==="rank")renderRank();if(v==="msg")renderMsg();if(v==="me")renderMe();
 }
 document.querySelectorAll(".ni").forEach(function(b){b.onclick=function(){go(b.dataset.v)}});
 /* ===== Banners ===== */
@@ -516,18 +517,25 @@ function pfWire(root,m,mine){
 }
 function meHTML(m){
   var av=m.pic?'style="background-image:url('+m.pic+')"':'';
-  return'<div class="mtop"><button class="mb" id="mback">‹ Back</button><button class="mb" id="mlang">🌐 English ⌄</button></div>'+
-  '<div class="mav"><div '+av+'>'+(m.pic?'':m.e)+'</div></div><div class="mnm">'+esc(m.n)+'</div>'+medalStrip(m.id)+'<div class="mid" id="pid">ID: '+m.id+'</div>'+
-  '<div class="lps"><div class="cap"><span class="lp s">⬆ Sent Lv.'+m.wl+'</span><span class="lp r">⬇ Received Lv.'+m.cl+'</span></div><span class="svp">SVIP 1</span></div>'+
-  '<button class="edp" id="pe">✎ Edit profile</button>'+
-  '<div class="mst"><div><b>'+fmt(m.fl)+'</b><small>Followers</small></div><div><b>'+fmt(m.fg)+'</b><small>Following</small></div><div><b>'+fmt(A.vis||0)+'</b><small>Visitors</small></div></div>'+
-  '<button class="pick" id="pavb">📷 '+(m.pic?'Change profile photo':'Choose profile photo')+'</button>'+
-  '<div class="tiles"><button data-m="store"><span>🛍️</span>Shop</button><button id="mbd"><span>🏅</span>Badges</button><button data-m="frame"><span>🖼️</span>Frame</button><button data-m="daily"><span>🎯</span>Tasks</button></div>'+
-  '<button class="wl" id="wr"><b>Wallet ›</b><span><em>🪙 '+coins().toLocaleString("en-US")+'</em> &nbsp; <em>💎 '+(RS().dia||0).toLocaleString("en-US")+'</em></span></button>'+
-  '<div class="ml2"><button class="mr" data-m="home"><span>🎙️ My room</span><i>›</i></button><button class="mr" data-m="entry"><span>✨ Entry</span><i>›</i></button><button class="mr" data-m="svip"><span>👑 SVIP</span><i>›</i></button><button class="mr" data-m="invite"><span>🤝 Invite</span><i>›</i></button><button class="mr" data-m="set"><span>⚙️ Settings</span><i>›</i></button></div>';
+  return'<div class="profile-royal-page">'+
+  '<header class="profile-topbar"><button class="profile-top-icon" id="mback" aria-label="Back to home">‹</button><h1>My Profile</h1><button class="profile-top-icon" id="mtopedit" aria-label="Edit profile">✎</button><button class="profile-top-icon" id="mtopset" aria-label="Settings">⚙</button></header>'+
+  '<section class="profile-hero"><button class="mav" id="pavb" aria-label="Change profile photo"><div '+av+'>'+(m.pic?'':'👤')+'</div><img class="profile-avatar-crown" src="./profile-crown.webp" alt=""></button><button class="profile-svip-badge" data-m="svip">Member</button><div class="mnm">'+esc(m.n)+' <button class="profile-name-edit" id="mnameedit" aria-label="Edit profile name">✎</button></div>'+
+  '<div class="profile-id-row"><span class="mid" id="pid">ID '+esc(m.id)+' ▢</span></div>'+
+  '<div class="lps"><span class="lp s">💗 &nbsp;Sent &nbsp; Lv. '+bn(m.wl)+'</span><span class="lp r">💎 &nbsp;Received &nbsp; Lv. '+bn(m.cl)+'</span></div>'+
+  '<button class="edp" id="pe">Edit Profile</button></section>'+
+  '<div class="mst"><div><span class="profile-stat-icon">♟</span><b>'+fmt(m.fl)+'</b><small>Followers</small></div><div><span class="profile-stat-icon">♟</span><b>'+fmt(m.fg)+'</b><small>Following</small></div><div><span class="profile-stat-icon">◎</span><b>'+fmt(A.vis||0)+'</b><small>Visitors</small></div></div>'+
+  '<button class="wl" id="wr" aria-label="Open wallet"><span class="profile-wallet-pair"><span class="profile-wallet-symbol">🪙</span><span><small>Coins</small><strong>'+coins().toLocaleString("en-US")+'</strong></span></span><span class="profile-wallet-pair"><span class="profile-wallet-symbol">💎</span><span><small>Diamonds</small><strong>'+(RS().dia||0).toLocaleString("en-US")+'</strong></span></span><span class="profile-wallet-action">Wallet ›</span></button>'+
+  '<section class="profile-section"><h2 class="profile-section-title">♛ &nbsp;My Collection</h2><div class="tiles"><button data-m="store"><span class="profile-collection-icon pc-shop" aria-hidden="true"></span>Shop</button><button id="mbd"><span class="profile-collection-icon pc-badges" aria-hidden="true"></span>Badges</button><button data-m="frame"><span class="profile-collection-icon pc-frames" aria-hidden="true"></span>Frames</button><button data-m="daily"><span class="profile-collection-icon pc-daily" aria-hidden="true"></span>Daily Tasks</button></div></section>'+
+  '<section class="profile-section profile-account"><h2 class="profile-section-title">⚙ &nbsp;Account &amp; Features</h2><div class="ml2">'+
+  '<button class="mr" data-m="home"><span class="profile-menu-icon pm-room" aria-hidden="true"></span><span>My Room</span><i>›</i></button>'+
+  '<button class="mr" data-m="entry"><span class="profile-menu-icon pm-entry" aria-hidden="true"></span><span>Entry Effects</span><i>›</i></button>'+
+  '<button class="mr" data-m="svip"><span class="profile-menu-icon pm-svip" aria-hidden="true"></span><span>SVIP Club</span><i>›</i></button>'+
+  '<button class="mr" data-m="invite"><span class="profile-menu-icon pm-invite" aria-hidden="true"></span><span>Invite Friends</span><i>›</i></button>'+
+  '<button class="mr" data-m="cp"><span class="profile-menu-icon pm-cp" aria-hidden="true"></span><span>CP &amp; Friendship</span><i>›</i></button>'+
+  '<button class="mr" data-m="set"><span class="profile-menu-icon pm-settings" aria-hidden="true"></span><span>Settings</span><i>›</i></button></div></section></div>';
 }
 function renderMe(){var m=myModel(),r=$("v-me");r.innerHTML=meHTML(m);pfWire(r,m,true);
-  $("mback").onclick=function(){go("home")};$("mlang").onclick=function(){toast("More languages are coming soon")};
+  $("mback").onclick=function(){go("home")};$("mtopedit").onclick=editSheet;$("mnameedit").onclick=editSheet;$("mtopset").onclick=settingsSheet;
   $("mbd").onclick=function(){openSheet('<h3>🏅 Badges</h3><div class="bdg">'+badgesOf(m).map(function(b){return'<div class="'+(b[2]?"":"off")+'"><span>'+b[0]+'</span>'+b[1]+'</div>'}).join("")+'</div>')};
 }
 function openProfile(u){ptab=0;gsub=0;var m=otherModel(u);$("pfc").innerHTML=pfHTML(m,false);pfWire($("pfc"),m,false);$("pfo").classList.add("on");$("pfo").scrollTop=0}
