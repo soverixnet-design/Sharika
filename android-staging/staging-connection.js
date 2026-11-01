@@ -294,6 +294,111 @@
       (frame?.U||[]).find(item=>item?.id===key);
     return verifiedAvatarUrl(member?.pic);
   }
+  // A gift is a relationship between two real people, not just an emoji
+  // flying toward an anonymous seat. Small gifts appear above the chat dock;
+  // large gifts get a ten-second royal parade across the top of the room.
+  const FEATURED_GIFT_MIN_COINS=1000;
+  function giftPresentationCss(doc){
+    if(doc.getElementById('sh-gift-presentation-style'))return;
+    const style=doc.createElement('style');
+    style.id='sh-gift-presentation-style';
+    style.textContent=[
+      '.sh-gift-live{position:fixed;bottom:calc(92px + env(safe-area-inset-bottom,0px));',
+      'left:12px;right:12px;max-width:480px;margin:auto;z-index:85;pointer-events:none;',
+      'padding:10px 12px;border-radius:16px;background:linear-gradient(120deg,#2c184bdc,#140d36ed);',
+      'border:1px solid #e7b767;color:#fff3d0;box-shadow:0 8px 25px #090419bd;',
+      'font-size:12px;line-height:1.45;text-align:center;overflow-wrap:anywhere}',
+      '.sh-gift-live strong{color:#ffe69d}',
+      '.sh-gift-parade{position:fixed;z-index:90;top:calc(193px + env(safe-area-inset-top,0px));',
+      'left:10px;width:calc(100% - 20px);max-width:540px;box-sizing:border-box;',
+      'padding:9px 11px 12px;border-radius:23px;border:2px solid #ffe3a0;',
+      'background:radial-gradient(ellipse at 50% 0%,#bd4cad88,transparent 72%),',
+      'linear-gradient(135deg,#581d6e,#290f58 55%,#111b55);pointer-events:none;',
+      'box-shadow:0 10px 28px #07041bd9,inset 0 2px 2px #ffffff66,0 0 20px #ffc86c87;',
+      'color:#fff2d4;animation:shGiftParade 10s linear forwards}',
+      '@keyframes shGiftParade{0%{transform:translateX(110vw);opacity:0}',
+      '16%{transform:translateX(0);opacity:1}82%{transform:translateX(0);opacity:1}',
+      '100%{transform:translateX(-110vw);opacity:0}}',
+      '.sh-gift-parade-title{text-align:center;color:#ffdf87;font-size:12px;',
+      'letter-spacing:1.1px;font-weight:900;text-shadow:0 2px 7px #110522}',
+      '.sh-gift-parade-people{display:grid;grid-template-columns:minmax(0,1fr) 63px minmax(0,1fr);',
+      'gap:4px;align-items:center;text-align:center;margin-top:6px}',
+      '.sh-gift-person{min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px}',
+      '.sh-gift-avatar{position:relative;display:grid;place-items:center;overflow:hidden;',
+      'width:40px;height:40px;border-radius:50%;border:2px solid #ffe5a5;',
+      'background:linear-gradient(135deg,#be55d9,#4832a2);font-size:23px}',
+      '.sh-gift-person strong{display:block;width:100%;overflow:hidden;',
+      'text-overflow:ellipsis;white-space:nowrap;font-size:12px}',
+      '.sh-gift-person small{font-size:10px;color:#e5d0fc}',
+      '.sh-gift-present{display:flex;flex-direction:column;align-items:center;',
+      'justify-content:center;gap:2px;font-size:11px;color:#ffe7a7}',
+      '.sh-gift-present b{font-size:25px;line-height:1.1}',
+      '.sh-gift-parade-caption{text-align:center;font-size:11px;margin-top:7px;',
+      'color:#fff5d8;font-weight:800;overflow-wrap:anywhere}',
+      '@media(max-width:350px){.sh-gift-parade-people{grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr)}',
+      '.sh-gift-parade{padding:8px 7px}.sh-gift-avatar{width:35px;height:35px}}',
+      '@media(prefers-reduced-motion:reduce){.sh-gift-parade{animation:none}}'
+    ].join('');
+    doc.head.appendChild(style);
+  }
+  function giftParticipant(doc,name,id,pic){
+    const user=doc.createElement('span');user.className='sh-gift-person';
+    const photo=doc.createElement('span');photo.className='sh-gift-avatar';
+    photo.textContent='👤';paintVerifiedAvatar(photo,pic,doc);
+    const label=doc.createElement('strong');label.textContent=String(name||'Member').slice(0,80);
+    const number=doc.createElement('small');number.textContent='ID '+String(id||'');
+    user.append(photo,label,number);return user;
+  }
+  function giftEventValue(event){
+    return Math.max(0,(Number(event?.price_coins)||0)*(Number(event?.quantity)||0));
+  }
+  function giftEventText(event){
+    return String(event?.sender_name||'Member')+' (ID '+event.sender_id+') sent '+
+      String(event.emoji||'🎁')+' '+String(event.name||'Gift')+' ×'+
+      String(event.quantity||1)+' to '+String(event.recipient_name||'Member')+
+      ' (ID '+event.recipient_id+') · 🪙 '+giftEventValue(event).toLocaleString('en-US');
+  }
+  function queueGiftPresentation(frame,event,featured=false){
+    const doc=frame?.document;
+    if(!doc?.body)return;
+    giftPresentationCss(doc);
+    const queueKey=featured?'__shFeaturedGiftQueue':'__shGiftNoticeQueue';
+    const busyKey=featured?'__shFeaturedGiftBusy':'__shGiftNoticeBusy';
+    const queue=frame[queueKey]||(frame[queueKey]=[]);
+    if(queue.length<12)queue.push(event);
+    if(frame[busyKey])return;
+    function next(){
+      const item=queue.shift();
+      if(!item){frame[busyKey]=false;return;}
+      frame[busyKey]=true;
+      const box=doc.createElement('aside');
+      if(featured){
+        box.className='sh-gift-parade';
+        box.setAttribute('aria-label','Large gift celebration');
+        const heading=doc.createElement('div');heading.className='sh-gift-parade-title';
+        heading.textContent='👑 SHARIKA GIFT CONGRATULATIONS 👑';
+        const people=doc.createElement('div');people.className='sh-gift-parade-people';
+        const present=doc.createElement('div');present.className='sh-gift-present';
+        const emoji=doc.createElement('b');emoji.textContent=String(item.emoji||'🎁');
+        const amount=doc.createElement('span');amount.textContent='×'+String(item.quantity||1);
+        present.append(emoji,amount);
+        people.append(giftParticipant(doc,item.sender_name,item.sender_id,item.sender_pic),
+          present,giftParticipant(doc,item.recipient_name,item.recipient_id,item.recipient_pic));
+        const caption=doc.createElement('div');caption.className='sh-gift-parade-caption';
+        caption.textContent=String(item.sender_name||'Member')+' gifted '+
+          String(item.name||'Gift')+' to '+String(item.recipient_name||'Member')+
+          ' · 🪙 '+giftEventValue(item).toLocaleString('en-US');
+        box.append(heading,people,caption);
+      }else{
+        box.className='sh-gift-live';
+        box.textContent='🎁 '+giftEventText(item);
+        box.setAttribute('role','status');
+      }
+      doc.body.appendChild(box);
+      frame.setTimeout(()=>{box.remove();next();},featured?10000:4700);
+    }
+    next();
+  }
   function decorateRoomPeople(frame){
     const doc=frame?.document;
     for(const row of doc?.querySelectorAll('#ul .urow')||[]){
@@ -1565,6 +1670,13 @@
       if(!window.cur && document.visibilityState==='visible')reloadRooms().catch(()=>{});
     },25000);
   }
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState!=='visible'||!session)return;
+    heartbeatPresence();
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(window.cur?.id && frame?.seats)
+      syncFrame(window.cur,frame).catch(()=>{});
+  });
   async function reloadWallet() {
     const wallet = await api('GET','/wallet');
     balance = {coins:Number(wallet.coins)||0,dia:Number(wallet.diamonds)||0,xp:Number(wallet.xp)||0};
@@ -2086,6 +2198,7 @@
     let giftBusy=false;
     let pendingGiftRequest=null;
     let lastGiftEventId=null;
+    const shownGiftEvents=new Set();
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     let pendingChatMessage=null;
     let lastEntryEventId=0,entryPollInFlight=null;
@@ -2304,8 +2417,10 @@
               frame.fly(result.gift.emoji,Number(index),n*180,Number(frame.G[chosen]?.[1]||0));
           }
         }
-        const feed=await api('GET','/rooms/'+room.id+'/gifts').catch(()=>null);
-        if(feed?.events?.length)lastGiftEventId=Math.max(...feed.events.map(e=>e.id));
+        // Show the same verified sender → recipient notice on the sender's
+        // phone too. Do not advance the cursor past this newly sent event.
+        await pollGiftEvents(result.duplicate?null:result.transaction_id).catch(error=>
+          console.warn('Gift celebration delayed:',errText(error)));
       }catch(error){
         frame.toast(giftCommitted
           ?'Gift sent, but screen update delayed: '+errText(error)
@@ -2313,16 +2428,40 @@
       }
       finally{giftBusy=false;button.disabled=false;}
     },true);
-    async function pollGiftEvents(){
+    function presentVerifiedGift(event){
+      const id=Number(event.id);
+      if(!Number.isSafeInteger(id)||shownGiftEvents.has(id))return;
+      shownGiftEvents.add(id);
+      if(shownGiftEvents.size>100)shownGiftEvents.clear();
+      queueGiftPresentation(frame,event);
+      if(giftEventValue(event)>=FEATURED_GIFT_MIN_COINS)
+        queueGiftPresentation(frame,event,true);
+    }
+    async function pollGiftEvents(ownTransactionId=null){
       const data=await api('GET','/rooms/'+room.id+'/gifts');
       const events=data.events||[];
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
-      if(lastGiftEventId===null){lastGiftEventId=latest;return;}
+      if(lastGiftEventId===null){
+        lastGiftEventId=latest;
+        // A send can finish before the first poll. Show only the confirmed
+        // transaction, never replay the room's old history to a new joiner.
+        if(ownTransactionId!==null)for(const event of events){
+          if(String(event.transaction_id)!==String(ownTransactionId))continue;
+          presentVerifiedGift(event);
+        }
+        return;
+      }
       let receivedGift=false;
       let sawNewGift=false;
       for(const event of events){
-        if(event.id<=lastGiftEventId)continue;
+        if(event.id<=lastGiftEventId){
+          if(ownTransactionId!==null &&
+             String(event.transaction_id)===String(ownTransactionId))
+            presentVerifiedGift(event);
+          continue;
+        }
         sawNewGift=true;
+        presentVerifiedGift(event);
         if(event.sender_id===profile?.public_id)continue;
         if(event.recipient_id===profile?.public_id)receivedGift=true;
         const seat=(frame.seats||[]).find(s=>s?.public_id===event.recipient_id);
@@ -3247,7 +3386,7 @@
           toast('The room owner removed you from the room');
         }
       });
-    },15000);
+    },8000);
     if(giftPoll)clearInterval(giftPoll);
     pollGiftEvents().catch(()=>{});
     giftPoll=setInterval(()=>{if(window.cur?.id===room.id)pollGiftEvents().catch(()=>{});},5000);
@@ -3665,27 +3804,9 @@
   }
   renderVerifiedBanners([]);
 
-  // A verified seller may recharge directly from another real user's ID card.
-  const originalOpenProfile=window.openProfile;
-  if(typeof originalOpenProfile==='function')window.openProfile=function(user){
-    originalOpenProfile.apply(this,arguments);
-    const targetId=String(user?.id||'');
-    const root=document.querySelector('#pfc .pfh .meta');
-    if(!/^[0-9]{8}$/.test(targetId)||!root||!session)return;
-    Promise.all([api('GET','/sellers/me'),api('GET','/users/'+targetId)])
-      .then(([mine,verified])=>{
-        if(!root.isConnected||!mine.seller?.active||String(verified.id)!==targetId)return;
-        const button=document.createElement('button');
-        button.type='button';button.className='act';
-        button.textContent='🪙 Send seller coins to ID '+targetId;
-        button.style.cssText='display:block;margin:8px auto;padding:9px 13px;border-radius:12px';
-        button.onclick=()=>{
-          document.getElementById('pfo')?.classList.remove('on');
-          showVerifiedCoinSellers({walletOnly:true,targetId});
-        };
-        root.insertAdjacentElement('afterend',button);
-      }).catch(()=>{});
-  };
+  // Seller tools belong only in the verified seller's own wallet/profile.
+  // Showing a seller action on a stranger's public ID falsely suggests that
+  // recipient has an approved seller role.
 
   // Original daily reward card retained; values and claim status come from D1.
   // Existing Sharika bottom sheet, with a premium raised/gold-frame finish.
@@ -4477,10 +4598,21 @@
     'border:1px solid #c5a46a89;box-shadow:inset 0 2px 1px #fff3,0 8px 20px #09062182}',
     '#rb .sh-royal-empty strong{display:block;font-size:15px;color:#ffe6ad;margin:8px 0}',
     '#pfo .sh-ranked-profile .pavw>.sh-sovera-frame{z-index:4!important}',
-    '#pfo .sh-ranked-profile .sh-royal-profile-effects{display:flex;align-items:center;',
-    'justify-content:center;gap:8px;max-width:100%;margin:5px auto 15px}',
-    '#pfo .sh-ranked-profile .sh-royal-profile-effects img{max-width:94px;',
-    'height:40px;object-fit:contain;filter:drop-shadow(0 2px 3px #2d1158)}',
+    // Both room-opened and ranking-opened profiles display verified artwork.
+    // The original wide nameplate must never enlarge the phone's viewport.
+    '#pfo{overflow-x:hidden!important;max-width:100vw;box-sizing:border-box}',
+    '#pfo #pfc,#pfo .pf,#pfo .pfh{min-width:0;max-width:100%;box-sizing:border-box}',
+    '#pfo .sh-royal-profile-effects{display:flex;flex-wrap:wrap;align-items:center;',
+    'justify-content:center;gap:8px;width:min(100%,320px);max-width:100%;',
+    'margin:9px auto 16px;overflow:hidden}',
+    '#pfo .sh-royal-profile-effects img{display:block;flex:0 1 auto;',
+    'width:auto;max-width:100%;height:auto;max-height:64px;object-fit:contain;',
+    'filter:drop-shadow(0 2px 3px #2d1158)}',
+    '#pfo .sh-royal-profile-effects img[src*="legend-tag"]{width:min(100%,300px);',
+    'max-height:78px;object-fit:contain}',
+    '#pfo .pfh .pavw{isolation:isolate}',
+    '#pfo .pfh .pav3{overflow:hidden!important;background-size:cover!important;',
+    'background-position:center 30%!important}',
     '#v-msg .chatrow .sh-royal-inbox-wrap{display:block;position:relative;',
     'width:48px;height:48px;flex:0 0 48px;overflow:visible}',
     '#v-msg .chatrow .sh-royal-inbox-wrap>.av{width:48px;height:48px;',
@@ -4998,7 +5130,7 @@
         '. Only server-verified details are shown.</div>'+
         '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
         'Loading follow status…</button></div>'+
-        '<div id="sh-ranked-seller-action"></div></div>';
+        '</div>';
       const avatar=root.querySelector('#sh-ranked-avatar');
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
@@ -5029,20 +5161,6 @@
         if(follow.isConnected)follow.textContent='Follow unavailable';
         console.warn('Verified follow status unavailable:',errText(error));
       });
-      api('GET','/sellers/me').then(mine=>{
-        if(requestNo!==rankProfileRequest||!root.isConnected||!mine.seller?.active)return;
-        const action=root.querySelector('#sh-ranked-seller-action');
-        if(!action)return;
-        const button=document.createElement('button');
-        button.type='button';button.className='act';
-        button.style.cssText='display:block;width:100%;border-radius:18px;margin:14px auto;padding:12px';
-        button.textContent='🪙 Send seller coins to ID '+id;
-        button.onclick=()=>{
-          panel.classList.remove('on');
-          showVerifiedCoinSellers({walletOnly:true,targetId:id});
-        };
-        action.appendChild(button);
-      }).catch(()=>{});
     }catch(error){
       if(requestNo===rankProfileRequest&&panel.classList.contains('on'))
         root.textContent='Unable to open verified profile: '+errText(error);

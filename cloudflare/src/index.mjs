@@ -1011,8 +1011,9 @@ export async function handleRequest(request, env) {
           const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
             nonRedeemableLuckyEconomy(env);
           const rows=await env.DB.prepare(
-            'SELECT e.id,e.quantity,e.price_coins,e.created_at,'+
-            'su.public_no AS sender_no,ru.public_no AS recipient_no,'+
+            'SELECT e.id,e.transaction_id,e.quantity,e.price_coins,e.created_at,'+
+            'su.public_no AS sender_no,su.name AS sender_name,su.pic AS sender_pic,'+
+            'ru.public_no AS recipient_no,ru.name AS recipient_name,ru.pic AS recipient_pic,'+
             (luckyEnabled?'g.name,g.emoji,g.tab,lo.payout_coins,lo.max_multiplier ':
               'g.name,g.emoji,g.tab,NULL AS payout_coins,NULL AS max_multiplier ')+
             'FROM sharika_gift_events e '+
@@ -1023,9 +1024,13 @@ export async function handleRequest(request, env) {
             'WHERE e.room_id=? ORDER BY e.id DESC LIMIT 40'
           ).bind(roomId).all();
           return reply({events:(rows.results||[]).reverse().map(e=>({
-            id:e.id,quantity:e.quantity,price_coins:e.price_coins,
+            id:e.id,transaction_id:e.transaction_id,
+            quantity:e.quantity,price_coins:e.price_coins,
             created_at:e.created_at,sender_id:publicId(e.sender_no),
-            recipient_id:publicId(e.recipient_no),name:e.name,emoji:e.emoji,
+            sender_name:e.sender_name,sender_pic:e.sender_pic||null,
+            recipient_id:publicId(e.recipient_no),
+            recipient_name:e.recipient_name,recipient_pic:e.recipient_pic||null,
+            name:e.name,emoji:e.emoji,
             lucky:e.tab===2&&luckyEnabled?{payout_coins:Number(e.payout_coins)||0,
               max_multiplier:Number(e.max_multiplier)||0}:null
           }))},200,cors);
@@ -1256,9 +1261,26 @@ export async function handleRequest(request, env) {
       if (parts.length === 5 && action === 'members' && request.method === 'GET') {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
-        const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,
+        const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,m.joined_at,
           u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
+        // A killed Android process may never call /leave. Show active presence
+        // (with a 90-second grace period for new joins), without mutating the
+        // membership ledger in this read-only room snapshot.
+        let visibleMembers=result.results||[];
+        let presence=null;
+        try{presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');}
+        catch(error){console.warn('presence_coordinator_unavailable',error?.message);}
+        if(typeof presence?.presenceRoomMembers==='function') {
+          try{
+            const live=new Set(await presence.presenceRoomMembers(roomId));
+            const now=Date.now();
+            visibleMembers=visibleMembers.filter(m=>m.user_id===room.owner_id||
+              m.user_id===uid||live.has(m.user_id)||
+              (typeof m.joined_at==='string'&&
+                now-Date.parse(m.joined_at.replace(' ','T')+'Z')<90_000));
+          }catch(error){console.warn('presence_room_members_unavailable',error?.message);}
+        }
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
         const equipped=await readRoomEquipped(env.DB,roomId);
@@ -1283,7 +1305,7 @@ export async function handleRequest(request, env) {
           seat_frame_style:room.seat_frame_style||'grad',
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
           bond_pairs:await roomBondPairs(env.DB,roomId),
-          members: (result.results || []).map(x => ({
+          members: visibleMembers.map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
             frame_style: x.frame_style || '', entry_style: x.entry_style || '',
