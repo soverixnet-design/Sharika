@@ -1355,6 +1355,8 @@
     };
     balance = { ...local.state };
     session = { email: account.email, user: { id:current.user_id, email:account.email } };
+    // A restored session can finish while Recharge is already visible.
+    mountRechargeSellerWallet();
     startPresence();
     refreshVerifiedBanners().catch(error=>console.warn('Banner refresh unavailable:',errText(error)));
     try {
@@ -3615,7 +3617,14 @@
       button.textContent='Seller Wallet';
       button.onclick=()=>showVerifiedCoinSellers({walletOnly:true});
       listButton.before(button);
-    }).catch(()=>{}).finally(()=>{sellerWalletButtonCheck=false;});
+    }).catch(()=>{}).finally(()=>{
+      sellerWalletButtonCheck=false;
+      // Switching Recharge/Exchange replaces the button while the seller
+      // check is pending. Recheck the latest screen instead of losing the
+      // wallet entry until the user manually opens Recharge again.
+      if(document.querySelector('#rcp #rcl2')!==listButton)
+        mountRechargeSellerWallet();
+    });
   }
   const rechargeRoot=document.getElementById('rcp');
   if(rechargeRoot){
