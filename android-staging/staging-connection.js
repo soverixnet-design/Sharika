@@ -3021,7 +3021,7 @@
       user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
       display_id:owner.display_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
-      svip_level:svipLevel(owner.svip_level),
+      svip_level:Number(owner.svip_level)||0,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
     const audience=[];
@@ -3034,14 +3034,14 @@
           user_id:member.user_id,public_id:user.public_id,special_id:user.special_id||null,
           display_id:user.display_id||user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
-          svip_level:svipLevel(user.svip_level),
+          svip_level:Number(user.svip_level)||0,
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
       else audience.push({n:user.name,e:'👤',id:user.display_id||user.public_id,
          canonical_id:user.public_id,special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
-        svip_level:svipLevel(user.svip_level),
+        svip_level:Number(user.svip_level)||0,
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
         medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
     }
