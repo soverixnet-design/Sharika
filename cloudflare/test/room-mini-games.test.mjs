@@ -47,7 +47,7 @@ test('room mini-game portal is reusable, compact, closable, and preserves room D
   assert.equal(a.overlay,b.overlay,'reopening must reuse the same root overlay');
   assert.equal(a.sheet,b.sheet);
   const sheetCss=doc.getElementById('sh-room-game-style').textContent;
-  assert.match(sheetCss,/height:min\(74dvh,620px\)/);
+  assert.match(sheetCss,/height:min\(84dvh,720px\)/);
   assert.match(sheetCss,/align-items:flex-end/,
     'room mini games should sit above the bottom dock, not cover the middle seats');
   assert.match(sheetCss,/env\(safe-area-inset-bottom,0px\)/,
@@ -81,4 +81,34 @@ test('Android Back returns to catalog then closes mini-game before minimizing ro
   assert.match(back,/#sh-original-back/);
   new Function(back);
   new Function(adapter);
+});
+
+test('in-room game removes the extra catalog header without removing bet API',()=>{
+  assert.match(adapter,/\(insideRoom\?'':'<button id="sh-original-back"/);
+  assert.match(adapter,/gameFrame\.src=item\.page\+\(insideRoom&&item\.id!=='greedy-wheel'\?'#sharika-room':''\)/);
+  assert.match(adapter,/data\.action==='bet'\?'POST':'GET'/);
+  assert.match(adapter,/target\.postMessage\(\{type:'sharika:original-response'/);
+  assert.match(adapter,/showGameCard\(document,false,toast\)/,
+    'outside-room catalog and full-screen games must remain available');
+});
+
+test('all three original games have room-only compact styles and active bet chips',()=>{
+  const files=[
+    'jackpot-fruit.html','night-food-wheel.html','sovera-food-wheel.html'
+  ];
+  for(const name of files){
+    const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/'+name,import.meta.url),'utf8');
+    assert.match(html,/location\.hash==='#sharika-room'/,name);
+    assert.match(html,/style id="sharika-room-mini-css"/,name);
+    assert.match(html,/html\.sharika-room-mini/,name);
+    assert.match(html,/GameBridge\.bet\(/,name+' still places authenticated wagers');
+  }
+  const jackpot=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/jackpot-fruit.html',import.meta.url),'utf8');
+  assert.match(jackpot,/html\.sharika-room-mini #og-top3\{display:none!important\}/);
+  assert.match(jackpot,/html\.sharika-room-mini #ch button\{height:36px/);
+  assert.match(jackpot,/html\.sharika-room-mini #rs\{margin-top:6px/);
+  const night=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/night-food-wheel.html',import.meta.url),'utf8');
+  assert.match(night,/html\.sharika-room-mini #chips button\{width:min\(17vw,58px\)/);
+  const sovera=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/sovera-food-wheel.html',import.meta.url),'utf8');
+  assert.match(sovera,/html\.sharika-room-mini \.chip\{width:clamp\(44px,15vw,57px\)/);
 });
