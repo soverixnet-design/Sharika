@@ -312,4 +312,25 @@ GameBridge.onRefresh((d,now,changed)=>{render(d);if(changed&&d.previous_result){
 GameBridge.onError(e=>{$('res').textContent='Server unavailable: '+e});
 setInterval(()=>{const d=GameBridge.get();if(d){const sec=Math.max(0,Math.ceil((d.round.bet_closes_ms-GameBridge.now())/1000));$('ht').textContent=sec}},200);
 addEventListener('resize',fit);setTimeout(()=>{$('ld').style.display='none';fit();GameBridge.start()},900);
-</script></body></html>
+</script>
+<script>
+if(location.hash==='#sharika-room')
+  document.documentElement.classList.add('sharika-room-mini');
+</script>
+<style id="sharika-room-mini-css">
+/* The host app owns the voice seats; reserve this iframe for playable food bets. */
+html.sharika-room-mini #app{max-width:100%}
+html.sharika-room-mini .room{display:none!important}
+html.sharika-room-mini .hd{gap:5px;padding:4px 6px;font-size:12px}
+html.sharika-room-mini .hd .rb{width:30px;height:30px;font-size:14px}
+html.sharika-room-mini .res{padding:3px 6px;font-size:11px}
+html.sharika-room-mini .res i{width:26px;height:26px;font-size:17px}
+html.sharika-room-mini .chips{gap:3px;padding:3px 4px 5px}
+html.sharika-room-mini .chip{width:clamp(44px,15vw,57px);height:46px;font-size:12px}
+html.sharika-room-mini .me{gap:5px;padding:4px 6px;font-size:11px}
+html.sharika-room-mini .me .av{font-size:20px}
+html.sharika-room-mini .me .pill{padding:2px 6px;min-width:0}
+html.sharika-room-mini .auto{font-size:11px;padding:4px 6px}
+html.sharika-room-mini .rp{bottom:10%}
+</style>
+</body></html>
