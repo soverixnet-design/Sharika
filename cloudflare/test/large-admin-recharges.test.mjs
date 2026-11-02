@@ -10,7 +10,7 @@ test('large verified recharges preserve old reviews, caps, receipt uniqueness an
   db.exec("PRAGMA foreign_keys=ON");
   db.exec("CREATE TABLE sharika_users (auth_uid TEXT PRIMARY KEY)");
   db.exec("CREATE TABLE sharika_support_messages (id INTEGER PRIMARY KEY,user_id TEXT,sender_role TEXT,body TEXT)");
-  db.exec("INSERT INTO sharika_users VALUES ('recipient')");
+  db.exec("INSERT INTO sharika_users VALUES ('recipient'),('super'),('finance')");
   db.exec("INSERT INTO sharika_support_messages VALUES (1,'recipient','user','Recharge request · old')");
   db.exec("INSERT INTO sharika_support_messages VALUES (2,'recipient','user','Recharge request · new')");
   db.exec("INSERT INTO sharika_support_messages VALUES (3,'recipient','user','Recharge request · duplicate')");
