@@ -6,6 +6,21 @@
  */
 (function () {
   'use strict';
+  // BEGIN VERIFIED COMPACT COIN DISPLAY
+  // Presentation only: APIs, transfers, wallet balances and receipts retain full integers.
+  function formatCompactCoins(value) {
+    const n=Number(value);
+    if(!Number.isFinite(n))return '0';
+    const magnitude=Math.abs(n);
+    for(const [size,suffix] of [[1e12,'t'],[1e9,'b'],[1e6,'m'],[1e3,'k']]){
+      if(magnitude>=size){
+        const scaled=Math.floor(magnitude/size*100+1e-8)/100;
+        return (n<0?'-':'')+String(scaled)+suffix;
+      }
+    }
+    return String(Math.trunc(n));
+  }
+  // END VERIFIED COMPACT COIN DISPLAY
   // This override is loaded only by the Android staging shell. Keep the
   // original HTML design unchanged while allowing it to fill phone screens.
   function fitAndroidViewport(doc, roomFrame) {
@@ -730,7 +745,7 @@
     return String(event?.sender_name||'Member')+' (ID '+event.sender_id+') sent '+
       String(event.emoji||'🎁')+' '+String(event.name||'Gift')+' ×'+
       String(event.quantity||1)+' to '+String(event.recipient_name||'Member')+
-      ' (ID '+event.recipient_id+') · 🪙 '+giftEventValue(event).toLocaleString('en-US');
+      ' (ID '+event.recipient_id+') · 🪙 '+formatCompactCoins(giftEventValue(event));
   }
   function queueGiftPresentation(frame,event,featured=false){
     const doc=frame?.document;
@@ -761,7 +776,7 @@
         const caption=doc.createElement('div');caption.className='sh-gift-parade-caption';
         caption.textContent=String(item.sender_name||'Member')+' gifted '+
           String(item.name||'Gift')+' to '+String(item.recipient_name||'Member')+
-          ' · 🪙 '+giftEventValue(item).toLocaleString('en-US');
+          ' · 🪙 '+formatCompactCoins(giftEventValue(item));
         box.append(heading,people,caption);
       }else{
         box.className='sh-gift-live';
@@ -1002,7 +1017,7 @@
       const price=document.createElement('span');
       price.textContent=item.previewOnly?'Preview only · Admin rollout pending':
         item.owned?'✓ Owned':item.active?
-        '🪙 '+Number(item.price_coins).toLocaleString('en-US'):'Unavailable';
+        '🪙 '+formatCompactCoins(item.price_coins):'Unavailable';
       button.appendChild(price);
       button.disabled=!!item.previewOnly||!!item.item_id&&!item.owned&&!item.active;
       if(isEntry&&item.id){
@@ -1114,7 +1129,7 @@
     if(!state||state.root.hidden)return;
     state.root.dataset.mode=state.mode;
     state.root.querySelector('.sh-rm-title').textContent=state.mode==='shop'?'✦ Sharika Shop ✦':'✦ My Backpack ✦';
-    state.root.querySelector('.sh-rm-coin').textContent='🪙 '+Number(balance.coins||0).toLocaleString('en-US');
+    state.root.querySelector('.sh-rm-coin').textContent='🪙 '+formatCompactCoins(balance.coins);
     for(const tab of state.root.querySelectorAll('.sh-rm-tab'))
       tab.setAttribute('aria-selected',String(tab.dataset.mode===state.mode));
     const ownedCount=state.items.filter(x=>x.owned).length;
@@ -1189,7 +1204,7 @@
         ' · until '+new Date(Number(item.expires_at_ms)).toLocaleDateString('en-GB'):'';
       const price=marketEl('div','sh-rm-price',item.owned?
         (item.equipped?'✓ Equipped':'✓ In backpack')+expires:
-        '🪙 '+Number(item.price_coins||0).toLocaleString('en-US'));
+        '🪙 '+formatCompactCoins(item.price_coins));
       const ops=marketEl('div','sh-rm-ops');
       const primary=marketEl('button','sh-rm-btn');
       primary.type='button';
@@ -1448,7 +1463,7 @@
     if(!root.isConnected)return;
     const status=data.status||{},cfg=data.config||{},tiers=cfg.tiers||[];
     const labels={vip:'💎 VIP',svip:'✨ SVIP',noble:'👑 Noble'};
-    const format=n=>Number(n||0).toLocaleString('en-US');
+    const format=n=>formatCompactCoins(n);
     const tierName=status.tier==='none'?'Standard':labels[status.tier]||'Standard';
     const remaining=status.expires_at_ms?
       ' · until '+new Date(status.expires_at_ms).toLocaleDateString('en-GB'):'';
@@ -1572,7 +1587,7 @@
       return;
     }
     if(!panel.isConnected)return;
-    const format=n=>Number(n||0).toLocaleString('en-US');
+    const format=n=>formatCompactCoins(n);
     const realLevel=()=>data.status?.tier==='svip'?svipLevel(data.status.svip_level):0;
     svipRoyalSelection=realLevel()||svipRoyalSelection||1;
     let busy=false;
@@ -4658,7 +4673,7 @@
           label.textContent='#'+item.rank+' '+(item.emoji||'🎙️')+' '+
             (item.name||'Room')+' · ID '+item.room_id;
           const amount=frame.document.createElement('span');
-          amount.textContent='🪙 '+Number(item.total||0).toLocaleString('en-US');
+          amount.textContent='🪙 '+formatCompactCoins(item.total);
           row.append(label,amount);
           target.appendChild(row);
         }
@@ -4973,7 +4988,8 @@
         root.innerHTML='<div class="shw-section">Seller Wallet is available only to approved coin sellers.</div>';
         return;
       }
-      const coinsText=value=>Number(value||0).toLocaleString('en-US');
+      const coinsText=value=>formatCompactCoins(value);
+      const exactCoins=value=>Number(value||0).toLocaleString('en-US');
       const visibleSellerId=value=>String(value||'')===profile?.public_id?
         (profile?.special_id||profile?.display_id||value):value;
       const transferEntries=rows=>(rows||[]).slice(0,30).map(t=>{
@@ -5082,9 +5098,9 @@
           const visibleRecipient=String(verified.display_id||entered);
           const isSelf=recipient===self.public_id;
           const message=isSelf?
-            'Recharge your own ID '+visibleRecipient+' with '+coinsText(amount)+
+            'Recharge your own ID '+visibleRecipient+' with '+exactCoins(amount)+
                (unlimited?' coins using unlimited seller stock?':' coins from seller stock?'):
-            'Send '+coinsText(amount)+' coins to '+String(verified.name||'User')+' (ID '+visibleRecipient+')?';
+            'Send '+exactCoins(amount)+' coins to '+String(verified.name||'User')+' (ID '+visibleRecipient+')?';
           if(!window.confirm(message)){showNote('Recharge cancelled.','info');return;}
           const fingerprint=session.user.id+':'+recipient+':'+amount;
           const requestId=pendingSellerTransfer?.fingerprint===fingerprint
@@ -5101,11 +5117,11 @@
           if(amountField)amountField.value='';
           showNote((result.duplicate?'Already recorded: ':'Success! ')+
             (result.self_recharge?'Your own wallet':'Recipient ID '+visibleRecipient)+
-            ' received '+coinsText(amount)+' coins. Transfer #'+result.transfer_id+
+            ' received '+exactCoins(amount)+' coins. Transfer #'+result.transfer_id+
             (Number(result.first_recharge_bonus_coins)>0?
-              '. 🎁 First recharge bonus +'+coinsText(result.first_recharge_bonus_coins)+' coins':'')+
+              '. 🎁 First recharge bonus +'+exactCoins(result.first_recharge_bonus_coins)+' coins':'')+
             (result.unlimited_stock?'. Unlimited seller mode audited.':
-               '. Remaining stock: '+coinsText(result.available_coins)+'.'),'success');
+               '. Remaining stock: '+exactCoins(result.available_coins)+'.'),'success');
           toast('Coin recharge recorded ✓');
           const latest=await api('GET','/sellers/transfers').catch(()=>null);
           const history=document.getElementById('sharika-seller-history');
@@ -5300,18 +5316,18 @@
         return '<div class="sh-day-tile'+(current?' current':'')+(collected?' collected':'')+'">'+
           '<span class="sh-day-icon">'+(day===7?'🎁':'🪙')+'</span>'+
           '<span class="sh-day-name">Day '+day+(collected?' ✓':'')+'</span>'+
-          '<span class="sh-day-coins">'+Number(coins).toLocaleString('en-US')+'</span></div>';
+          '<span class="sh-day-coins">'+formatCompactCoins(coins)+'</span></div>';
       }).join('');
       const claim=data.claimed_today?
         '<button class="big" id="cl" disabled>✓ Today’s check-in claimed</button>':
-        '<button class="big" id="cl">🪙 Claim '+Number(data.rewards?.[data.next_day-1]||0).toLocaleString('en-US')+' coins</button>';
+        '<button class="big" id="cl">🪙 Claim '+formatCompactCoins(data.rewards?.[data.next_day-1])+' coins</button>';
       const tasks=(data.tasks||[]).filter(t=>['follow','gift'].includes(t.key)).map(t=>{
         const claimLabel=t.claimed?'Collected ✓':t.completed?'Claim':'Pending';
         return '<div class="sh-task-card"><span class="sh-task-icon">'+
           (t.key==='follow'?'🤝':'🎁')+'</span><div class="sh-task-text"><strong>'+
           sellerEscape(t.title)+'</strong><small>'+
           (t.claimed?'Today’s coins received':t.completed?'Completed · reward ready':'Complete this task to unlock')+
-          ' · 🪙 '+Number(t.reward_coins||0).toLocaleString('en-US')+'</small></div>'+
+          ' · 🪙 '+formatCompactCoins(t.reward_coins)+'</small></div>'+
           '<button type="button" class="sh-task-claim" data-sh-daily-task="'+
           sellerEscape(t.key)+'"'+(!t.completed||t.claimed?' disabled':'')+'>'+
           claimLabel+'</button></div>';
@@ -5359,10 +5375,10 @@
           const tiers=(e.prizes||[]).map((coins,i)=>Number(coins)>0?
             '<span style="padding:6px 8px;border:1px solid #f6da8f;border-radius:12px;'+
             'background:#20134e;font-size:13px;color:#ffe88a">'+
-            (['🥇','🥈','🥉'][i]||'🏅')+' '+Number(coins).toLocaleString('en-US')+' coins</span>':'').join(' ');
+            (['🥇','🥈','🥉'][i]||'🏅')+' '+formatCompactCoins(coins)+' coins</span>':'').join(' ');
           const winners=(e.awards||[]).map(a=>'<div style="font-size:13px;padding:5px 0;'+
             'color:#d9ffdf">✓ Rank '+Number(a.rank)+' · '+sellerEscape(a.name)+
-            ' (ID '+sellerEscape(a.public_id)+') received '+Number(a.coins).toLocaleString('en-US')+
+            ' (ID '+sellerEscape(a.public_id)+') received '+formatCompactCoins(a.coins)+
             ' coins</div>').join('');
           return '<section style="margin:13px 0 18px;padding:17px 14px;border-radius:22px;'+
             'background:linear-gradient(145deg,#5e459d,#232a72);border:2px solid #f1ca73;'+
@@ -6657,7 +6673,7 @@
     ].join('');
     document.head.appendChild(sheet);
   }
-  const bondFmt=n=>Number(n||0).toLocaleString('en-US');
+  const bondFmt=n=>formatCompactCoins(n);
   let pendingBondInvite=null;
   function bondPerson(person,open=true){
     const button=document.createElement('button');button.type='button';button.className='sh-bond-person';
@@ -7212,7 +7228,7 @@
       view.textContent='';
       cosmeticCss(document);
       const isRoom=kind==='room';
-      const fmt=n=>Number(n||0).toLocaleString('en-US');
+      const fmt=n=>formatCompactCoins(n);
       const hero=document.createElement('section');
       hero.className='sh-royal-hero';
       const kicker=document.createElement('div');
@@ -7487,7 +7503,7 @@
         number.className='sh-win-number';
         number.append('WIN ');
         const amount=doc.createElement('em');
-        amount.textContent='🪙'+Number(winner.total_win).toLocaleString('en-US');
+        amount.textContent='🪙'+formatCompactCoins(winner.total_win);
         number.appendChild(amount);copy.append(name,number);
         const gameBadge=doc.createElement('span');
         gameBadge.className='sh-win-game';gameBadge.textContent=gameIcon;
@@ -7671,7 +7687,7 @@
           title.textContent='#'+item.rank+' '+(item.name||'User')+
             ' · ID '+(kind==='room'?item.room_id:item.display_id||item.public_id);
           const amount=document.createElement('em');
-          amount.textContent='🪙 '+Number(item.total||0).toLocaleString('en-US');
+          amount.textContent='🪙 '+formatCompactCoins(item.total);
           row.append(place,title,amount);
           list.appendChild(row);
         }
