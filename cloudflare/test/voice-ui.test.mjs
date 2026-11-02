@@ -247,3 +247,72 @@ test('Android keeps the screen awake for an active room, including its mini-play
   assert.match(ui,/if\(prior\?\.id===room\.id\)/);
   assert.match(ui,/resumeRoomAudio\(\)/);
 });
+
+test('real speaker rings follow multiple authenticated microphones and never random seats',()=>{
+  const begin=ui.indexOf('  const activeVoiceSpeakers=');
+  const end=ui.indexOf('  // Android WebView may block',begin);
+  assert.ok(begin>=0&&end>begin);
+  const classes=[];
+  const seats=[
+    {i:0,user_id:'owner',muted:false},
+    {i:1,user_id:'one',muted:false},
+    {i:2,user_id:'two',muted:true},
+    {i:3,empty:1}
+  ];
+  const frame={seats,seatEl(i){return {classList:{toggle(key,yes){
+    classes.push([i,key,yes]);
+  }}}}};
+  const context=createContext({
+    window:{cur:{id:'roomA'}},
+    document:{getElementById:()=>({contentWindow:frame})}
+  });
+  runInContext("let wantedVoiceRoom='roomA';"+ui.slice(begin,end),context);
+  context.speakerIds=new Set(['owner','one','two']);
+  runInContext("setVoiceSpeakers('roomA',speakerIds)",context);
+  assert.deepEqual(seats.map(s=>!!s.talk),[true,true,false,false]);
+  assert.ok(classes.some(x=>x[0]===0&&x[1]==='talk'&&x[2]===true));
+  assert.ok(classes.some(x=>x[0]===1&&x[1]==='talk'&&x[2]===true));
+  assert.ok(classes.some(x=>x[0]===2&&x[1]==='talk'&&x[2]===false));
+  runInContext('clearVoiceSpeakers()',context);
+  assert.deepEqual(seats.map(s=>!!s.talk),[false,false,false,false]);
+  assert.doesNotMatch(ui.slice(begin,end),/Math\.random/);
+  assert.match(ui,/frame\.tick=function\(\)\{\};/,
+    'staging disables the template random voice animation');
+});
+
+test('SFU voice activity measures live audio and clears the light on mute',()=>{
+  const begin=ui.indexOf('  // A light-weight, audio-only voice activity meter.');
+  const end=ui.indexOf('  function addAudioTrack(state,event)',begin);
+  assert.ok(begin>=0&&end>begin);
+  const updates=[];
+  const context=createContext({
+    Date,Math,Set,Uint8Array,
+    setVoiceSpeakers(room,ids){updates.push([room,[...ids].sort()]);},
+    window:{}
+  });
+  runInContext('let sfuState=null;'+ui.slice(begin,end),context);
+  const loud={getByteTimeDomainData(bytes){bytes.fill(158);}};
+  const quiet={getByteTimeDomainData(bytes){bytes.fill(128);}};
+  const trackOne={readyState:'live',enabled:true,muted:false};
+  const trackTwo={readyState:'live',enabled:true,muted:false};
+  const state={roomId:'roomA',closed:false,speakingMeters:new Map(),publishPC:null};
+  state.speakingMeters.set(trackOne,{
+    userId:'one',local:false,analyser:loud,samples:new Uint8Array(64),lastActiveAt:0
+  });
+  state.speakingMeters.set(trackTwo,{
+    userId:'two',local:false,analyser:loud,samples:new Uint8Array(64),lastActiveAt:0
+  });
+  context.state=state;
+  runInContext('sfuState=state;sampleSfuSpeaking(state)',context);
+  assert.deepEqual(updates.at(-1),['roomA',['one','two']]);
+  trackOne.enabled=false;
+  state.speakingMeters.get(trackTwo).analyser=quiet;
+  state.speakingMeters.get(trackTwo).lastActiveAt=0;
+  runInContext('sampleSfuSpeaking(state)',context);
+  assert.deepEqual(updates.at(-1),['roomA',[]]);
+  assert.match(ui,/state\.remoteMids\?\.get\(String\(event\.transceiver\?\.mid/);
+  assert.match(ui,/watchSfuSpeaking\(state,local,session\?\.user\?\.id,true\)/);
+  assert.match(ui,/speakingContext\.close\(\)\.catch/);
+  assert.match(ui,/source\.connect\(analyser\)/);
+  assert.doesNotMatch(ui.slice(begin,end),/source\.connect\(.*destination/);
+});

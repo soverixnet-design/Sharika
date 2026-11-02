@@ -1961,10 +1961,43 @@
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
   const SHARIKA_ICE_CONFIG={iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]};
   let sfuState = null;
+  // Animate the actual occupied mic seats, never a timer-driven fake speaker.
+  // One room can have several simultaneous talkers.
+  const activeVoiceSpeakers={roomId:null,ids:new Set()};
+  function paintVoiceSpeakers(roomId,frame) {
+    if(!frame?.seats)return;
+    const ids=activeVoiceSpeakers.roomId===roomId?activeVoiceSpeakers.ids:new Set();
+    for(const seat of frame.seats){
+      if(!seat||seat.empty||seat.lock)continue;
+      const speaking=!!seat.user_id&&!seat.muted&&ids.has(seat.user_id);
+      seat.talk=speaking;
+      const el=frame.seatEl?.(seat.i);
+      if(el)el.classList.toggle('talk',speaking);
+    }
+  }
+  function setVoiceSpeakers(roomId,userIds) {
+    if(wantedVoiceRoom!==roomId)return;
+    const ids=new Set([...userIds].filter(id=>typeof id==='string'&&id.length>0));
+    if(activeVoiceSpeakers.roomId===roomId&&ids.size===activeVoiceSpeakers.ids.size&&
+       [...ids].every(id=>activeVoiceSpeakers.ids.has(id)))return;
+    activeVoiceSpeakers.roomId=roomId;
+    activeVoiceSpeakers.ids=ids;
+    if(window.cur?.id===roomId)
+      paintVoiceSpeakers(roomId,document.getElementById('rf')?.contentWindow);
+  }
+  function clearVoiceSpeakers() {
+    const roomId=activeVoiceSpeakers.roomId;
+    activeVoiceSpeakers.roomId=null;
+    activeVoiceSpeakers.ids=new Set();
+    if(roomId&&window.cur?.id===roomId)
+      paintVoiceSpeakers(roomId,document.getElementById('rf')?.contentWindow);
+  }
   // Android WebView may block a remote track's first autoplay attempt.
   // A later genuine room tap must retry playback synchronously in that gesture.
   function resumeRoomAudio() {
     if(sfuState && !sfuState.closed) {
+      if(sfuState.speakingContext?.state==='suspended')
+        sfuState.speakingContext.resume().catch(()=>{});
       for(const audio of sfuState.audioElements) {
         if(audio.isConnected && audio.srcObject && audio.paused)
           audio.play().catch(()=>{});
@@ -2045,6 +2078,12 @@
     sfuState=null;
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
+    if(state.speakingTimer)clearInterval(state.speakingTimer);
+    for(const meter of state.speakingMeters.values())
+      meter.source.disconnect();
+    state.speakingMeters.clear();
+    if(state.speakingContext)state.speakingContext.close().catch(()=>{});
+    clearVoiceSpeakers();
     if(state.recoveryTimer)clearTimeout(state.recoveryTimer);
     for(const timer of state.bootstrapTimers||[])clearTimeout(timer);
     for(const element of state.audioElements){element.pause();element.srcObject=null;element.remove();}
@@ -2055,8 +2094,66 @@
       catch (_) { /* stale sessions expire in the coordinator */ }
     }
   }
+  // A light-weight, audio-only voice activity meter. The WebAudio sources
+  // connect only to analysers: microphone audio is never played back locally.
+  // Sample every 160ms and hold a ring briefly to avoid speech flicker.
+  function sampleSfuSpeaking(state) {
+    if(state.closed||sfuState!==state)return;
+    const now=Date.now(),speaking=new Set();
+    for(const [track,meter] of state.speakingMeters){
+      if(track.readyState!=='live'||!track.enabled||track.muted){
+        meter.lastActiveAt=0;
+        continue;
+      }
+      if(meter.local&&state.publishPC?.connectionState!=='connected')continue;
+      try {
+        meter.analyser.getByteTimeDomainData(meter.samples);
+        let power=0,peak=0;
+        for(const byte of meter.samples){
+          const sample=(byte-128)/128;
+          power+=sample*sample;
+          peak=Math.max(peak,Math.abs(sample));
+        }
+        const rms=Math.sqrt(power/meter.samples.length);
+        if(rms>.018||(rms>.008&&peak>.05))meter.lastActiveAt=now;
+        if(now-meter.lastActiveAt<480)speaking.add(meter.userId);
+      }catch(_){/* Individual tracks can end during audio renegotiation. */}
+    }
+    setVoiceSpeakers(state.roomId,speaking);
+  }
+  function watchSfuSpeaking(state,track,userId,local=false) {
+    if(!track||!userId||state.closed||state.speakingMeters.has(track))return;
+    try {
+      if(!state.speakingContext){
+        const Context=window.AudioContext||window.webkitAudioContext;
+        if(!Context)return;
+        state.speakingContext=new Context();
+      }
+      const source=state.speakingContext.createMediaStreamSource(
+        new MediaStream([track]));
+      const analyser=state.speakingContext.createAnalyser();
+      analyser.fftSize=512;
+      source.connect(analyser);
+      state.speakingMeters.set(track,{userId,local,source,analyser,
+        samples:new Uint8Array(analyser.fftSize),lastActiveAt:0});
+      if(state.speakingContext.state==='suspended')
+        state.speakingContext.resume().catch(()=>{});
+      if(!state.speakingTimer)
+        state.speakingTimer=setInterval(()=>sampleSfuSpeaking(state),160);
+    }catch(error){console.warn('Voice activity meter unavailable:',errText(error));}
+  }
+  function unwatchSfuSpeaking(state,track) {
+    const meter=state.speakingMeters.get(track);
+    if(!meter)return;
+    meter.source.disconnect();
+    state.speakingMeters.delete(track);
+    sampleSfuSpeaking(state);
+  }
   function addAudioTrack(state,event) {
     if(state.closed)return;
+    const remoteId=state.remoteMids?.get(String(event.transceiver?.mid||''));
+    if(remoteId&&typeof watchSfuSpeaking==='function')
+      watchSfuSpeaking(state,event.track,remoteId);
     const audio=document.createElement('audio');
     audio.autoplay=true;
     audio.playsInline=true;
@@ -2072,6 +2169,7 @@
       }
     });
     event.track.addEventListener('ended',()=>{
+      unwatchSfuSpeaking(state,event.track);
       state.audioElements.delete(audio);audio.pause();audio.remove();
     },{once:true});
   }
@@ -2140,6 +2238,7 @@
     const state={
       roomId,closed:false,sessionIds:[],publishPC:null,receivePC:null,
       media:null,audioElements:new Set(),remoteMids:new Map(),
+      speakingContext:null,speakingMeters:new Map(),speakingTimer:null,
       subscribed:new Set(),subscribeId:null,timer:null,syncing:false,
       canPublish,subscriptionFailures:0,heartbeatFailures:0,bootstrapTimers:[],
       firstSubscriptionAt:0,receiveDisconnectedAt:0,
@@ -2158,6 +2257,7 @@
         state.publishPC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
         const local=state.media.getAudioTracks()[0];
         local.enabled=microphoneWanted(roomId);
+        watchSfuSpeaking(state,local,session?.user?.id,true);
         const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
         const offer=await state.publishPC.createOffer();
         await state.publishPC.setLocalDescription(offer);
@@ -2265,6 +2365,7 @@
     return voiceSdkPromise;
   }
   async function disconnectVoice() {
+    clearVoiceSpeakers();
     if(sfuState)await disconnectSfu();
     voiceBackend=null;
     if(!voiceRoom)return;
@@ -2277,6 +2378,7 @@
   let voiceOperation=Promise.resolve(),pendingVoice=null,wantedVoiceRoom=null;
   function releaseVoice() {
     wantedVoiceRoom=null;
+    clearVoiceSpeakers();
     const task=voiceOperation.catch(()=>{}).then(()=>disconnectVoice());
     voiceOperation=task;
     return task;
@@ -2315,13 +2417,9 @@
         track.detach().forEach(node=>node.remove());
       });
       room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
-        const frame=document.getElementById('rf')?.contentWindow;
-        if(!frame || !frame.seats)return;
-        const talking=new Set(speakers.map(p=>p.identity));
-        for(const seat of frame.seats){
-          if(seat && seat.user_id)seat.talk=talking.has('sharika:'+seat.user_id);
-        }
-        if(typeof frame.render==='function')frame.render();
+        setVoiceSpeakers(roomId,speakers.map(p=>String(p.identity||''))
+          .filter(identity=>identity.startsWith('sharika:'))
+          .map(identity=>identity.slice('sharika:'.length)));
       });
       try{await room.connect(info.url,info.token);}
       catch(error){await room.disconnect().catch(()=>{});throw error;}
@@ -3054,11 +3152,13 @@
         slots[seatNo]={lock:1,i:seatNo};
     }
     frame.seats=slots;
+    if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     frame.U=audience;
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
     frame.render();
+    if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     decorateRoomPeople(frame);
     decorateRoomChat(frame);
     if(typeof decorateBondSeatOverlay==='function')
@@ -3204,7 +3304,9 @@
         '.seat .ring{filter:drop-shadow(0 0 5px rgba(255,220,146,.45))}',
         '.seat.empty .face{background:linear-gradient(150deg,rgba(255,255,255,.19),rgba(32,17,75,.66))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.13),inset 0 -7px 12px rgba(8,4,34,.48),0 4px 0 rgba(8,4,27,.4)}',
         '.seat.lock .face{background:linear-gradient(145deg,rgba(63,49,114,.8),rgba(17,11,47,.9))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.12),0 5px 0 rgba(8,4,27,.48)}',
-        '.seat.talk .av{filter:drop-shadow(0 0 12px rgba(72,255,183,.75))}',
+        '.seat.talk .av{filter:drop-shadow(0 0 14px rgba(255,207,92,.9))}',
+        '.seat.talk .wave{border-color:#ffe18f;box-shadow:0 0 10px rgba(255,196,64,.58)}',
+        '.seat.talk .face{border-color:#fff0b9;box-shadow:0 0 0 3px rgba(255,195,71,.5),0 0 22px rgba(255,202,78,.72)}',
         '.seat:active .av{transform:translateY(2px) scale(.96)}',
         '.seat:focus-visible .av{outline:2px solid #ffe08b;outline-offset:6px}',
         '.step button{background:linear-gradient(145deg,rgba(255,255,255,.27),rgba(75,44,152,.85));box-shadow:inset 0 2px 0 rgba(255,255,255,.32),0 4px 0 rgba(20,9,63,.6)}',
