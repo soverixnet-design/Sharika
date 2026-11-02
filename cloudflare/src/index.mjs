@@ -59,9 +59,14 @@ function svipAppearance(user,equipped={},level=Number(user?.svip_level)||0) {
   };
   if(Number.isInteger(n)&&n>=1&&n<=8){
     const key=String(n).padStart(2,'0');
-    appearance.frame_style='svip-frame-'+key;
-    appearance.medal_style='svip-medal-'+key;
-    appearance.name_tag_style='svip-tag-'+key;
+    // Existing SVIP accounts fall back to the level art, but a Backpack
+    // equipment choice (including unequip) always wins.
+    if(!Object.prototype.hasOwnProperty.call(equipped,'frame_style'))
+      appearance.frame_style='svip-frame-'+key;
+    if(!Object.prototype.hasOwnProperty.call(equipped,'medal_style'))
+      appearance.medal_style='svip-medal-'+key;
+    if(!Object.prototype.hasOwnProperty.call(equipped,'name_tag_style'))
+      appearance.name_tag_style='svip-tag-'+key;
     appearance.svip_level=n;
   }
   return appearance;
@@ -1058,10 +1063,10 @@ export async function handleRequest(request, env, ctx) {
           const entrant=await assertActive(env.DB,uid);
           const equipped=await readEquipped(env.DB,uid);
           const svipLevel=await readSvipLevel(env.DB,uid);
-          const entry=svipLevel>=1&&svipLevel<=8
-            ?'svip-entry-'+String(svipLevel).padStart(2,'0')
-            :Object.prototype.hasOwnProperty.call(equipped,'entry_style')
-              ?equipped.entry_style:(entrant.entry_style||'');
+          const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
+            ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
+              ?'svip-entry-'+String(svipLevel).padStart(2,'0')
+              :(entrant.entry_style||'');
           if(entry)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
             .roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry);
         }
