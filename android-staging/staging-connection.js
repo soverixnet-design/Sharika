@@ -320,6 +320,12 @@
     ...roleNumbers.map(number=>premiumItem('role-frame-'+String(number).padStart(2,'0'),
       'Royal Role Frame '+number,'role'))
   );
+  SOVERA_ENTRIES.push(...Array.from({length:8},(_,i)=>{
+    const key=String(i+1).padStart(2,'0');
+    return {id:'svip-entry-'+key,name:'SVIP '+(i+1)+' Royal Arrival',
+      source:'sharika',art:'svip-medal-'+key+'.webp',still:'svip-medal-'+key+'.webp',
+      group:'svip',ms:3800};
+  }));
   SOVERA_MEDALS.push(...premiumRange('svip-medal',8,'SVIP Animated Medal','svip'));
   SOVERA_TAGS.push(...premiumRange('svip-tag',17,'SVIP Nameplate','svip'));
   function medalArt(key){return SOVERA_MEDALS.find(m=>m.id===key);}
@@ -349,6 +355,14 @@
       'transform:none!important;margin-bottom:25px!important}',
       '#v-me .mav>div{animation:none!important;transform:none!important}',
       '#v-me .mav>.sh-sovera-frame{width:138%!important;height:138%!important}',
+      '#v-me .mav,#pfc .pfh .pavw{overflow:visible!important;isolation:isolate}',
+      '#v-me .mav img,#pfc .pfh .pav3{object-fit:cover!important;object-position:center!important}',
+      '#pfc .pfh .pav3{background-size:cover!important;background-position:center!important;',
+      'background-repeat:no-repeat!important;border-radius:50%!important;overflow:hidden!important}',
+      '#pfc .pfh .pavw>.sh-sovera-frame.fxr{left:50%!important;top:50%!important;',
+      'transform:translate(-50%,-50%)!important}',
+      '.sh-neon-public-id{font-size:13px!important;letter-spacing:.05em!important;',
+      'padding:5px 10px!important;margin:5px auto 9px!important}',
       '.pavw{overflow:visible!important;margin-bottom:22px!important}',
       '.pavw>.sh-sovera-frame{width:142%!important;height:142%!important}',
       '@keyframes shSoGlow{50%{filter:brightness(1.18) drop-shadow(0 0 6px #ffe6a055)}}',
@@ -372,10 +386,7 @@
       'color:#f6ebff;font-size:20px;font-weight:900;letter-spacing:.14em;border:2px solid #c287ff;',
       'border-radius:14px;background:linear-gradient(100deg,#3b1362,#6330ca,#1562b5);',
       'box-shadow:0 0 16px #9250ff9c,inset 0 0 14px #758cff70;text-shadow:0 0 9px #8bf1ff}',
-      '.sh-neon-profile-id::before{content:"SPECIAL ID";display:block;font-size:9px;letter-spacing:.2em;text-align:center;color:#d1bbff}',
-      '.sh-neon-seat-id{position:absolute;z-index:20;bottom:-20px;left:50%;transform:translateX(-50%);',
-      'padding:2px 7px;font-size:10px;line-height:1.2;font-weight:900;white-space:nowrap;color:#fff;',
-      'border:1px solid #b980ff;border-radius:9px;background:#5624af;box-shadow:0 0 10px #824cff}',
+      // Profile keeps the actual special ID number; avoid a duplicate seat label.
       '.sh-sovera-user-tag{display:inline-block;width:74px;height:25px;object-fit:contain;margin-left:4px;vertical-align:middle}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
       'pointer-events:none;display:block;overflow:hidden;background:#16082f}',
@@ -386,7 +397,141 @@
       '.sh-sovera-entry-cover button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:18px;',
       'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
       'background:#25134a;font-size:22px;width:40px;height:40px}',
-      '@media(prefers-reduced-motion:reduce){.sh-sovera-frame.fxr{animation:none!important}}'
+
+      '.sh-svip-badge{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;',
+      'padding:4px 11px;color:#ffe8a3!important;font-size:11px;font-weight:900;letter-spacing:.05em;',
+      'border:1px solid #f2d18c;border-radius:100px;background:linear-gradient(135deg,#331e5c,#8840bf 54%,#433069);',
+      'box-shadow:inset 0 1px 1px #ffeca777,0 0 13px #b572f399;text-shadow:0 1px 3px #12041e}',
+      '.sh-svip-badge[data-svip-level="1"],.sh-svip-badge[data-svip-level="2"]{border-color:#aab7ff;color:#e9e8ff!important}',
+      '.sh-svip-badge[data-svip-level="3"],.sh-svip-badge[data-svip-level="4"]{border-color:#ebc577}',
+      '.seat .av>.sh-svip-seat-badge{position:absolute;z-index:24;left:calc(100% - 3px);top:18%;',
+      'transform:translate(-20%,-50%);font-size:9px!important;padding:2px 6px;',
+      'pointer-events:none;line-height:1.25;max-width:68px;box-sizing:border-box}',
+      '.sh-svip-public-badge{display:table;margin:4px auto 12px;font-size:12px;padding:6px 17px}',
+      '#v-me .profile-svip-badge.sh-svip-badge{margin:8px auto 6px;padding:7px 18px;font-size:12px;',
+      'background:linear-gradient(145deg,#2a164d,#632bb0,#3d1b68)}',
+      '#sh-svip-royal{position:fixed;inset:0;z-index:2147483500;overflow:auto;overscroll-behavior:contain;',
+      'box-sizing:border-box;padding:calc(20px + env(safe-area-inset-top,0px)) 15px;',
+      'padding-bottom:calc(30px + env(safe-area-inset-bottom,0px));color:#fef5e3;',
+      'font-family:inherit;background:radial-gradient(circle at 50% -15%,#71378e,#1a0b45 49%,#07031a 100%)}',
+      '#sh-svip-royal *{box-sizing:border-box}',
+      '#sh-svip-royal .svip-wrap{max-width:560px;margin:0 auto}',
+      '#sh-svip-royal .svip-top{display:flex;align-items:center;justify-content:space-between;margin:0 0 19px}',
+      '#sh-svip-royal .svip-top h2{font-family:Georgia,serif;color:#ffe2a6;font-size:23px;margin:0;',
+      'letter-spacing:.07em;text-shadow:0 3px 10px #e7aa6470}',
+      '#sh-svip-royal button{cursor:pointer;font:inherit}',
+      '#sh-svip-royal .svip-back{border:1px solid #dabb7d88;background:#241141;',
+      'color:#ffebbb;border-radius:13px;padding:8px 14px;font-size:20px}',
+      '#sh-svip-royal .svip-card{position:relative;border:1px solid #d9b36d;border-radius:24px;',
+      'padding:16px 17px 19px;min-height:176px;background:linear-gradient(137deg,#3b164d,#22113c 49%,#0d0b22);',
+      'box-shadow:inset 0 1px #fbe6ad77,0 14px 32px #09041b88;overflow:visible}',
+      '#sh-svip-royal .svip-card-top{font-size:10px;letter-spacing:.21em;color:#f4cc88;font-weight:900}',
+      '#sh-svip-royal .svip-card h3{font-family:Georgia,serif;font-size:49px;color:#ffde97;',
+      'line-height:1;margin:20px 0 4px;text-shadow:0 4px 14px #eec36e55}',
+      '#sh-svip-royal .svip-card p{color:#e6d4fc;font-size:11px;margin:0}',
+      '#sh-svip-royal .svip-card-avatar{position:absolute;right:23px;top:38px;width:92px;height:92px;',
+      'border-radius:50%;background:#63398c;display:grid;place-items:center;font-size:35px}',
+      '#sh-svip-royal .svip-card-avatar>img:first-child{width:100%;height:100%;border-radius:50%;object-fit:cover}',
+      '#sh-svip-royal .svip-card-avatar .svip-ring{position:absolute;width:145%;height:145%;',
+      'top:50%;left:50%;transform:translate(-50%,-50%);object-fit:contain;pointer-events:none}',
+      '#sh-svip-royal .svip-level-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:21px 0}',
+      '#sh-svip-royal .svip-level-tabs button{border:1px solid #9d71b3;border-radius:12px;',
+      'background:#2b184b;color:#e0c4f8;padding:10px 0;font-size:12px;font-weight:900}',
+      '#sh-svip-royal .svip-level-tabs button[aria-pressed="true"]{border-color:#fce2a2;',
+      'color:#2a1245;background:linear-gradient(135deg,#fff0b0,#e3a851);box-shadow:0 4px 17px #f2bf6588}',
+      '#sh-svip-royal .svip-view{border:1px solid #85608a;border-radius:22px;',
+      'background:linear-gradient(150deg,#391e62,#1a1036);padding:19px 14px;margin-top:10px}',
+      '#sh-svip-royal .svip-preview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));',
+      'gap:14px;margin:14px 0}',
+      '#sh-svip-royal .svip-preview-card{padding:22px 5px 13px;border:1px solid #b38d9a;',
+      'border-radius:19px;background:#200f3a;text-align:center;min-width:0}',
+      '#sh-svip-royal .svip-mini-avatar{width:75px;height:75px;position:relative;border-radius:50%;',
+      'margin:10px auto 24px;background:#7543a0;display:grid;place-items:center;font-size:28px}',
+      '#sh-svip-royal .svip-mini-avatar .photo{width:100%;height:100%;border-radius:50%;object-fit:cover}',
+      '#sh-svip-royal .svip-mini-avatar .ring{width:145%;height:145%;position:absolute;inset:50% auto auto 50%;',
+      'transform:translate(-50%,-50%);object-fit:contain;pointer-events:none}',
+      '#sh-svip-royal .svip-mini-avatar .medal{position:absolute;right:-12px;bottom:-12px;',
+      'height:35px;width:35px;object-fit:contain}',
+      '#sh-svip-royal .svip-preview-card strong{display:block;margin-top:8px;color:#ffe4ad;font-size:12px}',
+      '#sh-svip-royal .svip-preview-card small{color:#d6c1eb;font-size:10px}',
+      '#sh-svip-royal .svip-art-row{display:flex;align-items:center;justify-content:center;gap:11px;margin:6px 0}',
+      '#sh-svip-royal .svip-art-row img{width:82px;height:47px;object-fit:contain}',
+      '#sh-svip-royal .svip-section-title{font-size:16px;color:#ffe6b7;margin:22px 0 10px}',
+      '#sh-svip-royal .svip-power{display:flex;align-items:center;gap:11px;',
+      'padding:11px 2px;border-bottom:1px solid #a7858855;font-size:13px}',
+      '#sh-svip-royal .svip-power b{color:#ffe8b3}',
+      '#sh-svip-royal .svip-main-btn{display:block;width:100%;border-radius:17px;',
+      'padding:14px 9px;margin:16px 0 8px;border:1px solid #fff0c3;color:#351a43;font-weight:900;',
+      'background:linear-gradient(135deg,#fff0c0,#e8b354);box-shadow:0 5px 16px #0008}',
+      '#sh-svip-royal .svip-main-btn:disabled{opacity:.58}',
+      '#sh-svip-royal .svip-note{font-size:12px;color:#d8c9e7;line-height:1.5}',
+      '#sh-svip-royal [role="status"]{min-height:22px;color:#e9ca81;font-size:12px}',
+      '.sh-sovera-frame.fxr.sh-svip-frame{width:176%!important;height:176%!important}',
+      '#v-me .mav>.sh-sovera-frame.sh-svip-frame{width:178%!important;height:178%!important}',
+      '#pfc .pfh .pavw>.sh-sovera-frame.fxr.sh-svip-frame{width:178%!important;height:178%!important}',
+      '.seat .av>.sh-sovera-frame.fxr.sh-svip-frame{width:177%!important;height:177%!important}',
+      '.host .av.sh-has-sovera-frame{margin-bottom:28px!important}',
+      '#v-me .mav.sh-has-sovera-frame{margin-bottom:37px!important}',
+      '#pfc .pfh .pavw:has(>.sh-svip-frame){margin-top:20px!important;margin-bottom:33px!important}',
+      '.sh-neon-profile-id::before{content:none!important}',
+      '#v-me .mid.sh-neon-single-id,#pfc .pfh .meta .sh-neon-single-id{',
+      'border:1px solid #e9c17b!important;background:linear-gradient(145deg,#512082,#26104d)!important;',
+      'color:#ffe6a5!important;border-radius:100px!important;padding:6px 16px!important;',
+      'font-weight:900!important;box-shadow:0 0 16px #9456d17a;text-shadow:0 2px 5px #150427}',
+      '#sh-svip-royal{background:radial-gradient(ellipse at 50% -20%,#76428e 0%,#230e4d 40%,#0c0722 100%)}',
+      '#sh-svip-royal .svip-title{text-align:center}',
+      '#sh-svip-royal .svip-title small{display:block;color:#d5b1e0;font-size:9px;font-weight:900;letter-spacing:2px}',
+      '#sh-svip-royal .svip-card{background:linear-gradient(120deg,#27103e,#51204f 55%,#1c0938);',
+      'border:2px solid #edc576;box-shadow:inset 0 2px 1px #ffefbd5c,0 10px 0 #120827,0 18px 28px #0301118f}',
+      '#sh-svip-royal .svip-card-copy{position:relative;z-index:2;max-width:65%}',
+      '#sh-svip-royal .svip-card-chip{display:inline-block;margin-top:10px;padding:5px 9px;',
+      'border:1px solid #ffe0a7;border-radius:100px;font-size:9px;font-weight:900;color:#ffe3a8;',
+      'background:#522b6680}',
+      '#sh-svip-royal .svip-card-avatar .photo{display:grid;place-items:center;overflow:hidden;',
+      'width:100%;height:100%;border-radius:50%;object-fit:cover;background:#67348a}',
+      '#sh-svip-royal .svip-card-avatar .svip-ring{width:172%;height:172%}',
+      '#sh-svip-royal .svip-level-tabs button{box-shadow:inset 0 1px #fff3,0 4px 0 #100826;',
+      'border-color:#bb8fc1;background:linear-gradient(160deg,#4f2865,#291744);font-size:16px}',
+      '#sh-svip-royal .svip-level-tabs button[aria-pressed="true"]{box-shadow:0 4px 0 #916329,0 0 18px #f3c4708a}',
+      '#sh-svip-royal .svip-view{border:2px solid #bd8db2;background:linear-gradient(145deg,#42215b,#1b1038 60%,#100a2e);',
+      'box-shadow:inset 0 1px 0 #ffffff35,0 10px 26px #03011280}',
+      '#sh-svip-royal .svip-price-head{display:flex;align-items:center;justify-content:space-between;',
+      'gap:10px;border-bottom:1px solid #d9a9b766;padding-bottom:13px}',
+      '#sh-svip-royal .svip-price-head>div:first-child{display:flex;flex-direction:column}',
+      '#sh-svip-royal .svip-price-head small,#sh-svip-royal .svip-price-head span{font-size:10px;color:#dec5e0}',
+      '#sh-svip-royal .svip-price-head strong{font-size:23px;color:#ffe3a0}',
+      '#sh-svip-royal .svip-price{text-align:right;min-width:100px}',
+      '#sh-svip-royal .svip-price strong{display:block;font-size:16px;color:#ffe1a2}',
+      '#sh-svip-royal .svip-mini-avatar .ring{width:171%;height:171%}',
+      '#sh-svip-royal .svip-mini-avatar .photo{width:100%;height:100%;border-radius:50%;',
+      'object-fit:cover;display:grid;place-items:center;overflow:hidden;background:#703aa4}',
+      '#sh-svip-royal .svip-preview-card{padding:21px 7px 15px;overflow:visible;',
+      'background:linear-gradient(150deg,#2e1646,#1b0d38);box-shadow:inset 0 1px #ffe1b84a}',
+      '#sh-svip-royal .svip-reward-card{display:flex;flex-direction:column;align-items:center;',
+      'gap:3px;padding:12px;border:1px solid #f0c57c;border-radius:17px;margin:14px 0;',
+      'background:linear-gradient(140deg,#6b3a60,#38204f);box-shadow:inset 0 2px #ffdfac44}',
+      '#sh-svip-royal .svip-reward-card span{font-size:10px;letter-spacing:1.4px;color:#eed0a3}',
+      '#sh-svip-royal .svip-reward-card strong{font-size:23px;color:#fff0ad}',
+      '#sh-svip-royal .svip-reward-card small{font-size:10px;color:#ded0e8}',
+      '#sh-svip-royal .svip-perks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}',
+      '#sh-svip-royal .svip-perks span{border:1px solid #b67eb678;border-radius:12px;',
+      'padding:9px 7px;font-size:11px;background:#2b144a;color:#ffe6cb}',
+      '#sh-svip-royal .svip-reward-btn{background:linear-gradient(135deg,#a972e4,#e2c5f3);',
+      'color:#210c3c;border-color:#e9cbff}',
+      '#sh-svip-royal .svip-rules{margin:12px 0;font-size:12px;color:#dcc6ea}',
+      '@media(max-width:365px){#sh-svip-royal .svip-price-head strong{font-size:19px}',
+      '#sh-svip-royal .svip-card h3{font-size:39px}}',
+      '.sh-svip-room-entry{position:fixed;left:3%;right:3%;bottom:calc(105px + env(safe-area-inset-bottom,0px));',
+      'z-index:2147483500;min-height:76px;display:flex;align-items:center;gap:10px;',
+      'padding:10px 18px;border:2px solid #e9c582;border-radius:25px;',
+      'background:linear-gradient(115deg,#2b105ceF,#54298bef,#1a0a36f0);color:#fff0c9;',
+      'box-shadow:0 0 25px #e9c57988;pointer-events:none;animation:shSvEnter .4s ease-out}',
+      '.sh-svip-room-entry img{width:65px;height:65px;object-fit:contain;flex:none}',
+      '.sh-svip-room-entry strong{display:block;font-size:17px;font-weight:900}',
+      '.sh-svip-room-entry small{font-size:11px;color:#e0c7ff}',
+      '@keyframes shSvEnter{from{transform:translateY(35px);opacity:0}to{transform:translateY(0);opacity:1}}',
+      '#ul .sh-svip-badge{font-size:10px;vertical-align:middle;padding:2px 6px;margin-left:5px}',
+      '@media(prefers-reduced-motion:reduce){.sh-sovera-frame.fxr,.sh-svip-room-entry{animation:none!important}}'
     ].join('');
     doc.head.appendChild(style);
   }
@@ -394,12 +539,16 @@
     const item=frameArt(key);
     if(!item)return '';
     // Only pinned package filenames are used; never interpolate user URLs.
-    return '<i class="fxr sh-sovera-frame" aria-hidden="true" '+
+    return '<i class="fxr sh-sovera-frame'+(item.group==='svip'?' sh-svip-frame':'')+
+      '" aria-hidden="true" '+
       'style="background-image:url('+cosmeticMedia(item)+')"></i>';
   }
   function playSoveraEntry(doc,key){
     const choice=entryArt(key);
     if(!doc||!choice)return;
+    if(/^svip-entry-0[1-8]$/.test(key)){
+      playSvipRoomEntry(doc,Number(key.slice(-2)),'Royal member');return;
+    }
     cosmeticCss(doc);
     doc.querySelector('.sh-sovera-entry-cover')?.remove();
     const cover=doc.createElement('div');
@@ -430,6 +579,44 @@
     img.addEventListener('load',()=>doc.defaultView?.clearTimeout(timeout),{once:true});
     img.addEventListener('error',()=>doc.defaultView?.clearTimeout(timeout),{once:true});
   }
+
+  function svipLevel(value){
+    const n=Number(value);
+    return Number.isInteger(n)&&n>=1&&n<=8?n:0;
+  }
+  function svipArt(level,kind){
+    if(!svipLevel(level)||!['frame','medal','tag'].includes(kind))return '';
+    return './sharika-premium/svip-'+kind+'-'+String(level).padStart(2,'0')+'.webp';
+  }
+  function makeSvipBadge(doc,level,extraClass=''){
+    const badge=doc.createElement('span');
+    badge.className='sh-svip-badge '+extraClass;
+    badge.dataset.svipLevel=String(level);
+    badge.textContent='SVIP '+level;
+    return badge;
+  }
+  function playSvipRoomEntry(doc,level,name){
+    const n=svipLevel(level);
+    if(!doc||!n)return;
+    cosmeticCss(doc);
+    doc.querySelector('.sh-svip-room-entry')?.remove();
+    const notice=doc.createElement('div');
+    notice.className='sh-svip-room-entry';
+    notice.setAttribute('role','status');
+    const art=doc.createElement('img');
+    art.src=svipArt(n,'medal');
+    art.alt='';
+    const copy=doc.createElement('div');
+    const title=doc.createElement('strong');
+    title.textContent='SVIP '+n+' · '+String(name||'Royal member').slice(0,80);
+    const sub=doc.createElement('small');
+    sub.textContent='joined the voice room';
+    copy.append(title,sub);
+    notice.append(art,copy);
+    doc.body.appendChild(notice);
+    doc.defaultView?.setTimeout(()=>notice.remove(),3800);
+  }
+
   // Avatar URLs come only from the authenticated Sharika profile API. Never
   // render arbitrary user-supplied image URLs in verified room identities.
   function verifiedAvatarUrl(value){
@@ -449,14 +636,16 @@
     node.querySelector('.sh-verified-avatar-image')?.remove();
     // Keep the original emoji underneath until the image has loaded.
     if(!node.classList.contains('face'))node.style.position='relative';
-    node.style.overflow='hidden';
+    // Keep the decorated avatar holder visible; clip only the actual photo.
+    // Otherwise the 142% Royal/SVIP frame is cut off on some profile cards.
+    node.style.overflow='visible';
     const image=doc.createElement('img');
     image.className='sh-verified-avatar-image';
     image.dataset.source=src;
     image.alt='';
     image.setAttribute('aria-hidden','true');
     image.style.cssText='position:absolute;inset:0;width:100%;height:100%;'+
-      'display:block;object-fit:cover;border-radius:inherit;z-index:2;'+
+      'display:block;object-fit:cover;object-position:center;border-radius:50%;z-index:2;'+
       'pointer-events:none;opacity:0';
     image.onload=()=>{image.style.opacity='1';};
     image.onerror=()=>image.remove();
@@ -586,6 +775,9 @@
       if(!item)continue;
       paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
       row.querySelector('.sh-sovera-user-tag')?.remove();
+      row.querySelector('.sh-svip-badge')?.remove();
+      const level=svipLevel(item.svip_level);
+      if(level)row.appendChild(makeSvipBadge(doc,level));
       const tag=nameTagArt(item.name_tag_style);
       if(tag){
         const img=doc.createElement('img');
@@ -623,11 +815,11 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id').forEach(decoration=>decoration.remove());
-      if(seat.special_id){
-        const badge=doc.createElement('span');badge.className='sh-neon-seat-id';
-        badge.textContent=seat.special_id;el.style.position='relative';el.appendChild(badge);
-      }
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge')
+        .forEach(decoration=>decoration.remove());
+      const svip=svipLevel(seat.svip_level);
+      // VIP/SVIP status belongs beside the avatar frame; IDs are profile-only.
+      if(svip)avatar.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
       const item=frameArt(seat.frame_style);
       const medal=medalArt(seat.medal_style);
       const nameTag=nameTagArt(seat.name_tag_style);
@@ -636,7 +828,7 @@
       avatar.style.position='relative';
       if(item){
         const decoration=doc.createElement('i');
-        decoration.className='fxr sh-sovera-frame';
+        decoration.className='fxr sh-sovera-frame'+(item.group==='svip'?' sh-svip-frame':'');
         decoration.setAttribute('aria-hidden','true');
         decoration.style.backgroundImage='url('+cosmeticMedia(item)+')';
         avatar.appendChild(decoration);
@@ -724,8 +916,7 @@
     for(const option of [
       ['frame_style','Frames','all'],['entry_style','Entry','all'],
       ['medal_style','Medals','all'],['name_tag_style','Name Tags','all'],
-      ['frame_style','SVIP Frames','svip'],['medal_style','SVIP Medals','svip'],
-      ['name_tag_style','SVIP Tags','svip'],['frame_style','Noble','noble'],
+      ['frame_style','Noble','noble'],
       ['frame_style','Royal Staff','role']
     ]){
       const tab=document.createElement('button');
@@ -741,6 +932,8 @@
     try{
       records=(await loadVerifiedCosmetics()).filter(x=>{
         if(x.kind!==kind)return false;
+        if(/^svip-(frame|medal|tag|entry)-[0-9]{2}$/.test(String(x.art_key||''))&&
+           !x.owned)return false;
         if(gallery==='all')return true;
         const key=x.id.slice(kind.length+1);
         const art=catalog.find(item=>item.id===key)||
@@ -951,6 +1144,8 @@
       return;
     }
     const found=state.items.filter(x=>x.kind===state.category&&
+      (state.mode==='backpack'||
+        !/^svip-(frame|medal|tag|entry)-[0-9]{2}$/.test(String(x.art_key||'')))&&
       (state.mode==='shop'?x.active||x.owned:x.owned));
     if(!found.length){
       const message=marketEl('div','sh-rm-empty');
@@ -973,7 +1168,7 @@
       const art=marketCategoryArt(item);
       if(item.kind==='frame_style'){
         const holder=marketEl('div','sh-rm-frame-icon','👤');
-        if(art?.art){const picture=marketEl('img');picture.src=effectPath(art.art);
+        if(art?.art){const picture=marketEl('img');picture.src=cosmeticMedia(art);
           picture.alt='';picture.loading='lazy';holder.appendChild(picture);}
         preview.appendChild(holder);
       }else if(art?.art){
@@ -982,8 +1177,10 @@
       }else preview.appendChild(marketEl('span','','👑'));
       if(item.owned)preview.appendChild(marketEl('span','sh-rm-owned',item.equipped?'✓ In use':'✓ Owned'));
       const label=marketEl('div','sh-rm-name',item.name);
+      const expires=item.expires_at_ms?
+        ' · until '+new Date(Number(item.expires_at_ms)).toLocaleDateString('en-GB'):'';
       const price=marketEl('div','sh-rm-price',item.owned?
-        (item.equipped?'✓ Equipped':'✓ In backpack'):
+        (item.equipped?'✓ Equipped':'✓ In backpack')+expires:
         '🪙 '+Number(item.price_coins||0).toLocaleString('en-US'));
       const ops=marketEl('div','sh-rm-ops');
       const primary=marketEl('button','sh-rm-btn');
@@ -1136,13 +1333,9 @@
       };
       anchor.insertAdjacentElement('afterend',copy);
     }
-    if(profile?.special_id){
-      const plaque=document.createElement('span');
-      plaque.id='sh-neon-own-id';plaque.className='sh-neon-profile-id';
-      plaque.textContent='Neon Special ID';
-      const copy=document.getElementById('sh-copy-own-id');
-      (copy||anchor).insertAdjacentElement('afterend',plaque);
-    }
+    anchor.classList.toggle('sh-neon-single-id',!!profile?.special_id);
+    // Display only the chosen special number. The canonical ID stays on the
+    // server for secure lookups but must not appear twice on this screen.
     const medal=medalArt(profile?.medal_style);
     const tag=nameTagArt(profile?.name_tag_style);
     if(!medal&&!tag)return;
@@ -1225,7 +1418,11 @@
       const data=await api('GET','/premium');
       if(!button.isConnected||requestNo!==premiumProfileRequest||session?.user?.id!==who)return;
       const tier=String(data.status?.tier||'none').toUpperCase();
-      button.textContent=tier==='NONE'?'Member':tier+' Member';
+      const level=tier==='SVIP'?svipLevel(data.status?.svip_level):0;
+      button.classList.toggle('sh-svip-badge',!!level);
+      if(level)button.dataset.svipLevel=String(level);
+      else delete button.dataset.svipLevel;
+      button.textContent=level?'SVIP '+level:tier==='NONE'?'SVIP Royal':tier+' Member';
     }catch(error){
       console.warn('Premium status pending staging deployment:',errText(error));
     }
@@ -1259,15 +1456,21 @@
       format(status.gift_coins)+' coins</div><small>'+autoInfo+'</small></div>'+
       '<div style="display:grid;gap:10px;margin-top:12px">'+tiers.map(item=>{
         const active=status.tier===item.tier;
+        const svipBase=item.tier==='svip'?(cfg.svip_levels||[])[0]:null;
+        const shownPrice=svipBase?.price_coins??item.price_coins;
+        const shownBonus=item.tier==='svip'&&active?status.daily_bonus_coins:
+          svipBase?.daily_bonus_coins??item.daily_bonus_coins;
         return '<div style="border:1px solid '+(active?'#f6d678':'#896cad')+';border-radius:18px;'+
           'background:linear-gradient(155deg,#493477,#211b4b);padding:12px">'+
           '<b>'+labels[item.tier]+'</b>'+(active?' <small>✓ Current</small>':'')+
           '<div class="lbl">Level '+format(item.min_wealth_level)+' or sent gifts '+
-          format(item.min_gift_coins)+' · Daily '+format(item.daily_bonus_coins)+' coins</div>'+
-          '<div class="lbl">'+format(item.price_coins)+' coins / '+item.duration_days+' days</div>'+
+          format(item.min_gift_coins)+' · Daily '+format(shownBonus)+' coins</div>'+
+          '<div class="lbl">'+format(shownPrice)+' coins / '+(svipBase?30:item.duration_days)+' days'+
+          (svipBase?' (SVIP 1 starting price)':'')+'</div>'+
           (cfg.policy?.purchase_enabled&&Number(status.rank||0)<=item.rank?
             '<button class="send" type="button" data-sh-premium-buy="'+item.tier+'">'+
-              (active?'Extend ':'Buy ')+item.tier.toUpperCase()+'</button>':'')+'</div>';
+              (item.tier==='svip'?'Explore SVIP 1–8':(active?'Extend ':'Buy ')+item.tier.toUpperCase())+
+              '</button>':'')+'</div>';
       }).join('')+'</div>'+
       '<div style="margin-top:13px;padding:12px;border:1px solid #e8c178;'+
         'border-radius:17px;background:linear-gradient(155deg,#57367b,#201746)">'+
@@ -1299,6 +1502,7 @@
     root.querySelectorAll('[data-sh-premium-buy]').forEach(button=>{
       button.onclick=async()=>{
         const tier=button.dataset.shPremiumBuy;
+        if(tier==='svip'){window.closeSheet?.();showSvipRoyalSheet().catch(error=>toast(errText(error)));return;}
         const item=tiers.find(x=>x.tier===tier);
         if(!item||!window.confirm('Buy '+tier.toUpperCase()+' for '+format(item.price_coins)+
           ' coins? Seller coins and game outcomes are separate.'))return;
@@ -1333,6 +1537,147 @@
       }catch(error){note.textContent='Bonus not claimed: '+errText(error);
         if(claim.isConnected)claim.disabled=false;}
     };
+  }
+
+
+  // Eight server-priced 30-day passes. All artwork is the user's real
+  // animated level collection; no demo assets or client-side coin minting.
+  let svipRoyalSelection=1;
+  async function showSvipRoyalSheet(){
+    if(!session){toast('Sign in to view SVIP');return;}
+    document.getElementById('sh-svip-royal')?.remove();
+    cosmeticCss(document);
+    const panel=document.createElement('section');
+    panel.id='sh-svip-royal';panel.setAttribute('role','dialog');
+    panel.setAttribute('aria-label','SVIP Royal Membership');
+    panel.innerHTML='<div class="svip-wrap"><div class="svip-top">'+
+      '<button type="button" class="svip-back" aria-label="Back">‹</button>'+
+      '<h2>SVIP ROYAL</h2><span>✦</span></div><p>Loading verified membership…</p></div>';
+    document.body.appendChild(panel);
+    const close=()=>panel.remove();
+    panel.querySelector('.svip-back').onclick=close;
+    let data;
+    try{data=await api('GET','/premium');}
+    catch(error){
+      if(panel.isConnected)panel.querySelector('.svip-wrap').lastElementChild.textContent=
+        'Unable to load SVIP: '+errText(error);
+      return;
+    }
+    if(!panel.isConnected)return;
+    const format=n=>Number(n||0).toLocaleString('en-US');
+    const realLevel=()=>data.status?.tier==='svip'?svipLevel(data.status.svip_level):0;
+    svipRoyalSelection=realLevel()||svipRoyalSelection||1;
+    let busy=false;
+    function render(){
+      if(!panel.isConnected)return;
+      const status=data.status||{},cfg=data.config||{};
+      const current=realLevel(),preview=svipLevel(svipRoyalSelection)||1;
+      const choice=(cfg.svip_levels||[]).find(x=>x.level===preview);
+      const svipTier=(cfg.tiers||[]).find(x=>x.tier==='svip');
+      const canBuy=!!cfg.policy?.purchase_enabled&&!!choice?.enabled&&
+        !!svipTier&&Number(status.rank||0)<=Number(svipTier.rank);
+      const avatar=verifiedAvatarUrl(profile?.pic);
+      const avatarMarkup=avatar?'<img class="photo" alt="" src="'+avatar+'">':
+        '<span class="photo">👑</span>';
+      const frame=svipArt(preview,'frame'),medal=svipArt(preview,'medal'),tag=svipArt(preview,'tag');
+      const activeUntil=status.expires_at_ms?
+        new Date(status.expires_at_ms).toLocaleDateString('en-GB'):'';
+      const currentLabel=current?'ACTIVE · SVIP '+current+(activeUntil?' · Until '+activeUntil:''):
+        'ROYAL MEMBERSHIP · Choose your level';
+      const benefit=['Animated royal profile frame','SVIP medal & exclusive nameplate',
+        'Royal voice room seat badge','Room entrance effect · about 4 seconds'];
+      const price=choice?format(choice.price_coins):'—';
+      const reward=choice?format(choice.daily_bonus_coins):'—';
+      const activeReward=Number(status.daily_bonus_coins)||0;
+      panel.innerHTML='<div class="svip-wrap">'+
+        '<div class="svip-top"><button class="svip-back" type="button" aria-label="Close SVIP">‹</button>'+
+        '<div class="svip-title"><small>SHARIKA EXCLUSIVE CLUB</small><h2>✦ SVIP ROYAL ✦</h2></div><span>♛</span></div>'+
+        '<div class="svip-card"><span class="svip-card-top">ROYAL PREMIUM · 8 LEVELS</span>'+
+        '<div class="svip-card-copy"><h3>SVIP '+(current||preview)+'</h3>'+
+        '<p>'+sellerEscape(currentLabel)+'</p>'+
+        '<span class="svip-card-chip">✧ 30 DAYS · ROYAL PASS ✧</span></div>'+
+        '<div class="svip-card-avatar">'+avatarMarkup+
+        '<img class="svip-ring" src="'+svipArt(current||preview,'frame')+'" alt=""></div></div>'+
+        '<h3 class="svip-section-title">Choose your royal level</h3>'+
+        '<div class="svip-level-tabs" role="group" aria-label="Choose SVIP level">'+
+        Array.from({length:8},(_,i)=>'<button type="button" data-svip-preview="'+(i+1)+
+          '" aria-pressed="'+(i+1===preview)+'">♛ '+(i+1)+'</button>').join('')+'</div>'+
+        '<div class="svip-view">'+
+        '<div class="svip-price-head"><div><small>ROYAL LEVEL '+preview+'</small>'+
+        '<strong>SVIP '+preview+'</strong><span>30-day membership</span></div>'+
+        '<div class="svip-price"><small>PASS PRICE</small><strong>🪙 '+price+'</strong></div></div>'+
+        '<div class="svip-preview">'+
+        '<div class="svip-preview-card"><small>PROFILE PREVIEW</small>'+
+        '<div class="svip-mini-avatar">'+avatarMarkup+
+        '<img class="ring" src="'+frame+'" alt=""><img class="medal" src="'+medal+'" alt=""></div>'+
+        '<strong>'+sellerEscape(profile?.name||'Sharika User')+'</strong>'+
+        '<span class="sh-svip-badge" data-svip-level="'+preview+'">SVIP '+preview+'</span></div>'+
+        '<div class="svip-preview-card"><small>VOICE ROOM PREVIEW</small>'+
+        '<div class="svip-mini-avatar">'+avatarMarkup+
+        '<img class="ring" src="'+frame+'" alt=""><img class="medal" src="'+medal+'" alt=""></div>'+
+        '<strong>Mic Seat · SVIP '+preview+'</strong><small>Visible to room members</small></div></div>'+
+        '<div class="svip-art-row"><img src="'+tag+'" alt="Royal nameplate '+preview+'">'+
+        '<img src="'+medal+'" alt="SVIP medal '+preview+'"></div>'+
+        '<div class="svip-reward-card"><span>🎁 DAILY SVIP REWARD</span>'+
+        '<strong>🪙 '+reward+' coins</strong><small>Claim once per UTC day while active</small></div>'+
+        '<div class="svip-perks">'+benefit.map(x=>'<span>✦ '+x+'</span>').join('')+'</div>'+
+        (canBuy?'<button class="svip-main-btn" id="sh-svip-buy" type="button">'+
+          (current===preview?'Renew SVIP '+preview:'Unlock SVIP '+preview)+
+          ' · '+price+' Coins / 30 Days</button>':
+          '<p class="svip-note">'+(choice&&!choice.enabled?
+            'This level is currently unavailable for purchase.':
+            'Coin purchase is unavailable for this level or membership.')+'</p>')+
+        (current&&activeReward>0?'<button class="svip-main-btn svip-reward-btn" id="sh-svip-daily" type="button" '+
+          (status.claimed_today?'disabled':'')+'>'+
+          (status.claimed_today?'Today’s coins claimed ✓':
+            'Claim today’s '+format(activeReward)+' coins')+'</button>':'')+
+        '<p class="svip-note">✓ Buying or receiving an SVIP pass adds its frame, entry effect, medal and tag '+
+        'to My Backpack automatically. You can equip another owned frame whenever you like.</p>'+
+        '<details class="svip-rules"><summary>SVIP policy & expiry</summary>'+
+        '<p class="svip-note">SVIP coin purchases last 30 days. Buying the same level again extends its pass; '+
+        'choosing a different level activates that level. Active assets and rewards are verified by the server. '+
+        'All eight prices and daily bonuses are controlled by Super Admin.</p></details>'+
+        '<p id="sh-svip-notice" role="status"></p></div></div>';
+      panel.querySelector('.svip-back').onclick=close;
+      panel.querySelectorAll('[data-svip-preview]').forEach(button=>{
+        button.onclick=()=>{if(busy)return;svipRoyalSelection=Number(button.dataset.svipPreview);render();};
+      });
+      const note=panel.querySelector('#sh-svip-notice');
+      const claim=panel.querySelector('#sh-svip-daily');
+      if(claim)claim.onclick=async()=>{
+        if(busy||claim.disabled)return;busy=true;claim.disabled=true;
+        try{
+          await api('POST','/premium/daily/claim',{});
+          await refreshWalletAfterConfirmedTransaction();
+          data=await api('GET','/premium');render();
+          panel.querySelector('#sh-svip-notice').textContent='Daily coins received ✓';
+        }catch(error){note.textContent='Reward not confirmed: '+errText(error);claim.disabled=false;}
+        finally{busy=false;}
+      };
+      const buy=panel.querySelector('#sh-svip-buy');
+      if(buy)buy.onclick=async()=>{
+        if(busy||!choice||!canBuy||!window.confirm(
+          'Buy SVIP '+preview+' for '+price+' coins / 30 days?'))return;
+        busy=true;buy.disabled=true;
+        const tier='svip',level=preview;
+        const requestId=pendingPremiumPurchase?.tier===tier&&
+          pendingPremiumPurchase?.level===level?
+            pendingPremiumPurchase.requestId:nextWalletRequestId('premium');
+        pendingPremiumPurchase={tier,level,requestId};
+        try{
+          await api('POST','/premium/purchase',{tier,svip_level:level,request_id:requestId});
+          pendingPremiumPurchase=null;
+          await refreshWalletAfterConfirmedTransaction();
+          data=await api('GET','/premium');
+          if(typeof window.renderMe==='function')window.renderMe();
+          render();
+          panel.querySelector('#sh-svip-notice').textContent=
+            'SVIP '+level+' activated · Backpack items added ✓';
+        }catch(error){note.textContent='Purchase not confirmed: '+errText(error);buy.disabled=false;}
+        finally{busy=false;}
+      };
+    }
+    render();
   }
 
   // Keep Sharika's existing profile layout; give its edit controls a
@@ -1598,12 +1943,55 @@
       }
     }catch(error){console.warn('Verified profile counters unavailable:',errText(error));}
   }
+  let appearanceRefreshBusy=false,lastAppearanceRefresh=0;
+  async function refreshVerifiedAppearance(){
+    if(appearanceRefreshBusy||!session||!profile?.public_id)return;
+    if(Date.now()-lastAppearanceRefresh<10000)return;
+    lastAppearanceRefresh=Date.now();appearanceRefreshBusy=true;
+    const account=session.user?.id,canonical=profile.public_id;
+    try{
+      const latest=await api('GET','/me');
+      if(session?.user?.id!==account||latest.public_id!==canonical)return;
+      const keys=['pic','frame_style','entry_style','medal_style','name_tag_style','svip_level',
+        'special_id','display_id','special_frame'];
+      const changed=keys.some(key=>(latest[key]||'')!==(profile[key]||''));
+      if(!changed)return;
+      profile=latest;
+      if(window.A){
+        window.A.pic=latest.pic||null;
+        window.A.name=latest.name||window.A.name;
+        window.A.frame=latest.frame_style||'';
+        window.A.entry=latest.entry_style||'';
+        window.A.cosmeticMedal=latest.medal_style||'';
+        window.A.cosmeticTag=latest.name_tag_style||'';
+        window.A.frameImg=null;
+        if(typeof window.saveA==='function')window.saveA();
+      }
+      if(typeof window.renderMe==='function')window.renderMe();
+      const roomFrame=document.getElementById('roomFrame')?.contentWindow;
+      if(roomFrame&&typeof roomFrame.render==='function')roomFrame.render();
+    }catch(error){
+      console.warn('Verified profile appearance refresh unavailable:',errText(error));
+    }finally{appearanceRefreshBusy=false;}
+  }
   if(typeof priorRenderMe==='function')window.renderMe=function(){
-    priorRenderMe.apply(this,arguments);
+    const result=priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
     renderVerifiedMainProfileStats().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
+    refreshVerifiedAppearance().catch(()=>{});
+    return result;
   };
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden)refreshVerifiedAppearance().catch(()=>{});
+  });
+  window.addEventListener('focus',()=>refreshVerifiedAppearance().catch(()=>{}));
+  // Admin grants are server-authoritative; refresh visible profile ornaments
+  // without requiring sign-out, reinstall, or a room rejoin.
+  setInterval(()=>{
+    if(!document.hidden&&document.querySelector('#v-me .mid'))
+      refreshVerifiedAppearance().catch(()=>{});
+  },20000);
   // Main profile screenshot: these tiles open the existing, verified features.
   // Capture early so the old placeholder "coming soon" handler never fires.
   document.addEventListener('click',event=>{
@@ -1626,7 +2014,11 @@
     const button=event.target.closest?.('[data-m="svip"]');
     if(!button)return;
     event.preventDefault();event.stopImmediatePropagation();
-    showPremiumSheet().catch(error=>toast(errText(error)));
+    // The SVIP Club tile opens the new eight-level collection. Preserve the
+    // existing premium badge route to VIP/Noble purchasing and bonus controls.
+    if(button.classList.contains('profile-svip-badge'))
+      showPremiumSheet().catch(error=>toast(errText(error)));
+    else showSvipRoyalSheet().catch(error=>toast(errText(error)));
   },true);
   window.frEl=function(){return frameTag(window.A?.frame||'');};
   window.frameSheet=function(){styleSelectionSheet('frame_style');};
@@ -1641,10 +2033,52 @@
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
   const SHARIKA_ICE_CONFIG={iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]};
   let sfuState = null;
+  // Animate the actual occupied mic seats, never a timer-driven fake speaker.
+  // One room can have several simultaneous talkers.
+  const activeVoiceSpeakers={roomId:null,ids:new Set()};
+  function paintVoiceSpeakers(roomId,frame) {
+    if(!frame?.seats)return;
+    const ids=activeVoiceSpeakers.roomId===roomId?activeVoiceSpeakers.ids:new Set();
+    const ownerOnMic=frame.seats.some(seat=>seat?.owner_mic_seat);
+    for(const seat of frame.seats){
+      if(!seat||seat.empty||seat.lock)continue;
+      const speaking=!!seat.user_id&&!seat.muted&&ids.has(seat.user_id)&&
+        !(ownerOnMic&&seat.i===0);
+      seat.talk=speaking;
+      const el=frame.seatEl?.(seat.i);
+      if(el)el.classList.toggle('talk',speaking);
+    }
+  }
+  function paintVerifiedMicCount(frame) {
+    if(!frame?.seats)return;
+    const people=new Set(frame.seats.filter(seat=>seat&&!seat.empty&&!seat.lock)
+      .map(seat=>seat.user_id||'seat:'+seat.i));
+    const count=frame.$?.('mstat');
+    if(count)count.innerHTML='🎤 <i>'+people.size+'</i>/'+frame.seats.length;
+  }
+  function setVoiceSpeakers(roomId,userIds) {
+    if(wantedVoiceRoom!==roomId)return;
+    const ids=new Set([...userIds].filter(id=>typeof id==='string'&&id.length>0));
+    if(activeVoiceSpeakers.roomId===roomId&&ids.size===activeVoiceSpeakers.ids.size&&
+       [...ids].every(id=>activeVoiceSpeakers.ids.has(id)))return;
+    activeVoiceSpeakers.roomId=roomId;
+    activeVoiceSpeakers.ids=ids;
+    if(window.cur?.id===roomId)
+      paintVoiceSpeakers(roomId,document.getElementById('rf')?.contentWindow);
+  }
+  function clearVoiceSpeakers() {
+    const roomId=activeVoiceSpeakers.roomId;
+    activeVoiceSpeakers.roomId=null;
+    activeVoiceSpeakers.ids=new Set();
+    if(roomId&&window.cur?.id===roomId)
+      paintVoiceSpeakers(roomId,document.getElementById('rf')?.contentWindow);
+  }
   // Android WebView may block a remote track's first autoplay attempt.
   // A later genuine room tap must retry playback synchronously in that gesture.
   function resumeRoomAudio() {
     if(sfuState && !sfuState.closed) {
+      if(sfuState.speakingContext?.state==='suspended')
+        sfuState.speakingContext.resume().catch(()=>{});
       for(const audio of sfuState.audioElements) {
         if(audio.isConnected && audio.srcObject && audio.paused)
           audio.play().catch(()=>{});
@@ -1669,26 +2103,43 @@
     try{bindRoomAudioGesture(roomAudioFrame.contentDocument);}catch(_){}
   }
   let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;
-  function recoverSfuPublication(state,reason) {
+  // Preserve a manual mute when media reconnects; new rooms start unmuted.
+  let micPreferenceRoom=null,micPreferenceEnabled=true;
+  function microphoneWanted(roomId) {
+    if(micPreferenceRoom!==roomId) {
+      micPreferenceRoom=roomId;
+      micPreferenceEnabled=true;
+    }
+    return micPreferenceEnabled;
+  }
+  function sfuTransportHealthy(state) {
+    const local=state.media?.getAudioTracks()[0];
+    const outgoing=!state.canPublish ||
+      (local?.readyState==='live' && state.publishPC?.connectionState==='connected');
+    const incoming=!state.subscribed.size ||
+      state.receivePC?.connectionState==='connected';
+    return outgoing && incoming;
+  }
+  function recoverSfuPublication(state,reason,force=false) {
     if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||state.recoveryTimer)return;
     if(voiceRecoveryRoom!==state.roomId){voiceRecoveryRoom=state.roomId;voiceRecoveryAttempts=0;}
     if(voiceRecoveryAttempts>=3) {
       if(!state.recoveryExhausted){
         state.recoveryExhausted=true;
         document.getElementById('rf')?.contentWindow?.toast?.(
-          'Microphone network disconnected. Tap the mic to retry.');
+          'Voice disconnected. Tap the mic or re-enter the room to retry.');
       }
       return;
     }
     const delay=[1200,3000,6000][voiceRecoveryAttempts++];
-    console.warn('Sharika mic transport recovery:',reason);
+    console.warn('Sharika voice transport recovery:',reason);
     state.recoveryTimer=setTimeout(()=>{
       state.recoveryTimer=null;
       if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||
-         state.publishPC?.connectionState==='connected')return;
+         (!force && sfuTransportHealthy(state)))return;
       connectVoice(state.roomId).catch(error=>{
         document.getElementById('rf')?.contentWindow?.toast?.(
-          'Microphone reconnect failed: '+errText(error));
+          'Voice reconnect failed: '+errText(error));
       });
     },delay);
   }
@@ -1708,7 +2159,14 @@
     sfuState=null;
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
+    if(state.speakingTimer)clearInterval(state.speakingTimer);
+    for(const meter of state.speakingMeters.values())
+      meter.source.disconnect();
+    state.speakingMeters.clear();
+    if(state.speakingContext)state.speakingContext.close().catch(()=>{});
+    clearVoiceSpeakers();
     if(state.recoveryTimer)clearTimeout(state.recoveryTimer);
+    for(const timer of state.bootstrapTimers||[])clearTimeout(timer);
     for(const element of state.audioElements){element.pause();element.srcObject=null;element.remove();}
     if(state.media)for(const track of state.media.getTracks())track.stop();
     for(const pc of [state.publishPC,state.receivePC])if(pc)pc.close();
@@ -1717,23 +2175,91 @@
       catch (_) { /* stale sessions expire in the coordinator */ }
     }
   }
+  // A light-weight, audio-only voice activity meter. The WebAudio sources
+  // connect only to analysers: microphone audio is never played back locally.
+  // Sample every 160ms and hold a ring briefly to avoid speech flicker.
+  function sampleSfuSpeaking(state) {
+    if(state.closed||sfuState!==state)return;
+    const now=Date.now(),speaking=new Set();
+    for(const [track,meter] of state.speakingMeters){
+      if(track.readyState!=='live'||!track.enabled||track.muted){
+        meter.lastActiveAt=0;
+        continue;
+      }
+      if(meter.local&&state.publishPC?.connectionState!=='connected')continue;
+      try {
+        meter.analyser.getByteTimeDomainData(meter.samples);
+        let power=0,peak=0;
+        for(const byte of meter.samples){
+          const sample=(byte-128)/128;
+          power+=sample*sample;
+          peak=Math.max(peak,Math.abs(sample));
+        }
+        const rms=Math.sqrt(power/meter.samples.length);
+        if(rms>.018||(rms>.008&&peak>.05))meter.lastActiveAt=now;
+        if(now-meter.lastActiveAt<480)speaking.add(meter.userId);
+      }catch(_){/* Individual tracks can end during audio renegotiation. */}
+    }
+    setVoiceSpeakers(state.roomId,speaking);
+  }
+  function watchSfuSpeaking(state,track,userId,local=false) {
+    if(!track||!userId||state.closed||state.speakingMeters.has(track))return;
+    try {
+      if(!state.speakingContext){
+        const Context=window.AudioContext||window.webkitAudioContext;
+        if(!Context)return;
+        state.speakingContext=new Context();
+      }
+      const source=state.speakingContext.createMediaStreamSource(
+        new MediaStream([track]));
+      const analyser=state.speakingContext.createAnalyser();
+      analyser.fftSize=512;
+      source.connect(analyser);
+      state.speakingMeters.set(track,{userId,local,source,analyser,
+        samples:new Uint8Array(analyser.fftSize),lastActiveAt:0});
+      if(state.speakingContext.state==='suspended')
+        state.speakingContext.resume().catch(()=>{});
+      if(!state.speakingTimer)
+        state.speakingTimer=setInterval(()=>sampleSfuSpeaking(state),160);
+    }catch(error){console.warn('Voice activity meter unavailable:',errText(error));}
+  }
+  function unwatchSfuSpeaking(state,track) {
+    const meter=state.speakingMeters.get(track);
+    if(!meter)return;
+    meter.source.disconnect();
+    state.speakingMeters.delete(track);
+    sampleSfuSpeaking(state);
+  }
   function addAudioTrack(state,event) {
     if(state.closed)return;
+    const remoteId=state.remoteMids?.get(String(event.transceiver?.mid||''));
+    if(remoteId&&typeof watchSfuSpeaking==='function')
+      watchSfuSpeaking(state,event.track,remoteId);
     const audio=document.createElement('audio');
     audio.autoplay=true;
     audio.playsInline=true;
+    audio.muted=false;
+    audio.volume=1;
     audio.dataset.sharikaVoice='true';
     audio.srcObject=new MediaStream([event.track]);
     document.body.appendChild(audio);
     state.audioElements.add(audio);
-    audio.play().catch(error=>{
-      if(error?.name==='NotAllowedError' && !state.audioUnlockPrompted) {
-        state.audioUnlockPrompted=true;
-        document.getElementById('rf')?.contentWindow?.toast?.(
-          'Tap anywhere in the room to hear other speakers.');
-      }
-    });
+    // Android WebView can receive an SFU track before its first audio packet.
+    // Retry when that track becomes audible, in addition to room-tap unlocks.
+    const startPlayback=()=>{
+      if(state.closed||!audio.isConnected||!audio.srcObject)return;
+      audio.play().catch(error=>{
+        if(error?.name==='NotAllowedError' && !state.audioUnlockPrompted) {
+          state.audioUnlockPrompted=true;
+          document.getElementById('rf')?.contentWindow?.toast?.(
+            'Tap anywhere in the room to hear other speakers.');
+        }
+      });
+    };
+    event.track.addEventListener('unmute',startPlayback);
+    startPlayback();
     event.track.addEventListener('ended',()=>{
+      unwatchSfuSpeaking(state,event.track);
       state.audioElements.delete(audio);audio.pause();audio.remove();
     },{once:true});
   }
@@ -1752,9 +2278,15 @@
           sessionId:state.subscribeId,
           publications:batch.map(x=>({sessionId:x.sessionId,trackName:x.trackName}))
         });
-        // Map the SFU's receiving MIDs before setRemoteDescription fires "track".
+        // The publications list carries authenticated user IDs from our
+        // room coordinator. The SFU subscribe response does not echo those
+        // IDs: match its verified session IDs to the original publications.
+        // Never trust a client-supplied speaker identity.
+        const verifiedSpeakerIds=new Map(batch.map(item=>
+          [item.sessionId,item.userId||'']));
         for(const track of response.tracks||[]) {
-          state.remoteMids.set(String(track.mid),track.userId||'');
+          state.remoteMids.set(String(track.mid),
+            verifiedSpeakerIds.get(track.sessionId)||'');
         }
         await state.receivePC.setRemoteDescription(response.sessionDescription);
         const answer=await state.receivePC.createAnswer();
@@ -1764,19 +2296,58 @@
           sessionId:state.subscribeId,sessionDescription:state.receivePC.localDescription
         });
         batch.forEach(x=>state.subscribed.add(x.sessionId+':'+x.trackName));
+        if(!state.firstSubscriptionAt)state.firstSubscriptionAt=Date.now();
       }
+      state.subscriptionFailures=0;
     }catch(error) {
-      console.warn('Sharika voice subscriptions:',errText(error));
+      if(!state.closed) {
+        state.subscriptionFailures++;
+        console.warn('Sharika voice subscriptions:',errText(error));
+        // After failed SDP negotiation, SFU may retain a track allocation.
+        // New sessions are safer than repeating tracks/new forever.
+        if(state.subscriptionFailures>=2)
+          recoverSfuPublication(state,'incoming voice negotiation failed',true);
+      }
     }finally {state.syncing=false;}
+  }
+  // The receiving SFU session does not need microphone permission or a
+  // completed publishing handshake. Start it immediately for fast listening.
+  async function startSfuReceiving(state) {
+    const roomId=state.roomId;
+    const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
+    if(state.closed||wantedVoiceRoom!==roomId)
+      throw new Error('Voice room changed');
+    state.subscribeId=joined.sessionId;
+    state.sessionIds.push(joined.sessionId);
+    state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
+    state.receivePC.ontrack=event=>addAudioTrack(state,event);
+    state.receivePC.addEventListener('connectionstatechange',()=>{
+      if(!state.closed&&sfuState===state&&state.receivePC.connectionState==='failed')
+        recoverSfuPublication(state,'remote receiver failed');
+    });
+    await subscribeSfu(state);
+    // Rapidly discover nearby joins, then fall back to the regular 8s poll.
+    for(const delay of [1200,3000,5500]) {
+      state.bootstrapTimers.push(setTimeout(()=>{
+        if(!state.closed&&sfuState===state)
+          subscribeSfu(state).catch(()=>{});
+      },delay));
+    }
   }
   async function connectSfu(roomId,canPublish) {
     const state={
       roomId,closed:false,sessionIds:[],publishPC:null,receivePC:null,
       media:null,audioElements:new Set(),remoteMids:new Map(),
+      speakingContext:null,speakingMeters:new Map(),speakingTimer:null,
       subscribed:new Set(),subscribeId:null,timer:null,syncing:false,
+      canPublish,subscriptionFailures:0,heartbeatFailures:0,bootstrapTimers:[],
+      firstSubscriptionAt:0,receiveDisconnectedAt:0,
       startedAt:Date.now(),disconnectedAt:0,recoveryTimer:null,recoveryExhausted:false
     };
     sfuState=state;
+    // Convert errors to a result immediately so a fast receive failure
+    // cannot become an unhandled rejection while mic capture is pending.
+    const receiving=startSfuReceiving(state).then(()=>null,error=>error);
     try {
       if(canPublish) {
         state.media=await navigator.mediaDevices.getUserMedia({
@@ -1785,6 +2356,8 @@
         if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
         state.publishPC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
         const local=state.media.getAudioTracks()[0];
+        local.enabled=microphoneWanted(roomId);
+        watchSfuSpeaking(state,local,session?.user?.id,true);
         const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
         const offer=await state.publishPC.createOffer();
         await state.publishPC.setLocalDescription(offer);
@@ -1804,9 +2377,11 @@
           if(state.closed||sfuState!==state)return;
           const status=state.publishPC.connectionState;
           if(status==='connected'){
-            if(state.recoveryTimer){clearTimeout(state.recoveryTimer);state.recoveryTimer=null;}
+            if(state.recoveryTimer&&sfuTransportHealthy(state)&&
+               !state.subscriptionFailures&&!state.heartbeatFailures){
+              clearTimeout(state.recoveryTimer);state.recoveryTimer=null;
+            }
             state.disconnectedAt=0;
-            voiceRecoveryAttempts=0;
             markLocalMicrophone(local.readyState==='live'&&local.enabled);
           } else if(status==='disconnected'){
             if(!state.disconnectedAt)state.disconnectedAt=Date.now();
@@ -1823,17 +2398,18 @@
         checkPublisher();
       }
       if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
-      const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
-      state.subscribeId=joined.sessionId;
-      state.sessionIds.push(joined.sessionId);
-      state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
-      state.receivePC.ontrack=event=>addAudioTrack(state,event);
-      await subscribeSfu(state);
+      const receiveError=await receiving;
+      if(receiveError)throw receiveError;
       // Refresh both presence and publications; do not consume room resources
       // on a tight per-frame timer.
       state.timer=setInterval(()=>{
         if(state.closed)return;
-        api('POST','/rooms/'+roomId+'/voice/heartbeat',{sessionIds:state.sessionIds}).catch(()=>{});
+        api('POST','/rooms/'+roomId+'/voice/heartbeat',{sessionIds:state.sessionIds})
+          .then(()=>{state.heartbeatFailures=0;})
+          .catch(()=>{
+            if(++state.heartbeatFailures>=3)
+              recoverSfuPublication(state,'voice session heartbeat lost',true);
+          });
         subscribeSfu(state).catch(()=>{});
         if(state.publishPC){
           const pc=state.publishPC,connection=pc.connectionState;
@@ -1846,9 +2422,27 @@
             recoverSfuPublication(state,'publisher media path unavailable');
           }
         }
+        // Receiving other speakers uses a separate WebRTC transport.
+        // Recreate stale subscriber sessions even if our own mic is healthy.
+        if(state.receivePC && state.subscribed.size){
+          const pc=state.receivePC,connection=pc.connectionState;
+          if(connection==='disconnected'&&!state.receiveDisconnectedAt)
+            state.receiveDisconnectedAt=Date.now();
+          if(connection==='connected')state.receiveDisconnectedAt=0;
+          const lost=connection==='failed'||pc.iceConnectionState==='failed'||
+            (connection==='disconnected'&&state.receiveDisconnectedAt&&
+              Date.now()-state.receiveDisconnectedAt>12000)||
+            (connection!=='connected'&&state.firstSubscriptionAt&&
+              Date.now()-state.firstSubscriptionAt>30000);
+          if(lost)recoverSfuPublication(state,'incoming audio path unavailable');
+        }
+        // Reset the retry budget only after a connection stays healthy.
+        if(sfuTransportHealthy(state)&&!state.subscriptionFailures&&
+           Date.now()-state.startedAt>30000)voiceRecoveryAttempts=0;
       },8000);
       return {publishing:canPublish};
     }catch(error){
+      await receiving; // Ensure any in-flight receiver has finished before cleanup.
       await disconnectSfu();
       throw error;
     }
@@ -1871,6 +2465,7 @@
     return voiceSdkPromise;
   }
   async function disconnectVoice() {
+    clearVoiceSpeakers();
     if(sfuState)await disconnectSfu();
     voiceBackend=null;
     if(!voiceRoom)return;
@@ -1883,6 +2478,7 @@
   let voiceOperation=Promise.resolve(),pendingVoice=null,wantedVoiceRoom=null;
   function releaseVoice() {
     wantedVoiceRoom=null;
+    clearVoiceSpeakers();
     const task=voiceOperation.catch(()=>{}).then(()=>disconnectVoice());
     voiceOperation=task;
     return task;
@@ -1921,13 +2517,9 @@
         track.detach().forEach(node=>node.remove());
       });
       room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
-        const frame=document.getElementById('rf')?.contentWindow;
-        if(!frame || !frame.seats)return;
-        const talking=new Set(speakers.map(p=>p.identity));
-        for(const seat of frame.seats){
-          if(seat && seat.user_id)seat.talk=talking.has('sharika:'+seat.user_id);
-        }
-        if(typeof frame.render==='function')frame.render();
+        setVoiceSpeakers(roomId,speakers.map(p=>String(p.identity||''))
+          .filter(identity=>identity.startsWith('sharika:'))
+          .map(identity=>identity.slice('sharika:'.length)));
       });
       try{await room.connect(info.url,info.token);}
       catch(error){await room.disconnect().catch(()=>{});throw error;}
@@ -1937,26 +2529,57 @@
       }
       voiceRoom=room;voiceRoomId=roomId;
       try{await room.startAudio();}catch(_){}
-      if(info.publish)await room.localParticipant.setMicrophoneEnabled(true);
+      room.sharikaPublishAllowed=!!info.publish;
+      if(info.publish)
+        await room.localParticipant.setMicrophoneEnabled(microphoneWanted(roomId));
       return {publishing:!!info.publish};
     });
     voiceOperation=task;
     pendingVoice={roomId,promise:task};
     try {
       const result=await task;
-      if(!result.stale && wantedVoiceRoom===roomId)markLocalMicrophone(!!result.publishing);
+      if(!result.stale && wantedVoiceRoom===roomId) {
+        const track=sfuState?.roomId===roomId?sfuState.media?.getAudioTracks()[0]:null;
+        const enabled=!!result.publishing && (track?
+          track.readyState==='live'&&track.enabled :
+          voiceRoomId===roomId&&!!voiceRoom?.localParticipant.isMicrophoneEnabled);
+        markLocalMicrophone(enabled);
+      }
       return result;
     } finally {
       if(pendingVoice?.promise===task)pendingVoice=null;
     }
   }
+  // Frame cosmetics cannot restart a voice transport already in progress.
+  function ensureVoiceConnected(roomId) {
+    if(pendingVoice?.roomId===roomId)return pendingVoice.promise;
+    if(sfuState?.roomId===roomId&&!sfuState.closed&&sfuState.receivePC&&
+       !sfuState.recoveryExhausted&&
+       sfuState.receivePC.connectionState!=='failed')
+      return Promise.resolve({publishing:sfuState.canPublish});
+    if(voiceRoom&&voiceRoomId===roomId)
+      return Promise.resolve({publishing:!!voiceRoom.sharikaPublishAllowed});
+    return connectVoice(roomId);
+  }
+  function setRoomScreenAwake(enabled) {
+    native('roomScreenAwake',{enabled:!!enabled}).catch(error=>
+      console.warn('Room screen-awake update:',errText(error)));
+  }
   function markLocalMicrophone(enabled) {
+    // WebView may reselect the earpiece when WebRTC starts capturing audio.
+    if(enabled&&window.cur?.id===wantedVoiceRoom)
+      native('roomScreenAwake',{enabled:true}).catch(()=>{});
     const frame=document.getElementById('rf')?.contentWindow;
     if(!frame||!Array.isArray(frame.seats))return;
-    const localSeat=frame.seats.find(slot=>slot?.user_id===session?.user?.id);
-    if(localSeat) {
-      localSeat.muted=!enabled;
-      if(typeof frame.render==='function')frame.render();
+    const localSeats=frame.seats.filter(slot=>slot?.user_id===session?.user?.id);
+    if(localSeats.length) {
+      for(const seat of localSeats)seat.muted=!enabled;
+      if(typeof frame.render==='function'){
+        frame.render();
+        decorateRoomSeats(frame);
+        paintVerifiedMicCount(frame);
+        if(window.cur?.id===sfuState?.roomId)paintVoiceSpeakers(sfuState.roomId,frame);
+      }
     }
     const mic=frame.$?.('mic');
     if(mic) {
@@ -1969,6 +2592,7 @@
     const config=await api('GET','/rooms/'+roomId+'/voice/config');
     if(!config.publish)throw new Error('Take an unlocked mic seat first');
     voiceRecoveryAttempts=0;
+    micPreferenceRoom=roomId;micPreferenceEnabled=true;
     const result=await connectVoice(roomId);
     if(!result.publishing)throw new Error('Microphone connection not ready; tap again');
     if(sfuState?.roomId===roomId){
@@ -1991,6 +2615,7 @@
       if(failed||!track||track.readyState!=='live')
         return restartMicrophone(sfuState.roomId);
       track.enabled=!track.enabled;
+      micPreferenceRoom=sfuState.roomId;micPreferenceEnabled=track.enabled;
       markLocalMicrophone(track.enabled);
       return track.enabled;
     }
@@ -1998,6 +2623,7 @@
       return restartMicrophone(window.cur?.id||wantedVoiceRoom);
     const currently=voiceRoom.localParticipant.isMicrophoneEnabled;
     await voiceRoom.localParticipant.setMicrophoneEnabled(!currently);
+    micPreferenceRoom=voiceRoomId;micPreferenceEnabled=!currently;
     markLocalMicrophone(!currently);
     return !currently;
   }
@@ -2547,6 +3173,7 @@
   async function syncFrame(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
     // Out-of-order room polls cannot restore stale seats or old cosmetics.
+    if(frame.__sharikaSeatMovePending)return;
     const requestNo=(frame.__sharikaSeatSyncNo||0)+1;
     frame.__sharikaSeatSyncNo=requestNo;
     const userId=session?.user?.id;
@@ -2560,7 +3187,10 @@
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     const eligible=room.owner_id===session?.user?.id||
       (!!self && self.seat_no!==null && !self.muted);
-    if(sfuState?.roomId===room.id && !!sfuState.media!==!!eligible)
+    if(sfuState?.roomId===room.id && sfuState.canPublish!==!!eligible)
+      connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
+    if(voiceRoomId===room.id && voiceRoom &&
+       voiceRoom.sharikaPublishAllowed!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
     const localMic=sfuState?.roomId===room.id ?
       sfuState.media?.getAudioTracks()[0]?.enabled :
@@ -2602,24 +3232,37 @@
       user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
       display_id:owner.display_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
+      svip_level:Number(owner.svip_level)||0,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
-      if(!user || member.user_id===room.owner_id) continue;
+      if(!user)continue;
+      if(member.user_id===room.owner_id){
+        // Keep the fixed owner throne while also showing the owner's chosen
+        // mic position. Both seats represent one verified user and one stream.
+        if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
+           member.seat_no<slots.length)
+          slots[member.seat_no]={...slots[0],i:member.seat_no,
+            owner_mic_seat:true,muted:!!member.muted||
+              (member.user_id===session?.user?.id&&localMic===false)};
+        continue;
+      }
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
           n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
           user_id:member.user_id,public_id:user.public_id,special_id:user.special_id||null,
           display_id:user.display_id||user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
+          svip_level:Number(user.svip_level)||0,
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
       else audience.push({n:user.name,e:'👤',id:user.display_id||user.public_id,
          canonical_id:user.public_id,special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
+        svip_level:Number(user.svip_level)||0,
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
         medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
     }
@@ -2628,11 +3271,14 @@
         slots[seatNo]={lock:1,i:seatNo};
     }
     frame.seats=slots;
+    if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     frame.U=audience;
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
     frame.render();
+    if(typeof paintVerifiedMicCount==='function')paintVerifiedMicCount(frame);
+    if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     decorateRoomPeople(frame);
     decorateRoomChat(frame);
     if(typeof decorateBondSeatOverlay==='function')
@@ -2778,7 +3424,9 @@
         '.seat .ring{filter:drop-shadow(0 0 5px rgba(255,220,146,.45))}',
         '.seat.empty .face{background:linear-gradient(150deg,rgba(255,255,255,.19),rgba(32,17,75,.66))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.13),inset 0 -7px 12px rgba(8,4,34,.48),0 4px 0 rgba(8,4,27,.4)}',
         '.seat.lock .face{background:linear-gradient(145deg,rgba(63,49,114,.8),rgba(17,11,47,.9))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.12),0 5px 0 rgba(8,4,27,.48)}',
-        '.seat.talk .av{filter:drop-shadow(0 0 12px rgba(72,255,183,.75))}',
+        '.seat.talk .av{filter:drop-shadow(0 0 14px rgba(255,207,92,.9))}',
+        '.seat.talk .wave{border-color:#ffe18f;box-shadow:0 0 10px rgba(255,196,64,.58)}',
+        '.seat.talk .face{border-color:#fff0b9;box-shadow:0 0 0 3px rgba(255,195,71,.5),0 0 22px rgba(255,202,78,.72)}',
         '.seat:active .av{transform:translateY(2px) scale(.96)}',
         '.seat:focus-visible .av{outline:2px solid #ffe08b;outline-offset:6px}',
         '.step button{background:linear-gradient(145deg,rgba(255,255,255,.27),rgba(75,44,152,.85));box-shadow:inset 0 2px 0 rgba(255,255,255,.32),0 4px 0 rgba(20,9,63,.6)}',
@@ -3124,6 +3772,66 @@
         action==='remove_seat'?'Guest removed from mic':'Guest '+action+'d');
       return result;
     }
+    // A seat assignment does not require rebuilding an existing voice call.
+    let directSeatBusy=false;
+    async function moveSelfToSeat(seat) {
+      if(directSeatBusy)return;
+      const uid=session?.user?.id;
+      const owner=room.owner_id===uid;
+      const target=frame.seats?.[seat];
+      if(!uid||!target?.empty||seat<1||seat>room.seat_count)
+        throw new Error('Choose an unlocked empty seat');
+      directSeatBusy=true;
+      frame.__sharikaSeatMovePending=true;
+      frame.__sharikaSeatSyncNo=(frame.__sharikaSeatSyncNo||0)+1;
+      const before=frame.seats.map(slot=>slot?{...slot}:slot);
+      const previous=frame.seats.find(slot=>slot?.i>0&&slot.user_id===uid);
+      const source=previous||(owner?frame.seats[0]:{
+        n:profile?.name||'Member',e:'👤',pic:verifiedAvatarUrl(profile?.pic),
+        user_id:uid,public_id:profile?.public_id,
+        display_id:profile?.display_id||profile?.public_id,
+        special_id:profile?.special_id||null,svip_level:Number(profile?.svip_level)||0,
+        frame_style:profile?.frame_style||'',entry_style:profile?.entry_style||'',
+        medal_style:profile?.medal_style||'',name_tag_style:profile?.name_tag_style||'',
+        muted:false,talk:false
+      });
+      if(previous)frame.seats[previous.i]={empty:1,i:previous.i};
+      frame.seats[seat]={...source,i:seat,owner_mic_seat:owner};
+      frame.render();
+      decorateRoomSeats(frame);
+      paintVerifiedMicCount(frame);
+      paintVoiceSpeakers(room.id,frame);
+      frame.seatEl?.(seat)?.classList.add('sh-seat-pending');
+      frame.close();
+      frame.toast('Moving to seat '+seat+'…');
+      try {
+        await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
+        frame.toast('Seat '+seat+' selected');
+      }catch(error) {
+        if(window.cur?.id===room.id){
+          frame.seats=before;
+          frame.render();
+          decorateRoomSeats(frame);
+          paintVerifiedMicCount(frame);
+          paintVoiceSpeakers(room.id,frame);
+        }
+        throw error;
+      }finally{
+        frame.__sharikaSeatMovePending=false;
+        directSeatBusy=false;
+      }
+      if(window.cur?.id!==room.id)return;
+      const publishingAlready=
+        (sfuState?.roomId===room.id&&sfuState.canPublish)||
+        (voiceRoomId===room.id&&!!voiceRoom?.sharikaPublishAllowed);
+      const voice=publishingAlready?ensureVoiceConnected(room.id):connectVoice(room.id);
+      voice.then(result=>{
+        if(window.cur?.id===room.id&&!result.stale)
+          frame.toast(result.publishing?'Microphone ready':'Listening to room');
+      }).catch(error=>frame.toast('Voice reconnect: '+errText(error)));
+      syncFrame(room,frame).catch(error=>
+        frame.toast('Seat refresh: '+errText(error)));
+    }
     frame.act=async function(action,seat) {
       try {
         const target=frame.seats?.[seat];
@@ -3173,18 +3881,7 @@
             list.append(button);
           }
         } else if(action==='take' && seat>0) {
-          // The owner already occupies seat zero; invite a guest instead.
-          if(owner){await frame.act('inv',seat);return;}
-          await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
-          frame.close(); await syncFrame(room,frame);
-          let state=await connectVoice(room.id);
-          // An in-flight listener connection might have started before the
-          // seat assignment; recheck verified publish permission once.
-          if(!state.publishing) {
-            const current=await api('GET','/rooms/'+room.id+'/voice/config');
-            if(current.publish)state=await connectVoice(room.id);
-          }
-          frame.toast(state.publishing?'Microphone enabled':'Listening to room');
+          await moveSelfToSeat(seat);
         } else if(action==='down' && seat>0) {
           if(!isSelf && owner && target?.user_id) {
             await moderateSeat('remove_seat',seat);
@@ -3232,9 +3929,8 @@
         }
         return result;
       }
-      const id=String(selected.public_id||'');
       const detail=sheet?.querySelector('.who small');
-      if(detail)detail.textContent='ID '+id+' · '+(index===0?'Room owner':'Mic seat '+index);
+      if(detail)detail.textContent=index===0?'Room owner':'Mic seat '+index;
       const actions=sheet?.querySelector('.acts');
       if(!actions)return result;
       actions.textContent='';
@@ -3263,7 +3959,9 @@
     // Original emoji box invokes seatEmoji(0,...) on every device. Resolve
     // the currently logged-in user's actual mic seat before animating.
     frame.seatEmoji=function(_ignoredIndex,emoji){
-      const mine=frame.seats?.find(slot=>slot?.user_id===session?.user?.id);
+      const mine=frame.seats?.find(slot=>slot?.i>0&&
+        slot.user_id===session?.user?.id)||
+        frame.seats?.find(slot=>slot?.user_id===session?.user?.id);
       if(!mine||mine.empty||mine.lock){
         frame.toast('Take an unlocked mic seat to show a seat emoji');return;
       }
@@ -3275,33 +3973,15 @@
         emoji:emoji[0],request_id:requestId
       }).catch(error=>frame.toast('Emoji shown locally: '+errText(error)));
     };
-    // A verified guest taps any open/unlocked seat to sit immediately.
-    // This bypasses the old demo "Seat a guest" menu; owner invitations remain optional.
-    let directSeatBusy=false;
-    frame.document.addEventListener('click',async event=>{
+    // Owners and guests can change to any available microphone seat.
+    frame.document.addEventListener('click',event=>{
       const button=event.target.closest?.('.seat.empty[data-i]');
-      if(!button||!frame.document.querySelector('#grid')?.contains(button) ||
-         room.owner_id===session?.user?.id)return;
+      if(!button||!frame.document.querySelector('#grid')?.contains(button))return;
       const seat=Number(button.dataset.i);
       if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
       event.preventDefault();event.stopImmediatePropagation();
-      if(directSeatBusy)return;
-      directSeatBusy=true;button.disabled=true;
-      try{
-        await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
-        await syncFrame(room,frame);
-        let joined=await connectVoice(room.id);
-        if(!joined.publishing){
-          const current=await api('GET','/rooms/'+room.id+'/voice/config');
-          if(current.publish)joined=await connectVoice(room.id);
-        }
-        frame.toast(joined.publishing?'Joined mic seat '+seat+' · microphone on':
-          'Joined seat '+seat+' · microphone connecting');
-      }catch(error){frame.toast('Unable to take seat: '+errText(error));}
-      finally{
-        directSeatBusy=false;
-        if(button.isConnected)button.disabled=false;
-      }
+      moveSelfToSeat(seat).catch(error=>
+        frame.toast('Unable to change seat: '+errText(error)));
     },true);
     // The room template's audience menu previously changed local demo seats.
     // Wire those buttons to authenticated server operations instead.
@@ -3995,6 +4675,11 @@
           if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
           lastEntryEventId=id;
           if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          const levelMatch=/^svip-entry-0([1-8])$/.exec(String(event.entry_style||''));
+          if(levelMatch){
+            playSvipRoomEntry(frame.document,Number(levelMatch[1]),event.name);
+            continue;
+          }
           if(!entryArt(event.entry_style))
             await loadVerifiedCosmetics().catch(()=>{});
           if(entryArt(event.entry_style))
@@ -4010,7 +4695,7 @@
       if(window.cur?.id===room.id)pollRoomEntries().catch(()=>{});
     },2500);
     try {
-      const voice=await connectVoice(room.id);
+      const voice=await ensureVoiceConnected(room.id);
       frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
     } catch(error) {
       frame.toast('Voice pending: '+errText(error));
@@ -4054,6 +4739,8 @@
       if(prior?.id===room.id) {
         document.getElementById('rw')?.classList.add('on');
         document.getElementById('mini')?.classList.remove('on');
+        setRoomScreenAwake(true);
+        resumeRoomAudio();
         return;
       }
       // Room-to-room navigation must release old seats, membership and audio.
@@ -4068,6 +4755,13 @@
         await api('POST','/rooms/'+prior.id+'/leave',{});
       }
       await api('POST','/rooms/'+room.id+'/join',{});
+      // Start media immediately after verified join, while the room iframe
+      // and decorative assets continue loading independently.
+      ensureVoiceConnected(room.id).catch(error=>{
+        if(window.cur?.id===room.id)
+          toast('Voice connecting: '+errText(error));
+      });
+      setRoomScreenAwake(true);
       // Record only confirmed joins; keep History private to this verified
       // account on this device (a failed join must not appear in History).
       if(window.SharikaDiscovery){
@@ -4091,6 +4785,7 @@
     if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
     releaseVoice().catch(()=>{});
+    setRoomScreenAwake(false);
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
     if(session)heartbeatPresence(null);
     const iframe=document.getElementById('rf');
@@ -4264,6 +4959,7 @@
       ]);
       if(!root.isConnected)return;
       const self=mine.seller;
+      const unlimited=!!self?.unlimited_stock;
       root.classList.add('sharika-seller-wallet');
       if(!self?.active){
         root.innerHTML='<div class="shw-section">Seller Wallet is available only to approved coin sellers.</div>';
@@ -4289,22 +4985,24 @@
       ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';
       root.innerHTML=
         '<section class="shw-hero">'+
-          '<div class="shw-eyebrow">🪙 Available seller stock</div>'+
+          '<div class="shw-eyebrow">🪙 '+(unlimited?'Unlimited seller stock':'Available seller stock')+'</div>'+
           '<div class="shw-stock"><span id="sharika-seller-stock">'+
-            coinsText(self.available_coins)+'</span> <small>coins</small></div>'+
+            (unlimited?'∞':coinsText(self.available_coins))+'</span> <small>'+(unlimited?'Admin approved':'coins')+'</small></div>'+
           '<div class="shw-id">✓ Verified seller · ID '+
             sellerEscape(visibleSellerId(self.public_id))+'</div>'+
         '</section>'+
         '<section class="shw-section">'+
           '<h4 class="shw-title">✨ Recharge my ID or another user</h4>'+
-          '<p class="shw-sub">Recharge any active Sharika ID, including your own. Coins are deducted from your assigned seller stock.</p>'+
+          '<p class="shw-sub">Recharge any active Sharika ID, including your own. '+
+             (unlimited?'Admin-approved unlimited stock: transfers remain recorded and audited.':
+             'Coins are deducted from your assigned seller stock.')+'</p>'+
           '<label class="shw-label" for="sharika-seller-target">Recipient user ID</label>'+
           '<div class="shw-control-row">'+
             '<input class="shw-input" id="sharika-seller-target" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Member or Special ID" aria-label="Recipient user ID">'+
             '<button class="shw-mini" id="sharika-seller-my-id" type="button">My ID</button>'+
           '</div>'+
           '<label class="shw-label" for="sharika-seller-amount">Amount in coins</label>'+
-          '<input class="shw-input" id="sharika-seller-amount" inputmode="numeric" autocomplete="off" placeholder="Enter amount (up to 1,000,000)" aria-label="Coins to recharge">'+
+          '<input class="shw-input" id="sharika-seller-amount" inputmode="numeric" autocomplete="off" placeholder="Enter coin amount" aria-label="Coins to recharge">'+
           '<div class="shw-chips" aria-label="Quick recharge amounts">'+
             '<button type="button" class="shw-chip" data-seller-amount="1000">1K</button>'+
             '<button type="button" class="shw-chip" data-seller-amount="10000">10K</button>'+
@@ -4358,11 +5056,11 @@
         const raw=amountField?.value.trim()||'';
         const amount=Number(raw);
         if(!/^[0-9]{4,8}$/.test(entered)||!/^[0-9]+$/.test(raw)||
-          !Number.isSafeInteger(amount)||amount<1||amount>1000000){
-          showNote('Enter a member or Special ID and 1 to 1,000,000 coins.','error');
+          !Number.isSafeInteger(amount)||amount<1||amount>1000000000000){
+          showNote('Enter a member or Special ID and a positive whole coin amount (wallet maximum 1 trillion).','error');
           return;
         }
-        if(amount>Number(self.available_coins)){
+        if(!unlimited&&amount>Number(self.available_coins)){
           showNote('Insufficient seller stock for this amount.','error');
           return;
         }
@@ -4376,7 +5074,8 @@
           const visibleRecipient=String(verified.display_id||entered);
           const isSelf=recipient===self.public_id;
           const message=isSelf?
-            'Recharge your own ID '+visibleRecipient+' with '+coinsText(amount)+' coins from seller stock?':
+            'Recharge your own ID '+visibleRecipient+' with '+coinsText(amount)+
+               (unlimited?' coins using unlimited seller stock?':' coins from seller stock?'):
             'Send '+coinsText(amount)+' coins to '+String(verified.name||'User')+' (ID '+visibleRecipient+')?';
           if(!window.confirm(message)){showNote('Recharge cancelled.','info');return;}
           const fingerprint=session.user.id+':'+recipient+':'+amount;
@@ -4390,14 +5089,15 @@
           transferCommitted=true;pendingSellerTransfer=null;
           self.available_coins=Number(result.available_coins);
           const stockLabel=document.getElementById('sharika-seller-stock');
-          if(stockLabel)stockLabel.textContent=coinsText(result.available_coins);
+          if(stockLabel)stockLabel.textContent=result.unlimited_stock?'∞':coinsText(result.available_coins);
           if(amountField)amountField.value='';
           showNote((result.duplicate?'Already recorded: ':'Success! ')+
             (result.self_recharge?'Your own wallet':'Recipient ID '+visibleRecipient)+
             ' received '+coinsText(amount)+' coins. Transfer #'+result.transfer_id+
             (Number(result.first_recharge_bonus_coins)>0?
               '. 🎁 First recharge bonus +'+coinsText(result.first_recharge_bonus_coins)+' coins':'')+
-            '. Remaining stock: '+coinsText(result.available_coins)+'.','success');
+            (result.unlimited_stock?'. Unlimited seller mode audited.':
+               '. Remaining stock: '+coinsText(result.available_coins)+'.'),'success');
           toast('Coin recharge recorded ✓');
           const latest=await api('GET','/sellers/transfers').catch(()=>null);
           const history=document.getElementById('sharika-seller-history');
@@ -5854,6 +6554,10 @@
       const frame=frameTag(person.frame_style);
       if(frame)wrapper.insertAdjacentHTML('beforeend',frame);
     }
+    root.querySelector('.sh-svip-public-badge')?.remove();
+    const level=svipLevel(person.svip_level);
+    if(level){const badge=makeSvipBadge(document,level,'sh-svip-public-badge');
+      root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',badge);}
     root.querySelector('.sh-royal-profile-effects')?.remove();
     const effects=document.createElement('div');
     effects.className='sh-royal-profile-effects';
@@ -5864,6 +6568,12 @@
       effects.appendChild(artwork);
     }
     if(effects.children.length)root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',effects);
+    root.querySelector('.sh-neon-public-id')?.remove();
+    const publicLabel=root.querySelector('.pfh .meta span:first-child');
+    if(publicLabel){
+      publicLabel.classList.toggle('sh-neon-single-id',!!person.special_id);
+      publicLabel.textContent='ID '+String(person.display_id||person.special_id||person.id);
+    }
   }
 
   // Royal CP / Friendship is shown on the ID detail profile only. The main

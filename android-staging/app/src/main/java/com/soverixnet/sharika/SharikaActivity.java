@@ -4,6 +4,8 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -20,6 +22,7 @@ import android.util.Base64;
 import android.util.Size;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -85,6 +88,9 @@ public final class SharikaActivity extends Activity {
     private boolean backInProgress;
     private Runnable unregisterModernBack;
     private PermissionRequest pendingMic;
+    private boolean roomAudioRouteActive;
+    private int priorAudioMode = AudioManager.MODE_NORMAL;
+    private boolean priorSpeakerphone;
     private ValueCallback<Uri[]> pendingImageSelection;
     private String pendingProfilePhotoId;
     private boolean googlePending;
@@ -113,6 +119,8 @@ public final class SharikaActivity extends Activity {
         auth = FirebaseAuth.getInstance();
         credentials = CredentialManager.create(this);
         browser = new WebView(this);
+        // Never paint the legacy HTML before the packaged Royal sheets load.
+        browser.setVisibility(View.INVISIBLE);
         browser.setBackgroundColor(Color.rgb(7, 3, 26));
         browser.getSettings().setJavaScriptEnabled(true);
         browser.getSettings().setDomStorageEnabled(true);
@@ -145,6 +153,11 @@ public final class SharikaActivity extends Activity {
                     "var s=document.createElement('script');s.id='sharika-royal-ui';" +
                     "s.src='./royal-premium.js';document.head.appendChild(s);}})()",
                     null);
+                // Fail open after a bounded delay if an asset fails to load.
+                view.postDelayed(() -> {
+                    if (browser == view && view.getVisibility() != View.VISIBLE)
+                        view.setVisibility(View.VISIBLE);
+                }, 5500);
             }
         });
         browser.setWebChromeClient(new WebChromeClient() {
@@ -387,6 +400,66 @@ public final class SharikaActivity extends Activity {
         }
     }
 
+    // WebRTC in an Android WebView can route incoming voices to the earpiece
+    // while the microphone is active. Use the loudspeaker for a room unless
+    // the user has plugged in a headset or connected a Bluetooth audio device.
+    // Keep the previous route so leaving a room restores Android's settings.
+    private boolean hasPersonalAudioOutput(AudioManager manager) {
+        for (AudioDeviceInfo device : manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            switch (device.getType()) {
+                case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                case AudioDeviceInfo.TYPE_USB_HEADSET:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                case AudioDeviceInfo.TYPE_BLE_HEADSET:
+                    return true;
+                default:
+                    break;
+            }
+        }
+        return false;
+    }
+
+    private void setRoomAudioRoute(boolean enabled) {
+        AudioManager manager=(AudioManager)getSystemService(AUDIO_SERVICE);
+        if(manager==null)return;
+        if(enabled) {
+            if(!roomAudioRouteActive) {
+                priorAudioMode=manager.getMode();
+                priorSpeakerphone=manager.isSpeakerphoneOn();
+                roomAudioRouteActive=true;
+            }
+            try {
+                manager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                if(!hasPersonalAudioOutput(manager)) {
+                    if(android.os.Build.VERSION.SDK_INT>=31) {
+                        for(AudioDeviceInfo device:manager.getAvailableCommunicationDevices()) {
+                            if(device.getType()==AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                                manager.setCommunicationDevice(device);
+                                break;
+                            }
+                        }
+                    } else {
+                        manager.setSpeakerphoneOn(true);
+                    }
+                }
+            } catch(RuntimeException ignored) {
+                // Devices can refuse an audio route; WebRTC remains functional.
+            }
+            return;
+        }
+        if(!roomAudioRouteActive)return;
+        roomAudioRouteActive=false;
+        try {
+            if(android.os.Build.VERSION.SDK_INT>=31)manager.clearCommunicationDevice();
+            else manager.setSpeakerphoneOn(priorSpeakerphone);
+            manager.setMode(priorAudioMode);
+        } catch(RuntimeException ignored) {
+            // A Bluetooth change while in the room may invalidate an old route.
+        }
+    }
+
     private void requestMicrophone(PermissionRequest request) {
         // Grant only microphone, only after the Android runtime permission.
         boolean isAudio = false;
@@ -469,6 +542,13 @@ public final class SharikaActivity extends Activity {
     private void handle(String id, String action, JSONObject data) {
         if (action == null) { sendResult(id, result(false,null,"unknown_action")); return; }
         switch (action) {
+            case "visualReady":
+                // A read-only signal from the packaged visual layer.
+                if (browser != null &&
+                    "file:///android_asset/index.html".equals(browser.getUrl()))
+                    browser.setVisibility(View.VISIBLE);
+                sendResult(id, result(true, object(), null));
+                break;
             case "session":
                 FirebaseUser signedIn = auth.getCurrentUser();
                 if (signedIn == null) {
@@ -519,6 +599,18 @@ public final class SharikaActivity extends Activity {
                 });
                 break;
             case "api": callStagingApi(id, data); break;
+            case "roomScreenAwake":
+                // Keep the display active only during an authenticated voice
+                // room, including when its mini-player is on another app page.
+                if (data.optBoolean("enabled", false)) {
+                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    setRoomAudioRoute(true);
+                } else {
+                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    setRoomAudioRoute(false);
+                }
+                sendResult(id, result(true, object(), null));
+                break;
             case "invitePending":
                 JSONObject pending=object();
                 try { pending.put("code",pendingInviteCode); }
@@ -694,6 +786,13 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/banners")) return method.equals("GET");
         if (path.equals("/api/v1/opening/next")) return method.equals("POST");
         if (path.equals("/api/v1/events")) return method.equals("GET");
+        // Notifications are authenticated and recipient-scoped by the Worker.
+        if (path.equals("/api/v1/notifications")) return method.equals("GET");
+        if (path.equals("/api/v1/notifications/read-all")) return method.equals("POST");
+        if (path.equals("/api/v1/notifications/devices"))
+            return method.equals("POST") || method.equals("DELETE");
+        if (path.matches("^/api/v1/notifications/[1-9][0-9]*/read$"))
+            return method.equals("PATCH");
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
         if (path.equals("/api/v1/cosmetics/purchase") ||
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
@@ -704,8 +803,8 @@ public final class SharikaActivity extends Activity {
             path.equals("/api/v1/gifts")) return method.equals("GET");
         if (path.equals("/api/v1/support/messages"))
             return method.equals("GET") || method.equals("POST");
-        if (path.matches("^/api/v1/users/[0-9]{8}$")) return method.equals("GET");
-        if (path.matches("^/api/v1/users/[0-9]{8}/follow$"))
+        if (path.matches("^/api/v1/users/[0-9]{4,8}$")) return method.equals("GET");
+        if (path.matches("^/api/v1/users/[0-9]{4,8}/follow$"))
             return method.equals("GET") || method.equals("PUT") || method.equals("DELETE");
         if (path.matches("^/api/v1/messages/[0-9]{8}$"))
             return method.equals("GET") || method.equals("POST");
@@ -896,6 +995,8 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        setRoomAudioRoute(false);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (unregisterModernBack != null) {
             unregisterModernBack.run();
             unregisterModernBack = null;

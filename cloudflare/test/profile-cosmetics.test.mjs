@@ -296,3 +296,18 @@ test('confirmed gift, seller transfer and exchange do not turn into false failur
   assert.match(adapter,/actionConfirmed=true;pendingExchangeRequest=null/);
   assert.doesNotMatch(adapter,/Gift not sent: /);
 });
+
+ test('admin-granted appearance and Special IDs refresh visibly and photo frames do not clip',()=>{
+   const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+   const cosmetics=readFileSync(new URL('../src/cosmetics.mjs',import.meta.url),'utf8');
+   assert.match(cosmetics,/INSERT INTO sharika_cosmetic_equipped\(auth_uid,kind,item_id\)/);
+   assert.match(cosmetics,/existing\?'cosmetic_grant_re_equip':'cosmetic_grant'/);
+   assert.match(adapter,/function refreshVerifiedAppearance\(\)/);
+   assert.match(adapter,/['\"]special_id['\"]/);
+   assert.doesNotMatch(adapter,/plaque\.textContent='Neon Special ID/);
+   assert.match(adapter,/sh-neon-single-id/);
+   assert.match(adapter,/\.sh-neon-public-id/);
+   assert.match(adapter,/node\.style\.overflow='visible'/);
+   assert.match(adapter,/object-fit:cover;object-position:center;border-radius:50%/);
+   assert.match(adapter,/#pfc \.pfh \.pav3\{background-size:cover/);
+ });

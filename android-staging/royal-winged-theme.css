@@ -1,0 +1,182 @@
+/*
+ * Sharika Winged Royal Gold theme — Android staging visual layer only.
+ * This sheet leaves Main Profile, API flows, room owner images and app logic intact.
+ * Assets: user-supplied royal-winged-bg.jpg and separately rendered 4×3 icon atlas.
+ */
+html.royal-root {
+  --winged-gold:#fbd778;
+  --winged-light:#fff0be;
+  --winged-violet:#6e2aac;
+  --winged-ink:#160824;
+  --winged-stroke:rgba(255,218,130,.7);
+}
+html.royal-root .app:not(.royal-profile) {
+  background-color:#100419 !important;
+  background-image:url('./royal-winged-bg.jpg') !important;
+  background-position:center top !important;
+  background-size:cover !important;
+  background-repeat:no-repeat !important;
+}
+html.royal-root .app:not(.royal-profile) .blob {opacity:.08}
+html.royal-root .app:not(.royal-profile) .view:not(#v-me) {
+  background:transparent !important;
+}
+html.royal-root .app:not(.royal-profile) .hd,
+html.royal-root .app:not(.royal-profile) .rtop {
+  border:1px solid var(--winged-stroke);
+  background:rgba(29,9,53,.85);
+  border-radius:19px;
+  padding:10px;
+  box-shadow:0 12px 24px rgba(2,0,10,.55),inset 0 1px 0 #fff5;
+}
+html.royal-root .app:not(.royal-profile) .hd h1,
+html.royal-root .app:not(.royal-profile) .rtop h1 {
+  color:var(--winged-light);
+  -webkit-text-fill-color:var(--winged-light);
+  text-shadow:0 2px 10px #000;
+}
+html.royal-root .app:not(.royal-profile) .tabs button,
+html.royal-root .app:not(.royal-profile) .seg button,
+html.royal-root .app:not(.royal-profile) #rt button,
+html.royal-root .app:not(.royal-profile) .pill {
+  border:1px solid rgba(246,200,110,.6);
+  color:#ffe5a9;
+  background:rgba(32,10,60,.92);
+  box-shadow:0 4px 0 #0b0315,inset 0 1px 0 #fff3;
+}
+html.royal-root .app:not(.royal-profile) .tabs button.on,
+html.royal-root .app:not(.royal-profile) .seg button.on,
+html.royal-root .app:not(.royal-profile) #rt button.on {
+  color:#38163b;
+  background:#f4cd71;
+  border-color:#fff1c0;
+  box-shadow:0 4px 0 #85541d,0 7px 16px #0007;
+}
+html.royal-root .app:not(.royal-profile) .card .bg,
+html.royal-root .app:not(.royal-profile) .list .item,
+html.royal-root .app:not(.royal-profile) #ml > * {
+  border-color:rgba(255,215,132,.75);
+  box-shadow:0 10px 20px #0008,inset 0 1px 0 #fff5;
+}
+html.royal-root .app:not(.royal-profile) .qa button {
+  border:1.5px solid #efc575;
+  background:rgba(32,9,64,.89);
+  color:#ffe8b9;
+  box-shadow:0 6px 0 #230d37,0 12px 16px #0006,inset 0 2px 0 #fff4;
+  transform:translateZ(0);
+  transition:transform .16s ease,box-shadow .16s ease;
+}
+html.royal-root .app:not(.royal-profile) .qa button:active {
+  transform:translateY(4px) scale(.98);
+  box-shadow:0 2px 0 #230d37,0 5px 10px #0009;
+}
+html.royal-root .app:not(.royal-profile) .qa .home-icon,
+html.royal-root .app:not(.royal-profile) .nav .ni span,
+html.royal-root .app:not(.royal-profile) .nav .plus::before {
+  background-image:url('./royal-icon-atlas.png') !important;
+  background-size:400% 300% !important;
+  background-repeat:no-repeat !important;
+  background-color:transparent !important;
+  color:transparent;
+  font-size:0;
+  filter:drop-shadow(0 5px 7px #0008);
+  animation:winged-icon-float 4.6s ease-in-out infinite;
+}
+html.royal-root .app:not(.royal-profile) #qd .home-icon {background-position:0% 100%!important}
+html.royal-root .app:not(.royal-profile) #qg .home-icon {background-position:100% 0%!important}
+html.royal-root .app:not(.royal-profile) #qi .home-icon {background-position:66.666% 100%!important}
+html.royal-root .app:not(.royal-profile) .nav {
+  background:rgba(18,4,37,.96);
+  border-top:1.5px solid #f4ca78;
+  box-shadow:0 -10px 28px #0009,inset 0 2px 0 #fff2;
+}
+html.royal-root .app:not(.royal-profile) .nav .ni span {
+  display:block;width:30px;height:30px;
+  margin:0 auto 1px;line-height:0;
+}
+html.royal-root .app:not(.royal-profile) .nav .ni[data-v="home"] span {background-position:33.333% 0%!important}
+html.royal-root .app:not(.royal-profile) .nav .ni[data-v="rank"] span {background-position:0% 50%!important}
+html.royal-root .app:not(.royal-profile) .nav .ni[data-v="msg"] span {background-position:100% 50%!important}
+html.royal-root .app:not(.royal-profile) .nav .ni[data-v="me"] span {background-position:100% 100%!important}
+html.royal-root .app:not(.royal-profile) .nav .ni.on {color:#ffe4a7}
+html.royal-root .app:not(.royal-profile) .nav .plus {font-size:0}
+html.royal-root .app:not(.royal-profile) .nav .plus::before {
+  content:"";display:block;width:40px;height:40px;margin:auto;
+  background-position:0% 0%!important;
+}
+html.royal-root .app:not(.royal-profile) .sh,
+html.royal-root .app:not(.royal-profile) .thread,
+html.royal-root .app:not(.royal-profile) .pfo,
+html.royal-root .app:not(.royal-profile) .rcp,
+html.royal-root .app:not(.royal-profile) .auth {
+  border-color:rgba(250,210,129,.65);
+  background:rgba(25,8,52,.97);
+  color:#fff0cf;
+}
+html.royal-root .app:not(.royal-profile) .sh button,
+html.royal-root .app:not(.royal-profile) .thread button,
+html.royal-root .app:not(.royal-profile) .rcp button {
+  border-color:#d7ab5b;
+}
+html.royal-root .app:not(.royal-profile) .shw-hero,
+html.royal-root .app:not(.royal-profile) .shw-section,
+html.royal-root .app:not(.royal-profile) .shw-details {
+  border:1.5px solid #d8ad65;
+  background:rgba(37,12,75,.94);
+  box-shadow:0 10px 23px #05000b88,inset 0 1px 0 #fff4;
+}
+html.royal-root .app:not(.royal-profile) .shw-submit {
+  background:#f1c35e!important;
+  border:2px solid #fff0b3!important;
+  color:#41200a!important;
+  box-shadow:0 5px 0 #925924,0 12px 18px #0007!important;
+}
+html.royal-room .app.royal-default-room {
+  background-color:#160524!important;
+  background-image:url('./royal-winged-bg.jpg')!important;
+  background-position:center top!important;
+  background-size:cover!important;
+}
+html.royal-room .app.royal-default-room .rb,
+html.royal-room .app.royal-default-room .ib,
+html.royal-room .app.royal-default-room .act {
+  border:1.5px solid rgba(252,217,137,.75);
+  box-shadow:0 4px 0 #1b062c,0 9px 16px #0008,inset 0 1px 0 #fff4;
+}
+html.royal-room .app.royal-default-room .rb:active,
+html.royal-room .app.royal-default-room .act:active {
+  transform:translateY(3px);
+}
+/* Royal Shop and Backpack retain their separate artwork but share gold relief. */
+html.royal-root #sh-royal-market .sh-rm-card {
+  border-color:#f0c673;
+  box-shadow:0 6px 0 #1c0c37,0 12px 20px #0008,inset 0 1px 0 #fff4;
+  animation:winged-card-arrive .38s ease both;
+}
+html.royal-root #sh-royal-market .sh-rm-cat {
+  border-color:rgba(253,218,140,.55);
+  box-shadow:0 4px 0 #150928,inset 0 1px 0 #fff3;
+}
+html.royal-root #sh-royal-market .sh-rm-btn:active,
+html.royal-root #sh-royal-market .sh-rm-cat:active {
+  transform:translateY(3px) scale(.985);
+}
+@keyframes winged-card-arrive {
+  from {opacity:.35;transform:translate3d(0,6px,0)}
+  to {opacity:1;transform:translate3d(0,0,0)}
+}
+@keyframes winged-icon-float {
+  0%,100% {transform:translate3d(0,0,0)}
+  50% {transform:translate3d(0,-3px,0)}
+}
+@media (prefers-reduced-motion:reduce) {
+  html.royal-root .app:not(.royal-profile) .qa .home-icon,
+  html.royal-root .app:not(.royal-profile) .nav .ni span,
+  html.royal-root .app:not(.royal-profile) .nav .plus::before {
+    animation:none!important;
+  }
+  html.royal-root .app:not(.royal-profile) .qa button {
+    transition:none!important;
+  }
+  html.royal-root #sh-royal-market .sh-rm-card {animation:none!important}
+}

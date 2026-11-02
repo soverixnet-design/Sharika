@@ -7,8 +7,10 @@ export const STAFF_SCOPES=Object.freeze([
 ]);
 const SCOPE_SET=new Set(STAFF_SCOPES);
 const PUBLIC_ID=/^[0-9]{8}$/;
+const RECHARGE_ID=/^[0-9]{4,8}$/;
 const REQUEST_ID=/^[a-zA-Z0-9:_-]{12,80}$/;
-const MAX_GRANT=1_000_000;
+const MAX_STAFF_GRANT=1_000_000;
+const MAX_SUPER_GRANT=1_000_000_000_000;
 const MAX_USER_BALANCE=1_000_000_000_000;
 const uidId=n=>String(n).padStart(8,'0');
 
@@ -182,11 +184,20 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
     catch(error){return fail(error.message==='admin_body_too_large'?error.message:'invalid_staff_json',400,cors);}
     const amount=body.coins,publicId=body.target_public_id;
     const requestId=body.request_id,reason=typeof body.reason==='string'?body.reason.trim():'';
-    if(typeof publicId!=='string'||!PUBLIC_ID.test(publicId)||
-       !Number.isSafeInteger(amount)||amount<1||amount>MAX_GRANT||
+    if(typeof publicId!=='string'||!RECHARGE_ID.test(publicId)||
+       !Number.isSafeInteger(amount)||amount<1||amount>(actor.role==='super'?MAX_SUPER_GRANT:MAX_STAFF_GRANT)||
        typeof requestId!=='string'||!REQUEST_ID.test(requestId)||
        reason.length<8||reason.length>200)
       return fail('invalid_direct_recharge',400,cors);
+    // Resolve the visible Special ID to the canonical recipient before
+    // comparing immutable request receipts. Only active Special IDs resolve.
+    const target=await env.DB.prepare(
+      'SELECT auth_uid,coins,status,public_no FROM sharika_users WHERE public_no=? '+
+      'OR auth_uid=(SELECT auth_uid FROM sharika_special_ids WHERE special_id=? '+
+      "AND (expires_at IS NULL OR expires_at>datetime('now'))) LIMIT 1"
+    ).bind(Number(publicId),publicId).first();
+    if(!target)return fail('recipient_unavailable',404,cors);
+    const canonicalId=uidId(target.public_no);
     const existing=await env.DB.prepare(
       'SELECT g.id,g.coins,g.reason,u.public_no,g.balance_after '+
       'FROM sharika_admin_direct_recharges g '+
@@ -194,15 +205,12 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
       'WHERE g.actor_uid=? AND g.request_id=?'
     ).bind(uid,requestId).first();
     if(existing){
-      if(Number(existing.coins)!==amount||uidId(existing.public_no)!==publicId||
+      if(Number(existing.coins)!==amount||uidId(existing.public_no)!==canonicalId||
         existing.reason!==reason)return fail('idempotency_conflict',409,cors);
-      return reply({duplicate:true,transaction_id:existing.id,recipient_id:publicId,
+      return reply({duplicate:true,transaction_id:existing.id,recipient_id:canonicalId,
         coins:amount,balance_after:existing.balance_after},200,cors);
     }
-    const target=await env.DB.prepare(
-      'SELECT auth_uid,coins,status FROM sharika_users WHERE public_no=?'
-    ).bind(Number(publicId)).first();
-    if(!target||target.status!=='active')return fail('recipient_unavailable',404,cors);
+    if(target.status!=='active')return fail('recipient_unavailable',404,cors);
     if(actor.role==='staff'&&target.auth_uid===uid)return fail('staff_cannot_recharge_self',403,cors);
     if(Number(target.coins)>MAX_USER_BALANCE-amount)
       return fail('recipient_balance_limit',409,cors);
@@ -236,9 +244,9 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
         'WHERE g.actor_uid=? AND g.request_id=?'
       ).bind(uid,requestId).first();
       if(saved){
-        if(Number(saved.coins)!==amount||uidId(saved.public_no)!==publicId||
+        if(Number(saved.coins)!==amount||uidId(saved.public_no)!==canonicalId||
            saved.reason!==reason)return fail('idempotency_conflict',409,cors);
-        return reply({duplicate:true,transaction_id:saved.id,recipient_id:publicId,
+        return reply({duplicate:true,transaction_id:saved.id,recipient_id:canonicalId,
           coins:amount,balance_after:saved.balance_after},200,cors);
       }
       if(/staff_daily_limit_exceeded|staff_recharge_disabled/.test(String(error.message)))
@@ -253,7 +261,7 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
     ).bind(uid,requestId).first();
     if(!saved)return fail('recharge_commit_unconfirmed',503,cors);
     return reply({duplicate:false,transaction_id:saved.id,
-      recipient_id:publicId,coins:amount,balance_after:saved.balance_after},201,cors);
+      recipient_id:canonicalId,coins:amount,balance_after:saved.balance_after},201,cors);
   }
   return null;
 }

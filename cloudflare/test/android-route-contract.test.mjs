@@ -63,3 +63,33 @@ test('premium membership is routed only through verified authenticated Android e
   assert.match(worker,/handlePremiumApp/);
   assert.doesNotMatch(routes,/path\.equals\("\/api\/v1\/admin\/premium"\)/);
 });
+
+test('notification routes are explicitly allowlisted in the authenticated Android bridge',()=>{
+  assert.match(routes,/path\.equals\("\/api\/v1\/notifications"\)\) return method\.equals\("GET"\)/);
+  assert.match(routes,/path\.equals\("\/api\/v1\/notifications\/read-all"\)\) return method\.equals\("POST"\)/);
+  assert.match(routes,/path\.matches\("\^\/api\/v1\/notifications\/\[1-9\]\[0-9\]\*\/read\$"\)/);
+  assert.match(routes,/path\.equals\("\/api\/v1\/notifications\/devices"\)/);
+  assert.match(app,/api\('POST','\/notifications\/read-all'/);
+  assert.match(worker,/handleNotificationApp/);
+  assert.doesNotMatch(routes,/path\.equals\("\/api\/v1\/admin\/notifications"\)/);
+});
+
+test('voice-room route prefers loudspeaker but respects wired and Bluetooth headsets',()=>{
+  assert.match(java,/private boolean hasPersonalAudioOutput\(AudioManager manager\)/);
+  assert.match(java,/TYPE_WIRED_HEADSET/);
+  assert.match(java,/TYPE_BLUETOOTH_SCO/);
+  assert.match(java,/if\(!hasPersonalAudioOutput\(manager\)\)/);
+  assert.match(java,/manager\.setCommunicationDevice\(device\)/);
+  assert.match(java,/manager\.clearCommunicationDevice\(\)/);
+  assert.match(java,/setRoomAudioRoute\(true\)/);
+  assert.match(java,/setRoomAudioRoute\(false\)/);
+  assert.match(app,/native\('roomScreenAwake',\{enabled:true\}\)/);
+});
+
+test('Special ID recipient lookup reaches the verified Worker before seller recharge',()=>{
+  assert.match(routes,/path\.matches\("\^\/api\/v1\/users\/\[0-9\]\{4,8\}\$"\)\) return method\.equals\("GET"\)/);
+  assert.match(routes,/path\.matches\("\^\/api\/v1\/users\/\[0-9\]\{4,8\}\/follow\$"\)/);
+  assert.match(app,/const verified=await api\('GET','\/users\/'\+entered\)/);
+  assert.match(app,/target_public_id:recipient,coins:amount/);
+  assert.match(worker,/PUBLIC_OR_SPECIAL_ID\.test\(parts\[3\] \|\| ''\)/);
+});

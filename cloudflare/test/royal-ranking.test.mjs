@@ -15,6 +15,11 @@ function stagedRankDB(){
     'INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins,frame_style,medal_style) '+
     "VALUES(10000008,'royal-user','Real rank user','2000-01-01',0,9000,'vip7','bronze')"
   ).run();
+  // Verified equipment must also have a corresponding ownership record.
+  sqlite.prepare("INSERT INTO sharika_cosmetic_inventory(auth_uid,item_id,source,request_id) "+
+    "VALUES('royal-user','frame_style:royal-gold','admin_grant','ranking-frame-001')").run();
+  sqlite.prepare("INSERT INTO sharika_cosmetic_inventory(auth_uid,item_id,source,request_id) "+
+    "VALUES('royal-user','medal_style:gold','admin_grant','ranking-medal-001')").run();
   sqlite.prepare(
     "INSERT INTO sharika_cosmetic_equipped(auth_uid,kind,item_id) "+
     "VALUES('royal-user','frame_style','frame_style:royal-gold')"

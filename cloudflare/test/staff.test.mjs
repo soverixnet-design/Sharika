@@ -8,7 +8,7 @@ const fail=(error,status)=>Response.json({error},{status});
 function mock({
   staff={active:1,login_email:'helper@example.test',display_name:'Helper',
     permissions_json:'["view_users","coin_recharge"]',daily_coin_limit:5000},
-  target={auth_uid:'recipient-uid',coins:100,status:'active'},
+  target={auth_uid:'recipient-uid',public_no:10000017,coins:100,status:'active'},
   existing=null,account=null
 }={}) {
   const state={queries:[],batches:[]};
@@ -145,4 +145,26 @@ test('staff cannot recharge without permission or exceed their configured reques
     'recharge-user','POST',grant);
   assert.equal(tooMany.status,409);
   assert.equal(state.batches.length,0);
+});
+
+test('special ID resolves to canonical account for admin recharge and idempotent retry',async()=>{
+  const special={...grant,target_public_id:'1010',request_id:'admin-special-1010-0001'};
+  const {DB,state}=mock({target:{auth_uid:'recipient-uid',public_no:10000017,
+    coins:100,status:'active'}});
+  const created=await run(DB,{role:'super'},'recharge-user','POST',special);
+  assert.equal(created.status,201);
+  assert.equal(created.data.recipient_id,'10000017');
+  assert.equal(state.batches.length,1);
+  assert.ok(state.queries.some(q=>q.sql.includes('sharika_special_ids')&&
+    q.args[0]===1010&&q.args[1]==='1010'));
+  const duplicateDB=mock({existing:{id:44,coins:200,reason:grant.reason,
+    public_no:10000017,balance_after:300}});
+  const retry=await run(duplicateDB.DB,{role:'super'},'recharge-user','POST',special);
+  assert.equal(retry.status,200);
+  assert.equal(retry.data.duplicate,true);
+  assert.equal(retry.data.recipient_id,'10000017');
+  assert.equal(duplicateDB.state.batches.length,0);
+  const invalid=await run(DB,{role:'super'},'recharge-user','POST',
+    {...special,target_public_id:'101'});
+  assert.equal(invalid.status,400);
 });

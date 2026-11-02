@@ -990,7 +990,7 @@
       'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
       '<div class="card"><h3>🎁 Give a frame or medal to a user</h3>'+
       '<p class="n">Super Admin: enter the real Sharika ID, find the frame or medal, and give it free. '+
-      'Admin-only items can be granted even when Store sales are disabled. The user can equip it from their profile.</p>'+
+      'Admin-only items can be granted even when Store sales are disabled. The granted item is equipped immediately and appears on verified profiles and room seats after refresh.</p>'+
       '<input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" '+
       'placeholder="Recipient Sharika ID (8 digits)" aria-label="Recipient Sharika ID">'+
       '<div class="row"><select class="field" id="sh-cos-grant-kind" aria-label="Cosmetic category">'+
@@ -1084,11 +1084,11 @@
         }
         const selected=items.find(item=>item.id===itemId);
         if(!selected||!window.confirm('Give '+selected.name+' to user ID '+id+
-          ' for FREE? The user will own it and can equip it. This is audited.'))return;
+          ' for FREE and EQUIP it immediately? This replaces the currently selected item of that type. The grant is audited.'))return;
         button.disabled=true;
         try{
           const given=await api('POST','cosmetics/grant',{public_id:id,item_id:itemId});
-          status.textContent=(given.duplicate?'Already owned: ':'Granted free to ')+id+' · '+itemId;
+          status.textContent=(given.duplicate?'Already owned; re-equipped: ':'Granted and equipped: ')+id+' · '+itemId;
         }catch(error){status.textContent='Grant failed: '+error.message;}
         finally{button.disabled=false;}
       };
@@ -1115,10 +1115,15 @@
       (role==='super'?'<div class="row"><label>Grant tier <select id="sh-premium-grant-tier">'+
         '<option value="vip">VIP</option><option value="svip">SVIP</option>'+
         '<option value="noble">Noble</option><option value="none">Revoke manual/purchased tier</option>'+
+        '</select></label><label>SVIP level <select id="sh-premium-grant-level" class="field" aria-label="SVIP level 1 to 8">'+
+        Array.from({length:8},(_,i)=>'<option value="'+(i+1)+'">SVIP '+(i+1)+'</option>').join('')+
         '</select></label><label>Days <input id="sh-premium-grant-days" class="field" '+
         'type="number" min="1" max="365" value="30"></label></div>'+
         '<button class="btn s" id="sh-premium-grant" type="button">Confirm admin assignment</button>':'')+
-      '<div id="sh-premium-result" role="status" class="n"></div></div>';
+      '<div id="sh-premium-result" role="status" class="n"></div>'+ 
+      '<p class="n">SVIP 1–8 uses the eight verified animated frames, medals and nameplates. '+
+      'A free admin grant adds the matching frame, entry, medal and nameplate to My Backpack. '+
+      'Paid SVIP passes last 30 days. Users can equip any other owned frame later.</p></div>';
     const settingsRoot=byId('sh-premium-settings'),result=byId('sh-premium-result');
     let data;
     try{data=await api('GET','premium');}
@@ -1143,6 +1148,20 @@
           'data-premium-field="'+key+'" style="width:95px" min="0" value="'+esc(value)+'" '+
           (role==='super'?'':'disabled')+'></td>').join('')+'</tr>').join('')+
       '</tbody></table></div>'+
+      '<p class="n">SVIP uses the prices below, not the legacy SVIP tier price above. '+
+      'Every user purchase lasts 30 days; daily bonuses reset each UTC day.</p>'+
+      '<h3>♛ SVIP 1–8 · Pass prices & Daily Rewards</h3>'+
+      '<div style="overflow-x:auto"><table style="width:100%;min-width:490px;text-align:left">'+
+      '<thead><tr><th>Level</th><th>30-day price</th><th>Daily reward</th><th>Sell</th></tr></thead><tbody>'+
+      (data.config.svip_levels||[]).map(level=>'<tr data-svip-level="'+level.level+'">'+
+        '<td><b>SVIP '+level.level+'</b></td>'+
+        '<td><input type="number" inputmode="numeric" min="1" max="1000000000" class="field" '+
+        'data-svip-field="price_coins" value="'+esc(level.price_coins)+'" '+(role==='super'?'':'disabled')+'></td>'+
+        '<td><input type="number" inputmode="numeric" min="0" max="1000000" class="field" '+
+        'data-svip-field="daily_bonus_coins" value="'+esc(level.daily_bonus_coins)+'" '+(role==='super'?'':'disabled')+'></td>'+
+        '<td><input type="checkbox" data-svip-enabled '+(level.enabled?'checked':'')+
+        (role==='super'?'':' disabled')+'></td></tr>').join('')+
+      '</tbody></table></div>'+
       (role==='super'?'<button class="btn s" id="sh-premium-save" type="button">Save premium rules</button>':'')+
       '<p class="n" id="sh-premium-config-note">UTC day reset · bonus claims recorded in wallet ledger.</p>';
     byId('sh-premium-save')?.addEventListener('click',async event=>{
@@ -1156,9 +1175,16 @@
         });
         return entry;
       });
-      if(!window.confirm('Save premium purchase, grant and automatic qualification rules?'))return;
+      const svip_levels=[...settingsRoot.querySelectorAll('[data-svip-level]')].map(row=>({
+        level:Number(row.dataset.svipLevel),
+        price_coins:Number(row.querySelector('[data-svip-field="price_coins"]')?.value),
+        daily_bonus_coins:Number(row.querySelector('[data-svip-field="daily_bonus_coins"]')?.value),
+        enabled:!!row.querySelector('[data-svip-enabled]')?.checked
+      }));
+      if(svip_levels.length!==8){byId('sh-premium-config-note').textContent='SVIP table unavailable';return;}
+      if(!window.confirm('Save eight SVIP prices, daily coins and membership rules?'))return;
       button.disabled=true;
-      try{await api('PATCH','premium',{policy,tiers});
+      try{await api('PATCH','premium',{policy,tiers,svip_levels});
         byId('sh-premium-config-note').textContent='Premium configuration saved and audited ✓';
       }catch(error){byId('sh-premium-config-note').textContent='Not saved: '+error.message;}
       finally{button.disabled=false;}
@@ -1171,23 +1197,33 @@
         const response=await api('GET','premium?public_id='+id);
         const person=response.member;
         member.textContent=person?'ID '+id+' · '+person.tier.toUpperCase()+
-          ' · '+person.source+' · Wealth Lv.'+person.wealth_level+
+          (person.svip_level?' '+person.svip_level:'')+' · '+person.source+' · Wealth Lv.'+person.wealth_level+
           ' · Sent gifts '+fmt(person.gift_coins)+' coins':'Member unavailable';
       }catch(error){member.textContent='Member unavailable: '+error.message;}
     }
     byId('sh-premium-lookup').onclick=lookup;
+    const levelSelect=byId('sh-premium-grant-level');
+    const tierSelect=byId('sh-premium-grant-tier');
+    if(levelSelect&&tierSelect){
+      const updateLevel=()=>{levelSelect.disabled=tierSelect.value!=='svip';};
+      tierSelect.addEventListener('change',updateLevel);updateLevel();
+    }
     byId('sh-premium-grant')?.addEventListener('click',async event=>{
       const id=byId('sh-premium-id')?.value.trim()||'';
       const tier=byId('sh-premium-grant-tier')?.value;
       const days=Number(byId('sh-premium-grant-days')?.value);
+      const svipLevel=Number(byId('sh-premium-grant-level')?.value||1);
       if(!/^[0-9]{8}$/.test(id)||!['vip','svip','noble','none'].includes(tier)||
-        (tier!=='none'&&(!Number.isInteger(days)||days<1||days>365))){
+        (tier!=='none'&&(!Number.isInteger(days)||days<1||days>365))||
+        (tier==='svip'&&(!Number.isInteger(svipLevel)||svipLevel<1||svipLevel>8))){
         result.textContent='Check the ID and duration (1–365 days).';return;
       }
       if(!window.confirm(tier==='none'?'Revoke the assigned membership for '+id+'?':
-        'Grant '+tier.toUpperCase()+' to '+id+' for '+days+' days?'))return;
+        'Grant '+tier.toUpperCase()+(tier==='svip'?' '+svipLevel:'')+
+        ' to '+id+' for '+days+' days?'))return;
       event.currentTarget.disabled=true;
-      try{await api('POST','premium/grant',{public_id:id,tier,duration_days:days});
+      try{await api('POST','premium/grant',{public_id:id,tier,duration_days:days,
+        ...(tier==='svip'?{svip_level:svipLevel}:{})});
         result.textContent='Membership updated and audited ✓';await lookup();
       }catch(error){result.textContent='Not changed: '+error.message;}
       finally{if(event.currentTarget.isConnected)event.currentTarget.disabled=false;}
@@ -1365,8 +1401,11 @@
         '<div class="row"><input id="seller-id" maxlength="8" inputmode="numeric" placeholder="Seller 8-digit user ID">'+
         '<button type="button" class="btn s" id="seller-approve">Approve</button>'+
         '<button type="button" class="btn s" id="seller-suspend">Suspend</button></div>'+
-        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000)">'+
+        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000,000)">'+
         '<button type="button" class="btn s" id="seller-allocate">Allocate stock</button></div>'+
+         '<div class="row"><button type="button" class="btn s" id="seller-unlimited-on">Enable ∞ stock</button>'+
+         '<button type="button" class="btn s" id="seller-unlimited-off">Disable ∞ stock</button></div>'+
+         '<p class="n">Unlimited mode is Super Admin-only. Every transfer is still logged. Maximum 1M coins per transfer.</p>'+
         '<p class="n" id="seller-note">Only Super Admin can approve sellers and allocate inventory.</p></div>':'');
     const table=byId('seller-list'),transfers=byId('seller-transfers'),
       allocations=byId('seller-allocations');
@@ -1380,7 +1419,8 @@
         ]);
         table.innerHTML=window.T(['ID','Name','Status','Available stock','Updated'],(list.sellers||[]).map(s=>
           [esc(s.public_id),esc(s.name),s.active?'Approved':'Suspended',
-           fmt(s.available_coins),esc(s.updated_at||'')]));
+           s.unlimited_stock?'∞ Unlimited · reserve '+fmt(s.available_coins):fmt(s.available_coins),
+           esc(s.updated_at||'')]));
         transfers.innerHTML=window.T(['#','Sender ID','Recipient ID','Coins','Stock after','Time'],
           (history.transfers||[]).map(t=>[
             esc(t.id),esc(t.sender_public_id),esc(t.recipient_public_id),
@@ -1408,20 +1448,32 @@
       if(!/^[0-9]{8}$/.test(sellerId)){
         note.textContent='Enter an existing eight-digit user ID.';return;
       }
-      if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000)){
-        note.textContent='Allocate 1–1,000,000 coins per request.';return;
+      if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000000)){
+        note.textContent='Allocate 1–1,000,000,000 coins, or enable Unlimited Stock.';return;
+      }
+      const isStockMode=kind==='unlimited_on'||kind==='unlimited_off';
+      const reason=isStockMode?window.prompt('Reason for unlimited stock change (8–200 characters):',''):null;
+      if(isStockMode&&(!reason||reason.trim().length<8||reason.trim().length>200)){
+        note.textContent='A reason of 8–200 characters is required.';return;
       }
       const message=kind==='allocate'
         ?'Add '+fmt(coins)+' coins to the SELLER STOCK of '+sellerId+'? This does not debit any user.'
-        :(kind==='approve'?'Approve':'Suspend')+' coin seller '+sellerId+'?';
+        :isStockMode
+          ?(kind==='unlimited_on'?'ENABLE':'DISABLE')+' unlimited stock for seller '+sellerId+
+            '? The change is audited and requires Super Admin authority.'
+          :(kind==='approve'?'Approve':'Suspend')+' coin seller '+sellerId+'?';
       if(!window.confirm(message))return;
       busy=true;button.disabled=true;note.textContent='Submitting verified request…';
       try{
         const payload=kind==='allocate'
           ?{seller_public_id:sellerId,coins,request_id:'admin-seller:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2)}
-          :{target_public_id:sellerId,active:kind==='approve'};
-        const result=await api('POST',kind==='allocate'?'sellers/allocate':'sellers',payload);
+          :isStockMode
+            ?{seller_public_id:sellerId,unlimited_stock:kind==='unlimited_on',reason:reason.trim()}
+            :{target_public_id:sellerId,active:kind==='approve'};
+        const endpoint=kind==='allocate'?'sellers/allocate':isStockMode?'sellers/stock-mode':'sellers';
+        const result=await api('POST',endpoint,payload);
         note.textContent=kind==='allocate'?'Allocated '+fmt(coins)+' stock coins. New stock '+fmt(result.available_coins)+'.':
+          isStockMode?'Seller '+sellerId+' unlimited stock '+(result.unlimited_stock?'enabled':'disabled')+' and audited.':
           'Seller '+sellerId+' '+(kind==='approve'?'approved':'suspended')+'.';
         await refresh();
       }catch(error){note.textContent='Request rejected: '+error.message;}
@@ -1430,6 +1482,8 @@
     byId('seller-approve')?.addEventListener('click',e=>act(e.currentTarget,'approve'));
     byId('seller-suspend')?.addEventListener('click',e=>act(e.currentTarget,'suspend'));
     byId('seller-allocate')?.addEventListener('click',e=>act(e.currentTarget,'allocate'));
+    byId('seller-unlimited-on')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_on'));
+    byId('seller-unlimited-off')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_off'));
   };
 
   P.ledger=async function () {
@@ -1780,8 +1834,8 @@
     section.className='card';
     section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
       '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
-      '<div class="row"><input id="direct-user" maxlength="8" inputmode="numeric" placeholder="Recipient 8-digit user ID" aria-label="User ID">'+
-      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (1–1,000,000)" aria-label="Coin amount"></div>'+
+      '<div class="row"><input id="direct-user" maxlength="8" inputmode="numeric" placeholder="Recipient 4–8 digit Member or Special ID" aria-label="User ID">'+
+      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
       '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
       '<button id="direct-submit" class="btn s" type="button">Credit user wallet</button></div>'+
       '<p id="direct-note" class="n" aria-live="polite"></p>'+
@@ -1806,10 +1860,10 @@
       const raw=byId('direct-coins').value.trim();
       const amount=Number(raw);
       const reason=byId('direct-reason').value.trim();
-      if(!/^[0-9]{8}$/.test(target)||!/^[0-9]+$/.test(raw)||
-         !Number.isSafeInteger(amount)||amount<1||amount>1000000||
+      if(!/^[0-9]{4,8}$/.test(target)||!/^[0-9]+$/.test(raw)||
+         !Number.isSafeInteger(amount)||amount<1||amount>(role==='super'?1000000000000:1000000)||
          reason.length<8||reason.length>200){
-        note.textContent='Enter 8-digit ID, 1–1,000,000 coins and an 8–200 character reason.';return;
+        note.textContent='Enter 4–8 digit Member or Special ID, positive coins within the wallet cap and an 8–200 character reason.';return;
       }
       if(!window.confirm('Credit '+fmt(amount)+' real coins to user '+target+
         '? Reason: '+reason+'\nThis grant is permanently audited.'))return;
@@ -1851,7 +1905,7 @@
       '<div id="recharge-list">Loading genuine support requests…</div></div>'+
       '<div class="card"><h3>Review selected request</h3>'+
       '<div class="row"><label>Support request # <input id="rc-request-id" class="field" inputmode="numeric" placeholder="Choose a pending request"></label>'+
-      '<label>Coins to credit <input id="rc-amount" class="field" inputmode="numeric" placeholder="1–1,000,000"></label></div>'+
+      '<label>Coins to credit <input id="rc-amount" class="field" inputmode="numeric" placeholder="1–1,000,000,000,000"></label></div>'+
       '<div class="row"><label>Payment method <input id="rc-method" class="field" maxlength="40" placeholder="e.g. bKash or PayPal"></label>'+
       '<label>Verified receipt ID <input id="rc-reference" class="field" maxlength="120" placeholder="External transaction reference"></label></div>'+
       '<label style="display:block;margin:12px 0"><input type="checkbox" id="rc-verified"> I independently verified that this payment was received.</label>'+
@@ -1902,7 +1956,7 @@
         const raw=byId('rc-amount').value.trim(),coins=Number(raw);
         const method=byId('rc-method').value.trim();
         const reference=byId('rc-reference').value.trim();
-        if(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000||
+        if(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000000000||
             method.length<2||reference.length<6||!byId('rc-verified').checked){
           note.textContent='Enter a valid coin amount, payment method, receipt ID, and check verified payment.';return;
         }
