@@ -30,7 +30,8 @@ test('seat changes appear before server acknowledgement and preserve an existing
 
 test('both SFU peer connections have Cloudflare STUN discovery',()=>{
   assert.match(ui,/stun:stun\.cloudflare\.com:3478/);
-  assert.equal((ui.match(/new RTCPeerConnection\(SHARIKA_ICE_CONFIG\)/g)||[]).length,2);
+  assert.equal((ui.match(/new RTCPeerConnection\(state\.iceConfig\|\|SHARIKA_ICE_CONFIG\)/g)||[]).length,2);
+  assert.match(ui,/function verifiedIceConfig\(config\)/);
 });
 test('mic button retries a failed capture or an interrupted uplink',()=>{
   assert.match(ui,/async function restartMicrophone\(roomId\)/);
