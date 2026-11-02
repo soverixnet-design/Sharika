@@ -163,4 +163,6 @@ test('weekly opening reuses the first splash and never flashes a second design',
   assert.match(gradle,/class="royal-premium royal-root"/);
   assert.match(gradle,/sharika-winged-theme-style/);
   assert.match(gradle,/sharika-royal-premium-style/);
+  assert.match(gradle,/sharika-royal-splash/);
+  assert.match(gradle,/sharika-royal-ui/);
 });
