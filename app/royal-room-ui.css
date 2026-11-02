@@ -54,7 +54,11 @@
   color:#fff0d7;
 }
 .sh-royal-room #ustat {border-color:#f8c66e}
+/* Seats keep their natural height; the chat below receives unused room space.
+   On short phones the seats scroll instead of shrinking chat to two lines. */
 .sh-royal-room .stage {
+  flex:0 1 auto;
+  min-height:0;
   padding:5px 8px 10px;
   overflow-y:auto;
   position:relative;
@@ -118,11 +122,38 @@
 }
 .sh-royal-room .sh-games .sh-sprite {width:47px;height:47px}
 .sh-royal-room .sh-games span:last-child {margin-top:-4px}
-.sh-royal-room .chatw {margin:0 10px;flex:none}
+/* Full-height, independently scrollable room transcript, ending at the
+   composer and starting immediately beneath the mic-seat area. */
+.sh-royal-room .chatw {
+  margin:0 10px;
+  flex:1 1 210px;
+  min-height:clamp(140px,23vh,260px);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
 .sh-royal-room .chat {
-  height:clamp(32px,7vh,64px);
-  padding:4px 0;
+  flex:1 1 auto;
+  height:auto;
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
+  padding:6px 0 12px;
   font-size:12px;
+  -webkit-mask-image:linear-gradient(#000 0%,#000 100%);
+  mask-image:linear-gradient(#000 0%,#000 100%);
+}
+.sh-royal-room .chat .msg {flex-shrink:0}
+.sh-royal-room .chat .sys {flex-shrink:0}
+.sh-royal-room .chat .sh-room-gift-receipt .mb {
+  border-color:rgba(255,217,130,.72);
+  background:linear-gradient(135deg,rgba(106,49,108,.83),rgba(65,29,84,.91));
+}
+.sh-royal-room .chat .sh-room-gift-receipt .lv {
+  background:linear-gradient(135deg,#c78624,#6b3c9e);
+  color:#fff4d2;
 }
 .sh-royal-room .dock {
   position:relative;
@@ -284,7 +315,8 @@
 @media(max-height:690px) {
   .sh-royal-room .host {margin:4px 0 10px}
   .sh-royal-room .grid {gap:8px 2px}
-  .sh-royal-room .chat {height:32px}
+  .sh-royal-room .chatw {min-height:140px}
+  .sh-royal-room .chat {height:auto}
   .sh-royal-room .seat .av {width:43px;height:43px}
   .sh-royal-room .host .av {width:60px;height:60px}
 }
