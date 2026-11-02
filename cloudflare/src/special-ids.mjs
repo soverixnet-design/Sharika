@@ -1,7 +1,7 @@
 // Verified, admin-managed public alias. Permanent public_no/auth_uid never change.
 const PREFIX='/api/v1/admin/special-ids';
 const PUBLIC_ID=/^[0-9]{8}$/;
-const SPECIAL_ID=/^[0-9]{4,7}$/;
+const SPECIAL_ID=/^[0-9]{1,10}$/;
 const validDays=new Set([7,30,90]);
 const fmt=no=>String(no).padStart(8,'0');
 
@@ -28,11 +28,15 @@ export async function handleSpecialAdmin({request,env,uid,actor,operation,cors,r
   const url=new URL(request.url),db=env.DB;
   if(operation==='special-ids/availability'&&request.method==='GET'){
     const value=url.searchParams.get('value')||'';
-    if(!SPECIAL_ID.test(value))return fail('special_id_must_be_4_to_7_digits',400,cors);
+    if(!SPECIAL_ID.test(value))return fail('special_id_must_be_1_to_10_digits',400,cors);
     const reserved=await db.prepare(
       'SELECT 1 FROM sharika_special_ids WHERE special_id=? LIMIT 1'
     ).bind(value).first();
-    return reply({special_id:value,available:!reserved},200,cors);
+    // Real 8-digit account numbers are immutable. Never let an alias shadow one.
+    const publicCollision=value.length===8?await db.prepare(
+      'SELECT 1 FROM sharika_users WHERE public_no=? LIMIT 1'
+    ).bind(Number(value)).first():null;
+    return reply({special_id:value,available:!reserved&&!publicCollision},200,cors);
   }
   if(operation==='special-ids'&&request.method==='GET'){
     const q=(url.searchParams.get('q')||'').trim().slice(0,64);
@@ -83,6 +87,13 @@ export async function handleSpecialAdmin({request,env,uid,actor,operation,cors,r
       .bind(specialId).first();
     if(existing&&existing.auth_uid!==person.auth_uid)
       return fail('special_id_already_reserved',409,cors);
+    // An 8-digit alias must not collide with an immutable real account number.
+    if(specialId.length===8){
+      const publicCollision=await db.prepare(
+        'SELECT 1 FROM sharika_users WHERE public_no=? LIMIT 1'
+      ).bind(Number(specialId)).first();
+      if(publicCollision)return fail('special_id_conflicts_with_account_id',409,cors);
+    }
     const expiresAt=days===null?null:new Date(Date.now()+days*86400000)
       .toISOString().slice(0,19).replace('T',' ');
     try{

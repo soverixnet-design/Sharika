@@ -24,7 +24,7 @@ import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
-const PUBLIC_OR_SPECIAL_ID = /^[0-9]{4,8}$/;
+const PUBLIC_OR_SPECIAL_ID = /^[0-9]{1,10}$/;
 const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset','photo']);
 const ROOM_SEAT_FRAMES = new Set(['grad','gold','neon','sq']);
 const MAX_BODY = 20_000;
@@ -366,7 +366,13 @@ export async function handleRequest(request, env, ctx) {
         const welcomeCoins=signupCoins(verifiedReferral,rules);
         const registration=[
           env.DB.prepare(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,country,pic,coins)
-            VALUES((SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users),?,?,?,?,?,?,?)`)
+            VALUES((WITH RECURSIVE candidate(n) AS (
+              SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users
+              UNION ALL
+              SELECT n+1 FROM candidate
+              WHERE EXISTS (SELECT 1 FROM sharika_special_ids
+                WHERE special_id=CAST(candidate.n AS TEXT))
+            ) SELECT n FROM candidate ORDER BY n DESC LIMIT 1),?,?,?,?,?,?,?)`)
             .bind(uid,name,body.birthdate,age<18?1:0,country,pic,welcomeCoins),
           env.DB.prepare(`INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id)
             VALUES(?,'coins',?,?,?,?)`)
