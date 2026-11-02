@@ -60,7 +60,19 @@ dependencies {
 // adapter replaces only connection.js in the packaged copy.
 def sharikaUiAssets = layout.buildDirectory.dir('generated/sharika-ui-assets')
 tasks.register('prepareSharikaUiAssets', Copy) {
-    from(rootProject.file('../app/index.html'))
+    from(rootProject.file('../app/index.html')) {
+        // Package the final Royal CSS before WebView's first paint. Injecting
+        // it only from onPageFinished briefly revealed the retired base UI.
+        // This filter affects the APK copy, never the owner's web template.
+        filter { String line ->
+            line.replace('<html lang="en">',
+                '<html lang="en" class="royal-premium royal-root">')
+                .replace('<link rel="stylesheet" href="./royal-profile.css">',
+                    '<link rel="stylesheet" href="./royal-profile.css">\n' +
+                    '<link id="sharika-royal-premium-style" rel="stylesheet" href="./royal-premium.css">\n' +
+                    '<link id="sharika-winged-theme-style" rel="stylesheet" href="./royal-winged-theme.css">')
+        }
+    }
     // Owner-provided royal profile art; keep the original JPEG and PNG intact.
     from(rootProject.file('../app/main-profile-bg.jpg'))
     from(rootProject.file('../app/main-profile-icons.webp'))
