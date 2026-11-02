@@ -1379,6 +1379,18 @@ export async function handleRequest(request, env, ctx) {
         return handleRoomModeration({
           request,env,uid,room,roomId,reply,fail,cors,readBody
         });
+      if(parts.length===6 && action==='locks' && parts[5]==='all' &&
+         request.method==='PUT') {
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
+        const body=await readBody(request);
+        if(typeof body.locked!=='boolean')
+          return fail('invalid_seat_lock',400,cors);
+        const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .changeAllSeatLocks(roomId,room.seat_count,body.locked);
+        if(result.error)return fail(result.error,409,cors);
+        return reply(result,200,cors);
+      }
       if (parts.length===5 && action==='locks' && request.method==='PUT') {
         if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);

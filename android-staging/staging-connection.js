@@ -4235,7 +4235,19 @@
         const target=frame.seats?.[seat];
         const isSelf=target?.user_id===session?.user?.id;
         const owner=room.owner_id===session?.user?.id;
-        if((action==='lock'||action==='unlock')&&seat>0) {
+        if(action==='lock_all'||action==='unlock_all') {
+          if(!owner)throw new Error('Room owner only');
+          const result=await api('PUT','/rooms/'+room.id+'/locks/all',{
+            locked:action==='lock_all'
+          });
+          frame.close();
+          await syncFrame(room,frame);
+          const skipped=result.skipped_occupied?.length||0;
+          frame.toast(action==='lock_all'
+            ? 'Locked '+(result.locked_seats?.length||0)+' seats'+
+              (skipped?' ('+skipped+' occupied seats unchanged)':'')
+            : 'All mic seats unlocked');
+        } else if((action==='lock'||action==='unlock')&&seat>0) {
           if(!owner)throw new Error('Room owner only');
           await api('PUT','/rooms/'+room.id+'/locks',{
             seat_no:seat,locked:action==='lock'
@@ -4314,61 +4326,100 @@
     // grants the owner menu to anybody tapping it. Keep the same sheet design
     // but attach each visible action to the real occupied seat and its user.
     const originalSeatSheet=frame.seatSheet;
-    frame.seatSheet=function(index){
-      const result=originalSeatSheet(index);
-      const selected=frame.seats?.[index];
-      if(!selected)return result;
-      const owner=room.owner_id===session?.user?.id;
-      const self=selected.user_id===session?.user?.id;
-      const sheet=frame.$('sheet');
-      if(selected.empty||selected.lock){
-        // The original demo seat sheet binds these actions to local fake
-        // state. Replace them for every empty/locked seat, including owners.
-        // Guests may take open seats; only the verified owner can lock them.
-        if(index===0){
-          if(sheet)sheet.innerHTML='<div class="grab"></div><h3>👑 Owner throne</h3>'+
-            '<div class="row">Owner is speaking from mic seat '+
-            Number(selected.owner_mic_seat_no||0)+'</div>';
-          return result;
-        }
-        if(selected.lock&&!owner){
-          if(sheet)sheet.innerHTML='<div class="grab"></div><h3>🔒 Seat locked</h3>';
-          return result;
-        }
-        const actions=sheet?.querySelector('.acts');
-        if(!actions)return result;
-        actions.replaceChildren();
-        const options=selected.lock
-          ?[['unlock','🔓','Unlock seat']]
-          :owner
-            ?[['lock','🔒','Lock seat'],['invite','📨','Invite member']]
-            :[['take','🎤','Take mic seat']];
-        for(const [action,picture,label] of options){
-          const button=frame.document.createElement('button');
-          button.type='button';button.className='act';
-          const symbol=frame.document.createElement('span');
-          symbol.textContent=picture;
-          button.append(symbol,frame.document.createTextNode(label));
-          button.onclick=()=>frame.act(action,index);
-          actions.appendChild(button);
-        }
-        return result;
+    // The old room theme aborts empty/locked seat menus before server actions.
+    // These must bypass its demo handler entirely.
+    function verifiedSeatMenu(index,selected,owner){
+      const doc=frame.document;
+      doc.getElementById('sh-seat-action-overlay')?.remove();
+      if(!doc.getElementById('sh-seat-action-css')){
+        const css=doc.createElement('style');
+        css.id='sh-seat-action-css';
+        css.textContent=[
+          '#sh-seat-action-overlay{position:fixed;inset:0;z-index:2147483000;',
+          'display:flex;align-items:center;justify-content:center;box-sizing:border-box;',
+          'padding:18px;background:rgba(4,6,20,.72)}',
+          '#sh-seat-action-overlay .sh-seat-action-card{width:min(100%,440px);',
+          'max-height:90vh;overflow-y:auto;box-sizing:border-box;border-radius:30px;',
+          'padding:clamp(22px,6vw,42px) clamp(20px,6vw,40px);',
+          'background:linear-gradient(110deg,#fa3093 0%,#ff7360 50%,#ffb923 100%);',
+          'box-shadow:0 18px 60px rgba(0,0,0,.45)}',
+          '#sh-seat-action-overlay h3{color:white;text-align:center;',
+          'font:600 clamp(23px,5vw,34px)/1.2 Georgia,serif;margin:0 0 26px}',
+          '#sh-seat-action-overlay .sh-seat-action-list{display:grid;gap:17px}',
+          '#sh-seat-action-overlay button{width:100%;border:0;min-height:65px;',
+          'border-radius:999px;background:#fff;color:#3479fa;padding:10px 14px;',
+          'font:600 clamp(21px,5vw,30px)/1.2 Georgia,serif;cursor:pointer}',
+          '#sh-seat-action-overlay button.lock{color:#f72f91}',
+          '#sh-seat-action-overlay button.all{color:#7545fa}',
+          '#sh-seat-action-overlay button.cancel{color:#fff;',
+          'background:rgba(255,255,255,.23)}',
+          '@media(max-height:640px){#sh-seat-action-overlay .sh-seat-action-card{',
+          'padding:18px 22px}#sh-seat-action-overlay .sh-seat-action-list{gap:10px}',
+          '#sh-seat-action-overlay button{min-height:50px}}'
+        ].join('');
+        doc.head.appendChild(css);
       }
-      const detail=sheet?.querySelector('.who small');
+      const overlay=doc.createElement('div');
+      overlay.id='sh-seat-action-overlay';
+      const card=doc.createElement('section');
+      card.className='sh-seat-action-card';
+      card.setAttribute('role','dialog');
+      card.setAttribute('aria-modal','true');
+      card.setAttribute('aria-label','Mic seat actions');
+      const title=doc.createElement('h3');
+      title.textContent=index===0?'Owner throne':
+        selected.lock&&!owner?'Seat locked':'Please select an action';
+      const buttons=doc.createElement('div');
+      buttons.className='sh-seat-action-list';
+      card.append(title,buttons);
+      overlay.appendChild(card);
+      const close=()=>overlay.remove();
+      overlay.onclick=e=>{if(e.target===overlay)close();};
+      overlay.onkeydown=e=>{
+        if(e.key==='Escape'||e.key==='Backspace'){e.preventDefault();close();}
+      };
+      const options=index===0?[]:selected.lock?
+        (owner?[['unlock','Unlock seat','lock'],['unlock_all','Unlock all','all']]:[]):
+        (owner?[['take','Take Mic','take'],['lock','Lock seat','lock'],
+          ['lock_all','Lock all','all']]:[['take','Take Mic','take']]);
+      for(const [action,label,kind] of options){
+        const button=doc.createElement('button');
+        button.type='button';
+        button.className=kind==='take'?'':kind;
+        button.textContent=label;
+        button.onclick=()=>{close();frame.act(action,index);};
+        buttons.appendChild(button);
+      }
+      const cancel=doc.createElement('button');
+      cancel.type='button';cancel.className='cancel';
+      cancel.textContent='Cancel';cancel.onclick=close;
+      buttons.appendChild(cancel);
+      doc.body.appendChild(overlay);
+      (buttons.querySelector?.('button')||cancel).focus?.();
+    }
+    frame.seatSheet=function(index){
+      const selected=frame.seats?.[index];
+      if(!selected)return;
+      const owner=room.owner_id===session?.user?.id;
+      if(selected.empty||selected.lock){
+        verifiedSeatMenu(index,selected,owner);
+        return;
+      }
+      const result=originalSeatSheet(index);
+      const self=selected.user_id===session?.user?.id;
+      const actions=frame.$('sheet')?.querySelector('.acts');
+      const detail=frame.$('sheet')?.querySelector('.who small');
       if(detail)detail.textContent=index===0?'Room owner':'Mic seat '+index;
-      const actions=sheet?.querySelector('.acts');
       if(!actions)return result;
-      actions.textContent='';
-      const options=[['prof','👤','Profile']];
-      options.push(['gift','🎁','Gift']);
+      actions.replaceChildren();
+      const options=[['prof','👤','Profile'],['gift','🎁','Gift']];
       if(self)options.push(['mute',selected.muted?'🔊':'🔇',
         selected.muted?'Unmute':'Mute']);
       if(self&&index>0)options.push(['down','⬇️','Leave mic']);
       if(owner&&index===0)options.push(['own','⚙️','Manage']);
       if(owner&&index>0&&!self)options.push(
         ['mute',selected.muted?'🔊':'🔇',selected.muted?'Unmute':'Mute'],
-        ['down','⬇️','Remove from mic'],
-        ['kick','🚫','Kick out']);
+        ['down','⬇️','Remove from mic'],['kick','🚫','Kick out']);
       for(const [action,icon,label] of options){
         const button=frame.document.createElement('button');
         button.className='act'+(action==='kick'?' dg':'');
