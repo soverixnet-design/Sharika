@@ -1149,7 +1149,7 @@
     if(profile?.special_id){
       const plaque=document.createElement('span');
       plaque.id='sh-neon-own-id';plaque.className='sh-neon-profile-id';
-      plaque.textContent='★ SPECIAL ID · '+String(profile.special_id);
+      plaque.textContent='Neon Special ID · '+String(profile.special_id);
       const copy=document.getElementById('sh-copy-own-id');
       (copy||anchor).insertAdjacentElement('afterend',plaque);
     }
