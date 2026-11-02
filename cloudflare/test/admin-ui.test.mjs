@@ -55,7 +55,7 @@ test('premium admin panel offers independent purchasing, grant and automatic gif
     'auto_by_level','auto_by_gifts'])assert.ok(source.includes(key),key);
   for(const key of ['min_wealth_level','min_gift_coins','price_coins','duration_days',
     'daily_bonus_coins'])assert.ok(source.includes(key),key);
-  assert.match(source,/api\('PATCH','premium',\{policy,tiers\}\)/);
+  assert.match(source,/api\('PATCH','premium',\{policy,tiers,svip_levels\}\)/);
   assert.match(source,/api\('GET','premium\?public_id='\+id\)/);
   assert.match(source,/api\('POST','premium\/grant',\{public_id:id,tier,duration_days:days,/);
   assert.match(source,/svip_level:svipLevel/);
