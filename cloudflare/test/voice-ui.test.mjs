@@ -361,10 +361,8 @@ test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>
       ]};
       if(path.endsWith('/subscribe'))return {
         sessionDescription:{type:'offer',sdp:'test'},
-        tracks:[
-          {mid:'0',sessionId:'publish-A',userId:''},
-          {mid:'1',sessionId:'publish-B',userId:'spoofed-user'}
-        ]
+        tracks:[{mid:body.publications[0].sessionId==='publish-A'?'0':'1',
+          sessionId:body.publications[0].sessionId,userId:'spoofed-user'}]
       };
       return {ok:true};
     }
@@ -372,7 +370,7 @@ test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>
   runInContext(ui.slice(begin,end),context);
   const state={
     closed:false,syncing:false,roomId:'10000001',subscribeId:'receive-A',
-    subscribed:new Set(),remoteMids:new Map(),sessionIds:[],
+    subscribed:new Set(),failedPublications:new Map(),remoteMids:new Map(),sessionIds:[],
     receivePC:{
       async setRemoteDescription(){},async createAnswer(){return {type:'answer',sdp:'test'};},
       async setLocalDescription(){this.localDescription={type:'answer',sdp:'test'};}
@@ -384,4 +382,38 @@ test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>
   assert.equal(state.remoteMids.get('1'),'user-B');
   assert.equal(state.subscribed.size,2);
   assert.ok(calls.some(x=>x[1].endsWith('/renegotiate')));
+});
+
+test('a dead microphone publication cannot block a healthy room speaker',async()=>{
+  const begin=ui.indexOf('  async function subscribeSfu(state) {');
+  const end=ui.indexOf('  // The receiving SFU session',begin);
+  const subscribed=[];
+  const context=createContext({Date,console:{warn(){}},waitIce:async()=>{},
+    errText:String,
+    api:async(method,path,body)=>{
+      if(method==='GET')return {publications:[
+        {sessionId:'dead',trackName:'microphone',userId:'old-user'},
+        {sessionId:'live',trackName:'microphone',userId:'speaker'}]};
+      if(path.endsWith('/subscribe')){
+        const sid=body.publications[0].sessionId;
+        subscribed.push(sid);
+        if(sid==='dead')throw new Error('sfu_track_unavailable');
+        return {sessionDescription:{type:'offer',sdp:'test'},
+          tracks:[{mid:'2',sessionId:'live'}]};
+      }
+      return {ok:true};
+    }});
+  runInContext(ui.slice(begin,end),context);
+  const state={closed:false,syncing:false,roomId:'10000001',
+    subscribeId:'receiver',subscribed:new Set(),failedPublications:new Map(),
+    remoteMids:new Map(),sessionIds:[],
+    receivePC:{async setRemoteDescription(){},async createAnswer(){return {};},
+      async setLocalDescription(){this.localDescription={type:'answer',sdp:'test'};}}
+  };
+  context.state=state;
+  await runInContext('subscribeSfu(state)',context);
+  assert.deepEqual(subscribed,['dead','live']);
+  assert.equal(state.subscribed.has('live:microphone'),true);
+  assert.equal(state.remoteMids.get('2'),'speaker');
+  assert.equal(state.failedPublications.has('dead:microphone'),true);
 });
