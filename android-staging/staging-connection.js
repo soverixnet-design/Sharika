@@ -2192,7 +2192,8 @@
   function sfuTransportHealthy(state) {
     const local=state.media?.getAudioTracks()[0];
     const outgoing=!state.canPublish ||
-      (local?.readyState==='live' && state.publishPC?.connectionState==='connected');
+      (state.readyPublication && local?.readyState==='live' &&
+       state.publishPC?.connectionState==='connected');
     const incoming=!state.subscribed.size ||
       state.receivePC?.connectionState==='connected';
     return outgoing && incoming;
