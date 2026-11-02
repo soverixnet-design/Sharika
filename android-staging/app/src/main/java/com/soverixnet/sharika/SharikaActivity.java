@@ -81,7 +81,10 @@ public final class SharikaActivity extends Activity {
     private static final int IMAGE_PICKER_REQUEST = 3413;
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 3415;
-    private final ExecutorService io = Executors.newFixedThreadPool(2);
+    // Background polling must not queue microphone negotiation behind slow image,
+// chat or presence requests on congested mobile networks.
+private final ExecutorService io = Executors.newFixedThreadPool(4);
+private final ExecutorService voiceIo = Executors.newFixedThreadPool(3);
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
@@ -920,6 +923,10 @@ public final class SharikaActivity extends Activity {
         });
     }
 
+    private boolean isRealtimeVoiceRoute(String path) {
+        return path.matches("^/api/v1/rooms/[0-9]{8}/(seat|voice/(config|session|publish|subscribe|renegotiate|publications|heartbeat|leave))$");
+    }
+
     private void requestStagingToken(String id, String method, String path,
                                     JSONObject data, FirebaseUser user) {
         user.getIdToken(false).addOnCompleteListener(this, token -> {
@@ -928,7 +935,8 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false,null,"firebase_token_unavailable")); return;
             }
             JSONObject body = data.optJSONObject("body");
-            io.execute(() -> stageHttp(id, method, path, body, token.getResult().getToken()));
+            ExecutorService queue = isRealtimeVoiceRoute(path) ? voiceIo : io;
+            queue.execute(() -> stageHttp(id, method, path, body, token.getResult().getToken()));
         });
     }
 
@@ -1008,6 +1016,7 @@ public final class SharikaActivity extends Activity {
             browser = null;
         }
         io.shutdownNow();
+        voiceIo.shutdownNow();
         super.onDestroy();
     }
 }
