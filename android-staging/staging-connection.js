@@ -2959,7 +2959,7 @@
       return false;
     }
   }
-  let roomsRequestNo=0;
+  let roomsRequestNo=0,lastRoomsRenderSignature=null;
   async function reloadRooms() {
     if (!session) return;
     // Room creation and settings saves must always request a fresh list.
@@ -2988,7 +2988,14 @@
         n:Number(own.online_count)||0,cover_url:own.cover_url||null,
         owner_country:own.owner_country||window.CFG.viewerCountry||'',created_at:own.created_at||''
       } : null;
-      window.renderRooms();
+      // Quiet background refresh: changing identical room cards restarts every
+      // CSS animation and drops touch/scroll state on slower Android WebViews.
+      const renderSignature=JSON.stringify([userId,rows,window.CFG.viewerCountry,
+        window.CFG.roomHistoryIds]);
+      if(renderSignature!==lastRoomsRenderSignature){
+        lastRoomsRenderSignature=renderSignature;
+        window.renderRooms();
+      }
     } catch (error) {
       if(requestNo===roomsRequestNo && session?.user?.id===userId)
         toast('Rooms unavailable: '+errText(error));
@@ -3303,12 +3310,20 @@
       if(Number.isInteger(seatNo)&&seatNo>0&&seatNo<slots.length&&slots[seatNo].empty)
         slots[seatNo]={lock:1,i:seatNo};
     }
+    // A steady room used to rebuild every seat, avatar, overlay and touch
+    // handler every 8 seconds even when the authoritative snapshot was equal.
+    // Keep live speaking indicators responsive without repainting stable DOM.
+    const renderSignature=JSON.stringify([slots,audience,palette,sharedImage,
+      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[]]);
+    const snapshotChanged=frame.__sharikaRoomRenderSignature!==renderSignature;
     frame.seats=slots;
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     frame.U=audience;
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
+    if(!snapshotChanged)return;
+    frame.__sharikaRoomRenderSignature=renderSignature;
     frame.render();
     if(typeof paintVerifiedMicCount==='function')paintVerifiedMicCount(frame);
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
