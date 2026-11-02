@@ -1942,7 +1942,11 @@
     const button=event.target.closest?.('[data-m="svip"]');
     if(!button)return;
     event.preventDefault();event.stopImmediatePropagation();
-    showSvipRoyalSheet().catch(error=>toast(errText(error)));
+    // The SVIP Club tile opens the new eight-level collection. Preserve the
+    // existing premium badge route to VIP/Noble purchasing and bonus controls.
+    if(button.classList.contains('profile-svip-badge'))
+      showPremiumSheet().catch(error=>toast(errText(error)));
+    else showSvipRoyalSheet().catch(error=>toast(errText(error)));
   },true);
   window.frEl=function(){return frameTag(window.A?.frame||'');};
   window.frameSheet=function(){styleSelectionSheet('frame_style');};
