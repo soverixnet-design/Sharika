@@ -310,7 +310,7 @@ test('SFU voice activity measures live audio and clears the light on mute',()=>{
   state.speakingMeters.get(trackTwo).lastActiveAt=0;
   runInContext('sampleSfuSpeaking(state)',context);
   assert.deepEqual(updates.at(-1),['roomA',[]]);
-  assert.match(ui,/state\.remoteMids\.get\(String\(event\.transceiver\?\.mid/);
+  assert.match(ui,/state\.remoteMids\?\.get\(String\(event\.transceiver\?\.mid/);
   assert.match(ui,/watchSfuSpeaking\(state,local,session\?\.user\?\.id,true\)/);
   assert.match(ui,/speakingContext\.close\(\)\.catch/);
   assert.match(ui,/source\.connect\(analyser\)/);
