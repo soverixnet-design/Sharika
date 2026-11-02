@@ -33,6 +33,10 @@ function simulatedSeatPromotion(failPublish = false) {
     SHARIKA_ICE_CONFIG: { iceServers: [] }, microphoneWanted: () => true,
     watchSfuSpeaking() {}, unwatchSfuSpeaking() {},
     waitIce: async () => {},
+    waitVoiceConnected: async () => {},
+    document:{getElementById:()=>null},
+    errText:String,
+    console:{warn(){}},
     api: async (method, path) => {
       if(path.endsWith('/voice/session'))return { sessionId: 'publisher-1' };
       if(path.endsWith('/voice/publish')){
