@@ -121,7 +121,7 @@ jobs:
         run: |
           npx --yes wrangler@4 d1 migrations list sharika-staging --remote \
             --config cloudflare/wrangler.approved-finance.jsonc
-          npx --yes wrangler@4 d1 migrations apply sharika-staging --remote --yes \
+          npx --yes wrangler@4 d1 migrations apply sharika-staging --remote \
             --config cloudflare/wrangler.approved-finance.jsonc
       - name: Verify preserved wallets and exact new D1 schema
         run: |
