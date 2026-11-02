@@ -16,6 +16,7 @@ on:
       - 'cloudflare/src/sellers.mjs'
       - 'cloudflare/src/index.mjs'
       - 'cloudflare/src/sfu.mjs'
+      - 'cloudflare/src/voice-room.mjs'
       - 'cloudflare/test/worker.test.mjs'
       - 'cloudflare/test/profile-cosmetics.test.mjs'
       - 'cloudflare/test/sellers.test.mjs'
