@@ -519,6 +519,16 @@ public final class SharikaActivity extends Activity {
                 });
                 break;
             case "api": callStagingApi(id, data); break;
+            case "roomScreenAwake":
+                // Keep the display active only during an authenticated voice
+                // room, including when its mini-player is on another app page.
+                if (data.optBoolean("enabled", false)) {
+                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                } else {
+                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }
+                sendResult(id, result(true, object(), null));
+                break;
             case "invitePending":
                 JSONObject pending=object();
                 try { pending.put("code",pendingInviteCode); }
@@ -896,6 +906,7 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (unregisterModernBack != null) {
             unregisterModernBack.run();
             unregisterModernBack = null;
