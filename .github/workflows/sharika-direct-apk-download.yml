@@ -1,4 +1,5 @@
 name: Publish direct APK download for approved staging test
+# Source build and Android emulator smoke check are both completed successfully.
 
 on:
   push:
