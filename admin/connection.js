@@ -1834,7 +1834,7 @@
     section.className='card';
     section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
       '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
-      '<div class="row"><input id="direct-user" maxlength="8" inputmode="numeric" placeholder="Recipient 8-digit user ID" aria-label="User ID">'+
+      '<div class="row"><input id="direct-user" maxlength="8" inputmode="numeric" placeholder="Recipient 4–8 digit Member or Special ID" aria-label="User ID">'+
       '<input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
       '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
       '<button id="direct-submit" class="btn s" type="button">Credit user wallet</button></div>'+
@@ -1860,10 +1860,10 @@
       const raw=byId('direct-coins').value.trim();
       const amount=Number(raw);
       const reason=byId('direct-reason').value.trim();
-      if(!/^[0-9]{8}$/.test(target)||!/^[0-9]+$/.test(raw)||
+      if(!/^[0-9]{4,8}$/.test(target)||!/^[0-9]+$/.test(raw)||
          !Number.isSafeInteger(amount)||amount<1||amount>(role==='super'?1000000000000:1000000)||
          reason.length<8||reason.length>200){
-        note.textContent='Enter 8-digit ID, positive coins within the wallet cap and an 8–200 character reason.';return;
+        note.textContent='Enter 4–8 digit Member or Special ID, positive coins within the wallet cap and an 8–200 character reason.';return;
       }
       if(!window.confirm('Credit '+fmt(amount)+' real coins to user '+target+
         '? Reason: '+reason+'\nThis grant is permanently audited.'))return;
