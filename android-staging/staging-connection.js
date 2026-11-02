@@ -3277,7 +3277,7 @@
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
     frame.render();
-    paintVerifiedMicCount(frame);
+    if(typeof paintVerifiedMicCount==='function')paintVerifiedMicCount(frame);
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     decorateRoomPeople(frame);
     decorateRoomChat(frame);
