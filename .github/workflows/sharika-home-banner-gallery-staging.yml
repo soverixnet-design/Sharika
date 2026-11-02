@@ -75,11 +75,12 @@ jobs:
           }
           const [state]=await query('SELECT '+
             '(SELECT COUNT(*) FROM d1_migrations) AS migration_count,'+
-            '(SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1) AS latest,'+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE "+
+              "name='0043_official_cs_seller_animated_frames.sql') AS official_migration,"+
             "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' "+
               "AND name='sharika_banner_images') AS images_table");
           if(state?.migration_count!==45||
-             state.latest!=='0043_official_cs_seller_animated_frames.sql'||
+             state.official_migration!==1||
              state.images_table!==0)
             throw Error('Unexpected migrations or existing banner image table; refusing rollout');
           const [financial]=await query('SELECT '+
@@ -135,11 +136,12 @@ jobs:
           }
           const [state]=await query('SELECT '+
             '(SELECT COUNT(*) FROM d1_migrations) AS migration_count,'+
-            '(SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1) AS latest,'+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE "+
+              "name='0044_home_banner_images.sql') AS banner_migration,"+
             "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' "+
               "AND name='sharika_banner_images') AS images_table");
           if(state?.migration_count!==46||
-             state.latest!=='0044_home_banner_images.sql'||state.images_table!==1)
+             state.banner_migration!==1||state.images_table!==1)
             throw Error('Banner gallery schema not verified');
           const [financial]=await query('SELECT '+
             '(SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger,'+
