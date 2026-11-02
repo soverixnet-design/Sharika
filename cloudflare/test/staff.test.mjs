@@ -165,6 +165,6 @@ test('special ID resolves to canonical account for admin recharge and idempotent
   assert.equal(retry.data.recipient_id,'10000017');
   assert.equal(duplicateDB.state.batches.length,0);
   const invalid=await run(DB,{role:'super'},'recharge-user','POST',
-    {...special,target_public_id:'101'});
+    {...special,target_public_id:'12345678901'});
   assert.equal(invalid.status,400);
 });

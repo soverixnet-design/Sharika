@@ -87,8 +87,8 @@ test('voice-room route prefers loudspeaker but respects wired and Bluetooth head
 });
 
 test('Special ID recipient lookup reaches the verified Worker before seller recharge',()=>{
-  assert.match(routes,/path\.matches\("\^\/api\/v1\/users\/\[0-9\]\{4,8\}\$"\)\) return method\.equals\("GET"\)/);
-  assert.match(routes,/path\.matches\("\^\/api\/v1\/users\/\[0-9\]\{4,8\}\/follow\$"\)/);
+  assert.match(routes,/path\.matches\("\^\/api\/v1\/users\/\[0-9\]\{1,10\}\$"\)\) return method\.equals\("GET"\)/);
+  assert.match(routes,/path\.matches\("\^\/api\/v1\/users\/\[0-9\]\{1,10\}\/follow\$"\)/);
   assert.match(app,/const verified=await api\('GET','\/users\/'\+entered\)/);
   assert.match(app,/target_public_id:recipient,coins:amount/);
   assert.match(worker,/PUBLIC_OR_SPECIAL_ID\.test\(parts\[3\] \|\| ''\)/);
