@@ -17,11 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Download APK from the successful room chat and gift build
+      - name: Download APK from the successful compact room mini-games build
         uses: actions/download-artifact@v4
         with:
           name: Sharika-Android-Staging-Debug
-          run-id: 41546818898
+          run-id: 41548800846
           repository: soverixnet-design/Sharika
           github-token: ${{ github.token }}
           path: staging-apk
@@ -31,26 +31,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41546818898 --jq .head_sha)" = 'e42f20c1dc330708163d63da74b0e24ddd36a4a4'
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41546818898 --jq .conclusion)" = 'success'
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41548800846 --jq .head_sha)" = 'fe53b0e3d632cce2730cd4f328cc1a0b8a7713ca'
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41548800846 --jq .conclusion)" = 'success'
           test -s staging-apk/app-debug.apk
           unzip -t staging-apk/app-debug.apk > /dev/null
           unzip -Z1 staging-apk/app-debug.apk | grep -Fx AndroidManifest.xml
           unzip -Z1 staging-apk/app-debug.apk | grep -Eq '^classes([0-9]+)?[.]dex$'
-          cp staging-apk/app-debug.apk Sharika-Room-Chat-Gift-Staging-20261103.apk
-          sha256sum Sharika-Room-Chat-Gift-Staging-20261103.apk
-          file Sharika-Room-Chat-Gift-Staging-20261103.apk
+          cp staging-apk/app-debug.apk Sharika-Room-Mini-Games-Staging-20261103.apk
+          sha256sum Sharika-Room-Mini-Games-Staging-20261103.apk
+          file Sharika-Room-Mini-Games-Staging-20261103.apk
 
       - name: Publish direct .apk link to a new staging-only GitHub pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create sharika-staging-room-chat-gifts-20261103 \
-            'Sharika-Room-Chat-Gift-Staging-20261103.apk#Sharika Room Chat Gift Staging APK' \
+          gh release create sharika-staging-room-mini-games-20261103 \
+            'Sharika-Room-Mini-Games-Staging-20261103.apk#Sharika Room Mini Games Staging APK' \
             --repo soverixnet-design/Sharika \
-            --target e42f20c1dc330708163d63da74b0e24ddd36a4a4 \
-            --title 'Sharika Room Chat + Gift Receipts — Staging TEST APK' \
-            --notes 'Staging test APK, not a final Play Store release. Includes expanded scrollable room chat and verified gift sender-recipient receipts. Live two-phone room chat, gifts, voice and seat actions still require physical-device verification.' \
+            --target fe53b0e3d632cce2730cd4f328cc1a0b8a7713ca \
+            --title 'Sharika Compact Room Games — Staging TEST APK' \
+            --notes 'Staging test APK, not a final Play Store release. Includes compact room game sheets, visible 1K to 10M bet chips, and preserved room chat and seat controls. Live two-phone betting, voice, gift and owner-seat actions still require physical-device verification.' \
             --prerelease \
             --latest=false
