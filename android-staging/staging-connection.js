@@ -745,7 +745,7 @@
     return String(event?.sender_name||'Member')+' (ID '+event.sender_id+') sent '+
       String(event.emoji||'🎁')+' '+String(event.name||'Gift')+' ×'+
       String(event.quantity||1)+' to '+String(event.recipient_name||'Member')+
-      ' (ID '+event.recipient_id+') · 🪙 '+formatCompactCoins(giftEventValue(event));
+      ' (ID '+event.recipient_id+') · 🪙 '+giftEventValue(event).toLocaleString('en-US');
   }
   function queueGiftPresentation(frame,event,featured=false){
     const doc=frame?.document;

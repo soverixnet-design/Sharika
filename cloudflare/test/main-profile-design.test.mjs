@@ -27,7 +27,7 @@ test('main profile has real identity/wallet anchors and four owner-designed tile
     'data-profile-stat="followers"','data-profile-stat="following"',
     'data-profile-stat="visitors"','data-m="store"','id="mbd"',
     'data-m="frame"','data-m="daily"'])assert.ok(html.includes(selector),selector);
-  assert.match(html,/coins\(\)\.toLocaleString/);
+  assert.match(html,/fmt\(coins\(\)\)/);
   assert.match(html,/RS\(\)\.dia/);
   assert.match(android,/renderVerifiedMainProfileStats\(\)/);
   assert.match(android,/api\('GET','\/bonds\/profile\/'\+id\)/);
