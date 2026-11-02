@@ -1726,6 +1726,7 @@
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
     if(state.recoveryTimer)clearTimeout(state.recoveryTimer);
+    for(const timer of state.bootstrapTimers||[])clearTimeout(timer);
     for(const element of state.audioElements){element.pause();element.srcObject=null;element.remove();}
     if(state.media)for(const track of state.media.getTracks())track.stop();
     for(const pc of [state.publishPC,state.receivePC])if(pc)pc.close();
@@ -1795,16 +1796,39 @@
       }
     }finally {state.syncing=false;}
   }
+  // The receiving SFU session does not need microphone permission or a
+  // completed publishing handshake. Start it immediately for fast listening.
+  async function startSfuReceiving(state) {
+    const roomId=state.roomId;
+    const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
+    if(state.closed||wantedVoiceRoom!==roomId)
+      throw new Error('Voice room changed');
+    state.subscribeId=joined.sessionId;
+    state.sessionIds.push(joined.sessionId);
+    state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
+    state.receivePC.ontrack=event=>addAudioTrack(state,event);
+    await subscribeSfu(state);
+    // Rapidly discover nearby joins, then fall back to the regular 8s poll.
+    for(const delay of [1200,3000,5500]) {
+      state.bootstrapTimers.push(setTimeout(()=>{
+        if(!state.closed&&sfuState===state)
+          subscribeSfu(state).catch(()=>{});
+      },delay));
+    }
+  }
   async function connectSfu(roomId,canPublish) {
     const state={
       roomId,closed:false,sessionIds:[],publishPC:null,receivePC:null,
       media:null,audioElements:new Set(),remoteMids:new Map(),
       subscribed:new Set(),subscribeId:null,timer:null,syncing:false,
-      canPublish,subscriptionFailures:0,heartbeatFailures:0,
+      canPublish,subscriptionFailures:0,heartbeatFailures:0,bootstrapTimers:[],
       firstSubscriptionAt:0,receiveDisconnectedAt:0,
       startedAt:Date.now(),disconnectedAt:0,recoveryTimer:null,recoveryExhausted:false
     };
     sfuState=state;
+    // Convert errors to a result immediately so a fast receive failure
+    // cannot become an unhandled rejection while mic capture is pending.
+    const receiving=startSfuReceiving(state).then(()=>null,error=>error);
     try {
       if(canPublish) {
         state.media=await navigator.mediaDevices.getUserMedia({
@@ -1854,12 +1878,8 @@
         checkPublisher();
       }
       if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
-      const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
-      state.subscribeId=joined.sessionId;
-      state.sessionIds.push(joined.sessionId);
-      state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
-      state.receivePC.ontrack=event=>addAudioTrack(state,event);
-      await subscribeSfu(state);
+      const receiveError=await receiving;
+      if(receiveError)throw receiveError;
       // Refresh both presence and publications; do not consume room resources
       // on a tight per-frame timer.
       state.timer=setInterval(()=>{
@@ -1902,6 +1922,7 @@
       },8000);
       return {publishing:canPublish};
     }catch(error){
+      await receiving; // Ensure any in-flight receiver has finished before cleanup.
       await disconnectSfu();
       throw error;
     }
@@ -2010,6 +2031,21 @@
     } finally {
       if(pendingVoice?.promise===task)pendingVoice=null;
     }
+  }
+  // Frame cosmetics cannot restart a voice transport already in progress.
+  function ensureVoiceConnected(roomId) {
+    if(pendingVoice?.roomId===roomId)return pendingVoice.promise;
+    if(sfuState?.roomId===roomId&&!sfuState.closed&&sfuState.receivePC&&
+       !sfuState.recoveryExhausted&&
+       sfuState.receivePC.connectionState!=='failed')
+      return Promise.resolve({publishing:sfuState.canPublish});
+    if(voiceRoom&&voiceRoomId===roomId)
+      return Promise.resolve({publishing:!!voiceRoom.sharikaPublishAllowed});
+    return connectVoice(roomId);
+  }
+  function setRoomScreenAwake(enabled) {
+    native('roomScreenAwake',{enabled:!!enabled}).catch(error=>
+      console.warn('Room screen-awake update:',errText(error)));
   }
   function markLocalMicrophone(enabled) {
     const frame=document.getElementById('rf')?.contentWindow;
@@ -4077,7 +4113,7 @@
       if(window.cur?.id===room.id)pollRoomEntries().catch(()=>{});
     },2500);
     try {
-      const voice=await connectVoice(room.id);
+      const voice=await ensureVoiceConnected(room.id);
       frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
     } catch(error) {
       frame.toast('Voice pending: '+errText(error));
@@ -4121,6 +4157,8 @@
       if(prior?.id===room.id) {
         document.getElementById('rw')?.classList.add('on');
         document.getElementById('mini')?.classList.remove('on');
+        setRoomScreenAwake(true);
+        resumeRoomAudio();
         return;
       }
       // Room-to-room navigation must release old seats, membership and audio.
@@ -4135,6 +4173,13 @@
         await api('POST','/rooms/'+prior.id+'/leave',{});
       }
       await api('POST','/rooms/'+room.id+'/join',{});
+      // Start media immediately after verified join, while the room iframe
+      // and decorative assets continue loading independently.
+      ensureVoiceConnected(room.id).catch(error=>{
+        if(window.cur?.id===room.id)
+          toast('Voice connecting: '+errText(error));
+      });
+      setRoomScreenAwake(true);
       // Record only confirmed joins; keep History private to this verified
       // account on this device (a failed join must not appear in History).
       if(window.SharikaDiscovery){
@@ -4158,6 +4203,7 @@
     if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
     releaseVoice().catch(()=>{});
+    setRoomScreenAwake(false);
     if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
     if(session)heartbeatPresence(null);
     const iframe=document.getElementById('rf');
