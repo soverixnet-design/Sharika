@@ -61,8 +61,33 @@ test('staging app uses real animated level assets in both profile and room',()=>
   assert.match(client,/function showSvipRoyalSheet/);
   assert.match(client,/function playSvipRoomEntry/);
   assert.match(client,/sh-svip-seat-badge/);
-  assert.match(client,/PROFILE.*VOICE ROOM SEAT/s);
+  assert.match(client,/PROFILE PREVIEW.*VOICE ROOM PREVIEW/s);
   assert.match(worker,/svipAppearance\(x,equipped\.get\(x\.user_id\)/);
   assert.match(worker,/publicSvipSelect\('u'\)/);
   assert.match(worker,/svip-entry-/);
+});
+
+test('SVIP 30-day shop and Backpack migration are additive and per-level priced',()=>{
+  const migration=readFileSync(new URL('../migrations/0041_svip_shop_rewards_backpack.sql',import.meta.url),'utf8');
+  const client=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const admin=readFileSync(new URL('../../admin/connection.js',import.meta.url),'utf8');
+  const premium=readFileSync(new URL('../src/premium.mjs',import.meta.url),'utf8');
+  const cosmetics=readFileSync(new URL('../src/cosmetics.mjs',import.meta.url),'utf8');
+  assert.match(migration,/CREATE TABLE IF NOT EXISTS sharika_svip_levels/);
+  assert.match(migration,/expires_at_ms INTEGER DEFAULT NULL/);
+  assert.match(migration,/\(8,8000000,8000,1\)/);
+  assert.doesNotMatch(migration,/DROP TABLE|DELETE FROM sharika_wallet_ledger|UPDATE sharika_users/);
+  assert.match(premium,/const SVIP_DURATION_DAYS=30/);
+  assert.match(premium,/svipPackStatements\(env.DB,uid,level,expiration/);
+  assert.match(cosmetics,/i.expires_at_ms IS NULL OR i.expires_at_ms>\?/);
+  assert.match(client,/svip_level:level,request_id:requestId/);
+  assert.match(client,/data-svip-preview/);
+  assert.match(client,/MY BACKPACK|My Backpack/);
+  assert.match(admin,/data-svip-field/);
+});
+test('special IDs appear once as digits while SVIP frame has its own scalable class',()=>{
+  const client=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.doesNotMatch(client,/Neon Special ID/);
+  assert.match(client,/sh-svip-frame/);
+  assert.match(client,/sh-neon-single-id/);
 });
