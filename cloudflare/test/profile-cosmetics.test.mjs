@@ -304,7 +304,8 @@ test('confirmed gift, seller transfer and exchange do not turn into false failur
    assert.match(cosmetics,/existing\?'cosmetic_grant_re_equip':'cosmetic_grant'/);
    assert.match(adapter,/function refreshVerifiedAppearance\(\)/);
    assert.match(adapter,/['\"]special_id['\"]/);
-   assert.match(adapter,/plaque\.textContent='Neon Special ID/);
+   assert.doesNotMatch(adapter,/plaque\.textContent='Neon Special ID/);
+   assert.match(adapter,/sh-neon-single-id/);
    assert.match(adapter,/\.sh-neon-public-id/);
    assert.match(adapter,/node\.style\.overflow='visible'/);
    assert.match(adapter,/object-fit:cover;object-position:center;border-radius:50%/);
