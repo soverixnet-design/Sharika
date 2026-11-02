@@ -332,6 +332,8 @@
     premiumItem('vip5-animated','VIP5 Royal Wings','vip'),
     ...premiumRange('svip-frame',8,'SVIP Animated Frame','svip'),
     premiumItem('noble-gold-microphone','Noble Gold Microphone','noble'),
+    premiumItem('cs-royal-wings','CS Royal Wings · Official','role'),
+    premiumItem('coin-seller-royal','Coin Seller Crown · Official','role'),
     ...roleNumbers.map(number=>premiumItem('role-frame-'+String(number).padStart(2,'0'),
       'Royal Role Frame '+number,'role'))
   );
@@ -1016,7 +1018,8 @@
       button.appendChild(label);
       const price=document.createElement('span');
       price.textContent=item.previewOnly?'Preview only · Admin rollout pending':
-        item.owned?'✓ Owned':item.active?
+        item.owned?'✓ Owned':OFFICIAL_ROLE_FRAMES.has(item.item_id)?
+        '🔒 Official role · Admin grant only':item.active?
         '🪙 '+formatCompactCoins(item.price_coins):'Unavailable';
       button.appendChild(price);
       button.disabled=!!item.previewOnly||!!item.item_id&&!item.owned&&!item.active;
@@ -1081,6 +1084,9 @@
     {key:'event_title',label:'Event Titles',icon:'🌟'}
   ];
   const ROYAL_KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
+  const OFFICIAL_ROLE_FRAMES=new Set([
+    'frame_style:cs-royal-wings','frame_style:coin-seller-royal'
+  ]);
   let royalMarket=null,royalMarketRequest=0,royalMarketBusy=false;
   function marketEl(tag,className,textValue){
     const element=document.createElement(tag);
@@ -1169,7 +1175,7 @@
     const found=state.items.filter(x=>x.kind===state.category&&
       (state.mode==='backpack'||
         !/^svip-(frame|medal|tag|entry)-[0-9]{2}$/.test(String(x.art_key||'')))&&
-      (state.mode==='shop'?x.active||x.owned:x.owned));
+      (state.mode==='shop'?x.active||x.owned||OFFICIAL_ROLE_FRAMES.has(x.id):x.owned));
     if(!found.length){
       const message=marketEl('div','sh-rm-empty');
       message.append(marketEl('div','sh-rm-empty-icon',state.mode==='shop'?'✨':'🎒'),
@@ -1202,20 +1208,24 @@
       const label=marketEl('div','sh-rm-name',item.name);
       const expires=item.expires_at_ms?
         ' · until '+new Date(Number(item.expires_at_ms)).toLocaleDateString('en-GB'):'';
+      const officialOnly=OFFICIAL_ROLE_FRAMES.has(item.id);
       const price=marketEl('div','sh-rm-price',item.owned?
         (item.equipped?'✓ Equipped':'✓ In backpack')+expires:
+        officialOnly?'🔒 Official role · Admin grant only':
         '🪙 '+formatCompactCoins(item.price_coins));
       const ops=marketEl('div','sh-rm-ops');
       const primary=marketEl('button','sh-rm-btn');
       primary.type='button';
       if(state.mode==='shop'){
-        primary.textContent=item.owned?'Use':'Purchase';
-        primary.onclick=()=>item.owned?marketEquip(item,false):marketPurchase(item);
+        primary.textContent=item.owned?'Use':officialOnly?'Admin only':'Purchase';
+        primary.onclick=()=>item.owned?marketEquip(item,false):
+          officialOnly?undefined:marketPurchase(item);
       }else{
         primary.textContent=item.equipped?'Take Off':'Use';
         primary.onclick=()=>marketEquip(item,!!item.equipped);
       }
-      primary.disabled=royalMarketBusy||!!item.equipped&&state.mode==='shop';
+      primary.disabled=royalMarketBusy||!!item.equipped&&state.mode==='shop'||
+        (officialOnly&&!item.owned);
       ops.appendChild(primary);
       if(item.kind==='entry_style'&&art){
         const previewBtn=marketEl('button','sh-rm-btn sh-rm-btn-secondary','▶');

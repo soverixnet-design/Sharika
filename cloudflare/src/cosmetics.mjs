@@ -9,7 +9,7 @@ const roleArt=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,
  .map(number=>'role-frame-'+String(number).padStart(2,'0'));
 const KEYS={
  frame_style:new Set(['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love','ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
-  'vip5-animated','noble-gold-microphone',...numbered('svip-frame',8),...roleArt]),
+  'vip5-animated','noble-gold-microphone','cs-royal-wings','coin-seller-royal',...numbered('svip-frame',8),...roleArt]),
  entry_style:new Set(['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen',...numbered('svip-entry',8)]),
  medal_style:new Set(['bronze','silver','gold','top-host',...numbered('svip-medal',8)]),
  name_tag_style:new Set(['legend',...numbered('svip-tag',17)])
@@ -88,6 +88,11 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
  if(path==='/api/v1/cosmetics/purchase'&&request.method==='POST'){
   const body=await readBody(request);
   const itemId=body.item_id,requestId=body.request_id;
+  // These designs visibly claim an official CS/Seller role. They may be
+  // granted and equipped through the audited Super Admin flow, never purchased.
+  if(itemId==='frame_style:cs-royal-wings'||
+     itemId==='frame_style:coin-seller-royal')
+    return fail('official_role_frame_admin_grant_only',403,cors);
   if(typeof itemId!=='string'||itemId.length>70||
      typeof requestId!=='string'||!TX.test(requestId))return invalid(fail,cors);
   const prior=await db.prepare(
