@@ -20,7 +20,8 @@ function fakeDocument(){
       append(...children){
         this.children.push(...children);
         for(const item of children)if(item.id)nodes.set(item.id,item);
-      }
+      },
+      appendChild(child){this.append(child);}
     };
   };
   const doc={
