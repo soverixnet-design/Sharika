@@ -2188,9 +2188,15 @@
           sessionId:state.subscribeId,
           publications:batch.map(x=>({sessionId:x.sessionId,trackName:x.trackName}))
         });
-        // Map the SFU's receiving MIDs before setRemoteDescription fires "track".
+        // The publications list carries authenticated user IDs from our
+        // room coordinator. The SFU subscribe response does not echo those
+        // IDs: match its verified session IDs to the original publications.
+        // Never trust a client-supplied speaker identity.
+        const verifiedSpeakerIds=new Map(batch.map(item=>
+          [item.sessionId,item.userId||'']));
         for(const track of response.tracks||[]) {
-          state.remoteMids.set(String(track.mid),track.userId||'');
+          state.remoteMids.set(String(track.mid),
+            verifiedSpeakerIds.get(track.sessionId)||'');
         }
         await state.receivePC.setRemoteDescription(response.sessionDescription);
         const answer=await state.receivePC.createAnswer();
