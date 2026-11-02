@@ -166,3 +166,20 @@
 @media (prefers-reduced-motion: reduce) {
   .app.golden-home #v-home { animation: none; }
 }
+
+/* Keep the new home artwork while avoiding continuous GPU work on touch phones. */
+@media (pointer: coarse) {
+  .app.golden-home .blob,
+  .app.golden-home #v-home .sway,
+  .app.golden-home #v-home .slide i,
+  .app.golden-home #v-home .card .tilt::after {
+    animation: none !important;
+  }
+  .app.golden-home #v-home .hd,
+  .app.golden-home #v-home .srch,
+  .app.golden-home #v-home .qa button,
+  .app.golden-home #v-home .tabs button {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}

@@ -2210,9 +2210,9 @@
   }
   // A light-weight, audio-only voice activity meter. The WebAudio sources
   // connect only to analysers: microphone audio is never played back locally.
-  // Sample every 160ms and hold a ring briefly to avoid speech flicker.
+  // Sample every 250ms to conserve WebView CPU while keeping a live voice ring.
   function sampleSfuSpeaking(state) {
-    if(state.closed||sfuState!==state)return;
+    if(state.closed||sfuState!==state||document.hidden)return;
     const now=Date.now(),speaking=new Set();
     for(const [track,meter] of state.speakingMeters){
       if(track.readyState!=='live'||!track.enabled||track.muted){
@@ -2253,7 +2253,7 @@
       if(state.speakingContext.state==='suspended')
         state.speakingContext.resume().catch(()=>{});
       if(!state.speakingTimer)
-        state.speakingTimer=setInterval(()=>sampleSfuSpeaking(state),160);
+        state.speakingTimer=setInterval(()=>sampleSfuSpeaking(state),250);
     }catch(error){console.warn('Voice activity meter unavailable:',errText(error));}
   }
   function unwatchSfuSpeaking(state,track) {
@@ -2959,7 +2959,7 @@
       return false;
     }
   }
-  let roomsRequestNo=0;
+  let roomsRequestNo=0,lastRoomsRenderSignature=null;
   async function reloadRooms() {
     if (!session) return;
     // Room creation and settings saves must always request a fresh list.
@@ -2988,7 +2988,14 @@
         n:Number(own.online_count)||0,cover_url:own.cover_url||null,
         owner_country:own.owner_country||window.CFG.viewerCountry||'',created_at:own.created_at||''
       } : null;
-      window.renderRooms();
+      // Quiet background refresh: changing identical room cards restarts every
+      // CSS animation and drops touch/scroll state on slower Android WebViews.
+      const renderSignature=JSON.stringify([userId,rows,window.CFG.viewerCountry,
+        window.CFG.roomHistoryIds]);
+      if(renderSignature!==lastRoomsRenderSignature){
+        lastRoomsRenderSignature=renderSignature;
+        window.renderRooms();
+      }
     } catch (error) {
       if(requestNo===roomsRequestNo && session?.user?.id===userId)
         toast('Rooms unavailable: '+errText(error));
@@ -3303,12 +3310,21 @@
       if(Number.isInteger(seatNo)&&seatNo>0&&seatNo<slots.length&&slots[seatNo].empty)
         slots[seatNo]={lock:1,i:seatNo};
     }
+    // A steady room used to rebuild every seat, avatar, overlay and touch
+    // handler every 8 seconds even when the authoritative snapshot was equal.
+    // Keep live speaking indicators responsive without repainting stable DOM.
+    const renderSignature=JSON.stringify([slots,audience,palette,sharedImage,
+      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[],
+      frame.innerWidth,frame.innerHeight]);
+    const snapshotChanged=frame.__sharikaRoomRenderSignature!==renderSignature;
     frame.seats=slots;
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     frame.U=audience;
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
+    if(!snapshotChanged)return;
+    frame.__sharikaRoomRenderSignature=renderSignature;
     frame.render();
     if(typeof paintVerifiedMicCount==='function')paintVerifiedMicCount(frame);
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);

@@ -3,6 +3,9 @@
 // This module does not use Supabase or any privileged Firebase service account.
 const KEYS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 let keyCache = { until: 0, keys: [] };
+// Public Firebase JWK objects remain stable until JWKS refresh. A WeakMap
+// reuses their imported CryptoKeys without retaining old keys after rotation.
+const importedPublicKeys = new WeakMap();
 
 function decodeJson(part) {
   const binary = atob(part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - part.length % 4) % 4));
@@ -42,7 +45,12 @@ export async function verifyFirebaseToken(headerValue, projectId, fetcher = fetc
         !Number.isInteger(payload.auth_time) || payload.auth_time > now) return null;
     const key = (await currentKeys(fetcher, timestamp)).find(k => k.kid === header.kid && k.kty === 'RSA' && k.alg === 'RS256');
     if (!key) return null;
-    const imported = await crypto.subtle.importKey('jwk', key, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    let imported = importedPublicKeys.get(key);
+    if (!imported) {
+      imported = await crypto.subtle.importKey('jwk', key,
+        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+      importedPublicKeys.set(key, imported);
+    }
     const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', imported, bytes(parts[2]), new TextEncoder().encode(parts[0] + '.' + parts[1]));
     if (!valid) return null;
     return { uid: 'firebase:' + projectId + ':' + payload.sub, email: payload.email || '', verified: payload.email_verified === true };
