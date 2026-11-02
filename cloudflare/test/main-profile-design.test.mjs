@@ -47,7 +47,8 @@ test('Account & Features stays vertically stacked with six wired destinations',(
     assert.ok(html.includes(`class="mr" data-m="${action}"`),label);
   }
   assert.match(android,/styleSelectionSheet\('entry_style'\)/);
-  assert.match(android,/showPremiumSheet\(\)\.catch/);
+  assert.match(android,/showSvipRoyalSheet\(\)\.catch/);
+  assert.match(android,/function showSvipRoyalSheet/);
   assert.match(android,/openVerifiedRankProfile\(profile\.public_id\)/);
 });
 

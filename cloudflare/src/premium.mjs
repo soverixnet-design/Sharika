@@ -4,6 +4,7 @@ const RANK={none:0,vip:1,svip:2,noble:3};
 const MAX_BALANCE=1_000_000_000_000;
 const REQUEST_ID=/^[A-Za-z0-9:_-]{12,80}$/;
 const PUBLIC_ID=/^[0-9]{8}$/;
+const validSvipLevel=value=>Number.isInteger(value)&&value>=1&&value<=8;
 const MS_DAY=86_400_000;
 const bool=v=>v===1||v===true;
 const day=now=>new Date(now).toISOString().slice(0,10);
@@ -61,9 +62,14 @@ export function selectPremiumTier({policy,tiers,wealthLevel,giftCoins,manual,now
     }
   }
   const selected=tiers.find(t=>t.tier===tier);
-  return {tier,rank:RANK[tier],source,expires_at_ms,
+  const svip_level=tier==='svip'?
+    (manual?.tier==='svip'&&Number(manual.expires_at_ms)>nowMs&&
+      validSvipLevel(Number(manual.svip_level))?Number(manual.svip_level):1):0;
+  return {tier,rank:RANK[tier],source,expires_at_ms,svip_level,
     daily_bonus_coins:Number(selected?.daily_bonus_coins||0),
-    active_benefits:tier==='none'?[]:['profile_badge','daily_coins'],
+    active_benefits:tier==='none'?[]:tier==='svip'?
+      ['profile_badge','daily_coins','premium_frame','animated_medal','nameplate','room_badge','room_entry_banner']:
+      ['profile_badge','daily_coins'],
     planned_benefits:tier==='none'?[]:tier==='vip'?
       ['profile_badge','entry_effect','chat_style','daily_coins']:
       tier==='svip'?
@@ -76,7 +82,7 @@ async function profileStatus(db,uid,nowMs,configuration=null){
   const [user,manual,volume,claim]=await Promise.all([
     db.prepare('SELECT auth_uid,public_no,coins,wealth_level,status FROM sharika_users WHERE auth_uid=?')
       .bind(uid).first(),
-    db.prepare('SELECT tier,source,starts_at_ms,expires_at_ms FROM sharika_premium_memberships WHERE auth_uid=?')
+    db.prepare('SELECT tier,source,starts_at_ms,expires_at_ms,svip_level FROM sharika_premium_memberships WHERE auth_uid=?')
       .bind(uid).first(),
     db.prepare('SELECT COALESCE(SUM(CAST(quantity AS INTEGER)*CAST(price_coins AS INTEGER)),0) AS gift_coins '+
       'FROM sharika_gift_events WHERE sender_uid=? AND recipient_uid<>sender_uid').bind(uid).first(),
@@ -143,8 +149,10 @@ export async function handlePremiumApp({request,env,uid,path,cors,reply,fail,now
         "updated_at=datetime('now') WHERE auth_uid=?"
       ).bind(chosen.price_coins,chosen.price_coins,uid),
       env.DB.prepare(
-        'INSERT INTO sharika_premium_memberships(auth_uid,tier,source,starts_at_ms,expires_at_ms,granted_by) '+
-        "VALUES(?,?,'purchase',?,?,NULL) ON CONFLICT(auth_uid) DO UPDATE SET "+
+        'INSERT INTO sharika_premium_memberships(auth_uid,tier,source,starts_at_ms,expires_at_ms,granted_by,svip_level) '+
+        "VALUES(?,?,'purchase',?,?,NULL,1) ON CONFLICT(auth_uid) DO UPDATE SET "+
+        "svip_level=CASE WHEN sharika_premium_memberships.tier='svip' AND excluded.tier='svip' "+
+        "THEN sharika_premium_memberships.svip_level ELSE 1 END,"+
         "tier=excluded.tier,source='purchase',starts_at_ms=excluded.starts_at_ms,"+
         "expires_at_ms=excluded.expires_at_ms,granted_by=NULL,updated_at=datetime('now')"
       ).bind(uid,chosen.tier,beginning,expiration),
@@ -231,6 +239,8 @@ export async function handlePremiumAdmin({request,env,uid,actor,operation,cors,r
        (body.tier!=='none'&&(!Number.isInteger(body.duration_days)||
         body.duration_days<1||body.duration_days>365)))
       return fail('invalid_premium_grant',400,cors);
+    const level=body.tier==='svip'?Number(body.svip_level??1):1;
+    if(!validSvipLevel(level))return fail('invalid_svip_level',400,cors);
     if(body.tier!=='none'&&!cfg.policy.admin_grant_enabled)
       return fail('premium_admin_grants_disabled',403,cors);
     const user=await env.DB.prepare(
@@ -238,25 +248,53 @@ export async function handlePremiumAdmin({request,env,uid,actor,operation,cors,r
     ).bind(Number(body.public_id)).first();
     if(!user||user.status!=='active')return fail('user_not_found',404,cors);
     const previous=await env.DB.prepare(
-      'SELECT tier,source,expires_at_ms FROM sharika_premium_memberships WHERE auth_uid=?'
+      'SELECT tier,source,expires_at_ms,svip_level FROM sharika_premium_memberships WHERE auth_uid=?'
     ).bind(user.auth_uid).first();
     const statement=body.tier==='none'
       ?env.DB.prepare('DELETE FROM sharika_premium_memberships WHERE auth_uid=?').bind(user.auth_uid)
       :env.DB.prepare(
-        'INSERT INTO sharika_premium_memberships(auth_uid,tier,source,starts_at_ms,expires_at_ms,granted_by) '+
-        "VALUES(?,?,'admin',?,?,?) ON CONFLICT(auth_uid) DO UPDATE SET tier=excluded.tier,"+
+        'INSERT INTO sharika_premium_memberships(auth_uid,tier,source,starts_at_ms,expires_at_ms,granted_by,svip_level) '+
+        "VALUES(?,?,'admin',?,?,?,?) ON CONFLICT(auth_uid) DO UPDATE SET tier=excluded.tier,"+
         "source='admin',starts_at_ms=excluded.starts_at_ms,expires_at_ms=excluded.expires_at_ms,"+
-        "granted_by=excluded.granted_by,updated_at=datetime('now')"
-      ).bind(user.auth_uid,body.tier,nowMs,nowMs+body.duration_days*MS_DAY,uid);
+        "granted_by=excluded.granted_by,svip_level=excluded.svip_level,updated_at=datetime('now')"
+      ).bind(user.auth_uid,body.tier,nowMs,nowMs+body.duration_days*MS_DAY,uid,level);
     await env.DB.batch([
       statement,
       env.DB.prepare('INSERT INTO sharika_premium_audit(actor_uid,target_uid,action,details_json) '+
         'VALUES(?,?,?,?)').bind(uid,user.auth_uid,
         body.tier==='none'?'revoke':'grant',JSON.stringify({before:previous,
-          tier:body.tier,duration_days:body.duration_days||0}))
+          tier:body.tier,svip_level:body.tier==='svip'?level:0,duration_days:body.duration_days||0}))
     ]);
     return reply({updated:true,public_id:body.public_id,tier:body.tier,
-      expires_at_ms:body.tier==='none'?null:nowMs+body.duration_days*MS_DAY},200,cors);
+      svip_level:body.tier==='svip'?level:0,expires_at_ms:body.tier==='none'?null:nowMs+body.duration_days*MS_DAY},200,cors);
   }
   return fail('premium_method_not_allowed',405,cors);
+}
+
+/**
+ * A public SVIP level is always computed from verified premium rules.
+ * Manual paid/admin levels 1..8 take precedence, automatic SVIP is level 1,
+ * and higher Noble eligibility suppresses the SVIP ornament.
+ */
+export function publicSvipSelect(alias='u'){
+  if(!/^[a-z][a-z0-9_]*$/.test(alias))throw Error('invalid_sql_alias');
+  const gifts='COALESCE((SELECT SUM(CAST(g.quantity AS INTEGER)*CAST(g.price_coins AS INTEGER)) '+
+    'FROM sharika_gift_events g WHERE g.sender_uid='+alias+'.auth_uid AND g.recipient_uid<>g.sender_uid),0)';
+  const automatic=tier=>'(EXISTS(SELECT 1 FROM sharika_premium_policy p '+
+    'JOIN sharika_premium_tiers t ON t.tier=\''+tier+'\' WHERE p.key=\'standard\' '+
+    'AND p.auto_enabled=1 AND ((p.auto_by_level=1 AND '+alias+'.wealth_level>=t.min_wealth_level) '+
+    'OR (p.auto_by_gifts=1 AND '+gifts+'>=t.min_gift_coins))))';
+  const active='(p.expires_at_ms>CAST(unixepoch(\'now\') AS INTEGER)*1000)';
+  const member='(SELECT COALESCE(p.svip_level,1) FROM sharika_premium_memberships p '+
+    'WHERE p.auth_uid='+alias+'.auth_uid AND p.tier=\'svip\' AND '+active+' LIMIT 1)';
+  const noble='EXISTS(SELECT 1 FROM sharika_premium_memberships p '+
+    'WHERE p.auth_uid='+alias+'.auth_uid AND p.tier=\'noble\' AND '+active+')';
+  return 'CASE WHEN '+noble+' OR '+automatic('noble')+' THEN 0 '+
+    'WHEN '+automatic('svip')+' THEN COALESCE('+member+',1) '+
+    'ELSE COALESCE('+member+',0) END AS svip_level';
+}
+export async function readSvipLevel(db,uid){
+  const row=await db.prepare('SELECT '+publicSvipSelect('u')+
+    ' FROM sharika_users u WHERE u.auth_uid=?').bind(uid).first();
+  return Number(row?.svip_level)||0;
 }

@@ -5,7 +5,7 @@ import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
-import { handlePremiumApp } from './premium.mjs';
+import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
 import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
@@ -48,6 +48,24 @@ function reply(payload, status = 200, cors = {}) {
 function fail(code, status, cors) { return reply({ error: code }, status, cors); }
 function txt(value, limit) { return typeof value === 'string' ? value.trim().slice(0, limit) : ''; }
 function publicId(n) { return String(n).padStart(8, '0'); }
+function svipAppearance(user,equipped={},level=Number(user?.svip_level)||0) {
+  const n=Number(level);
+  const appearance={
+    frame_style:equipped.frame_style??user.frame_style??'',
+    entry_style:equipped.entry_style??user.entry_style??'',
+    medal_style:equipped.medal_style??user.medal_style??'',
+    name_tag_style:equipped.name_tag_style??user.name_tag_style??'',
+    svip_level:0
+  };
+  if(Number.isInteger(n)&&n>=1&&n<=8){
+    const key=String(n).padStart(2,'0');
+    appearance.frame_style='svip-frame-'+key;
+    appearance.medal_style='svip-medal-'+key;
+    appearance.name_tag_style='svip-tag-'+key;
+    appearance.svip_level=n;
+  }
+  return appearance;
+}
 function showProfile(user) {
   if (!user) return null;
   return {
@@ -313,7 +331,8 @@ export async function handleRequest(request, env, ctx) {
         const user = await me(env.DB, uid);
         if(!user)return fail('profile_not_found',404,cors);
         const special=await activeSpecial(env.DB,uid);
-        return reply({...showProfile(user),...await readEquipped(env.DB,uid),
+        return reply({...showProfile(user),...svipAppearance(user,
+          await readEquipped(env.DB,uid),await readSvipLevel(env.DB,uid)),
           special_id:special?.special_id||null,
           display_id:special?.special_id||publicId(user.public_no),
           special_frame:special?.frame||null},200,cors);
@@ -417,7 +436,8 @@ export async function handleRequest(request, env, ctx) {
         wealth_level: user.wealth_level, charm_level: user.charm_level,
         frame_style: user.frame_style || '', entry_style: user.entry_style || '',
         medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '',
-        ...await readEquipped(env.DB,user.auth_uid) }, 200, cors)
+        ...svipAppearance(user,await readEquipped(env.DB,user.auth_uid),
+          await readSvipLevel(env.DB,user.auth_uid)) }, 200, cors)
         : fail('not_found', 404, cors);
     }
     // Real follow graph. Identity always comes from the verified Firebase token.
@@ -439,9 +459,10 @@ export async function handleRequest(request, env, ctx) {
       ).bind(uid).all();
       const showFollow=u=>({...u,public_id:publicId(u.public_no),
         display_id:u.special_id||publicId(u.public_no),public_no:undefined,
-        frame_style:u.equipped_frame_style??u.frame_style??'',
-        medal_style:u.equipped_medal_style??u.medal_style??'',
-        name_tag_style:u.equipped_name_tag_style??u.name_tag_style??''});
+        ...svipAppearance(u,{
+          frame_style:u.equipped_frame_style??u.frame_style??'',
+          medal_style:u.equipped_medal_style??u.medal_style??'',
+          name_tag_style:u.equipped_name_tag_style??u.name_tag_style??''})});
       return reply({following:(following.results||[]).map(showFollow),
         followers:(followers.results||[]).map(showFollow)},200,cors);
     }
@@ -492,9 +513,10 @@ export async function handleRequest(request, env, ctx) {
           special_id:item.special_id||null,name:item.name,
           last_body:item.body,last_at:item.created_at,pic:item.pic||null,
           unread_count:0,other_uid:item.other_uid,
-          frame_style:item.equipped_frame_style??item.frame_style??'',
-          medal_style:item.equipped_medal_style??item.medal_style??'',
-          name_tag_style:item.equipped_name_tag_style??item.name_tag_style??''});
+          ...svipAppearance(item,{
+            frame_style:item.equipped_frame_style??item.frame_style??'',
+            medal_style:item.equipped_medal_style??item.medal_style??'',
+            name_tag_style:item.equipped_name_tag_style??item.name_tag_style??''})});
         if(conversations.length>=100)break;
       }
       const unread=await env.DB.prepare(
@@ -1035,8 +1057,11 @@ export async function handleRequest(request, env, ctx) {
         if(env.VOICE_ROOMS){
           const entrant=await assertActive(env.DB,uid);
           const equipped=await readEquipped(env.DB,uid);
-          const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
-            ?equipped.entry_style:(entrant.entry_style||'');
+          const svipLevel=await readSvipLevel(env.DB,uid);
+          const entry=svipLevel>=1&&svipLevel<=8
+            ?'svip-entry-'+String(svipLevel).padStart(2,'0')
+            :Object.prototype.hasOwnProperty.call(equipped,'entry_style')
+              ?equipped.entry_style:(entrant.entry_style||'');
           if(entry)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
             .roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry);
         }
@@ -1369,7 +1394,7 @@ export async function handleRequest(request, env, ctx) {
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,m.joined_at,
           u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style,
-          ${activeSpecialSelect('u')} FROM sharika_room_members m
+          ${activeSpecialSelect('u')},${publicSvipSelect('u')} FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
         // A killed Android process may never call /leave. Show active presence
         // (with a 90-second grace period for new joins), without mutating the
@@ -1416,9 +1441,7 @@ export async function handleRequest(request, env, ctx) {
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
             special_id:x.special_id||null,display_id:x.special_id||publicId(x.public_no),
-            frame_style: x.frame_style || '', entry_style: x.entry_style || '',
-            medal_style: x.medal_style || '', name_tag_style: x.name_tag_style || '',
-            ...(equipped.get(x.user_id)||{}) }
+            ...svipAppearance(x,equipped.get(x.user_id)||{}) }
         })) }, 200, cors);
       }
       if (parts.length === 5 && action === 'voice-token' && request.method === 'POST') {

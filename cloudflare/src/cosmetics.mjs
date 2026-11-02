@@ -1,3 +1,4 @@
+import {publicSvipSelect} from './premium.mjs';
 // Server-owned paid cosmetics. Never trust client-side "owned" style flags.
 const KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
 const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
@@ -22,7 +23,7 @@ const invalid=(fail,cors)=>fail('invalid_cosmetic_request',400,cors);
 // Reuse the exact same equipped-style resolution in room/profile, ranking,
 // follower and message cards. Only fixed, known column names reach SQL.
 export function publicAppearanceSelect(){
- return 'u.frame_style,u.medal_style,u.name_tag_style,'+
+ return 'u.frame_style,u.medal_style,u.name_tag_style,'+publicSvipSelect('u')+','+
   ['frame_style','medal_style','name_tag_style'].map(kind=>
    `COALESCE((SELECT CASE WHEN x.item_id IS NULL THEN '' `+
    `ELSE substr(x.item_id,instr(x.item_id,':')+1) END `+
