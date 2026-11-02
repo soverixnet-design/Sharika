@@ -666,6 +666,29 @@
     doc.body.appendChild(notice);
     doc.defaultView?.setTimeout(()=>notice.remove(),3800);
   }
+  function playStandardRoomEntry(doc,event){
+    if(!doc)return;
+    cosmeticCss(doc);
+    doc.querySelector('.sh-svip-room-entry')?.remove();
+    const notice=doc.createElement('div');
+    notice.className='sh-svip-room-entry';
+    notice.setAttribute('role','status');
+    const avatar=doc.createElement('span');
+    avatar.textContent='👋';
+    avatar.setAttribute('aria-hidden','true');
+    avatar.style.cssText='font-size:32px;display:grid;place-items:center;'+
+      'width:59px;height:59px;flex:none;border:2px solid #ffdb97;'+
+      'border-radius:50%;background:#3b185e';
+    const copy=doc.createElement('div');
+    const title=doc.createElement('strong');
+    title.textContent=String(event?.name||'A member').slice(0,80);
+    const sub=doc.createElement('small');
+    sub.textContent='joined the voice room';
+    copy.append(title,sub);
+    notice.append(avatar,copy);
+    doc.body.appendChild(notice);
+    doc.defaultView?.setTimeout(()=>notice.remove(),3800);
+  }
 
   // Avatar URLs come only from the authenticated Sharika profile API. Never
   // render arbitrary user-supplied image URLs in verified room identities.
@@ -3591,8 +3614,9 @@
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
-      user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
-      display_id:owner.display_id||room.id,
+      user_id:room.owner_id,public_id:owner.public_id||room.id,
+      special_id:owner.special_id||null,
+      display_id:owner.display_id||owner.public_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       svip_level:Number(owner.svip_level)||0,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
@@ -3602,13 +3626,16 @@
       const user=member.sharika_users;
       if(!user)continue;
       if(member.user_id===room.owner_id){
-        // Keep the fixed owner throne while also showing the owner's chosen
-        // mic position. Both seats represent one verified user and one stream.
+        // A moved owner appears exactly once. The throne becomes a decoration;
+        // otherwise the same verified ID appears in two seats.
         if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
-           member.seat_no<slots.length)
+           member.seat_no<slots.length){
           slots[member.seat_no]={...slots[0],i:member.seat_no,
             owner_mic_seat:true,muted:!!member.muted||
               (member.user_id===session?.user?.id&&localMic===false)};
+          slots[0]={empty:1,i:0,owner_throne:true,
+            owner_mic_seat_no:member.seat_no};
+        }
         continue;
       }
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
@@ -4295,8 +4322,35 @@
       const self=selected.user_id===session?.user?.id;
       const sheet=frame.$('sheet');
       if(selected.empty||selected.lock){
-        if(!owner&&selected.lock&&sheet){
-          sheet.innerHTML='<div class="grab"></div><h3>🔒 Seat locked</h3>';
+        // The original demo seat sheet binds these actions to local fake
+        // state. Replace them for every empty/locked seat, including owners.
+        // Guests may take open seats; only the verified owner can lock them.
+        if(index===0){
+          if(sheet)sheet.innerHTML='<div class="grab"></div><h3>👑 Owner throne</h3>'+
+            '<div class="row">Owner is speaking from mic seat '+
+            Number(selected.owner_mic_seat_no||0)+'</div>';
+          return result;
+        }
+        if(selected.lock&&!owner){
+          if(sheet)sheet.innerHTML='<div class="grab"></div><h3>🔒 Seat locked</h3>';
+          return result;
+        }
+        const actions=sheet?.querySelector('.acts');
+        if(!actions)return result;
+        actions.replaceChildren();
+        const options=selected.lock
+          ?[['unlock','🔓','Unlock seat']]
+          :owner
+            ?[['lock','🔒','Lock seat'],['invite','📨','Invite member']]
+            :[['take','🎤','Take mic seat']];
+        for(const [action,picture,label] of options){
+          const button=frame.document.createElement('button');
+          button.type='button';button.className='act';
+          const symbol=frame.document.createElement('span');
+          symbol.textContent=picture;
+          button.append(symbol,frame.document.createTextNode(label));
+          button.onclick=()=>frame.act(action,index);
+          actions.appendChild(button);
         }
         return result;
       }
@@ -4313,7 +4367,7 @@
       if(owner&&index===0)options.push(['own','⚙️','Manage']);
       if(owner&&index>0&&!self)options.push(
         ['mute',selected.muted?'🔊':'🔇',selected.muted?'Unmute':'Mute'],
-        ['down','⬇️','Remove from mic'],['lock','🔒','Lock seat'],
+        ['down','⬇️','Remove from mic'],
         ['kick','🚫','Kick out']);
       for(const [action,icon,label] of options){
         const button=frame.document.createElement('button');
@@ -5084,6 +5138,7 @@
             await loadVerifiedCosmetics().catch(()=>{});
           if(entryArt(event.entry_style))
             playSoveraEntry(frame.document,event.entry_style);
+          else playStandardRoomEntry(frame.document,event);
         }
       })();
       entryPollInFlight=work;
@@ -7782,13 +7837,14 @@
       style.id='sh-room-game-style';
       style.textContent=[
         '#sh-room-game-overlay{position:fixed;inset:0;z-index:2147482100;',
-        'display:none;align-items:flex-start;justify-content:center;',
-        'padding:calc(7vh + env(safe-area-inset-top,0px)) 8px 4vh;',
+        'display:none;align-items:flex-end;justify-content:center;',
+        'padding:calc(5vh + env(safe-area-inset-top,0px)) 8px ',
+        'calc(3vh + env(safe-area-inset-bottom,0px));',
         'box-sizing:border-box;background:#070216ae;backdrop-filter:blur(3px)}',
         '#sh-room-game-overlay.on{display:flex}',
         '#sh-room-game-sheet{position:relative;display:flex;flex-direction:column;',
-        'box-sizing:border-box;width:min(96vw,480px);height:min(76dvh,660px);',
-        'max-height:calc(100dvh - 90px);min-height:320px;min-width:0;',
+        'box-sizing:border-box;width:min(96vw,480px);height:min(74dvh,620px);',
+        'max-height:calc(100dvh - 90px);min-height:0;min-width:0;',
         'padding:12px 12px 14px;overflow:hidden;border-radius:22px;',
         'border:2px solid #edc16f;background:linear-gradient(155deg,#351362,#120625);',
         'box-shadow:inset 0 2px #fff5,0 16px 34px #000b;color:#fff}',
@@ -7803,7 +7859,8 @@
         'z-index:2;min-width:36px;min-height:36px;border-radius:50%;',
         'border:1px solid #f5cb77;background:#49165d;color:#fff;',
         'font-size:21px;cursor:pointer}',
-        '@media(max-height:570px){#sh-room-game-overlay{padding-top:24px}',
+        '@media(max-height:570px){#sh-room-game-overlay{padding-top:14px;',
+        'padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}',
         '#sh-room-game-sheet{height:calc(100dvh - 42px);max-height:none}}'
       ].join('');
       doc.head.appendChild(style);

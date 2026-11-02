@@ -46,7 +46,12 @@ test('room mini-game portal is reusable, compact, closable, and preserves room D
   const b=ensurePortal(doc);
   assert.equal(a.overlay,b.overlay,'reopening must reuse the same root overlay');
   assert.equal(a.sheet,b.sheet);
-  assert.match(doc.getElementById('sh-room-game-style').textContent,/height:min\(76dvh,660px\)/);
+  const sheetCss=doc.getElementById('sh-room-game-style').textContent;
+  assert.match(sheetCss,/height:min\(74dvh,620px\)/);
+  assert.match(sheetCss,/align-items:flex-end/,
+    'room mini games should sit above the bottom dock, not cover the middle seats');
+  assert.match(sheetCss,/env\(safe-area-inset-bottom,0px\)/,
+    'game sheet must remain above the Android gesture area');
   assert.match(doc.getElementById('sh-room-game-style').textContent,/#sh-room-game-host|#sh-original-host/);
   a.overlay.classList.add('on');
   doc.getElementById('sh-room-game-close').onclick();
