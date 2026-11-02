@@ -90,7 +90,7 @@ test('room seats keep SVIP beside the avatar frame and IDs only inside profiles'
   assert.match(ui,/\.seat \.av>\.sh-svip-seat-badge/);
   assert.doesNotMatch(ui,/badge\.textContent=seat\.special_id/);
   assert.match(ui,/openVerifiedRoomMemberProfile\(target\.public_id,room\.id,seat\)/);
-  assert.match(ui,/decorateRoomSeats\(frame\);\s*if\(window\.cur\?\.id===sfuState\?\.roomId\)/);
+  assert.match(ui,/decorateRoomSeats\(frame\);\s*paintVerifiedMicCount\(frame\);\s*if\(window\.cur\?\.id===sfuState\?\.roomId\)/);
 });
 
 test('room gestures retry blocked incoming audio in both the app and room iframe',()=>{
