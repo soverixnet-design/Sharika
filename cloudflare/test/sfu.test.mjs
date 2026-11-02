@@ -92,6 +92,43 @@ test('new SFU session is owner-scoped and credentials remain server-side',async(
   }finally{globalThis.fetch=old;}
 });
 
+test('publisher is discovered only after ICE-connected ready signal',async()=>{
+  const old=globalThis.fetch;
+  let readyCalls=0;
+  const roomWithReady={...room,
+    async markPublished(uid,sessionId,trackName){
+      assert.equal(uid,'u1');assert.equal(sessionId,'session-one');
+      assert.equal(trackName,'microphone');readyCalls++;return true;
+    }};
+  globalThis.fetch=async()=>Response.json({
+    sessionDescription:{type:'answer',sdp:'v=0\r\n'+'a'.repeat(70)},
+    tracks:[{mid:'0'}]
+  });
+  try{
+    const publish=await handleVoiceOperation({...base,
+      env:{...env,VOICE_ROOMS:{getByName:()=>roomWithReady}},
+      operation:'publish',request:req('POST','publish',{
+        sessionId:'session-one',
+        sessionDescription:{type:'offer',sdp:'v=0\r\n'+'a'.repeat(70)},
+        mid:'0',trackName:'microphone'
+      })});
+    assert.equal(publish.status,200);
+    assert.equal(readyCalls,0,'an SDP answer is not an active microphone');
+    const ready=await handleVoiceOperation({...base,
+      env:{...env,VOICE_ROOMS:{getByName:()=>roomWithReady}},
+      operation:'ready',request:req('POST','ready',{sessionId:'session-one'})});
+    assert.equal(ready.status,200);
+    assert.equal(readyCalls,1);
+  }finally{globalThis.fetch=old;}
+});
+
+test('unseated guest cannot activate somebody else\'s microphone',async()=>{
+  const r=await handleVoiceOperation({...base,uid:'u2',
+    operation:'ready',request:req('POST','ready',{sessionId:'session-one'})});
+  assert.equal(r.status,403);
+  assert.equal((await r.json()).error,'voice_publish_forbidden');
+});
+
 test('owner moderation force-closes verified local microphone MIDs, not remote tracks',async()=>{
   const old=globalThis.fetch;
   const calls=[];
