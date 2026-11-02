@@ -704,6 +704,13 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/banners")) return method.equals("GET");
         if (path.equals("/api/v1/opening/next")) return method.equals("POST");
         if (path.equals("/api/v1/events")) return method.equals("GET");
+        // Notifications are authenticated and recipient-scoped by the Worker.
+        if (path.equals("/api/v1/notifications")) return method.equals("GET");
+        if (path.equals("/api/v1/notifications/read-all")) return method.equals("POST");
+        if (path.equals("/api/v1/notifications/devices"))
+            return method.equals("POST") || method.equals("DELETE");
+        if (path.matches("^/api/v1/notifications/[1-9][0-9]*/read$"))
+            return method.equals("PATCH");
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
         if (path.equals("/api/v1/cosmetics/purchase") ||
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
