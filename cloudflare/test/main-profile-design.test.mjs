@@ -35,7 +35,8 @@ test('main profile has real identity/wallet anchors and four owner-designed tile
   assert.match(html,/data-profile-follow="following"/);
   assert.match(android,/api\('GET','\/follows'\)/);
   assert.match(android,/anchor\.textContent='ID '\+displayId/);
-  assert.match(android,/plaque\.textContent='Neon Special ID'/);
+  assert.doesNotMatch(android,/plaque\.textContent='Neon Special ID'/);
+  assert.match(android,/anchor\.classList\.toggle\('sh-neon-single-id'/);
   assert.match(royalCss,/#v-me\.profile-royal \.profile-id-row \{[\s\S]*?flex-wrap: nowrap/);
 });
 
