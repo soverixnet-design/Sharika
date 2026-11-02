@@ -75,6 +75,7 @@
       '#app.sharika-startup-verifying .nav,',
       '#app.sharika-startup-verifying .auth,',
       '#app.sharika-startup-verifying #mini{visibility:hidden!important}',
+      '#sp.sharika-opening-pending{opacity:1!important;pointer-events:auto!important;transition:none!important}',
       '#app.sharika-startup-verifying::after{',
       'content:"Opening Sharika…";position:absolute;inset:0;z-index:94;',
       'display:grid;place-items:center;background:linear-gradient(180deg,#1a0b45,#05030f);',
@@ -82,6 +83,10 @@
     ].join('');
     document.head.appendChild(style);
     document.getElementById('app')?.classList.add('sharika-startup-verifying');
+    // Hold the original branded layer for the one verified weekly opening.
+    // Otherwise its 1.3s demo timer hides it and a second fullscreen card
+    // appears later, looking like two different opening screens.
+    document.getElementById('sp')?.classList.add('sharika-opening-pending');
   }
   function finishVerifiedStartup(){
     document.getElementById('app')?.classList.remove('sharika-startup-verifying');
@@ -163,6 +168,9 @@
     const style=document.createElement('style');
     style.id='sh-opening-styles';
     style.textContent=[
+      '#sp.sharika-opening-pending,#sp.sharika-opening-featured{',
+      'opacity:1!important;pointer-events:auto!important;transition:none!important}',
+      '#sp.sharika-opening-featured>img,#sp.sharika-opening-featured>b{display:none!important}',
       '#sh-opening{position:absolute;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;',
       'overflow:hidden;color:#ffe9b0;text-align:center;background:radial-gradient(ellipse at 50% 32%,#872eb080,transparent 56%),',
       'linear-gradient(180deg,#300550e0,#0a0422f7),url("./royal-palace.png") center/cover}',
@@ -218,6 +226,13 @@
       openingStyles();
       const app=document.getElementById('app');
       if(!app){resolve();return;}
+      // Reuse the existing splash as the single opening surface. Updating
+      // its contents in place prevents the old splash -> new card flash.
+      const splash=document.getElementById('sp');
+      if(splash){
+        splash.classList.remove('sharika-opening-pending');
+        splash.classList.add('sharika-opening-featured');
+      }
       document.getElementById('sh-opening')?.remove();
       const layer=document.createElement('section');
       layer.id='sh-opening';layer.setAttribute('role','dialog');
@@ -260,13 +275,18 @@
       const skip=document.createElement('button');skip.type='button';
       skip.className='sh-o-skip';skip.textContent='SKIP »';
       footer.append(clock,track,skip);panel.append(header,tag,middle,footer);layer.appendChild(panel);
-      app.appendChild(layer);
+      (splash||app).appendChild(layer);
       const duration=Math.max(3,Math.min(30,Number(data.duration_seconds)||10));
       layer.style.setProperty('--sh-opening-duration',duration+'s');
       const start=Date.now();let ended=false;
       let timer,timeout;
       function close(){if(ended)return;ended=true;clearInterval(timer);clearTimeout(timeout);
-        layer.remove();document.dispatchEvent(new Event('sharika:opening-closed'));resolve();}
+        layer.remove();
+        if(splash){
+          splash.classList.remove('sharika-opening-pending','sharika-opening-featured');
+          splash.classList.add('off');
+        }
+        document.dispatchEvent(new Event('sharika:opening-closed'));resolve();}
       function tick(){clock.textContent='⏱ '+Math.max(0,Math.ceil(duration-(Date.now()-start)/1000))+'s';}
       skip.onclick=close;tick();timer=setInterval(tick,250);
       timeout=setTimeout(close,duration*1000);
@@ -281,6 +301,11 @@
       if(session?.user?.id!==startedBy)return;
       await displayOpening(data);
     }catch(error){console.warn('Weekly opening unavailable:',errText(error));}
+    finally{
+      // No verified winner (or an outage) must not leave the loading layer
+      // covering the authenticated home or Firebase sign-in.
+      document.getElementById('sp')?.classList.remove('sharika-opening-pending');
+    }
   }
 
 
@@ -2852,6 +2877,10 @@
       throw new Error('Check your email verification link, then sign in again');
     const current = await ensureProfile(account, form);
     const local = remember(account, current);
+    // Ask for the featured person as soon as Firebase identity and profile
+    // are verified. Waiting for wallet + room lists used to leave the first
+    // splash on screen and then show a second opening much later.
+    const openingTask=openingOnLaunch();
     refreshNotifications(false);refreshMessagesBadge();registerPushDevice();
     await Promise.allSettled([reloadWallet(), reloadRooms()]);
     // The original UI's login function reconstructs A from this object;
@@ -2862,8 +2891,7 @@
     // Show the real new-member referral offer after the authenticated home loads.
     // The referral newcomer offer follows the one-person 10-second opening,
     // never obscures the featured user or triggers an extra opening request.
-    setTimeout(()=>openingOnLaunch().finally(()=>
-      setTimeout(maybeShowNewUserInviteWelcome,400)),450);
+    openingTask.finally(()=>setTimeout(maybeShowNewUserInviteWelcome,400));
     return local;
   }
 
@@ -8011,6 +8039,8 @@
     }finally{
       // Signed-out users see real Firebase login, signed-in users their D1
       // home; neither ever sees the old unverified demo between the two.
+      if(!session)
+        document.getElementById('sp')?.classList.remove('sharika-opening-pending');
       finishVerifiedStartup();
     }
   }
