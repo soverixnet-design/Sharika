@@ -2151,8 +2151,9 @@
   }
   function addAudioTrack(state,event) {
     if(state.closed)return;
-    const remoteId=state.remoteMids.get(String(event.transceiver?.mid||''));
-    watchSfuSpeaking(state,event.track,remoteId);
+    const remoteId=state.remoteMids?.get(String(event.transceiver?.mid||''));
+    if(remoteId&&typeof watchSfuSpeaking==='function')
+      watchSfuSpeaking(state,event.track,remoteId);
     const audio=document.createElement('audio');
     audio.autoplay=true;
     audio.playsInline=true;
@@ -3151,13 +3152,13 @@
         slots[seatNo]={lock:1,i:seatNo};
     }
     frame.seats=slots;
-    paintVoiceSpeakers(room.id,frame);
+    if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     frame.U=audience;
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
     frame.render();
-    paintVoiceSpeakers(room.id,frame);
+    if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     decorateRoomPeople(frame);
     decorateRoomChat(frame);
     if(typeof decorateBondSeatOverlay==='function')
