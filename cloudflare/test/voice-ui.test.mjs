@@ -316,3 +316,46 @@ test('SFU voice activity measures live audio and clears the light on mute',()=>{
   assert.match(ui,/source\.connect\(analyser\)/);
   assert.doesNotMatch(ui.slice(begin,end),/source\.connect\(.*destination/);
 });
+
+test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>{
+  const begin=ui.indexOf('  async function subscribeSfu(state) {');
+  const end=ui.indexOf('  // The receiving SFU session',begin);
+  assert.ok(begin>=0&&end>begin);
+  const calls=[];
+  const context=createContext({
+    Date,
+    console:{warn(){}},
+    waitIce:async()=>{},
+    errText:String,
+    api:async(method,path,body)=>{
+      calls.push([method,path]);
+      if(method==='GET')return {publications:[
+        {sessionId:'publish-A',trackName:'microphone',userId:'user-A'},
+        {sessionId:'publish-B',trackName:'microphone',userId:'user-B'}
+      ]};
+      if(path.endsWith('/subscribe'))return {
+        sessionDescription:{type:'offer',sdp:'test'},
+        tracks:[
+          {mid:'0',sessionId:'publish-A',userId:''},
+          {mid:'1',sessionId:'publish-B',userId:'spoofed-user'}
+        ]
+      };
+      return {ok:true};
+    }
+  });
+  runInContext(ui.slice(begin,end),context);
+  const state={
+    closed:false,syncing:false,roomId:'10000001',subscribeId:'receive-A',
+    subscribed:new Set(),remoteMids:new Map(),sessionIds:[],
+    receivePC:{
+      async setRemoteDescription(){},async createAnswer(){return {type:'answer',sdp:'test'};},
+      async setLocalDescription(){this.localDescription={type:'answer',sdp:'test'};}
+    }
+  };
+  context.state=state;
+  await runInContext('subscribeSfu(state)',context);
+  assert.equal(state.remoteMids.get('0'),'user-A');
+  assert.equal(state.remoteMids.get('1'),'user-B');
+  assert.equal(state.subscribed.size,2);
+  assert.ok(calls.some(x=>x[1].endsWith('/renegotiate')));
+});
