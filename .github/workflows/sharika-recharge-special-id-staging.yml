@@ -1,0 +1,100 @@
+name: Sharika Special ID recharge and Seller Wallet staging repair
+
+on:
+  push:
+    branches:
+      - feature/sharika-winged-royal-unlimited-seller-20261102
+    paths:
+      - '.github/workflows/sharika-recharge-special-id-staging.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  guarded-recharge:
+    name: Preserve D1, deploy verified Special ID recharge API and Admin
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse any non-approved branch, Worker or D1 binding
+        run: |
+          test "$GITHUB_REF" = "refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const api=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          const admin=JSON.parse(readFileSync('cloudflare/wrangler.admin.jsonc','utf8'));
+          const d1=api.d1_databases?.[0];
+          if(api.name!=='sharika-api-staging'||
+             api.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             api.vars?.SHARIKA_ENV!=='staging'||
+             api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             api.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             api.keep_vars!==true||api.d1_databases?.length!==1||
+             d1?.binding!=='DB'||d1.database_name!=='sharika-staging'||
+             d1.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             admin.name!=='sharika-admin-staging'||
+             admin.account_id!==api.account_id||
+             admin.vars?.SHARIKA_ENV!=='staging'||
+             admin.services?.length!==1||
+             admin.services[0]?.service!=='sharika-api-staging')
+            throw Error('Unapproved Cloudflare target');
+          console.log('Verified isolated Sharika staging resources');
+          NODE
+      - name: Check all unit tests and recharge route contracts
+        run: npm --prefix cloudflare run check
+      - name: Verify staging D1 baseline with read-only queries
+        run: |
+          node --input-type=module - <<'NODE'
+          const url='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const headers={Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'};
+          const sql="SELECT (SELECT COUNT(*) FROM d1_migrations) AS migrations,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sharika_special_ids') AS special,"+
+            "(SELECT COUNT(*) FROM sharika_svip_levels) AS svip_levels,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sharika_admin_direct_recharges') AS credits";
+          const response=await fetch(url,{method:'POST',headers,body:JSON.stringify({sql})});
+          const body=await response.json();
+          const row=body.result?.[0]?.results?.[0];
+          if(!response.ok||!body.success||!body.result?.[0]?.success||
+            row?.migrations!==41||row?.special!==1||row?.svip_levels!==8||row?.credits!==1)
+            throw Error('Unexpected staging D1 state; refusing to publish');
+          console.log('Staging schema verified: no migration or wallet writes required');
+          NODE
+      - name: Dry run only API and Admin staging Workers
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc \
+            --outdir "$RUNNER_TEMP/sharika-svip-api-dryrun"
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc \
+            --outdir "$RUNNER_TEMP/sharika-svip-admin-dryrun"
+      - name: Publish isolated staging API and Admin Workers
+        run: |
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Verify published API and Admin reachability
+        run: |
+          curl --fail --silent --show-error --retry 4 \
+            https://sharika-api-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --retry 4 \
+            https://sharika-admin-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --retry 4 \
+            https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js |
+            grep -F 'Member or Special ID' >/dev/null
+          echo 'SHARIKA_SPECIAL_ID_RECHARGE_STAGING_OK'

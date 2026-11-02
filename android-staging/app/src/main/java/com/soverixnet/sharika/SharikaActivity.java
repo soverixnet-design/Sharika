@@ -788,8 +788,8 @@ public final class SharikaActivity extends Activity {
             path.equals("/api/v1/gifts")) return method.equals("GET");
         if (path.equals("/api/v1/support/messages"))
             return method.equals("GET") || method.equals("POST");
-        if (path.matches("^/api/v1/users/[0-9]{8}$")) return method.equals("GET");
-        if (path.matches("^/api/v1/users/[0-9]{8}/follow$"))
+        if (path.matches("^/api/v1/users/[0-9]{4,8}$")) return method.equals("GET");
+        if (path.matches("^/api/v1/users/[0-9]{4,8}/follow$"))
             return method.equals("GET") || method.equals("PUT") || method.equals("DELETE");
         if (path.matches("^/api/v1/messages/[0-9]{8}$"))
             return method.equals("GET") || method.equals("POST");
