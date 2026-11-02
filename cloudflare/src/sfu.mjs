@@ -35,6 +35,43 @@ async function sfu(env, method, path, data) {
   }
   return value;
 }
+// TURN credentials are generated server-side only for verified room members.
+// STUN is kept as a fallback for accounts that have not provisioned TURN yet.
+const STUN_ICE=[{urls:['stun:stun.cloudflare.com:3478']}];
+const CLOUD_ICE=/^(?:stun:stun\.cloudflare\.com:3478|turn:turn\.cloudflare\.com:(?:3478|443|80)\?transport=(?:udp|tcp)|turns:turn\.cloudflare\.com:(?:5349|443)\?transport=tcp)$/;
+async function realtimeIceServers(env) {
+  if(!env.REALTIME_TURN_KEY_ID||!env.REALTIME_TURN_API_TOKEN)return STUN_ICE;
+  try {
+    const result=await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/'+
+      encodeURIComponent(env.REALTIME_TURN_KEY_ID)+'/credentials/generate-ice-servers',{
+        method:'POST',
+        headers:{authorization:'Bearer '+env.REALTIME_TURN_API_TOKEN,
+          'content-type':'application/json'},
+        body:JSON.stringify({ttl:86400}),
+        signal:AbortSignal.timeout(4500)
+      });
+    if(!result.ok)throw new Error('turn_credential_unavailable');
+    const data=await result.json();
+    const servers=[];
+    for(const item of Array.isArray(data?.iceServers)?data.iceServers.slice(0,5):[]){
+      const urls=(Array.isArray(item?.urls)?item.urls:[item?.urls])
+        .filter(url=>typeof url==='string'&&CLOUD_ICE.test(url)).slice(0,8);
+      if(!urls.length)continue;
+      if(urls.some(url=>url.startsWith('turn'))){
+        if(typeof item.username!=='string'||!item.username||
+          item.username.length>256||typeof item.credential!=='string'||
+          !item.credential||item.credential.length>256)continue;
+        servers.push({urls,username:item.username,credential:item.credential});
+      }else servers.push({urls});
+    }
+    if(!servers.some(item=>item.username))throw new Error('turn_credential_invalid');
+    return servers;
+  }catch(_){
+    console.warn('sharika_turn_credentials_unavailable');
+    return STUN_ICE;
+  }
+}
+
 function cleanSid(x) { return typeof x === 'string' && SESSION_ID.test(x) ? x : null; }
 function checkTracks(result, size) {
   if (!result || !Array.isArray(result.tracks) || result.tracks.length !== size ||
@@ -84,7 +121,8 @@ export async function handleVoiceOperation({
     (member.seat_no !== null && Number(member.muted) === 0);
   if (operation === 'config' && request.method === 'GET') {
     if (sfuAvailable(env))
-      return reply({provider:'cloudflare_sfu', publish:canPublish}, 200, cors);
+      return reply({provider:'cloudflare_sfu', publish:canPublish,
+        iceServers:await realtimeIceServers(env)}, 200, cors);
     if (env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET && /^wss:\/\//.test(env.LIVEKIT_URL || ''))
       return reply({provider:'livekit',publish:canPublish}, 200, cors);
     return fail('voice_not_configured', 503, cors);
