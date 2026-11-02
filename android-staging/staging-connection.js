@@ -394,7 +394,86 @@
       '.sh-sovera-entry-cover button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:18px;',
       'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
       'background:#25134a;font-size:22px;width:40px;height:40px}',
-      '@media(prefers-reduced-motion:reduce){.sh-sovera-frame.fxr{animation:none!important}}'
+
+      '.sh-svip-badge{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;',
+      'padding:4px 11px;color:#ffe8a3!important;font-size:11px;font-weight:900;letter-spacing:.05em;',
+      'border:1px solid #f2d18c;border-radius:100px;background:linear-gradient(135deg,#331e5c,#8840bf 54%,#433069);',
+      'box-shadow:inset 0 1px 1px #ffeca777,0 0 13px #b572f399;text-shadow:0 1px 3px #12041e}',
+      '.sh-svip-badge[data-svip-level="1"],.sh-svip-badge[data-svip-level="2"]{border-color:#aab7ff;color:#e9e8ff!important}',
+      '.sh-svip-badge[data-svip-level="3"],.sh-svip-badge[data-svip-level="4"]{border-color:#ebc577}',
+      '.sh-svip-seat-badge{position:absolute;z-index:24;left:50%;top:calc(100% + 24px);',
+      'transform:translateX(-50%);font-size:10px!important;padding:2px 8px;',
+      'pointer-events:none;line-height:1.4}',
+      '.sh-svip-public-badge{display:table;margin:4px auto 12px;font-size:12px;padding:6px 17px}',
+      '#v-me .profile-svip-badge.sh-svip-badge{margin:8px auto 6px;padding:7px 18px;font-size:12px;',
+      'background:linear-gradient(145deg,#2a164d,#632bb0,#3d1b68)}',
+      '#sh-svip-royal{position:fixed;inset:0;z-index:2147483500;overflow:auto;overscroll-behavior:contain;',
+      'box-sizing:border-box;padding:calc(20px + env(safe-area-inset-top,0px)) 15px;',
+      'padding-bottom:calc(30px + env(safe-area-inset-bottom,0px));color:#fef5e3;',
+      'font-family:inherit;background:radial-gradient(circle at 50% -15%,#71378e,#1a0b45 49%,#07031a 100%)}',
+      '#sh-svip-royal *{box-sizing:border-box}',
+      '#sh-svip-royal .svip-wrap{max-width:560px;margin:0 auto}',
+      '#sh-svip-royal .svip-top{display:flex;align-items:center;justify-content:space-between;margin:0 0 19px}',
+      '#sh-svip-royal .svip-top h2{font-family:Georgia,serif;color:#ffe2a6;font-size:23px;margin:0;',
+      'letter-spacing:.07em;text-shadow:0 3px 10px #e7aa6470}',
+      '#sh-svip-royal button{cursor:pointer;font:inherit}',
+      '#sh-svip-royal .svip-back{border:1px solid #dabb7d88;background:#241141;',
+      'color:#ffebbb;border-radius:13px;padding:8px 14px;font-size:20px}',
+      '#sh-svip-royal .svip-card{position:relative;border:1px solid #d9b36d;border-radius:24px;',
+      'padding:16px 17px 19px;min-height:176px;background:linear-gradient(137deg,#3b164d,#22113c 49%,#0d0b22);',
+      'box-shadow:inset 0 1px #fbe6ad77,0 14px 32px #09041b88;overflow:visible}',
+      '#sh-svip-royal .svip-card-top{font-size:10px;letter-spacing:.21em;color:#f4cc88;font-weight:900}',
+      '#sh-svip-royal .svip-card h3{font-family:Georgia,serif;font-size:49px;color:#ffde97;',
+      'line-height:1;margin:20px 0 4px;text-shadow:0 4px 14px #eec36e55}',
+      '#sh-svip-royal .svip-card p{color:#e6d4fc;font-size:11px;margin:0}',
+      '#sh-svip-royal .svip-card-avatar{position:absolute;right:23px;top:38px;width:92px;height:92px;',
+      'border-radius:50%;background:#63398c;display:grid;place-items:center;font-size:35px}',
+      '#sh-svip-royal .svip-card-avatar>img:first-child{width:100%;height:100%;border-radius:50%;object-fit:cover}',
+      '#sh-svip-royal .svip-card-avatar .svip-ring{position:absolute;width:145%;height:145%;',
+      'top:50%;left:50%;transform:translate(-50%,-50%);object-fit:contain;pointer-events:none}',
+      '#sh-svip-royal .svip-level-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:21px 0}',
+      '#sh-svip-royal .svip-level-tabs button{border:1px solid #9d71b3;border-radius:12px;',
+      'background:#2b184b;color:#e0c4f8;padding:10px 0;font-size:12px;font-weight:900}',
+      '#sh-svip-royal .svip-level-tabs button[aria-pressed="true"]{border-color:#fce2a2;',
+      'color:#2a1245;background:linear-gradient(135deg,#fff0b0,#e3a851);box-shadow:0 4px 17px #f2bf6588}',
+      '#sh-svip-royal .svip-view{border:1px solid #85608a;border-radius:22px;',
+      'background:linear-gradient(150deg,#391e62,#1a1036);padding:19px 14px;margin-top:10px}',
+      '#sh-svip-royal .svip-preview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));',
+      'gap:14px;margin:14px 0}',
+      '#sh-svip-royal .svip-preview-card{padding:22px 5px 13px;border:1px solid #b38d9a;',
+      'border-radius:19px;background:#200f3a;text-align:center;min-width:0}',
+      '#sh-svip-royal .svip-mini-avatar{width:75px;height:75px;position:relative;border-radius:50%;',
+      'margin:10px auto 24px;background:#7543a0;display:grid;place-items:center;font-size:28px}',
+      '#sh-svip-royal .svip-mini-avatar .photo{width:100%;height:100%;border-radius:50%;object-fit:cover}',
+      '#sh-svip-royal .svip-mini-avatar .ring{width:145%;height:145%;position:absolute;inset:50% auto auto 50%;',
+      'transform:translate(-50%,-50%);object-fit:contain;pointer-events:none}',
+      '#sh-svip-royal .svip-mini-avatar .medal{position:absolute;right:-12px;bottom:-12px;',
+      'height:35px;width:35px;object-fit:contain}',
+      '#sh-svip-royal .svip-preview-card strong{display:block;margin-top:8px;color:#ffe4ad;font-size:12px}',
+      '#sh-svip-royal .svip-preview-card small{color:#d6c1eb;font-size:10px}',
+      '#sh-svip-royal .svip-art-row{display:flex;align-items:center;justify-content:center;gap:11px;margin:6px 0}',
+      '#sh-svip-royal .svip-art-row img{width:82px;height:47px;object-fit:contain}',
+      '#sh-svip-royal .svip-section-title{font-size:16px;color:#ffe6b7;margin:22px 0 10px}',
+      '#sh-svip-royal .svip-power{display:flex;align-items:center;gap:11px;',
+      'padding:11px 2px;border-bottom:1px solid #a7858855;font-size:13px}',
+      '#sh-svip-royal .svip-power b{color:#ffe8b3}',
+      '#sh-svip-royal .svip-main-btn{display:block;width:100%;border-radius:17px;',
+      'padding:14px 9px;margin:16px 0 8px;border:1px solid #fff0c3;color:#351a43;font-weight:900;',
+      'background:linear-gradient(135deg,#fff0c0,#e8b354);box-shadow:0 5px 16px #0008}',
+      '#sh-svip-royal .svip-main-btn:disabled{opacity:.58}',
+      '#sh-svip-royal .svip-note{font-size:12px;color:#d8c9e7;line-height:1.5}',
+      '#sh-svip-royal [role="status"]{min-height:22px;color:#e9ca81;font-size:12px}',
+      '.sh-svip-room-entry{position:fixed;left:3%;right:3%;bottom:calc(105px + env(safe-area-inset-bottom,0px));',
+      'z-index:2147483500;min-height:76px;display:flex;align-items:center;gap:10px;',
+      'padding:10px 18px;border:2px solid #e9c582;border-radius:25px;',
+      'background:linear-gradient(115deg,#2b105ceF,#54298bef,#1a0a36f0);color:#fff0c9;',
+      'box-shadow:0 0 25px #e9c57988;pointer-events:none;animation:shSvEnter .4s ease-out}',
+      '.sh-svip-room-entry img{width:65px;height:65px;object-fit:contain;flex:none}',
+      '.sh-svip-room-entry strong{display:block;font-size:17px;font-weight:900}',
+      '.sh-svip-room-entry small{font-size:11px;color:#e0c7ff}',
+      '@keyframes shSvEnter{from{transform:translateY(35px);opacity:0}to{transform:translateY(0);opacity:1}}',
+      '#ul .sh-svip-badge{font-size:10px;vertical-align:middle;padding:2px 6px;margin-left:5px}',
+      '@media(prefers-reduced-motion:reduce){.sh-sovera-frame.fxr,.sh-svip-room-entry{animation:none!important}}'
     ].join('');
     doc.head.appendChild(style);
   }
@@ -438,6 +517,44 @@
     img.addEventListener('load',()=>doc.defaultView?.clearTimeout(timeout),{once:true});
     img.addEventListener('error',()=>doc.defaultView?.clearTimeout(timeout),{once:true});
   }
+
+  function svipLevel(value){
+    const n=Number(value);
+    return Number.isInteger(n)&&n>=1&&n<=8?n:0;
+  }
+  function svipArt(level,kind){
+    if(!svipLevel(level)||!['frame','medal','tag'].includes(kind))return '';
+    return './sharika-premium/svip-'+kind+'-'+String(level).padStart(2,'0')+'.webp';
+  }
+  function makeSvipBadge(doc,level,extraClass=''){
+    const badge=doc.createElement('span');
+    badge.className='sh-svip-badge '+extraClass;
+    badge.dataset.svipLevel=String(level);
+    badge.textContent='SVIP '+level;
+    return badge;
+  }
+  function playSvipRoomEntry(doc,level,name){
+    const n=svipLevel(level);
+    if(!doc||!n)return;
+    cosmeticCss(doc);
+    doc.querySelector('.sh-svip-room-entry')?.remove();
+    const notice=doc.createElement('div');
+    notice.className='sh-svip-room-entry';
+    notice.setAttribute('role','status');
+    const art=doc.createElement('img');
+    art.src=svipArt(n,'medal');
+    art.alt='';
+    const copy=doc.createElement('div');
+    const title=doc.createElement('strong');
+    title.textContent='SVIP '+n+' · '+String(name||'Royal member').slice(0,80);
+    const sub=doc.createElement('small');
+    sub.textContent='joined the voice room';
+    copy.append(title,sub);
+    notice.append(art,copy);
+    doc.body.appendChild(notice);
+    doc.defaultView?.setTimeout(()=>notice.remove(),3800);
+  }
+
   // Avatar URLs come only from the authenticated Sharika profile API. Never
   // render arbitrary user-supplied image URLs in verified room identities.
   function verifiedAvatarUrl(value){
@@ -596,6 +713,9 @@
       if(!item)continue;
       paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
       row.querySelector('.sh-sovera-user-tag')?.remove();
+      row.querySelector('.sh-svip-badge')?.remove();
+      const level=svipLevel(item.svip_level);
+      if(level)row.appendChild(makeSvipBadge(doc,level));
       const tag=nameTagArt(item.name_tag_style);
       if(tag){
         const img=doc.createElement('img');
@@ -633,7 +753,11 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id').forEach(decoration=>decoration.remove());
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge')
+        .forEach(decoration=>decoration.remove());
+      const svip=svipLevel(seat.svip_level);
+      if(svip){el.style.position='relative';
+        el.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));}
       if(seat.special_id){
         const badge=doc.createElement('span');badge.className='sh-neon-seat-id';
         badge.textContent=seat.special_id;el.style.position='relative';el.appendChild(badge);
@@ -734,8 +858,7 @@
     for(const option of [
       ['frame_style','Frames','all'],['entry_style','Entry','all'],
       ['medal_style','Medals','all'],['name_tag_style','Name Tags','all'],
-      ['frame_style','SVIP Frames','svip'],['medal_style','SVIP Medals','svip'],
-      ['name_tag_style','SVIP Tags','svip'],['frame_style','Noble','noble'],
+      ['frame_style','Noble','noble'],
       ['frame_style','Royal Staff','role']
     ]){
       const tab=document.createElement('button');
@@ -751,6 +874,7 @@
     try{
       records=(await loadVerifiedCosmetics()).filter(x=>{
         if(x.kind!==kind)return false;
+        if(/^svip-(frame|medal|tag)-[0-9]{2}$/.test(String(x.art_key||'')))return false;
         if(gallery==='all')return true;
         const key=x.id.slice(kind.length+1);
         const art=catalog.find(item=>item.id===key)||
@@ -961,6 +1085,7 @@
       return;
     }
     const found=state.items.filter(x=>x.kind===state.category&&
+      !/^svip-(frame|medal|tag)-[0-9]{2}$/.test(String(x.art_key||''))&&
       (state.mode==='shop'?x.active||x.owned:x.owned));
     if(!found.length){
       const message=marketEl('div','sh-rm-empty');
@@ -983,7 +1108,7 @@
       const art=marketCategoryArt(item);
       if(item.kind==='frame_style'){
         const holder=marketEl('div','sh-rm-frame-icon','👤');
-        if(art?.art){const picture=marketEl('img');picture.src=effectPath(art.art);
+        if(art?.art){const picture=marketEl('img');picture.src=cosmeticMedia(art);
           picture.alt='';picture.loading='lazy';holder.appendChild(picture);}
         preview.appendChild(holder);
       }else if(art?.art){
@@ -1235,7 +1360,11 @@
       const data=await api('GET','/premium');
       if(!button.isConnected||requestNo!==premiumProfileRequest||session?.user?.id!==who)return;
       const tier=String(data.status?.tier||'none').toUpperCase();
-      button.textContent=tier==='NONE'?'Member':tier+' Member';
+      const level=tier==='SVIP'?svipLevel(data.status?.svip_level):0;
+      button.classList.toggle('sh-svip-badge',!!level);
+      if(level)button.dataset.svipLevel=String(level);
+      else delete button.dataset.svipLevel;
+      button.textContent=level?'SVIP '+level:tier==='NONE'?'SVIP Royal':tier+' Member';
     }catch(error){
       console.warn('Premium status pending staging deployment:',errText(error));
     }
@@ -1343,6 +1472,140 @@
       }catch(error){note.textContent='Bonus not claimed: '+errText(error);
         if(claim.isConnected)claim.disabled=false;}
     };
+  }
+
+
+  // The eight SVIP passes are a dedicated, full-screen royal collection.
+  // Artwork is the original user's 3.6-second animated WebP, not a static substitute.
+  let svipRoyalSelection=1;
+  async function showSvipRoyalSheet(){
+    if(!session){toast('Sign in to view SVIP');return;}
+    document.getElementById('sh-svip-royal')?.remove();
+    cosmeticCss(document);
+    const panel=document.createElement('section');
+    panel.id='sh-svip-royal';panel.setAttribute('role','dialog');
+    panel.setAttribute('aria-label','SVIP Royal Membership');
+    panel.innerHTML='<div class="svip-wrap"><div class="svip-top">'+
+      '<button type="button" class="svip-back" aria-label="Back">‹</button>'+
+      '<h2>SVIP ROYAL</h2><span>✦</span></div><p>Loading verified membership…</p></div>';
+    document.body.appendChild(panel);
+    const close=()=>{panel.remove();};
+    panel.querySelector('.svip-back').onclick=close;
+    let data;
+    try{data=await api('GET','/premium');}
+    catch(error){
+      if(panel.isConnected)panel.querySelector('.svip-wrap').lastElementChild.textContent=
+        'Unable to load SVIP: '+errText(error);
+      return;
+    }
+    if(!panel.isConnected)return;
+    const format=n=>Number(n||0).toLocaleString('en-US');
+    const realLevel=()=>data.status?.tier==='svip'?svipLevel(data.status.svip_level):0;
+    svipRoyalSelection=realLevel()||svipRoyalSelection||1;
+    let busy=false;
+    function render(){
+      if(!panel.isConnected)return;
+      const status=data.status||{},cfg=data.config||{};
+      const current=realLevel(),preview=svipLevel(svipRoyalSelection)||1;
+      const svipTier=(cfg.tiers||[]).find(t=>t.tier==='svip');
+      const avatar=verifiedAvatarUrl(profile?.pic);
+      const photo=avatar?'<img class="photo" alt="" src="'+avatar+'">':'S';
+      const cardPhoto=avatar?'<img alt="" src="'+avatar+'">':'S';
+      const frame=svipArt(preview,'frame');
+      const medal=svipArt(preview,'medal');
+      const tag=svipArt(preview,'tag');
+      const expires=status.expires_at_ms?
+        new Date(status.expires_at_ms).toLocaleDateString('en-GB'):'No expiry';
+      const membership=current?
+        'ACTIVE · SVIP '+current+' · Until '+expires:
+        status.tier==='none'?'NOT ACTIVE · Preview available':
+        'CURRENT MEMBERSHIP · '+String(status.tier||'').toUpperCase();
+      const canBuy=cfg.policy?.purchase_enabled&&svipTier&&
+        Number(status.rank||0)<=Number(svipTier.rank);
+      panel.innerHTML='<div class="svip-wrap">'+
+        '<div class="svip-top"><button class="svip-back" type="button" aria-label="Close SVIP">‹</button>'+
+        '<h2>SVIP ROYAL</h2><span>✦</span></div>'+
+        '<div class="svip-card"><span class="svip-card-top">SHARIKA VOICE CHAT · EIGHT ROYAL LEVELS</span>'+
+        '<h3>SVIP '+(current||preview)+'</h3>'+
+        '<p>'+sellerEscape(membership)+'</p>'+
+        '<div class="svip-card-avatar">'+cardPhoto+
+        '<img class="svip-ring" src="'+svipArt(current||preview,'frame')+'" alt=""></div></div>'+
+        '<h3 class="svip-section-title">Explore all 8 SVIP levels</h3>'+
+        '<div class="svip-level-tabs" role="group" aria-label="SVIP levels">'+
+        Array.from({length:8},(_,i)=>'<button type="button" data-svip-preview="'+(i+1)+
+          '" aria-pressed="'+(i+1===preview)+'">SVIP '+(i+1)+'</button>').join('')+'</div>'+
+        '<div class="svip-view"><strong>SVIP '+preview+' · Royal appearance preview</strong>'+
+        '<p class="svip-note">Original animated frame, medal and nameplate for this level</p>'+
+        '<div class="svip-preview">'+
+        '<div class="svip-preview-card"><small>PUBLIC PROFILE</small>'+
+        '<div class="svip-mini-avatar">'+photo+
+        '<img class="ring" src="'+frame+'" alt=""><img class="medal" src="'+medal+'" alt=""></div>'+
+        '<strong>'+sellerEscape(profile?.name||'Sharika User')+'</strong>'+
+        '<span class="sh-svip-badge" data-svip-level="'+preview+'">SVIP '+preview+'</span></div>'+
+        '<div class="svip-preview-card"><small>VOICE ROOM SEAT</small>'+
+        '<div class="svip-mini-avatar">'+photo+
+        '<img class="ring" src="'+frame+'" alt=""><img class="medal" src="'+medal+'" alt=""></div>'+
+        '<strong>Mic Seat · SVIP '+preview+'</strong>'+
+        '<small>Other users see your animated frame</small></div></div>'+
+        '<div class="svip-art-row"><img src="'+tag+'" alt="SVIP level '+preview+' nameplate">'+
+        '<img src="'+medal+'" alt="SVIP level '+preview+' medal"></div></div>'+
+        '<h3 class="svip-section-title">Your SVIP powers</h3>'+
+        '<div class="svip-power"><b>01</b> Animated frame around the profile picture</div>'+
+        '<div class="svip-power"><b>02</b> Verified SVIP badge in public profile and mic seat</div>'+
+        '<div class="svip-power"><b>03</b> Level-matched medal and royal nameplate</div>'+
+        '<div class="svip-power"><b>04</b> Shared room arrival animation · about 4 seconds</div>'+
+        '<div class="svip-power"><b>05</b> One verified daily coin claim (when eligible)</div>'+
+        (current&&Number(status.daily_bonus_coins)>0?
+          '<button class="svip-main-btn" id="sh-svip-daily" type="button" '+
+            (status.claimed_today?'disabled':'')+'>'+
+            (status.claimed_today?'Daily reward claimed ✓':'Claim '+format(status.daily_bonus_coins)+' daily coins')+
+          '</button>':'')+
+        (!current&&canBuy?'<button class="svip-main-btn" id="sh-svip-buy" type="button">'+
+          'Buy SVIP 1 · '+format(svipTier.price_coins)+' coins / '+svipTier.duration_days+' days</button>':'')+
+        '<p class="svip-note">'+(preview===current&&current?
+          'Your active level is shown in your real profile and room.':
+          'Preview only. Higher SVIP levels are assigned by Super Admin.')+'</p>'+
+        '<details><summary>SVIP Membership Rules</summary><p class="svip-note">'+
+        'Only server-verified active SVIP levels unlock effects. No admin permissions, '+
+        'unlimited coins, friendship features or game advantages. Expired levels stop showing. '+
+        'Standard cosmetic purchases remain in Shop and My Backpack.</p></details>'+
+        '<p id="sh-svip-notice" role="status"></p></div>';
+      panel.querySelector('.svip-back').onclick=close;
+      panel.querySelectorAll('[data-svip-preview]').forEach(button=>{
+        button.onclick=()=>{if(busy)return;svipRoyalSelection=Number(button.dataset.svipPreview);render();};
+      });
+      const note=panel.querySelector('#sh-svip-notice');
+      const claim=panel.querySelector('#sh-svip-daily');
+      if(claim)claim.onclick=async()=>{
+        if(busy||claim.disabled)return;busy=true;claim.disabled=true;
+        try{
+          await api('POST','/premium/daily/claim',{});
+          await refreshWalletAfterConfirmedTransaction();
+          data=await api('GET','/premium');render();
+          panel.querySelector('#sh-svip-notice').textContent='Daily reward confirmed ✓';
+        }catch(error){note.textContent='Reward not confirmed: '+errText(error);claim.disabled=false;}
+        finally{busy=false;}
+      };
+      const buy=panel.querySelector('#sh-svip-buy');
+      if(buy)buy.onclick=async()=>{
+        if(busy||!svipTier||!window.confirm('Buy SVIP 1 for '+format(svipTier.price_coins)+' coins?'))return;
+        busy=true;buy.disabled=true;
+        const tier='svip';
+        const requestId=pendingPremiumPurchase?.tier===tier?
+          pendingPremiumPurchase.requestId:nextWalletRequestId('premium');
+        pendingPremiumPurchase={tier,requestId};
+        try{
+          await api('POST','/premium/purchase',{tier,request_id:requestId});
+          pendingPremiumPurchase=null;
+          await refreshWalletAfterConfirmedTransaction();
+          data=await api('GET','/premium');svipRoyalSelection=realLevel()||1;
+          if(typeof window.renderMe==='function')window.renderMe();
+          render();panel.querySelector('#sh-svip-notice').textContent='SVIP 1 activated ✓';
+        }catch(error){note.textContent='Purchase not confirmed: '+errText(error);buy.disabled=false;}
+        finally{busy=false;}
+      };
+    }
+    render();
   }
 
   // Keep Sharika's existing profile layout; give its edit controls a
@@ -1617,7 +1880,7 @@
     try{
       const latest=await api('GET','/me');
       if(session?.user?.id!==account||latest.public_id!==canonical)return;
-      const keys=['pic','frame_style','entry_style','medal_style','name_tag_style',
+      const keys=['pic','frame_style','entry_style','medal_style','name_tag_style','svip_level',
         'special_id','display_id','special_frame'];
       const changed=keys.some(key=>(latest[key]||'')!==(profile[key]||''));
       if(!changed)return;
@@ -1679,7 +1942,7 @@
     const button=event.target.closest?.('[data-m="svip"]');
     if(!button)return;
     event.preventDefault();event.stopImmediatePropagation();
-    showPremiumSheet().catch(error=>toast(errText(error)));
+    showSvipRoyalSheet().catch(error=>toast(errText(error)));
   },true);
   window.frEl=function(){return frameTag(window.A?.frame||'');};
   window.frameSheet=function(){styleSelectionSheet('frame_style');};
@@ -2758,6 +3021,7 @@
       user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
       display_id:owner.display_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
+      svip_level:svipLevel(owner.svip_level),
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
     const audience=[];
@@ -2770,12 +3034,14 @@
           user_id:member.user_id,public_id:user.public_id,special_id:user.special_id||null,
           display_id:user.display_id||user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
+          svip_level:svipLevel(user.svip_level),
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
       else audience.push({n:user.name,e:'👤',id:user.display_id||user.public_id,
          canonical_id:user.public_id,special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
+        svip_level:svipLevel(user.svip_level),
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
         medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
     }
@@ -4151,6 +4417,11 @@
           if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
           lastEntryEventId=id;
           if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          const levelMatch=/^svip-entry-0([1-8])$/.exec(String(event.entry_style||''));
+          if(levelMatch){
+            playSvipRoomEntry(frame.document,Number(levelMatch[1]),event.name);
+            continue;
+          }
           if(!entryArt(event.entry_style))
             await loadVerifiedCosmetics().catch(()=>{});
           if(entryArt(event.entry_style))
@@ -6025,6 +6296,10 @@
       const frame=frameTag(person.frame_style);
       if(frame)wrapper.insertAdjacentHTML('beforeend',frame);
     }
+    root.querySelector('.sh-svip-public-badge')?.remove();
+    const level=svipLevel(person.svip_level);
+    if(level){const badge=makeSvipBadge(document,level,'sh-svip-public-badge');
+      root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',badge);}
     root.querySelector('.sh-royal-profile-effects')?.remove();
     const effects=document.createElement('div');
     effects.className='sh-royal-profile-effects';
