@@ -885,7 +885,7 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}/voice-token$"))
             return method.equals("POST");
         // Preserve the already permitted voice transport routes byte-for-byte.
-        return path.matches("^/api/v1/rooms/[0-9]{8}/voice/(config|session|publish|subscribe|renegotiate|publications|heartbeat|leave)$")
+        return path.matches("^/api/v1/rooms/[0-9]{8}/voice/(config|session|publish|ready|subscribe|renegotiate|publications|heartbeat|leave)$")
             && (method.equals("GET") || method.equals("POST") || method.equals("PUT"));
     }
 
@@ -924,7 +924,7 @@ public final class SharikaActivity extends Activity {
     }
 
     private boolean isRealtimeVoiceRoute(String path) {
-        return path.matches("^/api/v1/rooms/[0-9]{8}/(seat|voice/(config|session|publish|subscribe|renegotiate|publications|heartbeat|leave))$");
+        return path.matches("^/api/v1/rooms/[0-9]{8}/(seat|voice/(config|session|publish|ready|subscribe|renegotiate|publications|heartbeat|leave))$");
     }
 
     private void requestStagingToken(String id, String method, String path,
