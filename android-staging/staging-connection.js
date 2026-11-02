@@ -320,6 +320,12 @@
     ...roleNumbers.map(number=>premiumItem('role-frame-'+String(number).padStart(2,'0'),
       'Royal Role Frame '+number,'role'))
   );
+  SOVERA_ENTRIES.push(...Array.from({length:8},(_,i)=>{
+    const key=String(i+1).padStart(2,'0');
+    return {id:'svip-entry-'+key,name:'SVIP '+(i+1)+' Royal Arrival',
+      source:'sharika',art:'svip-medal-'+key+'.webp',still:'svip-medal-'+key+'.webp',
+      group:'svip',ms:3800};
+  }));
   SOVERA_MEDALS.push(...premiumRange('svip-medal',8,'SVIP Animated Medal','svip'));
   SOVERA_TAGS.push(...premiumRange('svip-tag',17,'SVIP Nameplate','svip'));
   function medalArt(key){return SOVERA_MEDALS.find(m=>m.id===key);}
@@ -463,6 +469,61 @@
       '#sh-svip-royal .svip-main-btn:disabled{opacity:.58}',
       '#sh-svip-royal .svip-note{font-size:12px;color:#d8c9e7;line-height:1.5}',
       '#sh-svip-royal [role="status"]{min-height:22px;color:#e9ca81;font-size:12px}',
+      '.sh-sovera-frame.fxr.sh-svip-frame{width:176%!important;height:176%!important}',
+      '#v-me .mav>.sh-sovera-frame.sh-svip-frame{width:178%!important;height:178%!important}',
+      '#pfc .pfh .pavw>.sh-sovera-frame.fxr.sh-svip-frame{width:178%!important;height:178%!important}',
+      '.seat .av>.sh-sovera-frame.fxr.sh-svip-frame{width:177%!important;height:177%!important}',
+      '.host .av.sh-has-sovera-frame{margin-bottom:28px!important}',
+      '#v-me .mav.sh-has-sovera-frame{margin-bottom:37px!important}',
+      '#pfc .pfh .pavw:has(>.sh-svip-frame){margin-top:20px!important;margin-bottom:33px!important}',
+      '.sh-neon-profile-id::before{content:none!important}',
+      '#v-me .mid.sh-neon-single-id,#pfc .pfh .meta .sh-neon-single-id{',
+      'border:1px solid #e9c17b!important;background:linear-gradient(145deg,#512082,#26104d)!important;',
+      'color:#ffe6a5!important;border-radius:100px!important;padding:6px 16px!important;',
+      'font-weight:900!important;box-shadow:0 0 16px #9456d17a;text-shadow:0 2px 5px #150427}',
+      '#sh-svip-royal{background:radial-gradient(ellipse at 50% -20%,#76428e 0%,#230e4d 40%,#0c0722 100%)}',
+      '#sh-svip-royal .svip-title{text-align:center}',
+      '#sh-svip-royal .svip-title small{display:block;color:#d5b1e0;font-size:9px;font-weight:900;letter-spacing:2px}',
+      '#sh-svip-royal .svip-card{background:linear-gradient(120deg,#27103e,#51204f 55%,#1c0938);',
+      'border:2px solid #edc576;box-shadow:inset 0 2px 1px #ffefbd5c,0 10px 0 #120827,0 18px 28px #0301118f}',
+      '#sh-svip-royal .svip-card-copy{position:relative;z-index:2;max-width:65%}',
+      '#sh-svip-royal .svip-card-chip{display:inline-block;margin-top:10px;padding:5px 9px;',
+      'border:1px solid #ffe0a7;border-radius:100px;font-size:9px;font-weight:900;color:#ffe3a8;',
+      'background:#522b6680}',
+      '#sh-svip-royal .svip-card-avatar .photo{display:grid;place-items:center;overflow:hidden;',
+      'width:100%;height:100%;border-radius:50%;object-fit:cover;background:#67348a}',
+      '#sh-svip-royal .svip-card-avatar .svip-ring{width:172%;height:172%}',
+      '#sh-svip-royal .svip-level-tabs button{box-shadow:inset 0 1px #fff3,0 4px 0 #100826;',
+      'border-color:#bb8fc1;background:linear-gradient(160deg,#4f2865,#291744);font-size:16px}',
+      '#sh-svip-royal .svip-level-tabs button[aria-pressed="true"]{box-shadow:0 4px 0 #916329,0 0 18px #f3c4708a}',
+      '#sh-svip-royal .svip-view{border:2px solid #bd8db2;background:linear-gradient(145deg,#42215b,#1b1038 60%,#100a2e);',
+      'box-shadow:inset 0 1px 0 #ffffff35,0 10px 26px #03011280}',
+      '#sh-svip-royal .svip-price-head{display:flex;align-items:center;justify-content:space-between;',
+      'gap:10px;border-bottom:1px solid #d9a9b766;padding-bottom:13px}',
+      '#sh-svip-royal .svip-price-head>div:first-child{display:flex;flex-direction:column}',
+      '#sh-svip-royal .svip-price-head small,#sh-svip-royal .svip-price-head span{font-size:10px;color:#dec5e0}',
+      '#sh-svip-royal .svip-price-head strong{font-size:23px;color:#ffe3a0}',
+      '#sh-svip-royal .svip-price{text-align:right;min-width:100px}',
+      '#sh-svip-royal .svip-price strong{display:block;font-size:16px;color:#ffe1a2}',
+      '#sh-svip-royal .svip-mini-avatar .ring{width:171%;height:171%}',
+      '#sh-svip-royal .svip-mini-avatar .photo{width:100%;height:100%;border-radius:50%;',
+      'object-fit:cover;display:grid;place-items:center;overflow:hidden;background:#703aa4}',
+      '#sh-svip-royal .svip-preview-card{padding:21px 7px 15px;overflow:visible;',
+      'background:linear-gradient(150deg,#2e1646,#1b0d38);box-shadow:inset 0 1px #ffe1b84a}',
+      '#sh-svip-royal .svip-reward-card{display:flex;flex-direction:column;align-items:center;',
+      'gap:3px;padding:12px;border:1px solid #f0c57c;border-radius:17px;margin:14px 0;',
+      'background:linear-gradient(140deg,#6b3a60,#38204f);box-shadow:inset 0 2px #ffdfac44}',
+      '#sh-svip-royal .svip-reward-card span{font-size:10px;letter-spacing:1.4px;color:#eed0a3}',
+      '#sh-svip-royal .svip-reward-card strong{font-size:23px;color:#fff0ad}',
+      '#sh-svip-royal .svip-reward-card small{font-size:10px;color:#ded0e8}',
+      '#sh-svip-royal .svip-perks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}',
+      '#sh-svip-royal .svip-perks span{border:1px solid #b67eb678;border-radius:12px;',
+      'padding:9px 7px;font-size:11px;background:#2b144a;color:#ffe6cb}',
+      '#sh-svip-royal .svip-reward-btn{background:linear-gradient(135deg,#a972e4,#e2c5f3);',
+      'color:#210c3c;border-color:#e9cbff}',
+      '#sh-svip-royal .svip-rules{margin:12px 0;font-size:12px;color:#dcc6ea}',
+      '@media(max-width:365px){#sh-svip-royal .svip-price-head strong{font-size:19px}',
+      '#sh-svip-royal .svip-card h3{font-size:39px}}',
       '.sh-svip-room-entry{position:fixed;left:3%;right:3%;bottom:calc(105px + env(safe-area-inset-bottom,0px));',
       'z-index:2147483500;min-height:76px;display:flex;align-items:center;gap:10px;',
       'padding:10px 18px;border:2px solid #e9c582;border-radius:25px;',
@@ -481,12 +542,16 @@
     const item=frameArt(key);
     if(!item)return '';
     // Only pinned package filenames are used; never interpolate user URLs.
-    return '<i class="fxr sh-sovera-frame" aria-hidden="true" '+
+    return '<i class="fxr sh-sovera-frame'+(item.group==='svip'?' sh-svip-frame':'')+
+      '" aria-hidden="true" '+
       'style="background-image:url('+cosmeticMedia(item)+')"></i>';
   }
   function playSoveraEntry(doc,key){
     const choice=entryArt(key);
     if(!doc||!choice)return;
+    if(/^svip-entry-0[1-8]$/.test(key)){
+      playSvipRoomEntry(doc,Number(key.slice(-2)),'Royal member');return;
+    }
     cosmeticCss(doc);
     doc.querySelector('.sh-sovera-entry-cover')?.remove();
     const cover=doc.createElement('div');
@@ -770,7 +835,7 @@
       avatar.style.position='relative';
       if(item){
         const decoration=doc.createElement('i');
-        decoration.className='fxr sh-sovera-frame';
+        decoration.className='fxr sh-sovera-frame'+(item.group==='svip'?' sh-svip-frame':'');
         decoration.setAttribute('aria-hidden','true');
         decoration.style.backgroundImage='url('+cosmeticMedia(item)+')';
         avatar.appendChild(decoration);
@@ -874,7 +939,8 @@
     try{
       records=(await loadVerifiedCosmetics()).filter(x=>{
         if(x.kind!==kind)return false;
-        if(/^svip-(frame|medal|tag)-[0-9]{2}$/.test(String(x.art_key||'')))return false;
+        if(/^svip-(frame|medal|tag|entry)-[0-9]{2}$/.test(String(x.art_key||''))&&
+           !x.owned)return false;
         if(gallery==='all')return true;
         const key=x.id.slice(kind.length+1);
         const art=catalog.find(item=>item.id===key)||
@@ -1085,7 +1151,8 @@
       return;
     }
     const found=state.items.filter(x=>x.kind===state.category&&
-      !/^svip-(frame|medal|tag)-[0-9]{2}$/.test(String(x.art_key||''))&&
+      (state.mode==='backpack'||
+        !/^svip-(frame|medal|tag|entry)-[0-9]{2}$/.test(String(x.art_key||'')))&&
       (state.mode==='shop'?x.active||x.owned:x.owned));
     if(!found.length){
       const message=marketEl('div','sh-rm-empty');
@@ -1117,8 +1184,10 @@
       }else preview.appendChild(marketEl('span','','👑'));
       if(item.owned)preview.appendChild(marketEl('span','sh-rm-owned',item.equipped?'✓ In use':'✓ Owned'));
       const label=marketEl('div','sh-rm-name',item.name);
+      const expires=item.expires_at_ms?
+        ' · until '+new Date(Number(item.expires_at_ms)).toLocaleDateString('en-GB'):'';
       const price=marketEl('div','sh-rm-price',item.owned?
-        (item.equipped?'✓ Equipped':'✓ In backpack'):
+        (item.equipped?'✓ Equipped':'✓ In backpack')+expires:
         '🪙 '+Number(item.price_coins||0).toLocaleString('en-US'));
       const ops=marketEl('div','sh-rm-ops');
       const primary=marketEl('button','sh-rm-btn');
@@ -1271,13 +1340,9 @@
       };
       anchor.insertAdjacentElement('afterend',copy);
     }
-    if(profile?.special_id){
-      const plaque=document.createElement('span');
-      plaque.id='sh-neon-own-id';plaque.className='sh-neon-profile-id';
-      plaque.textContent='Neon Special ID';
-      const copy=document.getElementById('sh-copy-own-id');
-      (copy||anchor).insertAdjacentElement('afterend',plaque);
-    }
+    anchor.classList.toggle('sh-neon-single-id',!!profile?.special_id);
+    // Display only the chosen special number. The canonical ID stays on the
+    // server for secure lookups but must not appear twice on this screen.
     const medal=medalArt(profile?.medal_style);
     const tag=nameTagArt(profile?.name_tag_style);
     if(!medal&&!tag)return;
@@ -1398,15 +1463,21 @@
       format(status.gift_coins)+' coins</div><small>'+autoInfo+'</small></div>'+
       '<div style="display:grid;gap:10px;margin-top:12px">'+tiers.map(item=>{
         const active=status.tier===item.tier;
+        const svipBase=item.tier==='svip'?(cfg.svip_levels||[])[0]:null;
+        const shownPrice=svipBase?.price_coins??item.price_coins;
+        const shownBonus=item.tier==='svip'&&active?status.daily_bonus_coins:
+          svipBase?.daily_bonus_coins??item.daily_bonus_coins;
         return '<div style="border:1px solid '+(active?'#f6d678':'#896cad')+';border-radius:18px;'+
           'background:linear-gradient(155deg,#493477,#211b4b);padding:12px">'+
           '<b>'+labels[item.tier]+'</b>'+(active?' <small>✓ Current</small>':'')+
           '<div class="lbl">Level '+format(item.min_wealth_level)+' or sent gifts '+
-          format(item.min_gift_coins)+' · Daily '+format(item.daily_bonus_coins)+' coins</div>'+
-          '<div class="lbl">'+format(item.price_coins)+' coins / '+item.duration_days+' days</div>'+
+          format(item.min_gift_coins)+' · Daily '+format(shownBonus)+' coins</div>'+
+          '<div class="lbl">'+format(shownPrice)+' coins / '+(svipBase?30:item.duration_days)+' days'+
+          (svipBase?' (SVIP 1 starting price)':'')+'</div>'+
           (cfg.policy?.purchase_enabled&&Number(status.rank||0)<=item.rank?
             '<button class="send" type="button" data-sh-premium-buy="'+item.tier+'">'+
-              (active?'Extend ':'Buy ')+item.tier.toUpperCase()+'</button>':'')+'</div>';
+              (item.tier==='svip'?'Explore SVIP 1–8':(active?'Extend ':'Buy ')+item.tier.toUpperCase())+
+              '</button>':'')+'</div>';
       }).join('')+'</div>'+
       '<div style="margin-top:13px;padding:12px;border:1px solid #e8c178;'+
         'border-radius:17px;background:linear-gradient(155deg,#57367b,#201746)">'+
@@ -1438,6 +1509,7 @@
     root.querySelectorAll('[data-sh-premium-buy]').forEach(button=>{
       button.onclick=async()=>{
         const tier=button.dataset.shPremiumBuy;
+        if(tier==='svip'){window.closeSheet?.();showSvipRoyalSheet().catch(error=>toast(errText(error)));return;}
         const item=tiers.find(x=>x.tier===tier);
         if(!item||!window.confirm('Buy '+tier.toUpperCase()+' for '+format(item.price_coins)+
           ' coins? Seller coins and game outcomes are separate.'))return;
@@ -1475,8 +1547,8 @@
   }
 
 
-  // The eight SVIP passes are a dedicated, full-screen royal collection.
-  // Artwork is the original user's 3.6-second animated WebP, not a static substitute.
+  // Eight server-priced 30-day passes. All artwork is the user's real
+  // animated level collection; no demo assets or client-side coin minting.
   let svipRoyalSelection=1;
   async function showSvipRoyalSheet(){
     if(!session){toast('Sign in to view SVIP');return;}
@@ -1489,7 +1561,7 @@
       '<button type="button" class="svip-back" aria-label="Back">‹</button>'+
       '<h2>SVIP ROYAL</h2><span>✦</span></div><p>Loading verified membership…</p></div>';
     document.body.appendChild(panel);
-    const close=()=>{panel.remove();};
+    const close=()=>panel.remove();
     panel.querySelector('.svip-back').onclick=close;
     let data;
     try{data=await api('GET','/premium');}
@@ -1507,69 +1579,72 @@
       if(!panel.isConnected)return;
       const status=data.status||{},cfg=data.config||{};
       const current=realLevel(),preview=svipLevel(svipRoyalSelection)||1;
-      const svipTier=(cfg.tiers||[]).find(t=>t.tier==='svip');
+      const choice=(cfg.svip_levels||[]).find(x=>x.level===preview);
+      const svipTier=(cfg.tiers||[]).find(x=>x.tier==='svip');
+      const canBuy=!!cfg.policy?.purchase_enabled&&!!choice?.enabled&&
+        !!svipTier&&Number(status.rank||0)<=Number(svipTier.rank);
       const avatar=verifiedAvatarUrl(profile?.pic);
-      const photo=avatar?'<img class="photo" alt="" src="'+avatar+'">':'S';
-      const cardPhoto=avatar?'<img alt="" src="'+avatar+'">':'S';
-      const frame=svipArt(preview,'frame');
-      const medal=svipArt(preview,'medal');
-      const tag=svipArt(preview,'tag');
-      const expires=status.expires_at_ms?
-        new Date(status.expires_at_ms).toLocaleDateString('en-GB'):'No expiry';
-      const membership=current?
-        'ACTIVE · SVIP '+current+' · Until '+expires:
-        status.tier==='none'?'NOT ACTIVE · Preview available':
-        'CURRENT MEMBERSHIP · '+String(status.tier||'').toUpperCase();
-      const canBuy=cfg.policy?.purchase_enabled&&svipTier&&
-        Number(status.rank||0)<=Number(svipTier.rank);
+      const avatarMarkup=avatar?'<img class="photo" alt="" src="'+avatar+'">':
+        '<span class="photo">👑</span>';
+      const frame=svipArt(preview,'frame'),medal=svipArt(preview,'medal'),tag=svipArt(preview,'tag');
+      const activeUntil=status.expires_at_ms?
+        new Date(status.expires_at_ms).toLocaleDateString('en-GB'):'';
+      const currentLabel=current?'ACTIVE · SVIP '+current+(activeUntil?' · Until '+activeUntil:''):
+        'ROYAL MEMBERSHIP · Choose your level';
+      const benefit=['Animated royal profile frame','SVIP medal & exclusive nameplate',
+        'Royal voice room seat badge','Room entrance effect · about 4 seconds'];
+      const price=choice?format(choice.price_coins):'—';
+      const reward=choice?format(choice.daily_bonus_coins):'—';
+      const activeReward=Number(status.daily_bonus_coins)||0;
       panel.innerHTML='<div class="svip-wrap">'+
         '<div class="svip-top"><button class="svip-back" type="button" aria-label="Close SVIP">‹</button>'+
-        '<h2>SVIP ROYAL</h2><span>✦</span></div>'+
-        '<div class="svip-card"><span class="svip-card-top">SHARIKA VOICE CHAT · EIGHT ROYAL LEVELS</span>'+
-        '<h3>SVIP '+(current||preview)+'</h3>'+
-        '<p>'+sellerEscape(membership)+'</p>'+
-        '<div class="svip-card-avatar">'+cardPhoto+
+        '<div class="svip-title"><small>SHARIKA EXCLUSIVE CLUB</small><h2>✦ SVIP ROYAL ✦</h2></div><span>♛</span></div>'+
+        '<div class="svip-card"><span class="svip-card-top">ROYAL PREMIUM · 8 LEVELS</span>'+
+        '<div class="svip-card-copy"><h3>SVIP '+(current||preview)+'</h3>'+
+        '<p>'+sellerEscape(currentLabel)+'</p>'+
+        '<span class="svip-card-chip">✧ 30 DAYS · ROYAL PASS ✧</span></div>'+
+        '<div class="svip-card-avatar">'+avatarMarkup+
         '<img class="svip-ring" src="'+svipArt(current||preview,'frame')+'" alt=""></div></div>'+
-        '<h3 class="svip-section-title">Explore all 8 SVIP levels</h3>'+
-        '<div class="svip-level-tabs" role="group" aria-label="SVIP levels">'+
+        '<h3 class="svip-section-title">Choose your royal level</h3>'+
+        '<div class="svip-level-tabs" role="group" aria-label="Choose SVIP level">'+
         Array.from({length:8},(_,i)=>'<button type="button" data-svip-preview="'+(i+1)+
-          '" aria-pressed="'+(i+1===preview)+'">SVIP '+(i+1)+'</button>').join('')+'</div>'+
-        '<div class="svip-view"><strong>SVIP '+preview+' · Royal appearance preview</strong>'+
-        '<p class="svip-note">Original animated frame, medal and nameplate for this level</p>'+
+          '" aria-pressed="'+(i+1===preview)+'">♛ '+(i+1)+'</button>').join('')+'</div>'+
+        '<div class="svip-view">'+
+        '<div class="svip-price-head"><div><small>ROYAL LEVEL '+preview+'</small>'+
+        '<strong>SVIP '+preview+'</strong><span>30-day membership</span></div>'+
+        '<div class="svip-price"><small>PASS PRICE</small><strong>🪙 '+price+'</strong></div></div>'+
         '<div class="svip-preview">'+
-        '<div class="svip-preview-card"><small>PUBLIC PROFILE</small>'+
-        '<div class="svip-mini-avatar">'+photo+
+        '<div class="svip-preview-card"><small>PROFILE PREVIEW</small>'+
+        '<div class="svip-mini-avatar">'+avatarMarkup+
         '<img class="ring" src="'+frame+'" alt=""><img class="medal" src="'+medal+'" alt=""></div>'+
         '<strong>'+sellerEscape(profile?.name||'Sharika User')+'</strong>'+
         '<span class="sh-svip-badge" data-svip-level="'+preview+'">SVIP '+preview+'</span></div>'+
-        '<div class="svip-preview-card"><small>VOICE ROOM SEAT</small>'+
-        '<div class="svip-mini-avatar">'+photo+
+        '<div class="svip-preview-card"><small>VOICE ROOM PREVIEW</small>'+
+        '<div class="svip-mini-avatar">'+avatarMarkup+
         '<img class="ring" src="'+frame+'" alt=""><img class="medal" src="'+medal+'" alt=""></div>'+
-        '<strong>Mic Seat · SVIP '+preview+'</strong>'+
-        '<small>Other users see your animated frame</small></div></div>'+
-        '<div class="svip-art-row"><img src="'+tag+'" alt="SVIP level '+preview+' nameplate">'+
-        '<img src="'+medal+'" alt="SVIP level '+preview+' medal"></div></div>'+
-        '<h3 class="svip-section-title">Your SVIP powers</h3>'+
-        '<div class="svip-power"><b>01</b> Animated frame around the profile picture</div>'+
-        '<div class="svip-power"><b>02</b> Verified SVIP badge in public profile and mic seat</div>'+
-        '<div class="svip-power"><b>03</b> Level-matched medal and royal nameplate</div>'+
-        '<div class="svip-power"><b>04</b> Shared room arrival animation · about 4 seconds</div>'+
-        '<div class="svip-power"><b>05</b> One verified daily coin claim (when eligible)</div>'+
-        (current&&Number(status.daily_bonus_coins)>0?
-          '<button class="svip-main-btn" id="sh-svip-daily" type="button" '+
-            (status.claimed_today?'disabled':'')+'>'+
-            (status.claimed_today?'Daily reward claimed ✓':'Claim '+format(status.daily_bonus_coins)+' daily coins')+
-          '</button>':'')+
-        (!current&&canBuy?'<button class="svip-main-btn" id="sh-svip-buy" type="button">'+
-          'Buy SVIP 1 · '+format(svipTier.price_coins)+' coins / '+svipTier.duration_days+' days</button>':'')+
-        '<p class="svip-note">'+(preview===current&&current?
-          'Your active level is shown in your real profile and room.':
-          'Preview only. Higher SVIP levels are assigned by Super Admin.')+'</p>'+
-        '<details><summary>SVIP Membership Rules</summary><p class="svip-note">'+
-        'Only server-verified active SVIP levels unlock effects. No admin permissions, '+
-        'unlimited coins, friendship features or game advantages. Expired levels stop showing. '+
-        'Standard cosmetic purchases remain in Shop and My Backpack.</p></details>'+
-        '<p id="sh-svip-notice" role="status"></p></div>';
+        '<strong>Mic Seat · SVIP '+preview+'</strong><small>Visible to room members</small></div></div>'+
+        '<div class="svip-art-row"><img src="'+tag+'" alt="Royal nameplate '+preview+'">'+
+        '<img src="'+medal+'" alt="SVIP medal '+preview+'"></div>'+
+        '<div class="svip-reward-card"><span>🎁 DAILY SVIP REWARD</span>'+
+        '<strong>🪙 '+reward+' coins</strong><small>Claim once per UTC day while active</small></div>'+
+        '<div class="svip-perks">'+benefit.map(x=>'<span>✦ '+x+'</span>').join('')+'</div>'+
+        (canBuy?'<button class="svip-main-btn" id="sh-svip-buy" type="button">'+
+          (current===preview?'Renew SVIP '+preview:'Unlock SVIP '+preview)+
+          ' · '+price+' Coins / 30 Days</button>':
+          '<p class="svip-note">'+(choice&&!choice.enabled?
+            'This level is currently unavailable for purchase.':
+            'Coin purchase is unavailable for this level or membership.')+'</p>')+
+        (current&&activeReward>0?'<button class="svip-main-btn svip-reward-btn" id="sh-svip-daily" type="button" '+
+          (status.claimed_today?'disabled':'')+'>'+
+          (status.claimed_today?'Today’s coins claimed ✓':
+            'Claim today’s '+format(activeReward)+' coins')+'</button>':'')+
+        '<p class="svip-note">✓ Buying or receiving an SVIP pass adds its frame, entry effect, medal and tag '+
+        'to My Backpack automatically. You can equip another owned frame whenever you like.</p>'+
+        '<details class="svip-rules"><summary>SVIP policy & expiry</summary>'+
+        '<p class="svip-note">SVIP coin purchases last 30 days. Buying the same level again extends its pass; '+
+        'choosing a different level activates that level. Active assets and rewards are verified by the server. '+
+        'All eight prices and daily bonuses are controlled by Super Admin.</p></details>'+
+        '<p id="sh-svip-notice" role="status"></p></div></div>';
       panel.querySelector('.svip-back').onclick=close;
       panel.querySelectorAll('[data-svip-preview]').forEach(button=>{
         button.onclick=()=>{if(busy)return;svipRoyalSelection=Number(button.dataset.svipPreview);render();};
@@ -1582,25 +1657,29 @@
           await api('POST','/premium/daily/claim',{});
           await refreshWalletAfterConfirmedTransaction();
           data=await api('GET','/premium');render();
-          panel.querySelector('#sh-svip-notice').textContent='Daily reward confirmed ✓';
+          panel.querySelector('#sh-svip-notice').textContent='Daily coins received ✓';
         }catch(error){note.textContent='Reward not confirmed: '+errText(error);claim.disabled=false;}
         finally{busy=false;}
       };
       const buy=panel.querySelector('#sh-svip-buy');
       if(buy)buy.onclick=async()=>{
-        if(busy||!svipTier||!window.confirm('Buy SVIP 1 for '+format(svipTier.price_coins)+' coins?'))return;
+        if(busy||!choice||!canBuy||!window.confirm(
+          'Buy SVIP '+preview+' for '+price+' coins / 30 days?'))return;
         busy=true;buy.disabled=true;
-        const tier='svip';
-        const requestId=pendingPremiumPurchase?.tier===tier?
-          pendingPremiumPurchase.requestId:nextWalletRequestId('premium');
-        pendingPremiumPurchase={tier,requestId};
+        const tier='svip',level=preview;
+        const requestId=pendingPremiumPurchase?.tier===tier&&
+          pendingPremiumPurchase?.level===level?
+            pendingPremiumPurchase.requestId:nextWalletRequestId('premium');
+        pendingPremiumPurchase={tier,level,requestId};
         try{
-          await api('POST','/premium/purchase',{tier,request_id:requestId});
+          await api('POST','/premium/purchase',{tier,svip_level:level,request_id:requestId});
           pendingPremiumPurchase=null;
           await refreshWalletAfterConfirmedTransaction();
-          data=await api('GET','/premium');svipRoyalSelection=realLevel()||1;
+          data=await api('GET','/premium');
           if(typeof window.renderMe==='function')window.renderMe();
-          render();panel.querySelector('#sh-svip-notice').textContent='SVIP 1 activated ✓';
+          render();
+          panel.querySelector('#sh-svip-notice').textContent=
+            'SVIP '+level+' activated · Backpack items added ✓';
         }catch(error){note.textContent='Purchase not confirmed: '+errText(error);buy.disabled=false;}
         finally{busy=false;}
       };
@@ -6423,11 +6502,10 @@
     }
     if(effects.children.length)root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',effects);
     root.querySelector('.sh-neon-public-id')?.remove();
-    if(person.special_id){
-      const badge=document.createElement('span');
-      badge.className='sh-neon-profile-id sh-neon-public-id';
-      badge.textContent='★ SPECIAL ID · '+String(person.special_id);
-      root.querySelector('.pfh .meta')?.insertAdjacentElement('afterend',badge);
+    const publicLabel=root.querySelector('.pfh .meta span:first-child');
+    if(publicLabel){
+      publicLabel.classList.toggle('sh-neon-single-id',!!person.special_id);
+      publicLabel.textContent='ID '+String(person.display_id||person.special_id||person.id);
     }
   }
 
