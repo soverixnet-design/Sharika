@@ -616,6 +616,29 @@
     doc.body.appendChild(notice);
     doc.defaultView?.setTimeout(()=>notice.remove(),3800);
   }
+  function playStandardRoomEntry(doc,event){
+    if(!doc)return;
+    cosmeticCss(doc);
+    doc.querySelector('.sh-svip-room-entry')?.remove();
+    const notice=doc.createElement('div');
+    notice.className='sh-svip-room-entry';
+    notice.setAttribute('role','status');
+    const avatar=doc.createElement('span');
+    avatar.textContent='👋';
+    avatar.setAttribute('aria-hidden','true');
+    avatar.style.cssText='font-size:32px;display:grid;place-items:center;'+
+      'width:59px;height:59px;flex:none;border:2px solid #ffdb97;'+
+      'border-radius:50%;background:#3b185e';
+    const copy=doc.createElement('div');
+    const title=doc.createElement('strong');
+    title.textContent=String(event?.name||'A member').slice(0,80);
+    const sub=doc.createElement('small');
+    sub.textContent='joined the voice room';
+    copy.append(title,sub);
+    notice.append(avatar,copy);
+    doc.body.appendChild(notice);
+    doc.defaultView?.setTimeout(()=>notice.remove(),3800);
+  }
 
   // Avatar URLs come only from the authenticated Sharika profile API. Never
   // render arbitrary user-supplied image URLs in verified room identities.
@@ -3229,8 +3252,9 @@
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
-      user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
-      display_id:owner.display_id||room.id,
+      user_id:room.owner_id,public_id:owner.public_id||room.id,
+      special_id:owner.special_id||null,
+      display_id:owner.display_id||owner.public_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       svip_level:Number(owner.svip_level)||0,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
@@ -3240,13 +3264,17 @@
       const user=member.sharika_users;
       if(!user)continue;
       if(member.user_id===room.owner_id){
-        // Keep the fixed owner throne while also showing the owner's chosen
-        // mic position. Both seats represent one verified user and one stream.
+        // The owner may move to another microphone. Render that verified
+        // profile exactly once, at its current seat, and leave the fixed
+        // throne as a decorative placeholder (not a duplicate identity).
         if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
-           member.seat_no<slots.length)
+           member.seat_no<slots.length){
           slots[member.seat_no]={...slots[0],i:member.seat_no,
             owner_mic_seat:true,muted:!!member.muted||
               (member.user_id===session?.user?.id&&localMic===false)};
+          slots[0]={empty:1,i:0,owner_throne:true,
+            owner_mic_seat_no:member.seat_no};
+        }
         continue;
       }
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
@@ -4684,6 +4712,7 @@
             await loadVerifiedCosmetics().catch(()=>{});
           if(entryArt(event.entry_style))
             playSoveraEntry(frame.document,event.entry_style);
+          else playStandardRoomEntry(frame.document,event);
         }
       })();
       entryPollInFlight=work;

@@ -23,11 +23,23 @@ http.createServer(async(req,res)=>{
     let data=await readFile(file);
     // Local visual-QA mode only: it is never packaged into the Android APK.
     // Show representative cards without signing in or touching real accounts.
+    if(name==='/index.html'&&url.searchParams.get('qa')==='room'){
+      const source=data.toString('utf8');
+      const serialized=source.match(/var ROOM_HTML=("(?:\\.|[^"\\])*");/);
+      if(!serialized){res.writeHead(500).end('Room preview unavailable');return;}
+      let interior=JSON.parse(serialized[1]);
+      interior=interior.replace('</head>',
+        '<link rel="stylesheet" href="./royal-room-ui.css"></head>');
+      interior=interior.replace('</body>',
+        '<script src="./royal-room-ui.js"></script></body>');
+      data=Buffer.from(interior);
+    }
     if(name==='/index.html'&&url.searchParams.get('qa')==='home'){
       let html=data.toString('utf8');
       html=html.replace('</head>',
         '<style>#au,#sp,#wk,.wtop,.weekly{display:none!important}</style></head>');
-      html=html.replace('</body>',`<script>
+      const bodyEnd=html.lastIndexOf('</body>');
+      html=html.slice(0,bodyEnd)+`<script>
         setTimeout(function(){
           if(!window.CFG||!window.renderRooms)return;
           window.CFG.viewerCountry='Bangladesh';
@@ -39,7 +51,7 @@ http.createServer(async(req,res)=>{
           ];
           window.renderRooms();
         },400);
-      </script></body>`);
+      </script>`+html.slice(bodyEnd);
       data=Buffer.from(html);
     }
     res.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream',

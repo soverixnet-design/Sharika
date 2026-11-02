@@ -1,0 +1,293 @@
+/* Sharika Royal Golden room. All selectors are scoped to the iframe.
+   The original IDs/handlers remain in place for the staging voice bridge. */
+.app.sh-royal-room {
+  --sh-gold:#ffd787;
+  --sh-gold-deep:#ad6820;
+  --sh-purple:#240a45;
+  color:#fff0d7;
+}
+.app.sh-royal-room.sh-royal-wallpaper {
+  background-image:url("./royal-room-background.jpg");
+  background-position:center center;
+  background-size:100% 100%;
+  background-repeat:no-repeat;
+}
+.sh-royal-room .blob {display:none}
+.sh-royal-room .top {
+  padding:10px 9px 5px;
+  gap:6px;
+  align-items:center;
+}
+.sh-royal-room .top>.ib {width:34px;height:38px;flex:none}
+.sh-royal-room .top .room {
+  min-width:0;
+  min-height:52px;
+  border:1px solid #f3b967b8;
+  border-radius:20px;
+  background:#1b0b35d9;
+  box-shadow:inset 0 1px #ffe5bb80,0 3px 8px #06000d99;
+  padding-right:7px;
+}
+.sh-royal-room .room>.rt b {color:#ffe2a0;font-size:14px}
+.sh-royal-room .room>.rt small {color:#ded0ef}
+.sh-royal-room .room>.rt small .live {box-shadow:0 0 11px #1fff92}
+.sh-royal-room #bOwn {display:none!important}
+.sh-royal-room .sh-settings {
+  width:43px;
+  height:43px;
+  flex:none;
+  border:0;
+  background:none;
+  cursor:pointer;
+  padding:0;
+}
+.sh-royal-room .sh-settings .sh-sprite {width:43px;height:43px}
+.sh-royal-room .stats {
+  padding:3px 9px 6px;
+  gap:6px;
+  color:#e9dbf4;
+}
+.sh-royal-room .pill {
+  background:#230c40c7;
+  border-color:#edb96c77;
+  box-shadow:inset 0 1px #ffe4a644;
+  color:#fff0d7;
+}
+.sh-royal-room #ustat {border-color:#f8c66e}
+.sh-royal-room .stage {
+  padding:5px 8px 10px;
+  overflow-y:auto;
+  position:relative;
+}
+.sh-royal-room .stage::before {display:none}
+.sh-royal-room .host {
+  margin:14px 0 22px;
+}
+.sh-royal-room .grid {
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:19px 4px;
+  align-items:start;
+}
+.sh-royal-room .seat {gap:5px;position:relative;padding:3px 0}
+.sh-royal-room .seat .av {
+  width:clamp(44px,13vw,54px);
+  height:clamp(44px,13vw,54px);
+  font-size:clamp(20px,6vw,25px);
+}
+.sh-royal-room .host .av {
+  width:clamp(63px,19vw,74px);
+  height:clamp(63px,19vw,74px);
+  font-size:35px;
+}
+.sh-royal-room .host .av::before {inset:-7px}
+.sh-royal-room .seat .ring {
+  background:conic-gradient(#fff4c0,#f4b348,#a45e15,#fff3ba,#d89235);
+  filter:drop-shadow(0 0 5px #ffcc7899);
+}
+.sh-royal-room[data-frame=neon] .ring {
+  background:conic-gradient(#20d6fb,#c990ff,#20d6fb);
+}
+.sh-royal-room .nm {
+  max-width:86px;
+  background:#190a32e8;
+  border:1px solid #f2bb67aa;
+  border-radius:999px;
+  color:#ffe7b7;
+  font-size:10px;
+  line-height:1.2;
+  padding:4px 5px;
+}
+.sh-royal-room .host .nm {font-size:12px}
+.sh-royal-room .tag {color:#ffdb87;font-size:10px}
+.sh-royal-room #bGame.sh-games {
+  position:absolute;
+  right:7px;
+  top:4px;
+  z-index:5;
+  min-width:58px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  color:#ffe1a6;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+.sh-royal-room .sh-games .sh-sprite {width:47px;height:47px}
+.sh-royal-room .sh-games span:last-child {margin-top:-4px}
+.sh-royal-room .chatw {margin:0 10px;flex:none}
+.sh-royal-room .chat {
+  height:clamp(32px,7vh,64px);
+  padding:4px 0;
+  font-size:12px;
+}
+.sh-royal-room .dock {
+  position:relative;
+  z-index:8;
+  flex:none;
+  padding:3px 10px max(10px,env(safe-area-inset-bottom));
+  background:linear-gradient(transparent,#17052fe8 19%,#130421f5);
+}
+.sh-royal-room .sh-composer {
+  display:flex;
+  padding-right:68px;
+  margin:1px 0 11px;
+  min-width:0;
+}
+.sh-royal-room .inp {
+  width:100%;
+  height:48px;
+  border:1.5px solid #f7bf6d;
+  border-radius:999px;
+  background:#230b42df;
+  box-shadow:0 0 10px #e4a65138,inset 0 2px 5px #020008aa;
+}
+.sh-royal-room .inp input {font-size:14px;color:#fff2d9}
+.sh-royal-room .inp input::placeholder {color:#c2b6ce}
+.sh-royal-room #emo {
+  width:36px;
+  height:36px;
+  padding:0;
+  font-size:0;
+  background-image:url("./royal-room-icons.png");
+  background-repeat:no-repeat;
+  background-size:400% 200%;
+  background-position:100% 100%;
+}
+.sh-royal-room .inp .snd {
+  flex:none;
+  background:#70438a;
+  color:#ffe3ac;
+  border:1px solid #ffd27c;
+}
+.sh-royal-room #sendTxt {display:grid!important;opacity:.85}
+.sh-royal-room .sh-tools {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:6px;
+  align-items:end;
+}
+.sh-royal-room .sh-tool {
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:0;
+  color:#ffe4b2;
+  font-size:12px;
+  font-weight:800;
+}
+.sh-royal-room .sh-tool>button,
+.sh-royal-room .sh-tool .rb {
+  width:57px;
+  height:57px;
+  display:grid;
+  place-items:center;
+  border:0;
+  padding:0;
+  background:none;
+  box-shadow:none;
+  cursor:pointer;
+}
+.sh-royal-room .sh-sprite {
+  display:inline-block;
+  width:54px;
+  height:54px;
+  flex:none;
+  background-image:url("./royal-room-icons.png");
+  background-repeat:no-repeat;
+  background-size:400% 200%;
+  pointer-events:none;
+}
+.sh-royal-room .sh-icon-dm {background-position:0% 0%}
+.sh-royal-room .sh-icon-box {background-position:33.333% 0%}
+.sh-royal-room .sh-icon-gift {background-position:66.666% 0%}
+.sh-royal-room .sh-icon-menu {background-position:100% 0%}
+.sh-royal-room .sh-icon-games {background-position:0% 100%}
+.sh-royal-room .sh-icon-mic {background-position:33.333% 100%}
+.sh-royal-room .sh-icon-settings {background-position:66.666% 100%}
+.sh-royal-room .sh-icon-emoji {background-position:100% 100%}
+.sh-royal-room .sh-mic-floating {
+  position:absolute;
+  right:17px;
+  bottom:111px;
+  width:46px;
+  height:46px;
+  display:grid;
+  place-items:center;
+  border:0;
+  padding:0;
+  background:none;
+  box-shadow:none;
+  animation:none;
+  font-size:0;
+  background-image:url("./royal-room-icons.png");
+  background-repeat:no-repeat;
+  background-size:400% 200%;
+  background-position:33.333% 100%;
+}
+.sh-royal-room .sh-mic-floating.off {
+  opacity:.68;
+  filter:grayscale(.6);
+}
+.sh-royal-room .sh-mic-floating::before {display:none}
+.sh-royal-room .sh-menu-panel {
+  display:none;
+  position:absolute;
+  right:8px;
+  bottom:85px;
+  width:min(300px,calc(100% - 16px));
+  max-height:48vh;
+  overflow-y:auto;
+  border:1.5px solid #ffcb74;
+  border-radius:20px;
+  background:#210b3cf7;
+  box-shadow:0 12px 36px #06000cc9,inset 0 2px #fff2ca55;
+  padding:13px;
+  z-index:15;
+}
+.sh-royal-room .sh-menu-panel.on {display:block}
+.sh-royal-room .sh-menu-panel h3 {
+  color:#ffe2a0;
+  font-size:14px;
+  margin:0 0 11px;
+}
+.sh-royal-room .sh-menu-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+.sh-royal-room .sh-menu-grid button {
+  border:1px solid #e7ae68ad;
+  border-radius:14px;
+  background:#4f236ed4;
+  color:#ffebcc;
+  padding:10px 4px;
+  min-height:43px;
+  font-weight:700;
+  font-size:12px;
+}
+.sh-royal-room button:focus-visible {outline:2px solid #fff3c0;outline-offset:2px}
+.sh-royal-room .tray {margin-bottom:7px;border-color:#e3ad64}
+@media(max-width:350px) {
+  .sh-royal-room .top {gap:3px;padding-inline:5px}
+  .sh-royal-room .top>.ib {width:30px}
+  .sh-royal-room .sh-settings,.sh-royal-room .sh-settings .sh-sprite {width:38px;height:38px}
+  .sh-royal-room .room>.rt b {font-size:12px}
+  .sh-royal-room .grid {gap:14px 2px}
+  .sh-royal-room .sh-tool>button {width:49px;height:49px}
+  .sh-royal-room .sh-tool .sh-sprite {width:48px;height:48px}
+}
+@media(max-height:690px) {
+  .sh-royal-room .host {margin:4px 0 10px}
+  .sh-royal-room .grid {gap:8px 2px}
+  .sh-royal-room .chat {height:32px}
+  .sh-royal-room .seat .av {width:43px;height:43px}
+  .sh-royal-room .host .av {width:60px;height:60px}
+}
+@media(prefers-reduced-motion:reduce) {
+  .sh-royal-room .host .av,.sh-royal-room .crown {animation:none}
+}
