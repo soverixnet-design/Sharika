@@ -349,6 +349,14 @@
       'transform:none!important;margin-bottom:25px!important}',
       '#v-me .mav>div{animation:none!important;transform:none!important}',
       '#v-me .mav>.sh-sovera-frame{width:138%!important;height:138%!important}',
+      '#v-me .mav,#pfc .pfh .pavw{overflow:visible!important;isolation:isolate}',
+      '#v-me .mav img,#pfc .pfh .pav3{object-fit:cover!important;object-position:center!important}',
+      '#pfc .pfh .pav3{background-size:cover!important;background-position:center!important;',
+      'background-repeat:no-repeat!important;border-radius:50%!important;overflow:hidden!important}',
+      '#pfc .pfh .pavw>.sh-sovera-frame.fxr{left:50%!important;top:50%!important;',
+      'transform:translate(-50%,-50%)!important}',
+      '.sh-neon-public-id{font-size:13px!important;letter-spacing:.05em!important;',
+      'padding:5px 10px!important;margin:5px auto 9px!important}',
       '.pavw{overflow:visible!important;margin-bottom:22px!important}',
       '.pavw>.sh-sovera-frame{width:142%!important;height:142%!important}',
       '@keyframes shSoGlow{50%{filter:brightness(1.18) drop-shadow(0 0 6px #ffe6a055)}}',
@@ -449,14 +457,16 @@
     node.querySelector('.sh-verified-avatar-image')?.remove();
     // Keep the original emoji underneath until the image has loaded.
     if(!node.classList.contains('face'))node.style.position='relative';
-    node.style.overflow='hidden';
+    // Keep the decorated avatar holder visible; clip only the actual photo.
+    // Otherwise the 142% Royal/SVIP frame is cut off on some profile cards.
+    node.style.overflow='visible';
     const image=doc.createElement('img');
     image.className='sh-verified-avatar-image';
     image.dataset.source=src;
     image.alt='';
     image.setAttribute('aria-hidden','true');
     image.style.cssText='position:absolute;inset:0;width:100%;height:100%;'+
-      'display:block;object-fit:cover;border-radius:inherit;z-index:2;'+
+      'display:block;object-fit:cover;object-position:center;border-radius:50%;z-index:2;'+
       'pointer-events:none;opacity:0';
     image.onload=()=>{image.style.opacity='1';};
     image.onerror=()=>image.remove();
@@ -1598,12 +1608,55 @@
       }
     }catch(error){console.warn('Verified profile counters unavailable:',errText(error));}
   }
+  let appearanceRefreshBusy=false,lastAppearanceRefresh=0;
+  async function refreshVerifiedAppearance(){
+    if(appearanceRefreshBusy||!session||!profile?.public_id)return;
+    if(Date.now()-lastAppearanceRefresh<10000)return;
+    lastAppearanceRefresh=Date.now();appearanceRefreshBusy=true;
+    const account=session.user?.id,canonical=profile.public_id;
+    try{
+      const latest=await api('GET','/me');
+      if(session?.user?.id!==account||latest.public_id!==canonical)return;
+      const keys=['pic','frame_style','entry_style','medal_style','name_tag_style',
+        'special_id','display_id','special_frame'];
+      const changed=keys.some(key=>(latest[key]||'')!==(profile[key]||''));
+      if(!changed)return;
+      profile=latest;
+      if(window.A){
+        window.A.pic=latest.pic||null;
+        window.A.name=latest.name||window.A.name;
+        window.A.frame=latest.frame_style||'';
+        window.A.entry=latest.entry_style||'';
+        window.A.cosmeticMedal=latest.medal_style||'';
+        window.A.cosmeticTag=latest.name_tag_style||'';
+        window.A.frameImg=null;
+        if(typeof window.saveA==='function')window.saveA();
+      }
+      if(typeof window.renderMe==='function')window.renderMe();
+      const roomFrame=document.getElementById('roomFrame')?.contentWindow;
+      if(roomFrame&&typeof roomFrame.render==='function')roomFrame.render();
+    }catch(error){
+      console.warn('Verified profile appearance refresh unavailable:',errText(error));
+    }finally{appearanceRefreshBusy=false;}
+  }
   if(typeof priorRenderMe==='function')window.renderMe=function(){
-    priorRenderMe.apply(this,arguments);
+    const result=priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
     renderVerifiedMainProfileStats().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
+    refreshVerifiedAppearance().catch(()=>{});
+    return result;
   };
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden)refreshVerifiedAppearance().catch(()=>{});
+  });
+  window.addEventListener('focus',()=>refreshVerifiedAppearance().catch(()=>{}));
+  // Admin grants are server-authoritative; refresh visible profile ornaments
+  // without requiring sign-out, reinstall, or a room rejoin.
+  setInterval(()=>{
+    if(!document.hidden&&document.querySelector('#v-me .mid'))
+      refreshVerifiedAppearance().catch(()=>{});
+  },20000);
   // Main profile screenshot: these tiles open the existing, verified features.
   // Capture early so the old placeholder "coming soon" handler never fires.
   document.addEventListener('click',event=>{
@@ -5982,6 +6035,13 @@
       effects.appendChild(artwork);
     }
     if(effects.children.length)root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',effects);
+    root.querySelector('.sh-neon-public-id')?.remove();
+    if(person.special_id){
+      const badge=document.createElement('span');
+      badge.className='sh-neon-profile-id sh-neon-public-id';
+      badge.textContent='★ SPECIAL ID · '+String(person.special_id);
+      root.querySelector('.pfh .meta')?.insertAdjacentElement('afterend',badge);
+    }
   }
 
   // Royal CP / Friendship is shown on the ID detail profile only. The main

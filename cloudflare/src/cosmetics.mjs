@@ -138,20 +138,27 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
    "SELECT auth_uid FROM sharika_users WHERE public_no=? AND status='active'"
   ).bind(Number(body.public_id)).first();
   if(!target)return fail('target_user_not_found',404,cors);
-  const item=await db.prepare('SELECT id FROM sharika_cosmetics_catalog WHERE id=?')
+  const item=await db.prepare('SELECT id,kind,art_key FROM sharika_cosmetics_catalog WHERE id=?')
    .bind(body.item_id).first();
   if(!item)return fail('cosmetic_unavailable',404,cors);
   const existing=await db.prepare(
    'SELECT 1 AS found FROM sharika_cosmetic_inventory WHERE auth_uid=? AND item_id=?'
   ).bind(target.auth_uid,item.id).first();
-  if(existing)return reply({granted:true,duplicate:true,public_id:body.public_id,item_id:item.id},200,cors);
+  // A Super Admin grant is a visible item, not just an inventory entitlement.
+  // One D1 batch atomically grants, equips and audits the selected ornament.
   await db.batch([
-   db.prepare("INSERT INTO sharika_cosmetic_inventory(auth_uid,item_id,source,request_id) VALUES(?,?,'admin_grant',?)")
+   db.prepare("INSERT INTO sharika_cosmetic_inventory(auth_uid,item_id,source,request_id) "+
+     "VALUES(?,?,'admin_grant',?) ON CONFLICT(auth_uid,item_id) DO NOTHING")
     .bind(target.auth_uid,item.id,'grant:'+item.id),
+   db.prepare('INSERT INTO sharika_cosmetic_equipped(auth_uid,kind,item_id) VALUES(?,?,?) '+
+     "ON CONFLICT(auth_uid,kind) DO UPDATE SET item_id=excluded.item_id,equipped_at=datetime('now')")
+    .bind(target.auth_uid,item.kind,item.id),
    db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
-    .bind(uid,'cosmetic_grant',JSON.stringify({public_id:body.public_id,item_id:item.id}))
+    .bind(uid,existing?'cosmetic_grant_re_equip':'cosmetic_grant',
+      JSON.stringify({public_id:body.public_id,item_id:item.id,kind:item.kind,auto_equipped:true}))
   ]);
-  return reply({granted:true,duplicate:false,public_id:body.public_id,item_id:item.id},201,cors);
+  return reply({granted:true,duplicate:!!existing,equipped:true,
+    public_id:body.public_id,item_id:item.id,kind:item.kind,art_key:item.art_key},existing?200:201,cors);
  }
  if(path.endsWith('/grant'))return fail('admin_method_not_allowed',405,cors);
  if(request.method==='GET')return reply({items:await stock(db,uid,true)},200,cors);
