@@ -1122,8 +1122,8 @@
         '<button class="btn s" id="sh-premium-grant" type="button">Confirm admin assignment</button>':'')+
       '<div id="sh-premium-result" role="status" class="n"></div>'+ 
       '<p class="n">SVIP 1–8 uses the eight verified animated frames, medals and nameplates. '+
-      'Level 1 is the default for an existing SVIP purchase. Admin-granted levels expire automatically; '+
-      'Shop items stay in the Shop.</p></div>';
+      'A free admin grant adds the matching frame, entry, medal and nameplate to My Backpack. '+
+      'Paid SVIP passes last 30 days. Users can equip any other owned frame later.</p></div>';
     const settingsRoot=byId('sh-premium-settings'),result=byId('sh-premium-result');
     let data;
     try{data=await api('GET','premium');}
@@ -1148,6 +1148,20 @@
           'data-premium-field="'+key+'" style="width:95px" min="0" value="'+esc(value)+'" '+
           (role==='super'?'':'disabled')+'></td>').join('')+'</tr>').join('')+
       '</tbody></table></div>'+
+      '<p class="n">SVIP uses the prices below, not the legacy SVIP tier price above. '+
+      'Every user purchase lasts 30 days; daily bonuses reset each UTC day.</p>'+
+      '<h3>♛ SVIP 1–8 · Pass prices & Daily Rewards</h3>'+
+      '<div style="overflow-x:auto"><table style="width:100%;min-width:490px;text-align:left">'+
+      '<thead><tr><th>Level</th><th>30-day price</th><th>Daily reward</th><th>Sell</th></tr></thead><tbody>'+
+      (data.config.svip_levels||[]).map(level=>'<tr data-svip-level="'+level.level+'">'+
+        '<td><b>SVIP '+level.level+'</b></td>'+
+        '<td><input type="number" inputmode="numeric" min="1" max="1000000000" class="field" '+
+        'data-svip-field="price_coins" value="'+esc(level.price_coins)+'" '+(role==='super'?'':'disabled')+'></td>'+
+        '<td><input type="number" inputmode="numeric" min="0" max="1000000" class="field" '+
+        'data-svip-field="daily_bonus_coins" value="'+esc(level.daily_bonus_coins)+'" '+(role==='super'?'':'disabled')+'></td>'+
+        '<td><input type="checkbox" data-svip-enabled '+(level.enabled?'checked':'')+
+        (role==='super'?'':' disabled')+'></td></tr>').join('')+
+      '</tbody></table></div>'+
       (role==='super'?'<button class="btn s" id="sh-premium-save" type="button">Save premium rules</button>':'')+
       '<p class="n" id="sh-premium-config-note">UTC day reset · bonus claims recorded in wallet ledger.</p>';
     byId('sh-premium-save')?.addEventListener('click',async event=>{
@@ -1161,9 +1175,16 @@
         });
         return entry;
       });
-      if(!window.confirm('Save premium purchase, grant and automatic qualification rules?'))return;
+      const svip_levels=[...settingsRoot.querySelectorAll('[data-svip-level]')].map(row=>({
+        level:Number(row.dataset.svipLevel),
+        price_coins:Number(row.querySelector('[data-svip-field="price_coins"]')?.value),
+        daily_bonus_coins:Number(row.querySelector('[data-svip-field="daily_bonus_coins"]')?.value),
+        enabled:!!row.querySelector('[data-svip-enabled]')?.checked
+      }));
+      if(svip_levels.length!==8){byId('sh-premium-config-note').textContent='SVIP table unavailable';return;}
+      if(!window.confirm('Save eight SVIP prices, daily coins and membership rules?'))return;
       button.disabled=true;
-      try{await api('PATCH','premium',{policy,tiers});
+      try{await api('PATCH','premium',{policy,tiers,svip_levels});
         byId('sh-premium-config-note').textContent='Premium configuration saved and audited ✓';
       }catch(error){byId('sh-premium-config-note').textContent='Not saved: '+error.message;}
       finally{button.disabled=false;}
