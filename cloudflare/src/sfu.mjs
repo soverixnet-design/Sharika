@@ -48,7 +48,7 @@ async function realtimeIceServers(env) {
         headers:{authorization:'Bearer '+env.REALTIME_TURN_API_TOKEN,
           'content-type':'application/json'},
         body:JSON.stringify({ttl:86400}),
-        signal:AbortSignal.timeout(4500)
+        signal:AbortSignal.timeout(2000)
       });
     if(!result.ok)throw new Error('turn_credential_unavailable');
     const data=await result.json();
