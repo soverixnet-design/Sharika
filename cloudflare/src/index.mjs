@@ -5,7 +5,7 @@ import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
-import { handlePremiumApp } from './premium.mjs';
+import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
 import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
@@ -24,7 +24,7 @@ import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
-const PUBLIC_OR_SPECIAL_ID = /^[0-9]{4,8}$/;
+const PUBLIC_OR_SPECIAL_ID = /^[0-9]{1,10}$/;
 const ROOM_THEMES = new Set(['mid','gold','ocean','rose','forest','sunset','photo']);
 const ROOM_SEAT_FRAMES = new Set(['grad','gold','neon','sq']);
 const MAX_BODY = 20_000;
@@ -48,6 +48,29 @@ function reply(payload, status = 200, cors = {}) {
 function fail(code, status, cors) { return reply({ error: code }, status, cors); }
 function txt(value, limit) { return typeof value === 'string' ? value.trim().slice(0, limit) : ''; }
 function publicId(n) { return String(n).padStart(8, '0'); }
+function svipAppearance(user,equipped={},level=Number(user?.svip_level)||0) {
+  const n=Number(level);
+  const appearance={
+    frame_style:equipped.frame_style??user.frame_style??'',
+    entry_style:equipped.entry_style??user.entry_style??'',
+    medal_style:equipped.medal_style??user.medal_style??'',
+    name_tag_style:equipped.name_tag_style??user.name_tag_style??'',
+    svip_level:0
+  };
+  if(Number.isInteger(n)&&n>=1&&n<=8){
+    const key=String(n).padStart(2,'0');
+    // Existing SVIP accounts fall back to the level art, but a Backpack
+    // equipment choice (including unequip) always wins.
+    if(!Object.prototype.hasOwnProperty.call(equipped,'frame_style'))
+      appearance.frame_style='svip-frame-'+key;
+    if(!Object.prototype.hasOwnProperty.call(equipped,'medal_style'))
+      appearance.medal_style='svip-medal-'+key;
+    if(!Object.prototype.hasOwnProperty.call(equipped,'name_tag_style'))
+      appearance.name_tag_style='svip-tag-'+key;
+    appearance.svip_level=n;
+  }
+  return appearance;
+}
 function showProfile(user) {
   if (!user) return null;
   return {
@@ -131,9 +154,10 @@ export async function handleRequest(request, env, ctx) {
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
   const themeImagePath=/^\/api\/v1\/rooms\/([0-9]{8})\/theme-image$/.exec(path);
   const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
+  const bannerImagePath=/^\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image$/.exec(path);
   // Public image thumbnails support anonymous GET; edits remain authenticated.
   // all mutations continue through strict origin and Firebase checks.
-  const cors = (coverPath || themeImagePath || avatarPath) && request.method==='GET'
+  const cors = (coverPath || themeImagePath || avatarPath || bannerImagePath) && request.method==='GET'
     ? {'access-control-allow-origin':'*'} : corsFor(request, env);
   if (!cors) return fail('origin_forbidden', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -173,6 +197,18 @@ export async function handleRequest(request, env, ctx) {
       'JOIN sharika_users u ON u.auth_uid=a.auth_uid WHERE u.public_no=? AND u.status=?'
     ).bind(Number(avatarPath[1]),'active').first();
     if(!image)return fail('avatar_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  if(bannerImagePath && request.method==='GET') {
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const image=await env.DB.prepare(
+      'SELECT image_base64 FROM sharika_banner_images WHERE banner_id=? AND image_bytes>0'
+    ).bind(Number(bannerImagePath[1])).first();
+    if(!image)return fail('banner_image_not_found',404,cors);
     const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
     return new Response(bytes,{status:200,headers:{
       'content-type':'image/jpeg','cache-control':'public, max-age=3600',
@@ -306,14 +342,15 @@ export async function handleRequest(request, env, ctx) {
     }
     if(path==='/api/v1/banners' && request.method==='GET') {
       await assertActive(env.DB,uid);
-      return reply({banners:await listPublicBanners(env.DB)},200,cors);
+      return reply({banners:await listPublicBanners(env.DB,url.origin)},200,cors);
     }
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
         if(!user)return fail('profile_not_found',404,cors);
         const special=await activeSpecial(env.DB,uid);
-        return reply({...showProfile(user),...await readEquipped(env.DB,uid),
+        return reply({...showProfile(user),...svipAppearance(user,
+          await readEquipped(env.DB,uid),await readSvipLevel(env.DB,uid)),
           special_id:special?.special_id||null,
           display_id:special?.special_id||publicId(user.public_no),
           special_frame:special?.frame||null},200,cors);
@@ -342,7 +379,13 @@ export async function handleRequest(request, env, ctx) {
         const welcomeCoins=signupCoins(verifiedReferral,rules);
         const registration=[
           env.DB.prepare(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,country,pic,coins)
-            VALUES((SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users),?,?,?,?,?,?,?)`)
+            VALUES((WITH RECURSIVE candidate(n) AS (
+              SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users
+              UNION ALL
+              SELECT n+1 FROM candidate
+              WHERE EXISTS (SELECT 1 FROM sharika_special_ids
+                WHERE special_id=CAST(candidate.n AS TEXT))
+            ) SELECT n FROM candidate ORDER BY n DESC LIMIT 1),?,?,?,?,?,?,?)`)
             .bind(uid,name,body.birthdate,age<18?1:0,country,pic,welcomeCoins),
           env.DB.prepare(`INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id)
             VALUES(?,'coins',?,?,?,?)`)
@@ -417,7 +460,8 @@ export async function handleRequest(request, env, ctx) {
         wealth_level: user.wealth_level, charm_level: user.charm_level,
         frame_style: user.frame_style || '', entry_style: user.entry_style || '',
         medal_style: user.medal_style || '', name_tag_style: user.name_tag_style || '',
-        ...await readEquipped(env.DB,user.auth_uid) }, 200, cors)
+        ...svipAppearance(user,await readEquipped(env.DB,user.auth_uid),
+          await readSvipLevel(env.DB,user.auth_uid)) }, 200, cors)
         : fail('not_found', 404, cors);
     }
     // Real follow graph. Identity always comes from the verified Firebase token.
@@ -439,9 +483,10 @@ export async function handleRequest(request, env, ctx) {
       ).bind(uid).all();
       const showFollow=u=>({...u,public_id:publicId(u.public_no),
         display_id:u.special_id||publicId(u.public_no),public_no:undefined,
-        frame_style:u.equipped_frame_style??u.frame_style??'',
-        medal_style:u.equipped_medal_style??u.medal_style??'',
-        name_tag_style:u.equipped_name_tag_style??u.name_tag_style??''});
+        ...svipAppearance(u,{
+          frame_style:u.equipped_frame_style??u.frame_style??'',
+          medal_style:u.equipped_medal_style??u.medal_style??'',
+          name_tag_style:u.equipped_name_tag_style??u.name_tag_style??''})});
       return reply({following:(following.results||[]).map(showFollow),
         followers:(followers.results||[]).map(showFollow)},200,cors);
     }
@@ -492,9 +537,10 @@ export async function handleRequest(request, env, ctx) {
           special_id:item.special_id||null,name:item.name,
           last_body:item.body,last_at:item.created_at,pic:item.pic||null,
           unread_count:0,other_uid:item.other_uid,
-          frame_style:item.equipped_frame_style??item.frame_style??'',
-          medal_style:item.equipped_medal_style??item.medal_style??'',
-          name_tag_style:item.equipped_name_tag_style??item.name_tag_style??''});
+          ...svipAppearance(item,{
+            frame_style:item.equipped_frame_style??item.frame_style??'',
+            medal_style:item.equipped_medal_style??item.medal_style??'',
+            name_tag_style:item.equipped_name_tag_style??item.name_tag_style??''})});
         if(conversations.length>=100)break;
       }
       const unread=await env.DB.prepare(
@@ -1035,8 +1081,11 @@ export async function handleRequest(request, env, ctx) {
         if(env.VOICE_ROOMS){
           const entrant=await assertActive(env.DB,uid);
           const equipped=await readEquipped(env.DB,uid);
+          const svipLevel=await readSvipLevel(env.DB,uid);
           const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
-            ?equipped.entry_style:(entrant.entry_style||'');
+            ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
+              ?'svip-entry-'+String(svipLevel).padStart(2,'0')
+              :(entrant.entry_style||'');
           if(entry)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
             .roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry);
         }
@@ -1369,7 +1418,7 @@ export async function handleRequest(request, env, ctx) {
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,m.joined_at,
           u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style,
-          ${activeSpecialSelect('u')} FROM sharika_room_members m
+          ${activeSpecialSelect('u')},${publicSvipSelect('u')} FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
         // A killed Android process may never call /leave. Show active presence
         // (with a 90-second grace period for new joins), without mutating the
@@ -1416,9 +1465,7 @@ export async function handleRequest(request, env, ctx) {
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
             special_id:x.special_id||null,display_id:x.special_id||publicId(x.public_no),
-            frame_style: x.frame_style || '', entry_style: x.entry_style || '',
-            medal_style: x.medal_style || '', name_tag_style: x.name_tag_style || '',
-            ...(equipped.get(x.user_id)||{}) }
+            ...svipAppearance(x,equipped.get(x.user_id)||{}) }
         })) }, 200, cors);
       }
       if (parts.length === 5 && action === 'voice-token' && request.method === 'POST') {

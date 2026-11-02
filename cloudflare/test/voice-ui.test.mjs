@@ -7,11 +7,27 @@ import {readFileSync} from 'node:fs';
 // protect the user-facing seat and microphone recovery wiring from regression.
 const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
 
-test('guest can tap an open seat without an invitation dialog',()=>{
+test('owner and guest tap an open mic seat without waiting on the old invitation UI',()=>{
   assert.match(ui,/\.seat\.empty\[data-i\]/);
-  assert.match(ui,/room\.owner_id===session\?\.user\?\.id\)return/);
+  assert.doesNotMatch(ui,/room\.owner_id===session\?\.user\?\.id\)return/);
+  assert.match(ui,/async function moveSelfToSeat\(seat\)/);
   assert.match(ui,/api\('PUT','\/rooms\/'\+room\.id\+'\/seat',\{seat_no:seat\}\)/);
+  assert.match(ui,/owner_mic_seat:owner/);
+  assert.match(ui,/owner_mic_seat:true/);
+  assert.match(ui,/const ownerOnMic=frame\.seats\.some/);
+  assert.match(ui,/const people=new Set\(frame\.seats\.filter/);
 });
+
+test('seat changes appear before server acknowledgement and preserve an existing voice publisher',()=>{
+  const change=ui.slice(ui.indexOf('async function moveSelfToSeat(seat)'),
+    ui.indexOf('    frame.act=async function(action,seat)'));
+  assert.ok(change.indexOf('frame.render();')<change.indexOf("await api('PUT'"));
+  assert.match(change,/frame\.__sharikaSeatMovePending=true/);
+  assert.match(change,/frame\.seats=before/);
+  assert.match(change,/publishingAlready\?ensureVoiceConnected\(room\.id\):connectVoice\(room\.id\)/);
+  assert.doesNotMatch(change,/await connectVoice/);
+});
+
 test('both SFU peer connections have Cloudflare STUN discovery',()=>{
   assert.match(ui,/stun:stun\.cloudflare\.com:3478/);
   assert.equal((ui.match(/new RTCPeerConnection\(SHARIKA_ICE_CONFIG\)/g)||[]).length,2);
@@ -62,11 +78,19 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/event\.stopImmediatePropagation\(\)/);
   assert.match(ui,/api\('GET','\/users\/'\+publicId\)/);
   assert.match(ui,/Seat occupant has changed/);
-  assert.match(ui,/detail\.textContent='ID '\+id/);
+  assert.match(ui,/detail\.textContent=index===0\?'Room owner':'Mic seat '\+index/);
   assert.match(ui,/frame\.act\(action,index\)/);
   assert.match(ui,/fakeStats\.style\.display='none'/);
   assert.match(ui,/paintVerifiedAvatar\(root\.querySelector\('\.pfh \.pav3'\),member\.pic,document\)/);
   assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+publicId\+'\/follow'\)/);
+});
+
+test('room seats keep SVIP beside the avatar frame and IDs only inside profiles',()=>{
+  assert.match(ui,/avatar\.appendChild\(makeSvipBadge\(doc,svip,'sh-svip-seat-badge'\)\)/);
+  assert.match(ui,/\.seat \.av>\.sh-svip-seat-badge/);
+  assert.doesNotMatch(ui,/badge\.textContent=seat\.special_id/);
+  assert.match(ui,/openVerifiedRoomMemberProfile\(target\.public_id,room\.id,seat\)/);
+  assert.match(ui,/decorateRoomSeats\(frame\);\s*paintVerifiedMicCount\(frame\);\s*if\(window\.cur\?\.id===sfuState\?\.roomId\)/);
 });
 
 test('room gestures retry blocked incoming audio in both the app and room iframe',()=>{
@@ -76,6 +100,7 @@ test('room gestures retry blocked incoming audio in both the app and room iframe
   assert.match(ui,/roomAudioFrame\.addEventListener\('load'/);
   assert.match(ui,/bindRoomAudioGesture\(roomAudioFrame\.contentDocument\)/);
   assert.match(ui,/audio\.play\(\)\.catch\(error=>/);
+  assert.match(ui,/event\.track\.addEventListener\('unmute',startPlayback\)/);
   assert.match(ui,/voiceRoom\.startAudio\(\)\.catch/);
 });
 
@@ -159,4 +184,203 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
   remoteAudio.paused=true;
   outerDoc.handlers.get('pointerdown')();
   assert.equal(playCount,3);
+});
+
+test('two-way audio recovers an ended microphone and a failed remote receiver',()=>{
+  const begin=ui.indexOf('  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;');
+  const end=ui.indexOf('  async function waitIce(peer)',begin);
+  assert.ok(begin>=0 && end>begin);
+  const timers=[],reconnects=[];
+  const context=createContext({
+    document:{getElementById:()=>null},
+    console:{warn(){}},
+    setTimeout(fn,delay){timers.push({fn,delay});return timers.length;},
+    connectVoice(id){reconnects.push(id);return Promise.resolve({publishing:true});},
+    errText(error){return String(error);}
+  });
+  runInContext("let sfuState=null,wantedVoiceRoom='roomA';"+ui.slice(begin,end),context);
+  const ended={
+    roomId:'roomA',closed:false,recoveryTimer:null,recoveryExhausted:false,
+    canPublish:true,subscribed:new Set(),receivePC:null,
+    publishPC:{connectionState:'connected'},
+    media:{getAudioTracks:()=>[{readyState:'ended'}]}
+  };
+  context.testState=ended;
+  runInContext("sfuState=testState;recoverSfuPublication(testState,'track ended')",context);
+  const first=timers.shift();
+  assert.equal(first.delay,1200);
+  first.fn();
+  assert.deepEqual(reconnects,['roomA']);
+  const receiver={
+    ...ended,recoveryTimer:null,
+    media:{getAudioTracks:()=>[{readyState:'live'}]},
+    subscribed:new Set(['other:microphone']),receivePC:{connectionState:'failed'}
+  };
+  context.testState=receiver;
+  runInContext("sfuState=testState;recoverSfuPublication(testState,'remote failed')",context);
+  const second=timers.shift();
+  assert.equal(second.delay,3000);
+  second.fn();
+  assert.deepEqual(reconnects,['roomA','roomA']);
+  assert.equal(runInContext(
+    "micPreferenceRoom='roomA';micPreferenceEnabled=false;microphoneWanted('roomA')",
+    context),false,'manual mute is preserved through reconnect');
+  assert.equal(runInContext("microphoneWanted('roomB')",context),true,
+    'a new room starts with the microphone enabled');
+});
+
+test('incoming voice and server permission changes are checked independently',()=>{
+  assert.match(ui,/incoming audio path unavailable/);
+  assert.match(ui,/state\.subscriptionFailures>=2/);
+  assert.match(ui,/voice session heartbeat lost/);
+  assert.match(ui,/sfuState\.canPublish!==!!eligible/);
+  assert.doesNotMatch(ui,/!!sfuState\.media!==!!eligible/);
+  assert.match(ui,/local\.enabled=microphoneWanted\(roomId\)/);
+});
+
+test('voice begins at verified join before the room art and iframe are ready',()=>{
+  const enter=ui.indexOf('  window.openRoom=async function(room) {');
+  const end=ui.indexOf('  const originalLeaveRoom=',enter);
+  assert.ok(enter>=0&&end>enter);
+  const entry=ui.slice(enter,end);
+  assert.ok(entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})")>=0);
+  assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')>
+    entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})"));
+  assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')<
+    entry.indexOf('originalOpenRoom(room)'));
+  assert.match(ui,/const voice=await ensureVoiceConnected\(room\.id\)/);
+});
+
+test('SFU starts listening independently of microphone capture',()=>{
+  assert.match(ui,/async function startSfuReceiving\(state\)/);
+  assert.match(ui,/const receiving=startSfuReceiving\(state\)\.then/);
+  assert.match(ui,/const receiveError=await receiving/);
+  assert.match(ui,/bootstrapTimers:\[\]/);
+  assert.match(ui,/\[1200,3000,5500\]/);
+  assert.match(ui,/for\(const timer of state\.bootstrapTimers\|\|\[\]\)clearTimeout\(timer\)/);
+});
+
+test('Android keeps the screen awake for an active room, including its mini-player',()=>{
+  const java=readFileSync(new URL(
+    '../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',
+    import.meta.url),'utf8');
+  assert.match(java,/case "roomScreenAwake":/);
+  assert.match(java,/getWindow\(\)\.addFlags\(WindowManager\.LayoutParams\.FLAG_KEEP_SCREEN_ON\)/);
+  assert.match(java,/getWindow\(\)\.clearFlags\(WindowManager\.LayoutParams\.FLAG_KEEP_SCREEN_ON\)/);
+  assert.match(ui,/setRoomScreenAwake\(true\)/);
+  assert.match(ui,/setRoomScreenAwake\(false\)/);
+  assert.match(ui,/if\(prior\?\.id===room\.id\)/);
+  assert.match(ui,/resumeRoomAudio\(\)/);
+});
+
+test('real speaker rings follow multiple authenticated microphones and never random seats',()=>{
+  const begin=ui.indexOf('  const activeVoiceSpeakers=');
+  const end=ui.indexOf('  // Android WebView may block',begin);
+  assert.ok(begin>=0&&end>begin);
+  const classes=[];
+  const seats=[
+    {i:0,user_id:'owner',muted:false},
+    {i:1,user_id:'one',muted:false},
+    {i:2,user_id:'two',muted:true},
+    {i:3,empty:1}
+  ];
+  const frame={seats,seatEl(i){return {classList:{toggle(key,yes){
+    classes.push([i,key,yes]);
+  }}}}};
+  const context=createContext({
+    window:{cur:{id:'roomA'}},
+    document:{getElementById:()=>({contentWindow:frame})}
+  });
+  runInContext("let wantedVoiceRoom='roomA';"+ui.slice(begin,end),context);
+  context.speakerIds=new Set(['owner','one','two']);
+  runInContext("setVoiceSpeakers('roomA',speakerIds)",context);
+  assert.deepEqual(seats.map(s=>!!s.talk),[true,true,false,false]);
+  assert.ok(classes.some(x=>x[0]===0&&x[1]==='talk'&&x[2]===true));
+  assert.ok(classes.some(x=>x[0]===1&&x[1]==='talk'&&x[2]===true));
+  assert.ok(classes.some(x=>x[0]===2&&x[1]==='talk'&&x[2]===false));
+  runInContext('clearVoiceSpeakers()',context);
+  assert.deepEqual(seats.map(s=>!!s.talk),[false,false,false,false]);
+  assert.doesNotMatch(ui.slice(begin,end),/Math\.random/);
+  assert.match(ui,/frame\.tick=function\(\)\{\};/,
+    'staging disables the template random voice animation');
+});
+
+test('SFU voice activity measures live audio and clears the light on mute',()=>{
+  const begin=ui.indexOf('  // A light-weight, audio-only voice activity meter.');
+  const end=ui.indexOf('  function addAudioTrack(state,event)',begin);
+  assert.ok(begin>=0&&end>begin);
+  const updates=[];
+  const context=createContext({
+    Date,Math,Set,Uint8Array,
+    setVoiceSpeakers(room,ids){updates.push([room,[...ids].sort()]);},
+    window:{}
+  });
+  runInContext('let sfuState=null;'+ui.slice(begin,end),context);
+  const loud={getByteTimeDomainData(bytes){bytes.fill(158);}};
+  const quiet={getByteTimeDomainData(bytes){bytes.fill(128);}};
+  const trackOne={readyState:'live',enabled:true,muted:false};
+  const trackTwo={readyState:'live',enabled:true,muted:false};
+  const state={roomId:'roomA',closed:false,speakingMeters:new Map(),publishPC:null};
+  state.speakingMeters.set(trackOne,{
+    userId:'one',local:false,analyser:loud,samples:new Uint8Array(64),lastActiveAt:0
+  });
+  state.speakingMeters.set(trackTwo,{
+    userId:'two',local:false,analyser:loud,samples:new Uint8Array(64),lastActiveAt:0
+  });
+  context.state=state;
+  runInContext('sfuState=state;sampleSfuSpeaking(state)',context);
+  assert.deepEqual(updates.at(-1),['roomA',['one','two']]);
+  trackOne.enabled=false;
+  state.speakingMeters.get(trackTwo).analyser=quiet;
+  state.speakingMeters.get(trackTwo).lastActiveAt=0;
+  runInContext('sampleSfuSpeaking(state)',context);
+  assert.deepEqual(updates.at(-1),['roomA',[]]);
+  assert.match(ui,/state\.remoteMids\?\.get\(String\(event\.transceiver\?\.mid/);
+  assert.match(ui,/watchSfuSpeaking\(state,local,session\?\.user\?\.id,true\)/);
+  assert.match(ui,/speakingContext\.close\(\)\.catch/);
+  assert.match(ui,/source\.connect\(analyser\)/);
+  assert.doesNotMatch(ui.slice(begin,end),/source\.connect\(.*destination/);
+});
+
+test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>{
+  const begin=ui.indexOf('  async function subscribeSfu(state) {');
+  const end=ui.indexOf('  // The receiving SFU session',begin);
+  assert.ok(begin>=0&&end>begin);
+  const calls=[];
+  const context=createContext({
+    Date,
+    console:{warn(){}},
+    waitIce:async()=>{},
+    errText:String,
+    api:async(method,path,body)=>{
+      calls.push([method,path]);
+      if(method==='GET')return {publications:[
+        {sessionId:'publish-A',trackName:'microphone',userId:'user-A'},
+        {sessionId:'publish-B',trackName:'microphone',userId:'user-B'}
+      ]};
+      if(path.endsWith('/subscribe'))return {
+        sessionDescription:{type:'offer',sdp:'test'},
+        tracks:[
+          {mid:'0',sessionId:'publish-A',userId:''},
+          {mid:'1',sessionId:'publish-B',userId:'spoofed-user'}
+        ]
+      };
+      return {ok:true};
+    }
+  });
+  runInContext(ui.slice(begin,end),context);
+  const state={
+    closed:false,syncing:false,roomId:'10000001',subscribeId:'receive-A',
+    subscribed:new Set(),remoteMids:new Map(),sessionIds:[],
+    receivePC:{
+      async setRemoteDescription(){},async createAnswer(){return {type:'answer',sdp:'test'};},
+      async setLocalDescription(){this.localDescription={type:'answer',sdp:'test'};}
+    }
+  };
+  context.state=state;
+  await runInContext('subscribeSfu(state)',context);
+  assert.equal(state.remoteMids.get('0'),'user-A');
+  assert.equal(state.remoteMids.get('1'),'user-B');
+  assert.equal(state.subscribed.size,2);
+  assert.ok(calls.some(x=>x[1].endsWith('/renegotiate')));
 });

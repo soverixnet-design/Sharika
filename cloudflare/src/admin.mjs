@@ -164,7 +164,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if (operation.startsWith('sellers')) return await handleSellerAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
-  if(operation==='banners'||/^banners\/[1-9][0-9]{0,8}$/.test(operation))
+  if(operation==='banners'||/^banners\/[1-9][0-9]{0,8}(?:\/image)?$/.test(operation))
     return await handleBannerAdmin({
       request,env,uid,role:actor.role,operation,cors,reply,fail
     });

@@ -35,6 +35,7 @@ on:
       - feature/sharika-cp-weekly-rewards-20261101
       - feature/sharika-royal-frame-admin-grants-20261101
       - feature/sharika-master-integration-20261101
+      - feature/sharika-winged-royal-unlimited-seller-20261102
       - feature/sharika-royal-profile-20261101
       - fix/sharika-google-login-hd-room-themes-20261101
       - fix/sharika-games-bet-integrity-20261101
@@ -333,7 +334,7 @@ jobs:
   royal-emulator-smoke:
     name: Royal UI emulator launch and Back smoke test
     # Only the isolated Option 1 candidate; no live app or staging data writes.
-    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101'
+    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102'
     needs: debug-apk
     runs-on: ubuntu-latest
     timeout-minutes: 25

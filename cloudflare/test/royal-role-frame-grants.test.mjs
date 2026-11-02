@@ -38,7 +38,7 @@ test('Super Admin can grant an inactive Royal Role frame free, with audit and no
   const db={prepare(sql){return {sql,args:[],bind(...args){this.args=args;return this;},
     async first(){
       if(sql.includes('FROM sharika_users'))return {auth_uid:'verified-recipient'};
-      if(sql.includes('FROM sharika_cosmetics_catalog'))return {id:'frame_style:role-frame-28'};
+      if(sql.includes('FROM sharika_cosmetics_catalog'))return {id:'frame_style:role-frame-28',kind:'frame_style',art_key:'role-frame-28'};
       if(sql.includes('FROM sharika_cosmetic_inventory'))return null;
       throw Error('unexpected SQL: '+sql);
     }};},async batch(statements){batch=statements;}};
@@ -51,10 +51,12 @@ test('Super Admin can grant an inactive Royal Role frame free, with audit and no
   });
   assert.equal(response.status,201);
   assert.deepEqual((await response.json()).item_id,'frame_style:role-frame-28');
-  assert.equal(batch.length,2);
+  assert.equal(batch.length,3);
   assert.match(batch[0].sql,/INSERT INTO sharika_cosmetic_inventory/);
   assert.deepEqual(batch[0].args.slice(0,2),['verified-recipient','frame_style:role-frame-28']);
-  assert.match(batch[1].sql,/INSERT INTO sharika_admin_audit/);
+  assert.match(batch[1].sql,/INSERT INTO sharika_cosmetic_equipped/);
+   assert.deepEqual(batch[1].args,['verified-recipient','frame_style','frame_style:role-frame-28']);
+   assert.match(batch[2].sql,/INSERT INTO sharika_admin_audit/);
   assert.ok(batch.every(x=>!/UPDATE sharika_users|wallet_ledger/i.test(x.sql)));
 });
 
@@ -69,3 +71,30 @@ test('mobile preview reserves clearance around the animated frame and grant is d
   assert.match(admin,/id="sh-cos-grant-kind"/);
   assert.match(admin,/Give selected item to ID · Free/);
 });
+
+ test('granting an already owned frame re-equips it instead of disappearing from the profile',async()=>{
+   let batch=[];
+   const db={prepare(sql){return {sql,args:[],bind(...args){this.args=args;return this;},
+     async first(){
+       if(sql.includes('FROM sharika_users'))return {auth_uid:'recipient'};
+       if(sql.includes('FROM sharika_cosmetics_catalog'))return {
+         id:'frame_style:role-frame-28',kind:'frame_style',art_key:'role-frame-28'};
+       if(sql.includes('FROM sharika_cosmetic_inventory'))return {found:1};
+       throw Error('unexpected SQL: '+sql);
+     }};},async batch(statements){batch=statements;}};
+   const response=await handleCosmeticAdmin({
+     request:new Request('https://example.test/api/v1/admin/cosmetics/grant',{
+       method:'POST',body:JSON.stringify({public_id:'10000001',item_id:'frame_style:role-frame-28'})
+     }),db,uid:'super',role:'super',path:'/api/v1/admin/cosmetics/grant',
+     readBody:request=>request.json(),reply:(value,status)=>Response.json(value,{status}),
+     fail:(error,status)=>Response.json({error},{status}),cors:{}
+   });
+   const body=await response.json();
+   assert.equal(response.status,200);
+   assert.equal(body.duplicate,true);
+   assert.equal(body.equipped,true);
+   assert.equal(batch.length,3);
+   assert.match(batch[0].sql,/ON CONFLICT\(auth_uid,item_id\) DO NOTHING/);
+   assert.match(batch[1].sql,/ON CONFLICT\(auth_uid,kind\) DO UPDATE/);
+   assert.equal(batch[2].args[1],'cosmetic_grant_re_equip');
+ });

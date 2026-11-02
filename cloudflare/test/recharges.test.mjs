@@ -67,7 +67,7 @@ test('request without verified receipt confirmation cannot mint coins',async()=>
   const f=mock();
   const invalid={...approved,confirm_payment_verified:false};
   assert.equal((await call(f.DB,'recharges/approve',invalid)).status,400);
-  assert.equal((await call(f.DB,'recharges/approve',{...approved,coins:1000001})).status,400);
+  assert.equal((await call(f.DB,'recharges/approve',{...approved,coins:1000000000001})).status,400);
   assert.equal(f.state.batches.length,0);
 });
 test('manual approval atomically grants 40% first recharge and 5% inviter commission',async()=>{

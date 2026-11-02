@@ -1,0 +1,182 @@
+name: Sharika approved finance and cosmetics staging rollout
+
+on:
+  push:
+    branches:
+      - feature/sharika-winged-royal-unlimited-seller-20261102
+    paths:
+      - '.github/workflows/sharika-approved-finance-cosmetics-staging.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  authorized-staging-rollout:
+    name: Preserve D1 data, migrate 0037-0039, publish API and Admin
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restrict to approved branch and exact isolated staging resources
+        run: |
+          test "$GITHUB_REF" = "refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const api=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          const admin=JSON.parse(readFileSync('cloudflare/wrangler.admin.jsonc','utf8'));
+          const d1=api.d1_databases?.[0];
+          if(api.name!=='sharika-api-staging' ||
+             api.main!=='src/voice-worker.mjs' ||
+             api.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74' ||
+             api.vars?.SHARIKA_ENV!=='staging' ||
+             api.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false' ||
+             api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             api.keep_vars!==true || api.d1_databases?.length!==1 ||
+             d1.binding!=='DB'||d1.database_name!=='sharika-staging' ||
+             d1.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a' ||
+             api.durable_objects?.bindings?.[0]?.name!=='VOICE_ROOMS' ||
+             admin.name!=='sharika-admin-staging' ||
+             admin.account_id!==api.account_id ||
+             admin.vars?.SHARIKA_ENV!=='staging' ||
+             admin.services?.length!==1 ||
+             admin.services[0]?.binding!=='SHARIKA_API' ||
+             admin.services[0]?.service!=='sharika-api-staging')
+            throw Error('Unexpected Worker or D1 binding: deployment refused');
+          console.log('Exact Sharika staging account, Workers and D1 verified');
+          NODE
+      - name: Pass complete backend, admin and Android adapter tests
+        run: npm --prefix cloudflare run check
+      - name: Capture D1 time-travel bookmark and immutable baseline
+        run: |
+          node --input-type=module - <<'NODE'
+          import {writeFileSync} from 'node:fs';
+          const root='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a';
+          const headers={Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'};
+          async function request(path,body){
+            const response=await fetch(root+path,{method:body?'POST':'GET',headers,
+              ...(body?{body:JSON.stringify(body)}:{})});
+            const result=await response.json();
+            if(!response.ok||!result.success||!result.result)
+              throw Error('Staging D1 baseline unavailable');
+            return result.result;
+          }
+          const query=async sql=>(await request('/query',{sql}))[0]?.results;
+          const [last]=await query("SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1");
+          const [count]=await query("SELECT COUNT(*) AS n FROM d1_migrations");
+          const [missing]=await query("SELECT COUNT(*) AS n FROM d1_migrations "+
+            "WHERE name IN ('0037_unlimited_seller_stock.sql',"+
+            "'0038_seller_large_transfers.sql','0039_large_admin_recharges.sql')");
+          if(last?.name!=='0036_royal_role_frame_catalog.sql'||count?.n!==36||missing?.n!==0)
+            throw Error('Unrecognized staging migration state: refusing database changes');
+          const [baseline]=await query("SELECT "+
+            "(SELECT COUNT(*) FROM sharika_coin_seller_transfers) AS transfers,"+
+            "(SELECT COUNT(*) FROM sharika_coin_seller_allocations) AS allocations,"+
+            "(SELECT COUNT(*) FROM sharika_manual_recharge_reviews) AS reviews,"+
+            "(SELECT COUNT(*) FROM sharika_admin_direct_recharges) AS credits,"+
+            "(SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger");
+          if(Object.values(baseline||{}).some(n=>!Number.isSafeInteger(n)||n<0))
+            throw Error('Cannot validate staging D1 financial baseline');
+          const bookmark=await request('/time_travel/bookmark');
+          if(!bookmark.bookmark)throw Error('No D1 recovery bookmark; refusing migration');
+          writeFileSync(process.env.RUNNER_TEMP+'/sharika-staging-baseline.json',
+            JSON.stringify({...baseline,bookmark:bookmark.bookmark}),{mode:0o600});
+          console.log('D1 recovery bookmark captured; baseline financial counts verified');
+          NODE
+      - name: Export an additional ephemeral backup before table rebuilds
+        run: |
+          npx --yes wrangler@4 d1 export sharika-staging --remote \
+            --config cloudflare/wrangler.jsonc \
+            --output "$RUNNER_TEMP/sharika-staging-before-finance.sql"
+          test -s "$RUNNER_TEMP/sharika-staging-before-finance.sql"
+      - name: Isolate ONLY the three authorized migrations
+        run: |
+          mkdir -p cloudflare/.sharika-approved-migrations
+          cp cloudflare/migrations/0037_unlimited_seller_stock.sql cloudflare/.sharika-approved-migrations/
+          cp cloudflare/migrations/0038_seller_large_transfers.sql cloudflare/.sharika-approved-migrations/
+          cp cloudflare/migrations/0039_large_admin_recharges.sql cloudflare/.sharika-approved-migrations/
+          test "$(find cloudflare/.sharika-approved-migrations -type f -name '*.sql' | wc -l)" -eq 3
+          node --input-type=module - <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const cfg=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          cfg.d1_databases[0].migrations_dir='.sharika-approved-migrations';
+          writeFileSync('cloudflare/wrangler.approved-finance.jsonc',JSON.stringify(cfg,null,2));
+          NODE
+      - name: Apply only 0037, 0038, 0039 with Wrangler transaction tracking
+        run: |
+          npx --yes wrangler@4 d1 migrations list sharika-staging --remote \
+            --config cloudflare/wrangler.approved-finance.jsonc
+          npx --yes wrangler@4 d1 migrations apply sharika-staging --remote \
+            --config cloudflare/wrangler.approved-finance.jsonc
+      - name: Verify preserved wallets and exact new D1 schema
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const before=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/sharika-staging-baseline.json','utf8'));
+          const root='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          async function query(sql){
+            const r=await fetch(root,{method:'POST',headers:{
+              Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+              'Content-Type':'application/json'},body:JSON.stringify({sql})});
+            const j=await r.json();
+            if(!r.ok||!j.success||!j.result?.[0]?.success)throw Error('D1 verification failed');
+            return j.result[0].results;
+          }
+          const [schema]=await query("SELECT "+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE name IN ("+
+            "'0037_unlimited_seller_stock.sql','0038_seller_large_transfers.sql',"+
+            "'0039_large_admin_recharges.sql')) AS applied,"+
+            "(SELECT COUNT(*) FROM pragma_table_info('sharika_coin_sellers') WHERE name='unlimited_stock') AS stock,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sharika_coin_seller_stock_mode_audit') AS audit");
+          if(schema?.applied!==3||schema.stock!==1||schema.audit!==1)
+            throw Error('Not all authorized migrations installed');
+          const [after]=await query("SELECT "+
+            "(SELECT COUNT(*) FROM sharika_coin_seller_transfers) AS transfers,"+
+            "(SELECT COUNT(*) FROM sharika_coin_seller_allocations) AS allocations,"+
+            "(SELECT COUNT(*) FROM sharika_manual_recharge_reviews) AS reviews,"+
+            "(SELECT COUNT(*) FROM sharika_admin_direct_recharges) AS credits,"+
+            "(SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger");
+          for(const key of ['transfers','allocations','reviews','credits','ledger'])
+            if(!Number.isSafeInteger(after?.[key])||after[key]<before[key])
+              throw Error('Historical financial rows missing after migration: '+key);
+          console.log('All original financial record counts preserved; schema and audit verified');
+          NODE
+      - name: Dry-run exact staging API and Admin Worker bundles
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --check admin/connection.js
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc \
+            --outdir "$RUNNER_TEMP/sharika-approved-api-dry-run"
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc \
+            --outdir "$RUNNER_TEMP/sharika-approved-admin-dry-run"
+      - name: Publish only the isolated Sharika staging API and Admin
+        run: |
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Verify published health and immediate cosmetic grant controls
+        run: |
+          curl --fail --silent --show-error --retry 4 \
+            https://sharika-api-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --retry 4 \
+            https://sharika-admin-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --retry 4 \
+            https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js |
+            grep -F 'Granted and equipped:' >/dev/null
+          echo 'SHARIKA_APPROVED_FINANCE_COSMETICS_STAGING_OK'

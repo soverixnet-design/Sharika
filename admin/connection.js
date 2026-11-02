@@ -436,8 +436,14 @@
       border-radius:18px;background:linear-gradient(90deg,#341058,#5725ae,#1647ba);
       box-shadow:0 0 20px #7f45ff,inset 0 0 24px #6c45cb;text-align:center}
     .sid-plate small{display:block;letter-spacing:.18em;color:#d8c6ff;font-size:12px}
-    .sid-plate strong{font-size:clamp(30px,4vw,55px);line-height:1.25;color:#f6f0ff;
-      letter-spacing:.08em;text-shadow:0 0 18px #93d5ff}
+    @keyframes sid-red-gold{0%,100%{color:#ff3650;text-shadow:0 0 8px #ff2f45,0 0 18px #9e0e34}
+      50%{color:#ffd071;text-shadow:0 0 9px #ff762d,0 0 22px #f83857}}
+    .sid-plate{border-color:#ff7668;background:linear-gradient(90deg,#44091c,#8b1739,#480d29)}
+    .sid-plate strong{font-size:clamp(30px,4vw,55px);line-height:1.25;color:#ff3650;
+      font-weight:1000;letter-spacing:.065em;overflow-wrap:anywhere;
+      font-variant-numeric:tabular-nums;animation:sid-red-gold 2.8s ease-in-out infinite}
+    .sid-seat-id{font-size:16px;font-weight:1000;animation:sid-red-gold 2.8s ease-in-out infinite}
+    @media(prefers-reduced-motion:reduce){.sid-plate strong,.sid-seat-id{animation:none;color:#ff3650}}
     .sid-caption{text-align:center;color:#b5a7dc;font-size:12px;margin-top:12px}
     .sid-room{display:flex;gap:13px;align-items:center;margin-top:28px;border-top:1px solid #514181;
       padding-top:20px}
@@ -478,20 +484,20 @@
       '<div id="sid-avatar" class="sid-face">?</div>'+
       '<div id="sid-name" class="sid-name">Select a member</div>'+
       '<div class="sid-plate"><small>SPECIAL ID</small><strong id="sid-plate">—</strong></div>'+
-      '<p class="sid-caption">Neon ID displayed on profile and room seats</p>'+
+      '<p class="sid-caption">Animated bold red ID on profiles; room seats keep names and SVIP badges</p>'+
       '<div class="sid-room"><div class="sid-seat"><div class="sid-seat-ring" id="sid-seat-face">?</div>'+
-      '<span id="sid-seat-id">—</span></div>'+
+      '<span id="sid-seat-id" class="sid-seat-id">—</span></div>'+
       '<div class="sid-hint">Room seat preview · permanent account remains unchanged</div></div>'+
       '</section><section class="sid-editor"><h2 class="sid-edit-title">Assign Special ID</h2>'+
       '<p class="sid-hint">Only verified Sharika accounts can receive a unique ID.</p>'+
       '<label for="sid-account">Permanent Account ID</label>'+
       '<input id="sid-account" readonly placeholder="Select a verified member">'+
-      '<label for="sid-value">Special ID (4–7 digits)</label>'+
-      '<input id="sid-value" inputmode="numeric" maxlength="7" autocomplete="off" placeholder="777777">'+
+      '<label for="sid-value">Special ID (1–10 digits)</label>'+
+      '<input id="sid-value" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="777777">'+
       '<label for="sid-days">Duration</label><select id="sid-days">'+
       '<option value="30">30 days</option><option value="7">7 days</option>'+
       '<option value="90">90 days</option><option value="">Permanent</option></select>'+
-      '<label>Frame</label><input readonly value="Neon Purple–Blue">'+
+      '<label>Frame</label><input readonly value="Animated Red–Gold">'+
       '<button type="button" class="sid-ghost" id="sid-check">Check availability</button>'+
       '<button type="button" class="sid-action" id="sid-save" disabled>Save Special ID</button>'+
       '<p class="sid-status" id="sid-status" role="status"></p>'+
@@ -512,7 +518,7 @@
       byId('sid-seat-face').innerHTML=faceHtml(selected);
       byId('sid-plate').textContent=display;
       byId('sid-seat-id').textContent=display;
-      save.disabled=!selected||selected.status!=='active'||!/^[0-9]{4,7}$/.test(value.value.trim());
+      save.disabled=!selected||selected.status!=='active'||!/^[0-9]{1,10}$/.test(value.value.trim());
       revoke.disabled=!selected||!selected.special_id;
     }
     async function search(){
@@ -545,7 +551,7 @@
     value.oninput=()=>{status.textContent='';preview();};
     byId('sid-check').onclick=async()=>{
       const proposed=value.value.trim();
-      if(!/^[0-9]{4,7}$/.test(proposed)){status.textContent='Use 4–7 numeric digits.';return;}
+      if(!/^[0-9]{1,10}$/.test(proposed)){status.textContent='Use 1–10 numeric digits.';return;}
       try{
         const response=await api('GET','special-ids/availability?value='+encodeURIComponent(proposed));
         status.textContent=response.available?'Available ✓':
@@ -990,7 +996,7 @@
       'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
       '<div class="card"><h3>🎁 Give a frame or medal to a user</h3>'+
       '<p class="n">Super Admin: enter the real Sharika ID, find the frame or medal, and give it free. '+
-      'Admin-only items can be granted even when Store sales are disabled. The user can equip it from their profile.</p>'+
+      'Admin-only items can be granted even when Store sales are disabled. The granted item is equipped immediately and appears on verified profiles and room seats after refresh.</p>'+
       '<input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" '+
       'placeholder="Recipient Sharika ID (8 digits)" aria-label="Recipient Sharika ID">'+
       '<div class="row"><select class="field" id="sh-cos-grant-kind" aria-label="Cosmetic category">'+
@@ -1084,11 +1090,11 @@
         }
         const selected=items.find(item=>item.id===itemId);
         if(!selected||!window.confirm('Give '+selected.name+' to user ID '+id+
-          ' for FREE? The user will own it and can equip it. This is audited.'))return;
+          ' for FREE and EQUIP it immediately? This replaces the currently selected item of that type. The grant is audited.'))return;
         button.disabled=true;
         try{
           const given=await api('POST','cosmetics/grant',{public_id:id,item_id:itemId});
-          status.textContent=(given.duplicate?'Already owned: ':'Granted free to ')+id+' · '+itemId;
+          status.textContent=(given.duplicate?'Already owned; re-equipped: ':'Granted and equipped: ')+id+' · '+itemId;
         }catch(error){status.textContent='Grant failed: '+error.message;}
         finally{button.disabled=false;}
       };
@@ -1115,10 +1121,15 @@
       (role==='super'?'<div class="row"><label>Grant tier <select id="sh-premium-grant-tier">'+
         '<option value="vip">VIP</option><option value="svip">SVIP</option>'+
         '<option value="noble">Noble</option><option value="none">Revoke manual/purchased tier</option>'+
+        '</select></label><label>SVIP level <select id="sh-premium-grant-level" class="field" aria-label="SVIP level 1 to 8">'+
+        Array.from({length:8},(_,i)=>'<option value="'+(i+1)+'">SVIP '+(i+1)+'</option>').join('')+
         '</select></label><label>Days <input id="sh-premium-grant-days" class="field" '+
         'type="number" min="1" max="365" value="30"></label></div>'+
         '<button class="btn s" id="sh-premium-grant" type="button">Confirm admin assignment</button>':'')+
-      '<div id="sh-premium-result" role="status" class="n"></div></div>';
+      '<div id="sh-premium-result" role="status" class="n"></div>'+ 
+      '<p class="n">SVIP 1–8 uses the eight verified animated frames, medals and nameplates. '+
+      'A free admin grant adds the matching frame, entry, medal and nameplate to My Backpack. '+
+      'Paid SVIP passes last 30 days. Users can equip any other owned frame later.</p></div>';
     const settingsRoot=byId('sh-premium-settings'),result=byId('sh-premium-result');
     let data;
     try{data=await api('GET','premium');}
@@ -1143,6 +1154,20 @@
           'data-premium-field="'+key+'" style="width:95px" min="0" value="'+esc(value)+'" '+
           (role==='super'?'':'disabled')+'></td>').join('')+'</tr>').join('')+
       '</tbody></table></div>'+
+      '<p class="n">SVIP uses the prices below, not the legacy SVIP tier price above. '+
+      'Every user purchase lasts 30 days; daily bonuses reset each UTC day.</p>'+
+      '<h3>♛ SVIP 1–8 · Pass prices & Daily Rewards</h3>'+
+      '<div style="overflow-x:auto"><table style="width:100%;min-width:490px;text-align:left">'+
+      '<thead><tr><th>Level</th><th>30-day price</th><th>Daily reward</th><th>Sell</th></tr></thead><tbody>'+
+      (data.config.svip_levels||[]).map(level=>'<tr data-svip-level="'+level.level+'">'+
+        '<td><b>SVIP '+level.level+'</b></td>'+
+        '<td><input type="number" inputmode="numeric" min="1" max="1000000000" class="field" '+
+        'data-svip-field="price_coins" value="'+esc(level.price_coins)+'" '+(role==='super'?'':'disabled')+'></td>'+
+        '<td><input type="number" inputmode="numeric" min="0" max="1000000" class="field" '+
+        'data-svip-field="daily_bonus_coins" value="'+esc(level.daily_bonus_coins)+'" '+(role==='super'?'':'disabled')+'></td>'+
+        '<td><input type="checkbox" data-svip-enabled '+(level.enabled?'checked':'')+
+        (role==='super'?'':' disabled')+'></td></tr>').join('')+
+      '</tbody></table></div>'+
       (role==='super'?'<button class="btn s" id="sh-premium-save" type="button">Save premium rules</button>':'')+
       '<p class="n" id="sh-premium-config-note">UTC day reset · bonus claims recorded in wallet ledger.</p>';
     byId('sh-premium-save')?.addEventListener('click',async event=>{
@@ -1156,9 +1181,16 @@
         });
         return entry;
       });
-      if(!window.confirm('Save premium purchase, grant and automatic qualification rules?'))return;
+      const svip_levels=[...settingsRoot.querySelectorAll('[data-svip-level]')].map(row=>({
+        level:Number(row.dataset.svipLevel),
+        price_coins:Number(row.querySelector('[data-svip-field="price_coins"]')?.value),
+        daily_bonus_coins:Number(row.querySelector('[data-svip-field="daily_bonus_coins"]')?.value),
+        enabled:!!row.querySelector('[data-svip-enabled]')?.checked
+      }));
+      if(svip_levels.length!==8){byId('sh-premium-config-note').textContent='SVIP table unavailable';return;}
+      if(!window.confirm('Save eight SVIP prices, daily coins and membership rules?'))return;
       button.disabled=true;
-      try{await api('PATCH','premium',{policy,tiers});
+      try{await api('PATCH','premium',{policy,tiers,svip_levels});
         byId('sh-premium-config-note').textContent='Premium configuration saved and audited ✓';
       }catch(error){byId('sh-premium-config-note').textContent='Not saved: '+error.message;}
       finally{button.disabled=false;}
@@ -1171,23 +1203,33 @@
         const response=await api('GET','premium?public_id='+id);
         const person=response.member;
         member.textContent=person?'ID '+id+' · '+person.tier.toUpperCase()+
-          ' · '+person.source+' · Wealth Lv.'+person.wealth_level+
+          (person.svip_level?' '+person.svip_level:'')+' · '+person.source+' · Wealth Lv.'+person.wealth_level+
           ' · Sent gifts '+fmt(person.gift_coins)+' coins':'Member unavailable';
       }catch(error){member.textContent='Member unavailable: '+error.message;}
     }
     byId('sh-premium-lookup').onclick=lookup;
+    const levelSelect=byId('sh-premium-grant-level');
+    const tierSelect=byId('sh-premium-grant-tier');
+    if(levelSelect&&tierSelect){
+      const updateLevel=()=>{levelSelect.disabled=tierSelect.value!=='svip';};
+      tierSelect.addEventListener('change',updateLevel);updateLevel();
+    }
     byId('sh-premium-grant')?.addEventListener('click',async event=>{
       const id=byId('sh-premium-id')?.value.trim()||'';
       const tier=byId('sh-premium-grant-tier')?.value;
       const days=Number(byId('sh-premium-grant-days')?.value);
+      const svipLevel=Number(byId('sh-premium-grant-level')?.value||1);
       if(!/^[0-9]{8}$/.test(id)||!['vip','svip','noble','none'].includes(tier)||
-        (tier!=='none'&&(!Number.isInteger(days)||days<1||days>365))){
+        (tier!=='none'&&(!Number.isInteger(days)||days<1||days>365))||
+        (tier==='svip'&&(!Number.isInteger(svipLevel)||svipLevel<1||svipLevel>8))){
         result.textContent='Check the ID and duration (1–365 days).';return;
       }
       if(!window.confirm(tier==='none'?'Revoke the assigned membership for '+id+'?':
-        'Grant '+tier.toUpperCase()+' to '+id+' for '+days+' days?'))return;
+        'Grant '+tier.toUpperCase()+(tier==='svip'?' '+svipLevel:'')+
+        ' to '+id+' for '+days+' days?'))return;
       event.currentTarget.disabled=true;
-      try{await api('POST','premium/grant',{public_id:id,tier,duration_days:days});
+      try{await api('POST','premium/grant',{public_id:id,tier,duration_days:days,
+        ...(tier==='svip'?{svip_level:svipLevel}:{})});
         result.textContent='Membership updated and audited ✓';await lookup();
       }catch(error){result.textContent='Not changed: '+error.message;}
       finally{if(event.currentTarget.isConnected)event.currentTarget.disabled=false;}
@@ -1365,8 +1407,11 @@
         '<div class="row"><input id="seller-id" maxlength="8" inputmode="numeric" placeholder="Seller 8-digit user ID">'+
         '<button type="button" class="btn s" id="seller-approve">Approve</button>'+
         '<button type="button" class="btn s" id="seller-suspend">Suspend</button></div>'+
-        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000)">'+
+        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000,000)">'+
         '<button type="button" class="btn s" id="seller-allocate">Allocate stock</button></div>'+
+         '<div class="row"><button type="button" class="btn s" id="seller-unlimited-on">Enable ∞ stock</button>'+
+         '<button type="button" class="btn s" id="seller-unlimited-off">Disable ∞ stock</button></div>'+
+         '<p class="n">Unlimited mode is Super Admin-only. Every transfer is still logged. Maximum 1M coins per transfer.</p>'+
         '<p class="n" id="seller-note">Only Super Admin can approve sellers and allocate inventory.</p></div>':'');
     const table=byId('seller-list'),transfers=byId('seller-transfers'),
       allocations=byId('seller-allocations');
@@ -1380,7 +1425,8 @@
         ]);
         table.innerHTML=window.T(['ID','Name','Status','Available stock','Updated'],(list.sellers||[]).map(s=>
           [esc(s.public_id),esc(s.name),s.active?'Approved':'Suspended',
-           fmt(s.available_coins),esc(s.updated_at||'')]));
+           s.unlimited_stock?'∞ Unlimited · reserve '+fmt(s.available_coins):fmt(s.available_coins),
+           esc(s.updated_at||'')]));
         transfers.innerHTML=window.T(['#','Sender ID','Recipient ID','Coins','Stock after','Time'],
           (history.transfers||[]).map(t=>[
             esc(t.id),esc(t.sender_public_id),esc(t.recipient_public_id),
@@ -1408,20 +1454,32 @@
       if(!/^[0-9]{8}$/.test(sellerId)){
         note.textContent='Enter an existing eight-digit user ID.';return;
       }
-      if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000)){
-        note.textContent='Allocate 1–1,000,000 coins per request.';return;
+      if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000000)){
+        note.textContent='Allocate 1–1,000,000,000 coins, or enable Unlimited Stock.';return;
+      }
+      const isStockMode=kind==='unlimited_on'||kind==='unlimited_off';
+      const reason=isStockMode?window.prompt('Reason for unlimited stock change (8–200 characters):',''):null;
+      if(isStockMode&&(!reason||reason.trim().length<8||reason.trim().length>200)){
+        note.textContent='A reason of 8–200 characters is required.';return;
       }
       const message=kind==='allocate'
         ?'Add '+fmt(coins)+' coins to the SELLER STOCK of '+sellerId+'? This does not debit any user.'
-        :(kind==='approve'?'Approve':'Suspend')+' coin seller '+sellerId+'?';
+        :isStockMode
+          ?(kind==='unlimited_on'?'ENABLE':'DISABLE')+' unlimited stock for seller '+sellerId+
+            '? The change is audited and requires Super Admin authority.'
+          :(kind==='approve'?'Approve':'Suspend')+' coin seller '+sellerId+'?';
       if(!window.confirm(message))return;
       busy=true;button.disabled=true;note.textContent='Submitting verified request…';
       try{
         const payload=kind==='allocate'
           ?{seller_public_id:sellerId,coins,request_id:'admin-seller:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2)}
-          :{target_public_id:sellerId,active:kind==='approve'};
-        const result=await api('POST',kind==='allocate'?'sellers/allocate':'sellers',payload);
+          :isStockMode
+            ?{seller_public_id:sellerId,unlimited_stock:kind==='unlimited_on',reason:reason.trim()}
+            :{target_public_id:sellerId,active:kind==='approve'};
+        const endpoint=kind==='allocate'?'sellers/allocate':isStockMode?'sellers/stock-mode':'sellers';
+        const result=await api('POST',endpoint,payload);
         note.textContent=kind==='allocate'?'Allocated '+fmt(coins)+' stock coins. New stock '+fmt(result.available_coins)+'.':
+          isStockMode?'Seller '+sellerId+' unlimited stock '+(result.unlimited_stock?'enabled':'disabled')+' and audited.':
           'Seller '+sellerId+' '+(kind==='approve'?'approved':'suspended')+'.';
         await refresh();
       }catch(error){note.textContent='Request rejected: '+error.message;}
@@ -1430,6 +1488,8 @@
     byId('seller-approve')?.addEventListener('click',e=>act(e.currentTarget,'approve'));
     byId('seller-suspend')?.addEventListener('click',e=>act(e.currentTarget,'suspend'));
     byId('seller-allocate')?.addEventListener('click',e=>act(e.currentTarget,'allocate'));
+    byId('seller-unlimited-on')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_on'));
+    byId('seller-unlimited-off')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_off'));
   };
 
   P.ledger=async function () {
@@ -1780,8 +1840,8 @@
     section.className='card';
     section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
       '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
-      '<div class="row"><input id="direct-user" maxlength="8" inputmode="numeric" placeholder="Recipient 8-digit user ID" aria-label="User ID">'+
-      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (1–1,000,000)" aria-label="Coin amount"></div>'+
+      '<div class="row"><input id="direct-user" maxlength="10" inputmode="numeric" placeholder="Recipient 1–10 digit Member or Special ID" aria-label="User ID">'+
+      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
       '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
       '<button id="direct-submit" class="btn s" type="button">Credit user wallet</button></div>'+
       '<p id="direct-note" class="n" aria-live="polite"></p>'+
@@ -1806,10 +1866,10 @@
       const raw=byId('direct-coins').value.trim();
       const amount=Number(raw);
       const reason=byId('direct-reason').value.trim();
-      if(!/^[0-9]{8}$/.test(target)||!/^[0-9]+$/.test(raw)||
-         !Number.isSafeInteger(amount)||amount<1||amount>1000000||
+      if(!/^[0-9]{1,10}$/.test(target)||!/^[0-9]+$/.test(raw)||
+         !Number.isSafeInteger(amount)||amount<1||amount>(role==='super'?1000000000000:1000000)||
          reason.length<8||reason.length>200){
-        note.textContent='Enter 8-digit ID, 1–1,000,000 coins and an 8–200 character reason.';return;
+        note.textContent='Enter 1–10 digit Member or Special ID, positive coins within the wallet cap and an 8–200 character reason.';return;
       }
       if(!window.confirm('Credit '+fmt(amount)+' real coins to user '+target+
         '? Reason: '+reason+'\nThis grant is permanently audited.'))return;
@@ -1851,7 +1911,7 @@
       '<div id="recharge-list">Loading genuine support requests…</div></div>'+
       '<div class="card"><h3>Review selected request</h3>'+
       '<div class="row"><label>Support request # <input id="rc-request-id" class="field" inputmode="numeric" placeholder="Choose a pending request"></label>'+
-      '<label>Coins to credit <input id="rc-amount" class="field" inputmode="numeric" placeholder="1–1,000,000"></label></div>'+
+      '<label>Coins to credit <input id="rc-amount" class="field" inputmode="numeric" placeholder="1–1,000,000,000,000"></label></div>'+
       '<div class="row"><label>Payment method <input id="rc-method" class="field" maxlength="40" placeholder="e.g. bKash or PayPal"></label>'+
       '<label>Verified receipt ID <input id="rc-reference" class="field" maxlength="120" placeholder="External transaction reference"></label></div>'+
       '<label style="display:block;margin:12px 0"><input type="checkbox" id="rc-verified"> I independently verified that this payment was received.</label>'+
@@ -1902,7 +1962,7 @@
         const raw=byId('rc-amount').value.trim(),coins=Number(raw);
         const method=byId('rc-method').value.trim();
         const reference=byId('rc-reference').value.trim();
-        if(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000||
+        if(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000000000||
             method.length<2||reference.length<6||!byId('rc-verified').checked){
           note.textContent='Enter a valid coin amount, payment method, receipt ID, and check verified payment.';return;
         }
@@ -1942,6 +2002,38 @@
   P.banners=async function(){
     const root=byId('pg');
     root.innerHTML=card('Home banners','Loading verified banner configuration…');
+    // The admin browser's gallery picker is the only image source. Convert
+    // locally to a bounded landscape JPEG; EXIF and device paths never upload.
+    async function bannerJpeg(file){
+      if(!file||!file.type.startsWith('image/')||file.size>12*1024*1024)
+        throw new Error('Select an image smaller than 12 MB.');
+      const objectUrl=URL.createObjectURL(file);
+      const picture=new Image();
+      try{
+        await new Promise((resolve,reject)=>{
+          picture.onload=resolve;
+          picture.onerror=()=>reject(new Error('The photo could not be opened.'));
+          picture.src=objectUrl;
+        });
+        if(!picture.naturalWidth||!picture.naturalHeight)
+          throw new Error('The photo has no usable dimensions.');
+        const canvas=document.createElement('canvas');
+        canvas.width=1100;canvas.height=480;
+        const context=canvas.getContext('2d');
+        if(!context)throw new Error('Banner image conversion unavailable.');
+        const scale=Math.max(canvas.width/picture.naturalWidth,
+          canvas.height/picture.naturalHeight);
+        const width=picture.naturalWidth*scale,height=picture.naturalHeight*scale;
+        context.drawImage(picture,(canvas.width-width)/2,
+          (canvas.height-height)/2,width,height);
+        for(const quality of [.79,.66,.53,.42]){
+          const data=canvas.toDataURL('image/jpeg',quality);
+          if(data.startsWith('data:image/jpeg;base64,')&&data.length<480000)
+            return data;
+        }
+        throw new Error('The image is too detailed; choose a smaller photo.');
+      }finally{URL.revokeObjectURL(objectUrl);}
+    }
     try{
       const data=await api('GET','banners');
       const rows=data.banners||[];
@@ -1954,24 +2046,37 @@
       };
       const list=rows.map(row=>{
         const canEdit=role==='super';
+        const image=typeof row.image_url==='string'&&
+          /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/banners\/[1-9][0-9]{0,8}\/image\?v=[1-9][0-9]*$/.test(row.image_url)&&
+          row.image_url.includes('/banners/'+row.id+'/image?')
+          ?row.image_url:null;
         return '<div class="card" style="margin:10px 0">'+
-          '<div style="padding:10px;border-radius:12px;background:linear-gradient(135deg,'+
+          '<div style="position:relative;overflow:hidden;min-height:110px;padding:15px;'+
+          'border-radius:16px;background:linear-gradient(135deg,'+
           esc(row.color_a)+','+esc(row.color_b)+');color:#fff">'+
+          (image?'<img src="'+esc(image)+'" alt="Banner #'+row.id+
+          '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">': '')+
+          '<div style="position:relative;text-shadow:0 2px 6px #000">'+
           '<b>'+esc(row.emoji)+' '+esc(row.title)+'</b><small style="display:block">'+
-          esc(row.subtitle)+'</small></div>'+
+          esc(row.subtitle)+'</small></div></div>'+
           '<p class="n">Banner #'+esc(row.id)+' · '+(row.active?'Visible in app':'Hidden')+'</p>'+
           (canEdit?'<div class="row"><input data-bf="title" data-id="'+row.id+'" maxlength="80" value="'+esc(row.title)+'" aria-label="Banner title">'+
           '<input data-bf="subtitle" data-id="'+row.id+'" maxlength="160" value="'+esc(row.subtitle||'')+'" aria-label="Banner subtitle"></div>'+
           '<div class="row"><select data-bf="action" data-id="'+row.id+'">'+choices(row.action)+'</select>'+
           '<input type="number" min="0" max="100" data-bf="sort_order" data-id="'+row.id+'" value="'+Number(row.sort_order)+'" aria-label="Display order">'+
           '<label><input type="checkbox" data-bf="active" data-id="'+row.id+'"'+(row.active?' checked':'')+'> Active</label>'+
-          '<button class="btn s" type="button" data-bsave="'+row.id+'">Save</button></div>':'')+
+          '<button class="btn s" type="button" data-bsave="'+row.id+'">Save</button></div>'+
+          '<div class="row"><label>🖼️ Add/replace photo from gallery'+
+          '<input type="file" accept="image/jpeg,image/png,image/webp" data-bimage-id="'+row.id+'"></label>'+
+          (image?'<button class="btn s" type="button" data-bremove="'+row.id+'">Remove photo</button>':'')+
+          '</div>':'')+
           '</div>';
       }).join('');
       const create=role==='super'?'<div class="card"><h3>➕ Add home banner</h3>'+
-        '<p class="n">Banner text, color and action are controlled here. Image uploads need a separate verified media-store integration.</p>'+
+        '<p class="n">Choose a gallery photo, or keep a color banner. Photos are center-cropped for the home carousel.</p>'+
         '<div class="row"><input id="new-banner-title" maxlength="80" placeholder="Banner headline">'+
         '<input id="new-banner-subtitle" maxlength="160" placeholder="Subtitle"></div>'+
+        '<div class="row"><label>🖼️ Banner photo (optional)<input type="file" id="new-banner-image" accept="image/jpeg,image/png,image/webp"></label></div>'+
         '<div class="row"><input id="new-banner-emoji" maxlength="12" value="🎉" aria-label="Emoji">'+
         '<select id="new-banner-action">'+choices('none')+'</select>'+
         '<select id="new-banner-color"><option value="purple">Purple</option><option value="gold">Gold</option><option value="ocean">Ocean</option><option value="green">Green</option></select>'+
@@ -1988,18 +2093,56 @@
         add.disabled=true;
         try{
           const picked=palette[byId('new-banner-color').value]||palette.purple;
-          await api('POST','banners',{
+          const selectedPhoto=byId('new-banner-image')?.files?.[0];
+          const image_data=selectedPhoto?await bannerJpeg(selectedPhoto):null;
+          const showNow=byId('new-banner-active').checked;
+          const created=await api('POST','banners',{
             title:byId('new-banner-title').value.trim(),
             subtitle:byId('new-banner-subtitle').value.trim(),
             emoji:byId('new-banner-emoji').value.trim()||'🎉',
             action:byId('new-banner-action').value,
             color_a:picked[0],color_b:picked[1],
-            active:byId('new-banner-active').checked,sort_order:rows.length
+            active:image_data?false:showNow,sort_order:rows.length
           });
+          if(image_data){
+            const createdId=Number(created.id);
+            if(!Number.isSafeInteger(createdId)||createdId<1)
+              throw new Error('Banner saved but photo ID was not returned; refresh to retry.');
+            await api('PUT','banners/'+createdId+'/image',{image_data});
+            if(showNow)await api('PATCH','banners/'+createdId,{active:true});
+          }
           await P.banners();
-        }catch(error){if(note)note.textContent='Banner not created: '+error.message;}
+        }catch(error){if(note)note.textContent='Banner not fully saved: '+error.message+
+          '. If a banner was created, reopen this page to finish the photo.';}
         finally{if(add.isConnected)add.disabled=false;}
       };
+      root.querySelectorAll('[data-bimage-id]').forEach(input=>{
+        input.onchange=async()=>{
+          const file=input.files?.[0];
+          if(!file)return;
+          input.disabled=true;
+          note.textContent='Preparing your gallery photo…';
+          try{
+            const image_data=await bannerJpeg(file);
+            await api('PUT','banners/'+input.dataset.bimageId+'/image',{image_data});
+            await P.banners();
+          }catch(error){
+            if(note)note.textContent='Photo not uploaded: '+error.message;
+          }finally{if(input.isConnected)input.disabled=false;}
+        };
+      });
+      root.querySelectorAll('[data-bremove]').forEach(button=>{
+        button.onclick=async()=>{
+          if(button.disabled)return;
+          if(!window.confirm('Remove this banner photo? The banner text and settings will remain.'))return;
+          button.disabled=true;
+          try{
+            await api('DELETE','banners/'+button.dataset.bremove+'/image');
+            await P.banners();
+          }catch(error){if(note)note.textContent='Photo not removed: '+error.message;}
+          finally{if(button.isConnected)button.disabled=false;}
+        };
+      });
       root.querySelectorAll('[data-bsave]').forEach(button=>{
         button.onclick=async()=>{
           const id=button.dataset.bsave;

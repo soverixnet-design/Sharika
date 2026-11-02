@@ -78,6 +78,9 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('back-navigation.js'))
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))
+    from(rootProject.file('royal-winged-theme.css'))
+    from(rootProject.file('royal-winged-bg.jpg'))
+    from(rootProject.file('royal-icon-atlas.png'))
     from(rootProject.file('royal-palace.png'))
     // Pre-rendered premium static backgrounds keep WebView scrolling smooth.
     from(rootProject.file('royal-shop-bg.png'))

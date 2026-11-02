@@ -4,7 +4,7 @@
 import { rechargeReferralStatements } from './invites.mjs';
 import { firstRechargeBonusStatements } from './first-recharge.mjs';
 import {readInviteRules} from './invite-rules.mjs';
-const MAX_RECHARGE=1_000_000;
+const MAX_RECHARGE=1_000_000_000_000;
 const MAX_BALANCE=1_000_000_000_000;
 const PUBLIC_ID=n=>String(n).padStart(8,'0');
 const MONEY_ROLES=new Set(['super','finance']);
