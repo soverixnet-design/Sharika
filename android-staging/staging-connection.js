@@ -2065,6 +2065,25 @@
 
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
   const SHARIKA_ICE_CONFIG={iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]};
+  // Only authenticated Cloudflare STUN/TURN endpoints may enter WebRTC config.
+  // Credentials stay in memory for this room; never persist them in localStorage.
+  const SHARIKA_CLOUD_ICE=/^(?:stun:stun\.cloudflare\.com:3478|turn:turn\.cloudflare\.com:(?:3478|443|80)\?transport=(?:udp|tcp)|turns:turn\.cloudflare\.com:(?:5349|443)\?transport=tcp)$/;
+  function verifiedIceConfig(config){
+    const iceServers=[];
+    for(const item of Array.isArray(config?.iceServers)?config.iceServers.slice(0,5):[]){
+      const urls=(Array.isArray(item?.urls)?item.urls:[item?.urls])
+        .filter(url=>typeof url==='string'&&SHARIKA_CLOUD_ICE.test(url)).slice(0,8);
+      if(!urls.length)continue;
+      if(urls.some(url=>url.startsWith('turn'))){
+        if(typeof item.username!=='string'||!item.username||item.username.length>256||
+          typeof item.credential!=='string'||!item.credential||
+          item.credential.length>256)continue;
+        iceServers.push({urls,username:item.username,credential:item.credential});
+      }else iceServers.push({urls});
+    }
+    return {iceServers:iceServers.some(item=>item.username)?
+      iceServers:SHARIKA_ICE_CONFIG.iceServers};
+  }
   let sfuState = null;
   // Animate the actual occupied mic seats, never a timer-driven fake speaker.
   // One room can have several simultaneous talkers.
@@ -2352,7 +2371,7 @@
       throw new Error('Voice room changed');
     state.subscribeId=joined.sessionId;
     state.sessionIds.push(joined.sessionId);
-    state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
+    state.receivePC=new RTCPeerConnection(state.iceConfig||SHARIKA_ICE_CONFIG);
     state.receivePC.ontrack=event=>addAudioTrack(state,event);
     state.receivePC.addEventListener('connectionstatechange',()=>{
       if(!state.closed&&sfuState===state&&state.receivePC.connectionState==='failed')
@@ -2367,9 +2386,86 @@
       },delay));
     }
   }
-  async function connectSfu(roomId,canPublish) {
+  // Promoting a listener onto a mic seat must retain the existing receiver.
+  // Rebuilding both PeerConnections here interrupts every incoming speaker.
+  async function startSfuPublishing(state) {
+    if(state.closed||sfuState!==state)throw new Error('Voice room changed');
+    const roomId=state.roomId,priorSessions=new Set(state.sessionIds);
+    state.startedAt=Date.now();
+    try {
+      state.media=await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
+      });
+      if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)
+        throw new Error('Voice room changed');
+      state.publishPC=new RTCPeerConnection(state.iceConfig||SHARIKA_ICE_CONFIG);
+      const local=state.media.getAudioTracks()[0];
+      local.enabled=microphoneWanted(roomId);
+      watchSfuSpeaking(state,local,session?.user?.id,true);
+      const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
+      const offer=await state.publishPC.createOffer();
+      await state.publishPC.setLocalDescription(offer);
+      await waitIce(state.publishPC);
+      const published=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'publish'});
+      state.sessionIds.push(published.sessionId);
+      const negotiation=await api('POST','/rooms/'+roomId+'/voice/publish',{
+        sessionId:published.sessionId,
+        sessionDescription:state.publishPC.localDescription,
+        mid:transceiver.mid,trackName:'microphone'
+      });
+      await state.publishPC.setRemoteDescription(negotiation.sessionDescription);
+      state.startedAt=Date.now();
+      // A successful signaling response is not proof that the microphone
+      // media path is connected. Monitor ICE and show/retry a broken uplink.
+      const publisher=state.publishPC;
+      const checkPublisher=()=>{
+        if(state.closed||sfuState!==state||!state.canPublish||
+           state.publishPC!==publisher)return;
+        const status=publisher.connectionState;
+        if(status==='connected'){
+          if(state.recoveryTimer&&sfuTransportHealthy(state)&&
+             !state.subscriptionFailures&&!state.heartbeatFailures){
+            clearTimeout(state.recoveryTimer);state.recoveryTimer=null;
+          }
+          state.disconnectedAt=0;
+          markLocalMicrophone(local.readyState==='live'&&local.enabled);
+        } else if(status==='disconnected'){
+          if(!state.disconnectedAt)state.disconnectedAt=Date.now();
+        } else if(status==='failed'){
+          markLocalMicrophone(false);
+          recoverSfuPublication(state,'publisher connection failed');
+        }
+      };
+      state.publishPC.addEventListener('connectionstatechange',checkPublisher);
+      state.publishPC.addEventListener('iceconnectionstatechange',checkPublisher);
+      local.addEventListener('ended',()=>{
+        if(!state.closed&&state.canPublish)
+          recoverSfuPublication(state,'microphone track ended');
+      },{once:true});
+      if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)
+        throw new Error('Voice room changed');
+      state.canPublish=true;
+      checkPublisher();
+    }catch(error){
+      const newlyRegistered=state.sessionIds.filter(id=>!priorSessions.has(id));
+      state.sessionIds=state.sessionIds.filter(id=>priorSessions.has(id));
+      for(const id of newlyRegistered)
+        api('POST','/rooms/'+roomId+'/voice/leave',{sessionIds:[id]}).catch(()=>{});
+      // Preserve the healthy listener even if microphone setup fails.
+      state.canPublish=false;
+      const failedMedia=state.media,failedPublisher=state.publishPC;
+      state.media=null;state.publishPC=null;
+      if(failedMedia)for(const track of failedMedia.getTracks()){
+        unwatchSfuSpeaking(state,track);
+        track.stop();
+      }
+      if(failedPublisher)failedPublisher.close();
+      throw error;
+    }
+  }
+  async function connectSfu(roomId,canPublish,iceConfig=SHARIKA_ICE_CONFIG) {
     const state={
-      roomId,closed:false,sessionIds:[],publishPC:null,receivePC:null,
+      roomId,closed:false,iceConfig,sessionIds:[],publishPC:null,receivePC:null,
       media:null,audioElements:new Set(),remoteMids:new Map(),
       speakingContext:null,speakingMeters:new Map(),speakingTimer:null,
       subscribed:new Set(),subscribeId:null,timer:null,syncing:false,
@@ -2382,54 +2478,7 @@
     // cannot become an unhandled rejection while mic capture is pending.
     const receiving=startSfuReceiving(state).then(()=>null,error=>error);
     try {
-      if(canPublish) {
-        state.media=await navigator.mediaDevices.getUserMedia({
-          audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
-        });
-        if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
-        state.publishPC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
-        const local=state.media.getAudioTracks()[0];
-        local.enabled=microphoneWanted(roomId);
-        watchSfuSpeaking(state,local,session?.user?.id,true);
-        const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
-        const offer=await state.publishPC.createOffer();
-        await state.publishPC.setLocalDescription(offer);
-        await waitIce(state.publishPC);
-        const published=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'publish'});
-        state.sessionIds.push(published.sessionId);
-        const negotiation=await api('POST','/rooms/'+roomId+'/voice/publish',{
-          sessionId:published.sessionId,
-          sessionDescription:state.publishPC.localDescription,
-          mid:transceiver.mid,trackName:'microphone'
-        });
-        await state.publishPC.setRemoteDescription(negotiation.sessionDescription);
-        state.startedAt=Date.now();
-        // A successful signaling response is not proof that the microphone
-        // media path is connected. Monitor ICE and show/retry a broken uplink.
-        const checkPublisher=()=>{
-          if(state.closed||sfuState!==state)return;
-          const status=state.publishPC.connectionState;
-          if(status==='connected'){
-            if(state.recoveryTimer&&sfuTransportHealthy(state)&&
-               !state.subscriptionFailures&&!state.heartbeatFailures){
-              clearTimeout(state.recoveryTimer);state.recoveryTimer=null;
-            }
-            state.disconnectedAt=0;
-            markLocalMicrophone(local.readyState==='live'&&local.enabled);
-          } else if(status==='disconnected'){
-            if(!state.disconnectedAt)state.disconnectedAt=Date.now();
-          } else if(status==='failed'){
-            markLocalMicrophone(false);
-            recoverSfuPublication(state,'publisher connection failed');
-          }
-        };
-        state.publishPC.addEventListener('connectionstatechange',checkPublisher);
-        state.publishPC.addEventListener('iceconnectionstatechange',checkPublisher);
-        local.addEventListener('ended',()=>{
-          if(!state.closed)recoverSfuPublication(state,'microphone track ended');
-        },{once:true});
-        checkPublisher();
-      }
+      if(canPublish)await startSfuPublishing(state);
       if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
       const receiveError=await receiving;
       if(receiveError)throw receiveError;
@@ -2523,11 +2572,22 @@
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
       const config=await api('GET','/rooms/'+roomId+'/voice/config');
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      const iceConfig=verifiedIceConfig(config);
+      // A listener's receiver remains connected when they take their first mic
+      // seat. Upgrade only the outbound microphone instead of dropping all audio.
+      const current=sfuState;
+      if(config.provider==='cloudflare_sfu'&&config.publish&&current&&
+         current.roomId===roomId&&!current.closed&&current.receivePC&&
+         current.receivePC.connectionState!=='failed'&&!current.canPublish){
+        current.iceConfig=iceConfig;
+        await startSfuPublishing(current);
+        return {publishing:true};
+      }
       await disconnectVoice();
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
       if(config.provider==='cloudflare_sfu') {
         voiceBackend='cloudflare_sfu';
-        return connectSfu(roomId,!!config.publish);
+        return connectSfu(roomId,!!config.publish,iceConfig);
       }
       if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
       // Keep the isolated LiveKit fallback only when explicitly configured.
