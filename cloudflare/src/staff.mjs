@@ -8,7 +8,8 @@ export const STAFF_SCOPES=Object.freeze([
 const SCOPE_SET=new Set(STAFF_SCOPES);
 const PUBLIC_ID=/^[0-9]{8}$/;
 const REQUEST_ID=/^[a-zA-Z0-9:_-]{12,80}$/;
-const MAX_GRANT=1_000_000;
+const MAX_STAFF_GRANT=1_000_000;
+const MAX_SUPER_GRANT=1_000_000_000_000;
 const MAX_USER_BALANCE=1_000_000_000_000;
 const uidId=n=>String(n).padStart(8,'0');
 
@@ -183,7 +184,7 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
     const amount=body.coins,publicId=body.target_public_id;
     const requestId=body.request_id,reason=typeof body.reason==='string'?body.reason.trim():'';
     if(typeof publicId!=='string'||!PUBLIC_ID.test(publicId)||
-       !Number.isSafeInteger(amount)||amount<1||amount>MAX_GRANT||
+       !Number.isSafeInteger(amount)||amount<1||amount>(actor.role==='super'?MAX_SUPER_GRANT:MAX_STAFF_GRANT)||
        typeof requestId!=='string'||!REQUEST_ID.test(requestId)||
        reason.length<8||reason.length>200)
       return fail('invalid_direct_recharge',400,cors);
