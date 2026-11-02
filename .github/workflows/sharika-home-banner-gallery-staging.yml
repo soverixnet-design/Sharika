@@ -1,0 +1,170 @@
+name: Sharika home banner gallery staging rollout
+
+on:
+  push:
+    branches:
+      - feature/sharika-winged-royal-unlimited-seller-20261102
+    paths:
+      - '.github/workflows/sharika-home-banner-gallery-staging.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  banner-gallery:
+    name: Back up staging D1, migrate only banners, deploy isolated staging API and Admin
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse unapproved branch, database, API or Admin Worker
+        run: |
+          test "$GITHUB_REF" = "refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const api=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          const admin=JSON.parse(readFileSync('cloudflare/wrangler.admin.jsonc','utf8'));
+          const d1=api.d1_databases?.[0];
+          if(api.name!=='sharika-api-staging'||
+             api.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             api.vars?.SHARIKA_ENV!=='staging'||
+             api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             api.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             api.keep_vars!==true||api.d1_databases?.length!==1||
+             d1?.binding!=='DB'||d1.database_name!=='sharika-staging'||
+             d1.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             admin.name!=='sharika-admin-staging'||
+             admin.account_id!==api.account_id||
+             admin.vars?.SHARIKA_ENV!=='staging'||
+             admin.services?.length!==1||
+             admin.services[0]?.service!=='sharika-api-staging')
+            throw Error('Refusing unapproved Cloudflare target');
+          console.log('Isolated staging-only bindings verified');
+          NODE
+      - name: Check all existing Android and Worker contracts
+        run: npm --prefix cloudflare run check
+      - name: Check only migration 0044 is pending and capture financial baseline
+        run: |
+          node --input-type=module - <<'NODE'
+          import {writeFileSync} from 'node:fs';
+          const endpoint='https://api.cloudflare.com/client/v4/accounts/'+
+            process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          async function query(sql){
+            const response=await fetch(endpoint,{method:'POST',headers:{
+              authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+              'content-type':'application/json'},body:JSON.stringify({sql})});
+            const json=await response.json();
+            if(!response.ok||!json.success||!json.result?.[0]?.success)
+              throw Error('Staging D1 preflight query failed');
+            return json.result[0].results;
+          }
+          const [state]=await query('SELECT '+
+            '(SELECT COUNT(*) FROM d1_migrations) AS migration_count,'+
+            '(SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1) AS latest,'+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' "+
+              "AND name='sharika_banner_images') AS images_table");
+          if(state?.migration_count!==45||
+             state.latest!=='0043_official_cs_seller_animated_frames.sql'||
+             state.images_table!==0)
+            throw Error('Unexpected migrations or existing banner image table; refusing rollout');
+          const [financial]=await query('SELECT '+
+            '(SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger,'+
+            '(SELECT COUNT(*) FROM sharika_coin_seller_transfers) AS transfers,'+
+            '(SELECT COUNT(*) FROM sharika_coin_seller_allocations) AS allocations,'+
+            '(SELECT COUNT(*) FROM sharika_premium_memberships) AS memberships');
+          if(Object.values(financial||{}).some(n=>!Number.isSafeInteger(n)||n<0))
+            throw Error('Invalid financial baseline');
+          writeFileSync(process.env.RUNNER_TEMP+'/sharika-banner-baseline.json',
+            JSON.stringify(financial),{mode:0o600});
+          console.log('Only additive banner migration 0044 pending; balances untouched');
+          NODE
+      - name: Export staging D1 for recoverable rollout
+        run: |
+          npx --yes wrangler@4 d1 export sharika-staging --remote \
+            --config cloudflare/wrangler.jsonc \
+            --output "$RUNNER_TEMP/sharika-banner-gallery-before.sql"
+          test -s "$RUNNER_TEMP/sharika-banner-gallery-before.sql"
+      - name: Isolate exactly one additive home banner image migration
+        run: |
+          mkdir -p cloudflare/.sharika-home-banner-only
+          cp cloudflare/migrations/0044_home_banner_images.sql cloudflare/.sharika-home-banner-only/
+          test "$(find cloudflare/.sharika-home-banner-only -type f -name '*.sql' | wc -l)" -eq 1
+          node --input-type=module - <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const config=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          config.d1_databases[0].migrations_dir='.sharika-home-banner-only';
+          writeFileSync('cloudflare/wrangler.banner-gallery-guard.jsonc',
+            JSON.stringify(config,null,2));
+          NODE
+      - name: Migrate only banner gallery images in staging D1
+        run: |
+          npx --yes wrangler@4 d1 migrations apply sharika-staging --remote \
+            --config cloudflare/wrangler.banner-gallery-guard.jsonc
+      - name: Confirm migration 0044, unchanged financial rows and JPEG schema
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const old=JSON.parse(readFileSync(
+            process.env.RUNNER_TEMP+'/sharika-banner-baseline.json','utf8'));
+          const endpoint='https://api.cloudflare.com/client/v4/accounts/'+
+            process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          async function query(sql){
+            const response=await fetch(endpoint,{method:'POST',headers:{
+              authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+              'content-type':'application/json'},body:JSON.stringify({sql})});
+            const json=await response.json();
+            if(!response.ok||!json.success||!json.result?.[0]?.success)
+              throw Error('Staging D1 verification query failed');
+            return json.result[0].results;
+          }
+          const [state]=await query('SELECT '+
+            '(SELECT COUNT(*) FROM d1_migrations) AS migration_count,'+
+            '(SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1) AS latest,'+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' "+
+              "AND name='sharika_banner_images') AS images_table");
+          if(state?.migration_count!==46||
+             state.latest!=='0044_home_banner_images.sql'||state.images_table!==1)
+            throw Error('Banner gallery schema not verified');
+          const [financial]=await query('SELECT '+
+            '(SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger,'+
+            '(SELECT COUNT(*) FROM sharika_coin_seller_transfers) AS transfers,'+
+            '(SELECT COUNT(*) FROM sharika_coin_seller_allocations) AS allocations,'+
+            '(SELECT COUNT(*) FROM sharika_premium_memberships) AS memberships');
+          if(Object.keys(old).some(key=>old[key]!==financial?.[key]))
+            throw Error('Unrelated financial row totals changed');
+          console.log('Additive banner image migration successful; financial baseline preserved');
+          NODE
+      - name: Publish only existing isolated staging API Worker
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Bundle authenticated Admin Panel and publish staging Admin Worker
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --check admin/connection.js
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Verify staging API and new Admin gallery controls
+        run: |
+          curl --fail --silent --show-error --max-time 20 \
+            https://sharika-api-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 20 \
+            https://sharika-admin-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 20 \
+            https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js \
+            | grep -F 'data-bimage-id' > /dev/null
+          echo SHARIKA_HOME_BANNER_GALLERY_STAGING_READY
