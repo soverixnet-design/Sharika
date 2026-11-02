@@ -2210,9 +2210,9 @@
   }
   // A light-weight, audio-only voice activity meter. The WebAudio sources
   // connect only to analysers: microphone audio is never played back locally.
-  // Sample every 160ms and hold a ring briefly to avoid speech flicker.
+  // Sample every 250ms to conserve WebView CPU while keeping a live voice ring.
   function sampleSfuSpeaking(state) {
-    if(state.closed||sfuState!==state)return;
+    if(state.closed||sfuState!==state||document.hidden)return;
     const now=Date.now(),speaking=new Set();
     for(const [track,meter] of state.speakingMeters){
       if(track.readyState!=='live'||!track.enabled||track.muted){
@@ -2253,7 +2253,7 @@
       if(state.speakingContext.state==='suspended')
         state.speakingContext.resume().catch(()=>{});
       if(!state.speakingTimer)
-        state.speakingTimer=setInterval(()=>sampleSfuSpeaking(state),160);
+        state.speakingTimer=setInterval(()=>sampleSfuSpeaking(state),250);
     }catch(error){console.warn('Voice activity meter unavailable:',errText(error));}
   }
   function unwatchSfuSpeaking(state,track) {
