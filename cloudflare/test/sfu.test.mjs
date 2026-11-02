@@ -31,7 +31,8 @@ test('cloudflare configuration never exposes the app secret',async()=>{
   const r=await handleVoiceOperation({...base,operation:'config',
     request:req('GET','config')});
   assert.equal(r.status,200);
-  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true});
+  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true,
+    iceServers:[{urls:['stun:stun.cloudflare.com:3478']}]});
   const absent=await handleVoiceOperation({...base,env:{},operation:'config',
     request:req('GET','config')});
   assert.equal(absent.status,503);
@@ -46,7 +47,8 @@ test('unmuted guest on an open mic seat can publish without any invitation',asyn
   const r=await handleVoiceOperation({...base,uid:'u2',member:{seat_no:3,muted:0},
     operation:'config',request:req('GET','config')});
   assert.equal(r.status,200);
-  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true});
+  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true,
+    iceServers:[{urls:['stun:stun.cloudflare.com:3478']}]});
 });
 test('listener and muted seated guest cannot publish microphone audio',async()=>{
   for(const guest of [{seat_no:null,muted:0},{seat_no:3,muted:1}]){
