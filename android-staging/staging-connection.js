@@ -616,6 +616,29 @@
     doc.body.appendChild(notice);
     doc.defaultView?.setTimeout(()=>notice.remove(),3800);
   }
+  function playStandardRoomEntry(doc,event){
+    if(!doc)return;
+    cosmeticCss(doc);
+    doc.querySelector('.sh-svip-room-entry')?.remove();
+    const notice=doc.createElement('div');
+    notice.className='sh-svip-room-entry';
+    notice.setAttribute('role','status');
+    const avatar=doc.createElement('span');
+    avatar.textContent='👋';
+    avatar.setAttribute('aria-hidden','true');
+    avatar.style.cssText='font-size:32px;display:grid;place-items:center;'+
+      'width:59px;height:59px;flex:none;border:2px solid #ffdb97;'+
+      'border-radius:50%;background:#3b185e';
+    const copy=doc.createElement('div');
+    const title=doc.createElement('strong');
+    title.textContent=String(event?.name||'A member').slice(0,80);
+    const sub=doc.createElement('small');
+    sub.textContent='joined the voice room';
+    copy.append(title,sub);
+    notice.append(avatar,copy);
+    doc.body.appendChild(notice);
+    doc.defaultView?.setTimeout(()=>notice.remove(),3800);
+  }
 
   // Avatar URLs come only from the authenticated Sharika profile API. Never
   // render arbitrary user-supplied image URLs in verified room identities.
@@ -3229,8 +3252,9 @@
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
-      user_id:room.owner_id,public_id:room.id,special_id:owner.special_id||null,
-      display_id:owner.display_id||room.id,
+      user_id:room.owner_id,public_id:owner.public_id||room.id,
+      special_id:owner.special_id||null,
+      display_id:owner.display_id||owner.public_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       svip_level:Number(owner.svip_level)||0,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
@@ -3240,13 +3264,17 @@
       const user=member.sharika_users;
       if(!user)continue;
       if(member.user_id===room.owner_id){
-        // Keep the fixed owner throne while also showing the owner's chosen
-        // mic position. Both seats represent one verified user and one stream.
+        // The owner may move to another microphone. Render that verified
+        // profile exactly once, at its current seat, and leave the fixed
+        // throne as a decorative placeholder (not a duplicate identity).
         if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
-           member.seat_no<slots.length)
+           member.seat_no<slots.length){
           slots[member.seat_no]={...slots[0],i:member.seat_no,
             owner_mic_seat:true,muted:!!member.muted||
               (member.user_id===session?.user?.id&&localMic===false)};
+          slots[0]={empty:1,i:0,owner_throne:true,
+            owner_mic_seat_no:member.seat_no};
+        }
         continue;
       }
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
@@ -4625,7 +4653,7 @@
         '<div class="row">Tap any occupied guest seat to mute, unmute, remove from mic or kick.</div>');
     }
     const roomGameButton=frame.$ && frame.$('bGame');
-    if(roomGameButton)roomGameButton.onclick=()=>showGameCard(frame.document,true,frame.toast);
+    if(roomGameButton)roomGameButton.onclick=()=>showGameCard(document,true,toast);
     const rewards=frame.$ && frame.$('rrpill');
     if(rewards) rewards.onclick=async()=>{
       frame.open('<h3>🏆 Weekly Top Rooms</h3>'+
@@ -4684,6 +4712,7 @@
             await loadVerifiedCosmetics().catch(()=>{});
           if(entryArt(event.entry_style))
             playSoveraEntry(frame.document,event.entry_style);
+          else playStandardRoomEntry(frame.document,event);
         }
       })();
       entryPollInFlight=work;
@@ -4745,6 +4774,7 @@
       }
       // Room-to-room navigation must release old seats, membership and audio.
       if(prior && prior.id!==room.id) {
+        window.__sharikaRoomGameClose?.();
         if(framePoll){clearInterval(framePoll);framePoll=null;}
         if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
         if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
@@ -4771,12 +4801,19 @@
       }
       heartbeatPresence(room.id);
       const iframe=document.getElementById('rf');
-      iframe.onload=()=>attachFrame(room).catch(error=>toast(errText(error)));
+      // Bind Games independently of the optional room/voice data sync.
+      // Its original demo handler must never remain active on a slow join.
+      iframe.onload=()=>{
+        const games=iframe.contentWindow?.document?.getElementById('bGame');
+        if(games)games.onclick=()=>showGameCard(document,true,toast);
+        attachFrame(room).catch(error=>toast(errText(error)));
+      };
       originalOpenRoom(room);
     } catch(error) { toast('Could not join: '+errText(error)); }
   };
   const originalLeaveRoom=window.leaveRoom;
   window.leaveRoom=function() {
+    window.__sharikaRoomGameClose?.();
     const current=window.cur;
     if(framePoll){clearInterval(framePoll);framePoll=null;}
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
@@ -7354,10 +7391,69 @@
     ].join('');
     doc.head.appendChild(style);
   }
+  // A room game runs in the authenticated top-level WebView document.
+  // A file:// game iframe nested under the room's srcdoc frame is unreliable
+  // on Android, and a full-screen sheet hides the active voice room.
+  function ensureRoomGamePortal(doc){
+    let overlay=doc.getElementById('sh-room-game-overlay');
+    if(!overlay){
+      const style=doc.createElement('style');
+      style.id='sh-room-game-style';
+      style.textContent=[
+        '#sh-room-game-overlay{position:fixed;inset:0;z-index:2147482100;',
+        'display:none;align-items:flex-start;justify-content:center;',
+        'padding:calc(7vh + env(safe-area-inset-top,0px)) 8px 4vh;',
+        'box-sizing:border-box;background:#070216ae;backdrop-filter:blur(3px)}',
+        '#sh-room-game-overlay.on{display:flex}',
+        '#sh-room-game-sheet{position:relative;display:flex;flex-direction:column;',
+        'box-sizing:border-box;width:min(96vw,480px);height:min(76dvh,660px);',
+        'max-height:calc(100dvh - 90px);min-height:320px;min-width:0;',
+        'padding:12px 12px 14px;overflow:hidden;border-radius:22px;',
+        'border:2px solid #edc16f;background:linear-gradient(155deg,#351362,#120625);',
+        'box-shadow:inset 0 2px #fff5,0 16px 34px #000b;color:#fff}',
+        '#sh-room-game-sheet h3{margin:7px 32px 10px 0;color:#ffdfa0}',
+        '#sh-room-game-sheet #sh-original-grid{flex:1;min-height:0;',
+        'max-height:none!important;overflow-y:auto!important}',
+        '#sh-room-game-sheet #sh-original-host{flex:1;min-height:0;',
+        'height:auto!important;overflow:hidden}',
+        '#sh-room-game-sheet #sh-original-host iframe{display:block;',
+        'width:100%!important;height:100%!important;border:0}',
+        '#sh-room-game-close{position:absolute;top:9px;right:9px;',
+        'z-index:2;min-width:36px;min-height:36px;border-radius:50%;',
+        'border:1px solid #f5cb77;background:#49165d;color:#fff;',
+        'font-size:21px;cursor:pointer}',
+        '@media(max-height:570px){#sh-room-game-overlay{padding-top:24px}',
+        '#sh-room-game-sheet{height:calc(100dvh - 42px);max-height:none}}'
+      ].join('');
+      doc.head.appendChild(style);
+      overlay=doc.createElement('div');
+      overlay.id='sh-room-game-overlay';
+      overlay.setAttribute('role','dialog');
+      overlay.setAttribute('aria-label','Room mini games');
+      const sheet=doc.createElement('section');
+      sheet.id='sh-room-game-sheet';
+      const close=doc.createElement('button');
+      close.id='sh-room-game-close';
+      close.type='button';
+      close.textContent='×';
+      close.setAttribute('aria-label','Close game and return to voice room');
+      overlay.append(sheet,close);
+      doc.body.appendChild(overlay);
+      const closeGame=()=>{
+        doc.defaultView.__sharikaOriginalGameCleanup?.();
+        overlay.classList.remove('on');
+      };
+      close.onclick=closeGame;
+      overlay.onclick=event=>{if(event.target===overlay)closeGame();};
+      doc.defaultView.__sharikaRoomGameClose=closeGame;
+    }
+    return {overlay,sheet:doc.getElementById('sh-room-game-sheet')};
+  }
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
-    const sheet=doc.getElementById(insideRoom?'sheet':'sh');
-    const overlay=doc.getElementById(insideRoom?'bg':'shb');
+    const portal=insideRoom?ensureRoomGamePortal(doc):null;
+    const sheet=portal?.sheet||doc.getElementById('sh');
+    const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
     function catalog(){
@@ -7508,7 +7604,7 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
-      overlay.classList.add('sh-original-fullscreen');
+      if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div>'+
         '<button id="sh-original-back" type="button" '+
         'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+

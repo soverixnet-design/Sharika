@@ -37,6 +37,7 @@ on:
       - feature/sharika-master-integration-20261101
       - feature/sharika-winged-royal-unlimited-seller-20261102
       - feature/sharika-royal-profile-20261101
+      - feature/sharika-royal-room-20261102
       - fix/sharika-google-login-hd-room-themes-20261101
       - fix/sharika-games-bet-integrity-20261101
     paths:
@@ -313,6 +314,24 @@ jobs:
           node --check ../app/room-discovery.js
           echo 'SHARIKA_CHAMPAGNE_HOME_APK_ASSETS_VERIFIED'
 
+      - name: Verify the uploaded Royal Phoenix room assets are packaged
+        run: |
+          for asset in royal-room-background.jpg royal-room-icons.png royal-room-ui.css royal-room-ui.js; do
+            test -s "../app/$asset"
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/$asset"
+          done
+          node --check ../app/royal-room-ui.js
+          node - <<'NODE'
+          const fs=require('fs');
+          const bridge=fs.readFileSync('staging-connection.js','utf8');
+          const gradle=fs.readFileSync('app/build.gradle','utf8');
+          for(const asset of ['royal-room-background.jpg','royal-room-icons.png','royal-room-ui.css','royal-room-ui.js'])
+            if(!gradle.includes(asset))throw Error('Missing Royal Room asset: '+asset);
+          if(!bridge.includes('owner_throne:true')||!bridge.includes('playStandardRoomEntry'))
+            throw Error('Room identity and ordinary entry adapters missing');
+          console.log('SHARIKA_ROYAL_ROOM_ASSETS_AND_ENTRY_VERIFIED');
+          NODE
+
       - name: Print signing fingerprint for this exact APK
         run: |
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
@@ -334,7 +353,7 @@ jobs:
   royal-emulator-smoke:
     name: Royal UI emulator launch and Back smoke test
     # Only the isolated Option 1 candidate; no live app or staging data writes.
-    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102'
+    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/feature/sharika-royal-room-20261102'
     needs: debug-apk
     runs-on: ubuntu-latest
     timeout-minutes: 25

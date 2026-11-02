@@ -29,3 +29,30 @@ The query argument enables a **local-only QA fixture**; it is never packaged in 
 
 - The golden background is more textured than the selected mockup in the lower corners; typography and hit targets remain legible.
 - History's clock artwork was generated in the same icon atlas and can be used in a future expanded header; the current tab keeps a compact clock glyph to fit four tabs on narrow phones.
+
+---
+
+# Sharika Royal Room — uploaded phoenix theme and icon QA
+
+**Final result: passed (local visual and interaction QA). Live voice/backend QA: blocked without authenticated staging devices.**
+
+Target: the owner's uploaded purple/gold phoenix wallpaper and matching eight-icon sprite. The current room was inspected in the browser at `http://terminal.local:4173/?qa=room`. This local-only route extracts the real room HTML and loads the Android-packaged CSS/JS without signing in; it is not packaged into the APK.
+
+## Verified locally
+
+- The owner's exact supplied phoenix background fills the room, and provided 3D gold/purple art displays for top Settings and Games, composer Emoji, DM, Lucky Box, Gift, Menu and floating Mic.
+- There are nine rendered seats: one owner throne, four seats on row 2 and four on row 3, with smaller guest avatars and visible labels.
+- Games no longer has the previous blue demo-button background; it floats separately at the upper-right.
+- The public chat is above the composer, with an Emoji button **inside** the input. A test message, `Hello Sharika 👋`, appeared in the chat after sending.
+- Menu expands to Music, Audio, Effects, Theme, Seats, Settings, Owner tools, and Photo. Device music is correctly disclosed as local-only; it is not mislabeled as a room broadcast.
+- Lucky Box opens the existing Lucky gift category, distinct from the regular Gift button and its standard category.
+- Existing DOM IDs for DM, Mic, Gift and Games are retained so the real D1/LiveKit room bridge can wire its existing actions.
+- Room owner seat-move rendering has been corrected at the data adapter: if the owner's verified public ID appears on a guest mic seat, seat 0 becomes a crown-only placeholder, never a second user identity.
+- Ordinary joined-member events now get a 3.8-second name banner when no premium entrance animation is equipped.
+- `node --check` passed for the modified room JS, Android staging bridge and local QA preview server; `git diff --check` passed before handoff.
+
+## Integration still requiring a real staging run
+
+- Live multi-device seat moves and same-ID deduplication, direct messages, LiveKit microphone, verified gift purchase and signed room-entry events require authenticated staging accounts and a running Worker; they cannot be proven by the isolated visual fixture.
+- Music file selection plays locally only, and voice filters have explanatory status until an actual room audio broadcasting/processing service is enabled.
+- No production deployment or Android device-build result is implied by this visual QA.
