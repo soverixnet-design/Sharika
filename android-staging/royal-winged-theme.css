@@ -180,3 +180,255 @@ html.royal-root #sh-royal-market .sh-rm-cat:active {
   }
   html.royal-root #sh-royal-market .sh-rm-card {animation:none!important}
 }
+
+
+/* 2026-11 unified champagne-gold pass.
+ * Visual-only: do not change identity, wallet, voice, game handlers, room art
+ * supplied by owners, or the selected My Profile wallpaper. */
+html.royal-root{
+  --a:#e4ad56;--b:#9e612b;--gold:#f6ce79;
+  --glass:rgba(51,30,23,.84);--line:rgba(242,196,121,.48);
+  --mu:#e7d0b0;--bg1:#352015;--bg2:#140c0d;
+  --sh-gold-surface:linear-gradient(155deg,#4b3023f2,#24170ff5 68%,#160f13);
+  --sh-gold-active:linear-gradient(155deg,#fff1c5,#e8b85f 56%,#b67837);
+}
+html.royal-root body{background:#130c0c;color:#fff1d6}
+html.royal-root .app.golden-home{
+  background-color:#291a12!important;
+  background-image:url('./champagne-home-background.webp'),url('./golden-home-background.jpg')!important;
+  background-position:center center!important;background-size:cover!important;
+}
+html.royal-root .app:not(.royal-profile) .hd,
+html.royal-root .app:not(.royal-profile) .rtop{
+  background:linear-gradient(155deg,#433021e8,#201611f2)!important;
+  border-color:#e4bc78!important;
+}
+html.royal-root .app .nav{
+  background:linear-gradient(170deg,#2d1a15f5,#120b0dfc)!important;
+  border:1px solid #e6bb77!important;
+  box-shadow:0 -8px 24px #090503a6,inset 0 2px 0 #ffe6ae35!important;
+}
+html.royal-root .app .nav .ni{color:#dfc8a7}
+html.royal-root .app .nav .ni.on{color:#ffe4a2!important}
+html.royal-root .app.royal-profile .nav .ni span,
+html.royal-root .app.royal-profile .nav .plus::before{
+  display:block;width:30px;height:30px;margin:0 auto 1px;
+  background-image:url('./royal-icon-atlas.png')!important;
+  background-size:400% 300%!important;background-repeat:no-repeat!important;
+  background-color:transparent!important;font-size:0!important;color:transparent!important;
+  filter:drop-shadow(0 4px 6px #0008);
+}
+html.royal-root .app.royal-profile .nav .ni[data-v="home"] span{background-position:33.333% 0%!important}
+html.royal-root .app.royal-profile .nav .ni[data-v="rank"] span{background-position:0% 50%!important}
+html.royal-root .app.royal-profile .nav .ni[data-v="msg"] span{background-position:100% 50%!important}
+html.royal-root .app.royal-profile .nav .ni[data-v="me"] span{background-position:100% 100%!important}
+html.royal-root .app.royal-profile .nav .plus{font-size:0}
+html.royal-root .app.royal-profile .nav .plus::before{
+  content:"";width:40px;height:40px;background-position:0% 0%!important;
+}
+
+/* Ranking: replace the old blue-violet panel while retaining the podium and data. */
+html.royal-root #v-rank{
+  background:radial-gradient(ellipse at 50% -5%,#ab7a3861,transparent 55%),
+  linear-gradient(180deg,#38251d,#20140f 58%,#130d10)!important;
+}
+html.royal-root #v-rank .rtop,
+html.royal-root #rb .sh-royal-hero{
+  background:var(--sh-gold-surface)!important;border-color:#e0b777!important;
+}
+html.royal-root #v-rank #rt button,
+html.royal-root #v-rank .seg,
+html.royal-root #v-rank .seg button{
+  background:linear-gradient(155deg,#4b3528,#281b1b)!important;
+  color:#ffe6bc!important;border-color:#c4995c!important;
+}
+html.royal-root #v-rank #rt button.on,
+html.royal-root #v-rank .seg button.on{
+  background:var(--sh-gold-active)!important;color:#492713!important;
+  border-color:#fff0b9!important;
+}
+html.royal-root #rb .sh-royal-podium-card,
+html.royal-root #v-rank .rr{
+  background:var(--sh-gold-surface)!important;
+  border-color:#cfaa6c!important;color:#fff2d9!important;
+}
+html.royal-root #v-rank .sh-royal-sub,
+html.royal-root #v-rank .rr small{color:#e5d0ae!important}
+
+/* Messaging and secondary user profiles: shared warm panels. */
+html.royal-root #v-msg,
+html.royal-root .thread,
+html.royal-root .pfo,
+html.royal-root .rcp{
+  background:linear-gradient(170deg,#302019,#150e11 78%)!important;
+  color:#fff0d4!important;
+}
+html.royal-root #v-msg .chatrow,
+html.royal-root .thread .thh,
+html.royal-root .pfo .pcard{
+  border-color:#d3a967!important;
+  background:linear-gradient(145deg,#473023d9,#221714ed)!important;
+}
+html.royal-root .thread .bub.me,
+html.royal-root .thread .tin button,
+html.royal-root .rcp .cta.bl,
+html.royal-root .rcp .cta.or{
+  background:var(--sh-gold-active)!important;color:#432411!important;
+}
+
+/* Preserve the selected My Profile art, but unify its controls with gold. */
+html.royal-root #v-me.profile-royal .edp,
+html.royal-root #v-me.profile-royal .pick{
+  background:var(--sh-gold-active)!important;color:#4c2811!important;
+  border-color:#fff0b6!important;text-shadow:none!important;
+  box-shadow:inset 0 2px #fff9,0 5px 0 #8d552a,0 11px 18px #0008!important;
+}
+html.royal-root #sh.sharika-profile-editor,
+html.royal-root #sh.sharika-daily-3d,
+html.royal-root #sh{
+  background:radial-gradient(circle at 85% 0,#ba87344d,transparent 45%),
+  linear-gradient(155deg,#453026,#1d1413 72%,#120b0f)!important;
+  border-top:2px solid #e8be78!important;color:#fff2d7!important;
+}
+html.royal-root #sh.sharika-profile-editor .field,
+html.royal-root #sh .field{
+  background:#251914!important;color:#fff2d8!important;
+  border:1px solid #cda465!important;
+}
+html.royal-root #sh.sharika-profile-editor .act,
+html.royal-root #sh.sharika-profile-editor #es{
+  background:var(--sh-gold-active)!important;color:#432510!important;
+  border-color:#fff1b8!important;
+  box-shadow:inset 0 2px #fff8,0 4px 0 #825025!important;
+}
+
+/* Daily tasks: consistent bronze/gold depth and readable claimed states. */
+html.royal-root #sh-daily-hero{
+  background:linear-gradient(145deg,#79512d,#352115 68%,#231715)!important;
+  border-color:#ffe1a0!important;
+  box-shadow:inset 0 2px #fff6,0 6px 0 #80512a,0 12px 19px #0008!important;
+}
+html.royal-root #sh-daily-days .sh-day-tile{
+  background:linear-gradient(145deg,#63462b,#34251e)!important;
+  border:1px solid #d0a66d!important;color:#ffebbd!important;
+  box-shadow:inset 0 2px #fff3,0 4px 0 #65401e,0 9px 13px #0007!important;
+}
+html.royal-root #sh-daily-days .sh-day-tile.current{
+  background:var(--sh-gold-active)!important;color:#4f2a10!important;
+  border:2px solid #fff0b7!important;
+}
+html.royal-root #sh-daily-days .sh-day-tile.current .sh-day-coins{color:#532807!important}
+html.royal-root #sh-daily-days .sh-day-tile.collected{opacity:.78!important}
+
+/* Invite and seller pages: remove leftover purple gradients. */
+html.royal-root #sh-invite-page{
+  background:radial-gradient(circle at 50% 0,#b7854861,transparent 48%),
+  linear-gradient(180deg,#3e291b,#241911 58%,#120e10)!important;
+}
+html.royal-root #sh-invite-page .sh-invite-panel,
+html.royal-root #sh-invite-page .sh-invite-reward,
+html.royal-root #sh-invite-page .sh-invite-code,
+html.royal-root #sh-invite-page .sh-invite-tabs,
+html.royal-root #sh-invite-page .sh-invite-stat{
+  background:linear-gradient(150deg,#624026,#2a1b1a)!important;
+  border-color:#e4b872!important;color:#fff0ce!important;
+}
+html.royal-root #sh-invite-page .sh-invite-royal-banner{
+  background-color:#38251b!important;border-color:#f3cd83!important;
+}
+html.royal-root #sh-invite-page .sh-invite-tabs button{color:#ffe1ac!important}
+html.royal-root #sh-invite-page .sh-invite-tabs button.on{
+  background:var(--sh-gold-active)!important;color:#4c2710!important;
+}
+html.royal-root #sharika-seller-content .shw-hero{
+  background:linear-gradient(145deg,#a06c33,#604025 54%,#281a18)!important;
+  border-color:#f1ce8a!important;color:#fff5dc!important;
+}
+html.royal-root #sharika-seller-content .shw-section{
+  background:var(--sh-gold-surface)!important;
+  border-color:#d9af71!important;
+}
+html.royal-root #sharika-seller-content .shw-sub,
+html.royal-root #sharika-seller-content .shw-label{color:#ead5b6!important}
+
+/* CP / Friendship and notifications keep their distinct badges, not purple cards. */
+html.royal-root .sh-bond-panel,
+html.royal-root .sh-bond-hero,
+html.royal-root .sh-bond-stat,
+html.royal-root .sh-bond-section,
+html.royal-root .sh-bond-section.friends,
+html.royal-root .sh-bond-social-user,
+html.royal-root .sh-bond-gift{
+  background:var(--sh-gold-surface)!important;
+  border-color:#d6ad6e!important;
+}
+html.royal-root .sh-bond-button:not(.gold){
+  background:var(--sh-gold-active)!important;
+  color:#46250e!important;border-color:#fff2c2!important;
+}
+html.royal-root .sh-notify-panel{
+  background:linear-gradient(165deg,#3b281e,#140e10 75%)!important;color:#fff0d5!important;
+}
+html.royal-root .sh-notify-card,
+html.royal-root .sh-notify-card.unread,
+html.royal-root .sh-notify-action,
+html.royal-root .sh-notify-bell{
+  background:var(--sh-gold-surface)!important;
+  border-color:#d6a967!important;color:#fff0d5!important;
+}
+
+/* In-room games remain compact; improve gold contrast without changing layout. */
+html.royal-root #sh-room-game-sheet{
+  background:var(--sh-gold-surface)!important;border-color:#f5cb81!important;
+}
+html.royal-root #sh-room-game-overlay{
+  background:#140b0bb8!important;
+}
+
+/* Modal, card, and auth focus/tap safety on narrow Android devices. */
+html.royal-root .auth,
+html.royal-root .auth.w{
+  background:radial-gradient(circle at 48% 10%,#b180444a,transparent 50%),
+  linear-gradient(180deg,#39271b,#170e10 70%)!important;
+}
+html.royal-root .auth .acard,
+html.royal-root .auth .atabs{
+  background:var(--sh-gold-surface)!important;border-color:#d7a96b!important;
+}
+html.royal-root .auth .atabs button.on,
+html.royal-root .auth .big,
+html.royal-root .auth .wb.p{
+  background:var(--sh-gold-active)!important;color:#492610!important;
+  border-color:#fff1c0!important;
+}
+html.royal-root :is(button,[role="button"],input,textarea,select):focus-visible{
+  outline:3px solid #ffdd91!important;outline-offset:3px;
+}
+html.royal-root .sh-notify-action,
+html.royal-root #sh-invite-page .sh-invite-back,
+html.royal-root #v-rank #rt button{
+  min-height:44px;
+}
+@media(max-width:360px){
+  html.royal-root #sh-daily-days{gap:5px!important}
+  html.royal-root #sh-daily-days .sh-day-tile{padding-inline:1px!important}
+  html.royal-root #sh-invite-page .sh-invite-rewards{gap:5px}
+}
+@media(prefers-reduced-motion:reduce){
+  html.royal-root .app.royal-profile .nav .ni span{animation:none!important}
+}
+
+/* Room controls: gold trim, never override an owner's chosen room artwork. */
+html.royal-room{
+  --a:#e7b65f;--b:#a16c39;--gold:#ffdb8d;
+}
+html.royal-room .app .rb,
+html.royal-room .app .ib,
+html.royal-room .app .act,
+html.royal-room .app .mic{
+  border-color:#e5bd78!important;
+}
+html.royal-room .sheet,
+html.royal-room .sheet .row{
+  border-color:#d4a867!important;
+}
