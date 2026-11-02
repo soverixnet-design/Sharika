@@ -63,3 +63,13 @@ test('premium membership is routed only through verified authenticated Android e
   assert.match(worker,/handlePremiumApp/);
   assert.doesNotMatch(routes,/path\.equals\("\/api\/v1\/admin\/premium"\)/);
 });
+
+test('notification routes are explicitly allowlisted in the authenticated Android bridge',()=>{
+  assert.match(routes,/path\.equals\("\/api\/v1\/notifications"\)\) return method\.equals\("GET"\)/);
+  assert.match(routes,/path\.equals\("\/api\/v1\/notifications\/read-all"\)\) return method\.equals\("POST"\)/);
+  assert.match(routes,/path\.matches\("\^\/api\/v1\/notifications\/\[1-9\]\[0-9\]\*\/read\$"\)/);
+  assert.match(routes,/path\.equals\("\/api\/v1\/notifications\/devices"\)/);
+  assert.match(app,/api\('POST','\/notifications\/read-all'/);
+  assert.match(worker,/handleNotificationApp/);
+  assert.doesNotMatch(routes,/path\.equals\("\/api\/v1\/admin\/notifications"\)/);
+});
