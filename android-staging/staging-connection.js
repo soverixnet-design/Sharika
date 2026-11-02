@@ -3881,6 +3881,8 @@
     let pendingGiftRequest=null;
     let lastGiftEventId=null;
     const shownGiftEvents=new Set();
+    // A gift receipt is a lasting chat row, separate from the short animation.
+    const shownGiftChatIds=new Set();
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     let pendingChatMessage=null;
     let lastEntryEventId=0,entryPollInFlight=null;
@@ -4110,9 +4112,40 @@
       }
       finally{giftBusy=false;button.disabled=false;}
     },true);
+    function appendGiftChatReceipt(event){
+      const id=Number(event?.id);
+      if(!Number.isSafeInteger(id)||id<=0||shownGiftChatIds.has(id)||
+         typeof frame.msg!=='function')return;
+      const chat=frame.$?.('chat');
+      if(!chat)return;
+      const sender=String(event.sender_name||'Member');
+      const recipient=String(event.recipient_name||'Member');
+      const caption='sent '+String(event.emoji||'🎁')+' '+
+        String(event.name||'Gift')+' ×'+String(event.quantity||1)+
+        ' to '+recipient+' (ID '+String(event.recipient_id||'')+')'+
+        ' · 🪙 '+giftEventValue(event).toLocaleString('en-US');
+      // Reuse the existing chat renderer, whose bubbles remain in the
+      // scrollable transcript after the timed gift banner disappears.
+      frame.msg(sender,'🎁',caption,{gf:true,lv:1});
+      const row=chat.querySelector('.msg:last-child');
+      if(!row)return;
+      shownGiftChatIds.add(id);
+      if(shownGiftChatIds.size>200)
+        shownGiftChatIds.delete(shownGiftChatIds.values().next().value);
+      row.classList.add('sh-room-gift-receipt');
+      row.dataset.shGiftId=String(id);
+      row.dataset.shSenderId=String(event.sender_id||'');
+      const badge=row.querySelector('.lv');
+      if(badge)badge.textContent='GIFT';
+      const senderPhoto=event.sender_pic||
+        roomAvatarForPublicId(frame,event.sender_id);
+      paintVerifiedAvatar(row.querySelector('.mav'),senderPhoto,frame.document);
+    }
     function presentVerifiedGift(event){
       const id=Number(event.id);
-      if(!Number.isSafeInteger(id)||shownGiftEvents.has(id))return;
+      if(!Number.isSafeInteger(id))return;
+      appendGiftChatReceipt(event);
+      if(shownGiftEvents.has(id))return;
       shownGiftEvents.add(id);
       if(shownGiftEvents.size>100)shownGiftEvents.clear();
       queueGiftPresentation(frame,event);
@@ -4125,6 +4158,9 @@
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
       if(lastGiftEventId===null){
         lastGiftEventId=latest;
+        // Restore the latest verified gift receipts in the same transcript
+        // as room messages. Old gifts do not replay their flying animations.
+        for(const event of events.slice(-20))appendGiftChatReceipt(event);
         // A send can finish before the first poll. Show only the confirmed
         // transaction, never replay the room's old history to a new joiner.
         if(ownTransactionId!==null)for(const event of events){
