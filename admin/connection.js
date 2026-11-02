@@ -1115,10 +1115,15 @@
       (role==='super'?'<div class="row"><label>Grant tier <select id="sh-premium-grant-tier">'+
         '<option value="vip">VIP</option><option value="svip">SVIP</option>'+
         '<option value="noble">Noble</option><option value="none">Revoke manual/purchased tier</option>'+
+        '</select></label><label>SVIP level <select id="sh-premium-grant-level" class="field" aria-label="SVIP level 1 to 8">'+
+        Array.from({length:8},(_,i)=>'<option value="'+(i+1)+'">SVIP '+(i+1)+'</option>').join('')+
         '</select></label><label>Days <input id="sh-premium-grant-days" class="field" '+
         'type="number" min="1" max="365" value="30"></label></div>'+
         '<button class="btn s" id="sh-premium-grant" type="button">Confirm admin assignment</button>':'')+
-      '<div id="sh-premium-result" role="status" class="n"></div></div>';
+      '<div id="sh-premium-result" role="status" class="n"></div>'+ 
+      '<p class="n">SVIP 1–8 uses the eight verified animated frames, medals and nameplates. '+
+      'Level 1 is the default for an existing SVIP purchase. Admin-granted levels expire automatically; '+
+      'Shop items stay in the Shop.</p></div>';
     const settingsRoot=byId('sh-premium-settings'),result=byId('sh-premium-result');
     let data;
     try{data=await api('GET','premium');}
@@ -1171,23 +1176,33 @@
         const response=await api('GET','premium?public_id='+id);
         const person=response.member;
         member.textContent=person?'ID '+id+' · '+person.tier.toUpperCase()+
-          ' · '+person.source+' · Wealth Lv.'+person.wealth_level+
+          (person.svip_level?' '+person.svip_level:'')+' · '+person.source+' · Wealth Lv.'+person.wealth_level+
           ' · Sent gifts '+fmt(person.gift_coins)+' coins':'Member unavailable';
       }catch(error){member.textContent='Member unavailable: '+error.message;}
     }
     byId('sh-premium-lookup').onclick=lookup;
+    const levelSelect=byId('sh-premium-grant-level');
+    const tierSelect=byId('sh-premium-grant-tier');
+    if(levelSelect&&tierSelect){
+      const updateLevel=()=>{levelSelect.disabled=tierSelect.value!=='svip';};
+      tierSelect.addEventListener('change',updateLevel);updateLevel();
+    }
     byId('sh-premium-grant')?.addEventListener('click',async event=>{
       const id=byId('sh-premium-id')?.value.trim()||'';
       const tier=byId('sh-premium-grant-tier')?.value;
       const days=Number(byId('sh-premium-grant-days')?.value);
+      const svipLevel=Number(byId('sh-premium-grant-level')?.value||1);
       if(!/^[0-9]{8}$/.test(id)||!['vip','svip','noble','none'].includes(tier)||
-        (tier!=='none'&&(!Number.isInteger(days)||days<1||days>365))){
+        (tier!=='none'&&(!Number.isInteger(days)||days<1||days>365))||
+        (tier==='svip'&&(!Number.isInteger(svipLevel)||svipLevel<1||svipLevel>8))){
         result.textContent='Check the ID and duration (1–365 days).';return;
       }
       if(!window.confirm(tier==='none'?'Revoke the assigned membership for '+id+'?':
-        'Grant '+tier.toUpperCase()+' to '+id+' for '+days+' days?'))return;
+        'Grant '+tier.toUpperCase()+(tier==='svip'?' '+svipLevel:'')+
+        ' to '+id+' for '+days+' days?'))return;
       event.currentTarget.disabled=true;
-      try{await api('POST','premium/grant',{public_id:id,tier,duration_days:days});
+      try{await api('POST','premium/grant',{public_id:id,tier,duration_days:days,
+        ...(tier==='svip'?{svip_level:svipLevel}:{})});
         result.textContent='Membership updated and audited ✓';await lookup();
       }catch(error){result.textContent='Not changed: '+error.message;}
       finally{if(event.currentTarget.isConnected)event.currentTarget.disabled=false;}
