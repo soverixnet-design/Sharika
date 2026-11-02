@@ -432,3 +432,74 @@ html.royal-room .sheet,
 html.royal-room .sheet .row{
   border-color:#d4a867!important;
 }
+
+
+/* Follow-up inventory: membership, recharge, opening and game catalog. */
+html.royal-root #sh-svip-royal{
+  background:radial-gradient(circle at 50% -12%,#b3824477,transparent 48%),
+  linear-gradient(180deg,#40291d,#241713 55%,#100c10)!important;
+  color:#fff1d9!important;
+}
+html.royal-root #sh-svip-royal .svip-back,
+html.royal-root #sh-svip-royal .svip-card,
+html.royal-root #sh-svip-royal .svip-view,
+html.royal-root #sh-svip-royal .svip-preview-card,
+html.royal-root #sh-svip-royal .svip-level-tabs button{
+  background:var(--sh-gold-surface)!important;
+  border-color:#dcb573!important;color:#ffedce!important;
+}
+html.royal-root #sh-svip-royal .svip-level-tabs button[aria-pressed="true"],
+html.royal-root #sh-svip-royal .svip-main-btn{
+  background:var(--sh-gold-active)!important;color:#47240d!important;
+  border-color:#fff1bc!important;
+}
+html.royal-root #sh-svip-royal .svip-card p,
+html.royal-root #sh-svip-royal .svip-preview-card small,
+html.royal-root #sh-svip-royal .svip-note{color:#ead5b8!important}
+html.royal-root #sh-svip-royal .svip-card-avatar,
+html.royal-root #sh-svip-royal .svip-mini-avatar{
+  background:#5a3b27!important;border:1px solid #e4ba75;
+}
+html.royal-root #rcp .rch{
+  background:linear-gradient(160deg,#704627,#33201b)!important;
+  border-bottom:1px solid #e4b975!important;
+}
+html.royal-root #rcp .dm,
+html.royal-root #rcp .rh span,
+html.royal-root #rcp .pk{
+  background:var(--sh-gold-surface)!important;color:#ffe9c5!important;
+  border:1px solid #d7ac6c!important;
+}
+html.royal-root #rcp .pk p,
+html.royal-root #rcp .rate{color:#e6d1ae!important}
+html.royal-root #rcp .pk button{
+  background:var(--sh-gold-active)!important;color:#43240f!important;
+  border:1px solid #ffedb1!important;
+}
+html.royal-root #sh-opening{
+  background:radial-gradient(ellipse at 50% 22%,#ba8b4575,transparent 59%),
+  linear-gradient(180deg,#4b2c20e8,#170e10f7),
+  url('./royal-palace.png') center/cover!important;
+}
+html.royal-root #sh-opening .sh-o-tag,
+html.royal-root #sh-opening .sh-o-name,
+html.royal-root #sh-opening .sh-o-id,
+html.royal-root #sh-opening .sh-o-skip{
+  background:linear-gradient(150deg,#684426,#2b1c18)!important;
+  border-color:#ffe1a1!important;color:#fff2ce!important;
+}
+html.royal-root #sh-original-grid>button{
+  border-color:#e9bd73!important;
+  background:var(--sh-gold-surface)!important;
+  color:#ffe9c0!important;
+}
+html.royal-root #sh-invite-page .sh-invite-royal-banner{
+  background-image:linear-gradient(180deg,#51342554,#1d1415a3),
+  url('./main-profile-bg.jpg')!important;
+  background-position:center top!important;
+  background-size:cover!important;
+}
+@media(max-width:370px){
+  html.royal-root #sh-svip-royal .svip-level-tabs{gap:5px!important}
+  html.royal-root #sh-svip-royal .svip-level-tabs button{padding-inline:2px!important;min-height:44px}
+}
