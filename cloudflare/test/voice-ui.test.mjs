@@ -160,3 +160,55 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
   outerDoc.handlers.get('pointerdown')();
   assert.equal(playCount,3);
 });
+
+test('two-way audio recovers an ended microphone and a failed remote receiver',()=>{
+  const begin=ui.indexOf('  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;');
+  const end=ui.indexOf('  async function waitIce(peer)',begin);
+  assert.ok(begin>=0 && end>begin);
+  const timers=[],reconnects=[];
+  const context=createContext({
+    document:{getElementById:()=>null},
+    console:{warn(){}},
+    setTimeout(fn,delay){timers.push({fn,delay});return timers.length;},
+    connectVoice(id){reconnects.push(id);return Promise.resolve({publishing:true});},
+    errText(error){return String(error);}
+  });
+  runInContext("let sfuState=null,wantedVoiceRoom='roomA';"+ui.slice(begin,end),context);
+  const ended={
+    roomId:'roomA',closed:false,recoveryTimer:null,recoveryExhausted:false,
+    canPublish:true,subscribed:new Set(),receivePC:null,
+    publishPC:{connectionState:'connected'},
+    media:{getAudioTracks:()=>[{readyState:'ended'}]}
+  };
+  context.testState=ended;
+  runInContext("sfuState=testState;recoverSfuPublication(testState,'track ended')",context);
+  const first=timers.shift();
+  assert.equal(first.delay,1200);
+  first.fn();
+  assert.deepEqual(reconnects,['roomA']);
+  const receiver={
+    ...ended,recoveryTimer:null,
+    media:{getAudioTracks:()=>[{readyState:'live'}]},
+    subscribed:new Set(['other:microphone']),receivePC:{connectionState:'failed'}
+  };
+  context.testState=receiver;
+  runInContext("sfuState=testState;recoverSfuPublication(testState,'remote failed')",context);
+  const second=timers.shift();
+  assert.equal(second.delay,3000);
+  second.fn();
+  assert.deepEqual(reconnects,['roomA','roomA']);
+  assert.equal(runInContext(
+    "micPreferenceRoom='roomA';micPreferenceEnabled=false;microphoneWanted('roomA')",
+    context),false,'manual mute is preserved through reconnect');
+  assert.equal(runInContext("microphoneWanted('roomB')",context),true,
+    'a new room starts with the microphone enabled');
+});
+
+test('incoming voice and server permission changes are checked independently',()=>{
+  assert.match(ui,/incoming audio path unavailable/);
+  assert.match(ui,/state\.subscriptionFailures>=2/);
+  assert.match(ui,/voice session heartbeat lost/);
+  assert.match(ui,/sfuState\.canPublish!==!!eligible/);
+  assert.doesNotMatch(ui,/!!sfuState\.media!==!!eligible/);
+  assert.match(ui,/local\.enabled=microphoneWanted\(roomId\)/);
+});
