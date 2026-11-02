@@ -36,11 +36,12 @@ async function sfu(env, method, path, data) {
   return value;
 }
 // TURN credentials are generated server-side only for verified room members.
-// STUN is kept as a fallback for accounts that have not provisioned TURN yet.
+// STUN is kept as a degraded fallback, but callers must know when TURN failed.
 const STUN_ICE=[{urls:['stun:stun.cloudflare.com:3478']}];
 const CLOUD_ICE=/^(?:stun:stun\.cloudflare\.com:3478|turn:turn\.cloudflare\.com:(?:3478|443|80)\?transport=(?:udp|tcp)|turns:turn\.cloudflare\.com:(?:5349|443)\?transport=tcp)$/;
 async function realtimeIceServers(env) {
-  if(!env.REALTIME_TURN_KEY_ID||!env.REALTIME_TURN_API_TOKEN)return STUN_ICE;
+  if(!env.REALTIME_TURN_KEY_ID||!env.REALTIME_TURN_API_TOKEN)
+    return {iceServers:STUN_ICE,relayAvailable:false};
   try {
     const result=await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/'+
       encodeURIComponent(env.REALTIME_TURN_KEY_ID)+'/credentials/generate-ice-servers',{
@@ -48,7 +49,9 @@ async function realtimeIceServers(env) {
         headers:{authorization:'Bearer '+env.REALTIME_TURN_API_TOKEN,
           'content-type':'application/json'},
         body:JSON.stringify({ttl:86400}),
-        signal:AbortSignal.timeout(2000)
+        // On cellular networks a missing relay is worse than a bounded extra
+        // signaling delay. The previous 2s timeout silently downgraded to STUN.
+        signal:AbortSignal.timeout(5000)
       });
     if(!result.ok)throw new Error('turn_credential_unavailable');
     const data=await result.json();
@@ -65,10 +68,11 @@ async function realtimeIceServers(env) {
       }else servers.push({urls});
     }
     if(!servers.some(item=>item.username))throw new Error('turn_credential_invalid');
-    return servers;
-  }catch(_){
-    console.warn('sharika_turn_credentials_unavailable');
-    return STUN_ICE;
+    return {iceServers:servers,relayAvailable:true};
+  }catch(error){
+    // Do not log the response, TURN credentials, or bearer token.
+    console.warn('sharika_turn_credentials_unavailable',error?.name==='TimeoutError'?'timeout':'failed');
+    return {iceServers:STUN_ICE,relayAvailable:false};
   }
 }
 
@@ -122,7 +126,7 @@ export async function handleVoiceOperation({
   if (operation === 'config' && request.method === 'GET') {
     if (sfuAvailable(env))
       return reply({provider:'cloudflare_sfu', publish:canPublish,
-        iceServers:await realtimeIceServers(env)}, 200, cors);
+        ...await realtimeIceServers(env)}, 200, cors);
     if (env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET && /^wss:\/\//.test(env.LIVEKIT_URL || ''))
       return reply({provider:'livekit',publish:canPublish}, 200, cors);
     return fail('voice_not_configured', 503, cors);
@@ -137,7 +141,11 @@ export async function handleVoiceOperation({
     const made = await sfu(env, 'POST', '/sessions/new');
     const sessionId = cleanSid(made.sessionId);
     if (!sessionId) return fail('sfu_invalid_session', 502, cors);
-    await doRoom.register(uid, sessionId, body.mode === 'publish');
+    // New clients explicitly opt into the safer connected-only readiness
+    // handshake. Older APKs cannot send /voice/ready, so keep their already
+    // negotiated publications discoverable during the app rollout.
+    await doRoom.register(uid, sessionId, body.mode === 'publish',
+      body.mode==='publish'&&body.readiness==='connected-v1');
     return reply({sessionId, publish:body.mode === 'publish'},201,cors);
   }
   if (operation === 'publications' && request.method === 'GET') {
@@ -177,9 +185,12 @@ export async function handleVoiceOperation({
       }),1);
     if (!description(response.sessionDescription,'answer'))
       return fail('sfu_invalid_answer',502,cors);
-    // SDP negotiation only allocates a microphone on the SFU. It is not yet
-    // connected, and advertising it here makes a freshly joining listener
-    // subscribe to a stream that might never have passed ICE connectivity.
+    // Connected-v1 clients activate discovery only from /voice/ready. Legacy
+    // APKs predate that endpoint and must remain audible during rollout; the
+    // subscriber still isolates stale tracks if an old client never connects.
+    if(!owned.requiresReady &&
+       !await doRoom.markPublished(uid,sessionId,'microphone'))
+      return fail('voice_session_not_found',404,cors);
     return reply({sessionDescription:response.sessionDescription},200,cors);
   }
   if (operation === 'ready' && request.method === 'POST') {

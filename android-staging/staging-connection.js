@@ -2179,7 +2179,8 @@
     });
     try{bindRoomAudioGesture(roomAudioFrame.contentDocument);}catch(_){}
   }
-  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;
+  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0,voiceRetryTimer=null;
+  let voiceRelayWarningRoom=null;
   // Preserve a manual mute when media reconnects; new rooms start unmuted.
   let micPreferenceRoom=null,micPreferenceEnabled=true;
   function microphoneWanted(roomId) {
@@ -2198,28 +2199,28 @@
       state.receivePC?.connectionState==='connected';
     return outgoing && incoming;
   }
-  function recoverSfuPublication(state,reason,force=false) {
-    if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||state.recoveryTimer)return;
-    if(voiceRecoveryRoom!==state.roomId){voiceRecoveryRoom=state.roomId;voiceRecoveryAttempts=0;}
-    if(voiceRecoveryAttempts>=3) {
-      if(!state.recoveryExhausted){
-        state.recoveryExhausted=true;
-        document.getElementById('rf')?.contentWindow?.toast?.(
-          'Voice disconnected. Tap the mic or re-enter the room to retry.');
-      }
-      return;
-    }
-    const delay=[1200,3000,6000][voiceRecoveryAttempts++];
-    console.warn('Sharika voice transport recovery:',reason);
-    state.recoveryTimer=setTimeout(()=>{
-      state.recoveryTimer=null;
-      if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||
-         (!force && sfuTransportHealthy(state)))return;
-      connectVoice(state.roomId).catch(error=>{
-        document.getElementById('rf')?.contentWindow?.toast?.(
-          'Voice reconnect failed: '+errText(error));
+  function scheduleVoiceRetry(roomId,reason,force=false) {
+    if(wantedVoiceRoom!==roomId||voiceRetryTimer)return;
+    if(voiceRecoveryRoom!==roomId){voiceRecoveryRoom=roomId;voiceRecoveryAttempts=0;}
+    // Keep retrying after the first three attempts. The previous terminal
+    // state left users permanently silent on a briefly unstable mobile link.
+    const delay=[500,1200,2500,5000,10000,20000,30000][
+      Math.min(voiceRecoveryAttempts++,6)];
+    console.warn('Sharika voice reconnect scheduled:',reason,'in',delay,'ms');
+    voiceRetryTimer=setTimeout(()=>{
+      voiceRetryTimer=null;
+      if(wantedVoiceRoom!==roomId)return;
+      if(!force&&sfuState?.roomId===roomId&&!sfuState.closed&&
+         sfuTransportHealthy(sfuState))return;
+      connectVoice(roomId).catch(error=>{
+        console.warn('Sharika voice reconnect:',errText(error));
+        // connectVoice itself requeues on signaling/setup failures.
       });
     },delay);
+  }
+  function recoverSfuPublication(state,reason,force=false) {
+    if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId)return;
+    scheduleVoiceRetry(state.roomId,reason,force);
   }
   async function waitVoiceConnected(peer) {
     if(peer.connectionState==='connected')return;
@@ -2258,9 +2259,12 @@
   async function waitIce(peer,phase='voice') {
     await new Promise((resolve,reject)=>{
       let settled=false;
-      let fast,deadline;
+      let fast,relayGrace,deadline;
+      const expectsRelay=!!peer.getConfiguration?.().iceServers?.some(server=>
+        !!server.username && [server.urls].flat().some(url=>
+          typeof url==='string'&&url.startsWith('turn')));
       function cleanup(){
-        clearTimeout(fast);clearTimeout(deadline);
+        clearTimeout(fast);clearTimeout(relayGrace);clearTimeout(deadline);
         peer.removeEventListener('icegatheringstatechange',changed);
       }
       function finish(error){
@@ -2276,11 +2280,18 @@
         }
       }
       peer.addEventListener('icegatheringstatechange',changed);
-      // Give UDP and the normal TURN relay a chance to be included first.
+      // Without trickle ICE, sending only a server-reflexive candidate can
+      // strand mobile users behind restrictive NAT even while TURN is available.
+      // Prefer a real relay before finalizing the SDP, without waiting forever
+      // for optional blocked TCP ports.
       fast=setTimeout(()=>{
         const available=localIceCandidates(peer);
+        if(available.relay||(!expectsRelay&&available.srflx))finish();
+      },900);
+      relayGrace=setTimeout(()=>{
+        const available=localIceCandidates(peer);
         if(available.relay||available.srflx)finish();
-      },2200);
+      },4000);
       // A partially gathered SDP with candidates is more useful than a
       // guaranteed 12-second failure on a blocked optional TURN endpoint.
       deadline=setTimeout(()=>{
@@ -2290,7 +2301,7 @@
             'candidates='+available.count,'relay='+available.relay);
           finish();
         }else finish(new Error('Voice has no ICE network candidates ('+phase+')'));
-      },7000);
+      },8000);
       changed();
     });
   }
@@ -2340,7 +2351,10 @@
         }
         const rms=Math.sqrt(power/meter.samples.length);
         if(rms>.018||(rms>.008&&peak>.05))meter.lastActiveAt=now;
-        if(now-meter.lastActiveAt<480)speaking.add(meter.userId);
+        if(now-meter.lastActiveAt<480){
+          speaking.add(meter.userId);
+          if(meter.local)state.lastLocalSpeechAt=now;
+        }
       }catch(_){/* Individual tracks can end during audio renegotiation. */}
     }
     setVoiceSpeakers(state.roomId,speaking);
@@ -2372,6 +2386,73 @@
     meter.source.disconnect();
     state.speakingMeters.delete(track);
     sampleSfuSpeaking(state);
+  }
+  // A connected ICE transport is not proof that audio RTP is moving. Read
+  // actual media packet counters locally; never upload SDP, voice, or tokens.
+  function audioRtpCounters(report,type) {
+    let packets=0,bytes=0;
+    for(const stat of report.values()){
+      if(stat.type!==type ||
+         (stat.kind&&stat.kind!=='audio') ||
+         (stat.mediaType&&stat.mediaType!=='audio'))continue;
+      packets+=Number(stat.packetsSent??stat.packetsReceived)||0;
+      bytes+=Number(stat.bytesSent??stat.bytesReceived)||0;
+    }
+    return {packets,bytes};
+  }
+  function selectedIcePath(report) {
+    if(!report)return 'unknown';
+    let pair=null;
+    for(const stat of report.values()){
+      if(stat.type==='transport'&&stat.selectedCandidatePairId){
+        pair=report.get(stat.selectedCandidatePairId);break;
+      }
+    }
+    if(!pair){
+      for(const stat of report.values()){
+        if(stat.type==='candidate-pair'&&stat.nominated&&stat.state==='succeeded'){
+          pair=stat;break;
+        }
+      }
+    }
+    const local=pair?.localCandidateId?report.get(pair.localCandidateId):null;
+    return ['relay','srflx','host','prflx'].includes(local?.candidateType)
+      ?local.candidateType:'unknown';
+  }
+  async function inspectSfuAudio(state) {
+    if(state.closed||sfuState!==state||state.statsInFlight)return;
+    state.statsInFlight=true;
+    try {
+      const [sendReport,receiveReport]=await Promise.all([
+        state.publishPC?.getStats?.()||null,
+        state.receivePC?.getStats?.()||null
+      ]);
+      if(state.closed||sfuState!==state)return;
+      const outgoing=sendReport?audioRtpCounters(sendReport,'outbound-rtp'):null;
+      const incoming=receiveReport?audioRtpCounters(receiveReport,'inbound-rtp'):null;
+      const last=state.lastMediaStats;
+      const mic=state.media?.getAudioTracks()[0];
+      if(last?.outgoing&&outgoing&&state.readyPublication&&mic?.enabled&&
+         state.publishPC?.connectionState==='connected'&&
+         state.lastLocalSpeechAt&&Date.now()-state.lastLocalSpeechAt<9000&&
+         outgoing.packets<=last.outgoing.packets){
+        state.outgoingStalls=(state.outgoingStalls||0)+1;
+        if(state.outgoingStalls>=2){
+          console.warn('Sharika voice: microphone active but RTP stopped');
+          recoverSfuPublication(state,'microphone RTP stalled',true);
+          state.outgoingStalls=0;
+        }
+      }else state.outgoingStalls=0;
+      if(incoming?.packets && state.audioElements.size &&
+         [...state.audioElements].some(element=>element.paused))resumeRoomAudio();
+      // No incoming bytes can also mean remote users are intentionally silent.
+      // Do not tear down a connected subscriber on that signal alone.
+      state.lastMediaStats={outgoing,incoming,
+        outgoingRoute:selectedIcePath(sendReport),
+        incomingRoute:selectedIcePath(receiveReport),checkedAt:Date.now()};
+    }catch(error){
+      console.warn('Sharika voice statistics unavailable:',errText(error));
+    }finally{state.statsInFlight=false;}
   }
   function addAudioTrack(state,event) {
     if(state.closed)return;
@@ -2520,7 +2601,9 @@
       const offer=await state.publishPC.createOffer();
       await state.publishPC.setLocalDescription(offer);
       await waitIce(state.publishPC,'publish');
-      const published=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'publish'});
+      const published=await api('POST','/rooms/'+roomId+'/voice/session',{
+        mode:'publish',readiness:'connected-v1'
+      });
       state.sessionIds.push(published.sessionId);
       const negotiation=await api('POST','/rooms/'+roomId+'/voice/publish',{
         sessionId:published.sessionId,
@@ -2631,6 +2714,7 @@
       },1500);
       state.timer=setInterval(()=>{
         if(state.closed)return;
+        inspectSfuAudio(state).catch(()=>{});
         api('POST','/rooms/'+roomId+'/voice/heartbeat',{sessionIds:state.sessionIds})
           .then(()=>{state.heartbeatFailures=0;})
           .catch(()=>{
@@ -2704,9 +2788,11 @@
   let voiceOperation=Promise.resolve(),pendingVoice=null,wantedVoiceRoom=null;
   function releaseVoice() {
     wantedVoiceRoom=null;
+    if(voiceRetryTimer){clearTimeout(voiceRetryTimer);voiceRetryTimer=null;}
     // A new room entry, including returning to the same room, is a fresh
     // attempt. Do not carry an exhausted retry budget across visits.
     voiceRecoveryRoom=null;voiceRecoveryAttempts=0;
+    voiceRelayWarningRoom=null;
     clearVoiceSpeakers();
     const task=voiceOperation.catch(()=>{}).then(()=>disconnectVoice());
     voiceOperation=task;
@@ -2720,6 +2806,12 @@
       const config=await api('GET','/rooms/'+roomId+'/voice/config');
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
       const iceConfig=verifiedIceConfig(config);
+      if(config.provider==='cloudflare_sfu'&&!config.relayAvailable&&
+         voiceRelayWarningRoom!==roomId){
+        voiceRelayWarningRoom=roomId;
+        document.getElementById('rf')?.contentWindow?.toast?.(
+          'Voice relay unavailable. Trying direct connection.');
+      }
       // When a normal connection has failed, prefer Cloudflare TURN relays
       // for the next attempt. Never force relay without valid credentials;
       // a subsequent retry may use the standard direct+relay ICE policy.
@@ -2793,10 +2885,21 @@
         markLocalMicrophone(enabled);
       }
       return result;
+    } catch(error) {
+      if(wantedVoiceRoom===roomId)
+        scheduleVoiceRetry(roomId,'voice negotiation failed',true);
+      throw error;
     } finally {
       if(pendingVoice?.promise===task)pendingVoice=null;
     }
   }
+  window.addEventListener('online',()=>{
+    const roomId=wantedVoiceRoom;
+    if(!roomId || (sfuState?.roomId===roomId&&sfuTransportHealthy(sfuState)))return;
+    if(voiceRetryTimer){clearTimeout(voiceRetryTimer);voiceRetryTimer=null;}
+    voiceRecoveryAttempts=0;
+    scheduleVoiceRetry(roomId,'network restored',true);
+  });
   // Frame cosmetics cannot restart a voice transport already in progress.
   function ensureVoiceConnected(roomId) {
     if(pendingVoice?.roomId===roomId)return pendingVoice.promise;
@@ -4864,6 +4967,35 @@
     },2200);
     pollRoomReactions().catch(()=>{});
     const mic=frame.$ && frame.$('mic');
+    // On actual phones there is no DevTools console. Long-press the mic to
+    // display a private, packet-based voice check without changing its state.
+    if(mic){
+      let diagnosisTimer=null,diagnosisShown=false;
+      mic.addEventListener('pointerdown',()=>{
+        clearTimeout(diagnosisTimer);
+        diagnosisTimer=setTimeout(async()=>{
+          diagnosisShown=true;
+          const state=sfuState?.roomId===room.id?sfuState:null;
+          if(state)await inspectSfuAudio(state);
+          const report=state?.lastMediaStats;
+          const micTrack=state?.media?.getAudioTracks()[0];
+          frame.toast('Voice check: mic '+(micTrack?.enabled?'on':'off')+
+            ', uplink '+(state?.publishPC?.connectionState||'none')+
+            ', downlink '+(state?.receivePC?.connectionState||'none')+
+            ', TX '+(report?.outgoing?.packets??'-')+
+            ', RX '+(report?.incoming?.packets??'-')+
+            ', path '+(report?.outgoingRoute||'unknown'));
+        },750);
+      });
+      for(const event of ['pointerup','pointercancel','pointerleave'])
+        mic.addEventListener(event,()=>clearTimeout(diagnosisTimer));
+      mic.addEventListener('click',event=>{
+        if(diagnosisShown){
+          diagnosisShown=false;
+          event.preventDefault();event.stopImmediatePropagation();
+        }
+      },true);
+    }
     if(mic) mic.onclick=async ()=>{
       try {
         const enabled=await toggleVoice();

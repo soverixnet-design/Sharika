@@ -188,7 +188,7 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
 });
 
 test('two-way audio recovers an ended microphone and a failed remote receiver',()=>{
-  const begin=ui.indexOf('  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;');
+  const begin=ui.indexOf('  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0,voiceRetryTimer=null;');
   const end=ui.indexOf('  function localIceCandidates(peer)',begin);
   assert.ok(begin>=0 && end>begin);
   const timers=[],reconnects=[];
@@ -209,7 +209,7 @@ test('two-way audio recovers an ended microphone and a failed remote receiver',(
   context.testState=ended;
   runInContext("sfuState=testState;recoverSfuPublication(testState,'track ended')",context);
   const first=timers.shift();
-  assert.equal(first.delay,1200);
+  assert.equal(first.delay,500);
   first.fn();
   assert.deepEqual(reconnects,['roomA']);
   const receiver={
@@ -220,9 +220,17 @@ test('two-way audio recovers an ended microphone and a failed remote receiver',(
   context.testState=receiver;
   runInContext("sfuState=testState;recoverSfuPublication(testState,'remote failed')",context);
   const second=timers.shift();
-  assert.equal(second.delay,3000);
+  assert.equal(second.delay,1200);
   second.fn();
   assert.deepEqual(reconnects,['roomA','roomA']);
+  // Repeated failures must not leave mobile users permanently disconnected.
+  for(let i=0;i<6;i++){
+    runInContext("recoverSfuPublication(testState,'still disconnected')",context);
+    const next=timers.shift();
+    assert.ok(next?.delay<=30000);
+    next.fn();
+  }
+  assert.equal(reconnects.length,8);
   assert.equal(runInContext(
     "micPreferenceRoom='roomA';micPreferenceEnabled=false;microphoneWanted('roomA')",
     context),false,'manual mute is preserved through reconnect');
@@ -341,6 +349,39 @@ test('SFU voice activity measures live audio and clears the light on mute',()=>{
   assert.match(ui,/speakingContext\.close\(\)\.catch/);
   assert.match(ui,/source\.connect\(analyser\)/);
   assert.doesNotMatch(ui.slice(begin,end),/source\.connect\(.*destination/);
+});
+
+test('RTP watchdog distinguishes a connected transport from actual moving microphone packets',async()=>{
+  const begin=ui.indexOf('  function audioRtpCounters(report,type) {');
+  const end=ui.indexOf('  function addAudioTrack(state,event)',begin);
+  assert.ok(begin>=0&&end>begin);
+  const recovered=[];
+  const context=createContext({Date,Promise,Number,
+    console:{warn(){}},errText:String,
+    recoverSfuPublication(state,reason,force){recovered.push({reason,force});},
+    resumeRoomAudio(){}
+  });
+  runInContext('let sfuState=null;'+ui.slice(begin,end),context);
+  const report=new Map([['audio',{
+    type:'outbound-rtp',kind:'audio',packetsSent:8,bytesSent:600
+  }],['video',{type:'outbound-rtp',kind:'video',packetsSent:20,bytesSent:2000}]]);
+  context.report=report;
+  const counters=runInContext("audioRtpCounters(report,'outbound-rtp')",context);
+  assert.equal(counters.packets,8);
+  assert.equal(counters.bytes,600);
+  const state={closed:false,statsInFlight:false,readyPublication:true,
+    lastLocalSpeechAt:Date.now(),roomId:'test-room',
+    publishPC:{connectionState:'connected',async getStats(){return report;}},
+    receivePC:null,media:{getAudioTracks(){return [{enabled:true}];}},
+    audioElements:new Set(),outgoingStalls:0};
+  context.state=state;
+  await runInContext('sfuState=state;inspectSfuAudio(state)',context);
+  await runInContext('inspectSfuAudio(state)',context);
+  await runInContext('inspectSfuAudio(state)',context);
+  assert.deepEqual(recovered,[{reason:'microphone RTP stalled',force:true}]);
+  report.get('audio').packetsSent++;
+  await runInContext('inspectSfuAudio(state)',context);
+  assert.equal(state.outgoingStalls,0,'forward progress clears the stall counter');
 });
 
 test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>{
