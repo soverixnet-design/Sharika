@@ -2039,13 +2039,22 @@
   function paintVoiceSpeakers(roomId,frame) {
     if(!frame?.seats)return;
     const ids=activeVoiceSpeakers.roomId===roomId?activeVoiceSpeakers.ids:new Set();
+    const ownerOnMic=frame.seats.some(seat=>seat?.owner_mic_seat);
     for(const seat of frame.seats){
       if(!seat||seat.empty||seat.lock)continue;
-      const speaking=!!seat.user_id&&!seat.muted&&ids.has(seat.user_id);
+      const speaking=!!seat.user_id&&!seat.muted&&ids.has(seat.user_id)&&
+        !(ownerOnMic&&seat.i===0);
       seat.talk=speaking;
       const el=frame.seatEl?.(seat.i);
       if(el)el.classList.toggle('talk',speaking);
     }
+  }
+  function paintVerifiedMicCount(frame) {
+    if(!frame?.seats)return;
+    const people=new Set(frame.seats.filter(seat=>seat&&!seat.empty&&!seat.lock)
+      .map(seat=>seat.user_id||'seat:'+seat.i));
+    const count=frame.$?.('mstat');
+    if(count)count.innerHTML='🎤 <i>'+people.size+'</i>/'+frame.seats.length;
   }
   function setVoiceSpeakers(roomId,userIds) {
     if(wantedVoiceRoom!==roomId)return;
@@ -2562,12 +2571,13 @@
       native('roomScreenAwake',{enabled:true}).catch(()=>{});
     const frame=document.getElementById('rf')?.contentWindow;
     if(!frame||!Array.isArray(frame.seats))return;
-    const localSeat=frame.seats.find(slot=>slot?.user_id===session?.user?.id);
-    if(localSeat) {
-      localSeat.muted=!enabled;
+    const localSeats=frame.seats.filter(slot=>slot?.user_id===session?.user?.id);
+    if(localSeats.length) {
+      for(const seat of localSeats)seat.muted=!enabled;
       if(typeof frame.render==='function'){
         frame.render();
         decorateRoomSeats(frame);
+        paintVerifiedMicCount(frame);
         if(window.cur?.id===sfuState?.roomId)paintVoiceSpeakers(sfuState.roomId,frame);
       }
     }
@@ -3163,6 +3173,7 @@
   async function syncFrame(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
     // Out-of-order room polls cannot restore stale seats or old cosmetics.
+    if(frame.__sharikaSeatMovePending)return;
     const requestNo=(frame.__sharikaSeatSyncNo||0)+1;
     frame.__sharikaSeatSyncNo=requestNo;
     const userId=session?.user?.id;
@@ -3227,7 +3238,17 @@
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
-      if(!user || member.user_id===room.owner_id) continue;
+      if(!user)continue;
+      if(member.user_id===room.owner_id){
+        // Keep the fixed owner throne while also showing the owner's chosen
+        // mic position. Both seats represent one verified user and one stream.
+        if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
+           member.seat_no<slots.length)
+          slots[member.seat_no]={...slots[0],i:member.seat_no,
+            owner_mic_seat:true,muted:!!member.muted||
+              (member.user_id===session?.user?.id&&localMic===false)};
+        continue;
+      }
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
           n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
@@ -3256,6 +3277,7 @@
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
     frame.render();
+    paintVerifiedMicCount(frame);
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     decorateRoomPeople(frame);
     decorateRoomChat(frame);
@@ -3750,6 +3772,66 @@
         action==='remove_seat'?'Guest removed from mic':'Guest '+action+'d');
       return result;
     }
+    // A seat assignment does not require rebuilding an existing voice call.
+    let directSeatBusy=false;
+    async function moveSelfToSeat(seat) {
+      if(directSeatBusy)return;
+      const uid=session?.user?.id;
+      const owner=room.owner_id===uid;
+      const target=frame.seats?.[seat];
+      if(!uid||!target?.empty||seat<1||seat>room.seat_count)
+        throw new Error('Choose an unlocked empty seat');
+      directSeatBusy=true;
+      frame.__sharikaSeatMovePending=true;
+      frame.__sharikaSeatSyncNo=(frame.__sharikaSeatSyncNo||0)+1;
+      const before=frame.seats.map(slot=>slot?{...slot}:slot);
+      const previous=frame.seats.find(slot=>slot?.i>0&&slot.user_id===uid);
+      const source=previous||(owner?frame.seats[0]:{
+        n:profile?.name||'Member',e:'👤',pic:verifiedAvatarUrl(profile?.pic),
+        user_id:uid,public_id:profile?.public_id,
+        display_id:profile?.display_id||profile?.public_id,
+        special_id:profile?.special_id||null,svip_level:Number(profile?.svip_level)||0,
+        frame_style:profile?.frame_style||'',entry_style:profile?.entry_style||'',
+        medal_style:profile?.medal_style||'',name_tag_style:profile?.name_tag_style||'',
+        muted:false,talk:false
+      });
+      if(previous)frame.seats[previous.i]={empty:1,i:previous.i};
+      frame.seats[seat]={...source,i:seat,owner_mic_seat:owner};
+      frame.render();
+      decorateRoomSeats(frame);
+      paintVerifiedMicCount(frame);
+      paintVoiceSpeakers(room.id,frame);
+      frame.seatEl?.(seat)?.classList.add('sh-seat-pending');
+      frame.close();
+      frame.toast('Moving to seat '+seat+'…');
+      try {
+        await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
+        frame.toast('Seat '+seat+' selected');
+      }catch(error) {
+        if(window.cur?.id===room.id){
+          frame.seats=before;
+          frame.render();
+          decorateRoomSeats(frame);
+          paintVerifiedMicCount(frame);
+          paintVoiceSpeakers(room.id,frame);
+        }
+        throw error;
+      }finally{
+        frame.__sharikaSeatMovePending=false;
+        directSeatBusy=false;
+      }
+      if(window.cur?.id!==room.id)return;
+      const publishingAlready=
+        (sfuState?.roomId===room.id&&sfuState.canPublish)||
+        (voiceRoomId===room.id&&!!voiceRoom?.sharikaPublishAllowed);
+      const voice=publishingAlready?ensureVoiceConnected(room.id):connectVoice(room.id);
+      voice.then(result=>{
+        if(window.cur?.id===room.id&&!result.stale)
+          frame.toast(result.publishing?'Microphone ready':'Listening to room');
+      }).catch(error=>frame.toast('Voice reconnect: '+errText(error)));
+      syncFrame(room,frame).catch(error=>
+        frame.toast('Seat refresh: '+errText(error)));
+    }
     frame.act=async function(action,seat) {
       try {
         const target=frame.seats?.[seat];
@@ -3799,18 +3881,7 @@
             list.append(button);
           }
         } else if(action==='take' && seat>0) {
-          // The owner already occupies seat zero; invite a guest instead.
-          if(owner){await frame.act('inv',seat);return;}
-          await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
-          frame.close(); await syncFrame(room,frame);
-          let state=await connectVoice(room.id);
-          // An in-flight listener connection might have started before the
-          // seat assignment; recheck verified publish permission once.
-          if(!state.publishing) {
-            const current=await api('GET','/rooms/'+room.id+'/voice/config');
-            if(current.publish)state=await connectVoice(room.id);
-          }
-          frame.toast(state.publishing?'Microphone enabled':'Listening to room');
+          await moveSelfToSeat(seat);
         } else if(action==='down' && seat>0) {
           if(!isSelf && owner && target?.user_id) {
             await moderateSeat('remove_seat',seat);
@@ -3888,7 +3959,9 @@
     // Original emoji box invokes seatEmoji(0,...) on every device. Resolve
     // the currently logged-in user's actual mic seat before animating.
     frame.seatEmoji=function(_ignoredIndex,emoji){
-      const mine=frame.seats?.find(slot=>slot?.user_id===session?.user?.id);
+      const mine=frame.seats?.find(slot=>slot?.i>0&&
+        slot.user_id===session?.user?.id)||
+        frame.seats?.find(slot=>slot?.user_id===session?.user?.id);
       if(!mine||mine.empty||mine.lock){
         frame.toast('Take an unlocked mic seat to show a seat emoji');return;
       }
@@ -3900,33 +3973,15 @@
         emoji:emoji[0],request_id:requestId
       }).catch(error=>frame.toast('Emoji shown locally: '+errText(error)));
     };
-    // A verified guest taps any open/unlocked seat to sit immediately.
-    // This bypasses the old demo "Seat a guest" menu; owner invitations remain optional.
-    let directSeatBusy=false;
-    frame.document.addEventListener('click',async event=>{
+    // Owners and guests can change to any available microphone seat.
+    frame.document.addEventListener('click',event=>{
       const button=event.target.closest?.('.seat.empty[data-i]');
-      if(!button||!frame.document.querySelector('#grid')?.contains(button) ||
-         room.owner_id===session?.user?.id)return;
+      if(!button||!frame.document.querySelector('#grid')?.contains(button))return;
       const seat=Number(button.dataset.i);
       if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
       event.preventDefault();event.stopImmediatePropagation();
-      if(directSeatBusy)return;
-      directSeatBusy=true;button.disabled=true;
-      try{
-        await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
-        await syncFrame(room,frame);
-        let joined=await connectVoice(room.id);
-        if(!joined.publishing){
-          const current=await api('GET','/rooms/'+room.id+'/voice/config');
-          if(current.publish)joined=await connectVoice(room.id);
-        }
-        frame.toast(joined.publishing?'Joined mic seat '+seat+' · microphone on':
-          'Joined seat '+seat+' · microphone connecting');
-      }catch(error){frame.toast('Unable to take seat: '+errText(error));}
-      finally{
-        directSeatBusy=false;
-        if(button.isConnected)button.disabled=false;
-      }
+      moveSelfToSeat(seat).catch(error=>
+        frame.toast('Unable to change seat: '+errText(error)));
     },true);
     // The room template's audience menu previously changed local demo seats.
     // Wire those buttons to authenticated server operations instead.
