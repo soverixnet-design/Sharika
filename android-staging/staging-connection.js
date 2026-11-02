@@ -383,9 +383,10 @@
       '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
       '.sh-sovera-seat-tag{position:absolute;z-index:18;left:50%;top:100%;width:104px;height:29px;transform:translateX(-50%);object-fit:contain;pointer-events:none}',
       '.sh-neon-profile-id{display:block;width:max-content;max-width:94%;margin:7px auto 12px;padding:7px 18px;',
-      'color:#f6ebff;font-size:20px;font-weight:900;letter-spacing:.14em;border:2px solid #c287ff;',
-      'border-radius:14px;background:linear-gradient(100deg,#3b1362,#6330ca,#1562b5);',
-      'box-shadow:0 0 16px #9250ff9c,inset 0 0 14px #758cff70;text-shadow:0 0 9px #8bf1ff}',
+      'color:#ff4055;font-size:20px;font-weight:1000;letter-spacing:.12em;border:2px solid #ff8871;',
+      'border-radius:14px;background:linear-gradient(110deg,#3b0818,#7c1231,#470b26);',
+      'box-shadow:0 0 16px #ff395088,inset 0 0 14px #f3633970;',
+      'animation:sh-special-id-fire 2.8s ease-in-out infinite}',
       // Profile keeps the actual special ID number; avoid a duplicate seat label.
       '.sh-sovera-user-tag{display:inline-block;width:74px;height:25px;object-fit:contain;margin-left:4px;vertical-align:middle}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
@@ -474,10 +475,17 @@
       '#v-me .mav.sh-has-sovera-frame{margin-bottom:37px!important}',
       '#pfc .pfh .pavw:has(>.sh-svip-frame){margin-top:20px!important;margin-bottom:33px!important}',
       '.sh-neon-profile-id::before{content:none!important}',
+      '@keyframes sh-special-id-fire{0%,100%{color:#ff3950;-webkit-text-fill-color:#ff3950;text-shadow:0 0 5px #ff253caa,0 0 13px #eb173d55}',
+      '50%{color:#ffd16c;-webkit-text-fill-color:#ffd16c;text-shadow:0 0 7px #ff6a35,0 0 18px #ff273ab0}}',
       '#v-me .mid.sh-neon-single-id,#pfc .pfh .meta .sh-neon-single-id{',
-      'border:1px solid #e9c17b!important;background:linear-gradient(145deg,#512082,#26104d)!important;',
-      'color:#ffe6a5!important;border-radius:100px!important;padding:6px 16px!important;',
-      'font-weight:900!important;box-shadow:0 0 16px #9456d17a;text-shadow:0 2px 5px #150427}',
+      'border:2px solid #ff756a!important;background:linear-gradient(125deg,#3a0718,#74112a 52%,#400b26)!important;',
+      'color:#ff3950!important;-webkit-text-fill-color:#ff3950;border-radius:100px!important;padding:6px 16px!important;',
+      'font-weight:1000!important;letter-spacing:.065em!important;font-variant-numeric:tabular-nums;',
+      'box-shadow:0 0 17px #ff304c88,inset 0 0 10px #b9273270;',
+      'animation:sh-special-id-fire 2.8s ease-in-out infinite!important}',
+      '@media(prefers-reduced-motion:reduce){',
+      '#v-me .mid.sh-neon-single-id,#pfc .pfh .meta .sh-neon-single-id{',
+      'animation:none!important;color:#ff4055!important;-webkit-text-fill-color:#ff4055}}',
       '#sh-svip-royal{background:radial-gradient(ellipse at 50% -20%,#76428e 0%,#230e4d 40%,#0c0722 100%)}',
       '#sh-svip-royal .svip-title{text-align:center}',
       '#sh-svip-royal .svip-title small{display:block;color:#d5b1e0;font-size:9px;font-weight:900;letter-spacing:2px}',
@@ -1309,7 +1317,7 @@
     const anchor=document.querySelector('#v-me .mid');
     if(!anchor)return;
     const displayId=String(profile?.special_id||profile?.display_id||profile?.public_id||'');
-    if(/^[0-9]{4,8}$/.test(displayId))anchor.textContent='ID '+displayId;
+    if(/^[0-9]{1,10}$/.test(displayId))anchor.textContent='ID '+displayId;
     // Tapping the public ID opens the separate rich ID detail profile,
     // never redirects back to the wallet/settings Main Profile.
     anchor.setAttribute('role','button');anchor.tabIndex=0;
@@ -1322,7 +1330,7 @@
     document.getElementById('sh-sovera-own-identity')?.remove();
     document.getElementById('sh-neon-own-id')?.remove();
     document.getElementById('sh-copy-own-id')?.remove();
-    if(/^[0-9]{4,8}$/.test(displayId)){
+    if(/^[0-9]{1,10}$/.test(displayId)){
       const copy=document.createElement('button');
       copy.id='sh-copy-own-id';copy.type='button';
       copy.className='sh-copy-own-id';copy.textContent='▢';
@@ -3472,7 +3480,7 @@
       const canonical=String(seat?.public_id||'');
       if(!/^[0-9]{8}$/.test(canonical))return '';
       const display=String(seat?.display_id||seat?.special_id||canonical);
-      return /^[0-9]{4,8}$/.test(display)?display:canonical;
+      return /^[0-9]{1,10}$/.test(display)?display:canonical;
     };
     frame.others=function(){return (frame.seats||[]).filter(s=>s&&!s.empty&&!s.lock);};
     // Only the server may enable Lucky Gifts, and never for a minor.
@@ -4998,7 +5006,7 @@
              'Coins are deducted from your assigned seller stock.')+'</p>'+
           '<label class="shw-label" for="sharika-seller-target">Recipient user ID</label>'+
           '<div class="shw-control-row">'+
-            '<input class="shw-input" id="sharika-seller-target" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Member or Special ID" aria-label="Recipient user ID">'+
+            '<input class="shw-input" id="sharika-seller-target" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="Member or Special ID" aria-label="Recipient user ID">'+
             '<button class="shw-mini" id="sharika-seller-my-id" type="button">My ID</button>'+
           '</div>'+
           '<label class="shw-label" for="sharika-seller-amount">Amount in coins</label>'+
@@ -5025,7 +5033,7 @@
       const send=document.getElementById('sharika-seller-send');
       // A seller's own verified ID is the default recipient. Other users
       // remain reachable by entering their eight-digit ID explicitly.
-      if(targetField)targetField.value=/^[0-9]{4,8}$/.test(targetId)
+      if(targetField)targetField.value=/^[0-9]{1,10}$/.test(targetId)
         ?targetId:visibleSellerId(self.public_id);
       document.getElementById('sharika-seller-my-id')?.addEventListener('click',()=>{
         if(targetField){targetField.value=visibleSellerId(self.public_id);targetField.focus();}
@@ -5055,7 +5063,7 @@
         const entered=targetField?.value.trim()||'';
         const raw=amountField?.value.trim()||'';
         const amount=Number(raw);
-        if(!/^[0-9]{4,8}$/.test(entered)||!/^[0-9]+$/.test(raw)||
+        if(!/^[0-9]{1,10}$/.test(entered)||!/^[0-9]+$/.test(raw)||
           !Number.isSafeInteger(amount)||amount<1||amount>1000000000000){
           showNote('Enter a member or Special ID and a positive whole coin amount (wallet maximum 1 trillion).','error');
           return;
@@ -6162,13 +6170,13 @@
       '<div class="av">🎧</div><div><b>Customer service</b>'+
       '<small>Verified Sharika support conversation</small></div><time>›</time></div>'+
       '<div class="row"><input class="field" id="find-user-id" inputmode="numeric" '+
-      'maxlength="8" placeholder="Real or Special ID" aria-label="Find user by real or special ID">'+
+      'maxlength="10" placeholder="Real or Special ID" aria-label="Find user by real or special ID">'+
       '<button class="btn" type="button" id="find-user-button">Find</button></div>'+
       '<div id="real-inbox">Loading messages…</div>';
     document.getElementById('verified-support-chat').onclick=openSupportThread;
     const find=async()=>{
       const value=document.getElementById('find-user-id').value.trim();
-      if(!/^[0-9]{4,8}$/.test(value)){toast('Enter a 4–8 digit Sharika ID');return;}
+      if(!/^[0-9]{1,10}$/.test(value)){toast('Enter a 1–10 digit Sharika ID');return;}
       try{
         const user=await api('GET','/users/'+encodeURIComponent(value));
         await openPrivateThread(user.id,user.name,user.display_id||user.id);
@@ -6688,7 +6696,7 @@
       const label=document.createElement('label');label.textContent='Recipient ID';
       label.style.cssText='display:block;color:#ffe1ad;margin:11px 0 5px;font-weight:800';
       const input=document.createElement('input');input.className='sh-bond-input';
-      input.inputMode='numeric';input.maxLength=8;
+      input.inputMode='numeric';input.maxLength=10;
       input.placeholder='Enter member or Special ID';
       input.value=initialTarget?.display_id||initialTarget?.id||'';
       root.append(label,input);
@@ -6723,7 +6731,7 @@
             (selected==='friendship'?'blue':'');send.textContent='Send invite';
           send.onclick=async()=>{
             const entered=input.value.trim();
-            if(!/^[0-9]{4,8}$/.test(entered)){
+            if(!/^[0-9]{1,10}$/.test(entered)){
               toast('Enter a valid member or Special ID');return;}
             send.disabled=true;
             try{
@@ -7068,7 +7076,7 @@
   let rankProfileRequest=0;
   async function openVerifiedRankProfile(publicId){
     const id=String(publicId||'');
-    if(!/^[0-9]{4,8}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
+    if(!/^[0-9]{1,10}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
     const panel=document.getElementById('pfo'),root=document.getElementById('pfc');
     if(!panel||!root)return;
     const requestNo=++rankProfileRequest;

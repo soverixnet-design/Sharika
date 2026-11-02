@@ -7,7 +7,7 @@ export const STAFF_SCOPES=Object.freeze([
 ]);
 const SCOPE_SET=new Set(STAFF_SCOPES);
 const PUBLIC_ID=/^[0-9]{8}$/;
-const RECHARGE_ID=/^[0-9]{4,8}$/;
+const RECHARGE_ID=/^[0-9]{1,10}$/;
 const REQUEST_ID=/^[a-zA-Z0-9:_-]{12,80}$/;
 const MAX_STAFF_GRANT=1_000_000;
 const MAX_SUPER_GRANT=1_000_000_000_000;

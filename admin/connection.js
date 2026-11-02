@@ -436,8 +436,14 @@
       border-radius:18px;background:linear-gradient(90deg,#341058,#5725ae,#1647ba);
       box-shadow:0 0 20px #7f45ff,inset 0 0 24px #6c45cb;text-align:center}
     .sid-plate small{display:block;letter-spacing:.18em;color:#d8c6ff;font-size:12px}
-    .sid-plate strong{font-size:clamp(30px,4vw,55px);line-height:1.25;color:#f6f0ff;
-      letter-spacing:.08em;text-shadow:0 0 18px #93d5ff}
+    @keyframes sid-red-gold{0%,100%{color:#ff3650;text-shadow:0 0 8px #ff2f45,0 0 18px #9e0e34}
+      50%{color:#ffd071;text-shadow:0 0 9px #ff762d,0 0 22px #f83857}}
+    .sid-plate{border-color:#ff7668;background:linear-gradient(90deg,#44091c,#8b1739,#480d29)}
+    .sid-plate strong{font-size:clamp(30px,4vw,55px);line-height:1.25;color:#ff3650;
+      font-weight:1000;letter-spacing:.065em;overflow-wrap:anywhere;
+      font-variant-numeric:tabular-nums;animation:sid-red-gold 2.8s ease-in-out infinite}
+    .sid-seat-id{font-size:16px;font-weight:1000;animation:sid-red-gold 2.8s ease-in-out infinite}
+    @media(prefers-reduced-motion:reduce){.sid-plate strong,.sid-seat-id{animation:none;color:#ff3650}}
     .sid-caption{text-align:center;color:#b5a7dc;font-size:12px;margin-top:12px}
     .sid-room{display:flex;gap:13px;align-items:center;margin-top:28px;border-top:1px solid #514181;
       padding-top:20px}
@@ -478,20 +484,20 @@
       '<div id="sid-avatar" class="sid-face">?</div>'+
       '<div id="sid-name" class="sid-name">Select a member</div>'+
       '<div class="sid-plate"><small>SPECIAL ID</small><strong id="sid-plate">—</strong></div>'+
-      '<p class="sid-caption">Neon ID displayed on profile and room seats</p>'+
+      '<p class="sid-caption">Animated bold red ID on profiles; room seats keep names and SVIP badges</p>'+
       '<div class="sid-room"><div class="sid-seat"><div class="sid-seat-ring" id="sid-seat-face">?</div>'+
-      '<span id="sid-seat-id">—</span></div>'+
+      '<span id="sid-seat-id" class="sid-seat-id">—</span></div>'+
       '<div class="sid-hint">Room seat preview · permanent account remains unchanged</div></div>'+
       '</section><section class="sid-editor"><h2 class="sid-edit-title">Assign Special ID</h2>'+
       '<p class="sid-hint">Only verified Sharika accounts can receive a unique ID.</p>'+
       '<label for="sid-account">Permanent Account ID</label>'+
       '<input id="sid-account" readonly placeholder="Select a verified member">'+
-      '<label for="sid-value">Special ID (4–7 digits)</label>'+
-      '<input id="sid-value" inputmode="numeric" maxlength="7" autocomplete="off" placeholder="777777">'+
+      '<label for="sid-value">Special ID (1–10 digits)</label>'+
+      '<input id="sid-value" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="777777">'+
       '<label for="sid-days">Duration</label><select id="sid-days">'+
       '<option value="30">30 days</option><option value="7">7 days</option>'+
       '<option value="90">90 days</option><option value="">Permanent</option></select>'+
-      '<label>Frame</label><input readonly value="Neon Purple–Blue">'+
+      '<label>Frame</label><input readonly value="Animated Red–Gold">'+
       '<button type="button" class="sid-ghost" id="sid-check">Check availability</button>'+
       '<button type="button" class="sid-action" id="sid-save" disabled>Save Special ID</button>'+
       '<p class="sid-status" id="sid-status" role="status"></p>'+
@@ -512,7 +518,7 @@
       byId('sid-seat-face').innerHTML=faceHtml(selected);
       byId('sid-plate').textContent=display;
       byId('sid-seat-id').textContent=display;
-      save.disabled=!selected||selected.status!=='active'||!/^[0-9]{4,7}$/.test(value.value.trim());
+      save.disabled=!selected||selected.status!=='active'||!/^[0-9]{1,10}$/.test(value.value.trim());
       revoke.disabled=!selected||!selected.special_id;
     }
     async function search(){
@@ -545,7 +551,7 @@
     value.oninput=()=>{status.textContent='';preview();};
     byId('sid-check').onclick=async()=>{
       const proposed=value.value.trim();
-      if(!/^[0-9]{4,7}$/.test(proposed)){status.textContent='Use 4–7 numeric digits.';return;}
+      if(!/^[0-9]{1,10}$/.test(proposed)){status.textContent='Use 1–10 numeric digits.';return;}
       try{
         const response=await api('GET','special-ids/availability?value='+encodeURIComponent(proposed));
         status.textContent=response.available?'Available ✓':
@@ -1834,7 +1840,7 @@
     section.className='card';
     section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
       '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
-      '<div class="row"><input id="direct-user" maxlength="8" inputmode="numeric" placeholder="Recipient 4–8 digit Member or Special ID" aria-label="User ID">'+
+      '<div class="row"><input id="direct-user" maxlength="10" inputmode="numeric" placeholder="Recipient 1–10 digit Member or Special ID" aria-label="User ID">'+
       '<input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
       '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
       '<button id="direct-submit" class="btn s" type="button">Credit user wallet</button></div>'+
@@ -1860,10 +1866,10 @@
       const raw=byId('direct-coins').value.trim();
       const amount=Number(raw);
       const reason=byId('direct-reason').value.trim();
-      if(!/^[0-9]{4,8}$/.test(target)||!/^[0-9]+$/.test(raw)||
+      if(!/^[0-9]{1,10}$/.test(target)||!/^[0-9]+$/.test(raw)||
          !Number.isSafeInteger(amount)||amount<1||amount>(role==='super'?1000000000000:1000000)||
          reason.length<8||reason.length>200){
-        note.textContent='Enter 4–8 digit Member or Special ID, positive coins within the wallet cap and an 8–200 character reason.';return;
+        note.textContent='Enter 1–10 digit Member or Special ID, positive coins within the wallet cap and an 8–200 character reason.';return;
       }
       if(!window.confirm('Credit '+fmt(amount)+' real coins to user '+target+
         '? Reason: '+reason+'\nThis grant is permanently audited.'))return;
