@@ -83,8 +83,8 @@ public final class SharikaActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 3415;
     // Background polling must not queue microphone negotiation behind slow image,
 // chat or presence requests on congested mobile networks.
-private final ExecutorService io = Executors.newFixedThreadPool(4);
-private final ExecutorService voiceIo = Executors.newFixedThreadPool(3);
+    private final ExecutorService io = Executors.newFixedThreadPool(4);
+    private final ExecutorService voiceIo = Executors.newFixedThreadPool(3);
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
