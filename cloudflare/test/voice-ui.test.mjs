@@ -212,3 +212,38 @@ test('incoming voice and server permission changes are checked independently',()
   assert.doesNotMatch(ui,/!!sfuState\.media!==!!eligible/);
   assert.match(ui,/local\.enabled=microphoneWanted\(roomId\)/);
 });
+
+test('voice begins at verified join before the room art and iframe are ready',()=>{
+  const enter=ui.indexOf('  window.openRoom=async function(room) {');
+  const end=ui.indexOf('  const originalLeaveRoom=',enter);
+  assert.ok(enter>=0&&end>enter);
+  const entry=ui.slice(enter,end);
+  assert.ok(entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})")>=0);
+  assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')>
+    entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})"));
+  assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')<
+    entry.indexOf('originalOpenRoom(room)'));
+  assert.match(ui,/const voice=await ensureVoiceConnected\(room\.id\)/);
+});
+
+test('SFU starts listening independently of microphone capture',()=>{
+  assert.match(ui,/async function startSfuReceiving\(state\)/);
+  assert.match(ui,/const receiving=startSfuReceiving\(state\)\.then/);
+  assert.match(ui,/const receiveError=await receiving/);
+  assert.match(ui,/bootstrapTimers:\[\]/);
+  assert.match(ui,/\[1200,3000,5500\]/);
+  assert.match(ui,/for\(const timer of state\.bootstrapTimers\|\|\[\]\)clearTimeout\(timer\)/);
+});
+
+test('Android keeps the screen awake for an active room, including its mini-player',()=>{
+  const java=readFileSync(new URL(
+    '../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',
+    import.meta.url),'utf8');
+  assert.match(java,/case "roomScreenAwake":/);
+  assert.match(java,/getWindow\(\)\.addFlags\(WindowManager\.LayoutParams\.FLAG_KEEP_SCREEN_ON\)/);
+  assert.match(java,/getWindow\(\)\.clearFlags\(WindowManager\.LayoutParams\.FLAG_KEEP_SCREEN_ON\)/);
+  assert.match(ui,/setRoomScreenAwake\(true\)/);
+  assert.match(ui,/setRoomScreenAwake\(false\)/);
+  assert.match(ui,/if\(prior\?\.id===room\.id\)/);
+  assert.match(ui,/resumeRoomAudio\(\)/);
+});
