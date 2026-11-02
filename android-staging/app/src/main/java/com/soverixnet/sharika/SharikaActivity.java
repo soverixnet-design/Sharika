@@ -22,6 +22,7 @@ import android.util.Base64;
 import android.util.Size;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -118,6 +119,8 @@ public final class SharikaActivity extends Activity {
         auth = FirebaseAuth.getInstance();
         credentials = CredentialManager.create(this);
         browser = new WebView(this);
+        // Never paint the legacy HTML before the packaged Royal sheets load.
+        browser.setVisibility(View.INVISIBLE);
         browser.setBackgroundColor(Color.rgb(7, 3, 26));
         browser.getSettings().setJavaScriptEnabled(true);
         browser.getSettings().setDomStorageEnabled(true);
@@ -150,6 +153,11 @@ public final class SharikaActivity extends Activity {
                     "var s=document.createElement('script');s.id='sharika-royal-ui';" +
                     "s.src='./royal-premium.js';document.head.appendChild(s);}})()",
                     null);
+                // Fail open after a bounded delay if an asset fails to load.
+                view.postDelayed(() -> {
+                    if (browser == view && view.getVisibility() != View.VISIBLE)
+                        view.setVisibility(View.VISIBLE);
+                }, 5500);
             }
         });
         browser.setWebChromeClient(new WebChromeClient() {
@@ -534,6 +542,13 @@ public final class SharikaActivity extends Activity {
     private void handle(String id, String action, JSONObject data) {
         if (action == null) { sendResult(id, result(false,null,"unknown_action")); return; }
         switch (action) {
+            case "visualReady":
+                // A read-only signal from the packaged visual layer.
+                if (browser != null &&
+                    "file:///android_asset/index.html".equals(browser.getUrl()))
+                    browser.setVisibility(View.VISIBLE);
+                sendResult(id, result(true, object(), null));
+                break;
             case "session":
                 FirebaseUser signedIn = auth.getCurrentUser();
                 if (signedIn == null) {
