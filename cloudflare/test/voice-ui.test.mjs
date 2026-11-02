@@ -62,11 +62,19 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/event\.stopImmediatePropagation\(\)/);
   assert.match(ui,/api\('GET','\/users\/'\+publicId\)/);
   assert.match(ui,/Seat occupant has changed/);
-  assert.match(ui,/detail\.textContent='ID '\+id/);
+  assert.match(ui,/detail\.textContent=index===0\?'Room owner':'Mic seat '\+index/);
   assert.match(ui,/frame\.act\(action,index\)/);
   assert.match(ui,/fakeStats\.style\.display='none'/);
   assert.match(ui,/paintVerifiedAvatar\(root\.querySelector\('\.pfh \.pav3'\),member\.pic,document\)/);
   assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+publicId\+'\/follow'\)/);
+});
+
+test('room seats keep SVIP beside the avatar frame and IDs only inside profiles',()=>{
+  assert.match(ui,/avatar\.appendChild\(makeSvipBadge\(doc,svip,'sh-svip-seat-badge'\)\)/);
+  assert.match(ui,/\.seat \.av>\.sh-svip-seat-badge/);
+  assert.doesNotMatch(ui,/badge\.textContent=seat\.special_id/);
+  assert.match(ui,/openVerifiedRoomMemberProfile\(target\.public_id,room\.id,seat\)/);
+  assert.match(ui,/decorateRoomSeats\(frame\);\s*if\(window\.cur\?\.id===sfuState\?\.roomId\)/);
 });
 
 test('room gestures retry blocked incoming audio in both the app and room iframe',()=>{
@@ -76,6 +84,7 @@ test('room gestures retry blocked incoming audio in both the app and room iframe
   assert.match(ui,/roomAudioFrame\.addEventListener\('load'/);
   assert.match(ui,/bindRoomAudioGesture\(roomAudioFrame\.contentDocument\)/);
   assert.match(ui,/audio\.play\(\)\.catch\(error=>/);
+  assert.match(ui,/event\.track\.addEventListener\('unmute',startPlayback\)/);
   assert.match(ui,/voiceRoom\.startAudio\(\)\.catch/);
 });
 

@@ -386,10 +386,7 @@
       'color:#f6ebff;font-size:20px;font-weight:900;letter-spacing:.14em;border:2px solid #c287ff;',
       'border-radius:14px;background:linear-gradient(100deg,#3b1362,#6330ca,#1562b5);',
       'box-shadow:0 0 16px #9250ff9c,inset 0 0 14px #758cff70;text-shadow:0 0 9px #8bf1ff}',
-      '.sh-neon-profile-id::before{content:"SPECIAL ID";display:block;font-size:9px;letter-spacing:.2em;text-align:center;color:#d1bbff}',
-      '.sh-neon-seat-id{position:absolute;z-index:20;bottom:-20px;left:50%;transform:translateX(-50%);',
-      'padding:2px 7px;font-size:10px;line-height:1.2;font-weight:900;white-space:nowrap;color:#fff;',
-      'border:1px solid #b980ff;border-radius:9px;background:#5624af;box-shadow:0 0 10px #824cff}',
+      // Profile keeps the actual special ID number; avoid a duplicate seat label.
       '.sh-sovera-user-tag{display:inline-block;width:74px;height:25px;object-fit:contain;margin-left:4px;vertical-align:middle}',
       '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
       'pointer-events:none;display:block;overflow:hidden;background:#16082f}',
@@ -407,9 +404,9 @@
       'box-shadow:inset 0 1px 1px #ffeca777,0 0 13px #b572f399;text-shadow:0 1px 3px #12041e}',
       '.sh-svip-badge[data-svip-level="1"],.sh-svip-badge[data-svip-level="2"]{border-color:#aab7ff;color:#e9e8ff!important}',
       '.sh-svip-badge[data-svip-level="3"],.sh-svip-badge[data-svip-level="4"]{border-color:#ebc577}',
-      '.sh-svip-seat-badge{position:absolute;z-index:24;left:50%;top:calc(100% + 24px);',
-      'transform:translateX(-50%);font-size:10px!important;padding:2px 8px;',
-      'pointer-events:none;line-height:1.4}',
+      '.seat .av>.sh-svip-seat-badge{position:absolute;z-index:24;left:calc(100% - 3px);top:18%;',
+      'transform:translate(-20%,-50%);font-size:9px!important;padding:2px 6px;',
+      'pointer-events:none;line-height:1.25;max-width:68px;box-sizing:border-box}',
       '.sh-svip-public-badge{display:table;margin:4px auto 12px;font-size:12px;padding:6px 17px}',
       '#v-me .profile-svip-badge.sh-svip-badge{margin:8px auto 6px;padding:7px 18px;font-size:12px;',
       'background:linear-gradient(145deg,#2a164d,#632bb0,#3d1b68)}',
@@ -821,12 +818,8 @@
       el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge')
         .forEach(decoration=>decoration.remove());
       const svip=svipLevel(seat.svip_level);
-      if(svip){el.style.position='relative';
-        el.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));}
-      if(seat.special_id){
-        const badge=doc.createElement('span');badge.className='sh-neon-seat-id';
-        badge.textContent=seat.special_id;el.style.position='relative';el.appendChild(badge);
-      }
+      // VIP/SVIP status belongs beside the avatar frame; IDs are profile-only.
+      if(svip)avatar.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
       const item=frameArt(seat.frame_style);
       const medal=medalArt(seat.medal_style);
       const nameTag=nameTagArt(seat.name_tag_style);
@@ -2236,17 +2229,26 @@
     const audio=document.createElement('audio');
     audio.autoplay=true;
     audio.playsInline=true;
+    audio.muted=false;
+    audio.volume=1;
     audio.dataset.sharikaVoice='true';
     audio.srcObject=new MediaStream([event.track]);
     document.body.appendChild(audio);
     state.audioElements.add(audio);
-    audio.play().catch(error=>{
-      if(error?.name==='NotAllowedError' && !state.audioUnlockPrompted) {
-        state.audioUnlockPrompted=true;
-        document.getElementById('rf')?.contentWindow?.toast?.(
-          'Tap anywhere in the room to hear other speakers.');
-      }
-    });
+    // Android WebView can receive an SFU track before its first audio packet.
+    // Retry when that track becomes audible, in addition to room-tap unlocks.
+    const startPlayback=()=>{
+      if(state.closed||!audio.isConnected||!audio.srcObject)return;
+      audio.play().catch(error=>{
+        if(error?.name==='NotAllowedError' && !state.audioUnlockPrompted) {
+          state.audioUnlockPrompted=true;
+          document.getElementById('rf')?.contentWindow?.toast?.(
+            'Tap anywhere in the room to hear other speakers.');
+        }
+      });
+    };
+    event.track.addEventListener('unmute',startPlayback);
+    startPlayback();
     event.track.addEventListener('ended',()=>{
       unwatchSfuSpeaking(state,event.track);
       state.audioElements.delete(audio);audio.pause();audio.remove();
@@ -2310,6 +2312,10 @@
     state.sessionIds.push(joined.sessionId);
     state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
     state.receivePC.ontrack=event=>addAudioTrack(state,event);
+    state.receivePC.addEventListener('connectionstatechange',()=>{
+      if(!state.closed&&sfuState===state&&state.receivePC.connectionState==='failed')
+        recoverSfuPublication(state,'remote receiver failed');
+    });
     await subscribeSfu(state);
     // Rapidly discover nearby joins, then fall back to the regular 8s poll.
     for(const delay of [1200,3000,5500]) {
@@ -2551,12 +2557,19 @@
       console.warn('Room screen-awake update:',errText(error)));
   }
   function markLocalMicrophone(enabled) {
+    // WebView may reselect the earpiece when WebRTC starts capturing audio.
+    if(enabled&&window.cur?.id===wantedVoiceRoom)
+      native('roomScreenAwake',{enabled:true}).catch(()=>{});
     const frame=document.getElementById('rf')?.contentWindow;
     if(!frame||!Array.isArray(frame.seats))return;
     const localSeat=frame.seats.find(slot=>slot?.user_id===session?.user?.id);
     if(localSeat) {
       localSeat.muted=!enabled;
-      if(typeof frame.render==='function')frame.render();
+      if(typeof frame.render==='function'){
+        frame.render();
+        decorateRoomSeats(frame);
+        if(window.cur?.id===sfuState?.roomId)paintVoiceSpeakers(sfuState.roomId,frame);
+      }
     }
     const mic=frame.$?.('mic');
     if(mic) {
@@ -3845,9 +3858,8 @@
         }
         return result;
       }
-      const id=String(selected.public_id||'');
       const detail=sheet?.querySelector('.who small');
-      if(detail)detail.textContent='ID '+id+' · '+(index===0?'Room owner':'Mic seat '+index);
+      if(detail)detail.textContent=index===0?'Room owner':'Mic seat '+index;
       const actions=sheet?.querySelector('.acts');
       if(!actions)return result;
       actions.textContent='';

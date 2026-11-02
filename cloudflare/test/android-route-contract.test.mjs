@@ -73,3 +73,15 @@ test('notification routes are explicitly allowlisted in the authenticated Androi
   assert.match(worker,/handleNotificationApp/);
   assert.doesNotMatch(routes,/path\.equals\("\/api\/v1\/admin\/notifications"\)/);
 });
+
+test('voice-room route prefers loudspeaker but respects wired and Bluetooth headsets',()=>{
+  assert.match(java,/private boolean hasPersonalAudioOutput\(AudioManager manager\)/);
+  assert.match(java,/TYPE_WIRED_HEADSET/);
+  assert.match(java,/TYPE_BLUETOOTH_SCO/);
+  assert.match(java,/if\(!hasPersonalAudioOutput\(manager\)\)/);
+  assert.match(java,/manager\.setCommunicationDevice\(device\)/);
+  assert.match(java,/manager\.clearCommunicationDevice\(\)/);
+  assert.match(java,/setRoomAudioRoute\(true\)/);
+  assert.match(java,/setRoomAudioRoute\(false\)/);
+  assert.match(app,/native\('roomScreenAwake',\{enabled:true\}\)/);
+});
