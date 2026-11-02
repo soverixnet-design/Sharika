@@ -165,4 +165,7 @@ test('weekly opening reuses the first splash and never flashes a second design',
   assert.match(gradle,/sharika-royal-premium-style/);
   assert.match(gradle,/sharika-royal-splash/);
   assert.match(gradle,/sharika-royal-ui/);
+  assert.match(native,/FrameLayout opening = new FrameLayout\(this\)/);
+  assert.match(native,/openingOverlay = opening/);
+  assert.match(native,/showVerifiedWebView\(\)/);
 });
