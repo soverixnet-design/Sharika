@@ -1084,6 +1084,10 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       async changeSeatLock(roomId,seat,locked){
         calls.push(['lock',roomId,seat,locked]);return {locked_seats:locked?[3]:[]};
       },
+      async changeAllSeatLocks(roomId,count,locked){
+        calls.push(['all',roomId,count,locked]);
+        return {locked_seats:locked?[1,3,4]:[],skipped_occupied:locked?[2]:[]};
+      },
       async changeMemberSeat(roomId,userId,seat){
         calls.push(['seat',roomId,userId,seat]);
         return seat===3?{error:'seat_locked'}:{member:{seat_no:seat}};
@@ -1106,6 +1110,28 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
     });
     assert.equal(allowed.status,200);
     assert.deepEqual((await allowed.json()).locked_seats,[3]);
+    const allLocks=locked=>new Request(
+      'https://example.test/api/v1/rooms/10000001/locks/all',{
+        method:'PUT',headers,body:JSON.stringify({locked})
+      });
+    const deniedAll=await handleRequest(allLocks(true),{
+      DB:makeDb('other-owner'),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(deniedAll.status,403);
+    const invalidAll=await handleRequest(allLocks('yes'),{
+      DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(invalidAll.status,400);
+    const lockedAll=await handleRequest(allLocks(true),{
+      DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(lockedAll.status,200);
+    assert.deepEqual((await lockedAll.json()).skipped_occupied,[2]);
+    const unlockedAll=await handleRequest(allLocks(false),{
+      DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(unlockedAll.status,200);
+    assert.deepEqual((await unlockedAll.json()).locked_seats,[]);
     const seat=await handleRequest(new Request(
       'https://example.test/api/v1/rooms/10000001/seat',{
         method:'PUT',headers,body:JSON.stringify({seat_no:3})
@@ -1125,7 +1151,7 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       'https://example.test/api/v1/rooms/10000001/members',{headers}),
       {DB:makeDb(uid,false),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
     assert.equal(notJoined.status,403);
-    assert.deepEqual(calls.map(x=>x[0]),['lock','seat']);
+    assert.deepEqual(calls.map(x=>x[0]),['lock','all','all','seat']);
   }finally{globalThis.fetch=oldFetch;}
 });
 
