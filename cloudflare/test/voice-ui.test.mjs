@@ -7,11 +7,27 @@ import {readFileSync} from 'node:fs';
 // protect the user-facing seat and microphone recovery wiring from regression.
 const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
 
-test('guest can tap an open seat without an invitation dialog',()=>{
+test('owner and guest tap an open mic seat without waiting on the old invitation UI',()=>{
   assert.match(ui,/\.seat\.empty\[data-i\]/);
-  assert.match(ui,/room\.owner_id===session\?\.user\?\.id\)return/);
+  assert.doesNotMatch(ui,/room\.owner_id===session\?\.user\?\.id\)return/);
+  assert.match(ui,/async function moveSelfToSeat\(seat\)/);
   assert.match(ui,/api\('PUT','\/rooms\/'\+room\.id\+'\/seat',\{seat_no:seat\}\)/);
+  assert.match(ui,/owner_mic_seat:owner/);
+  assert.match(ui,/owner_mic_seat:true/);
+  assert.match(ui,/const ownerOnMic=frame\.seats\.some/);
+  assert.match(ui,/const people=new Set\(frame\.seats\.filter/);
 });
+
+test('seat changes appear before server acknowledgement and preserve an existing voice publisher',()=>{
+  const change=ui.slice(ui.indexOf('async function moveSelfToSeat(seat)'),
+    ui.indexOf('    frame.act=async function(action,seat)'));
+  assert.ok(change.indexOf('frame.render();')<change.indexOf("await api('PUT'"));
+  assert.match(change,/frame\.__sharikaSeatMovePending=true/);
+  assert.match(change,/frame\.seats=before/);
+  assert.match(change,/publishingAlready\?ensureVoiceConnected\(room\.id\):connectVoice\(room\.id\)/);
+  assert.doesNotMatch(change,/await connectVoice/);
+});
+
 test('both SFU peer connections have Cloudflare STUN discovery',()=>{
   assert.match(ui,/stun:stun\.cloudflare\.com:3478/);
   assert.equal((ui.match(/new RTCPeerConnection\(SHARIKA_ICE_CONFIG\)/g)||[]).length,2);
