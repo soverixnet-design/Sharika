@@ -177,8 +177,19 @@ export async function handleVoiceOperation({
       }),1);
     if (!description(response.sessionDescription,'answer'))
       return fail('sfu_invalid_answer',502,cors);
-    await doRoom.markPublished(uid,sessionId,'microphone');
+    // SDP negotiation only allocates a microphone on the SFU. It is not yet
+    // connected, and advertising it here makes a freshly joining listener
+    // subscribe to a stream that might never have passed ICE connectivity.
     return reply({sessionDescription:response.sessionDescription},200,cors);
+  }
+  if (operation === 'ready' && request.method === 'POST') {
+    if (!canPublish || !owned.canPublish)
+      return fail('voice_publish_forbidden',403,cors);
+    // The Android publisher reports ready only after the WebRTC peer reaches
+    // connected. A stale or never-connected publisher cannot poison discovery.
+    if (!await doRoom.markPublished(uid,sessionId,'microphone'))
+      return fail('voice_session_not_found',404,cors);
+    return reply({ok:true},200,cors);
   }
   if (operation === 'subscribe' && request.method === 'POST') {
     const desired = body.publications;
