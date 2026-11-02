@@ -15,6 +15,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.ImageDecoder;
+import android.graphics.drawable.GradientDrawable;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
@@ -25,6 +26,11 @@ import android.os.CancellationSignal;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.Gravity;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ImageView;
+import android.widget.TextView;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
@@ -88,6 +94,7 @@ public final class SharikaActivity extends Activity {
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
+    private View openingOverlay;
     private boolean backInProgress;
     private Runnable unregisterModernBack;
     private PermissionRequest pendingMic;
@@ -159,7 +166,7 @@ public final class SharikaActivity extends Activity {
                 // Fail open after a bounded delay if an asset fails to load.
                 view.postDelayed(() -> {
                     if (browser == view && view.getVisibility() != View.VISIBLE)
-                        view.setVisibility(View.VISIBLE);
+                        showVerifiedWebView();
                 }, 5500);
             }
         });
@@ -187,11 +194,55 @@ public final class SharikaActivity extends Activity {
                 }
             }
         });
-        setContentView(browser, new ViewGroup.LayoutParams(-1, -1));
+        // A native, branded opening layer appears from the first Android
+        // frame. Waiting for WebView without it used to show a blank dark
+        // screen on slower phones before the Royal page was decoded.
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.rgb(7, 3, 26));
+        root.addView(browser, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout opening = new FrameLayout(this);
+        opening.setBackground(new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{Color.rgb(48, 16, 87), Color.rgb(11, 5, 36), Color.rgb(7, 3, 26)}));
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        brand.setGravity(Gravity.CENTER);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.mipmap.sharika_logo);
+        logo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        int logoSize = (int)(122 * getResources().getDisplayMetrics().density + 0.5f);
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(logoSize, logoSize);
+        logoParams.bottomMargin = (int)(22 * getResources().getDisplayMetrics().density + 0.5f);
+        brand.addView(logo, logoParams);
+        TextView name = new TextView(this);
+        name.setText("Sharika Voice Chat App");
+        name.setTextSize(25);
+        name.setTypeface(null, android.graphics.Typeface.BOLD);
+        name.setTextColor(Color.rgb(255, 233, 175));
+        name.setGravity(Gravity.CENTER);
+        brand.addView(name);
+        TextView loading = new TextView(this);
+        loading.setText("Opening…");
+        loading.setTextSize(15);
+        loading.setTextColor(Color.rgb(220, 190, 242));
+        loading.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams loadingParams = new LinearLayout.LayoutParams(-1, -2);
+        loadingParams.topMargin = (int)(12 * getResources().getDisplayMetrics().density + 0.5f);
+        brand.addView(loading, loadingParams);
+        opening.addView(brand, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+        root.addView(opening, new FrameLayout.LayoutParams(-1, -1));
+        openingOverlay = opening;
+        setContentView(root);
         browser.loadUrl("file:///android_asset/index.html");
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             unregisterModernBack = Api33BackHandler.register(this);
         }
+    }
+
+    private void showVerifiedWebView() {
+        if(browser==null)return;
+        browser.setVisibility(View.VISIBLE);
+        if(openingOverlay!=null)openingOverlay.setVisibility(View.GONE);
     }
 
     private void restorePendingInvite() {
@@ -549,7 +600,7 @@ public final class SharikaActivity extends Activity {
                 // A read-only signal from the packaged visual layer.
                 if (browser != null &&
                     "file:///android_asset/index.html".equals(browser.getUrl()))
-                    browser.setVisibility(View.VISIBLE);
+                    showVerifiedWebView();
                 sendResult(id, result(true, object(), null));
                 break;
             case "session":
