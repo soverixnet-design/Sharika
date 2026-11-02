@@ -2211,6 +2211,7 @@
     sfuState=null;
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
+    if(state.publicationTimer)clearInterval(state.publicationTimer);
     if(state.speakingTimer)clearInterval(state.speakingTimer);
     for(const meter of state.speakingMeters.values())
       meter.source.disconnect();
@@ -2231,7 +2232,8 @@
   // connect only to analysers: microphone audio is never played back locally.
   // Sample every 250ms to conserve WebView CPU while keeping a live voice ring.
   function sampleSfuSpeaking(state) {
-    if(state.closed||sfuState!==state||document.hidden)return;
+    if(state.closed||sfuState!==state||
+      (typeof document!=='undefined'&&document.hidden))return;
     const now=Date.now(),speaking=new Set();
     for(const [track,meter] of state.speakingMeters){
       if(track.readyState!=='live'||!track.enabled||track.muted){
@@ -2468,7 +2470,8 @@
       roomId,closed:false,iceConfig,sessionIds:[],publishPC:null,receivePC:null,
       media:null,audioElements:new Set(),remoteMids:new Map(),
       speakingContext:null,speakingMeters:new Map(),speakingTimer:null,
-      subscribed:new Set(),subscribeId:null,timer:null,syncing:false,
+      subscribed:new Set(),subscribeId:null,timer:null,publicationTimer:null,
+      syncing:false,
       canPublish,subscriptionFailures:0,heartbeatFailures:0,bootstrapTimers:[],
       firstSubscriptionAt:0,receiveDisconnectedAt:0,
       startedAt:Date.now(),disconnectedAt:0,recoveryTimer:null,recoveryExhausted:false
@@ -2482,8 +2485,11 @@
       if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
       const receiveError=await receiving;
       if(receiveError)throw receiveError;
-      // Refresh both presence and publications; do not consume room resources
-      // on a tight per-frame timer.
+      // New microphones must become audible promptly after a seat change.
+      // Publication discovery runs independently of the 8s heartbeat.
+      state.publicationTimer=setInterval(()=>{
+        if(!state.closed)subscribeSfu(state).catch(()=>{});
+      },3000);
       state.timer=setInterval(()=>{
         if(state.closed)return;
         api('POST','/rooms/'+roomId+'/voice/heartbeat',{sessionIds:state.sessionIds})
@@ -2492,7 +2498,6 @@
             if(++state.heartbeatFailures>=3)
               recoverSfuPublication(state,'voice session heartbeat lost',true);
           });
-        subscribeSfu(state).catch(()=>{});
         if(state.publishPC){
           const pc=state.publishPC,connection=pc.connectionState;
           const broken=connection==='failed'||pc.iceConnectionState==='failed'||
@@ -3019,7 +3024,8 @@
       return false;
     }
   }
-  let roomsRequestNo=0,lastRoomsRenderSignature=null;
+  let roomsRequestNo=0;
+  let lastRoomsRenderSignature=null;
   async function reloadRooms() {
     if (!session) return;
     // Room creation and settings saves must always request a fresh list.
