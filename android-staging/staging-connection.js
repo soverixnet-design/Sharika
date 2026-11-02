@@ -2224,7 +2224,7 @@
   async function waitVoiceConnected(peer) {
     if(peer.connectionState==='connected')return;
     await new Promise((resolve,reject)=>{
-      const timeout=setTimeout(()=>finish(new Error('Voice connection did not establish')),15000);
+      const timeout=setTimeout(()=>finish(new Error('Voice connection did not establish')),9000);
       function finish(error){
         clearTimeout(timeout);
         peer.removeEventListener('connectionstatechange',changed);
@@ -2241,13 +2241,56 @@
       changed();
     });
   }
-  async function waitIce(peer) {
-    if (peer.iceGatheringState === 'complete') return;
-    await new Promise((resolve,reject) => {
-      const timeout=setTimeout(()=>{cleanup();reject(new Error('Voice network timeout'));},12000);
-      function changed(){ if(peer.iceGatheringState==='complete'){cleanup();resolve();} }
-      function cleanup(){clearTimeout(timeout);peer.removeEventListener('icegatheringstatechange',changed);}
+  // Some Android carriers block one of Cloudflare TURN's alternate TCP ports.
+  // Their ICE gathering can remain "gathering" for a long time even after a
+  // usable srflx/relay candidate has already arrived. SFU does not use
+  // trickle ICE, so wait briefly for useful candidates, but do not discard a
+  // viable SDP solely because another optional port never finishes probing.
+  function localIceCandidates(peer) {
+    const sdp=peer.localDescription?.sdp||'';
+    const lines=sdp.match(/^a=candidate:[^\r\n]+/gm)||[];
+    return {
+      count:lines.length,
+      relay:lines.some(line=>/\btyp relay(?:\s|$)/.test(line)),
+      srflx:lines.some(line=>/\btyp srflx(?:\s|$)/.test(line))
+    };
+  }
+  async function waitIce(peer,phase='voice') {
+    await new Promise((resolve,reject)=>{
+      let settled=false;
+      let fast,deadline;
+      function cleanup(){
+        clearTimeout(fast);clearTimeout(deadline);
+        peer.removeEventListener('icegatheringstatechange',changed);
+      }
+      function finish(error){
+        if(settled)return;
+        settled=true;cleanup();
+        if(error)reject(error);else resolve();
+      }
+      function changed(){
+        if(peer.iceGatheringState==='complete'){
+          const available=localIceCandidates(peer);
+          if(available.count)finish();
+          else finish(new Error('Voice has no ICE network candidates ('+phase+')'));
+        }
+      }
       peer.addEventListener('icegatheringstatechange',changed);
+      // Give UDP and the normal TURN relay a chance to be included first.
+      fast=setTimeout(()=>{
+        const available=localIceCandidates(peer);
+        if(available.relay||available.srflx)finish();
+      },2200);
+      // A partially gathered SDP with candidates is more useful than a
+      // guaranteed 12-second failure on a blocked optional TURN endpoint.
+      deadline=setTimeout(()=>{
+        const available=localIceCandidates(peer);
+        if(available.count){
+          console.warn('Sharika voice ICE gathering incomplete:',phase,
+            'candidates='+available.count,'relay='+available.relay);
+          finish();
+        }else finish(new Error('Voice has no ICE network candidates ('+phase+')'));
+      },7000);
       changed();
     });
   }
@@ -2400,7 +2443,7 @@
           await state.receivePC.setRemoteDescription(response.sessionDescription);
           const answer=await state.receivePC.createAnswer();
           await state.receivePC.setLocalDescription(answer);
-          await waitIce(state.receivePC);
+          await waitIce(state.receivePC,'receive');
           await api('PUT','/rooms/'+state.roomId+'/voice/renegotiate',{
             sessionId:state.subscribeId,sessionDescription:state.receivePC.localDescription
           });
@@ -2476,7 +2519,7 @@
       const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
       const offer=await state.publishPC.createOffer();
       await state.publishPC.setLocalDescription(offer);
-      await waitIce(state.publishPC);
+      await waitIce(state.publishPC,'publish');
       const published=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'publish'});
       state.sessionIds.push(published.sessionId);
       const negotiation=await api('POST','/rooms/'+roomId+'/voice/publish',{
@@ -2677,6 +2720,12 @@
       const config=await api('GET','/rooms/'+roomId+'/voice/config');
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
       const iceConfig=verifiedIceConfig(config);
+      // When a normal connection has failed, prefer Cloudflare TURN relays
+      // for the next attempt. Never force relay without valid credentials;
+      // a subsequent retry may use the standard direct+relay ICE policy.
+      if(voiceRecoveryAttempts%2===1 &&
+         iceConfig.iceServers.some(server=>server.username))
+        iceConfig.iceTransportPolicy='relay';
       // A listener's receiver remains connected when they take their first mic
       // seat. Upgrade only the outbound microphone instead of dropping all audio.
       const current=sfuState;

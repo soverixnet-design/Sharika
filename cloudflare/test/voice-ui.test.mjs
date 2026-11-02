@@ -189,7 +189,7 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
 
 test('two-way audio recovers an ended microphone and a failed remote receiver',()=>{
   const begin=ui.indexOf('  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;');
-  const end=ui.indexOf('  async function waitIce(peer)',begin);
+  const end=ui.indexOf('  function localIceCandidates(peer)',begin);
   assert.ok(begin>=0 && end>begin);
   const timers=[],reconnects=[];
   const context=createContext({
