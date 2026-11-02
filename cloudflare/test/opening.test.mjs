@@ -148,6 +148,7 @@ test('Android screen and admin page use server routes with one per launch',()=>{
 test('weekly opening reuses the first splash and never flashes a second design',()=>{
   const source=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const gradle=readFileSync(new URL('../../android-staging/app/build.gradle',import.meta.url),'utf8');
+  const native=readFileSync(new URL('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
   const launch=source.slice(source.indexOf('  async function authenticated('),
     source.indexOf('  // Add one optional field to the original themed signup card'));
   const opening=source.slice(source.indexOf('  function displayOpening(data)'),
