@@ -3314,7 +3314,8 @@
     // handler every 8 seconds even when the authoritative snapshot was equal.
     // Keep live speaking indicators responsive without repainting stable DOM.
     const renderSignature=JSON.stringify([slots,audience,palette,sharedImage,
-      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[]]);
+      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[],
+      frame.innerWidth,frame.innerHeight]);
     const snapshotChanged=frame.__sharikaRoomRenderSignature!==renderSignature;
     frame.seats=slots;
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
