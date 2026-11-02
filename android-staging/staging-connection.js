@@ -7925,17 +7925,18 @@
       style.textContent=[
         '#sh-room-game-overlay{position:fixed;inset:0;z-index:2147482100;',
         'display:none;align-items:flex-end;justify-content:center;',
-        'padding:calc(5vh + env(safe-area-inset-top,0px)) 8px ',
-        'calc(3vh + env(safe-area-inset-bottom,0px));',
+        'padding:calc(3vh + env(safe-area-inset-top,0px)) 8px ',
+        'calc(2vh + env(safe-area-inset-bottom,0px));',
         'box-sizing:border-box;background:#070216ae;backdrop-filter:blur(3px)}',
         '#sh-room-game-overlay.on{display:flex}',
         '#sh-room-game-sheet{position:relative;display:flex;flex-direction:column;',
-        'box-sizing:border-box;width:min(96vw,480px);height:min(74dvh,620px);',
-        'max-height:calc(100dvh - 90px);min-height:0;min-width:0;',
-        'padding:12px 12px 14px;overflow:hidden;border-radius:22px;',
+        'box-sizing:border-box;width:min(96vw,480px);height:min(84dvh,720px);',
+        'max-height:calc(100dvh - 58px);min-height:0;min-width:0;',
+        'padding:8px 9px 10px;overflow:hidden;border-radius:22px;',
         'border:2px solid #edc16f;background:linear-gradient(155deg,#351362,#120625);',
         'box-shadow:inset 0 2px #fff5,0 16px 34px #000b;color:#fff}',
-        '#sh-room-game-sheet h3{margin:7px 32px 10px 0;color:#ffdfa0}',
+        '#sh-room-game-sheet h3{margin:2px 42px 6px 0;color:#ffdfa0;',
+        'font-size:clamp(14px,4vw,17px);line-height:1.2}',
         '#sh-room-game-sheet #sh-original-grid{flex:1;min-height:0;',
         'max-height:none!important;overflow-y:auto!important}',
         '#sh-room-game-sheet #sh-original-host{flex:1;min-height:0;',
@@ -8130,18 +8131,25 @@
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
       if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
+      // In the room the game itself is the focus: the main close button
+      // returns to voice chat, so the extra All games row is unnecessary.
       sheet.innerHTML='<div class="grab"></div>'+
-        '<button id="sh-original-back" type="button" '+
-        'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
-        'background:#351164;color:#fff">← All games</button>'+
+        (insideRoom?'':'<button id="sh-original-back" type="button" '+
+          'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
+          'background:#351164;color:#fff">← All games</button>')+
         '<h3 id="sh-original-game-title"></h3>'+
         '<div id="sh-original-host" style="width:100%;'+
         'min-height:0;border:1px solid #a56dff;border-radius:12px;'+
         'overflow:hidden;background:#100424"></div>';
       sheet.querySelector('h3').textContent=item.name;
-      sheet.querySelector('#sh-original-back').onclick=()=>{currentGameFrame=null;clearWinnerBanner();catalog()};
+      const returnToCatalog=sheet.querySelector('#sh-original-back');
+      if(returnToCatalog)returnToCatalog.onclick=()=>{
+        currentGameFrame=null;clearWinnerBanner();catalog();
+      };
       const gameFrame=doc.createElement('iframe');
-      gameFrame.src=item.page;
+      // The fragment chooses responsive room-only CSS in the trusted asset.
+      // It does not alter the authenticated bet or settlement bridge.
+      gameFrame.src=item.page+(insideRoom&&item.id!=='greedy-wheel'?'#sharika-room':'');
       gameFrame.setAttribute('title',item.name);
       gameFrame.style.cssText='width:100%;height:100%;border:0;display:block';
       gameFrame.setAttribute('referrerpolicy','no-referrer');
