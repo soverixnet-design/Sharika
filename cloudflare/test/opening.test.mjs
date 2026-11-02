@@ -144,3 +144,23 @@ test('Android screen and admin page use server routes with one per launch',()=>{
   assert.match(panel,/P\.opening=async function/);
   assert.match(panel,/api\('PATCH','opening',next\)/);
 });
+
+test('weekly opening reuses the first splash and never flashes a second design',()=>{
+  const source=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const gradle=readFileSync(new URL('../../android-staging/app/build.gradle',import.meta.url),'utf8');
+  const launch=source.slice(source.indexOf('  async function authenticated('),
+    source.indexOf('  // Add one optional field to the original themed signup card'));
+  const opening=source.slice(source.indexOf('  function displayOpening(data)'),
+    source.indexOf('  // Original Sovera effects:'));
+  assert.match(source,/getElementById\('sp'\)\?\.classList\.add\('sharika-opening-pending'\)/);
+  assert.match(source,/#sp\.sharika-opening-pending\{opacity:1!important/);
+  assert.match(opening,/\(splash\|\|app\)\.appendChild\(layer\)/);
+  assert.match(opening,/splash\.classList\.add\('sharika-opening-featured'\)/);
+  assert.match(opening,/splash\.classList\.add\('off'\)/);
+  assert.match(launch,/const openingTask=openingOnLaunch\(\)/);
+  assert.ok(launch.indexOf('const openingTask=openingOnLaunch()')<
+    launch.indexOf('await Promise.allSettled([reloadWallet(), reloadRooms()])'));
+  assert.match(gradle,/class="royal-premium royal-root"/);
+  assert.match(gradle,/sharika-winged-theme-style/);
+  assert.match(gradle,/sharika-royal-premium-style/);
+});
