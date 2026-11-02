@@ -49,10 +49,10 @@ test('owner sees Take Mic, Lock seat, Lock all, Cancel and can lock',()=>{
   assert.equal(x.nodes.includes(x.overlay),false);
 });
 test('owner can take mic or lock all available seats',()=>{
-  const x=menuFor({owner:true,seat:{empty:1,i:4}});
+  const x=menuFor({owner:true,index:4,seat:{empty:1,i:4}});
   x.buttons[0].onclick();
   assert.deepEqual(x.events,[['take',4]]);
-  const y=menuFor({owner:true,seat:{empty:1,i:4}});
+  const y=menuFor({owner:true,index:4,seat:{empty:1,i:4}});
   y.buttons[2].onclick();
   assert.deepEqual(y.events,[['lock_all',4]]);
 });
