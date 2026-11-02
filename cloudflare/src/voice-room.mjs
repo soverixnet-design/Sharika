@@ -70,14 +70,21 @@ export class SharikaVoiceRoom extends DurableObject {
 
   prune() {
     // Expired sessions are not discoverable. Clients refresh their sessions
-    // every 10 seconds; allow a generous grace period for mobile scheduling.
+    // every 8 seconds; expire after four missed beats so a killed app cannot
+    // block the next listener for a minute and a half.
     this.ctx.storage.sql.exec(
-      'DELETE FROM voice_sessions WHERE last_seen < ?', Date.now() - 90_000
+      'DELETE FROM voice_sessions WHERE last_seen < ?', Date.now() - 35_000
     );
   }
 
   async register(uid, sessionId, canPublish) {
     this.prune();
+    // Only one microphone publication per authenticated user in this room.
+    // Closing or reconnecting the app may skip /leave: evict the old record
+    // before a new publisher can be offered to other participants.
+    if (canPublish) this.ctx.storage.sql.exec(
+      'DELETE FROM voice_sessions WHERE uid=? AND can_publish=1',uid
+    );
     this.ctx.storage.sql.exec(
       'INSERT OR REPLACE INTO voice_sessions ' +
       '(session_id,uid,can_publish,published,track_name,last_seen) VALUES(?,?,?,0,NULL,?)',
@@ -89,7 +96,7 @@ export class SharikaVoiceRoom extends DurableObject {
   async owns(uid, sessionId) {
     const row = this.ctx.storage.sql.exec(
       'SELECT can_publish FROM voice_sessions WHERE uid=? AND session_id=? AND last_seen>=?',
-      uid, sessionId, Date.now() - 90_000
+      uid, sessionId, Date.now() - 35_000
     ).toArray()[0];
     return row ? { canPublish: !!row.can_publish } : null;
   }
@@ -109,7 +116,7 @@ export class SharikaVoiceRoom extends DurableObject {
       'SELECT uid AS userId, session_id AS sessionId, track_name AS trackName ' +
       'FROM voice_sessions WHERE published=1 AND uid<>? AND last_seen>=? ' +
       'ORDER BY last_seen DESC LIMIT 32',
-      excludeUid, Date.now() - 90_000
+      excludeUid, Date.now() - 35_000
     ).toArray();
   }
 
@@ -121,7 +128,7 @@ export class SharikaVoiceRoom extends DurableObject {
         'SELECT session_id AS sessionId,track_name AS trackName ' +
         'FROM voice_sessions WHERE published=1 AND uid<>? AND session_id=? ' +
         'AND track_name=? AND last_seen>=?',
-        uid, item.sessionId, item.trackName, Date.now() - 90_000
+        uid, item.sessionId, item.trackName, Date.now() - 35_000
       ).toArray()[0];
       if (row) result.push(row);
     }
