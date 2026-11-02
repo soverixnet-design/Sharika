@@ -5188,6 +5188,11 @@
 
   // Public banner metadata is populated by verified Super-Admin D1 records.
   // Keep the original 3D carousel/scroll behavior and never show demo offers.
+  function verifiedBannerImageUrl(value,bannerId){
+    const match=typeof value==='string'&&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image\?v=[1-9][0-9]*$/.exec(value);
+    return match&&Number(match[1])===Number(bannerId)?value:null;
+  }
   function renderVerifiedBanners(list){
     const approved=Array.isArray(list)?list.filter(row=>row&&
       typeof row.title==='string'&&row.title.length<=80&&
@@ -5197,16 +5202,21 @@
     const cards=approved.map(row=>({
       t:row.title,s:String(row.subtitle||'').slice(0,160),
       e:String(row.emoji||'🎉').slice(0,12),
-      c:row.color_a+','+row.color_b,a:row.action
+      c:row.color_a+','+row.color_b,a:row.action,
+      img:verifiedBannerImageUrl(row.image_url,row.id)
     }));
     if(!cards.length)cards.push({t:'Welcome to Sharika',
       s:'Talk with friends in voice rooms',e:'🎙️',c:'#9b4dff,#0ea5e9',a:'none'});
     window.CFG.banners=cards;
     const slide=document.getElementById('ban'),dots=document.getElementById('dots');
-    if(slide)slide.innerHTML=cards.map((row,i)=>
-      '<div class="slide" data-i="'+i+'" style="background:linear-gradient(135deg,'+
-      row.c+')"><b>'+sellerEscape(row.t)+'</b><small>'+sellerEscape(row.s)+
-      '</small><i>'+sellerEscape(row.e)+'</i></div>').join('');
+    if(slide)slide.innerHTML=cards.map((row,i)=>{
+      const background=row.img
+        ?'linear-gradient(90deg,rgba(15,5,28,.75),rgba(15,5,28,.12)),url('+row.img+') center/cover'
+        :'linear-gradient(135deg,'+row.c+')';
+      return '<div class="slide" data-i="'+i+'" style="background:'+background+'"><b>'+
+        sellerEscape(row.t)+'</b><small>'+sellerEscape(row.s)+'</small><i>'+
+        (row.img?'':sellerEscape(row.e))+'</i></div>';
+    }).join('');
     if(dots)dots.innerHTML=cards.map((_,i)=>'<u'+(!i?' class="on"':'')+'></u>').join('');
     window.bi=0;
   }
