@@ -990,7 +990,7 @@
       'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
       '<div class="card"><h3>🎁 Give a frame or medal to a user</h3>'+
       '<p class="n">Super Admin: enter the real Sharika ID, find the frame or medal, and give it free. '+
-      'Admin-only items can be granted even when Store sales are disabled. The user can equip it from their profile.</p>'+
+      'Admin-only items can be granted even when Store sales are disabled. The granted item is equipped immediately and appears on verified profiles and room seats after refresh.</p>'+
       '<input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" '+
       'placeholder="Recipient Sharika ID (8 digits)" aria-label="Recipient Sharika ID">'+
       '<div class="row"><select class="field" id="sh-cos-grant-kind" aria-label="Cosmetic category">'+
@@ -1084,11 +1084,11 @@
         }
         const selected=items.find(item=>item.id===itemId);
         if(!selected||!window.confirm('Give '+selected.name+' to user ID '+id+
-          ' for FREE? The user will own it and can equip it. This is audited.'))return;
+          ' for FREE and EQUIP it immediately? This replaces the currently selected item of that type. The grant is audited.'))return;
         button.disabled=true;
         try{
           const given=await api('POST','cosmetics/grant',{public_id:id,item_id:itemId});
-          status.textContent=(given.duplicate?'Already owned: ':'Granted free to ')+id+' · '+itemId;
+          status.textContent=(given.duplicate?'Already owned; re-equipped: ':'Granted and equipped: ')+id+' · '+itemId;
         }catch(error){status.textContent='Grant failed: '+error.message;}
         finally{button.disabled=false;}
       };
@@ -1799,7 +1799,7 @@
     section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
       '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
       '<div class="row"><input id="direct-user" maxlength="8" inputmode="numeric" placeholder="Recipient 8-digit user ID" aria-label="User ID">'+
-      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (1–1,000,000)" aria-label="Coin amount"></div>'+
+      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
       '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
       '<button id="direct-submit" class="btn s" type="button">Credit user wallet</button></div>'+
       '<p id="direct-note" class="n" aria-live="polite"></p>'+
@@ -1825,9 +1825,9 @@
       const amount=Number(raw);
       const reason=byId('direct-reason').value.trim();
       if(!/^[0-9]{8}$/.test(target)||!/^[0-9]+$/.test(raw)||
-         !Number.isSafeInteger(amount)||amount<1||amount>1000000||
+         !Number.isSafeInteger(amount)||amount<1||amount>(role==='super'?1000000000000:1000000)||
          reason.length<8||reason.length>200){
-        note.textContent='Enter 8-digit ID, 1–1,000,000 coins and an 8–200 character reason.';return;
+        note.textContent='Enter 8-digit ID, positive coins within the wallet cap and an 8–200 character reason.';return;
       }
       if(!window.confirm('Credit '+fmt(amount)+' real coins to user '+target+
         '? Reason: '+reason+'\nThis grant is permanently audited.'))return;
@@ -1869,7 +1869,7 @@
       '<div id="recharge-list">Loading genuine support requests…</div></div>'+
       '<div class="card"><h3>Review selected request</h3>'+
       '<div class="row"><label>Support request # <input id="rc-request-id" class="field" inputmode="numeric" placeholder="Choose a pending request"></label>'+
-      '<label>Coins to credit <input id="rc-amount" class="field" inputmode="numeric" placeholder="1–1,000,000"></label></div>'+
+      '<label>Coins to credit <input id="rc-amount" class="field" inputmode="numeric" placeholder="1–1,000,000,000,000"></label></div>'+
       '<div class="row"><label>Payment method <input id="rc-method" class="field" maxlength="40" placeholder="e.g. bKash or PayPal"></label>'+
       '<label>Verified receipt ID <input id="rc-reference" class="field" maxlength="120" placeholder="External transaction reference"></label></div>'+
       '<label style="display:block;margin:12px 0"><input type="checkbox" id="rc-verified"> I independently verified that this payment was received.</label>'+
@@ -1920,7 +1920,7 @@
         const raw=byId('rc-amount').value.trim(),coins=Number(raw);
         const method=byId('rc-method').value.trim();
         const reference=byId('rc-reference').value.trim();
-        if(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000||
+        if(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000000000||
             method.length<2||reference.length<6||!byId('rc-verified').checked){
           note.textContent='Enter a valid coin amount, payment method, receipt ID, and check verified payment.';return;
         }
