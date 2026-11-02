@@ -4,6 +4,8 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -85,6 +87,9 @@ public final class SharikaActivity extends Activity {
     private boolean backInProgress;
     private Runnable unregisterModernBack;
     private PermissionRequest pendingMic;
+    private boolean roomAudioRouteActive;
+    private int priorAudioMode = AudioManager.MODE_NORMAL;
+    private boolean priorSpeakerphone;
     private ValueCallback<Uri[]> pendingImageSelection;
     private String pendingProfilePhotoId;
     private boolean googlePending;
@@ -387,6 +392,66 @@ public final class SharikaActivity extends Activity {
         }
     }
 
+    // WebRTC in an Android WebView can route incoming voices to the earpiece
+    // while the microphone is active. Use the loudspeaker for a room unless
+    // the user has plugged in a headset or connected a Bluetooth audio device.
+    // Keep the previous route so leaving a room restores Android's settings.
+    private boolean hasPersonalAudioOutput(AudioManager manager) {
+        for (AudioDeviceInfo device : manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            switch (device.getType()) {
+                case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                case AudioDeviceInfo.TYPE_USB_HEADSET:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                case AudioDeviceInfo.TYPE_BLE_HEADSET:
+                    return true;
+                default:
+                    break;
+            }
+        }
+        return false;
+    }
+
+    private void setRoomAudioRoute(boolean enabled) {
+        AudioManager manager=(AudioManager)getSystemService(AUDIO_SERVICE);
+        if(manager==null)return;
+        if(enabled) {
+            if(!roomAudioRouteActive) {
+                priorAudioMode=manager.getMode();
+                priorSpeakerphone=manager.isSpeakerphoneOn();
+                roomAudioRouteActive=true;
+            }
+            try {
+                manager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                if(!hasPersonalAudioOutput(manager)) {
+                    if(android.os.Build.VERSION.SDK_INT>=31) {
+                        for(AudioDeviceInfo device:manager.getAvailableCommunicationDevices()) {
+                            if(device.getType()==AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                                manager.setCommunicationDevice(device);
+                                break;
+                            }
+                        }
+                    } else {
+                        manager.setSpeakerphoneOn(true);
+                    }
+                }
+            } catch(RuntimeException ignored) {
+                // Devices can refuse an audio route; WebRTC remains functional.
+            }
+            return;
+        }
+        if(!roomAudioRouteActive)return;
+        roomAudioRouteActive=false;
+        try {
+            if(android.os.Build.VERSION.SDK_INT>=31)manager.clearCommunicationDevice();
+            else manager.setSpeakerphoneOn(priorSpeakerphone);
+            manager.setMode(priorAudioMode);
+        } catch(RuntimeException ignored) {
+            // A Bluetooth change while in the room may invalidate an old route.
+        }
+    }
+
     private void requestMicrophone(PermissionRequest request) {
         // Grant only microphone, only after the Android runtime permission.
         boolean isAudio = false;
@@ -524,8 +589,10 @@ public final class SharikaActivity extends Activity {
                 // room, including when its mini-player is on another app page.
                 if (data.optBoolean("enabled", false)) {
                     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    setRoomAudioRoute(true);
                 } else {
                     getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    setRoomAudioRoute(false);
                 }
                 sendResult(id, result(true, object(), null));
                 break;
@@ -913,6 +980,7 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        setRoomAudioRoute(false);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (unregisterModernBack != null) {
             unregisterModernBack.run();
