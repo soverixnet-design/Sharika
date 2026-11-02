@@ -2002,6 +2002,38 @@
   P.banners=async function(){
     const root=byId('pg');
     root.innerHTML=card('Home banners','Loading verified banner configuration…');
+    // The admin browser's gallery picker is the only image source. Convert
+    // locally to a bounded landscape JPEG; EXIF and device paths never upload.
+    async function bannerJpeg(file){
+      if(!file||!file.type.startsWith('image/')||file.size>12*1024*1024)
+        throw new Error('Select an image smaller than 12 MB.');
+      const objectUrl=URL.createObjectURL(file);
+      const picture=new Image();
+      try{
+        await new Promise((resolve,reject)=>{
+          picture.onload=resolve;
+          picture.onerror=()=>reject(new Error('The photo could not be opened.'));
+          picture.src=objectUrl;
+        });
+        if(!picture.naturalWidth||!picture.naturalHeight)
+          throw new Error('The photo has no usable dimensions.');
+        const canvas=document.createElement('canvas');
+        canvas.width=1100;canvas.height=480;
+        const context=canvas.getContext('2d');
+        if(!context)throw new Error('Banner image conversion unavailable.');
+        const scale=Math.max(canvas.width/picture.naturalWidth,
+          canvas.height/picture.naturalHeight);
+        const width=picture.naturalWidth*scale,height=picture.naturalHeight*scale;
+        context.drawImage(picture,(canvas.width-width)/2,
+          (canvas.height-height)/2,width,height);
+        for(const quality of [.79,.66,.53,.42]){
+          const data=canvas.toDataURL('image/jpeg',quality);
+          if(data.startsWith('data:image/jpeg;base64,')&&data.length<480000)
+            return data;
+        }
+        throw new Error('The image is too detailed; choose a smaller photo.');
+      }finally{URL.revokeObjectURL(objectUrl);}
+    }
     try{
       const data=await api('GET','banners');
       const rows=data.banners||[];
@@ -2014,24 +2046,37 @@
       };
       const list=rows.map(row=>{
         const canEdit=role==='super';
+        const image=typeof row.image_url==='string'&&
+          /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/banners\/[1-9][0-9]{0,8}\/image\?v=[1-9][0-9]*$/.test(row.image_url)&&
+          row.image_url.includes('/banners/'+row.id+'/image?')
+          ?row.image_url:null;
         return '<div class="card" style="margin:10px 0">'+
-          '<div style="padding:10px;border-radius:12px;background:linear-gradient(135deg,'+
+          '<div style="position:relative;overflow:hidden;min-height:110px;padding:15px;'+
+          'border-radius:16px;background:linear-gradient(135deg,'+
           esc(row.color_a)+','+esc(row.color_b)+');color:#fff">'+
+          (image?'<img src="'+esc(image)+'" alt="Banner #'+row.id+
+          '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">': '')+
+          '<div style="position:relative;text-shadow:0 2px 6px #000">'+
           '<b>'+esc(row.emoji)+' '+esc(row.title)+'</b><small style="display:block">'+
-          esc(row.subtitle)+'</small></div>'+
+          esc(row.subtitle)+'</small></div></div>'+
           '<p class="n">Banner #'+esc(row.id)+' · '+(row.active?'Visible in app':'Hidden')+'</p>'+
           (canEdit?'<div class="row"><input data-bf="title" data-id="'+row.id+'" maxlength="80" value="'+esc(row.title)+'" aria-label="Banner title">'+
           '<input data-bf="subtitle" data-id="'+row.id+'" maxlength="160" value="'+esc(row.subtitle||'')+'" aria-label="Banner subtitle"></div>'+
           '<div class="row"><select data-bf="action" data-id="'+row.id+'">'+choices(row.action)+'</select>'+
           '<input type="number" min="0" max="100" data-bf="sort_order" data-id="'+row.id+'" value="'+Number(row.sort_order)+'" aria-label="Display order">'+
           '<label><input type="checkbox" data-bf="active" data-id="'+row.id+'"'+(row.active?' checked':'')+'> Active</label>'+
-          '<button class="btn s" type="button" data-bsave="'+row.id+'">Save</button></div>':'')+
+          '<button class="btn s" type="button" data-bsave="'+row.id+'">Save</button></div>'+
+          '<div class="row"><label>🖼️ Add/replace photo from gallery'+
+          '<input type="file" accept="image/jpeg,image/png,image/webp" data-bimage-id="'+row.id+'"></label>'+
+          (image?'<button class="btn s" type="button" data-bremove="'+row.id+'">Remove photo</button>':'')+
+          '</div>':'')+
           '</div>';
       }).join('');
       const create=role==='super'?'<div class="card"><h3>➕ Add home banner</h3>'+
-        '<p class="n">Banner text, color and action are controlled here. Image uploads need a separate verified media-store integration.</p>'+
+        '<p class="n">Choose a gallery photo, or keep a color banner. Photos are center-cropped for the home carousel.</p>'+
         '<div class="row"><input id="new-banner-title" maxlength="80" placeholder="Banner headline">'+
         '<input id="new-banner-subtitle" maxlength="160" placeholder="Subtitle"></div>'+
+        '<div class="row"><label>🖼️ Banner photo (optional)<input type="file" id="new-banner-image" accept="image/jpeg,image/png,image/webp"></label></div>'+
         '<div class="row"><input id="new-banner-emoji" maxlength="12" value="🎉" aria-label="Emoji">'+
         '<select id="new-banner-action">'+choices('none')+'</select>'+
         '<select id="new-banner-color"><option value="purple">Purple</option><option value="gold">Gold</option><option value="ocean">Ocean</option><option value="green">Green</option></select>'+
@@ -2048,18 +2093,56 @@
         add.disabled=true;
         try{
           const picked=palette[byId('new-banner-color').value]||palette.purple;
-          await api('POST','banners',{
+          const selectedPhoto=byId('new-banner-image')?.files?.[0];
+          const image_data=selectedPhoto?await bannerJpeg(selectedPhoto):null;
+          const showNow=byId('new-banner-active').checked;
+          const created=await api('POST','banners',{
             title:byId('new-banner-title').value.trim(),
             subtitle:byId('new-banner-subtitle').value.trim(),
             emoji:byId('new-banner-emoji').value.trim()||'🎉',
             action:byId('new-banner-action').value,
             color_a:picked[0],color_b:picked[1],
-            active:byId('new-banner-active').checked,sort_order:rows.length
+            active:image_data?false:showNow,sort_order:rows.length
           });
+          if(image_data){
+            const createdId=Number(created.id);
+            if(!Number.isSafeInteger(createdId)||createdId<1)
+              throw new Error('Banner saved but photo ID was not returned; refresh to retry.');
+            await api('PUT','banners/'+createdId+'/image',{image_data});
+            if(showNow)await api('PATCH','banners/'+createdId,{active:true});
+          }
           await P.banners();
-        }catch(error){if(note)note.textContent='Banner not created: '+error.message;}
+        }catch(error){if(note)note.textContent='Banner not fully saved: '+error.message+
+          '. If a banner was created, reopen this page to finish the photo.';}
         finally{if(add.isConnected)add.disabled=false;}
       };
+      root.querySelectorAll('[data-bimage-id]').forEach(input=>{
+        input.onchange=async()=>{
+          const file=input.files?.[0];
+          if(!file)return;
+          input.disabled=true;
+          note.textContent='Preparing your gallery photo…';
+          try{
+            const image_data=await bannerJpeg(file);
+            await api('PUT','banners/'+input.dataset.bimageId+'/image',{image_data});
+            await P.banners();
+          }catch(error){
+            if(note)note.textContent='Photo not uploaded: '+error.message;
+          }finally{if(input.isConnected)input.disabled=false;}
+        };
+      });
+      root.querySelectorAll('[data-bremove]').forEach(button=>{
+        button.onclick=async()=>{
+          if(button.disabled)return;
+          if(!window.confirm('Remove this banner photo? The banner text and settings will remain.'))return;
+          button.disabled=true;
+          try{
+            await api('DELETE','banners/'+button.dataset.bremove+'/image');
+            await P.banners();
+          }catch(error){if(note)note.textContent='Photo not removed: '+error.message;}
+          finally{if(button.isConnected)button.disabled=false;}
+        };
+      });
       root.querySelectorAll('[data-bsave]').forEach(button=>{
         button.onclick=async()=>{
           const id=button.dataset.bsave;

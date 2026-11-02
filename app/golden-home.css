@@ -17,9 +17,9 @@
 .app.golden-home .blob { opacity: .045; }
 
 .app.golden-home #v-home .hd {
-  margin: 4px 0 13px;
-  padding: 9px 10px;
-  min-height: 68px;
+  margin: -2px 0 8px;
+  padding: 7px 8px;
+  min-height: 60px;
   border-radius: 19px;
   border: 1.5px solid #d7ad72;
   background: rgba(39, 24, 21, .84);
@@ -27,35 +27,36 @@
   backdrop-filter: blur(14px);
 }
 .app.golden-home #v-home .hd .logo {
-  width: 44px; height: 44px; border-radius: 50%; flex: none;
+  width: 40px; height: 40px; border-radius: 50%; flex: none;
   border: 2px solid #ffe1a2;
   box-shadow: 0 0 0 3px #725028,0 4px 9px #0008;
 }
 .app.golden-home #v-home .hd h1 {
-  min-width: 0; color: #ffe8bd; font-size: 14.5px; line-height: 1.2;
+  min-width: 0; color: #ffe8bd; font-size: 13px; line-height: 1.2;
   background: none; -webkit-text-fill-color: #ffe8bd;
 }
-.app.golden-home #v-home .hd h1 small { color: #e5c9ae; -webkit-text-fill-color: #e5c9ae; font-size: 9px; margin-top: 3px; }
+.app.golden-home #v-home .hd h1 small { color: #e5c9ae; -webkit-text-fill-color: #e5c9ae; font-size: 8px; margin-top: 3px; }
 .app.golden-home #v-home .pill {
-  padding: 6px 8px; max-width: 78px; overflow: hidden;
-  color: #ffe3a3; font-size: 11px;
+  padding: 5px 6px; max-width: 66px; overflow: hidden;
+  color: #ffe3a3; font-size: 10px;
   background: #4c372dcf;
   border-color: #d6ac79;
 }
 .app.golden-home #v-home .top-recharge {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 44px; height: 45px; flex: none; border-radius: 15px;
-  color: #583315; font-size: 24px; font-weight: 900; line-height: 1;
+  width: 34px; height: 36px; padding: 0; flex: none; border-radius: 11px;
+  color: #583315; font-size: 20px; font-weight: 900; line-height: 1;
   border: 1.5px solid #fff1c8;
   background: linear-gradient(160deg, #fff3c5 0%, #e7bd71 50%, #ab6c36 100%);
   box-shadow: inset 0 1px 2px #fff9,0 4px 11px #0008;
 }
 .app.golden-home #v-home .top-recharge small {
-  font-size: 7px; line-height: 1.3; font-weight: 800;
+  font-size: 6px; line-height: 1.25; font-weight: 800;
 }
 
 .app.golden-home #v-home .srch {
-  height: 45px;
+  height: 43px;
+  margin-bottom: 7px;
   background: rgba(36, 23, 20, .84);
   border: 1px solid #ae825f;
   box-shadow: 0 8px 22px rgba(17, 7, 4, .3),inset 0 1px 0 #f8d9aa30;
@@ -64,10 +65,14 @@
 .app.golden-home #v-home .srch input::placeholder { color: #e8d0b7; }
 
 .app.golden-home #v-home .slide {
+  height: 166px;
+  padding: 20px;
   border: 1.5px solid #e9c68e;
   box-shadow: 0 7px 22px #0e0506a6,inset 0 1px 0 #ffffff70;
 }
 .app.golden-home #v-home .slide b {color: #fff1d6;}
+.app.golden-home #v-home .slide b {font-size: 21px;}
+.app.golden-home #v-home .slide small {font-size: 13px;}
 .app.golden-home #v-home .dots u.on { background: #fbdba2; }
 
 .app.golden-home #v-home .qa {grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;}

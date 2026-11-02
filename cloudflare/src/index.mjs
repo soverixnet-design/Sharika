@@ -154,9 +154,10 @@ export async function handleRequest(request, env, ctx) {
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
   const themeImagePath=/^\/api\/v1\/rooms\/([0-9]{8})\/theme-image$/.exec(path);
   const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
+  const bannerImagePath=/^\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image$/.exec(path);
   // Public image thumbnails support anonymous GET; edits remain authenticated.
   // all mutations continue through strict origin and Firebase checks.
-  const cors = (coverPath || themeImagePath || avatarPath) && request.method==='GET'
+  const cors = (coverPath || themeImagePath || avatarPath || bannerImagePath) && request.method==='GET'
     ? {'access-control-allow-origin':'*'} : corsFor(request, env);
   if (!cors) return fail('origin_forbidden', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -196,6 +197,18 @@ export async function handleRequest(request, env, ctx) {
       'JOIN sharika_users u ON u.auth_uid=a.auth_uid WHERE u.public_no=? AND u.status=?'
     ).bind(Number(avatarPath[1]),'active').first();
     if(!image)return fail('avatar_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  if(bannerImagePath && request.method==='GET') {
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const image=await env.DB.prepare(
+      'SELECT image_base64 FROM sharika_banner_images WHERE banner_id=? AND image_bytes>0'
+    ).bind(Number(bannerImagePath[1])).first();
+    if(!image)return fail('banner_image_not_found',404,cors);
     const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
     return new Response(bytes,{status:200,headers:{
       'content-type':'image/jpeg','cache-control':'public, max-age=3600',
@@ -329,7 +342,7 @@ export async function handleRequest(request, env, ctx) {
     }
     if(path==='/api/v1/banners' && request.method==='GET') {
       await assertActive(env.DB,uid);
-      return reply({banners:await listPublicBanners(env.DB)},200,cors);
+      return reply({banners:await listPublicBanners(env.DB,url.origin)},200,cors);
     }
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
