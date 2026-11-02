@@ -57,3 +57,18 @@ test('golden theme unifies staging screens while keeping chosen artwork and room
   assert.match(sheet,/prefers-reduced-motion:reduce/);
   assert.match(sheet,/focus-visible/);
 });
+
+test('gold follow-up includes SVIP, recharge, branded opening and game catalog',()=>{
+  const sheet=readFileSync(new URL('royal-winged-theme.css',android),'utf8');
+  for(const selector of [
+    'html.royal-root #sh-svip-royal',
+    'html.royal-root #sh-svip-royal .svip-card',
+    'html.royal-root #sh-svip-royal .svip-main-btn',
+    'html.royal-root #rcp .rch',
+    'html.royal-root #rcp .pk button',
+    'html.royal-root #sh-opening',
+    'html.royal-root #sh-original-grid>button'
+  ])assert.ok(sheet.includes(selector),selector);
+  assert.match(sheet,/\.sh-invite-royal-banner\{[\s\S]*?main-profile-bg\.jpg/);
+  assert.doesNotMatch(sheet,/html\.royal-room \.app\.hasbg\s*\{[\s\S]{0,150}background-image/);
+});
