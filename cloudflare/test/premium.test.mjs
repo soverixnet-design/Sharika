@@ -11,6 +11,8 @@ const tiers=[
   {tier:'noble',rank:3,min_wealth_level:50,min_gift_coins:1_000_000,
     price_coins:200_000,duration_days:30,daily_bonus_coins:1000}
 ];
+const svipLevels=Array.from({length:8},(_,i)=>({level:i+1,
+  price_coins:(i+1)*1_000_000,daily_bonus_coins:(i+1)*1_000,enabled:1}));
 const policy={purchase_enabled:true,admin_grant_enabled:true,auto_enabled:true,
   auto_by_level:true,auto_by_gifts:true};
 const nowMs=Date.UTC(2026,9,31,12);
@@ -46,6 +48,7 @@ function mockDB({wealthLevel=3,giftCoins=0,coins=500_000,manual=null,
         async all(){
           state.queries.push({sql,params:this.params});
           if(sql.includes('sharika_premium_tiers'))return {results:tiers};
+          if(sql.includes('FROM sharika_svip_levels'))return {results:svipLevels};
           if(sql.includes('GROUP BY tier'))return {results:[]};
           return {results:[]};
         }};
@@ -109,19 +112,22 @@ test('status uses real verified gift-event aggregates and never a client-sent vo
 });
 
 test('purchase atomically debits verified coins and adds auditable membership',async()=>{
-  const {db,state}=mockDB({coins:60_000});
+  const {db,state}=mockDB({coins:2_000_000});
   const result=await app(db,'POST','/api/v1/premium/purchase',
-    {tier:'svip',request_id:'premium-request-0001',gift_coins:99_999_999});
+    {tier:'svip',svip_level:1,request_id:'premium-request-0001',gift_coins:99_999_999});
   assert.equal(result.status,201);
-  assert.equal(result.data.price_coins,50_000);
+  assert.equal(result.data.price_coins,1_000_000);
+  assert.equal(result.data.duration_days,30);
   assert.equal(state.batches.length,1);
-  assert.equal(state.batches[0].length,4);
+  assert.equal(state.batches[0].length,12);
   assert.match(state.batches[0][0].sql,/INSERT INTO sharika_premium_purchases/);
   assert.match(state.batches[0][1].sql,/UPDATE sharika_users SET coins=CASE/);
-  assert.deepEqual(state.batches[0][1].params,[50_000,50_000,'user1']);
+  assert.deepEqual(state.batches[0][1].params,[1_000_000,1_000_000,'user1']);
   assert.match(state.batches[0][2].sql,/INSERT INTO sharika_premium_memberships/);
   assert.match(state.batches[0][3].sql,/INSERT INTO sharika_wallet_ledger/);
-  assert.equal(state.batches[0][3].params[1],-50_000);
+  assert.equal(state.batches[0][3].params[1],-1_000_000);
+  assert.equal(state.batches[0].filter(x=>x.sql.includes('sharika_cosmetic_inventory')).length,4);
+  assert.equal(state.batches[0].filter(x=>x.sql.includes('sharika_cosmetic_equipped')).length,4);
 });
 
 test('same purchase ID is idempotent and cannot charge again',async()=>{
@@ -209,4 +215,45 @@ test('schema enforces durable receipt uniqueness, non-negative wallets and audit
   assert.match(schema,/auto_enabled INTEGER NOT NULL DEFAULT 1/);
   assert.match(schema,/auto_by_level INTEGER NOT NULL DEFAULT 1/);
   assert.match(schema,/auto_by_gifts INTEGER NOT NULL DEFAULT 1/);
+});
+
+test('all eight paid SVIP levels use server-side prices, daily coins and 30-day passes',async()=>{
+  const {db,state}=mockDB({coins:9_000_000});
+  const purchase=await app(db,'POST','/api/v1/premium/purchase',{
+    tier:'svip',svip_level:8,request_id:'premium-svip-eight-88'
+  });
+  assert.equal(purchase.status,201);
+  assert.equal(purchase.data.svip_level,8);
+  assert.equal(purchase.data.price_coins,8_000_000);
+  assert.equal(purchase.data.expires_at_ms-nowMs,30*86_400_000);
+  assert.equal(state.batches[0][1].params[1],8_000_000);
+  const inventory=state.batches[0].filter(x=>x.sql.includes('sharika_cosmetic_inventory'));
+  assert.equal(inventory.length,4);
+  assert.ok(inventory.some(x=>x.params[1]==='frame_style:svip-frame-08'));
+  assert.ok(inventory.some(x=>x.params[1]==='entry_style:svip-entry-08'));
+  assert.ok(inventory.some(x=>x.params[1]==='medal_style:svip-medal-08'));
+  assert.ok(inventory.some(x=>x.params[1]==='name_tag_style:svip-tag-08'));
+  const status=selectPremiumTier({policy,tiers,svipLevels:svipLevels.map(x=>({...x,enabled:true})),
+    wealthLevel:1,giftCoins:0,
+    manual:{tier:'svip',source:'purchase',svip_level:8,expires_at_ms:nowMs+86_400_000},nowMs});
+  assert.equal(status.daily_bonus_coins,8000);
+  assert.equal(status.svip_level,8);
+});
+
+test('super admin can set SVIP 1–8 coin prices and free grants provision a Backpack pack',async()=>{
+  const {db,state}=mockDB();
+  const cfg={policy,tiers,svip_levels:svipLevels.map(x=>({...x,enabled:true}))};
+  cfg.svip_levels[0].price_coins=1_250_000;
+  cfg.svip_levels[0].daily_bonus_coins=1700;
+  const update=await admin(db,'super','PATCH','premium',cfg);
+  assert.equal(update.status,200);
+  assert.equal(state.batches[0].filter(x=>x.sql.includes('UPDATE sharika_svip_levels')).length,8);
+  const grant=await admin(db,'super','POST','premium/grant',
+    {public_id:'10000008',tier:'svip',svip_level:3,duration_days:30});
+  assert.equal(grant.status,200);
+  assert.equal(state.batches[1].filter(x=>x.sql.includes('sharika_cosmetic_inventory')).length,4);
+  const poor={...cfg,svip_levels:cfg.svip_levels.map(x=>({...x}))};
+  poor.svip_levels[0].price_coins=-1;
+  assert.equal((await admin(db,'super','PATCH','premium',poor)).status,400);
+  assert.equal(state.batches.length,2);
 });

@@ -10,7 +10,7 @@ const roleArt=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,
 const KEYS={
  frame_style:new Set(['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love','ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
   'vip5-animated','noble-gold-microphone',...numbered('svip-frame',8),...roleArt]),
- entry_style:new Set(['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen']),
+ entry_style:new Set(['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen',...numbered('svip-entry',8)]),
  medal_style:new Set(['bronze','silver','gold','top-host',...numbered('svip-medal',8)]),
  name_tag_style:new Set(['legend',...numbered('svip-tag',17)])
 };
@@ -22,34 +22,46 @@ const values=x=>x?.results||[];
 const invalid=(fail,cors)=>fail('invalid_cosmetic_request',400,cors);
 // Reuse the exact same equipped-style resolution in room/profile, ranking,
 // follower and message cards. Only fixed, known column names reach SQL.
+// Public equipment is valid only while the corresponding inventory entitlement
+// remains active. Explicit unequip is an empty string; expired grants never leak.
 export function publicAppearanceSelect(){
  return 'u.frame_style,u.medal_style,u.name_tag_style,'+publicSvipSelect('u')+','+
   ['frame_style','medal_style','name_tag_style'].map(kind=>
-   `COALESCE((SELECT CASE WHEN x.item_id IS NULL THEN '' `+
-   `ELSE substr(x.item_id,instr(x.item_id,':')+1) END `+
-   `FROM sharika_cosmetic_equipped x WHERE x.auth_uid=u.auth_uid `+
-   `AND x.kind='${kind}'),u.${kind},'') AS equipped_${kind}`
+   "COALESCE((SELECT CASE WHEN x.item_id IS NULL THEN '' "+
+   "ELSE substr(x.item_id,instr(x.item_id,':')+1) END "+
+   "FROM sharika_cosmetic_equipped x WHERE x.auth_uid=u.auth_uid "+
+   "AND x.kind='"+kind+"' AND (x.item_id IS NULL OR EXISTS(SELECT 1 "+
+   "FROM sharika_cosmetic_inventory i WHERE i.auth_uid=x.auth_uid "+
+   "AND i.item_id=x.item_id AND (i.expires_at_ms IS NULL OR "+
+   "i.expires_at_ms>CAST(unixepoch('now') AS INTEGER)*1000)))),u."+kind+",'') AS equipped_"+kind
   ).join(',');
 }
 export async function readEquipped(db,uid){
- let rows;
- try{rows=values(await db.prepare('SELECT kind,item_id FROM sharika_cosmetic_equipped WHERE auth_uid=?')
-  .bind(uid).all());}
+ let result;
+ try{result=values(await db.prepare(
+   'SELECT e.kind,CASE WHEN e.item_id IS NULL OR i.item_id IS NOT NULL '+
+   'THEN e.item_id ELSE NULL END AS item_id FROM sharika_cosmetic_equipped e '+
+   'LEFT JOIN sharika_cosmetic_inventory i ON i.auth_uid=e.auth_uid '+
+   'AND i.item_id=e.item_id AND (i.expires_at_ms IS NULL OR i.expires_at_ms>?) '+
+   'WHERE e.auth_uid=?').bind(Date.now(),uid).all());}
  catch(error){if(/no such table:\s*sharika_cosmetic_equipped/i.test(String(error?.message||error)))
-  return {};throw error;}
- return Object.fromEntries(rows.filter(row=>KINDS.has(row.kind))
+   return {};throw error;}
+ return Object.fromEntries(result.filter(row=>KINDS.has(row.kind))
    .map(row=>[row.kind,row.item_id?row.item_id.split(':').slice(1).join(':'):'']));
 }
 export async function readRoomEquipped(db,roomId){
- let rows;
- try{rows=values(await db.prepare(
-  'SELECT e.auth_uid,e.kind,e.item_id FROM sharika_cosmetic_equipped e '+
-  'JOIN sharika_room_members m ON m.user_id=e.auth_uid WHERE m.room_id=?'
- ).bind(roomId).all());}
+ let result;
+ try{result=values(await db.prepare(
+  'SELECT e.auth_uid,e.kind,CASE WHEN e.item_id IS NULL OR i.item_id IS NOT NULL '+
+  'THEN e.item_id ELSE NULL END AS item_id FROM sharika_cosmetic_equipped e '+
+  'JOIN sharika_room_members m ON m.user_id=e.auth_uid '+
+  'LEFT JOIN sharika_cosmetic_inventory i ON i.auth_uid=e.auth_uid AND i.item_id=e.item_id '+
+  'AND (i.expires_at_ms IS NULL OR i.expires_at_ms>?) WHERE m.room_id=?'
+ ).bind(Date.now(),roomId).all());}
  catch(error){if(/no such table:\s*sharika_cosmetic_equipped/i.test(String(error?.message||error)))
-  return new Map();throw error;}
+   return new Map();throw error;}
  const map=new Map();
- for(const row of rows){
+ for(const row of result){
   if(!KINDS.has(row.kind))continue;
   if(!map.has(row.auth_uid))map.set(row.auth_uid,{});
   map.get(row.auth_uid)[row.kind]=row.item_id?row.item_id.split(':').slice(1).join(':'):'';
@@ -60,13 +72,14 @@ async function stock(db,uid,all=false){
  const list=values(await db.prepare(
   'SELECT c.id,c.kind,c.name,c.art_key,c.price_coins,c.active,'+
   'CASE WHEN i.item_id IS NULL THEN 0 ELSE 1 END AS owned,'+
-  'CASE WHEN e.item_id=c.id THEN 1 ELSE 0 END AS equipped '+
-  'FROM sharika_cosmetics_catalog c '+
+  'CASE WHEN e.item_id=c.id AND i.item_id IS NOT NULL THEN 1 ELSE 0 END AS equipped,'+
+  'i.expires_at_ms AS expires_at_ms FROM sharika_cosmetics_catalog c '+
   'LEFT JOIN sharika_cosmetic_inventory i ON i.item_id=c.id AND i.auth_uid=? '+
+  'AND (i.expires_at_ms IS NULL OR i.expires_at_ms>?) '+
   'LEFT JOIN sharika_cosmetic_equipped e ON e.auth_uid=? AND e.kind=c.kind '+
   (all?'':'WHERE c.active=1 OR i.item_id IS NOT NULL ')+
   'ORDER BY c.kind,c.name'
- ).bind(uid,uid).all());
+ ).bind(uid,Date.now(),uid).all());
  return list.map(x=>({...x,owned:!!x.owned,equipped:!!x.equipped,active:!!x.active}));
 }
 export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail,cors}){
@@ -116,8 +129,9 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
    const owns=await db.prepare(
     'SELECT c.id FROM sharika_cosmetics_catalog c '+
     'JOIN sharika_cosmetic_inventory i ON i.item_id=c.id '+
-    'WHERE c.id=? AND c.kind=? AND i.auth_uid=?'
-   ).bind(itemId,kind,uid).first();
+    'WHERE c.id=? AND c.kind=? AND i.auth_uid=? '+
+    'AND (i.expires_at_ms IS NULL OR i.expires_at_ms>?)'
+   ).bind(itemId,kind,uid,Date.now()).first();
    if(!owns)return fail('cosmetic_not_owned',403,cors);
   }
   await db.prepare(
