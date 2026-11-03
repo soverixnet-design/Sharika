@@ -176,3 +176,10 @@ BEGIN
   INSERT INTO sharika_family_transfer_audit(transfer_id,admin_uid,action)
     VALUES(NEW.id,NEW.approved_by,'rejected');
 END;
+
+CREATE TABLE IF NOT EXISTS sharika_family_sheet_sync (
+  key TEXT PRIMARY KEY CHECK(key='standard'),
+  last_synced_day TEXT NOT NULL,
+  last_synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+  record_count INTEGER NOT NULL DEFAULT 0 CHECK(record_count>=0)
+);
