@@ -199,7 +199,11 @@
       const target=position==='avatar'?avatar:position==='name'?name:id;
       if(!target)continue;
       if(position==='avatar')target.appendChild(ornament);
-      else target.insertAdjacentElement('afterend',ornament);
+      else{
+        target.insertAdjacentElement('afterend',ornament);
+        // Flex order must follow the configured name/ID slot, not revert to 0.
+        ornament.style.order=String((Number(target.style.order)||0)+0.5);
+      }
     }
   }
   function applyProfileLayout(screen,root){
@@ -244,10 +248,13 @@
         const el=identity.querySelector(':scope > '+keys[key]);
         if(el)el.style.order=String(i);
       }
-      for(const child of identity.children)
-        if(!Object.values(keys).some(sel=>child.matches(sel))&&
-           !child.classList.contains('sh-layout-ornament'))
-          child.style.order='9';
+      for(const child of identity.children){
+        if(child.classList.contains('sh-svip-public-badge')){
+          const name=identity.querySelector(':scope > h2');
+          child.style.order=String((Number(name?.style.order)||0)+0.25);
+        }else if(!Object.values(keys).some(sel=>child.matches(sel))&&
+           !child.classList.contains('sh-layout-ornament'))child.style.order='9';
+      }
     }
     placeProfileOrnaments(root,screen);
   }
