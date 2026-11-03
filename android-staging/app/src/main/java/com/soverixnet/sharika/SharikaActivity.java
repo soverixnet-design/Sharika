@@ -15,6 +15,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.ImageDecoder;
+import android.graphics.drawable.GradientDrawable;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
@@ -25,6 +26,11 @@ import android.os.CancellationSignal;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.Gravity;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ImageView;
+import android.widget.TextView;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
@@ -45,6 +51,7 @@ import androidx.credentials.exceptions.GetCredentialException;
 import androidx.credentials.exceptions.GetCredentialCancellationException;
 import androidx.credentials.exceptions.NoCredentialException;
 
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import com.google.firebase.auth.FirebaseAuth;
@@ -81,10 +88,14 @@ public final class SharikaActivity extends Activity {
     private static final int IMAGE_PICKER_REQUEST = 3413;
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 3415;
-    private final ExecutorService io = Executors.newFixedThreadPool(2);
+    // Background polling must not queue microphone negotiation behind slow image,
+// chat or presence requests on congested mobile networks.
+    private final ExecutorService io = Executors.newFixedThreadPool(4);
+    private final ExecutorService voiceIo = Executors.newFixedThreadPool(3);
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
+    private View openingOverlay;
     private boolean backInProgress;
     private Runnable unregisterModernBack;
     private PermissionRequest pendingMic;
@@ -156,7 +167,7 @@ public final class SharikaActivity extends Activity {
                 // Fail open after a bounded delay if an asset fails to load.
                 view.postDelayed(() -> {
                     if (browser == view && view.getVisibility() != View.VISIBLE)
-                        view.setVisibility(View.VISIBLE);
+                        showVerifiedWebView();
                 }, 5500);
             }
         });
@@ -184,11 +195,55 @@ public final class SharikaActivity extends Activity {
                 }
             }
         });
-        setContentView(browser, new ViewGroup.LayoutParams(-1, -1));
+        // A native, branded opening layer appears from the first Android
+        // frame. Waiting for WebView without it used to show a blank dark
+        // screen on slower phones before the Royal page was decoded.
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.rgb(7, 3, 26));
+        root.addView(browser, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout opening = new FrameLayout(this);
+        opening.setBackground(new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{Color.rgb(48, 16, 87), Color.rgb(11, 5, 36), Color.rgb(7, 3, 26)}));
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        brand.setGravity(Gravity.CENTER);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.mipmap.sharika_logo);
+        logo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        int logoSize = (int)(122 * getResources().getDisplayMetrics().density + 0.5f);
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(logoSize, logoSize);
+        logoParams.bottomMargin = (int)(22 * getResources().getDisplayMetrics().density + 0.5f);
+        brand.addView(logo, logoParams);
+        TextView name = new TextView(this);
+        name.setText("Sharika Voice Chat App");
+        name.setTextSize(25);
+        name.setTypeface(null, android.graphics.Typeface.BOLD);
+        name.setTextColor(Color.rgb(255, 233, 175));
+        name.setGravity(Gravity.CENTER);
+        brand.addView(name);
+        TextView loading = new TextView(this);
+        loading.setText("Opening…");
+        loading.setTextSize(15);
+        loading.setTextColor(Color.rgb(220, 190, 242));
+        loading.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams loadingParams = new LinearLayout.LayoutParams(-1, -2);
+        loadingParams.topMargin = (int)(12 * getResources().getDisplayMetrics().density + 0.5f);
+        brand.addView(loading, loadingParams);
+        opening.addView(brand, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+        root.addView(opening, new FrameLayout.LayoutParams(-1, -1));
+        openingOverlay = opening;
+        setContentView(root);
         browser.loadUrl("file:///android_asset/index.html");
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             unregisterModernBack = Api33BackHandler.register(this);
         }
+    }
+
+    private void showVerifiedWebView() {
+        if(browser==null)return;
+        browser.setVisibility(View.VISIBLE);
+        if(openingOverlay!=null)openingOverlay.setVisibility(View.GONE);
     }
 
     private void restorePendingInvite() {
@@ -546,21 +601,15 @@ public final class SharikaActivity extends Activity {
                 // A read-only signal from the packaged visual layer.
                 if (browser != null &&
                     "file:///android_asset/index.html".equals(browser.getUrl()))
-                    browser.setVisibility(View.VISIBLE);
+                    showVerifiedWebView();
                 sendResult(id, result(true, object(), null));
                 break;
             case "session":
-                FirebaseUser signedIn = auth.getCurrentUser();
-                if (signedIn == null) {
-                    sendResult(id, result(true, identity(null), null));
-                    return;
-                }
-                signedIn.reload().addOnCompleteListener(this, task -> {
-                    FirebaseUser user = auth.getCurrentUser();
-                    if (!task.isSuccessful() || user == null)
-                        sendResult(id, result(false, null, safe(task.getException())));
-                    else sendResult(id, result(true, identity(user), null));
-                });
+                // Return the cached Firebase session immediately so startup
+                // cannot wait for an unrelated network reload before drawing
+                // the Google sign-in button. Protected APIs still demand a
+                // verified Firebase ID token and a current active D1 profile.
+                sendResult(id, result(true, identity(auth.getCurrentUser()), null));
                 break;
             case "emailSignIn": emailSignIn(id, data); break;
             case "emailSignUp": emailSignUp(id, data); break;
@@ -705,16 +754,31 @@ public final class SharikaActivity extends Activity {
 
     private void googleSignIn(String id) {
         if (googlePending) {
-            sendResult(id, result(false, null, "google_sign_in_in_progress")); return;
+            sendResult(id, result(false, null, "google_sign_in_in_progress"));
+            return;
         }
         googlePending = true;
+        requestGoogleCredential(id, false);
+    }
+
+    private void requestGoogleCredential(String id, boolean allowAllAccounts) {
         try {
-            GetSignInWithGoogleOption option = new GetSignInWithGoogleOption.Builder(
-                getString(R.string.default_web_client_id)).build();
-            GetCredentialRequest request = new GetCredentialRequest.Builder()
-                .addCredentialOption(option).build();
+            GetCredentialRequest.Builder builder = new GetCredentialRequest.Builder();
+            if (allowAllAccounts) {
+                // Official Google fallback when the one-tap button has no
+                // previously authorized account on this device.
+                GetGoogleIdOption option = new GetGoogleIdOption.Builder()
+                    .setServerClientId(getString(R.string.default_web_client_id))
+                    .setFilterByAuthorizedAccounts(false)
+                    .build();
+                builder.addCredentialOption(option);
+            } else {
+                GetSignInWithGoogleOption option = new GetSignInWithGoogleOption.Builder(
+                    getString(R.string.default_web_client_id)).build();
+                builder.addCredentialOption(option);
+            }
             credentials.getCredentialAsync(
-                this, request, new CancellationSignal(), this::runOnUiThread,
+                this, builder.build(), new CancellationSignal(), this::runOnUiThread,
                 new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                     @Override public void onResult(GetCredentialResponse response) {
                         Credential returned = response.getCredential();
@@ -730,9 +794,13 @@ public final class SharikaActivity extends Activity {
                             auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null))
                                 .addOnCompleteListener(SharikaActivity.this, task -> {
                                     googlePending = false;
+                                    FirebaseUser current = auth.getCurrentUser();
                                     if (!task.isSuccessful())
                                         sendResult(id, result(false, null, safe(task.getException())));
-                                    else sendResult(id, result(true, identity(auth.getCurrentUser()), null));
+                                    else if (current == null)
+                                        sendResult(id, result(false,null,"firebase_session_missing"));
+                                    else
+                                        sendResult(id, result(true, identity(current), null));
                                 });
                         } catch (RuntimeException error) {
                             googlePending = false;
@@ -740,6 +808,10 @@ public final class SharikaActivity extends Activity {
                         }
                     }
                     @Override public void onError(GetCredentialException error) {
+                        if (error instanceof NoCredentialException && !allowAllAccounts) {
+                            requestGoogleCredential(id, true);
+                            return;
+                        }
                         googlePending = false;
                         final String message = error instanceof GetCredentialCancellationException
                             ? "google_sign_in_cancelled" :
@@ -882,7 +954,7 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}/voice-token$"))
             return method.equals("POST");
         // Preserve the already permitted voice transport routes byte-for-byte.
-        return path.matches("^/api/v1/rooms/[0-9]{8}/voice/(config|session|publish|subscribe|renegotiate|publications|heartbeat|leave)$")
+        return path.matches("^/api/v1/rooms/[0-9]{8}/voice/(config|session|publish|ready|subscribe|renegotiate|publications|heartbeat|leave)$")
             && (method.equals("GET") || method.equals("POST") || method.equals("PUT"));
     }
 
@@ -920,6 +992,10 @@ public final class SharikaActivity extends Activity {
         });
     }
 
+    private boolean isRealtimeVoiceRoute(String path) {
+        return path.matches("^/api/v1/rooms/[0-9]{8}/(seat|voice/(config|session|publish|ready|subscribe|renegotiate|publications|heartbeat|leave))$");
+    }
+
     private void requestStagingToken(String id, String method, String path,
                                     JSONObject data, FirebaseUser user) {
         user.getIdToken(false).addOnCompleteListener(this, token -> {
@@ -928,7 +1004,8 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false,null,"firebase_token_unavailable")); return;
             }
             JSONObject body = data.optJSONObject("body");
-            io.execute(() -> stageHttp(id, method, path, body, token.getResult().getToken()));
+            ExecutorService queue = isRealtimeVoiceRoute(path) ? voiceIo : io;
+            queue.execute(() -> stageHttp(id, method, path, body, token.getResult().getToken()));
         });
     }
 
@@ -1008,6 +1085,7 @@ public final class SharikaActivity extends Activity {
             browser = null;
         }
         io.shutdownNow();
+        voiceIo.shutdownNow();
         super.onDestroy();
     }
 }

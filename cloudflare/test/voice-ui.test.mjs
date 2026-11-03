@@ -30,7 +30,8 @@ test('seat changes appear before server acknowledgement and preserve an existing
 
 test('both SFU peer connections have Cloudflare STUN discovery',()=>{
   assert.match(ui,/stun:stun\.cloudflare\.com:3478/);
-  assert.equal((ui.match(/new RTCPeerConnection\(SHARIKA_ICE_CONFIG\)/g)||[]).length,2);
+  assert.equal((ui.match(/new RTCPeerConnection\(state\.iceConfig\|\|SHARIKA_ICE_CONFIG\)/g)||[]).length,2);
+  assert.match(ui,/function verifiedIceConfig\(config\)/);
 });
 test('mic button retries a failed capture or an interrupted uplink',()=>{
   assert.match(ui,/async function restartMicrophone\(roomId\)/);
@@ -187,8 +188,8 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
 });
 
 test('two-way audio recovers an ended microphone and a failed remote receiver',()=>{
-  const begin=ui.indexOf('  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;');
-  const end=ui.indexOf('  async function waitIce(peer)',begin);
+  const begin=ui.indexOf('  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0,voiceRetryTimer=null;');
+  const end=ui.indexOf('  function localIceCandidates(peer)',begin);
   assert.ok(begin>=0 && end>begin);
   const timers=[],reconnects=[];
   const context=createContext({
@@ -208,7 +209,7 @@ test('two-way audio recovers an ended microphone and a failed remote receiver',(
   context.testState=ended;
   runInContext("sfuState=testState;recoverSfuPublication(testState,'track ended')",context);
   const first=timers.shift();
-  assert.equal(first.delay,1200);
+  assert.equal(first.delay,500);
   first.fn();
   assert.deepEqual(reconnects,['roomA']);
   const receiver={
@@ -219,9 +220,17 @@ test('two-way audio recovers an ended microphone and a failed remote receiver',(
   context.testState=receiver;
   runInContext("sfuState=testState;recoverSfuPublication(testState,'remote failed')",context);
   const second=timers.shift();
-  assert.equal(second.delay,3000);
+  assert.equal(second.delay,1200);
   second.fn();
   assert.deepEqual(reconnects,['roomA','roomA']);
+  // Repeated failures must not leave mobile users permanently disconnected.
+  for(let i=0;i<6;i++){
+    runInContext("recoverSfuPublication(testState,'still disconnected')",context);
+    const next=timers.shift();
+    assert.ok(next?.delay<=30000);
+    next.fn();
+  }
+  assert.equal(reconnects.length,8);
   assert.equal(runInContext(
     "micPreferenceRoom='roomA';micPreferenceEnabled=false;microphoneWanted('roomA')",
     context),false,'manual mute is preserved through reconnect');
@@ -342,6 +351,39 @@ test('SFU voice activity measures live audio and clears the light on mute',()=>{
   assert.doesNotMatch(ui.slice(begin,end),/source\.connect\(.*destination/);
 });
 
+test('RTP watchdog distinguishes a connected transport from actual moving microphone packets',async()=>{
+  const begin=ui.indexOf('  function audioRtpCounters(report,type) {');
+  const end=ui.indexOf('  function addAudioTrack(state,event)',begin);
+  assert.ok(begin>=0&&end>begin);
+  const recovered=[];
+  const context=createContext({Date,Promise,Number,
+    console:{warn(){}},errText:String,
+    recoverSfuPublication(state,reason,force){recovered.push({reason,force});},
+    resumeRoomAudio(){}
+  });
+  runInContext('let sfuState=null;'+ui.slice(begin,end),context);
+  const report=new Map([['audio',{
+    type:'outbound-rtp',kind:'audio',packetsSent:8,bytesSent:600
+  }],['video',{type:'outbound-rtp',kind:'video',packetsSent:20,bytesSent:2000}]]);
+  context.report=report;
+  const counters=runInContext("audioRtpCounters(report,'outbound-rtp')",context);
+  assert.equal(counters.packets,8);
+  assert.equal(counters.bytes,600);
+  const state={closed:false,statsInFlight:false,readyPublication:true,
+    lastLocalSpeechAt:Date.now(),roomId:'test-room',
+    publishPC:{connectionState:'connected',async getStats(){return report;}},
+    receivePC:null,media:{getAudioTracks(){return [{enabled:true}];}},
+    audioElements:new Set(),outgoingStalls:0};
+  context.state=state;
+  await runInContext('sfuState=state;inspectSfuAudio(state)',context);
+  await runInContext('inspectSfuAudio(state)',context);
+  await runInContext('inspectSfuAudio(state)',context);
+  assert.deepEqual(recovered,[{reason:'microphone RTP stalled',force:true}]);
+  report.get('audio').packetsSent++;
+  await runInContext('inspectSfuAudio(state)',context);
+  assert.equal(state.outgoingStalls,0,'forward progress clears the stall counter');
+});
+
 test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>{
   const begin=ui.indexOf('  async function subscribeSfu(state) {');
   const end=ui.indexOf('  // The receiving SFU session',begin);
@@ -360,10 +402,8 @@ test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>
       ]};
       if(path.endsWith('/subscribe'))return {
         sessionDescription:{type:'offer',sdp:'test'},
-        tracks:[
-          {mid:'0',sessionId:'publish-A',userId:''},
-          {mid:'1',sessionId:'publish-B',userId:'spoofed-user'}
-        ]
+        tracks:[{mid:body.publications[0].sessionId==='publish-A'?'0':'1',
+          sessionId:body.publications[0].sessionId,userId:'spoofed-user'}]
       };
       return {ok:true};
     }
@@ -371,7 +411,7 @@ test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>
   runInContext(ui.slice(begin,end),context);
   const state={
     closed:false,syncing:false,roomId:'10000001',subscribeId:'receive-A',
-    subscribed:new Set(),remoteMids:new Map(),sessionIds:[],
+    subscribed:new Set(),failedPublications:new Map(),remoteMids:new Map(),sessionIds:[],
     receivePC:{
       async setRemoteDescription(){},async createAnswer(){return {type:'answer',sdp:'test'};},
       async setLocalDescription(){this.localDescription={type:'answer',sdp:'test'};}
@@ -383,4 +423,38 @@ test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>
   assert.equal(state.remoteMids.get('1'),'user-B');
   assert.equal(state.subscribed.size,2);
   assert.ok(calls.some(x=>x[1].endsWith('/renegotiate')));
+});
+
+test('a dead microphone publication cannot block a healthy room speaker',async()=>{
+  const begin=ui.indexOf('  async function subscribeSfu(state) {');
+  const end=ui.indexOf('  // The receiving SFU session',begin);
+  const subscribed=[];
+  const context=createContext({Date,console:{warn(){}},waitIce:async()=>{},
+    errText:String,
+    api:async(method,path,body)=>{
+      if(method==='GET')return {publications:[
+        {sessionId:'dead',trackName:'microphone',userId:'old-user'},
+        {sessionId:'live',trackName:'microphone',userId:'speaker'}]};
+      if(path.endsWith('/subscribe')){
+        const sid=body.publications[0].sessionId;
+        subscribed.push(sid);
+        if(sid==='dead')throw new Error('sfu_track_unavailable');
+        return {sessionDescription:{type:'offer',sdp:'test'},
+          tracks:[{mid:'2',sessionId:'live'}]};
+      }
+      return {ok:true};
+    }});
+  runInContext(ui.slice(begin,end),context);
+  const state={closed:false,syncing:false,roomId:'10000001',
+    subscribeId:'receiver',subscribed:new Set(),failedPublications:new Map(),
+    remoteMids:new Map(),sessionIds:[],
+    receivePC:{async setRemoteDescription(){},async createAnswer(){return {};},
+      async setLocalDescription(){this.localDescription={type:'answer',sdp:'test'};}}
+  };
+  context.state=state;
+  await runInContext('subscribeSfu(state)',context);
+  assert.deepEqual(subscribed,['dead','live']);
+  assert.equal(state.subscribed.has('live:microphone'),true);
+  assert.equal(state.remoteMids.get('2'),'speaker');
+  assert.equal(state.failedPublications.has('dead:microphone'),true);
 });

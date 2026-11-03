@@ -23,7 +23,9 @@
     if (view && typeof view.__sharikaOriginalGameCleanup === 'function') {
       view.__sharikaOriginalGameCleanup();
     }
-    if (doc === document && typeof window.closeSheet === 'function') {
+    if (overlayId === 'sh-room-game-overlay') {
+      overlay.classList.remove('on');
+    } else if (doc === document && typeof window.closeSheet === 'function') {
       window.closeSheet();
     } else if (view && typeof view.close === 'function') {
       view.close();
@@ -71,6 +73,7 @@
       notifications.classList.remove('on');
       return 'handled';
     }
+    if (dismissSheet(document, 'sh-room-game-overlay', 'sh-room-game-sheet')) return 'handled';
     if (dismissSheet(document, 'shb', 'sh')) return 'handled';
     if (isOpen(get('pfo'))) {
       get('pfo').classList.remove('on');

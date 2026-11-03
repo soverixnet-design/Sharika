@@ -75,6 +75,7 @@
       '#app.sharika-startup-verifying .nav,',
       '#app.sharika-startup-verifying .auth,',
       '#app.sharika-startup-verifying #mini{visibility:hidden!important}',
+      '#sp.sharika-opening-pending{opacity:1!important;pointer-events:auto!important;transition:none!important}',
       '#app.sharika-startup-verifying::after{',
       'content:"Opening Sharika…";position:absolute;inset:0;z-index:94;',
       'display:grid;place-items:center;background:linear-gradient(180deg,#1a0b45,#05030f);',
@@ -82,6 +83,10 @@
     ].join('');
     document.head.appendChild(style);
     document.getElementById('app')?.classList.add('sharika-startup-verifying');
+    // Hold the original branded layer for the one verified weekly opening.
+    // Otherwise its 1.3s demo timer hides it and a second fullscreen card
+    // appears later, looking like two different opening screens.
+    document.getElementById('sp')?.classList.add('sharika-opening-pending');
   }
   function finishVerifiedStartup(){
     document.getElementById('app')?.classList.remove('sharika-startup-verifying');
@@ -163,6 +168,9 @@
     const style=document.createElement('style');
     style.id='sh-opening-styles';
     style.textContent=[
+      '#sp.sharika-opening-pending,#sp.sharika-opening-featured{',
+      'opacity:1!important;pointer-events:auto!important;transition:none!important}',
+      '#sp.sharika-opening-featured>img,#sp.sharika-opening-featured>b{display:none!important}',
       '#sh-opening{position:absolute;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;',
       'overflow:hidden;color:#ffe9b0;text-align:center;background:radial-gradient(ellipse at 50% 32%,#872eb080,transparent 56%),',
       'linear-gradient(180deg,#300550e0,#0a0422f7),url("./royal-palace.png") center/cover}',
@@ -218,6 +226,13 @@
       openingStyles();
       const app=document.getElementById('app');
       if(!app){resolve();return;}
+      // Reuse the existing splash as the single opening surface. Updating
+      // its contents in place prevents the old splash -> new card flash.
+      const splash=document.getElementById('sp');
+      if(splash){
+        splash.classList.remove('sharika-opening-pending');
+        splash.classList.add('sharika-opening-featured');
+      }
       document.getElementById('sh-opening')?.remove();
       const layer=document.createElement('section');
       layer.id='sh-opening';layer.setAttribute('role','dialog');
@@ -260,13 +275,18 @@
       const skip=document.createElement('button');skip.type='button';
       skip.className='sh-o-skip';skip.textContent='SKIP »';
       footer.append(clock,track,skip);panel.append(header,tag,middle,footer);layer.appendChild(panel);
-      app.appendChild(layer);
+      (splash||app).appendChild(layer);
       const duration=Math.max(3,Math.min(30,Number(data.duration_seconds)||10));
       layer.style.setProperty('--sh-opening-duration',duration+'s');
       const start=Date.now();let ended=false;
       let timer,timeout;
       function close(){if(ended)return;ended=true;clearInterval(timer);clearTimeout(timeout);
-        layer.remove();document.dispatchEvent(new Event('sharika:opening-closed'));resolve();}
+        layer.remove();
+        if(splash){
+          splash.classList.remove('sharika-opening-pending','sharika-opening-featured');
+          splash.classList.add('off');
+        }
+        document.dispatchEvent(new Event('sharika:opening-closed'));resolve();}
       function tick(){clock.textContent='⏱ '+Math.max(0,Math.ceil(duration-(Date.now()-start)/1000))+'s';}
       skip.onclick=close;tick();timer=setInterval(tick,250);
       timeout=setTimeout(close,duration*1000);
@@ -281,6 +301,11 @@
       if(session?.user?.id!==startedBy)return;
       await displayOpening(data);
     }catch(error){console.warn('Weekly opening unavailable:',errText(error));}
+    finally{
+      // No verified winner (or an outage) must not leave the loading layer
+      // covering the authenticated home or Firebase sign-in.
+      document.getElementById('sp')?.classList.remove('sharika-opening-pending');
+    }
   }
 
 
@@ -2065,6 +2090,25 @@
 
   // Cloudflare Realtime SFU voice transport; room art and seat UI stay as-is.
   const SHARIKA_ICE_CONFIG={iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]};
+  // Only authenticated Cloudflare STUN/TURN endpoints may enter WebRTC config.
+  // Credentials stay in memory for this room; never persist them in localStorage.
+  const SHARIKA_CLOUD_ICE=/^(?:stun:stun\.cloudflare\.com:3478|turn:turn\.cloudflare\.com:(?:3478|443|80)\?transport=(?:udp|tcp)|turns:turn\.cloudflare\.com:(?:5349|443)\?transport=tcp)$/;
+  function verifiedIceConfig(config){
+    const iceServers=[];
+    for(const item of Array.isArray(config?.iceServers)?config.iceServers.slice(0,5):[]){
+      const urls=(Array.isArray(item?.urls)?item.urls:[item?.urls])
+        .filter(url=>typeof url==='string'&&SHARIKA_CLOUD_ICE.test(url)).slice(0,8);
+      if(!urls.length)continue;
+      if(urls.some(url=>url.startsWith('turn'))){
+        if(typeof item.username!=='string'||!item.username||item.username.length>256||
+          typeof item.credential!=='string'||!item.credential||
+          item.credential.length>256)continue;
+        iceServers.push({urls,username:item.username,credential:item.credential});
+      }else iceServers.push({urls});
+    }
+    return {iceServers:iceServers.some(item=>item.username)?
+      iceServers:SHARIKA_ICE_CONFIG.iceServers};
+  }
   let sfuState = null;
   // Animate the actual occupied mic seats, never a timer-driven fake speaker.
   // One room can have several simultaneous talkers.
@@ -2135,7 +2179,8 @@
     });
     try{bindRoomAudioGesture(roomAudioFrame.contentDocument);}catch(_){}
   }
-  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0;
+  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0,voiceRetryTimer=null;
+  let voiceRelayWarningRoom=null;
   // Preserve a manual mute when media reconnects; new rooms start unmuted.
   let micPreferenceRoom=null,micPreferenceEnabled=true;
   function microphoneWanted(roomId) {
@@ -2148,41 +2193,115 @@
   function sfuTransportHealthy(state) {
     const local=state.media?.getAudioTracks()[0];
     const outgoing=!state.canPublish ||
-      (local?.readyState==='live' && state.publishPC?.connectionState==='connected');
+      (state.readyPublication && local?.readyState==='live' &&
+       state.publishPC?.connectionState==='connected');
     const incoming=!state.subscribed.size ||
       state.receivePC?.connectionState==='connected';
     return outgoing && incoming;
   }
-  function recoverSfuPublication(state,reason,force=false) {
-    if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||state.recoveryTimer)return;
-    if(voiceRecoveryRoom!==state.roomId){voiceRecoveryRoom=state.roomId;voiceRecoveryAttempts=0;}
-    if(voiceRecoveryAttempts>=3) {
-      if(!state.recoveryExhausted){
-        state.recoveryExhausted=true;
-        document.getElementById('rf')?.contentWindow?.toast?.(
-          'Voice disconnected. Tap the mic or re-enter the room to retry.');
-      }
-      return;
-    }
-    const delay=[1200,3000,6000][voiceRecoveryAttempts++];
-    console.warn('Sharika voice transport recovery:',reason);
-    state.recoveryTimer=setTimeout(()=>{
-      state.recoveryTimer=null;
-      if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId||
-         (!force && sfuTransportHealthy(state)))return;
-      connectVoice(state.roomId).catch(error=>{
-        document.getElementById('rf')?.contentWindow?.toast?.(
-          'Voice reconnect failed: '+errText(error));
+  function scheduleVoiceRetry(roomId,reason,force=false) {
+    if(wantedVoiceRoom!==roomId||voiceRetryTimer)return;
+    if(voiceRecoveryRoom!==roomId){voiceRecoveryRoom=roomId;voiceRecoveryAttempts=0;}
+    // Keep retrying after the first three attempts. The previous terminal
+    // state left users permanently silent on a briefly unstable mobile link.
+    const delay=[500,1200,2500,5000,10000,20000,30000][
+      Math.min(voiceRecoveryAttempts++,6)];
+    console.warn('Sharika voice reconnect scheduled:',reason,'in',delay,'ms');
+    voiceRetryTimer=setTimeout(()=>{
+      voiceRetryTimer=null;
+      if(wantedVoiceRoom!==roomId)return;
+      if(!force&&sfuState?.roomId===roomId&&!sfuState.closed&&
+         sfuTransportHealthy(sfuState))return;
+      connectVoice(roomId).catch(error=>{
+        console.warn('Sharika voice reconnect:',errText(error));
+        // connectVoice itself requeues on signaling/setup failures.
       });
     },delay);
   }
-  async function waitIce(peer) {
-    if (peer.iceGatheringState === 'complete') return;
-    await new Promise((resolve,reject) => {
-      const timeout=setTimeout(()=>{cleanup();reject(new Error('Voice network timeout'));},12000);
-      function changed(){ if(peer.iceGatheringState==='complete'){cleanup();resolve();} }
-      function cleanup(){clearTimeout(timeout);peer.removeEventListener('icegatheringstatechange',changed);}
+  function recoverSfuPublication(state,reason,force=false) {
+    if(state.closed||sfuState!==state||wantedVoiceRoom!==state.roomId)return;
+    scheduleVoiceRetry(state.roomId,reason,force);
+  }
+  async function waitVoiceConnected(peer) {
+    if(peer.connectionState==='connected')return;
+    await new Promise((resolve,reject)=>{
+      const timeout=setTimeout(()=>finish(new Error('Voice connection did not establish')),9000);
+      function finish(error){
+        clearTimeout(timeout);
+        peer.removeEventListener('connectionstatechange',changed);
+        peer.removeEventListener('iceconnectionstatechange',changed);
+        if(error)reject(error);else resolve();
+      }
+      function changed(){
+        if(peer.connectionState==='connected')finish();
+        else if(peer.connectionState==='failed'||peer.connectionState==='closed'||
+          peer.iceConnectionState==='failed')finish(new Error('Voice network failed'));
+      }
+      peer.addEventListener('connectionstatechange',changed);
+      peer.addEventListener('iceconnectionstatechange',changed);
+      changed();
+    });
+  }
+  // Some Android carriers block one of Cloudflare TURN's alternate TCP ports.
+  // Their ICE gathering can remain "gathering" for a long time even after a
+  // usable srflx/relay candidate has already arrived. SFU does not use
+  // trickle ICE, so wait briefly for useful candidates, but do not discard a
+  // viable SDP solely because another optional port never finishes probing.
+  function localIceCandidates(peer) {
+    const sdp=peer.localDescription?.sdp||'';
+    const lines=sdp.match(/^a=candidate:[^\r\n]+/gm)||[];
+    return {
+      count:lines.length,
+      relay:lines.some(line=>/\btyp relay(?:\s|$)/.test(line)),
+      srflx:lines.some(line=>/\btyp srflx(?:\s|$)/.test(line))
+    };
+  }
+  async function waitIce(peer,phase='voice') {
+    await new Promise((resolve,reject)=>{
+      let settled=false;
+      let fast,relayGrace,deadline;
+      const expectsRelay=!!peer.getConfiguration?.().iceServers?.some(server=>
+        !!server.username && [server.urls].flat().some(url=>
+          typeof url==='string'&&url.startsWith('turn')));
+      function cleanup(){
+        clearTimeout(fast);clearTimeout(relayGrace);clearTimeout(deadline);
+        peer.removeEventListener('icegatheringstatechange',changed);
+      }
+      function finish(error){
+        if(settled)return;
+        settled=true;cleanup();
+        if(error)reject(error);else resolve();
+      }
+      function changed(){
+        if(peer.iceGatheringState==='complete'){
+          const available=localIceCandidates(peer);
+          if(available.count)finish();
+          else finish(new Error('Voice has no ICE network candidates ('+phase+')'));
+        }
+      }
       peer.addEventListener('icegatheringstatechange',changed);
+      // Without trickle ICE, sending only a server-reflexive candidate can
+      // strand mobile users behind restrictive NAT even while TURN is available.
+      // Prefer a real relay before finalizing the SDP, without waiting forever
+      // for optional blocked TCP ports.
+      fast=setTimeout(()=>{
+        const available=localIceCandidates(peer);
+        if(available.relay||(!expectsRelay&&available.srflx))finish();
+      },900);
+      relayGrace=setTimeout(()=>{
+        const available=localIceCandidates(peer);
+        if(available.relay||available.srflx)finish();
+      },4000);
+      // A partially gathered SDP with candidates is more useful than a
+      // guaranteed 12-second failure on a blocked optional TURN endpoint.
+      deadline=setTimeout(()=>{
+        const available=localIceCandidates(peer);
+        if(available.count){
+          console.warn('Sharika voice ICE gathering incomplete:',phase,
+            'candidates='+available.count,'relay='+available.relay);
+          finish();
+        }else finish(new Error('Voice has no ICE network candidates ('+phase+')'));
+      },8000);
       changed();
     });
   }
@@ -2192,6 +2311,7 @@
     sfuState=null;
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
+    if(state.publicationTimer)clearInterval(state.publicationTimer);
     if(state.speakingTimer)clearInterval(state.speakingTimer);
     for(const meter of state.speakingMeters.values())
       meter.source.disconnect();
@@ -2212,7 +2332,8 @@
   // connect only to analysers: microphone audio is never played back locally.
   // Sample every 250ms to conserve WebView CPU while keeping a live voice ring.
   function sampleSfuSpeaking(state) {
-    if(state.closed||sfuState!==state||document.hidden)return;
+    if(state.closed||sfuState!==state||
+      (typeof document!=='undefined'&&document.hidden))return;
     const now=Date.now(),speaking=new Set();
     for(const [track,meter] of state.speakingMeters){
       if(track.readyState!=='live'||!track.enabled||track.muted){
@@ -2230,7 +2351,10 @@
         }
         const rms=Math.sqrt(power/meter.samples.length);
         if(rms>.018||(rms>.008&&peak>.05))meter.lastActiveAt=now;
-        if(now-meter.lastActiveAt<480)speaking.add(meter.userId);
+        if(now-meter.lastActiveAt<480){
+          speaking.add(meter.userId);
+          if(meter.local)state.lastLocalSpeechAt=now;
+        }
       }catch(_){/* Individual tracks can end during audio renegotiation. */}
     }
     setVoiceSpeakers(state.roomId,speaking);
@@ -2262,6 +2386,73 @@
     meter.source.disconnect();
     state.speakingMeters.delete(track);
     sampleSfuSpeaking(state);
+  }
+  // A connected ICE transport is not proof that audio RTP is moving. Read
+  // actual media packet counters locally; never upload SDP, voice, or tokens.
+  function audioRtpCounters(report,type) {
+    let packets=0,bytes=0;
+    for(const stat of report.values()){
+      if(stat.type!==type ||
+         (stat.kind&&stat.kind!=='audio') ||
+         (stat.mediaType&&stat.mediaType!=='audio'))continue;
+      packets+=Number(stat.packetsSent??stat.packetsReceived)||0;
+      bytes+=Number(stat.bytesSent??stat.bytesReceived)||0;
+    }
+    return {packets,bytes};
+  }
+  function selectedIcePath(report) {
+    if(!report)return 'unknown';
+    let pair=null;
+    for(const stat of report.values()){
+      if(stat.type==='transport'&&stat.selectedCandidatePairId){
+        pair=report.get(stat.selectedCandidatePairId);break;
+      }
+    }
+    if(!pair){
+      for(const stat of report.values()){
+        if(stat.type==='candidate-pair'&&stat.nominated&&stat.state==='succeeded'){
+          pair=stat;break;
+        }
+      }
+    }
+    const local=pair?.localCandidateId?report.get(pair.localCandidateId):null;
+    return ['relay','srflx','host','prflx'].includes(local?.candidateType)
+      ?local.candidateType:'unknown';
+  }
+  async function inspectSfuAudio(state) {
+    if(state.closed||sfuState!==state||state.statsInFlight)return;
+    state.statsInFlight=true;
+    try {
+      const [sendReport,receiveReport]=await Promise.all([
+        state.publishPC?.getStats?.()||null,
+        state.receivePC?.getStats?.()||null
+      ]);
+      if(state.closed||sfuState!==state)return;
+      const outgoing=sendReport?audioRtpCounters(sendReport,'outbound-rtp'):null;
+      const incoming=receiveReport?audioRtpCounters(receiveReport,'inbound-rtp'):null;
+      const last=state.lastMediaStats;
+      const mic=state.media?.getAudioTracks()[0];
+      if(last?.outgoing&&outgoing&&state.readyPublication&&mic?.enabled&&
+         state.publishPC?.connectionState==='connected'&&
+         state.lastLocalSpeechAt&&Date.now()-state.lastLocalSpeechAt<9000&&
+         outgoing.packets<=last.outgoing.packets){
+        state.outgoingStalls=(state.outgoingStalls||0)+1;
+        if(state.outgoingStalls>=2){
+          console.warn('Sharika voice: microphone active but RTP stopped');
+          recoverSfuPublication(state,'microphone RTP stalled',true);
+          state.outgoingStalls=0;
+        }
+      }else state.outgoingStalls=0;
+      if(incoming?.packets && state.audioElements.size &&
+         [...state.audioElements].some(element=>element.paused))resumeRoomAudio();
+      // No incoming bytes can also mean remote users are intentionally silent.
+      // Do not tear down a connected subscriber on that signal alone.
+      state.lastMediaStats={outgoing,incoming,
+        outgoingRoute:selectedIcePath(sendReport),
+        incomingRoute:selectedIcePath(receiveReport),checkedAt:Date.now()};
+    }catch(error){
+      console.warn('Sharika voice statistics unavailable:',errText(error));
+    }finally{state.statsInFlight=false;}
   }
   function addAudioTrack(state,event) {
     if(state.closed)return;
@@ -2301,37 +2492,60 @@
     state.syncing=true;
     try {
       const data=await api('GET','/rooms/'+state.roomId+'/voice/publications');
+      const live=new Set((data.publications||[]).map(x=>x.sessionId+':'+x.trackName));
+      for(const key of state.failedPublications.keys())
+        if(!live.has(key))state.failedPublications.delete(key);
       const upcoming=(data.publications||[]).filter(x=>x &&
-        !state.subscribed.has(x.sessionId+':'+x.trackName));
+        !state.subscribed.has(x.sessionId+':'+x.trackName) &&
+        (state.failedPublications.get(x.sessionId+':'+x.trackName)||0)<Date.now());
       if(!upcoming.length)return;
-      for(let cursor=0;cursor<upcoming.length;cursor+=8) {
+      // Never put multiple publishers in one tracks/new call. A stale session
+      // from a crashed phone must not reject subscriptions to live speakers.
+      for(const publication of upcoming) {
         if(state.closed)return;
-        const batch=upcoming.slice(cursor,cursor+8);
-        const response=await api('POST','/rooms/'+state.roomId+'/voice/subscribe',{
-          sessionId:state.subscribeId,
-          publications:batch.map(x=>({sessionId:x.sessionId,trackName:x.trackName}))
-        });
+        const batch=[publication];
+        let negotiationStarted=false;
+        try {
+          const response=await api('POST','/rooms/'+state.roomId+'/voice/subscribe',{
+            sessionId:state.subscribeId,
+            publications:batch.map(x=>({sessionId:x.sessionId,trackName:x.trackName}))
+          });
+          negotiationStarted=true;
         // The publications list carries authenticated user IDs from our
         // room coordinator. The SFU subscribe response does not echo those
         // IDs: match its verified session IDs to the original publications.
         // Never trust a client-supplied speaker identity.
-        const verifiedSpeakerIds=new Map(batch.map(item=>
-          [item.sessionId,item.userId||'']));
-        for(const track of response.tracks||[]) {
-          state.remoteMids.set(String(track.mid),
-            verifiedSpeakerIds.get(track.sessionId)||'');
+          const verifiedSpeakerIds=new Map(batch.map(item=>
+            [item.sessionId,item.userId||'']));
+          for(const track of response.tracks||[]) {
+            state.remoteMids.set(String(track.mid),
+              verifiedSpeakerIds.get(track.sessionId)||'');
+          }
+          await state.receivePC.setRemoteDescription(response.sessionDescription);
+          const answer=await state.receivePC.createAnswer();
+          await state.receivePC.setLocalDescription(answer);
+          await waitIce(state.receivePC,'receive');
+          await api('PUT','/rooms/'+state.roomId+'/voice/renegotiate',{
+            sessionId:state.subscribeId,sessionDescription:state.receivePC.localDescription
+          });
+          state.subscribed.add(publication.sessionId+':'+publication.trackName);
+          if(!state.firstSubscriptionAt)state.firstSubscriptionAt=Date.now();
+          state.subscriptionFailures=0;
+        }catch(error){
+          console.warn('Sharika voice subscriber:',errText(error));
+          if(state.closed)return;
+          if(negotiationStarted){
+            // An offer was allocated: continuing on this SFU session without
+            // an accepted answer risks an invalid renegotiation state.
+            recoverSfuPublication(state,'incoming voice negotiation failed',true);
+            return;
+          }
+          // The SFU refused this individual remote track. Back off THIS
+          // publication, not the whole room's receiving connection.
+          state.failedPublications.set(
+            publication.sessionId+':'+publication.trackName,Date.now()+12000);
         }
-        await state.receivePC.setRemoteDescription(response.sessionDescription);
-        const answer=await state.receivePC.createAnswer();
-        await state.receivePC.setLocalDescription(answer);
-        await waitIce(state.receivePC);
-        await api('PUT','/rooms/'+state.roomId+'/voice/renegotiate',{
-          sessionId:state.subscribeId,sessionDescription:state.receivePC.localDescription
-        });
-        batch.forEach(x=>state.subscribed.add(x.sessionId+':'+x.trackName));
-        if(!state.firstSubscriptionAt)state.firstSubscriptionAt=Date.now();
       }
-      state.subscriptionFailures=0;
     }catch(error) {
       if(!state.closed) {
         state.subscriptionFailures++;
@@ -2352,7 +2566,7 @@
       throw new Error('Voice room changed');
     state.subscribeId=joined.sessionId;
     state.sessionIds.push(joined.sessionId);
-    state.receivePC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
+    state.receivePC=new RTCPeerConnection(state.iceConfig||SHARIKA_ICE_CONFIG);
     state.receivePC.ontrack=event=>addAudioTrack(state,event);
     state.receivePC.addEventListener('connectionstatechange',()=>{
       if(!state.closed&&sfuState===state&&state.receivePC.connectionState==='failed')
@@ -2367,13 +2581,110 @@
       },delay));
     }
   }
-  async function connectSfu(roomId,canPublish) {
+  // Promoting a listener onto a mic seat must retain the existing receiver.
+  // Rebuilding both PeerConnections here interrupts every incoming speaker.
+  async function startSfuPublishing(state) {
+    if(state.closed||sfuState!==state)throw new Error('Voice room changed');
+    const roomId=state.roomId,priorSessions=new Set(state.sessionIds);
+    state.startedAt=Date.now();
+    try {
+      state.media=await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
+      });
+      if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)
+        throw new Error('Voice room changed');
+      state.publishPC=new RTCPeerConnection(state.iceConfig||SHARIKA_ICE_CONFIG);
+      const local=state.media.getAudioTracks()[0];
+      local.enabled=microphoneWanted(roomId);
+      watchSfuSpeaking(state,local,session?.user?.id,true);
+      const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
+      const offer=await state.publishPC.createOffer();
+      await state.publishPC.setLocalDescription(offer);
+      await waitIce(state.publishPC,'publish');
+      const published=await api('POST','/rooms/'+roomId+'/voice/session',{
+        mode:'publish',readiness:'connected-v1'
+      });
+      state.sessionIds.push(published.sessionId);
+      const negotiation=await api('POST','/rooms/'+roomId+'/voice/publish',{
+        sessionId:published.sessionId,
+        sessionDescription:state.publishPC.localDescription,
+        mid:transceiver.mid,trackName:'microphone'
+      });
+      await state.publishPC.setRemoteDescription(negotiation.sessionDescription);
+      state.startedAt=Date.now();
+      // A successful signaling response is not proof that the microphone
+      // media path is connected. Monitor ICE and show/retry a broken uplink.
+      const publisher=state.publishPC;
+      const checkPublisher=()=>{
+        if(state.closed||sfuState!==state||!state.canPublish||
+           state.publishPC!==publisher)return;
+        const status=publisher.connectionState;
+        if(status==='connected'){
+          if(state.recoveryTimer&&sfuTransportHealthy(state)&&
+             !state.subscriptionFailures&&!state.heartbeatFailures){
+            clearTimeout(state.recoveryTimer);state.recoveryTimer=null;
+          }
+          state.disconnectedAt=0;
+          markLocalMicrophone(state.readyPublication&&local.readyState==='live'&&local.enabled);
+        } else if(status==='disconnected'){
+          if(!state.disconnectedAt)state.disconnectedAt=Date.now();
+        } else if(status==='failed'){
+          markLocalMicrophone(false);
+          recoverSfuPublication(state,'publisher connection failed');
+        }
+      };
+      state.publishPC.addEventListener('connectionstatechange',checkPublisher);
+      state.publishPC.addEventListener('iceconnectionstatechange',checkPublisher);
+      local.addEventListener('ended',()=>{
+        if(!state.closed&&state.canPublish)
+          recoverSfuPublication(state,'microphone track ended');
+      },{once:true});
+      if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)
+        throw new Error('Voice room changed');
+      state.canPublish=true;
+      // Do not hold room navigation while ICE connects. SFU publication
+      // discovery is activated only after this peer REALLY connects.
+      waitVoiceConnected(publisher).then(async()=>{
+        if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)return;
+        await api('POST','/rooms/'+roomId+'/voice/ready',{
+          sessionId:published.sessionId
+        });
+        if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)return;
+        state.readyPublication=true;
+        markLocalMicrophone(local.readyState==='live'&&local.enabled);
+        document.getElementById('rf')?.contentWindow?.toast?.('🎙️ Voice connected');
+      }).catch(error=>{
+        if(!state.closed&&sfuState===state){
+          console.warn('Sharika microphone connection:',errText(error));
+          recoverSfuPublication(state,'microphone did not connect',true);
+        }
+      });
+      checkPublisher();
+    }catch(error){
+      const newlyRegistered=state.sessionIds.filter(id=>!priorSessions.has(id));
+      state.sessionIds=state.sessionIds.filter(id=>priorSessions.has(id));
+      for(const id of newlyRegistered)
+        api('POST','/rooms/'+roomId+'/voice/leave',{sessionIds:[id]}).catch(()=>{});
+      // Preserve the healthy listener even if microphone setup fails.
+      state.canPublish=false;
+      const failedMedia=state.media,failedPublisher=state.publishPC;
+      state.media=null;state.publishPC=null;
+      if(failedMedia)for(const track of failedMedia.getTracks()){
+        unwatchSfuSpeaking(state,track);
+        track.stop();
+      }
+      if(failedPublisher)failedPublisher.close();
+      throw error;
+    }
+  }
+  async function connectSfu(roomId,canPublish,iceConfig=SHARIKA_ICE_CONFIG) {
     const state={
-      roomId,closed:false,sessionIds:[],publishPC:null,receivePC:null,
+      roomId,closed:false,iceConfig,sessionIds:[],publishPC:null,receivePC:null,
       media:null,audioElements:new Set(),remoteMids:new Map(),
       speakingContext:null,speakingMeters:new Map(),speakingTimer:null,
-      subscribed:new Set(),subscribeId:null,timer:null,syncing:false,
-      canPublish,subscriptionFailures:0,heartbeatFailures:0,bootstrapTimers:[],
+      subscribed:new Set(),failedPublications:new Map(),subscribeId:null,timer:null,publicationTimer:null,
+      syncing:false,
+      canPublish,readyPublication:false,subscriptionFailures:0,heartbeatFailures:0,bootstrapTimers:[],
       firstSubscriptionAt:0,receiveDisconnectedAt:0,
       startedAt:Date.now(),disconnectedAt:0,recoveryTimer:null,recoveryExhausted:false
     };
@@ -2382,68 +2693,34 @@
     // cannot become an unhandled rejection while mic capture is pending.
     const receiving=startSfuReceiving(state).then(()=>null,error=>error);
     try {
-      if(canPublish) {
-        state.media=await navigator.mediaDevices.getUserMedia({
-          audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
-        });
-        if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
-        state.publishPC=new RTCPeerConnection(SHARIKA_ICE_CONFIG);
-        const local=state.media.getAudioTracks()[0];
-        local.enabled=microphoneWanted(roomId);
-        watchSfuSpeaking(state,local,session?.user?.id,true);
-        const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
-        const offer=await state.publishPC.createOffer();
-        await state.publishPC.setLocalDescription(offer);
-        await waitIce(state.publishPC);
-        const published=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'publish'});
-        state.sessionIds.push(published.sessionId);
-        const negotiation=await api('POST','/rooms/'+roomId+'/voice/publish',{
-          sessionId:published.sessionId,
-          sessionDescription:state.publishPC.localDescription,
-          mid:transceiver.mid,trackName:'microphone'
-        });
-        await state.publishPC.setRemoteDescription(negotiation.sessionDescription);
-        state.startedAt=Date.now();
-        // A successful signaling response is not proof that the microphone
-        // media path is connected. Monitor ICE and show/retry a broken uplink.
-        const checkPublisher=()=>{
-          if(state.closed||sfuState!==state)return;
-          const status=state.publishPC.connectionState;
-          if(status==='connected'){
-            if(state.recoveryTimer&&sfuTransportHealthy(state)&&
-               !state.subscriptionFailures&&!state.heartbeatFailures){
-              clearTimeout(state.recoveryTimer);state.recoveryTimer=null;
-            }
-            state.disconnectedAt=0;
-            markLocalMicrophone(local.readyState==='live'&&local.enabled);
-          } else if(status==='disconnected'){
-            if(!state.disconnectedAt)state.disconnectedAt=Date.now();
-          } else if(status==='failed'){
-            markLocalMicrophone(false);
-            recoverSfuPublication(state,'publisher connection failed');
-          }
-        };
-        state.publishPC.addEventListener('connectionstatechange',checkPublisher);
-        state.publishPC.addEventListener('iceconnectionstatechange',checkPublisher);
-        local.addEventListener('ended',()=>{
-          if(!state.closed)recoverSfuPublication(state,'microphone track ended');
-        },{once:true});
-        checkPublisher();
+      if(canPublish){
+        try{await startSfuPublishing(state);}
+        catch(error){
+          // Mic permission/device failure must never tear down the receiving
+          // connection. The listener can still hear other room members and
+          // retry capture from the mic control.
+          console.warn('Sharika microphone not ready:',errText(error));
+          document.getElementById('rf')?.contentWindow?.toast?.(
+            'Mic unavailable. Tap the microphone to retry.');
+        }
       }
       if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
       const receiveError=await receiving;
       if(receiveError)throw receiveError;
-      // Refresh both presence and publications; do not consume room resources
-      // on a tight per-frame timer.
+      // New microphones must become audible promptly after a seat change.
+      // Publication discovery runs independently of the 8s heartbeat.
+      state.publicationTimer=setInterval(()=>{
+        if(!state.closed)subscribeSfu(state).catch(()=>{});
+      },1500);
       state.timer=setInterval(()=>{
         if(state.closed)return;
+        inspectSfuAudio(state).catch(()=>{});
         api('POST','/rooms/'+roomId+'/voice/heartbeat',{sessionIds:state.sessionIds})
           .then(()=>{state.heartbeatFailures=0;})
           .catch(()=>{
             if(++state.heartbeatFailures>=3)
               recoverSfuPublication(state,'voice session heartbeat lost',true);
           });
-        subscribeSfu(state).catch(()=>{});
         if(state.publishPC){
           const pc=state.publishPC,connection=pc.connectionState;
           const broken=connection==='failed'||pc.iceConnectionState==='failed'||
@@ -2473,7 +2750,7 @@
         if(sfuTransportHealthy(state)&&!state.subscriptionFailures&&
            Date.now()-state.startedAt>30000)voiceRecoveryAttempts=0;
       },8000);
-      return {publishing:canPublish};
+      return {publishing:!!state.readyPublication};
     }catch(error){
       await receiving; // Ensure any in-flight receiver has finished before cleanup.
       await disconnectSfu();
@@ -2511,6 +2788,11 @@
   let voiceOperation=Promise.resolve(),pendingVoice=null,wantedVoiceRoom=null;
   function releaseVoice() {
     wantedVoiceRoom=null;
+    if(voiceRetryTimer){clearTimeout(voiceRetryTimer);voiceRetryTimer=null;}
+    // A new room entry, including returning to the same room, is a fresh
+    // attempt. Do not carry an exhausted retry budget across visits.
+    voiceRecoveryRoom=null;voiceRecoveryAttempts=0;
+    voiceRelayWarningRoom=null;
     clearVoiceSpeakers();
     const task=voiceOperation.catch(()=>{}).then(()=>disconnectVoice());
     voiceOperation=task;
@@ -2523,11 +2805,34 @@
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
       const config=await api('GET','/rooms/'+roomId+'/voice/config');
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      const iceConfig=verifiedIceConfig(config);
+      if(config.provider==='cloudflare_sfu'&&!config.relayAvailable&&
+         voiceRelayWarningRoom!==roomId){
+        voiceRelayWarningRoom=roomId;
+        document.getElementById('rf')?.contentWindow?.toast?.(
+          'Voice relay unavailable. Trying direct connection.');
+      }
+      // When a normal connection has failed, prefer Cloudflare TURN relays
+      // for the next attempt. Never force relay without valid credentials;
+      // a subsequent retry may use the standard direct+relay ICE policy.
+      if(voiceRecoveryAttempts%2===1 &&
+         iceConfig.iceServers.some(server=>server.username))
+        iceConfig.iceTransportPolicy='relay';
+      // A listener's receiver remains connected when they take their first mic
+      // seat. Upgrade only the outbound microphone instead of dropping all audio.
+      const current=sfuState;
+      if(config.provider==='cloudflare_sfu'&&config.publish&&current&&
+         current.roomId===roomId&&!current.closed&&current.receivePC&&
+         current.receivePC.connectionState!=='failed'&&!current.canPublish){
+        current.iceConfig=iceConfig;
+        await startSfuPublishing(current);
+        return {publishing:!!current.readyPublication};
+      }
       await disconnectVoice();
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
       if(config.provider==='cloudflare_sfu') {
         voiceBackend='cloudflare_sfu';
-        return connectSfu(roomId,!!config.publish);
+        return connectSfu(roomId,!!config.publish,iceConfig);
       }
       if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
       // Keep the isolated LiveKit fallback only when explicitly configured.
@@ -2574,22 +2879,34 @@
       if(!result.stale && wantedVoiceRoom===roomId) {
         const track=sfuState?.roomId===roomId?sfuState.media?.getAudioTracks()[0]:null;
         const enabled=!!result.publishing && (track?
-          track.readyState==='live'&&track.enabled :
+          track.readyState==='live'&&track.enabled &&
+          sfuState?.publishPC?.connectionState==='connected' :
           voiceRoomId===roomId&&!!voiceRoom?.localParticipant.isMicrophoneEnabled);
         markLocalMicrophone(enabled);
       }
       return result;
+    } catch(error) {
+      if(wantedVoiceRoom===roomId)
+        scheduleVoiceRetry(roomId,'voice negotiation failed',true);
+      throw error;
     } finally {
       if(pendingVoice?.promise===task)pendingVoice=null;
     }
   }
+  window.addEventListener('online',()=>{
+    const roomId=wantedVoiceRoom;
+    if(!roomId || (sfuState?.roomId===roomId&&sfuTransportHealthy(sfuState)))return;
+    if(voiceRetryTimer){clearTimeout(voiceRetryTimer);voiceRetryTimer=null;}
+    voiceRecoveryAttempts=0;
+    scheduleVoiceRetry(roomId,'network restored',true);
+  });
   // Frame cosmetics cannot restart a voice transport already in progress.
   function ensureVoiceConnected(roomId) {
     if(pendingVoice?.roomId===roomId)return pendingVoice.promise;
     if(sfuState?.roomId===roomId&&!sfuState.closed&&sfuState.receivePC&&
        !sfuState.recoveryExhausted&&
        sfuState.receivePC.connectionState!=='failed')
-      return Promise.resolve({publishing:sfuState.canPublish});
+      return Promise.resolve({publishing:!!sfuState.readyPublication});
     if(voiceRoom&&voiceRoomId===roomId)
       return Promise.resolve({publishing:!!voiceRoom.sharikaPublishAllowed});
     return connectVoice(roomId);
@@ -2627,7 +2944,8 @@
     voiceRecoveryAttempts=0;
     micPreferenceRoom=roomId;micPreferenceEnabled=true;
     const result=await connectVoice(roomId);
-    if(!result.publishing)throw new Error('Microphone connection not ready; tap again');
+    if(!result.publishing && !sfuState?.canPublish)
+      throw new Error('Microphone connection not ready; tap again');
     if(sfuState?.roomId===roomId){
       const track=sfuState.media?.getAudioTracks()[0];
       if(!track||track.readyState!=='live')throw new Error('Microphone capture unavailable');
@@ -2635,7 +2953,7 @@
     } else if(voiceRoomId===roomId&&voiceRoom){
       await voiceRoom.localParticipant.setMicrophoneEnabled(true);
     } else throw new Error('Microphone transport not available');
-    markLocalMicrophone(true);
+    markLocalMicrophone(!!sfuState?.readyPublication || voiceRoomId===roomId);
     return true;
   }
   async function toggleVoice() {
@@ -2649,7 +2967,7 @@
         return restartMicrophone(sfuState.roomId);
       track.enabled=!track.enabled;
       micPreferenceRoom=sfuState.roomId;micPreferenceEnabled=track.enabled;
-      markLocalMicrophone(track.enabled);
+      markLocalMicrophone(track.enabled&&sfuState.readyPublication);
       return track.enabled;
     }
     if(!voiceRoom || !voiceRoomId)
@@ -2787,18 +3105,30 @@
       throw new Error('Check your email verification link, then sign in again');
     const current = await ensureProfile(account, form);
     const local = remember(account, current);
-    refreshNotifications(false);refreshMessagesBadge();registerPushDevice();
-    await Promise.allSettled([reloadWallet(), reloadRooms()]);
-    // The original UI's login function reconstructs A from this object;
-    // carry the real room back so it does not hide the newly loaded own room.
-    local.p.myRoom = window.A.myRoom || null;
+    // Ask for the featured person as soon as Firebase identity and profile
+    // are verified. Waiting for wallet + room lists used to leave the first
+    // splash on screen and then show a second opening much later.
+    const openingTask=openingOnLaunch();
+    // The verified profile is enough to enter Home. Do not block Google
+    // sign-in on wallet, room cards, push permissions or slow polling APIs.
+    // Schedule hydration after enter()/restore() has populated window.A,
+    // otherwise a fast room response can be overwritten by the login UI.
+    const signedInUserId=current.user_id;
+    setTimeout(()=>{
+      if(session?.user?.id!==signedInUserId)return;
+      refreshNotifications(false);
+      refreshMessagesBadge();
+      registerPushDevice();
+      reloadWallet().catch(error=>console.warn('Wallet loading deferred:',errText(error)));
+      reloadRooms().catch(error=>console.warn('Rooms loading deferred:',errText(error)));
+    },0);
+    local.p.myRoom = null;
     local.state = {...balance};
     try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local])); } catch (_) {}
     // Show the real new-member referral offer after the authenticated home loads.
     // The referral newcomer offer follows the one-person 10-second opening,
     // never obscures the featured user or triggers an extra opening request.
-    setTimeout(()=>openingOnLaunch().finally(()=>
-      setTimeout(maybeShowNewUserInviteWelcome,400)),450);
+    openingTask.finally(()=>setTimeout(maybeShowNewUserInviteWelcome,400));
     return local;
   }
 
@@ -2860,21 +3190,44 @@
       return 'Google sign-in configuration needs updating. Contact the Sharika tester.';
     return message;
   }
+  function googleLoginStatus(message, isError=false) {
+    const button=document.getElementById('wg');
+    const container=button?.parentElement;
+    if(!container)return;
+    let status=container.querySelector('#sh-google-login-status');
+    if(!status){
+      status=document.createElement('div');
+      status.id='sh-google-login-status';
+      status.setAttribute('role','status');
+      status.setAttribute('aria-live','polite');
+      status.style.cssText='padding:10px 8px;text-align:center;font-size:13px;font-weight:700;line-height:1.4;color:#ffe9a4;text-shadow:0 2px 6px #000b';
+      container.appendChild(status);
+    }
+    status.style.color=isError?'#ffb8b8':'#ffe9a4';
+    status.textContent=message;
+  }
   async function googleLogin() {
     if(googleLoginBusy)return;
     googleLoginBusy=true;
     const button=document.getElementById('wg');
-    if(button)button.disabled=true;
+    if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
+    googleLoginStatus('Connecting to Google…');
     try {
-      toast('Opening Google account picker…');
       const account=await native('googleSignIn');
+      googleLoginStatus('Google account connected. Opening Sharika…');
       const local=await authenticated(account);
-      window.enter(local,'Signed in to Sharika staging');
-    } catch (error) { toast(googleLoginError(error)); }
-    finally{
+      window.enter(local,'Welcome to Sharika!');
+    } catch (error) {
+      const message=googleLoginError(error);
+      googleLoginStatus(message,true);
+      toast(message);
+    } finally {
       googleLoginBusy=false;
       const currentButton=document.getElementById('wg');
-      if(currentButton)currentButton.disabled=false;
+      if(currentButton){
+        currentButton.disabled=false;
+        currentButton.removeAttribute('aria-busy');
+      }
     }
   }
 
@@ -2894,9 +3247,17 @@
     const notice = document.querySelector('#au .aw > .lbl:last-child');
     if (notice) notice.textContent = 'Accounts use real Firebase Authentication and isolated Cloudflare staging.';
   };
+  // Capture the Google click even if the legacy welcome screen is rebuilt
+  // after startup. This prevents the old demo onclick from silently winning.
   document.addEventListener('click', event => {
-    const button = event.target.closest('button');
+    const button = event.target.closest?.('button');
     if (!button) return;
+    if (button.id === 'wg' && document.getElementById('au')?.contains(button)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      googleLogin();
+      return;
+    }
     if (['wgs','ag'].includes(button.id)) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -2959,7 +3320,8 @@
       return false;
     }
   }
-  let roomsRequestNo=0,lastRoomsRenderSignature=null;
+  let roomsRequestNo=0;
+  let lastRoomsRenderSignature=null;
   async function reloadRooms() {
     if (!session) return;
     // Room creation and settings saves must always request a fresh list.
@@ -4645,6 +5007,35 @@
     },2200);
     pollRoomReactions().catch(()=>{});
     const mic=frame.$ && frame.$('mic');
+    // On actual phones there is no DevTools console. Long-press the mic to
+    // display a private, packet-based voice check without changing its state.
+    if(mic){
+      let diagnosisTimer=null,diagnosisShown=false;
+      mic.addEventListener('pointerdown',()=>{
+        clearTimeout(diagnosisTimer);
+        diagnosisTimer=setTimeout(async()=>{
+          diagnosisShown=true;
+          const state=sfuState?.roomId===room.id?sfuState:null;
+          if(state)await inspectSfuAudio(state);
+          const report=state?.lastMediaStats;
+          const micTrack=state?.media?.getAudioTracks()[0];
+          frame.toast('Voice check: mic '+(micTrack?.enabled?'on':'off')+
+            ', uplink '+(state?.publishPC?.connectionState||'none')+
+            ', downlink '+(state?.receivePC?.connectionState||'none')+
+            ', TX '+(report?.outgoing?.packets??'-')+
+            ', RX '+(report?.incoming?.packets??'-')+
+            ', path '+(report?.outgoingRoute||'unknown'));
+        },750);
+      });
+      for(const event of ['pointerup','pointercancel','pointerleave'])
+        mic.addEventListener(event,()=>clearTimeout(diagnosisTimer));
+      mic.addEventListener('click',event=>{
+        if(diagnosisShown){
+          diagnosisShown=false;
+          event.preventDefault();event.stopImmediatePropagation();
+        }
+      },true);
+    }
     if(mic) mic.onclick=async ()=>{
       try {
         const enabled=await toggleVoice();
@@ -4674,7 +5065,7 @@
         '<div class="row">Tap any occupied guest seat to mute, unmute, remove from mic or kick.</div>');
     }
     const roomGameButton=frame.$ && frame.$('bGame');
-    if(roomGameButton)roomGameButton.onclick=()=>showGameCard(frame.document,true,frame.toast);
+    if(roomGameButton)roomGameButton.onclick=()=>showGameCard(document,true,toast);
     const rewards=frame.$ && frame.$('rrpill');
     if(rewards) rewards.onclick=async()=>{
       frame.open('<h3>🏆 Weekly Top Rooms</h3>'+
@@ -4794,6 +5185,7 @@
       }
       // Room-to-room navigation must release old seats, membership and audio.
       if(prior && prior.id!==room.id) {
+        window.__sharikaRoomGameClose?.();
         if(framePoll){clearInterval(framePoll);framePoll=null;}
         if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
         if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
@@ -4820,12 +5212,18 @@
       }
       heartbeatPresence(room.id);
       const iframe=document.getElementById('rf');
-      iframe.onload=()=>attachFrame(room).catch(error=>toast(errText(error)));
+      // Bind Games independently of the optional room/voice data sync.
+      iframe.onload=()=>{
+        const games=iframe.contentWindow?.document?.getElementById('bGame');
+        if(games)games.onclick=()=>showGameCard(document,true,toast);
+        attachFrame(room).catch(error=>toast(errText(error)));
+      };
       originalOpenRoom(room);
     } catch(error) { toast('Could not join: '+errText(error)); }
   };
   const originalLeaveRoom=window.leaveRoom;
   window.leaveRoom=function() {
+    window.__sharikaRoomGameClose?.();
     const current=window.cur;
     if(framePoll){clearInterval(framePoll);framePoll=null;}
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
@@ -7414,10 +7812,69 @@
     ].join('');
     doc.head.appendChild(style);
   }
+  // A room game runs in the authenticated top-level WebView document.
+  // A file:// game iframe nested under the room's srcdoc frame is unreliable
+  // on Android, and a full-screen sheet hides the active voice room.
+  function ensureRoomGamePortal(doc){
+    let overlay=doc.getElementById('sh-room-game-overlay');
+    if(!overlay){
+      const style=doc.createElement('style');
+      style.id='sh-room-game-style';
+      style.textContent=[
+        '#sh-room-game-overlay{position:fixed;inset:0;z-index:2147482100;',
+        'display:none;align-items:flex-start;justify-content:center;',
+        'padding:calc(7vh + env(safe-area-inset-top,0px)) 8px 4vh;',
+        'box-sizing:border-box;background:#070216ae;backdrop-filter:blur(3px)}',
+        '#sh-room-game-overlay.on{display:flex}',
+        '#sh-room-game-sheet{position:relative;display:flex;flex-direction:column;',
+        'box-sizing:border-box;width:min(96vw,480px);height:min(76dvh,660px);',
+        'max-height:calc(100dvh - 90px);min-height:320px;min-width:0;',
+        'padding:12px 12px 14px;overflow:hidden;border-radius:22px;',
+        'border:2px solid #edc16f;background:linear-gradient(155deg,#351362,#120625);',
+        'box-shadow:inset 0 2px #fff5,0 16px 34px #000b;color:#fff}',
+        '#sh-room-game-sheet h3{margin:7px 32px 10px 0;color:#ffdfa0}',
+        '#sh-room-game-sheet #sh-original-grid{flex:1;min-height:0;',
+        'max-height:none!important;overflow-y:auto!important}',
+        '#sh-room-game-sheet #sh-original-host{flex:1;min-height:0;',
+        'height:auto!important;overflow:hidden}',
+        '#sh-room-game-sheet #sh-original-host iframe{display:block;',
+        'width:100%!important;height:100%!important;border:0}',
+        '#sh-room-game-close{position:absolute;top:9px;right:9px;',
+        'z-index:2;min-width:36px;min-height:36px;border-radius:50%;',
+        'border:1px solid #f5cb77;background:#49165d;color:#fff;',
+        'font-size:21px;cursor:pointer}',
+        '@media(max-height:570px){#sh-room-game-overlay{padding-top:24px}',
+        '#sh-room-game-sheet{height:calc(100dvh - 42px);max-height:none}}'
+      ].join('');
+      doc.head.appendChild(style);
+      overlay=doc.createElement('div');
+      overlay.id='sh-room-game-overlay';
+      overlay.setAttribute('role','dialog');
+      overlay.setAttribute('aria-label','Room mini games');
+      const sheet=doc.createElement('section');
+      sheet.id='sh-room-game-sheet';
+      const close=doc.createElement('button');
+      close.id='sh-room-game-close';
+      close.type='button';
+      close.textContent='×';
+      close.setAttribute('aria-label','Close game and return to voice room');
+      overlay.append(sheet,close);
+      doc.body.appendChild(overlay);
+      const closeGame=()=>{
+        doc.defaultView.__sharikaOriginalGameCleanup?.();
+        overlay.classList.remove('on');
+      };
+      close.onclick=closeGame;
+      overlay.onclick=event=>{if(event.target===overlay)closeGame();};
+      doc.defaultView.__sharikaRoomGameClose=closeGame;
+    }
+    return {overlay,sheet:doc.getElementById('sh-room-game-sheet')};
+  }
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
-    const sheet=doc.getElementById(insideRoom?'sheet':'sh');
-    const overlay=doc.getElementById(insideRoom?'bg':'shb');
+    const portal=insideRoom?ensureRoomGamePortal(doc):null;
+    const sheet=portal?.sheet||doc.getElementById('sh');
+    const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
     function catalog(){
@@ -7568,7 +8025,7 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
-      overlay.classList.add('sh-original-fullscreen');
+      if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div>'+
         '<button id="sh-original-back" type="button" '+
         'style="padding:8px 14px;border:1px solid #d4af37;border-radius:10px;'+
@@ -7945,6 +8402,8 @@
     }finally{
       // Signed-out users see real Firebase login, signed-in users their D1
       // home; neither ever sees the old unverified demo between the two.
+      if(!session)
+        document.getElementById('sp')?.classList.remove('sharika-opening-pending');
       finishVerifiedStartup();
     }
   }

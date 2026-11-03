@@ -31,3 +31,44 @@ test('new royal styles are present before the app or room is shown',()=>{
   assert.match(activity,/view\.postDelayed\(\(\) -> \{/);
   assert.match(activity,/5500\)/);
 });
+
+test('golden theme unifies staging screens while keeping chosen artwork and room themes',()=>{
+  const sheet=readFileSync(new URL('royal-winged-theme.css',android),'utf8');
+  const required=[
+    'html.royal-root .app.golden-home',
+    'html.royal-root .app.royal-profile .nav .ni span',
+    'html.royal-root #v-rank',
+    'html.royal-root #v-msg',
+    'html.royal-root #sh.sharika-daily-3d',
+    'html.royal-root #sh-invite-page',
+    'html.royal-root #sharika-seller-content .shw-hero',
+    'html.royal-root .sh-bond-panel',
+    'html.royal-root .sh-notify-panel',
+    'html.royal-root #sh-room-game-sheet',
+    'html.royal-root .auth',
+    'html.royal-room .app .rb'
+  ];
+  for(const selector of required)
+    assert.ok(sheet.includes(selector),selector+' missing golden treatment');
+  assert.match(sheet,/\.app\.golden-home\{[\s\S]*?champagne-home-background\.webp/);
+  assert.match(sheet,/\.app\.royal-profile \.nav \.ni\[data-v="me"\] span/);
+  assert.match(sheet,/html\.royal-room\{[\s\S]*?--gold:#ffdb8d/);
+  assert.doesNotMatch(sheet,/html\.royal-room \.app\.hasbg\s*\{[\s\S]{0,150}background-image/);
+  assert.match(sheet,/prefers-reduced-motion:reduce/);
+  assert.match(sheet,/focus-visible/);
+});
+
+test('gold follow-up includes SVIP, recharge, branded opening and game catalog',()=>{
+  const sheet=readFileSync(new URL('royal-winged-theme.css',android),'utf8');
+  for(const selector of [
+    'html.royal-root #sh-svip-royal',
+    'html.royal-root #sh-svip-royal .svip-card',
+    'html.royal-root #sh-svip-royal .svip-main-btn',
+    'html.royal-root #rcp .rch',
+    'html.royal-root #rcp .pk button',
+    'html.royal-root #sh-opening',
+    'html.royal-root #sh-original-grid>button'
+  ])assert.ok(sheet.includes(selector),selector);
+  assert.match(sheet,/\.sh-invite-royal-banner\{[\s\S]*?main-profile-bg\.jpg/);
+  assert.doesNotMatch(sheet,/html\.royal-room \.app\.hasbg\s*\{[\s\S]{0,150}background-image/);
+});

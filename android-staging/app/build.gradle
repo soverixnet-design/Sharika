@@ -60,7 +60,28 @@ dependencies {
 // adapter replaces only connection.js in the packaged copy.
 def sharikaUiAssets = layout.buildDirectory.dir('generated/sharika-ui-assets')
 tasks.register('prepareSharikaUiAssets', Copy) {
-    from(rootProject.file('../app/index.html'))
+    from(rootProject.file('../app/index.html')) {
+        // Package the final Royal CSS before WebView's first paint. Injecting
+        // it only from onPageFinished briefly revealed the retired base UI.
+        // This filter affects the APK copy, never the owner's web template.
+        // Bundle the theme controller before the original connection script.
+        filter { String line ->
+            line.replace('<html lang="en">',
+                '<html lang="en" class="royal-premium royal-root">')
+                .replace('<link rel="stylesheet" href="./royal-profile.css">',
+                    '<link rel="stylesheet" href="./royal-profile.css">\n' +
+                    '<link id="sharika-royal-premium-style" rel="stylesheet" href="./royal-premium.css">\n' +
+                    '<link id="sharika-winged-theme-style" rel="stylesheet" href="./royal-winged-theme.css">\n' +
+                    '<style id="sharika-royal-splash">' +
+                    '#sp{background:linear-gradient(180deg,#230c48bb,#070315ef),url(./royal-winged-bg.jpg) center/cover!important;color:#ffebad!important}' +
+                    '#sp>img.l3i{width:160px;height:160px;border:5px solid #eabb70;border-radius:38px;animation:none;box-shadow:0 8px 40px #000b,0 0 32px #e6a34488}' +
+                    '#sp>b{font-size:26px!important;text-shadow:0 3px 12px #10031e}' +
+                    '</style>')
+                .replace('<script src="./connection.js"></script>',
+                    '<script id="sharika-royal-ui" src="./royal-premium.js"></script>' +
+                    '<script src="./connection.js"></script>')
+        }
+    }
     // Owner-provided royal profile art; keep the original JPEG and PNG intact.
     from(rootProject.file('../app/main-profile-bg.jpg'))
     from(rootProject.file('../app/main-profile-icons.webp'))

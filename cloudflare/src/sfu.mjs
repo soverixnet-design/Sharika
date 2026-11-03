@@ -35,6 +35,47 @@ async function sfu(env, method, path, data) {
   }
   return value;
 }
+// TURN credentials are generated server-side only for verified room members.
+// STUN is kept as a degraded fallback, but callers must know when TURN failed.
+const STUN_ICE=[{urls:['stun:stun.cloudflare.com:3478']}];
+const CLOUD_ICE=/^(?:stun:stun\.cloudflare\.com:3478|turn:turn\.cloudflare\.com:(?:3478|443|80)\?transport=(?:udp|tcp)|turns:turn\.cloudflare\.com:(?:5349|443)\?transport=tcp)$/;
+async function realtimeIceServers(env) {
+  if(!env.REALTIME_TURN_KEY_ID||!env.REALTIME_TURN_API_TOKEN)
+    return {iceServers:STUN_ICE,relayAvailable:false};
+  try {
+    const result=await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/'+
+      encodeURIComponent(env.REALTIME_TURN_KEY_ID)+'/credentials/generate-ice-servers',{
+        method:'POST',
+        headers:{authorization:'Bearer '+env.REALTIME_TURN_API_TOKEN,
+          'content-type':'application/json'},
+        body:JSON.stringify({ttl:86400}),
+        // On cellular networks a missing relay is worse than a bounded extra
+        // signaling delay. The previous 2s timeout silently downgraded to STUN.
+        signal:AbortSignal.timeout(5000)
+      });
+    if(!result.ok)throw new Error('turn_credential_unavailable');
+    const data=await result.json();
+    const servers=[];
+    for(const item of Array.isArray(data?.iceServers)?data.iceServers.slice(0,5):[]){
+      const urls=(Array.isArray(item?.urls)?item.urls:[item?.urls])
+        .filter(url=>typeof url==='string'&&CLOUD_ICE.test(url)).slice(0,8);
+      if(!urls.length)continue;
+      if(urls.some(url=>url.startsWith('turn'))){
+        if(typeof item.username!=='string'||!item.username||
+          item.username.length>256||typeof item.credential!=='string'||
+          !item.credential||item.credential.length>256)continue;
+        servers.push({urls,username:item.username,credential:item.credential});
+      }else servers.push({urls});
+    }
+    if(!servers.some(item=>item.username))throw new Error('turn_credential_invalid');
+    return {iceServers:servers,relayAvailable:true};
+  }catch(error){
+    // Do not log the response, TURN credentials, or bearer token.
+    console.warn('sharika_turn_credentials_unavailable',error?.name==='TimeoutError'?'timeout':'failed');
+    return {iceServers:STUN_ICE,relayAvailable:false};
+  }
+}
+
 function cleanSid(x) { return typeof x === 'string' && SESSION_ID.test(x) ? x : null; }
 function checkTracks(result, size) {
   if (!result || !Array.isArray(result.tracks) || result.tracks.length !== size ||
@@ -84,7 +125,8 @@ export async function handleVoiceOperation({
     (member.seat_no !== null && Number(member.muted) === 0);
   if (operation === 'config' && request.method === 'GET') {
     if (sfuAvailable(env))
-      return reply({provider:'cloudflare_sfu', publish:canPublish}, 200, cors);
+      return reply({provider:'cloudflare_sfu', publish:canPublish,
+        ...await realtimeIceServers(env)}, 200, cors);
     if (env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET && /^wss:\/\//.test(env.LIVEKIT_URL || ''))
       return reply({provider:'livekit',publish:canPublish}, 200, cors);
     return fail('voice_not_configured', 503, cors);
@@ -99,7 +141,11 @@ export async function handleVoiceOperation({
     const made = await sfu(env, 'POST', '/sessions/new');
     const sessionId = cleanSid(made.sessionId);
     if (!sessionId) return fail('sfu_invalid_session', 502, cors);
-    await doRoom.register(uid, sessionId, body.mode === 'publish');
+    // New clients explicitly opt into the safer connected-only readiness
+    // handshake. Older APKs cannot send /voice/ready, so keep their already
+    // negotiated publications discoverable during the app rollout.
+    await doRoom.register(uid, sessionId, body.mode === 'publish',
+      body.mode==='publish'&&body.readiness==='connected-v1');
     return reply({sessionId, publish:body.mode === 'publish'},201,cors);
   }
   if (operation === 'publications' && request.method === 'GET') {
@@ -139,8 +185,22 @@ export async function handleVoiceOperation({
       }),1);
     if (!description(response.sessionDescription,'answer'))
       return fail('sfu_invalid_answer',502,cors);
-    await doRoom.markPublished(uid,sessionId,'microphone');
+    // Connected-v1 clients activate discovery only from /voice/ready. Legacy
+    // APKs predate that endpoint and must remain audible during rollout; the
+    // subscriber still isolates stale tracks if an old client never connects.
+    if(!owned.requiresReady &&
+       !await doRoom.markPublished(uid,sessionId,'microphone'))
+      return fail('voice_session_not_found',404,cors);
     return reply({sessionDescription:response.sessionDescription},200,cors);
+  }
+  if (operation === 'ready' && request.method === 'POST') {
+    if (!canPublish || !owned.canPublish)
+      return fail('voice_publish_forbidden',403,cors);
+    // The Android publisher reports ready only after the WebRTC peer reaches
+    // connected. A stale or never-connected publisher cannot poison discovery.
+    if (!await doRoom.markPublished(uid,sessionId,'microphone'))
+      return fail('voice_session_not_found',404,cors);
+    return reply({ok:true},200,cors);
   }
   if (operation === 'subscribe' && request.method === 'POST') {
     const desired = body.publications;

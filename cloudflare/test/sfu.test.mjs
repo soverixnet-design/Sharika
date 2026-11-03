@@ -9,7 +9,7 @@ const owner = {owner_id:'u1'};
 const member = {seat_no:null,muted:0};
 const room = {
   async register() {return true;},
-  async owns(uid,sid) {return sid==='session-one' ? {canPublish:true}:null;},
+  async owns(uid,sid) {return sid==='session-one' ? {canPublish:true,requiresReady:true}:null;},
   async permittedPublications() {return [];},
   async publications() {return [];},
   async heartbeat() {return true;},
@@ -31,10 +31,36 @@ test('cloudflare configuration never exposes the app secret',async()=>{
   const r=await handleVoiceOperation({...base,operation:'config',
     request:req('GET','config')});
   assert.equal(r.status,200);
-  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true});
+  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true,
+    iceServers:[{urls:['stun:stun.cloudflare.com:3478']}],relayAvailable:false});
   const absent=await handleVoiceOperation({...base,env:{},operation:'config',
     request:req('GET','config')});
   assert.equal(absent.status,503);
+});
+test('Cloudflare TURN credentials reach verified phones with an explicit relay status',async()=>{
+  const old=globalThis.fetch;
+  globalThis.fetch=async(url,options)=>{
+    assert.match(String(url),/\/credentials\/generate-ice-servers$/);
+    assert.equal(options.headers.authorization,'Bearer turn-private-token');
+    assert.equal(JSON.parse(options.body).ttl,86400);
+    return Response.json({iceServers:[
+      {urls:['stun:stun.cloudflare.com:3478']},
+      {urls:['turn:turn.cloudflare.com:3478?transport=udp',
+        'turns:turn.cloudflare.com:443?transport=tcp'],
+        username:'temporary-username',credential:'temporary-password'}
+    ]},{status:201});
+  };
+  try{
+    const r=await handleVoiceOperation({...base,
+      env:{...env,REALTIME_TURN_KEY_ID:'turn-key',REALTIME_TURN_API_TOKEN:'turn-private-token'},
+      operation:'config',request:req('GET','config')});
+    assert.equal(r.status,200);
+    const config=await r.json();
+    assert.equal(config.relayAvailable,true);
+    assert.equal(config.iceServers.length,2);
+    assert.equal(config.iceServers[1].username,'temporary-username');
+    assert.equal(JSON.stringify(config).includes('turn-private-token'),false);
+  }finally{globalThis.fetch=old;}
 });
 test('users without a mic seat cannot publish or mint a publisher session',async()=>{
   const r=await handleVoiceOperation({...base,uid:'u2',operation:'session',
@@ -46,7 +72,8 @@ test('unmuted guest on an open mic seat can publish without any invitation',asyn
   const r=await handleVoiceOperation({...base,uid:'u2',member:{seat_no:3,muted:0},
     operation:'config',request:req('GET','config')});
   assert.equal(r.status,200);
-  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true});
+  assert.deepEqual(await r.json(),{provider:'cloudflare_sfu',publish:true,
+    iceServers:[{urls:['stun:stun.cloudflare.com:3478']}],relayAvailable:false});
 });
 test('listener and muted seated guest cannot publish microphone audio',async()=>{
   for(const guest of [{seat_no:null,muted:0},{seat_no:3,muted:1}]){
@@ -75,19 +102,91 @@ test('subscriber cannot request a publication absent from the room',async()=>{
 });
 test('new SFU session is owner-scoped and credentials remain server-side',async()=>{
   const old=globalThis.fetch;
+  const readiness=[];
+  const registerRoom={...room,async register(uid,sid,canPublish,requiresReady){
+    readiness.push(requiresReady);return true;
+  }};
   globalThis.fetch=async(url,options)=>{
     assert.match(String(url),/\/v1\/apps\/staging-app\/sessions\/new$/);
     assert.equal(options.headers.Authorization,'Bearer private-do-not-expose');
     return Response.json({sessionId:'session-one'});
   };
   try {
-    const r=await handleVoiceOperation({...base,operation:'session',
+    const r=await handleVoiceOperation({...base,
+      env:{...env,VOICE_ROOMS:{getByName:()=>registerRoom}},operation:'session',
       request:req('POST','session',{mode:'publish'})});
     assert.equal(r.status,201);
     const result=await r.json();
     assert.equal(result.sessionId,'session-one');
     assert.equal(JSON.stringify(result).includes('private-do-not-expose'),false);
+    const modern=await handleVoiceOperation({...base,
+      env:{...env,VOICE_ROOMS:{getByName:()=>registerRoom}},operation:'session',
+      request:req('POST','session',{mode:'publish',readiness:'connected-v1'})});
+    assert.equal(modern.status,201);
+    assert.deepEqual(readiness,[false,true]);
   }finally{globalThis.fetch=old;}
+});
+
+test('publisher is discovered only after ICE-connected ready signal',async()=>{
+  const old=globalThis.fetch;
+  let readyCalls=0;
+  const roomWithReady={...room,
+    async markPublished(uid,sessionId,trackName){
+      assert.equal(uid,'u1');assert.equal(sessionId,'session-one');
+      assert.equal(trackName,'microphone');readyCalls++;return true;
+    }};
+  globalThis.fetch=async()=>Response.json({
+    sessionDescription:{type:'answer',sdp:'v=0\r\n'+'a'.repeat(70)},
+    tracks:[{mid:'0'}]
+  });
+  try{
+    const publish=await handleVoiceOperation({...base,
+      env:{...env,VOICE_ROOMS:{getByName:()=>roomWithReady}},
+      operation:'publish',request:req('POST','publish',{
+        sessionId:'session-one',
+        sessionDescription:{type:'offer',sdp:'v=0\r\n'+'a'.repeat(70)},
+        mid:'0',trackName:'microphone'
+      })});
+    assert.equal(publish.status,200);
+    assert.equal(readyCalls,0,'an SDP answer is not an active microphone');
+    const ready=await handleVoiceOperation({...base,
+      env:{...env,VOICE_ROOMS:{getByName:()=>roomWithReady}},
+      operation:'ready',request:req('POST','ready',{sessionId:'session-one'})});
+    assert.equal(ready.status,200);
+    assert.equal(readyCalls,1);
+  }finally{globalThis.fetch=old;}
+});
+
+test('legacy APKs without /voice/ready remain audible while new clients use ready gating',async()=>{
+  const old=globalThis.fetch;
+  let readyCalls=0;
+  const legacyRoom={...room,
+    async owns(){return {canPublish:true,requiresReady:false};},
+    async markPublished(uid,sid,track){
+      assert.equal(track,'microphone');readyCalls++;return true;
+    }};
+  globalThis.fetch=async()=>Response.json({
+    sessionDescription:{type:'answer',sdp:'v=0\r\n'+'a'.repeat(70)},
+    tracks:[{mid:'0'}]
+  });
+  try{
+    const result=await handleVoiceOperation({...base,
+      env:{...env,VOICE_ROOMS:{getByName:()=>legacyRoom}},
+      operation:'publish',request:req('POST','publish',{
+        sessionId:'session-one',
+        sessionDescription:{type:'offer',sdp:'v=0\r\n'+'a'.repeat(70)},
+        mid:'0',trackName:'microphone'
+      })});
+    assert.equal(result.status,200);
+    assert.equal(readyCalls,1);
+  }finally{globalThis.fetch=old;}
+});
+
+test('unseated guest cannot activate somebody else\'s microphone',async()=>{
+  const r=await handleVoiceOperation({...base,uid:'u2',
+    operation:'ready',request:req('POST','ready',{sessionId:'session-one'})});
+  assert.equal(r.status,403);
+  assert.equal((await r.json()).error,'voice_publish_forbidden');
 });
 
 test('owner moderation force-closes verified local microphone MIDs, not remote tracks',async()=>{
