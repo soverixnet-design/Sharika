@@ -115,11 +115,6 @@ public final class SharikaActivity extends Activity {
     private CancellationSignal googleCancellation;
     private Runnable googleTimeout;
     private String pendingInviteCode = "";
-    // Firebase reload contacts the identity server; refreshing on every
-    // 1.6-second live-game poll causes overlapping network calls.
-    private volatile String recentlyVerifiedUserId;
-    private volatile long lastVerifiedReloadMs;
-
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -619,6 +614,15 @@ public final class SharikaActivity extends Activity {
                     sendResult(id, result(true, identity(null), null));
                     return;
                 }
+                // A verified Firebase session is already durable. Calling
+                // reload() on every app launch can hang or throw during a
+                // temporary network outage and incorrectly show login again.
+                if (signedIn.isEmailVerified()) {
+                    sendResult(id, result(true, identity(signedIn), null));
+                    return;
+                }
+                // Unverified email accounts still need to refresh the flag
+                // after the member taps the verification email link.
                 signedIn.reload().addOnCompleteListener(this, task -> {
                     FirebaseUser user = auth.getCurrentUser();
                     if (!task.isSuccessful() || user == null)
@@ -998,15 +1002,14 @@ public final class SharikaActivity extends Activity {
         if (user == null) {
             sendResult(id, result(false,null,"login_required")); return;
         }
-        // Check verified email with Firebase regularly, not on every live-game
-        // state poll. Every individual API call still gets a Firebase ID token;
-        // the Worker validates that token and the user on each request.
-        long now = android.os.SystemClock.elapsedRealtime();
-        if (user.getUid().equals(recentlyVerifiedUserId)
-            && user.isEmailVerified() && now - lastVerifiedReloadMs < 60000L) {
+        // A Firebase-issued ID token is validated by the Worker for every
+        // API request. Do not also block all wallet/room requests on a
+        // periodic network reload; that made a successful login appear lost.
+        if (user.isEmailVerified()) {
             requestStagingToken(id, method, path, data, user);
             return;
         }
+        // An email/password member may have verified since the last app use.
         user.reload().addOnCompleteListener(this, reload -> {
             FirebaseUser current = auth.getCurrentUser();
             if (!reload.isSuccessful() || current == null) {
@@ -1015,8 +1018,6 @@ public final class SharikaActivity extends Activity {
             if (!current.isEmailVerified()) {
                 sendResult(id, result(false,null,"email_verification_required")); return;
             }
-            recentlyVerifiedUserId = current.getUid();
-            lastVerifiedReloadMs = android.os.SystemClock.elapsedRealtime();
             requestStagingToken(id, method, path, data, current);
         });
     }
