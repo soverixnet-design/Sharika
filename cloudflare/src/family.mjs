@@ -17,6 +17,8 @@ function errorResponse(fail,cors,error){
   const code=String(error?.message||error);
   if(/UNIQUE constraint failed|family_grant_conflict|FOREIGN KEY constraint/.test(code))
     return fail('family_conflict',409,cors);
+  if(/family_owner_transfer_invalid|already_in_family|family_activity_immutable/.test(code))
+    return fail('family_management_conflict',409,cors);
   if(/crystal_insufficient|seller_not_approved|seller_stock_limit|invalid_transfer_transition|family_full|family_join_cooldown/.test(code))
     return fail(code.includes('crystal_insufficient')?'crystal_insufficient':
       code.includes('seller')?'seller_unavailable':code.includes('family_full')?'family_full':code.includes('family_join_cooldown')?'family_join_cooldown':'transfer_conflict',409,cors);
@@ -70,10 +72,16 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
       'JOIN sharika_users u ON u.auth_uid=m.user_uid WHERE m.family_id=? '+
       "ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'co_leader' THEN 1 ELSE 2 END, m.joined_at LIMIT 200"
     ).bind(family.id).all()).map(m=>({...m,public_id:showId(m.public_no),public_no:undefined})):[];
+    const applications=family?[]:rows(await db.prepare(
+      'SELECT r.id,r.family_id,f.name AS family_name,r.state,r.created_at '+
+      'FROM sharika_family_join_requests r JOIN sharika_families f ON f.id=r.family_id '+
+      'WHERE r.applicant_uid=? ORDER BY r.id DESC LIMIT 20'
+    ).bind(uid).all());
     return reply({family:family?{
       id:family.id,name:family.name,level:family.level,status:family.status,role:family.role,
       owner_id:showId(family.owner_no),owner_name:family.owner_name,
       bd_id:showId(family.bd_no),member_count:family.member_count,members:memberList}:null,
+      applications,
       bd:{active:!!bd?.active,can_grant:!!bd?.active&&!!bd?.can_grant},
       wallet:await crystalSummary(db,uid),
       policy:{enabled:!!current.active,owner_percent:current.owner_bps/100,
@@ -161,7 +169,19 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
     const found=await db.prepare(
       'SELECT id,state FROM sharika_family_join_requests WHERE family_id=? AND applicant_uid=?'
     ).bind(family.id,uid).first();
-    if(found)return reply({request_id:found.id,state:found.state,duplicate:true},200,cors);
+    if(found){
+      if(found.state==='pending')
+        return reply({request_id:found.id,state:'pending',duplicate:true},200,cors);
+      try{
+        const saved=await db.prepare(
+          "UPDATE sharika_family_join_requests SET state='pending',"+
+          "created_at=datetime('now'),reviewed_at=NULL WHERE id=? AND applicant_uid=? "+
+          "AND family_id=? AND state IN ('accepted','rejected')"
+        ).bind(found.id,uid,family.id).run();
+        if(!saved.meta?.changes)return fail('family_join_conflict',409,cors);
+        return reply({request_id:found.id,state:'pending',reopened:true},200,cors);
+      }catch(e){return errorResponse(fail,cors,e);}
+    }
     await db.prepare(
       'INSERT OR IGNORE INTO sharika_family_join_requests(family_id,applicant_uid) VALUES(?,?)'
     ).bind(family.id,uid).run();
@@ -211,6 +231,89 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
       ).bind(mine.id,application.applicant_uid).first();
       if(acceptance[2]==='accept'&&!member)return fail('family_full',409,cors);
       return reply({ok:true,decision:acceptance[2]},200,cors);
+    }catch(e){return errorResponse(fail,cors,e);}
+  }
+  // Ownership may only move to a current member. A D1 trigger updates both
+  // roles and writes an immutable activity record in the same SQL statement.
+  if(path==='/api/v1/family/ownership/transfer'&&request.method==='POST'){
+    const mine=await familyFor(db,uid);
+    if(!mine||mine.role!=='leader')return fail('family_leader_only',403,cors);
+    if(mine.status!=='active')return fail('family_suspended',403,cors);
+    let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
+    if(typeof body.new_owner_public_id!=='string'||!ID.test(body.new_owner_public_id))
+      return fail('invalid_family_member',400,cors);
+    const next=await db.prepare(
+      'SELECT m.user_uid FROM sharika_family_members m '+
+      'JOIN sharika_users u ON u.auth_uid=m.user_uid '+
+      "WHERE m.family_id=? AND u.public_no=? AND u.status='active'"
+    ).bind(mine.id,Number(body.new_owner_public_id)).first();
+    if(!next||next.user_uid===uid)return fail('family_transfer_target_invalid',409,cors);
+    try{
+      const changed=await db.prepare(
+        "UPDATE sharika_families SET owner_uid=? WHERE id=? AND owner_uid=? AND status='active' "+
+        'AND EXISTS(SELECT 1 FROM sharika_family_members WHERE family_id=? AND user_uid=?)'
+      ).bind(next.user_uid,mine.id,uid,mine.id,next.user_uid).run();
+      if(!changed.meta?.changes)return fail('family_management_conflict',409,cors);
+      return reply({transferred:true,new_owner_public_id:body.new_owner_public_id},200,cors);
+    }catch(e){return errorResponse(fail,cors,e);}
+  }
+  const roleAction=/^\/api\/v1\/family\/members\/([0-9]{8})\/role$/.exec(path);
+  if(roleAction&&request.method==='POST'){
+    const mine=await familyFor(db,uid);
+    if(!mine||mine.role!=='leader')return fail('family_leader_only',403,cors);
+    if(mine.status!=='active')return fail('family_suspended',403,cors);
+    let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
+    if(!['co_leader','elder','member'].includes(body.role))
+      return fail('invalid_family_role',400,cors);
+    const target=await db.prepare(
+      'SELECT m.user_uid,m.role FROM sharika_family_members m '+
+      'JOIN sharika_users u ON u.auth_uid=m.user_uid WHERE m.family_id=? AND u.public_no=?'
+    ).bind(mine.id,Number(roleAction[1])).first();
+    if(!target||target.user_uid===uid||target.role==='leader')
+      return fail('family_member_not_manageable',403,cors);
+    if(target.role===body.role)return reply({saved:true,unchanged:true},200,cors);
+    try{
+      const changed=await db.prepare(
+        'UPDATE sharika_family_members SET role=? WHERE family_id=? AND user_uid=? '+
+        "AND role!='leader' AND EXISTS(SELECT 1 FROM sharika_families "+
+        "WHERE id=? AND owner_uid=? AND status='active')"
+      ).bind(body.role,mine.id,target.user_uid,mine.id,uid).run();
+      if(!changed.meta?.changes)return fail('family_management_conflict',409,cors);
+      return reply({saved:true,member_public_id:roleAction[1],role:body.role},200,cors);
+    }catch(e){return errorResponse(fail,cors,e);}
+  }
+  const removeAction=/^\/api\/v1\/family\/members\/([0-9]{8})\/remove$/.exec(path);
+  if(removeAction&&request.method==='POST'){
+    const mine=await familyFor(db,uid);
+    if(!mine||mine.role!=='leader')return fail('family_leader_only',403,cors);
+    if(mine.status!=='active')return fail('family_suspended',403,cors);
+    const target=await db.prepare(
+      'SELECT m.user_uid,m.role FROM sharika_family_members m '+
+      'JOIN sharika_users u ON u.auth_uid=m.user_uid WHERE m.family_id=? AND u.public_no=?'
+    ).bind(mine.id,Number(removeAction[1])).first();
+    if(!target||target.user_uid===uid||target.role==='leader')
+      return fail('family_member_not_manageable',403,cors);
+    try{
+      // Audit + removal commit together. Existing leave trigger enforces the
+      // same 24-hour cooldown after a removal as after a voluntary exit.
+      await db.batch([
+        db.prepare(
+          "INSERT INTO sharika_family_activity(family_id,actor_uid,subject_uid,action,details_json) "+
+          "SELECT ?,?,?, 'member_remove',json_object('previous_role',role) "+
+          "FROM sharika_family_members WHERE family_id=? AND user_uid=? AND role!='leader' "+
+          "AND EXISTS(SELECT 1 FROM sharika_families WHERE id=? AND owner_uid=? AND status='active')"
+        ).bind(mine.id,uid,target.user_uid,mine.id,target.user_uid,mine.id,uid),
+        db.prepare(
+          "DELETE FROM sharika_family_members WHERE family_id=? AND user_uid=? "+
+          "AND role!='leader' AND EXISTS(SELECT 1 FROM sharika_families "+
+          "WHERE id=? AND owner_uid=? AND status='active')"
+        ).bind(mine.id,target.user_uid,mine.id,uid)
+      ]);
+      const still=await db.prepare(
+        'SELECT 1 FROM sharika_family_members WHERE family_id=? AND user_uid=?'
+      ).bind(mine.id,target.user_uid).first();
+      if(still)return fail('family_management_conflict',409,cors);
+      return reply({removed:true,member_public_id:removeAction[1]},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
   if(path==='/api/v1/family/leave'&&request.method==='POST'){
@@ -339,6 +442,32 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
     ).bind(uid,'family_bd_permission',JSON.stringify({
       public_id:body.public_id,active:body.active,can_grant:body.can_grant})).run();
     return reply({saved:true},200,cors);
+  }
+  const familyStatus=/^family\/([1-9][0-9]{0,9})\/status$/.exec(operation);
+  if(familyStatus&&request.method==='POST'){
+    let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
+    if(!['active','suspended'].includes(body.status))
+      return fail('invalid_family_status',400,cors);
+    const existing=await db.prepare('SELECT id,owner_uid,status FROM sharika_families WHERE id=?')
+      .bind(Number(familyStatus[1])).first();
+    if(!existing)return fail('family_unavailable',404,cors);
+    if(existing.status===body.status)return reply({saved:true,unchanged:true},200,cors);
+    try{
+      await db.batch([
+        db.prepare('UPDATE sharika_families SET status=? WHERE id=? AND status=?')
+          .bind(body.status,existing.id,existing.status),
+        db.prepare(
+          'INSERT INTO sharika_family_activity(family_id,actor_uid,subject_uid,action,details_json) '+
+          'VALUES(?,?,?,?,?)'
+        ).bind(existing.id,uid,existing.owner_uid,'family_status',
+          JSON.stringify({from:existing.status,to:body.status})),
+        db.prepare(
+          'INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)'
+        ).bind(uid,'family_status',JSON.stringify({
+          family_id:existing.id,from:existing.status,to:body.status}))
+      ]);
+      return reply({saved:true,family_id:existing.id,status:body.status},200,cors);
+    }catch(e){return errorResponse(fail,cors,e);}
   }
   if(operation==='family/policy'&&request.method==='PATCH'){
     let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}

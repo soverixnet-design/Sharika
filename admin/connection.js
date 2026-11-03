@@ -2948,10 +2948,13 @@
           '<label><input type="checkbox" id="sh-fam-bd-active" checked> BD active</label>'+
           '<label><input type="checkbox" id="sh-fam-bd-grant" checked> Can grant Families</label>'+
           '<button class="btn" id="sh-fam-bd-save">Save BD Permission</button>'):'')+
-      box('👑 Registered Families',table(['Family','Owner','BD','Members','State'],
+      box('👑 Registered Families',table(['Family','Owner','BD','Members','State','Action'],
         (data.families||[]).map(x=>[
           esc(x.name)+' · #'+esc(x.id),esc(x.owner_id),esc(x.bd_id),
-          esc(x.member_count),esc(x.status)])))+
+          esc(x.member_count),esc(x.status),
+          isSuper?'<button class="btn s" data-sh-fam-status="'+esc(x.id)+
+            '" data-next="'+(x.status==='active'?'suspended':'active')+'">'+
+            (x.status==='active'?'Suspend':'Reactivate')+'</button>':'—'])))+
       box('💼 BD Accounts',table(['BD ID','Name','Active','Can Grant'],
         (data.agents||[]).map(x=>[esc(x.public_id),esc(x.name),
           x.active?'Yes':'No',x.can_grant?'Yes':'No'])))+
@@ -3003,6 +3006,14 @@
         trySave('POST','family/transfers/'+id+'/'+(yes?'approve':'reject'),{},
           yes?'Approve conversion of verified Crystal to seller coin stock?':
               'Reject this Crystal transfer and release the reserved balance?');
+      };
+    });
+    parent.querySelectorAll('[data-sh-fam-status]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.shFamStatus,status=button.dataset.next;
+        trySave('POST','family/'+id+'/status',{status},
+          (status==='suspended'?'Suspend':'Reactivate')+' Family #'+id+
+          '? Suspended Families receive no new Gift commissions.');
       };
     });
     byId('sh-fam-sync')?.addEventListener('click',()=>trySave('POST','family/sheets/sync',{},

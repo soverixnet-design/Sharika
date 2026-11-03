@@ -2183,8 +2183,11 @@
     'box-shadow:inset 0 1px 1px #fff3,0 8px 20px #0007}',
     '#sh-family-panel .sh-fam-stat{font-size:24px;font-weight:900;color:#ffe59e}',
     '#sh-family-panel .sh-fam-note{font-size:12px;opacity:.8;line-height:1.5}',
-    '#sh-family-panel input{display:block;width:100%;padding:12px;border:1px solid #be8c47;',
+    '#sh-family-panel input,#sh-family-panel select{display:block;width:100%;padding:12px;border:1px solid #be8c47;',
     'border-radius:12px;background:#160f1c;color:white;margin:7px 0 11px;font-size:15px}',
+    '#sh-family-panel details{margin-top:6px;padding:7px;border:1px solid #795c32;border-radius:10px}',
+    '#sh-family-panel summary{color:#ffe09f;cursor:pointer;font-weight:700}',
+    '#sh-family-panel .sh-fam-status{color:#ffd990;font-weight:700}',
     '#sh-family-panel button{border:1px solid #f1c777;border-radius:12px;padding:11px 15px;',
     'font-weight:800;background:linear-gradient(#fff0af,#c58c35);color:#38200c;margin:4px 5px 4px 0}',
     '#sh-family-panel button:disabled{opacity:.45}',
@@ -2287,16 +2290,34 @@
         famEsc(family.level)+'</h3><p>Family ID: '+famEsc(family.id)+
         ' · '+famEsc(family.member_count)+' members</p>'+
         '<p class="sh-fam-note">Owner: '+famEsc(family.owner_id)+
-        ' · BD: '+famEsc(family.bd_id)+'</p><ul class="sh-fam-list">'+
+        ' · BD: '+famEsc(family.bd_id)+'</p>'+
+        (family.status!=='active'?'<p class="sh-fam-status">This Family is suspended. Ask Admin to review it.</p>':'')+
+        '<ul class="sh-fam-list">'+
         (family.members||[]).map(m=>'<li>'+famEsc(m.name)+' · '+famEsc(m.public_id)+
-          ' <small>('+famEsc(m.role)+')</small></li>').join('')+'</ul>'+
-        (['leader','co_leader'].includes(family.role)?
-          '<button id="sh-fam-requests" type="button">Review Join Requests</button>':
-          '<button id="sh-fam-leave" type="button">Leave Family</button>')+'</div>';
+          ' <small>('+famEsc(m.role)+')</small>'+
+          (family.role==='leader'&&family.status==='active'&&m.role!=='leader'?
+            '<details><summary>Manage member</summary>'+
+            '<label>Family role<select data-fam-role="'+famEsc(m.public_id)+'">'+
+            ['member','elder','co_leader'].map(r=>
+              '<option value="'+r+'" '+(r===m.role?'selected':'')+'>'+famEsc(r)+'</option>').join('')+
+            '</select></label>'+
+            '<button type="button" data-fam-save-role="'+famEsc(m.public_id)+'">Save Role</button>'+
+            '<button type="button" data-fam-transfer-owner="'+famEsc(m.public_id)+'">Make Owner</button>'+
+            '<button type="button" data-fam-remove-member="'+famEsc(m.public_id)+'">Remove</button>'+
+            '</details>':'')+'</li>').join('')+'</ul>'+
+        (['leader','co_leader'].includes(family.role)&&family.status==='active'?
+          '<button id="sh-fam-requests" type="button">Review Join Requests</button>':'')+
+        (family.role!=='leader'?
+          '<button id="sh-fam-leave" type="button">Leave Family</button>':'')+'</div>';
     }else html+='<div class="sh-fam-card"><h3>Join a Family</h3>'+
       '<p class="sh-fam-note">Only one family at a time. Leader approves membership.</p>'+
       '<label>Family ID<input id="sh-fam-join-id" inputmode="numeric" placeholder="e.g. 1001"></label>'+
-      '<button id="sh-fam-join" type="button">Send Join Request</button></div>';
+      '<button id="sh-fam-join" type="button">Send Join Request</button>'+
+      ((data.applications||[]).length?
+        '<h3>Your recent applications</h3><ul class="sh-fam-list">'+
+        (data.applications||[]).map(a=>'<li>#'+famEsc(a.family_id)+' · '+
+          famEsc(a.family_name)+' · <span class="sh-fam-status">'+
+          famEsc(a.state)+'</span></li>').join('')+'</ul>':'')+'</div>';
     if(bd.active&&bd.can_grant){
       html+='<div class="sh-fam-card"><h3>💼 BD Family Grant</h3>'+
         '<p class="sh-fam-note">Your account has Family Grant permission. BD commission: '+
@@ -2325,6 +2346,29 @@
         return saved;
       }catch(error){familyNotice('Not saved: '+errText(error));return null;}
     };
+    target.querySelectorAll('[data-fam-save-role]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.famSaveRole;
+        const role=target.querySelector('[data-fam-role="'+id+'"]')?.value;
+        if(!['member','elder','co_leader'].includes(role))return familyNotice('Choose a valid role');
+        invoke('POST','/family/members/'+id+'/role',{role},
+          'Change Family member '+id+' to '+role+'?');
+      };
+    });
+    target.querySelectorAll('[data-fam-transfer-owner]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.famTransferOwner;
+        invoke('POST','/family/ownership/transfer',{new_owner_public_id:id},
+          'Transfer ownership to '+id+'? You will become Co-leader. Future Family owner Crystal goes to the new owner.');
+      };
+    });
+    target.querySelectorAll('[data-fam-remove-member]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.famRemoveMember;
+        invoke('POST','/family/members/'+id+'/remove',{},
+          'Remove member '+id+'? A 24-hour Family join cooldown will apply.');
+      };
+    });
     target.querySelector('#sh-fam-join')?.addEventListener('click',()=>{
       const id=Number(target.querySelector('#sh-fam-join-id')?.value);
       if(!Number.isSafeInteger(id)||id<1)return familyNotice('Enter a valid Family ID');

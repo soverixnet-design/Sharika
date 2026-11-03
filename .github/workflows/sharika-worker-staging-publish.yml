@@ -121,8 +121,15 @@ jobs:
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0047_admin_profile_layouts.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS templates FROM sharika_profile_layouts"
-      # No migration is executed in this workflow: 0048 was applied and
-      # verified independently, with a D1 Time Travel recovery bookmark.
+      # Family migration 0048 was applied and verified separately. Apply ONLY
+      # this additive management migration; never execute untracked D1 backlog.
+      - name: Apply additive Family membership management to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS existing_families FROM sharika_families"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0049_family_membership_management.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0049_family_membership_management.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0049_family_membership_management.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS family_management_triggers FROM sqlite_master WHERE type='trigger' AND name IN ('sharika_family_owner_transfer_guard','sharika_family_owner_transfer_roles','sharika_family_member_role_audit','sharika_family_reapply_guard','sharika_family_request_reopened_audit','sharika_family_activity_immutable_update','sharika_family_activity_immutable_delete')"
       - name: Verify Family schema and preserve existing voice/game source
         if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
         run: |

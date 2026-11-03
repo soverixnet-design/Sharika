@@ -1,13 +1,20 @@
 # Sharika Royal Family & BD — staging rollout
 
-Status: feature code on branch feature/sharika-family-bd-crystal-ledger-20261103.
-This is NOT a live deployment. Existing user and seller balances are unchanged.
+Status: isolated staging Worker and test APK have been deployed; this branch
+is still a draft PR and is NOT a production release. Existing balances and gift
+history are unchanged. The new member-management migration 0049 is additive.
+Pre-upgrade staging D1 bookmark:
+000003b4-00000000-00005118-7f4c038a5ce33dc63fd1447b4d571b1c.
 
 ## Screens
 
-- Android Main Profile → Royal Family: membership, Join Request, Crystal Wallet, history.
+- Android Main Profile → Royal Family: membership, Join Request, Crystal Wallet,
+  history, leader controls (Co-leader/Elder roles, remove, transfer ownership).
+  Rejected and previously accepted requests can be reopened after cooldown.
 - Android Main Profile → BD System: visible only after active BD permission; Family Grant, My Families, commission statement and transfer request.
-- Admin Panel → Family & BD System: assign/revoke BD permission, edit future percentages, choose daily or monthly settlement reports, approve/reject seller transfers, view immutable records and download CSV evidence.
+- Admin Panel → Family & BD System: assign/revoke BD permission, suspend/reactivate
+  individual Families, edit future percentages, choose daily or monthly reports,
+  approve/reject seller transfers, view immutable records, download CSV evidence.
 - Existing Sheet: https://docs.google.com/spreadsheets/d/1u-6FRnn3noeK2-fQRT_FK_arengxQycZKXnJqjDEaxg/edit
 
 ## Financial rules
@@ -33,7 +40,9 @@ member cap. Owner ownership transfer UI is not yet implemented.
 ## Tests run
 
 - Syntax parser: Family Worker, Sheet Worker, Admin Panel, Android staging UI.
-- In-memory SQLite: exact 100-coin gift => 5 BD Crystals, 10 owner Crystals.
+- In-memory SQLite: exact 100-coin gift => 5 BD Crystals, 10 owner Crystals;
+  ownership transfer, role changes, request reopening, leave cooldown and
+  immutable activity guards.
 - Approved seller transfer credits stock once, and a second approval/overdraft
   cannot inflate stock.
 - SQL test added to npm run check. Real Android and staging end-to-end tests
@@ -45,10 +54,10 @@ member cap. Owner ownership transfer UI is not yet implemented.
    other Android, Admin and Worker branches; replacing the deployed Worker
    with an older branch could regress voice or Google login.
 2. Run npm run check in cloudflare. Make a D1 Time Travel bookmark first.
-3. Verify current sharika-staging tables, then apply ONLY the additive
-   cloudflare/migrations/0048_family_bd_crystal.sql. Do not blindly apply the
-   entire untracked migration backlog.
-4. Deploy the reviewed API and Admin staging Workers and build a staging APK.
+3. Verify current sharika-staging Family tables and apply ONLY the additive
+   cloudflare/migrations/0049_family_membership_management.sql using the
+   isolated staging Worker workflow. Do not apply the entire migration backlog.
+4. Deploy the reviewed API and Admin staging Workers, then build an updated staging APK.
 5. Test verified BD permission, Family Grant, member join, 5% and 10% gift
    credits, Seller transfer and all audit reports on test IDs.
 6. Publish only after Android/device smoke tests and review.
