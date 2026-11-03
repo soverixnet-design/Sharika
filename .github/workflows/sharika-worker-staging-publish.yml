@@ -17,6 +17,8 @@ on:
       - '.github/workflows/sharika-worker-staging-publish.yml'
       - 'cloudflare/src/sellers.mjs'
       - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/family-sheets.mjs'
+      - 'cloudflare/wrangler.jsonc'
       - 'cloudflare/src/sfu.mjs'
       - 'cloudflare/src/voice-room.mjs'
       - 'cloudflare/test/worker.test.mjs'
