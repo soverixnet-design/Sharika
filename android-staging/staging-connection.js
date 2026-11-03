@@ -101,6 +101,8 @@
   const COLORS = ['#9b4dff,#4c1d95','#ff3dc8,#9d174d','#0ea5e9,#075985','#10b981,#065f46'];
   const calls = new Map();
   let seq = 0, session = null, profile = null;
+  // Ignore an older restore/login response after a newer sign-in or logout.
+  let authAttemptId = 0;
   let balance = { coins: 0, dia: 0, xp: 0 };
   let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null,
     reactionPoll = null;
@@ -297,8 +299,13 @@
     requestedOpening=true;
     const startedBy=session.user?.id;
     try{
-      const data=await api('POST','/opening/next',{});
-      if(session?.user?.id!==startedBy)return;
+      // The opening is optional: never hide the real home for a 25-second
+      // staging timeout. A quickly loaded opening still shows for 10 seconds.
+      const data=await Promise.race([
+        api('POST','/opening/next',{}),
+        new Promise(resolve=>setTimeout(()=>resolve(null),4000))
+      ]);
+      if(session?.user?.id!==startedBy || !data)return;
       await displayOpening(data);
     }catch(error){console.warn('Weekly opening unavailable:',errText(error));}
     finally{
@@ -3123,20 +3130,24 @@
       return profileForm(account);
     }
   }
-  async function authenticated(account, form) {
+  async function authenticated(account, form, expectedAttempt=authAttemptId) {
     if (!account.signedIn || !account.emailVerified)
       throw new Error('Check your email verification link, then sign in again');
     const current = await ensureProfile(account, form);
+    if (expectedAttempt!==authAttemptId) throw new Error('sign_in_superseded');
     const local = remember(account, current);
     // Ask for the featured person as soon as Firebase identity and profile
     // are verified. Waiting for wallet + room lists used to leave the first
     // splash on screen and then show a second opening much later.
     const openingTask=openingOnLaunch();
     refreshNotifications(false);refreshMessagesBadge();registerPushDevice();
-    await Promise.allSettled([reloadWallet(), reloadRooms()]);
-    // The original UI's login function reconstructs A from this object;
-    // carry the real room back so it does not hide the newly loaded own room.
-    local.p.myRoom = window.A.myRoom || null;
+    // Real profile identity is sufficient to open home. Load wallet and
+    // rooms in the background; neither endpoint may hold the login screen.
+    Promise.allSettled([reloadWallet(), reloadRooms()]).catch(error=>
+      console.warn('Home refresh deferred:',errText(error)));
+    // Room list renders as it arrives. Avoid copying the prior account's
+    // room card onto a newly authenticated member.
+    local.p.myRoom = null;
     local.state = {...balance};
     try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local])); } catch (_) {}
     // Show the real new-member referral offer after the authenticated home loads.
@@ -3183,13 +3194,58 @@
         'Account created. Verification email could not be sent; try again later.' };
     } catch (error) { return { ok:false, msg:errText(error) }; }
   };
+  function showConnectionRecovery(error) {
+    // The Firebase account remains signed in. A temporary /me or network
+    // failure is not a reason to sign out or show the Google picker again.
+    let layer=document.getElementById('sh-login-recovery');
+    if(!layer){
+      layer=document.createElement('section');
+      layer.id='sh-login-recovery';
+      layer.setAttribute('role','alertdialog');
+      layer.setAttribute('aria-modal','true');
+      layer.style.cssText='position:fixed;inset:0;z-index:2147483645;display:grid;place-items:center;padding:22px;background:linear-gradient(160deg,#180e30,#060314);color:#fff;font-family:inherit';
+      const panel=document.createElement('div');
+      panel.style.cssText='width:min(100%,430px);border:2px solid #d5ae57;border-radius:22px;padding:24px;text-align:center;background:linear-gradient(145deg,#2b1942,#160f28);box-shadow:0 20px 60px #0009';
+      const title=document.createElement('h2');
+      title.textContent='Sharika connection is slow';
+      title.style.cssText='color:#ffe09a;margin:0 0 12px;font-size:22px';
+      const status=document.createElement('p');
+      status.setAttribute('data-sh-login-status','');
+      status.style.cssText='font-size:15px;line-height:1.5;overflow-wrap:anywhere';
+      const retry=document.createElement('button');
+      retry.type='button';retry.textContent='Retry connection';
+      retry.style.cssText='width:100%;padding:14px;margin:14px 0 8px;border:1px solid #f3ca6a;border-radius:16px;background:#e8bd63;color:#220e38;font-weight:800;font-size:16px';
+      retry.onclick=()=>{layer.remove();restore();};
+      const signout=document.createElement('button');
+      signout.type='button';signout.textContent='Sign out';
+      signout.style.cssText='width:100%;padding:12px;border:1px solid #806a9d;border-radius:14px;background:#29133f;color:white';
+      signout.onclick=()=>window.logout();
+      panel.append(title,status,retry,signout);
+      layer.appendChild(panel);document.body.appendChild(layer);
+    }
+    layer.querySelector('[data-sh-login-status]').textContent=
+      'Your Google account is still signed in. The server did not finish loading: '+
+      errText(error)+'. Please retry when your connection is available.';
+    document.getElementById('sp')?.classList.remove('sharika-opening-pending');
+    window.hideAuth();
+  }
+
   window.API.login = async function (identity, password) {
     if (!identity.includes('@')) return {ok:false,msg:'Sign in using your email address'};
+    const attempt=++authAttemptId;
+    let account=null;
     try {
-      const account = await native('emailSignIn',{email:identity.trim(),password});
-      const local = await authenticated(account);
+      account = await native('emailSignIn',{email:identity.trim(),password});
+      if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
+      const local = await authenticated(account,undefined,attempt);
+      if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
+      document.getElementById('sh-login-recovery')?.remove();
       return {ok:true,acct:local};
-    } catch (error) { return {ok:false,msg:errText(error)}; }
+    } catch (error) {
+      if(attempt===authAttemptId && account?.signedIn && account.emailVerified)
+        showConnectionRecovery(error);
+      return {ok:false,msg:errText(error)};
+    }
   };
   let googleLoginBusy = false;
   function googleLoginError(error) {
@@ -3211,15 +3267,24 @@
   async function googleLogin() {
     if(googleLoginBusy)return;
     googleLoginBusy=true;
+    const attempt=++authAttemptId;
+    let account=null;
     const button=document.getElementById('wg');
     if(button)button.disabled=true;
     try {
       toast('Opening Google account picker…');
-      const account=await native('googleSignIn');
-      const local=await authenticated(account);
+      account=await native('googleSignIn');
+      if(attempt!==authAttemptId)return;
+      const local=await authenticated(account,undefined,attempt);
+      if(attempt!==authAttemptId)return;
+      document.getElementById('sh-login-recovery')?.remove();
       window.enter(local,'Signed in to Sharika staging');
-    } catch (error) { toast(googleLoginError(error)); }
-    finally{
+      finishVerifiedStartup();
+    } catch (error) {
+      if(attempt!==authAttemptId)return;
+      if(account?.signedIn && account.emailVerified)showConnectionRecovery(error);
+      else toast(googleLoginError(error));
+    } finally{
       googleLoginBusy=false;
       const currentButton=document.getElementById('wg');
       if(currentButton)currentButton.disabled=false;
@@ -3282,7 +3347,10 @@
       syncFrame(window.cur,frame).catch(()=>{});
   });
   async function reloadWallet() {
+    const accountId=session?.user?.id;
+    if(!accountId)return null;
     const wallet = await api('GET','/wallet');
+    if(session?.user?.id!==accountId)return null;
     balance = {coins:Number(wallet.coins)||0,dia:Number(wallet.diamonds)||0,xp:Number(wallet.xp)||0};
     localStorage.setItem('vr_state_v2',JSON.stringify(balance));
     window.refresh();
@@ -8478,6 +8546,10 @@
 
   const originalLogout=window.logout;
   window.logout=function(){
+    ++authAttemptId;
+    document.getElementById('sh-login-recovery')?.remove();
+    document.getElementById('sh-opening')?.remove();
+    document.getElementById('sp')?.classList.remove('sharika-opening-pending','sharika-opening-featured');
     if(window.cur)window.leaveRoom();
     if(presenceTimer){clearInterval(presenceTimer);presenceTimer=null;}
     document.getElementById('sh-invite-newbie')?.remove();
@@ -8492,15 +8564,20 @@
   window.SharikaServer={api,reloadWallet,reloadRooms,connected:()=>!!session,voiceProvider:()=>voiceBackend};
 
   async function restore(){
-    cleanLocalFakeState();
+    const attempt=++authAttemptId;
+    let account=null;
+    if(!session)cleanLocalFakeState();
     try{
-      const account=await native('session');
+      account=await native('session');
+      if(attempt!==authAttemptId)return;
       if(!account.signedIn || !account.emailVerified) {
+        document.getElementById('sh-login-recovery')?.remove();
         window.showAuth('welcome');
         if(account.signedIn)toast('Verify your email, then sign in');
         return;
       }
-      const local=await authenticated(account);
+      const local=await authenticated(account,undefined,attempt);
+      if(attempt!==authAttemptId)return;
       window.A=Object.assign({
         name:'Me',pic:null,myRoom:null,claim:{d:'',streak:0},
         st:{},sw:{},rw:{},fol:[]
@@ -8508,19 +8585,22 @@
       if(typeof window.fixA==='function')window.fixA();
       try{localStorage.setItem('vr_sess',local.key);}catch(_){}
       window.saveA();
+      document.getElementById('sh-login-recovery')?.remove();
       window.hideAuth();
       window.refresh();
       window.renderRooms();
       window.go('home');
     }catch(error){
-      window.showAuth('welcome');
-      toast('Sign-in needed: '+errText(error));
+      if(attempt===authAttemptId){
+        // A Firebase/network error cannot invalidate the persisted login.
+        showConnectionRecovery(error);
+      }
     }finally{
-      // Signed-out users see real Firebase login, signed-in users their D1
-      // home; neither ever sees the old unverified demo between the two.
-      if(!session)
-        document.getElementById('sp')?.classList.remove('sharika-opening-pending');
-      finishVerifiedStartup();
+      if(attempt===authAttemptId){
+        if(!session)
+          document.getElementById('sp')?.classList.remove('sharika-opening-pending');
+        finishVerifiedStartup();
+      }
     }
   }
   restore();
