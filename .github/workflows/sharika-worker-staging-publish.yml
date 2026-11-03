@@ -1,4 +1,4 @@
-name: Sharika staged Worker publish (no database migrations)
+name: Sharika isolated Worker and Admin staging publish
 
 on:
   push:
@@ -107,9 +107,16 @@ jobs:
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT enabled,mode,duration_seconds FROM sharika_opening_settings WHERE id=1"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS cursors FROM sharika_opening_cursors"
+      # Only the approved additive game-catalog table is allowed on this
+      # integration ref. No user, wallet, game history, or existing table is reset.
+      - name: Apply only approved game catalog table to staging D1
+        if: github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0046_admin_game_catalog.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT id,enabled FROM sharika_game_catalog ORDER BY id"
       - name: Bundle and inspect without publishing
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
-      - name: Deploy only the existing staging Worker (never run migrations)
+      - name: Deploy only the existing staging Worker
         run: npx --yes wrangler@4 deploy --config wrangler.jsonc
       - name: Verify separate staging admin Worker destination
         run: |
@@ -132,5 +139,5 @@ jobs:
           node --check ../admin/connection.js
           npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc --outdir /tmp/sharika-staging-admin-bundle
       - name: Publish separate staging admin Worker
-        if: github.ref != 'refs/heads/fix/sharika-live-voice-reliability-20261102' && github.ref != 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103'
+        if: github.ref != 'refs/heads/fix/sharika-live-voice-reliability-20261102'
         run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
