@@ -181,7 +181,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       request,env,uid,actor,operation,cors,reply,fail,ctx
     });
   if(operation==='bonds/rewards'||operation==='bonds/rewards/settle')
-    return await handleCpRewardAdmin({request,env,uid,actor,operation,cors,reply,fail});
+    return await handleCpRewardAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='bonds'||/^bonds\/gifts\/[1-9][0-9]{0,9}$/.test(operation))
     return await handleBondAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if (operation.startsWith('sellers')) return await handleSellerAdmin({

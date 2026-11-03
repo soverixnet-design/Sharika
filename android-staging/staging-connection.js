@@ -9766,7 +9766,8 @@
       '<span id="sh-notify-unread"></span>'+
       '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
       '</div><div style="margin:8px 0 14px">'+
-      '<button class="sh-notify-action" id="sh-notify-enable" type="button">🔔 Enable phone alerts</button>'+
+      '<button class="sh-notify-action" id="sh-notify-enable" type="button">🔔 Enable phone alerts</button>'+ 
+      '<button class="sh-notify-action" id="sh-notify-bonds" type="button" style="margin-left:7px">💌 CP / Friends Invitations</button>'+ 
       '</div><div class="sh-notify-list" id="sh-notify-list"></div>';
     document.getElementById('app').appendChild(notificationPanel);
     notificationPanel.querySelector('#sh-notify-back').onclick=()=>{
@@ -9775,6 +9776,10 @@
     notificationPanel.querySelector('#sh-notify-enable').onclick=async()=>{
       const enabled=await registerPushDevice(true);
       toast(enabled ? 'Phone alerts enabled' : 'Phone alerts not enabled. You can still use Sharika.');
+    };
+    notificationPanel.querySelector('#sh-notify-bonds').onclick=()=>{
+      notificationPanel.classList.remove('on');
+      showBondInbox();
     };
     notificationPanel.querySelector('#sh-notify-readall').onclick=async()=>{
       if(!session)return;
@@ -9818,9 +9823,14 @@
           date.textContent=notificationDate(item.created_at)+(item.read_at?'':' · New');
           content.append(title,body,date);button.append(icon,content);
           button.onclick=async()=>{
-            if(item.read_at)return;
-            try{await api('PATCH','/notifications/'+item.id+'/read',{});await refreshNotifications(true);}
-            catch(error){toast('Unable to mark read: '+errText(error));}
+            if(!item.read_at){
+              try{await api('PATCH','/notifications/'+item.id+'/read',{});await refreshNotifications(true);}
+              catch(error){toast('Unable to mark read: '+errText(error));}
+            }
+            if(/^(CP|Friendship) invitation received$/.test(item.title)){
+              notificationPanel?.classList.remove('on');
+              await showBondInbox();
+            }
           };
           list.appendChild(button);
         }

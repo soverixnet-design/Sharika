@@ -256,7 +256,7 @@ export async function handleRequest(request, env, ctx) {
       return reply(await readCpRewardBoard(env.DB),200,cors);
     }
     if(path.startsWith('/api/v1/bonds'))return await handleBondApp({
-      request,env,uid,path,cors,reply,fail
+      request,env,uid,path,cors,reply,fail,ctx
     });
     if(path==='/api/v1/cosmetics'||path.startsWith('/api/v1/cosmetics/')){
       await assertActive(env.DB,uid);
@@ -1590,11 +1590,11 @@ export default {
   fetch:handleRequest,
   scheduled(_event,env,context){
     if(env.DB){
-      context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
+      context.waitUntil(expireBondInvites(env.DB,Date.now(),100,env,context)
         .catch(error=>console.error('bond_expiry_cron_error',error.message)));
       context.waitUntil(syncFamilyGoogleSheetIfDue(env)
         .catch(error=>console.error('family_sheets_cron_error',error.message)));
-      context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true)
+      context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true,env,context)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
     }
   }
