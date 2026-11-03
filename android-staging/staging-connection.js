@@ -9253,9 +9253,9 @@
     {id:'night-food',name:'Night Food Wheel',tag:'🌙 Night',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/night-food-wheel.html'},
-    {id:'jackpot-fruit',name:'Jackpot Fruit',tag:'🎰 Jackpot',
+    {id:'fruit-royale',name:'Fruit Royale',tag:'👑 New Royal Jackpot',
       image:'file:///android_asset/jackpot-fruit-original-card.png',
-      page:'file:///android_asset/original-games/jackpot-fruit.html'},
+      page:'file:///android_asset/fruit-royale/index.html'},
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
       page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'}
@@ -9269,7 +9269,7 @@
     const elapsed=Number(state.server_time)-(prev.round_no+1)*40000;
     if(!Number.isFinite(elapsed)||elapsed<0||elapsed>10000)return null;
     const winners=Array.isArray(prev.top_winners)?prev.top_winners.slice(0,3)
-      .filter(w=>w&&/^[0-9]{8}$/.test(String(w.public_id||''))&&
+      .filter(w=>w&&/^[0-9]{1,10}$/.test(String(w.public_id||''))&&
         typeof w.name==='string'&&w.name.trim()&&
         Number.isSafeInteger(Number(w.total_win))&&Number(w.total_win)>0):[];
     if(!winners.length||announcedOriginalGameRounds.get(game)===prev.round_no)return null;
@@ -9373,10 +9373,10 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
-    let visibleGameCards=originalGameCards;
+    let visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale');
     function catalog(){
       overlay.classList.remove('sh-original-fullscreen');
-      sheet.innerHTML='<div class="grab"></div><h3>🎮 Original Games</h3>'+
+      sheet.innerHTML='<div class="grab"></div><h3>👑 Sharika Fruit Royale</h3>'+
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
         '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
@@ -9470,7 +9470,7 @@
       banner.id='sh-verified-original-winners';
       banner.setAttribute('role','status');
       banner.setAttribute('aria-live','polite');
-      const gameIcon=game==='jackpot-fruit'?'🎰':game==='night-food'?'🌙':'🎡';
+      const gameIcon=(game==='jackpot-fruit'||game==='fruit-royale')?'🎰':game==='night-food'?'🌙':'🎡';
       let currentIndex=0;
       function paint(winner){
         const pill=doc.createElement('div');
@@ -9601,7 +9601,11 @@
       const target=current.element.contentWindow;
       if(!target)return;
       try{
-        const result=await api(method,'/original-games/'+current.item.id+'/'+data.action,
+        const query=data.action==='rankings'&&data.query&&
+          ['daily','weekly','monthly'].includes(data.query.period)&&
+          ['totalWin','totalBet','profitLoss','winCount'].includes(data.query.metric)
+          ?'?period='+data.query.period+'&metric='+data.query.metric:'';
+        const result=await api(method,'/original-games/'+current.item.id+'/'+data.action+query,
           data.action==='bet'?data.body:undefined);
         // If the user changed games mid-request, do not send any data to it.
         if(!session||currentGameFrame!==current)return;
@@ -9610,8 +9614,9 @@
           announceRoundWinners(current.item.id,result);
           // A winning round credits D1 on state reads. Refresh the shared
           // profile/room wallet when its coin balance changes, not just on bets.
-          if(Number.isSafeInteger(result?.coins)&&result.coins>=0&&
-             result.coins!==balance.coins&&
+          const authoritativeCoins=Number.isSafeInteger(result?.coins)?result.coins:result?.balance;
+          if(Number.isSafeInteger(authoritativeCoins)&&authoritativeCoins>=0&&
+             authoritativeCoins!==balance.coins&&
              Date.now()-originalGameWalletRefreshTime>=2500){
             originalGameWalletRefreshTime=Date.now();
             reloadWallet().catch(()=>{});
@@ -9641,7 +9646,7 @@
     api('GET','/game-catalog').then(result=>{
       if(!overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));
+      visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale'&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(sheet.isConnected)sheet.textContent='Games are temporarily unavailable: '+errText(error);

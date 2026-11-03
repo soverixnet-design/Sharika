@@ -141,31 +141,31 @@ test('Night Food and Jackpot Fruit advertise 1k chips for small verified wallets
 });
 
 
-test('both offline game layouts use the matching server-backed wager chips',()=>{
-  for(const [page,token] of [
-    ['night-food-wheel.html','const chips=[1000,10000,100000,1000000,10000000];'],
-    ['jackpot-fruit.html','CH=[1000,10000,100000,1000000,10000000];']
-  ]){
-    const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/'+page,import.meta.url),'utf8');
-    assert.ok(html.includes(token),page+' must offer the 1k wallet-compatible chip');
-    assert.match(html,/sharika:original-request/);
-    assert.match(html,/sharika:original-response/);
-    assert.doesNotMatch(html,/https?:\/\/[^\s"'<>]+/);
-  }
+test('live Fruit Royale and Night Food expose wallet-backed 1K chip choices',()=>{
+  const base=new URL('../../android-staging/app/src/main/assets/',import.meta.url);
+  const night=readFileSync(new URL('original-games/night-food-wheel.html',base),'utf8');
+  assert.match(night,/const chips=\[1000,10000,100000,1000000,10000000\];/);
+  assert.match(night,/sharika:original-request/);
+  const royal=readFileSync(new URL('fruit-royale/index.html',base),'utf8');
+  const live=readFileSync(new URL('fruit-royale/adapter.live.js',base),'utf8');
+  const config=readFileSync(new URL('fruit-royale/config.js',base),'utf8');
+  assert.match(royal,/data-amount="1000"/);
+  assert.match(royal,/adapter\.live\.js/);
+  assert.match(live,/sharika:original-request/);
+  assert.match(live,/sharika:original-response/);
+  assert.match(live,/const GAME='fruit-royale'/);
+  assert.match(config,/mode:'live'/);
 });
 
-
-test('Night Food and Jackpot Fruit show verified round winners to all viewers',()=>{
-  const base=new URL('../../android-staging/app/src/main/assets/original-games/',import.meta.url);
-  const night=readFileSync(new URL('night-food-wheel.html',base),'utf8');
-  const jackpot=readFileSync(new URL('jackpot-fruit.html',base),'utf8');
+test('Night Food and new Fruit Royale show server-verified winners to viewers',()=>{
+  const night=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/night-food-wheel.html',import.meta.url),'utf8');
+  const royal=readFileSync(new URL('../src/fruit-royale.mjs',import.meta.url),'utf8');
+  const parent=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   assert.match(night,/Round Top 3:/);
   assert.match(night,/prev\.top_winners/);
-  assert.match(jackpot,/verifiedWinners\.textContent/);
-  assert.match(jackpot,/prev\.top_winners/);
-  assert.match(jackpot,/if\(!spent&&!?\(prev\.top_winners\|\|\[\]\)\.length\)return/);
-  // The original no-bet guard hid top-three results from spectators.
-  assert.doesNotMatch(jackpot,/if\(!spent\)return;/);
+  assert.match(royal,/top_winners:topWinners/);
+  assert.match(royal,/FROM sharika_fruit_royale_bets b JOIN sharika_users u/);
+  assert.match(parent,/announceRoundWinners\(current\.item\.id,result\)/);
 });
 
 test('all three original games announce at most three verified winners for ten seconds',()=>{
@@ -207,7 +207,7 @@ test('win banner uses verified player avatars from the original-game result API'
 test('verified original game settlement refreshes the shared profile and room wallet',()=>{
   const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   assert.match(adapter,/if\(data\.action==='state'\)\{[\s\S]*?announceRoundWinners\(current\.item\.id,result\)/);
-  assert.match(adapter,/result\.coins!==balance\.coins/);
+  assert.match(adapter,/authoritativeCoins!==balance\.coins/);
   assert.match(adapter,/originalGameWalletRefreshTime>=2500/);
   assert.match(adapter,/reloadWallet\(\)\.catch\(\(\)=>\{\}\)/);
   assert.match(adapter,/view\.removeEventListener\('message',onOriginalGameMessage\)/);
@@ -215,12 +215,11 @@ test('verified original game settlement refreshes the shared profile and room wa
   assert.match(adapter,/currentGameFrame\?\.element\?\.remove\(\)/);
 });
 
-test('all three original games retry timed-out bets once with the same request ID',async()=>{
+test('remaining original games retry timed-out bets with the same request ID',async()=>{
   const base=new URL('../../android-staging/app/src/main/assets/original-games/',import.meta.url);
   for(const [page,game] of [
     ['sovera-food-wheel.html','sovera-food'],
-    ['night-food-wheel.html','night-food'],
-    ['jackpot-fruit.html','jackpot-fruit']
+    ['night-food-wheel.html','night-food']
   ]){
     const html=readFileSync(new URL(page,base),'utf8');
     const start=html.indexOf('const GameBridge=(()=>{');
@@ -249,12 +248,20 @@ test('all three original games retry timed-out bets once with the same request I
     const receipt=await bridge.bet(2,1000);
     assert.equal(receipt.bet_id,81,page);
     assert.equal(attempts.length,2,page+' should retry exactly once');
-    assert.equal(attempts[0].request_id,attempts[1].request_id,
-      page+' must never create a new charge on retry');
-    assert.equal(bridge.get().coins,2000,page+' shows the confirmed real wallet receipt');
+    assert.equal(attempts[0].request_id,attempts[1].request_id);
+    assert.equal(bridge.get().coins,2000);
   }
 });
 
+test('Fruit Royale preserves uncertain bet requests and never regenerates their ID',()=>{
+  const game=readFileSync(new URL('../../android-staging/app/src/main/assets/fruit-royale/game.js',import.meta.url),'utf8');
+  const bridge=readFileSync(new URL('../../android-staging/app/src/main/assets/fruit-royale/adapter.live.js',import.meta.url),'utf8');
+  assert.match(game,/const requested=\{\.\.\.pending\}/);
+  assert.match(game,/if\(e\.definitive===true\|\|cfg\.mode==='demo'\)pending=null/);
+  assert.match(game,/\$\('retry'\)\.onclick=submit/);
+  assert.match(bridge,/Connection timed out/);
+  assert.match(bridge,/game:GAME/);
+});
 
 test('original Food Wheel settles prior confirmed winnings before a new coin debit',async()=>{
   const oldNow=Date.now;
