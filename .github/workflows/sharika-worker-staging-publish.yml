@@ -114,6 +114,12 @@ jobs:
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0046_admin_game_catalog.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT id,enabled FROM sharika_game_catalog ORDER BY id"
+      # Versioned placements, distinct from user-owned cosmetics. Additive only.
+      - name: Apply safe profile layout table to staging D1
+        if: github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0047_admin_profile_layouts.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS templates FROM sharika_profile_layouts"
       - name: Bundle and inspect without publishing
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
       - name: Deploy only the existing staging Worker

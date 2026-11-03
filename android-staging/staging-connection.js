@@ -143,6 +143,155 @@
   async function api(method, path, body) {
     return native('api', { method, path: '/api/v1' + path, body });
   }
+
+  // Super Admin owns WHERE a cosmetic appears. The server-owned inventory and
+  // user-selected cosmetic decide WHICH image/animation is displayed.
+  const profileLayoutDefaults={
+    main:{sections:['hero','stats','wallet','collection','account'],
+      identity:['avatar','svip','name','id'],frame_scale:142,
+      tag_position:'id',medal_position:'id',background:'original'},
+    public:{sections:['cover','identity','levels','stats','actions'],
+      identity:['avatar','name','id'],frame_scale:142,
+      tag_position:'name',medal_position:'name',background:'original'}
+  };
+  let profileLayouts=profileLayoutDefaults,lastLayoutRequest=0,layoutRequest=null;
+  function profileLayout(screen){return profileLayouts[screen]||profileLayoutDefaults[screen];}
+  function profileLayoutCss(){
+    if(document.getElementById('sh-profile-layout-css'))return;
+    const style=document.createElement('style');
+    style.id='sh-profile-layout-css';
+    style.textContent=[
+      '#v-me .mav .sh-sovera-frame.fxr,#pfo .pavw>.sh-sovera-frame.fxr{',
+      'width:var(--sh-profile-frame-scale,142%)!important;',
+      'height:var(--sh-profile-frame-scale,142%)!important}',
+      '#v-me .sh-layout-ornament,#pfc .sh-layout-ornament{display:flex;',
+      'align-items:center;justify-content:center;gap:5px;margin:5px auto;',
+      'max-width:98%;min-height:18px;pointer-events:none}',
+      '#v-me .sh-layout-ornament img,#pfc .sh-layout-ornament img{',
+      'display:block;max-height:45px;max-width:min(220px,90%);object-fit:contain}',
+      '#v-me .mav>.sh-layout-ornament,#pfc .pavw>.sh-layout-ornament{',
+      'position:absolute;z-index:30;bottom:-30px;left:50%;transform:translateX(-50%);',
+      'width:100px;min-width:70px;margin:0}',
+      '#v-me .profile-hero>.sh-layout-ornament{flex:0 0 auto}',
+      '#pfc .pfh .sh-layout-ornament{flex:0 0 auto}',
+      '#v-me.sh-profile-gold .profile-royal-page::before{',
+      'background:radial-gradient(circle at 50% 18%,#e3ac5470,transparent 54%),',
+      'linear-gradient(155deg,#83511f,#311a30 55%,#170d1e)!important}',
+      '#pfc.sh-profile-gold .pf{background:',
+      'linear-gradient(150deg,#805522,#301c2b 55%,#170b24)!important}'
+    ].join('');
+    document.head.appendChild(style);
+  }
+  function placeProfileOrnaments(root,screen){
+    if(!root)return;
+    const layout=profileLayout(screen);
+    const isMain=screen==='main';
+    const name=isMain?root.querySelector('.profile-hero .mnm'):
+      root.querySelector('.pfh h2');
+    const id=isMain?root.querySelector('.profile-hero .profile-id-row'):
+      root.querySelector('.pfh .meta');
+    const avatar=isMain?root.querySelector('.profile-hero .mav'):
+      root.querySelector('.pfh .pavw');
+    for(const kind of ['medal','tag']){
+      const ornament=root.querySelector('[data-sh-layout-ornament="'+kind+'"]');
+      if(!ornament)continue;
+      const position=layout[kind+'_position'];
+      const target=position==='avatar'?avatar:position==='name'?name:id;
+      if(!target)continue;
+      if(position==='avatar')target.appendChild(ornament);
+      else{
+        target.insertAdjacentElement('afterend',ornament);
+        // Flex order must follow the configured name/ID slot, not revert to 0.
+        ornament.style.order=String((Number(target.style.order)||0)+0.5);
+      }
+    }
+  }
+  function applyProfileLayout(screen,root){
+    if(!root)return;
+    profileLayoutCss();
+    const l=profileLayout(screen),isMain=screen==='main';
+    const host=isMain?root.querySelector('.profile-royal-page'):
+      root.querySelector('.pf');
+    if(!host)return;
+    host.style.display='flex';host.style.flexDirection='column';
+    root.classList.toggle('sh-profile-gold',l.background==='gold');
+    root.style.setProperty('--sh-profile-frame-scale',String(l.frame_scale)+'%');
+    const selectors=isMain?{
+      hero:'.profile-hero',stats:'.mst',wallet:'.wl',
+      collection:'.profile-section:not(.profile-account)',
+      account:'.profile-account'
+    }:{
+      cover:'.cov',identity:'.pfh',levels:'.lvs',
+      stats:'.st4',actions:'.pbtn'
+    };
+    for(const [i,key] of l.sections.entries()){
+      const element=host.querySelector(':scope > '+selectors[key]);
+      if(element)element.style.order=String(i+1);
+    }
+    if(isMain){
+      const bar=host.querySelector(':scope > .profile-topbar');
+      if(bar)bar.style.order='0';
+    }else{
+      for(const child of host.children)
+        if(!Object.values(selectors).some(sel=>child.matches(sel)))child.style.order='10';
+    }
+    const identity=isMain?host.querySelector('.profile-hero'):
+      host.querySelector('.pfh');
+    if(identity){
+      identity.style.display='flex';identity.style.flexDirection='column';
+      identity.style.alignItems='center';
+      const keys=isMain?{
+        avatar:'.mav',svip:'.profile-svip-badge',
+        name:'.mnm',id:'.profile-id-row'
+      }:{avatar:'.pavw',name:'h2',id:'.meta'};
+      for(const [i,key] of l.identity.entries()){
+        const el=identity.querySelector(':scope > '+keys[key]);
+        if(el)el.style.order=String(i);
+      }
+      for(const child of identity.children){
+        if(child.classList.contains('sh-svip-public-badge')){
+          const name=identity.querySelector(':scope > h2');
+          child.style.order=String((Number(name?.style.order)||0)+0.25);
+        }else if(!Object.values(keys).some(sel=>child.matches(sel))&&
+           !child.classList.contains('sh-layout-ornament'))child.style.order='9';
+      }
+    }
+    placeProfileOrnaments(root,screen);
+  }
+  async function refreshGlobalProfileLayouts(){
+    if(!session)return;
+    if(layoutRequest)return layoutRequest;
+    if(Date.now()-lastLayoutRequest<30000)return;
+    lastLayoutRequest=Date.now();
+    const current=session.user?.id;
+    layoutRequest=(async()=>{
+      try{
+        const answer=await api('GET','/profile-layout');
+        if(!session||session.user?.id!==current)return;
+        for(const screen of ['main','public']){
+          const raw=answer.layouts?.[screen];
+          if(raw&&Array.isArray(raw.sections)&&Array.isArray(raw.identity)&&
+             Number.isInteger(raw.frame_scale)&&raw.frame_scale>=110&&
+             raw.frame_scale<=165&&
+             ['original','gold'].includes(raw.background)&&
+             ['avatar','name','id'].includes(raw.tag_position)&&
+             ['avatar','name','id'].includes(raw.medal_position)&&
+             raw.sections.length===profileLayoutDefaults[screen].sections.length&&
+             raw.identity.length===profileLayoutDefaults[screen].identity.length&&
+             raw.sections.every(x=>profileLayoutDefaults[screen].sections.includes(x))&&
+             raw.identity.every(x=>profileLayoutDefaults[screen].identity.includes(x))&&
+             new Set(raw.sections).size===raw.sections.length&&
+             new Set(raw.identity).size===raw.identity.length)
+            profileLayouts={...profileLayouts,[screen]:raw};
+        }
+        renderVerifiedIdentity();
+        applyProfileLayout('main',document.getElementById('v-me'));
+        applyProfileLayout('public',document.getElementById('pfc'));
+      }catch(error){console.warn('Profile template refresh deferred:',errText(error));}
+    })();
+    try{await layoutRequest;}finally{layoutRequest=null;}
+  }
+
   // An installed-app invite link can arrive before the signup view exists.
   // Keep only a validated public inviter ID. The Worker still enforces the
   // 48-hour/new-device rules; this client never awards coins locally.
@@ -1409,6 +1558,7 @@
       if(event.key==='Enter'||event.key===' '){event.preventDefault();anchor.click();}
     };
     document.getElementById('sh-sovera-own-identity')?.remove();
+    document.querySelectorAll('#v-me .sh-layout-ornament').forEach(node=>node.remove());
     document.getElementById('sh-neon-own-id')?.remove();
     document.getElementById('sh-copy-own-id')?.remove();
     if(/^[0-9]{1,10}$/.test(displayId)){
@@ -1427,21 +1577,19 @@
     // server for secure lookups but must not appear twice on this screen.
     const medal=medalArt(profile?.medal_style);
     const tag=nameTagArt(profile?.name_tag_style);
-    if(!medal&&!tag)return;
-    const strip=document.createElement('div');
-    strip.id='sh-sovera-own-identity';strip.className='sh-sovera-id-effects';
-    for(const item of [medal,tag]){
+    for(const [kind,item] of [['medal',medal],['tag',tag]]){
       if(!item)continue;
-      const img=document.createElement('img');
-      img.src=cosmeticMedia(item);
-      img.alt=item.name+' (decoration only)';
-      img.title=item.name+' · decorative';
-      strip.appendChild(img);
+      const holder=document.createElement('div');
+      holder.className='sh-layout-ornament';
+      holder.dataset.shLayoutOrnament=kind;
+      const image=document.createElement('img');
+      image.src=cosmeticMedia(item);
+      image.alt=item.name+' (decoration only)';
+      image.title=item.name+' · decorative';
+      holder.appendChild(image);
+      anchor.closest('.profile-hero')?.appendChild(holder);
     }
-    // Keep earned medals centered beneath the complete ID row. Putting them
-    // between the ID and special badge spread the identity across the screen.
-    const row=anchor.closest('.profile-id-row');
-    if(row)row.insertAdjacentElement('afterend',strip);
+    applyProfileLayout('main',document.getElementById('v-me'));
   }
   async function showVerifiedFollowList(kind){
     if(!session){window.showAuth('welcome');return;}
@@ -2066,6 +2214,8 @@
   if(typeof priorRenderMe==='function')window.renderMe=function(){
     const result=priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
+    applyProfileLayout('main',document.getElementById('v-me'));
+    refreshGlobalProfileLayouts().catch(()=>{});
     renderVerifiedMainProfileStats().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
     refreshVerifiedAppearance().catch(()=>{});
@@ -7239,21 +7389,28 @@
     if(level){const badge=makeSvipBadge(document,level,'sh-svip-public-badge');
       root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',badge);}
     root.querySelector('.sh-royal-profile-effects')?.remove();
-    const effects=document.createElement('div');
-    effects.className='sh-royal-profile-effects';
-    for(const item of [medalArt(person.medal_style),nameTagArt(person.name_tag_style)]){
+    root.querySelectorAll('.sh-layout-ornament').forEach(node=>node.remove());
+    for(const [kind,item] of [
+      ['medal',medalArt(person.medal_style)],
+      ['tag',nameTagArt(person.name_tag_style)]
+    ]){
       if(!item)continue;
-      const artwork=document.createElement('img');
-      artwork.src=cosmeticMedia(item);artwork.alt=item.name;
-      effects.appendChild(artwork);
+      const ornament=document.createElement('div');
+      ornament.className='sh-layout-ornament';
+      ornament.dataset.shLayoutOrnament=kind;
+      const img=document.createElement('img');
+      img.src=cosmeticMedia(item);img.alt=item.name;
+      ornament.appendChild(img);
+      root.querySelector('.pfh')?.appendChild(ornament);
     }
-    if(effects.children.length)root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',effects);
     root.querySelector('.sh-neon-public-id')?.remove();
     const publicLabel=root.querySelector('.pfh .meta span:first-child');
     if(publicLabel){
       publicLabel.classList.toggle('sh-neon-single-id',!!person.special_id);
       publicLabel.textContent='ID '+String(person.display_id||person.special_id||person.id);
     }
+    applyProfileLayout('public',root);
+    refreshGlobalProfileLayouts().catch(()=>{});
   }
 
   // Royal CP / Friendship is shown on the ID detail profile only. The main
