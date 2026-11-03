@@ -2746,6 +2746,232 @@
   }
   window.sharikaOpenRoyalFamily=openRoyalFamily;
 
+
+  // A real, separate Settings Center replaces the inherited small settings sheet.
+  // Existing profile identity, balances and backend permissions are unchanged.
+  const royalSettingsCss=document.createElement('style');
+  royalSettingsCss.id='sh-royal-settings-css';
+  royalSettingsCss.textContent=[
+    '#sh-settings-page[hidden]{display:none!important}',
+    '#sh-settings-page{position:fixed;z-index:2147483550;inset:0;overflow:auto;',
+    'background:radial-gradient(circle at 50% -12%,#65459b 0%,#21143f 45%,#0c0618 100%);',
+    'color:#fef0ca;padding:calc(18px + env(safe-area-inset-top,0px)) 16px calc(26px + env(safe-area-inset-bottom,0px))}',
+    '#sh-settings-page .sh-set-wrap{max-width:640px;margin:auto}',
+    '#sh-settings-page .sh-set-head{display:flex;align-items:center;gap:12px;margin-bottom:20px}',
+    '#sh-settings-page .sh-set-back{min-width:44px;height:44px;border-radius:15px;background:#251638;color:#ffe3a0;',
+    'border:1px solid #d9aa53;font-size:26px}',
+    '#sh-settings-page .sh-set-title{font-size:23px;font-weight:900;color:#ffe8a7}',
+    '#sh-settings-page .sh-set-intro{font-size:13px;opacity:.88;line-height:1.5;margin:2px 0 20px}',
+    '#sh-settings-page .sh-set-card{background:linear-gradient(142deg,#4d3158,#201532);',
+    'border:1px solid #c59a58;border-radius:20px;padding:16px;margin:12px 0;',
+    'box-shadow:inset 0 1px #fff4,0 8px 24px #05020e77}',
+    '#sh-settings-page .sh-set-card h3{color:#ffe1a1;font-size:17px;margin:0 0 12px}',
+    '#sh-settings-page .sh-set-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;',
+    'padding:15px 12px;margin:6px 0;color:#fff1d1;border:1px solid #ae8553;border-radius:14px;',
+    'background:linear-gradient(105deg,#4c2a5d,#241633);font-size:15px;font-weight:750}',
+    '#sh-settings-page .sh-set-row .sh-set-ico{font-size:23px;min-width:32px;text-align:center}',
+    '#sh-settings-page .sh-set-row small{display:block;font-weight:450;font-size:11px;opacity:.85;margin-top:3px}',
+    '#sh-settings-page .sh-set-row b:last-child{margin-left:auto;font-size:20px;color:#e1b971}',
+    '#sh-settings-page .sh-set-note{font-size:13px;line-height:1.6;opacity:.94}',
+    '#sh-settings-page .sh-set-field{display:block;width:100%;box-sizing:border-box;margin:10px 0;',
+    'border:1px solid #b59562;border-radius:12px;background:#140f25;color:#fff;padding:13px;font-size:15px}',
+    '#sh-settings-page .sh-set-cta{width:100%;padding:14px;margin-top:10px;border:1px solid #f5d58a;',
+    'border-radius:14px;background:linear-gradient(#fff1b2,#ce984a);color:#2e173a;font-weight:900;font-size:15px}',
+    '#sh-settings-page .sh-set-cta:disabled{opacity:.55}',
+    '#sh-settings-page .sh-set-error{color:#ffc0c0;min-height:20px;margin:8px 0;font-size:13px}',
+    '#sh-settings-page .sh-set-policy h4{color:#ffe2a8;margin:18px 0 7px}',
+    '#sh-settings-page .sh-set-policy p{white-space:pre-wrap;line-height:1.58;font-size:13px}',
+    '#sh-settings-page button:focus-visible,#sh-settings-page input:focus-visible,',
+    '#sh-settings-page textarea:focus-visible{outline:2px solid #ffe9a8;outline-offset:3px}'
+  ].join('');
+  document.head.appendChild(royalSettingsCss);
+  let settingsPageView='home';
+  function sharikaCloseSettings(){
+    const page=document.getElementById('sh-settings-page');
+    if(page)page.hidden=true;
+  }
+  function sharikaSettingsBack(){
+    const page=document.getElementById('sh-settings-page');
+    if(!page||page.hidden)return false;
+    if(settingsPageView==='home')sharikaCloseSettings();
+    else showSettingsView('home');
+    return true;
+  }
+  window.sharikaSettingsBack=sharikaSettingsBack;
+  function settingActionButton(label,icon,sub,route){
+    return '<button type="button" class="sh-set-row" data-sh-settings-route="'+route+'">'+
+      '<span class="sh-set-ico" aria-hidden="true">'+icon+'</span><span>'+label+
+      '<small>'+sub+'</small></span><b aria-hidden="true">›</b></button>';
+  }
+  function showSettingsView(view){
+    const page=document.getElementById('sh-settings-page');
+    if(!page)return;
+    settingsPageView=view;
+    page.querySelector('.sh-set-title').textContent=({
+      home:'Settings',safety:'Safety Center',policies:'Privacy & Policies',
+      privacy:'Privacy Policy',terms:'Terms & Conditions',
+      community:'Community Rules',account:'Account & Support',
+      voice:'Voice & Notifications',report:'Report a User',deletion:'Delete Account Request'
+    })[view]||'Settings';
+    const body=page.querySelector('.sh-set-body');body.textContent='';
+    let html='';
+    if(view==='home')html=
+      '<p class="sh-set-intro">Your account, safety, privacy and community policies in one place.</p>'+
+      settingActionButton('Safety Center','🛡️','Report users • room moderation • community rules','safety')+
+      settingActionButton('Privacy & Policies','🔒','Privacy Policy • Terms & Conditions','policies')+
+      settingActionButton('Account & Support','👤','Country • customer support • deletion request','account')+
+      settingActionButton('Voice & Notifications','🎙️','Microphone check • phone alerts','voice');
+    if(view==='safety')html=
+      '<div class="sh-set-card"><h3>Stay safe in Sharika</h3><p class="sh-set-note">Do not share passwords, verification codes or private information. Report abuse to customer support. Room owners and assigned admins can kick or block users from their own rooms using Room Safety.</p></div>'+
+      settingActionButton('Report a User','🚩','Send a verified abuse report to Sharika support','report')+
+      settingActionButton('Community Rules','📜','Abuse, harassment, fraud and unsafe content','community')+
+      '<div class="sh-set-card"><h3>Room controls</h3><p class="sh-set-note">Open the room management button while in your room to use Kick (10 min), Block and Unblock. Only the owner or a granted room admin has those permissions.</p></div>';
+    if(view==='policies')html=
+      settingActionButton('Privacy Policy','🔒','What Sharika collects and why','privacy')+
+      settingActionButton('Terms & Conditions','📄','Accounts • coins • gifts • community','terms')+
+      settingActionButton('Community Rules','🛡️','How to report unsafe behavior','community');
+    if(view==='account')html=
+      '<div class="sh-set-card"><h3>My account</h3><p class="sh-set-note" id="sh-set-account-summary"></p></div>'+
+      '<button class="sh-set-row" data-sh-settings-action="country"><span class="sh-set-ico">🌍</span><span>Country / Location<small>Choose manually • GPS is not required</small></span><b>›</b></button>'+
+      settingActionButton('Request Account Deletion','🗑️','Verified support request • review required','deletion')+
+      '<button class="sh-set-row" data-sh-settings-action="support"><span class="sh-set-ico">🎧</span><span>Customer Service<small>See your support conversation</small></span><b>›</b></button>'+
+      '<button class="sh-set-row" data-sh-settings-action="logout"><span class="sh-set-ico">🚪</span><span>Sign out<small>Leave this device signed out</small></span><b>›</b></button>';
+    if(view==='voice')html=
+      '<div class="sh-set-card"><h3>Voice quality</h3><p class="sh-set-note">Sharika requests echo cancellation, noise suppression and automatic gain control when starting the room microphone. Use wired headphones in a noisy place, and check your Internet connection if speech drops. No voice recording is saved by this test.</p>'+
+      '<button class="sh-set-cta" data-sh-settings-action="microphone">🎙️ Check my microphone permission</button><p class="sh-set-error" role="status"></p></div>'+
+      '<button class="sh-set-row" data-sh-settings-action="enablepush"><span class="sh-set-ico">🔔</span><span>Enable phone alerts<small>Notification permission is requested only when you tap here</small></span><b>›</b></button>';
+    if(view==='report')html=
+      '<div class="sh-set-card"><h3>Report a user</h3><p class="sh-set-note">Reports go to Sharika Customer Service for review. Reporting does not instantly block the user.</p>'+
+      '<input class="sh-set-field" id="sh-set-report-id" inputmode="numeric" maxlength="10" placeholder="User ID (1–10 digits)" aria-label="User ID">'+
+      '<textarea class="sh-set-field" id="sh-set-report-reason" maxlength="600" rows="4" placeholder="Describe what happened (at least 10 characters)" aria-label="Report reason"></textarea>'+
+      '<button class="sh-set-cta" data-sh-settings-action="report">Send report</button><p class="sh-set-error" role="status"></p></div>';
+    if(view==='deletion')html=
+      '<div class="sh-set-card"><h3>Request deletion of your Sharika account</h3>'+
+      '<p class="sh-set-note">This submits an authenticated request to Customer Service. Your account is NOT automatically deleted. Sharika must verify ownership and review balances, transactions and any records that must legally be retained. Support will respond in your Customer Service thread.</p>'+
+      '<label class="sh-set-note"><input type="checkbox" id="sh-set-delete-confirm"> I understand my account and associated app data may be permanently deleted after verification.</label>'+
+      '<button class="sh-set-cta" data-sh-settings-action="delete">Submit deletion request</button><p class="sh-set-error" role="status"></p></div>';
+    if(view==='community')html='<div class="sh-set-card sh-set-policy"><h3>Sharika Community Rules</h3>'+
+      '<p>No harassment, threats, bullying, hate speech, sexual exploitation, violence, illegal content, fraud, impersonation, spam, or exposing others’ private information. Do not share another user’s voice or images without their permission.</p>'+
+      '<p>Report users and incidents through Safety Center. Room owners and room admins may moderate their own room. Customer Service reviews reports and may restrict accounts under the Terms.</p></div>';
+    if(view==='privacy'||view==='terms'){
+      const data=window.POLD?.[view];
+      if(data&&Array.isArray(data[1])){
+        const panel=document.createElement('div');panel.className='sh-set-card sh-set-policy';
+        for(const entry of data[1]){
+          const title=document.createElement('h4');title.textContent=entry[0];
+          const para=document.createElement('p');para.textContent=entry[1];panel.append(title,para);
+        }
+        body.appendChild(panel);
+      }else html='<div class="sh-set-card">This policy is temporarily unavailable. Contact Customer Service.</div>';
+    }
+    if(html)body.innerHTML=html;
+    const summary=body.querySelector('#sh-set-account-summary');
+    if(summary)summary.textContent='ID: '+String(profile?.display_id||profile?.public_id||'')+
+      ' • Country: '+String(profile?.country||'Not set')+
+      ' • Login: '+String(session?.user?.email||'Verified account');
+    page.scrollTop=0;
+    page.querySelector('.sh-set-back')?.focus({preventScroll:true});
+  }
+  function sharikaOpenSettings(){
+    if(!session){window.showAuth('welcome');return;}
+    let page=document.getElementById('sh-settings-page');
+    if(!page){
+      page=document.createElement('section');page.id='sh-settings-page';
+      page.setAttribute('role','dialog');page.setAttribute('aria-modal','true');
+      page.setAttribute('aria-label','Settings Center');
+      page.innerHTML='<div class="sh-set-wrap"><header class="sh-set-head">'+
+        '<button type="button" class="sh-set-back" aria-label="Back">‹</button>'+
+        '<span class="sh-set-title">Settings</span></header><main class="sh-set-body"></main></div>';
+      document.body.appendChild(page);
+      page.querySelector('.sh-set-back').onclick=sharikaSettingsBack;
+      page.addEventListener('click',async event=>{
+        const route=event.target.closest?.('[data-sh-settings-route]');
+        if(route){showSettingsView(route.dataset.shSettingsRoute);return;}
+        const button=event.target.closest?.('[data-sh-settings-action]');
+        if(!button)return;
+        const action=button.dataset.shSettingsAction;
+        if(action==='country'){sharikaCloseSettings();openManualCountryPicker();return;}
+        if(action==='support'){sharikaCloseSettings();openSupportThread();return;}
+        if(action==='logout'){sharikaCloseSettings();window.logout();return;}
+        const status=page.querySelector('.sh-set-error');
+        if(action==='report'||action==='delete'){
+          let message='';
+          if(action==='report'){
+            const id=page.querySelector('#sh-set-report-id')?.value.trim()||'';
+            const reason=page.querySelector('#sh-set-report-reason')?.value.trim()||'';
+            if(!/^[0-9]{1,10}$/.test(id)||reason.length<10){
+              if(status)status.textContent='Enter a valid ID and at least 10 characters of detail.';
+              return;
+            }
+            message='[Safety report] User ID: '+id+'\\nDetails: '+reason;
+          }else{
+            if(!page.querySelector('#sh-set-delete-confirm')?.checked){
+              if(status)status.textContent='Please confirm you understand the deletion request.';
+              return;
+            }
+            message='[ACCOUNT DELETION REQUEST] Verified user '+String(profile?.public_id||'')+
+              ' requests deletion of their Sharika account and associated data. Verify ownership, applicable retention and reply to this support thread.';
+          }
+          button.disabled=true;
+          if(status)status.textContent='Submitting verified request…';
+          try{
+            await api('POST','/support/messages',{
+              body:message,request_id:'settings:'+Date.now().toString(36)+':'+
+                Math.random().toString(36).slice(2,14)
+            });
+            if(status)status.textContent='Request received by Customer Service. You can follow up in your support conversation.';
+            button.textContent='Request submitted ✓';
+          }catch(error){
+            if(status)status.textContent='Could not submit: '+errText(error);
+            button.disabled=false;
+          }
+          return;
+        }
+        if(action==='microphone'){
+          button.disabled=true;
+          if(status)status.textContent='Checking microphone permission…';
+          let stream=null;
+          try{
+            stream=await navigator.mediaDevices.getUserMedia({
+              audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
+            });
+            if(status)status.textContent=stream.getAudioTracks().some(track=>track.readyState==='live')?
+              'Microphone permission is working. Test finished; no audio was recorded or uploaded.':
+              'Microphone track unavailable. Check Android app permissions.';
+          }catch(error){
+            if(status)status.textContent='Microphone unavailable: '+errText(error);
+          }finally{
+            if(stream)stream.getTracks().forEach(track=>track.stop());
+            button.disabled=false;
+          }
+        }
+        if(action==='enablepush'){
+          button.disabled=true;
+          try{
+            const enabled=await registerPushDevice(true);
+            if(status)status.textContent=enabled?'Phone alerts enabled.':'Permission not granted or push service unavailable.';
+            toast(enabled?'Phone alerts enabled':'Phone alerts not enabled');
+          }catch(error){toast('Notifications: '+errText(error));}
+          finally{button.disabled=false;}
+        }
+      });
+    }
+    page.hidden=false;
+    showSettingsView('home');
+  }
+  // Original profile header and its Account & Features row both enter this page.
+  window.settingsSheet=sharikaOpenSettings;
+  window.sharikaOpenSettings=sharikaOpenSettings;
+  document.getElementById('v-me')?.addEventListener('click',event=>{
+    const target=event.target.closest?.('#mtopset,[data-m="set"]');
+    if(!target||!target.closest('#v-me'))return;
+    event.preventDefault();event.stopImmediatePropagation();
+    sharikaOpenSettings();
+  },true);
+  window.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&sharikaSettingsBack())event.preventDefault();
+  });
+
   const priorRenderMe=window.renderMe;
   let mainProfileStatsRequest=0;
   async function renderVerifiedMainProfileStats(){

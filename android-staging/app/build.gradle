@@ -30,14 +30,24 @@ android {
                 signingConfig signingConfigs.sharikaStaging
             }
         }
+        // Play-review AAB only. This isolated branch still targets the
+        // staging API and uses the encrypted *staging* key, so do NOT submit
+        // this bundle as a production Play release.
+        release {
+            minifyEnabled false
+            shrinkResources false
+            if (stableStagingSigner) {
+                signingConfig signingConfigs.sharikaStaging
+            }
+        }
     }
 
     defaultConfig {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 3
-        versionName '0.3.0-staging-api36'
+        versionCode 4
+        versionName '0.4.0-rc-settings-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

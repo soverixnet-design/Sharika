@@ -68,6 +68,13 @@
       return 'handled';
     }
 
+    // Full-screen Account/Safety/Policies settings has its own back stack.
+    var settings = get('sh-settings-page');
+    if (settings && !settings.hidden && typeof window.sharikaSettingsBack === 'function') {
+      window.sharikaSettingsBack();
+      return 'handled';
+    }
+
     var notifications = document.querySelector('.sh-notify-panel.on');
     if (notifications) {
       notifications.classList.remove('on');
