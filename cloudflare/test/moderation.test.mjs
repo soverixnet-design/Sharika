@@ -2,15 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleRoomModeration } from '../src/moderation.mjs';
 
-function setup({role='owner',closeFails=false}={}) {
+function setup({role='owner',closeFails=false,targetIsAdmin=false,targetIsOwner=false}={}) {
   const calls=[];
   const roomDO={
     async publishedFor(uid){calls.push({event:'publishedFor',uid});return [{sessionId:'session-one'}];},
     async withdrawUser(uid,all){calls.push({event:'withdraw',uid,all});return true;}
   };
   const db={
-    prepare(sql){return {bind(...args){calls.push({event:'bind',sql,args});return this;},
-      async first(){return {user_id:'guest-uid',seat_no:2,muted:0,public_no:10000002};}};},
+    prepare(sql){return {bind(...args){calls.push({event:'bind',sql,args});this.bound=args;return this;},
+      async first(){
+        if(sql.includes('FROM sharika_room_admins'))
+          return this.bound[1]==='admin-uid'||
+            (targetIsAdmin&&this.bound[1]==='guest-uid')?{active:1}:null;
+        return {user_id:targetIsOwner?'owner-uid':'guest-uid',
+          seat_no:2,muted:0,public_no:10000002};
+      }};},
     async batch(statements){calls.push({event:'batch',count:statements.length});return [];}
   };
   const env={DB:db,VOICE_ROOMS:{getByName(name){
@@ -23,7 +29,8 @@ function setup({role='owner',closeFails=false}={}) {
       method:'POST',body:JSON.stringify({action,target_public_id:target})
     });
     const response=await handleRoomModeration({
-      request,env,uid:role==='owner'?'owner-uid':'guest-uid',
+      request,env,uid:role==='owner'?'owner-uid':
+        role==='admin'?'admin-uid':'guest-uid',
       room:{owner_id:'owner-uid'},roomId:'10000001',cors:{},
       reply:(body,status)=>Response.json(body,{status}),
       fail:(error,status)=>Response.json({error},{status}),
@@ -59,7 +66,7 @@ test('owner kick creates a ten-minute server ban and removes member atomically',
   const r=await send('kick');
   assert.equal(r.status,200);
   assert.equal(r.body.banned_for_seconds,600);
-  assert.equal(calls.find(c=>c.event==='batch').count,3);
+  assert.equal(calls.find(c=>c.event==='batch').count,4);
   assert.equal(calls.find(c=>c.event==='withdraw').all,true);
   const ban=calls.find(c=>c.sql?.includes('INSERT INTO sharika_room_bans'));
   assert.ok(ban.args[2]>Date.now()+9*60_000);
@@ -87,4 +94,24 @@ test('owner unmute updates D1 without interrupting active sessions',async()=>{
   assert.equal(r.status,200);
   assert.equal(calls.some(c=>c.event==='close'),false);
   assert.equal(calls.find(c=>c.event==='batch').count,2);
+});
+
+test('a room admin can mute and kick a regular guest, without appointing other admins',async()=>{
+  const {send}=setup({role:'admin'});
+  const muted=await send('mute');
+  assert.equal(muted.status,200);
+  const kicked=await send('kick');
+  assert.equal(kicked.status,200);
+});
+
+test('a room admin cannot moderate another admin or the room owner',async()=>{
+  const adminTarget=setup({role:'admin',targetIsAdmin:true});
+  const denied=await adminTarget.send('kick');
+  assert.equal(denied.status,403);
+  assert.equal(denied.body.error,'cannot_moderate_room_admin');
+  assert.equal(adminTarget.calls.some(c=>c.event==='batch'),false);
+  const ownerTarget=setup({role:'admin',targetIsOwner:true});
+  const owner=await ownerTarget.send('mute');
+  assert.equal(owner.status,403);
+  assert.equal(owner.body.error,'cannot_moderate_room_owner');
 });

@@ -1006,6 +1006,17 @@
       paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
       row.querySelector('.sh-sovera-user-tag')?.remove();
       row.querySelector('.sh-svip-badge')?.remove();
+      row.querySelector('.sh-room-admin-tag')?.remove();
+      if(item.room_role==='admin'||item.room_role==='owner'){
+        const roleBadge=doc.createElement('span');
+        roleBadge.className='sh-room-admin-tag';
+        roleBadge.textContent=item.room_role==='owner'?'👑 OWNER':'🛡 ADMIN';
+        roleBadge.style.cssText='display:inline-flex;align-items:center;max-width:100px;'+
+          'border-radius:10px;border:1px solid #f9cf72;padding:2px 7px;'+
+          'background:linear-gradient(100deg,#522a18,#b47622);color:#fff0b8;'+
+          'font-size:10px;font-weight:800;white-space:nowrap';
+        row.appendChild(roleBadge);
+      }
       const level=svipLevel(item.svip_level);
       if(level)row.appendChild(makeSvipBadge(doc,level));
       const tag=nameTagArt(item.name_tag_style);
@@ -1045,8 +1056,21 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge')
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge')
         .forEach(decoration=>decoration.remove());
+      if(seat.room_role==='admin'||seat.room_role==='owner'){
+        const roomBadge=doc.createElement('span');
+        roomBadge.className='sh-room-admin-badge';
+        roomBadge.textContent=seat.room_role==='owner'?'👑':'🛡';
+        roomBadge.title=seat.room_role==='owner'?'Room Owner':'Room Admin';
+        roomBadge.setAttribute('aria-label',roomBadge.title);
+        roomBadge.style.cssText='position:absolute;right:-6px;top:-8px;z-index:18;'+
+          'display:grid;place-items:center;width:23px;height:23px;border-radius:50%;'+
+          'background:linear-gradient(140deg,#ffe4a1,#c78c27);border:1px solid #fff1c7;'+
+          'box-shadow:0 2px 10px #3d160b;color:#2d1932;font-size:12px';
+        avatar.style.position='relative';
+        avatar.appendChild(roomBadge);
+      }
       const svip=svipLevel(seat.svip_level);
       // VIP/SVIP status belongs beside the avatar frame; IDs are profile-only.
       if(svip)avatar.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
@@ -4355,6 +4379,10 @@
        !session || session.user.id!==userId || window.cur?.id!==room.id ||
        document.getElementById('rf')?.contentWindow!==frame)return;
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
+    frame.__sharikaRoomRole=room.owner_id===session?.user?.id?'owner':
+      self?.role==='admin'?'admin':'member';
+    frame.__sharikaMemberRoles=new Map((data.members||[]).map(m=>
+      [String(m.sharika_users?.public_id||''),String(m.role||'member')]));
     const eligible=room.owner_id===session?.user?.id||
       (!!self && self.seat_no!==null && !self.muted);
     if(sfuState?.roomId===room.id && sfuState.canPublish!==!!eligible)
@@ -4422,6 +4450,7 @@
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
       user_id:room.owner_id,public_id:owner.public_id||room.id,
+      room_role:'owner',
       special_id:owner.special_id||null,
       display_id:owner.display_id||owner.public_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
@@ -4448,7 +4477,8 @@
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
           n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
-          user_id:member.user_id,public_id:user.public_id,special_id:user.special_id||null,
+          user_id:member.user_id,public_id:user.public_id,room_role:member.role,
+          special_id:user.special_id||null,
           display_id:user.display_id||user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
           svip_level:Number(user.svip_level)||0,
@@ -4456,7 +4486,8 @@
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
       else audience.push({n:user.name,e:'👤',id:user.display_id||user.public_id,
-         canonical_id:user.public_id,special_id:user.special_id||null,
+         canonical_id:user.public_id,room_role:member.role,
+         special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
         svip_level:Number(user.svip_level)||0,
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
@@ -4522,6 +4553,13 @@
       idLabel.className='sh-royal-user-id';
       idLabel.textContent='ID: '+String(member.display_id||member.id);
       idLine.appendChild(idLabel);
+      const roomRole=frame?.__sharikaMemberRoles?.get(String(member.id));
+      if(roomRole==='owner'||roomRole==='admin'){
+        const roomTag=document.createElement('span');
+        roomTag.className='sh-royal-role-tag sh-royal-room-admin';
+        roomTag.textContent=roomRole==='owner'?'👑 ROOM OWNER':'🛡 ROOM ADMIN';
+        idLine.appendChild(roomTag);
+      }
       for(const [yes,label,kind] of [
         [member.bd_active,'✦ BD','sh-royal-bd'],
         [member.seller_active,'✦ Seller','sh-royal-seller']
@@ -5030,11 +5068,27 @@
       if(receivedGift||(sawNewGift&&room.owner_id===session?.user?.id))
         await reloadWallet();
     }
-    async function moderateSeat(action,seat) {
+    async function setRoomAdmin(publicId,makeAdmin){
       if(room.owner_id!==session?.user?.id)throw new Error('Room owner only');
+      if(!/^[0-9]{8}$/.test(String(publicId||''))||
+         frame.__sharikaMemberRoles?.get(String(publicId))==='owner')
+        throw new Error('Choose another verified room member');
+      const result=await api('POST','/rooms/'+room.id+'/admins',{
+        action:makeAdmin?'grant':'revoke',target_public_id:String(publicId)
+      });
+      frame.close();
+      await syncFrame(room,frame);
+      frame.toast(makeAdmin?'🛡 Room Admin assigned':'Room Admin removed');
+      return result;
+    }
+    async function moderateSeat(action,seat) {
+      if(room.owner_id!==session?.user?.id&&
+         frame.__sharikaRoomRole!=='admin')throw new Error('Room admin only');
       const target=frame.seats?.[seat];
       if(!target||target.empty||!target.public_id||
-         target.user_id===room.owner_id)throw new Error('Choose a guest seat');
+         target.user_id===room.owner_id||
+         (frame.__sharikaRoomRole==='admin'&&target.room_role==='admin'))
+        throw new Error('Cannot moderate Owner or another Admin');
       const result=await api('POST','/rooms/'+room.id+'/moderate',{
         action,target_public_id:target.public_id
       });
@@ -5109,8 +5163,9 @@
         const target=frame.seats?.[seat];
         const isSelf=target?.user_id===session?.user?.id;
         const owner=room.owner_id===session?.user?.id;
+        const moderator=owner||frame.__sharikaRoomRole==='admin';
         if(action==='lock_all'||action==='unlock_all') {
-          if(!owner)throw new Error('Room owner only');
+          if(!moderator)throw new Error('Room admin only');
           const result=await api('PUT','/rooms/'+room.id+'/locks/all',{
             locked:action==='lock_all'
           });
@@ -5122,7 +5177,7 @@
               (skipped?' ('+skipped+' occupied seats unchanged)':'')
             : 'All mic seats unlocked');
         } else if((action==='lock'||action==='unlock')&&seat>0) {
-          if(!owner)throw new Error('Room owner only');
+          if(!moderator)throw new Error('Room admin only');
           await api('PUT','/rooms/'+room.id+'/locks',{
             seat_no:seat,locked:action==='lock'
           });
@@ -5167,7 +5222,7 @@
         } else if(action==='take' && seat>0) {
           await moveSelfToSeat(seat);
         } else if(action==='down' && seat>0) {
-          if(!isSelf && owner && target?.user_id) {
+          if(!isSelf && moderator && target?.user_id) {
             await moderateSeat('remove_seat',seat);
           } else if(isSelf) {
             await api('PUT','/rooms/'+room.id+'/seat',{seat_no:null});
@@ -5176,15 +5231,17 @@
             frame.toast('Seat released; listening only');
           } else throw new Error('You can only leave your own seat');
         } else if(action==='mute' && seat>=0) {
-          if(owner && target?.user_id && !isSelf)
+          if(moderator && target?.user_id && !isSelf)
             await moderateSeat(target.muted?'unmute':'mute',seat);
           else if(isSelf) {
             const enabled=await toggleVoice();
             frame.close();
             frame.toast(enabled?'Microphone on':'Microphone off');
-          } else throw new Error('Only the owner can mute another user');
+          } else throw new Error('Only a Room Admin can mute another user');
         } else if(action==='kick' && seat>0) {
           await moderateSeat('kick',seat);
+        } else if(action==='admin_toggle' && owner && target?.public_id && !isSelf) {
+          await setRoomAdmin(target.public_id,target.room_role!=='admin');
         } else if(action==='own' && owner) {
           frame.open('<h3>👑 Verified owner controls</h3>'+
             '<div class="row">Tap an occupied seat to mute, unmute, remove from mic or kick a guest.</div>');
@@ -5275,15 +5332,17 @@
       const selected=frame.seats?.[index];
       if(!selected)return;
       const owner=room.owner_id===session?.user?.id;
+      const moderator=owner||frame.__sharikaRoomRole==='admin';
       if(selected.empty||selected.lock){
-        verifiedSeatMenu(index,selected,owner);
+        verifiedSeatMenu(index,selected,moderator);
         return;
       }
       const result=originalSeatSheet(index);
       const self=selected.user_id===session?.user?.id;
       const actions=frame.$('sheet')?.querySelector('.acts');
       const detail=frame.$('sheet')?.querySelector('.who small');
-      if(detail)detail.textContent=index===0?'Room owner':'Mic seat '+index;
+      if(detail)detail.textContent=index===0?'Room owner':
+        selected.room_role==='admin'?'Room Admin · Mic seat '+index:'Mic seat '+index;
       if(!actions)return result;
       actions.replaceChildren();
       const options=[['prof','👤','Profile'],['gift','🎁','Gift']];
@@ -5291,9 +5350,13 @@
         selected.muted?'Unmute':'Mute']);
       if(self&&index>0)options.push(['down','⬇️','Leave mic']);
       if(owner&&index===0)options.push(['own','⚙️','Manage']);
-      if(owner&&index>0&&!self)options.push(
+      if(moderator&&index>0&&!self&&
+         (owner||selected.room_role!=='admin'))options.push(
         ['mute',selected.muted?'🔊':'🔇',selected.muted?'Unmute':'Mute'],
         ['down','⬇️','Remove from mic'],['kick','🚫','Kick out']);
+      if(owner&&index>0&&!self)options.push(
+        ['admin_toggle','🛡',selected.room_role==='admin'
+          ?'Remove Room Admin':'Make Room Admin']);
       for(const [action,icon,label] of options){
         const button=frame.document.createElement('button');
         button.className='act'+(action==='kick'?' dg':'');
@@ -5352,6 +5415,10 @@
       const verifiedId=String(user?.seat!=null?
         frame.seats?.[user.seat]?.public_id:frame.U?.[user?.k]?.canonical_id||'');
       const verified=/^[0-9]{8}$/.test(verifiedId);
+      const selectedRole=frame.__sharikaMemberRoles?.get(verifiedId)||'member';
+      const roleLabel=sheet?.querySelector('.who small');
+      if(roleLabel&&selectedRole==='admin')
+        roleLabel.textContent='🛡 Room Admin';
       const profileButton=sheet?.querySelector('button.act[data-a="pf"]');
       if(profileButton)profileButton.onclick=async()=>{
         if(!verified){frame.toast('Verified member ID unavailable');return;}
@@ -5379,7 +5446,9 @@
             const name=frame.document.createElement('div');
             name.className='row';
             name.textContent=String(member.name||'Member')+' · ID '+
-              String(member.display_id||member.id);
+              String(member.display_id||member.id)+
+              (selectedRole==='admin'?' · 🛡 ROOM ADMIN':
+               selectedRole==='owner'?' · 👑 OWNER':'');
             const details=frame.document.createElement('div');
             details.className='lbl';
             details.textContent='Country: '+String(member.country||'Not set')+
@@ -5494,6 +5563,24 @@
         if(!verified){frame.toast('Verified member ID unavailable');return;}
         openVerifiedReport('user',verifiedId,String(user.n||'Member'));
       };
+      if(verified&&room.owner_id===session?.user?.id&&
+         selectedRole!=='owner'){
+        const adminButton=frame.document.createElement('button');
+        adminButton.type='button';
+        adminButton.className='act';
+        adminButton.textContent=selectedRole==='admin'
+          ?'🛡 Remove Room Admin':'🛡 Make Room Admin';
+        sheet?.querySelector('.acts')?.appendChild(adminButton);
+        adminButton.onclick=async()=>{
+          if(adminButton.disabled)return;
+          adminButton.disabled=true;
+          try{await setRoomAdmin(verifiedId,selectedRole!=='admin');}
+          catch(error){
+            if(adminButton.isConnected)adminButton.disabled=false;
+            frame.toast('Room Admin: '+errText(error));
+          }
+        };
+      }
       const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
       if(inviteButton)inviteButton.onclick=async()=>{
         if(inviteButton.disabled)return;
@@ -5524,8 +5611,13 @@
           const onSeat=Number.isInteger(user.seat)&&user.seat>0;
           const target=onSeat?frame.seats[user.seat]:null;
           const isSelf=target?.user_id===session?.user?.id;
-          if(!isSelf && room.owner_id!==session?.user?.id) {
-            frame.toast('Room owner only');return;
+          if(!isSelf&&room.owner_id!==session?.user?.id&&
+             frame.__sharikaRoomRole!=='admin'){
+            frame.toast('Room Admin only');return;
+          }
+          if(!isSelf&&frame.__sharikaRoomRole==='admin'&&
+             selectedRole==='admin'){
+            frame.toast('Room Admin cannot moderate another Admin');return;
           }
           button.disabled=true;
           try {
@@ -5535,7 +5627,7 @@
             }else if(onSeat)await moderateSeat(action,user.seat);
             else if(action==='kick') {
               await api('POST','/rooms/'+room.id+'/moderate',{
-                action,target_public_id:String(user.id)
+                action,target_public_id:verifiedId
               });
               frame.close();await syncFrame(room,frame);
               frame.toast('Guest removed for 10 minutes');

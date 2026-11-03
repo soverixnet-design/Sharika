@@ -6,12 +6,60 @@ const PUBLIC_ID=/^[0-9]{8}$/;
 const ACTIONS=new Set(['mute','unmute','remove_seat','kick']);
 const ROOM_BAN_MS=10*60*1000;
 
+export async function isRoomAdmin(env,roomId,uid) {
+  const found=await env.DB.prepare(
+    'SELECT 1 AS active FROM sharika_room_admins WHERE room_id=? AND user_id=?'
+  ).bind(roomId,uid).first();
+  return !!found;
+}
+
+// Only the verified owner appoints or revokes administrators. An assigned
+// administrator has room-scoped moderation, never global or wallet privileges.
+export async function handleRoomAdminAssignment({
+  request,env,uid,room,roomId,reply,fail,cors,readBody
+}) {
+  if(request.method!=='POST')return fail('method_not_allowed',405,cors);
+  if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+  const body=await readBody(request);
+  const action=body.action;
+  const publicId=body.target_public_id;
+  if(!['grant','revoke'].includes(action)||
+     typeof publicId!=='string'||!PUBLIC_ID.test(publicId))
+    return fail('invalid_room_admin_action',400,cors);
+  const target=await env.DB.prepare(
+    'SELECT u.auth_uid AS user_id,u.status,m.user_id AS member_uid '+
+    'FROM sharika_users u LEFT JOIN sharika_room_members m '+
+    'ON m.user_id=u.auth_uid AND m.room_id=? WHERE u.public_no=?'
+  ).bind(roomId,Number(publicId)).first();
+  if(!target)return fail('user_not_found',404,cors);
+  if(target.user_id===room.owner_id)return fail('cannot_change_room_owner',403,cors);
+  if(action==='grant'&&(!target.member_uid||target.status!=='active'))
+    return fail('room_member_not_found',404,cors);
+  const mutation=action==='grant'
+    ?env.DB.prepare(
+      'INSERT INTO sharika_room_admins(room_id,user_id,granted_by_uid) '+
+      'VALUES(?,?,?) ON CONFLICT(room_id,user_id) DO NOTHING'
+    ).bind(roomId,target.user_id,uid)
+    :env.DB.prepare(
+      'DELETE FROM sharika_room_admins WHERE room_id=? AND user_id=?'
+    ).bind(roomId,target.user_id);
+  const audit=env.DB.prepare(
+    'INSERT INTO sharika_room_admin_audit(room_id,actor_uid,target_uid,action) '+
+    'VALUES(?,?,?,?)'
+  ).bind(roomId,uid,target.user_id,action);
+  await env.DB.batch([mutation,audit]);
+  return reply({ok:true,room_id:roomId,target_public_id:publicId,
+    role:action==='grant'?'admin':'member'},200,cors);
+}
+
 export async function handleRoomModeration({
   request,env,uid,room,roomId,reply,fail,cors,readBody,
   closeAudio=forceCloseMicrophone
 }) {
   if(request.method!=='POST')return fail('method_not_allowed',405,cors);
-  if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+  const actorIsOwner=room.owner_id===uid;
+  if(!actorIsOwner && !await isRoomAdmin(env,roomId,uid))
+    return fail('room_owner_only',403,cors);
   const body=await readBody(request);
   const action=body.action;
   const publicId=body.target_public_id;
@@ -23,7 +71,10 @@ export async function handleRoomModeration({
     'WHERE m.room_id=? AND u.public_no=?'
   ).bind(roomId,Number(publicId)).first();
   if(!target)return fail('room_member_not_found',404,cors);
-  if(target.user_id===uid)return fail('cannot_moderate_room_owner',403,cors);
+  if(target.user_id===uid || target.user_id===room.owner_id)
+    return fail('cannot_moderate_room_owner',403,cors);
+  if(!actorIsOwner && await isRoomAdmin(env,roomId,target.user_id))
+    return fail('cannot_moderate_room_admin',403,cors);
   if(action!=='kick' && target.seat_no===null)
     return fail('user_not_on_mic',409,cors);
 
@@ -58,6 +109,11 @@ export async function handleRoomModeration({
     ).bind(roomId,target.user_id,Date.now()+ROOM_BAN_MS));
     statements.push(env.DB.prepare(
       'DELETE FROM sharika_room_members WHERE room_id=? AND user_id=?'
+    ).bind(roomId,target.user_id));
+    // If the owner kicks a Room Admin, the administrative grant is removed,
+    // so rejoining after the temporary ban never restores moderator powers.
+    if(actorIsOwner)statements.push(env.DB.prepare(
+      'DELETE FROM sharika_room_admins WHERE room_id=? AND user_id=?'
     ).bind(roomId,target.user_id));
   }
   statements.push(env.DB.prepare(

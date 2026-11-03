@@ -1019,6 +1019,9 @@ public final class SharikaActivity extends Activity {
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/moderate$"))
             return method.equals("POST");
+        // Room admin grants are owner-only and checked again by the Worker.
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/admins$"))
+            return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/seat$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/gifts$"))

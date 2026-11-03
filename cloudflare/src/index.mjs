@@ -1,7 +1,7 @@
 import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from './notifications.mjs';
 import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
-import { handleRoomModeration } from './moderation.mjs';
+import { handleRoomModeration,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
@@ -1438,9 +1438,13 @@ export async function handleRequest(request, env, ctx) {
         return handleRoomModeration({
           request,env,uid,room,roomId,reply,fail,cors,readBody
         });
+      if(parts.length===5 && action==='admins')
+        return handleRoomAdminAssignment({
+          request,env,uid,room,roomId,reply,fail,cors,readBody
+        });
       if(parts.length===6 && action==='locks' && parts[5]==='all' &&
          request.method==='PUT') {
-        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid)) return fail('room_owner_only',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const body=await readBody(request);
         if(typeof body.locked!=='boolean')
@@ -1451,7 +1455,7 @@ export async function handleRequest(request, env, ctx) {
         return reply(result,200,cors);
       }
       if (parts.length===5 && action==='locks' && request.method==='PUT') {
-        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid)) return fail('room_owner_only',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const body=await readBody(request);
         if(!Number.isInteger(body.seat_no)||body.seat_no<1||
@@ -1487,10 +1491,14 @@ export async function handleRequest(request, env, ctx) {
       if (parts.length === 5 && action === 'members' && request.method === 'GET') {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
-        const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,m.joined_at,
+        const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,
+          CASE WHEN m.user_id=? THEN 'owner' WHEN ra.user_id IS NOT NULL THEN 'admin' ELSE 'member' END AS role,
+          m.seat_no,m.muted,m.joined_at,
           u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style,
           ${activeSpecialSelect('u')},${publicSvipSelect('u')} FROM sharika_room_members m
-          JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
+          JOIN sharika_users u ON u.auth_uid=m.user_id
+          LEFT JOIN sharika_room_admins ra ON ra.room_id=m.room_id AND ra.user_id=m.user_id
+          WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(room.owner_id,roomId).all();
         // A killed Android process may never call /leave. Show active presence
         // (with a 90-second grace period for new joins), without mutating the
         // membership ledger in this read-only room snapshot.

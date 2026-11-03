@@ -17,6 +17,10 @@ on:
       - '.github/workflows/sharika-worker-staging-publish.yml'
       - 'cloudflare/src/sellers.mjs'
       - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/moderation.mjs'
+      - 'cloudflare/migrations/0052_room_admins.sql'
+      - 'cloudflare/test/room-admin.test.mjs'
+      - 'cloudflare/test/moderation.test.mjs'
       - 'cloudflare/src/family-sheets.mjs'
       - 'cloudflare/src/family.mjs'
       - 'cloudflare/migrations/0050_family_invites_and_period.sql'
@@ -157,6 +161,14 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0051_family_creation_requests.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0051_family_creation_requests.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0051_family_creation_requests.sql')"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS creation_requests FROM sharika_family_creation_requests"
+      # Room Admin assignment is room-scoped. All prior rooms, seats and
+      # balances remain untouched; tables are additive and idempotent.
+      - name: Apply verified Room Admin schema to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0052_room_admins.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0052_room_admins.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0052_room_admins.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS active_room_admins FROM sharika_room_admins"
       - name: Verify Family schema and preserve existing voice/game source
         if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
         run: |
