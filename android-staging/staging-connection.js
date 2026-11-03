@@ -2157,6 +2157,240 @@
       toast('Profile not saved: '+errText(error));
     }finally{if(save.isConnected)save.disabled=false;}
   },true);
+
+  // Royal Family card lives under Account Features. BD entry is server-permission gated.
+  const familyStyles=document.createElement('style');
+  familyStyles.id='sh-family-royal-css';
+  familyStyles.textContent=[
+    '#sh-family-entries{margin:14px 12px 20px;display:grid;gap:10px}',
+    '#sh-family-entries button{width:100%;display:flex;gap:14px;align-items:center;',
+    'border:1px solid #f5d387;border-radius:20px;text-align:left;padding:14px;',
+    'background:linear-gradient(145deg,#654113,#b98129 40%,#6b3c18 80%,#34220f);',
+    'box-shadow:inset 0 2px 2px #ffecb988,0 5px 0 #35200f,0 9px 20px #09041499;',
+    'color:#ffefc9;text-shadow:0 1px 2px #2b160a;font-weight:800}',
+    '#sh-family-entries button .sh-fam-icon{font-size:31px;filter:drop-shadow(0 3px 3px #0008)}',
+    '#sh-family-entries button small{display:block;font-size:11px;opacity:.9;font-weight:500}',
+    '#sh-family-entries button:active{transform:translateY(3px)}',
+    '#sh-family-panel{position:fixed;inset:0;z-index:2147483500;overflow:auto;',
+    'background:radial-gradient(ellipse at 50% -20%,#9e6d2b 0%,#271b18 38%,#100c18 85%);',
+    'color:#ffebc5;padding:calc(14px + env(safe-area-inset-top,0px)) 15px 24px}',
+    '#sh-family-panel .sh-fam-wrap{max-width:620px;margin:auto}',
+    '#sh-family-panel h2{font-size:23px;color:#ffe4a2;text-align:center;margin:8px 0 20px}',
+    '#sh-family-panel h3{color:#f4d289;margin:3px 0 10px;font-size:17px}',
+    '#sh-family-panel .sh-fam-card{border:1px solid #bd873f;border-radius:18px;',
+    'background:linear-gradient(145deg,#3b2a2a,#241926);padding:15px;margin:12px 0;',
+    'box-shadow:inset 0 1px 1px #fff3,0 8px 20px #0007}',
+    '#sh-family-panel .sh-fam-stat{font-size:24px;font-weight:900;color:#ffe59e}',
+    '#sh-family-panel .sh-fam-note{font-size:12px;opacity:.8;line-height:1.5}',
+    '#sh-family-panel input{display:block;width:100%;padding:12px;border:1px solid #be8c47;',
+    'border-radius:12px;background:#160f1c;color:white;margin:7px 0 11px;font-size:15px}',
+    '#sh-family-panel button{border:1px solid #f1c777;border-radius:12px;padding:11px 15px;',
+    'font-weight:800;background:linear-gradient(#fff0af,#c58c35);color:#38200c;margin:4px 5px 4px 0}',
+    '#sh-family-panel button:disabled{opacity:.45}',
+    '#sh-family-panel .sh-fam-head{display:flex;align-items:center;justify-content:space-between}',
+    '#sh-family-panel .sh-fam-list{list-style:none;padding:0;margin:0}',
+    '#sh-family-panel .sh-fam-list li{padding:8px 0;border-bottom:1px solid #fff2}',
+    '#sh-family-panel .sh-fam-close{background:#241726;color:#ffe1a0}',
+    '#sh-family-panel .sh-fam-feedback{min-height:18px;color:#ffd985;margin:8px 0}',
+    '@media(prefers-reduced-motion:reduce){#sh-family-entries button{transition:none}}'
+  ].join('');
+  document.head.appendChild(familyStyles);
+  const famEsc=x=>String(x==null?'':x).replace(/[&<>"']/g,
+    c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+  let familyCache=null,familyCheckedAt=0,familyCheckedUser=null;
+  function familyNotice(message){
+    const info=document.querySelector('#sh-family-panel .sh-fam-feedback');
+    if(info)info.textContent=String(message||'');
+    else toast(String(message||''));
+  }
+  function mountFamilyTiles(){
+    const root=document.getElementById('v-me');
+    if(!root||!session)return;
+    document.getElementById('sh-family-entries')?.remove();
+    const entries=document.createElement('section');entries.id='sh-family-entries';
+    entries.setAttribute('aria-label','Family and BD account features');
+    const family=document.createElement('button');family.type='button';
+    family.innerHTML='<span class="sh-fam-icon">👑</span><span>Royal Family'+
+      '<small>Family • members • Crystal Wallet</small></span>';
+    family.onclick=openRoyalFamily;entries.appendChild(family);
+    const bd=document.createElement('button');bd.type='button';bd.id='sh-bd-entry';
+    bd.innerHTML='<span class="sh-fam-icon">💼</span><span>BD System'+
+      '<small>Family Grant • 5% Commission • Statements</small></span>';
+    bd.hidden=true;bd.onclick=openRoyalFamily;entries.appendChild(bd);
+    root.appendChild(entries);
+    const current=session.user?.id;
+    if(current!==familyCheckedUser||Date.now()-familyCheckedAt>30000){
+      familyCheckedUser=current;familyCheckedAt=Date.now();familyCache=null;
+      api('GET','/family/me').then(data=>{
+        if(session?.user?.id!==current)return;
+        familyCache=data;
+        const tile=document.getElementById('sh-bd-entry');
+        if(tile)tile.hidden=!(data.bd?.active&&data.bd?.can_grant);
+      }).catch(error=>{
+        console.warn('Family status unavailable:',errText(error));
+      });
+    }else if(familyCache)bd.hidden=!(familyCache.bd?.active&&familyCache.bd?.can_grant);
+  }
+  async function openRoyalFamily(){
+    if(!session){window.showAuth('welcome');return;}
+    let layer=document.getElementById('sh-family-panel');
+    if(!layer){
+      layer=document.createElement('section');layer.id='sh-family-panel';
+      layer.setAttribute('role','dialog');layer.setAttribute('aria-modal','true');
+      layer.setAttribute('aria-label','Sharika Royal Family');
+      document.body.appendChild(layer);
+    }
+    layer.hidden=false;
+    layer.innerHTML='<div class="sh-fam-wrap"><div class="sh-fam-head">'+
+      '<button type="button" class="sh-fam-close" id="sh-fam-back">‹ Back</button>'+
+      '<small>SHARIKA · ROYAL FAMILY</small></div><h2>👑 Royal Family</h2>'+
+      '<div id="sh-fam-body" class="sh-fam-card">Loading verified family data…</div>'+
+      '<p class="sh-fam-feedback" role="status"></p></div>';
+    layer.querySelector('#sh-fam-back').onclick=()=>{layer.hidden=true;};
+    await reloadRoyalFamily();
+  }
+  async function reloadRoyalFamily(){
+    const layer=document.getElementById('sh-family-panel');
+    if(!layer||layer.hidden||!session)return;
+    const target=layer.querySelector('#sh-fam-body');
+    if(target)target.textContent='Loading verified family data…';
+    const account=session.user?.id;
+    try{
+      const data=await api('GET','/family/me');
+      if(account!==session?.user?.id||layer.hidden)return;
+      familyCache=data;familyCheckedAt=Date.now();familyCheckedUser=account;
+      const bdTile=document.getElementById('sh-bd-entry');
+      if(bdTile)bdTile.hidden=!(data.bd?.active&&data.bd?.can_grant);
+      renderRoyalFamily(data);
+    }catch(error){
+      if(target)target.textContent='Family service unavailable: '+errText(error)+
+        '. Try again after the staging update.';
+    }
+  }
+  function renderRoyalFamily(data){
+    const target=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!target)return;
+    const family=data.family,bd=data.bd||{},policy=data.policy||{},wallet=data.wallet||{};
+    const fmtUnits=u=>(Number(u||0)/10000).toLocaleString('en-US',{maximumFractionDigits:4});
+    let html='<h3>💎 Crystal Wallet</h3><div class="sh-fam-stat">'+
+      fmtUnits(wallet.available_units)+' Crystal</div>'+
+      '<p class="sh-fam-note">Total earned: '+fmtUnits(wallet.total_units)+
+      ' · Reserved / transferred: '+fmtUnits(wallet.transferred_units)+
+      '. Crystals are separate from spendable coins.</p>'+
+      '<button type="button" id="sh-fam-ledger">View Ledger</button>';
+    if(family){
+      html+='<div class="sh-fam-card"><h3>👑 '+famEsc(family.name)+' · Level '+
+        famEsc(family.level)+'</h3><p>Family ID: '+famEsc(family.id)+
+        ' · '+famEsc(family.member_count)+' members</p>'+
+        '<p class="sh-fam-note">Owner: '+famEsc(family.owner_id)+
+        ' · BD: '+famEsc(family.bd_id)+'</p><ul class="sh-fam-list">'+
+        (family.members||[]).map(m=>'<li>'+famEsc(m.name)+' · '+famEsc(m.public_id)+
+          ' <small>('+famEsc(m.role)+')</small></li>').join('')+'</ul>'+
+        (['leader','co_leader'].includes(family.role)?
+          '<button id="sh-fam-requests" type="button">Review Join Requests</button>':
+          '<button id="sh-fam-leave" type="button">Leave Family</button>')+'</div>';
+    }else html+='<div class="sh-fam-card"><h3>Join a Family</h3>'+
+      '<p class="sh-fam-note">Only one family at a time. Leader approves membership.</p>'+
+      '<label>Family ID<input id="sh-fam-join-id" inputmode="numeric" placeholder="e.g. 1001"></label>'+
+      '<button id="sh-fam-join" type="button">Send Join Request</button></div>';
+    if(bd.active&&bd.can_grant){
+      html+='<div class="sh-fam-card"><h3>💼 BD Family Grant</h3>'+
+        '<p class="sh-fam-note">Your account has Family Grant permission. BD commission: '+
+        famEsc(policy.bd_percent)+'% on verified non-Lucky family member gifts.</p>'+
+        '<label>Owner Sharika ID<input id="sh-fam-owner-id" inputmode="numeric" maxlength="8" placeholder="8-digit ID"></label>'+
+        '<label>Family Name<input id="sh-fam-name" maxlength="40" placeholder="Family name"></label>'+
+        '<button type="button" id="sh-fam-grant">Grant Family</button>'+
+        '<button type="button" id="sh-fam-bd-list">My Granted Families</button></div>';
+    }
+    if(policy.conversion_enabled){
+      html+='<div class="sh-fam-card"><h3>↔ Seller Transfer Request</h3>'+
+        '<p class="sh-fam-note">Approval required before seller stock receives coins. Rate: '+
+        famEsc(policy.coins_per_crystal)+' coins per Crystal.</p>'+
+        '<label>Seller ID<input id="sh-fam-seller" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Whole Crystals<input id="sh-fam-amount" inputmode="numeric" type="number" min="1"></label>'+
+        '<button type="button" id="sh-fam-transfer">Request Transfer</button></div>';
+    }
+    target.innerHTML=html;
+    const invoke=async(method,url,body,confirmText)=>{
+      if(confirmText&&!window.confirm(confirmText))return;
+      familyNotice('Saving…');
+      try{
+        const saved=await api(method,url,body);
+        familyNotice('Verified ✓');
+        await reloadRoyalFamily();familyNotice('Saved successfully ✓');
+        return saved;
+      }catch(error){familyNotice('Not saved: '+errText(error));return null;}
+    };
+    target.querySelector('#sh-fam-join')?.addEventListener('click',()=>{
+      const id=Number(target.querySelector('#sh-fam-join-id')?.value);
+      if(!Number.isSafeInteger(id)||id<1)return familyNotice('Enter a valid Family ID');
+      invoke('POST','/family/join',{family_id:id});
+    });
+    target.querySelector('#sh-fam-grant')?.addEventListener('click',()=>{
+      const id=target.querySelector('#sh-fam-owner-id')?.value?.trim();
+      const name=target.querySelector('#sh-fam-name')?.value?.trim();
+      if(!/^[0-9]{8}$/.test(id||'')||!name||name.length<3)
+        return familyNotice('Enter the 8-digit ID and Family Name');
+      invoke('POST','/family/bd/grant',{owner_public_id:id,name,
+        request_id:'family:'+crypto.randomUUID()},'Grant family to '+id+'?');
+    });
+    target.querySelector('#sh-fam-leave')?.addEventListener('click',()=>
+      invoke('POST','/family/leave',{},'Leave this Family?'));
+    target.querySelector('#sh-fam-transfer')?.addEventListener('click',()=>{
+      const id=target.querySelector('#sh-fam-seller')?.value?.trim();
+      const crystals=Number(target.querySelector('#sh-fam-amount')?.value);
+      if(!/^[0-9]{8}$/.test(id||'')||!Number.isSafeInteger(crystals)||crystals<1)
+        return familyNotice('Enter seller ID and whole Crystals');
+      invoke('POST','/family/crystal/transfer',{seller_public_id:id,crystals,
+        request_id:'crystal:'+crypto.randomUUID()},
+      'Reserve '+crystals+' Crystal for seller '+id+'?');
+    });
+    const detail=async(url,title,map)=>{
+      familyNotice('Loading…');
+      try{
+        const result=await api('GET',url);
+        const lines=map(result);
+        target.innerHTML='<h3>'+famEsc(title)+'</h3>'+
+          '<button type="button" id="sh-fam-detail-back">‹ Family Dashboard</button>'+
+          (lines.length?'<ul class="sh-fam-list">'+lines.join('')+'</ul>':
+            '<p>No verified records yet.</p>');
+        target.querySelector('#sh-fam-detail-back').onclick=()=>renderRoyalFamily(data);
+        familyNotice('');
+      }catch(error){familyNotice('Unavailable: '+errText(error));}
+    };
+    target.querySelector('#sh-fam-ledger')?.addEventListener('click',()=>detail(
+      '/family/ledger','Crystal Transactions',r=>[
+        ...(r.credits||[]).map(x=>'<li>+'+fmtUnits(x.crystal_units)+
+          ' Crystal · '+famEsc(x.kind)+' · Gift #'+famEsc(x.transaction_id)+'</li>'),
+        ...(r.transfers||[]).map(x=>'<li>−'+fmtUnits(x.crystal_units)+
+          ' Crystal · Seller '+famEsc(x.seller_id)+' · '+famEsc(x.status)+'</li>')
+      ]));
+    target.querySelector('#sh-fam-bd-list')?.addEventListener('click',()=>detail(
+      '/family/bd/families','My Granted Families',r=>(r.families||[]).map(x=>
+        '<li>'+famEsc(x.name)+' · Owner '+famEsc(x.owner_id)+
+        ' · '+famEsc(x.member_count)+' members</li>')));
+    target.querySelector('#sh-fam-requests')?.addEventListener('click',async()=>{
+      familyNotice('Loading requests…');
+      try{
+        const result=await api('GET','/family/requests');
+        target.innerHTML='<h3>Family Join Requests</h3>'+
+          '<button type="button" id="sh-fam-requests-back">‹ Dashboard</button>'+
+          (result.requests||[]).map(x=>'<div class="sh-fam-card">'+famEsc(x.name)+
+            ' · '+famEsc(x.public_id)+'<br>'+
+            '<button data-fam-accept="'+x.id+'">Accept</button>'+
+            '<button data-fam-reject="'+x.id+'">Reject</button></div>').join('');
+        target.querySelector('#sh-fam-requests-back').onclick=()=>renderRoyalFamily(data);
+        target.querySelectorAll('[data-fam-accept],[data-fam-reject]').forEach(button=>{
+          button.onclick=()=>invoke('POST','/family/requests/'+
+            (button.dataset.famAccept||button.dataset.famReject)+'/'+
+            (button.dataset.famAccept?'accept':'reject'),{});
+        });
+        familyNotice('');
+      }catch(error){familyNotice('Unavailable: '+errText(error));}
+    });
+  }
+  window.sharikaOpenRoyalFamily=openRoyalFamily;
+
   const priorRenderMe=window.renderMe;
   let mainProfileStatsRequest=0;
   async function renderVerifiedMainProfileStats(){
@@ -2218,6 +2452,7 @@
     refreshGlobalProfileLayouts().catch(()=>{});
     renderVerifiedMainProfileStats().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
+    mountFamilyTiles();
     refreshVerifiedAppearance().catch(()=>{});
     return result;
   };
