@@ -1,4 +1,4 @@
-name: Sharika Family BD direct staging APK
+name: Sharika Golden Family direct staging APK
 on:
   push:
     branches:
@@ -20,15 +20,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$(gh run view 41635553558 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
-          test "$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13230840761 --jq '.workflow_run.head_sha')" = 7dc9401eddde5ae60bc940967c96601d02e15248
-          echo 'PINNED_SHARIKA_STAGING_APK_AND_EMULATOR_RUN_VERIFIED'
+          test "$(gh run view 41669852276 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          test "$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13247077925 --jq '.workflow_run.head_sha')" = 918b25a481fa73753785cedb838abf99818495fb
+          test "$(gh run view 41670118688 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          echo 'PINNED_GOLDEN_FAMILY_STAGING_APK_BACKEND_AND_EMULATOR_RUN_VERIFIED'
 
       - name: Download only the previously checked signed APK
         uses: actions/download-artifact@v4
         with:
           name: Sharika-Android-Staging-Debug
-          run-id: 41635553558
+          run-id: 41669852276
           repository: soverixnet-design/Sharika
           github-token: ${{ github.token }}
           path: family-apk
@@ -46,7 +47,11 @@ jobs:
             'family.onclick=openRoyalFamily',
             'window.sharikaOpenRoyalFamily=openRoyalFamily',
             'data-fam-transfer-owner',
-            'data-fam-remove-member'
+            'data-fam-remove-member',
+            'function renderFamilyDiscovery',
+            'data-fam-discovery-apply',
+            'sh-fam-create-request',
+            'sh-royal-idline'
           ]) if(!body.includes(required))throw Error('Staging APK Family icon check failed');
           console.log('SHARIKA_STAGING_FAMILY_ICON_IN_SIGNED_APK_VERIFIED');
           NODE
@@ -59,23 +64,27 @@ jobs:
               'Native Family API route missing from compiled APK'
           assert any(b'/api/v1/family/ownership/transfer' in dex for dex in dexes), \
               'Native Family ownership transfer route missing from APK'
-          print('SHARIKA_NATIVE_FAMILY_API_ROUTES_IN_DEX_VERIFIED')
+          assert any(b'/api/v1/family/discover' in dex for dex in dexes), \
+              'Native Family discovery route missing from APK'
+          assert any(b'/api/v1/family/creation/request' in dex for dex in dexes), \
+              'Native Family application route missing from APK'
+          print('SHARIKA_NATIVE_FAMILY_DISCOVERY_API_ROUTES_IN_DEX_VERIFIED')
           PY
-          install -m 0644 family-apk/app-debug.apk family-apk/Sharika-Family-BD-Staging.apk
-          sha256sum family-apk/Sharika-Family-BD-Staging.apk
+          install -m 0644 family-apk/app-debug.apk family-apk/Sharika-Family-Golden-Staging.apk
+          sha256sum family-apk/Sharika-Family-Golden-Staging.apk
 
       - name: Publish a clearly marked, non-production GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG=sharika-family-complete-staging-7dc9401e
+          TAG=sharika-family-golden-discovery-staging-918b25a4
           if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
             echo "::error::Existing staging release; refusing to overwrite an APK"
             exit 1
           fi
-          gh release create "$TAG" family-apk/Sharika-Family-BD-Staging.apk \
+          gh release create "$TAG" family-apk/Sharika-Family-Golden-Staging.apk \
             --repo soverixnet-design/Sharika \
-            --target 7dc9401eddde5ae60bc940967c96601d02e15248 \
-            --title "Sharika Royal Family & BD management staging APK (TEST ONLY)" \
-            --notes "Sharika Family main-profile icon, BD permission-gated Family grants, member roles/removal, owner transfer, join request reapply, Crystal ledger and admin suspension. Original voice and games preserved. Staging TEST ONLY, not Play Store. Google Sheets syncing awaits service-account credentials." \
+            --target 918b25a481fa73753785cedb838abf99818495fb \
+            --title "Sharika Golden Family Discovery and Royal Profile Tags (STAGING TEST ONLY)" \
+            --notes "Sharika Family Gold Discovery with Recommend/New lists, Owner-approved Apply, Admin-approved Create Family and in-room verified ID/BD/Seller badges. Existing Family BD rules, Crystal ledger and voice/game logic preserved. APK source commit 918b25a4; Admin backend deployed at ff791103. DEBUG STAGING TEST ONLY; not a Play Store build." \
             --prerelease
