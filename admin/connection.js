@@ -111,7 +111,8 @@
     window.NAV=role==='staff'?NAV_ALL.filter(item=>
       !item[0]||Object.prototype.hasOwnProperty.call(allowedStaffPage,item[0])&&
       (!allowedStaffPage[item[0]]||status.permissions?.includes(allowedStaffPage[item[0]]))
-    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'));
+    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'&&
+      (role==='finance'||item[0]!=='family')));
     window.ME = session.email || status.name || 'Administrator';
     return status;
   }
