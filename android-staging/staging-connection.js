@@ -2218,7 +2218,10 @@
     bd.innerHTML='<span class="sh-fam-icon">💼</span><span>BD System'+
       '<small>Family Grant • 5% Commission • Statements</small></span>';
     bd.hidden=true;bd.onclick=openRoyalFamily;entries.appendChild(bd);
-    root.appendChild(entries);
+    // Keep Family/BD inside the main profile Account Features section, not
+    // after the profile page where the bottom navigation may cover the icon.
+    const accountSection=root.querySelector('.profile-royal-page .profile-account');
+    (accountSection||root.querySelector('.profile-royal-page')||root).appendChild(entries);
     const current=session.user?.id;
     if(current!==familyCheckedUser||Date.now()-familyCheckedAt>30000){
       familyCheckedUser=current;familyCheckedAt=Date.now();familyCache=null;
