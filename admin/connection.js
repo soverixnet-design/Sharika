@@ -2918,13 +2918,13 @@
         (p.conversion_enabled?'Enabled':'Disabled')+'</span><p>'+
         esc(p.coins_per_crystal||1)+' coins per whole Crystal. Admin approval required.</p>')+
       box('📊 Google Sheets','<span class="sh-fam-pill">'+
-        (sheets.configured?'Connected (credentials present)':'Authorization pending')+'</span><p>Last sync: '+
+        (sheets.last_synced_at?'Synced':'Authorization / first sync pending')+'</span><p>Last sync: '+
         esc(sheets.last_synced_at||'Never')+'</p>'+
         '<p class="n">Daily automatic mirror and manual sync after service-account setup.</p>'+
         '<button class="btn" id="sh-fam-report-week">Weekly Statement</button>'+
         '<button class="btn" id="sh-fam-report-month">Monthly Statement</button>'+
         (isSuper?'<button class="btn" id="sh-fam-sync" '+
-          (sheets.configured?'':'disabled')+'>Sync Google Sheet</button>':'')+'</section>')+
+          (sheets.configured?'':'disabled')+'>Sync Google Sheet</button>':'')+')+
       '</div>'+
       (isSuper?box('⚙️ Commission & Family Policy',
         '<div class="sh-fam-cols"><label>BD commission (basis points; 500 = 5%)'+
