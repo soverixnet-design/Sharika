@@ -268,6 +268,28 @@ jobs:
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "targetSdkVersion:'36'"
           echo 'SHARIKA_ANDROID_TARGET_API_36_VERIFIED'
 
+      - name: Verify bundled startup HTML JavaScript parses and login is defined
+        run: |
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/index.html > "$RUNNER_TEMP/sharika-packaged-index.html"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const vm=require('node:vm');
+          const html=fs.readFileSync(process.env.RUNNER_TEMP+'/sharika-packaged-index.html','utf8');
+          const policies=(html.match(/http-equiv="Content-Security-Policy"/g)||[]).length;
+          if(policies!==1)throw Error('Repeated CSP injection damaged Sharika inline JavaScript: '+policies);
+          const scripts=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+          let loginDefined=false,parsed=0;
+          for(const [i,m] of scripts.entries()) {
+            const body=m[1];
+            if(!body.trim())continue;
+            new vm.Script(body,{filename:'packaged-index-inline-'+i+'.js'});
+            if(body.includes('function showAuth(')&&body.includes('var API='))loginDefined=true;
+            parsed++;
+          }
+          if(!loginDefined)throw Error('Packaged login script missing or invalid');
+          console.log('SHARIKA_PACKAGED_LOGIN_INLINE_JAVASCRIPT_VALID: '+parsed+' scripts');
+          NODE
+
       - name: Verify original Sovera cosmetics are inside the offline APK
         run: |
           for effect in royal-gold.webp violet-love.webp ice-admin.webp vip7.webp phoenix-queen-entry.webp lion-queen-entry.webp; do
@@ -425,6 +447,10 @@ jobs:
             adb shell uiautomator dump /sdcard/royal-startup.xml
             adb shell cat /sdcard/royal-startup.xml > royal-qa/startup-30s.xml
             adb logcat -d -v brief -s chromium:V AndroidRuntime:E > royal-qa/chromium-log.txt
+            if grep -Ei 'Uncaught (SyntaxError|ReferenceError|TypeError)' royal-qa/chromium-log.txt | grep -E 'file:///android_asset/(index.html|connection.js)'; then
+              echo 'SHARIKA_WEBVIEW_STARTUP_JS_EXCEPTION' >&2
+              exit 1
+            fi
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             adb exec-out screencap -p > royal-qa/back-pressed.png

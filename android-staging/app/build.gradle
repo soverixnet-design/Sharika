@@ -76,9 +76,9 @@ tasks.register('prepareSharikaUiAssets', Copy) {
         // This filter affects the APK copy, never the owner's web template.
         // Bundle the theme controller before the original connection script.
         filter { String line ->
-            line.replace('<head>', '''<head>
+            (line.trim() == '<head>' ? line.replace('<head>', '''<head>
 <script id="sharika-startup-safety" src="./startup-safety.js"></script>
-<meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''')
+<meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''') : line)
                 .replace('<html lang="en">',
                     '<html lang="en" class="royal-premium royal-root">')
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
