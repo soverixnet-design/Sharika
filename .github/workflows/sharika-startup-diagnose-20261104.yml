@@ -1,0 +1,39 @@
+name: Sharika startup login diagnostic from prior APK
+on:
+  push:
+    branches:
+      - fix/sharika-startup-login-screen-20261104
+    paths:
+      - '.github/workflows/sharika-startup-diagnose-20261104.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Royal-Emulator-Smoke
+          run-id: 41737879122
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: evidence
+      - name: Print real prior startup evidence
+        run: |
+          ls -l evidence
+          echo '==== 30s emulator UI view ===='
+          head -c 15000 evidence/startup-30s.xml || true
+          echo
+          echo '==== chromium JavaScript errors ===='
+          grep -Ein 'Uncaught|SyntaxError|TypeError|ReferenceError|Failed to|ERR_|Exception|SecurityError|file:///android_asset|not defined|denied|Content Security' evidence/chromium-log.txt | tail -n 100 || true
+          echo '==== OCR screenshots ===='
+          if command -v tesseract >/dev/null; then
+            for shot in evidence/startup-12s.png evidence/startup-30s.png; do
+              echo "OCR $shot"
+              tesseract "$shot" stdout 2>/dev/null | head -n 30
+            done
+          else
+            echo 'Tesseract unavailable'
+          fi
