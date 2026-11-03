@@ -4502,7 +4502,7 @@
       };
       const options=index===0?[]:selected.lock?
         (owner?[['unlock','Unlock seat','lock'],['unlock_all','Unlock all','all']]:[]):
-        (owner?[['take','Take Mic','take'],['lock','Lock seat','lock'],
+        (owner?[['take','Sit here','take'],['lock','Lock seat','lock'],
           ['lock_all','Lock all','all']]:[['take','Take Mic','take']]);
       for(const [action,label,kind] of options){
         const button=doc.createElement('button');
@@ -4571,13 +4571,20 @@
         emoji:emoji[0],request_id:requestId
       }).catch(error=>frame.toast('Emoji shown locally: '+errText(error)));
     };
-    // Owners and guests can change to any available microphone seat.
+    // Owner taps are management actions, never an automatic seat move.
+    // The old capture handler bypassed frame.seatSheet entirely, so owners
+    // could not lock or unlock an otherwise free microphone seat.
+    // Guests retain their existing one-tap seating on unlocked empty seats.
     frame.document.addEventListener('click',event=>{
       const button=event.target.closest?.('.seat.empty[data-i]');
       if(!button||!frame.document.querySelector('#grid')?.contains(button))return;
       const seat=Number(button.dataset.i);
       if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
       event.preventDefault();event.stopImmediatePropagation();
+      if(room.owner_id===session?.user?.id){
+        frame.seatSheet(seat);
+        return;
+      }
       moveSelfToSeat(seat).catch(error=>
         frame.toast('Unable to change seat: '+errText(error)));
     },true);
