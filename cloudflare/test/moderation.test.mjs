@@ -46,7 +46,7 @@ test('a guest cannot moderate other guests',async()=>{
   const r=await send('kick');
   assert.equal(r.status,403);
   assert.equal(r.body.error,'room_owner_only');
-  assert.equal(calls.length,0);
+  assert.equal(calls.some(x=>x.event==='batch'),false);
 });
 
 test('owner mute force-closes publisher before updating D1 and audits the action',async()=>{

@@ -5341,8 +5341,9 @@
       const self=selected.user_id===session?.user?.id;
       const actions=frame.$('sheet')?.querySelector('.acts');
       const detail=frame.$('sheet')?.querySelector('.who small');
-      if(detail)detail.textContent=index===0?'Room owner':
-        selected.room_role==='admin'?'Room Admin · Mic seat '+index:'Mic seat '+index;
+      if(detail)detail.textContent=index===0?'Room owner':'Mic seat '+index;
+      if(detail&&selected.room_role==='admin')
+        detail.textContent='Room Admin · Mic seat '+index;
       if(!actions)return result;
       actions.replaceChildren();
       const options=[['prof','👤','Profile'],['gift','🎁','Gift']];

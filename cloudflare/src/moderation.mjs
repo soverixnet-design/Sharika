@@ -10,7 +10,7 @@ export async function isRoomAdmin(env,roomId,uid) {
   const found=await env.DB.prepare(
     'SELECT 1 AS active FROM sharika_room_admins WHERE room_id=? AND user_id=?'
   ).bind(roomId,uid).first();
-  return !!found;
+  return Number(found?.active)===1;
 }
 
 // Only the verified owner appoints or revokes administrators. An assigned
