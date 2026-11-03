@@ -1,4 +1,5 @@
 import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from './notifications.mjs';
+// Transaction receipts are recorded by the corresponding verified business handlers.
 import { verifyFirebaseToken } from './auth.mjs';
 import { allowSensitiveAction } from './security-rate-limit.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
