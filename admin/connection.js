@@ -1576,54 +1576,78 @@
       '<input id="gift-price" type="number" min="1" step="1" placeholder="Coin price" aria-label="Coin price">'+
       '<select id="gift-category" aria-label="Gift category"><option value="0">Gifts</option>'+
       '<option value="1">Luxury</option><option value="2">Lucky</option></select>'+
-      '<button type="button" id="gift-create" class="btn s">Add gift</button></div></div>':'')+
+      '<button type="button" id="gift-create" class="btn s">Add gift</button></div>'+
+      '<div class="row"><input id="gift-image-url" type="url" maxlength="500" placeholder="HTTPS gift image link" aria-label="Gift image URL">'+
+      '<input id="gift-animation-url" type="url" maxlength="500" placeholder="HTTPS animation link (optional)" aria-label="Gift animation URL"></div>'+
+      '<p class="n">Use links to existing hosted image or animation assets. Direct gallery uploads need asset storage support.</p></div>':'')+
       '<div class="card"><h3>Real gift catalog</h3><div id="gift-list">Loading…</div></div>'+
       '<div class="card"><h3>Verified gift transactions</h3><div id="gift-event-list">Loading…</div></div>'+
       '<div class="card"><h3>Gift wallet settlement audit</h3>'+
       '<p class="n">Read-only D1 transaction audit. Recipient diamonds may include fractional accrual; room shares are not credited to the owner wallet.</p>'+
       '<div id="gift-settlement-list">Loading…</div></div>';
     const list=byId('gift-list');
-    async function refresh() {
-      list.textContent='Loading catalog…';
+    async function refresh(){
+      list.textContent='Loading verified gift catalog…';
       try{
         const data=await api('GET','gifts');
-        list.innerHTML=window.T(['ID','Gift','Category','Coins','State','Admin action'],
-          (data.gifts||[]).map(g=>[
-            fmt(g.id),esc(g.emoji)+' '+esc(g.name),
-            ['Gifts','Luxury','Lucky'][g.tab]||'Other',fmt(g.price_coins),
-            g.active?'Active':'Disabled',
-            canEdit?'<button type="button" class="btn s" data-gift-id="'+esc(g.id)+
-              '" data-gift-active="'+(g.active?1:0)+'">'+
-              (g.active?'Disable':'Activate')+'</button>':'—'
-          ]));
-      }catch(error){list.textContent=error.message;}
+        list.innerHTML=window.T(['ID','Name','Emoji','Category','Coins','Media URLs','Active','Action'],
+          (data.gifts||[]).map(g=>{
+            if(!canEdit)return[fmt(g.id),esc(g.name),esc(g.emoji),
+              ['Gifts','Luxury','Lucky'][g.tab]||'Other',fmt(g.price_coins),
+              g.image_url?'🖼️ Image':'—',g.active?'Active':'Disabled','—'];
+            const id=esc(g.id),input=(key,value,max=100)=>
+              '<input class="field" data-gift-field="'+key+'" data-id="'+id+
+              '" maxlength="'+max+'" value="'+esc(value??'')+'" style="min-width:100px;max-width:180px">';
+            return[fmt(g.id),input('name',g.name,80),input('emoji',g.emoji,16),
+              '<select class="field" data-gift-field="tab" data-id="'+id+'">'+
+                ['Gifts','Luxury','Lucky'].map((n,i)=>'<option value="'+i+'"'+
+                  (i===Number(g.tab)?' selected':'')+'>'+n+'</option>').join('')+'</select>',
+              '<input class="field" type="number" min="1" max="1000000000" data-gift-field="price" data-id="'+id+
+                '" value="'+Number(g.price_coins)+'" style="width:115px">',
+              '<div>'+input('image',g.image_url||'',500)+input('animation',g.animation_url||'',500)+'</div>',
+              '<label><input type="checkbox" data-gift-field="active" data-id="'+id+'"'+
+                (g.active?' checked':'')+'> Live</label>',
+              '<button type="button" class="btn s" data-gift-save="'+id+'">Save</button>'];
+          }));
+      }catch(error){list.textContent='Gift catalog unavailable: '+error.message;}
     }
     if(canEdit){
-      byId('gift-create').onclick=async ()=>{
-        const button=byId('gift-create');
-        const name=byId('gift-name').value.trim();
+      byId('gift-create').onclick=async()=>{
+        const button=byId('gift-create'),name=byId('gift-name').value.trim();
         const price=Number(byId('gift-price').value);
-        const emoji=byId('gift-emoji').value.trim()||'🎁';
-        const tab=Number(byId('gift-category').value);
-        if(!name||!Number.isSafeInteger(price)||price<=0){note('Enter gift name and valid coin price');return;}
+        const emoji=byId('gift-emoji').value.trim()||'🎁',tab=Number(byId('gift-category').value);
+        const image_url=byId('gift-image-url').value.trim();
+        const animation_url=byId('gift-animation-url').value.trim();
+        if(!name||!Number.isSafeInteger(price)||price<1){note('Enter gift name and valid coin price');return;}
         button.disabled=true;
         try{
-          await api('POST','gifts',{name,emoji,tab,price_coins:price,active:false});
-          byId('gift-name').value='';byId('gift-price').value='';byId('gift-emoji').value='';
-          note('Gift added. Activate it when ready.');await refresh();
+          await api('POST','gifts',{name,emoji,tab,price_coins:price,active:false,image_url,animation_url});
+          ['gift-name','gift-price','gift-emoji','gift-image-url','gift-animation-url'].forEach(id=>byId(id).value='');
+          note('Gift added; activate it when ready.');await refresh();
         }catch(error){note('Gift not created: '+error.message);}
         finally{button.disabled=false;}
       };
       list.onclick=async e=>{
-        const button=e.target.closest('button[data-gift-id]');
+        const button=e.target.closest('button[data-gift-save]');
         if(!button||button.disabled)return;
-        const enabled=button.dataset.giftActive!=='1';
-        if(!window.confirm((enabled?'Activate':'Disable')+' gift #'+button.dataset.giftId+'?'))return;
+        const id=button.dataset.giftSave;
+        const controls=Array.from(list.querySelectorAll('[data-gift-field]'));
+        const field=name=>controls.find(el=>el.dataset.id===id&&el.dataset.giftField===name);
+        const name=field('name')?.value.trim(),emoji=field('emoji')?.value.trim()||'🎁';
+        const price=Number(field('price')?.value),tab=Number(field('tab')?.value);
+        if(!name||name.length>80||emoji.length>16||!Number.isSafeInteger(price)||
+          price<1||price>1000000000||![0,1,2].includes(tab)){
+          note('Enter valid gift name, emoji, category and coin price');return;
+        }
+        const payload={name,emoji,price_coins:price,tab,
+          image_url:field('image')?.value.trim()||'',
+          animation_url:field('animation')?.value.trim()||'',
+          active:!!field('active')?.checked};
+        if(!window.confirm('Save gift #'+id+' on the server? This changes future sends.'))return;
         button.disabled=true;
-        try{
-          await api('PATCH','gifts/'+encodeURIComponent(button.dataset.giftId),{active:enabled});
-          note('Gift catalog updated');await refresh();
-        }catch(error){note('Gift update failed: '+error.message);button.disabled=false;}
+        try{await api('PATCH','gifts/'+encodeURIComponent(id),payload);
+          note('Gift updated and audited ✓');await refresh();}
+        catch(error){note('Gift update failed: '+error.message);button.disabled=false;}
       };
     }
     await refresh();
@@ -2478,17 +2502,56 @@
     return await api('GET','game-monitor');
   }
   P.games=async function(){
-    const root=byId('pg');root.innerHTML=card('Games','Loading settled game records…');
+    const root=byId('pg');
+    root.innerHTML=card('🎮 Real game catalog','Loading server settings…');
+    if(!['super','finance'].includes(role)){
+      root.innerHTML=card('Games','Only Super Admin can manage games; Finance may view.');
+      return;
+    }
     try{
-      const data=await readGameMonitor();
-      root.innerHTML='<div class="card"><h3>Verified game activity</h3>'+
-        '<p class="n">Real stored bets and settlements only. Gameplay settings cannot be edited here yet.</p>'+
-        window.T(['Engine','Game','Bets','Settled','Winning bets'],
+      const result=await api('GET','game-catalog');
+      const games=Array.isArray(result.games)?result.games:[];
+      root.innerHTML='<div class="card"><h3>🎮 Published game engines</h3>'+
+        '<p class="n">Switch off a bundled game to hide it in the app and reject NEW bets. Existing bets still settle and historical records stay intact. '+
+        'Activate a game to add it back to the room and Home. New HTML game engines need an audited app/server release.</p>'+
+        window.T(['Game','Engine','Available','Action'],
+          games.map(g=>[
+            esc(g.name),esc(g.engine),
+            '<label><input type="checkbox" data-game-flag="'+esc(g.id)+'"'+
+              (g.enabled?' checked':'')+(role==='super'?'':' disabled')+'> '+
+              (g.enabled?'On':'Off')+'</label>',
+            role==='super'?'<button class="btn s" type="button" data-game-save="'+esc(g.id)+'">Save</button>':'Read-only'
+          ]))+
+        '<p class="n" id="sh-game-status" role="status"></p></div>'+
+        '<div class="card"><h3>Verified game activity</h3>'+
+        '<div id="sh-game-activity">Loading settled games…</div>'+
+        '<button type="button" id="game-winners" class="btn s">Show settled winners</button></div>';
+      byId('game-winners').onclick=()=>openVerifiedPage('winb');
+      root.querySelectorAll('button[data-game-save]').forEach(button=>button.onclick=async ()=>{
+        const id=button.dataset.gameSave;
+        const input=Array.from(root.querySelectorAll('[data-game-flag]')).find(x=>x.dataset.gameFlag===id);
+        const enabled=!!input?.checked;
+        const current=games.find(g=>g.id===id);
+        if(!current)return;
+        if(enabled===current.enabled){byId('sh-game-status').textContent='No changes for '+current.name;return;}
+        if(!window.confirm((enabled?'Enable':'Disable')+' '+current.name+
+            '? Existing accepted bets remain eligible for settlement.'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','game-catalog',{id,enabled});
+          byId('sh-game-status').textContent=current.name+(enabled?' enabled':' disabled')+' on the verified server ✓';
+          await P.games();
+        }catch(error){byId('sh-game-status').textContent='Not saved: '+error.message;button.disabled=false;}
+      });
+      try{
+        const data=await readGameMonitor();
+        byId('sh-game-activity').innerHTML=window.T(
+          ['Engine','Game','Bets','Settled','Winning bets'],
           (data.games||[]).map(g=>[
             esc(g.source),esc(g.game),fmt(g.bets),fmt(g.settled),fmt(g.winning_bets)
-          ]))+'<button type="button" id="game-winners" class="btn s">Show settled winners</button></div>';
-      byId('game-winners').onclick=()=>openVerifiedPage('winb');
-    }catch(error){root.innerHTML=card('Game monitoring unavailable',error.message);}
+          ]));
+      }catch(error){byId('sh-game-activity').textContent='Monitoring unavailable: '+error.message;}
+    }catch(error){root.innerHTML=card('Game catalog unavailable',error.message);}
   };
   P.winb=async function(){
     const root=byId('pg');root.innerHTML=card('Win announcements','Loading verified winners…');
