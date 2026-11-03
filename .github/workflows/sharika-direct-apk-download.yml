@@ -1,10 +1,10 @@
-name: Publish direct APK for Admin Games and Events staging test
+name: Publish direct APK for Sharika Profile Designer staging
 # Staging-only release, pinned to one tested Android build and commit.
 
 on:
   push:
     branches:
-      - fix/sharika-direct-apk-download-20261103
+      - fix/sharika-profile-layout-apk-release-20261103
     paths:
       - '.github/workflows/sharika-direct-apk-download.yml'
 
@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Download APK from tested admin games and events staging build
+      - name: Download APK from tested Profile Designer staging build
         uses: actions/download-artifact@v4
         with:
           name: Sharika-Android-Staging-Debug
-          run-id: 41561775555
+          run-id: 41563546100
           repository: soverixnet-design/Sharika
           github-token: ${{ github.token }}
           path: staging-apk
@@ -32,27 +32,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh run watch 41561775555 --repo soverixnet-design/Sharika --exit-status --interval 10
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41561775555 --jq .head_sha)" = '0521f7c4706ec82767632e590b61c92dc7ab0697'
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41561775555 --jq .conclusion)" = 'success'
+          gh run watch 41563546100 --repo soverixnet-design/Sharika --exit-status --interval 10
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41563546100 --jq .head_sha)" = 'c5b766143215f8e05a97c850d1f1be5844b25e62'
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41563546100 --jq .conclusion)" = 'success'
           test -s staging-apk/app-debug.apk
           unzip -t staging-apk/app-debug.apk > /dev/null
           unzip -Z1 staging-apk/app-debug.apk | grep -Fx AndroidManifest.xml
           unzip -Z1 staging-apk/app-debug.apk | grep -Eq '^classes([0-9]+)?[.]dex$'
-          cp staging-apk/app-debug.apk Sharika-Admin-Games-Events-Staging-20261103.apk
-          sha256sum Sharika-Admin-Games-Events-Staging-20261103.apk
-          file Sharika-Admin-Games-Events-Staging-20261103.apk
+          cp staging-apk/app-debug.apk Sharika-Profile-Designer-Staging-20261103.apk
+          sha256sum Sharika-Profile-Designer-Staging-20261103.apk
+          file Sharika-Profile-Designer-Staging-20261103.apk
 
       - name: Publish direct .apk link to a new staging-only GitHub pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create sharika-staging-admin-games-events-20261103 \
-            'Sharika-Admin-Games-Events-Staging-20261103.apk#Sharika Admin Games and Events Staging APK' \
+          gh release create sharika-staging-profile-designer-20261103 \
+            'Sharika-Profile-Designer-Staging-20261103.apk#Sharika Profile Designer Staging APK' \
             --repo soverixnet-design/Sharika \
-            --target 0521f7c4706ec82767632e590b61c92dc7ab0697 \
-            --title 'Sharika Admin Games, Gift Editor and Room Events — Staging TEST APK' \
-            --notes 'Staging-only APK with authenticated Admin game enable/disable, gift name/emoji/category/price/HTTPS media edits, and a golden Events shortcut above room mic. Server and Admin deploy are tracked in separate staging CI. Existing seat, login and notifications fixes are included. This is not a Play Store production release; two real devices, live voice, games, frames and gallery media upload still require verification.' \
+            --target c5b766143215f8e05a97c850d1f1be5844b25e62 \
+            --title 'Sharika Profile Designer (Main and Public) — Staging TEST APK' \
+            --notes 'Staging-only APK with Admin visual Main/Public Profile placement templates, preserved per-user purchased cosmetics, tag and medal anchors, frame scale, section order and safe draft/publish/restore. Previously staged games, gifts and room Events remain. This is not a Play Store production release; two real devices and live cosmetic positioning still require verification.' \
             --prerelease \
             --latest=false
