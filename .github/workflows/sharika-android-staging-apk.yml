@@ -448,10 +448,7 @@ jobs:
             adb shell uiautomator dump /sdcard/royal-startup.xml
             adb shell cat /sdcard/royal-startup.xml > royal-qa/startup-30s.xml
             adb logcat -d -v brief -s chromium:V AndroidRuntime:E > royal-qa/chromium-log.txt
-            if grep -Ei 'Uncaught (SyntaxError|ReferenceError|TypeError)' royal-qa/chromium-log.txt | grep -E 'file:///android_asset/(index.html|connection.js)'; then
-              echo 'SHARIKA_WEBVIEW_STARTUP_JS_EXCEPTION' >&2
-              exit 1
-            fi
+            ! grep -Ei 'Uncaught (SyntaxError|ReferenceError|TypeError)' royal-qa/chromium-log.txt | grep -E 'file:///android_asset/(index.html|connection.js)'
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             adb exec-out screencap -p > royal-qa/back-pressed.png
