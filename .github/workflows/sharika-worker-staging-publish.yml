@@ -19,6 +19,7 @@ on:
       - 'cloudflare/src/index.mjs'
       - 'cloudflare/src/moderation.mjs'
       - 'cloudflare/migrations/0052_room_admins.sql'
+      - 'cloudflare/migrations/0055_room_contributor_rankings.sql'
       - 'cloudflare/test/room-admin.test.mjs'
       - 'cloudflare/test/moderation.test.mjs'
       - 'cloudflare/src/family-sheets.mjs'
@@ -169,6 +170,14 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0052_room_admins.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0052_room_admins.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0052_room_admins.sql')"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS active_room_admins FROM sharika_room_admins"
+      # An additive read index on settled room gifts. No wallet records or
+      # gift transactions are updated, and existing data is never rewritten.
+      - name: Apply room-contributor lookup index to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0055_room_contributor_rankings.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0055_room_contributor_rankings.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0055_room_contributor_rankings.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_sharika_gift_transactions_room_time'"
       - name: Verify Family schema and preserve existing voice/game source
         if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
         run: |
