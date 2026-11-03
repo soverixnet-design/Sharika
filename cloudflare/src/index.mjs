@@ -3,6 +3,7 @@ import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
+import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
@@ -285,6 +286,9 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/premium'||path==='/api/v1/premium/purchase'||
        path==='/api/v1/premium/daily/claim')return await handlePremiumApp({
       request,env,uid,path,cors,reply,fail
+    });
+    if (path.startsWith('/api/v1/family')) return await handleFamilyApp({
+      request, env, uid, path, cors, reply, fail
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
       request, env, uid, path, cors, reply, fail
@@ -1368,6 +1372,9 @@ export async function handleRequest(request, env, ctx) {
               "WHERE sender_uid=? AND request_id=?))"
             ).bind(room.owner_id,ownerRewardCoins,room.owner_id,uid,requestId));
           }
+          // Family and BD Crystal commissions settle atomically with this gift.
+          // These entries are not spendable coins and exclude Lucky gifts.
+          statements.push(...familyGiftCommissionStatements(env.DB,uid,requestId,gift.tab));
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
