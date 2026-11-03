@@ -10,6 +10,7 @@ import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
 import {readGameCatalog,gameAcceptsBets} from './game-catalog.mjs';
+import {readPublishedProfileLayouts} from './profile-layout.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import {readInviteRules} from './invite-rules.mjs';
 import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
@@ -254,6 +255,10 @@ export async function handleRequest(request, env, ctx) {
       });
       if(result)return result;
       return fail('cosmetic_route_not_found',404,cors);
+    }
+    if(path==='/api/v1/profile-layout'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      return reply(await readPublishedProfileLayouts(env.DB),200,cors);
     }
     if(path==='/api/v1/game-catalog'&&request.method==='GET'){
       await assertActive(env.DB,uid);
