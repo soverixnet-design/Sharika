@@ -1,5 +1,5 @@
-name: Publish direct APK download for approved staging test
-# Source build and Android emulator smoke check are both completed successfully.
+name: Publish direct APK for Admin Games and Events staging test
+# Staging-only release, pinned to one tested Android build and commit.
 
 on:
   push:
@@ -16,13 +16,13 @@ jobs:
   direct-download:
     name: Verify tested APK and upload a separate staging pre-release asset
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
-      - name: Download APK from the successful owner seat controls staging build
+      - name: Download APK from tested admin games and events staging build
         uses: actions/download-artifact@v4
         with:
           name: Sharika-Android-Staging-Debug
-          run-id: 41559992690
+          run-id: 41561775555
           repository: soverixnet-design/Sharika
           github-token: ${{ github.token }}
           path: staging-apk
@@ -32,26 +32,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41559992690 --jq .head_sha)" = 'cdff8c8aa9710316a873d38d01a3d696bd66c5b2'
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41559992690 --jq .conclusion)" = 'success'
+          gh run watch 41561775555 --repo soverixnet-design/Sharika --exit-status --interval 10
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41561775555 --jq .head_sha)" = '0521f7c4706ec82767632e590b61c92dc7ab0697'
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41561775555 --jq .conclusion)" = 'success'
           test -s staging-apk/app-debug.apk
           unzip -t staging-apk/app-debug.apk > /dev/null
           unzip -Z1 staging-apk/app-debug.apk | grep -Fx AndroidManifest.xml
           unzip -Z1 staging-apk/app-debug.apk | grep -Eq '^classes([0-9]+)?[.]dex$'
-          cp staging-apk/app-debug.apk Sharika-Owner-Seat-Menu-Staging-20261103.apk
-          sha256sum Sharika-Owner-Seat-Menu-Staging-20261103.apk
-          file Sharika-Owner-Seat-Menu-Staging-20261103.apk
+          cp staging-apk/app-debug.apk Sharika-Admin-Games-Events-Staging-20261103.apk
+          sha256sum Sharika-Admin-Games-Events-Staging-20261103.apk
+          file Sharika-Admin-Games-Events-Staging-20261103.apk
 
       - name: Publish direct .apk link to a new staging-only GitHub pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create sharika-staging-owner-seat-menu-20261103 \
-            'Sharika-Owner-Seat-Menu-Staging-20261103.apk#Sharika Owner Seat Lock and Control Staging APK' \
+          gh release create sharika-staging-admin-games-events-20261103 \
+            'Sharika-Admin-Games-Events-Staging-20261103.apk#Sharika Admin Games and Events Staging APK' \
             --repo soverixnet-design/Sharika \
-            --target cdff8c8aa9710316a873d38d01a3d696bd66c5b2 \
-            --title 'Sharika Owner Seat Controls — Staging TEST APK' \
-            --notes 'Staging test APK, not a final Play Store release. Includes previous Google, home, and notification-login fixes. Owner taps an empty mic seat to open Sit here, Lock seat, and Lock all controls instead of auto seating; ordinary members can still directly join unlocked seats. Live two-phone betting, voice, gift and owner-seat actions still require physical-device verification.' \
+            --target 0521f7c4706ec82767632e590b61c92dc7ab0697 \
+            --title 'Sharika Admin Games, Gift Editor and Room Events — Staging TEST APK' \
+            --notes 'Staging-only APK with authenticated Admin game enable/disable, gift name/emoji/category/price/HTTPS media edits, and a golden Events shortcut above room mic. Server and Admin deploy are tracked in separate staging CI. Existing seat, login and notifications fixes are included. This is not a Play Store production release; two real devices, live voice, games, frames and gallery media upload still require verification.' \
             --prerelease \
             --latest=false
