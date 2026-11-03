@@ -160,7 +160,10 @@ test('weekly opening reuses the first splash and never flashes a second design',
   assert.match(opening,/splash\.classList\.add\('off'\)/);
   assert.match(launch,/const openingTask=openingOnLaunch\(\)/);
   assert.ok(launch.indexOf('const openingTask=openingOnLaunch()')<
-    launch.indexOf('await Promise.allSettled([reloadWallet(), reloadRooms()])'));
+    launch.indexOf('setTimeout(()=>'), 'opening is requested before optional background hydration');
+  assert.match(launch,/reloadWallet\(\)\.catch/);
+  assert.match(launch,/reloadRooms\(\)\.catch/);
+  assert.doesNotMatch(launch,/await Promise\.allSettled/, 'verified login must not block on room or wallet fetches');
   assert.match(gradle,/class="royal-premium royal-root"/);
   assert.match(gradle,/sharika-winged-theme-style/);
   assert.match(gradle,/sharika-royal-premium-style/);

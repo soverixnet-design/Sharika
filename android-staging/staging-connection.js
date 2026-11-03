@@ -3109,11 +3109,20 @@
     // are verified. Waiting for wallet + room lists used to leave the first
     // splash on screen and then show a second opening much later.
     const openingTask=openingOnLaunch();
-    refreshNotifications(false);refreshMessagesBadge();registerPushDevice();
-    await Promise.allSettled([reloadWallet(), reloadRooms()]);
-    // The original UI's login function reconstructs A from this object;
-    // carry the real room back so it does not hide the newly loaded own room.
-    local.p.myRoom = window.A.myRoom || null;
+    // The verified profile is enough to enter Home. Do not block Google
+    // sign-in on wallet, room cards, push permissions or slow polling APIs.
+    // Schedule hydration after enter()/restore() has populated window.A,
+    // otherwise a fast room response can be overwritten by the login UI.
+    const signedInUserId=current.user_id;
+    setTimeout(()=>{
+      if(session?.user?.id!==signedInUserId)return;
+      refreshNotifications(false);
+      refreshMessagesBadge();
+      registerPushDevice();
+      reloadWallet().catch(error=>console.warn('Wallet loading deferred:',errText(error)));
+      reloadRooms().catch(error=>console.warn('Rooms loading deferred:',errText(error)));
+    },0);
+    local.p.myRoom = null;
     local.state = {...balance};
     try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify([local])); } catch (_) {}
     // Show the real new-member referral offer after the authenticated home loads.
@@ -3181,21 +3190,44 @@
       return 'Google sign-in configuration needs updating. Contact the Sharika tester.';
     return message;
   }
+  function googleLoginStatus(message, isError=false) {
+    const button=document.getElementById('wg');
+    const container=button?.parentElement;
+    if(!container)return;
+    let status=container.querySelector('#sh-google-login-status');
+    if(!status){
+      status=document.createElement('div');
+      status.id='sh-google-login-status';
+      status.setAttribute('role','status');
+      status.setAttribute('aria-live','polite');
+      status.style.cssText='padding:10px 8px;text-align:center;font-size:13px;font-weight:700;line-height:1.4;color:#ffe9a4;text-shadow:0 2px 6px #000b';
+      container.appendChild(status);
+    }
+    status.style.color=isError?'#ffb8b8':'#ffe9a4';
+    status.textContent=message;
+  }
   async function googleLogin() {
     if(googleLoginBusy)return;
     googleLoginBusy=true;
     const button=document.getElementById('wg');
-    if(button)button.disabled=true;
+    if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
+    googleLoginStatus('Connecting to Google…');
     try {
-      toast('Opening Google account picker…');
       const account=await native('googleSignIn');
+      googleLoginStatus('Google account connected. Opening Sharika…');
       const local=await authenticated(account);
-      window.enter(local,'Signed in to Sharika staging');
-    } catch (error) { toast(googleLoginError(error)); }
-    finally{
+      window.enter(local,'Welcome to Sharika!');
+    } catch (error) {
+      const message=googleLoginError(error);
+      googleLoginStatus(message,true);
+      toast(message);
+    } finally {
       googleLoginBusy=false;
       const currentButton=document.getElementById('wg');
-      if(currentButton)currentButton.disabled=false;
+      if(currentButton){
+        currentButton.disabled=false;
+        currentButton.removeAttribute('aria-busy');
+      }
     }
   }
 
@@ -3215,9 +3247,17 @@
     const notice = document.querySelector('#au .aw > .lbl:last-child');
     if (notice) notice.textContent = 'Accounts use real Firebase Authentication and isolated Cloudflare staging.';
   };
+  // Capture the Google click even if the legacy welcome screen is rebuilt
+  // after startup. This prevents the old demo onclick from silently winning.
   document.addEventListener('click', event => {
-    const button = event.target.closest('button');
+    const button = event.target.closest?.('button');
     if (!button) return;
+    if (button.id === 'wg' && document.getElementById('au')?.contains(button)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      googleLogin();
+      return;
+    }
     if (['wgs','ag'].includes(button.id)) {
       event.preventDefault();
       event.stopImmediatePropagation();
