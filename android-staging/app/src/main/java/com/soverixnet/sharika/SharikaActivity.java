@@ -150,9 +150,14 @@ public final class SharikaActivity extends Activity {
         browser.addJavascriptInterface(new NativeBridge(), "SharikaNative");
         browser.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                // Never navigate the privileged JS bridge to an arbitrary website.
-                if (!request.isForMainFrame()) return false;
+                // The JavascriptInterface is injected into *every* frame. Block
+                // third-party iframe navigation as well as top-level navigation.
                 String destination = request.getUrl().toString();
+                if (!request.isForMainFrame()) {
+                    return !("about:blank".equals(destination) ||
+                        "about:srcdoc".equals(destination) ||
+                        destination.startsWith("file:///android_asset/"));
+                }
                 return !destination.startsWith("file:///android_asset/");
             }
             @Override public void onPageFinished(WebView view, String url) {
@@ -523,6 +528,15 @@ public final class SharikaActivity extends Activity {
     }
 
     private void requestMicrophone(PermissionRequest request) {
+        // Never grant capture to an embedded remote page. Only the packaged
+        // Sharika document may ask for WebRTC microphone access.
+        Uri origin = request.getOrigin();
+        if (browser == null ||
+            !"file:///android_asset/index.html".equals(browser.getUrl()) ||
+            origin == null || !"file".equalsIgnoreCase(origin.getScheme())) {
+            request.deny();
+            return;
+        }
         // Grant only microphone, only after the Android runtime permission.
         boolean isAudio = false;
         for (String resource : request.getResources()) {

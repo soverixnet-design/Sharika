@@ -76,8 +76,10 @@ tasks.register('prepareSharikaUiAssets', Copy) {
         // This filter affects the APK copy, never the owner's web template.
         // Bundle the theme controller before the original connection script.
         filter { String line ->
-            line.replace('<html lang="en">',
-                '<html lang="en" class="royal-premium royal-root">')
+            line.replace('<head>', '''<head>
+<meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''')
+                .replace('<html lang="en">',
+                    '<html lang="en" class="royal-premium royal-root">')
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
                     '<link rel="stylesheet" href="./royal-profile.css">\n' +
                     '<link id="sharika-royal-premium-style" rel="stylesheet" href="./royal-premium.css">\n' +
