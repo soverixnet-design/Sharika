@@ -35,6 +35,35 @@ async function googleToken(env){
   if(!json.access_token)throw Error('google_access_token_missing');
   return json.access_token;
 }
+// Optional keyless Apps Script transport. Its shared HMAC secret is stored only
+// in a Cloudflare Worker secret and Apps Script Properties, never in Sheets cells.
+const SCRIPT_URL=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+function appsScriptConfigured(env){
+  const url=String(env.SHARIKA_FAMILY_APPS_SCRIPT_URL||'');
+  const secret=String(env.SHARIKA_FAMILY_APPS_SCRIPT_SECRET||'');
+  return SCRIPT_URL.test(url)&&/^[a-fA-F0-9]{64}$/.test(secret);
+}
+async function syncViaAppsScript(env,ranges){
+  const ts=Date.now(),nonce=crypto.randomUUID();
+  const message=ts+'.'+nonce+'.'+JSON.stringify(ranges);
+  const secret=new TextEncoder().encode(env.SHARIKA_FAMILY_APPS_SCRIPT_SECRET);
+  const key=await crypto.subtle.importKey('raw',secret,
+    {name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const mac=new Uint8Array(await crypto.subtle.sign('HMAC',key,
+    new TextEncoder().encode(message)));
+  const signature=btoa(String.fromCharCode(...mac))
+    .replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  const response=await fetch(env.SHARIKA_FAMILY_APPS_SCRIPT_URL,{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({ts,nonce,data:ranges,signature}),
+    signal:AbortSignal.timeout(30000),redirect:'follow'
+  });
+  if(!response.ok)throw Error('apps_script_http_'+response.status);
+  const result=await response.json().catch(()=>null);
+  if(!result?.ok||result.synced_tabs!==6)
+    throw Error('apps_script_sync_rejected_'+String(result?.error||'invalid_response'));
+  return result;
+}
 function range(name,columns,values){
   if(values.length>999)throw Error('sheet_capacity_exceeded_'+name);
   const blank=Array.from({length:columns},()=>"");
@@ -51,7 +80,8 @@ async function page(db,query){
 }
 export function sheetsConfigured(env){
   return !!(DOC_ID.test(String(env.SHARIKA_FAMILY_SHEET_ID||''))&&
-    env.GOOGLE_SHEETS_PRIVATE_KEY&&env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL);
+    (appsScriptConfigured(env)||
+      (env.GOOGLE_SHEETS_PRIVATE_KEY&&env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL)));
 }
 export async function sheetSyncStatus(db,env){
   const row=await db.prepare(
@@ -138,17 +168,21 @@ export async function syncFamilyGoogleSheet(env){
       x.family_id,x.name,pid(x.bd_no),x.gift_coins,x.bd_units/10000,
       x.owner_units/10000,'verified',generated,x.n]))
   ];
-  const token=await googleToken(env);
-  const response=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+
-    encodeURIComponent(env.SHARIKA_FAMILY_SHEET_ID)+'/values:batchUpdate',{
-      method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},
-      body:JSON.stringify({valueInputOption:'RAW',data:ranges}),
-      signal:AbortSignal.timeout(20000)
-    });
-  if(!response.ok)throw Error('sheets_update_http_'+response.status);
-  const result=await response.json();
-  if(!result.totalUpdatedSheets||result.totalUpdatedSheets<6)
-    throw Error('sheets_update_incomplete');
+  if(appsScriptConfigured(env)){
+    await syncViaAppsScript(env,ranges);
+  }else{
+    const token=await googleToken(env);
+    const response=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+
+      encodeURIComponent(env.SHARIKA_FAMILY_SHEET_ID)+'/values:batchUpdate',{
+        method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},
+        body:JSON.stringify({valueInputOption:'RAW',data:ranges}),
+        signal:AbortSignal.timeout(20000)
+      });
+    if(!response.ok)throw Error('sheets_update_http_'+response.status);
+    const result=await response.json();
+    if(!result.totalUpdatedSheets||result.totalUpdatedSheets<6)
+      throw Error('sheets_update_incomplete');
+  }
   const count=gift.length+comm.length+grants.length+ledger.length+transfers.length;
   await db.prepare(
     "INSERT INTO sharika_family_sheet_sync(key,last_synced_day,last_synced_at,record_count) "+
