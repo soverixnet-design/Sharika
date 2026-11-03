@@ -440,9 +440,7 @@ jobs:
             adb shell pidof com.soverixnet.sharika
             adb shell dumpsys window windows > royal-qa/back-window.txt
             adb logcat -d -v brief -s chromium:V AndroidRuntime:E > royal-qa/chromium-log.txt
-            if command -v tesseract >/dev/null 2>&1; then
-              tesseract royal-qa/back-pressed.png stdout 2>/dev/null > royal-qa/back-ocr.txt || true
-            fi
+            command -v tesseract >/dev/null 2>&1 && tesseract royal-qa/back-pressed.png stdout > royal-qa/back-ocr.txt 2>/dev/null || true
             echo 'SHARIKA_ANDROID_EMULATOR_LAUNCH_AND_BACK_NO_CRASH_OK'
 
       - name: Save emulator evidence even if UI test fails
