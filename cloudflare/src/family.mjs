@@ -1,3 +1,4 @@
+import { sheetsConfigured, sheetSyncStatus, syncFamilyGoogleSheet } from './family-sheets.mjs';
 // Royal Family / BD staging service. All money-like values are integers.
 // 10000 crystal_units represent 1 Crystal; no Crystal is a coin balance.
 const ID=/^[0-9]{8}$/;
@@ -306,7 +307,18 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
       transfers:rows(transfers).map(t=>({...t,sender_id:showId(t.sender_no),
         seller_id:showId(t.seller_no),sender_no:undefined,seller_no:undefined}))},200,cors);
   }
+  if(operation==='family/sheets/status'&&request.method==='GET'){
+    return reply(await sheetSyncStatus(db,env),200,cors);
+  }
   if(actor.role!=='super')return fail('admin_permission_denied',403,cors);
+  if(operation==='family/sheets/sync'&&request.method==='POST'){
+    if(!sheetsConfigured(env))return fail('google_sheets_credentials_required',503,cors);
+    try { return reply(await syncFamilyGoogleSheet(env),200,cors); }
+    catch(error){
+      console.error('family_sheet_sync_error',String(error.message||error));
+      return fail('google_sheets_sync_failed',503,cors);
+    }
+  }
   if(operation==='family/bd'&&request.method==='POST'){
     let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
     if(typeof body.public_id!=='string'||!ID.test(body.public_id)||
