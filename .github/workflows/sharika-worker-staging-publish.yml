@@ -13,10 +13,13 @@ on:
       - fix/sharika-live-voice-reliability-20261102
       - fix/sharika-voice-games-owner-prepublish-20261103
       - feature/sharika-family-bd-crystal-ledger-20261103
+      - feature/sharika-fruit-royale-v2-20261104
     paths:
       - '.github/workflows/sharika-worker-staging-publish.yml'
       - 'cloudflare/src/sellers.mjs'
       - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/fruit-royale.mjs'
+      - 'cloudflare/migrations/0055_fruit_royale_v2.sql'
       - 'cloudflare/src/moderation.mjs'
       - 'cloudflare/migrations/0052_room_admins.sql'
       - 'cloudflare/test/room-admin.test.mjs'
@@ -67,7 +70,7 @@ jobs:
         env:
           EXPECTED_REF: refs/heads/feature/sharika-lucky-gifts-20261030
         run: |
-          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-seller-self-recharge-wallet-ui-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-profile-save-recovery-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-shared-room-themes-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-cp-friendship-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-weekly-opening-single-user-20261101" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-live-voice-reliability-20261102" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-voice-games-owner-prepublish-20261103" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-family-bd-crystal-ledger-20261103" ]; then
+          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-seller-self-recharge-wallet-ui-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-profile-save-recovery-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-shared-room-themes-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-cp-friendship-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-weekly-opening-single-user-20261101" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-live-voice-reliability-20261102" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-voice-games-owner-prepublish-20261103" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-family-bd-crystal-ledger-20261103" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-fruit-royale-v2-20261104" ]; then
             echo "::error::Refusing unexpected ref $GITHUB_REF"
             exit 1
           fi
@@ -182,6 +185,18 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS grants FROM sharika_family_grants"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS transfers FROM sharika_family_crystal_transfers"
           echo 'SHARIKA_FAMILY_SCHEMA_AND_EXISTING_VOICE_GAME_SOURCE_VERIFIED'
+      # Fruit Royale is a separate new game. Preserve 23+ old Jackpot bet rows
+      # and all existing user balances, wallet ledger rows, and voice room tables.
+      - name: Install only reviewed Fruit Royale tables and disable new legacy bets
+        if: github.ref == 'refs/heads/feature/sharika-fruit-royale-v2-20261104'
+        run: |
+          test "$(git hash-object migrations/0055_fruit_royale_v2.sql)" = 922d9bfd58cb476a83ad7fc4fc88c54c64369e8f
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS legacy_jackpot_bets FROM sharika_original_game_bets WHERE game='jackpot-fruit'"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS ledger_rows FROM sharika_wallet_ledger"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0055_fruit_royale_v2.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0055_fruit_royale_v2.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0055_fruit_royale_v2.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT id,enabled FROM sharika_game_catalog WHERE id IN ('jackpot-fruit','fruit-royale') ORDER BY id"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS legacy_jackpot_bets_after FROM sharika_original_game_bets WHERE game='jackpot-fruit'"
       - name: Bundle and inspect without publishing
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
       - name: Deploy only the existing staging Worker
@@ -207,5 +222,5 @@ jobs:
           node --check ../admin/connection.js
           npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc --outdir /tmp/sharika-staging-admin-bundle
       - name: Publish separate staging admin Worker
-        if: github.ref != 'refs/heads/fix/sharika-live-voice-reliability-20261102'
+        if: github.ref != 'refs/heads/fix/sharika-live-voice-reliability-20261102' && github.ref != 'refs/heads/feature/sharika-fruit-royale-v2-20261104'
         run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
