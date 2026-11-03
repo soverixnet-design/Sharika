@@ -29,6 +29,8 @@ on:
       - 'cloudflare/test/profile-cosmetics.test.mjs'
       - 'cloudflare/test/sellers.test.mjs'
       - 'android-staging/staging-connection.js'
+      - 'admin/connection.js'
+      - 'admin/index.html'
 
 permissions:
   contents: read
