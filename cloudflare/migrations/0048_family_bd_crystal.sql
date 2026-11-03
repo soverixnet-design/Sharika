@@ -183,3 +183,34 @@ CREATE TABLE IF NOT EXISTS sharika_family_sheet_sync (
   last_synced_at TEXT NOT NULL DEFAULT (datetime('now')),
   record_count INTEGER NOT NULL DEFAULT 0 CHECK(record_count>=0)
 );
+
+-- Membership capacity and 24-hour leave cooldown are database-enforced.
+CREATE TABLE IF NOT EXISTS sharika_family_leaves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_uid TEXT NOT NULL REFERENCES sharika_users(auth_uid),
+  family_id INTEGER NOT NULL REFERENCES sharika_families(id),
+  left_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS sharika_family_leaves_user_time
+  ON sharika_family_leaves(user_uid,left_at DESC);
+CREATE TRIGGER IF NOT EXISTS sharika_family_leave_history
+AFTER DELETE ON sharika_family_members
+BEGIN
+  INSERT INTO sharika_family_leaves(user_uid,family_id)
+  VALUES(OLD.user_uid,OLD.family_id);
+END;
+CREATE TRIGGER IF NOT EXISTS sharika_family_member_join_guard
+BEFORE INSERT ON sharika_family_members
+BEGIN
+  SELECT RAISE(ABORT,'family_join_cooldown')
+    WHERE EXISTS (SELECT 1 FROM sharika_family_leaves
+      WHERE user_uid=NEW.user_uid AND left_at>datetime('now','-1 day'));
+  SELECT RAISE(ABORT,'family_full')
+    WHERE (SELECT COUNT(*) FROM sharika_family_members
+      WHERE family_id=NEW.family_id) >=
+      (SELECT max_members FROM sharika_family_policy WHERE key='standard');
+END;
+CREATE TRIGGER IF NOT EXISTS sharika_family_leaves_immutable_update
+BEFORE UPDATE ON sharika_family_leaves BEGIN SELECT RAISE(ABORT,'leave_history_immutable'); END;
+CREATE TRIGGER IF NOT EXISTS sharika_family_leaves_immutable_delete
+BEFORE DELETE ON sharika_family_leaves BEGIN SELECT RAISE(ABORT,'leave_history_immutable'); END;
