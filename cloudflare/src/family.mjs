@@ -17,9 +17,9 @@ function errorResponse(fail,cors,error){
   const code=String(error?.message||error);
   if(/UNIQUE constraint failed|family_grant_conflict|FOREIGN KEY constraint/.test(code))
     return fail('family_conflict',409,cors);
-  if(/crystal_insufficient|seller_not_approved|seller_stock_limit|invalid_transfer_transition/.test(code))
+  if(/crystal_insufficient|seller_not_approved|seller_stock_limit|invalid_transfer_transition|family_full|family_join_cooldown/.test(code))
     return fail(code.includes('crystal_insufficient')?'crystal_insufficient':
-      code.includes('seller')?'seller_unavailable':'transfer_conflict',409,cors);
+      code.includes('seller')?'seller_unavailable':code.includes('family_full')?'family_full':code.includes('family_join_cooldown')?'family_join_cooldown':'transfer_conflict',409,cors);
   console.error('family_request_failure',code);
   return fail('family_request_failed',503,cors);
 }
@@ -196,8 +196,9 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
         "SELECT ?,?,'member' WHERE "+
         "(SELECT COUNT(*) FROM sharika_family_members WHERE family_id=?) < "+
         "(SELECT max_members FROM sharika_family_policy WHERE key='standard') "+
+        "AND EXISTS(SELECT 1 FROM sharika_family_join_requests WHERE id=? AND state='pending') "+
         "AND EXISTS(SELECT 1 FROM sharika_families WHERE id=? AND status='active')"
-      ).bind(mine.id,application.applicant_uid,mine.id,mine.id));
+      ).bind(mine.id,application.applicant_uid,mine.id,application.id,mine.id));
       statements.push(db.prepare(
         "UPDATE sharika_family_join_requests SET state=?,reviewed_at=datetime('now') "+
         "WHERE id=? AND state='pending' AND (?='rejected' OR "+
