@@ -101,6 +101,9 @@ public final class SharikaActivity extends Activity {
     private boolean backInProgress;
     private Runnable unregisterModernBack;
     private PermissionRequest pendingMic;
+    // A runtime notification prompt is only started from the user's
+    // Notifications page, never as part of signing in.
+    private String pendingNotificationRequestId;
     private boolean roomAudioRouteActive;
     private int priorAudioMode = AudioManager.MODE_NORMAL;
     private boolean priorSpeakerphone;
@@ -537,6 +540,15 @@ public final class SharikaActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] grants) {
         super.onRequestPermissionsResult(code, permissions, grants);
+        if (code == NOTIFICATION_PERMISSION_REQUEST) {
+            String id = pendingNotificationRequestId;
+            pendingNotificationRequestId = null;
+            if (id == null) return;
+            if (grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED)
+                sendPushToken(id);
+            else sendResult(id, result(false,null,"notification_permission_denied"));
+            return;
+        }
         if (code != MIC_PERMISSION_REQUEST || pendingMic == null) return;
         PermissionRequest request = pendingMic;
         pendingMic = null;
@@ -644,27 +656,28 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, identity(null), null));
                 break;
             case "pushToken":
-                // A token is a device identifier, never an FCM server credential.
+                // Push is optional. Android 13+ must never show its runtime
+                // permission dialog in the middle of Firebase sign-in.
                 if (auth.getCurrentUser() == null) {
                     sendResult(id, result(false,null,"login_required")); break;
                 }
                 if (android.os.Build.VERSION.SDK_INT >= 33 &&
                     checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
                         PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                        NOTIFICATION_PERMISSION_REQUEST);
+                    if (data.optBoolean("promptPermission", false)) {
+                        if (pendingNotificationRequestId != null) {
+                            sendResult(id,result(false,null,"notification_prompt_in_progress"));
+                            break;
+                        }
+                        pendingNotificationRequestId=id;
+                        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                            NOTIFICATION_PERMISSION_REQUEST);
+                    } else {
+                        sendResult(id,result(false,null,"notification_permission_required"));
+                    }
+                    break;
                 }
-                FirebaseMessaging.getInstance().getToken().addOnCompleteListener(this, task -> {
-                    if (!task.isSuccessful() || task.getResult() == null) {
-                        sendResult(id, result(false,null,"fcm_device_token_unavailable")); return;
-                    }
-                    JSONObject payload = object();
-                    try { payload.put("token",task.getResult()); }
-                    catch (JSONException error) {
-                        sendResult(id,result(false,null,"invalid_fcm_device_token"));return;
-                    }
-                    sendResult(id,result(true,payload,null));
-                });
+                sendPushToken(id);
                 break;
             case "api": callStagingApi(id, data); break;
             case "roomScreenAwake":
@@ -1026,6 +1039,21 @@ public final class SharikaActivity extends Activity {
         return path.matches("^/api/v1/rooms/[0-9]{8}/(seat|voice/(config|session|publish|ready|subscribe|renegotiate|publications|heartbeat|leave))$");
     }
 
+    private void sendPushToken(String id) {
+        // An FCM device token is never an authentication credential.
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(this, task -> {
+            if (!task.isSuccessful() || task.getResult() == null) {
+                sendResult(id, result(false,null,"fcm_device_token_unavailable")); return;
+            }
+            JSONObject payload = object();
+            try { payload.put("token",task.getResult()); }
+            catch (JSONException error) {
+                sendResult(id,result(false,null,"invalid_fcm_device_token"));return;
+            }
+            sendResult(id,result(true,payload,null));
+        });
+    }
+
     private void requestStagingToken(String id, String method, String path,
                                     JSONObject data, FirebaseUser user) {
         user.getIdToken(false).addOnCompleteListener(this, token -> {
@@ -1110,6 +1138,7 @@ public final class SharikaActivity extends Activity {
             unregisterModernBack = null;
         }
         if (pendingMic != null) { pendingMic.deny(); pendingMic = null; }
+        pendingNotificationRequestId = null;
         if (browser != null) {
             browser.removeJavascriptInterface("SharikaNative");
             browser.destroy();
