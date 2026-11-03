@@ -62,7 +62,43 @@ member cap. Owner ownership transfer UI is not yet implemented.
    credits, Seller transfer and all audit reports on test IDs.
 6. Publish only after Android/device smoke tests and review.
 
-## Google Sheets — connection still pending
+## Google Sheets — keyless Apps Script staging path
+
+The existing Sharika Family & BD staging Sheet is:
+https://docs.google.com/spreadsheets/d/1u-6FRnn3noeK2-fQRT_FK_arengxQycZKXnJqjDEaxg/edit
+
+The user ran `setupSharikaSync` successfully in a Google Apps Script project:
+the six existing report tabs were verified, and a 64-character HMAC secret was
+generated into *Apps Script Properties*. The user supplied this deployment URL:
+
+https://script.google.com/macros/s/AKfycbzGb4_6f0poV_FsBuhHKR-huLT4H2-4cwYCKZ3qXtJKUTX8bISfdGRlX759EG3m351zUg/exec
+
+The same URL is an ordinary non-secret staging Worker variable:
+`SHARIKA_FAMILY_APPS_SCRIPT_URL`. To enable the transport, the owner must
+**privately** copy the existing Apps Script property `SHARIKA_SYNC_SECRET`
+into the staging Cloudflare Worker **Secret**
+`SHARIKA_FAMILY_APPS_SCRIPT_SECRET`. Never put its value in GitHub, Sheet cells,
+chat, logs or a public variable. Do not create a Google service-account JSON key
+or disable Google organization security policy for this integration.
+
+The Worker sends signed JSON via HTTPS to the Apps Script `doPost` handler.
+It uses HMAC-SHA256 over `ts + '.' + nonce + '.' + JSON.stringify(data)`,
+with a web-safe base64 signature without padding. The script accepts only a
+5-minute timestamp window and the six authorized report ranges; it sanitizes
+formula-like user text, preserves row-1 headers, and locks concurrent writes.
+The Worker requires `ok: true` and `synced_tabs: 6` in the response before
+recording a successful sync. The signed endpoint must run as the Sheet owner;
+the `Anyone` web-app access setting makes the URL publicly reachable, so the
+HMAC secret must remain private and be rotated if exposed.
+
+**Status:** Staging Worker adapter and CI tests implemented, but do not
+claim a live Google Sheets sync until the Worker secret is configured and a
+Super Admin manual sync returns success. The original Google service-account
+transport remains as a fallback. The 31-day / 999-row mirror limit still
+applies; it is not a complete historical monthly archive.
+
+### Legacy option (not required for this Apps Script path)
+
 
 The existing Sheet ID is stored as a non-secret staging variable. Live
 synchronization requires a dedicated Google Cloud service account with Sheets
