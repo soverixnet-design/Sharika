@@ -38,7 +38,7 @@ async function googleToken(env){
 function range(name,columns,values){
   if(values.length>999)throw Error('sheet_capacity_exceeded_'+name);
   const blank=Array.from({length:columns},()=>"");
-  const grid=values.map(row=>row.slice(0,columns));
+  const grid=values.map(row=>row.slice(0,columns).map(value=>value==null?'':value));
   // Clear only the old data area, leaving verified headings and formatting.
   while(grid.length<999)grid.push(blank);
   return {range:"'"+name.replace(/'/g,"''")+"'!A2:"+
