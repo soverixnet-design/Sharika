@@ -332,7 +332,8 @@
       '<div><small>Total earned</small><strong id="sh-reward-total">—</strong></div>'+
       '<div><small>Already credited to owner wallet</small><strong id="sh-reward-paid">—</strong></div></div>'+
       '<div class="sh-reward-week">🎁 Ordinary gifts: <b id="sh-reward-pct">10%</b>'+
-      '<small>Lucky Gift share: <span id="sh-reward-lucky">1%</span></small></div>'+
+      '<small>Lucky Gift share: <span id="sh-reward-lucky">1%</span></small>'+
+      '<small>Weekly room contribution (UTC): <b id="sh-week-contribution">Loading…</b></small></div>'+
       '<h3>Contribution → owner reward</h3>'+
       '<div id="sh-reward-tiers" class="sh-tier-list"></div>'+
       '<p class="sh-footnote">Illustrative amounts at the active ordinary-gift rate. The owner wallet is credited automatically; these are not additional claimable event prizes.</p></div>');
@@ -344,6 +345,14 @@
       const ordinaryPct=Number(data.regular_gift_percent||10);
       total.textContent=fmtCoins(Number(data.reward_hundredths||0)/100)+' 🪙';
       paid.textContent=fmtCoins(data.owner_wallet_credited_coins||0)+' 🪙';
+      v.loadRankings('weekly').then(result=>{
+        const week=document.getElementById('sh-week-contribution');
+        if(week?.isConnected)
+          week.textContent=fmtCoins(result.total_contribution_coins)+' 🪙';
+      }).catch(()=>{
+        const week=document.getElementById('sh-week-contribution');
+        if(week?.isConnected)week.textContent='Unavailable';
+      });
       document.getElementById('sh-reward-pct').textContent=ordinaryPct+'%';
       document.getElementById('sh-reward-lucky').textContent=
         Number(data.lucky_gift_percent||1)+'%';
@@ -369,7 +378,7 @@
     window.open('<div class="sh-premium-sheet">'+
       '<h3>🏆 Room Ranking</h3><div class="sh-segments sh-rank-tabs" id="sh-ranking-tabs"></div>'+
       '<div id="sh-ranking-list" class="sh-rank-list">Loading verified results…</div>'+
-      '<p class="sh-footnote">Based on verified room gift activity. Ranking is read-only; no separate reward is issued here.</p></div>');
+      '<p class="sh-footnote">Ranked by verified coins gifted in this room (UTC). Ranking does not issue an extra reward.</p></div>');
     const tabs=document.getElementById('sh-ranking-tabs');
     for(const entry of periods){
       const b=document.createElement('button');
@@ -384,16 +393,27 @@
       list.replaceChildren();
       const leaders=Array.isArray(result.leaders)?result.leaders:[];
       if(!leaders.length){list.textContent='No verified room gifts recorded for this period.';return;}
-      for(const room of leaders.slice(0,20)){
-        const row=document.createElement('div');row.className='sh-rank-row';
+      for(const member of leaders.slice(0,20)){
+        const row=document.createElement('button');
+        row.type='button';row.className='sh-rank-row';
         const rank=document.createElement('span');rank.className='sh-rank-medal';
-        rank.textContent=Number(room.rank)<=3?['🥇','🥈','🥉'][Number(room.rank)-1]:
-          '#'+String(room.rank||'—');
+        rank.textContent=Number(member.rank)<=3?
+          ['🥇','🥈','🥉'][Number(member.rank)-1]:'#'+String(member.rank||'—');
+        const profile={
+          publicId:String(member.public_id||''),
+          name:String(member.name||'Member'),
+          pic:member.pic||null,
+          displayId:String(member.display_id||member.public_id||''),
+          seatNo:null
+        };
         const name=document.createElement('span');name.className='sh-rank-name';
-        name.textContent=String(room.emoji||'🎙️')+' '+String(room.name||'Room');
+        name.textContent=profile.name;
         const sum=document.createElement('b');
-        sum.textContent=fmtCoins(room.total)+' 🪙';
-        row.append(rank,name,sum);list.appendChild(row);
+        sum.textContent=fmtCoins(member.total)+' 🪙';
+        row.append(rank,vipAvatar(profile),name,sum);
+        row.onclick=()=>Promise.resolve(v.openProfile(profile)).catch(error=>
+          window.toast?.('Profile: '+String(error?.message||error)));
+        list.appendChild(row);
       }
     }catch(error){
       if(list.isConnected)list.textContent='Ranking unavailable: '+String(error?.message||error);
