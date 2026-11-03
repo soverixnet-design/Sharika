@@ -106,7 +106,7 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
   // granted and equipped through the audited Super Admin flow, never purchased.
   if(itemId==='frame_style:cs-royal-wings'||
      itemId==='frame_style:coin-seller-royal')
-    return purchaseFailed('official_role_frame_admin_grant_only',403);
+    return fail('official_role_frame_admin_grant_only',403,cors);
   if(typeof itemId!=='string'||itemId.length>70||
      typeof requestId!=='string'||!TX.test(requestId))return invalid(fail,cors);
   const prior=await db.prepare(
