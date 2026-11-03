@@ -41,6 +41,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['opening','🏆','7 Day Opening Screen']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='profileDesigner')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='specialIds');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['profileDesigner','🖼️','Live Profile Designer']);
+  }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -969,6 +974,178 @@
         }
       });
     }catch(error){if(panel?.isConnected)panel.textContent='Percentage unavailable: '+error.message;}
+  };
+
+
+  // This editor arranges global template slots, never a member's owned items.
+  // Published layouts and server-owned cosmetic selections remain independent.
+  P.profileDesigner=async function(){
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Live Profile Designer','Only Super Admin can publish global profile layouts.');
+      return;
+    }
+    root.innerHTML=card('Live Profile Designer',
+      'Drag rows (desktop), or use ↑ ↓ on your phone. This changes where items appear, not which item a member owns.')+
+      '<div class="card" id="sh-layout-editor">Loading saved templates…</div>';
+    const box=byId('sh-layout-editor');
+    let data;
+    try{data=await api('GET','profile-layout');}
+    catch(error){box.textContent='Could not load profile templates: '+error.message;return;}
+    if(!box.isConnected)return;
+    const groups={
+      main:{sections:['hero','stats','wallet','collection','account'],
+        identity:['avatar','svip','name','id']},
+      public:{sections:['cover','identity','levels','stats','actions'],
+        identity:['avatar','name','id']}
+    };
+    const label={
+      hero:'Profile photo and identity',stats:'Followers and statistics',
+      wallet:'Wallet and Recharge',collection:'Shop / Backpack / Collection',
+      account:'Account and Features',cover:'Cover / Background',
+      identity:'User name and identity',levels:'Wealth and Charm levels',
+      actions:'Follow / Message / Gift buttons',avatar:'🖼️ Avatar + user-owned frame',
+      svip:'👑 SVIP badge',name:'✍️ User name',id:'🆔 User ID'
+    };
+    const defaults={
+      main:{sections:[...groups.main.sections],identity:[...groups.main.identity],
+        frame_scale:142,tag_position:'id',medal_position:'id',background:'original'},
+      public:{sections:[...groups.public.sections],identity:[...groups.public.identity],
+        frame_scale:142,tag_position:'name',medal_position:'name',background:'original'}
+    };
+    const copy=x=>JSON.parse(JSON.stringify(x));
+    const draft={
+      main:copy(data.screens?.main?.draft||defaults.main),
+      public:copy(data.screens?.public?.draft||defaults.public)
+    };
+    let screen='main',message='',busy=false;
+    const isDirty=()=>JSON.stringify(draft[screen])!==JSON.stringify(data.screens[screen].draft);
+    const opts=(list,value)=>list.map(([v,t])=>
+      '<option value="'+v+'"'+(v===value?' selected':'')+'>'+esc(t)+'</option>').join('');
+    function paint(){
+      if(!box.isConnected)return;
+      const current=draft[screen],state=data.screens[screen],enabled=!busy;
+      const sectionRows=(type,items)=>items.map((key,i)=>
+        '<div draggable="true" data-layout-row="'+type+'" data-key="'+key+'" '+
+        'style="display:flex;align-items:center;gap:7px;background:#302044;border:1px solid #bfa174;'+
+        'border-radius:11px;margin:5px 0;padding:8px;color:#ffeed1;touch-action:pan-y">'+
+        '<span aria-hidden="true">⠿</span><span style="flex:1">'+esc(label[key]||key)+'</span>'+
+        '<button class="btn s" type="button" data-move="'+type+':'+i+':-1" aria-label="Move up">↑</button>'+
+        '<button class="btn s" type="button" data-move="'+type+':'+i+':1" aria-label="Move down">↓</button></div>'
+      ).join('');
+      const identityPreview=current.identity.map(k=>
+        '<div style="order:'+current.identity.indexOf(k)+';text-align:center;padding:3px">'+
+        (k==='avatar'?'<div style="margin:auto;width:70px;height:70px;border-radius:50%;'+
+          'border:6px double #ffd26e;box-shadow:0 0 0 5px #a353b8;font-size:33px">👤</div>':
+          k==='name'?'✦ Soverix Net ✦':k==='svip'?'👑 SVIP 7':'🆔 ID 1000001')+'</div>'
+      ).join('');
+      const previewSection=key=>{
+        if(key==='hero'||key==='identity')
+          return '<div style="padding:12px;display:flex;flex-direction:column">'+identityPreview+
+          '<small style="color:#f9d597">Frame '+current.frame_scale+
+          '% · Tag by '+current.tag_position+' · Medal by '+current.medal_position+'</small></div>';
+        return '<div style="padding:10px;margin:6px;border:1px solid #a882c8;'+
+          'border-radius:12px;background:#ffffff0e">'+esc(label[key]||key)+'</div>';
+      };
+      const preview=current.sections.map(previewSection).join('');
+      const title='<div class="row"><h3>👑 Global profile placement</h3>'+
+        '<select class="field" id="sh-layout-screen">'+
+        opts([['main','My Main Profile'],['public','Other User / Public Profile']],screen)+
+        '</select></div>';
+      box.innerHTML=title+
+        '<p class="n">All accounts use the same placement. Each account keeps its own name, ID, purchased frame, equipped tag and medals.</p>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">'+
+        '<div><h4>Screen sections</h4>'+sectionRows('sections',current.sections)+
+        '<h4>Inside identity</h4>'+sectionRows('identity',current.identity)+
+        '<label>Frame size (%) <input class="field" id="sh-layout-frame" type="number" min="110" max="165" value="'+current.frame_scale+'"></label>'+
+        '<div class="row"><label>Tag location <select class="field" id="sh-layout-tag">'+
+        opts([['name','Under name'],['id','Under ID'],['avatar','On avatar']],current.tag_position)+
+        '</select></label><label>Medal location <select class="field" id="sh-layout-medal">'+
+        opts([['name','Under name'],['id','Under ID'],['avatar','On avatar']],current.medal_position)+
+        '</select></label></div>'+
+        '<label>Default background <select class="field" id="sh-layout-background">'+
+        opts([['original','Original profile artwork'],['gold','Golden premium']],current.background)+
+        '</select></label></div>'+
+        '<div><h4>Live mobile preview</h4><div style="margin:6px auto;width:min(100%,290px);'+
+        'border:5px solid #e8bc69;border-radius:28px;overflow:hidden;min-height:340px;'+
+        'color:#ffe8b4;text-align:center;background:'+
+        (current.background==='gold'?'linear-gradient(145deg,#a36e27,#281a27 66%)':
+        'linear-gradient(145deg,#562169,#140c2c 60%)')+'">'+
+        '<div style="background:#110d24;padding:10px">✦ Sharika '+(screen==='main'?'Main':'User')+' Profile ✦</div>'+
+        preview+'</div><p class="n">Phone sizes may differ. Check on staging before publishing.</p></div></div>'+
+        '<p class="n"><b>Draft revision '+state.revision+'</b> · '+
+        (isDirty()?'Unsaved changes':'Saved draft')+'</p>'+
+        '<div class="row"><button class="btn s" id="sh-layout-save" '+(enabled?'':'disabled')+'>Save Draft</button>'+
+        '<button class="btn s" id="sh-layout-publish" '+(enabled?'':'disabled')+'>Publish to All</button>'+
+        '<button class="btn s" id="sh-layout-rollback" '+(state.can_rollback&&enabled?'':'disabled')+'>Restore Previous</button>'+
+        '<button class="btn s" id="sh-layout-reset">Reset Draft</button></div>'+
+        '<p class="n" role="status" id="sh-layout-status">'+esc(message)+'</p>';
+      byId('sh-layout-screen').onchange=e=>{screen=e.target.value;message='';paint();};
+      const update=(key,transform)=>byId(key).onchange=e=>{transform(e.target.value);paint();};
+      update('sh-layout-frame',v=>{draft[screen].frame_scale=Math.max(110,Math.min(165,Number(v)||142));});
+      update('sh-layout-tag',v=>{draft[screen].tag_position=v;});
+      update('sh-layout-medal',v=>{draft[screen].medal_position=v;});
+      update('sh-layout-background',v=>{draft[screen].background=v;});
+      function shift(group,i,j){
+        const array=draft[screen][group];
+        if(j<0||j>=array.length)return;
+        const [item]=array.splice(i,1);array.splice(j,0,item);paint();
+      }
+      box.querySelectorAll('[data-move]').forEach(button=>{
+        button.onclick=()=>{const [group,i,delta]=button.dataset.move.split(':');
+          shift(group,Number(i),Number(i)+Number(delta));};
+      });
+      let dragged=null;
+      box.querySelectorAll('[data-layout-row]').forEach(row=>{
+        row.ondragstart=e=>{dragged={group:row.dataset.layoutRow,key:row.dataset.key};
+          e.dataTransfer.effectAllowed='move';};
+        row.ondragover=e=>{if(dragged?.group===row.dataset.layoutRow)e.preventDefault();};
+        row.ondrop=e=>{
+          e.preventDefault();
+          if(!dragged||dragged.group!==row.dataset.layoutRow)return;
+          const array=draft[screen][dragged.group];
+          const from=array.indexOf(dragged.key),to=array.indexOf(row.dataset.key);
+          if(from>=0&&to>=0)shift(dragged.group,from,to);
+          dragged=null;
+        };
+      });
+      byId('sh-layout-reset').onclick=()=>{draft[screen]=copy(state.published);message='Reset to published design (not saved).';paint();};
+      byId('sh-layout-save').onclick=async()=>{
+        busy=true;message='Saving draft…';paint();
+        try{
+          const result=await api('PATCH','profile-layout',{
+            screen,expected_revision:state.revision,layout:copy(draft[screen])
+          });
+          data=result;message='Draft saved ✓ Only preview changed; app is unchanged.';
+        }catch(error){message='Draft not saved: '+error.message;}
+        finally{busy=false;paint();}
+      };
+      byId('sh-layout-publish').onclick=async()=>{
+        if(isDirty()){message='Save Draft first, then Publish.';paint();return;}
+        if(!window.confirm('Publish the saved '+screen+' layout to ALL Sharika members? Their purchased items and balances stay unchanged.'))return;
+        busy=true;message='Publishing…';paint();
+        try{
+          data=await api('POST','profile-layout',{
+            screen,expected_revision:state.revision,action:'publish'
+          });
+          message='Published ✓ Members see the new layout after profile refresh.';
+        }catch(error){message='Not published: '+error.message;}
+        finally{busy=false;paint();}
+      };
+      byId('sh-layout-rollback').onclick=async()=>{
+        if(!window.confirm('Restore the previous '+screen+' published layout for all members?'))return;
+        busy=true;message='Restoring…';paint();
+        try{
+          data=await api('POST','profile-layout',{
+            screen,expected_revision:state.revision,action:'rollback'
+          });
+          draft[screen]=copy(data.screens[screen].draft);
+          message='Previous published layout restored ✓';
+        }catch(error){message='Restore failed: '+error.message;}
+        finally{busy=false;paint();}
+      };
+    }
+    paint();
   };
 
   P.cosmetics=async function(){
@@ -2689,7 +2866,7 @@
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
+    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
