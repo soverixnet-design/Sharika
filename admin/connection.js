@@ -3117,7 +3117,9 @@
           if(!view)return;
           const list=result.rows||[];
           view.innerHTML=box(period==='day'?'Daily Commission Statement':period==='week'?'Weekly Commission Statement':'Monthly Commission Statement',
-            '<p class="n">'+list.length+' verified commission entries. '+
+            '<p class="n">'+esc(result.activity?.gift_events||0)+' Family gift events ('+
+            esc(result.activity?.gift_coins||0)+' coins of gifts). '+
+            list.length+' earned Crystal commission entries. '+
             (result.truncated?'Result capped at 1000; export paginated data before final accounting.':'')+'</p>'+
             table(['Date','Family','Sender ID','Beneficiary ID','Type','Crystal'],
               list.slice(-100).reverse().map(x=>[

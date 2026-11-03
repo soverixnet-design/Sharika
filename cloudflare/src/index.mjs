@@ -469,7 +469,12 @@ export async function handleRequest(request, env, ctx) {
         "WHERE u.public_no=? OR (s.special_id=? AND (s.expires_at IS NULL OR s.expires_at>datetime('now'))) LIMIT 1")
         .bind(Number(parts[3]),parts[3]).first();
       const special=user?await activeSpecial(env.DB,user.auth_uid):null;
+      const family=user?await env.DB.prepare(
+        'SELECT f.id,f.name,f.status,m.role FROM sharika_family_members m '+
+        'JOIN sharika_families f ON f.id=m.family_id WHERE m.user_uid=? LIMIT 1'
+      ).bind(user.auth_uid).first():null;
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
+        family:family?{id:family.id,name:family.name,status:family.status,role:family.role}:null,
         special_id:special?.special_id||null,display_id:special?.special_id||publicId(user.public_no),
         special_frame:special?.frame||null,
         wealth_level: user.wealth_level, charm_level: user.charm_level,

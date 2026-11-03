@@ -86,7 +86,18 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
       "WHERE i.recipient_uid=? AND i.state='pending' AND i.expires_at>datetime('now') "+
       "AND f.status='active' ORDER BY i.id DESC LIMIT 30"
     ).bind(uid).all());
-    return reply({invitations:incoming.map(i=>({...i,inviter_id:showId(i.inviter_no),
+    const activity=family?await db.prepare(
+      "SELECT COUNT(*) AS total_gifts,COALESCE(SUM(e.quantity*e.price_coins),0) AS total_coins,"+
+      "SUM(CASE WHEN e.created_at>=datetime('now','start of day') THEN 1 ELSE 0 END) AS daily_gifts,"+
+      "SUM(CASE WHEN e.created_at>=datetime('now','weekday 0','-6 days','start of day') THEN 1 ELSE 0 END) AS weekly_gifts,"+
+      "SUM(CASE WHEN e.created_at>=datetime('now','start of month') THEN 1 ELSE 0 END) AS monthly_gifts "+
+      "FROM sharika_gift_events e "+
+      "JOIN sharika_family_members fm ON fm.user_uid=e.sender_uid "+
+      "WHERE fm.family_id=? AND e.created_at>=fm.joined_at"
+    ).bind(family.id).first():null;
+    return reply({activity:activity||{total_gifts:0,total_coins:0,
+      daily_gifts:0,weekly_gifts:0,monthly_gifts:0},
+      invitations:incoming.map(i=>({...i,inviter_id:showId(i.inviter_no),
       inviter_no:undefined})),family:family?{
       id:family.id,name:family.name,level:family.level,status:family.status,role:family.role,
       owner_id:showId(family.owner_no),owner_name:family.owner_name,
@@ -789,7 +800,14 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
       sender_id:showId(x.sender_no),beneficiary_id:showId(x.beneficiary_no),
       owner_id:showId(x.owner_no),bd_id:showId(x.bd_no),
       sender_no:undefined,beneficiary_no:undefined,owner_no:undefined,bd_no:undefined}));
+    const activity=await db.prepare(
+      'SELECT COUNT(*) AS gift_events,COALESCE(SUM(e.quantity*e.price_coins),0) AS gift_coins '+
+      'FROM sharika_gift_events e '+
+      'JOIN sharika_family_members fm ON fm.user_uid=e.sender_uid '+
+      'WHERE e.created_at>='+from+' AND e.created_at>=fm.joined_at'
+    ).first();
     return reply({period,rows:ledger,truncated:ledger.length===1000,
+      activity:activity||{gift_events:0,gift_coins:0},
       source:'verified_gift_event_commissions',settlement_mode:(await policy(db)).settlement_mode},200,cors);
   }
   return fail('family_admin_route_not_found',404,cors);

@@ -196,3 +196,29 @@ test('Family policy accepts weekly settlement alongside daily and monthly',async
   assert.ok(batch.statements.some(s=>/sharika_family_settlement_preferences/.test(s.sql)));
   assert.ok(batch.statements.some(s=>s.values.includes('weekly')));
 });
+
+test('Family panel exposes a gift activity count independent of self-commission',async()=>{
+  const db=fixture();
+  const path='/api/v1/family/me';
+  const res=await handleFamilyApp({
+    request:new Request('https://example.test'+path,{method:'GET'}),
+    env:{DB:db},uid:'leader',path,cors:{},reply,fail});
+  assert.equal(res.status,200);
+  const body=await res.json();
+  assert.ok(body.activity);
+  const sql=db.calls.map(c=>c.sql||'').join('\n');
+  assert.match(sql,/e.created_at>=fm.joined_at/);
+});
+
+test('Admin daily statement keeps gift volume distinct from earned Crystal ledger',async()=>{
+  const db=fixture();
+  const res=await handleFamilyAdmin({
+    request:new Request('https://example.test/api/v1/admin/family/report?period=day'),
+    env:{DB:db},uid:'admin',actor:{role:'super'},operation:'family/report',
+    cors:{},reply,fail});
+  assert.equal(res.status,200);
+  const body=await res.json();
+  assert.equal(body.period,'day');
+  assert.ok(body.activity);
+  assert.ok(Array.isArray(body.rows));
+});

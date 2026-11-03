@@ -2286,6 +2286,13 @@
       '. Crystals are separate from spendable coins.</p>'+
       '<button type="button" id="sh-fam-ledger">View Ledger</button>';
     if(family){
+      const activity=data.activity||{};
+      html+='<div class="sh-fam-card"><h3>🎁 Family Gift Activity</h3>'+
+        '<p>Today: <strong>'+famEsc(activity.daily_gifts||0)+'</strong> · '+
+        'Week: <strong>'+famEsc(activity.weekly_gifts||0)+'</strong> · '+
+        'Month: <strong>'+famEsc(activity.monthly_gifts||0)+'</strong></p>'+
+        '<p class="sh-fam-note">Recorded gifts by current Family members since joining: '+
+        famEsc(activity.total_gifts||0)+'. Gift activity is separate from earned Owner/BD Crystals; self-gifts do not create self-commissions.</p></div>';
       html+='<div class="sh-fam-card"><h3>👑 '+famEsc(family.name)+' · Level '+
         famEsc(family.level)+'</h3><p>Family ID: '+famEsc(family.id)+
         ' · '+famEsc(family.member_count)+' members</p>'+
@@ -4150,6 +4157,28 @@
       // Keep the verified, shared wallpaper in a sharp image layer rather
       // than enlarging a compressed thumbnail behind heavy dark overlays.
       roomApp.classList.toggle('sharika-hd-room-bg',!!sharedImage);
+      let familyBadge=roomApp.querySelector('#sh-room-owner-family-badge');
+      if(owner.family&&owner.family.status==='active'){
+        if(!familyBadge){
+          familyBadge=frame.document.createElement('button');
+          familyBadge.id='sh-room-owner-family-badge';familyBadge.type='button';
+          familyBadge.style.cssText='position:fixed;top:47px;right:12px;z-index:600;'+
+            'border:1px solid #e5c26b;background:linear-gradient(135deg,#3d2a19,#14101f);'+
+            'color:#ffe6a2;padding:5px 10px;border-radius:15px;'+
+            'font-weight:700;font-size:11px;max-width:46vw;'+
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+          roomApp.appendChild(familyBadge);
+        }
+        familyBadge.textContent='👑 '+owner.family.name;
+        familyBadge.title='Request to join '+owner.family.name;
+        familyBadge.onclick=async()=>{
+          if(!window.confirm('Request to join '+owner.family.name+'? Family Owner approval required.'))return;
+          try{
+            await api('POST','/family/join',{family_id:Number(owner.family.id)});
+            frame.toast('Family Join Request sent ✓');
+          }catch(error){frame.toast('Family: '+errText(error));}
+        };
+      }else familyBadge?.remove();
       if(sharedImage)
         roomApp.style.setProperty('--sharika-shared-wallpaper','url("'+sharedImage+'")');
       else roomApp.style.removeProperty('--sharika-shared-wallpaper');
@@ -8237,6 +8266,7 @@
         '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
         '<div class="meta"><span>🆔 '+sellerEscape(displayId)+'</span>'+
         (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
+        (person.family?'<span style="color:#f9d48b">👑 '+sellerEscape(person.family.name)+'</span>':'')+
         '</div></div><div class="lvs">'+
         '<div class="lvc w"><b>💰 Wealth level</b><div class="big3">'+
         wealth+'</div><small>Verified profile level</small></div>'+
@@ -8244,6 +8274,11 @@
         charm+'</div><small>Verified profile level</small></div></div>'+
         '<div class="sh-profile-note">This is the real Sharika profile for ID '+sellerEscape(displayId)+
         '. Only server-verified details are shown.</div>'+
+        (person.family?'<div class="sh-profile-note" style="border:1px solid #cc9d4b;border-radius:14px;padding:12px">'+
+          '👑 Royal Family · '+sellerEscape(person.family.name)+' · #'+sellerEscape(person.family.id)+
+          ' · '+sellerEscape(person.family.status)+
+          '<button id="sh-ranked-family-join" type="button">'+
+          (id===profile?.public_id?'Open My Family':'Request to Join Family')+'</button></div>':'')+
         '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
         'Loading follow status…</button></div>'+
         '</div>';
@@ -8251,6 +8286,15 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       decorateVerifiedPublicProfile(root,person);
+      root.querySelector('#sh-ranked-family-join')?.addEventListener('click',async()=>{
+        if(id===profile?.public_id){openRoyalFamily();return;}
+        if(person.family?.status!=='active')return toast('This Family is suspended');
+        if(!window.confirm('Send a request to join '+person.family.name+'? The Owner must approve.'))return;
+        try{
+          await api('POST','/family/join',{family_id:Number(person.family.id)});
+          toast('Family Join Request sent ✓');
+        }catch(error){toast('Could not request Family join: '+errText(error));}
+      });
       mountBondDetails(root,canonicalId,person).catch(error=>
         console.warn('Ranked ID bond details:',errText(error)));
       const follow=root.querySelector('#sh-ranked-follow');
