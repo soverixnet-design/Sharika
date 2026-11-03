@@ -2171,6 +2171,7 @@
     '#sh-family-entries button .sh-fam-icon{font-size:31px;filter:drop-shadow(0 3px 3px #0008)}',
     '#sh-family-entries button small{display:block;font-size:11px;opacity:.9;font-weight:500}',
     '#sh-family-entries button:active{transform:translateY(3px)}',
+    '#sh-family-entries button[hidden]{display:none!important}',
     '#sh-family-panel{position:fixed;inset:0;z-index:2147483500;overflow:auto;',
     'background:radial-gradient(ellipse at 50% -20%,#9e6d2b 0%,#271b18 38%,#100c18 85%);',
     'color:#ffebc5;padding:calc(14px + env(safe-area-inset-top,0px)) 15px 24px}',
