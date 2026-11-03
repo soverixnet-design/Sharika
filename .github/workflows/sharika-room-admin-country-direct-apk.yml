@@ -1,0 +1,86 @@
+name: Sharika verified Room Admin and Country direct staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-family-bd-crystal-ledger-20261103
+    paths:
+      - '.github/workflows/sharika-room-admin-country-direct-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-direct-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Wait for exact Android emulator smoke test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run watch 41696275299 --repo soverixnet-design/Sharika --exit-status
+
+      - name: Require all exact checks and audited source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run_id in 41696287215 41696275321 41696275407 41696275299; do
+            result="$(gh run view "$run_id" --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')"
+            test "$result" = success || { echo "::error::Run $run_id not successful ($result)"; exit 1; }
+            source_sha="$(gh api "repos/soverixnet-design/Sharika/actions/runs/$run_id" --jq '.head_sha')"
+            test "$source_sha" = 831458f57bd1e9108c9a134d199126ce01985d5f
+          done
+          artifact_sha="$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13261256362 --jq '.workflow_run.head_sha')"
+          test "$artifact_sha" = 831458f57bd1e9108c9a134d199126ce01985d5f
+          echo 'ALL_STAGING_CHECKS_AND_ANDROID_EMULATOR_VERIFIED'
+
+      - name: Download the exact verified Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41696275299
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: verified-apk
+
+      - name: Validate APK payload and create direct APK
+        run: |
+          set -euo pipefail
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/room-admin-country.js"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const code=fs.readFileSync(process.env.RUNNER_TEMP+'/room-admin-country.js','utf8');
+          for(const text of [
+            'Room Safety',
+            'manualCountryOptions()',
+            'openManualCountryPicker',
+            'Country / Location',
+            'Unblock'
+          ]) if(!code.includes(text))throw Error('Required Room Admin / country feature not present: '+text);
+          if(code.includes("seat.room_role==='owner'?'👑':'🛡'"))throw Error('Room admin frame overlay still present');
+          console.log('ROOM_SAFETY_AND_MANUAL_COUNTRY_BUNDLED_VERIFIED');
+          NODE
+          install -m 0644 verified-apk/app-debug.apk verified-apk/Sharika-Room-Admin-Country-Staging.apk
+          sha256sum verified-apk/Sharika-Room-Admin-Country-Staging.apk
+
+      - name: Publish unique public prerelease with direct Android APK asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='sharika-room-admin-country-staging-831458f5'
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing to overwrite"
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Room-Admin-Country-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target 831458f57bd1e9108c9a134d199126ce01985d5f \
+            --title "Sharika Room Admin and Country (STAGING TEST APK)" \
+            --notes "Direct Android staging APK, not a ZIP. Room owner and granted room admins can open Room Safety to kick for 10 minutes, block until unblocked, and unblock. The shield overlay above room admin frames is hidden; room owner crown remains. Manually chosen signup/account country is shown in profile and outside room card; no GPS requested. Existing accounts with blank country must set Main Profile > Country / Location. Additive D1 migration and isolated staging API version 98 are deployed. Automated backend and Android emulator tests passed. DEBUG STAGING ONLY: not a Play Store release." \
+            --prerelease
