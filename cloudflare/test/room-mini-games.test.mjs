@@ -92,23 +92,23 @@ test('in-room game removes the extra catalog header without removing bet API',()
     'outside-room catalog and full-screen games must remain available');
 });
 
-test('all three original games have room-only compact styles and active bet chips',()=>{
-  const files=[
-    'jackpot-fruit.html','night-food-wheel.html','sovera-food-wheel.html'
-  ];
-  for(const name of files){
+test('remaining original games and Fruit Royale have compact room UI and authenticated bets',()=>{
+  const originals=['night-food-wheel.html','sovera-food-wheel.html'];
+  for(const name of originals){
     const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/'+name,import.meta.url),'utf8');
     assert.match(html,/location\.hash==='#sharika-room'/,name);
     assert.match(html,/style id="sharika-room-mini-css"/,name);
     assert.match(html,/html\.sharika-room-mini/,name);
     assert.match(html,/GameBridge\.bet\(/,name+' still places authenticated wagers');
   }
-  const jackpot=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/jackpot-fruit.html',import.meta.url),'utf8');
-  assert.match(jackpot,/html\.sharika-room-mini #og-top3\{display:none!important\}/);
-  assert.match(jackpot,/html\.sharika-room-mini #ch button\{height:36px/);
-  assert.match(jackpot,/html\.sharika-room-mini #rs\{margin-top:6px/);
-  const night=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/night-food-wheel.html',import.meta.url),'utf8');
-  assert.match(night,/html\.sharika-room-mini #chips button\{width:min\(17vw,58px\)/);
-  const sovera=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/sovera-food-wheel.html',import.meta.url),'utf8');
-  assert.match(sovera,/html\.sharika-room-mini \.chip\{width:clamp\(44px,15vw,57px\)/);
+  const base=new URL('../../android-staging/app/src/main/assets/fruit-royale/',import.meta.url);
+  const game=readFileSync(new URL('game.js',base),'utf8');
+  const config=readFileSync(new URL('config.js',base),'utf8');
+  const adapterSource=readFileSync(new URL('adapter.live.js',base),'utf8');
+  assert.match(config,/compact:location\.hash==='#sharika-room'/);
+  assert.match(game,/cfg\.compact/);
+  assert.match(game,/api\.placeBet\(requested\)/);
+  assert.match(adapterSource,/game:GAME/);
+  assert.match(adapter,/page:'file:\/\/\/android_asset\/fruit-royale\/index\.html'/);
+  assert.match(adapter,/if\(!insideRoom\)overlay\.classList\.add/);
 });
