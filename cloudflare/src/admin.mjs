@@ -4,6 +4,7 @@
 import { handleSellerAdmin } from './sellers.mjs';
 import { handleBannerAdmin } from './banners.mjs';
 import { handleDailyAdmin } from './daily.mjs';
+import { handlePremiumAdmin } from './premium.mjs';
 import { handleEventAdmin } from './events.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
@@ -123,6 +124,10 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if (operation==='daily') return await handleDailyAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
+  if(operation==='premium'||operation==='premium/grant')
+    return await handlePremiumAdmin({
+      request,env,uid,actor,operation,cors,reply,fail
+    });
   if (operation.startsWith('sellers')) return await handleSellerAdmin({
     request, env, uid, actor, operation, cors, reply, fail
   });
@@ -333,7 +338,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       read_only:staff?!actor.permissions.some(p=>['coin_recharge','support_reply'].includes(p)):actor.role!=='super',
       write_scopes:staff?actor.permissions.filter(p=>['coin_recharge','support_reply'].includes(p)):
         actor.role==='super'?['user_status','gift_catalog','support_reply','seller_approval',
-          'seller_stock_allocation','daily_reward_config','coin_recharge','staff_manage']:
+          'seller_stock_allocation','daily_reward_config','premium_membership_config',
+          'premium_membership_grant','coin_recharge','staff_manage']:
           actor.role==='support'?['support_reply']:[] }, 200, cors);
   }
   if (operation === 'rankings' && request.method === 'GET') {

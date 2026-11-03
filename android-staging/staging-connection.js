@@ -579,6 +579,122 @@
     }catch(error){console.warn('Seller wallet profile unavailable:',errText(error));}
   }
 
+  // Premium membership is independent of Wealth/Charm levels. Automatic
+  // eligibility and daily credits are computed by the verified D1 Worker.
+  let premiumProfileRequest=0;
+  async function mountPremiumProfileEntry(){
+    const anchor=document.querySelector('#v-me .mid');
+    const requestNo=++premiumProfileRequest;
+    document.getElementById('sharika-premium-profile-entry')?.remove();
+    if(!anchor||!session)return;
+    const button=document.createElement('button');
+    button.type='button';button.id='sharika-premium-profile-entry';
+    button.textContent='👑 VIP · SVIP · Noble';
+    button.style.cssText='display:block;margin:8px auto;padding:9px 15px;border-radius:16px;'+
+      'color:#ffedb1;background:linear-gradient(140deg,#5a2a91,#30215f);'+
+      'border:1px solid #ffe49c;font-weight:800;font-size:13px;'+
+      'box-shadow:inset 0 2px 0 #ffffff35,0 5px 10px #0005';
+    button.onclick=showPremiumSheet;
+    anchor.insertAdjacentElement('afterend',button);
+    const who=session.user.id;
+    try{
+      const data=await api('GET','/premium');
+      if(!button.isConnected||requestNo!==premiumProfileRequest||session?.user?.id!==who)return;
+      const tier=String(data.status?.tier||'none').toUpperCase();
+      button.textContent=tier==='NONE'?'👑 VIP · SVIP · Noble':
+        '👑 '+tier+' · Premium benefits';
+    }catch(error){
+      console.warn('Premium status pending staging deployment:',errText(error));
+    }
+  }
+  let pendingPremiumPurchase=null;
+  async function showPremiumSheet(){
+    if(!session){toast('Sign in to view premium membership');return;}
+    window.openSheet('<h3>👑 VIP · SVIP · Noble</h3>'+
+      '<div id="sh-premium-view">Loading verified premium status…</div>');
+    const root=document.getElementById('sh-premium-view');
+    if(!root)return;
+    let data;
+    try{data=await api('GET','/premium');}
+    catch(error){root.textContent='Premium service not ready: '+errText(error);return;}
+    if(!root.isConnected)return;
+    const status=data.status||{},cfg=data.config||{},tiers=cfg.tiers||[];
+    const labels={vip:'💎 VIP',svip:'✨ SVIP',noble:'👑 Noble'};
+    const format=n=>Number(n||0).toLocaleString('en-US');
+    const tierName=status.tier==='none'?'Standard':labels[status.tier]||'Standard';
+    const remaining=status.expires_at_ms?
+      ' · until '+new Date(status.expires_at_ms).toLocaleDateString('en-GB'):'';
+    const autoInfo=cfg.policy?.auto_enabled?
+      'Automatic qualification ON · '+
+        (cfg.policy?.auto_by_level?'Wealth Level ':'')+
+        (cfg.policy?.auto_by_gifts?'Gift total':''):
+      'Automatic qualification OFF by Admin';
+    root.innerHTML='<div style="padding:14px;border-radius:20px;border:1px solid #f8ce8a;'+
+      'background:linear-gradient(145deg,#654398,#25215e)"><b>'+tierName+'</b>'+
+      '<div class="lbl">Source: '+String(status.source||'none')+remaining+'</div>'+
+      '<div class="lbl">Wealth Lv.'+format(status.wealth_level)+' · Gifts sent '+
+      format(status.gift_coins)+' coins</div><small>'+autoInfo+'</small></div>'+
+      '<div style="display:grid;gap:10px;margin-top:12px">'+tiers.map(item=>{
+        const active=status.tier===item.tier;
+        return '<div style="border:1px solid '+(active?'#f6d678':'#896cad')+';border-radius:18px;'+
+          'background:linear-gradient(155deg,#493477,#211b4b);padding:12px">'+
+          '<b>'+labels[item.tier]+'</b>'+(active?' <small>✓ Current</small>':'')+
+          '<div class="lbl">Level '+format(item.min_wealth_level)+' or sent gifts '+
+          format(item.min_gift_coins)+' · Daily '+format(item.daily_bonus_coins)+' coins</div>'+
+          '<div class="lbl">'+format(item.price_coins)+' coins / '+item.duration_days+' days</div>'+
+          (cfg.policy?.purchase_enabled&&Number(status.rank||0)<=item.rank?
+            '<button class="send" type="button" data-sh-premium-buy="'+item.tier+'">'+
+              (active?'Extend ':'Buy ')+item.tier.toUpperCase()+'</button>':'')+'</div>';
+      }).join('')+'</div>'+
+      '<div style="margin-top:13px;padding:12px;border-radius:16px;background:#231b4a">'+
+        '<b>🎁 Premium Daily Coin Bonus</b><div class="lbl">'+
+        (status.tier==='none'?'Qualify for a tier to claim daily coins.':
+          format(status.daily_bonus_coins)+' coins per UTC day')+'</div>'+
+        (status.rank>0&&status.daily_bonus_coins>0?
+          '<button class="send" type="button" id="sh-premium-claim" '+
+            (status.claimed_today?'disabled':'')+'>'+
+            (status.claimed_today?'Claimed today ✓':'Claim premium coins')+'</button>':'')+
+        '</div><p class="lbl" id="sh-premium-status" role="status"></p>';
+    const note=root.querySelector('#sh-premium-status');
+    root.querySelectorAll('[data-sh-premium-buy]').forEach(button=>{
+      button.onclick=async()=>{
+        const tier=button.dataset.shPremiumBuy;
+        const item=tiers.find(x=>x.tier===tier);
+        if(!item||!window.confirm('Buy '+tier.toUpperCase()+' for '+format(item.price_coins)+
+          ' coins? Seller coins and game outcomes are separate.'))return;
+        button.disabled=true;
+        const requestId=pendingPremiumPurchase?.tier===tier?
+          pendingPremiumPurchase.requestId:nextWalletRequestId('premium');
+        pendingPremiumPurchase={tier,requestId};
+        try{
+          const result=await api('POST','/premium/purchase',{
+            tier,request_id:requestId
+          });
+          pendingPremiumPurchase=null;
+          note.textContent=(result.duplicate?'Already recorded. ':'Purchased ✓ ')+
+            tier.toUpperCase();
+          await refreshWalletAfterConfirmedTransaction();
+          await showPremiumSheet();
+          window.renderMe();
+        }catch(error){note.textContent='Purchase not confirmed; check status: '+errText(error);}
+        finally{if(button.isConnected)button.disabled=false;}
+      };
+    });
+    const claim=root.querySelector('#sh-premium-claim');
+    if(claim)claim.onclick=async()=>{
+      if(claim.disabled)return;
+      claim.disabled=true;
+      try{
+        const receipt=await api('POST','/premium/daily/claim',{});
+        note.textContent=(receipt.duplicate?'Already claimed: ':'Received: ')+
+          format(receipt.reward_coins)+' coins ✓';
+        await refreshWalletAfterConfirmedTransaction();
+        await showPremiumSheet();
+      }catch(error){note.textContent='Bonus not claimed: '+errText(error);
+        if(claim.isConnected)claim.disabled=false;}
+    };
+  }
+
   // Keep Sharika's existing profile layout; give its edit controls a
   // tactile 3D finish, and show the server-backed photo before saving text.
   const profileDepthStyle=document.createElement('style');
@@ -824,7 +940,16 @@
     priorRenderMe.apply(this,arguments);
     renderVerifiedIdentity();
     renderSellerWalletProfileButton().catch(()=>{});
+    mountPremiumProfileEntry().catch(()=>{});
   };
+  // Both the old SVIP shortcut and the new profile badge open the one verified
+  // membership screen. No localStorage coin minting or demo tier changes.
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('[data-m="svip"]');
+    if(!button)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    showPremiumSheet().catch(error=>toast(errText(error)));
+  },true);
   window.frEl=function(){return frameTag(window.A?.frame||'');};
   window.frameSheet=function(){styleSelectionSheet('frame_style');};
   document.addEventListener('click',event=>{

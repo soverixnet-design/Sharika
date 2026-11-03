@@ -47,3 +47,16 @@ test('staff accounts use Firebase verification and exact permission-scoped UI co
   assert.match(source,/pendingAdminCredit\?\.fingerprint===fingerprint/);
   assert.match(source,/staff permissions/);
 });
+
+test('premium admin panel offers independent purchasing, grant and automatic gift/level policies',()=>{
+  assert.match(source,/\['premium','👑','VIP \/ SVIP \/ Noble'\]/);
+  assert.match(source,/P\.premium=async function\(\)/);
+  for(const key of ['purchase_enabled','admin_grant_enabled','auto_enabled',
+    'auto_by_level','auto_by_gifts'])assert.ok(source.includes(key),key);
+  for(const key of ['min_wealth_level','min_gift_coins','price_coins','duration_days',
+    'daily_bonus_coins'])assert.ok(source.includes(key),key);
+  assert.match(source,/api\('PATCH','premium',\{policy,tiers\}\)/);
+  assert.match(source,/api\('GET','premium\?public_id='\+id\)/);
+  assert.match(source,/api\('POST','premium\/grant',\{public_id:id,tier,duration_days:days\}\)/);
+  assert.match(source,/role==='super'\?/);
+});

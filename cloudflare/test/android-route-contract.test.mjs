@@ -43,3 +43,14 @@ test('room emoji sync is confined to authenticated room reactions and bounded cu
   assert.match(worker,/action==='reactions'/);
   assert.match(worker,/take_mic_seat_first/);
 });
+
+test('premium membership is routed only through verified authenticated Android endpoints',()=>{
+  assert.match(routes,/path\.equals\("\/api\/v1\/premium"\)\) return method\.equals\("GET"\)/);
+  assert.match(routes,/path\.equals\("\/api\/v1\/premium\/purchase"\) \|\|\s*path\.equals\("\/api\/v1\/premium\/daily\/claim"\)\) return method\.equals\("POST"\)/);
+  assert.match(app,/api\('GET','\/premium'\)/);
+  assert.match(app,/api\('POST','\/premium\/purchase'/);
+  assert.match(app,/api\('POST','\/premium\/daily\/claim'/);
+  assert.match(app,/nextWalletRequestId\('premium'\)/);
+  assert.match(worker,/handlePremiumApp/);
+  assert.doesNotMatch(routes,/path\.equals\("\/api\/v1\/admin\/premium"\)/);
+});
