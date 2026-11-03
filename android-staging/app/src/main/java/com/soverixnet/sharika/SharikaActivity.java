@@ -960,6 +960,9 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.equals("/api/v1/greedy-wheel/bet"))
             return method.equals("POST");
+        // The original game-card picker reads the server-controlled catalog.
+        // Keep the route GET-only; bets stay confined to the existing game APIs.
+        if (path.equals("/api/v1/game-catalog")) return method.equals("GET");
         if (path.equals("/api/v1/games")) return method.equals("GET");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
