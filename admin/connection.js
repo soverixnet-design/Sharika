@@ -46,7 +46,13 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['profileDesigner','🖼️','Live Profile Designer']);
   }
-  NAV_ALL.push(['family','👑','Family & BD System']);
+  // Keep the Family & BD controls next to room rewards. On narrow screens the
+  // former last menu item was buried below System and easily missed.
+  if(!NAV_ALL.some(item=>item[0]==='family')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='events');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['family','👑','Family & BD System']);
+  }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -2921,7 +2927,7 @@
       box('📊 Google Sheets','<span class="sh-fam-pill">'+
         (sheets.last_synced_at?'Synced':'Authorization / first sync pending')+'</span><p>Last sync: '+
         esc(sheets.last_synced_at||'Never')+'</p>'+
-        '<p class="n">Daily automatic mirror and manual sync after service-account setup.</p>'+
+        '<p class="n">Automatic Google Apps Script mirror every 5 minutes; no service-account key needed.</p>'+
         '<button class="btn" id="sh-fam-report-week">Weekly Statement</button>'+
         '<button class="btn" id="sh-fam-report-month">Monthly Statement</button>'+
         (isSuper?'<button class="btn" id="sh-fam-sync" '+
@@ -3051,6 +3057,28 @@
           notice('Report loaded ✓');
         }catch(error){notice('Report unavailable: '+error.message);}
       });
+    }
+  };
+
+  // A discoverable, permission-aware shortcut above the dashboard counters.
+  // Sensitive Family and Google Sheets operations still require server-side roles.
+  const verifiedFamilyDashboard=P.dash;
+  P.dash=async function(){
+    await verifiedFamilyDashboard();
+    if(window.V!=='dash')return;
+    const root=byId('pg');
+    if(!root)return;
+    if(role==='super'||role==='finance'){
+      const shortcut=document.createElement('section');
+      shortcut.className='card';
+      shortcut.style.cssText='border:1px solid #d4ad59;background:linear-gradient(120deg,#35241a,#1b1526);margin-bottom:16px';
+      shortcut.innerHTML='<h3>👑 Family & BD System</h3>'+
+        '<p class="n">Family grants, 5% BD commission, Crystal ledger, weekly/monthly reports and Google Sheets Sync.</p>'+
+        '<button type="button" class="btn" id="sh-open-family-admin">Open Family & BD System</button>';
+      root.insertBefore(shortcut,root.firstChild);
+      shortcut.querySelector('button').onclick=()=>{
+        window.V='family';window.shell();
+      };
     }
   };
 
