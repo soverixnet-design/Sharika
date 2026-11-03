@@ -914,12 +914,15 @@ public final class SharikaActivity extends Activity {
         // Keep this explicit; allowing an arbitrary /family/* path could expose
         // the separate Admin API to a normal signed-in Android user.
         if (path.equals("/api/v1/family/me") ||
+            path.equals("/api/v1/family/discover") ||
+            path.equals("/api/v1/family/creation/requests") ||
             path.equals("/api/v1/family/ledger") ||
             path.equals("/api/v1/family/bd/families") ||
             path.equals("/api/v1/family/requests") ||
             path.equals("/api/v1/family/invites"))
             return method.equals("GET");
         if (path.equals("/api/v1/family/invite") ||
+            path.equals("/api/v1/family/creation/request") ||
             path.equals("/api/v1/family/bd/grant") ||
             path.equals("/api/v1/family/join") ||
             path.equals("/api/v1/family/leave") ||

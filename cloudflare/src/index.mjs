@@ -473,7 +473,14 @@ export async function handleRequest(request, env, ctx) {
         'SELECT f.id,f.name,f.status,m.role FROM sharika_family_members m '+
         'JOIN sharika_families f ON f.id=m.family_id WHERE m.user_uid=? LIMIT 1'
       ).bind(user.auth_uid).first():null;
+      const [activeBD,activeSeller]=user?await Promise.all([
+        env.DB.prepare('SELECT 1 AS active FROM sharika_bd_agents WHERE bd_uid=? AND active=1')
+          .bind(user.auth_uid).first(),
+        env.DB.prepare('SELECT 1 AS active FROM sharika_coin_sellers WHERE seller_uid=? AND active=1')
+          .bind(user.auth_uid).first()
+      ]):[null,null];
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
+        bd_active:!!activeBD,seller_active:!!activeSeller,
         family:family?{id:family.id,name:family.name,status:family.status,role:family.role}:null,
         special_id:special?.special_id||null,display_id:special?.special_id||publicId(user.public_no),
         special_frame:special?.frame||null,

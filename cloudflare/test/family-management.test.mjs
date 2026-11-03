@@ -129,6 +129,7 @@ test('Android native bridge explicitly permits authenticated Family routes only'
   const allow=java.slice(first,last);
   for(const route of [
     '/api/v1/family/me','/api/v1/family/ledger','/api/v1/family/bd/families',
+    '/api/v1/family/discover','/api/v1/family/creation/requests','/api/v1/family/creation/request',
     '/api/v1/family/requests','/api/v1/family/join','/api/v1/family/leave',
     '/api/v1/family/bd/grant','/api/v1/family/crystal/transfer',
     '/api/v1/family/ownership/transfer','/api/v1/family/invite',
@@ -221,4 +222,45 @@ test('Admin daily statement keeps gift volume distinct from earned Crystal ledge
   assert.equal(body.period,'day');
   assert.ok(body.activity);
   assert.ok(Array.isArray(body.rows));
+});
+
+
+test('Family discovery only lists active Families and can be used without membership',async()=>{
+  const db=fixture({membership:false});
+  const path='/api/v1/family/discover';
+  const res=await handleFamilyApp({
+    request:new Request('https://example.test'+path,{method:'GET'}),
+    env:{DB:db},uid:'leader',path,cors:{},reply,fail});
+  assert.equal(res.status,200);
+  assert.deepEqual((await res.json()).families,[]);
+  const select=db.calls.find(x=>x.sql?.includes('WHERE f.status='));
+  assert.ok(select);
+  assert.match(select.sql,/WHERE f.status='active'/);
+});
+
+test('Creating Family requires Admin approval and signed consent; never directly creates Family',async()=>{
+  const db=fixture({membership:false});
+  const invalid=await app(db,'/api/v1/family/creation/request',
+    {name:'Royal Queens',description:'Meet our members'});
+  assert.equal(invalid.status,400);
+  const accepted=await app(db,'/api/v1/family/creation/request',
+    {name:'Royal Queens',description:'Meet our members',accept_rules:true});
+  assert.equal(accepted.status,201);
+  const sql=db.calls.map(c=>c.sql||'').join('\n');
+  assert.match(sql,/INSERT INTO sharika_family_creation_requests/);
+  assert.doesNotMatch(sql,/INSERT INTO sharika_families/);
+});
+
+test('Family creation application decisions require Super Admin',async()=>{
+  const db=fixture();
+  const no=await admin(db,'family/creation/requests/17/approve',
+    {bd_public_id:'10000002'},'finance');
+  assert.equal(no.status,403);
+  assert.equal(db.calls.filter(c=>c.kind==='batch').length,0);
+  const list=await handleFamilyAdmin({
+    request:new Request('https://example.test/admin/family/creation/requests',{method:'GET'}),
+    env:{DB:db},uid:'admin',actor:{role:'super'},
+    operation:'family/creation/requests',cors:{},reply,fail});
+  assert.equal(list.status,200);
+  assert.deepEqual((await list.json()).requests,[]);
 });

@@ -2898,10 +2898,11 @@
       '<div class="sh-fam-card">Loading verified records…</div></div>';
     const parent=root.querySelector('#sh-family-admin');
     const notice=t=>{const el=parent?.querySelector('#sh-fam-admin-status');if(el)el.textContent=t;};
-    let data, sheets;
+    let data, sheets, creationQueue;
     try{
-      [data,sheets]=await Promise.all([
-        api('GET','family'),api('GET','family/sheets/status')
+      [data,sheets,creationQueue]=await Promise.all([
+        api('GET','family'),api('GET','family/sheets/status'),
+        role==='super'?api('GET','family/creation/requests'):Promise.resolve({requests:[]})
       ]);
     }catch(error){
       parent.innerHTML=card('Family service unavailable',error.message+
@@ -2956,6 +2957,18 @@
           '<label><input type="checkbox" id="sh-fam-bd-grant" checked> Can grant Families</label>'+
           '<button class="btn" id="sh-fam-bd-save">Save BD Permission</button>'+
           '<p class="n">Removing BD immediately stops FUTURE BD commissions. Existing Families, members, Family Owner commissions and Crystal ledger stay unchanged.</p>')+
+        box('👑 Pending Family Applications',
+          '<p class="n">A user submits a Family name; only Super Admin approval creates it on their own ID. Assign a verified active BD for future commissions.</p>'+
+          table(['Request','Applicant','Proposed Family','Country','Assigned BD','Decision'],
+          (creationQueue.requests||[]).map(x=>[
+            '#'+esc(x.id),esc(x.requester_name)+' · '+esc(x.requester_id),
+            esc(x.name)+'<small style="display:block">'+esc(x.description||'')+'</small>',
+            esc(x.country||'—'),
+            '<input aria-label="Active BD ID for request '+esc(x.id)+'" inputmode="numeric" maxlength="8" data-fam-assign-bd="'+esc(x.id)+'" value="'+
+              esc(((data.agents||[]).find(b=>b.active)||{}).public_id||'')+'">',
+            '<button class="btn s" data-fam-approve-creation="'+esc(x.id)+'">Approve</button>'+
+            '<button class="btn s" data-fam-reject-creation="'+esc(x.id)+'">Reject</button>'
+          ])))+
         box('🏰 Admin Create Family',
           '<label>Owner 8-digit ID<input id="sh-fam-create-owner" maxlength="8" inputmode="numeric"></label>'+
           '<label>Active BD 8-digit ID<input id="sh-fam-create-bd" maxlength="8" inputmode="numeric"></label>'+
@@ -3005,6 +3018,24 @@
       try{await api(method,route,payload);notice('Saved ✓');await reload();}
       catch(error){notice('Not saved: '+error.message);}
     };
+    parent.querySelectorAll('[data-fam-approve-creation]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.famApproveCreation;
+        const bd=parent.querySelector('[data-fam-assign-bd="'+id+'"]')?.value?.trim()||'';
+        if(!/^[0-9]{8}$/.test(bd))return notice('Enter an active BD 8-digit ID first.');
+        trySave('POST','family/creation/requests/'+id+'/approve',{bd_public_id:bd},
+          'Approve Family application #'+id+' and create the Family under its applicant?');
+      };
+    });
+    parent.querySelectorAll('[data-fam-reject-creation]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.famRejectCreation;
+        const reason=window.prompt('Optional reason for declining Family application #'+id,'');
+        if(reason===null)return;
+        trySave('POST','family/creation/requests/'+id+'/reject',{reason:reason.trim()},
+          'Reject Family application #'+id+'?');
+      };
+    });
     byId('sh-fam-bd-save')?.addEventListener('click',()=>{
       const id=byId('sh-fam-bd-id').value.trim();
       if(!/^[0-9]{8}$/.test(id))return notice('Enter a verified 8-digit user ID');

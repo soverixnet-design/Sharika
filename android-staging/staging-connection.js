@@ -2274,10 +2274,244 @@
         '. Try again after the staging update.';
     }
   }
+
+  async function renderFamilyDiscovery(data){
+    const host=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!host)return;
+    const policy=data.policy||{},bd=data.bd||{};
+    host.classList.add('sh-fam-discovery');
+    host.innerHTML='<div class="sh-fam-lobby-head"><span>✦ ROYAL FAMILIES ✦</span>'+
+      '<h3>Discover Your Family</h3><p>Join an existing Family or apply to create your own.</p></div>'+
+      '<div class="sh-fam-lobby-tabs" role="tablist" aria-label="Family list">'+
+      '<button data-fam-sort="recommend" aria-selected="true" role="tab">✦ Recommend</button>'+
+      '<button data-fam-sort="new" aria-selected="false" role="tab">✧ New</button></div>'+
+      '<label class="sh-fam-search">⌕ Search Families<input id="sh-fam-discover-q" placeholder="Family name" maxlength="60"></label>'+
+      '<div id="sh-fam-discover-list" aria-live="polite"><p>Loading Families…</p></div>'+
+      '<div class="sh-fam-application-stack" id="sh-fam-application-stack"></div>'+
+      ((data.invitations||[]).length?'<section class="sh-fam-app-card"><h3>✉️ Your Invitations</h3>'+
+        data.invitations.map(a=>'<div class="sh-fam-invite-entry"><div><b>'+famEsc(a.family_name)+'</b>'+
+          '<small>Invited by '+famEsc(a.inviter_id)+'</small></div>'+
+          '<button data-fam-accept-invite="'+famEsc(a.id)+'">Join</button>'+
+          '<button data-fam-decline-invite="'+famEsc(a.id)+'">Decline</button></div>').join('')+'</section>':'')+
+      ((data.applications||[]).length?'<section class="sh-fam-app-card"><h3>📋 My Join Requests</h3>'+
+        data.applications.map(a=>'<p>'+famEsc(a.family_name||a.family_id)+
+        ' · '+famEsc(a.state)+'</p>').join('')+'</section>':'')+
+      (bd.active&&bd.can_grant?'<details class="sh-fam-app-card"><summary>💼 BD Family Grant</summary>'+
+        '<p>Active BD: '+famEsc(policy.bd_percent)+'% verified Family gift commission. Admin approval application is separate.</p>'+
+        '<label>Owner 8-digit ID<input id="sh-fam-owner-id" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Family Name<input id="sh-fam-name" maxlength="40"></label>'+
+        '<button id="sh-fam-grant">Grant Family</button>'+
+        '<button id="sh-fam-bd-list">My Granted Families</button></details>':'')+
+      '<div class="sh-fam-create-dock"><button type="button" id="sh-fam-show-create">'+
+        '👑 Create Family <span>Admin approval</span></button></div>'+
+      '<section id="sh-fam-create-form" class="sh-fam-app-card" hidden>'+
+        '<h3>👑 Apply to Create a Family</h3>'+
+        '<p>Choose a unique Family name. An Admin must approve before the Family appears on your ID.</p>'+
+        '<label>Family Name<input id="sh-fam-create-request-name" maxlength="40" placeholder="Your Royal Family"></label>'+
+        '<label>Description (optional)<input id="sh-fam-create-request-description" maxlength="240" placeholder="Family introduction"></label>'+
+        '<label><input id="sh-fam-create-agree" type="checkbox"> I agree to the Family rules and Admin review.</label>'+
+        '<button id="sh-fam-create-request">Submit Application</button>'+
+        '<button id="sh-fam-close-create" type="button">Cancel</button></section>';
+    const list=host.querySelector('#sh-fam-discover-list');
+    let rows=[],selectedSort='recommend',query='';
+    const paint=()=>{
+      if(!list.isConnected)return;
+      const filtered=rows.filter(x=>String(x.name||'').toLowerCase().includes(query));
+      const ordered=filtered.slice().sort((a,b)=>selectedSort==='new'?
+        String(b.created_at||'').localeCompare(String(a.created_at||''))||Number(b.id)-Number(a.id):
+        Number(b.member_count||0)-Number(a.member_count||0)||Number(b.level||0)-Number(a.level||0));
+      list.innerHTML=ordered.length?ordered.map(f=>{
+        const logo=verifiedAvatarUrl(f.logo);
+        const full=Number(f.member_count||0)>=Number(f.max_members||20);
+        return '<article class="sh-fam-discover-row">'+
+          '<div class="sh-fam-row-emblem">'+(logo?'<img src="'+famEsc(logo)+'" alt="">':'👑')+'</div>'+
+          '<div class="sh-fam-row-data"><b>'+famEsc(f.name)+'</b>'+
+          '<small>Owner ID: '+famEsc(f.owner_id)+' · Lv '+famEsc(f.level||1)+'</small>'+
+          '<small>♟ '+famEsc(f.member_count)+' / '+famEsc(f.max_members||20)+' members</small></div>'+
+          '<button type="button" data-fam-discovery-apply="'+famEsc(f.id)+'" '+(full?'disabled':'')+'>'+
+          (full?'Full':'Apply')+'</button></article>';
+      }).join(''):'<p class="sh-fam-discover-empty">No matching Families found.</p>';
+      list.querySelectorAll('[data-fam-discovery-apply]').forEach(btn=>btn.onclick=async()=>{
+        const id=Number(btn.dataset.famDiscoveryApply);
+        const item=rows.find(f=>Number(f.id)===id);
+        if(!window.confirm('Apply to join '+(item?.name||'this Family')+'? The Owner must approve.'))return;
+        btn.disabled=true;familyNotice('Sending join request…');
+        try{await api('POST','/family/join',{family_id:id});
+          familyNotice('Application sent ✓ Waiting for the Family Owner.');}
+        catch(error){familyNotice('Application failed: '+errText(error));btn.disabled=false;}
+      });
+    };
+    host.querySelectorAll('[data-fam-sort]').forEach(btn=>btn.onclick=()=>{
+      selectedSort=btn.dataset.famSort;
+      host.querySelectorAll('[data-fam-sort]').forEach(t=>t.setAttribute(
+        'aria-selected',String(t===btn)));
+      paint();
+    });
+    host.querySelector('#sh-fam-discover-q').oninput=e=>{
+      query=String(e.target.value||'').trim().toLowerCase();paint();
+    };
+    const form=host.querySelector('#sh-fam-create-form');
+    host.querySelector('#sh-fam-show-create').onclick=()=>{form.hidden=false;form.scrollIntoView({behavior:'smooth'});};
+    host.querySelector('#sh-fam-close-create').onclick=()=>{form.hidden=true;};
+    host.querySelector('#sh-fam-create-request').onclick=async()=>{
+      const name=host.querySelector('#sh-fam-create-request-name').value.trim();
+      const description=host.querySelector('#sh-fam-create-request-description').value.trim();
+      const accept_rules=host.querySelector('#sh-fam-create-agree').checked;
+      if(name.length<3||name.length>40||!accept_rules){
+        familyNotice('Enter a name (3–40 characters) and accept the rules.');return;
+      }
+      const btn=host.querySelector('#sh-fam-create-request');btn.disabled=true;
+      try{await api('POST','/family/creation/request',{name,description,accept_rules});
+        familyNotice('Family application sent ✓ Admin approval required.');
+        await reloadRoyalFamily();
+      }catch(error){familyNotice('Application failed: '+errText(error));btn.disabled=false;}
+    };
+    host.querySelectorAll('[data-fam-accept-invite],[data-fam-decline-invite]').forEach(btn=>
+      btn.onclick=async()=>{
+        const accepted=!!btn.dataset.famAcceptInvite;
+        const id=btn.dataset.famAcceptInvite||btn.dataset.famDeclineInvite;
+        try{await api('POST','/family/invites/'+id+'/'+(accepted?'accept':'decline'),{});
+          await reloadRoyalFamily();familyNotice(accepted?'Joined Family ✓':'Invitation declined');}
+        catch(error){familyNotice('Invite response failed: '+errText(error));}
+      });
+    host.querySelector('#sh-fam-grant')?.addEventListener('click',async()=>{
+      const id=host.querySelector('#sh-fam-owner-id').value.trim();
+      const name=host.querySelector('#sh-fam-name').value.trim();
+      if(!/^[0-9]{8}$/.test(id)||name.length<3)return familyNotice('Enter Owner ID and Family name.');
+      if(!window.confirm('Grant '+name+' to '+id+'?'))return;
+      try{await api('POST','/family/bd/grant',{owner_public_id:id,name,
+        request_id:'family:'+crypto.randomUUID()});await reloadRoyalFamily();}
+      catch(error){familyNotice('BD grant failed: '+errText(error));}
+    });
+    host.querySelector('#sh-fam-bd-list')?.addEventListener('click',async()=>{
+      try{const r=await api('GET','/family/bd/families');
+        familyNotice((r.families||[]).map(x=>x.name+' #'+x.id).join(' • ')||'No granted Families.');}
+      catch(error){familyNotice('BD list unavailable: '+errText(error));}
+    });
+    try{
+      const [found,applications]=await Promise.all([
+        api('GET','/family/discover'),api('GET','/family/creation/requests')
+      ]);
+      if(!list.isConnected)return;
+      rows=Array.isArray(found.families)?found.families:[];
+      paint();
+      const stack=host.querySelector('#sh-fam-application-stack');
+      const entries=applications.requests||[];
+      if(stack&&entries.length)
+        stack.innerHTML='<section class="sh-fam-app-card"><h3>🗂️ Family Creation Applications</h3>'+
+          entries.slice(0,5).map(x=>'<p><strong>'+famEsc(x.name)+'</strong>'+
+            ' <span class="sh-fam-state">'+famEsc(x.state)+'</span>'+
+            (x.decision_reason?' · '+famEsc(x.decision_reason):'')+'</p>').join('')+
+          '</section>';
+    }catch(error){if(list.isConnected)list.textContent='Family list unavailable: '+errText(error);}
+  }
+
+  const familyDiscoveryRoyalCss=document.createElement('style');
+  familyDiscoveryRoyalCss.id='sharika-family-discovery-premium';
+  familyDiscoveryRoyalCss.textContent=[
+    '#sh-family-panel:has(.sh-fam-discovery){padding-bottom:0;background:',
+    'radial-gradient(ellipse at 50% -10%,#b97e28a8,transparent 48%),',
+    'repeating-conic-gradient(from 22deg at 50% 21%,#d59a2512 0deg 12deg,transparent 12deg 30deg),',
+    'linear-gradient(180deg,#170d14 0%,#221408 44%,#0f0a11 100%)}',
+    '#sh-family-panel:has(.sh-fam-discovery) .sh-fam-wrap{min-height:100%;position:relative}',
+    '#sh-family-panel:has(.sh-fam-discovery) .sh-fam-wrap:before{content:"✦";',
+    'position:absolute;top:7px;left:45%;z-index:-1;color:#bd8c3040;',
+    'font-size:230px;text-shadow:0 0 75px #d6a54455}',
+    '#sh-family-panel:has(.sh-fam-discovery) h2{font-size:27px;',
+    'text-shadow:0 2px 8px #efb74a77}',
+    '#sh-family-panel .sh-fam-discovery{padding:0;margin:0;',
+    'background:transparent;border:0;box-shadow:none}',
+    '#sh-family-panel .sh-fam-lobby-head{text-align:center;margin:10px 0 20px}',
+    '#sh-family-panel .sh-fam-lobby-head>span{letter-spacing:3px;font-size:10px;color:#e6b95c}',
+    '#sh-family-panel .sh-fam-lobby-head h3{font-size:23px;color:#ffdf96;margin:7px 0}',
+    '#sh-family-panel .sh-fam-lobby-head p{font-size:13px;color:#e0c99c}',
+    '#sh-family-panel .sh-fam-lobby-tabs{display:flex;padding:4px;gap:5px;',
+    'border:1px solid #b98b3d;border-radius:22px;background:#251812dd}',
+    '#sh-family-panel .sh-fam-lobby-tabs button{width:50%;margin:0;border:0;',
+    'border-radius:18px;font-size:16px;box-shadow:none;background:transparent;color:#edcb8b}',
+    '#sh-family-panel .sh-fam-lobby-tabs button[aria-selected=true]{',
+    'background:linear-gradient(125deg,#fff0a3,#d79b29 65%,#996319);color:#3d2109}',
+    '#sh-family-panel .sh-fam-search{display:block;margin:14px 0;color:#e5c48b;font-size:12px}',
+    '#sh-family-panel .sh-fam-search input{margin:4px 0}',
+    '#sh-family-panel .sh-fam-discover-row{display:flex;align-items:center;gap:11px;',
+    'padding:14px 2px;border-bottom:1px solid #c69a3d55;background:linear-gradient(90deg,#3a251266,#120b0a33)}',
+    '#sh-family-panel .sh-fam-row-emblem{height:64px;width:64px;flex:none;',
+    'display:grid;place-items:center;border:2px solid #f1ca72;border-radius:17px;',
+    'background:linear-gradient(135deg,#694112,#1e1a18);font-size:32px;overflow:hidden;',
+    'box-shadow:inset 0 1px 4px #ffdf8b66,0 6px 16px #0008}',
+    '#sh-family-panel .sh-fam-row-emblem img{height:100%;width:100%;object-fit:cover}',
+    '#sh-family-panel .sh-fam-row-data{min-width:0;flex:1}',
+    '#sh-family-panel .sh-fam-row-data b{display:block;white-space:nowrap;',
+    'overflow:hidden;text-overflow:ellipsis;font-size:16px;color:#ffebc0}',
+    '#sh-family-panel .sh-fam-row-data small{display:block;color:#e4bd77;',
+    'font-size:11px;line-height:1.7}',
+    '#sh-family-panel .sh-fam-discover-row button{flex:none;margin:0;padding:9px 13px;',
+    'border-radius:13px;font-size:13px}',
+    '#sh-family-panel .sh-fam-discover-empty{text-align:center;padding:25px;color:#e4c98d}',
+    '#sh-family-panel .sh-fam-application-stack,.sh-fam-app-card{margin:14px 0}',
+    '#sh-family-panel .sh-fam-app-card{padding:16px;border:1px solid #bb8c43;',
+    'background:linear-gradient(135deg,#4a2e1c,#231519);border-radius:18px;',
+    'box-shadow:0 6px 18px #0008}',
+    '#sh-family-panel .sh-fam-app-card p{font-size:12px;color:#e6d2ad}',
+    '#sh-family-panel .sh-fam-invite-entry{display:flex;align-items:center;gap:8px;margin:8px 0}',
+    '#sh-family-panel .sh-fam-invite-entry div{flex:1;min-width:0}',
+    '#sh-family-panel .sh-fam-invite-entry b,#sh-family-panel .sh-fam-invite-entry small{display:block}',
+    '#sh-family-panel .sh-fam-state{font-weight:900;color:#ffcc64;text-transform:uppercase}',
+    '#sh-family-panel .sh-fam-create-dock{position:sticky;bottom:0;margin:16px -15px 0;',
+    'background:linear-gradient(0deg,#150b09 70%,#150b09aa);padding:13px 17px 20px;',
+    'z-index:2;text-align:center;border-top:1px solid #ad803366}',
+    '#sh-family-panel .sh-fam-create-dock button{width:100%;max-width:380px;',
+    'font-size:18px;border:2px solid #ffdd85;border-radius:20px;',
+    'background:linear-gradient(175deg,#ffed9d 0%,#ecb345 45%,#b97717 100%);',
+    'box-shadow:inset 0 2px 2px #fff9a0,0 5px 0 #744407,0 8px 22px #000b}',
+    '#sh-family-panel .sh-fam-create-dock span{display:block;font-size:10px;opacity:.8}',
+    '#sh-family-panel #sh-fam-create-form[hidden]{display:none}',
+    '#sh-family-panel #sh-fam-create-agree{display:inline-block;width:18px;vertical-align:middle}',
+    '#pfo .sh-ranked-profile{background:radial-gradient(ellipse at 50% 18%,#ffe19c,#f3ba38 50%,#ba6917 100%)!important;',
+    'border:2px solid #f3d175;box-shadow:inset 0 0 20px #fff1a6,0 10px 40px #000b}',
+    '#pfo .sh-ranked-profile .cov{height:115px;background:',
+    'radial-gradient(ellipse at 50% -100%,#fff7d0,transparent 70%),',
+    'repeating-conic-gradient(from 12deg at 50% 50%,#ffeca655 0deg 8deg,transparent 9deg 26deg),',
+    'linear-gradient(135deg,#9b440d,#efb239 55%,#8e420a)!important}',
+    '#pfo .sh-ranked-profile .pfh{position:relative;padding-top:2px}',
+    '#pfo .sh-ranked-profile .pfh:before{content:"♛";position:absolute;top:-77px;',
+    'left:50%;transform:translateX(-50%);font-size:47px;color:#ffe99e;',
+    'filter:drop-shadow(0 2px 3px #76370a)}',
+    '#pfo .sh-ranked-profile .pfh h2{color:#49220b!important;text-shadow:0 1px 0 #fff4c1}',
+    '#pfo .sh-ranked-profile .pavr{border-color:#ffd273!important;',
+    'box-shadow:0 0 0 3px #be771b,0 0 20px #fff1b8}',
+    '#pfo .sh-ranked-profile .sh-royal-idline{display:flex;align-items:center;',
+    'justify-content:center;flex-wrap:wrap;gap:5px;margin:9px auto;padding:5px;',
+    'max-width:100%;font-size:12px;color:#6c390a}',
+    '#pfo .sh-ranked-profile .sh-royal-user-id{font-weight:900;color:#723014;',
+    'padding:7px 8px;background:#fff0b2;border:1px solid #d29427;border-radius:9px}',
+    '#pfo .sh-ranked-profile .sh-royal-role-tag{font-weight:900;padding:7px 10px;',
+    'border-radius:999px;border:1px solid #ffdd92;box-shadow:inset 0 1px 2px #fff8;',
+    'color:#fff0cb;text-transform:uppercase;white-space:nowrap}',
+    '#pfo .sh-ranked-profile .sh-royal-bd{background:linear-gradient(125deg,#d43768,#74174d)}',
+    '#pfo .sh-ranked-profile .sh-royal-seller{background:linear-gradient(125deg,#269de4,#14559d)}',
+    '#pfo .sh-ranked-profile .meta{color:#623708!important}',
+    '#pfo .sh-ranked-profile .sh-profile-note{background:linear-gradient(150deg,#704017,#321e1b)!important;',
+    'border:1px solid #ffc869!important;color:#ffe6b7!important}',
+    '#pfo .sh-ranked-profile .pbtn button{background:linear-gradient(140deg,#ffeaa0,#d4992e)!important;',
+    'color:#4b2106!important;border:1px solid #ffdb74!important}',
+    '@media(max-width:380px){#sh-family-panel .sh-fam-row-emblem{width:53px;height:53px}',
+    '#sh-family-panel .sh-fam-row-data b{font-size:14px}',
+    '#sh-family-panel .sh-fam-discover-row button{padding:8px}}',
+    '@media(prefers-reduced-motion:reduce){#sh-family-panel .sh-fam-create-dock button{transition:none}}'
+  ].join('');
+  familyDiscoveryRoyalCss.textContent +=
+    '#pfo .sh-room-royal .pfh .meta{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px}'+
+    '#pfo .sh-room-royal .pfh .meta .sh-royal-idline{width:100%;margin:0}'+
+    '#pfo .sh-room-royal .sh-royal-room-family-link{border:1px solid #c58d22;border-radius:99px;'+
+    'background:linear-gradient(#fff0ad,#e7b74d);color:#552909;font-weight:800;padding:7px 13px}';
+  document.head.appendChild(familyDiscoveryRoyalCss);
+
   function renderRoyalFamily(data){
     const target=document.querySelector('#sh-family-panel #sh-fam-body');
     if(!target)return;
     const family=data.family,bd=data.bd||{},policy=data.policy||{},wallet=data.wallet||{};
+    if(!family){renderFamilyDiscovery(data);return;}
     const fmtUnits=u=>(Number(u||0)/10000).toLocaleString('en-US',{maximumFractionDigits:4});
     let html='<h3>💎 Crystal Wallet</h3><div class="sh-fam-stat">'+
       fmtUnits(wallet.available_units)+' Crystal</div>'+
@@ -4278,13 +4512,44 @@
     // badges. Do not present those demo numbers as verified public records.
     paintVerifiedAvatar(root.querySelector('.pfh .pav3'),member.pic,document);
     decorateVerifiedPublicProfile(root,member);
+    root.querySelector('.pf')?.classList.add('sh-ranked-profile','sh-room-royal');
     const meta=root.querySelector('.pfh .meta');
     if(meta){
-      for(const item of [...meta.children].slice(1))item.remove();
+      meta.replaceChildren();
+      const idLine=document.createElement('div');
+      idLine.className='sh-royal-idline';
+      const idLabel=document.createElement('span');
+      idLabel.className='sh-royal-user-id';
+      idLabel.textContent='ID: '+String(member.display_id||member.id);
+      idLine.appendChild(idLabel);
+      for(const [yes,label,kind] of [
+        [member.bd_active,'✦ BD','sh-royal-bd'],
+        [member.seller_active,'✦ Seller','sh-royal-seller']
+      ]){
+        if(!yes)continue;
+        const badge=document.createElement('span');
+        badge.className='sh-royal-role-tag '+kind;
+        badge.textContent=label;idLine.appendChild(badge);
+      }
+      meta.appendChild(idLine);
       if(member.country){
         const country=document.createElement('span');
-        country.textContent=String(member.country);
+        country.textContent='🌍 '+String(member.country);
         meta.appendChild(country);
+      }
+      if(member.family){
+        const tag=document.createElement('button');
+        tag.type='button';tag.className='sh-royal-room-family-link';
+        tag.textContent='👑 '+String(member.family.name);
+        tag.onclick=async()=>{
+          if(String(member.family.status)!=='active')return toast('Family is suspended');
+          if(String(member.id)===String(profile?.public_id)){openRoyalFamily();return;}
+          if(!window.confirm('Request to join '+member.family.name+'? Family Owner approval is required.'))return;
+          try{await api('POST','/family/join',{family_id:Number(member.family.id)});
+            toast('Family Join Request sent ✓');}
+          catch(error){toast('Family request failed: '+errText(error));}
+        };
+        meta.appendChild(tag);
       }
     }
     const bio=root.querySelector('.pfh .bio');
@@ -8264,7 +8529,7 @@
         '<div class="pavr" style="--g1:#ffdc7b;--g2:#a06bff"></div>'+
         '<div class="pav3" id="sh-ranked-avatar" role="img" aria-label="Profile photo"></div>'+
         '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
-        '<div class="meta"><span>🆔 '+sellerEscape(displayId)+'</span>'+
+        '<div class="sh-royal-idline"><span class="sh-royal-user-id">ID: '+sellerEscape(displayId)+'</span>'+        (person.bd_active?'<span class="sh-royal-role-tag sh-royal-bd">✦ BD</span>':'')+        (person.seller_active?'<span class="sh-royal-role-tag sh-royal-seller">✦ Seller</span>':'')+        '</div><div class="meta">'+
         (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
         (person.family?'<span style="color:#f9d48b">👑 '+sellerEscape(person.family.name)+'</span>':'')+
         '</div></div><div class="lvs">'+

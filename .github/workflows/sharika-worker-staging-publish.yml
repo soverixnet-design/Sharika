@@ -20,6 +20,7 @@ on:
       - 'cloudflare/src/family-sheets.mjs'
       - 'cloudflare/src/family.mjs'
       - 'cloudflare/migrations/0050_family_invites_and_period.sql'
+      - 'cloudflare/migrations/0051_family_creation_requests.sql'
       - 'cloudflare/test/family-management.test.mjs'
       - 'cloudflare/wrangler.jsonc'
       - 'cloudflare/src/sfu.mjs'
@@ -149,6 +150,13 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0050_family_invites_and_period.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0050_family_invites_and_period.sql')"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT key,mode FROM sharika_family_settlement_preferences"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS pending_invitations FROM sharika_family_invites WHERE state='pending'"
+      # Additive Family creation request workflow: never delete existing Families or ledgers.
+      - name: Apply approved Family creation schema to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0051_family_creation_requests.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0051_family_creation_requests.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0051_family_creation_requests.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS creation_requests FROM sharika_family_creation_requests"
       - name: Verify Family schema and preserve existing voice/game source
         if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
         run: |

@@ -140,6 +140,59 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
     ).bind(uid).all());
     return reply({families:families.map(f=>({...f,owner_id:showId(f.owner_no),owner_no:undefined}))},200,cors);
   }
+  // Family Discovery is available before membership. Never expose private BD stock.
+  if(path==='/api/v1/family/discover'&&request.method==='GET'){
+    const params=new URL(request.url).searchParams;
+    const sort=params.get('sort')==='new'?'new':'recommend';
+    const query=String(params.get('q')||'').trim().slice(0,60);
+    const order=sort==='new'?'f.created_at DESC,f.id DESC':
+      'member_count DESC,f.level DESC,f.created_at DESC';
+    const results=rows(await db.prepare(
+      'SELECT f.id,f.name,f.level,f.created_at,u.public_no AS owner_no,'+
+      'u.name AS owner_name,u.pic AS logo,u.country,COUNT(m.user_uid) AS member_count '+
+      'FROM sharika_families f JOIN sharika_users u ON u.auth_uid=f.owner_uid '+
+      'LEFT JOIN sharika_family_members m ON m.family_id=f.id '+
+      "WHERE f.status='active' AND f.name LIKE ? GROUP BY f.id ORDER BY "+order+' LIMIT 60'
+    ).bind('%'+query+'%').all());
+    return reply({families:results.map(x=>({...x,owner_id:showId(x.owner_no),
+      owner_no:undefined,max_members:current.max_members})),sort},200,cors);
+  }
+  if(path==='/api/v1/family/creation/requests'&&request.method==='GET'){
+    const requests=rows(await db.prepare(
+      'SELECT id,name,description,country,state,family_id,decision_reason,created_at,reviewed_at '+
+      'FROM sharika_family_creation_requests WHERE requester_uid=? ORDER BY id DESC LIMIT 30'
+    ).bind(uid).all());
+    return reply({requests},200,cors);
+  }
+  if(path==='/api/v1/family/creation/request'&&request.method==='POST'){
+    if(!current.active)return fail('family_disabled',403,cors);
+    if(await familyFor(db,uid))return fail('already_in_family',409,cors);
+    let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
+    const name=typeof body.name==='string'?body.name.trim():'';
+    const description=typeof body.description==='string'?body.description.trim():'';
+    if(name.length<3||name.length>40||!/^[\p{L}\p{N} ._-]+$/u.test(name)||
+      description.length>240||body.accept_rules!==true)
+      return fail('invalid_family_creation_request',400,cors);
+    const existing=await db.prepare(
+      "SELECT id,name,state FROM sharika_family_creation_requests WHERE requester_uid=? AND state='pending'"
+    ).bind(uid).first();
+    if(existing)return reply({request_id:existing.id,state:'pending',duplicate:true},200,cors);
+    if(await db.prepare('SELECT 1 FROM sharika_families WHERE name=? COLLATE NOCASE')
+      .bind(name).first())return fail('family_name_unavailable',409,cors);
+    const applicant=await db.prepare(
+      "SELECT country FROM sharika_users WHERE auth_uid=? AND status='active'"
+    ).bind(uid).first();
+    try{
+      await db.prepare(
+        "INSERT INTO sharika_family_creation_requests(requester_uid,name,description,country) "+
+        'VALUES(?,?,?,?)'
+      ).bind(uid,name,description,String(applicant?.country||'').slice(0,80)).run();
+      const created=await db.prepare(
+        "SELECT id FROM sharika_family_creation_requests WHERE requester_uid=? AND state='pending'"
+      ).bind(uid).first();
+      return reply({request_id:created.id,state:'pending'},201,cors);
+    }catch(error){return errorResponse(fail,cors,error);}
+  }
   if(path==='/api/v1/family/bd/grant'&&request.method==='POST'){
     if(!current.active)return fail('family_disabled',403,cors);
     const bd=await db.prepare('SELECT active,can_grant FROM sharika_bd_agents WHERE bd_uid=?').bind(uid).first();
@@ -539,6 +592,90 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
     return reply({family,members},200,cors);
   }
   if(actor.role!=='super')return fail('admin_permission_denied',403,cors);
+  if(operation==='family/creation/requests'&&request.method==='GET'){
+    const pending=rows(await db.prepare(
+      'SELECT r.id,r.name,r.description,r.country,r.state,r.created_at,'+
+      'u.public_no AS requester_no,u.name AS requester_name,u.pic AS requester_pic '+
+      'FROM sharika_family_creation_requests r '+
+      'JOIN sharika_users u ON u.auth_uid=r.requester_uid '+
+      "WHERE r.state='pending' ORDER BY r.created_at ASC LIMIT 100"
+    ).all()).map(r=>({...r,requester_id:showId(r.requester_no),requester_no:undefined}));
+    return reply({requests:pending},200,cors);
+  }
+  const creationDecision=/^family\/creation\/requests\/([1-9][0-9]{0,9})\/(approve|reject)$/.exec(operation);
+  if(creationDecision&&request.method==='POST'){
+    let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
+    const id=Number(creationDecision[1]),action=creationDecision[2];
+    const application=await db.prepare(
+      'SELECT r.id,r.requester_uid,r.name,r.state,r.family_id,u.status AS requester_status '+
+      'FROM sharika_family_creation_requests r '+
+      'JOIN sharika_users u ON u.auth_uid=r.requester_uid WHERE r.id=?'
+    ).bind(id).first();
+    if(!application)return fail('family_application_not_found',404,cors);
+    if(application.state!=='pending')return fail('family_application_already_reviewed',409,cors);
+    if(action==='reject'){
+      const reason=typeof body.reason==='string'?body.reason.trim().slice(0,240):'';
+      const result=await db.batch([
+        db.prepare("UPDATE sharika_family_creation_requests SET state='rejected',"+
+          "decision_reason=?,reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND state='pending'")
+          .bind(reason,uid,id),
+        db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
+          .bind(uid,'family_application_reject',JSON.stringify({request_id:id,reason}))
+      ]);
+      if(!result[0]?.meta?.changes)return fail('family_application_conflict',409,cors);
+      try{
+        const n=await notifyUser(db,{recipientUid:application.requester_uid,kind:'system',
+          title:'Family application not approved',
+          body:'Your Family '+application.name+' application was declined. '+reason,
+          dedupeKey:'family_creation_reject:'+id,createdBy:uid});
+        if(n.created)await deliverNotification(env,n.notification);
+      }catch(e){console.error('family_creation_notification',String(e));}
+      return reply({saved:true,state:'rejected'},200,cors);
+    }
+    if(typeof body.bd_public_id!=='string'||!ID.test(body.bd_public_id))
+      return fail('invalid_bd_permission',400,cors);
+    const bd=await db.prepare(
+      'SELECT a.bd_uid,a.active FROM sharika_bd_agents a '+
+      'JOIN sharika_users u ON u.auth_uid=a.bd_uid WHERE u.public_no=?'
+    ).bind(Number(body.bd_public_id)).first();
+    if(!bd?.active||application.requester_status!=='active')
+      return fail('owner_or_bd_unavailable',404,cors);
+    if(await db.prepare('SELECT 1 FROM sharika_family_members WHERE user_uid=?')
+      .bind(application.requester_uid).first())return fail('already_in_family',409,cors);
+    const grantId='admin:creation:'+id;
+    try{
+      const result=await db.batch([
+        db.prepare("INSERT INTO sharika_families(name,owner_uid,bd_uid) "+
+          "SELECT name,requester_uid,? FROM sharika_family_creation_requests "+
+          "WHERE id=? AND state='pending'")
+          .bind(bd.bd_uid,id),
+        db.prepare("INSERT INTO sharika_family_members(family_id,user_uid,role) "+
+          "VALUES((SELECT id FROM sharika_families WHERE owner_uid=?),?,'leader')")
+          .bind(application.requester_uid,application.requester_uid),
+        db.prepare("INSERT INTO sharika_family_grants(family_id,bd_uid,owner_uid,request_id) "+
+          "VALUES((SELECT id FROM sharika_families WHERE owner_uid=?),?,?,?)")
+          .bind(application.requester_uid,bd.bd_uid,application.requester_uid,grantId),
+        db.prepare("UPDATE sharika_family_creation_requests SET state='approved',"+
+          "family_id=(SELECT id FROM sharika_families WHERE owner_uid=?),"+
+          "assigned_bd_uid=?,reviewed_by=?,reviewed_at=datetime('now') "+
+          "WHERE id=? AND state='pending'")
+          .bind(application.requester_uid,bd.bd_uid,uid,id),
+        db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
+          .bind(uid,'family_application_approve',JSON.stringify({request_id:id,bd:body.bd_public_id}))
+      ]);
+      if(!result[3]?.meta?.changes)return fail('family_application_conflict',409,cors);
+      const approved=await db.prepare('SELECT family_id FROM sharika_family_creation_requests WHERE id=?')
+        .bind(id).first();
+      try{
+        const n=await notifyUser(db,{recipientUid:application.requester_uid,kind:'system',
+          title:'Your Royal Family is approved',
+          body:application.name+' has been created. Open Family to manage members.',
+          dedupeKey:'family_creation_approve:'+id,createdBy:uid});
+        if(n.created)await deliverNotification(env,n.notification);
+      }catch(e){console.error('family_creation_notification',String(e));}
+      return reply({saved:true,state:'approved',family_id:approved?.family_id},200,cors);
+    }catch(e){return errorResponse(fail,cors,e);}
+  }
   if(operation==='family/sheets/sync'&&request.method==='POST'){
     if(!sheetsConfigured(env))return fail('google_sheets_credentials_required',503,cors);
     try { return reply(await syncFamilyGoogleSheet(env),200,cors); }
