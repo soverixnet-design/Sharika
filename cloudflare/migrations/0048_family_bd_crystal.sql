@@ -138,3 +138,41 @@ CREATE TRIGGER IF NOT EXISTS sharika_family_policy_audit_no_update
 BEFORE UPDATE ON sharika_family_policy_audit BEGIN SELECT RAISE(ABORT,'policy_audit_immutable'); END;
 CREATE TRIGGER IF NOT EXISTS sharika_family_policy_audit_no_delete
 BEFORE DELETE ON sharika_family_policy_audit BEGIN SELECT RAISE(ABORT,'policy_audit_immutable'); END;
+
+-- Status transitions are the only mutable fields; credit seller stock in
+-- the same database transaction as an approved transfer. No client can mint coins.
+CREATE TRIGGER IF NOT EXISTS sharika_family_transfer_update_guard
+BEFORE UPDATE ON sharika_family_crystal_transfers
+BEGIN
+  SELECT RAISE(ABORT,'invalid_transfer_transition')
+  WHERE OLD.status!='pending' OR NEW.status NOT IN ('approved','rejected')
+    OR OLD.sender_uid!=NEW.sender_uid OR OLD.seller_uid!=NEW.seller_uid
+    OR OLD.crystal_units!=NEW.crystal_units OR OLD.request_id!=NEW.request_id
+    OR OLD.created_at!=NEW.created_at OR NEW.approved_by IS NULL
+    OR NEW.resolved_at IS NULL
+    OR (NEW.status='rejected' AND NEW.coins_to_seller!=0)
+    OR (NEW.status='approved' AND NEW.coins_to_seller<1);
+END;
+CREATE TRIGGER IF NOT EXISTS sharika_family_transfer_delete_guard
+BEFORE DELETE ON sharika_family_crystal_transfers
+BEGIN SELECT RAISE(ABORT,'transfer_immutable'); END;
+CREATE TRIGGER IF NOT EXISTS sharika_family_transfer_approved
+AFTER UPDATE OF status ON sharika_family_crystal_transfers
+WHEN NEW.status='approved'
+BEGIN
+  UPDATE sharika_coin_sellers
+    SET available_coins=available_coins+NEW.coins_to_seller,
+        updated_at=datetime('now')
+    WHERE seller_uid=NEW.seller_uid AND active=1
+      AND available_coins<=1000000000-NEW.coins_to_seller;
+  SELECT RAISE(ABORT,'seller_stock_limit') WHERE changes()!=1;
+  INSERT INTO sharika_family_transfer_audit(transfer_id,admin_uid,action,coins_added)
+    VALUES(NEW.id,NEW.approved_by,'approved',NEW.coins_to_seller);
+END;
+CREATE TRIGGER IF NOT EXISTS sharika_family_transfer_rejected
+AFTER UPDATE OF status ON sharika_family_crystal_transfers
+WHEN NEW.status='rejected'
+BEGIN
+  INSERT INTO sharika_family_transfer_audit(transfer_id,admin_uid,action)
+    VALUES(NEW.id,NEW.approved_by,'rejected');
+END;
