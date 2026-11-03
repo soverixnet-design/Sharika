@@ -13,7 +13,8 @@
 | **উচ্চ — মাইক্রোফোন origin যাচাই ছিল না** | `onPermissionRequest`-এ কেবল RESOURCE_AUDIO_CAPTURE ও Android permission পরীক্ষা ছিল; কোন web origin থেকে অনুরোধ এসেছে তা নয়। | **Staging-এ প্রতিরক্ষা যোগ**: `getOrigin()` যাচাই এবং packaged `index.html`-এর বাইরে হলে deny। **বাস্তব ডিভাইসে দুই পক্ষের voice regression পরীক্ষা না করা পর্যন্ত release নয়।** |
 | **উচ্চ — Remote LiveKit JS** | `android-staging/staging-connection.js`-এ `https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js` runtime-এ লোড হয়। এটি privileged WebView-তে remote script execution ও CDN supply-chain নির্ভরতা। | **এখনো বাকি**: নির্দিষ্ট যাচাইকৃত build/hash-সহ SDK অ্যাপের সঙ্গে bundle করে remote script লোড বন্ধ করা; mic/voice regression ছাড়া তা বদলানো নিরাপদ নয়। |
 | **উচ্চ — সীমাহীন seller stock** | `cloudflare/src/sellers.mjs`-এ অনুমোদিত unlimited-stock seller নিজেকেও কয়েন পাঠাতে পারে। Super Admin ছাড়া এই mode দেওয়া যায় না এবং ledger আছে—তবু admin account takeover হলে অত্যন্ত বড় ক্ষতির সম্ভাবনা। | **ব্যবসার অনুমোদিত ফিচার, exploit প্রমাণ নয়।** Production-এ MFA, দ্বিতীয় অনুমোদন, দৈনিক সীমা/alert এবং audit review প্রয়োজন। |
-| **মাঝারি — API abuse ও DDoS সীমা** | gift/chat/bet জাতীয় কিছু রুটে app-side rate limit আছে; সকল রুটে কেন্দ্রীয় Cloudflare WAF/API rate-limit কার্যকর কি না Worker কোড থেকে বোঝা যায় না। | **লাইভ কনফিগ যাচাই বাকি**। Auth, signup, admin, seller, game ও public image রুটে traffic/rate policies যাচাই করতে হবে; স্বাভাবিক voice traffic বাধা না দিয়ে। |
+| **মাঝারি — API abuse ও rate limit** | Cloudflare account ও `sharika.app` zone ruleset তালিকা read-only যাচাই করে Managed WAF/DDoS ruleset পাওয়া গেছে, কিন্তু custom `http_ratelimit` ruleset পাওয়া যায়নি। Worker-এর কিছু route-এ নিজস্ব সীমা আছে। `workers.dev` endpoint-এর পূর্ণ traffic policy নিশ্চিত হয়নি। | **বাকি**: signup/admin/seller/game/public image-এ উদ্দেশ্যভিত্তিক rate-limit ও alert; voice polling যেন বাধা না পায়। |
+| **মাঝারি — Admin session token ও CSP** | `admin/connection.js`-এ Firebase `idToken` ও `refreshToken` sessionStorage-এ থাকে; `cloudflare/src/admin-frontend-worker.mjs`-এ clickjacking defence (`X-Frame-Options: DENY`) আছে, কিন্তু Content-Security-Policy header নেই। এখানে XSS প্রমাণ হয়নি; XSS হলে token ক্ষতির মাত্রা বেশি। | **বাকি**: Admin UI-তে CSP/inline-script refactor, output encoding review, short session ও MFA। |
 | **মাঝারি — Legacy demo login fallback** | `app/index.html`-এ localStorage/SHA-256-ভিত্তিক পুরোনো demo-account কোড রয়ে গেছে; Android build-এ staging adapter `API.login` ও `API.signup` override করে। Adapter না লোড হলে বিভ্রান্তিকর স্থানীয় UI চলতে পারে। | **বাকি**: production-এ demo auth/remove বা adapter-not-ready হলে fail-closed; নিশ্চিত করতে হবে কেবল server-confirmed balance দেখায়। |
 | **মাঝারি — Play payment ও games** | Staging-এ কয়েন কেনাবেচা/গেম-স্টেকিং রয়েছে। Play Billing, বয়স ও অঞ্চলভিত্তিক policy, virtual-currency ও gambling classification-এর পূর্ণ compliance review হয়নি। | **বাকি**: আইনি/Play নীতিমালা যাচাই; settlement ও billing integration ছাড়া cash-equivalent production release নয়। |
 | **মাঝারি — পেনিট্রেশন ও ডিভাইস টেস্টের ঘাটতি** | Code review থেকে Broken Access Control, token theft, race condition, device compromise সম্পূর্ণ বাদ দেওয়া সম্ভব নয়। | দুইটি test account, owner/admin/seller role, low bandwidth, Android 8–16, resend/replay/race, ban/kick/seat, Voice এবং wallet ledger পরীক্ষা আবশ্যক। |
@@ -29,9 +30,17 @@
 ## এই অডিটে যা পরীক্ষা করা হয়নি
 
 - অন্য মানুষের account, private data বা coins-এ destructive পরীক্ষা করা হয়নি।
-- লাইভ Cloudflare firewall/rate-limit dashboard, Firebase Console configuration, Google Play Console signing/billing বা user-device rooted environment-এর independent verification হয়নি।
+- Cloudflare Worker binding-এর **নাম ও ধরন** (sensitive keys `secret_text`) এবং account/zone **ruleset listing** পড়া হয়েছে; কোনো secret value পড়া হয়নি। WAF-এর live traffic/trigger effectiveness, Firebase Console, Play Console signing/billing বা rooted-device verification হয়নি।
 - Real-device microphone origin ও `srcdoc` room behaviour, 2-phone voice call, service worker/bridge XSS, paid purchase/chargeback, 2+ concurrent wallet request এবং game win settlement-এর end-to-end পরীক্ষা হয়নি।
 - কোনো APK reverse-engineering, third-party hacking attack বা পূর্ণ OWASP MASVS assessment করা হয়নি।
+
+## স্বয়ংক্রিয় যাচাই — ৩ নভেম্বর ২০২৬
+
+- `npm --prefix cloudflare run check` সহ Cloudflare D1 staging checks: **পাস**। নতুন `android-webview-security.test.mjs` source regression পরীক্ষা অন্তর্ভুক্ত।
+- Sharika Family BD staging checks: **পাস**।
+- Android staging debug APK build workflow: **পাস**।
+- Signed Play-review AAB build workflow (staging only): **পাস**।
+- **এই পাসগুলো static/compile/emulator automation; দুই বাস্তব Android ফোনে microphone ও security acceptance test নয়।**
 
 ## Production gate — ছাড়ার আগে আবশ্যক
 
