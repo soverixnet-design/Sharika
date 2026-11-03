@@ -670,7 +670,20 @@ function sess(){try{return localStorage.getItem(SESS_K)}catch(e){return null}}
 function authed(){var k=sess();return !!k&&accts().some(function(x){return x.key===k})}
 function syncAcct(){var k=sess();if(!k)return;var L=accts(),a=L.filter(function(x){return x.key===k})[0];if(!a)return;a.p={name:A.name,pic:A.pic,id:A.id,myRoom:A.myRoom,claim:A.claim,country:A.country,dob:A.dob,minor:A.minor,cover:A.cover,bio:A.bio,st:A.st,sw:A.sw,rw:A.rw,fol:A.fol};a.state=ls("vr_state_v2",{});saveAccts(L)}
 var MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
-var CTRY=[["🇧🇩","Bangladesh"],["🇮🇳","India"],["🇸🇦","Saudi Arabia"],["🇦🇪","United Arab Emirates"],["🇶🇦","Qatar"],["🇰🇼","Kuwait"],["🇴🇲","Oman"],["🇲🇾","Malaysia"],["🇸🇬","Singapore"],["🇮🇹","Italy"],["🇬🇧","United Kingdom"],["🇺🇸","United States"],["🇨🇦","Canada"],["🇦🇺","Australia"],["🇩🇪","Germany"],["🇫🇷","France"],["🇯🇵","Japan"],["🇰🇷","South Korea"],["🇳🇵","Nepal"],["🇵🇰","Pakistan"],["🌍","Other"]];
+// Manual ISO country selection for every region; never use device GPS.
+var CTRY=(function(){
+  var names=typeof Intl!=='undefined'&&typeof Intl.DisplayNames==='function'
+    ?new Intl.DisplayNames(['en'],{type:'region'}):null;
+  var countries="AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW".split(' ').map(function(code){
+    var flag=String.fromCodePoint.apply(null,code.split('').map(function(c){return 127397+c.charCodeAt(0)}));
+    return [flag,names?names.of(code):code,code];
+  });
+  countries.sort(function(a,b){
+    if(a[2]==='BD')return -1;if(b[2]==='BD')return 1;
+    return a[1].localeCompare(b[1]);
+  });
+  return countries;
+})();
 function norm(s){return s.trim().toLowerCase().replace(/\s+/g,"")}
 function validIdent(s){return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)||/^\+?\d{8,15}$/.test(s)}
 function ageOf(y,m,d){var n=new Date(),a=n.getFullYear()-y;if(n.getMonth()<m||(n.getMonth()===m&&n.getDate()<d))a--;return a}
@@ -714,7 +727,7 @@ function authRender(){
     h+='<div class="lbl">Email or phone number</div><input class="field" id="aid" placeholder="name@email.com or +8801XXXXXXXXX" autocomplete="username">';
     h+='<div class="lbl">Password (at least 6 characters)</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="new-password"><button type="button" class="eye" id="eye">👁️</button></div>';
     h+='<div class="lbl">Re-enter password</div><input class="field" id="apw2" type="password" autocomplete="new-password">';
-    h+='<div class="lbl">Country</div><select class="field" id="ac"><option value="">Select country</option>'+CTRY.map(function(c){return'<option>'+c[0]+" "+c[1]+'</option>'}).join("")+'</select>';
+    h+='<div class="lbl">Country</div><select class="field" id="ac"><option value="">Select country</option>'+CTRY.map(function(c){return'<option value="'+c[2]+'">'+c[0]+" "+c[1]+'</option>'}).join("")+'</select>';
     h+='<div class="lbl">Date of birth (cannot be changed later)</div><div class="drow"><select class="field" id="ad"><option value="">Day</option>';for(i=1;i<=31;i++)h+='<option value="'+i+'">'+bn(i)+'</option>';
     h+='</select><select class="field" id="am"><option value="">Month</option>'+MONTHS.map(function(m,k){return'<option value="'+k+'">'+m+'</option>'}).join("")+'</select><select class="field" id="ay"><option value="">Year</option>';for(i=yr-5;i>=yr-90;i--)h+='<option value="'+i+'">'+bn(i)+'</option>';
     h+='</select></div><label class="tc"><input type="checkbox" id="at"><span>I agree to the <a href="#" data-pol="terms">Terms &amp; Conditions</a> and <a href="#" data-pol="privacy">Privacy Policy</a>. Accounts cannot be created under age 13; Betting-style games stay closed under age 18.</span></label>';

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleRoomModeration } from '../src/moderation.mjs';
+import { handleRoomModeration,handleRoomBanList } from '../src/moderation.mjs';
 
 function setup({role='owner',closeFails=false,targetIsAdmin=false,targetIsOwner=false}={}) {
   const calls=[];
@@ -114,4 +114,55 @@ test('a room admin cannot moderate another admin or the room owner',async()=>{
   const owner=await ownerTarget.send('mute');
   assert.equal(owner.status,403);
   assert.equal(owner.body.error,'cannot_moderate_room_owner');
+});
+
+test('Room Admin can block a regular guest until unblocked; owner/admin wallet is unchanged',async()=>{
+  const {send,calls}=setup({role:'admin'});
+  const r=await send('block');
+  assert.equal(r.status,200);
+  assert.equal(r.body.blocked_until_unblocked,true);
+  assert.equal(r.body.banned_for_seconds,null);
+  const ban=calls.find(x=>x.sql?.includes('INSERT INTO sharika_room_bans'));
+  assert.ok(ban.args[2]>Date.now()+1000*60*60*24*365);
+  assert.ok(calls.some(x=>x.sql?.includes('sharika_room_block_audit')));
+  assert.equal(calls.find(x=>x.event==='withdraw').all,true);
+  assert.equal(calls.some(x=>x.sql?.includes('sharika_users SET coins')),false);
+});
+
+test('Unblock clears room-scoped ban without altering user account or voice',async()=>{
+  const {send,calls}=setup({role:'owner'});
+  const r=await send('unblock');
+  assert.equal(r.status,200);
+  assert.equal(r.body.action,'unblock');
+  assert.ok(calls.some(x=>x.sql?.includes('DELETE FROM sharika_room_bans')));
+  assert.ok(calls.some(x=>x.sql?.includes('sharika_room_block_audit')));
+  assert.equal(calls.some(x=>x.event==='publishedFor'),false);
+  assert.equal(calls.find(x=>x.event==='batch').count,2);
+});
+
+test('Room Ban list is private to owner or assigned Room Admin',async()=>{
+  const actions=[];
+  const env={DB:{
+    prepare(sql){actions.push(sql);return {bind(...args){this.args=args;return this;},
+      async first(){return this.args?.[1]==='admin'?{active:1}:null;},
+      async all(){return {results:[{public_no:10000002,name:'Guest',
+        banned_until_ms:Date.UTC(3000,0,1)}]};}
+    };}
+  }};
+  const call=async uid=>{
+    const res=await handleRoomBanList({
+      request:new Request('https://api.example/api/v1/rooms/10000001/bans'),
+      env,uid,room:{owner_id:'owner'},roomId:'10000001',
+      reply:(data,status)=>Response.json(data,{status}),
+      fail:(error,status)=>Response.json({error},{status}),cors:{}
+    });
+    return {status:res.status,body:await res.json()};
+  };
+  const owner=await call('owner');
+  assert.equal(owner.status,200);
+  assert.deepEqual(owner.body.bans.map(x=>x.public_id),['10000002']);
+  assert.equal(owner.body.bans[0].blocked_until_unblocked,true);
+  assert.equal((await call('admin')).status,200);
+  assert.equal((await call('member')).status,403);
+  assert.ok(actions.some(sql=>sql.includes('b.banned_until_ms>?')));
 });

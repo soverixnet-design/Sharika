@@ -6,13 +6,14 @@ const require=createRequire(import.meta.url);
 const discovery=require('../../app/room-discovery.js');
 
 test('registered country codes, country names and flags normalize consistently',()=>{
-  for(const country of ['BD','Bangladesh','বাংলাদেশ','🇧🇩']){
+  for(const country of ['BD','Bangladesh','বাংলাদেশ','🇧🇩','🇧🇩 Bangladesh']){
     assert.equal(discovery.countryCode(country),'BD');
     assert.equal(discovery.flagForCountry(country),'🇧🇩');
   }
   assert.equal(discovery.countryCode('United Arab Emirates'),'AE');
   assert.equal(discovery.flagForCountry('Oman'),'🇴🇲');
   assert.equal(discovery.flagForCountry(''), '');
+  assert.equal(discovery.countryCode('🇦🇪 United Arab Emirates'),'AE');
 });
 
 test('same-country rooms precede more popular foreign rooms; other rooms stay visible',()=>{

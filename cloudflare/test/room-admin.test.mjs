@@ -87,3 +87,18 @@ test('Android bridge, server member role and UI include room admin feature',()=>
   assert.match(ui,/__sharikaRoomRole/);
   assert.match(migration,/CREATE TABLE IF NOT EXISTS sharika_room_admins/);
 });
+
+test('room-admin icon stays off purchased frames while safety actions remain usable',()=>{
+  const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const java=readFileSync(new URL(
+    '../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',
+    import.meta.url),'utf8');
+  const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
+  assert.match(ui,/if\(seat\.room_role==='owner'\)/);
+  assert.doesNotMatch(ui,/seat\.room_role==='owner'\?'👑':'🛡'/);
+  assert.match(ui,/showRoomSafetyPanel/);
+  assert.match(ui,/Kick 10m/);
+  assert.match(ui,/Unblock/);
+  assert.match(worker,/action==='bans'/);
+  assert.match(java,/\/api\/v1\/rooms\/\[0-9\]\{8\}\/bans/);
+});

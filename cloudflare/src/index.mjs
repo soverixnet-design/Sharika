@@ -1,7 +1,7 @@
 import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from './notifications.mjs';
 import { verifyFirebaseToken } from './auth.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
-import { handleRoomModeration,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
+import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
@@ -1438,6 +1438,10 @@ export async function handleRequest(request, env, ctx) {
       if(parts.length===5 && action==='moderate')
         return handleRoomModeration({
           request,env,uid,room,roomId,reply,fail,cors,readBody
+        });
+      if(parts.length===5 && action==='bans')
+        return handleRoomBanList({
+          request,env,uid,room,roomId,reply,fail,cors
         });
       if(parts.length===5 && action==='admins')
         return handleRoomAdminAssignment({

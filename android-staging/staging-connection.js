@@ -1058,11 +1058,13 @@
         .forEach(decoration=>decoration.remove());
       el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge')
         .forEach(decoration=>decoration.remove());
-      if(seat.room_role==='admin'||seat.room_role==='owner'){
+      // Room Admin power is shown in the management menu, never as a
+      // shield drawn across a user's purchased or animated avatar frame.
+      if(seat.room_role==='owner'){
         const roomBadge=doc.createElement('span');
         roomBadge.className='sh-room-admin-badge';
-        roomBadge.textContent=seat.room_role==='owner'?'👑':'🛡';
-        roomBadge.title=seat.room_role==='owner'?'Room Owner':'Room Admin';
+        roomBadge.textContent='👑';
+        roomBadge.title='Room Owner';
         roomBadge.setAttribute('aria-label',roomBadge.title);
         roomBadge.style.cssText='position:absolute;right:-6px;top:-8px;z-index:18;'+
           'display:grid;place-items:center;width:23px;height:23px;border-radius:50%;'+
@@ -2245,6 +2247,11 @@
     bd.innerHTML='<span class="sh-fam-icon">💼</span><span>BD System'+
       '<small>Family Grant • 5% Commission • Statements</small></span>';
     bd.hidden=true;bd.onclick=openRoyalFamily;entries.appendChild(bd);
+    const countryButton=document.createElement('button');
+    countryButton.type='button';countryButton.id='sh-country-entry';
+    countryButton.innerHTML='<span class="sh-fam-icon">🌍</span><span>Country / Location'+
+      '<small>Set your own country • profile and room card • no GPS</small></span>';
+    countryButton.onclick=openManualCountryPicker;entries.appendChild(countryButton);
     // Keep Family/BD inside the main profile Account Features section, not
     // after the profile page where the bottom navigation may cover the icon.
     const accountSection=root.querySelector('.profile-royal-page .profile-account');
@@ -3765,7 +3772,8 @@
       key,
       p: {
         id: current.public_id, name: current.name, pic: current.pic || null,
-        country: current.country || '', dob: current.birthdate || '',
+        country: manualCountryLabel(current.country) || current.country || '',
+        dob: current.birthdate || '',
         minor: !!current.minor, cover: current.cover || null, bio: current.bio || '',
         frame: current.frame_style || '', entry: current.entry_style || '',
         cosmeticMedal: current.medal_style || '', cosmeticTag: current.name_tag_style || '',
@@ -3796,6 +3804,29 @@
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Use YYYY-MM-DD for your date of birth');
     return value;
   }
+  function manualCountryCode(value){
+    const code=window.SharikaDiscovery?.countryCode(value)||
+      (/^[A-Za-z]{2}$/.test(String(value||''))?String(value).toUpperCase():'');
+    return /^[A-Z]{2}$/.test(code)?code:'';
+  }
+  function manualCountryLabel(value){
+    const code=manualCountryCode(value);
+    if(!code)return '';
+    const flag=window.SharikaDiscovery?.flagForCountry(code)||'🌍';
+    let name=code;
+    if(typeof Intl.DisplayNames==='function'){
+      try{name=new Intl.DisplayNames(['en'],{type:'region'}).of(code)||code;}
+      catch(_error){}
+    }
+    return flag+' '+name;
+  }
+  function manualCountryOptions(){
+    const choices=Array.isArray(window.CTRY)?window.CTRY:[];
+    return '<option value="">Choose your country</option>'+choices.map(item=>{
+      const code=manualCountryCode(item[2]||item[0]+' '+item[1]);
+      return code?'<option value="'+code+'">'+item[0]+' '+item[1]+'</option>':'';
+    }).join('');
+  }
   function profileForm(account) {
     return new Promise((resolve, reject) => {
       const layer = document.createElement('div');
@@ -3806,7 +3837,8 @@
         '<p style="font-size:13px;opacity:.8">A real name and birth date are needed for the new staging account. Existing accounts are not imported.</p>' +
         '<label>Name<input name="name" maxlength="80" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0" value=""></label>' +
         '<label>Birth date<input name="birthdate" type="date" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
-        '<label>Country<input name="country" maxlength="16" placeholder="BD" style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
+        '<label>Country (you choose; no GPS)<select name="country" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0">'+
+        manualCountryOptions()+'</select></label>' +
         '<label>Invite code (optional)<input name="invite_code" maxlength="8" inputmode="numeric" placeholder="8-digit inviter ID" style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
         '<div id="stage-profile-error" style="color:#ffb4b4;font-size:13px"></div>' +
         '<button type="submit" style="width:100%;padding:15px;border:0;border-radius:14px;background:#8e72f6;color:#fff;font-weight:700">Create staging profile</button>' +
@@ -3828,7 +3860,7 @@
           const data = {
             name:form.elements.name.value.trim(),
             birthdate:birthdateFromUi(form.elements.birthdate.value),
-            country:form.elements.country.value.trim(),
+            country:manualCountryCode(form.elements.country.value),
             invite_code:form.elements.invite_code.value.trim()
           };
           const saved = await api('POST','/me',data);
@@ -3841,15 +3873,59 @@
       };
     });
   }
+  async function openManualCountryPicker(){
+    if(!session){window.showAuth('welcome');return;}
+    document.getElementById('sh-country-picker')?.remove();
+    const layer=document.createElement('section');
+    layer.id='sh-country-picker';
+    layer.style.cssText='position:fixed;z-index:2147483500;inset:0;display:grid;place-items:center;'+
+      'padding:20px;background:#0b071deE;color:#ffe2a0;font-family:inherit';
+    layer.innerHTML='<form style="width:min(100%,420px);padding:25px;border:1px solid #f1c46b;'+
+      'border-radius:24px;background:linear-gradient(155deg,#332049,#170e2b);'+
+      'box-shadow:0 20px 60px #0009">'+
+      '<h2 style="margin:0 0 10px">🌍 Country / Location</h2>'+
+      '<p style="font-size:13px;line-height:1.5">Select your country yourself. It appears on your profile and room card. No GPS permission is used.</p>'+
+      '<select name="country" required style="width:100%;margin:14px 0;padding:13px;'+
+      'border-radius:12px;background:#fff;color:#161121">'+manualCountryOptions()+'</select>'+
+      '<div id="sh-country-error" style="min-height:18px;color:#ffb7b7;font-size:12px"></div>'+
+      '<button type="submit" style="width:100%;padding:13px;border-radius:12px;'+
+      'background:linear-gradient(130deg,#f9d77c,#bf7d16);color:#24112d;font-weight:900">Save Country</button>'+
+      '<button type="button" id="sh-country-cancel" style="width:100%;padding:12px;'+
+      'background:transparent;color:#ffde9a;border:0">Cancel</button></form>';
+    document.body.appendChild(layer);
+    const select=layer.querySelector('[name="country"]');
+    select.value=manualCountryCode(profile?.country);
+    layer.querySelector('#sh-country-cancel').onclick=()=>layer.remove();
+    layer.querySelector('form').onsubmit=async event=>{
+      event.preventDefault();
+      const code=manualCountryCode(select.value);
+      if(!code)return;
+      const button=layer.querySelector('[type="submit"]');
+      button.disabled=true;
+      try{
+        const saved=await api('PATCH','/me',{country:code});
+        profile={...profile,...saved};
+        if(window.A)window.A.country=manualCountryLabel(code);
+        if(typeof window.saveA==='function')window.saveA();
+        layer.remove();
+        if(typeof window.renderMe==='function')window.renderMe();
+        await reloadRooms();
+        toast('Country saved to your profile and room card');
+      }catch(error){
+        button.disabled=false;
+        layer.querySelector('#sh-country-error').textContent=errText(error);
+      }
+    };
+  }
   async function ensureProfile(account, form) {
     try { return await api('GET', '/me'); }
     catch (error) {
       if (errText(error) !== 'profile_not_found') throw error;
       const cached = form || cachedSignup(account.email);
-      if (cached && cached.name && cached.dob) {
+      if (cached && cached.name && cached.dob && manualCountryCode(cached.country)) {
         try{
           const saved = await api('POST','/me',{
-            name:cached.name,birthdate:cached.dob,country:cached.country||'',
+            name:cached.name,birthdate:cached.dob,country:manualCountryCode(cached.country),
             invite_code:cached.invite_code||deferredInviteCode
           });
           if(cached.invite_code||deferredInviteCode)clearIncomingInvite();
@@ -3919,7 +3995,8 @@
       const result = await native('emailSignUp', {email:form.key.trim(), password:form.pw});
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
-          email:form.key.trim(), name:form.name, dob:form.dob, country:form.country,
+          email:form.key.trim(), name:form.name, dob:form.dob,
+          country:manualCountryCode(form.country),
           invite_code:document.getElementById('stage-invite-code')?.value.trim()||deferredInviteCode
         }));
       } catch (_) {}
@@ -4423,6 +4500,9 @@
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     frame.__sharikaRoomRole=room.owner_id===session?.user?.id?'owner':
       self?.role==='admin'?'admin':'member';
+    const safetyButton=frame.$?.('bOwn');
+    if(safetyButton)safetyButton.style.display=
+      ['owner','admin'].includes(frame.__sharikaRoomRole)?'':'none';
     frame.__sharikaMemberRoles=new Map((data.members||[]).map(m=>
       [String(m.sharika_users?.public_id||''),String(m.role||'member')]));
     const eligible=room.owner_id===session?.user?.id||
@@ -6139,11 +6219,95 @@
         window.go('msg'); // Reuses verified direct messages and mutual-follow checks.
       };
     }
+    async function showRoomSafetyPanel(){
+      const owner=room.owner_id===session?.user?.id;
+      if(!owner&&frame.__sharikaRoomRole!=='admin'){
+        frame.toast('Room Admin only');return;
+      }
+      frame.open('<h3>🛡 Room Safety</h3>'+
+        '<p class="row">Kick: 10-minute removal. Block: cannot rejoin until unblocked.</p>'+
+        '<div id="sh-room-safety-list" class="row">Loading verified members…</div>');
+      const host=frame.$('sh-room-safety-list');
+      if(!host)return;
+      try{
+        const [snapshot,blocked]=await Promise.all([
+          api('GET','/rooms/'+room.id+'/members'),
+          api('GET','/rooms/'+room.id+'/bans')
+        ]);
+        if(!host.isConnected)return;
+        host.replaceChildren();
+        const addTitle=text=>{
+          const heading=frame.document.createElement('h4');
+          heading.textContent=text;heading.style.cssText='color:#ffe5a1;margin:14px 0 8px';
+          host.appendChild(heading);
+        };
+        const addButton=(container,label,action,publicId)=>{
+          const button=frame.document.createElement('button');
+          button.type='button';button.className='act';
+          button.style.cssText='margin:5px;padding:9px 11px;border-radius:12px';
+          button.textContent=label;
+          button.onclick=async()=>{
+            const verb=action==='kick'?'kick for 10 minutes':action==='block'?'block until unblocked':'unblock';
+            if(!window.confirm('Confirm '+verb+' for ID '+publicId+'?'))return;
+            button.disabled=true;
+            try{
+              await api('POST','/rooms/'+room.id+'/moderate',{
+                action,target_public_id:publicId
+              });
+              await syncFrame(room,frame);
+              await showRoomSafetyPanel();
+              frame.toast('Room '+action+' completed');
+            }catch(error){
+              button.disabled=false;frame.toast('Room '+action+': '+errText(error));
+            }
+          };
+          container.appendChild(button);
+        };
+        addTitle('Members in this room');
+        const guests=(snapshot.members||[]).filter(member=>
+          member.user_id!==session?.user?.id &&
+          member.role!=='owner' && (owner||member.role!=='admin') &&
+          /^[0-9]{8}$/.test(String(member.sharika_users?.public_id||'')));
+        if(!guests.length){
+          const empty=frame.document.createElement('p');empty.textContent='No guests available for moderation.';
+          host.appendChild(empty);
+        }
+        for(const member of guests){
+          const row=frame.document.createElement('div');row.className='row';
+          const display=member.sharika_users?.display_id||member.sharika_users?.public_id;
+          const title=frame.document.createElement('strong');
+          title.textContent=String(member.sharika_users?.name||'Guest')+' · ID '+display;
+          row.appendChild(title);
+          addButton(row,'🚪 Kick 10m','kick',member.sharika_users.public_id);
+          addButton(row,'🚫 Block','block',member.sharika_users.public_id);
+          host.appendChild(row);
+        }
+        addTitle('Blocked users');
+        const bans=blocked.bans||[];
+        if(!bans.length){
+          const empty=frame.document.createElement('p');empty.textContent='No users are currently blocked.';
+          host.appendChild(empty);
+        }
+        for(const item of bans){
+          const row=frame.document.createElement('div');row.className='row';
+          const title=frame.document.createElement('strong');
+          title.textContent=String(item.name||'User')+' · ID '+item.public_id+
+            (item.blocked_until_unblocked?' · Blocked':' · Temporary kick');
+          row.appendChild(title);
+          addButton(row,'✅ Unblock','unblock',item.public_id);
+          host.appendChild(row);
+        }
+      }catch(error){
+        if(host.isConnected)host.textContent='Room Safety unavailable: '+errText(error);
+      }
+    }
     const ownerButton=frame.$ && frame.$('bOwn');
     if(ownerButton) {
-      ownerButton.style.display=room.owner_id===session?.user?.id?'':'none';
-      ownerButton.onclick=()=>frame.open('<h3>👑 Verified owner controls</h3>'+
-        '<div class="row">Tap any occupied guest seat to mute, unmute, remove from mic or kick.</div>');
+      const canModerate=room.owner_id===session?.user?.id||
+        frame.__sharikaRoomRole==='admin';
+      ownerButton.style.display=canModerate?'':'none';
+      ownerButton.title='Room Safety: kick, block, unblock';
+      ownerButton.onclick=showRoomSafetyPanel;
     }
     const roomGameButton=frame.$ && frame.$('bGame');
     if(roomGameButton)roomGameButton.onclick=()=>showGameCard(document,true,toast);
