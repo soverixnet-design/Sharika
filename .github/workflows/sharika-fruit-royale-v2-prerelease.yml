@@ -1,0 +1,79 @@
+name: Sharika Fruit Royale V2 direct test APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-fruit-royale-v2-20261104
+    paths:
+      - '.github/workflows/sharika-fruit-royale-v2-prerelease.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-tested-fruit-royale:
+    name: Publish verified Fruit Royale APK as an Android file (not ZIP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require successful staging APK, emulator, backend and Worker deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-fruit-royale-v2-20261104'
+          test "$(gh run view 41727964184 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          test "$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13274592863 --jq '.workflow_run.head_sha')" = ddc0abc8a397e41e59f85eb5b8c77484125f8679
+          test "$(gh run view 41728644253 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          test "$(gh run view 41729428816 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          echo 'SHARIKA_FRUIT_ROYALE_APK_EMULATOR_BACKEND_AND_STAGING_DEPLOY_PASSED'
+
+      - name: Download only approved, stable-signed Android staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41727964184
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: fruit-apk
+
+      - name: Verify new Fruit Royale and absence of old Jackpot Fruit APK screen
+        run: |
+          test -s fruit-apk/app-debug.apk
+          unzip -tqq fruit-apk/app-debug.apk
+          for asset in index.html game.js styles.css config.js adapter.live.js; do
+            unzip -Z1 fruit-apk/app-debug.apk | grep -Fx "assets/fruit-royale/$asset"
+          done
+          if unzip -Z1 fruit-apk/app-debug.apk | grep -Fx 'assets/original-games/jackpot-fruit.html'; then
+            echo "::error::Legacy Jackpot Fruit screen must not be in the replacement APK."
+            exit 1
+          fi
+          unzip -p fruit-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/fruit-royale-connection.js"
+          node - <<'NODE'
+          const fs=require('fs');
+          const parent=fs.readFileSync(process.env.RUNNER_TEMP+'/fruit-royale-connection.js','utf8');
+          if(!parent.includes("id:'fruit-royale'") ||
+             parent.includes("id:'jackpot-fruit'") ||
+             !parent.includes('sharika:original-request') ||
+             !parent.includes('ensureRoomGamePortal'))
+            throw Error('Fruit Royale UI or authenticated room bridge missing');
+          console.log('NEW_FRUIT_ROYALE_IN_APK_LEGACY_SCREEN_REMOVED');
+          NODE
+          cp fruit-apk/app-debug.apk fruit-apk/Sharika-Fruit-Royale-V2-Staging.apk
+          sha256sum fruit-apk/Sharika-Fruit-Royale-V2-Staging.apk
+
+      - name: Publish direct test APK as a clearly marked GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=sharika-fruit-royale-v2-staging-ddc0abc8
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::A release with this tag already exists; never overwrite user downloads."
+            exit 1
+          fi
+          gh release create "$TAG" fruit-apk/Sharika-Fruit-Royale-V2-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target ddc0abc8a397e41e59f85eb5b8c77484125f8679 \
+            --title "Sharika Fruit Royale V2 — Staging Test APK" \
+            --notes "New Fruit Royale game replaces the unused Jackpot Fruit screen. Authentic Sharika coin wallet and server-authoritative wagers, Fruit bonus and jackpot, real ranking, in-room mini window and voice-room continuity adapter. Original Jackpot betting history and ledger preserved; old game disabled for new wagers. Isolated Cloudflare staging Worker and D1 only. Backend checks and Android emulator smoke passed. Please test with two real phones before any Play Store production release." \
+            --prerelease
