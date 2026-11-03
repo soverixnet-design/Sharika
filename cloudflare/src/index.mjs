@@ -925,7 +925,7 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {
         const rows=await env.DB.prepare(
-          'SELECT r.*,c.version AS cover_version,u.country AS owner_country FROM sharika_rooms r '+
+          'SELECT r.*,c.version AS cover_version,u.country AS owner_country,'+activeSpecialSelect('u')+' FROM sharika_rooms r '+
           'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
           'LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id '+
           'ORDER BY r.created_at DESC LIMIT 100'
@@ -939,7 +939,8 @@ export async function handleRequest(request, env, ctx) {
           } catch(error) {console.warn('room_presence_unavailable',error?.message);}
         }
         return reply({rooms:(rows.results||[]).map(r=>({
-          ...r,cover_url:r.cover_version?url.origin+'/api/v1/rooms/'+r.id+
+          ...r,owner_display_id:r.special_id||r.id,
+          cover_url:r.cover_version?url.origin+'/api/v1/rooms/'+r.id+
             '/cover?v='+r.cover_version:null,
           online_count:Number(online?.[r.id])||0
         }))},200,cors);

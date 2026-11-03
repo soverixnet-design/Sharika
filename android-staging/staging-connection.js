@@ -4133,14 +4133,17 @@
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
         seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
-        owner_country:r.owner_country||'',created_at:r.created_at||''
+        owner_country:r.owner_country||'',owner_display_id:r.owner_display_id||r.id,
+        created_at:r.created_at||''
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
         c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
         seat_frame_style:own.seat_frame_style||'grad',
         n:Number(own.online_count)||0,cover_url:own.cover_url||null,
-        owner_country:own.owner_country||window.CFG.viewerCountry||'',created_at:own.created_at||''
+        owner_country:own.owner_country||window.CFG.viewerCountry||'',
+        owner_display_id:own.owner_display_id||own.id,
+        created_at:own.created_at||''
       } : null;
       // Quiet background refresh: changing identical room cards restarts every
       // CSS animation and drops touch/scroll state on slower Android WebViews.
@@ -4297,18 +4300,41 @@
         }
         const emoji=card.querySelector('.emo');if(emoji)emoji.style.display='none';
       }
-      if(room.owner_id===session?.user?.id&&!card.querySelector('.sh-room-cover-edit')){
-        const button=document.createElement('button');
-        button.type='button';button.className='sh-room-cover-edit';
-        button.textContent='📷 Edit photo';
-        button.setAttribute('aria-label','Add or change room cover photo');
-        button.style.cssText='position:absolute;z-index:30;top:8px;right:8px;'+
-          'border:1px solid #fff9;border-radius:12px;background:#140b35d9;'+
-          'color:#fff;padding:7px 9px;font-size:12px;font-weight:700';
-        button.onpointerdown=e=>e.stopPropagation();
-        button.onclick=e=>{e.preventDefault();e.stopPropagation();pickRoomCover(room);};
-        card.style.position='relative';card.appendChild(button);
+      // The canonical room/user ID stays in API routing. Public room cards
+      // display the owner's active Special ID, if one exists.
+      const displayId=String(room.owner_display_id||room.id);
+      const summary=card.querySelector('.info small');
+      if(summary&&/^[0-9]{1,10}$/.test(displayId))
+        summary.textContent='ID '+displayId+' · 🔥 '+(Number(room.n)||0);
+      // Show only broad, user-supplied account country, not GPS or street data.
+      // The old top-right Edit photo button belongs inside owner settings.
+      card.querySelector('.sh-room-cover-edit')?.remove();
+      card.querySelector('.room-country')?.remove();
+      const storedCountry=String(room.owner_country||'').trim();
+      const code=window.SharikaDiscovery?.countryCode(storedCountry)||'';
+      const flag=window.SharikaDiscovery?.flagForCountry(storedCountry)||'';
+      let countryName=storedCountry;
+      if(code&&typeof Intl.DisplayNames==='function'){
+        try{countryName=new Intl.DisplayNames(['en'],{type:'region'}).of(code)||storedCountry;}
+        catch(_error){countryName=storedCountry||code;}
       }
+      const title=code&&countryName?flag+' '+countryName:'🌍 Location not set';
+      let location=card.querySelector('.sh-room-country-label');
+      if(!location){
+        location=document.createElement('span');
+        location.className='sh-room-country-label';
+        location.style.cssText='position:absolute;z-index:22;top:8px;right:8px;'+
+          'max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+
+          'border:1px solid #f3d68e;border-radius:13px;'+
+          'background:linear-gradient(125deg,#372018ed,#150e2ce8);'+
+          'box-shadow:0 4px 12px #13082288;color:#ffe8a3;'+
+          'padding:5px 9px;font-size:11px;font-weight:800;pointer-events:none';
+        card.style.position='relative';
+        card.appendChild(location);
+      }
+      location.textContent=title;
+      location.title=code?'Account country: '+countryName:'Account country not set';
+      location.setAttribute('aria-label',location.title);
     }
   }
   // Original tab/search handlers call their lexical renderRooms binding rather
@@ -4378,6 +4404,12 @@
     if(frame.__sharikaSeatSyncNo!==requestNo ||
        !session || session.user.id!==userId || window.cur?.id!==room.id ||
        document.getElementById('rf')?.contentWindow!==frame)return;
+    // The room header displays the owner's active Special ID while all
+    // calls, membership actions and room navigation keep the canonical ID.
+    const visibleOwnerId=String(owner.special_id||owner.display_id||room.id);
+    const roomHeaderId=frame.$?.('rid');
+    if(roomHeaderId&&/^[0-9]{1,10}$/.test(visibleOwnerId))
+      roomHeaderId.textContent=visibleOwnerId;
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     frame.__sharikaRoomRole=room.owner_id===session?.user?.id?'owner':
       self?.role==='admin'?'admin':'member';
@@ -4452,7 +4484,7 @@
       user_id:room.owner_id,public_id:owner.public_id||room.id,
       room_role:'owner',
       special_id:owner.special_id||null,
-      display_id:owner.display_id||owner.public_id||room.id,
+      display_id:owner.special_id||owner.display_id||owner.public_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       svip_level:Number(owner.svip_level)||0,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
@@ -4479,13 +4511,13 @@
           n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
           user_id:member.user_id,public_id:user.public_id,room_role:member.role,
           special_id:user.special_id||null,
-          display_id:user.display_id||user.public_id,
+          display_id:user.special_id||user.display_id||user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
           svip_level:Number(user.svip_level)||0,
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
-      else audience.push({n:user.name,e:'👤',id:user.display_id||user.public_id,
+      else audience.push({n:user.name,e:'👤',id:user.special_id||user.display_id||user.public_id,
          canonical_id:user.public_id,room_role:member.role,
          special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
@@ -4551,7 +4583,7 @@
       idLine.className='sh-royal-idline';
       const idLabel=document.createElement('span');
       idLabel.className='sh-royal-user-id';
-      idLabel.textContent='ID: '+String(member.display_id||member.id);
+      idLabel.textContent='ID: '+String(member.special_id||member.display_id||member.id);
       idLine.appendChild(idLabel);
       const roomRole=frame?.__sharikaMemberRoles?.get(String(member.id));
       if(roomRole==='owner'||roomRole==='admin'){
@@ -4745,7 +4777,7 @@
     frame.sid=function(seat){
       const canonical=String(seat?.public_id||'');
       if(!/^[0-9]{8}$/.test(canonical))return '';
-      const display=String(seat?.display_id||seat?.special_id||canonical);
+      const display=String(seat?.special_id||seat?.display_id||canonical);
       return /^[0-9]{1,10}$/.test(display)?display:canonical;
     };
     frame.others=function(){return (frame.seats||[]).filter(s=>s&&!s.empty&&!s.lock);};
@@ -5447,7 +5479,7 @@
             const name=frame.document.createElement('div');
             name.className='row';
             name.textContent=String(member.name||'Member')+' · ID '+
-              String(member.display_id||member.id)+
+              String(member.special_id||member.display_id||member.id)+
               (selectedRole==='admin'?' · 🛡 ROOM ADMIN':
                selectedRole==='owner'?' · 👑 OWNER':'');
             const details=frame.document.createElement('div');
