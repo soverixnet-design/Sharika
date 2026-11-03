@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Download APK from the successful gift-diamond and Exchange staging build
+      - name: Download APK from the successful Google sign-in recovery staging build
         uses: actions/download-artifact@v4
         with:
           name: Sharika-Android-Staging-Debug
-          run-id: 41552826505
+          run-id: 41554340316
           repository: soverixnet-design/Sharika
           github-token: ${{ github.token }}
           path: staging-apk
@@ -32,26 +32,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41552826505 --jq .head_sha)" = 'ec5afd3ab09bd6c54392f32d22a1fed71a147162'
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41552826505 --jq .conclusion)" = 'success'
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41554340316 --jq .head_sha)" = 'd30ec5ac5fd5a86e1d09da2aad4def96a60995d2'
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41554340316 --jq .conclusion)" = 'success'
           test -s staging-apk/app-debug.apk
           unzip -t staging-apk/app-debug.apk > /dev/null
           unzip -Z1 staging-apk/app-debug.apk | grep -Fx AndroidManifest.xml
           unzip -Z1 staging-apk/app-debug.apk | grep -Eq '^classes([0-9]+)?[.]dex$'
-          cp staging-apk/app-debug.apk Sharika-Diamond-Exchange-Staging-20261103.apk
-          sha256sum Sharika-Diamond-Exchange-Staging-20261103.apk
-          file Sharika-Diamond-Exchange-Staging-20261103.apk
+          cp staging-apk/app-debug.apk Sharika-Google-Login-Fix-Staging-20261103.apk
+          sha256sum Sharika-Google-Login-Fix-Staging-20261103.apk
+          file Sharika-Google-Login-Fix-Staging-20261103.apk
 
       - name: Publish direct .apk link to a new staging-only GitHub pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create sharika-staging-diamond-exchange-20261103 \
-            'Sharika-Diamond-Exchange-Staging-20261103.apk#Sharika Diamond Exchange Staging APK' \
+          gh release create sharika-staging-google-login-fix-20261103 \
+            'Sharika-Google-Login-Fix-Staging-20261103.apk#Sharika Google Login Fix Staging APK' \
             --repo soverixnet-design/Sharika \
-            --target ec5afd3ab09bd6c54392f32d22a1fed71a147162 \
-            --title 'Sharika Gift Diamonds & Exchange — Staging TEST APK' \
-            --notes 'Staging test APK, not a final Play Store release. Includes verified ordinary-gift diamond credits, 100-diamond Exchange presets, and the existing compact room game sheets. Live two-phone betting, voice, gift and owner-seat actions still require physical-device verification.' \
+            --target d30ec5ac5fd5a86e1d09da2aad4def96a60995d2 \
+            --title 'Sharika Google Login Recovery — Staging TEST APK' \
+            --notes 'Staging test APK, not a final Play Store release. Includes 45-second native Google Credential Manager recovery, safe retry messages, verified ordinary-gift diamond credits and 100-diamond Exchange presets. Live two-phone betting, voice, gift and owner-seat actions still require physical-device verification.' \
             --prerelease \
             --latest=false
