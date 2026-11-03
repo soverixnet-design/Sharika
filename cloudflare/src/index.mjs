@@ -260,7 +260,7 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/cosmetics'||path.startsWith('/api/v1/cosmetics/')){
       await assertActive(env.DB,uid);
       const result=await handleCosmeticApp({
-        request,db:env.DB,uid,path,readBody,reply,fail,cors
+        request,db:env.DB,env,ctx,uid,path,readBody,reply,fail,cors
       });
       if(result)return result;
       return fail('cosmetic_route_not_found',404,cors);
@@ -293,13 +293,13 @@ export async function handleRequest(request, env, ctx) {
     });
     if(path==='/api/v1/premium'||path==='/api/v1/premium/purchase'||
        path==='/api/v1/premium/daily/claim')return await handlePremiumApp({
-      request,env,uid,path,cors,reply,fail
+      request,env,uid,path,cors,reply,fail,ctx
     });
     if (path.startsWith('/api/v1/family')) return await handleFamilyApp({
-      request, env, uid, path, cors, reply, fail
+      request, env, uid, path, cors, reply, fail, ctx
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
-      request, env, uid, path, cors, reply, fail
+      request, env, uid, path, cors, reply, fail, ctx
     });
     // Authenticated presence is independent of microphone permission. This
     // allows the admin panel to count listeners as well as speakers.

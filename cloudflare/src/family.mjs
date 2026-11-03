@@ -1,5 +1,6 @@
 import { sheetsConfigured, sheetSyncStatus, syncFamilyGoogleSheet } from './family-sheets.mjs';
 import { notifyUser, deliverNotification } from './notifications.mjs';
+import {recordUserEvent} from './transaction-notices.mjs';
 // Royal Family / BD staging service. All money-like values are integers.
 // 10000 crystal_units represent 1 Crystal; no Crystal is a coin balance.
 const ID=/^[0-9]{8}$/;
@@ -60,7 +61,7 @@ async function crystalSummary(db,uid){
   return {total_units:total,available_units:Math.max(0,total-reserved),
     transferred_units:reserved,crystals:total/10000};
 }
-export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
+export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}){
   if(!path.startsWith('/api/v1/family'))return null;
   const db=env.DB;
   if(!await active(db,uid))return fail('profile_unavailable',403,cors);
@@ -248,6 +249,9 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
       ]);
       const created=await db.prepare('SELECT id FROM sharika_families WHERE owner_uid=?')
         .bind(owner.auth_uid).first();
+      await recordUserEvent({env,ctx,recipientUid:owner.auth_uid,title:'Your Royal Family was created',
+        body:'You are now the leader of Family '+name+' (#'+created.id+').',
+        dedupeKey:'family_bd_grant:'+created.id,createdBy:uid});
       return reply({created:true,family_id:created.id,owner_public_id:ownerId},201,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -370,6 +374,9 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
           "WHERE id=? AND recipient_uid=? AND state='pending'"
         ).bind(invite.id,uid)
       ]);
+      await recordUserEvent({env,ctx,recipientUid:uid,title:'You joined a Family',
+        body:'You accepted the invitation to Family #'+invite.family_id+'.',
+        dedupeKey:'family_invite_accepted:'+invite.id});
       return reply({joined:true,family_id:invite.family_id},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -413,6 +420,11 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
         'SELECT 1 FROM sharika_family_members WHERE family_id=? AND user_uid=?'
       ).bind(mine.id,application.applicant_uid).first();
       if(acceptance[2]==='accept'&&!member)return fail('family_full',409,cors);
+      await recordUserEvent({env,ctx,recipientUid:application.applicant_uid,
+        title:acceptance[2]==='accept'?'Family membership approved':'Family request declined',
+        body:acceptance[2]==='accept'?'Your request to join Family #'+mine.id+' was accepted.':
+          'Your request to join Family #'+mine.id+' was declined.',
+        dedupeKey:'family_join_decision:'+application.id+':'+acceptance[2]+':'+Date.now(),createdBy:uid});
       return reply({ok:true,decision:acceptance[2]},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -437,6 +449,12 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
         'AND EXISTS(SELECT 1 FROM sharika_family_members WHERE family_id=? AND user_uid=?)'
       ).bind(next.user_uid,mine.id,uid,mine.id,next.user_uid).run();
       if(!changed.meta?.changes)return fail('family_management_conflict',409,cors);
+      await recordUserEvent({env,ctx,recipientUid:next.user_uid,title:'Family leadership transferred',
+        body:'You are now the leader of Family #'+mine.id+'.',
+        dedupeKey:'family_owner_transfer:'+mine.id+':'+Date.now(),createdBy:uid});
+      await recordUserEvent({env,ctx,recipientUid:uid,title:'Family leadership transferred',
+        body:'You transferred leadership of Family #'+mine.id+'.',
+        dedupeKey:'family_owner_transfer_out:'+mine.id+':'+Date.now()});
       return reply({transferred:true,new_owner_public_id:body.new_owner_public_id},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -462,6 +480,9 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
         "WHERE id=? AND owner_uid=? AND status='active')"
       ).bind(body.role,mine.id,target.user_uid,mine.id,uid).run();
       if(!changed.meta?.changes)return fail('family_management_conflict',409,cors);
+      await recordUserEvent({env,ctx,recipientUid:target.user_uid,title:'Family role updated',
+        body:'Your role in Family #'+mine.id+' is now '+body.role.replaceAll('_',' ')+'.',
+        dedupeKey:'family_role:'+mine.id+':'+roleAction[1]+':'+Date.now(),createdBy:uid});
       return reply({saved:true,member_public_id:roleAction[1],role:body.role},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -496,6 +517,9 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
         'SELECT 1 FROM sharika_family_members WHERE family_id=? AND user_uid=?'
       ).bind(mine.id,target.user_uid).first();
       if(still)return fail('family_management_conflict',409,cors);
+      await recordUserEvent({env,ctx,recipientUid:target.user_uid,title:'Family membership ended',
+        body:'You were removed from Family #'+mine.id+'.',
+        dedupeKey:'family_member_removed:'+mine.id+':'+removeAction[1]+':'+Date.now(),createdBy:uid});
       return reply({removed:true,member_public_id:removeAction[1]},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -505,6 +529,8 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
     if(mine.role==='leader')return fail('transfer_ownership_first',409,cors);
     await db.prepare('DELETE FROM sharika_family_members WHERE user_uid=? AND family_id=?')
       .bind(uid,mine.id).run();
+    await recordUserEvent({env,ctx,recipientUid:uid,title:'You left a Family',
+      body:'You left Family #'+mine.id+'.',dedupeKey:'family_left:'+mine.id+':'+Date.now()});
     return reply({left:true},200,cors);
   }
   if(path==='/api/v1/family/crystal/transfer'&&request.method==='POST'){
@@ -564,7 +590,7 @@ export function familyGiftCommissionStatements(db,senderUid,requestId,giftTab){
     ).bind(senderUid,requestId)
   ];
 }
-export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,reply,fail}){
+export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx}){
   if(!(operation==='family'||operation.startsWith('family/')))return null;
   const db=env.DB;
   if(actor.role!=='super'&&actor.role!=='finance')return fail('admin_permission_denied',403,cors);
@@ -721,6 +747,10 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
       "INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)"
     ).bind(uid,'family_bd_permission',JSON.stringify({
       public_id:body.public_id,active:body.active,can_grant:body.can_grant})).run();
+    await recordUserEvent({env,ctx,recipientUid:person.auth_uid,title:'BD authorization updated',
+      body:body.active?'You are now an authorized BD agent for Royal Families.':
+        'Your BD agent authorization has been disabled.',
+      dedupeKey:'family_bd_permission:'+body.public_id+':'+Date.now(),createdBy:uid});
     return reply({saved:true},200,cors);
   }
   // Staging Super Admin operations; all existing Families and ledgers persist.
@@ -753,6 +783,9 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
       ]);
       const family=await db.prepare('SELECT id FROM sharika_families WHERE owner_uid=?')
         .bind(owner.auth_uid).first();
+      await recordUserEvent({env,ctx,recipientUid:owner.auth_uid,title:'Royal Family created',
+        body:'An administrator created '+name+' (#'+family.id+') for you.',
+        dedupeKey:'family_admin_created:'+family.id,createdBy:uid});
       return reply({created:true,family_id:family.id},201,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -811,6 +844,9 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
         db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
           .bind(uid,'family_admin_member_remove',JSON.stringify({family_id:id,member:memberId}))
       ]);
+      if(results[1]?.meta?.changes)await recordUserEvent({env,ctx,recipientUid:member.user_uid,
+        title:'Family membership ended',body:'An administrator removed you from Family #'+id+'.',
+        dedupeKey:'family_admin_remove:'+id+':'+memberId+':'+Date.now(),createdBy:uid});
       return reply({removed:!!results[1]?.meta?.changes},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -831,6 +867,9 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
         db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
           .bind(uid,'family_bd_reassign',JSON.stringify({family_id:family.id,new_bd:b.bd_public_id}))
       ]);
+      await recordUserEvent({env,ctx,recipientUid:next.bd_uid,title:'Assigned to a Family',
+        body:'You are the BD agent assigned to Family #'+family.id+'.',
+        dedupeKey:'family_bd_assigned:'+family.id+':'+Date.now(),createdBy:uid});
       return reply({saved:true,family_id:family.id},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -854,6 +893,9 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
         db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
           .bind(uid,'family_owner_reassign',JSON.stringify({family_id:family.id,new_owner:b.owner_public_id}))
       ]);
+      await recordUserEvent({env,ctx,recipientUid:next.user_uid,title:'Family leadership updated',
+        body:'An administrator made you the leader of Family #'+family.id+'.',
+        dedupeKey:'family_admin_owner:'+family.id+':'+Date.now(),createdBy:uid});
       return reply({saved:true,family_id:family.id},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
@@ -880,6 +922,9 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
         ).bind(uid,'family_status',JSON.stringify({
           family_id:existing.id,from:existing.status,to:body.status}))
       ]);
+      await recordUserEvent({env,ctx,recipientUid:existing.owner_uid,title:'Family status changed',
+        body:'Family #'+existing.id+' is now '+body.status+'.',
+        dedupeKey:'family_status:'+existing.id+':'+Date.now(),createdBy:uid});
       return reply({saved:true,family_id:existing.id,status:body.status},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }

@@ -1,4 +1,5 @@
 import {publicSvipSelect} from './premium.mjs';
+import {recordUserEvent} from './transaction-notices.mjs';
 // Server-owned paid cosmetics. Never trust client-side "owned" style flags.
 const KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
 const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
@@ -82,17 +83,30 @@ async function stock(db,uid,all=false){
  ).bind(uid,Date.now(),uid).all());
  return list.map(x=>({...x,owned:!!x.owned,equipped:!!x.equipped,active:!!x.active}));
 }
-export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail,cors}){
+export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail,cors,env,ctx}){
  if(path==='/api/v1/cosmetics'&&request.method==='GET')
   return reply({items:await stock(db,uid,true)},200,cors);
  if(path==='/api/v1/cosmetics/purchase'&&request.method==='POST'){
   const body=await readBody(request);
   const itemId=body.item_id,requestId=body.request_id;
+  const purchaseFailed=async(error,status)=>{
+    if(typeof requestId==='string'&&TX.test(requestId)){
+      const reason={official_role_frame_admin_grant_only:'This official-role frame is only available from an administrator.',
+        cosmetic_unavailable:'The selected item is not currently available.',
+        profile_unavailable:'Your profile is not active.',
+        insufficient_coins:'Your wallet does not have enough coins.',
+        cosmetic_purchase_conflict_or_balance_changed:'The purchase could not be completed because your balance or purchase state changed.'}[error]||'The purchase could not be completed.';
+      await recordUserEvent({db,env,ctx,recipientUid:uid,title:'Shop purchase unsuccessful',
+        body:'Item '+String(itemId||'').slice(0,70)+': '+reason,
+        dedupeKey:'cosmetic_purchase_failed:'+requestId});
+    }
+    return fail(error,status,cors);
+  };
   // These designs visibly claim an official CS/Seller role. They may be
   // granted and equipped through the audited Super Admin flow, never purchased.
   if(itemId==='frame_style:cs-royal-wings'||
      itemId==='frame_style:coin-seller-royal')
-    return fail('official_role_frame_admin_grant_only',403,cors);
+    return purchaseFailed('official_role_frame_admin_grant_only',403);
   if(typeof itemId!=='string'||itemId.length>70||
      typeof requestId!=='string'||!TX.test(requestId))return invalid(fail,cors);
   const prior=await db.prepare(
@@ -101,12 +115,12 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
   if(prior)return prior.item_id===itemId?
    reply({owned:true,duplicate:true,item_id:itemId},200,cors):
    fail('idempotency_conflict',409,cors);
-  const item=await db.prepare('SELECT id,price_coins,active FROM sharika_cosmetics_catalog WHERE id=?')
+  const item=await db.prepare('SELECT id,name,kind,price_coins,active FROM sharika_cosmetics_catalog WHERE id=?')
    .bind(itemId).first();
-  if(!item||!item.active)return fail('cosmetic_unavailable',404,cors);
+  if(!item||!item.active)return purchaseFailed('cosmetic_unavailable',404);
   const user=await db.prepare('SELECT coins,status FROM sharika_users WHERE auth_uid=?').bind(uid).first();
-  if(!user||user.status!=='active')return fail('profile_unavailable',403,cors);
-  if(user.coins<item.price_coins)return fail('insufficient_coins',409,cors);
+  if(!user||user.status!=='active')return purchaseFailed('profile_unavailable',403);
+  if(user.coins<item.price_coins)return purchaseFailed('insufficient_coins',409);
   const debit=Number(item.price_coins);
   try{
    await db.batch([
@@ -119,10 +133,14 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
    ]);
   }catch(error){
    if(/CONSTRAINT|constraint/i.test(String(error?.message||error)))
-    return fail('cosmetic_purchase_conflict_or_balance_changed',409,cors);
+    return purchaseFailed('cosmetic_purchase_conflict_or_balance_changed',409);
    throw error;
   }
   const wallet=await db.prepare('SELECT coins FROM sharika_users WHERE auth_uid=?').bind(uid).first();
+  await recordUserEvent({db,env,ctx,recipientUid:uid,kind:'reward',
+    title:'Shop purchase successful',body:'You bought '+String(item.name||item.id).slice(0,90)+
+      ' for '+debit.toLocaleString('en-US')+' coins. Find it in My Backpack.',
+    dedupeKey:'cosmetic_purchase_success:'+requestId});
   return reply({owned:true,duplicate:false,item_id:itemId,spent_coins:debit,coins:wallet.coins},201,cors);
  }
  if(path==='/api/v1/cosmetics/equip'&&request.method==='POST'){
@@ -147,7 +165,7 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
  }
  return null;
 }
-export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,reply,fail,cors}){
+export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,reply,fail,cors,env,ctx}){
  if(path!=='/api/v1/admin/cosmetics'&&path!=='/api/v1/admin/cosmetics/grant')return null;
  if(role!=='super')return fail('admin_permission_denied',403,cors);
  if(path.endsWith('/grant')&&request.method==='POST'){
@@ -158,7 +176,7 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
    "SELECT auth_uid FROM sharika_users WHERE public_no=? AND status='active'"
   ).bind(Number(body.public_id)).first();
   if(!target)return fail('target_user_not_found',404,cors);
-  const item=await db.prepare('SELECT id,kind,art_key FROM sharika_cosmetics_catalog WHERE id=?')
+  const item=await db.prepare('SELECT id,name,kind,art_key FROM sharika_cosmetics_catalog WHERE id=?')
    .bind(body.item_id).first();
   if(!item)return fail('cosmetic_unavailable',404,cors);
   const existing=await db.prepare(
@@ -177,6 +195,11 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
     .bind(uid,existing?'cosmetic_grant_re_equip':'cosmetic_grant',
       JSON.stringify({public_id:body.public_id,item_id:item.id,kind:item.kind,auto_equipped:true}))
   ]);
+  await recordUserEvent({db,env,ctx,recipientUid:target.auth_uid,kind:'reward',
+    title:existing?'Admin equipped your item':'Admin granted you an item',
+    body:'Your '+item.kind.replaceAll('_',' ')+' '+String(item.name||item.id).slice(0,80)+
+      (existing?' was equipped.':' was added and equipped. Check My Backpack.'),
+    dedupeKey:'cosmetic_admin_grant:'+body.public_id+':'+item.id+':'+Date.now(),createdBy:uid});
   return reply({granted:true,duplicate:!!existing,equipped:true,
     public_id:body.public_id,item_id:item.id,kind:item.kind,art_key:item.art_key},existing?200:201,cors);
  }

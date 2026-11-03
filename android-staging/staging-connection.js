@@ -9761,7 +9761,7 @@
     notificationPanel.setAttribute('aria-label','Notifications');
     notificationPanel.innerHTML='<div class="sh-notify-head">'+
       '<button class="sh-notify-action" type="button" id="sh-notify-back">‹ Back</button>'+
-      '<div><h2>🔔 Notifications</h2><p>Official notices, rewards, gifts & events</p></div>'+
+      '<div><h2>🔔 Notifications</h2><p>Receipts · recharge · shop · Family · BD · official notices</p></div>'+
       '</div><div class="sh-notify-head">'+
       '<span id="sh-notify-unread"></span>'+
       '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
@@ -9785,22 +9785,24 @@
     };
     notificationBadges();
   }
-  async function refreshNotifications(render){
+  async function refreshNotifications(render,beforeId=null){
     if(!session)return;
     try{
-      const data=await api('GET','/notifications');
+      const data=await api('GET',beforeId?'/notifications/history/'+beforeId:'/notifications');
       notificationUnread=Number(data.unread_count)||0;
       notificationBadges();
       if(render||notificationPanel?.classList.contains('on')){
         const list=document.getElementById('sh-notify-list');
         if(!list)return;
-        list.textContent='';
+        const oldMore=list.querySelector('[data-notify-more]');
+        if(oldMore)oldMore.remove();
+        if(!beforeId)list.textContent='';
         const count=document.getElementById('sh-notify-unread');
         if(count)count.textContent=notificationUnread+' unread';
-        if(!(data.notifications||[]).length){
+        if(!(data.notifications||[]).length&&!beforeId){
           const empty=document.createElement('div');
           empty.className='sh-notify-empty';
-          empty.textContent='No notifications yet. Official notices and earned rewards will appear here.';
+          empty.textContent='No notifications yet. Your purchase receipts, recharge history, Family and BD updates will appear here.';
           list.appendChild(empty);return;
         }
         for(const item of data.notifications||[]){
@@ -9822,11 +9824,19 @@
           };
           list.appendChild(button);
         }
+        if(Number.isSafeInteger(Number(data.next_before))&&Number(data.next_before)>0){
+          const more=document.createElement('button');
+          more.type='button';more.dataset.notifyMore='1';
+          more.className='sh-notify-action';
+          more.style.cssText='width:100%;margin-top:12px;padding:12px';
+          more.textContent='View older notifications';
+          more.onclick=()=>refreshNotifications(true,Number(data.next_before));
+          list.appendChild(more);
+        }
       }
     }catch(error){
       if(render&&notificationPanel?.classList.contains('on')){
-        document.getElementById('sh-notify-list').textContent=
-          'Unable to load notifications: '+errText(error);
+        toast('Unable to load notifications: '+errText(error));
       }
     }
   }

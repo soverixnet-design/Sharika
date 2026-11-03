@@ -1,3 +1,4 @@
+import {recordUserEvent} from './transaction-notices.mjs';
 // Verified, admin-managed public alias. Permanent public_no/auth_uid never change.
 const PREFIX='/api/v1/admin/special-ids';
 const PUBLIC_ID=/^[0-9]{8}$/;
@@ -22,7 +23,7 @@ const resultRow=row=>({
   expires_at:row.expires_at||null
 });
 
-export async function handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail}){
+export async function handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx}){
   if(!operation.startsWith('special-ids'))return null;
   if(actor.role!=='super')return fail('admin_permission_denied',403,cors);
   const url=new URL(request.url),db=env.DB;
@@ -62,6 +63,9 @@ export async function handleSpecialAdmin({request,env,uid,actor,operation,cors,r
       db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
         .bind(uid,'special_id_revoke',JSON.stringify({public_id:revoke[1],special_id:existing.special_id}))
     ]);
+    await recordUserEvent({env,ctx,recipientUid:person.auth_uid,title:'Special ID removed',
+      body:'An administrator removed your Special ID '+existing.special_id+'.',
+      dedupeKey:'special_id_revoked:'+revoke[1]+':'+Date.now(),createdBy:uid});
     return reply({revoked:true,public_id:revoke[1]},200,cors);
   }
   if(operation==='special-ids'&&request.method==='POST'){
@@ -115,6 +119,9 @@ export async function handleSpecialAdmin({request,env,uid,actor,operation,cors,r
         return fail('special_id_already_reserved',409,cors);
       throw error;
     }
+    await recordUserEvent({env,ctx,recipientUid:person.auth_uid,title:'Special ID assigned',
+      body:'Your visible Special ID is '+specialId+'.'+(days?' Valid for '+days+' days.':''),
+      dedupeKey:'special_id_assigned:'+publicNo+':'+Date.now(),createdBy:uid});
     return reply({assigned:true,public_id:publicNo,special_id:specialId,
       display_id:specialId,frame:'neon',expires_at:expiresAt},200,cors);
   }

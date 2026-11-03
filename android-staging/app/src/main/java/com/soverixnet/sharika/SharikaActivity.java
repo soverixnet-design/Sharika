@@ -919,6 +919,8 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/events")) return method.equals("GET");
         // Notifications are authenticated and recipient-scoped by the Worker.
         if (path.equals("/api/v1/notifications")) return method.equals("GET");
+        if (path.matches("^/api/v1/notifications/history/[1-9][0-9]*$"))
+            return method.equals("GET");
         if (path.equals("/api/v1/notifications/read-all")) return method.equals("POST");
         if (path.equals("/api/v1/notifications/devices"))
             return method.equals("POST") || method.equals("DELETE");
