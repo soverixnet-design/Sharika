@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { handleFamilyApp, handleFamilyAdmin } from '../src/family.mjs';
 
 function fixture({role='leader',membership=true,joinState='rejected'}={}){
@@ -116,4 +117,24 @@ test('Family suspension is Super Admin-only and audit-batched',async()=>{
   assert.match(batch.statements[0].sql,/UPDATE sharika_families SET status/);
   assert.match(batch.statements[1].sql,/sharika_family_activity/);
   assert.match(batch.statements[2].sql,/sharika_admin_audit/);
+});
+
+test('Android native bridge explicitly permits authenticated Family routes only',()=>{
+  const java=readFileSync(new URL(
+    '../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',
+    import.meta.url),'utf8');
+  const first=java.indexOf('private boolean allowedApi(String method, String path)');
+  const last=java.indexOf('private void callStagingApi',first);
+  assert.ok(first>0&&last>first);
+  const allow=java.slice(first,last);
+  for(const route of [
+    '/api/v1/family/me','/api/v1/family/ledger','/api/v1/family/bd/families',
+    '/api/v1/family/requests','/api/v1/family/join','/api/v1/family/leave',
+    '/api/v1/family/bd/grant','/api/v1/family/crystal/transfer',
+    '/api/v1/family/ownership/transfer'
+  ])assert.ok(allow.includes('"'+route+'"'),route+' must be explicitly allowlisted');
+  assert.ok(allow.includes('family/requests/[1-9][0-9]{0,9}/(accept|reject)'));
+  assert.ok(allow.includes('family/members/[0-9]{8}/(role|remove)'));
+  assert.ok(!allow.includes('path.startsWith("/api/v1/family/")'));
+  assert.ok(allow.includes('return method.equals("POST")'));
 });

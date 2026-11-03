@@ -910,6 +910,23 @@ public final class SharikaActivity extends Activity {
             return method.equals("POST") || method.equals("DELETE");
         if (path.matches("^/api/v1/notifications/[1-9][0-9]*/read$"))
             return method.equals("PATCH");
+        // Family routes are authenticated and identity-scoped by the Worker.
+        // Keep this explicit; allowing an arbitrary /family/* path could expose
+        // the separate Admin API to a normal signed-in Android user.
+        if (path.equals("/api/v1/family/me") ||
+            path.equals("/api/v1/family/ledger") ||
+            path.equals("/api/v1/family/bd/families") ||
+            path.equals("/api/v1/family/requests"))
+            return method.equals("GET");
+        if (path.equals("/api/v1/family/bd/grant") ||
+            path.equals("/api/v1/family/join") ||
+            path.equals("/api/v1/family/leave") ||
+            path.equals("/api/v1/family/crystal/transfer") ||
+            path.equals("/api/v1/family/ownership/transfer"))
+            return method.equals("POST");
+        if (path.matches("^/api/v1/family/requests/[1-9][0-9]{0,9}/(accept|reject)$") ||
+            path.matches("^/api/v1/family/members/[0-9]{8}/(role|remove)$"))
+            return method.equals("POST");
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
         if (path.equals("/api/v1/cosmetics/purchase") ||
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
