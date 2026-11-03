@@ -90,6 +90,12 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                     '#sp>b{font-size:26px!important;text-shadow:0 3px 12px #10031e}' +
                     '</style>')
                 .replace('<script src="./connection.js"></script>',
+                    // If the verified native adapter fails to load, the old
+                    // localStorage/SHA demo login must not become usable.
+                    '<script id="sharika-staging-auth-guard">' +
+                    'window.API.login=async function(){return {ok:false,msg:"Secure login unavailable. Restart Sharika."};};' +
+                    'window.API.signup=window.API.login;' +
+                    '</script>' +
                     '<script id="sharika-royal-ui" src="./royal-premium.js"></script>' +
                     '<script src="./connection.js"></script>')
         }

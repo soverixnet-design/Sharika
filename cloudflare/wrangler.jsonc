@@ -49,5 +49,23 @@
       "REALTIME_SFU_APP_ID",
       "REALTIME_SFU_APP_SECRET"
     ]
-  }
+  },
+  "ratelimits": [
+    {
+      "name": "SHARIKA_ACTION_RATE_LIMIT",
+      "namespace_id": "410201",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    },
+    {
+      "name": "SHARIKA_FINANCE_RATE_LIMIT",
+      "namespace_id": "410202",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    }
+  ]
 }

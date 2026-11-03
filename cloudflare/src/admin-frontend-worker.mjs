@@ -9,11 +9,44 @@ const SAFE_HEADERS = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
   'x-frame-options': 'DENY',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+  'strict-transport-security': 'max-age=31536000; includeSubDomains',
 };
 
-function serve(body, contentType) {
-  return new Response(body, { status: 200,
-    headers: { ...SAFE_HEADERS, 'content-type': contentType } });
+// The owner's unchanged admin design contains one large inline script.
+// Hash its exact bytes at runtime so CSP can reject injected inline scripts
+// without breaking Google/Firebase sign-in or rewriting the original HTML.
+const inlineAdminScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+let scriptHashPromise;
+async function contentSecurityPolicy() {
+  if (!inlineAdminScript) throw new Error('admin_inline_script_missing');
+  if (!scriptHashPromise) {
+    scriptHashPromise = crypto.subtle.digest('SHA-256',
+      new TextEncoder().encode(inlineAdminScript)).then(bytes =>
+      btoa(String.fromCharCode(...new Uint8Array(bytes))));
+  }
+  const hash = await scriptHashPromise;
+  return [
+    "default-src 'none'",
+    "script-src 'self' 'sha256-" + hash + "' https://accounts.google.com https://www.gstatic.com https://apis.google.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "media-src 'self' data: blob: https:",
+    "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://www.gstatic.com https://sharika-voice-chat-app.firebaseapp.com",
+    "frame-src https://accounts.google.com https://sharika-voice-chat-app.firebaseapp.com",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self' https://accounts.google.com",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
+
+async function serve(body, contentType) {
+  const headers = { ...SAFE_HEADERS, 'content-type': contentType };
+  if (contentType.startsWith('text/html'))
+    headers['content-security-policy'] = await contentSecurityPolicy();
+  return new Response(body, { status: 200, headers });
 }
 function fail(code, status) {
   return new Response(JSON.stringify({ error: code }), {

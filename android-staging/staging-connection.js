@@ -106,7 +106,7 @@
   let balance = { coins: 0, dia: 0, xp: 0 };
   let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null,
     reactionPoll = null;
-  let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
+  let voiceRoom = null, voiceRoomId = null;
   let voiceBackend = null;
 
   function errText(error) { return String(error && error.message || error || 'Connection unavailable'); }
@@ -3755,22 +3755,9 @@
     }
   }
 
-  async function voiceSdk() {
-    if (window.LivekitClient) return window.LivekitClient;
-    if (!voiceSdkPromise) {
-      voiceSdkPromise = new Promise((resolve,reject)=>{
-        const script = document.createElement('script');
-        // The version is pinned; only fetched when a Sharika-scoped token is
-        // available. Never load the live user's Supabase voice adapter.
-        script.src='https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js';
-        script.onload=()=>window.LivekitClient ?
-          resolve(window.LivekitClient) : reject(new Error('LiveKit SDK unavailable'));
-        script.onerror=()=>reject(new Error('LiveKit SDK could not load'));
-        document.head.appendChild(script);
-      });
-    }
-    return voiceSdkPromise;
-  }
+  // Sharika staging uses the first-party Cloudflare SFU. The retired LiveKit
+  // fallback dynamically loaded third-party JavaScript inside the privileged
+  // Android WebView; never reintroduce that remote-code path.
   async function disconnectVoice() {
     clearVoiceSpeakers();
     if(sfuState)await disconnectSfu();
@@ -3831,43 +3818,7 @@
         voiceBackend='cloudflare_sfu';
         return connectSfu(roomId,!!config.publish,iceConfig);
       }
-      if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
-      // Keep the isolated LiveKit fallback only when explicitly configured.
-      const info=await api('POST','/rooms/'+roomId+'/voice-token',{});
-      const sdk=await voiceSdk();
-      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
-      voiceBackend='livekit';
-      const room=new sdk.Room({
-        audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true}
-      });
-      room.on(sdk.RoomEvent.TrackSubscribed,(track)=>{
-        if(track.kind===sdk.Track.Kind.Audio) {
-          const element=track.attach();
-          element.autoplay=true;
-          element.dataset.sharikaVoice='true';
-          document.body.appendChild(element);
-        }
-      });
-      room.on(sdk.RoomEvent.TrackUnsubscribed,(track)=>{
-        track.detach().forEach(node=>node.remove());
-      });
-      room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
-        setVoiceSpeakers(roomId,speakers.map(p=>String(p.identity||''))
-          .filter(identity=>identity.startsWith('sharika:'))
-          .map(identity=>identity.slice('sharika:'.length)));
-      });
-      try{await room.connect(info.url,info.token);}
-      catch(error){await room.disconnect().catch(()=>{});throw error;}
-      if(wantedVoiceRoom!==roomId) {
-        await room.disconnect().catch(()=>{});
-        return {publishing:false,stale:true};
-      }
-      voiceRoom=room;voiceRoomId=roomId;
-      try{await room.startAudio();}catch(_){}
-      room.sharikaPublishAllowed=!!info.publish;
-      if(info.publish)
-        await room.localParticipant.setMicrophoneEnabled(microphoneWanted(roomId));
-      return {publishing:!!info.publish};
+      throw new Error('Unsupported voice provider; verified Cloudflare SFU required');
     });
     voiceOperation=task;
     pendingVoice={roomId,promise:task};

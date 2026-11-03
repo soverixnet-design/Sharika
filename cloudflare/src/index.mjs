@@ -1,5 +1,6 @@
 import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from './notifications.mjs';
 import { verifyFirebaseToken } from './auth.mjs';
+import { allowSensitiveAction } from './security-rate-limit.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
@@ -236,6 +237,12 @@ export async function handleRequest(request, env, ctx) {
   if (!actor || !actor.verified) return fail('not_authenticated', 401, cors);
 
   const uid = actor.uid;
+  // Per-user edge throttling for sensitive state changes; safe read-only
+  // requests and real-time SFU signaling are intentionally unaffected.
+  try {
+    if (!await allowSensitiveAction({ env, uid, path, method: request.method }))
+      return fail('request_rate_limited', 429, cors);
+  } catch (_) { return fail('rate_limiter_unavailable', 503, cors); }
   const parts = path.split('/').filter(Boolean);
   try {
     if(path==='/api/v1/opening/next')return await handleOpeningApp({
