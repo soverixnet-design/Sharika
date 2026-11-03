@@ -199,8 +199,10 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
       ).bind(mine.id,application.applicant_uid,mine.id,mine.id));
       statements.push(db.prepare(
         "UPDATE sharika_family_join_requests SET state=?,reviewed_at=datetime('now') "+
-        "WHERE id=? AND state='pending'"
-      ).bind(acceptance[2]==='accept'?'accepted':'rejected',application.id));
+        "WHERE id=? AND state='pending' AND (?='rejected' OR "+
+        "EXISTS(SELECT 1 FROM sharika_family_members WHERE family_id=? AND user_uid=?))"
+      ).bind(acceptance[2]==='accept'?'accepted':'rejected',application.id,
+        acceptance[2]==='accept'?'accepted':'rejected',mine.id,application.applicant_uid));
       await db.batch(statements);
       const member=await db.prepare(
         'SELECT 1 FROM sharika_family_members WHERE family_id=? AND user_uid=?'
@@ -320,7 +322,7 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
       "assigned_by=excluded.assigned_by,updated_at=datetime('now')"
     ).bind(person.auth_uid,Number(body.active),Number(body.active&&body.can_grant),uid).run();
     await db.prepare(
-      "INSERT INTO sharika_admin_audit(actor_id,action,details) VALUES(?,?,?)"
+      "INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)"
     ).bind(uid,'family_bd_permission',JSON.stringify({
       public_id:body.public_id,active:body.active,can_grant:body.can_grant})).run();
     return reply({saved:true},200,cors);
