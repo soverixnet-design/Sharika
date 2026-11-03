@@ -18,6 +18,9 @@ on:
       - 'cloudflare/src/sellers.mjs'
       - 'cloudflare/src/index.mjs'
       - 'cloudflare/src/family-sheets.mjs'
+      - 'cloudflare/src/family.mjs'
+      - 'cloudflare/migrations/0050_family_invites_and_period.sql'
+      - 'cloudflare/test/family-management.test.mjs'
       - 'cloudflare/wrangler.jsonc'
       - 'cloudflare/src/sfu.mjs'
       - 'cloudflare/src/voice-room.mjs'
@@ -134,6 +137,18 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0049_family_membership_management.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0049_family_membership_management.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0049_family_membership_management.sql')"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS family_management_triggers FROM sqlite_master WHERE type='trigger' AND name IN ('sharika_family_owner_transfer_guard','sharika_family_owner_transfer_roles','sharika_family_member_role_audit','sharika_family_reapply_guard','sharika_family_request_reopened_audit','sharika_family_activity_immutable_update','sharika_family_activity_immutable_delete')"
+      # The previous 0048/0049 schemas are already installed. This migration
+      # only adds invitation and settlement-frequency tables and updates the
+      # Family membership trigger, without deleting any user or commission data.
+      - name: Apply Family invitation and weekly settlement schema to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS pre_existing_families FROM sharika_families"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS pre_existing_commissions FROM sharika_family_crystal_ledger"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0050_family_invites_and_period.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0050_family_invites_and_period.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0050_family_invites_and_period.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT key,mode FROM sharika_family_settlement_preferences"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS pending_invitations FROM sharika_family_invites WHERE state='pending'"
       - name: Verify Family schema and preserve existing voice/game source
         if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
         run: |

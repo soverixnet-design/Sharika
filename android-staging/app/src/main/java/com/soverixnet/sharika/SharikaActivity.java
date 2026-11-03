@@ -916,15 +916,18 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/family/me") ||
             path.equals("/api/v1/family/ledger") ||
             path.equals("/api/v1/family/bd/families") ||
-            path.equals("/api/v1/family/requests"))
+            path.equals("/api/v1/family/requests") ||
+            path.equals("/api/v1/family/invites"))
             return method.equals("GET");
-        if (path.equals("/api/v1/family/bd/grant") ||
+        if (path.equals("/api/v1/family/invite") ||
+            path.equals("/api/v1/family/bd/grant") ||
             path.equals("/api/v1/family/join") ||
             path.equals("/api/v1/family/leave") ||
             path.equals("/api/v1/family/crystal/transfer") ||
             path.equals("/api/v1/family/ownership/transfer"))
             return method.equals("POST");
-        if (path.matches("^/api/v1/family/requests/[1-9][0-9]{0,9}/(accept|reject)$") ||
+        if (path.matches("^/api/v1/family/invites/[1-9][0-9]{0,9}/(accept|decline)$") ||
+            path.matches("^/api/v1/family/requests/[1-9][0-9]{0,9}/(accept|reject)$") ||
             path.matches("^/api/v1/family/members/[0-9]{8}/(role|remove)$"))
             return method.equals("POST");
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");

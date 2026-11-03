@@ -2928,6 +2928,7 @@
         (sheets.last_synced_at?'Synced':'Authorization / first sync pending')+'</span><p>Last sync: '+
         esc(sheets.last_synced_at||'Never')+'</p>'+
         '<p class="n">Automatic Google Apps Script mirror every 5 minutes; no service-account key needed.</p>'+
+        '<button class="btn" id="sh-fam-report-day">Daily Statement</button>'+
         '<button class="btn" id="sh-fam-report-week">Weekly Statement</button>'+
         '<button class="btn" id="sh-fam-report-month">Monthly Statement</button>'+
         (isSuper?'<button class="btn" id="sh-fam-sync" '+
@@ -2939,7 +2940,7 @@
         '<label>Owner commission (1000 = 10%)'+
         '<input id="sh-fam-owner-bps" type="number" min="0" max="2000" value="'+esc(p.owner_bps)+'"></label>'+
         '<label>Settlement period<select id="sh-fam-period"><option value="daily">Daily</option>'+
-        '<option value="monthly">Monthly</option></select></label>'+
+        '<option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>'+
         '<label>Max family members<input type="number" id="sh-fam-max-members" min="2" max="200" value="'+
         esc(p.max_members)+'"></label>'+
         '<label>Coins per Crystal<input type="number" id="sh-fam-rate" min="1" max="10000" value="'+
@@ -2953,17 +2954,36 @@
           '<label>User 8-digit ID<input id="sh-fam-bd-id" maxlength="8" inputmode="numeric" placeholder="12345678"></label>'+
           '<label><input type="checkbox" id="sh-fam-bd-active" checked> BD active</label>'+
           '<label><input type="checkbox" id="sh-fam-bd-grant" checked> Can grant Families</label>'+
-          '<button class="btn" id="sh-fam-bd-save">Save BD Permission</button>'):'')+
+          '<button class="btn" id="sh-fam-bd-save">Save BD Permission</button>'+
+          '<p class="n">Removing BD immediately stops FUTURE BD commissions. Existing Families, members, Family Owner commissions and Crystal ledger stay unchanged.</p>')+
+        box('🏰 Admin Create Family',
+          '<label>Owner 8-digit ID<input id="sh-fam-create-owner" maxlength="8" inputmode="numeric"></label>'+
+          '<label>Active BD 8-digit ID<input id="sh-fam-create-bd" maxlength="8" inputmode="numeric"></label>'+
+          '<label>Unique Family Name<input id="sh-fam-create-name" maxlength="40"></label>'+
+          '<button class="btn" id="sh-fam-create">Create Family</button>')+
+        box('👥 Family Member & Leadership Control',
+          '<label>Family ID<input id="sh-fam-manage-id" type="number" min="1" placeholder="Family #"></label>'+
+          '<button class="btn" id="sh-fam-load-members">View Members</button>'+
+          '<div id="sh-fam-roster"></div>'+
+          '<label>User 8-digit ID<input id="sh-fam-manage-user" maxlength="8" inputmode="numeric"></label>'+
+          '<button class="btn" id="sh-fam-member-add">Add Member (Admin)</button>'+
+          '<button class="btn" id="sh-fam-member-remove">Remove Member</button>'+
+          '<button class="btn" id="sh-fam-owner-transfer">Make User Family Owner</button>'+
+          '<label>New Active BD 8-digit ID<input id="sh-fam-manage-bd" maxlength="8" inputmode="numeric"></label>'+
+          '<button class="btn" id="sh-fam-bd-transfer">Reassign Family BD</button>'+
+          '<p class="n">Only Super Admin may directly manage members. BD accounts cannot remove Family members. Transfer Family ownership before removing its current owner.</p>'):'')+
       box('👑 Registered Families',table(['Family','Owner','BD','Members','State','Action'],
         (data.families||[]).map(x=>[
           esc(x.name)+' · #'+esc(x.id),esc(x.owner_id),esc(x.bd_id),
-          esc(x.member_count),esc(x.status),
+          esc(x.member_count),esc(x.status)+' · BD '+(x.bd_active?'active':'inactive'),
           isSuper?'<button class="btn s" data-sh-fam-status="'+esc(x.id)+
             '" data-next="'+(x.status==='active'?'suspended':'active')+'">'+
-            (x.status==='active'?'Suspend':'Reactivate')+'</button>':'—'])))+
-      box('💼 BD Accounts',table(['BD ID','Name','Active','Can Grant'],
+            (x.status==='active'?'Suspend':'Reactivate')+'</button>'+
+            '<button class="btn s" data-sh-fam-manage="'+esc(x.id)+'">Manage</button>':'—'])))+
+      box('💼 BD Accounts',table(['BD ID','Name','Active','Can Grant','Admin Action'],
         (data.agents||[]).map(x=>[esc(x.public_id),esc(x.name),
-          x.active?'Yes':'No',x.can_grant?'Yes':'No'])))+
+          x.active?'Yes':'No',x.can_grant?'Yes':'No',
+          isSuper?'<button class="btn s" data-sh-fam-bd-toggle="'+esc(x.public_id)+'" data-next="'+(x.active?'off':'on')+'">'+(x.active?'Remove BD':'Restore BD')+'</button>':'—'])))+
       box('💎 Crystal → Seller Transfer Requests',table(
         ['ID','From','Seller','Crystals','Status','Action'],
         (data.transfers||[]).map(x=>[
@@ -2992,6 +3012,70 @@
         public_id:id,active:byId('sh-fam-bd-active').checked,
         can_grant:byId('sh-fam-bd-grant').checked
       },'Update BD permission for '+id+'?');
+    });
+    byId('sh-fam-create')?.addEventListener('click',()=>{
+      const owner=byId('sh-fam-create-owner').value.trim(),bd=byId('sh-fam-create-bd').value.trim();
+      const name=byId('sh-fam-create-name').value.trim();
+      if(!/^[0-9]{8}$/.test(owner)||!/^[0-9]{8}$/.test(bd)||name.length<3)
+        return notice('Enter valid Owner ID, active BD ID and Family Name.');
+      trySave('POST','family/create',{owner_public_id:owner,bd_public_id:bd,name,
+        request_id:'admin:'+crypto.randomUUID()},'Create '+name+' for '+owner+'?');
+    });
+    const familySelection=()=>String(byId('sh-fam-manage-id')?.value||'').trim();
+    const familyMember=()=>String(byId('sh-fam-manage-user')?.value||'').trim();
+    const validFamily=()=>/^[1-9][0-9]{0,9}$/.test(familySelection());
+    const validMember=()=>/^[0-9]{8}$/.test(familyMember());
+    const viewFamilyRoster=async()=>{
+      if(!validFamily())return notice('Enter a valid Family ID.');
+      notice('Loading Family members…');
+      try{
+        const r=await api('GET','family/'+familySelection()+'/members');
+        const list=r.members||[];
+        byId('sh-fam-roster').innerHTML='<h4>'+esc(r.family.name)+' · '+list.length+' members</h4>'+
+          table(['ID','Name','Role','Action'],list.map(m=>[
+            esc(m.public_id),esc(m.name),esc(m.role),
+            '<button class="btn s" data-sh-fam-select-member="'+esc(m.public_id)+'">Select</button>']));
+        byId('sh-fam-roster').querySelectorAll('[data-sh-fam-select-member]').forEach(b=>
+          b.onclick=()=>{byId('sh-fam-manage-user').value=b.dataset.shFamSelectMember;});
+        notice('Member list loaded ✓');
+      }catch(error){notice('Members unavailable: '+error.message);}
+    };
+    byId('sh-fam-load-members')?.addEventListener('click',viewFamilyRoster);
+    const chosenMember=()=>validFamily()&&validMember();
+    byId('sh-fam-member-add')?.addEventListener('click',()=>{
+      if(!chosenMember())return notice('Enter Family ID and 8-digit User ID.');
+      trySave('POST','family/'+familySelection()+'/members/add',{public_id:familyMember()},
+        'Admin add user '+familyMember()+' directly to Family #'+familySelection()+'?');
+    });
+    byId('sh-fam-member-remove')?.addEventListener('click',()=>{
+      if(!chosenMember())return notice('Enter Family ID and 8-digit User ID.');
+      trySave('POST','family/'+familySelection()+'/members/'+familyMember()+'/remove',{},
+        'Remove member '+familyMember()+' from Family #'+familySelection()+'? Historical earnings remain.');
+    });
+    byId('sh-fam-owner-transfer')?.addEventListener('click',()=>{
+      if(!chosenMember())return notice('Select an existing Family member.');
+      trySave('POST','family/'+familySelection()+'/owner',{owner_public_id:familyMember()},
+        'Transfer Family ownership to '+familyMember()+'? This changes future Owner commissions.');
+    });
+    byId('sh-fam-bd-transfer')?.addEventListener('click',()=>{
+      const bd=byId('sh-fam-manage-bd').value.trim();
+      if(!validFamily()||!/^[0-9]{8}$/.test(bd))return notice('Enter Family ID and new active BD ID.');
+      trySave('POST','family/'+familySelection()+'/bd',{bd_public_id:bd},
+        'Change assigned BD for Family #'+familySelection()+'? Historical earnings remain.');
+    });
+    parent.querySelectorAll('[data-sh-fam-manage]').forEach(btn=>{
+      btn.onclick=()=>{
+        byId('sh-fam-manage-id').value=btn.dataset.shFamManage;
+        viewFamilyRoster();
+        byId('sh-fam-manage-id').scrollIntoView({behavior:'smooth',block:'center'});
+      };
+    });
+    parent.querySelectorAll('[data-sh-fam-bd-toggle]').forEach(btn=>{
+      btn.onclick=()=>{
+        const id=btn.dataset.shFamBdToggle,active=btn.dataset.next==='on';
+        trySave('POST','family/bd',{public_id:id,active,can_grant:active},
+          (active?'Restore':'Remove')+' BD status for '+id+'? Family ownership and old commissions remain.');
+      };
     });
     byId('sh-fam-policy-save')?.addEventListener('click',()=>{
       const bd=Number(byId('sh-fam-bd-bps').value),owner=Number(byId('sh-fam-owner-bps').value);
@@ -3024,7 +3108,7 @@
     });
     byId('sh-fam-sync')?.addEventListener('click',()=>trySave('POST','family/sheets/sync',{},
       'Sync the verified staging ledger to the linked Google Sheet now?'));
-    for(const [id,period] of [['sh-fam-report-week','week'],['sh-fam-report-month','month']]){
+    for(const [id,period] of [['sh-fam-report-day','day'],['sh-fam-report-week','week'],['sh-fam-report-month','month']]){
       byId(id)?.addEventListener('click',async()=>{
         notice('Loading verified '+period+' entries…');
         try{
@@ -3032,7 +3116,7 @@
           const view=byId('sh-fam-report-results');
           if(!view)return;
           const list=result.rows||[];
-          view.innerHTML=box(period==='week'?'Weekly Commission Statement':'Monthly Commission Statement',
+          view.innerHTML=box(period==='day'?'Daily Commission Statement':period==='week'?'Weekly Commission Statement':'Monthly Commission Statement',
             '<p class="n">'+list.length+' verified commission entries. '+
             (result.truncated?'Result capped at 1000; export paginated data before final accounting.':'')+'</p>'+
             table(['Date','Family','Sender ID','Beneficiary ID','Type','Crystal'],

@@ -2307,12 +2307,23 @@
             '</details>':'')+'</li>').join('')+'</ul>'+
         (['leader','co_leader'].includes(family.role)&&family.status==='active'?
           '<button id="sh-fam-requests" type="button">Review Join Requests</button>':'')+
+        (family.role==='leader'&&family.status==='active'?
+          '<div class="sh-fam-card"><h4>✉️ Invite User to '+famEsc(family.name)+'</h4>'+
+          '<p class="sh-fam-note">Enter an 8-digit ID. User gets a notification and joins after accepting.</p>'+
+          '<label>User ID<input id="sh-fam-invite-id" maxlength="8" inputmode="numeric" placeholder="8-digit ID"></label>'+
+          '<button id="sh-fam-invite" type="button">Send Family Invitation</button></div>':'')+
         (family.role!=='leader'?
           '<button id="sh-fam-leave" type="button">Leave Family</button>':'')+'</div>';
     }else html+='<div class="sh-fam-card"><h3>Join a Family</h3>'+
       '<p class="sh-fam-note">Only one family at a time. Leader approves membership.</p>'+
       '<label>Family ID<input id="sh-fam-join-id" inputmode="numeric" placeholder="e.g. 1001"></label>'+
       '<button id="sh-fam-join" type="button">Send Join Request</button>'+
+      ((data.invitations||[]).length?
+        '<h3>✉️ Family Invitations</h3><div class="sh-fam-list">'+
+        (data.invitations||[]).map(a=>'<div class="sh-fam-card">👑 '+famEsc(a.family_name)+
+          ' · #'+famEsc(a.family_id)+'<p class="sh-fam-note">Invited by '+famEsc(a.inviter_id)+'</p>'+
+          '<button type="button" data-fam-accept-invite="'+famEsc(a.id)+'">Join Family</button>'+
+          '<button type="button" data-fam-decline-invite="'+famEsc(a.id)+'">Decline</button></div>').join('')+'</div>':'')+
       ((data.applications||[]).length?
         '<h3>Your recent applications</h3><ul class="sh-fam-list">'+
         (data.applications||[]).map(a=>'<li>#'+famEsc(a.family_id)+' · '+
@@ -2367,6 +2378,20 @@
         const id=button.dataset.famRemoveMember;
         invoke('POST','/family/members/'+id+'/remove',{},
           'Remove member '+id+'? A 24-hour Family join cooldown will apply.');
+      };
+    });
+    target.querySelector('#sh-fam-invite')?.addEventListener('click',()=>{
+      const id=target.querySelector('#sh-fam-invite-id')?.value?.trim();
+      if(!/^[0-9]{8}$/.test(id||''))return familyNotice('Enter an 8-digit User ID');
+      invoke('POST','/family/invite',{public_id:id},
+        'Invite '+id+' to Family '+family.name+'? They must accept the invitation.');
+    });
+    target.querySelectorAll('[data-fam-accept-invite],[data-fam-decline-invite]').forEach(btn=>{
+      btn.onclick=()=>{
+        const yes=btn.dataset.famAcceptInvite;
+        const id=yes||btn.dataset.famDeclineInvite;
+        invoke('POST','/family/invites/'+id+'/'+(yes?'accept':'decline'),{},
+          yes?'Join this Family?':'Decline this Family invitation?');
       };
     });
     target.querySelector('#sh-fam-join')?.addEventListener('click',()=>{

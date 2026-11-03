@@ -131,10 +131,68 @@ test('Android native bridge explicitly permits authenticated Family routes only'
     '/api/v1/family/me','/api/v1/family/ledger','/api/v1/family/bd/families',
     '/api/v1/family/requests','/api/v1/family/join','/api/v1/family/leave',
     '/api/v1/family/bd/grant','/api/v1/family/crystal/transfer',
-    '/api/v1/family/ownership/transfer'
+    '/api/v1/family/ownership/transfer','/api/v1/family/invite',
+    '/api/v1/family/invites'
   ])assert.ok(allow.includes('"'+route+'"'),route+' must be explicitly allowlisted');
   assert.ok(allow.includes('family/requests/[1-9][0-9]{0,9}/(accept|reject)'));
+  assert.ok(allow.includes('family/invites/[1-9][0-9]{0,9}/(accept|decline)'));
   assert.ok(allow.includes('family/members/[0-9]{8}/(role|remove)'));
   assert.ok(!allow.includes('path.startsWith("/api/v1/family/")'));
   assert.ok(allow.includes('return method.equals("POST")'));
+});
+
+test('Super Admin can revoke BD without touching Family/member/ledger records',async()=>{
+  const db=fixture();
+  const person={auth_uid:'bd',status:'active',minor:0};
+  const original=db.prepare.bind(db);
+  db.prepare=(sql)=>{
+    const statement=original(sql);
+    if(sql.includes('SELECT auth_uid,minor,status FROM sharika_users'))
+      statement.first=async()=>person;
+    return statement;
+  };
+  assert.equal((await admin(db,'family/bd',
+    {public_id:'10000002',active:false,can_grant:false},'finance')).status,403);
+  const response=await admin(db,'family/bd',
+    {public_id:'10000002',active:false,can_grant:false});
+  assert.equal(response.status,200);
+  const sql=db.calls.map(x=>x.sql||'').join('\n');
+  assert.match(sql,/sharika_bd_agents/);
+  assert.doesNotMatch(sql,/DELETE FROM sharika_families|DELETE FROM sharika_family_members|DELETE FROM sharika_family_crystal_ledger/);
+});
+
+test('Super Admin may directly add a Family member with audited invitation, Finance cannot',async()=>{
+  const db=fixture();
+  const original=db.prepare.bind(db);
+  db.prepare=sql=>{
+    const stmt=original(sql);
+    if(sql.includes('SELECT id,status FROM sharika_families'))
+      stmt.first=async()=>({id:1,status:'active'});
+    if(sql.includes('SELECT auth_uid,status FROM sharika_users WHERE public_no'))
+      stmt.first=async()=>({auth_uid:'member',status:'active'});
+    return stmt;
+  };
+  assert.equal((await admin(db,'family/1/members/add',
+    {public_id:'10000004'},'finance')).status,403);
+  const response=await admin(db,'family/1/members/add',{public_id:'10000004'});
+  assert.equal(response.status,200);
+  const batch=db.calls.find(x=>x.kind==='batch');
+  assert.ok(batch.statements.some(s=>/INSERT INTO sharika_family_invites/.test(s.sql)));
+  assert.ok(batch.statements.some(s=>/INSERT INTO sharika_family_members/.test(s.sql)));
+  assert.ok(batch.statements.some(s=>/sharika_admin_audit/.test(s.sql)));
+});
+
+test('Family policy accepts weekly settlement alongside daily and monthly',async()=>{
+  const db=fixture();
+  const body={enabled:true,conversion_enabled:false,owner_bps:1000,bd_bps:500,
+    settlement_mode:'weekly',max_members:20,coins_per_crystal:1};
+  const response=await handleFamilyAdmin({
+    request:new Request('https://example.test/admin/family/policy',{method:'PATCH',
+      body:JSON.stringify(body)}),
+    env:{DB:db},uid:'admin',actor:{role:'super'},operation:'family/policy',
+    cors:{},reply,fail});
+  assert.equal(response.status,200);
+  const batch=db.calls.find(c=>c.kind==='batch');
+  assert.ok(batch.statements.some(s=>/sharika_family_settlement_preferences/.test(s.sql)));
+  assert.ok(batch.statements.some(s=>s.values.includes('weekly')));
 });
