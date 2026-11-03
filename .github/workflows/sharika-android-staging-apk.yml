@@ -43,6 +43,7 @@ on:
       - fix/sharika-live-voice-reliability-20261102
       - fix/sharika-voice-games-owner-prepublish-20261103
       - feature/sharika-family-bd-crystal-ledger-20261103
+      - feature/sharika-fruit-royale-v2-20261104
     paths:
       - 'android-staging/**'
       - '.github/workflows/sharika-android-staging-apk.yml'
@@ -139,7 +140,7 @@ jobs:
           // These three independent screens MUST ship inside the APK. The
           // original demo wallet/result scripts must not ship as gameplay.
           const vm = require('vm');
-          const games=['sovera-food-wheel','night-food-wheel','jackpot-fruit'];
+          const games=['sovera-food-wheel','night-food-wheel'];
           for (const game of games) {
             const file='app/src/main/assets/original-games/'+game+'.html';
             const body=fs.readFileSync(file,'utf8');
@@ -152,7 +153,7 @@ jobs:
           }
           if (!bridge.includes('sharika:original-request')||
               !bridge.includes('event.source!==current.element.contentWindow')||
-              !bridge.includes("id:'jackpot-fruit'"))
+              !bridge.includes("id:'fruit-royale'") || bridge.includes("id:'jackpot-fruit'"))
             throw Error('Original game card/iframe source checking missing');
           const greedy='app/src/main/assets/greedy-wheel/';
           const greedyHtml=fs.readFileSync(greedy+'index.html','utf8');
@@ -163,7 +164,14 @@ jobs:
              !greedyBridge.includes('sharika:greedy-request')||
              !greedyBridge.includes('window.WebSocket=BridgeSocket'))
             throw Error('Greedy Wheel is not protected by authenticated bridge');
-          console.log('SHARIKA_THREE_ORIGINAL_GAMES_SERVER_BRIDGE_VERIFIED');
+          const fruit='app/src/main/assets/fruit-royale/';
+          for(const asset of ['index.html','game.js','styles.css','config.js','adapter.live.js'])
+            if(!fs.statSync(fruit+asset).size)throw Error('Fruit Royale asset missing: '+asset);
+          if(!fs.readFileSync(fruit+'config.js','utf8').includes("mode:'live'"))
+            throw Error('A demo mode must not be bundled as the active game');
+          if(!fs.readFileSync(fruit+'index.html','utf8').includes('adapter.live.js'))
+            throw Error('Fruit Royale authenticated adapter missing');
+          console.log('SHARIKA_FRUIT_ROYALE_REAL_WALLET_BRIDGE_VERIFIED');
           console.log('SHARIKA_ORIGINAL_UI_AND_ISOLATED_BRIDGE_VERIFIED');
           NODE
 
@@ -282,10 +290,13 @@ jobs:
             test -s "app/src/main/assets/$card"
             unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/$card"
           done
-          for game in sovera-food-wheel night-food-wheel jackpot-fruit; do
+          for game in sovera-food-wheel night-food-wheel; do
             unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/original-games/$game.html"
           done
-          echo 'THREE_ORIGINAL_GAMES_PACKAGED'
+          for asset in index.html game.js styles.css config.js adapter.live.js; do
+            unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/fruit-royale/$asset"
+          done
+          echo 'FRUIT_ROYALE_NEW_GAME_PACKAGED'
 
       - name: Verify uploaded Greedy Wheel visuals and bridge ship in APK
         run: |
@@ -371,7 +382,7 @@ jobs:
   royal-emulator-smoke:
     name: Royal UI emulator launch and Back smoke test
     # Only the isolated Option 1 candidate; no live app or staging data writes.
-    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103' || github.ref == 'refs/heads/feature/sharika-fruit-royale-v2-20261104'
     needs: debug-apk
     runs-on: ubuntu-latest
     timeout-minutes: 25
