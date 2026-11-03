@@ -77,6 +77,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
         // Bundle the theme controller before the original connection script.
         filter { String line ->
             line.replace('<head>', '''<head>
+<script id="sharika-startup-safety" src="./startup-safety.js"></script>
 <meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''')
                 .replace('<html lang="en">',
                     '<html lang="en" class="royal-premium royal-root">')
@@ -118,6 +119,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/profile-collection-atlas.webp'))
     from(rootProject.file('../app/profile-menu-atlas.webp'))
     from(rootProject.file('../app/profile-crown.webp'))
+    from(rootProject.file('startup-safety.js'))
+    from(rootProject.file('app/src/main/res/mipmap-nodpi/sharika_logo.jpg'))
     from(rootProject.file('back-navigation.js'))
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))
