@@ -60,7 +60,7 @@
   settingsButton.className = 'sh-settings';
   settingsButton.setAttribute('aria-label', 'Room settings and themes');
   settingsButton.append(sprite('settings'));
-  settingsButton.onclick = () => roomInfo?.click();
+  settingsButton.onclick = () => window.settings?.();
   top?.append(settingsButton);
 
   const stage = app.querySelector('.stage');
@@ -198,7 +198,7 @@
   });
   menuItem('🎨 Theme', () => window.themeSheet?.());
   menuItem('🪑 Seats', () => window.seatSet?.());
-  menuItem('⚙️ Settings', () => roomInfo?.click());
+  menuItem('⚙️ Settings', () => window.settings?.());
   menuItem('👑 Owner tools', () => byId('bOwn')?.click());
   menuItem('🖼️ Photo', () => photo?.click());
 
@@ -214,4 +214,243 @@
   // The room's original renderer already uses one host and a four-column
   // grid for 9 seats. Preserve seat click handlers and server seat ownership.
   // CP/Friendship links are rendered only for verified D1 bond pairs.
+
+  // Real-time top strip and server-backed room detail panels.
+  // No mocked members, coin claims or duplicate wallet transfers.
+  const premiumState={room:null,rewards:null,rewardsAt:0,rewardPromise:null};
+  const fmtCoins=value=>{
+    const n=Number(value);
+    if(!Number.isFinite(n)||n<0)return '0';
+    if(n>=1e9)return (n/1e9).toFixed(n%1e9<1e8?1:2).replace(/\.0+$/,'')+'B';
+    if(n>=1e6)return (n/1e6).toFixed(n%1e6<1e5?1:2).replace(/\.0+$/,'')+'M';
+    if(n>=1e3)return (n/1e3).toFixed(n%1e3<1e2?1:2).replace(/\.0+$/,'')+'K';
+    return Math.floor(n).toLocaleString('en-US');
+  };
+  function vipAvatar(member,cls){
+    const el=document.createElement('span');
+    el.className='sh-vip-avatar'+(cls?' '+cls:'');
+    if(member?.pic){
+      const img=document.createElement('img');
+      img.src=member.pic;img.alt='';img.loading='lazy';
+      img.onerror=()=>{img.remove();el.textContent=(member.name||'?').trim().slice(0,1).toUpperCase();};
+      el.appendChild(img);
+    }else el.textContent=(member?.name||'?').trim().slice(0,1).toUpperCase();
+    return el;
+  }
+  function canShow(){
+    const v=premiumState.room;
+    return !!(v&&document.getElementById('app')&&window.parent?.cur?.id===v.roomId);
+  }
+  async function rewardInfo(force){
+    const v=premiumState.room;
+    if(!v||!canShow())return null;
+    if(!force&&premiumState.rewards&&Date.now()-premiumState.rewardsAt<60000)
+      return premiumState.rewards;
+    if(premiumState.rewardPromise)return premiumState.rewardPromise;
+    const roomId=v.roomId;
+    premiumState.rewardPromise=Promise.resolve().then(()=>v.loadRewards()).then(data=>{
+      if(premiumState.room?.roomId!==roomId)return null;
+      premiumState.rewards=data;premiumState.rewardsAt=Date.now();
+      const count=document.getElementById('sh-room-value-total');
+      if(count)count.textContent=fmtCoins(
+        Number(data.regular_reward_hundredths||0)/
+          Math.max(1,Number(data.regular_gift_percent||10)));
+      return data;
+    }).finally(()=>{premiumState.rewardPromise=null;});
+    return premiumState.rewardPromise;
+  }
+  function showMembers(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    window.open('<div class="sh-premium-sheet">'+
+      '<h3>👥 Online Users <span id="sh-online-total"></span></h3>'+
+      '<div class="sh-member-list" id="sh-live-members"></div>'+
+      '<p class="sh-footnote">Only members currently confirmed in this room are shown.</p></div>');
+    const list=document.getElementById('sh-live-members');
+    document.getElementById('sh-online-total').textContent=String(v.members.length);
+    if(!v.members.length){
+      list.textContent='No connected members right now.';return;
+    }
+    for(const member of v.members){
+      const row=document.createElement('button');
+      row.type='button';row.className='sh-member-row';
+      row.appendChild(vipAvatar(member));
+      const info=document.createElement('span');info.className='sh-member-info';
+      const name=document.createElement('b');
+      name.textContent=member.name||'Member';
+      const sub=document.createElement('small');
+      sub.textContent='ID: '+(member.displayId||'—')+
+        (member.role==='owner'?' · 👑 Owner':member.role==='admin'?' · 🛡 Admin':'');
+      info.append(name,sub);row.appendChild(info);
+      row.onclick=()=>Promise.resolve(v.openProfile(member)).catch(error=>
+        window.toast?.('Profile: '+String(error?.message||error)));
+      list.appendChild(row);
+    }
+  }
+  function showOverview(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    window.open('<div class="sh-premium-sheet">'+
+      '<div class="sh-overview-hero"><span id="sh-overview-avatar"></span>'+
+      '<div><h3 id="sh-overview-name"></h3><small id="sh-overview-id"></small></div></div>'+
+      '<div class="sh-segments"><button class="on" id="sh-tab-profile">Profile</button>'+
+      '<button id="sh-tab-members">Members</button></div>'+
+      '<div class="sh-overview-cards"><div class="sh-overview-card"><small>Room Value</small>'+
+      '<strong id="sh-overview-value">—</strong><span>Verified gift contribution</span></div>'+
+      '<div class="sh-overview-card"><small>Online Members</small>'+
+      '<strong id="sh-overview-members">0</strong><span>Currently in room</span></div></div>'+
+      '<button class="sh-wide-action" id="sh-overview-rewards">💎 Room Rewards <span>›</span></button>'+
+      '<button class="sh-wide-action alt" id="sh-overview-ranking">🏆 Room Ranking <span>›</span></button>'+
+      '<button class="sh-wide-action alt" id="sh-overview-manage" hidden>🎨 Room Theme & Settings <span>›</span></button>'+
+      '<p class="sh-footnote">Room statistics come from verified server data.</p></div>');
+    document.getElementById('sh-overview-avatar').appendChild(vipAvatar(v.owner,'large'));
+    document.getElementById('sh-overview-name').textContent=v.owner.name||'Room Owner';
+    document.getElementById('sh-overview-id').textContent='ID: '+(v.owner.displayId||v.roomId);
+    document.getElementById('sh-overview-members').textContent=String(v.members.length);
+    const valueNode=document.getElementById('sh-overview-value');
+    if(premiumState.rewards)
+      valueNode.textContent=fmtCoins(Number(premiumState.rewards.regular_reward_hundredths||0)/
+        Math.max(1,Number(premiumState.rewards.regular_gift_percent||10)));
+    rewardInfo().then(data=>{
+      if(data&&valueNode.isConnected)valueNode.textContent=fmtCoins(
+        Number(data.regular_reward_hundredths||0)/
+        Math.max(1,Number(data.regular_gift_percent||10)));
+    }).catch(()=>{if(valueNode.isConnected)valueNode.textContent='Unavailable';});
+    document.getElementById('sh-tab-members').onclick=showMembers;
+    document.getElementById('sh-overview-rewards').onclick=showRewards;
+    document.getElementById('sh-overview-ranking').onclick=()=>showRankings('daily');
+    const manage=document.getElementById('sh-overview-manage');
+    manage.hidden=!v.isOwner;
+    manage.onclick=()=>window.settings?.();
+  }
+  async function showRewards(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    window.open('<div class="sh-premium-sheet">'+
+      '<h3>💎 Room Reward Event</h3>'+
+      '<div class="sh-reward-cards">'+
+      '<div><small>Total earned</small><strong id="sh-reward-total">—</strong></div>'+
+      '<div><small>Already credited to owner wallet</small><strong id="sh-reward-paid">—</strong></div></div>'+
+      '<div class="sh-reward-week">🎁 Ordinary gifts: <b id="sh-reward-pct">10%</b>'+
+      '<small>Lucky Gift share: <span id="sh-reward-lucky">1%</span></small></div>'+
+      '<h3>Contribution → owner reward</h3>'+
+      '<div id="sh-reward-tiers" class="sh-tier-list"></div>'+
+      '<p class="sh-footnote">Illustrative amounts at the active ordinary-gift rate. The owner wallet is credited automatically; these are not additional claimable event prizes.</p></div>');
+    const total=document.getElementById('sh-reward-total');
+    const paid=document.getElementById('sh-reward-paid');
+    try{
+      const data=await rewardInfo(true);
+      if(!data||!total.isConnected)return;
+      const ordinaryPct=Number(data.regular_gift_percent||10);
+      total.textContent=fmtCoins(Number(data.reward_hundredths||0)/100)+' 🪙';
+      paid.textContent=fmtCoins(data.owner_wallet_credited_coins||0)+' 🪙';
+      document.getElementById('sh-reward-pct').textContent=ordinaryPct+'%';
+      document.getElementById('sh-reward-lucky').textContent=
+        Number(data.lucky_gift_percent||1)+'%';
+      const tiers=document.getElementById('sh-reward-tiers');
+      [3000000,6000000,10000000,14000000,20000000,30000000,40000000,
+        50000000,60000000,70000000,80000000].forEach((threshold,i)=>{
+        const row=document.createElement('div');row.className='sh-tier';
+        const left=document.createElement('span');
+        left.textContent=String(i+1).padStart(2,'0')+'   '+fmtCoins(threshold);
+        const right=document.createElement('strong');
+        right.textContent=fmtCoins(threshold*ordinaryPct/100)+' 🪙';
+        row.append(left,right);tiers.appendChild(row);
+      });
+    }catch(error){
+      if(total.isConnected)total.textContent='Unavailable';
+      if(paid.isConnected)paid.textContent=String(error?.message||error);
+    }
+  }
+  async function showRankings(period){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    const periods=[['daily','Day'],['weekly','Week'],['monthly','Monthly']];
+    window.open('<div class="sh-premium-sheet">'+
+      '<h3>🏆 Room Ranking</h3><div class="sh-segments sh-rank-tabs" id="sh-ranking-tabs"></div>'+
+      '<div id="sh-ranking-list" class="sh-rank-list">Loading verified results…</div>'+
+      '<p class="sh-footnote">Based on verified room gift activity. Ranking is read-only; no separate reward is issued here.</p></div>');
+    const tabs=document.getElementById('sh-ranking-tabs');
+    for(const entry of periods){
+      const b=document.createElement('button');
+      b.textContent=entry[1];b.className=entry[0]===period?'on':'';
+      b.onclick=()=>showRankings(entry[0]);
+      tabs.appendChild(b);
+    }
+    const list=document.getElementById('sh-ranking-list');
+    try{
+      const result=await v.loadRankings(period);
+      if(!list.isConnected||!canShow())return;
+      list.replaceChildren();
+      const leaders=Array.isArray(result.leaders)?result.leaders:[];
+      if(!leaders.length){list.textContent='No verified room gifts recorded for this period.';return;}
+      for(const room of leaders.slice(0,20)){
+        const row=document.createElement('div');row.className='sh-rank-row';
+        const rank=document.createElement('span');rank.className='sh-rank-medal';
+        rank.textContent=Number(room.rank)<=3?['🥇','🥈','🥉'][Number(room.rank)-1]:
+          '#'+String(room.rank||'—');
+        const name=document.createElement('span');name.className='sh-rank-name';
+        name.textContent=String(room.emoji||'🎙️')+' '+String(room.name||'Room');
+        const sum=document.createElement('b');
+        sum.textContent=fmtCoins(room.total)+' 🪙';
+        row.append(rank,name,sum);list.appendChild(row);
+      }
+    }catch(error){
+      if(list.isConnected)list.textContent='Ranking unavailable: '+String(error?.message||error);
+    }
+  }
+  function renderPremiumHeader(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    const top=app.querySelector('.top');
+    if(!top)return;
+    let bar=document.getElementById('sh-room-masthead');
+    if(!bar){
+      bar=document.createElement('div');
+      bar.id='sh-room-masthead';bar.className='sh-room-masthead';
+      const score=document.createElement('button');
+      score.id='sh-room-score';score.type='button';score.className='sh-room-score';
+      score.innerHTML='<span>🏆</span><span class="sh-score-text"><small>Room Value</small>'+
+        '<b id="sh-room-value-total">—</b></span><span>›</span>';
+      const people=document.createElement('div');
+      people.id='sh-room-faces';people.className='sh-room-faces';
+      bar.append(score,people);
+      top.after(bar);
+      score.onclick=()=>showRankings('daily');
+    }
+    const faces=document.getElementById('sh-room-faces');
+    faces.replaceChildren();
+    for(const member of v.members.slice(0,4)){
+      const button=document.createElement('button');
+      button.type='button';button.className='sh-room-face-button';
+      button.title=member.name||'Room member';button.appendChild(vipAvatar(member));
+      button.onclick=()=>Promise.resolve(v.openProfile(member)).catch(error=>
+        window.toast?.('Profile: '+String(error?.message||error)));
+      faces.appendChild(button);
+    }
+    const count=document.createElement('button');
+    count.className='sh-room-face-count';count.type='button';
+    count.textContent=String(v.members.length);
+    count.setAttribute('aria-label','Online users: '+v.members.length);
+    count.onclick=showMembers;faces.appendChild(count);
+    const old=document.getElementById('ustat');
+    if(old){old.textContent='👥 '+v.members.length+' ›';old.onclick=showMembers;}
+    const score=document.getElementById('sh-room-value-total');
+    if(score&&premiumState.rewards)score.textContent=fmtCoins(
+      Number(premiumState.rewards.regular_reward_hundredths||0)/
+        Math.max(1,Number(premiumState.rewards.regular_gift_percent||10)));
+    if(!premiumState.rewards)rewardInfo().catch(()=>{if(score?.isConnected)score.textContent='—';});
+  }
+  window.SharikaRoomPremium={
+    sync(view){
+      if(premiumState.room?.roomId!==view.roomId){
+        premiumState.rewards=null;premiumState.rewardsAt=0;
+      }
+      premiumState.room=view;
+      renderPremiumHeader();
+    },
+    showOverview,showMembers,showRewards,showRankings
+  };
+  if(roomInfo)roomInfo.onclick=showOverview;
+
 })();
