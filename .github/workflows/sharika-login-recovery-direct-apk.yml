@@ -21,15 +21,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh run watch 41733019972 --repo soverixnet-design/Sharika --exit-status
-          actual="$(gh api repos/soverixnet-design/Sharika/actions/runs/41733019972 --jq '.head_sha')"
-          test "$actual" = "44b4fdaff9283d507c8c480327890855297b99e0"
+          gh run watch 41734637060 --repo soverixnet-design/Sharika --exit-status
+          actual="$(gh api repos/soverixnet-design/Sharika/actions/runs/41734637060 --jq '.head_sha')"
+          test "$actual" = "6e6d5fd590b5d144ce2afe089b8a99d5d6483ee5"
 
       - name: Download exact tested staging APK
         uses: actions/download-artifact@v4
         with:
           name: Sharika-Android-Staging-Debug
-          run-id: 41733019972
+          run-id: 41734637060
           repository: soverixnet-design/Sharika
           github-token: ${{ github.token }}
           path: verified-apk
@@ -43,6 +43,7 @@ jobs:
           unzip -l verified-apk/app-debug.apk | grep -F 'assets/sharika_logo.jpg'
           unzip -p verified-apk/app-debug.apk assets/index.html | grep -F 'sharika-startup-safety'
           unzip -p verified-apk/app-debug.apk assets/startup-safety.js | grep -F 'MAX_STARTUP_MS = 12000'
+          unzip -p verified-apk/app-debug.apk assets/index.html | node -e 'const fs=require("fs");const html=fs.readFileSync(0,"utf8");const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(x=>x[1]).filter(x=>x.trim());if(scripts.length<4)throw Error("Embedded scripts missing");scripts.forEach((code,i)=>{try{new Function(code)}catch(e){throw Error("Packaged inline script "+i+": "+e.message)}});console.log("SHARIKA_PACKAGED_LOGIN_SCRIPT_SYNTAX_OK");'
           cp verified-apk/app-debug.apk Sharika-Login-Recovery-Staging.apk
           sha256sum Sharika-Login-Recovery-Staging.apk
 
@@ -51,13 +52,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag='sharika-login-recovery-staging-44b4fda'
+          tag='sharika-login-rootfix-staging-6e6d5fd'
           if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
             echo "::error::Release tag already exists. Refusing to overwrite an installed APK."
             exit 1
           fi
           gh release create "$tag" Sharika-Login-Recovery-Staging.apk \
             --repo soverixnet-design/Sharika \
-            --target 44b4fdaff9283d507c8c480327890855297b99e0 \
-            --title "Sharika Login Recovery (STAGING TEST APK)" \
-            --notes "Android startup now has a bounded recovery path so a stalled splash cannot indefinitely hide Firebase login. The locally packaged Sharika logo replaces a broken inline WebP. Existing Cloudflare D1 data, login identity, coins, games and room logic remain unchanged. The exact signed staging APK passed the Android build and emulator startup smoke workflow. TEST BUILD ONLY; not approved for Play Store."
+            --target 6e6d5fd590b5d144ce2afe089b8a99d5d6483ee5 \
+            --title "Sharika Login Splash Root Fix (STAGING TEST APK)" \
+            --notes "Fixed the APK packaging rule that inserted HTML into embedded JavaScript strings and prevented the Firebase login script from parsing. Also includes a bounded splash recovery path. The locally packaged Sharika logo replaces a broken inline WebP. Existing Cloudflare D1 data, login identity, coins, games and room logic remain unchanged. The exact signed staging APK passed the Android build and emulator startup smoke workflow. TEST BUILD ONLY; not approved for Play Store."
