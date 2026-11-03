@@ -933,7 +933,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/theme-image$"))
             return method.equals("PUT");
-        if (path.matches("^/api/v1/rooms/[0-9]{8}/locks$"))
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/locks$") ||
+            path.matches("^/api/v1/rooms/[0-9]{8}/locks/all$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/invitations$"))
             return method.equals("GET") || method.equals("POST");

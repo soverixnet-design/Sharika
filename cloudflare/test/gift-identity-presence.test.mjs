@@ -54,3 +54,53 @@ test('room roster uses expiring verified presence without deleting D1 members',(
   assert.doesNotMatch(section,/DELETE FROM sharika_room_members|UPDATE sharika_room_members/);
   assert.match(adapter,/\},8000\);/);
 });
+
+test('room gift receipts remain in the scrollable chat, with sender and recipient',()=>{
+  const css=readFileSync(new URL('../../app/royal-room-ui.css',import.meta.url),'utf8');
+  assert.match(css,/\.sh-royal-room \.stage \{\s*flex:0 1 auto/);
+  assert.match(css,/\.sh-royal-room \.chatw \{[\s\S]*?flex:1 1 210px/);
+  assert.match(css,/\.sh-royal-room \.chat \{[\s\S]*?overflow-y:auto/);
+  assert.doesNotMatch(css,/height:clamp\(32px,7vh,64px\)/);
+  assert.match(adapter,/for\(const event of events\.slice\(-20\)\)appendGiftChatReceipt\(event\)/);
+  const start=adapter.indexOf('    function appendGiftChatReceipt(event){');
+  const end=adapter.indexOf('    function presentVerifiedGift(event){',start);
+  assert.ok(start>=0&&end>start);
+  const calls=[],avatarCalls=[],added=[];
+  const badge={textContent:''};
+  const row={
+    dataset:{},
+    classList:{add(value){added.push(value);}},
+    querySelector(selector){
+      return selector==='.lv'?badge:selector==='.mav'?{type:'avatar'}:null;
+    }
+  };
+  const chat={querySelector(selector){return selector==='.msg:last-child'?row:null;}};
+  const frame={
+    document:{},$:(id)=>id==='chat'?chat:null,
+    msg:(...args)=>calls.push(args)
+  };
+  const ctx=createContext({
+    frame,shownGiftChatIds:new Set(),
+    giftEventValue:()=>1500,
+    roomAvatarForPublicId:()=>null,
+    paintVerifiedAvatar:(...args)=>avatarCalls.push(args)
+  });
+  runInContext(adapter.slice(start,end),ctx);
+  const gift={id:41,sender_name:'Soverix Net',sender_id:'10000001',
+    sender_pic:'https://example.test/avatar.jpg',recipient_name:'Shakil',
+    recipient_id:'10000003',name:'Rose',emoji:'🌹',quantity:3,price_coins:500};
+  ctx.gift=gift;
+  runInContext('appendGiftChatReceipt(gift)',ctx);
+  runInContext('appendGiftChatReceipt(gift)',ctx);
+  assert.equal(calls.length,1,'re-polling a settled gift must not duplicate chat');
+  assert.equal(calls[0][0],'Soverix Net');
+  assert.match(calls[0][2],/Rose ×3 to Shakil \(ID 10000003\)/);
+  assert.match(calls[0][2],/1,500/);
+  assert.equal(calls[0][3].gf,true);
+  assert.equal(badge.textContent,'GIFT');
+  assert.equal(row.dataset.shGiftId,'41');
+  assert.equal(row.dataset.shSenderId,'10000001');
+  assert.ok(added.includes('sh-room-gift-receipt'));
+  assert.equal(avatarCalls.length,1);
+  assert.equal(avatarCalls[0][1],gift.sender_pic);
+});

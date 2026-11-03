@@ -594,7 +594,7 @@ test('room gifts require Firebase auth and a verified room membership',async()=>
   }finally{globalThis.fetch=prior;}
 });
 
-test('regular gift atomically debits sender and credits 10% to the room owner exactly once',async()=>{
+test('regular gift atomically debits sender, credits recipient diamonds and 10% to the owner',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
     const uid='firebase:'+project+':secure-user';
@@ -610,7 +610,7 @@ test('regular gift atomically debits sender and credits 10% to the room owner ex
       if(sql.includes('FROM sharika_gifts')&&sql.includes('tab IN (0,1,2)'))
         stmt.first=async()=>({id:9,name:'Rose',emoji:'🌹',price_coins:10,tab:0});
       if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
-        stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,status:'active'}]});
+        stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,status:'active',diamonds:0}]});
       if(sql.startsWith('SELECT id,total_coins FROM sharika_gift_transactions'))
         stmt.first=async()=>({id:71,total_coins:50});
       return stmt;
@@ -625,21 +625,28 @@ test('regular gift atomically debits sender and credits 10% to the room owner ex
     assert.equal(json.spent_coins,50);
     assert.equal(json.room_reward_coins,5);
     assert.equal(json.owner_reward_coins,5);
+    assert.equal(json.recipient_diamonds_per_user,50);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.equal(stmts.length,9);
+    assert.equal(stmts.length,11);
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);
     assert.equal(stmts[5].values[2],uid);
-    assert.match(stmts[6].sql,/sharika_regular_room_rewards/);
-    assert.equal(stmts[6].values[3],500);
-    assert.match(stmts[7].sql,/UPDATE sharika_users SET coins=CASE/);
-    assert.equal(stmts[7].values[1],5);
-    assert.equal(stmts[7].values[2],uid);
-    assert.match(stmts[8].sql,/room_gift_reward/);
-    assert.match(stmts[8].sql,/roomgift:/);
-    assert.equal(stmts[8].values[1],5);
+    assert.match(stmts[6].sql,/SET diamonds=CASE/);
+    assert.equal(stmts[6].values[1],50);
+    assert.equal(stmts[6].values[2],uid);
+    assert.match(stmts[7].sql,/gift_received/);
+    assert.match(stmts[7].sql,/giftrecv:/);
+    assert.deepEqual(stmts[7].values,[uid,50,uid,uid,'gift_atomic_12345678']);
+    assert.match(stmts[8].sql,/sharika_regular_room_rewards/);
+    assert.equal(stmts[8].values[3],500);
+    assert.match(stmts[9].sql,/UPDATE sharika_users SET coins=CASE/);
+    assert.equal(stmts[9].values[1],5);
+    assert.equal(stmts[9].values[2],uid);
+    assert.match(stmts[10].sql,/room_gift_reward/);
+    assert.match(stmts[10].sql,/roomgift:/);
+    assert.equal(stmts[10].values[1],5);
   }finally{globalThis.fetch=prior;}
 });
 
@@ -1084,6 +1091,10 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       async changeSeatLock(roomId,seat,locked){
         calls.push(['lock',roomId,seat,locked]);return {locked_seats:locked?[3]:[]};
       },
+      async changeAllSeatLocks(roomId,count,locked){
+        calls.push(['all',roomId,count,locked]);
+        return {locked_seats:locked?[1,3,4]:[],skipped_occupied:locked?[2]:[]};
+      },
       async changeMemberSeat(roomId,userId,seat){
         calls.push(['seat',roomId,userId,seat]);
         return seat===3?{error:'seat_locked'}:{member:{seat_no:seat}};
@@ -1106,6 +1117,28 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
     });
     assert.equal(allowed.status,200);
     assert.deepEqual((await allowed.json()).locked_seats,[3]);
+    const allLocks=locked=>new Request(
+      'https://example.test/api/v1/rooms/10000001/locks/all',{
+        method:'PUT',headers,body:JSON.stringify({locked})
+      });
+    const deniedAll=await handleRequest(allLocks(true),{
+      DB:makeDb('other-owner'),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(deniedAll.status,403);
+    const invalidAll=await handleRequest(allLocks('yes'),{
+      DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(invalidAll.status,400);
+    const lockedAll=await handleRequest(allLocks(true),{
+      DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(lockedAll.status,200);
+    assert.deepEqual((await lockedAll.json()).skipped_occupied,[2]);
+    const unlockedAll=await handleRequest(allLocks(false),{
+      DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
+    });
+    assert.equal(unlockedAll.status,200);
+    assert.deepEqual((await unlockedAll.json()).locked_seats,[]);
     const seat=await handleRequest(new Request(
       'https://example.test/api/v1/rooms/10000001/seat',{
         method:'PUT',headers,body:JSON.stringify({seat_no:3})
@@ -1125,7 +1158,7 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       'https://example.test/api/v1/rooms/10000001/members',{headers}),
       {DB:makeDb(uid,false),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
     assert.equal(notJoined.status,403);
-    assert.deepEqual(calls.map(x=>x[0]),['lock','seat']);
+    assert.deepEqual(calls.map(x=>x[0]),['lock','all','all','seat']);
   }finally{globalThis.fetch=oldFetch;}
 });
 

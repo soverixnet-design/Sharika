@@ -231,6 +231,37 @@ export class SharikaVoiceRoom extends DurableObject {
     });
   }
 
+  // Lock all available seats in one room gate; seated guests are not ejected.
+  async changeAllSeatLocks(roomId,seatCount,locked) {
+    return this.withSeatGate(async()=>{
+      if(!Number.isInteger(seatCount)||seatCount<1||seatCount>20)
+        return {error:'invalid_seat_count'};
+      if(!locked) {
+        this.ctx.storage.sql.exec('DELETE FROM room_seat_locks');
+        return {locked_seats:[],skipped_occupied:[]};
+      }
+      const rows=await this.sharikaDb.prepare(
+        'SELECT seat_no FROM sharika_room_members WHERE room_id=? AND seat_no IS NOT NULL'
+      ).bind(roomId).all();
+      const occupied=new Set((rows.results||[]).map(row=>Number(row.seat_no)));
+      const skipped=[];
+      for(let seat=1;seat<=seatCount;seat++) {
+        if(occupied.has(seat)) {
+          skipped.push(seat);
+          continue;
+        }
+        this.ctx.storage.sql.exec(
+          'INSERT OR IGNORE INTO room_seat_locks(seat_no,locked_at_ms) VALUES(?,?)',
+          seat,Date.now()
+        );
+        this.ctx.storage.sql.exec(
+          'DELETE FROM room_seat_invites WHERE seat_no=?',seat
+        );
+      }
+      return {locked_seats:await this.lockedSeats(),skipped_occupied:skipped};
+    });
+  }
+
   async dropSeatLocksAbove(seatCount) {
     return this.withSeatGate(async()=>{
       this.ctx.storage.sql.exec(

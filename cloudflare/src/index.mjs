@@ -1216,7 +1216,7 @@ export async function handleRequest(request, env, ctx) {
           ).bind(giftId).first();
           if(!gift)return fail('gift_unavailable',404,cors);
           const recipients=await env.DB.prepare(
-            'SELECT u.auth_uid,u.public_no,u.status FROM sharika_users u '+
+            'SELECT u.auth_uid,u.public_no,u.status,u.diamonds FROM sharika_users u '+
             'JOIN sharika_room_members m ON m.user_id=u.auth_uid '+
             'WHERE m.room_id=? AND u.public_no IN ('+
             ids.map(()=>'?').join(',')+')'
@@ -1224,6 +1224,11 @@ export async function handleRequest(request, env, ctx) {
           const found=recipients.results||[];
           if(found.length!==ids.length||found.some(u=>u.status!=='active'))
             return fail('gift_recipient_unavailable',409,cors);
+          const diamondsPerRecipient=gift.tab===2?0:Number(gift.price_coins)*quantity;
+          if(diamondsPerRecipient>0 && found.some(recipient=>
+            !Number.isSafeInteger(Number(recipient.diamonds)) ||
+            Number(recipient.diamonds)>1000000000000-diamondsPerRecipient))
+            return fail('diamond_balance_limit',409,cors);
           const spend=Number(gift.price_coins)*quantity*ids.length;
           if(!Number.isSafeInteger(spend)||spend<1||spend>100000000)
             return fail('gift_amount_exceeds_limit',400,cors);
@@ -1297,6 +1302,20 @@ export async function handleRequest(request, env, ctx) {
               "charm_level=MAX(charm_level,1+CAST((xp+?)/1000 AS INTEGER)),"+
               "updated_at=datetime('now') WHERE auth_uid=?"
             ).bind(xp,xp,recipient.auth_uid));
+            // Ordinary gifts create diamonds for the receiver. Paid Lucky Gift
+            // rewards use a separate audited trigger and must not be doubled.
+            if(diamondsPerRecipient>0){
+              statements.push(env.DB.prepare(
+                "UPDATE sharika_users SET diamonds=CASE WHEN status='active' AND diamonds<=? "+
+                "THEN diamonds+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?"
+              ).bind(1000000000000-diamondsPerRecipient,diamondsPerRecipient,recipient.auth_uid));
+              statements.push(env.DB.prepare(
+                "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+                "VALUES(?,'diamonds',?,(SELECT diamonds FROM sharika_users WHERE auth_uid=?),"+
+                "'gift_received','giftrecv:'||(SELECT id FROM sharika_gift_transactions "+
+                "WHERE sender_uid=? AND request_id=?))"
+              ).bind(recipient.auth_uid,diamondsPerRecipient,recipient.auth_uid,uid,requestId));
+            }
             if(benefits)statements.push(env.DB.prepare(
               'INSERT INTO sharika_lucky_recipient_rewards(transaction_id,recipient_uid,'+
               'earned_hundredths) VALUES('+
@@ -1360,7 +1379,8 @@ export async function handleRequest(request, env, ctx) {
           return reply({duplicate:false,transaction_id:saved.id,
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
-            quantity,room_reward_coins:regularRewardHundredths/100,
+            quantity,recipient_diamonds_per_user:diamondsPerRecipient,
+            room_reward_coins:regularRewardHundredths/100,
             owner_reward_coins:ownerRewardCoins,
             lucky:lucky?{payout_coins:lucky.payout_coins,
               max_multiplier:lucky.max_multiplier,
@@ -1379,6 +1399,18 @@ export async function handleRequest(request, env, ctx) {
         return handleRoomModeration({
           request,env,uid,room,roomId,reply,fail,cors,readBody
         });
+      if(parts.length===6 && action==='locks' && parts[5]==='all' &&
+         request.method==='PUT') {
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
+        const body=await readBody(request);
+        if(typeof body.locked!=='boolean')
+          return fail('invalid_seat_lock',400,cors);
+        const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .changeAllSeatLocks(roomId,room.seat_count,body.locked);
+        if(result.error)return fail(result.error,409,cors);
+        return reply(result,200,cors);
+      }
       if (parts.length===5 && action==='locks' && request.method==='PUT') {
         if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
