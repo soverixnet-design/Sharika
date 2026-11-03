@@ -1147,6 +1147,46 @@ export async function handleRequest(request, env, ctx) {
           .seatInviteClear(uid);
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
+      // Day/week/month room rankings show real senders to members of this
+      // room only. This read-only leaderboard never awards or moves coins.
+      if (parts.length===5 && action==='contributors' && request.method==='GET') {
+        if(!member)return fail('join_room_first',403,cors);
+        const period=url.searchParams.get('period')||'daily';
+        if(!['daily','weekly','monthly'].includes(period))
+          return fail('invalid_ranking_period',400,cors);
+        const now=new Date();
+        const since=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),
+          period==='monthly'?1:now.getUTCDate()));
+        if(period==='weekly')
+          since.setUTCDate(since.getUTCDate()-(since.getUTCDay()+6)%7);
+        const after=since.toISOString().slice(0,19).replace('T',' ');
+        const [group,summary]=await Promise.all([
+          env.DB.prepare(
+            'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
+            'u.pic AS sender_pic,u.special_id AS sender_special_id,'+
+            'SUM(t.total_coins) AS total '+
+            'FROM sharika_gift_transactions t '+
+            'JOIN sharika_users u ON u.auth_uid=t.sender_uid '+
+            'WHERE t.room_id=? AND t.created_at>=? '+
+            'GROUP BY t.sender_uid '+
+            'ORDER BY total DESC,u.public_no ASC LIMIT 30'
+          ).bind(roomId,after).all(),
+          env.DB.prepare(
+            'SELECT COALESCE(SUM(total_coins),0) AS total '+
+            'FROM sharika_gift_transactions WHERE room_id=? AND created_at>=?'
+          ).bind(roomId,after).first()
+        ]);
+        return reply({room_id:roomId,period,timezone:'UTC',
+          since_utc:since.toISOString(),
+          total_contribution_coins:Number(summary?.total)||0,
+          leaders:(group.results||[]).map((row,i)=>({
+            rank:i+1,name:row.sender_name||'Member',
+            pic:row.sender_pic||null,
+            public_id:publicId(row.sender_no),
+            display_id:row.sender_special_id||publicId(row.sender_no),
+            total:Number(row.total)||0
+          }))},200,cors);
+      }
       // Ordinary gifts earn a 10% room share. Newly settled gifts also credit
       // whole coins once to the owner's audited personal wallet; the room
       // ledger remains a report, not another claimable balance.
