@@ -1,0 +1,83 @@
+name: Sharika Login Recovery + Fruit Royale integrated test APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-login-fruit-royale-merged-20261104
+    paths:
+      - '.github/workflows/sharika-login-fruit-royale-prerelease.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-tested-fruit-royale:
+    name: Publish verified login-recovery + Fruit Royale APK (not ZIP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require successful integrated Android, emulator, and Cloudflare checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-login-fruit-royale-merged-20261104'
+          test "$(gh run view 41737879122 --repo soverixnet-design/Sharika --json conclusion,headSha --jq '.conclusion+" "+.headSha')" = 'success e412f9632c6d40c45a1131194424588d3afbf82a'
+          
+          test "$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13281030092 --jq '.workflow_run.head_sha')" = e412f9632c6d40c45a1131194424588d3afbf82a
+          test "$(gh run view 41737879173 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          
+          echo 'SHARIKA_INTEGRATED_LOGIN_FRUIT_APK_EMULATOR_AND_BACKEND_PASSED'
+
+      - name: Download only approved, stable-signed Android staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41737879122
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: integrated-apk
+
+      - name: Verify combined login recovery and Fruit Royale inside Android APK
+        run: |
+          test -s integrated-apk/app-debug.apk
+          unzip -tqq integrated-apk/app-debug.apk
+          for asset in index.html game.js styles.css config.js adapter.live.js; do
+            unzip -Z1 integrated-apk/app-debug.apk | grep -Fx "assets/fruit-royale/$asset"
+          done
+          if unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/original-games/jackpot-fruit.html'; then
+            echo "::error::Legacy Jackpot Fruit screen must not be in the replacement APK."
+            exit 1
+          fi
+          unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/startup-safety.js'
+          unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/sharika_logo.jpg'
+          unzip -p integrated-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/fruit-royale-connection.js"
+          node - <<'NODE'
+          const fs=require('fs');
+          const parent=fs.readFileSync(process.env.RUNNER_TEMP+'/fruit-royale-connection.js','utf8');
+          if(!parent.includes("id:'fruit-royale'") ||
+             parent.includes("id:'jackpot-fruit'") ||
+             !parent.includes('sharika:original-request') ||
+             !parent.includes('ensureRoomGamePortal') ||
+             !parent.includes("game.id==='fruit-royale'&&enabled.has(game.id)"))
+            throw Error('Fruit Royale UI or authenticated room bridge missing');
+          console.log('INTEGRATED_LOGIN_RECOVERY_AND_FRUIT_ROYALE_VERIFIED');
+          NODE
+          cp integrated-apk/app-debug.apk integrated-apk/Sharika-Login-Fruit-Royale-Staging.apk
+          sha256sum integrated-apk/Sharika-Login-Fruit-Royale-Staging.apk
+
+      - name: Publish direct test APK as a clearly marked GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=sharika-login-fruit-royale-integrated-staging-e412f963
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::A release with this tag already exists; never overwrite user downloads."
+            exit 1
+          fi
+          gh release create "$TAG" integrated-apk/Sharika-Login-Fruit-Royale-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target e412f9632c6d40c45a1131194424588d3afbf82a \
+            --title "Sharika Login Recovery + Fruit Royale — Staging Test APK" \
+            --notes "Staging-only integrated APK based on the latest Sharika login-recovery source (44b4fda): bundled login startup fallback and logo preserved. New authentic-wallet, server-authoritative Fruit Royale runs in room or outside; only Fruit Royale card is displayed, obsolete Jackpot Fruit HTML removed. Existing Wallet, coins, settled game history, room voice code and user data preserved. Android and Cloudflare CI passed. Do not publish to production until Google sign-in and voice have been verified on two real Android phones." \
+            --prerelease
