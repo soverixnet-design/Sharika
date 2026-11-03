@@ -8,6 +8,7 @@ import { handlePremiumAdmin } from './premium.mjs';
 import { handleBondAdmin } from './bonds.mjs';
 import { handleCpRewardAdmin } from './cp-rewards.mjs';
 import { handleEventAdmin } from './events.mjs';
+import {handleGameCatalogAdmin} from './game-catalog.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
 import { handleAdminExchangeRate } from './exchange-rate.mjs';
@@ -102,6 +103,17 @@ export async function readGiftRankings(db, period, kind) {
       kind==='lucky'?'verified_lucky_gift_payouts':'settled_gift_events'};
 }
 
+function safeGiftAssetUrl(value){
+  if(value==='')return '';
+  if(typeof value!=='string'||value.length>500)return null;
+  try{
+    const url=new URL(value);
+    if(url.protocol!=='https:'||url.username||url.password||!url.hostname||
+       /[\x00-\x20<>"']/u.test(value))return null;
+    return url.href;
+  }catch{return null;}
+}
+
 export async function handleAdminOperation({ request, env, uid, path, cors, reply, fail, ctx }) {
   if (!path.startsWith(ADMIN_PREFIX)) return null;
   let actor = await env.DB.prepare(
@@ -132,6 +144,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if(operational)return operational;
   if(operation.startsWith('special-ids'))
     return await handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail});
+  if(operation==='game-catalog')return await handleGameCatalogAdmin({
+    request,db:env.DB,uid,role:actor.role,reply,fail,cors
+  });
   if(operation==='events'||/^events\/[1-9][0-9]*(?:\/award)?$/.test(operation))
     return await handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='cosmetics'||operation==='cosmetics/grant')
@@ -267,9 +282,12 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
           !Number.isInteger(tab) || tab < 0 || tab > 2)
         return fail('invalid_gift', 400, cors);
       const active=body.active===true ? 1 : 0;
+      const image=safeGiftAssetUrl(body.image_url??'');
+      const animation=safeGiftAssetUrl(body.animation_url??'');
+      if(image===null||animation===null)return fail('invalid_gift_asset_url',400,cors);
       const result=await env.DB.batch([
-        env.DB.prepare('INSERT INTO sharika_gifts(name,emoji,tab,price_coins,active) VALUES(?,?,?,?,?)')
-          .bind(name,emoji||'🎁',tab,price,active),
+        env.DB.prepare('INSERT INTO sharika_gifts(name,emoji,tab,price_coins,active,image_url,animation_url) VALUES(?,?,?,?,?,?,?)')
+          .bind(name,emoji||'🎁',tab,price,active,image,animation),
         env.DB.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
           .bind(uid,'gift_create',JSON.stringify({name,tab,price,active}))
       ]);
@@ -302,6 +320,16 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       if(body.emoji!==undefined) {
         if(typeof body.emoji!=='string'||body.emoji.trim().length>16)return fail('invalid_gift_emoji',400,cors);
         update.emoji=body.emoji.trim()||'🎁';
+      }
+      if(body.image_url!==undefined){
+        const image=safeGiftAssetUrl(body.image_url);
+        if(image===null)return fail('invalid_gift_image_url',400,cors);
+        update.image_url=image;
+      }
+      if(body.animation_url!==undefined){
+        const animation=safeGiftAssetUrl(body.animation_url);
+        if(animation===null)return fail('invalid_gift_animation_url',400,cors);
+        update.animation_url=animation;
       }
       if(!Object.keys(update).length)return fail('no_gift_changes',400,cors);
       const keys=Object.keys(update);
