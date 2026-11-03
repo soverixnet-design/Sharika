@@ -30,6 +30,7 @@ function fixture({role='leader',membership=true,joinState='rejected'}={}){
             return {id:5,state:joinState};
           if(sql.includes('SELECT id,owner_uid,status FROM sharika_families'))
             return {id:1,owner_uid:'leader',status:'active'};
+          if(sql.startsWith('SELECT id FROM sharika_family_creation_requests'))return {id:17};
           if(sql.startsWith('SELECT 1 FROM sharika_family_members'))return null;
           return null;
         },
