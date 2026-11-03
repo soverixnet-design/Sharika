@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Download APK from the successful notification-safe login staging build
+      - name: Download APK from the successful owner seat controls staging build
         uses: actions/download-artifact@v4
         with:
           name: Sharika-Android-Staging-Debug
-          run-id: 41557995946
+          run-id: 41559992690
           repository: soverixnet-design/Sharika
           github-token: ${{ github.token }}
           path: staging-apk
@@ -32,26 +32,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41557995946 --jq .head_sha)" = '17f4db51d5a25895583664a1875b429f27cc9396'
-          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41557995946 --jq .conclusion)" = 'success'
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41559992690 --jq .head_sha)" = 'cdff8c8aa9710316a873d38d01a3d696bd66c5b2'
+          test "$(gh api repos/soverixnet-design/Sharika/actions/runs/41559992690 --jq .conclusion)" = 'success'
           test -s staging-apk/app-debug.apk
           unzip -t staging-apk/app-debug.apk > /dev/null
           unzip -Z1 staging-apk/app-debug.apk | grep -Fx AndroidManifest.xml
           unzip -Z1 staging-apk/app-debug.apk | grep -Eq '^classes([0-9]+)?[.]dex$'
-          cp staging-apk/app-debug.apk Sharika-Notification-Login-Fix-Staging-20261103.apk
-          sha256sum Sharika-Notification-Login-Fix-Staging-20261103.apk
-          file Sharika-Notification-Login-Fix-Staging-20261103.apk
+          cp staging-apk/app-debug.apk Sharika-Owner-Seat-Menu-Staging-20261103.apk
+          sha256sum Sharika-Owner-Seat-Menu-Staging-20261103.apk
+          file Sharika-Owner-Seat-Menu-Staging-20261103.apk
 
       - name: Publish direct .apk link to a new staging-only GitHub pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create sharika-staging-notification-login-fix-20261103 \
-            'Sharika-Notification-Login-Fix-Staging-20261103.apk#Sharika Notification Opt-In Login Fix Staging APK' \
+          gh release create sharika-staging-owner-seat-menu-20261103 \
+            'Sharika-Owner-Seat-Menu-Staging-20261103.apk#Sharika Owner Seat Lock and Control Staging APK' \
             --repo soverixnet-design/Sharika \
-            --target 17f4db51d5a25895583664a1875b429f27cc9396 \
-            --title 'Sharika Notification-Safe Login — Staging TEST APK' \
-            --notes 'Staging test APK, not a final Play Store release. Includes previous Google and home recovery plus no automatic notification-permission prompt at login, explicit Notifications-page opt-in, and persistent Google error text. Live two-phone betting, voice, gift and owner-seat actions still require physical-device verification.' \
+            --target cdff8c8aa9710316a873d38d01a3d696bd66c5b2 \
+            --title 'Sharika Owner Seat Controls — Staging TEST APK' \
+            --notes 'Staging test APK, not a final Play Store release. Includes previous Google, home, and notification-login fixes. Owner taps an empty mic seat to open Sit here, Lock seat, and Lock all controls instead of auto seating; ordinary members can still directly join unlocked seats. Live two-phone betting, voice, gift and owner-seat actions still require physical-device verification.' \
             --prerelease \
             --latest=false
