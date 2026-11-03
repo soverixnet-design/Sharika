@@ -51,6 +51,7 @@ import androidx.credentials.exceptions.GetCredentialException;
 import androidx.credentials.exceptions.GetCredentialCancellationException;
 import androidx.credentials.exceptions.NoCredentialException;
 
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import com.google.firebase.auth.FirebaseAuth;
@@ -604,17 +605,11 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, object(), null));
                 break;
             case "session":
-                FirebaseUser signedIn = auth.getCurrentUser();
-                if (signedIn == null) {
-                    sendResult(id, result(true, identity(null), null));
-                    return;
-                }
-                signedIn.reload().addOnCompleteListener(this, task -> {
-                    FirebaseUser user = auth.getCurrentUser();
-                    if (!task.isSuccessful() || user == null)
-                        sendResult(id, result(false, null, safe(task.getException())));
-                    else sendResult(id, result(true, identity(user), null));
-                });
+                // Return the cached Firebase session immediately so startup
+                // cannot wait for an unrelated network reload before drawing
+                // the Google sign-in button. Protected APIs still demand a
+                // verified Firebase ID token and a current active D1 profile.
+                sendResult(id, result(true, identity(auth.getCurrentUser()), null));
                 break;
             case "emailSignIn": emailSignIn(id, data); break;
             case "emailSignUp": emailSignUp(id, data); break;
@@ -759,16 +754,31 @@ public final class SharikaActivity extends Activity {
 
     private void googleSignIn(String id) {
         if (googlePending) {
-            sendResult(id, result(false, null, "google_sign_in_in_progress")); return;
+            sendResult(id, result(false, null, "google_sign_in_in_progress"));
+            return;
         }
         googlePending = true;
+        requestGoogleCredential(id, false);
+    }
+
+    private void requestGoogleCredential(String id, boolean allowAllAccounts) {
         try {
-            GetSignInWithGoogleOption option = new GetSignInWithGoogleOption.Builder(
-                getString(R.string.default_web_client_id)).build();
-            GetCredentialRequest request = new GetCredentialRequest.Builder()
-                .addCredentialOption(option).build();
+            GetCredentialRequest.Builder builder = new GetCredentialRequest.Builder();
+            if (allowAllAccounts) {
+                // Official Google fallback when the one-tap button has no
+                // previously authorized account on this device.
+                GetGoogleIdOption option = new GetGoogleIdOption.Builder()
+                    .setServerClientId(getString(R.string.default_web_client_id))
+                    .setFilterByAuthorizedAccounts(false)
+                    .build();
+                builder.addCredentialOption(option);
+            } else {
+                GetSignInWithGoogleOption option = new GetSignInWithGoogleOption.Builder(
+                    getString(R.string.default_web_client_id)).build();
+                builder.addCredentialOption(option);
+            }
             credentials.getCredentialAsync(
-                this, request, new CancellationSignal(), this::runOnUiThread,
+                this, builder.build(), new CancellationSignal(), this::runOnUiThread,
                 new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                     @Override public void onResult(GetCredentialResponse response) {
                         Credential returned = response.getCredential();
@@ -784,9 +794,13 @@ public final class SharikaActivity extends Activity {
                             auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null))
                                 .addOnCompleteListener(SharikaActivity.this, task -> {
                                     googlePending = false;
+                                    FirebaseUser current = auth.getCurrentUser();
                                     if (!task.isSuccessful())
                                         sendResult(id, result(false, null, safe(task.getException())));
-                                    else sendResult(id, result(true, identity(auth.getCurrentUser()), null));
+                                    else if (current == null)
+                                        sendResult(id, result(false,null,"firebase_session_missing"));
+                                    else
+                                        sendResult(id, result(true, identity(current), null));
                                 });
                         } catch (RuntimeException error) {
                             googlePending = false;
@@ -794,6 +808,10 @@ public final class SharikaActivity extends Activity {
                         }
                     }
                     @Override public void onError(GetCredentialException error) {
+                        if (error instanceof NoCredentialException && !allowAllAccounts) {
+                            requestGoogleCredential(id, true);
+                            return;
+                        }
                         googlePending = false;
                         final String message = error instanceof GetCredentialCancellationException
                             ? "google_sign_in_cancelled" :
