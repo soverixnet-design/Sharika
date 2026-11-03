@@ -4,6 +4,7 @@ import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
+import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
@@ -1558,6 +1559,8 @@ export default {
     if(env.DB){
       context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
         .catch(error=>console.error('bond_expiry_cron_error',error.message)));
+      context.waitUntil(syncFamilyGoogleSheetIfDue(env)
+        .catch(error=>console.error('family_sheets_cron_error',error.message)));
       context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
     }
