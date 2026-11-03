@@ -46,6 +46,7 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['profileDesigner','🖼️','Live Profile Designer']);
   }
+  NAV_ALL.push(['family','👑','Family & BD System']);
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -2865,8 +2866,184 @@
   // The original visual-only dashboard includes demo pages. Replace every
   // unconnected page with an honest staging status while retaining its card
   // layout and menu. No fake sellers, payouts, or active games are displayed.
+
+  // Family/BD administration: only verified Cloudflare D1 results are shown.
+  const familyAdminCss=document.createElement('style');
+  familyAdminCss.textContent=[
+    '#sh-family-admin .sh-fam-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}',
+    '#sh-family-admin .sh-fam-card{border:1px solid #d4ad59;background:linear-gradient(145deg,#362620,#1a1525);',
+    'border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:inset 0 2px 2px #fff2,0 8px 20px #0004}',
+    '#sh-family-admin .sh-fam-card h3{color:#fce09c}',
+    '#sh-family-admin input,#sh-family-admin select{padding:10px;border-radius:9px;max-width:100%;margin:5px 0 10px}',
+    '#sh-family-admin table{width:100%;border-collapse:collapse;font-size:13px}',
+    '#sh-family-admin th,#sh-family-admin td{text-align:left;padding:8px;border-bottom:1px solid #ffffff22}',
+    '#sh-family-admin .sh-fam-scroll{overflow:auto;max-height:360px}',
+    '#sh-family-admin .sh-fam-pill{display:inline-block;border-radius:20px;padding:4px 10px;',
+    'border:1px solid #dab673;background:#604321;color:#ffeab3;font-weight:bold}',
+    '#sh-family-admin small{opacity:.85}'
+  ].join('');
+  document.head.appendChild(familyAdminCss);
+  P.family=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div id="sh-family-admin"><h2>👑 Family & BD System</h2>'+
+      '<p class="n">Verified family grants, 5% BD commission and Crystal settlement. '+
+      'Existing Room Gift rewards and original recipient diamonds are unchanged.</p>'+
+      '<div class="sh-fam-card">Loading verified records…</div></div>';
+    const parent=root.querySelector('#sh-family-admin');
+    const notice=t=>{const el=parent?.querySelector('#sh-fam-admin-status');if(el)el.textContent=t;};
+    let data, sheets;
+    try{
+      [data,sheets]=await Promise.all([
+        api('GET','family'),api('GET','family/sheets/status')
+      ]);
+    }catch(error){
+      parent.innerHTML=card('Family service unavailable',error.message+
+        '. Apply the new staging migration and Worker before using this panel.');
+      return;
+    }
+    if(!parent.isConnected)return;
+    const p=data.policy||{};
+    const isSuper=role==='super';
+    const table=(columns,entries)=>'<div class="sh-fam-scroll"><table><thead><tr>'+
+      columns.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+
+      (entries.length?entries.map(items=>'<tr>'+items.map(cell=>'<td>'+cell+'</td>').join('')+'</tr>').join(''):
+        '<tr><td colspan="'+columns.length+'">No verified records</td></tr>')+
+      '</tbody></table></div>';
+    const box=(title,contents)=>'<section class="sh-fam-card"><h3>'+esc(title)+'</h3>'+contents+'</section>';
+    parent.innerHTML='<div class="sh-fam-cols">'+
+      box('💼 BD Commission','<span class="sh-fam-pill">'+
+        esc(Number(p.bd_bps||0)/100)+'%</span><p>Family Owner: '+
+        esc(Number(p.owner_bps||0)/100)+'% · Mode: '+esc(p.settlement_mode||'monthly')+'</p>')+
+      box('💎 Crystal Conversion','<span class="sh-fam-pill">'+
+        (p.conversion_enabled?'Enabled':'Disabled')+'</span><p>'+
+        esc(p.coins_per_crystal||1)+' coins per whole Crystal. Admin approval required.</p>')+
+      box('📊 Google Sheets','<span class="sh-fam-pill">'+
+        (sheets.configured?'Connected (credentials present)':'Authorization pending')+'</span><p>Last sync: '+
+        esc(sheets.last_synced_at||'Never')+'</p>'+
+        '<p class="n">Daily automatic mirror and manual sync after service-account setup.</p>'+
+        '<button class="btn" id="sh-fam-report-week">Weekly Statement</button>'+
+        '<button class="btn" id="sh-fam-report-month">Monthly Statement</button>'+
+        (isSuper?'<button class="btn" id="sh-fam-sync" '+
+          (sheets.configured?'':'disabled')+'>Sync Google Sheet</button>':'')+'</section>')+
+      '</div>'+
+      (isSuper?box('⚙️ Commission & Family Policy',
+        '<div class="sh-fam-cols"><label>BD commission (basis points; 500 = 5%)'+
+        '<input id="sh-fam-bd-bps" type="number" min="0" max="1000" value="'+esc(p.bd_bps)+'"></label>'+
+        '<label>Owner commission (1000 = 10%)'+
+        '<input id="sh-fam-owner-bps" type="number" min="0" max="2000" value="'+esc(p.owner_bps)+'"></label>'+
+        '<label>Settlement period<select id="sh-fam-period"><option value="daily">Daily</option>'+
+        '<option value="monthly">Monthly</option></select></label>'+
+        '<label>Max family members<input type="number" id="sh-fam-max-members" min="2" max="200" value="'+
+        esc(p.max_members)+'"></label>'+
+        '<label>Coins per Crystal<input type="number" id="sh-fam-rate" min="1" max="10000" value="'+
+        esc(p.coins_per_crystal)+'"></label>'+
+        '<label><input type="checkbox" id="sh-fam-enabled" '+(p.enabled?'checked':'')+
+        '> Family active</label><label><input type="checkbox" id="sh-fam-conversion" '+
+        (p.conversion_enabled?'checked':'')+'> Permit seller conversion</label></div>'+
+        '<p class="n">Rates affect only future gifts. Turning on conversion allows audited seller-stock credits.</p>'+
+        '<button class="btn" id="sh-fam-policy-save">Save Future Policy</button>')+
+        box('🗝️ Assign BD Permission',
+          '<label>User 8-digit ID<input id="sh-fam-bd-id" maxlength="8" inputmode="numeric" placeholder="12345678"></label>'+
+          '<label><input type="checkbox" id="sh-fam-bd-active" checked> BD active</label>'+
+          '<label><input type="checkbox" id="sh-fam-bd-grant" checked> Can grant Families</label>'+
+          '<button class="btn" id="sh-fam-bd-save">Save BD Permission</button>'):'')+
+      box('👑 Registered Families',table(['Family','Owner','BD','Members','State'],
+        (data.families||[]).map(x=>[
+          esc(x.name)+' · #'+esc(x.id),esc(x.owner_id),esc(x.bd_id),
+          esc(x.member_count),esc(x.status)])))+
+      box('💼 BD Accounts',table(['BD ID','Name','Active','Can Grant'],
+        (data.agents||[]).map(x=>[esc(x.public_id),esc(x.name),
+          x.active?'Yes':'No',x.can_grant?'Yes':'No'])))+
+      box('💎 Crystal → Seller Transfer Requests',table(
+        ['ID','From','Seller','Crystals','Status','Action'],
+        (data.transfers||[]).map(x=>[
+          esc(x.id),esc(x.sender_id),esc(x.seller_id),
+          esc((Number(x.crystal_units||0)/10000).toLocaleString('en-US')),
+          esc(x.status),
+          isSuper&&x.status==='pending'?
+            '<button class="btn s" data-sh-fam-approve="'+esc(x.id)+'">Approve</button>'+
+            '<button class="btn s" data-sh-fam-reject="'+esc(x.id)+'">Reject</button>':'—'
+        ])))+
+      '<p id="sh-fam-admin-status" role="status" aria-live="polite"></p>'+
+      '<div id="sh-fam-report-results"></div>';
+    const selected=byId('sh-fam-period');
+    if(selected)selected.value=p.settlement_mode||'monthly';
+    const reload=()=>P.family();
+    const trySave=async(method,route,payload,confirmation)=>{
+      if(confirmation&&!window.confirm(confirmation))return;
+      notice('Saving to verified D1…');
+      try{await api(method,route,payload);notice('Saved ✓');await reload();}
+      catch(error){notice('Not saved: '+error.message);}
+    };
+    byId('sh-fam-bd-save')?.addEventListener('click',()=>{
+      const id=byId('sh-fam-bd-id').value.trim();
+      if(!/^[0-9]{8}$/.test(id))return notice('Enter a verified 8-digit user ID');
+      trySave('POST','family/bd',{
+        public_id:id,active:byId('sh-fam-bd-active').checked,
+        can_grant:byId('sh-fam-bd-grant').checked
+      },'Update BD permission for '+id+'?');
+    });
+    byId('sh-fam-policy-save')?.addEventListener('click',()=>{
+      const bd=Number(byId('sh-fam-bd-bps').value),owner=Number(byId('sh-fam-owner-bps').value);
+      if(!Number.isSafeInteger(bd)||!Number.isSafeInteger(owner)||bd+owner>2500)
+        return notice('Commission values must be integers with a combined maximum 25%.');
+      trySave('PATCH','family/policy',{
+        enabled:byId('sh-fam-enabled').checked,
+        conversion_enabled:byId('sh-fam-conversion').checked,
+        bd_bps:bd,owner_bps:owner,settlement_mode:byId('sh-fam-period').value,
+        max_members:Number(byId('sh-fam-max-members').value),
+        coins_per_crystal:Number(byId('sh-fam-rate').value)
+      },'Save these rules for FUTURE gifts? Existing Crystal entries do not change.');
+    });
+    parent.querySelectorAll('[data-sh-fam-approve],[data-sh-fam-reject]').forEach(btn=>{
+      btn.onclick=()=>{
+        const yes=btn.dataset.shFamApprove;
+        const id=yes||btn.dataset.shFamReject;
+        trySave('POST','family/transfers/'+id+'/'+(yes?'approve':'reject'),{},
+          yes?'Approve conversion of verified Crystal to seller coin stock?':
+              'Reject this Crystal transfer and release the reserved balance?');
+      };
+    });
+    byId('sh-fam-sync')?.addEventListener('click',()=>trySave('POST','family/sheets/sync',{},
+      'Sync the verified staging ledger to the linked Google Sheet now?'));
+    for(const [id,period] of [['sh-fam-report-week','week'],['sh-fam-report-month','month']]){
+      byId(id)?.addEventListener('click',async()=>{
+        notice('Loading verified '+period+' entries…');
+        try{
+          const result=await api('GET','family/report?period='+period);
+          const view=byId('sh-fam-report-results');
+          if(!view)return;
+          const list=result.rows||[];
+          view.innerHTML=box(period==='week'?'Weekly Commission Statement':'Monthly Commission Statement',
+            '<p class="n">'+list.length+' verified commission entries. '+
+            (result.truncated?'Result capped at 1000; export paginated data before final accounting.':'')+'</p>'+
+            table(['Date','Family','Sender ID','Beneficiary ID','Type','Crystal'],
+              list.slice(-100).reverse().map(x=>[
+                esc(x.created_at),esc(x.family_name),esc(x.sender_id),
+                esc(x.beneficiary_id),esc(x.kind),esc(x.crystal_units/10000)]))+
+            '<button class="btn" id="sh-fam-csv">Download CSV Evidence</button>');
+          byId('sh-fam-csv').onclick=()=>{
+            const header=['ledger_id','timestamp_utc','family_id','family_name','gift_tx_id',
+              'sender_id','beneficiary_id','kind','rate_bps','crystal_units'];
+            const cell=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+            const csv=[header.join(',')].concat(list.map(x=>[
+              x.id,x.created_at,x.family_id,x.family_name,x.transaction_id,x.sender_id,
+              x.beneficiary_id,x.kind,x.rate_bps,x.crystal_units].map(cell).join(','))).join('\r\n');
+            const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+            const link=document.createElement('a');const url=URL.createObjectURL(blob);
+            link.href=url;link.download='Sharika-Family-'+period+'-'+
+              new Date().toISOString().slice(0,10)+'.csv';
+            document.body.appendChild(link);link.click();link.remove();
+            setTimeout(()=>URL.revokeObjectURL(url),1000);
+          };
+          notice('Report loaded ✓');
+        }catch(error){notice('Report unavailable: '+error.message);}
+      });
+    }
+  };
+
   const verifiedPages=new Set([
-    'dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
+    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
