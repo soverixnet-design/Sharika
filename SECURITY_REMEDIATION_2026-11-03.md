@@ -19,13 +19,18 @@
 - **Play Billing এবং আইনগত নীতি:** Merchant/Play Console-এর payment configuration, gambling/virtual-coin policy, user data deletion এবং account verification বাইরে থেকে চূড়ান্ত করা সম্ভব নয়।
 - **D1 concurrency:** rate limiter financial ledger-এর বিকল্প নয়। Concurrent seller recharge, invite reward, gift/room reward ও bet settlement-এর transaction-level stress tests চলমান release gate।
 
+## যাচাইকৃত GitHub Actions ফলাফল
+
+৩ নভেম্বর ২০২৬, staging branch commit `6bdd382be3e1a376a3e218f64bbe59d5975cdf39`-এ source tests, Cloudflare Admin/API staging publish, debug APK, signed staging AAB এবং emulator Back smoke test **সফল**। Cloudflare API-তে `SHARIKA_ACTION_RATE_LIMIT` এবং `SHARIKA_FINANCE_RATE_LIMIT`—দুইটি `ratelimit` binding live staging Worker settings-এ দেখা গেছে।
+
 ## যাচাইয়ের মানদণ্ড
 
-- [ ] Worker npm test ও static/syntax tests পাস।
-- [ ] Android staging APK ও Play-review staging AAB compile পাস।
-- [ ] Admin Worker dry-run/deploy পাস; Admin sign-in এবং Google popup browser-এ কাজ করছে।
-- [ ] Cloudflare Worker deploy-এ দুই rate-limit binding দৃশ্যমান।
-- [ ] দুটো Android ফোনে uninterrupted mic/speaker ও Back/mini-room পরীক্ষা পাস।
+- [x] Worker npm test ও static/syntax tests পাস। [CI](https://github.com/soverixnet-design/Sharika/actions/runs/41708342498)
+- [x] Android staging APK, Play-review staging AAB compile এবং emulator launch/Back smoke পাস। [APK CI](https://github.com/soverixnet-design/Sharika/actions/runs/41708342501) · [AAB CI](https://github.com/soverixnet-design/Sharika/actions/runs/41708342662)
+- [x] Admin ও API Worker staging deploy পাস।
+- [x] Cloudflare Worker settings read-only যাচাইয়ে দুইটি `ratelimit` binding দৃশ্যমান।
+- [ ] Admin Google popup/email sign-in বাস্তব ব্রাউজারে যাচাই করা হয়নি।
+- [ ] দুটো Android ফোনে uninterrupted mic/speaker ও Back/mini-room পরীক্ষা পাস করা বাকি।
 - [ ] Replayed/concurrent wallet gift/bet/recharge একবারই ledger-এ বসে।
 - [ ] Production deployment-এর জন্য আলাদা অনুমোদন, Play Billing এবং policy checklist পূর্ণ।
 
