@@ -2924,7 +2924,7 @@
         '<button class="btn" id="sh-fam-report-week">Weekly Statement</button>'+
         '<button class="btn" id="sh-fam-report-month">Monthly Statement</button>'+
         (isSuper?'<button class="btn" id="sh-fam-sync" '+
-          (sheets.configured?'':'disabled')+'>Sync Google Sheet</button>':'')+')+
+          (sheets.configured?'':'disabled')+'>Sync Google Sheet</button>':''))+
       '</div>'+
       (isSuper?box('⚙️ Commission & Family Policy',
         '<div class="sh-fam-cols"><label>BD commission (basis points; 500 = 5%)'+
