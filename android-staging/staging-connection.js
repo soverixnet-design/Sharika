@@ -115,7 +115,7 @@
     return new Promise((resolve, reject) => {
       const id = String(++seq);
       const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
-        action === 'googleSignIn' ? 150000 :
+        action === 'googleSignIn' ? 70000 :
         action === 'api' && payload?.method === 'PUT' &&
           (payload?.path === '/api/v1/me/avatar' ||
            /^\/api\/v1\/rooms\/[0-9]{8}\/cover$/.test(payload?.path || ''))
@@ -3194,6 +3194,10 @@
   let googleLoginBusy = false;
   function googleLoginError(error) {
     const message=errText(error);
+    if(message==='google_sign_in_timed_out')
+      return 'Google account picker did not respond. Close any Google popup and tap Continue with Google again.';
+    if(message==='google_sign_in_in_progress')
+      return 'Google sign-in is already opening. Please wait for the account picker or retry shortly.';
     if(message==='google_sign_in_cancelled'||/GetCredentialCancellationException/i.test(message))
       return 'Google sign-in was cancelled. Tap Continue with Google to retry.';
     if(message==='google_account_not_available'||/NoCredentialException/i.test(message))
