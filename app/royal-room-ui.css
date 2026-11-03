@@ -489,3 +489,11 @@
   .sh-royal-room .sh-room-face-count{width:30px;height:30px}
   .sh-royal-room .sh-overview-card{padding:12px 8px}
 }
+
+.sh-royal-room button.sh-rank-row{
+  width:100%;cursor:pointer;color:#fff0dc;text-align:left;
+}
+.sh-royal-room .sh-rank-row .sh-vip-avatar{
+  width:38px;height:38px;border-color:#ffd98b;
+}
+.sh-royal-room .sh-reward-week small>b{color:#ffedbd;font-size:14px}
