@@ -4,6 +4,7 @@ export const GAME_DEFINITIONS=Object.freeze([
   {id:'sovera-food',name:'Sovera Food Wheel',engine:'original'},
   {id:'night-food',name:'Night Food Wheel',engine:'original'},
   {id:'jackpot-fruit',name:'Jackpot Fruit',engine:'original/legacy'},
+  {id:'fruit-royale',name:'Fruit Royale V2',engine:'fruit-royale'},
   {id:'greedy-wheel',name:'Greedy Wheel',engine:'greedy'},
   {id:'food-wheel',name:'Food Wheel (legacy)',engine:'legacy'}
 ]);

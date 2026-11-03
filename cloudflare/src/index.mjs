@@ -22,6 +22,7 @@ import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleOpeningApp } from './opening.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import {handleFruitRoyaleRequest,settleFruitDueBets} from './fruit-royale.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
@@ -708,10 +709,13 @@ export async function handleRequest(request, env, ctx) {
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='original-games'){
       await assertActive(env.DB,uid);
       if(parts.length===3&&request.method==='GET')
-        return reply({games:['sovera-food','night-food','jackpot-fruit'],virtual_coins_only:true},200,cors);
+        return reply({games:['sovera-food','night-food','fruit-royale'],virtual_coins_only:true},200,cors);
       if(parts.length===5){
         if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
+        if(parts[3]==='fruit-royale')
+          return await handleFruitRoyaleRequest({request,db:env.DB,uid,
+            action:parts[4],reply,fail,cors});
         return await handleOriginalGameRequest({request,db:env.DB,uid,game:parts[3],
           action:parts[4],reply,fail,cors});
       }
@@ -767,6 +771,7 @@ export async function handleRequest(request, env, ctx) {
       await settleDueBets(env.DB,uid);
       await settleOriginalDueBets(env.DB);
       await settleGreedyDueBets(env.DB);
+      await settleFruitDueBets(env.DB);
       const user = await me(env.DB,uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
@@ -1590,6 +1595,8 @@ export default {
   fetch:handleRequest,
   scheduled(_event,env,context){
     if(env.DB){
+      context.waitUntil(settleFruitDueBets(env.DB)
+        .catch(error=>console.error('fruit_royale_settlement_cron_error',error.message)));
       context.waitUntil(expireBondInvites(env.DB,Date.now(),100,env,context)
         .catch(error=>console.error('bond_expiry_cron_error',error.message)));
       context.waitUntil(syncFamilyGoogleSheetIfDue(env)
