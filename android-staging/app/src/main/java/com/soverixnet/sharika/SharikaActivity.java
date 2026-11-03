@@ -23,6 +23,9 @@ import android.util.Base64;
 import android.util.Size;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -103,7 +106,14 @@ public final class SharikaActivity extends Activity {
     private boolean priorSpeakerphone;
     private ValueCallback<Uri[]> pendingImageSelection;
     private String pendingProfilePhotoId;
+    private static final long GOOGLE_SIGN_IN_TIMEOUT_MS = 45000L;
+    private final Handler googleHandler = new Handler(Looper.getMainLooper());
     private boolean googlePending;
+    private int googleAttempt;
+    private long googleStartedAtMs;
+    private String googleRequestId;
+    private CancellationSignal googleCancellation;
+    private Runnable googleTimeout;
     private String pendingInviteCode = "";
     // Firebase reload contacts the identity server; refreshing on every
     // 1.6-second live-game poll causes overlapping network calls.
@@ -757,25 +767,62 @@ public final class SharikaActivity extends Activity {
         });
     }
 
+    // Credential Manager may never call back when an Android provider/picker
+    // hangs. A bounded request and per-attempt ID avoid permanently locking
+    // Google login or allowing a late callback to complete a newer attempt.
+    private void finishGoogleSignIn(int attempt, JSONObject response) {
+        if (!googlePending || googleAttempt != attempt) return;
+        googlePending = false;
+        googleStartedAtMs = 0L;
+        if (googleTimeout != null) googleHandler.removeCallbacks(googleTimeout);
+        googleTimeout = null;
+        googleCancellation = null;
+        String requestId = googleRequestId;
+        googleRequestId = null;
+        if (requestId != null) sendResult(requestId, response);
+    }
+
+    private void expireGoogleSignIn(int attempt) {
+        if (!googlePending || googleAttempt != attempt) return;
+        CancellationSignal stale = googleCancellation;
+        finishGoogleSignIn(attempt, result(false, null, "google_sign_in_timed_out"));
+        // Invalidate the request before cancel() invokes a synchronous callback.
+        // The stale callback cannot reset or return for a newer attempt.
+        if (stale != null && !stale.isCanceled()) stale.cancel();
+    }
+
     private void googleSignIn(String id) {
+        // Recover even when the Activity was backgrounded while a provider UI
+        // stalled and its scheduled main-thread watchdog was delayed.
+        if (googlePending &&
+            SystemClock.elapsedRealtime() - googleStartedAtMs >= GOOGLE_SIGN_IN_TIMEOUT_MS)
+            expireGoogleSignIn(googleAttempt);
         if (googlePending) {
-            sendResult(id, result(false, null, "google_sign_in_in_progress")); return;
+            sendResult(id, result(false, null, "google_sign_in_in_progress"));
+            return;
         }
         googlePending = true;
+        googleStartedAtMs = SystemClock.elapsedRealtime();
+        googleRequestId = id;
+        final int attempt = ++googleAttempt;
+        final CancellationSignal cancellation = new CancellationSignal();
+        googleCancellation = cancellation;
+        googleTimeout = () -> expireGoogleSignIn(attempt);
+        googleHandler.postDelayed(googleTimeout, GOOGLE_SIGN_IN_TIMEOUT_MS);
         try {
             GetSignInWithGoogleOption option = new GetSignInWithGoogleOption.Builder(
                 getString(R.string.default_web_client_id)).build();
             GetCredentialRequest request = new GetCredentialRequest.Builder()
                 .addCredentialOption(option).build();
             credentials.getCredentialAsync(
-                this, request, new CancellationSignal(), this::runOnUiThread,
+                this, request, cancellation, this::runOnUiThread,
                 new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                     @Override public void onResult(GetCredentialResponse response) {
+                        if (!googlePending || googleAttempt != attempt) return;
                         Credential returned = response.getCredential();
                         if (!(returned instanceof CustomCredential)
                             || !GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL.equals(returned.getType())) {
-                            googlePending = false;
-                            sendResult(id, result(false,null,"google_token_missing"));
+                            finishGoogleSignIn(attempt, result(false,null,"google_token_missing"));
                             return;
                         }
                         try {
@@ -783,28 +830,27 @@ public final class SharikaActivity extends Activity {
                                 .createFrom(((CustomCredential) returned).getData()).getIdToken();
                             auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null))
                                 .addOnCompleteListener(SharikaActivity.this, task -> {
-                                    googlePending = false;
                                     if (!task.isSuccessful())
-                                        sendResult(id, result(false, null, safe(task.getException())));
-                                    else sendResult(id, result(true, identity(auth.getCurrentUser()), null));
+                                        finishGoogleSignIn(attempt,
+                                            result(false, null, safe(task.getException())));
+                                    else
+                                        finishGoogleSignIn(attempt,
+                                            result(true, identity(auth.getCurrentUser()), null));
                                 });
                         } catch (RuntimeException error) {
-                            googlePending = false;
-                            sendResult(id, result(false,null,safe(error)));
+                            finishGoogleSignIn(attempt, result(false,null,safe(error)));
                         }
                     }
                     @Override public void onError(GetCredentialException error) {
-                        googlePending = false;
                         final String message = error instanceof GetCredentialCancellationException
                             ? "google_sign_in_cancelled" :
                             error instanceof NoCredentialException
                             ? "google_account_not_available" : safe(error);
-                        sendResult(id, result(false,null,message));
+                        finishGoogleSignIn(attempt, result(false,null,message));
                     }
                 });
         } catch (Exception error) {
-            googlePending = false;
-            sendResult(id, result(false,null,safe(error)));
+            finishGoogleSignIn(attempt, result(false,null,safe(error)));
         }
     }
 
@@ -1055,6 +1101,7 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (googlePending) expireGoogleSignIn(googleAttempt);
         setRoomAudioRoute(false);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (unregisterModernBack != null) {
