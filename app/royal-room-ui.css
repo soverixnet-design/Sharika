@@ -323,3 +323,169 @@
 @media(prefers-reduced-motion:reduce) {
   .sh-royal-room .host .av,.sh-royal-room .crown {animation:none}
 }
+
+
+/* Purple-gold room header inspired by the supplied room reference.
+   Authenticated member data and coin ledgers populate the surfaces below. */
+.app.sh-royal-room{--sh-gold:#f9d98c;--sh-purple:#240b50;color:#fff2d5}
+.sh-royal-room .top .room{
+  border-color:#da9fff;
+  background:linear-gradient(105deg,rgba(26,8,51,.96),rgba(102,25,134,.88));
+  box-shadow:inset 0 1px #f9d8ff55,0 5px 14px #060015aa;
+  border-radius:999px;
+}
+.sh-royal-room .top .room>.rav{border-radius:50%;border:1.5px solid #ffdf91}
+.sh-royal-room .room>.rt b{color:#fff0cb;letter-spacing:.15px}
+.sh-royal-room .stats{gap:5px;padding-top:2px;padding-bottom:3px}
+.sh-royal-room .stats>.pill{padding:4px 8px;font-size:10px}
+.sh-royal-room .sh-room-masthead{
+  z-index:5;position:relative;display:flex;flex:none;align-items:center;gap:7px;
+  width:100%;min-height:57px;padding:3px 10px 5px;
+}
+.sh-royal-room .sh-room-score{
+  flex:0 0 38%;min-width:0;height:48px;display:flex;align-items:center;gap:5px;
+  background:linear-gradient(110deg,#221066,#6311aa);
+  color:#ffe9a4;border:1.5px solid #f8c86c;border-radius:17px;
+  box-shadow:inset 0 1px #ffffff55,0 4px 11px #0a0025b0;
+  padding:4px 7px;cursor:pointer;
+}
+.sh-royal-room .sh-room-score>span:first-child{font-size:24px;filter:drop-shadow(0 2px 4px #000)}
+.sh-royal-room .sh-room-score>span:last-child{font-size:21px;margin-left:auto}
+.sh-royal-room .sh-score-text{display:flex;flex-direction:column;min-width:0;align-items:flex-start;line-height:1.1}
+.sh-royal-room .sh-score-text small{font-size:9px;color:#e7cafc;letter-spacing:.3px}
+.sh-royal-room .sh-score-text b{font-size:clamp(13px,3.9vw,17px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.sh-royal-room .sh-room-faces{
+  display:flex;justify-content:flex-end;align-items:center;flex:1;min-width:0;
+  padding-right:2px;
+}
+.sh-royal-room .sh-room-face-button,
+.sh-royal-room .sh-room-face-count{
+  border:0;padding:0;background:transparent;flex:none;border-radius:50%;
+  width:clamp(30px,9.2vw,40px);height:clamp(30px,9.2vw,40px);
+  margin-left:-5px;cursor:pointer;position:relative;
+}
+.sh-royal-room .sh-room-face-button:first-child{margin-left:0}
+.sh-royal-room .sh-room-face-count{
+  display:grid;place-items:center;min-width:31px;color:#fff2dc;
+  background:linear-gradient(150deg,#483364,#201432);
+  border:1.5px solid #ddaafd;font-size:12px;font-weight:700;margin-left:3px;
+}
+.sh-royal-room .sh-vip-avatar{
+  width:40px;height:40px;display:grid;place-items:center;
+  border-radius:50%;border:2px solid #deb8ff;color:#ffe9a9;
+  background:linear-gradient(145deg,#4f2385,#150934);
+  box-shadow:0 2px 7px #000a,0 0 9px #a75bee44;overflow:hidden;
+  font-size:16px;font-weight:900;flex:none;
+}
+.sh-royal-room .sh-room-face-button .sh-vip-avatar{width:100%;height:100%}
+.sh-royal-room .sh-vip-avatar img{width:100%;height:100%;object-fit:cover;display:block;border-radius:50%}
+.sh-royal-room .sh-vip-avatar.large{
+  width:75px;height:75px;border-radius:19px;border-color:#ffd881;font-size:28px;
+}
+.sh-royal-room .sh-vip-avatar.large img{border-radius:17px}
+.sh-royal-room .sheet{
+  background:linear-gradient(160deg,#1a123b 0%,#210b50 46%,#100925 100%);
+  border-top:1.5px solid #b486fd;box-shadow:0 -10px 40px #10001dbb;
+}
+.sh-royal-room .sh-premium-sheet{color:#fff0d5;padding:3px 0 8px}
+.sh-royal-room .sh-premium-sheet>h3{
+  color:#fff0d7;text-shadow:0 2px 9px #000c;margin-bottom:14px;
+  font-size:19px;font-weight:850;
+}
+.sh-royal-room .sh-overview-hero{
+  display:flex;align-items:center;gap:13px;padding:16px 12px;
+  border:1px solid #bd80ff99;border-radius:22px;
+  background:linear-gradient(105deg,#173386,#51139f);
+  box-shadow:inset 0 1px #fff4,0 9px 18px #0005;
+}
+.sh-royal-room .sh-overview-hero h3{font-size:17px;margin:0 0 5px;color:#fff2d6;word-break:break-word}
+.sh-royal-room .sh-overview-hero small{color:#d9c6ef;font-size:12px}
+.sh-royal-room .sh-segments{
+  display:flex;align-items:center;gap:4px;padding:4px;margin:14px 0;
+  background:#1c0b32;border:1px solid #b88bf0;border-radius:999px;
+}
+.sh-royal-room .sh-segments button{
+  flex:1;min-width:0;border:0;background:transparent;border-radius:999px;
+  color:#cab4dc;font-weight:800;padding:11px 5px;font-size:14px;cursor:pointer;
+}
+.sh-royal-room .sh-segments button.on{
+  color:#fff;background:linear-gradient(95deg,#b922ef,#0bbce8);
+  box-shadow:inset 0 1px #fff6,0 3px 10px #05001988;
+}
+.sh-royal-room .sh-overview-cards,.sh-royal-room .sh-reward-cards{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0 18px;
+}
+.sh-royal-room .sh-overview-card,.sh-royal-room .sh-reward-cards>div{
+  display:flex;flex-direction:column;gap:6px;padding:15px 12px;
+  background:linear-gradient(155deg,#076eab,#173078);
+  border:1.2px solid #f6d888;border-radius:15px;min-width:0;
+}
+.sh-royal-room .sh-overview-card small,.sh-royal-room .sh-reward-cards small{
+  color:#ffebac;font-size:12px;line-height:1.25;
+}
+.sh-royal-room .sh-overview-card strong,.sh-royal-room .sh-reward-cards strong{
+  font-size:clamp(18px,6vw,25px);color:#ffecb6;white-space:normal;overflow-wrap:anywhere;
+}
+.sh-royal-room .sh-overview-card>span{color:#c1dbef;font-size:10px}
+.sh-royal-room .sh-wide-action{
+  width:100%;min-height:64px;display:flex;align-items:center;justify-content:space-between;
+  gap:10px;margin:10px 0;padding:14px 17px;
+  color:#fff1ce;font-size:19px;font-weight:900;
+  background:linear-gradient(115deg,#2d1784,#954ddc 70%,#271271);
+  border:1.5px solid #f1ce8f;border-radius:20px;
+  box-shadow:inset 0 1px #fff8,0 6px 18px #0006;cursor:pointer;text-align:left;
+}
+.sh-royal-room .sh-wide-action.alt{
+  background:linear-gradient(110deg,#17306d,#35105d);
+  min-height:49px;font-size:14px;
+}
+.sh-royal-room .sh-wide-action[hidden]{display:none!important}
+.sh-royal-room .sh-wide-action>span{font-size:24px;color:#ffe4a4}
+.sh-royal-room .sh-footnote{
+  font-size:11px;line-height:1.55;color:#cfbee2;padding:10px 2px 5px;
+}
+.sh-royal-room .sh-member-list{display:flex;flex-direction:column;gap:10px;max-height:58vh;overflow-y:auto}
+.sh-royal-room .sh-member-row{
+  width:100%;display:flex;align-items:center;text-align:left;gap:13px;
+  padding:11px 13px;border-radius:17px;cursor:pointer;
+  color:#fff2dc;background:#251d46;border:1px solid #725f9f;
+}
+.sh-royal-room .sh-member-row .sh-vip-avatar{width:48px;height:48px}
+.sh-royal-room .sh-member-info{display:flex;flex-direction:column;gap:5px;min-width:0}
+.sh-royal-room .sh-member-info>b{
+  font-size:15px;color:#fff4de;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sh-royal-room .sh-member-info>small{font-size:12px;color:#c8b6de}
+.sh-royal-room .sh-reward-cards>div{background:linear-gradient(140deg,#4b1194,#1d0b4b);min-height:112px}
+.sh-royal-room .sh-reward-week{
+  padding:15px;margin:4px 0 18px;background:linear-gradient(100deg,#47139b,#201052);
+  border:1px solid #b57eee;border-radius:17px;font-weight:800;
+}
+.sh-royal-room .sh-reward-week small{display:block;color:#c6bbe0;font-size:11px;margin-top:5px}
+.sh-royal-room .sh-tier-list{max-height:37vh;overflow-y:auto;border-radius:17px;border:1px solid #7453ae}
+.sh-royal-room .sh-tier{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:13px 12px;background:#17142fe8;border-bottom:1px solid #524071;
+}
+.sh-royal-room .sh-tier:last-child{border-bottom:0}
+.sh-royal-room .sh-tier>span{color:#e9ddf9;font-weight:700;white-space:pre}
+.sh-royal-room .sh-tier>strong{color:#ffdd8f;font-size:16px;text-align:right}
+.sh-royal-room .sh-rank-list{display:flex;flex-direction:column;gap:9px;max-height:48vh;overflow-y:auto}
+.sh-royal-room .sh-rank-row{
+  display:flex;align-items:center;gap:10px;padding:12px 11px;
+  border:1px solid #eacb88;border-radius:17px;
+  background:linear-gradient(105deg,#6c10d7,#2c0f86);min-width:0;
+}
+.sh-royal-room .sh-rank-medal{font-size:25px;width:35px;flex:none;text-align:center}
+.sh-royal-room .sh-rank-name{
+  min-width:0;flex:1;font-size:13px;font-weight:700;color:#fff2dc;
+  white-space:nowrap;text-overflow:ellipsis;overflow:hidden;
+}
+.sh-royal-room .sh-rank-row>b{font-size:12px;color:#ffeb9b;white-space:nowrap}
+@media(max-width:350px){
+  .sh-royal-room .sh-room-score{flex-basis:35%}
+  .sh-royal-room .sh-room-score>span:first-child{font-size:17px}
+  .sh-royal-room .sh-room-face-button{width:30px;height:30px}
+  .sh-royal-room .sh-room-face-count{width:30px;height:30px}
+  .sh-royal-room .sh-overview-card{padding:12px 8px}
+}
