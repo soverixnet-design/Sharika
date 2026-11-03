@@ -159,8 +159,12 @@ test('weekly opening reuses the first splash and never flashes a second design',
   assert.match(opening,/splash\.classList\.add\('sharika-opening-featured'\)/);
   assert.match(opening,/splash\.classList\.add\('off'\)/);
   assert.match(launch,/const openingTask=openingOnLaunch\(\)/);
+  // The optional opening starts before wallet/rooms, but those network
+  // requests must run in the background so the real home appears promptly.
   assert.ok(launch.indexOf('const openingTask=openingOnLaunch()')<
-    launch.indexOf('await Promise.allSettled([reloadWallet(), reloadRooms()])'));
+    launch.indexOf('Promise.allSettled([reloadWallet(), reloadRooms()])'));
+  assert.doesNotMatch(launch,/await Promise\.allSettled\(\[reloadWallet\(\), reloadRooms\(\)\]\)/);
+  assert.match(opening,/setTimeout\(\(\)=>resolve\(null\),4000\)/);
   assert.match(gradle,/class="royal-premium royal-root"/);
   assert.match(gradle,/sharika-winged-theme-style/);
   assert.match(gradle,/sharika-royal-premium-style/);
@@ -169,4 +173,16 @@ test('weekly opening reuses the first splash and never flashes a second design',
   assert.match(native,/FrameLayout opening = new FrameLayout\(this\)/);
   assert.match(native,/openingOverlay = opening/);
   assert.match(native,/showVerifiedWebView\(\)/);
+});
+
+test('verified Google session opens home without redundant Firebase reload or false logout',()=>{
+  const source=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const native=readFileSync(new URL('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
+  assert.match(native,/if \(signedIn\.isEmailVerified\(\)\) \{\s*sendResult\(id, result\(true, identity\(signedIn\), null\)\)/);
+  assert.match(native,/if \(user\.isEmailVerified\(\)\) \{\s*requestStagingToken/);
+  assert.match(source,/function showConnectionRecovery\(error\)/);
+  assert.match(source,/retry\.textContent='Retry connection'/);
+  assert.match(source,/if\(attempt!==authAttemptId\)return/);
+  assert.match(source,/Promise\.allSettled\(\[reloadWallet\(\), reloadRooms\(\)\]\)/);
+  assert.doesNotMatch(source,/await Promise\.allSettled\(\[reloadWallet\(\), reloadRooms\(\)\]\)/);
 });
