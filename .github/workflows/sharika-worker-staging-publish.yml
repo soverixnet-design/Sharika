@@ -12,6 +12,7 @@ on:
       - feature/sharika-weekly-opening-single-user-20261101
       - fix/sharika-live-voice-reliability-20261102
       - fix/sharika-voice-games-owner-prepublish-20261103
+      - feature/sharika-family-bd-crystal-ledger-20261103
     paths:
       - '.github/workflows/sharika-worker-staging-publish.yml'
       - 'cloudflare/src/sellers.mjs'
@@ -54,7 +55,7 @@ jobs:
         env:
           EXPECTED_REF: refs/heads/feature/sharika-lucky-gifts-20261030
         run: |
-          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-seller-self-recharge-wallet-ui-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-profile-save-recovery-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-shared-room-themes-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-cp-friendship-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-weekly-opening-single-user-20261101" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-live-voice-reliability-20261102" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-voice-games-owner-prepublish-20261103" ]; then
+          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-seller-self-recharge-wallet-ui-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-profile-save-recovery-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-shared-room-themes-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-cp-friendship-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-weekly-opening-single-user-20261101" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-live-voice-reliability-20261102" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-voice-games-owner-prepublish-20261103" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-family-bd-crystal-ledger-20261103" ]; then
             echo "::error::Refusing unexpected ref $GITHUB_REF"
             exit 1
           fi
@@ -120,6 +121,21 @@ jobs:
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0047_admin_profile_layouts.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS templates FROM sharika_profile_layouts"
+      # No migration is executed in this workflow: 0048 was applied and
+      # verified independently, with a D1 Time Travel recovery bookmark.
+      - name: Verify Family schema and preserve existing voice/game source
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          test "$(git hash-object src/voice-worker.mjs)" = 78ee1e9c17416945f8b3bca9863e7078f3615a5f
+          test "$(git hash-object src/sfu.mjs)" = 7aeb1b9339bdc97f6cdd91fcf08d975020309378
+          test "$(git hash-object src/voice-room.mjs)" = 3fb63373933be75d323152b998fe42bd8ceed6ac
+          test "$(git hash-object src/games.mjs)" = 0902ceded318e7ddd7575295557a0af83b884e43
+          test "$(git hash-object src/profile-layout.mjs)" = 55cb1785d2dfe2604c5ae1e88997728d0cde509c
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT key,active,owner_bps,bd_bps,conversion_enabled FROM sharika_family_policy WHERE key='standard'"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS ledger_rows FROM sharika_family_crystal_ledger"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS grants FROM sharika_family_grants"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS transfers FROM sharika_family_crystal_transfers"
+          echo 'SHARIKA_FAMILY_SCHEMA_AND_EXISTING_VOICE_GAME_SOURCE_VERIFIED'
       - name: Bundle and inspect without publishing
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
       - name: Deploy only the existing staging Worker
