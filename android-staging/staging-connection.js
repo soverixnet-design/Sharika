@@ -5406,7 +5406,7 @@
     const exchange=e.target.closest?.('#rcp [data-e]');
     if(exchange){
       const unit=Number(window.SHARIKA_EXCHANGE_FROM)||100;
-      const presets=[500,1000,5000,20000].map(n=>Math.max(unit,Math.ceil(n/unit)*unit));
+      const presets=[100,500,1000,5000].map(n=>Math.max(unit,Math.ceil(n/unit)*unit));
       selectedDiamonds=presets[Number(exchange.dataset.e)]||null;
     }
     const recharge=e.target.closest?.('#rcp [data-p]');
