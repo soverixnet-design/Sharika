@@ -4843,8 +4843,12 @@
         openProfile:member=>openVerifiedRoomMemberProfile(
           member.publicId,room.id,member.seatNo),
         loadRewards:()=>api('GET','/rooms/'+room.id+'/rewards'),
-        loadRankings:period=>api('GET','/rankings?period='+
-          encodeURIComponent(period)+'&kind=room')
+        loadRankings:period=>api('GET','/rooms/'+room.id+
+          '/contributors?period='+encodeURIComponent(period)).then(result=>({
+            ...result,leaders:(result.leaders||[]).map(item=>({
+              ...item,pic:verifiedAvatarUrl(item.pic)
+            }))
+          }))
       });
     }
     if(!snapshotChanged)return;
