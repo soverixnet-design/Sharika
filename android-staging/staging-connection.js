@@ -2544,13 +2544,18 @@
       '. Crystals are separate from spendable coins.</p>'+
       '<button type="button" id="sh-fam-ledger">View Ledger</button>';
     if(family){
-      const activity=data.activity||{};
-      html+='<div class="sh-fam-card"><h3>🎁 Family Gift Activity</h3>'+
-        '<p>Today: <strong>'+famEsc(activity.daily_gifts||0)+'</strong> · '+
-        'Week: <strong>'+famEsc(activity.weekly_gifts||0)+'</strong> · '+
-        'Month: <strong>'+famEsc(activity.monthly_gifts||0)+'</strong></p>'+
-        '<p class="sh-fam-note">Recorded gifts by current Family members since joining: '+
-        famEsc(activity.total_gifts||0)+'. Gift activity is separate from earned Owner/BD Crystals; self-gifts do not create self-commissions.</p></div>';
+      const activity=data.activity||{},progress=data.target_progress||{};
+      const fmtDiamonds=value=>Math.max(0,Number(value)||0).toLocaleString('en-US',{maximumFractionDigits:0});
+      html+='<div class="sh-fam-card" data-family-diamond-target="true">'+
+        '<h3>💎 Family Diamond Gift Target</h3>'+
+        '<div class="sh-fam-stat">'+fmtDiamonds(progress.month)+'</div>'+
+        '<p class="sh-fam-note">Diamonds contributed this month (UTC)</p>'+
+        '<p>Today: <strong>'+fmtDiamonds(progress.today)+'</strong> 💎 · '+
+        'Week: <strong>'+fmtDiamonds(progress.week)+'</strong> 💎</p>'+
+        '<p>All-time: <strong>'+fmtDiamonds(progress.lifetime)+'</strong> 💎 · '+
+        'Verified gifts: <strong>'+famEsc(activity.total_gifts||0)+'</strong></p>'+
+        '<p class="sh-fam-note">Regular gifts from all current Family members, including the Owner, count from the day they joined. Lucky gifts do not create these diamonds. Crystal commissions are separate.</p>'+
+        '<button type="button" id="sh-fam-refresh-target">↻ Refresh Gift Target</button></div>';
       html+='<div class="sh-fam-card"><h3>👑 '+famEsc(family.name)+' · Level '+
         famEsc(family.level)+'</h3><p>Family ID: '+famEsc(family.id)+
         ' · '+famEsc(family.member_count)+' members</p>'+
@@ -2612,6 +2617,11 @@
         '<button type="button" id="sh-fam-transfer">Request Transfer</button></div>';
     }
     target.innerHTML=html;
+    target.querySelector('#sh-fam-refresh-target')?.addEventListener('click',async event=>{
+      const button=event.currentTarget;
+      button.disabled=true;
+      await reloadRoyalFamily();
+    });
     const invoke=async(method,url,body,confirmText)=>{
       if(confirmText&&!window.confirm(confirmText))return;
       familyNotice('Saving…');

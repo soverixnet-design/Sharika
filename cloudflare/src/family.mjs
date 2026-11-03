@@ -86,17 +86,36 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail}){
       "WHERE i.recipient_uid=? AND i.state='pending' AND i.expires_at>datetime('now') "+
       "AND f.status='active' ORDER BY i.id DESC LIMIT 30"
     ).bind(uid).all());
+    // Family target tracks diamonds actually created by ordinary gift events,
+    // including gifts sent by the owner. Commission eligibility is separate.
+    // Derive from immutable events, so previous verified gifts are visible too.
     const activity=family?await db.prepare(
       "SELECT COUNT(*) AS total_gifts,COALESCE(SUM(e.quantity*e.price_coins),0) AS total_coins,"+
       "SUM(CASE WHEN e.created_at>=datetime('now','start of day') THEN 1 ELSE 0 END) AS daily_gifts,"+
       "SUM(CASE WHEN e.created_at>=datetime('now','weekday 0','-6 days','start of day') THEN 1 ELSE 0 END) AS weekly_gifts,"+
-      "SUM(CASE WHEN e.created_at>=datetime('now','start of month') THEN 1 ELSE 0 END) AS monthly_gifts "+
+      "SUM(CASE WHEN e.created_at>=datetime('now','start of month') THEN 1 ELSE 0 END) AS monthly_gifts,"+
+      "COALESCE(SUM(CASE WHEN g.tab IN (0,1) THEN e.quantity*e.price_coins ELSE 0 END),0) AS total_diamonds,"+
+      "COALESCE(SUM(CASE WHEN g.tab IN (0,1) AND e.created_at>=datetime('now','start of day') "+
+      "THEN e.quantity*e.price_coins ELSE 0 END),0) AS daily_diamonds,"+
+      "COALESCE(SUM(CASE WHEN g.tab IN (0,1) AND "+
+      "e.created_at>=datetime('now','weekday 0','-6 days','start of day') "+
+      "THEN e.quantity*e.price_coins ELSE 0 END),0) AS weekly_diamonds,"+
+      "COALESCE(SUM(CASE WHEN g.tab IN (0,1) AND e.created_at>=datetime('now','start of month') "+
+      "THEN e.quantity*e.price_coins ELSE 0 END),0) AS monthly_diamonds "+
       "FROM sharika_gift_events e "+
       "JOIN sharika_family_members fm ON fm.user_uid=e.sender_uid "+
+      "JOIN sharika_gifts g ON g.id=e.gift_id "+
       "WHERE fm.family_id=? AND e.created_at>=fm.joined_at"
     ).bind(family.id).first():null;
     return reply({activity:activity||{total_gifts:0,total_coins:0,
       daily_gifts:0,weekly_gifts:0,monthly_gifts:0},
+      target_progress:{
+        unit:'diamonds',today:Number(activity?.daily_diamonds)||0,
+        week:Number(activity?.weekly_diamonds)||0,
+        month:Number(activity?.monthly_diamonds)||0,
+        lifetime:Number(activity?.total_diamonds)||0,
+        source:'settled_regular_gifts_after_family_join'
+      },
       invitations:incoming.map(i=>({...i,inviter_id:showId(i.inviter_no),
       inviter_no:undefined})),family:family?{
       id:family.id,name:family.name,level:family.level,status:family.status,role:family.role,
