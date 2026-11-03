@@ -5411,6 +5411,33 @@
       iframe.onload=()=>{
         const games=iframe.contentWindow?.document?.getElementById('bGame');
         if(games)games.onclick=()=>showGameCard(document,true,toast);
+        // The event shortcut stays just above the microphone/chat dock.
+        // It opens the already verified event sheet, not a local demo.
+        const inside=iframe.contentWindow?.document;
+        const dock=inside?.querySelector('.dock');
+        if(dock&&!inside.getElementById('sharika-room-events')){
+          const button=inside.createElement('button');
+          button.id='sharika-room-events';
+          button.type='button';
+          button.setAttribute('aria-label','Open Sharika events');
+          button.textContent='🎉 Events';
+          button.style.cssText='position:absolute;right:13px;bottom:calc(100% + 9px);'+
+            'z-index:30;border:1.5px solid #ffdf80;border-radius:18px;padding:7px 11px;'+
+            'min-height:37px;background:linear-gradient(145deg,#6c318d,#271043);'+
+            'color:#fff1ba;font-size:12px;font-weight:900;letter-spacing:.2px;'+
+            'box-shadow:inset 0 2px 2px #fff7,inset 0 -3px 5px #130423,0 5px 0 #916323,0 8px 16px #11051c99';
+          button.onclick=event=>{
+            event.preventDefault();event.stopPropagation();
+            if(typeof window.showVerifiedEvents==='function')window.showVerifiedEvents();
+            else toast('Events are loading. Please retry.');
+          };
+          dock.appendChild(button);
+          api('GET','/events').then(result=>{
+            if(!button.isConnected)return;
+            const count=(result.events||[]).filter(e=>e.status==='live').length;
+            if(count){button.textContent='🎉 Live Event · '+count;button.style.borderColor='#ffcd4f';}
+          }).catch(()=>{});
+        }
         attachFrame(room).catch(error=>toast(errText(error)));
       };
       originalOpenRoom(room);
@@ -8075,6 +8102,7 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
+    let visibleGameCards=originalGameCards;
     function catalog(){
       overlay.classList.remove('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div><h3>🎮 Original Games</h3>'+
@@ -8083,7 +8111,8 @@
         '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
         'Original graphics · live virtual-coin server rounds</p>';
       const grid=sheet.querySelector('#sh-original-grid');
-      originalGameCards.forEach(item=>{
+      if(!visibleGameCards.length)grid.textContent='No games are enabled at the moment.';
+      visibleGameCards.forEach(item=>{
         const card=doc.createElement('button');
         card.type='button';
         card.setAttribute('aria-label','View '+item.name);
@@ -8336,8 +8365,16 @@
       currentGameFrame=null;
       overlay.classList.remove('sh-original-fullscreen');
     };
-    catalog();
     overlay.classList.add('on');
+    sheet.innerHTML='<div class="grab"></div><p style="padding:20px;text-align:center">Loading available games…</p>';
+    api('GET','/game-catalog').then(result=>{
+      if(!overlay.classList.contains('on')||!sheet.isConnected)return;
+      const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
+      visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));
+      catalog();
+    }).catch(error=>{
+      if(sheet.isConnected)sheet.textContent='Games are temporarily unavailable: '+errText(error);
+    });
   }
   const gamesShortcut=document.getElementById('qg');
   if(gamesShortcut)gamesShortcut.onclick=()=>showGameCard(document,false,toast);

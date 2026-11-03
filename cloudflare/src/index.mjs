@@ -9,6 +9,7 @@ import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
 import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
+import {readGameCatalog,gameAcceptsBets} from './game-catalog.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import {readInviteRules} from './invite-rules.mjs';
 import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
@@ -253,6 +254,10 @@ export async function handleRequest(request, env, ctx) {
       });
       if(result)return result;
       return fail('cosmetic_route_not_found',404,cors);
+    }
+    if(path==='/api/v1/game-catalog'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      return reply({games:await readGameCatalog(env.DB)},200,cors);
     }
     if(path==='/api/v1/events') return await handleEventApp({
       request,env,uid,path,cors,reply,fail
@@ -674,16 +679,22 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB,uid);
       if(parts.length===3&&request.method==='GET')
         return reply({games:['sovera-food','night-food','jackpot-fruit'],virtual_coins_only:true},200,cors);
-      if(parts.length===5)
+      if(parts.length===5){
+        if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
+          return fail('game_disabled',403,cors);
         return await handleOriginalGameRequest({request,db:env.DB,uid,game:parts[3],
           action:parts[4],reply,fail,cors});
+      }
       return fail('original_game_route_not_found',404,cors);
     }
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='greedy-wheel'){
       await assertActive(env.DB,uid);
-      if(parts.length===4)
+      if(parts.length===4){
+        if(parts[3]==='bet'&&!(await gameAcceptsBets(env.DB,'greedy-wheel')))
+          return fail('game_disabled',403,cors);
         return await handleGreedyRequest({request,db:env.DB,uid,
           action:parts[3],reply,fail,cors});
+      }
       return fail('greedy_route_not_found',404,cors);
     }
     // Authenticated UTC-synchronized virtual-coin games. The D1 migration
@@ -693,9 +704,12 @@ export async function handleRequest(request, env, ctx) {
       if(parts.length===3&&request.method==='GET')
         return reply({games:['food-wheel','jackpot-fruit'],round_ms:40000,
           virtual_coins_only:true},200,cors);
-      if(parts.length===5)
+      if(parts.length===5){
+        if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
+          return fail('game_disabled',403,cors);
         return await handleGameRequest({request,db:env.DB,uid,game:parts[3],
           action:parts[4],reply,fail,cors});
+      }
       return fail('game_route_not_found',404,cors);
     }
     if (path === '/api/v1/rankings' && request.method === 'GET') {
