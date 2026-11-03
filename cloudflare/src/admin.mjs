@@ -16,6 +16,7 @@ import { handleAdminExchangeRate } from './exchange-rate.mjs';
 import { handleCosmeticAdmin,publicAppearanceSelect } from './cosmetics.mjs';
 import { handleOpeningAdmin } from './opening.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
+import { handleFamilyAdmin } from './family.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
 import { handleNotificationAdmin } from './notifications.mjs';
 import { handleOperationalRead } from './admin-operations.mjs';
@@ -141,6 +142,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   }
 
   if(operation==='notifications')return await handleNotificationAdmin({request,env,uid,actor,operation,cors,reply,fail});
+  if(operation==='family'||operation.startsWith('family/'))return await handleFamilyAdmin({
+    request,env,uid,actor,operation,cors,reply,fail
+  });
   const operational=await handleOperationalRead({request,env,actor,operation,cors,reply,fail});
   if(operational)return operational;
   if(operation.startsWith('special-ids'))
