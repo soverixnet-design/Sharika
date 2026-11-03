@@ -118,6 +118,7 @@
       const id = String(++seq);
       const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
         action === 'googleSignIn' ? 70000 :
+        action === 'pushToken' && payload?.promptPermission ? 60000 :
         action === 'api' && payload?.method === 'PUT' &&
           (payload?.path === '/api/v1/me/avatar' ||
            /^\/api\/v1\/rooms\/[0-9]{8}\/cover$/.test(payload?.path || ''))
@@ -3270,6 +3271,7 @@
     const attempt=++authAttemptId;
     let account=null;
     const button=document.getElementById('wg');
+    document.getElementById('sh-google-login-error')?.remove();
     if(button)button.disabled=true;
     try {
       toast('Opening Google account picker…');
@@ -3283,7 +3285,19 @@
     } catch (error) {
       if(attempt!==authAttemptId)return;
       if(account?.signedIn && account.emailVerified)showConnectionRecovery(error);
-      else toast(googleLoginError(error));
+      else {
+        const message=googleLoginError(error);
+        toast(message);
+        const googleButton=document.getElementById('wg');
+        if(googleButton){
+          const note=document.createElement('p');
+          note.id='sh-google-login-error';
+          note.setAttribute('role','alert');
+          note.style.cssText='margin:10px 5px;color:#ffe3aa;font-size:13px;line-height:1.4;text-align:center;overflow-wrap:anywhere';
+          note.textContent='Google login: '+message;
+          googleButton.insertAdjacentElement('afterend',note);
+        }
+      }
     } finally{
       googleLoginBusy=false;
       const currentButton=document.getElementById('wg');
@@ -8457,10 +8471,16 @@
       '</div><div class="sh-notify-head">'+
       '<span id="sh-notify-unread"></span>'+
       '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
+      '</div><div style="margin:8px 0 14px">'+
+      '<button class="sh-notify-action" id="sh-notify-enable" type="button">🔔 Enable phone alerts</button>'+
       '</div><div class="sh-notify-list" id="sh-notify-list"></div>';
     document.getElementById('app').appendChild(notificationPanel);
     notificationPanel.querySelector('#sh-notify-back').onclick=()=>{
       notificationPanel.classList.remove('on');
+    };
+    notificationPanel.querySelector('#sh-notify-enable').onclick=async()=>{
+      const enabled=await registerPushDevice(true);
+      toast(enabled ? 'Phone alerts enabled' : 'Phone alerts not enabled. You can still use Sharika.');
     };
     notificationPanel.querySelector('#sh-notify-readall').onclick=async()=>{
       if(!session)return;
@@ -8536,12 +8556,20 @@
     refreshNotifications(false);
     refreshMessagesBadge();
   },30000);
-  async function registerPushDevice(){
-    if(!session)return;
+  async function registerPushDevice(promptPermission=false){
+    if(!session)return false;
     try{
-      const result=await native('pushToken');
-      if(result?.token)await api('POST','/notifications/devices',{token:result.token});
-    }catch(error){console.info('Push registration unavailable',errText(error));}
+      // Startup asks only for an existing grant; the Android dialog opens
+      // solely when a member taps Enable phone alerts in Notifications.
+      const result=await native('pushToken',{promptPermission});
+      if(!result?.token)return false;
+      await api('POST','/notifications/devices',{token:result.token});
+      return true;
+    }catch(error){
+      if(errText(error)!=='notification_permission_required')
+        console.info('Push registration unavailable',errText(error));
+      return false;
+    }
   }
 
   const originalLogout=window.logout;
