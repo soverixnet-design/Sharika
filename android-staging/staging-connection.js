@@ -4809,6 +4809,44 @@
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
+    // Server-verified members, owner and room rewards drive the premium
+    // header. The iframe is the visual layer; all authoritative state stays
+    // with this authenticated D1/LiveKit adapter.
+    if(typeof frame.SharikaRoomPremium?.sync==='function'){
+      const liveMembers=(data.members||[])
+        .filter(m=>m.user_id&&m.sharika_users?.public_id)
+        .sort((a,b)=>{
+          if(a.user_id===room.owner_id)return -1;
+          if(b.user_id===room.owner_id)return 1;
+          const sa=Number.isInteger(a.seat_no)?a.seat_no:999;
+          const sb=Number.isInteger(b.seat_no)?b.seat_no:999;
+          return sa-sb;
+        })
+        .map(m=>({
+          name:String(m.sharika_users.name||'Member'),
+          pic:verifiedAvatarUrl(m.sharika_users.pic),
+          publicId:String(m.sharika_users.public_id),
+          displayId:String(m.sharika_users.special_id||
+            m.sharika_users.display_id||m.sharika_users.public_id),
+          seatNo:Number.isInteger(m.seat_no)?m.seat_no:null,
+          role:String(m.role||'member')
+        }));
+      frame.SharikaRoomPremium.sync({
+        roomId:room.id,isOwner:room.owner_id===session?.user?.id,
+        owner:{
+          name:String(owner.name||'Room Owner'),
+          pic:verifiedAvatarUrl(owner.pic),
+          displayId:String(owner.special_id||owner.display_id||
+            owner.public_id||room.id)
+        },
+        members:liveMembers,
+        openProfile:member=>openVerifiedRoomMemberProfile(
+          member.publicId,room.id,member.seatNo),
+        loadRewards:()=>api('GET','/rooms/'+room.id+'/rewards'),
+        loadRankings:period=>api('GET','/rankings?period='+
+          encodeURIComponent(period)+'&kind=room')
+      });
+    }
     if(!snapshotChanged)return;
     frame.__sharikaRoomRenderSignature=renderSignature;
     frame.render();
