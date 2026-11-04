@@ -220,3 +220,4 @@ jobs:
       - name: Publish separate staging admin Worker
         if: github.ref != 'refs/heads/fix/sharika-live-voice-reliability-20261102'
         run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
+# Royal Family member reports: verified staging check and deploy trigger (2026-11-04).
