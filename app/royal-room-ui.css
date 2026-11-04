@@ -497,3 +497,49 @@
   width:38px;height:38px;border-color:#ffd98b;
 }
 .sh-royal-room .sh-reward-week small>b{color:#ffedbd;font-size:14px}
+
+
+/* Compact verified room header and room-only notice, Nov 2026 staging. */
+.sh-royal-room .top{
+  padding-top:clamp(14px,2.4vh,22px);
+  padding-bottom:4px;
+}
+.sh-royal-room .top .room{min-height:44px;max-height:48px;border-radius:21px}
+.sh-royal-room .top>.ib{height:34px}
+.sh-royal-room .sh-room-masthead{
+  min-height:35px;height:37px;justify-content:flex-end;
+  padding:1px 12px 2px;
+}
+.sh-royal-room .sh-room-score{display:none!important}
+.sh-royal-room .sh-room-faces{justify-content:flex-end;gap:2px}
+.sh-royal-room .sh-room-face-button,
+.sh-royal-room .sh-room-face-count{width:34px;height:34px}
+.sh-royal-room #sh-room-rank-pill,
+.sh-royal-room #rrpill{border-color:#ecc06c;cursor:pointer;touch-action:manipulation}
+.sh-royal-room #sh-room-rank-pill:focus-visible,
+.sh-royal-room #rrpill:focus-visible{outline:2px solid #ffda85;outline-offset:3px}
+.sh-royal-room .sh-room-announcement{
+  display:flex;align-items:center;gap:7px;
+  margin:2px 12px 3px;padding:6px 10px;min-height:28px;
+  flex:none;border:1px solid #d8b264;border-radius:11px;
+  background:linear-gradient(100deg,#2a104bdc,#4a195fd1);
+  box-shadow:inset 0 1px #fff2c655,0 3px 8px #1508217d;
+  color:#fff0cf;font-size:11px;line-height:1.3;
+}
+.sh-royal-room .sh-room-announcement[hidden]{display:none!important}
+.sh-royal-room .sh-room-announcement span:last-child{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.sh-royal-room .sh-verified-room-join{
+  align-self:center;max-width:96%;padding:5px 11px;
+  border:1px solid #dfb975a6;border-radius:999px;
+  background:#38194be8;color:#ffe3a2;
+  font:600 11px/1.3 system-ui,sans-serif;text-align:center;
+  overflow-wrap:anywhere;
+}
+@media(max-width:350px){
+  .sh-royal-room .top{padding-top:13px}
+  .sh-royal-room .sh-room-masthead{height:34px;min-height:34px}
+  .sh-royal-room .sh-room-face-button,
+  .sh-royal-room .sh-room-face-count{width:29px;height:29px}
+}

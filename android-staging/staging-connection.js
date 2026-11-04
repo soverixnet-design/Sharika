@@ -4843,6 +4843,8 @@
         openProfile:member=>openVerifiedRoomMemberProfile(
           member.publicId,room.id,member.seatNo),
         loadRewards:()=>api('GET','/rooms/'+room.id+'/rewards'),
+        loadAnnouncement:()=>api('GET','/rooms/'+room.id+'/announcement'),
+        saveAnnouncement:text=>api('PUT','/rooms/'+room.id+'/announcement',{text}),
         loadRankings:period=>api('GET','/rooms/'+room.id+
           '/contributors?period='+encodeURIComponent(period)).then(result=>({
             ...result,leaders:(result.leaders||[]).map(item=>({
@@ -6579,6 +6581,20 @@
           if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
           lastEntryEventId=id;
           if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          // Arrival comes from the room coordinator and verified Firebase identity.
+          // Show the name in the existing chat feed, not a fabricated local user.
+          const verifiedName=String(event.name||'Member').trim().slice(0,80);
+          const chat=frame.document.getElementById('chat');
+          if(chat&&verifiedName){
+            const entry=frame.document.createElement('div');
+            entry.className='sh-verified-room-join';
+            entry.textContent='👋 '+verifiedName+' joined the room';
+            entry.setAttribute('role','status');
+            chat.appendChild(entry);
+            const notices=chat.querySelectorAll('.sh-verified-room-join');
+            if(notices.length>20)notices[0].remove();
+            chat.scrollTop=chat.scrollHeight;
+          }
           const levelMatch=/^svip-entry-0([1-8])$/.exec(String(event.entry_style||''));
           if(levelMatch){
             playSvipRoomEntry(frame.document,Number(levelMatch[1]),event.name);
@@ -9415,10 +9431,11 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
-    let visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale');
+    const requestedOriginalGames=new Set(['sovera-food','night-food','greedy-wheel']);
+    let visibleGameCards=originalGameCards.filter(game=>requestedOriginalGames.has(game.id));
     function catalog(){
       overlay.classList.remove('sh-original-fullscreen');
-      sheet.innerHTML='<div class="grab"></div><h3>👑 Sharika Fruit Royale</h3>'+
+      sheet.innerHTML='<div class="grab"></div><h3>🎡 Original Food Wheel Games</h3>'+
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
         '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
@@ -9688,7 +9705,7 @@
     api('GET','/game-catalog').then(result=>{
       if(!overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale'&&enabled.has(game.id));
+      visibleGameCards=originalGameCards.filter(game=>requestedOriginalGames.has(game.id)&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(sheet.isConnected)sheet.textContent='Games are temporarily unavailable: '+errText(error);

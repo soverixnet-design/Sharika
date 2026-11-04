@@ -201,6 +201,7 @@
   menuItem('⚙️ Settings', () => window.settings?.());
   menuItem('👑 Owner tools', () => byId('bOwn')?.click());
   menuItem('🖼️ Photo', () => photo?.click());
+  menuItem('📣 Announcement', () => editAnnouncement());
 
   // Photo remains reachable from the menu with its original permissions.
   if (photo) {
@@ -217,7 +218,9 @@
 
   // Real-time top strip and server-backed room detail panels.
   // No mocked members, coin claims or duplicate wallet transfers.
-  const premiumState={room:null,rewards:null,rewardsAt:0,rewardPromise:null};
+  const premiumState={room:null,rewards:null,rewardsAt:0,rewardPromise:null,
+    announcement:null,announcementAt:0,announcementPromise:null,
+    rankAt:0,rankPromise:null};
   const fmtCoins=value=>{
     const n=Number(value);
     if(!Number.isFinite(n)||n<0)return '0';
@@ -336,7 +339,7 @@
       '<small>Weekly room contribution (UTC): <b id="sh-week-contribution">Loading…</b></small></div>'+
       '<h3>Contribution → owner reward</h3>'+
       '<div id="sh-reward-tiers" class="sh-tier-list"></div>'+
-      '<p class="sh-footnote">Illustrative amounts at the active ordinary-gift rate. The owner wallet is credited automatically; these are not additional claimable event prizes.</p></div>');
+      '<p class="sh-footnote">The existing 10% room share is credited to the owner as eligible gifts settle. This is not a second weekly payout. A separate weekly member reward still needs an approved payout rule.</p></div>');
     const total=document.getElementById('sh-reward-total');
     const paid=document.getElementById('sh-reward-paid');
     try{
@@ -419,6 +422,92 @@
       if(list.isConnected)list.textContent='Ranking unavailable: '+String(error?.message||error);
     }
   }
+  function displayAnnouncement(text){
+    let strip=document.getElementById('sh-room-announcement');
+    if(!strip){
+      const stats=app.querySelector('.stats');
+      if(!stats)return;
+      strip=document.createElement('div');
+      strip.id='sh-room-announcement';
+      strip.className='sh-room-announcement';
+      strip.setAttribute('role','note');
+      stats.after(strip);
+    }
+    const value=String(text||'').trim().slice(0,280);
+    strip.hidden=!value;
+    strip.replaceChildren();
+    if(value){
+      const pin=document.createElement('span');
+      pin.textContent='📣';
+      const label=document.createElement('span');
+      label.textContent='Announcement · '+value;
+      strip.append(pin,label);
+    }
+  }
+  async function loadAnnouncement(force=false){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    if(!force&&premiumState.announcement!==null&&
+       Date.now()-premiumState.announcementAt<60000){
+      displayAnnouncement(premiumState.announcement);return;
+    }
+    if(premiumState.announcementPromise)return premiumState.announcementPromise;
+    const roomId=v.roomId;
+    premiumState.announcementPromise=Promise.resolve(v.loadAnnouncement()).then(result=>{
+      if(premiumState.room?.roomId!==roomId)return;
+      premiumState.announcement=String(result?.text||'');
+      premiumState.announcementAt=Date.now();
+      displayAnnouncement(premiumState.announcement);
+    }).finally(()=>{premiumState.announcementPromise=null;});
+    return premiumState.announcementPromise;
+  }
+  async function editAnnouncement(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    if(!v.isOwner){window.toast?.('Only the room owner can edit announcements');return;}
+    await loadAnnouncement().catch(()=>{});
+    window.open('<div class="sh-premium-sheet"><h3>📣 Room Announcement</h3>'+
+      '<p class="sh-footnote">Shown to every room member, including new arrivals.</p>'+
+      '<textarea id="sh-room-notice-input" maxlength="280" rows="4" '+
+      'placeholder="Write your room announcement…" '+
+      'style="width:100%;padding:12px;border:1px solid #e9b965;'+
+      'border-radius:14px;background:#1b0a32;color:#ffedc8"></textarea>'+
+      '<button class="sh-wide-action" id="sh-room-notice-save">Save announcement</button>'+
+      '<p id="sh-room-notice-status" class="sh-footnote"></p></div>');
+    const input=document.getElementById('sh-room-notice-input');
+    const save=document.getElementById('sh-room-notice-save');
+    if(!input||!save)return;
+    input.value=premiumState.announcement||'';
+    save.onclick=async()=>{
+      save.disabled=true;
+      const status=document.getElementById('sh-room-notice-status');
+      try{
+        const result=await v.saveAnnouncement(input.value);
+        if(premiumState.room?.roomId!==v.roomId)return;
+        premiumState.announcement=String(result?.text||'');
+        premiumState.announcementAt=Date.now();
+        displayAnnouncement(premiumState.announcement);
+        if(status?.isConnected)status.textContent='Saved for everyone in this room ✓';
+      }catch(error){
+        if(status?.isConnected)status.textContent='Save failed: '+String(error?.message||error);
+      }finally{save.disabled=false;}
+    };
+  }
+  async function refreshSmallRanking(force=false){
+    const v=premiumState.room;
+    const chip=document.getElementById('sh-room-rank-pill');
+    if(!v||!chip||!canShow())return;
+    if(!force&&Date.now()-premiumState.rankAt<60000)return;
+    if(premiumState.rankPromise)return premiumState.rankPromise;
+    const roomId=v.roomId;
+    premiumState.rankPromise=Promise.resolve(v.loadRankings('daily')).then(result=>{
+      if(premiumState.room?.roomId!==roomId||!chip.isConnected)return;
+      chip.textContent='🏆 '+fmtCoins(result?.total_contribution_coins||0)+' ›';
+      premiumState.rankAt=Date.now();
+    }).catch(()=>{if(chip.isConnected)chip.textContent='🏆 Ranking ›';})
+      .finally(()=>{premiumState.rankPromise=null;});
+    return premiumState.rankPromise;
+  }
   function renderPremiumHeader(){
     const v=premiumState.room;
     if(!v||!canShow())return;
@@ -428,15 +517,10 @@
     if(!bar){
       bar=document.createElement('div');
       bar.id='sh-room-masthead';bar.className='sh-room-masthead';
-      const score=document.createElement('button');
-      score.id='sh-room-score';score.type='button';score.className='sh-room-score';
-      score.innerHTML='<span>🏆</span><span class="sh-score-text"><small>Room Value</small>'+
-        '<b id="sh-room-value-total">—</b></span><span>›</span>';
       const people=document.createElement('div');
       people.id='sh-room-faces';people.className='sh-room-faces';
-      bar.append(score,people);
+      bar.append(people);
       top.after(bar);
-      score.onclick=()=>showRankings('daily');
     }
     const faces=document.getElementById('sh-room-faces');
     faces.replaceChildren();
@@ -455,16 +539,35 @@
     count.onclick=showMembers;faces.appendChild(count);
     const old=document.getElementById('ustat');
     if(old){old.textContent='👥 '+v.members.length+' ›';old.onclick=showMembers;}
-    const score=document.getElementById('sh-room-value-total');
-    if(score&&premiumState.rewards)score.textContent=fmtCoins(
-      Number(premiumState.rewards.regular_reward_hundredths||0)/
-        Math.max(1,Number(premiumState.rewards.regular_gift_percent||10)));
-    if(!premiumState.rewards)rewardInfo().catch(()=>{if(score?.isConnected)score.textContent='—';});
+    const stats=app.querySelector('.stats');
+    const smallRank=stats?.querySelector('.pill:not([id])');
+    if(smallRank){
+      smallRank.id='sh-room-rank-pill';
+      smallRank.style.cursor='pointer';
+      smallRank.setAttribute('role','button');
+      smallRank.tabIndex=0;
+      smallRank.setAttribute('aria-label','Show verified room contribution ranking');
+      smallRank.onclick=()=>showRankings('daily');
+      smallRank.onkeydown=event=>{
+        if(event.key==='Enter'||event.key===' '){event.preventDefault();showRankings('daily');}
+      };
+    }
+    const rewardChip=byId('rrpill');
+    if(rewardChip){
+      rewardChip.style.setProperty('display','inline-flex','important');
+      rewardChip.style.cursor='pointer';
+      rewardChip.textContent='💰 Reward ›';
+      rewardChip.onclick=showRewards;
+    }
+    refreshSmallRanking().catch(()=>{});
+    loadAnnouncement().catch(()=>{});
   }
   window.SharikaRoomPremium={
     sync(view){
       if(premiumState.room?.roomId!==view.roomId){
         premiumState.rewards=null;premiumState.rewardsAt=0;
+        premiumState.announcement=null;premiumState.announcementAt=0;
+        premiumState.rankAt=0;
       }
       premiumState.room=view;
       renderPremiumHeader();

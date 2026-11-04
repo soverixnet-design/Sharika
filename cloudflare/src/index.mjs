@@ -1055,6 +1055,30 @@ export async function handleRequest(request, env, ctx) {
           result.error==='invite_not_found'?404:409,cors);
         return reply(result,200,cors);
       }
+      // Persistent, owner-editable room announcement. Every newly joined member
+      // reads the same text from D1; it never modifies chat or wallet balances.
+      if(parts.length===5 && action==='announcement'){
+        if(!member)return fail('join_room_first',403,cors);
+        if(request.method==='GET'){
+          const row=await env.DB.prepare(
+            'SELECT body,updated_at FROM sharika_room_announcements WHERE room_id=?'
+          ).bind(roomId).first();
+          return reply({room_id:roomId,text:row?.body||'',updated_at:row?.updated_at||null},200,cors);
+        }
+        if(request.method==='PUT'){
+          if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+          const body=await readBody(request);
+          if(typeof body.text!=='string'||body.text.length>280)
+            return fail('invalid_room_announcement',400,cors);
+          const value=body.text.trim();
+          await env.DB.prepare(
+            "INSERT INTO sharika_room_announcements(room_id,body,updated_by,updated_at) VALUES(?,?,?,datetime('now')) "+
+            "ON CONFLICT(room_id) DO UPDATE SET body=excluded.body,updated_by=excluded.updated_by,updated_at=excluded.updated_at"
+          ).bind(roomId,value,uid).run();
+          return reply({room_id:roomId,text:value,saved:true},200,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       // Text chat is real-time room data, not a browser-only fake conversation.
       // Only verified members may read or send, and the Worker supplies identity.
       if (parts.length === 5 && action === 'chat') {
@@ -1136,7 +1160,8 @@ export async function handleRequest(request, env, ctx) {
             ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
               ?'svip-entry-'+String(svipLevel).padStart(2,'0')
               :(entrant.entry_style||'');
-          if(entry)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          // Record every verified join, including users without a paid entry effect.
+          await env.VOICE_ROOMS.getByName('sharika:'+roomId)
             .roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry);
         }
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
