@@ -1,0 +1,150 @@
+name: Sharika approved room and Lucky Box staging rollout
+
+on:
+  push:
+    branches:
+      - feature/sharika-room-free-lucky-box-20261104
+    paths:
+      - '.github/workflows/sharika-room-lucky-box-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  approved-room-rollout:
+    name: Validate, migrate additive D1, and deploy isolated staging
+    if: github.ref == 'refs/heads/feature/sharika-room-free-lucky-box-20261104'
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse all non-staging resources
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const api=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const admin=JSON.parse(readFileSync('wrangler.admin.jsonc','utf8'));
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-room-free-lucky-box-20261104' ||
+             !process.env.CLOUDFLARE_API_TOKEN ||
+             api.name!=='sharika-api-staging' ||
+             api.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74' ||
+             api.vars?.SHARIKA_ENV!=='staging' ||
+             api.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false' ||
+             api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             api.keep_vars!==true ||
+             api.d1_databases?.length!==1 ||
+             api.d1_databases[0].binding!=='DB' ||
+             api.d1_databases[0].database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a' ||
+             api.durable_objects?.bindings?.[0]?.name!=='VOICE_ROOMS' ||
+             !api.secrets?.required?.includes('REALTIME_SFU_APP_SECRET') ||
+             admin.name!=='sharika-admin-staging' ||
+             admin.services?.[0]?.service!=='sharika-api-staging')
+            throw Error('Unsafe Cloudflare target or missing voice bindings');
+          console.log('Isolated staging API, D1 and admin resources verified');
+          NODE
+      - name: Run all Worker and additive SQLite tests
+        run: npm run check
+      - name: Record a recoverable D1 bookmark and existing wallet counts
+        run: |
+          node --input-type=module - <<'NODE'
+          const base='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a';
+          const headers={Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,'Content-Type':'application/json'};
+          async function cf(path,body){
+            const r=await fetch(base+path,{method:body?'POST':'GET',headers,
+              ...(body?{body:JSON.stringify(body)}:{})});
+            const x=await r.json();
+            if(!r.ok||!x.success)throw Error('D1 preflight failed: '+path+' '+JSON.stringify(x.errors));
+            return x.result;
+          }
+          const mark=await cf('/time_travel/bookmark');
+          const counts=await cf('/query',{sql:"SELECT (SELECT COUNT(*) FROM sharika_users) AS users,"+
+            "(SELECT COUNT(*) FROM sharika_gift_transactions) AS gifts,"+
+            "(SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger,"+
+            "(SELECT COALESCE(SUM(coins),0) FROM sharika_users) AS coins"});
+          console.log('PRE_MIGRATION_D1_BOOKMARK',mark.bookmark);
+          console.log('PRE_MIGRATION_COUNTS',JSON.stringify(counts?.[0]?.results?.[0]));
+          NODE
+      - name: Apply only 0056 and 0057 if missing, never the historical migration backlog
+        run: |
+          node --input-type=module - <<'NODE'
+          import {execFileSync} from 'node:child_process';
+          const base='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const headers={Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,'Content-Type':'application/json'};
+          async function query(sql){
+            const r=await fetch(base,{method:'POST',headers,body:JSON.stringify({sql})});
+            const x=await r.json();
+            if(!r.ok||!x.success)throw Error('D1 query failed: '+JSON.stringify(x.errors));
+            return x.result?.[0]?.results||[];
+          }
+          const has=async name=>Number((await query(
+            "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='"+name+"'"
+          ))[0]?.n)===1;
+          const cols=await query('PRAGMA table_info(sharika_rooms)');
+          const announce=cols.some(c=>c.name==='announcement');
+          const lucky=['sharika_lucky_box_settings','sharika_lucky_box_pool',
+            'sharika_lucky_box_state','sharika_lucky_box_claims'];
+          const luckyPresent=await Promise.all(lucky.map(has));
+          if(luckyPresent.some(Boolean) && (!luckyPresent.every(Boolean)||!announce))
+            throw Error('Partial 0056 schema: manual review required');
+          if(!luckyPresent.some(Boolean)&&announce)
+            throw Error('Unexpected announcement column without 0056: manual review required');
+          const week=['sharika_room_weekly_accruals','sharika_room_weekly_payouts'];
+          const weekPresent=await Promise.all(week.map(has));
+          if(weekPresent.some(Boolean) && !weekPresent.every(Boolean))
+            throw Error('Partial 0057 schema: manual review required');
+          function apply(name){
+            console.log('Applying ONLY additive',name);
+            execFileSync('npx',['--yes','wrangler@4','d1','execute','sharika-staging',
+              '--remote','--config','wrangler.jsonc','--file','migrations/'+name],
+              {stdio:'inherit'});
+          }
+          if(!luckyPresent.every(Boolean))apply('0056_free_lucky_box_and_room_announcement.sql');
+          if(!weekPresent.every(Boolean))apply('0057_room_weekly_rewards.sql');
+          for(const name of ['0056_free_lucky_box_and_room_announcement.sql',
+            '0057_room_weekly_rewards.sql']){
+            const escaped=name.replace(/'/g,"''");
+            await query("INSERT INTO d1_migrations(name) SELECT '"+escaped+
+              "' WHERE NOT EXISTS(SELECT 1 FROM d1_migrations WHERE name='"+escaped+"')");
+          }
+          for(const name of [...lucky,...week]){
+            if(!await has(name))throw Error('Missing expected table '+name);
+          }
+          if(!(await query('PRAGMA table_info(sharika_rooms)')).some(c=>c.name==='announcement'))
+            throw Error('Room announcement column missing');
+          console.log('SAFE_ROOM_LUCKY_BOX_MIGRATIONS_COMPLETE');
+          NODE
+      - name: Build Worker without deploying
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-room-lucky-api
+      - name: Publish isolated staging API
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Bundle and validate connected admin interface
+        run: |
+          cp ../admin/index.html src/admin-index.html
+          cp ../admin/connection.js src/admin-connection.txt
+          node --check ../admin/connection.js
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc --outdir /tmp/sharika-room-lucky-admin
+      - name: Publish isolated staging admin
+        run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
+      - name: Verify both staging services respond
+        run: |
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js | grep -F 'Free Lucky Box' >/dev/null
+          echo 'SHARIKA_ROOM_LUCKY_BOX_STAGING_DEPLOYED'
