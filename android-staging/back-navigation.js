@@ -56,6 +56,13 @@
       return 'exit';
     }
 
+    // Agency screens have an internal BD -> Agency -> Host report stack.
+    var agency = get('sh-agency-panel');
+    if (agency && !agency.hidden && typeof window.sharikaAgencyBack === 'function') {
+      window.sharikaAgencyBack();
+      return 'handled';
+    }
+
     // Keep Android Back inside the new Royal Shop/Backpack before navigating
     // the profile/home screen behind the full-screen collection.
     var royalMarket = get('sh-royal-market');

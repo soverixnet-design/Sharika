@@ -143,6 +143,9 @@
   async function api(method, path, body) {
     return native('api', { method, path: '/api/v1' + path, body });
   }
+  // The Agency Center is a separate first-party, packaged WebView module.
+  // It reuses this authenticated native bridge; no demo login or wallet.
+  window.sharikaAgencyApi=api;
 
   // Super Admin owns WHERE a cosmetic appears. The server-owned inventory and
   // user-selected cosmetic decide WHICH image/animation is displayed.
@@ -2336,13 +2339,17 @@
     const entries=document.createElement('section');entries.id='sh-family-entries';
     entries.setAttribute('aria-label','Agency, Hosts and BD account features');
     const family=document.createElement('button');family.type='button';
-    family.innerHTML='<span class="sh-fam-icon">'+famIcon('agency')+'</span><span>Agency & Host'+
+    family.innerHTML='<span class="sh-fam-icon">'+famIcon('agency')+'</span><span>Royal Family'+
       '<small>Members • Gift Records • Crystal Wallet</small></span>';
     family.onclick=openRoyalFamily;entries.appendChild(family);
     const bd=document.createElement('button');bd.type='button';bd.id='sh-bd-entry';
-    bd.innerHTML='<span class="sh-fam-icon">'+famIcon('bd')+'</span><span>BD Management'+
-      '<small>Agency Grants • Commission • Statements</small></span>';
-    bd.hidden=true;bd.onclick=openRoyalFamily;entries.appendChild(bd);
+    bd.innerHTML='<img class="sh-agency-tile-icon" src="./sharika-agency-icons/bd.webp" alt="">'+
+      '<span>BD Center<small>Agencies • 5% Pending Earnings • Reports</small></span>';
+    bd.hidden=true;bd.onclick=()=>window.sharikaOpenAgencyCenter?.('bd');entries.appendChild(bd);
+    const agency=document.createElement('button');agency.type='button';agency.id='sh-agency-entry';
+    agency.innerHTML='<img class="sh-agency-tile-icon" src="./sharika-agency-icons/agency.webp" alt="">'+
+      '<span>Agency Dashboard<small>Host Roster • Earnings • Salary Statement</small></span>';
+    agency.onclick=()=>window.sharikaOpenAgencyCenter?.();entries.appendChild(agency);
     const countryButton=document.createElement('button');
     countryButton.type='button';countryButton.id='sh-country-entry';
     countryButton.innerHTML='<span class="sh-fam-icon">🌍</span><span>Country / Location'+

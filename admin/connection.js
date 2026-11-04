@@ -2972,6 +2972,9 @@
     if(!parent.isConnected)return;
     const p=data.policy||{};
     const isSuper=role==='super';
+    let agencyData=null,agencyError='';
+    try{agencyData=await api('GET','agency');}
+    catch(error){agencyError=error.message||'Migration required';}
     const table=(columns,entries)=>'<div class="sh-fam-scroll"><table><thead><tr>'+
       columns.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+
       (entries.length?entries.map(items=>'<tr>'+items.map(cell=>'<td>'+cell+'</td>').join('')+'</tr>').join(''):
@@ -3078,8 +3081,37 @@
         ])))+
       '<p id="sh-fam-admin-status" role="status" aria-live="polite"></p>'+
       '<div id="sh-fam-report-results"></div>';
+    const ap=agencyData?.policy||{};
+    const agencyBox=box('🏆 Agency / BD / Host Earnings Policy',
+      !agencyData?'<p class="n">Agency service not connected: '+esc(agencyError)+
+        '. Deploy migration 0059 with the Worker to enable live controls.</p>':
+      '<p class="n">Real Host gifts → 100% diamonds. The separate Diamond Exchange editor is ' +
+        'set to 100 diamonds → 40 coins by the new migration only if the old 100:70 rate was unchanged. ' +
+        'Host salary, Agency and BD amounts are pending estimates, not wallet payments.</p>'+
+      '<div class="sh-fam-cols">'+
+      '<label>Host salary (4000 = 40%)<input id="sh-ag-host" type="number" min="0" max="8000" value="'+esc(ap.host_bps)+'"></label>'+
+      '<label>Agency share (1000 = 10%)<input id="sh-ag-agency" type="number" min="0" max="5000" value="'+esc(ap.agency_bps)+'"></label>'+
+      '<label>BD share (500 = 5%)<input id="sh-ag-bd" type="number" min="0" max="3000" value="'+esc(ap.bd_bps)+'"></label>'+
+      '<label>Salary statement period<select id="sh-ag-period"><option value="daily">Daily</option>'+
+      '<option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>'+
+      '<label><input id="sh-ag-enabled" type="checkbox" '+(ap.enabled?'checked':'')+'> Agency earnings active</label></div>'+
+      '<p class="n">New policy applies only to future verified regular gifts. ' +
+      'Current Room Reward and legacy Family Crystal ledgers stay separate. ' +
+      'Admin verification is required before any real salary payout.</p>'+
+      (isSuper?'<button class="btn" id="sh-ag-policy-save">Save Agency Policy</button>':'')+
+      '<h4>Host role assignment</h4>'+table(['Agency ID','Host ID','Name','State'],
+        (agencyData.hosts||[]).map(h=>[esc(h.family_id),esc(h.public_id),
+          esc(h.name),h.active?'Active':'Inactive']))+
+      (isSuper?'<div class="sh-fam-cols"><label>Agency / Family ID'+
+        '<input id="sh-ag-family-id" type="number" min="1" placeholder="Family #"></label>'+
+        '<label>Approved adult Host ID<input id="sh-ag-host-id" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Host status<select id="sh-ag-host-state"><option value="on">Active</option>'+
+        '<option value="off">Deactivate</option></select></label></div>'+
+        '<button class="btn" id="sh-ag-host-save">Save Host Role</button>':''));
+    parent.querySelector('.sh-fam-cols')?.insertAdjacentHTML('beforeend',agencyBox);
     const selected=byId('sh-fam-period');
     if(selected)selected.value=p.settlement_mode||'monthly';
+    if(agencyData&&byId('sh-ag-period'))byId('sh-ag-period').value=ap.settlement_mode||'weekly';
     const reload=()=>P.family();
     const trySave=async(method,route,payload,confirmation)=>{
       if(confirmation&&!window.confirm(confirmation))return;
@@ -3087,6 +3119,24 @@
       try{await api(method,route,payload);notice('Saved ✓');await reload();}
       catch(error){notice('Not saved: '+error.message);}
     };
+    byId('sh-ag-policy-save')?.addEventListener('click',()=>{
+      const host=Number(byId('sh-ag-host').value),agency=Number(byId('sh-ag-agency').value),
+        bd=Number(byId('sh-ag-bd').value);
+      if(![host,agency,bd].every(Number.isSafeInteger)||host<0||agency<0||bd<0||
+        host+agency+bd>10000)return notice('Agency shares must be whole basis points, total maximum 100%.');
+      trySave('PATCH','agency/policy',{enabled:byId('sh-ag-enabled').checked,
+        host_bps:host,agency_bps:agency,bd_bps:bd,
+        settlement_mode:byId('sh-ag-period').value},
+      'Apply Host / Agency / BD percentages to FUTURE gifts only?');
+    });
+    byId('sh-ag-host-save')?.addEventListener('click',()=>{
+      const family=Number(byId('sh-ag-family-id').value),id=byId('sh-ag-host-id').value.trim(),
+        active=byId('sh-ag-host-state').value==='on';
+      if(!Number.isSafeInteger(family)||family<1||!/^[0-9]{8}$/.test(id))
+        return notice('Enter a valid Agency ID and 8-digit Host ID.');
+      trySave('POST','agency/hosts/assign',{agency_id:family,host_public_id:id,active},
+        'Change Host role for '+id+'? They must already be an approved adult Agency member.');
+    });
     parent.querySelectorAll('[data-fam-approve-creation]').forEach(button=>{
       button.onclick=()=>{
         const id=button.dataset.famApproveCreation;

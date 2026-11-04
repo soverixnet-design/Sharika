@@ -6,6 +6,8 @@ import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
+import {handleAgencyApp,agencyGiftEarningStatements} from './agency.mjs';
+import {recordAgencyRoomActivity} from './agency-room-time.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
@@ -312,6 +314,9 @@ export async function handleRequest(request, env, ctx) {
     if (path.startsWith('/api/v1/family')) return await handleFamilyApp({
       request, env, uid, path, cors, reply, fail, ctx
     });
+    if (path.startsWith('/api/v1/agency')) return await handleAgencyApp({
+      request,env,uid,path,cors,reply,fail
+    });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
       request, env, uid, path, cors, reply, fail, ctx
     });
@@ -330,6 +335,10 @@ export async function handleRequest(request, env, ctx) {
       }
       const coordinator=env.VOICE_ROOMS.getByName('sharika:presence:staging');
       await coordinator.presenceTouch(uid,roomId);
+      // Activity accounting is best-effort: reporting must never prevent a
+      // verified listener from keeping voice-room presence alive.
+      try{await recordAgencyRoomActivity(env.DB,uid,roomId);}
+      catch(error){console.warn('agency_activity_write_failed',String(error));}
       return reply({ok:true,window_seconds:90},200,cors);
     }
     if(path === '/api/v1/me/avatar' && request.method==='PUT') {
@@ -793,7 +802,7 @@ export async function handleRequest(request, env, ctx) {
       return reply({ coins: user.coins, diamonds: user.diamonds, xp: user.xp, ledger: rows.results || [] }, 200, cors);
     }
     // Exchange terms are quoted by the server and editable only by Super
-    // Admin. Without the new D1 table, existing 100:70 terms still apply.
+    // Admin. The new policy defaults to 100:40 even on older staging schemas.
     if(path==='/api/v1/wallet/exchange-rate'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       return reply(respondRate(await readExchangeRate(env.DB)),200,cors);
@@ -1490,6 +1499,9 @@ export async function handleRequest(request, env, ctx) {
           // Family and BD Crystal commissions settle atomically with this gift.
           // These entries are not spendable coins and exclude Lucky gifts.
           statements.push(...familyGiftCommissionStatements(env.DB,uid,requestId,gift.tab));
+          // Pending Host/Agency/BD earnings are recorded with the same gift
+          // transaction. This never credits a spendable wallet automatically.
+          statements.push(...agencyGiftEarningStatements(env.DB,uid,requestId,gift.tab));
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'

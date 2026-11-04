@@ -478,12 +478,12 @@ test('diamond exchange batches both balances and immutable double-entry ledger',
       body:JSON.stringify({diamonds:100,request_id:'exchange_test_atomic123'})
     }),{DB:db,FIREBASE_PROJECT_ID:project});
     assert.equal(res.status,200);
-    assert.equal((await res.json()).credited_coins,70);
+    assert.equal((await res.json()).credited_coins,40);
     const batch=db.calls.find(c=>c[0]==='batch');
     assert.equal(batch[1].length,4);
-    assert.deepEqual(batch[1].map(s=>s.values[0]),[100,'firebase:'+project+':secure-user',70,'firebase:'+project+':secure-user']);
+    assert.deepEqual(batch[1].map(s=>s.values[0]),[100,'firebase:'+project+':secure-user',40,'firebase:'+project+':secure-user']);
     assert.equal(batch[1][1].values[1],-100);
-    assert.equal(batch[1][3].values[1],70);
+    assert.equal(batch[1][3].values[1],40);
   }finally{globalThis.fetch=originalFetch;}
 });
 
@@ -629,13 +629,19 @@ test('regular gift atomically debits sender, credits diamonds and accrues 10% fo
     assert.equal(json.recipient_diamonds_per_user,50);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.equal(stmts.length,12);
+    assert.equal(stmts.length,15);
     assert.match(stmts[10].sql,/sharika_family_crystal_ledger/);
     assert.match(stmts[10].sql,/family_owner/);
     assert.deepEqual(stmts[10].values,[uid,'gift_atomic_12345678']);
     assert.match(stmts[11].sql,/sharika_family_crystal_ledger/);
     assert.match(stmts[11].sql,/\'bd\'/);
     assert.deepEqual(stmts[11].values,[uid,'gift_atomic_12345678']);
+    assert.deepEqual(stmts.slice(12).map(s=>s.values),[
+      [uid,'gift_atomic_12345678'],[uid,'gift_atomic_12345678'],
+      [uid,'gift_atomic_12345678']]);
+    assert.match(stmts[12].sql,/host_salary/);
+    assert.match(stmts[13].sql,/agency/);
+    assert.match(stmts[14].sql,/sharika_bd_agents/);
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);

@@ -40,12 +40,12 @@ async function admin(db,role,method,body){
   return {status:result.status,data:await result.json()};
 }
 
-test('missing exchange configuration retains known 100 diamonds = 70 coins',async()=>{
+test('missing exchange configuration uses the new 100 diamonds = 40 coins policy',async()=>{
   const {db,state}=fakeConfig({stored:false});
   const rate=await readExchangeRate(db);
   assert.deepEqual(rate,DEFAULT_EXCHANGE_RATE);
-  assert.equal(exchangeCredit(100,rate),70);
-  assert.equal(exchangeCredit(500,rate),350);
+  assert.equal(exchangeCredit(100,rate),40);
+  assert.equal(exchangeCredit(500,rate),200);
   assert.equal(exchangeCredit(125,rate),null);
   assert.equal(state.batch.length,0);
 });

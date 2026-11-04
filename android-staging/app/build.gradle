@@ -46,8 +46,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 10
-        versionName '0.6.4-bd-agency-host-reports-staging'
+        versionCode 11
+        versionName '0.6.5-bd-host-earnings-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -86,6 +86,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
                     '<link rel="stylesheet" href="./royal-profile.css">\n' +
                     '<link id="sharika-royal-premium-style" rel="stylesheet" href="./royal-premium.css">\n' +
+                    '<link id="sharika-agency-style" rel="stylesheet" href="./agency-center.css">\n' +
                     '<link id="sharika-winged-theme-style" rel="stylesheet" href="./royal-winged-theme.css">\n' +
                     '<style id="sharika-royal-splash">' +
                     '#sp{background:linear-gradient(180deg,#230c48bb,#070315ef),url(./royal-winged-bg.jpg) center/cover!important;color:#ffebad!important}' +
@@ -100,7 +101,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                     'window.API.signup=window.API.login;' +
                     '</script>' +
                     '<script id="sharika-royal-ui" src="./royal-premium.js"></script>' +
-                    '<script src="./connection.js"></script>')
+                    '<script src="./connection.js"></script>' +
+                    '<script id="sharika-agency-script" src="./agency-center.js"></script>')
         }
     }
     // Owner-provided royal profile art; keep the original JPEG and PNG intact.
@@ -134,6 +136,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('royal-shop-bg.png'))
     from(rootProject.file('royal-backpack-bg.png'))
     from(rootProject.file('royal-market.css'))
+    from(rootProject.file('agency-center.css'))
+    from(rootProject.file('agency-center.js'))
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }
