@@ -110,11 +110,12 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
   if(typeof itemId!=='string'||itemId.length>70||
      typeof requestId!=='string'||!TX.test(requestId))return invalid(fail,cors);
   const prior=await db.prepare(
-   'SELECT item_id,request_id FROM sharika_cosmetic_inventory WHERE auth_uid=? AND (item_id=? OR request_id=?)'
+   'SELECT item_id,request_id,expires_at_ms FROM sharika_cosmetic_inventory WHERE auth_uid=? AND (item_id=? OR request_id=?)'
   ).bind(uid,itemId,'purchase:'+requestId).first();
-  if(prior)return prior.item_id===itemId?
-   reply({owned:true,duplicate:true,item_id:itemId},200,cors):
-   fail('idempotency_conflict',409,cors);
+  if(prior&&prior.item_id!==itemId)return fail('idempotency_conflict',409,cors);
+  if(prior&&(prior.request_id==='purchase:'+requestId||prior.expires_at_ms===null))
+   return reply({owned:true,duplicate:true,item_id:itemId},200,cors);
+  // A temporary Lucky Box frame may be upgraded to a permanent paid item.
   const item=await db.prepare('SELECT id,name,kind,price_coins,active FROM sharika_cosmetics_catalog WHERE id=?')
    .bind(itemId).first();
   if(!item||!item.active)return purchaseFailed('cosmetic_unavailable',404);
@@ -126,7 +127,10 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
    await db.batch([
     db.prepare("UPDATE sharika_users SET coins=CASE WHEN status='active' AND coins>=? THEN coins-? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
      .bind(debit,debit,uid),
-    db.prepare("INSERT INTO sharika_cosmetic_inventory(auth_uid,item_id,source,request_id) VALUES(?,?,'purchase',?)")
+    db.prepare("INSERT INTO sharika_cosmetic_inventory(auth_uid,item_id,source,request_id,expires_at_ms) "+
+      "VALUES(?,?,'purchase',?,NULL) ON CONFLICT(auth_uid,item_id) DO UPDATE SET "+
+      "source='purchase',request_id=excluded.request_id,expires_at_ms=NULL "+
+      "WHERE sharika_cosmetic_inventory.expires_at_ms IS NOT NULL")
      .bind(uid,itemId,'purchase:'+requestId),
     db.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'cosmetic_purchase',?)")
      .bind(uid,-debit,uid,'cosmetic:'+requestId)

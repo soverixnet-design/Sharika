@@ -61,6 +61,7 @@ test('Royal Family UI presents diamond target values and user refresh',()=>{
     '../../android-staging/staging-connection.js',import.meta.url),'utf8');
   for(const required of ['Family Diamond Gift Target','data.target_progress',
     'fmtDiamonds(progress.month)','fmtDiamonds(progress.lifetime)',
-    'sh-fam-refresh-target','await reloadRoyalFamily()'])
+    'sh-fam-refresh-target','await reloadRoyalFamily()',
+    'sh-fam-owner-commission-rule','Your own gifts count toward the Family Gift Target'])
     assert.ok(ui.includes(required),required+' must be displayed by Android bridge');
 });

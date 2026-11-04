@@ -110,15 +110,9 @@
   box.type = 'button';
   box.id = 'sh-lucky-box';
   box.onclick = () => {
-    if (window.__minor || window.__luckyOff) {
-      window.toast?.('Lucky Box is unavailable for this account');
-      return;
-    }
-    // Reuse the existing authenticated gift catalogue and Lucky tab.
-    if (typeof window.giftSheet === 'function') {
-      window.gtab = 2;
-      window.giftSheet();
-    } else gifts.click();
+    const api=window.parent?.SharikaLuckyBox;
+    if(typeof api?.open==='function')api.open();
+    else window.toast?.('Free Lucky Box needs the latest Sharika app');
   };
   addTool(gifts, 'gift', 'Gift');
   gifts.addEventListener('click', () => { window.gtab = 0; }, { capture: true });
@@ -243,7 +237,7 @@
   }
   async function rewardInfo(force){
     const v=premiumState.room;
-    if(!v||!canShow())return null;
+    if(!v||!canShow()||!v.isOwner)return null;
     if(!force&&premiumState.rewards&&Date.now()-premiumState.rewardsAt<60000)
       return premiumState.rewards;
     if(premiumState.rewardPromise)return premiumState.rewardPromise;
@@ -308,14 +302,11 @@
     document.getElementById('sh-overview-id').textContent='ID: '+(v.owner.displayId||v.roomId);
     document.getElementById('sh-overview-members').textContent=String(v.members.length);
     const valueNode=document.getElementById('sh-overview-value');
-    if(premiumState.rewards)
-      valueNode.textContent=fmtCoins(Number(premiumState.rewards.regular_reward_hundredths||0)/
-        Math.max(1,Number(premiumState.rewards.regular_gift_percent||10)));
-    rewardInfo().then(data=>{
-      if(data&&valueNode.isConnected)valueNode.textContent=fmtCoins(
-        Number(data.regular_reward_hundredths||0)/
-        Math.max(1,Number(data.regular_gift_percent||10)));
+    // Public gift contribution is distinct from the owner's private payout.
+    v.loadRankings('weekly').then(data=>{
+      if(data&&valueNode.isConnected)valueNode.textContent=fmtCoins(data.total_contribution_coins||0);
     }).catch(()=>{if(valueNode.isConnected)valueNode.textContent='Unavailable';});
+    document.getElementById('sh-overview-rewards').hidden=!v.isOwner;
     document.getElementById('sh-tab-members').onclick=showMembers;
     document.getElementById('sh-overview-rewards').onclick=showRewards;
     document.getElementById('sh-overview-ranking').onclick=()=>showRankings('daily');
@@ -325,18 +316,20 @@
   }
   async function showRewards(){
     const v=premiumState.room;
-    if(!v||!canShow())return;
+    if(!v||!canShow()||!v.isOwner)return;
     window.open('<div class="sh-premium-sheet">'+
       '<h3>💎 Room Reward Event</h3>'+
       '<div class="sh-reward-cards">'+
       '<div><small>Total earned</small><strong id="sh-reward-total">—</strong></div>'+
-      '<div><small>Already credited to owner wallet</small><strong id="sh-reward-paid">—</strong></div></div>'+
+      '<div><small>Already credited</small><strong id="sh-reward-paid">—</strong></div>'+
+      '<div><small>Pending weekly payout</small><strong id="sh-reward-pending">—</strong></div></div>'+
       '<div class="sh-reward-week">🎁 Ordinary gifts: <b id="sh-reward-pct">10%</b>'+
       '<small>Lucky Gift share: <span id="sh-reward-lucky">1%</span></small>'+
-      '<small>Weekly room contribution (UTC): <b id="sh-week-contribution">Loading…</b></small></div>'+
+      '<small>Weekly room contribution (UTC): <b id="sh-week-contribution">Loading…</b></small>'+
+      '<small>Next automatic payout (UTC): <b id="sh-week-payout">Loading…</b></small></div>'+
       '<h3>Contribution → owner reward</h3>'+
       '<div id="sh-reward-tiers" class="sh-tier-list"></div>'+
-      '<p class="sh-footnote">Illustrative amounts at the active ordinary-gift rate. The owner wallet is credited automatically; these are not additional claimable event prizes.</p></div>');
+      '<p class="sh-footnote">Ordinary-gift room rewards are accumulated and credited automatically after each UTC week. Already-paid historical gifts are not credited again.</p></div>');
     const total=document.getElementById('sh-reward-total');
     const paid=document.getElementById('sh-reward-paid');
     try{
@@ -345,6 +338,10 @@
       const ordinaryPct=Number(data.regular_gift_percent||10);
       total.textContent=fmtCoins(Number(data.reward_hundredths||0)/100)+' 🪙';
       paid.textContent=fmtCoins(data.owner_wallet_credited_coins||0)+' 🪙';
+      const pending=document.getElementById('sh-reward-pending');
+      if(pending)pending.textContent=fmtCoins(data.weekly_pending_coins||0)+' 🪙';
+      const payout=document.getElementById('sh-week-payout');
+      if(payout)payout.textContent=data.weekly_next_settlement_utc||'—';
       v.loadRankings('weekly').then(result=>{
         const week=document.getElementById('sh-week-contribution');
         if(week?.isConnected)
@@ -419,6 +416,64 @@
       if(list.isConnected)list.textContent='Ranking unavailable: '+String(error?.message||error);
     }
   }
+  let noticeRoomId=null,noticeLoadedAt=0;
+  async function renderAnnouncement(force=false){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    let bar=document.getElementById('sh-room-announcement');
+    if(!bar){
+      bar=document.createElement('section');
+      bar.id='sh-room-announcement';bar.className='sh-room-announcement';
+      const icon=document.createElement('span');icon.textContent='📣';
+      const label=document.createElement('b');label.textContent='Announcement';
+      const message=document.createElement('span');
+      message.id='sh-room-announcement-text';
+      message.textContent='Loading announcement…';
+      const edit=document.createElement('button');edit.type='button';
+      edit.id='sh-room-announcement-edit';edit.textContent='✏️';
+      edit.setAttribute('aria-label','Edit room announcement');
+      edit.onclick=()=>{
+        const selected=premiumState.room;
+        if(!selected?.isOwner||!canShow())return;
+        window.open('<h3>📣 Room Announcement</h3>'+
+          '<p class="lbl">New members will see this announcement when entering.</p>'+
+          '<textarea id="sh-room-announcement-input" class="field" maxlength="300" rows="4" placeholder="Write a welcome announcement…"></textarea>'+
+          '<button type="button" id="sh-room-announcement-save" class="act">Save Announcement</button>'+
+          '<p id="sh-room-announcement-status" role="status" class="lbl"></p>');
+        const input=document.getElementById('sh-room-announcement-input');
+        input.value=bar.dataset.text||'';
+        document.getElementById('sh-room-announcement-save').onclick=async event=>{
+          const save=event.currentTarget;
+          save.disabled=true;
+          const status=document.getElementById('sh-room-announcement-status');
+          try{
+            const result=await selected.saveAnnouncement(input.value);
+            status.textContent='Announcement saved for everyone ✓';
+            bar.dataset.text=String(result.announcement||'');
+            message.textContent=bar.dataset.text||'No announcement yet';
+            noticeLoadedAt=0;
+          }catch(error){status.textContent='Not saved: '+String(error?.message||error);}
+          finally{save.disabled=false;}
+        };
+      };
+      bar.append(icon,label,message,edit);
+      app.querySelector('.stats')?.after(bar);
+    }
+    bar.querySelector('#sh-room-announcement-edit').hidden=!v.isOwner;
+    if(!force&&noticeRoomId===v.roomId&&Date.now()-noticeLoadedAt<30000)return;
+    noticeRoomId=v.roomId;noticeLoadedAt=Date.now();
+    const roomId=v.roomId;
+    try{
+      const data=await v.loadAnnouncement();
+      if(premiumState.room?.roomId!==roomId||!bar.isConnected)return;
+      bar.dataset.text=String(data.announcement||'');
+      bar.querySelector('#sh-room-announcement-text').textContent=
+        bar.dataset.text||'No announcement yet';
+    }catch(error){
+      if(bar.isConnected&&premiumState.room?.roomId===roomId)
+        bar.querySelector('#sh-room-announcement-text').textContent='Announcement unavailable';
+    }
+  }
   function renderPremiumHeader(){
     const v=premiumState.room;
     if(!v||!canShow())return;
@@ -428,15 +483,10 @@
     if(!bar){
       bar=document.createElement('div');
       bar.id='sh-room-masthead';bar.className='sh-room-masthead';
-      const score=document.createElement('button');
-      score.id='sh-room-score';score.type='button';score.className='sh-room-score';
-      score.innerHTML='<span>🏆</span><span class="sh-score-text"><small>Room Value</small>'+
-        '<b id="sh-room-value-total">—</b></span><span>›</span>';
       const people=document.createElement('div');
       people.id='sh-room-faces';people.className='sh-room-faces';
-      bar.append(score,people);
+      bar.append(people);
       top.after(bar);
-      score.onclick=()=>showRankings('daily');
     }
     const faces=document.getElementById('sh-room-faces');
     faces.replaceChildren();
@@ -455,11 +505,21 @@
     count.onclick=showMembers;faces.appendChild(count);
     const old=document.getElementById('ustat');
     if(old){old.textContent='👥 '+v.members.length+' ›';old.onclick=showMembers;}
-    const score=document.getElementById('sh-room-value-total');
-    if(score&&premiumState.rewards)score.textContent=fmtCoins(
-      Number(premiumState.rewards.regular_reward_hundredths||0)/
-        Math.max(1,Number(premiumState.rewards.regular_gift_percent||10)));
-    if(!premiumState.rewards)rewardInfo().catch(()=>{if(score?.isConnected)score.textContent='—';});
+    // Replace the obsolete mock trophy total with one useful small ranking.
+    const stats=app.querySelector('.stats');
+    const ranking=Array.from(stats?.querySelectorAll('.pill')||[]).find(el=>
+      !el.id&&el.textContent.includes('🏆'));
+    if(ranking){
+      ranking.textContent='🏆 Ranking ›';ranking.setAttribute('role','button');
+      ranking.tabIndex=0;
+      ranking.onclick=()=>showRankings('daily');
+      ranking.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){
+        event.preventDefault();showRankings('daily');}};
+    }
+    const reward=byId('rrpill');
+    if(reward)reward.onclick=()=>v.isOwner?showRewards():
+      window.toast?.('Weekly room payments are visible only to the owner');
+    renderAnnouncement().catch(()=>{});
   }
   window.SharikaRoomPremium={
     sync(view){

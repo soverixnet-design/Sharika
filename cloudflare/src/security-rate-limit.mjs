@@ -8,6 +8,8 @@ export function sensitiveActionClass(method, path) {
   if (
     path === '/api/v1/sellers/transfer' ||
     path === '/api/v1/invites/redeem' ||
+    path === '/api/v1/invites/withdrawals' ||
+    /^\/api\/v1\/admin\/events\/[1-9]\d*\/award$/.test(path) ||
     /^\/api\/v1\/admin\/(?:sellers|recharge|wallet|coin|exchange-rate|family|invites|cosmetics\/grant)(?:\/|$)/.test(path) ||
     /^\/api\/v1\/rooms\/[0-9]{8}\/(?:gift|gifts|lucky-gift)(?:\/|$)/.test(path) ||
     /^\/api\/v1\/(?:games|original-games|greedy-wheel|greedy)\//.test(path) && /\/bets?(?:\/|$)/.test(path) ||

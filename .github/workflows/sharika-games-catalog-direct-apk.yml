@@ -1,0 +1,75 @@
+name: Sharika verified game menu direct staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-room-free-lucky-box-20261104
+    paths:
+      - '.github/workflows/sharika-games-catalog-direct-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Require pinned Android build and successful staging tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          android_run=41765220409
+          test_run=41765392245
+          gh run watch "$android_run" --repo "$repo" --exit-status
+          gh run watch "$test_run" --repo "$repo" --exit-status
+          test "$(gh api repos/$repo/actions/runs/$android_run --jq '.head_sha')" = 76876d5d8ecb0e5195816cbafc65e9bc0faeeedb
+          test "$(gh api repos/$repo/actions/runs/$test_run --jq '.head_sha')" = 7144f6e48a4984835c01672c60661f6156c707d9
+          for run in "$android_run" "$test_run"; do
+            test "$(gh run view "$run" --repo "$repo" --json conclusion --jq '.conclusion')" = success
+          done
+      - name: Download the exact verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41765220409
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: verified-apk
+      - name: Verify APK content and direct-download payload
+        run: |
+          set -euo pipefail
+          apk='verified-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js | grep -F 'visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'Retry loading games' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'Royal Family' >/dev/null
+          unzip -p "$apk" assets/royal-room-ui.js | grep -F 'renderPremiumHeader()' >/dev/null
+          for game in sovera-food-wheel night-food-wheel; do
+            unzip -l "$apk" | grep -F "assets/original-games/$game.html" >/dev/null
+          done
+          unzip -l "$apk" | grep -F 'assets/fruit-royale/index.html' >/dev/null
+          unzip -l "$apk" | grep -F 'assets/greedy-wheel/index.html' >/dev/null
+          install -m 0644 "$apk" verified-apk/Sharika-Games-Family-Room-Staging.apk
+          sha256sum verified-apk/Sharika-Games-Family-Room-Staging.apk
+      - name: Publish unique public direct APK prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-games-family-room-staging-76876d5d'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Games-Family-Room-Staging.apk \
+            --repo "$repo" \
+            --target 76876d5d8ecb0e5195816cbafc65e9bc0faeeedb \
+            --title 'Sharika Games visibility + Family + Room (STAGING)' \
+            --notes 'Direct Android staging APK, not a ZIP. Fixes client-side single-game filtering: all server-enabled bundled games now appear and game-catalog failures offer Retry. Retains Royal Family and premium room assets. Android build and Cloudflare regression checks required before publication. Server may still disable games; actual betting, login, voice and Family flows require authenticated two-phone QA. STAGING ONLY; NOT a Play Store production release.' \
+            --prerelease

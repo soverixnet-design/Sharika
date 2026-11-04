@@ -2550,6 +2550,11 @@
       ' · Reserved / transferred: '+fmtUnits(wallet.transferred_units)+
       '. Crystals are separate from spendable coins.</p>'+
       '<button type="button" id="sh-fam-ledger">View Ledger</button>';
+    if(family.role==='leader'){
+      html+='<p class="sh-fam-note" id="sh-fam-owner-commission-rule">Family Owner commission ('+
+        famEsc(policy.owner_percent||0)+'%) comes from verified regular gifts sent by other Family members. '+
+        'Your own gifts count toward the Family Gift Target, but do not earn Owner Crystal commission.</p>';
+    }
     if(family){
       const activity=data.activity||{},progress=data.target_progress||{};
       const fmtDiamonds=value=>Math.max(0,Number(value)||0).toLocaleString('en-US',{maximumFractionDigits:0});
@@ -4843,6 +4848,9 @@
         openProfile:member=>openVerifiedRoomMemberProfile(
           member.publicId,room.id,member.seatNo),
         loadRewards:()=>api('GET','/rooms/'+room.id+'/rewards'),
+        loadAnnouncement:()=>api('GET','/rooms/'+room.id+'/announcement'),
+        saveAnnouncement:text=>api('PUT','/rooms/'+room.id+'/announcement',
+          {announcement:text}),
         loadRankings:period=>api('GET','/rooms/'+room.id+
           '/contributors?period='+encodeURIComponent(period)).then(result=>({
             ...result,leaders:(result.leaders||[]).map(item=>({
@@ -6564,7 +6572,18 @@
     };
     wireSoveraRoomFrames(frame);
     await loadVerifiedCosmetics().catch(error=>console.warn('Cosmetic art:',errText(error)));
-    await syncFrame(room,frame);
+    try {
+      await syncFrame(room,frame);
+    } catch(error) {
+      if(errText(error)==='join_room_first'){
+        window.leaveRoom();
+        toast('Room membership expired. Please join again.');
+        return;
+      }
+      // First-load network errors must not prevent the 8-second sync loop
+      // from starting. The room design and member faces recover on retry.
+      frame.toast('Room details reconnecting automatically…');
+    }
     // Each phone consumes the same verified room-entry event stream.
     // Display recent joins once, including this user's own arrival.
     async function pollRoomEntries(){
@@ -6599,12 +6618,14 @@
     entryPoll=setInterval(()=>{
       if(window.cur?.id===room.id)pollRoomEntries().catch(()=>{});
     },2500);
-    try {
-      const voice=await ensureVoiceConnected(room.id);
-      frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
-    } catch(error) {
-      frame.toast('Voice pending: '+errText(error));
-    }
+    // Voice and visual room refresh are independent. A slow ICE/TURN join
+    // must never block member faces, the header, announcement or room polling.
+    ensureVoiceConnected(room.id).then(voice=>{
+      if(window.cur?.id===room.id)
+        frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
+    }).catch(error=>{
+      if(window.cur?.id===room.id)frame.toast('Voice pending: '+errText(error));
+    });
     if(framePoll) clearInterval(framePoll);
     framePoll=setInterval(()=>{
       if(window.cur?.id!==room.id)return;
@@ -6636,6 +6657,75 @@
       'msg("Rafi","🧑‍🎤","Greetings to everyone 👋",{ci:1,lv:16});'+
       'msg("Nusrat","👩‍🦰","Will sing tonight 🎶",{ci:2,lv:19});','');
   }
+  // A FREE reward box, never the paid Lucky Gift betting tab.
+  let freeBoxTimer=null,freeBoxOpening=false;
+  async function openVerifiedLuckyBox(){
+    if(!session){window.showAuth('welcome');return;}
+    let state;
+    try{state=await api('GET','/lucky-box');}
+    catch(error){toast('Lucky Box unavailable: '+errText(error));return;}
+    if(freeBoxTimer){clearInterval(freeBoxTimer);freeBoxTimer=null;}
+    window.openSheet('<h3>🎁 Royal Lucky Box</h3>'+
+      '<p style="text-align:center;color:#ffe49d">Open a free box every 2 hours! Win 200 coins, a 24-hour Frame, an Entry Effect, or an Empty Box.</p>'+
+      '<div style="text-align:center;font-size:64px;filter:drop-shadow(0 5px 10px #b57c4d);margin:10px 0">🎁</div>'+
+      '<p id="sh-free-box-countdown" class="lbl" style="text-align:center;color:#ffdc91;font-weight:800"></p>'+
+      '<button id="sh-free-box-open" type="button" class="act" style="width:100%;min-height:48px;background:linear-gradient(135deg,#b97827,#54206f);color:white;border:1.5px solid #ffdc8e;border-radius:15px;font-weight:900">Open Lucky Box</button>'+
+      '<p id="sh-free-box-result" class="lbl" role="status" style="text-align:center;font-weight:700;margin:14px 0"></p>'+
+      '<p class="lbl" style="text-align:center">Temporary rewards stay in My Backpack for 24 hours. No reward is given until the box is opened.</p>');
+    const countdown=document.getElementById('sh-free-box-countdown');
+    const button=document.getElementById('sh-free-box-open');
+    const result=document.getElementById('sh-free-box-result');
+    if(!countdown||!button||!result)return;
+    let nextAt=Number(state.next_open_at_ms)||0;
+    function tick(){
+      if(!countdown.isConnected){clearInterval(freeBoxTimer);freeBoxTimer=null;return;}
+      const remaining=Math.max(0,nextAt-Date.now());
+      if(!remaining){
+        countdown.textContent='✨ Your next free box is ready';
+        button.disabled=freeBoxOpening||!state.enabled;
+      }else{
+        const secs=Math.ceil(remaining/1000);
+        const hh=String(Math.floor(secs/3600)).padStart(2,'0');
+        const mm=String(Math.floor((secs%3600)/60)).padStart(2,'0');
+        const ss=String(secs%60).padStart(2,'0');
+        countdown.textContent='Next box in '+hh+':'+mm+':'+ss;
+        button.disabled=true;
+      }
+    }
+    tick();freeBoxTimer=setInterval(tick,1000);
+    button.onclick=async()=>{
+      if(freeBoxOpening||Date.now()<nextAt)return;
+      freeBoxOpening=true;button.disabled=true;
+      result.textContent='✨ Opening your box…';
+      const claimId='box-'+(crypto.randomUUID?.()||
+        Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toString(16).padStart(2,'0')).join(''));
+      try{
+        const reward=await api('POST','/lucky-box/open',{request_id:claimId});
+        if(!result.isConnected)return;
+        nextAt=Number(reward.next_open_at_ms)||Date.now()+7200000;
+        if(reward.reward==='coins'){
+          result.textContent='🪙 Congratulations! +'+Number(reward.coins).toLocaleString('en-US')+' coins added to your wallet.';
+          await refreshWalletAfterConfirmedTransaction().catch(()=>{});
+        }else if(reward.reward==='frame'||reward.reward==='entry'){
+          const expiry=new Date(Number(reward.expires_at_ms));
+          result.textContent=(reward.reward==='frame'?'🖼️ Frame: ':'✨ Entry Effect: ')+
+            String(reward.item_name||reward.item_id||'Premium Item')+
+            ' • in My Backpack until '+expiry.toLocaleString();
+        }else result.textContent='📦 Empty box this time! Try again in 2 hours.';
+      }catch(error){
+        const reason=errText(error);
+        if(reason==='lucky_box_cooldown'){
+          const latest=await api('GET','/lucky-box').catch(()=>null);
+          nextAt=Number(latest?.next_open_at_ms)||Date.now()+7200000;
+          result.textContent='This box has already been opened. Wait for the timer.';
+        }else{
+          result.textContent='Connection interrupted. Reopen the box to check your confirmed reward history before trying again.';
+        }
+      }finally{freeBoxOpening=false;tick();}
+    };
+  }
+  window.SharikaLuckyBox=Object.freeze({open:openVerifiedLuckyBox});
+
   const originalOpenRoom=window.openRoom;
   window.openRoom=async function(room) {
     if(!session){ window.showAuth('welcome'); return; }
@@ -9319,6 +9409,7 @@
     return {round_no:prev.round_no,winners};
   }
   let originalGameWalletRefreshTime=0;
+  let gameCatalogRequestSequence=0;
   function originalGameFullscreenStyle(doc){
     if(doc.getElementById('sh-original-fullscreen-style'))return;
     const style=doc.createElement('style');
@@ -9415,10 +9506,11 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
-    let visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale');
+    const catalogRequestNo=++gameCatalogRequestSequence;
+    let visibleGameCards=[];
     function catalog(){
       overlay.classList.remove('sh-original-fullscreen');
-      sheet.innerHTML='<div class="grab"></div><h3>👑 Sharika Fruit Royale</h3>'+
+      sheet.innerHTML='<div class="grab"></div><h3>🎮 Sharika Games</h3>'+
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
         '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
@@ -9686,12 +9778,30 @@
     overlay.classList.add('on');
     sheet.innerHTML='<div class="grab"></div><p style="padding:20px;text-align:center">Loading available games…</p>';
     api('GET','/game-catalog').then(result=>{
-      if(!overlay.classList.contains('on')||!sheet.isConnected)return;
-      const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale'&&enabled.has(game.id));
+      if(catalogRequestNo!==gameCatalogRequestSequence||
+         !overlay.classList.contains('on')||!sheet.isConnected)return;
+      if(!Array.isArray(result?.games))throw new Error('Invalid game catalog');
+      // Server flags control visibility; never hide working bundled games
+      // behind a client-side single-game filter.
+      const enabled=new Set(result.games.filter(g=>g.enabled).map(g=>g.id));
+      visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));
       catalog();
     }).catch(error=>{
-      if(sheet.isConnected)sheet.textContent='Games are temporarily unavailable: '+errText(error);
+      if(catalogRequestNo!==gameCatalogRequestSequence||
+         !overlay.classList.contains('on')||!sheet.isConnected)return;
+      sheet.replaceChildren();
+      const title=doc.createElement('h3');
+      title.textContent='🎮 Sharika Games';
+      const message=doc.createElement('p');
+      message.setAttribute('role','alert');
+      message.textContent='Games could not load: '+errText(error);
+      const retry=doc.createElement('button');
+      retry.type='button';
+      retry.textContent='↻ Retry loading games';
+      retry.style.cssText='margin:12px 0;padding:12px 16px;border:1px solid #e9ba50;'+
+        'border-radius:12px;background:#37145b;color:#ffe5a3;font-weight:800';
+      retry.onclick=()=>showGameCard(doc,insideRoom,showToast);
+      sheet.append(title,message,retry);
     });
   }
   const gamesShortcut=document.getElementById('qg');

@@ -594,7 +594,7 @@ test('room gifts require Firebase auth and a verified room membership',async()=>
   }finally{globalThis.fetch=prior;}
 });
 
-test('regular gift atomically debits sender, credits recipient diamonds and 10% to the owner',async()=>{
+test('regular gift atomically debits sender, credits diamonds and accrues 10% for the next owner week',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
     const uid='firebase:'+project+':secure-user';
@@ -624,17 +624,18 @@ test('regular gift atomically debits sender, credits recipient diamonds and 10% 
     const json=await res.json();
     assert.equal(json.spent_coins,50);
     assert.equal(json.room_reward_coins,5);
-    assert.equal(json.owner_reward_coins,5);
+    assert.equal(json.owner_reward_coins,0);
+    assert.equal(json.owner_reward_pending_coins,5);
     assert.equal(json.recipient_diamonds_per_user,50);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.equal(stmts.length,13);
+    assert.equal(stmts.length,12);
+    assert.match(stmts[10].sql,/sharika_family_crystal_ledger/);
+    assert.match(stmts[10].sql,/family_owner/);
+    assert.deepEqual(stmts[10].values,[uid,'gift_atomic_12345678']);
     assert.match(stmts[11].sql,/sharika_family_crystal_ledger/);
-    assert.match(stmts[11].sql,/family_owner/);
+    assert.match(stmts[11].sql,/\'bd\'/);
     assert.deepEqual(stmts[11].values,[uid,'gift_atomic_12345678']);
-    assert.match(stmts[12].sql,/sharika_family_crystal_ledger/);
-    assert.match(stmts[12].sql,/\'bd\'/);
-    assert.deepEqual(stmts[12].values,[uid,'gift_atomic_12345678']);
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);
@@ -647,12 +648,11 @@ test('regular gift atomically debits sender, credits recipient diamonds and 10% 
     assert.deepEqual(stmts[7].values,[uid,50,uid,uid,'gift_atomic_12345678']);
     assert.match(stmts[8].sql,/sharika_regular_room_rewards/);
     assert.equal(stmts[8].values[3],500);
-    assert.match(stmts[9].sql,/UPDATE sharika_users SET coins=CASE/);
-    assert.equal(stmts[9].values[1],5);
-    assert.equal(stmts[9].values[2],uid);
-    assert.match(stmts[10].sql,/room_gift_reward/);
-    assert.match(stmts[10].sql,/roomgift:/);
-    assert.equal(stmts[10].values[1],5);
+    assert.match(stmts[9].sql,/sharika_room_weekly_accruals/);
+    assert.deepEqual(stmts[9].values.slice(0,4),
+      [uid,'gift_atomic_12345678','10000001',uid]);
+    assert.equal(stmts[9].values[5],500);
+    assert.equal(stmts.some(v=>v.sql.includes('room_gift_reward')),false);
   }finally{globalThis.fetch=prior;}
 });
 
