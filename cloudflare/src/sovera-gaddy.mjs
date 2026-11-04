@@ -1,3 +1,5 @@
+import {readBoundedJson} from './request-body.mjs';
+
 // Sovera Gaddy: independently settled 30s virtual-coin food wheel.
 // Cloudflare D1 is the authority; the bundled HTML never draws paid results.
 const GAME='sovera-gaddy';
@@ -129,7 +131,7 @@ export async function handleSoveraGaddy({request,db,uid,action,reply,fail,cors})
   if(action!=='bet'||request.method!=='POST')return fail('gaddy_route_not_found',404,cors);
   const u=await user(db,uid);
   if(!u||u.status!=='active'||u.minor)return fail('game_adult_only',403,cors);
-  let b;try{b=await request.json();}catch{return fail('invalid_json',400,cors);}
+  let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
   if(!b||!Number.isSafeInteger(b.round_no)||b.round_no<0||
     !Number.isSafeInteger(b.pick)||b.pick<0||b.pick>7||
     !BET_AMOUNTS.includes(b.amount)||typeof b.request_id!=='string'||

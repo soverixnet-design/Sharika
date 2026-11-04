@@ -1,3 +1,5 @@
+import {readBoundedJson} from './request-body.mjs';
+
 // Greedy Wheel: server-authoritative virtual-coin game for Sharika staging.
 // The supplied client's random/demo accounting is deliberately never used.
 const ITEMS=['shrimp','fish','chicken','steak','cabbage','carrot','corn','tomato'];
@@ -128,7 +130,7 @@ export async function handleGreedyRequest({request,db,uid,action,reply,fail,cors
     return reply(await records(db,uid),200,cors);
   }
   if(action!=='bet'||request.method!=='POST')return fail('method_not_allowed',405,cors);
-  let b;try{b=await request.json();}catch{return fail('invalid_json',400,cors);}
+  let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
   if(!b||typeof b!=='object'||Array.isArray(b)||
     !Number.isSafeInteger(b.round)||b.round<0||!ITEMS.includes(b.itemId)||
     !Number.isSafeInteger(b.amount)||b.amount<1||b.amount>MAX_BET||

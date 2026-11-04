@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {readBoundedJson} from '../src/request-body.mjs';
 
 const root=new URL('../src/index.mjs',import.meta.url);
 const worker=readFileSync(root,'utf8');
@@ -47,6 +48,24 @@ test('Content-Length oversized preflight does not consume the request body',asyn
   };
   await assert.rejects(readBody(req),/body_too_large/);
   assert.equal(read,false);
+});
+
+test('all game bet parsers reject oversized streamed requests',async()=>{
+  const body=new ReadableStream({
+    pull(controller){controller.enqueue(new Uint8Array(5000).fill(65));}
+  });
+  const req=new Request('https://staging.invalid/api/v1/games/bet',{
+    method:'POST',duplex:'half',body
+  });
+  await assert.rejects(readBoundedJson(req),/body_too_large/);
+  assert.deepEqual(await readBoundedJson(new Request('https://staging.invalid/test',{
+    method:'POST',body:JSON.stringify({round_no:123,amount:1000})
+  })),{round_no:123,amount:1000});
+  for(const filename of ['original-games.mjs','sovera-gaddy.mjs','greedy-wheel.mjs']){
+    const source=readFileSync(new URL('../src/'+filename,import.meta.url),'utf8');
+    assert.match(source,/import \{readBoundedJson\} from '\.\/request-body\.mjs'/);
+    assert.match(source,/b=await readBoundedJson\(request\)/);
+  }
 });
 
 test('SFU ICE negotiation no longer waits four seconds after a usable TURN relay',async()=>{
