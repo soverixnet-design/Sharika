@@ -1,0 +1,89 @@
+name: Sharika auto-invite HTTPS staging rollout
+
+on:
+  push:
+    branches:
+      - feature/sharika-invite-auto-link-20261104
+    paths:
+      - '.github/workflows/sharika-invite-auto-link-staging.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Gate on Android and Worker tests, then publish read-only invite landing
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout pinned staging invite candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Wait for Android emulator and Worker checks for exactly this source
+        run: |
+          set -euo pipefail
+          repo=soverixnet-design/Sharika
+          for run in 41772065540 41772065440; do
+            test "$(gh api repos/$repo/actions/runs/$run --jq '.head_sha')" = c8f6d6931efb69f1d876052f4c4106f4a898340d
+            gh run watch "$run" --repo "$repo" --exit-status
+            test "$(gh run view "$run" --repo "$repo" --json conclusion --jq '.conclusion')" = success
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reject unexpected target and unsafe production features
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-invite-auto-link-20261104' ||
+             !process.env.CLOUDFLARE_API_TOKEN ||
+             c.name!=='sharika-api-staging' ||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74' ||
+             c.vars?.SHARIKA_ENV!=='staging' ||
+             c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false' ||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             c.keep_vars!==true ||
+             c.d1_databases?.length!==1 ||
+             c.d1_databases[0].database_name!=='sharika-staging' ||
+             c.d1_databases[0].database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a') {
+            throw Error('Refuse non-staging or unexpected Worker rollout');
+          }
+          const {handleInviteLanding}=await import('./src/invite-link.mjs');
+          const link='https://sharika-api-staging.soverixnet.workers.dev/invite/10000001';
+          const r=handleInviteLanding(new Request(link),'/invite/10000001');
+          if(r.status!==200 || !(await r.text()).includes('sharika://invite/10000001'))
+            throw Error('Invite landing preflight failed');
+          console.log('Isolated, read-only invite landing preflight passed');
+          NODE
+      - name: Run full SQLite and Worker regression suite
+        run: |
+          node --check src/invite-link.mjs
+          npm run check
+      - name: Confirm staging health before publishing
+        run: curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+      - name: Compile Worker without deployment
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-invite-review
+      - name: Deploy only staging Worker code (no D1 migrations)
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify health and the new public invite link
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 20             https://sharika-api-staging.soverixnet.workers.dev/invite/10000001             | grep -F 'referrer=sharika_invite%3D10000001' >/dev/null
+          echo 'STAGING_HTTPS_INVITE_LINK_ACTIVE'
