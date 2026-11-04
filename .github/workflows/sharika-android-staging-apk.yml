@@ -585,3 +585,127 @@ jobs:
             --title 'Sharika Royal Family Dashboard + Active Games — Staging APK' \
             --notes 'Staging test APK: 3D Royal Family summary, member daily verified gift statements, Crystal/coin ledger, and all Admin-enabled bundled games. Fruit Royale stays hidden while disabled in staging Admin; no historical wallet, member or game records reset. Staging API permission checks and Android emulator passed. Not a Play Store production release.' \
             --prerelease
+
+  agency-bd-host-staging:
+    name: Deploy verified Agency BD Host to isolated staging API and Admin
+    if: github.ref == 'refs/heads/feature/sharika-bd-agency-host-20261104'
+    needs: [debug-apk, royal-emulator-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact staging Worker, D1 and Admin service targets
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-bd-agency-host-20261104'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const d=c.d1_databases?.[0];
+          const a=JSON.parse(readFileSync('wrangler.admin.jsonc','utf8'));
+          if(c.name!=='sharika-api-staging'||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             c.vars?.SHARIKA_ENV!=='staging'||c.workers_dev!==true||
+             c.keep_vars!==true||c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             c.d1_databases?.length!==1||d?.binding!=='DB'||
+             d.database_name!=='sharika-staging'||
+             d.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             c.durable_objects?.bindings?.length!==1||
+             c.durable_objects.bindings[0].name!=='VOICE_ROOMS'||
+             c.durable_objects.bindings[0].class_name!=='SharikaVoiceRoom'||
+             !c.secrets?.required?.includes('REALTIME_SFU_APP_ID')||
+             !c.secrets?.required?.includes('REALTIME_SFU_APP_SECRET')||
+             a.name!=='sharika-admin-staging'||
+             a.account_id!==c.account_id||
+             a.vars?.SHARIKA_ENV!=='staging'||
+             a.services?.length!==1||a.services[0].binding!=='SHARIKA_API'||
+             a.services[0].service!=='sharika-api-staging')
+            throw Error('Refusing to deploy unexpected Agency Worker target');
+          console.log('AGENCY_BD_HOST_ISOLATED_STAGING_GUARD_OK');
+          NODE
+      - name: Verify all server tests and policy ledger contracts
+        run: npm run check
+      - name: Verify previously approved Agency D1 tables without modifying balances
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT key,host_bps,agency_bps,bd_bps FROM sharika_agency_policy WHERE key='standard'" \
+            | grep -F '4000' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_agency_earnings','sharika_agency_hosts','sharika_agency_room_activity','sharika_agency_presence_cursor') ORDER BY name" \
+            | grep -F 'sharika_agency_room_activity' >/dev/null
+      - name: Dry-run and publish ONLY sharika-api-staging
+        run: |
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
+          npx --yes wrangler@4 deploy --config wrangler.jsonc
+          curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+      - name: Include approved Admin Agency policy editor
+        run: |
+          cp ../admin/index.html src/admin-index.html
+          cp ../admin/connection.js src/admin-connection.txt
+          grep -F 'BD · Agency · Host Control Center' src/admin-connection.txt >/dev/null
+      - name: Dry-run and publish ONLY sharika-admin-staging
+        run: |
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc
+          npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
+          curl -fSs --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/health >/dev/null
+          curl -fSs --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js \
+            | grep -F 'BD · Agency · Host Control Center' >/dev/null
+
+  agency-bd-host-direct-apk:
+    name: Publish direct Agency BD Host staging APK after server verification
+    if: github.ref == 'refs/heads/feature/sharika-bd-agency-host-20261104'
+    needs: [debug-apk, royal-emulator-smoke, agency-bd-host-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download the tested APK from this exact run
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify 3D BD Agency Host code is present in the packaged APK
+        run: |
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/agency-center.js > "$RUNNER_TEMP/agency-verified.js"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const js=fs.readFileSync(process.env.RUNNER_TEMP+'/agency-verified.js','utf8');
+          for(const s of ['BD Center','Host Earnings','Real ID','Time by Room','/agency/bd/center'])
+            if(!js.includes(s))throw Error('Agency feature missing from APK: '+s);
+          console.log('AGENCY_BD_HOST_REAL_APK_ASSET_VERIFIED');
+          NODE
+          unzip -Z1 verified-apk/app-debug.apk | grep -Fx 'assets/sharika-agency-icons/bd.webp'
+          unzip -Z1 verified-apk/app-debug.apk | grep -Fx 'assets/sharika-agency-icons/host.webp'
+          cp verified-apk/app-debug.apk verified-apk/Sharika-BD-Agency-Host-Staging.apk
+          sha256sum verified-apk/Sharika-BD-Agency-Host-Staging.apk
+      - name: Create never-overwritten staging prerelease with direct APK link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="sharika-bd-agency-host-staging-${GITHUB_SHA:0:8}"
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Release tag already exists; refusing to overwrite APK'
+            exit 1
+          fi
+          gh release create "$TAG" verified-apk/Sharika-BD-Agency-Host-Staging.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika BD Agency Host — Staging APK' \
+            --notes 'Staging test APK. Host 40%, Agency 10%, BD 5%, 100 diamonds to 40 coins. Agency dashboards use real main IDs, user avatars and server-recorded room time. Production unchanged; staging D1 records preserved. Android emulator and Worker checks passed.' \
+            --prerelease
