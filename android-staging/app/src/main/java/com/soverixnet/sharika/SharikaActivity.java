@@ -131,10 +131,13 @@ public final class SharikaActivity extends Activity {
         restorePendingInvite();
         captureInviteLink(getIntent());
         readPlayInstallReferrer();
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        // Let the app background reach the physical top edge on phones with a
-        // camera cutout. CSS keeps interactive controls below safe-area insets.
+        // FLAG_FULLSCREEN makes adjustResize ineffective on many Android
+        // WebViews. Android then pans the *whole room* upward to reveal Gboard,
+        // hiding the room header and first mic rows. Keep the status bar in
+        // normal layout so the IME shrinks the WebView instead of panning it.
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        // Keep cutout support; Android now reserves its top inset normally.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             WindowManager.LayoutParams window = getWindow().getAttributes();
             window.layoutInDisplayCutoutMode =

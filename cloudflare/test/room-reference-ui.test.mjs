@@ -13,9 +13,15 @@ const java=readFileSync(new URL(
 test('Android keyboard focuses the composer without compressing the mic-seat grid',()=>{
   assert.match(room,/app\.classList\.add\('sh-keyboard-open'\)/);
   assert.match(room,/if \(seats\) seats\.scrollTop = 0/);
+  assert.match(room,/document\.addEventListener\('focusin'/);
+  assert.match(room,/window\.scrollTo\(0, 0\)/);
+  assert.match(java,/clearFlags\(WindowManager\.LayoutParams\.FLAG_FULLSCREEN\)/);
+  assert.match(java,/setSoftInputMode\(WindowManager\.LayoutParams\.SOFT_INPUT_ADJUST_RESIZE\)/);
+  assert.doesNotMatch(java,/getWindow\(\)\.setFlags\(WindowManager\.LayoutParams\.FLAG_FULLSCREEN/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.stage/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.dock/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.chatw/);
+  assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.sh-tools/);
 });
 
 test('top room card is shorter in width but thicker without changing microphone seat sizes',()=>{

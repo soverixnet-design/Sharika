@@ -100,19 +100,35 @@
     const onFocus = () => {
       clearTimeout(blurTask);
       app.classList.add('sh-keyboard-open');
-      if (seats) seats.scrollTop = 0;
+      // WebView's automatic focus scroll can race the IME resize by several
+      // frames. Keep the actual mic seats anchored below the room header.
+      const keepTop = () => {
+        if (seats) seats.scrollTop = 0;
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        window.scrollTo(0, 0);
+      };
+      keepTop();
+      requestAnimationFrame(keepTop);
+      setTimeout(() => { if (document.activeElement?.id === 'txt') keepTop(); }, 220);
     };
     const onBlur = () => {
       clearTimeout(blurTask);
       blurTask = setTimeout(() => {
-        if (document.activeElement !== text)
+        if (document.activeElement?.id !== 'txt')
           app.classList.remove('sh-keyboard-open');
       }, 180);
     };
-    text.addEventListener('focus', onFocus);
-    text.addEventListener('blur', onBlur);
+    // Capture focus even when the verified staging layer has rebound the
+    // composer input. A normal focus listener on a stale node is insufficient.
+    document.addEventListener('focusin', event => {
+      if (event.target?.id === 'txt') onFocus();
+    }, true);
+    document.addEventListener('focusout', event => {
+      if (event.target?.id === 'txt') onBlur();
+    }, true);
     window.visualViewport?.addEventListener('resize', () => {
-      if (document.activeElement === text) onFocus();
+      if (document.activeElement?.id === 'txt') onFocus();
     });
   }
 
