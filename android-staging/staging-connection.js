@@ -2550,6 +2550,11 @@
       ' · Reserved / transferred: '+fmtUnits(wallet.transferred_units)+
       '. Crystals are separate from spendable coins.</p>'+
       '<button type="button" id="sh-fam-ledger">View Ledger</button>';
+    if(family.role==='leader'){
+      html+='<p class="sh-fam-note" id="sh-fam-owner-commission-rule">Family Owner commission ('+
+        famEsc(policy.owner_percent||0)+'%) comes from verified regular gifts sent by other Family members. '+
+        'Your own gifts count toward the Family Gift Target, but do not earn Owner Crystal commission.</p>';
+    }
     if(family){
       const activity=data.activity||{},progress=data.target_progress||{};
       const fmtDiamonds=value=>Math.max(0,Number(value)||0).toLocaleString('en-US',{maximumFractionDigits:0});
