@@ -9,6 +9,24 @@ const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
 const java=readFileSync(new URL(
   '../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',
   import.meta.url),'utf8');
+const host=readFileSync(new URL('../../app/index.html',import.meta.url),'utf8');
+
+test('room opens directly into the hydrated 3D screen without demo-seat flashes',()=>{
+  assert.match(ui,/roomWrap\?\.classList\.add\('sh-room-awaiting'\)/);
+  assert.match(host,/\.roomwrap\.sh-room-awaiting iframe\{opacity:0/);
+  assert.match(ui,/function revealVerifiedRoom\(room,frame\)/);
+  assert.match(ui,/if\(window\.cur\?\.id!==room\.id \|\| iframe\?\.contentWindow!==frame/);
+  assert.match(ui,/frame\.__sharikaRoomRenderSignature=renderSignature/);
+  assert.match(ui,/revealVerifiedRoom\(room,frame\)/);
+  assert.match(ui,/document\.getElementById\('rw'\)\?\.classList\?\.remove\('sh-room-awaiting'\)/);
+});
+
+test('half-profile is itself the full-profile tap target with no redundant label',()=>{
+  assert.match(ui,/hero\.onclick=viewFull/);
+  assert.match(ui,/hero\.append\(portrait,name,meta,tags,levels\)/);
+  assert.doesNotMatch(ui,/full\.textContent='View full profile/);
+  assert.match(ui,/openVerifiedRoomMemberProfile\(target\.public_id,room\.id,seat\)/);
+});
 
 test('Android keyboard focuses the composer without compressing the mic-seat grid',()=>{
   assert.match(room,/app\.classList\.add\('sh-keyboard-open'\)/);

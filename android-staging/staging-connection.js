@@ -5226,7 +5226,10 @@
           }))
       });
     }
-    if(!snapshotChanged)return;
+    if(!snapshotChanged){
+      revealVerifiedRoom(room,frame);
+      return;
+    }
     frame.__sharikaRoomRenderSignature=renderSignature;
     frame.render();
     if(typeof paintVerifiedMicCount==='function')paintVerifiedMicCount(frame);
@@ -5238,6 +5241,15 @@
     // Arrival effects come from the coordinator's short, verified event
     // history, not the 15-second seat/member snapshot that misses guests.
     frame.__soveraSeenMembers=new Set((data.members||[]).map(m=>m.user_id));
+    // Never expose the bundled demo seats while the authenticated room
+    // snapshot is still loading. Reveal the complete real room in one frame.
+    revealVerifiedRoom(room,frame);
+  }
+  function revealVerifiedRoom(room,frame){
+    const iframe=document.getElementById('rf');
+    if(window.cur?.id!==room.id || iframe?.contentWindow!==frame ||
+       !frame.__sharikaRoomRenderSignature)return;
+    document.getElementById('rw')?.classList?.remove('sh-room-awaiting');
   }
   // Profile identity always follows the authenticated room member ID. The
   // original HTML treated seat zero as "my profile" even in another's room.
@@ -6367,12 +6379,12 @@
           cell.append(value,frame.document.createTextNode(kind));
           cell.dataset.level=kind.toLowerCase();levels.append(cell);
         }
-        const full=frame.document.createElement('button');
-        full.type='button';full.className='sh-member-full';
-        full.textContent='View full profile ›';
         const viewFull=()=>frame.act('prof',index);
-        for(const button of [portrait,name,full])button.onclick=viewFull;
-        hero.append(portrait,name,meta,tags,levels,full);
+        // The half profile itself is the second tap target: tap its photo,
+        // name or details to open the verified full user profile. No extra
+        // English "View full profile" button is needed.
+        hero.onclick=viewFull;
+        hero.append(portrait,name,meta,tags,levels);
         if(/^[0-9]{8}$/.test(String(selected.public_id||''))) {
           api('GET','/users/'+selected.public_id).then(member=>{
             if(!levels.isConnected||
@@ -7848,6 +7860,11 @@
         }
         attachFrame(room).catch(error=>toast(errText(error)));
       };
+      // Keep the room list visible while the new iframe loads. Otherwise
+      // WebView shows a black frame, followed by unverified demo seats,
+      // before the real room snapshot and premium UI arrive.
+      const roomWrap=document.getElementById('rw');
+      roomWrap?.classList.add('sh-room-awaiting');
       originalOpenRoom(room);
     } catch(error) { toast('Could not join: '+errText(error)); }
   };
@@ -7868,6 +7885,7 @@
     if(session)heartbeatPresence(null);
     const iframe=document.getElementById('rf');
     if(iframe) iframe.onload=null;
+    document.getElementById('rw')?.classList.remove('sh-room-awaiting');
     originalLeaveRoom();
   };
   // Preserve original recharge/exchange artwork and read the exact
