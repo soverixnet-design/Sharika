@@ -108,8 +108,30 @@ function ageFromDate(raw) {
   return age >= 13 && age <= 120 ? age : null;
 }
 async function readBody(request) {
-  const body = await request.text();
-  if (body.length > MAX_BODY) throw new Error('body_too_large');
+  // A Content-Length header can be omitted or forged. Enforce the JSON cap
+  // while consuming the stream so an oversized request cannot allocate an
+  // unbounded string in a 128 MB Worker isolate before validation runs.
+  const byteCap=MAX_BODY*4;
+  const declared=Number(request.headers?.get?.('content-length'));
+  if(Number.isFinite(declared)&&declared>byteCap)
+    throw new Error('body_too_large');
+  let body='';
+  if(request.body&&typeof request.body.getReader==='function'){
+    const reader=request.body.getReader(),decoder=new TextDecoder();
+    let received=0;
+    try{
+      while(true){
+        const next=await reader.read();
+        if(next.done)break;
+        received+=next.value?.byteLength||0;
+        if(received>byteCap){await reader.cancel();throw new Error('body_too_large');}
+        body+=decoder.decode(next.value,{stream:true});
+        if(body.length>MAX_BODY){await reader.cancel();throw new Error('body_too_large');}
+      }
+      body+=decoder.decode();
+    }finally{reader.releaseLock();}
+  }else body=await request.text();
+  if(body.length>MAX_BODY)throw new Error('body_too_large');
   const parsed = body ? JSON.parse(body) : {};
   if (typeof parsed !== 'object' || !parsed || Array.isArray(parsed)) throw new Error('invalid_body');
   return parsed;

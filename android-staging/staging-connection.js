@@ -3591,6 +3591,7 @@
       function cleanup(){
         clearTimeout(fast);clearTimeout(relayGrace);clearTimeout(deadline);
         peer.removeEventListener('icegatheringstatechange',changed);
+        peer.removeEventListener('icecandidate',candidateReady);
       }
       function finish(error){
         if(settled)return;
@@ -3604,7 +3605,15 @@
           else finish(new Error('Voice has no ICE network candidates ('+phase+')'));
         }
       }
+      function candidateReady(event){
+        // A usable TURN relay means the non-trickle SFU offer can go now.
+        // Waiting for unrelated blocked TCP candidate probes added seconds
+        // of avoidable delay every time a new speaker was subscribed.
+        if(event.candidate?.candidate?.includes('typ relay')&&
+           localIceCandidates(peer).relay)finish();
+      }
       peer.addEventListener('icegatheringstatechange',changed);
+      peer.addEventListener('icecandidate',candidateReady);
       // Without trickle ICE, sending only a server-reflexive candidate can
       // strand mobile users behind restrictive NAT even while TURN is available.
       // Prefer a real relay before finalizing the SDP, without waiting forever
