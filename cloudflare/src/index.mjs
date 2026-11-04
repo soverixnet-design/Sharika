@@ -29,6 +29,7 @@ import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} 
 import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 import {handleLuckyBoxApp} from './lucky-box.mjs';
+import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -1239,13 +1240,30 @@ export async function handleRequest(request, env, ctx) {
           "AND l.reason='room_gift_reward' AND l.request_id=('roomgift:'||t.id) "+
           "WHERE t.room_id=?"
         ).bind(room.owner_id,roomId).first();
-        const ownerWalletCreditedCoins=Number(credited?.coins)||0;
+        const weekly=await env.DB.prepare(
+          'SELECT COALESCE(SUM(coins_paid),0) AS coins '+
+          'FROM sharika_room_weekly_payouts WHERE room_id=? AND owner_uid=?'
+        ).bind(roomId,room.owner_id).first();
+        const pending=await env.DB.prepare(
+          'SELECT COALESCE(SUM(a.reward_hundredths),0) AS points '+
+          'FROM sharika_room_weekly_accruals a WHERE a.room_id=? AND a.owner_uid=? '+
+          'AND NOT EXISTS(SELECT 1 FROM sharika_room_weekly_payouts p '+
+          'WHERE p.room_id=a.room_id AND p.owner_uid=a.owner_uid '+
+          'AND p.week_start_utc=a.week_start_utc)'
+        ).bind(roomId,room.owner_id).first();
+        const ownerWalletCreditedCoins=(Number(credited?.coins)||0)+
+          (Number(weekly?.coins)||0);
+        const nextWeek=new Date(Date.parse(roomWeekStartUTC(Date.now())+
+          'T00:00:00Z')+7*86400000).toISOString();
         return reply({room_id:roomId,reward_coins:Math.floor(points/100),
           reward_fraction_hundredths:points%100,reward_hundredths:points,
           regular_reward_hundredths:regularPoints,lucky_reward_hundredths:luckyPoints,
           regular_gift_percent:10,lucky_gift_percent:1,
           owner_wallet_credited:ownerWalletCreditedCoins>0,
           owner_wallet_credited_coins:ownerWalletCreditedCoins,
+          weekly_pending_hundredths:Number(pending?.points)||0,
+          weekly_pending_coins:(Number(pending?.points)||0)/100,
+          weekly_next_settlement_utc:nextWeek,
           owner_wallet_credit_enabled:true,withdrawal_enabled:false},200,cors);
       }
       // Gift sending uses the real D1 catalog and an all-or-nothing ledger.
@@ -1319,6 +1337,8 @@ export async function handleRequest(request, env, ctx) {
               coins:wallet.coins,spent_coins:existing.total_coins,
               room_reward_coins:Number(regularShare?.reward_hundredths||0)/100,
               owner_reward_coins:Number(ownerCredit?.delta)||0,
+              owner_reward_pending_coins:ownerCredit?0:
+                Math.floor(Number(regularShare?.reward_hundredths||0)/100),
               lucky:outcome?{payout_coins:outcome.payout_coins,
                 max_multiplier:outcome.max_multiplier}:null},200,cors);
           }
@@ -1445,21 +1465,18 @@ export async function handleRequest(request, env, ctx) {
             'INSERT INTO sharika_regular_room_rewards(transaction_id,room_id,reward_hundredths) '+
             'VALUES((SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
           ).bind(uid,requestId,roomId,regularRewardHundredths));
-          // The room ledger retains the exact 10% share in hundredths.
-          // Whole coins are also credited once to the room owner's wallet
-          // in this same atomic gift settlement (no second claim).
+          // Reward is earned now but transferred at the end of this UTC week.
+          // Only post-upgrade transactions are in this table: older immediate
+          // credits can never be paid a second time by the weekly cron.
           const ownerRewardCoins=gift.tab===2?0:Math.floor(spend/10);
-          if(ownerRewardCoins>0){
+          if(regularRewardHundredths>0){
             statements.push(env.DB.prepare(
-              "UPDATE sharika_users SET coins=CASE WHEN status='active' AND coins<=? "+
-              "THEN coins+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?"
-            ).bind(Number.MAX_SAFE_INTEGER-ownerRewardCoins,ownerRewardCoins,room.owner_id));
-            statements.push(env.DB.prepare(
-              "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
-              "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),"+
-              "'room_gift_reward','roomgift:'||(SELECT id FROM sharika_gift_transactions "+
-              "WHERE sender_uid=? AND request_id=?))"
-            ).bind(room.owner_id,ownerRewardCoins,room.owner_id,uid,requestId));
+              'INSERT INTO sharika_room_weekly_accruals('+
+              'transaction_id,room_id,owner_uid,week_start_utc,reward_hundredths) '+
+              'VALUES((SELECT id FROM sharika_gift_transactions '+
+              'WHERE sender_uid=? AND request_id=?),?,?,?,?)'
+            ).bind(uid,requestId,roomId,room.owner_id,
+              roomWeekStartUTC(Date.now()),regularRewardHundredths));
           }
           // Family and BD Crystal commissions settle atomically with this gift.
           // These entries are not spendable coins and exclude Lucky gifts.
@@ -1481,22 +1498,14 @@ export async function handleRequest(request, env, ctx) {
                 ctx?.waitUntil(deliverNotification(env,notice.notification));
             }catch(error){console.error('gift_notice_failed',String(error.message||error));}
           }
-          if(ownerRewardCoins>0){
-            try{
-              const notice=await notifyUser(env.DB,{recipientUid:room.owner_id,
-                kind:'reward',title:'Room gift reward',
-                body:'Your room earned '+ownerRewardCoins+' coins from gifts.',
-                dedupeKey:'room-reward:'+saved.id});
-              if(notice.created&&notice.notification)
-                ctx?.waitUntil(deliverNotification(env,notice.notification));
-            }catch(error){console.error('room_reward_notice_failed',String(error.message||error));}
-          }
+          // Weekly payout will notify the room owner when due; gifts do not
+          // make immediate owner-wallet credits after this upgrade.
           return reply({duplicate:false,transaction_id:saved.id,
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
             quantity,recipient_diamonds_per_user:diamondsPerRecipient,
             room_reward_coins:regularRewardHundredths/100,
-            owner_reward_coins:ownerRewardCoins,
+            owner_reward_coins:0,owner_reward_pending_coins:ownerRewardCoins,
             lucky:lucky?{payout_coins:lucky.payout_coins,
               max_multiplier:lucky.max_multiplier,
               recipient_reward_diamonds:benefits.recipient_hundredths/100,
@@ -1665,6 +1674,11 @@ export default {
         .catch(error=>console.error('family_sheets_cron_error',error.message)));
       context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true,env,context)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
+      context.waitUntil(settleDueRoomWeeks(env.DB,Date.now(),40)
+        .then(result=>{
+          if(result.errors.length)
+            console.error('room_weekly_reward_settlement_errors',result.errors.length);
+        }).catch(error=>console.error('room_weekly_reward_cron_error',error.message)));
     }
   }
 };
