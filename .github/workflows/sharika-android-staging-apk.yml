@@ -394,7 +394,7 @@ jobs:
             echo 'SHARIKA_STABLE_STAGING_CERTIFICATE_VERIFIED'
           fi
 
-      - name: Verify Family icon and BD permission gate are inside compiled main profile
+      - name: Verify Agency 3D icons and active BD dashboard in compiled profile
         run: |
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/connection.js > "$RUNNER_TEMP/sharika-family-connection.js"
           node - <<'NODE'
@@ -403,8 +403,12 @@ jobs:
           for(const expected of [
             "root.querySelector('.profile-royal-page .profile-account')",
             "family.onclick=openRoyalFamily",
-            "tile.hidden=!(data.bd?.active&&data.bd?.can_grant)",
-            "window.sharikaOpenRoyalFamily=openRoyalFamily"
+            "tile.hidden=!data.bd?.active",
+            "window.sharikaOpenRoyalFamily=openRoyalFamily",
+            "/family/bd/overview",
+            "/family/agency/hosts",
+            "/family/host/statement",
+            "sharika-agency-icons/"
           ]) if(!js.includes(expected))throw Error('Family main profile packaging missing: '+expected);
           console.log('SHARIKA_FAMILY_MAIN_PROFILE_ICON_PACKAGED');
           NODE

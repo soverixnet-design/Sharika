@@ -46,8 +46,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 9
-        versionName '0.6.3-bd-agency-host-reports-staging'
+        versionCode 10
+        versionName '0.6.4-bd-agency-host-reports-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
