@@ -185,7 +185,7 @@ jobs:
         run: |
           test "$(git hash-object src/voice-worker.mjs)" = 78ee1e9c17416945f8b3bca9863e7078f3615a5f
           test "$(git hash-object src/sfu.mjs)" = 7aeb1b9339bdc97f6cdd91fcf08d975020309378
-          test "$(git hash-object src/voice-room.mjs)" = 3fb63373933be75d323152b998fe42bd8ceed6ac
+          test "$(git hash-object src/voice-room.mjs)" = e328b22f7f63429cfef769949d34cca665afcead
           test "$(git hash-object src/games.mjs)" = 0902ceded318e7ddd7575295557a0af83b884e43
           test "$(git hash-object src/profile-layout.mjs)" = 55cb1785d2dfe2604c5ae1e88997728d0cde509c
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT key,active,owner_bps,bd_bps,conversion_enabled FROM sharika_family_policy WHERE key='standard'"
