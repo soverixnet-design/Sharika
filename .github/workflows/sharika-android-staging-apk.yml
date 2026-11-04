@@ -47,6 +47,7 @@ on:
       - feature/sharika-room-free-lucky-box-20261104
       - feature/sharika-invite-auto-link-20261104
       - fix/sharika-family-royal-games-20261104
+      - feature/sharika-sovera-gaddy-game-20261104
     paths:
       - 'android-staging/**'
       - 'app/royal-room-ui.js'
@@ -126,6 +127,14 @@ jobs:
 
       - name: Check exact original Sharika UI and isolated Android adapter
         run: |
+          if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-sovera-gaddy-game-20261104' ]]; then
+            node scripts/generate-sovera-gaddy.mjs
+            git diff --exit-code -- app/src/main/assets/original-games/sovera-gaddy-game.html
+            node --check app/src/main/assets/original-games/sovera-gaddy-live.js
+            test -s app/src/main/assets/original-games/sovera-gaddy-game.html
+            grep -F 'Sovera Gaddy Game' app/src/main/assets/original-games/sovera-gaddy-game.html >/dev/null
+            echo 'SOEVERA_GADDY_SANITIZED_GRAPHICS_BUNDLED'
+          fi
           node --check staging-connection.js
           node --check app/src/main/assets/greedy-wheel/sharika-bridge.js
           node --check app/src/main/assets/greedy-wheel/game.js

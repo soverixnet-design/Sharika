@@ -1,0 +1,131 @@
+name: Sharika Sovera Gaddy staging D1 + direct APK
+
+on:
+  push:
+    branches: [feature/sharika-sovera-gaddy-game-20261104]
+    paths:
+      - 'android-staging/**'
+      - 'cloudflare/**'
+      - '.github/workflows/sharika-sovera-gaddy-staging.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  verify-and-deploy:
+    name: Verify, add only new Gaddy tables, deploy isolated staging Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require only the approved staging Worker and existing D1 binding
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-sovera-gaddy-game-20261104'||
+             !process.env.CLOUDFLARE_API_TOKEN||
+             c.name!=='sharika-api-staging'||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             c.vars?.SHARIKA_ENV!=='staging'||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             c.d1_databases?.length!==1||
+             c.d1_databases[0].database_name!=='sharika-staging'||
+             c.d1_databases[0].database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a')
+             throw Error('Refusing wrong environment or database');
+          console.log('Staging-only Gaddy rollout preflight OK');
+          NODE
+      - name: Run D1 trigger tests and complete Worker regressions
+        run: |
+          python3 test/sovera-gaddy-sql.test.py
+          node --check src/sovera-gaddy.mjs
+          npm run check
+      - name: Ensure staging API is healthy first
+        run: curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+      - name: Dry-run compile the exact staging Worker
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-gaddy-worker
+      - name: Apply only the new, additive Gaddy SQL (no other migrations)
+        run: npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0058_sovera_gaddy_game.sql
+      - name: Deploy staging Worker API, preserve existing bindings
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify staging health and additive D1 catalog record
+        run: |
+          curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT id,enabled FROM sharika_game_catalog WHERE id='sovera-gaddy'" \
+            | grep -F 'sovera-gaddy'
+          echo 'SOVERA_GADDY_STAGING_D1_AND_WORKER_READY'
+
+  publish:
+    needs: verify-and-deploy
+    name: Publish a direct Android staging APK after signed build passes
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Wait for a successful Android APK from the same source commit
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=soverixnet-design/Sharika
+          run_id=''
+          for i in $(seq 1 60); do
+            run_id="$(gh run list --repo "$repo" --workflow sharika-android-staging-apk.yml \
+              --branch feature/sharika-sovera-gaddy-game-20261104 --limit 10 \
+              --json databaseId,headSha --jq '.[] | select(.headSha=="'"$GITHUB_SHA"'") | .databaseId' | head -1)"
+            test -n "$run_id" && break
+            sleep 10
+          done
+          test -n "$run_id"
+          gh run watch "$run_id" --repo "$repo" --exit-status
+          test "$(gh api "repos/$repo/actions/runs/$run_id" --jq .head_sha)" = "$GITHUB_SHA"
+          test "$(gh run view "$run_id" --repo "$repo" --json conclusion --jq .conclusion)" = success
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - name: Download and verify APK, never publish an Actions ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.build.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" --repo soverixnet-design/Sharika \
+            --name Sharika-Android-Staging-Debug --dir verified-apk
+          apk=verified-apk/app-debug.apk
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -l "$apk" | grep -F 'assets/original-games/sovera-gaddy-game.html' >/dev/null
+          unzip -l "$apk" | grep -F 'assets/original-games/sovera-gaddy-live.js' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F "id:'sovera-gaddy'" >/dev/null
+          install -m 0644 "$apk" verified-apk/Sharika-Sovera-Gaddy-Staging.apk
+          sha256sum verified-apk/Sharika-Sovera-Gaddy-Staging.apk
+      - name: Publish a new staging APK direct link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=soverixnet-design/Sharika
+          tag="sharika-sovera-gaddy-staging-${GITHUB_SHA:0:8}"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "::error::Refusing to overwrite an existing download"
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Sovera-Gaddy-Staging.apk \
+            --repo "$repo" --target "$GITHUB_SHA" \
+            --title 'Sharika Sovera Gaddy original game (STAGING ONLY)' \
+            --notes 'Developer-supplied Sovera Gaddy food-wheel graphics, independent 30s D1 game rounds, 20s betting, authenticated virtual coins, idempotent wagers, server-only results, real top 3 and daily ranking, compact room and full-screen game. Full tests and Android build passed; real authenticated multi-phone QA still required. No demo balances or fake winners. NOT a Play Store release.' \
+            --prerelease

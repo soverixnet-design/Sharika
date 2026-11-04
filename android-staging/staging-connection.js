@@ -9536,6 +9536,9 @@
   // removed. A strict source-checked bridge calls only authenticated API routes.
   // Never accept wallet amounts or winner results from child messages.
   const originalGameCards=[
+    {id:'sovera-gaddy',name:'Sovera Gaddy Game',tag:'👑 New • Royal Food Wheel',
+      image:'file:///android_asset/food-wheel-original-card.png',
+      page:'file:///android_asset/original-games/sovera-gaddy-game.html'},
     {id:'sovera-food',name:'Sovera Food Wheel',tag:'🎡 Classic',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/sovera-food-wheel.html'},
@@ -9668,6 +9671,7 @@
     const catalogRequestNo=++gameCatalogRequestSequence;
     let visibleGameCards=[];
     function catalog(){
+      if(portal)sheet.style.height='';
       overlay.classList.remove('sh-original-fullscreen');
       sheet.classList.add('sh-game-catalog-sheet');
       sheet.innerHTML='<div class="grab"></div><h3>👑 Sharika Royal Games</h3>'+
@@ -9817,6 +9821,7 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
+      if(portal)sheet.style.height=insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
       sheet.classList.remove('sh-game-catalog-sheet');
       if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
       // In the room the game itself is the focus: the main close button
@@ -9896,7 +9901,7 @@
       const target=current.element.contentWindow;
       if(!target)return;
       try{
-        const query=data.action==='rankings'&&data.query&&
+        const query=data.action==='rankings'&&current.item.id!=='sovera-gaddy'&&data.query&&
           ['daily','weekly','monthly'].includes(data.query.period)&&
           ['totalWin','totalBet','profitLoss','winCount'].includes(data.query.metric)
           ?'?period='+data.query.period+'&metric='+data.query.metric:'';
