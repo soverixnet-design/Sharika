@@ -9391,6 +9391,7 @@
     return {round_no:prev.round_no,winners};
   }
   let originalGameWalletRefreshTime=0;
+  let gameCatalogRequestSequence=0;
   function originalGameFullscreenStyle(doc){
     if(doc.getElementById('sh-original-fullscreen-style'))return;
     const style=doc.createElement('style');
@@ -9487,10 +9488,11 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
-    let visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale');
+    const catalogRequestNo=++gameCatalogRequestSequence;
+    let visibleGameCards=[];
     function catalog(){
       overlay.classList.remove('sh-original-fullscreen');
-      sheet.innerHTML='<div class="grab"></div><h3>👑 Sharika Fruit Royale</h3>'+
+      sheet.innerHTML='<div class="grab"></div><h3>🎮 Sharika Games</h3>'+
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
         '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
@@ -9758,12 +9760,30 @@
     overlay.classList.add('on');
     sheet.innerHTML='<div class="grab"></div><p style="padding:20px;text-align:center">Loading available games…</p>';
     api('GET','/game-catalog').then(result=>{
-      if(!overlay.classList.contains('on')||!sheet.isConnected)return;
-      const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale'&&enabled.has(game.id));
+      if(catalogRequestNo!==gameCatalogRequestSequence||
+         !overlay.classList.contains('on')||!sheet.isConnected)return;
+      if(!Array.isArray(result?.games))throw new Error('Invalid game catalog');
+      // Server flags control visibility; never hide working bundled games
+      // behind a client-side single-game filter.
+      const enabled=new Set(result.games.filter(g=>g.enabled).map(g=>g.id));
+      visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));
       catalog();
     }).catch(error=>{
-      if(sheet.isConnected)sheet.textContent='Games are temporarily unavailable: '+errText(error);
+      if(catalogRequestNo!==gameCatalogRequestSequence||
+         !overlay.classList.contains('on')||!sheet.isConnected)return;
+      sheet.replaceChildren();
+      const title=doc.createElement('h3');
+      title.textContent='🎮 Sharika Games';
+      const message=doc.createElement('p');
+      message.setAttribute('role','alert');
+      message.textContent='Games could not load: '+errText(error);
+      const retry=doc.createElement('button');
+      retry.type='button';
+      retry.textContent='↻ Retry loading games';
+      retry.style.cssText='margin:12px 0;padding:12px 16px;border:1px solid #e9ba50;'+
+        'border-radius:12px;background:#37145b;color:#ffe5a3;font-weight:800';
+      retry.onclick=()=>showGameCard(doc,insideRoom,showToast);
+      sheet.append(title,message,retry);
     });
   }
   const gamesShortcut=document.getElementById('qg');
