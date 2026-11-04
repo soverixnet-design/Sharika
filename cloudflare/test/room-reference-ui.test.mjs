@@ -62,14 +62,20 @@ test('half-profile is itself the full-profile tap target with no redundant label
 
 test('Android keyboard focuses the composer without compressing the mic-seat grid',()=>{
   assert.match(room,/app\.classList\.add\('sh-keyboard-open'\)/);
-  assert.match(room,/if \(seats\) seats\.scrollTop = 0/);
+  assert.match(room,/app\.style\.setProperty\('--sh-seat-height', measured \+ 'px'\)/);
   assert.match(room,/document\.addEventListener\('focusin'/);
+  assert.match(room,/document\.addEventListener\('pointerdown'/);
   assert.match(room,/window\.scrollTo\(0, 0\)/);
+  assert.match(room,/parentViewport\?\.addEventListener\('resize', onViewportResize\)/);
+  assert.match(room,/app\.style\.removeProperty\('height'\)/);
   assert.match(java,/clearFlags\(WindowManager\.LayoutParams\.FLAG_FULLSCREEN\)/);
   assert.match(java,/setSoftInputMode\(WindowManager\.LayoutParams\.SOFT_INPUT_ADJUST_RESIZE\)/);
   assert.doesNotMatch(java,/getWindow\(\)\.setFlags\(WindowManager\.LayoutParams\.FLAG_FULLSCREEN/);
+  assert.match(css,/\.app\.sh-royal-room\s*\{[\s\S]*?height:100%!important/);
+  assert.match(css,/html:has\(\.sh-royal-room\),body:has\(\.sh-royal-room\)/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.stage/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.dock/);
+  assert.match(css,/bottom:var\(--sh-ime-inset,0px\)/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.chatw/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.sh-tools/);
 });
@@ -77,9 +83,10 @@ test('Android keyboard focuses the composer without compressing the mic-seat gri
 test('top room card is shorter in width but thicker without changing microphone seat sizes',()=>{
   const latest=css.slice(css.lastIndexOf('/* Compact, thicker room card:'));
   assert.match(latest,/\.top \.room\{[\s\S]*?flex:0 1 clamp\(145px,47vw,188px\)/);
-  assert.match(latest,/min-height:44px;height:44px/);
+  assert.match(latest,/padding:32px 8px 5px/);
+  assert.match(latest,/min-height:50px;height:50px/);
   assert.match(latest,/border:2px solid #f3c777/);
-  assert.match(latest,/\.top \.room>\.rav\{[\s\S]*?width:32px;height:32px/);
+  assert.match(latest,/\.top \.room>\.rav\{[\s\S]*?width:36px;height:36px/);
   assert.doesNotMatch(latest,/\.stage\s*\{|\.grid\s*\{|\.seat\s*\{/);
 });
 

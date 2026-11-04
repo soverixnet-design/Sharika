@@ -5,6 +5,17 @@
   --sh-gold-deep:#ad6820;
   --sh-purple:#240a45;
   color:#fff0d7;
+  /* Legacy ROOM_HTML used to force an inline height equal to the *visual*
+     viewport on IME resize. That compressed the seats, then WebView panned
+     the whole iframe to the focused composer. The layout viewport must own
+     room height; only the composer follows the smaller visual viewport. */
+  height:100%!important;
+  max-height:100%!important;
+}
+html:has(.sh-royal-room),body:has(.sh-royal-room) {
+  height:100%!important;
+  overflow:hidden!important;
+  overscroll-behavior:none;
 }
 .app.sh-royal-room.sh-royal-wallpaper {
   background-image:url("./royal-room-background.jpg");
@@ -166,8 +177,9 @@
 /* Keep the actual seats in their original coordinate space when the Android
    keyboard shrinks the WebView. Only the composer docks above the keyboard. */
 .sh-royal-room.sh-keyboard-open .stage {
-  flex:0 0 auto;
-  max-height:calc(100% - 76px);
+  flex:0 0 var(--sh-seat-height,auto);
+  height:var(--sh-seat-height,auto);
+  max-height:none;
   overflow-y:auto;
   scroll-behavior:auto;
 }
@@ -177,7 +189,7 @@
 .sh-royal-room.sh-keyboard-open .sh-menu-panel {display:none!important}
 .sh-royal-room.sh-keyboard-open .dock {
   position:absolute;
-  bottom:0;
+  bottom:var(--sh-ime-inset,0px);
   left:0;
   right:0;
   padding:8px 10px 6px;
@@ -751,7 +763,7 @@
 /* Compact, thicker room card: keep the name/ID legible while giving the
    right-side room controls their own space. Never resize the mic-seat grid. */
 .sh-royal-room .top{
-  padding:25px 8px 5px;
+  padding:32px 8px 5px;
   gap:5px;
   justify-content:space-between;
 }
@@ -762,13 +774,13 @@
 .sh-royal-room .top .room{
   flex:0 1 clamp(145px,47vw,188px);
   width:clamp(145px,47vw,188px);
-  min-width:0;min-height:44px;height:44px;gap:7px;
+  min-width:0;min-height:50px;height:50px;gap:7px;
   padding:4px 9px 4px 5px;
   border:2px solid #f3c777;border-radius:15px;
   box-shadow:inset 0 2px #fff3c491,0 5px 11px #09021dbf;
 }
 .sh-royal-room .top .room>.rav{
-  width:32px;height:32px;font-size:16px;flex:none;
+  width:36px;height:36px;font-size:18px;flex:none;
   border:2px solid #ffe3a1;
 }
 .sh-royal-room .top .room>.rt b{

@@ -91,45 +91,100 @@
   composer.append(input);
   const text = byId('txt');
   if (text) text.setAttribute('placeholder', 'Message in room…');
-  // Android's adjustResize shortens the WebView when Gboard appears. Keep
-  // seats anchored at the top, and use a compact floating composer while the
-  // keyboard is open. This prevents the whole grid from jumping upward.
+  // The original room still listens for visualViewport.resize and sets an
+  // inline app height. CSS now overrides that legacy resize. Independently
+  // keep the existing seat geometry and move ONLY the composer above Gboard.
+  // Android WebViews differ in whether the parent iframe or its own visual
+  // viewport shrinks, so listen to both and calculate the obscured bottom.
   if (text) {
     const seats = app.querySelector('.stage');
     let blurTask;
+    let keyboardActive = false;
+    let keepTopTask;
+    let parentViewport;
+    let parentWindow;
+    try {
+      parentWindow = window.parent !== window ? window.parent : null;
+      parentViewport = parentWindow?.visualViewport;
+    } catch (_) { /* Cross-origin preview: local viewport is sufficient. */ }
+
+    const keyboardInset = () => {
+      const view = window.visualViewport;
+      const localBottom = view ? view.offsetTop + view.height : window.innerHeight;
+      let inset = Math.max(0, window.innerHeight - localBottom);
+      try {
+        const frame = window.frameElement;
+        if (frame && parentViewport) {
+          const frameBottom = frame.getBoundingClientRect().bottom;
+          const visibleBottom = parentViewport.offsetTop + parentViewport.height;
+          inset = Math.max(inset, frameBottom - visibleBottom);
+        }
+      } catch (_) { /* The parent may be cross-origin outside Android. */ }
+      return Math.max(0, Math.round(inset));
+    };
+
+    const keepRoomAnchored = () => {
+      if (!keyboardActive) return;
+      // This restores legacy inline resizing without disturbing its handler
+      // registration or the server-driven room state.
+      app.style.removeProperty('height');
+      app.style.setProperty('--sh-ime-inset', keyboardInset() + 'px');
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      window.scrollTo(0, 0);
+      try {
+        parentWindow?.scrollTo(0, 0);
+      } catch (_) { /* Room preview inside a foreign parent. */ }
+    };
     const onFocus = () => {
       clearTimeout(blurTask);
+      if (!keyboardActive && seats) {
+        // Capture once *before* IME resize; the seat grid must not reflow to
+        // fit the keyboard or jump when its input becomes visible.
+        const measured = Math.ceil(seats.getBoundingClientRect().height);
+        if (measured > 0) app.style.setProperty('--sh-seat-height', measured + 'px');
+      }
+      keyboardActive = true;
       app.classList.add('sh-keyboard-open');
-      // WebView's automatic focus scroll can race the IME resize by several
-      // frames. Keep the actual mic seats anchored below the room header.
-      const keepTop = () => {
-        if (seats) seats.scrollTop = 0;
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
-        window.scrollTo(0, 0);
-      };
-      keepTop();
-      requestAnimationFrame(keepTop);
-      setTimeout(() => { if (document.activeElement?.id === 'txt') keepTop(); }, 220);
+      keepRoomAnchored();
+      requestAnimationFrame(keepRoomAnchored);
+      clearTimeout(keepTopTask);
+      keepTopTask = setTimeout(keepRoomAnchored, 220);
     };
     const onBlur = () => {
       clearTimeout(blurTask);
       blurTask = setTimeout(() => {
-        if (document.activeElement?.id !== 'txt')
+        if (document.activeElement?.id !== 'txt' && keyboardInset() < 90) {
+          keyboardActive = false;
           app.classList.remove('sh-keyboard-open');
+          app.style.removeProperty('--sh-seat-height');
+          app.style.removeProperty('--sh-ime-inset');
+          app.style.removeProperty('height');
+        }
       }, 180);
     };
     // Capture focus even when the verified staging layer has rebound the
     // composer input. A normal focus listener on a stale node is insufficient.
+    // Pointerdown primes the layout *before* Android starts focus auto-pan.
+    document.addEventListener('pointerdown', event => {
+      if (event.target?.id === 'txt') onFocus();
+    }, true);
     document.addEventListener('focusin', event => {
       if (event.target?.id === 'txt') onFocus();
     }, true);
     document.addEventListener('focusout', event => {
       if (event.target?.id === 'txt') onBlur();
     }, true);
-    window.visualViewport?.addEventListener('resize', () => {
-      if (document.activeElement?.id === 'txt') onFocus();
-    });
+    const onViewportResize = () => {
+      if (document.activeElement?.id === 'txt' && !keyboardActive) onFocus();
+      if (keyboardActive) {
+        keepRoomAnchored();
+        requestAnimationFrame(keepRoomAnchored);
+      }
+    };
+    window.visualViewport?.addEventListener('resize', onViewportResize);
+    parentViewport?.addEventListener('resize', onViewportResize);
+    window.addEventListener('resize', onViewportResize);
   }
 
   const toolRow = document.createElement('div');
