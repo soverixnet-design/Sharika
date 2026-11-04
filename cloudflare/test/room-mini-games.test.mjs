@@ -112,3 +112,17 @@ test('remaining original games and Fruit Royale have compact room UI and authent
   assert.match(adapter,/page:'file:\/\/\/android_asset\/fruit-royale\/index\.html'/);
   assert.match(adapter,/if\(!insideRoom\)overlay\.classList\.add/);
 });
+
+test('room first-load data and voice delays cannot block member/header refresh',()=>{
+  const start=adapter.indexOf('  async function attachFrame(room) {');
+  const end=adapter.indexOf('  // Block simulated gift/chat bots',start);
+  assert.ok(start>=0&&end>start,'room adapter section exists');
+  const attach=adapter.slice(start,end);
+  assert.match(attach,/try\s*\{\s*await syncFrame\(room,frame\);\s*\}\s*catch\(error\)/);
+  assert.match(attach,/if\(errText\(error\)==='join_room_first'\)/);
+  assert.match(attach,/ensureVoiceConnected\(room\.id\)\.then/);
+  assert.doesNotMatch(attach,/const voice=await ensureVoiceConnected/);
+  assert.ok(attach.indexOf('framePoll=setInterval')>
+    attach.indexOf('ensureVoiceConnected(room.id).then'),
+    'polling is scheduled without waiting for voice ICE/TURN');
+});
