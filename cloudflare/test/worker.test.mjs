@@ -963,7 +963,7 @@ test('room text chat requires verified membership and uses server identity',asyn
       getByName(name){
         assert.equal(name,'sharika:'+room);
         return {
-          async roomChatRead(after){calls.push(['read',after]);return {messages:[]};},
+          async roomChatRead(...args){calls.push(['read',...args]);return {messages:[]};},
           async roomChatSend(...params){
             calls.push(['send',...params]);
             return {message:{id:1,sender_id:params[1],name:params[2],
@@ -981,7 +981,7 @@ test('room text chat requires verified membership and uses server identity',asyn
     const read=await handleRequest(new Request(endpoint+'?after=17',{headers}),
       {DB:roomDb(true),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
     assert.equal(read.status,200);
-    assert.deepEqual(calls[0],['read',17]);
+    assert.deepEqual(calls[0],['read',principal,17]);
     const invalid=await handleRequest(new Request(endpoint,{
       method:'POST',headers,
       body:JSON.stringify({body:'x'.repeat(301),request_id:'chat:request-12345'})
@@ -1008,6 +1008,57 @@ test('room chat denies unverified requests before reaching the coordinator',asyn
       method:'POST',body:JSON.stringify({body:'hello'})}),
     {DB:fakeDb(),FIREBASE_PROJECT_ID:project});
   assert.equal(response.status,401);
+});
+
+test('each verified join resets the chat/gift boundary and announces the real name',async()=>{
+  const prior=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const principal='firebase:'+project+':secure-user';
+    const db=fakeDb(),original=db.prepare.bind(db);
+    let giftSql=null,giftValues=null;
+    db.prepare=sql=>{
+      const stmt=original(sql);
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id=?'))
+        stmt.first=async()=>({id:'10000001',owner_id:'someone-else'});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id=?'))
+        stmt.first=async()=>({user_id:principal,room_id:'10000001',role:'member'});
+      if(sql.includes('SELECT * FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({auth_uid:principal,public_no:10000003,
+          status:'active',name:'Verified Room Guest'});
+      if(sql.includes('COALESCE(MAX(id),0) AS id FROM sharika_gift_events'))
+        stmt.first=async()=>({id:62});
+      if(sql.includes('FROM sharika_gift_events e')){
+        giftSql=sql;
+        stmt.all=async()=>{giftValues=stmt.values;return {results:[]};};
+      }
+      return stmt;
+    };
+    const records=[];
+    const coordinator={
+      async beginRoomVisit(...args){records.push(['begin',...args]);return {joined:true};},
+      async roomEntryAnnounce(...args){records.push(['entry',...args]);return {announced:true};},
+      async roomGiftAfter(uid){records.push(['giftAfter',uid]);return 62;},
+      async roomEntryRead(...args){records.push(['entries',...args]);return {events:[]};}
+    };
+    const rooms={getByName(){return coordinator;}};
+    const headers={Authorization:'Bearer '+await token()};
+    const endpoint='https://example.test/api/v1/rooms/10000001';
+    const env={DB:db,VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project};
+    const join=await handleRequest(new Request(endpoint+'/join',{method:'POST',headers}),env);
+    assert.equal(join.status,200);
+    assert.deepEqual(records[0],['begin',principal,62]);
+    assert.deepEqual(records[1],['entry',principal,'10000003','Verified Room Guest','standard']);
+
+    const gifts=await handleRequest(new Request(endpoint+'/gifts',{headers}),env);
+    assert.equal(gifts.status,200);
+    assert.match(giftSql,/WHERE e\.room_id=\? AND e\.id>\?/);
+    assert.deepEqual(giftValues,['10000001',62]);
+
+    const entries=await handleRequest(new Request(endpoint+'/entries',{headers}),env);
+    assert.equal(entries.status,200);
+    assert.deepEqual(records.at(-1),['entries',principal,0]);
+  }finally{globalThis.fetch=prior;}
 });
 
 test('room seat emojis use verified sender ID, require a real mic seat and reject forged reactions',async()=>{

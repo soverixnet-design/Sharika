@@ -1106,7 +1106,7 @@ export async function handleRequest(request, env, ctx) {
           const raw=url.searchParams.get('after')||'0';
           if(!/^[0-9]{1,12}$/.test(raw) || !Number.isSafeInteger(Number(raw)))
             return fail('invalid_chat_cursor',400,cors);
-          return reply(await coordinator.roomChatRead(Number(raw)),200,cors);
+          return reply(await coordinator.roomChatRead(uid,Number(raw)),200,cors);
         }
         if(request.method==='POST') {
           const payload=await readBody(request);
@@ -1167,9 +1167,15 @@ export async function handleRequest(request, env, ctx) {
             .bind(roomId, uid).run();
         }
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
-        // Room-wide arrival event uses the verified equipped style and ID.
-        // Its coordinator retains a short event history for other phones.
+        // The session boundary is established BEFORE the public arrival
+        // event. Prior chat, gift receipts and entries stay in the audit
+        // store, but this visitor cannot replay them even with after=0.
         if(env.VOICE_ROOMS){
+          const latestGift=await env.DB.prepare(
+            'SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?'
+          ).bind(roomId).first();
+          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+          await coordinator.beginRoomVisit(uid,Number(latestGift?.id)||0);
           const entrant=await assertActive(env.DB,uid);
           const equipped=await readEquipped(env.DB,uid);
           const svipLevel=await readSvipLevel(env.DB,uid);
@@ -1177,8 +1183,8 @@ export async function handleRequest(request, env, ctx) {
             ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
               ?'svip-entry-'+String(svipLevel).padStart(2,'0')
               :(entrant.entry_style||'');
-          if(entry)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-            .roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry);
+          await coordinator.roomEntryAnnounce(uid,publicId(entrant.public_no),
+            txt(entrant.name,80)||'Member',entry||'standard');
         }
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
       }
@@ -1189,8 +1195,11 @@ export async function handleRequest(request, env, ctx) {
         } else {
           await env.DB.prepare('DELETE FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId, uid).run();
         }
-        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-          .seatInviteClear(uid);
+        if(env.VOICE_ROOMS){
+          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+          await coordinator.endRoomVisit(uid);
+          await coordinator.seatInviteClear(uid);
+        }
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
       // Day/week/month room rankings show real senders to members of this
@@ -1289,6 +1298,10 @@ export async function handleRequest(request, env, ctx) {
       if (parts.length===5 && action==='gifts') {
         if(!member)return fail('join_room_first',403,cors);
         if(request.method==='GET') {
+          if(!env.VOICE_ROOMS)return fail('room_gifts_unavailable',503,cors);
+          const giftAfter=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+            .roomGiftAfter(uid);
+          if(giftAfter===null)return reply({events:[]},200,cors);
           const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
             nonRedeemableLuckyEconomy(env);
           const rows=await env.DB.prepare(
@@ -1302,8 +1315,8 @@ export async function handleRequest(request, env, ctx) {
             'JOIN sharika_users ru ON ru.auth_uid=e.recipient_uid '+
             'JOIN sharika_gifts g ON g.id=e.gift_id '+
             (luckyEnabled?'LEFT JOIN sharika_lucky_gift_outcomes lo ON lo.transaction_id=e.transaction_id ':'')+
-            'WHERE e.room_id=? ORDER BY e.id DESC LIMIT 40'
-          ).bind(roomId).all();
+            'WHERE e.room_id=? AND e.id>? ORDER BY e.id DESC LIMIT 40'
+          ).bind(roomId,giftAfter).all();
           return reply({events:(rows.results||[]).reverse().map(e=>({
             id:e.id,transaction_id:e.transaction_id,
             quantity:e.quantity,price_coins:e.price_coins,
@@ -1596,7 +1609,7 @@ export async function handleRequest(request, env, ctx) {
         if(!/^[0-9]{1,12}$/.test(after)||!Number.isSafeInteger(Number(after)))
           return fail('invalid_entry_cursor',400,cors);
         return reply(await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-          .roomEntryRead(Number(after)),200,cors);
+          .roomEntryRead(uid,Number(after)),200,cors);
       }
       if (parts.length === 5 && action === 'members' && request.method === 'GET') {
         if(!member)return fail('join_room_first',403,cors);

@@ -5048,28 +5048,9 @@
       // Keep the verified, shared wallpaper in a sharp image layer rather
       // than enlarging a compressed thumbnail behind heavy dark overlays.
       roomApp.classList.toggle('sharika-hd-room-bg',!!sharedImage);
-      let familyBadge=roomApp.querySelector('#sh-room-owner-family-badge');
-      if(owner.family&&owner.family.status==='active'){
-        if(!familyBadge){
-          familyBadge=frame.document.createElement('button');
-          familyBadge.id='sh-room-owner-family-badge';familyBadge.type='button';
-          familyBadge.style.cssText='position:fixed;top:47px;right:12px;z-index:600;'+
-            'border:1px solid #e5c26b;background:linear-gradient(135deg,#3d2a19,#14101f);'+
-            'color:#ffe6a2;padding:5px 10px;border-radius:15px;'+
-            'font-weight:700;font-size:11px;max-width:46vw;'+
-            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-          roomApp.appendChild(familyBadge);
-        }
-        familyBadge.textContent='👑 '+owner.family.name;
-        familyBadge.title='Request to join '+owner.family.name;
-        familyBadge.onclick=async()=>{
-          if(!window.confirm('Request to join '+owner.family.name+'? Family Owner approval required.'))return;
-          try{
-            await api('POST','/family/join',{family_id:Number(owner.family.id)});
-            frame.toast('Family Join Request sent ✓');
-          }catch(error){frame.toast('Family: '+errText(error));}
-        };
-      }else familyBadge?.remove();
+      // Agency/Family badges belong on verified profiles, never as a floating
+      // name over the voice-room header and online member avatars.
+      roomApp.querySelector('#sh-room-owner-family-badge')?.remove();
       if(sharedImage)
         roomApp.style.setProperty('--sharika-shared-wallpaper','url("'+sharedImage+'")');
       else roomApp.style.removeProperty('--sharika-shared-wallpaper');
@@ -5356,6 +5337,9 @@
     const frame=document.getElementById('rf')?.contentWindow;
     if (frame && frame.document) fitAndroidViewport(frame.document, true);
     if(!frame || !frame.seats || !window.cur || window.cur.id!==room.id) return;
+    // The bundled offline room artwork contains demo greetings. A new room
+    // visit starts with an empty verified transcript, including after reentry.
+    frame.$?.('chat')?.replaceChildren();
     // Add depth to the existing Sharika seat artwork without replacing its
     // markup, member avatars, frame effects, click controls or room layout.
     if(!frame.document.getElementById('sharika-seat-depth')){
@@ -5708,15 +5692,9 @@
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
       if(lastGiftEventId===null){
         lastGiftEventId=latest;
-        // Restore the latest verified gift receipts in the same transcript
-        // as room messages. Old gifts do not replay their flying animations.
-        for(const event of events.slice(-20))appendGiftChatReceipt(event);
-        // A send can finish before the first poll. Show only the confirmed
-        // transaction, never replay the room's old history to a new joiner.
-        if(ownTransactionId!==null)for(const event of events){
-          if(String(event.transaction_id)!==String(ownTransactionId))continue;
-          presentVerifiedGift(event);
-        }
+        // The Worker now returns only receipts generated since THIS visit's
+        // join boundary. Show all of them, including ones sent during load.
+        for(const event of events)presentVerifiedGift(event);
         return;
       }
       let receivedGift=false;
@@ -6923,6 +6901,8 @@
           if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
           lastEntryEventId=id;
           if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          // Verified name is authoritative; never use a spoofable label.
+          frame.sys?.('👋 '+String(event.name||'Member')+' joined the room');
           const levelMatch=/^svip-entry-0([1-8])$/.exec(String(event.entry_style||''));
           if(levelMatch){
             playSvipRoomEntry(frame.document,Number(levelMatch[1]),event.name);

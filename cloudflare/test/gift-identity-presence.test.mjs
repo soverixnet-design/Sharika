@@ -61,7 +61,8 @@ test('room gift receipts remain in the scrollable chat, with sender and recipien
   assert.match(css,/\.sh-royal-room \.chatw \{[\s\S]*?flex:1 1 210px/);
   assert.match(css,/\.sh-royal-room \.chat \{[\s\S]*?overflow-y:auto/);
   assert.doesNotMatch(css,/height:clamp\(32px,7vh,64px\)/);
-  assert.match(adapter,/for\(const event of events\.slice\(-20\)\)appendGiftChatReceipt\(event\)/);
+  assert.match(adapter,/for\(const event of events\)presentVerifiedGift\(event\)/);
+  assert.doesNotMatch(adapter,/for\(const event of events\.slice\(-20\)\)appendGiftChatReceipt\(event\)/);
   const start=adapter.indexOf('    function appendGiftChatReceipt(event){');
   const end=adapter.indexOf('    function presentVerifiedGift(event){',start);
   assert.ok(start>=0&&end>start);

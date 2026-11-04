@@ -537,3 +537,27 @@
   .sh-royal-room .sh-room-announcement{gap:4px;padding:5px 6px;font-size:10px}
   .sh-royal-room .sh-room-announcement>b{font-size:10px}
 }
+
+/* Half-height room profile card, widened by reclaiming header gutters.
+   Place the whole top row slightly lower without obscuring Ranking or seats. */
+.sh-royal-room .top{
+  padding:27px 5px 5px;
+  gap:4px;
+}
+.sh-royal-room .top>.ib{width:30px;height:33px}
+.sh-royal-room .sh-settings,.sh-royal-room .sh-settings .sh-sprite{
+  width:34px;height:34px;
+}
+.sh-royal-room .top .room{
+  min-height:32px;height:33px;gap:5px;
+  padding:2px 5px 2px 3px;border-radius:999px;
+}
+.sh-royal-room .top .room>.rav{
+  width:25px;height:25px;font-size:14px;flex:none;
+}
+.sh-royal-room .top .room>.rt b{
+  font-size:12px;line-height:13px;
+}
+.sh-royal-room .top .room>.rt small{
+  font-size:9px;line-height:11px;
+}
