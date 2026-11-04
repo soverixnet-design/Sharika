@@ -8,6 +8,11 @@ on:
       - 'cloudflare/src/agency.mjs'
       - 'cloudflare/src/agency-room-time.mjs'
       - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/request-body.mjs'
+      - 'cloudflare/src/original-games.mjs'
+      - 'cloudflare/src/sovera-gaddy.mjs'
+      - 'cloudflare/src/greedy-wheel.mjs'
+      - 'cloudflare/test/voice-latency-security.test.mjs'
   workflow_dispatch:
 
 permissions:
