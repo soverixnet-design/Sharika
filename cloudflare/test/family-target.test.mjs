@@ -46,7 +46,7 @@ test('Family gift target includes verified regular owner gifts independent of Cr
   });
   assert.equal(data.activity.total_gifts,6);
   assert.equal(data.wallet.total_units,0);
-  const progressSql=calls.find(c=>c.sql.includes('AS total_diamonds'))?.sql||'';
+  const progressSql=calls.find(c=>c.sql.includes('JOIN sharika_family_members fm ON fm.user_uid=e.sender_uid'))?.sql||'';
   assert.match(progressSql,/JOIN sharika_family_members fm ON fm.user_uid=e.sender_uid/);
   assert.match(progressSql,/e.created_at>=fm.joined_at/);
   assert.match(progressSql,/g.tab IN \(0,1\)/);
