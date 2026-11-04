@@ -1,0 +1,96 @@
+name: Sharika Family BD + Login + Fruit Royale unified staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-family-fruit-royale-sync-20261104
+    paths:
+      - '.github/workflows/sharika-family-fruit-login-prerelease.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-tested-fruit-royale:
+    name: Publish verified login-recovery + Fruit Royale APK (not ZIP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require successful integrated Android, emulator, and Cloudflare checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-family-fruit-royale-sync-20261104'
+          test "$(gh run view 41744747041 --repo soverixnet-design/Sharika --json conclusion,headSha --jq '.conclusion+" "+.headSha')" = 'success d829049d3f9fee00da2c510baa8b2fa33df6facc'
+          
+          test "$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13282188711 --jq '.workflow_run.head_sha')" = d829049d3f9fee00da2c510baa8b2fa33df6facc
+          test "$(gh run view 41744747045 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          
+          test "$(gh run view 41744834606 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          echo 'SHARIKA_UNIFIED_FAMILY_LOGIN_FRUIT_APK_SERVER_DEPLOY_EMULATOR_PASSED'
+
+      - name: Download only approved, stable-signed Android staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41744747041
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: integrated-apk
+
+      - name: Verify login startup scripts and Fruit Royale inside Android APK
+        run: |
+          test -s integrated-apk/app-debug.apk
+          unzip -tqq integrated-apk/app-debug.apk
+          for asset in index.html game.js styles.css config.js adapter.live.js; do
+            unzip -Z1 integrated-apk/app-debug.apk | grep -Fx "assets/fruit-royale/$asset"
+          done
+          unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/startup-safety.js'
+          unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/sharika_logo.jpg'
+          unzip -p integrated-apk/app-debug.apk assets/index.html > "$RUNNER_TEMP/verified-startup-index.html"
+          grep -Fq 'id="sharika-startup-safety"' "$RUNNER_TEMP/verified-startup-index.html"
+          test "$(grep -o 'http-equiv="Content-Security-Policy"' "$RUNNER_TEMP/verified-startup-index.html" | wc -l)" -eq 1
+          node - <<'NODE'
+          const fs=require('node:fs'),vm=require('node:vm');
+          const html=fs.readFileSync(process.env.RUNNER_TEMP+'/verified-startup-index.html','utf8');
+          const scripts=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+          let hasLogin=false;
+          for(const [i,match] of scripts.entries()){
+            if(!match[1].trim())continue;
+            new vm.Script(match[1],{filename:'packaged-inline-'+i+'.js'});
+            if(match[1].includes('function showAuth('))hasLogin=true;
+          }
+          if(!hasLogin)throw Error('Packaged login script missing');
+          console.log('SHARIKA_UNIFIED_LOGIN_SCRIPTS_PARSE_OK');
+          NODE
+          unzip -p integrated-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/fruit-royale-connection.js"
+          node - <<'NODE'
+          const fs=require('fs');
+          const parent=fs.readFileSync(process.env.RUNNER_TEMP+'/fruit-royale-connection.js','utf8');
+          if(!parent.includes("id:'fruit-royale'") ||
+             parent.includes("id:'jackpot-fruit'") ||
+             !parent.includes('sharika:original-request') ||
+             !parent.includes('ensureRoomGamePortal') ||
+             !parent.includes("game.id==='fruit-royale'&&enabled.has(game.id)"))
+            throw Error('Fruit Royale UI or authenticated room bridge missing');
+          console.log('INTEGRATED_LOGIN_RECOVERY_AND_FRUIT_ROYALE_VERIFIED');
+          NODE
+          cp integrated-apk/app-debug.apk integrated-apk/Sharika-Family-Fruit-Royale-Login-Staging.apk
+          sha256sum integrated-apk/Sharika-Family-Fruit-Royale-Login-Staging.apk
+
+      - name: Publish direct test APK as a clearly marked GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=sharika-family-fruit-login-merged-staging-d829049d
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::A release with this tag already exists; never overwrite user downloads."
+            exit 1
+          fi
+          gh release create "$TAG" integrated-apk/Sharika-Family-Fruit-Royale-Login-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target d829049d3f9fee00da2c510baa8b2fa33df6facc \
+            --title "Sharika Family BD + Fruit Royale + Login Fix — Staging APK" \
+            --notes "Unified staging test APK based on the newest Family/BD branch. Keeps Family/BD roles, room rankings, Firebase login startup fix, original wallet, room voice and stored user history. Fruit Royale is the only visible game card; authenticated game-catalog, bets, ranking, wallet settlement and cron are present in newly deployed staging Worker. D1 Fruit Royale is enabled; no demo wallet or production changes. Android emulator, Cloudflare checks and staging Worker deployment passed. Please test on two real Android devices before production." \
+            --prerelease
