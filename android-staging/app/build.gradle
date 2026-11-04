@@ -46,8 +46,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 7
-        versionName '0.6.1-sovera-gaddy-bets-staging'
+        versionCode 8
+        versionName '0.6.2-agency-3d-icons-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

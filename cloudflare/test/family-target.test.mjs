@@ -65,3 +65,22 @@ test('Royal Family UI presents diamond target values and user refresh',()=>{
     'sh-fam-owner-commission-rule','Your own gifts count toward the Family Gift Target'])
     assert.ok(ui.includes(required),required+' must be displayed by Android bridge');
 });
+
+test('Agency/BD/Host Royal 3D icons are bundled and preserve existing Family ledger behavior',()=>{
+  const root=new URL('../../android-staging/app/src/main/assets/sharika-agency-icons/',import.meta.url);
+  const names=['bd','agency','host','gifts','commission','salary','reports','ranking'];
+  for(const name of names){
+    const file=readFileSync(new URL(name+'.webp',root));
+    assert.equal(file.toString('ascii',0,4),'RIFF',name+' must be a real WebP image');
+    assert.equal(file.toString('ascii',8,12),'WEBP',name+' must be WebP');
+    assert.ok(file.length>1000&&file.length<300000,name+' must be optimized for mobile');
+  }
+  const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.match(ui,/sharika-agency-icons\//);
+  assert.match(ui,/famIcon\('agency'\)/);
+  assert.match(ui,/famIcon\('host'\)/);
+  assert.match(ui,/famIcon\('bd'\)/);
+  assert.match(ui,/prefers-reduced-motion:no-preference/);
+  assert.match(ui,/api\('GET','\/family\/me'\)/,
+    'visual redesign must preserve server-owned member/commission data');
+});

@@ -2223,6 +2223,16 @@
     'box-shadow:inset 0 2px 2px #ffecb988,0 5px 0 #35200f,0 9px 20px #09041499;',
     'color:#ffefc9;text-shadow:0 1px 2px #2b160a;font-weight:800}',
     '#sh-family-entries button .sh-fam-icon{font-size:31px;filter:drop-shadow(0 3px 3px #0008)}',
+    '#sh-family-entries .sh-fam-icon{width:54px;height:54px;flex:none;display:grid;place-items:center}',
+    '#sh-family-entries .sh-fam-icon img{width:100%;height:100%;object-fit:contain}',
+    '#sh-family-panel .sh-fam-3d-icon{display:inline-block;width:26px;height:26px;',
+    'object-fit:contain;vertical-align:middle;filter:drop-shadow(0 3px 4px #0008)}',
+    '#sh-family-panel .sh-fam-kpi small{display:flex;align-items:center;gap:6px}',
+    '#sh-family-panel .sh-fam-kpi .sh-fam-3d-icon{width:30px;height:30px;flex:none}',
+    '#sh-family-panel .sh-fam-crest .sh-fam-3d-icon{width:74px;height:74px}',
+    '@media(prefers-reduced-motion:no-preference){#sh-family-entries .sh-fam-icon img{',
+    'animation:shAgencyIconFloat 3.6s ease-in-out infinite alternate}',
+    '@keyframes shAgencyIconFloat{to{transform:translateY(-3px) rotate(-2deg)}}}',
     '#sh-family-entries button small{display:block;font-size:11px;opacity:.9;font-weight:500}',
     '#sh-family-entries button:active{transform:translateY(3px)}',
     '#sh-family-entries button[hidden]{display:none!important}',
@@ -2302,6 +2312,8 @@
   document.head.appendChild(familyStyles);
   const famEsc=x=>String(x==null?'':x).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+  const famIcon=name=>'<img class="sh-fam-3d-icon" src="./sharika-agency-icons/'+
+    name+'.webp" alt="" decoding="async">';
   let familyCache=null,familyCheckedAt=0,familyCheckedUser=null;
   function familyNotice(message){
     const info=document.querySelector('#sh-family-panel .sh-fam-feedback');
@@ -2313,14 +2325,14 @@
     if(!root||!session)return;
     document.getElementById('sh-family-entries')?.remove();
     const entries=document.createElement('section');entries.id='sh-family-entries';
-    entries.setAttribute('aria-label','Family and BD account features');
+    entries.setAttribute('aria-label','Agency, Hosts and BD account features');
     const family=document.createElement('button');family.type='button';
-    family.innerHTML='<span class="sh-fam-icon">👑</span><span>Royal Family'+
-      '<small>Family • members • Crystal Wallet</small></span>';
+    family.innerHTML='<span class="sh-fam-icon">'+famIcon('agency')+'</span><span>Agency & Host'+
+      '<small>Members • Gift Records • Crystal Wallet</small></span>';
     family.onclick=openRoyalFamily;entries.appendChild(family);
     const bd=document.createElement('button');bd.type='button';bd.id='sh-bd-entry';
-    bd.innerHTML='<span class="sh-fam-icon">💼</span><span>BD System'+
-      '<small>Family Grant • 5% Commission • Statements</small></span>';
+    bd.innerHTML='<span class="sh-fam-icon">'+famIcon('bd')+'</span><span>BD Management'+
+      '<small>Agency Grants • Commission • Statements</small></span>';
     bd.hidden=true;bd.onclick=openRoyalFamily;entries.appendChild(bd);
     const countryButton=document.createElement('button');
     countryButton.type='button';countryButton.id='sh-country-entry';
@@ -2350,13 +2362,13 @@
     if(!layer){
       layer=document.createElement('section');layer.id='sh-family-panel';
       layer.setAttribute('role','dialog');layer.setAttribute('aria-modal','true');
-      layer.setAttribute('aria-label','Sharika Royal Family');
+      layer.setAttribute('aria-label','Sharika Agency and Host');
       document.body.appendChild(layer);
     }
     layer.hidden=false;
     layer.innerHTML='<div class="sh-fam-wrap"><div class="sh-fam-head">'+
       '<button type="button" class="sh-fam-close" id="sh-fam-back">‹ Back</button>'+
-      '<small>SHARIKA · ROYAL FAMILY</small></div><h2>👑 Royal Family</h2>'+
+      '<small>SHARIKA · AGENCY & HOST</small></div><h2>'+famIcon('agency')+' Agency & Host</h2>'+
       '<div id="sh-fam-body" class="sh-fam-card">Loading verified family data…</div>'+
       '<p class="sh-fam-feedback" role="status"></p></div>';
     layer.querySelector('#sh-fam-back').onclick=()=>{layer.hidden=true;};
@@ -2387,8 +2399,8 @@
     const policy=data.policy||{},bd=data.bd||{};
     host.classList.remove('sh-fam-dashboard');
     host.classList.add('sh-fam-discovery');
-    host.innerHTML='<div class="sh-fam-lobby-head"><span>✦ ROYAL FAMILIES ✦</span>'+
-      '<h3>Discover Your Family</h3><p>Join an existing Family or apply to create your own.</p></div>'+
+    host.innerHTML='<div class="sh-fam-lobby-head"><span>✦ ROYAL AGENCIES ✦</span>'+
+      '<h3>Discover Your Agency</h3><p>Join an existing Agency or apply to create your own.</p></div>'+
       '<div class="sh-fam-lobby-tabs" role="tablist" aria-label="Family list">'+
       '<button data-fam-sort="recommend" aria-selected="true" role="tab">✦ Recommend</button>'+
       '<button data-fam-sort="new" aria-selected="false" role="tab">✧ New</button></div>'+
@@ -2624,16 +2636,16 @@
     const fmtUnits=u=>(Number(u||0)/10000).toLocaleString('en-US',{maximumFractionDigits:4});
     const formatAmount=n=>Math.max(0,Number(n)||0).toLocaleString('en-US');
     const progress=data.target_progress||{},activity=data.activity||{};
-    let html='<section class="sh-fam-hero"><span class="sh-fam-crest" aria-hidden="true">👑</span>'+
-      '<small>✦ SHARIKA ROYAL FAMILY ✦</small><h3>'+famEsc(family.name)+'</h3>'+
+    let html='<section class="sh-fam-hero"><span class="sh-fam-crest" aria-hidden="true">'+famIcon('agency')+'</span>'+
+      '<small>✦ SHARIKA AGENCY & HOST ✦</small><h3>'+famEsc(family.name)+'</h3>'+
       '<small>Family #'+famEsc(family.id)+' · LEVEL '+famEsc(family.level)+
       ' · '+famEsc(family.status)+'</small></section>'+
       '<div class="sh-fam-kpis">'+
-      '<div class="sh-fam-kpi"><small>👥 Family Members</small><strong>'+famEsc(family.member_count)+'</strong></div>'+
-      '<div class="sh-fam-kpi"><small>💎 All-Time Gift Diamonds</small><strong>'+formatAmount(progress.lifetime)+'</strong></div>'+
-      '<div class="sh-fam-kpi"><small>🗓️ Monthly Gift Diamonds</small><strong>'+formatAmount(progress.month)+'</strong></div>'+
-      '<div class="sh-fam-kpi"><small>✨ My Earned Crystal</small><strong>'+fmtUnits(wallet.total_units)+'</strong></div>'+
-      '</div><div class="sh-fam-card"><h3>💎 Crystal Wallet</h3><div class="sh-fam-stat">'+
+      '<div class="sh-fam-kpi"><small>'+famIcon('host')+' Members</small><strong>'+famEsc(family.member_count)+'</strong></div>'+
+      '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' All-Time Gift Diamonds</small><strong>'+formatAmount(progress.lifetime)+'</strong></div>'+
+      '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' Monthly Gift Diamonds</small><strong>'+formatAmount(progress.month)+'</strong></div>'+
+      '<div class="sh-fam-kpi"><small>'+famIcon('commission')+' My Earned Crystal</small><strong>'+fmtUnits(wallet.total_units)+'</strong></div>'+
+      '</div><div class="sh-fam-card"><h3>'+famIcon('commission')+' Crystal Wallet</h3><div class="sh-fam-stat">'+
       fmtUnits(wallet.available_units)+' Crystal</div>'+
       '<p class="sh-fam-note">Verified total: '+fmtUnits(wallet.total_units)+
       ' · Reserved / transferred: '+fmtUnits(wallet.transferred_units)+
@@ -2649,7 +2661,7 @@
       const activity=data.activity||{},progress=data.target_progress||{};
       const fmtDiamonds=value=>Math.max(0,Number(value)||0).toLocaleString('en-US',{maximumFractionDigits:0});
       html+='<div class="sh-fam-card" data-family-diamond-target="true">'+
-        '<h3>💎 Family Diamond Gift Target</h3>'+
+        '<h3>'+famIcon('gifts')+' Family Diamond Gift Target</h3>'+
         '<div class="sh-fam-stat">'+fmtDiamonds(progress.month)+'</div>'+
         '<p class="sh-fam-note">Diamonds contributed this month (UTC)</p>'+
         '<p>Today: <strong>'+fmtDiamonds(progress.today)+'</strong> 💎 · '+
@@ -2664,7 +2676,7 @@
         '<p class="sh-fam-note">Owner: '+famEsc(family.owner_id)+
         ' · BD: '+famEsc(family.bd_id)+'</p>'+
         (family.status!=='active'?'<p class="sh-fam-status">This Family is suspended. Ask Admin to review it.</p>':'')+
-        '<div class="sh-fam-section-title"><h3>👥 Member Directory</h3><small>'+famEsc(family.member_count)+' members</small></div>'+
+        '<div class="sh-fam-section-title"><h3>'+famIcon('host')+' Member Directory</h3><small>'+famEsc(family.member_count)+' members</small></div>'+
         '<ol class="sh-fam-list">'+
         (family.members||[]).map((m,index)=>'<li class="sh-fam-member-item">'+
           '<button type="button" class="sh-fam-member-row" data-fam-member-detail="'+famEsc(m.public_id)+'">'+
@@ -2706,7 +2718,7 @@
           famEsc(a.family_name)+' · <span class="sh-fam-status">'+
           famEsc(a.state)+'</span></li>').join('')+'</ul>':'')+'</div>';
     if(bd.active&&bd.can_grant){
-      html+='<div class="sh-fam-card"><h3>💼 BD Family Grant</h3>'+
+      html+='<div class="sh-fam-card"><h3>'+famIcon('bd')+' BD Agency Grant</h3>'+
         '<p class="sh-fam-note">Your account has Family Grant permission. BD commission: '+
         famEsc(policy.bd_percent)+'% on verified non-Lucky family member gifts.</p>'+
         '<label>Owner Sharika ID<input id="sh-fam-owner-id" inputmode="numeric" maxlength="8" placeholder="8-digit ID"></label>'+
@@ -2749,17 +2761,17 @@
         const selected=record.selected_date||new Date().toISOString().slice(0,10);
         const days=Array.isArray(record.days)?record.days:[];
         const gifts=Array.isArray(record.gifts)?record.gifts:[];
-        target.innerHTML='<button type="button" id="sh-fam-detail-back">‹ Family Dashboard</button>'+
-          '<section class="sh-fam-hero"><div class="sh-fam-crest" aria-hidden="true">👤</div>'+
+        target.innerHTML='<button type="button" id="sh-fam-detail-back">‹ Agency Dashboard</button>'+
+          '<section class="sh-fam-hero"><div class="sh-fam-crest" aria-hidden="true">'+famIcon('host')+'</div>'+
           '<h3>'+famEsc(user.name)+'</h3><small>ID '+famEsc(user.id)+
           ' · '+famEsc(user.role)+' · Joined '+famEsc(user.joined_at)+'</small></section>'+
           '<div class="sh-fam-kpis">'+
-          '<div class="sh-fam-kpi"><small>💎 Total Gift Diamonds</small><strong>'+formatAmount(total.gift_coins)+'</strong></div>'+
-          '<div class="sh-fam-kpi"><small>🎁 Verified Gift Events</small><strong>'+formatAmount(total.gift_count)+'</strong></div>'+
-          '<div class="sh-fam-kpi"><small>✨ Earned Crystal</small><strong>'+fmtUnits(total.earned_crystal_units)+'</strong></div>'+
-          '<div class="sh-fam-kpi"><small>📆 Selected Day · '+famEsc(selected)+'</small><strong>'+formatAmount(
+          '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' Total Gift Diamonds</small><strong>'+formatAmount(total.gift_coins)+'</strong></div>'+
+          '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' Verified Gift Events</small><strong>'+formatAmount(total.gift_count)+'</strong></div>'+
+          '<div class="sh-fam-kpi"><small>'+famIcon('commission')+' Earned Crystal</small><strong>'+fmtUnits(total.earned_crystal_units)+'</strong></div>'+
+          '<div class="sh-fam-kpi"><small>'+famIcon('reports')+' Selected Day · '+famEsc(selected)+'</small><strong>'+formatAmount(
             gifts.reduce((sum,g)=>sum+Number(g.quantity||0)*Number(g.price_coins||0),0))+'</strong></div></div>'+
-          '<section class="sh-fam-card"><h3>📅 Daily Gift Statement (UTC)</h3>'+
+          '<section class="sh-fam-card"><h3>'+famIcon('reports')+' Daily Gift Statement (UTC)</h3>'+
           '<label>Choose date<input id="sh-fam-selected-date" type="date" value="'+famEsc(selected)+
           '" max="'+new Date().toISOString().slice(0,10)+'"></label>'+
           '<div class="sh-fam-date-pills">'+days.slice(0,14).map(d=>
