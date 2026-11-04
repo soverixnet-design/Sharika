@@ -2,7 +2,7 @@
 // by the authenticated /me or /invites/redeem D1 transaction, not by this link.
 export const INVITE_LINK_BASE='https://sharika-api-staging.soverixnet.workers.dev/invite/';
 const PLAY_DETAILS='https://play.google.com/store/apps/details?id=com.soverixnet.sharika';
-const STAGING_APK='https://github.com/soverixnet-design/Sharika/releases/download/sharika-preplay-family-qa-staging-f05f7d24/Sharika-PrePlay-Family-Room-QA-Staging.apk';
+const STAGING_APK='https://github.com/soverixnet-design/Sharika/releases/download/sharika-invite-autolink-staging-c8f6d693/Sharika-Invite-Auto-Link-Staging.apk';
 const HEADERS={
   'content-type':'text/html; charset=utf-8',
   'cache-control':'public, max-age=300',
