@@ -24,5 +24,10 @@ test('Games picker and Cloudflare Worker agree on the exact catalog path', () =>
   const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
   assert.ok(client.includes("api('GET','/game-catalog')"));
   assert.ok(worker.includes("path==='/api/v1/game-catalog'&&request.method==='GET'"));
-  assert.ok(client.includes('Games are temporarily unavailable:'));
+  assert.ok(client.includes('Games could not load:'));
+  assert.ok(client.includes('Retry loading games'));
+  // All packaged, server-enabled games appear; a single-game client filter
+  // previously hid Food Wheels and Greedy Wheel even when enabled in D1.
+  assert.ok(client.includes('visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));'));
+  assert.ok(!client.includes("originalGameCards.filter(game=>game.id==='fruit-royale'"));
 });
