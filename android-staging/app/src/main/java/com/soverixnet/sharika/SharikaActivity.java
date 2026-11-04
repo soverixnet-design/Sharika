@@ -197,13 +197,22 @@ public final class SharikaActivity extends Activity {
             }
             @Override public boolean onShowFileChooser(WebView view,
                     ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
-                // Android grants access only to the selected image. Do not
-                // request blanket READ_MEDIA_IMAGES or storage permissions.
+                // Android grants access only to the selected image or audio
+                // file. Never request blanket media storage permissions.
                 if (pendingImageSelection != null) pendingImageSelection.onReceiveValue(null);
                 pendingImageSelection = callback;
                 Intent chooser = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 chooser.addCategory(Intent.CATEGORY_OPENABLE);
-                chooser.setType("image/*");
+                boolean audioPicker = false;
+                for (String accepted : params.getAcceptTypes()) {
+                    if (accepted != null && (accepted.startsWith("audio/") ||
+                            accepted.equalsIgnoreCase(".mp3") ||
+                            accepted.equalsIgnoreCase(".m4a"))) {
+                        audioPicker = true;
+                        break;
+                    }
+                }
+                chooser.setType(audioPicker ? "audio/*" : "image/*");
                 chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 try {
                     startActivityForResult(chooser, IMAGE_PICKER_REQUEST);
@@ -1050,6 +1059,7 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
         if (path.equals("/api/v1/cosmetics/purchase") ||
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
+        if (path.equals("/api/v1/music-library")) return method.equals("GET");
         if (path.equals("/api/v1/wallet")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange-rate")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange")) return method.equals("POST");
@@ -1081,6 +1091,8 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/lucky-box")) return method.equals("GET");
         if (path.equals("/api/v1/lucky-box/open")) return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/announcement$"))
+            return method.equals("GET") || method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/music$"))
             return method.equals("GET") || method.equals("PUT");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");

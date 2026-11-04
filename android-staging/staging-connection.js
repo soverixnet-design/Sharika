@@ -105,7 +105,7 @@
   let authAttemptId = 0;
   let balance = { coins: 0, dia: 0, xp: 0 };
   let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null,
-    reactionPoll = null;
+    reactionPoll = null, musicPoll = null;
   let voiceRoom = null, voiceRoomId = null;
   let voiceBackend = null;
 
@@ -3475,6 +3475,8 @@
   // Android WebView may block a remote track's first autoplay attempt.
   // A later genuine room tap must retry playback synchronously in that gesture.
   function resumeRoomAudio() {
+    if(musicPlayer?.src&&musicPlayer.paused&&musicState?.mode==='library')
+      musicPlayer.play().catch(()=>{});
     if(sfuState && !sfuState.closed) {
       if(sfuState.speakingContext?.state==='suspended')
         sfuState.speakingContext.resume().catch(()=>{});
@@ -3630,6 +3632,11 @@
   async function disconnectSfu() {
     const state=sfuState;
     if(!state)return;
+    if(musicLocal?.state===state){
+      const broadcastingRoom=musicLocal.roomId;
+      releasePhoneMusic();
+      api('PUT','/rooms/'+broadcastingRoom+'/music',{action:'stop_self'}).catch(()=>{});
+    }
     sfuState=null;
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
@@ -5333,6 +5340,269 @@
     openVerifiedRoomMemberProfile(id,roomId,seat).catch(error=>
       toast('Profile unavailable: '+errText(error)));
   },true);
+  // Room music is separate from chat and gift history. A licensed HTTPS file
+  // from the Admin catalogue is rendered by each listener; a phone MP3 stays
+  // on its owner's device and enters the existing room SFU microphone uplink.
+  let musicState=null,musicStateRoom=null,musicPlaybackKey='',musicLocal=null;
+  let musicPlayer=null,musicVolume=.6,musicHeartbeat=null,musicSyncPending=false;
+  function moderatorCanPlayMusic(){
+    const role=document.getElementById('rf')?.contentWindow?.__sharikaRoomRole;
+    return role==='owner'||role==='admin';
+  }
+  function validRoomMusicUrl(url){
+    try{
+      const parsed=new URL(String(url));
+      return parsed.protocol==='https:'&&!parsed.username&&!parsed.password&&
+        /\.(mp3|m4a|aac|ogg|wav)$/i.test(parsed.pathname);
+    }catch(_){return false;}
+  }
+  function roomMusicPlayer(){
+    if(!musicPlayer){
+      musicPlayer=document.createElement('audio');
+      musicPlayer.id='sharika-room-music-audio';
+      musicPlayer.preload='auto';musicPlayer.playsInline=true;
+      musicPlayer.volume=musicVolume;
+      musicPlayer.style.display='none';
+      document.body.appendChild(musicPlayer);
+    }
+    return musicPlayer;
+  }
+  function closeRoomMusicAudio(){
+    if(musicPlayer){musicPlayer.pause();musicPlayer.removeAttribute('src');musicPlayer.load();}
+  }
+  function releasePhoneMusic(){
+    const local=musicLocal;
+    if(!local)return;
+    musicLocal=null;
+    if(musicHeartbeat){clearInterval(musicHeartbeat);musicHeartbeat=null;}
+    // Undo replaceTrack before stopping its MediaStreamTrack. During a room
+    // disconnect the sender may already be closed; no track is leaked.
+    if(local.sender&&local.state===sfuState&&
+       local.original?.readyState==='live')
+      local.sender.replaceTrack(local.original).catch(()=>{});
+    try{local.audio.pause();local.audio.src='';local.audio.load();}catch(_){}
+    try{local.micSource.disconnect();local.songSource.disconnect();}catch(_){}
+    try{for(const track of local.destination.stream.getTracks())track.stop();}catch(_){}
+    local.context.close().catch(()=>{});
+    URL.revokeObjectURL(local.blobUrl);
+  }
+  function resetRoomMusic(){
+    if(musicPoll){clearInterval(musicPoll);musicPoll=null;}
+    if(musicHeartbeat){clearInterval(musicHeartbeat);musicHeartbeat=null;}
+    document.getElementById('sharika-room-music-panel')?.remove();
+    releasePhoneMusic();closeRoomMusicAudio();
+    musicStateRoom=null;musicState=null;musicPlaybackKey='';
+  }
+  function playbackForMusicState(roomId,state){
+    if(window.cur?.id!==roomId)return;
+    const nextKey=String(state?.revision||0)+':'+String(state?.mode||'off');
+    if(musicPlaybackKey===nextKey)return;
+    musicPlaybackKey=nextKey;
+    if(musicLocal&&(state?.mode!=='local'||
+       Number(state.revision)!==Number(musicLocal.revision)))releasePhoneMusic();
+    if(state?.mode==='library'&&validRoomMusicUrl(state.url)){
+      const player=roomMusicPlayer();
+      player.pause();player.src=state.url;player.volume=musicVolume;
+      const seek=()=>{
+        if(window.cur?.id!==roomId||musicPlaybackKey!==nextKey)return;
+        const seconds=Math.max(0,(Date.now()-Number(state.started_at_ms||Date.now()))/1000);
+        if(Number.isFinite(player.duration)&&player.duration>0)
+          player.currentTime=Math.min(seconds,Math.max(0,player.duration-.1));
+        else if(seconds<3600)try{player.currentTime=seconds;}catch(_){}
+        player.play().catch(error=>console.warn('Room library playback:',errText(error)));
+      };
+      if(player.readyState>=1)seek();
+      else player.addEventListener('loadedmetadata',seek,{once:true});
+    }else closeRoomMusicAudio();
+  }
+  async function pollRoomMusic(roomId){
+    if(musicSyncPending||!session||window.cur?.id!==roomId)return;
+    musicSyncPending=true;
+    try{
+      const next=await api('GET','/rooms/'+roomId+'/music');
+      if(window.cur?.id!==roomId)return;
+      musicStateRoom=roomId;musicState=next;
+      playbackForMusicState(roomId,next);
+      const label=document.getElementById('sharika-music-now-playing');
+      if(label)label.textContent=next.mode==='off'?'No song playing':
+        (next.mode==='local'?'📱 Phone MP3':'🎼 Music Library')+' · '+next.title;
+    }catch(error){console.warn('Room music state:',errText(error));}
+    finally{musicSyncPending=false;}
+  }
+  function startRoomMusicPoll(roomId){
+    if(musicPoll)clearInterval(musicPoll);
+    musicStateRoom=roomId;musicState=null;musicPlaybackKey='';
+    pollRoomMusic(roomId).catch(()=>{});
+    musicPoll=setInterval(()=>{if(window.cur?.id===roomId)pollRoomMusic(roomId);},3500);
+  }
+  async function selectLibrarySong(roomId,trackId){
+    await api('PUT','/rooms/'+roomId+'/music',{action:'library',track_id:trackId});
+    await pollRoomMusic(roomId);
+    toast('🎼 Playing Music Library song in this room');
+  }
+  async function stopRoomMusic(roomId){
+    await api('PUT','/rooms/'+roomId+'/music',{action:'stop'});
+    releasePhoneMusic();closeRoomMusicAudio();
+    await pollRoomMusic(roomId);
+  }
+  async function streamPhoneMusic(roomId,file){
+    if(!moderatorCanPlayMusic())throw new Error('Only Room Owner or Room Admin can play music');
+    if(!file||!(/^(audio\/)/i.test(file.type)||/\.(mp3|m4a|aac|ogg|wav)$/i.test(file.name)))
+      throw new Error('Choose an MP3 or another supported audio file');
+    if(file.size>50*1024*1024)throw new Error('Please choose a file smaller than 50 MB');
+    if(musicLocal)await stopRoomMusic(roomId);
+    const state=sfuState;
+    const mic=state?.media?.getAudioTracks()[0];
+    if(!state||state.roomId!==roomId||!state.canPublish||
+       !state.readyPublication||!mic||mic.readyState!=='live')
+      throw new Error('Take an unlocked mic seat and connect voice before sharing phone MP3');
+    if(typeof AudioContext==='undefined'&&typeof webkitAudioContext==='undefined')
+      throw new Error('This device does not support phone MP3 broadcast');
+    const sender=state.publishPC?.getSenders()?.find(item=>item.track===mic);
+    if(!sender)throw new Error('Room microphone uplink unavailable; please reconnect');
+    const context=new (window.AudioContext||window.webkitAudioContext)();
+    let blobUrl=null;
+    try{
+      blobUrl=URL.createObjectURL(file);
+      const audio=new Audio(blobUrl);audio.loop=false;
+      const micSource=context.createMediaStreamSource(state.media);
+      const songSource=context.createMediaElementSource(audio);
+      const destination=context.createMediaStreamDestination();
+      micSource.connect(destination);songSource.connect(destination);
+      await context.resume();
+      // Reserve the room controller first; no file is uploaded to Cloudflare.
+      const current=await api('PUT','/rooms/'+roomId+'/music',{
+        action:'local',title:file.name.slice(0,100)
+      });
+      if(window.cur?.id!==roomId)throw new Error('Room changed');
+      const mixed=destination.stream.getAudioTracks()[0];
+      await sender.replaceTrack(mixed);
+      musicLocal={roomId,revision:current.revision,original:mic,state,sender,context,audio,micSource,
+        songSource,destination,blobUrl};
+      await audio.play();
+      musicState=current;musicStateRoom=roomId;
+      closeRoomMusicAudio();
+      musicPlaybackKey=String(current.revision)+':local';
+      if(musicHeartbeat)clearInterval(musicHeartbeat);
+      musicHeartbeat=setInterval(()=>{
+        if(musicLocal?.roomId===roomId&&window.cur?.id===roomId)
+          api('PUT','/rooms/'+roomId+'/music',{action:'heartbeat'})
+            .catch(()=>{releasePhoneMusic();toast('Phone MP3 sharing stopped');});
+      },8000);
+      audio.addEventListener('ended',()=>{
+        if(musicLocal?.audio===audio)stopRoomMusic(roomId).catch(()=>releasePhoneMusic());
+      },{once:true});
+      toast('📱 Phone MP3 is broadcasting over the room voice connection');
+    }catch(error){
+      if(musicLocal?.blobUrl===blobUrl)releasePhoneMusic();
+      else {
+        if(blobUrl)URL.revokeObjectURL(blobUrl);
+        context.close().catch(()=>{});
+      }
+      api('PUT','/rooms/'+roomId+'/music',{action:'stop_self'}).catch(()=>{});
+      throw error;
+    }
+  }
+  async function openRoomMusic(){
+    const roomId=window.cur?.id;
+    if(!roomId){toast('Join a room to use Music');return;}
+    document.getElementById('sharika-room-music-panel')?.remove();
+    const overlay=document.createElement('div');
+    overlay.id='sharika-room-music-panel';
+    overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;'+
+      'display:flex;align-items:flex-end;justify-content:center;'+
+      'background:#090415d9;padding:12px;box-sizing:border-box;color:#fff1ce';
+    const panel=document.createElement('div');
+    panel.style.cssText='width:min(100%,520px);max-height:80vh;overflow-y:auto;'+
+      'border:2px solid #f2cb75;border-radius:26px;padding:20px;'+
+      'background:linear-gradient(155deg,#583070,#201035 40%,#110c24);'+
+      'box-shadow:inset 0 3px 6px #ffef9a66,inset 0 -6px 16px #080217,0 18px 45px #000a';
+    overlay.appendChild(panel);document.body.appendChild(overlay);
+    overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+    const header=document.createElement('div');
+    header.style.cssText='display:flex;justify-content:space-between;align-items:center';
+    const title=document.createElement('h2');title.textContent='🎵 Royal Room Music';
+    title.style.cssText='font-size:22px;margin:0 0 8px;color:#ffe39a';
+    const close=document.createElement('button');close.textContent='✕ Close';
+    close.style.cssText='background:#281337;color:#ffe4af;border:1px solid #d7a653;border-radius:12px;padding:9px';
+    close.onclick=()=>overlay.remove();header.append(title,close);panel.appendChild(header);
+    const now=document.createElement('p');now.id='sharika-music-now-playing';
+    now.textContent=musicState?.mode&&musicState.mode!=='off'?
+      '🎼 '+musicState.title:'No song playing';
+    now.style.cssText='font-weight:700;padding:12px;border:1px solid #c59152;border-radius:15px;background:#1a1028';
+    panel.appendChild(now);
+    const volumeLabel=document.createElement('label');
+    volumeLabel.textContent='🔊 Music volume (this phone)';
+    volumeLabel.style.cssText='display:block;font-size:13px;margin:12px 0 6px';
+    const volume=document.createElement('input');volume.type='range';volume.min='0';volume.max='100';
+    volume.value=String(Math.round(musicVolume*100));volume.style.width='100%';
+    volume.oninput=()=>{musicVolume=Number(volume.value)/100;if(musicPlayer)musicPlayer.volume=musicVolume;};
+    panel.append(volumeLabel,volume);
+    const status=document.createElement('p');
+    status.style.cssText='font-size:13px;min-height:18px;color:#ffe29b';
+    panel.appendChild(status);
+    if(moderatorCanPlayMusic()){
+      const stop=document.createElement('button');
+      stop.textContent='■ Stop music for everyone';
+      stop.style.cssText='display:block;width:100%;padding:13px;border:1px solid #f6ce7b;'+
+        'border-radius:16px;background:linear-gradient(145deg,#a94a5b,#54233f);color:#fff;font-weight:800;margin:12px 0';
+      stop.onclick=async()=>{
+        stop.disabled=true;
+        try{await stopRoomMusic(roomId);status.textContent='Room music stopped';}
+        catch(e){status.textContent='Could not stop: '+errText(e);}
+        finally{stop.disabled=false;}
+      };
+      panel.appendChild(stop);
+      const uploadLabel=document.createElement('label');
+      uploadLabel.textContent='📱 Broadcast MP3 from your phone (mic seat required)';
+      uploadLabel.style.cssText='display:block;font-weight:700;margin:15px 0 6px';
+      const input=document.createElement('input');input.type='file';input.accept='audio/*,.mp3,.m4a,.aac,.ogg,.wav';
+      input.style.cssText='display:block;width:100%;max-width:100%;padding:9px;border:1px solid #d2a45a;border-radius:12px;box-sizing:border-box';
+      input.onchange=async()=>{
+        if(!input.files?.[0])return;
+        input.disabled=true;status.textContent='Connecting phone music to room voice…';
+        try{await streamPhoneMusic(roomId,input.files[0]);status.textContent='Phone MP3 broadcasting ✓';}
+        catch(e){status.textContent='MP3 unavailable: '+errText(e);}
+        finally{input.disabled=false;input.value='';}
+      };
+      panel.append(uploadLabel,input);
+    }else{
+      const label=document.createElement('p');
+      label.textContent='Only Room Owner / Room Admin can choose or stop songs. Everyone can listen.';
+      label.style.cssText='font-size:13px;opacity:.9';panel.appendChild(label);
+    }
+    const heading=document.createElement('h3');heading.textContent='🎼 Admin Music Library';
+    heading.style.cssText='font-size:16px;margin:18px 0 8px;color:#ffdc87';panel.appendChild(heading);
+    const list=document.createElement('div');list.textContent='Loading library…';panel.appendChild(list);
+    try{
+      const catalogue=await api('GET','/music-library');
+      if(!overlay.isConnected)return;
+      list.replaceChildren();
+      if(!catalogue.tracks?.length)list.textContent='No songs yet. Super Admin can add licensed HTTPS MP3 links in Admin Panel.';
+      for(const track of catalogue.tracks||[]){
+        const item=document.createElement('div');
+        item.style.cssText='display:flex;gap:10px;align-items:center;justify-content:space-between;'+
+          'padding:10px 4px;border-bottom:1px solid #b99b6f66';
+        const name=document.createElement('span');name.textContent='♪ '+track.title;
+        name.style.cssText='font-size:14px;min-width:0;overflow-wrap:anywhere';item.appendChild(name);
+        if(moderatorCanPlayMusic()){
+          const play=document.createElement('button');play.textContent='▶ Play';
+          play.style.cssText='border:1px solid #ffe3a1;border-radius:14px;'+
+            'background:linear-gradient(#ffdf91,#a66f23);color:#241128;font-weight:900;padding:9px 13px';
+          play.onclick=async()=>{
+            play.disabled=true;status.textContent='Starting shared song…';
+            try{await selectLibrarySong(roomId,Number(track.id));status.textContent='Now playing: '+track.title;}
+            catch(e){status.textContent='Song unavailable: '+errText(e);}
+            finally{play.disabled=false;}
+          };
+          item.appendChild(play);
+        }
+        list.appendChild(item);
+      }
+    }catch(error){list.textContent='Library unavailable: '+errText(error);}
+    pollRoomMusic(roomId).catch(()=>{});
+  }
+  window.SharikaRoomMusic=Object.freeze({open:openRoomMusic});
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
     if (frame && frame.document) fitAndroidViewport(frame.document, true);
@@ -6923,6 +7193,7 @@
     entryPoll=setInterval(()=>{
       if(window.cur?.id===room.id)pollRoomEntries().catch(()=>{});
     },2500);
+    startRoomMusicPoll(room.id);
     // Voice and visual room refresh are independent. A slow ICE/TURN join
     // must never block member faces, the header, announcement or room polling.
     ensureVoiceConnected(room.id).then(voice=>{
@@ -7046,6 +7317,7 @@
       // Room-to-room navigation must release old seats, membership and audio.
       if(prior && prior.id!==room.id) {
         window.__sharikaRoomGameClose?.();
+        resetRoomMusic();
         if(framePoll){clearInterval(framePoll);framePoll=null;}
         if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
         if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
@@ -7112,6 +7384,7 @@
   window.leaveRoom=function() {
     window.__sharikaRoomGameClose?.();
     const current=window.cur;
+    resetRoomMusic();
     if(framePoll){clearInterval(framePoll);framePoll=null;}
     if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
     if(chatPoll){clearInterval(chatPoll);chatPoll=null;}

@@ -19,6 +19,7 @@ import { handleOpeningAdmin } from './opening.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 import { handleFamilyAdmin } from './family.mjs';
 import {handleAgencyAdmin} from './agency.mjs';
+import {handleMusicAdmin} from './music-library.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
 import { handleNotificationAdmin } from './notifications.mjs';
 import { handleOperationalRead } from './admin-operations.mjs';
@@ -149,6 +150,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   });
   if(operation==='agency'||operation.startsWith('agency/'))return await handleAgencyAdmin({
     request,env,uid,actor,operation,cors,reply,fail
+  });
+  if(operation==='music-library')return await handleMusicAdmin({
+    request,env,actor,cors,reply,fail
   });
   const operational=await handleOperationalRead({request,env,actor,operation,cors,reply,fail});
   if(operational)return operational;

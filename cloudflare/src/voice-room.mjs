@@ -49,6 +49,21 @@ export class SharikaVoiceRoom extends DurableObject {
         'uid TEXT PRIMARY KEY, chat_after_id INTEGER NOT NULL, '+
         'entry_after_id INTEGER NOT NULL, gift_after_id INTEGER NOT NULL)'
       );
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_music_state ('+
+        'id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, '+
+        'mode TEXT NOT NULL, track_id INTEGER, title TEXT NOT NULL, '+
+        'url TEXT NOT NULL, controller_uid TEXT, started_at_ms INTEGER NOT NULL, '+
+        'updated_at_ms INTEGER NOT NULL)'
+      );
+      // Only the dedicated library coordinator uses this small catalogue.
+      // The Worker authenticates the Super Admin before any mutation.
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS music_library ('+
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, '+
+        'url TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, '+
+        'created_at_ms INTEGER NOT NULL)'
+      );
       // Short-lived seat emojis belong to their authenticated sender, not to
       // whichever user happens to occupy seat zero on another phone.
       this.ctx.storage.sql.exec(
@@ -409,6 +424,105 @@ export class SharikaVoiceRoom extends DurableObject {
       'SELECT gift_after_id AS id FROM room_visits WHERE uid=?',uid
     ).toArray()[0];
     return row?Number(row.id):null;
+  }
+
+  async musicLibraryList(includeInactive=false) {
+    const entries=this.ctx.storage.sql.exec(
+      'SELECT id,title,url,active,created_at_ms FROM music_library '+
+      (includeInactive?'':'WHERE active=1 ')+
+      'ORDER BY id DESC LIMIT 100'
+    ).toArray();
+    return {tracks:entries.map(item=>({...item,active:!!item.active}))};
+  }
+
+  async musicLibraryTrack(trackId) {
+    const row=this.ctx.storage.sql.exec(
+      'SELECT id,title,url FROM music_library WHERE id=? AND active=1',trackId
+    ).toArray()[0];
+    return row||null;
+  }
+
+  async musicLibraryCreate(title,url) {
+    this.ctx.storage.sql.exec(
+      'INSERT INTO music_library(title,url,active,created_at_ms) VALUES(?,?,1,?)',
+      title,url,Date.now()
+    );
+    return this.musicLibraryList(true);
+  }
+
+  async musicLibraryUpdate(trackId,title,url,active) {
+    this.ctx.storage.sql.exec(
+      'UPDATE music_library SET title=?,url=?,active=? WHERE id=?',
+      title,url,active?1:0,trackId
+    );
+    const changed=this.ctx.storage.sql.exec(
+      'SELECT changes() AS count'
+    ).toArray()[0];
+    if(!changed?.count)return {error:'music_track_not_found'};
+    return this.musicLibraryList(true);
+  }
+
+  async roomMusicRead() {
+    let row=this.ctx.storage.sql.exec(
+      'SELECT * FROM room_music_state WHERE id=1'
+    ).toArray()[0];
+    // A phone that crashes cannot leave an endless phantom MP3 broadcast.
+    if(row?.mode==='local'&&Date.now()-row.updated_at_ms>25_000){
+      this.ctx.storage.sql.exec(
+        "UPDATE room_music_state SET mode='off',track_id=NULL,url='',title='',"+
+        'controller_uid=NULL,revision=revision+1,updated_at_ms=? WHERE id=1',Date.now()
+      );
+      row=this.ctx.storage.sql.exec(
+        'SELECT * FROM room_music_state WHERE id=1'
+      ).toArray()[0];
+    }
+    return row?{revision:row.revision,mode:row.mode,track_id:row.track_id,
+      title:row.title,url:row.url,started_at_ms:row.started_at_ms,
+      updated_at_ms:row.updated_at_ms}:
+      {revision:0,mode:'off',track_id:null,title:'',url:'',
+        started_at_ms:0,updated_at_ms:0};
+  }
+
+  async roomMusicSet(uid,action,track=null) {
+    const existing=this.ctx.storage.sql.exec(
+      'SELECT controller_uid,mode FROM room_music_state WHERE id=1'
+    ).toArray()[0];
+    if(action==='stop_self'){
+      if(existing?.controller_uid!==uid)return this.roomMusicRead();
+      return this.roomMusicSet(uid,'stop');
+    }
+    if(action==='heartbeat'){
+      if(existing?.controller_uid!==uid||existing?.mode!=='local')
+        return {error:'music_controller_changed'};
+      this.ctx.storage.sql.exec(
+        'UPDATE room_music_state SET updated_at_ms=? WHERE id=1',Date.now()
+      );
+      return this.roomMusicRead();
+    }
+    if(!['stop','library','local'].includes(action))return {error:'invalid_music_action'};
+    const now=Date.now();
+    const mode=action==='stop'?'off':action;
+    const title=mode==='off'?'':String(track?.title||'');
+    const url=mode==='library'?String(track?.url||''):'';
+    const trackId=mode==='library'?Number(track?.id)||null:null;
+    this.ctx.storage.sql.exec(
+      'INSERT INTO room_music_state(id,revision,mode,track_id,title,url,controller_uid,'+
+      'started_at_ms,updated_at_ms) VALUES(1,1,?,?,?,?,?,?,?) '+
+      'ON CONFLICT(id) DO UPDATE SET revision=revision+1,mode=excluded.mode,'+
+      'track_id=excluded.track_id,title=excluded.title,url=excluded.url,'+
+      'controller_uid=excluded.controller_uid,started_at_ms=excluded.started_at_ms,'+
+      'updated_at_ms=excluded.updated_at_ms',
+      mode,trackId,title,url,mode==='off'?null:uid,now,now
+    );
+    return this.roomMusicRead();
+  }
+
+  async roomMusicStopFor(uid) {
+    const existing=this.ctx.storage.sql.exec(
+      'SELECT controller_uid FROM room_music_state WHERE id=1'
+    ).toArray()[0];
+    if(existing?.controller_uid===uid)return this.roomMusicSet(uid,'stop');
+    return this.roomMusicRead();
   }
 
   async roomChatRead(uid,afterId) {

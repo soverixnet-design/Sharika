@@ -160,30 +160,12 @@
       closeMenu();
   });
 
-  // Local music is deliberately not presented as room-wide LiveKit audio.
-  // Broadcasting device audio requires a separate approved media-publish path.
-  let musicUrl = null;
+  // The authenticated Android bridge owns shared playback and permissions.
+  // Never claim a local-only <audio> element is audible to other members.
   function musicSheet() {
-    if (typeof window.open !== 'function') return;
-    window.open('<h3>🎵 Music & Audio</h3>' +
-      '<div class="lbl">Choose a song from your device</div>' +
-      '<input id="sh-local-song" class="field" type="file" accept="audio/*">' +
-      '<audio id="sh-local-player" controls style="width:100%;margin-top:12px"></audio>' +
-      '<div class="lbl" style="line-height:1.5;margin-top:12px">Plays on this phone only. Sharing music with everyone requires the room audio broadcasting service.</div>');
-    const picker = byId('sh-local-song');
-    const player = byId('sh-local-player');
-    if (!picker || !player) return;
-    picker.onchange = () => {
-      const file = picker.files?.[0];
-      if (!file || !file.type.startsWith('audio/')) {
-        window.toast?.('Choose an audio file');
-        return;
-      }
-      if (musicUrl) URL.revokeObjectURL(musicUrl);
-      musicUrl = URL.createObjectURL(file);
-      player.src = musicUrl;
-      player.play().catch(() => {});
-    };
+    const music=window.parent?.SharikaRoomMusic;
+    if(music&&typeof music.open==='function')music.open();
+    else window.toast?.('Update Sharika to use shared room music');
   }
   menuItem('🎵 Music', musicSheet);
   menuItem('🔊 Audio', musicSheet);

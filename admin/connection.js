@@ -58,6 +58,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['family','👑','BD · Agency · Host']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='musicLibrary')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='rooms');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['musicLibrary','🎵','Room Music Library']);
+  }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
     ledger:'view_ledger',support:'support_reply',rech:'coin_recharge'
@@ -122,7 +127,8 @@
     window.NAV=role==='staff'?NAV_ALL.filter(item=>
       !item[0]||Object.prototype.hasOwnProperty.call(allowedStaffPage,item[0])&&
       (!allowedStaffPage[item[0]]||status.permissions?.includes(allowedStaffPage[item[0]]))
-    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'&&
+    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>
+      !['specialIds','musicLibrary'].includes(item[0])&&
       (role==='finance'||item[0]!=='family')));
     window.ME = session.email || status.name || 'Administrator';
     return status;
@@ -689,6 +695,51 @@
         finally{button.disabled=false;}
       };
     }catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
+  };
+
+  P.musicLibrary=async function(){
+    const root=byId('pg');
+    root.innerHTML=card('🎵 Room Music Library','Loading Super Admin music catalogue…');
+    try{
+      const data=await api('GET','music-library');
+      const rows=Array.isArray(data.tracks)?data.tracks:[];
+      root.innerHTML='<div class="card"><h3>🎵 Room Music Library</h3>'+
+        '<p class="n">Add direct HTTPS audio-file links to music you own or are licensed to stream. '+
+        'Room Owner and Room Admin can play these songs for every listener. '+
+        'No MP3 bytes are uploaded into D1, and listener wallets are not affected.</p>'+
+        '<label>Song title<input id="sh-music-title" class="field" maxlength="100" placeholder="Song title"></label>'+
+        '<label>Direct HTTPS audio URL<input id="sh-music-url" class="field" type="url" '+
+        'placeholder="https://example.com/music/song.mp3"></label>'+
+        '<button type="button" id="sh-music-add" class="btn">Add to Music Library</button>'+
+        '<div style="margin-top:16px">'+window.T(['ID','Title','Source','Status','Action'],rows.map(track=>[
+          fmt(track.id),esc(track.title),
+          '<a href="'+esc(track.url)+'" target="_blank" rel="noopener noreferrer">Play / Check</a>',
+          track.active?'Active':'Disabled',
+          '<button type="button" class="btn s" data-music-id="'+esc(track.id)+'">'+
+          (track.active?'Disable':'Enable')+'</button>'
+        ]))+'</div></div>';
+      byId('sh-music-add').onclick=async()=>{
+        const button=byId('sh-music-add');
+        const title=byId('sh-music-title').value.trim();
+        const url=byId('sh-music-url').value.trim();
+        if(!title||!url){note('Enter a title and direct HTTPS MP3 link');return;}
+        button.disabled=true;
+        try{await api('POST','music-library',{title,url});note('Music Library updated ✓');await P.musicLibrary();}
+        catch(error){note('Music not added: '+error.message);button.disabled=false;}
+      };
+      root.querySelectorAll('[data-music-id]').forEach(button=>{
+        button.onclick=async()=>{
+          const item=rows.find(row=>String(row.id)===button.dataset.musicId);
+          if(!item)return;
+          button.disabled=true;
+          try{
+            await api('PATCH','music-library',{id:Number(item.id),title:item.title,
+              url:item.url,active:!item.active});
+            note('Music track updated ✓');await P.musicLibrary();
+          }catch(error){note('Music update failed: '+error.message);button.disabled=false;}
+        };
+      });
+    }catch(error){root.innerHTML=card('Music Library unavailable',error.message);}
   };
 
   P.daily=async function(){

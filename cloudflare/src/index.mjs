@@ -7,6 +7,7 @@ import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoom
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
 import {handleAgencyApp,agencyGiftEarningStatements} from './agency.mjs';
+import {MUSIC_LIBRARY_OBJECT,musicTitle} from './music-library.mjs';
 import {recordAgencyRoomActivity} from './agency-room-time.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
@@ -790,6 +791,12 @@ export async function handleRequest(request, env, ctx) {
           multiplier:x.multiplier,probability_percent:x.weight/100
         })) : [],read_only:true }, 200, cors);
     }
+    if(path==='/api/v1/music-library'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      if(!env.VOICE_ROOMS)return fail('music_library_unavailable',503,cors);
+      return reply(await env.VOICE_ROOMS.getByName(MUSIC_LIBRARY_OBJECT)
+        .musicLibraryList(false),200,cors);
+    }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       await assertActive(env.DB, uid);
       await settleDueBets(env.DB,uid);
@@ -1039,6 +1046,37 @@ export async function handleRequest(request, env, ctx) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // One shared playback state per verified room. Only the owner or a
+      // currently appointed Room Admin can change the song for everyone.
+      if(parts.length===5&&action==='music'){
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_music_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET')return reply(await coordinator.roomMusicRead(),200,cors);
+        if(request.method!=='PUT')return fail('method_not_allowed',405,cors);
+        if(room.owner_id!==uid&&!await isRoomAdmin(env,roomId,uid))
+          return fail('room_music_moderator_only',403,cors);
+        const body=await readBody(request);
+        const mode=body.action;
+        if(!['library','local','stop','stop_self','heartbeat'].includes(mode))
+          return fail('invalid_music_action',400,cors);
+        let track=null;
+        if(mode==='library'){
+          if(!Number.isSafeInteger(body.track_id)||body.track_id<1)
+            return fail('invalid_music_track',400,cors);
+          track=await env.VOICE_ROOMS.getByName(MUSIC_LIBRARY_OBJECT)
+            .musicLibraryTrack(body.track_id);
+          if(!track)return fail('music_track_unavailable',404,cors);
+        }
+        if(mode==='local'){
+          const title=musicTitle(body.title);
+          if(!title)return fail('invalid_music_track',400,cors);
+          track={title};
+        }
+        const result=await coordinator.roomMusicSet(uid,mode,track);
+        if(result.error)return fail(result.error,409,cors);
+        return reply(result,200,cors);
+      }
       // Room announcements are readable by entrants and editable by the verified owner only.
       if(parts.length===5 && action==='announcement'){
         if(!member)return fail('join_room_first',403,cors);
@@ -1197,6 +1235,7 @@ export async function handleRequest(request, env, ctx) {
         }
         if(env.VOICE_ROOMS){
           const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+          await coordinator.roomMusicStopFor(uid);
           await coordinator.endRoomVisit(uid);
           await coordinator.seatInviteClear(uid);
         }
