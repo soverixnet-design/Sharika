@@ -497,3 +497,43 @@
   width:38px;height:38px;border-color:#ffd98b;
 }
 .sh-royal-room .sh-reward-week small>b{color:#ffedbd;font-size:14px}
+
+
+/* Approved compact room revision: squarer, slightly larger masthead; one mini Ranking. */
+.sh-royal-room .top{padding-top:17px;padding-bottom:6px}
+.sh-royal-room .top .room{
+  min-height:61px;border-radius:16px;border-color:#f5c46f;
+  box-shadow:inset 0 1px #fff0be85,0 4px 13px #11001bcc;
+}
+.sh-royal-room .sh-room-masthead{
+  min-height:34px;justify-content:flex-end;padding:0 10px 2px;
+}
+.sh-royal-room .stats>.pill[role=button]{cursor:pointer;border-color:#ffcf7e}
+.sh-royal-room .stats>.pill[role=button]:focus-visible{
+  outline:2px solid #fff6c8;outline-offset:2px;
+}
+.sh-royal-room .sh-room-announcement{
+  display:flex;align-items:center;gap:7px;min-height:42px;
+  margin:4px 9px 6px;padding:6px 9px;
+  border:1.4px solid #f4bc68;border-radius:15px;
+  background:linear-gradient(105deg,#230a3de8,#582568e8);
+  box-shadow:inset 0 1px #ffe9ba70,0 4px 10px #0c001b99;
+  color:#ffe2ad;font-size:11px;line-height:1.3;
+}
+.sh-royal-room .sh-room-announcement>b{
+  white-space:nowrap;color:#ffdc93;font-size:11px;
+}
+.sh-royal-room #sh-room-announcement-text{
+  color:#fff3e0;flex:1;min-width:0;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  line-clamp:2;
+}
+.sh-royal-room #sh-room-announcement-edit{
+  border:0;background:transparent;color:#ffdd94;padding:4px;
+  font-size:16px;flex:none;cursor:pointer;
+}
+.sh-royal-room #sh-room-announcement-edit[hidden]{display:none}
+@media(max-width:360px){
+  .sh-royal-room .sh-room-announcement{gap:4px;padding:5px 6px;font-size:10px}
+  .sh-royal-room .sh-room-announcement>b{font-size:10px}
+}

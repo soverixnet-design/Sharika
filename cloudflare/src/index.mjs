@@ -28,6 +28,7 @@ import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
 import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
+import {handleLuckyBoxApp} from './lucky-box.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -289,6 +290,10 @@ export async function handleRequest(request, env, ctx) {
       return await handleInviteApp({
       request, env, uid, path, cors, reply, fail
     });
+    if(path==='/api/v1/lucky-box' || path==='/api/v1/lucky-box/open'){
+      await assertActive(env.DB,uid);
+      return await handleLuckyBoxApp({request,db:env.DB,uid,path,readBody,reply,fail,cors});
+    }
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
         path==='/api/v1/daily/tasks/claim') return await handleDailyApp({
       request, env, uid, path, cors, reply, fail, ctx
@@ -1015,6 +1020,23 @@ export async function handleRequest(request, env, ctx) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // Room announcements are readable by entrants and editable by the verified owner only.
+      if(parts.length===5 && action==='announcement'){
+        if(!member)return fail('join_room_first',403,cors);
+        if(request.method==='GET')return reply({room_id:roomId,
+          announcement:String(room.announcement||'')},200,cors);
+        if(request.method==='PUT'){
+          if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+          const body=await readBody(request);
+          if(typeof body.announcement!=='string'||body.announcement.length>300)
+            return fail('invalid_room_announcement',400,cors);
+          const text=body.announcement.trim();
+          await env.DB.prepare('UPDATE sharika_rooms SET announcement=? WHERE id=? AND owner_id=?')
+            .bind(text,roomId,uid).run();
+          return reply({room_id:roomId,announcement:text,saved:true},200,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       // An owner may invite an unseated, verified member to an unlocked mic seat.
       if(parts.length===5 && action==='invitations') {
         if(!member)return fail('join_room_first',403,cors);
@@ -1197,7 +1219,7 @@ export async function handleRequest(request, env, ctx) {
       // ledger remains a report, not another claimable balance.
       // Lucky Gifts retain their separate 1% rule.
       if (parts.length===5 && action==='rewards' && request.method==='GET') {
-        if(!member)return fail('join_room_first',403,cors);
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
         const regular=await env.DB.prepare(
           'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
           'FROM sharika_regular_room_rewards WHERE room_id=?'

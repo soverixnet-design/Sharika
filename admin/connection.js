@@ -21,6 +21,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['cosmetics','✨','Frames, Entry & Name Tags']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='luckyBox')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='lucky');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['luckyBox','🎁','Free Lucky Box · 2 Hours']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='premium')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='cosmetics');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -2754,6 +2759,61 @@
   async function featureHealth(){
     return await api('GET','feature-health');
   }
+  // Free two-hour Lucky Box is deliberately separate from paid Lucky Gifts.
+  P.luckyBox=async function(){
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Lucky Box','Only Super Admin may change free-box rewards.');
+      return;
+    }
+    root.innerHTML=card('🎁 Free Lucky Box','Loading server-controlled rewards…');
+    try{
+      const data=await api('GET','lucky-box');
+      if(!root.isConnected)return;
+      const cfg=data.settings||{};
+      const items=Array.isArray(data.items)?data.items.filter(i=>i.active):[];
+      const number=(key,unit='')=>'<label>'+esc(key.replaceAll('_',' '))+
+        '<input class="field" type="number" min="0" max="100" data-sh-box-weight="'+esc(key)+
+        '" value="'+Number(cfg[key]||0)+'">'+unit+'</label>';
+      root.innerHTML='<div class="card" style="border:1.5px solid #e8b45d;background:linear-gradient(145deg,#351447,#1c0a35);color:#ffecc2">'+
+        '<h3>🎁 Lucky Box · Free every 2 hours</h3>'+
+        '<p class="n">One server-verified opening per user every 2 hours. Frames and entry effects expire after 24 hours. An empty box awards nothing. Paid Lucky Gifts are a separate feature.</p>'+
+        '<label><input id="sh-box-enabled" type="checkbox"'+(cfg.enabled?' checked':'')+'> Enable free Lucky Box</label>'+
+        '<div class="row"><label>Coin prize <input class="field" id="sh-box-coins" type="number" min="1" max="1000000" value="'+Number(cfg.coin_reward||200)+'"></label>'+
+        '<label>Cooldown <input class="field" value="2 hours" disabled></label>'+
+        '<label>Temporary items <input class="field" value="24 hours" disabled></label></div>'+
+        '<h4>Prize probabilities (must total 100%)</h4><div class="row">'+
+        number('coin_weight')+number('frame_weight')+
+        number('entry_weight')+number('empty_weight')+'</div>'+
+        '<h4>Choose frames and entry effects in the prize pool</h4>'+
+        '<p class="n">Add as many of the existing verified artworks as needed. Add new artwork first through Frames, Entry & Name Tags.</p>'+
+        '<div id="sh-box-items" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;max-height:320px;overflow:auto">'+
+        items.map(item=>'<label style="display:flex;gap:7px;align-items:center;padding:6px;border:1px solid #9b6b9b;border-radius:9px">'+
+          '<input type="checkbox" data-box-item="'+esc(item.id)+'"'+(item.in_box?' checked':'')+'>'+
+          esc(item.kind==='frame_style'?'🖼️ ':'✨ ')+esc(item.name)+'</label>').join('')+
+        '</div><button class="btn s" id="sh-box-save" type="button" style="margin-top:13px">Save Lucky Box settings</button>'+
+        '<p id="sh-box-result" class="n" role="status"></p></div>';
+      byId('sh-box-save').onclick=async event=>{
+        const button=event.currentTarget,status=byId('sh-box-result');
+        const keys=['coin_weight','frame_weight','entry_weight','empty_weight'];
+        const payload={enabled:byId('sh-box-enabled').checked,
+          coin_reward:Number(byId('sh-box-coins').value),
+          item_ids:Array.from(root.querySelectorAll('[data-box-item]:checked')).map(x=>x.dataset.boxItem)};
+        for(const key of keys)payload[key]=Number(root.querySelector('[data-sh-box-weight="'+key+'"]').value);
+        if(keys.reduce((sum,key)=>sum+payload[key],0)!==100||
+          !Number.isSafeInteger(payload.coin_reward)||payload.coin_reward<1){
+          status.textContent='Prize weights must add to 100%, and coin amount must be positive.';return;
+        }
+        button.disabled=true;status.textContent='Saving and auditing…';
+        try{
+          const result=await api('POST','lucky-box',payload);
+          status.textContent='Saved! '+result.item_count+' items available in the Lucky Box.';
+        }catch(error){status.textContent='Could not save: '+error.message;}
+        finally{button.disabled=false;}
+      };
+    }catch(error){root.innerHTML=card('Lucky Box unavailable',error.message);}
+  };
+
   P.lucky=async function(){
     const root=byId('pg');root.innerHTML=card('Lucky gifts','Checking server switch…');
     try{
@@ -3200,7 +3260,7 @@
   };
 
   const verifiedPages=new Set([
-    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
+    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','luckyBox','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

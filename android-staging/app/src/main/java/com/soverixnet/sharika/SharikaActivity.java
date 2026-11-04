@@ -980,6 +980,10 @@ public final class SharikaActivity extends Activity {
         // Keep the route GET-only; bets stay confined to the existing game APIs.
         if (path.equals("/api/v1/game-catalog")) return method.equals("GET");
         if (path.equals("/api/v1/games")) return method.equals("GET");
+        if (path.equals("/api/v1/lucky-box")) return method.equals("GET");
+        if (path.equals("/api/v1/lucky-box/open")) return method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/announcement$"))
+            return method.equals("GET") || method.equals("PUT");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
         if (path.equals("/api/v1/invites/rankings")) return method.equals("GET");

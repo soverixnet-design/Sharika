@@ -4843,6 +4843,9 @@
         openProfile:member=>openVerifiedRoomMemberProfile(
           member.publicId,room.id,member.seatNo),
         loadRewards:()=>api('GET','/rooms/'+room.id+'/rewards'),
+        loadAnnouncement:()=>api('GET','/rooms/'+room.id+'/announcement'),
+        saveAnnouncement:text=>api('PUT','/rooms/'+room.id+'/announcement',
+          {announcement:text}),
         loadRankings:period=>api('GET','/rooms/'+room.id+
           '/contributors?period='+encodeURIComponent(period)).then(result=>({
             ...result,leaders:(result.leaders||[]).map(item=>({
@@ -6636,6 +6639,75 @@
       'msg("Rafi","🧑‍🎤","Greetings to everyone 👋",{ci:1,lv:16});'+
       'msg("Nusrat","👩‍🦰","Will sing tonight 🎶",{ci:2,lv:19});','');
   }
+  // A FREE reward box, never the paid Lucky Gift betting tab.
+  let freeBoxTimer=null,freeBoxOpening=false;
+  async function openVerifiedLuckyBox(){
+    if(!session){window.showAuth('welcome');return;}
+    let state;
+    try{state=await api('GET','/lucky-box');}
+    catch(error){toast('Lucky Box unavailable: '+errText(error));return;}
+    if(freeBoxTimer){clearInterval(freeBoxTimer);freeBoxTimer=null;}
+    window.openSheet('<h3>🎁 Royal Lucky Box</h3>'+
+      '<p style="text-align:center;color:#ffe49d">Open a free box every 2 hours! Win 200 coins, a 24-hour Frame, an Entry Effect, or an Empty Box.</p>'+
+      '<div style="text-align:center;font-size:64px;filter:drop-shadow(0 5px 10px #b57c4d);margin:10px 0">🎁</div>'+
+      '<p id="sh-free-box-countdown" class="lbl" style="text-align:center;color:#ffdc91;font-weight:800"></p>'+
+      '<button id="sh-free-box-open" type="button" class="act" style="width:100%;min-height:48px;background:linear-gradient(135deg,#b97827,#54206f);color:white;border:1.5px solid #ffdc8e;border-radius:15px;font-weight:900">Open Lucky Box</button>'+
+      '<p id="sh-free-box-result" class="lbl" role="status" style="text-align:center;font-weight:700;margin:14px 0"></p>'+
+      '<p class="lbl" style="text-align:center">Temporary rewards stay in My Backpack for 24 hours. No reward is given until the box is opened.</p>');
+    const countdown=document.getElementById('sh-free-box-countdown');
+    const button=document.getElementById('sh-free-box-open');
+    const result=document.getElementById('sh-free-box-result');
+    if(!countdown||!button||!result)return;
+    let nextAt=Number(state.next_open_at_ms)||0;
+    function tick(){
+      if(!countdown.isConnected){clearInterval(freeBoxTimer);freeBoxTimer=null;return;}
+      const remaining=Math.max(0,nextAt-Date.now());
+      if(!remaining){
+        countdown.textContent='✨ Your next free box is ready';
+        button.disabled=freeBoxOpening||!state.enabled;
+      }else{
+        const secs=Math.ceil(remaining/1000);
+        const hh=String(Math.floor(secs/3600)).padStart(2,'0');
+        const mm=String(Math.floor((secs%3600)/60)).padStart(2,'0');
+        const ss=String(secs%60).padStart(2,'0');
+        countdown.textContent='Next box in '+hh+':'+mm+':'+ss;
+        button.disabled=true;
+      }
+    }
+    tick();freeBoxTimer=setInterval(tick,1000);
+    button.onclick=async()=>{
+      if(freeBoxOpening||Date.now()<nextAt)return;
+      freeBoxOpening=true;button.disabled=true;
+      result.textContent='✨ Opening your box…';
+      const claimId='box-'+(crypto.randomUUID?.()||
+        Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toString(16).padStart(2,'0')).join(''));
+      try{
+        const reward=await api('POST','/lucky-box/open',{request_id:claimId});
+        if(!result.isConnected)return;
+        nextAt=Number(reward.next_open_at_ms)||Date.now()+7200000;
+        if(reward.reward==='coins'){
+          result.textContent='🪙 Congratulations! +'+Number(reward.coins).toLocaleString('en-US')+' coins added to your wallet.';
+          await refreshWalletAfterConfirmedTransaction().catch(()=>{});
+        }else if(reward.reward==='frame'||reward.reward==='entry'){
+          const expiry=new Date(Number(reward.expires_at_ms));
+          result.textContent=(reward.reward==='frame'?'🖼️ Frame: ':'✨ Entry Effect: ')+
+            String(reward.item_name||reward.item_id||'Premium Item')+
+            ' • in My Backpack until '+expiry.toLocaleString();
+        }else result.textContent='📦 Empty box this time! Try again in 2 hours.';
+      }catch(error){
+        const reason=errText(error);
+        if(reason==='lucky_box_cooldown'){
+          const latest=await api('GET','/lucky-box').catch(()=>null);
+          nextAt=Number(latest?.next_open_at_ms)||Date.now()+7200000;
+          result.textContent='This box has already been opened. Wait for the timer.';
+        }else{
+          result.textContent='Connection interrupted. Reopen the box to check your confirmed reward history before trying again.';
+        }
+      }finally{freeBoxOpening=false;tick();}
+    };
+  }
+  window.SharikaLuckyBox=Object.freeze({open:openVerifiedLuckyBox});
+
   const originalOpenRoom=window.openRoom;
   window.openRoom=async function(room) {
     if(!session){ window.showAuth('welcome'); return; }

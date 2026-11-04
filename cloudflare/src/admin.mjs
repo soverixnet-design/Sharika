@@ -14,6 +14,7 @@ import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
 import { handleAdminExchangeRate } from './exchange-rate.mjs';
 import { handleCosmeticAdmin,publicAppearanceSelect } from './cosmetics.mjs';
+import {handleLuckyBoxAdmin} from './lucky-box.mjs';
 import { handleOpeningAdmin } from './opening.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 import { handleFamilyAdmin } from './family.mjs';
@@ -157,6 +158,12 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   });
   if(operation==='events'||/^events\/[1-9][0-9]*(?:\/award)?$/.test(operation))
     return await handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
+  if(operation==='lucky-box')return await handleLuckyBoxAdmin({
+    request,db:env.DB,uid,role:actor.role,path,
+    readBody:async req=>{const raw=await req.text();
+      if(raw.length>16000)throw Error('body_too_large');return JSON.parse(raw||'{}');},
+    reply,fail,cors
+  });
   if(operation==='cosmetics'||operation==='cosmetics/grant')
     return await handleCosmeticAdmin({
       request,db:env.DB,env,ctx,uid,role:actor.role,path,
