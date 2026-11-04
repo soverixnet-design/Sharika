@@ -321,13 +321,15 @@
       '<h3>💎 Room Reward Event</h3>'+
       '<div class="sh-reward-cards">'+
       '<div><small>Total earned</small><strong id="sh-reward-total">—</strong></div>'+
-      '<div><small>Already credited to owner wallet</small><strong id="sh-reward-paid">—</strong></div></div>'+
+      '<div><small>Already credited</small><strong id="sh-reward-paid">—</strong></div>'+
+      '<div><small>Pending weekly payout</small><strong id="sh-reward-pending">—</strong></div></div>'+
       '<div class="sh-reward-week">🎁 Ordinary gifts: <b id="sh-reward-pct">10%</b>'+
       '<small>Lucky Gift share: <span id="sh-reward-lucky">1%</span></small>'+
-      '<small>Weekly room contribution (UTC): <b id="sh-week-contribution">Loading…</b></small></div>'+
+      '<small>Weekly room contribution (UTC): <b id="sh-week-contribution">Loading…</b></small>'+
+      '<small>Next automatic payout (UTC): <b id="sh-week-payout">Loading…</b></small></div>'+
       '<h3>Contribution → owner reward</h3>'+
       '<div id="sh-reward-tiers" class="sh-tier-list"></div>'+
-      '<p class="sh-footnote">Illustrative amounts at the active ordinary-gift rate. The owner wallet is credited automatically; these are not additional claimable event prizes.</p></div>');
+      '<p class="sh-footnote">Ordinary-gift room rewards are accumulated and credited automatically after each UTC week. Already-paid historical gifts are not credited again.</p></div>');
     const total=document.getElementById('sh-reward-total');
     const paid=document.getElementById('sh-reward-paid');
     try{
@@ -336,6 +338,10 @@
       const ordinaryPct=Number(data.regular_gift_percent||10);
       total.textContent=fmtCoins(Number(data.reward_hundredths||0)/100)+' 🪙';
       paid.textContent=fmtCoins(data.owner_wallet_credited_coins||0)+' 🪙';
+      const pending=document.getElementById('sh-reward-pending');
+      if(pending)pending.textContent=fmtCoins(data.weekly_pending_coins||0)+' 🪙';
+      const payout=document.getElementById('sh-week-payout');
+      if(payout)payout.textContent=data.weekly_next_settlement_utc||'—';
       v.loadRankings('weekly').then(result=>{
         const week=document.getElementById('sh-week-contribution');
         if(week?.isConnected)
