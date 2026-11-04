@@ -3506,6 +3506,7 @@
   }
   let voiceRecoveryRoom=null,voiceRecoveryAttempts=0,voiceRetryTimer=null;
   let voiceRelayWarningRoom=null;
+  let voiceRetryNoticeAt=0;
   // Preserve a manual mute when media reconnects; new rooms start unmuted.
   let micPreferenceRoom=null,micPreferenceEnabled=true;
   function microphoneWanted(roomId) {
@@ -3529,9 +3530,18 @@
     if(voiceRecoveryRoom!==roomId){voiceRecoveryRoom=roomId;voiceRecoveryAttempts=0;}
     // Keep retrying after the first three attempts. The previous terminal
     // state left users permanently silent on a briefly unstable mobile link.
-    const delay=[500,1200,2500,5000,10000,20000,30000][
+    // During an ISP outage hundreds of rooms can reconnect at once. Spread
+    // the attempts instead of sending a synchronized burst to the SFU/API.
+    const backoff=[500,1200,2500,5000,10000,20000,30000][
       Math.min(voiceRecoveryAttempts++,6)];
+    const delay=Math.min(30000,Math.round(backoff*(0.7+Math.random()*0.6)));
     console.warn('Sharika voice reconnect scheduled:',reason,'in',delay,'ms');
+    if(Date.now()-voiceRetryNoticeAt>20000 &&
+       document.getElementById('rf')?.contentWindow){
+      voiceRetryNoticeAt=Date.now();
+      document.getElementById('rf').contentWindow.toast?.(
+        'Voice connection interrupted. Reconnecting automatically…');
+    }
     voiceRetryTimer=setTimeout(()=>{
       voiceRetryTimer=null;
       if(wantedVoiceRoom!==roomId)return;
@@ -3729,15 +3739,16 @@
   // A connected ICE transport is not proof that audio RTP is moving. Read
   // actual media packet counters locally; never upload SDP, voice, or tokens.
   function audioRtpCounters(report,type) {
-    let packets=0,bytes=0;
+    let packets=0,bytes=0,packetsLost=0;
     for(const stat of report.values()){
       if(stat.type!==type ||
          (stat.kind&&stat.kind!=='audio') ||
          (stat.mediaType&&stat.mediaType!=='audio'))continue;
       packets+=Number(stat.packetsSent??stat.packetsReceived)||0;
       bytes+=Number(stat.bytesSent??stat.bytesReceived)||0;
+      packetsLost+=Math.max(0,Number(stat.packetsLost)||0);
     }
-    return {packets,bytes};
+    return {packets,bytes,packetsLost};
   }
   function selectedIcePath(report) {
     if(!report)return 'unknown';
@@ -3784,6 +3795,23 @@
       }else state.outgoingStalls=0;
       if(incoming?.packets && state.audioElements.size &&
          [...state.audioElements].some(element=>element.paused))resumeRoomAudio();
+      // Packet loss is an early warning before the receiver fully drops.
+      // Never mute a member or restart a healthy connection solely for loss:
+      // reconnect storms can make a busy room much worse.
+      if(incoming&&last?.incoming){
+        const received=Math.max(0,incoming.packets-last.incoming.packets);
+        const lost=Math.max(0,incoming.packetsLost-last.incoming.packetsLost);
+        const poor=received+lost>=50 && lost/(received+lost)>=0.12;
+        state.poorQualitySamples=poor?(state.poorQualitySamples||0)+1:0;
+        if(state.poorQualitySamples>=2 &&
+           Date.now()-(state.lastQualityWarningAt||0)>60000){
+          state.lastQualityWarningAt=Date.now();
+          console.warn('Sharika voice: high incoming packet loss');
+          if(typeof document!=='undefined')
+            document.getElementById('rf')?.contentWindow?.toast?.(
+              'Voice network is unstable. Audio may break up; monitoring connection.');
+        }
+      }
       // No incoming bytes can also mean remote users are intentionally silent.
       // Do not tear down a connected subscriber on that signal alone.
       state.lastMediaStats={outgoing,incoming,
@@ -4119,6 +4147,7 @@
     // attempt. Do not carry an exhausted retry budget across visits.
     voiceRecoveryRoom=null;voiceRecoveryAttempts=0;
     voiceRelayWarningRoom=null;
+    voiceRetryNoticeAt=0;
     clearVoiceSpeakers();
     const task=voiceOperation.catch(()=>{}).then(()=>disconnectVoice());
     voiceOperation=task;
