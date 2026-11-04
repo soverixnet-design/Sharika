@@ -20,8 +20,21 @@ export async function isRoomAdmin(env,roomId,uid) {
 export async function handleRoomAdminAssignment({
   request,env,uid,room,roomId,reply,fail,cors,readBody
 }) {
-  if(request.method!=='POST')return fail('method_not_allowed',405,cors);
   if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+  if(request.method==='GET'){
+    const found=await env.DB.prepare(
+      'SELECT u.public_no,u.name,u.pic,s.special_id FROM sharika_room_admins a '+
+      'JOIN sharika_users u ON u.auth_uid=a.user_id '+
+      'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+      "AND (s.expires_at IS NULL OR s.expires_at>datetime('now')) "+
+      'WHERE a.room_id=? ORDER BY u.name LIMIT 100'
+    ).bind(roomId).all();
+    return reply({admins:(found.results||[]).map(x=>({
+      public_id:String(x.public_no).padStart(8,'0'),
+      display_id:String(x.special_id||x.public_no),name:x.name,pic:x.pic
+    }))},200,cors);
+  }
+  if(request.method!=='POST')return fail('method_not_allowed',405,cors);
   const body=await readBody(request);
   const action=body.action;
   const publicId=body.target_public_id;
@@ -172,5 +185,24 @@ export async function handleRoomBanList({request,env,uid,room,roomId,reply,fail,
     public_id:String(x.public_no).padStart(8,'0'),
     name:x.name,blocked_until_unblocked:x.banned_until_ms>=ROOM_BLOCK_UNTIL_MS,
     banned_until_ms:x.banned_until_ms
+  }))},200,cors);
+}
+
+export async function handleRoomKickHistory({request,env,uid,room,roomId,reply,fail,cors}){
+  if(request.method!=='GET')return fail('method_not_allowed',405,cors);
+  if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid))
+    return fail('room_owner_only',403,cors);
+  const found=await env.DB.prepare(
+    'SELECT h.id,h.action,h.created_at,actor.name AS actor_name, '+
+    'target.name AS target_name,target.public_no AS target_public_no '+
+    'FROM sharika_room_moderation_audit h '+
+    'JOIN sharika_users actor ON actor.auth_uid=h.actor_uid '+
+    'JOIN sharika_users target ON target.auth_uid=h.target_uid '+
+    "WHERE h.room_id=? AND h.action='kick' ORDER BY h.id DESC LIMIT 100"
+  ).bind(roomId).all();
+  return reply({history:(found.results||[]).map(x=>({
+    id:x.id,action:x.action,created_at:x.created_at,
+    actor_name:x.actor_name,target_name:x.target_name,
+    target_public_id:String(x.target_public_no).padStart(8,'0')
   }))},200,cors);
 }

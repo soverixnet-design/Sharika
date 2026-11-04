@@ -6307,6 +6307,71 @@
         detail.textContent='Room Admin · Mic seat '+index;
       if(!actions)return result;
       actions.replaceChildren();
+      const hero=frame.$('sheet')?.querySelector('.who');
+      if(hero){
+        hero.classList.add('sh-member-half');
+        hero.replaceChildren();
+        const portrait=frame.document.createElement('button');
+        portrait.type='button';portrait.className='sh-member-portrait';
+        portrait.setAttribute('aria-label','Open full member profile');
+        const avatar=frame.document.createElement('div');
+        avatar.className='sh-sovera-preview';
+        paintVerifiedAvatar(avatar,selected.pic,frame.document);
+        const art=frameArt(selected.frame_style);
+        if(art){
+          const decoration=frame.document.createElement('i');
+          decoration.className='fxr sh-sovera-frame';
+          decoration.style.backgroundImage='url('+cosmeticMedia(art)+')';
+          decoration.setAttribute('aria-hidden','true');avatar.append(decoration);
+        }
+        portrait.append(avatar);
+        const name=frame.document.createElement('button');
+        name.type='button';name.className='sh-member-title';
+        name.textContent=String(selected.n||'Member');
+        const meta=frame.document.createElement('span');
+        meta.className='sh-member-meta';
+        meta.textContent='ID '+String(selected.special_id||selected.display_id||
+          selected.public_id||'')+' · '+(index===0?'Room Owner':'Mic '+index);
+        const tags=frame.document.createElement('div');tags.className='sh-member-labels';
+        for(const badgeName of [
+          selected.room_role==='owner'?'Room Owner':
+            selected.room_role==='admin'?'Room Admin':null,
+          Number(selected.svip_level)>0?'SVIP '+selected.svip_level:null,
+          selected.muted?'Mic muted':null
+        ]){
+          if(!badgeName)continue;
+          const badge=frame.document.createElement('span');badge.textContent=badgeName;
+          tags.append(badge);
+        }
+        const levels=frame.document.createElement('div');
+        levels.className='sh-member-levels';
+        for(const kind of ['Wealth','Charm','SVIP']){
+          const cell=frame.document.createElement('span');
+          const value=frame.document.createElement('b');
+          value.textContent=kind==='SVIP'?String(Number(selected.svip_level)||0):'…';
+          cell.append(value,frame.document.createTextNode(kind));
+          cell.dataset.level=kind.toLowerCase();levels.append(cell);
+        }
+        const full=frame.document.createElement('button');
+        full.type='button';full.className='sh-member-full';
+        full.textContent='View full profile ›';
+        const viewFull=()=>frame.act('prof',index);
+        for(const button of [portrait,name,full])button.onclick=viewFull;
+        hero.append(portrait,name,meta,tags,levels,full);
+        if(/^[0-9]{8}$/.test(String(selected.public_id||''))) {
+          api('GET','/users/'+selected.public_id).then(member=>{
+            if(!levels.isConnected||
+               String(member.id)!==String(selected.public_id))return;
+            const wealth=levels.querySelector('[data-level="wealth"] b');
+            const charm=levels.querySelector('[data-level="charm"] b');
+            if(wealth)wealth.textContent=String(Number(member.wealth_level)||0);
+            if(charm)charm.textContent=String(Number(member.charm_level)||0);
+          }).catch(()=>{
+            levels.querySelectorAll('[data-level="wealth"] b,[data-level="charm"] b')
+              .forEach(label=>{label.textContent='–';});
+          });
+        }
+      }
       const options=[['prof','👤','Profile'],['gift','🎁','Gift']];
       if(self)options.push(['mute',selected.muted?'🔊':'🔇',
         selected.muted?'Unmute':'Mute']);
@@ -6719,11 +6784,210 @@
         buttons.forEach(button=>{if(button.isConnected)button.disabled=false;});
       }
     },true);
-    // The existing room-settings sheet is reused. Its original Save action
-    // runs only after the authenticated D1 owner update succeeds.
+    // Room Settings is a separate full-height, server-backed screen, rather
+    // than the template's small demo settings popup. All changes go through
+    // the authenticated room owner/moderator endpoints.
+    function openRoomSettingsPage() {
+      const doc=frame.document;
+      const owner=room.owner_id===session?.user?.id;
+      const moderator=owner||frame.__sharikaRoomRole==='admin';
+      doc.getElementById('sh-room-settings-page')?.remove();
+      const page=doc.createElement('section');
+      page.id='sh-room-settings-page';
+      page.setAttribute('role','region');
+      page.setAttribute('aria-label','Room Settings');
+      const header=doc.createElement('header');header.className='sh-room-settings-top';
+      const back=doc.createElement('button');back.type='button';
+      back.className='sh-room-settings-back';back.textContent='‹';
+      back.setAttribute('aria-label','Back to room');back.onclick=()=>page.remove();
+      const heading=doc.createElement('h2');heading.textContent='Room Settings';
+      header.append(back,heading);page.append(header);
+      const body=doc.createElement('div');body.className='sh-room-settings-body';
+      page.append(body);
+      function section(title){
+        const node=doc.createElement('div');node.className='sh-room-settings-group';
+        const label=doc.createElement('h3');label.textContent=title;
+        node.append(label);body.append(node);return node;
+      }
+      function row(parent,label,value,handler){
+        const button=doc.createElement('button');button.type='button';
+        button.className='sh-room-settings-row';
+        const text=doc.createElement('span');text.textContent=label;
+        const trail=doc.createElement('small');trail.textContent=String(value||'');
+        button.append(text,trail);
+        if(handler){const arrow=doc.createElement('b');arrow.textContent='›';button.append(arrow);
+          button.onclick=()=>Promise.resolve(handler()).catch(error=>
+            frame.toast('Settings: '+errText(error)));
+        }else {button.disabled=true;button.setAttribute('aria-disabled','true');}
+        parent.append(button);return {button,trail};
+      }
+      function subpage(title){
+        body.replaceChildren();
+        const subhead=doc.createElement('div');subhead.className='sh-room-settings-subhead';
+        const goBack=doc.createElement('button');goBack.type='button';goBack.textContent='‹ Settings';
+        goBack.onclick=()=>openRoomSettingsPage();
+        const label=doc.createElement('h3');label.textContent=title;
+        subhead.append(goBack,label);body.append(subhead);
+        return body;
+      }
+      function status(parent){
+        const node=doc.createElement('div');node.className='sh-room-settings-status';
+        node.setAttribute('role','status');parent.append(node);return node;
+      }
+      function editText(title,current,maxLength,save){
+        const panel=subpage(title);
+        const input=doc.createElement('textarea');input.className='sh-room-settings-input';
+        input.rows=title==='Announcement'?5:2;input.maxLength=maxLength;
+        input.value=String(current||'');input.setAttribute('aria-label',title);
+        const state=status(panel);
+        const button=doc.createElement('button');button.className='sh-room-settings-primary';
+        button.type='button';button.textContent='Save changes';
+        button.onclick=async()=>{
+          if(button.disabled)return;
+          button.disabled=true;state.textContent='Saving…';
+          try{await save(input.value.trim());state.textContent='Saved ✓';
+            await new Promise(resolve=>setTimeout(resolve,450));
+            if(page.isConnected)openRoomSettingsPage();
+          }catch(error){state.textContent='Not saved: '+errText(error);}
+          finally{button.disabled=false;}
+        };
+        panel.append(input,button);
+      }
+      async function adminsPanel(){
+        const panel=subpage('Room Admins');const state=status(panel);
+        const draw=async()=>{
+          state.textContent='Loading verified admins…';
+          const result=await api('GET','/rooms/'+room.id+'/admins');
+          if(!panel.isConnected)return;
+          const list=doc.createElement('div');list.className='sh-room-settings-list';
+          for(const admin of result.admins||[]){
+            const item=row(list,admin.name||'Member',
+              'ID '+String(admin.display_id||admin.public_id),async()=>{
+                if(!owner)return;
+                if(!window.confirm('Remove '+(admin.name||'member')+' from Room Admins?'))return;
+                await setRoomAdmin(admin.public_id,false);await adminsPanel();
+              });
+            if(!owner)item.button.disabled=true;
+          }
+          state.textContent=(result.admins||[]).length+' Room Admin(s) appointed';
+          panel.querySelector('.sh-room-settings-list')?.remove();
+          panel.append(list);
+          if(!owner)return;
+          const members=await api('GET','/rooms/'+room.id+'/members');
+          if(!panel.isConnected)return;
+          const available=(members.members||[]).filter(member=>
+            member.role==='member'&&member.sharika_users?.public_id&&
+            member.user_id!==room.owner_id);
+          if(available.length){
+            const addTitle=doc.createElement('h3');addTitle.textContent='Appoint a member';
+            panel.append(addTitle);
+            const choices=doc.createElement('div');choices.className='sh-room-settings-list';
+            for(const member of available){
+              const user=member.sharika_users;
+              row(choices,user.name||'Member','ID '+
+                String(user.special_id||user.public_id),async()=>{
+                  await setRoomAdmin(user.public_id,true);await adminsPanel();
+                });
+            }
+            panel.append(choices);
+          }
+        };
+        await draw();
+      }
+      async function bansPanel(){
+        const panel=subpage('Blocked List');const state=status(panel);
+        state.textContent='Loading blocked members…';
+        const result=await api('GET','/rooms/'+room.id+'/bans');
+        if(!panel.isConnected)return;
+        state.textContent=(result.bans||[]).length+' blocked member(s)';
+        for(const ban of result.bans||[]){
+          row(panel,ban.name||'Member','ID '+ban.public_id+' · Tap to unblock',async()=>{
+            await api('POST','/rooms/'+room.id+'/moderate',{
+              action:'unblock',target_public_id:ban.public_id
+            });
+            await bansPanel();
+          });
+        }
+      }
+      async function kicksPanel(){
+        const panel=subpage('Kick History');const state=status(panel);
+        state.textContent='Loading room moderation history…';
+        const result=await api('GET','/rooms/'+room.id+'/kick-history');
+        if(!panel.isConnected)return;
+        state.textContent=(result.history||[]).length+' recent kick(s)';
+        for(const entry of result.history||[]){
+          const item=doc.createElement('div');item.className='sh-room-settings-history';
+          const name=doc.createElement('b');name.textContent=entry.target_name||'Member';
+          const meta=doc.createElement('small');
+          meta.textContent='ID '+entry.target_public_id+' · by '+
+            (entry.actor_name||'Moderator')+' · '+entry.created_at;
+          item.append(name,meta);panel.append(item);
+        }
+      }
+      const roomGroup=section('Room');
+      row(roomGroup,'Profile photo','Edit cover',owner?()=>pickRoomCover(room,frame):null);
+      row(roomGroup,'Room Name',room.name,owner?()=>editText('Room Name',room.name,100,
+        async value=>{if(!value)throw new Error('Room name required');
+          const result=await api('PATCH','/rooms/'+room.id,{name:value});
+          room.name=result.room.name;await syncFrame(room,frame);await reloadRooms();}):null);
+      row(roomGroup,'Announcement','Edit notice',owner?async()=>{
+        const data=await api('GET','/rooms/'+room.id+'/announcement');
+        editText('Announcement',data.announcement,300,async value=>{
+          await api('PUT','/rooms/'+room.id+'/announcement',{announcement:value});
+          frame.SharikaRoomPremium?.refreshAnnouncement?.();
+        });
+      }:null);
+      const micGroup=section('Chat & Microphones');
+      row(micGroup,'Who Can Send Room Chat','Server policy pending');
+      row(micGroup,'Who Can Take The Mic','Server policy pending');
+      row(micGroup,'Number of Mic',String(Number(room.seat_count)||0),owner?()=>{
+        const panel=subpage('Number of Mic');const state=status(panel);
+        const selector=doc.createElement('div');selector.className='sh-room-settings-seat-options';
+        for(let count=4;count<=20;count++){
+          const button=doc.createElement('button');button.type='button';
+          button.className=count===room.seat_count?'selected':'';
+          button.textContent=String(count);button.setAttribute('aria-label',count+' microphones');
+          button.onclick=async()=>{
+            if(button.disabled)return;
+            selector.querySelectorAll('button').forEach(node=>node.disabled=true);
+            state.textContent='Saving seat count…';
+            try{const result=await api('PATCH','/rooms/'+room.id,{seat_count:count});
+              room.seat_count=result.room.seat_count;
+              await syncFrame(room,frame);await reloadRooms();
+              if(page.isConnected)openRoomSettingsPage();
+              frame.toast('Mic count saved ✓');
+            }catch(error){state.textContent='Not saved: '+errText(error);
+              selector.querySelectorAll('button').forEach(node=>node.disabled=false);}
+          };selector.append(button);
+        }
+        panel.append(selector);
+      }:null);
+      row(micGroup,'Room Password','Server policy pending');
+      row(micGroup,'Super Mic','Server policy pending');
+      row(micGroup,'Room Theme','Golden / Premium',owner?()=>{
+        page.remove();frame.themeSheet();
+      }:null);
+      const modGroup=section('Moderation');
+      const adminRow=row(modGroup,'Admins',owner?'Loading count…':'Owner only',
+        owner?adminsPanel:null);
+      if(owner)api('GET','/rooms/'+room.id+'/admins').then(data=>{
+        if(adminRow.trail.isConnected)
+          adminRow.trail.textContent=(data.admins||[]).length+' appointed';
+      }).catch(()=>{
+        if(adminRow.trail.isConnected)adminRow.trail.textContent='Unavailable';
+      });
+      row(modGroup,'Blocked List','Manage blocks',moderator?bansPanel:null);
+      row(modGroup,'Kick History','View recent actions',moderator?kicksPanel:null);
+      const footer=doc.createElement('p');footer.className='sh-room-settings-footnote';
+      footer.textContent='All active moderation changes are verified by Sharika server. '+
+        'Pending server policies cannot be changed from this screen yet.';
+      body.append(footer);
+      doc.body.append(page);
+    }
+    frame.settings=openRoomSettingsPage;
+    // The top cog and the menu icon open the same full settings page.
     const roomButton=frame.$ && frame.$('roomBtn');
     if(roomButton){
-      const oldRoomOpen=roomButton.onclick;
       roomButton.onclick=()=>{
         if(room.owner_id!==session?.user?.id){
           // Guests can inspect and report a room without owner privileges.
@@ -6742,29 +7006,7 @@
           }
           return;
         }
-        if(typeof frame.settings==='function')frame.settings();
-        else if(typeof oldRoomOpen==='function')oldRoomOpen.call(roomButton);
-        const rewardLabel=frame.$('rRw')?.querySelector('small');
-        if(rewardLabel)rewardLabel.textContent='10% of ordinary gifts · verified room ledger';
-        const photo=frame.$('pbig');
-        if(photo){
-          if(verifiedCoverUrl(room.cover_url)){
-            photo.style.backgroundImage='url("'+room.cover_url+'")';
-            photo.style.backgroundSize='cover';
-          }
-          photo.title='Choose room photo from gallery';
-          photo.onclick=()=>pickRoomCover(room,frame);
-        }
-        const sheet=frame.$('sheet');
-        if(sheet&&!frame.$('sh-room-photo-action')){
-          const button=frame.document.createElement('button');
-          button.id='sh-room-photo-action';button.type='button';
-          button.className='send';button.textContent='📷 Change room card photo';
-          button.style.cssText='display:block;width:100%;margin:12px 0;padding:12px;border-radius:12px';
-          button.onclick=()=>pickRoomCover(room,frame);
-          const actions=sheet.querySelector('.gbar');
-          sheet.insertBefore(button,actions||null);
-        }
+        openRoomSettingsPage();
       };
     }
     // The original theme sheet stores themes/photos only on this device.
@@ -6857,10 +7099,31 @@
            frame.$('sheet')?.classList.contains('on'))return;
         displayedInviteAt=invite.invited_at_ms;
         const seat=invite.seat_no;
-        frame.open('<h3>🎤 Mic seat invitation</h3>'+
-          '<div class="row">The room owner invited you to seat '+seat+'.</div>'+
-          '<button id="sh-accept-invite" class="row">Accept</button>'+
-          '<button id="sh-decline-invite" class="row">Decline</button>');
+        frame.open('<div class="sh-invite-preview" role="dialog" aria-label="Mic seat invitation">'+
+          '<div id="sh-invite-owner-photo" class="sh-sovera-preview"></div>'+
+          '<p id="sh-invite-message"></p>'+
+          '<div class="sh-invite-actions">'+
+          '<button id="sh-decline-invite">Cancel</button>'+
+          '<button id="sh-accept-invite">Confirm</button></div></div>');
+        const actualOwner=frame.seats?.find(slot=>
+          slot?.user_id===room.owner_id&&!slot.empty&&!slot.lock);
+        const ownerName=String(actualOwner?.n||'Room Owner');
+        const message=frame.$('sh-invite-message');
+        if(message){
+          const ownerText=frame.document.createElement('strong');
+          ownerText.textContent=ownerName;
+          message.append(ownerText,frame.document.createTextNode(
+            ' is inviting you to take microphone seat '+seat+'.'));
+        }
+        paintVerifiedAvatar(frame.$('sh-invite-owner-photo'),
+          actualOwner?.pic,frame.document);
+        const ownerFrame=frameArt(actualOwner?.frame_style);
+        if(ownerFrame){
+          const frameDecoration=frame.document.createElement('i');
+          frameDecoration.className='fxr sh-sovera-frame';
+          frameDecoration.style.backgroundImage='url('+cosmeticMedia(ownerFrame)+')';
+          frame.$('sh-invite-owner-photo')?.append(frameDecoration);
+        }
         for(const [id,accept] of [
           ['sh-accept-invite',true],['sh-decline-invite',false]
         ]) {

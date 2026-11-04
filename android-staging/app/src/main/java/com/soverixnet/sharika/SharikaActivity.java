@@ -1127,7 +1127,8 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}$"))
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$") ||
-            path.matches("^/api/v1/rooms/[0-9]{8}/bans$"))
+            path.matches("^/api/v1/rooms/[0-9]{8}/bans$") ||
+            path.matches("^/api/v1/rooms/[0-9]{8}/kick-history$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
             return method.equals("GET");
@@ -1152,7 +1153,7 @@ public final class SharikaActivity extends Activity {
             return method.equals("POST");
         // Room admin grants are owner-only and checked again by the Worker.
         if (path.matches("^/api/v1/rooms/[0-9]{8}/admins$"))
-            return method.equals("POST");
+            return method.equals("GET") || method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/seat$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/gifts$"))

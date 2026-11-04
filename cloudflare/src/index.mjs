@@ -3,7 +3,7 @@ import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from '
 import { verifyFirebaseToken } from './auth.mjs';
 import { allowSensitiveAction } from './security-rate-limit.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
-import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
+import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,handleRoomKickHistory,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
 import {handleAgencyApp,agencyGiftEarningStatements} from './agency.mjs';
@@ -1626,6 +1626,8 @@ export async function handleRequest(request, env, ctx) {
         return handleRoomAdminAssignment({
           request,env,uid,room,roomId,reply,fail,cors,readBody
         });
+      if(parts.length===5 && action==='kick-history')
+        return handleRoomKickHistory({request,env,uid,room,roomId,reply,fail,cors});
       if(parts.length===6 && action==='locks' && parts[5]==='all' &&
          request.method==='PUT') {
         if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid)) return fail('room_owner_only',403,cors);

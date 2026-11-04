@@ -14,7 +14,10 @@ function setup({owner=true,present=true,targetOwner=false,active=true}={}) {
           return {user_id:targetOwner?'owner-uid':'guest-uid',
             status:active?'active':'blocked',
             member_uid:present?'guest-uid':null};
-        }
+        },
+        async all(){return {results:[{
+          public_no:10000003,name:'Verified Moderator',pic:null,special_id:'222'
+        }]};}
       };
     },
     async batch(statements){calls.push({batch:statements.length});return [];}
@@ -66,12 +69,17 @@ test('owner role and inactive or absent target are protected',async()=>{
   assert.equal((await s.send('grant')).status,404);
 });
 
-test('rejects arbitrary mutation, bogus ID and non-POST methods',async()=>{
+test('rejects arbitrary mutation and bogus IDs; owner can view current Admins',async()=>{
   const s=setup();
   assert.equal((await s.send('transfer')).status,400);
   assert.equal((await s.send('grant','not-an-id')).status,400);
-  assert.equal((await s.send('grant','10000003','GET')).status,405);
-  assert.equal(s.calls.length,0);
+  const list=await s.send('ignored','10000003','GET');
+  assert.equal(list.status,200);
+  assert.deepEqual(list.body.admins.map(x=>x.public_id),['10000003']);
+  assert.equal(list.body.admins[0].display_id,'222');
+  assert.ok(s.sqls.some(sql=>sql.includes('FROM sharika_room_admins a')));
+  const guest=setup({owner:false});
+  assert.equal((await guest.send('ignored','10000003','GET')).status,403);
 });
 
 test('Android bridge, server member role and UI include room admin feature',()=>{

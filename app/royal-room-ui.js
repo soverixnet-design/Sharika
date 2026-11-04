@@ -91,6 +91,30 @@
   composer.append(input);
   const text = byId('txt');
   if (text) text.setAttribute('placeholder', 'Message in room…');
+  // Android's adjustResize shortens the WebView when Gboard appears. Keep
+  // seats anchored at the top, and use a compact floating composer while the
+  // keyboard is open. This prevents the whole grid from jumping upward.
+  if (text) {
+    const seats = app.querySelector('.stage');
+    let blurTask;
+    const onFocus = () => {
+      clearTimeout(blurTask);
+      app.classList.add('sh-keyboard-open');
+      if (seats) seats.scrollTop = 0;
+    };
+    const onBlur = () => {
+      clearTimeout(blurTask);
+      blurTask = setTimeout(() => {
+        if (document.activeElement !== text)
+          app.classList.remove('sh-keyboard-open');
+      }, 180);
+    };
+    text.addEventListener('focus', onFocus);
+    text.addEventListener('blur', onBlur);
+    window.visualViewport?.addEventListener('resize', () => {
+      if (document.activeElement === text) onFocus();
+    });
+  }
 
   const toolRow = document.createElement('div');
   toolRow.className = 'sh-tools';
