@@ -1,0 +1,77 @@
+name: Sharika room recovery direct staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-room-free-lucky-box-20261104
+    paths:
+      - '.github/workflows/sharika-room-recovery-direct-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Require pinned Android build and successful staging tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          android_run=41766956596
+          test_run=41767234588
+          gh run watch "$android_run" --repo "$repo" --exit-status
+          gh run watch "$test_run" --repo "$repo" --exit-status
+          test "$(gh api repos/$repo/actions/runs/$android_run --jq '.head_sha')" = 1af47e40d1cbe93e4ca36b3701d53eb6ddbbba17
+          test "$(gh api repos/$repo/actions/runs/$test_run --jq '.head_sha')" = 0c3c9437c2fe94553e15d1e02752e23c3e8b4703
+          for run in "$android_run" "$test_run"; do
+            test "$(gh run view "$run" --repo "$repo" --json conclusion --jq '.conclusion')" = success
+          done
+      - name: Download the exact verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41766956596
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: verified-apk
+      - name: Verify APK content and direct-download payload
+        run: |
+          set -euo pipefail
+          apk='verified-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js | grep -F 'visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'Retry loading games' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'Royal Family' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'Room details reconnecting automatically' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'ensureVoiceConnected(room.id).then(voice=>' >/dev/null
+          unzip -p "$apk" assets/royal-room-ui.js | grep -F 'renderPremiumHeader()' >/dev/null
+          for game in sovera-food-wheel night-food-wheel; do
+            unzip -l "$apk" | grep -F "assets/original-games/$game.html" >/dev/null
+          done
+          unzip -l "$apk" | grep -F 'assets/fruit-royale/index.html' >/dev/null
+          unzip -l "$apk" | grep -F 'assets/greedy-wheel/index.html' >/dev/null
+          install -m 0644 "$apk" verified-apk/Sharika-Games-Family-Room-Recovery-Staging.apk
+          sha256sum verified-apk/Sharika-Games-Family-Room-Recovery-Staging.apk
+      - name: Publish unique public direct APK prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-room-recovery-staging-1af47e40'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Games-Family-Room-Recovery-Staging.apk \
+            --repo "$repo" \
+            --target 1af47e40d1cbe93e4ca36b3701d53eb6ddbbba17 \
+            --title 'Sharika Games + Family + Room auto-recovery (STAGING)' \
+            --notes 'Direct Android staging APK, not a ZIP. Includes the client-side game menu fix: server-enabled bundled games display, and game-catalog failures offer Retry. Retains Royal Family and premium room assets. Android build and Cloudflare regression checks required before publication. Room art/member details now retry after a transient API failure and media startup no longer blocks room refresh. Server may still disable games; actual betting, login, voice and Family flows require authenticated two-phone QA. STAGING ONLY; NOT a Play Store production release.' \
+            --prerelease
