@@ -47,6 +47,8 @@ on:
       - feature/sharika-room-free-lucky-box-20261104
     paths:
       - 'android-staging/**'
+      - 'app/royal-room-ui.js'
+      - 'app/royal-room-ui.css'
       - '.github/workflows/sharika-android-staging-apk.yml'
   workflow_dispatch:
 
