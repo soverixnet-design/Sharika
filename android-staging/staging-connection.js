@@ -295,21 +295,49 @@
   // An installed-app invite link can arrive before the signup view exists.
   // Keep only a validated public inviter ID. The Worker still enforces the
   // 48-hour/new-device rules; this client never awards coins locally.
+  // HTTPS links and Play Install Referrer provide a pending inviter ID.
+  // The Worker alone decides if the account and device qualify for a reward.
+  const PUBLIC_INVITE_URL='https://sharika-api-staging.soverixnet.workers.dev/invite/';
   let deferredInviteCode='';
+  let redeemingIncomingInvite=false;
   function rememberIncomingInvite(value){
     const code=String(value||'');
     if(!/^[0-9]{8}$/.test(code))return;
     deferredInviteCode=code;
     for(const input of document.querySelectorAll(
       '#stage-invite-code,#sharika-stage-profile-setup [name="invite_code"],#sh-invite-redeem-code')){
-      if(!input.value)input.value=code;
+      input.value=code;
     }
+    // A tester can reopen the link after sideloading the APK. If their
+    // profile already exists, claim automatically during the allowed window.
+    if(session?.user?.id&&profile?.public_id)
+      Promise.resolve().then(claimPendingInviteAfterLogin).catch(()=>{});
   }
   window.SharikaIncomingInvite=rememberIncomingInvite;
-  native('invitePending').then(data=>rememberIncomingInvite(data.code)).catch(()=>{});
-  function clearIncomingInvite(){
+  const invitePendingReady=native('invitePending')
+    .then(data=>rememberIncomingInvite(data.code)).catch(()=>{});
+  function clearIncomingInvite(expectedCode=''){
+    if(expectedCode&&deferredInviteCode!==expectedCode)return;
     deferredInviteCode='';
     native('inviteClear').catch(()=>{});
+  }
+  async function claimPendingInviteAfterLogin(){
+    if(redeemingIncomingInvite||!session?.user?.id||!deferredInviteCode)return;
+    const viewer=session.user.id,code=deferredInviteCode;
+    redeemingIncomingInvite=true;
+    try{
+      const result=await api('POST','/invites/redeem',{invite_code:code});
+      if(result?.claimed&&session?.user?.id===viewer){
+        clearIncomingInvite(code);
+        reloadWallet().catch(()=>{});
+        toast('Friend invitation linked automatically ✓');
+      }
+    }catch(error){
+      const reason=errText(error);
+      if(['invite_already_linked','invite_window_expired','cannot_invite_self',
+          'invite_code_not_found'].includes(reason))clearIncomingInvite(code);
+      else console.warn('Invite linking will retry when eligible:',reason);
+    }finally{redeemingIncomingInvite=false;}
   }
 
   // A server-verified winner appears ONCE per launch. The backend advances
@@ -4028,7 +4056,7 @@
       document.body.appendChild(layer);
       const name = layer.querySelector('[name="name"]');
       name.value = account.displayName || '';
-      layer.querySelector('[name="invite_code"]').value=cachedSignup(account.email)?.invite_code||deferredInviteCode;
+      layer.querySelector('[name="invite_code"]').value=deferredInviteCode||cachedSignup(account.email)?.invite_code||'';
       let finished = false;
       function close() { if (finished) return; finished = true; layer.remove(); }
       layer.querySelector('#stage-profile-cancel').onclick = () => {
@@ -4046,7 +4074,7 @@
             invite_code:form.elements.invite_code.value.trim()
           };
           const saved = await api('POST','/me',data);
-          if(data.invite_code)clearIncomingInvite();
+          if(saved.invite_bonused)clearIncomingInvite();
           close(); resolve(saved);
         } catch (error) {
           layer.querySelector('#stage-profile-error').textContent = errText(error);
@@ -4103,14 +4131,16 @@
     try { return await api('GET', '/me'); }
     catch (error) {
       if (errText(error) !== 'profile_not_found') throw error;
+      // Wait for Play Install Referrer before first registration, not on normal login.
+      await invitePendingReady;
       const cached = form || cachedSignup(account.email);
       if (cached && cached.name && cached.dob && manualCountryCode(cached.country)) {
         try{
           const saved = await api('POST','/me',{
             name:cached.name,birthdate:cached.dob,country:manualCountryCode(cached.country),
-            invite_code:cached.invite_code||deferredInviteCode
+            invite_code:deferredInviteCode||cached.invite_code
           });
-          if(cached.invite_code||deferredInviteCode)clearIncomingInvite();
+          if(saved.invite_bonused)clearIncomingInvite();
           try{localStorage.removeItem(META_KEY);}catch(_){}
           return saved;
         }catch(error){
@@ -4128,6 +4158,9 @@
     const current = await ensureProfile(account, form);
     if (expectedAttempt!==authAttemptId) throw new Error('sign_in_superseded');
     const local = remember(account, current);
+    // A link reopened after profile creation is redeemed without blocking home.
+    if(deferredInviteCode)
+      Promise.resolve().then(claimPendingInviteAfterLogin).catch(()=>{});
     // Ask for the featured person as soon as Firebase identity and profile
     // are verified. Waiting for wallet + room lists used to leave the first
     // splash on screen and then show a second opening much later.
@@ -7834,7 +7867,7 @@
         '</strong><small>USD per verified invite · review first</small></div></div>'+
         '<div class="sh-invite-code"><div><small>YOUR INVITE CODE</small>'+
         '<strong>'+sellerEscape(invite)+'</strong></div>'+
-        '<button class="sh-invite-gold" id="sharika-copy-invite" type="button">COPY</button></div>'+
+        '<button class="sh-invite-gold" id="sharika-copy-invite" type="button">COPY LINK</button></div>'+
         '<button class="sh-invite-gold sh-invite-share" id="sharika-share-invite" type="button">'+
         '📤 Invite friends · Share</button>'+
         '<div class="sh-invite-tabs"><button type="button" id="sh-invite-tab-overview" class="on">'+
@@ -7907,10 +7940,10 @@
         '<p class="sh-invite-alert">First recharge is counted only after approved '+
         'seller or finance verification; seller self-recharges do not qualify.</p></div>'+
         '<h2 class="sh-invite-title">How invitation works</h2>'+
-        '<div class="sh-invite-rule">① Copy or share your 8-digit ID invite code.</div>'+
-        '<div class="sh-invite-rule">② Your friend creates a verified Sharika account.</div>'+
-        '<div class="sh-invite-rule">③ They enter your code during signup or within '+
-        Number(result.claim_window_hours||48)+' hours of account creation.</div>'+
+        '<div class="sh-invite-rule">① Share your personal HTTPS invitation link.</div>'+
+        '<div class="sh-invite-rule">② Your friend opens the link and installs Sharika.</div>'+
+        '<div class="sh-invite-rule">③ The link is connected automatically during signup. '+
+        'No code entry is needed. Test APK users reopen the link after installing.</div>'+
         '<div class="sh-invite-rule">④ After verification, one-time referral rewards are '+
         'recorded in the actual coin wallets.</div>'+
         '<div class="sh-invite-rule">⑤ The inviter receives '+percent+
@@ -7932,14 +7965,12 @@
         '<p class="sh-invite-alert">Ranking cash prizes are separate from the regular '+
         'per-referral USD earnings and have not been configured.</p></div>';
       root.querySelector('#sharika-copy-invite').onclick=async()=>{
-        try{await native('copyInviteCode',{code:invite});toast('Invite code copied ✓');}
+        try{await native('copyInviteLink',{code:invite});toast('Invite link copied ✓');}
         catch(error){toast('Copy unavailable: '+errText(error));}
       };
       root.querySelector('#sharika-share-invite').onclick=async()=>{
-        const text='Join me on Sharika Voice Chat! Invite link: sharika://invite/'+invite+
-          ' (opens the installed app). If the link does not open, enter code '+invite+
-          ' during signup or within '+Number(result.claim_window_hours||48)+
-          ' hours after creating your account.';
+        const text='Join me on Sharika Voice Chat! Open this invite link to create '+
+          'your account without entering a code: '+PUBLIC_INVITE_URL+invite;
         try{await native('shareInvite',{text});}
         catch(error){toast('Share unavailable: '+errText(error));}
       };

@@ -9,6 +9,7 @@ on:
       - feature/sharika-staff-seller-entry-20261031
       - fix/sharika-two-way-mic-direct-seat-20261031
       - feature/sharika-family-fruit-royale-sync-20261104
+      - feature/sharika-invite-auto-link-20261104
     paths:
       - 'cloudflare/**'
       - '.github/workflows/sharika-cloudflare-check.yml'

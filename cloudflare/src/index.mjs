@@ -29,6 +29,7 @@ import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} 
 import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 import {handleLuckyBoxApp} from './lucky-box.mjs';
+import {handleInviteLanding} from './invite-link.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
@@ -160,6 +161,10 @@ async function createVoiceToken(env, uid, room, publish, owner) {
 export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+  // Public invitation landing must load without a Firebase session.
+  // No wallet or invite database write is performed on GET.
+  const inviteLanding=handleInviteLanding(request,path);
+  if(inviteLanding)return inviteLanding;
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
   const themeImagePath=/^\/api\/v1\/rooms\/([0-9]{8})\/theme-image$/.exec(path);
   const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);

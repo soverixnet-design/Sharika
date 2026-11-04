@@ -60,6 +60,9 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.android.installreferrer.api.InstallReferrerClient;
+import com.android.installreferrer.api.InstallReferrerStateListener;
+import com.android.installreferrer.api.ReferrerDetails;
 
 import org.json.JSONObject;
 import org.json.JSONException;
@@ -74,6 +77,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -118,11 +122,15 @@ public final class SharikaActivity extends Activity {
     private CancellationSignal googleCancellation;
     private Runnable googleTimeout;
     private String pendingInviteCode = "";
+    private boolean installReferrerResolved;
+    private InstallReferrerClient installReferrerClient;
+    private final ArrayList<String> pendingInviteRequests = new ArrayList<>();
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         restorePendingInvite();
         captureInviteLink(getIntent());
+        readPlayInstallReferrer();
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN);
         // Let the app background reach the physical top edge on phones with a
@@ -267,17 +275,90 @@ public final class SharikaActivity extends Activity {
         } else pref.edit().clear().apply();
     }
 
-    private void captureInviteLink(Intent intent) {
-        Uri uri=intent==null?null:intent.getData();
-        if(uri==null || !"sharika".equals(uri.getScheme()) ||
-            !"invite".equals(uri.getHost()))return;
-        String code=uri.getLastPathSegment();
+    private void savePendingInvite(String code) {
         if(code==null || !code.matches("[0-9]{8}"))return;
         pendingInviteCode=code;
         getSharedPreferences("sharika_pending_invite",MODE_PRIVATE).edit()
             .putString("code",code).putLong("saved_ms",System.currentTimeMillis()).apply();
         if(browser!=null)browser.evaluateJavascript(
             "window.SharikaIncomingInvite && window.SharikaIncomingInvite('"+code+"')",null);
+    }
+
+    private void captureInviteLink(Intent intent) {
+        Uri uri=intent==null?null:intent.getData();
+        if(uri==null)return;
+        boolean custom="sharika".equals(uri.getScheme()) && "invite".equals(uri.getHost()) &&
+            uri.getPathSegments().size()==1;
+        boolean web="https".equals(uri.getScheme()) &&
+            "sharika-api-staging.soverixnet.workers.dev".equals(uri.getHost()) &&
+            uri.getPathSegments().size()==2 && "invite".equals(uri.getPathSegments().get(0));
+        if(!custom&&!web)return;
+        String code=uri.getLastPathSegment();
+        if(code==null || !code.matches("[0-9]{8}"))return;
+        savePendingInvite(code);
+        finishPlayInviteLookup();
+    }
+
+    private void finishPlayInviteLookup() {
+        if(installReferrerResolved)return;
+        installReferrerResolved=true;
+        if(installReferrerClient!=null) {
+            try { installReferrerClient.endConnection(); }
+            catch (RuntimeException ignored) {}
+            installReferrerClient=null;
+        }
+        for(String requestId:pendingInviteRequests) {
+            JSONObject pending=object();
+            try { pending.put("code",pendingInviteCode); }
+            catch(JSONException ignored) {}
+            sendResult(requestId,result(true,pending,null));
+        }
+        pendingInviteRequests.clear();
+    }
+
+    private void readPlayInstallReferrer() {
+        if(!pendingInviteCode.isEmpty() ||
+            getSharedPreferences("sharika_play_install_referrer_v1",MODE_PRIVATE)
+                .getBoolean("checked",false)) {
+            finishPlayInviteLookup();
+            return;
+        }
+        try {
+            installReferrerClient=InstallReferrerClient.newBuilder(this).build();
+            final InstallReferrerClient referrer=installReferrerClient;
+            // Do not block Google/email sign-in if the Play Store service is slow.
+            googleHandler.postDelayed(this::finishPlayInviteLookup,3000);
+            referrer.startConnection(new InstallReferrerStateListener() {
+                @Override public void onInstallReferrerSetupFinished(int status) {
+                    runOnUiThread(() -> {
+                        if(installReferrerResolved)return;
+                        if(status==InstallReferrerClient.InstallReferrerResponse.OK) {
+                            try {
+                                ReferrerDetails details=referrer.getInstallReferrer();
+                                Uri params=Uri.parse("https://sharika.app/?"+
+                                    details.getInstallReferrer());
+                                String code=params.getQueryParameter("sharika_invite");
+                                if(code!=null && code.matches("[0-9]{8}") &&
+                                    pendingInviteCode.isEmpty())savePendingInvite(code);
+                                getSharedPreferences("sharika_play_install_referrer_v1",MODE_PRIVATE)
+                                    .edit().putBoolean("checked",true).apply();
+                            } catch(Exception ignored) {
+                                // Offline/unsupported Play installation: original app still opens.
+                            }
+                        } else if(status==InstallReferrerClient.InstallReferrerResponse.FEATURE_NOT_SUPPORTED) {
+                            getSharedPreferences("sharika_play_install_referrer_v1",MODE_PRIVATE)
+                                .edit().putBoolean("checked",true).apply();
+                        }
+                        finishPlayInviteLookup();
+                    });
+                }
+                @Override public void onInstallReferrerServiceDisconnected() {
+                    runOnUiThread(SharikaActivity.this::finishPlayInviteLookup);
+                }
+            });
+        } catch(RuntimeException error) {
+            finishPlayInviteLookup();
+        }
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -707,10 +788,14 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, object(), null));
                 break;
             case "invitePending":
-                JSONObject pending=object();
-                try { pending.put("code",pendingInviteCode); }
-                catch (JSONException ignored) {}
-                sendResult(id,result(true,pending,null));
+                if(!installReferrerResolved) {
+                    pendingInviteRequests.add(id);
+                } else {
+                    JSONObject pending=object();
+                    try { pending.put("code",pendingInviteCode); }
+                    catch (JSONException ignored) {}
+                    sendResult(id,result(true,pending,null));
+                }
                 break;
             case "inviteClear":
                 pendingInviteCode="";
@@ -728,6 +813,17 @@ public final class SharikaActivity extends Activity {
                     (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Sharika invite code", inviteCode));
                 sendResult(id, result(true, object(), null));
+                break;
+            case "copyInviteLink":
+                String linkCode=data.optString("code","");
+                if(!linkCode.matches("[0-9]{8}")) {
+                    sendResult(id,result(false,null,"invalid_invite_code"));break;
+                }
+                android.content.ClipboardManager linkClipboard=
+                    (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+                linkClipboard.setPrimaryClip(android.content.ClipData.newPlainText(
+                    "Sharika invitation","https://sharika-api-staging.soverixnet.workers.dev/invite/"+linkCode));
+                sendResult(id,result(true,object(),null));
                 break;
             case "shareInvite":
                 String invitation = data.optString("text", "");
