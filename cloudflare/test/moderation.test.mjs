@@ -104,12 +104,15 @@ test('a room admin can mute and kick a regular guest, without appointing other a
   assert.equal(kicked.status,200);
 });
 
-test('a room admin cannot moderate another admin or the room owner',async()=>{
-  const adminTarget=setup({role:'admin',targetIsAdmin:true});
-  const denied=await adminTarget.send('kick');
-  assert.equal(denied.status,403);
-  assert.equal(denied.body.error,'cannot_moderate_room_admin');
-  assert.equal(adminTarget.calls.some(c=>c.event==='batch'),false);
+test('a room admin cannot kick, block, mute, unmute or remove another admin',async()=>{
+  for(const action of ['kick','block','mute','unmute','remove_seat']){
+    const otherAdmin=setup({role:'admin',targetIsAdmin:true});
+    const denied=await otherAdmin.send(action);
+    assert.equal(denied.status,403,action);
+    assert.equal(denied.body.error,'cannot_moderate_room_admin',action);
+    assert.equal(otherAdmin.calls.some(c=>['batch','close','withdraw'].includes(c.event)),
+      false,action+' must not change the target, voice or room membership');
+  }
   const ownerTarget=setup({role:'admin',targetIsOwner:true});
   const owner=await ownerTarget.send('mute');
   assert.equal(owner.status,403);
