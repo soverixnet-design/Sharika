@@ -257,7 +257,9 @@ test('voice begins at verified join before the room art and iframe are ready',()
     entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})"));
   assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')<
     entry.indexOf('originalOpenRoom(room)'));
-  assert.match(ui,/const voice=await ensureVoiceConnected\(room\.id\)/);
+  // Voice still starts immediately after verified join, while the room UI can recover independently.
+  assert.match(ui,/ensureVoiceConnected\(room\.id\)\.then\(voice=>/);
+  assert.doesNotMatch(ui,/const voice=await ensureVoiceConnected\(room\.id\)/);
 });
 
 test('SFU starts listening independently of microphone capture',()=>{
