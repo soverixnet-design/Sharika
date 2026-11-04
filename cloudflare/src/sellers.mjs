@@ -26,9 +26,10 @@ function sellerView(row){
     active:!!row.active,unlimited_stock:!!row.unlimited_stock,
     available_coins:Number(row.available_coins)||0};
 }
-// The public seller directory contains identity only, never private stock.
+// Authenticated users see approved seller exchange inventory; no private transactions.
 function publicSellerView(row){
-  return {public_id:showId(row.public_no),name:row.name,pic:row.pic||null};
+  return {public_id:showId(row.public_no),name:row.name,pic:row.pic||null,
+    available_coins:Number(row.available_coins)||0,unlimited_stock:!!row.unlimited_stock};
 }
 export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}){
   if(!path.startsWith('/api/v1/sellers'))return null;
@@ -38,7 +39,7 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}
   if(!actor)return fail('profile_unavailable',403,cors);
   if(path==='/api/v1/sellers'&&request.method==='GET'){
     const rows=resultRows(await env.DB.prepare(
-      "SELECT u.public_no,u.name,u.pic "+
+      "SELECT u.public_no,u.name,u.pic,s.available_coins,s.unlimited_stock "+
       "FROM sharika_coin_sellers s JOIN sharika_users u ON u.auth_uid=s.seller_uid "+
       "WHERE s.active=1 AND u.status='active' ORDER BY u.public_no LIMIT 100"
     ).all());

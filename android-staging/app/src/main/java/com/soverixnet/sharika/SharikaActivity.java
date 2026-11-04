@@ -939,6 +939,8 @@ public final class SharikaActivity extends Activity {
             path.equals("/api/v1/family/requests") ||
             path.equals("/api/v1/family/invites"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/family/members/[0-9]{8}/report$"))
+            return method.equals("GET");
         if (path.equals("/api/v1/family/invite") ||
             path.equals("/api/v1/family/creation/request") ||
             path.equals("/api/v1/family/bd/grant") ||

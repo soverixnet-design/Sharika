@@ -71,8 +71,13 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
     const bd=await db.prepare('SELECT active,can_grant FROM sharika_bd_agents WHERE bd_uid=?')
       .bind(uid).first();
     const memberList=family?rows(await db.prepare(
-      'SELECT u.public_no,u.name,m.role,m.joined_at FROM sharika_family_members m '+
-      'JOIN sharika_users u ON u.auth_uid=m.user_uid WHERE m.family_id=? '+
+      'SELECT u.public_no,u.name,u.pic,m.role,m.joined_at,'+
+      'COALESCE(SUM(CASE WHEN g.tab IN (0,1) THEN e.quantity*e.price_coins ELSE 0 END),0) AS total_diamonds '+
+      'FROM sharika_family_members m '+
+      'JOIN sharika_users u ON u.auth_uid=m.user_uid '+
+      'LEFT JOIN sharika_gift_events e ON e.sender_uid=m.user_uid AND e.created_at>=m.joined_at '+
+      'LEFT JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'WHERE m.family_id=? GROUP BY u.public_no,u.name,u.pic,m.role,m.joined_at '+
       "ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'co_leader' THEN 1 ELSE 2 END, m.joined_at LIMIT 200"
     ).bind(family.id).all()).map(m=>({...m,public_id:showId(m.public_no),public_no:undefined})):[];
     const applications=family?[]:rows(await db.prepare(
@@ -129,6 +134,55 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
         bd_percent:current.bd_bps/100,settlement_mode:current.settlement_mode,
         max_members:current.max_members,conversion_enabled:!!current.conversion_enabled,
         coins_per_crystal:current.coins_per_crystal}},200,cors);
+  }
+
+  // A family member sees their own verified activity. Only the Family Owner
+  // may inspect other members; BD identity alone never grants this access.
+  const memberReport=/^\/api\/v1\/family\/members\/([0-9]{8})\/report$/.exec(path);
+  if(memberReport&&request.method==='GET'){
+    const mine=await familyFor(db,uid);
+    if(!mine)return fail('not_in_family',403,cors);
+    const member=await db.prepare(
+      'SELECT m.user_uid,m.role,m.joined_at,u.public_no,u.name,u.pic '+
+      'FROM sharika_family_members m JOIN sharika_users u ON u.auth_uid=m.user_uid '+
+      'WHERE m.family_id=? AND u.public_no=?'
+    ).bind(mine.id,Number(memberReport[1])).first();
+    if(!member)return fail('family_member_not_found',404,cors);
+    if(mine.role!=='leader'&&member.user_uid!==uid)
+      return fail('family_member_report_forbidden',403,cors);
+    const totals=await db.prepare(
+      'SELECT COUNT(*) AS gift_count,COALESCE(SUM(e.quantity),0) AS gift_items,'+
+      'COALESCE(SUM(e.quantity*e.price_coins),0) AS total_diamonds '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND g.tab IN (0,1)'
+    ).bind(member.user_uid,member.joined_at).first();
+    const daily=rows(await db.prepare(
+      'SELECT substr(e.created_at,1,10) AS day,COUNT(*) AS gift_count,'+
+      'COALESCE(SUM(e.quantity*e.price_coins),0) AS diamonds '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND g.tab IN (0,1) '+
+      'GROUP BY substr(e.created_at,1,10) ORDER BY day DESC LIMIT 90'
+    ).bind(member.user_uid,member.joined_at).all());
+    const events=rows(await db.prepare(
+      'SELECT e.id,e.created_at,e.quantity,e.price_coins,g.name AS gift_name '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND g.tab IN (0,1) '+
+      'ORDER BY e.id DESC LIMIT 150'
+    ).bind(member.user_uid,member.joined_at).all()).map(e=>({
+      day:String(e.created_at).slice(0,10),gift_name:e.gift_name,
+      quantity:Number(e.quantity)||0,diamonds:Number(e.quantity)*Number(e.price_coins),
+      created_at:e.created_at
+    }));
+    return reply({member:{public_id:showId(member.public_no),name:member.name,
+        pic:member.pic||null,role:member.role,joined_at:member.joined_at},
+      summary:{total_diamonds:Number(totals?.total_diamonds)||0,
+        gift_count:Number(totals?.gift_count)||0,
+        gift_items:Number(totals?.gift_items)||0,
+        salary_coins:null,salary_status:'not_configured'},
+      daily:daily.map(x=>({...x,diamonds:Number(x.diamonds)||0,
+        gift_count:Number(x.gift_count)||0})),events,
+      crystal_wallet:await crystalSummary(db,member.user_uid),
+      timezone:'UTC',source:'verified_regular_gifts_after_join'},200,cors);
   }
   if(path==='/api/v1/family/ledger'&&request.method==='GET'){
     const credits=rows(await db.prepare(
