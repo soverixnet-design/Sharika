@@ -131,5 +131,5 @@ test('client stops restoring historic gifts and clears offline demo messages',()
   assert.match(adapter,/frame\.\$\?\.\('chat'\)\?\.replaceChildren\(\)/);
   assert.match(adapter,/frame\.sys\?\.\('👋 '\+String\(event\.name\|\|'Member'\)\+' joined the room'\)/);
   assert.doesNotMatch(adapter,/familyBadge\.textContent='👑 '/);
-  assert.match(css,/\.sh-royal-room \.top \.room\{\s*min-height:32px;height:33px/);
+  assert.match(css,/\.sh-royal-room \.top \.room\{[\s\S]*?min-height:44px;height:44px/);
 });

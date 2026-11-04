@@ -18,6 +18,15 @@ test('Android keyboard focuses the composer without compressing the mic-seat gri
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.chatw/);
 });
 
+test('top room card is shorter in width but thicker without changing microphone seat sizes',()=>{
+  const latest=css.slice(css.lastIndexOf('/* Compact, thicker room card:'));
+  assert.match(latest,/\.top \.room\{[\s\S]*?flex:0 1 clamp\(145px,47vw,188px\)/);
+  assert.match(latest,/min-height:44px;height:44px/);
+  assert.match(latest,/border:2px solid #f3c777/);
+  assert.match(latest,/\.top \.room>\.rav\{[\s\S]*?width:32px;height:32px/);
+  assert.doesNotMatch(latest,/\.stage\s*\{|\.grid\s*\{|\.seat\s*\{/);
+});
+
 test('seat invitation requires authenticated response with verified inviter presentation',()=>{
   assert.match(ui,/sh-invite-owner-photo/);
   assert.match(ui,/sh-invite-message/);
