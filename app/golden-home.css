@@ -2,7 +2,7 @@
    Keep the existing Royal Profile, room interiors and other screens intact. */
 .app.golden-home {
   background-color: #28150f;
-  background-image: url('./champagne-home-background.webp'), url('./golden-home-background.jpg');
+  background-image: url('./champagne-home-background.webp');
   background-position: center center;
   background-size: cover;
   background-repeat: no-repeat;

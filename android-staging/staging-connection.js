@@ -7641,6 +7641,13 @@
       /var base=\[\{n:"You",e:"😎"\}[\s\S]*?\];\nfor\(var q=0;/,
       'var base=[];\nfor(var q=0;');
     window.ROOM_HTML=window.ROOM_HTML.replace('setInterval(botGift,28000);','');
+    // The retired room template creates 121 fictitious audience accounts
+    // and a 1.6-second speaking simulator. Verified D1 member snapshots
+    // supersede both, so do not allocate or schedule them in Android.
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      /for\(var ui=0;ui<121;ui\+\+\)U\.push\([^\n]*\);/,'');
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      'setInterval(function(){tick(false)},1600);','');
     window.ROOM_HTML=window.ROOM_HTML.replace(
       'function others(){return seats.filter(function(s){return s.i>0&&!s.empty&&!s.lock})}',
       'function others(){return seats.filter(function(s){return !s.empty&&!s.lock})}');

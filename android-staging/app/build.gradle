@@ -109,7 +109,6 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/main-profile-bg.jpg'))
     from(rootProject.file('../app/main-profile-icons.webp'))
     from(rootProject.file('../app/invite-royal-chest.webp'))
-    from(rootProject.file('../app/golden-home-background.jpg'))
     from(rootProject.file('../app/champagne-home-background.webp'))
     from(rootProject.file('../app/champagne-home-icons.webp'))
     from(rootProject.file('../app/golden-home.css'))

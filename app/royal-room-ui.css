@@ -426,16 +426,6 @@
   color:#efcfff;
 }
 .sh-royal-room .sh-member-levels b {font-size:14px;color:#ffe9a0}
-.sh-royal-room .sh-member-full {
-  margin-top:4px;
-  border:1px solid #ffdb94;
-  padding:9px 20px;
-  border-radius:999px;
-  background:#794381;
-  color:#fff2d7;
-  font-weight:700;
-  cursor:pointer;
-}
 .sh-royal-room .seat .av > .badge {
   z-index:32!important;
   right:-8px!important;

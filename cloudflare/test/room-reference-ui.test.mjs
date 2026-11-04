@@ -10,6 +10,38 @@ const java=readFileSync(new URL(
   '../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',
   import.meta.url),'utf8');
 const host=readFileSync(new URL('../../app/index.html',import.meta.url),'utf8');
+const goldenHome=readFileSync(new URL('../../app/golden-home.css',import.meta.url),'utf8');
+const winged=readFileSync(new URL('../../android-staging/royal-winged-theme.css',import.meta.url),'utf8');
+const gradle=readFileSync(new URL('../../android-staging/app/build.gradle',import.meta.url),'utf8');
+
+test('obsolete room demo timers and users are removed from the Android template',()=>{
+  assert.match(ui,/for\\\(var ui=0;ui<121;ui\\\+\\\+\\\)U\\\.push/);
+  assert.match(ui,/setInterval\(function\(\)\{tick\(false\)\},1600\)/);
+  assert.match(ui,/setInterval\(botGift,28000\)/);
+  assert.match(ui,/var o=others/);
+  const marker='var ROOM_HTML=';
+  const start=host.indexOf(marker);
+  assert.ok(start>0);
+  let end=start+marker.length+1;
+  for(;end<host.length;end++){
+    if(host[end]==='\\'){end++;continue;}
+    if(host[end]==='"')break;
+  }
+  let template=JSON.parse(host.slice(start+marker.length,end+1));
+  assert.match(template,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
+  template=template.replace(/for\(var ui=0;ui<121;ui\+\+\)U\.push\([^\n]*\);/,'')
+    .replace('setInterval(function(){tick(false)},1600);','');
+  assert.doesNotMatch(template,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
+  assert.doesNotMatch(template,/setInterval\(function\(\)\{tick\(false\)\},1600\)/);
+});
+
+test('retired golden JPG is neither layered under the new WebP nor packaged',()=>{
+  assert.match(goldenHome,/champagne-home-background\.webp/);
+  assert.match(winged,/champagne-home-background\.webp/);
+  assert.doesNotMatch(goldenHome,/golden-home-background\.jpg/);
+  assert.doesNotMatch(winged,/golden-home-background\.jpg/);
+  assert.doesNotMatch(gradle,/from\(rootProject\.file\('\.\.\/app\/golden-home-background\.jpg'\)\)/);
+});
 
 test('room opens directly into the hydrated 3D screen without demo-seat flashes',()=>{
   assert.match(ui,/roomWrap\?\.classList\.add\('sh-room-awaiting'\)/);

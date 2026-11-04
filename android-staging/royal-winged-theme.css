@@ -195,7 +195,7 @@ html.royal-root{
 html.royal-root body{background:#130c0c;color:#fff1d6}
 html.royal-root .app.golden-home{
   background-color:#291a12!important;
-  background-image:url('./champagne-home-background.webp'),url('./golden-home-background.jpg')!important;
+  background-image:url('./champagne-home-background.webp')!important;
   background-position:center center!important;background-size:cover!important;
 }
 html.royal-root .app:not(.royal-profile) .hd,
