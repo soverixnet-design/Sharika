@@ -30,6 +30,8 @@ on:
       - 'cloudflare/wrangler.jsonc'
       - 'cloudflare/src/sfu.mjs'
       - 'cloudflare/src/voice-room.mjs'
+      - 'cloudflare/migrations/0056_room_announcements.sql'
+      - 'cloudflare/test/room-announcement-and-legacy-games.test.mjs'
       - 'cloudflare/test/worker.test.mjs'
       - 'cloudflare/test/sfu.test.mjs'
       - 'cloudflare/test/voice-ui.test.mjs'
