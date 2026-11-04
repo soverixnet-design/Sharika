@@ -2327,6 +2327,7 @@
   const famIcon=name=>'<img class="sh-fam-3d-icon" src="./sharika-agency-icons/'+
     name+'.webp" alt="" decoding="async">';
   let familyCache=null,familyCheckedAt=0,familyCheckedUser=null;
+  let agencyRoleCache=null,agencyRoleCheckedAt=0,agencyRoleCheckedUser=null;
   function familyNotice(message){
     const info=document.querySelector('#sh-family-panel .sh-fam-feedback');
     if(info)info.textContent=String(message||'');
@@ -2349,7 +2350,11 @@
     const agency=document.createElement('button');agency.type='button';agency.id='sh-agency-entry';
     agency.innerHTML='<img class="sh-agency-tile-icon" src="./sharika-agency-icons/agency.webp" alt="">'+
       '<span>Agency Dashboard<small>Host Roster • Earnings • Salary Statement</small></span>';
-    agency.onclick=()=>window.sharikaOpenAgencyCenter?.();entries.appendChild(agency);
+    agency.onclick=()=>window.sharikaOpenAgencyCenter?.('agency');entries.appendChild(agency);
+    const host=document.createElement('button');host.type='button';host.id='sh-host-entry';
+    host.innerHTML='<img class="sh-agency-tile-icon" src="./sharika-agency-icons/host.webp" alt="">'+
+      '<span>Host Earnings<small>Daily Room Time • Gift Salary • Reports</small></span>';
+    host.hidden=true;host.onclick=()=>window.sharikaOpenAgencyCenter?.('host');entries.appendChild(host);
     const countryButton=document.createElement('button');
     countryButton.type='button';countryButton.id='sh-country-entry';
     countryButton.innerHTML='<span class="sh-fam-icon">🌍</span><span>Country / Location'+
@@ -2371,6 +2376,15 @@
         console.warn('Family status unavailable:',errText(error));
       });
     }else if(familyCache)bd.hidden=!familyCache.bd?.active;
+    if(current!==agencyRoleCheckedUser||Date.now()-agencyRoleCheckedAt>30000){
+      agencyRoleCheckedUser=current;agencyRoleCheckedAt=Date.now();agencyRoleCache=null;
+      api('GET','/agency/me').then(data=>{
+        if(session?.user?.id!==current)return;
+        agencyRoleCache=data;
+        const tile=document.getElementById('sh-host-entry');
+        if(tile)tile.hidden=!data.host?.active;
+      }).catch(error=>console.warn('Agency Host status unavailable:',errText(error)));
+    }else if(agencyRoleCache)host.hidden=!agencyRoleCache.host?.active;
   }
   async function openRoyalFamily(){
     if(!session){window.showAuth('welcome');return;}

@@ -359,6 +359,9 @@
       // Host's own public ID can be obtained from the authenticated profile,
       // but we avoid guessing: the /agency/me API supplies it directly.
       if(prefer==='bd'&&me.bd?.active)return show('bd');
+      if(prefer==='agency'&&me.agency)return show('agency',me.agency.id);
+      if(prefer==='host'&&me.host?.active&&me.host.public_id)
+        return show('host',me.host.public_id);
       return showOverview();
     }catch(error){if(token===generation)fail(error);}
   }

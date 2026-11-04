@@ -86,3 +86,18 @@ test('packaged Agency UI has all three real-data screens and Android back naviga
   assert.match(gradle,/agency-center\.js/);
   assert.match(gradle,/agency-center\.css/);
 });
+
+test('an Agency Owner can open Agency and Host earnings independently from main profile',()=>{
+  const root=new URL('../../android-staging/',import.meta.url);
+  const center=readFileSync(new URL('agency-center.js',root),'utf8');
+  const profile=readFileSync(new URL('staging-connection.js',root),'utf8');
+  assert.match(center,/prefer==='agency'&&me\.agency/);
+  assert.match(center,/prefer==='host'&&me\.host\?\.active/);
+  assert.match(center,/show\('host',me\.host\.public_id\)/);
+  assert.match(profile,/id='sh-host-entry'/);
+  assert.match(profile,/host\.hidden=true/);
+  assert.match(profile,/tile\.hidden=!data\.host\?\.active/);
+  assert.match(profile,/sharikaOpenAgencyCenter\?\.\('agency'\)/);
+  assert.match(profile,/sharikaOpenAgencyCenter\?\.\('host'\)/);
+  assert.match(profile,/sharika-agency-icons\/host\.webp/);
+});

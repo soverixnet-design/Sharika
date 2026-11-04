@@ -691,6 +691,17 @@ jobs:
             if(!js.includes(s))throw Error('Agency feature missing from APK: '+s);
           console.log('AGENCY_BD_HOST_REAL_APK_ASSET_VERIFIED');
           NODE
+          unzip -p verified-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/agency-profile-verified.js"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const ui=fs.readFileSync(process.env.RUNNER_TEMP+'/agency-profile-verified.js','utf8');
+          const center=fs.readFileSync(process.env.RUNNER_TEMP+'/agency-verified.js','utf8');
+          if(!ui.includes('sh-host-entry')||
+             !ui.includes("sharikaOpenAgencyCenter?.('agency')")||
+             !ui.includes("sharikaOpenAgencyCenter?.('host')")||
+             !center.includes("prefer==='host'&&me.host?.active"))
+            throw Error('Agency Owner and Host need distinct working profile entries');
+          NODE
           unzip -Z1 verified-apk/app-debug.apk | grep -Fx 'assets/sharika-agency-icons/bd.webp'
           unzip -Z1 verified-apk/app-debug.apk | grep -Fx 'assets/sharika-agency-icons/host.webp'
           cp verified-apk/app-debug.apk verified-apk/Sharika-BD-Agency-Host-Staging.apk
@@ -707,5 +718,5 @@ jobs:
           gh release create "$TAG" verified-apk/Sharika-BD-Agency-Host-Staging.apk \
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
             --title 'Sharika BD Agency Host — Staging APK' \
-            --notes 'Staging test APK. Host 40%, Agency 10%, BD 5%, 100 diamonds to 40 coins. Agency dashboards use real main IDs, user avatars and server-recorded room time. Production unchanged; staging D1 records preserved. Android emulator and Worker checks passed.' \
+            --notes 'Staging test APK. Approved adult Agency Owners automatically become active Hosts; owners can assign other approved adult Agency members as Hosts. Main profile has separate Agency and Host earnings entries. Host 40%, Agency 10%, BD 5%, 100 diamonds to 40 coins. Real main IDs, avatars and server-recorded daily room time. Production unchanged; staging D1 history preserved. Android emulator and Worker checks passed.' \
             --prerelease
