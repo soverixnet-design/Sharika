@@ -5,6 +5,7 @@ import { sensitiveActionClass, allowSensitiveAction } from '../src/security-rate
 
 test('voice signaling and read-only routes are never rate-limited', async () => {
   assert.equal(sensitiveActionClass('GET','/api/v1/sellers/transfers'),null);
+  assert.equal(sensitiveActionClass('GET','/api/v1/invites/withdrawals'),null);
   assert.equal(sensitiveActionClass('POST','/api/v1/rooms/10000001/voice/heartbeat'),null);
   assert.equal(sensitiveActionClass('POST','/api/v1/rooms/10000001/voice/publish'),null);
   assert.equal(await allowSensitiveAction({env:{SHARIKA_ENV:'production'},uid:'u',path:'/api/v1/rooms/10000001/voice/ready',method:'POST'}),true);
@@ -20,6 +21,8 @@ test('verified financial writes have a smaller independent counter', async () =>
   const cases=[
     ['/api/v1/sellers/transfer','finance'],
     ['/api/v1/admin/sellers/allocate','finance'],
+    ['/api/v1/invites/withdrawals','finance'],
+    ['/api/v1/admin/events/3/award','finance'],
     ['/api/v1/rooms/10000001/gifts','finance'],
     ['/api/v1/games/food-wheel/bet','finance'],
     ['/api/v1/original-games/sovera-food/bet','finance'],
