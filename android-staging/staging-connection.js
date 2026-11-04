@@ -6567,7 +6567,18 @@
     };
     wireSoveraRoomFrames(frame);
     await loadVerifiedCosmetics().catch(error=>console.warn('Cosmetic art:',errText(error)));
-    await syncFrame(room,frame);
+    try {
+      await syncFrame(room,frame);
+    } catch(error) {
+      if(errText(error)==='join_room_first'){
+        window.leaveRoom();
+        toast('Room membership expired. Please join again.');
+        return;
+      }
+      // First-load network errors must not prevent the 8-second sync loop
+      // from starting. The room design and member faces recover on retry.
+      frame.toast('Room details reconnecting automatically…');
+    }
     // Each phone consumes the same verified room-entry event stream.
     // Display recent joins once, including this user's own arrival.
     async function pollRoomEntries(){
@@ -6602,12 +6613,14 @@
     entryPoll=setInterval(()=>{
       if(window.cur?.id===room.id)pollRoomEntries().catch(()=>{});
     },2500);
-    try {
-      const voice=await ensureVoiceConnected(room.id);
-      frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
-    } catch(error) {
-      frame.toast('Voice pending: '+errText(error));
-    }
+    // Voice and visual room refresh are independent. A slow ICE/TURN join
+    // must never block member faces, the header, announcement or room polling.
+    ensureVoiceConnected(room.id).then(voice=>{
+      if(window.cur?.id===room.id)
+        frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
+    }).catch(error=>{
+      if(window.cur?.id===room.id)frame.toast('Voice pending: '+errText(error));
+    });
     if(framePoll) clearInterval(framePoll);
     framePoll=setInterval(()=>{
       if(window.cur?.id!==room.id)return;
