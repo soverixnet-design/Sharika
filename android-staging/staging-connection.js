@@ -5053,12 +5053,27 @@
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     frame.__sharikaRoomRole=room.owner_id===session?.user?.id?'owner':
       self?.role==='admin'?'admin':'member';
+    if(data.policy)frame.__sharikaRoomPolicy=data.policy;
+    const roomPolicy=frame.__sharikaRoomPolicy||{};
+    const memberCanChat=roomPolicy.chat_mode==='anyone'||!roomPolicy.chat_mode||
+      frame.__sharikaRoomRole==='owner'||
+      (roomPolicy.chat_mode==='admins'&&frame.__sharikaRoomRole==='admin');
+    const chatInput=frame.$?.('txt');
+    const chatSend=frame.$?.('sendTxt');
+    if(chatInput){
+      chatInput.disabled=!memberCanChat;
+      chatInput.placeholder=memberCanChat?'Say hi…':
+        roomPolicy.chat_mode==='owner'?'Only the room owner can chat':
+          'Only Room Admins can chat';
+    }
+    if(chatSend)chatSend.disabled=!memberCanChat;
     const safetyButton=frame.$?.('bOwn');
     if(safetyButton)safetyButton.style.display=
       ['owner','admin'].includes(frame.__sharikaRoomRole)?'':'none';
     frame.__sharikaMemberRoles=new Map((data.members||[]).map(m=>
       [String(m.sharika_users?.public_id||''),String(m.role||'member')]));
-    const eligible=room.owner_id===session?.user?.id||
+    const eligible=(room.owner_id===session?.user?.id&&
+      ((!!self&&self.seat_no!==null)||roomPolicy.super_mic!==false))||
       (!!self && self.seat_no!==null && !self.muted);
     if(sfuState?.roomId===room.id && sfuState.canPublish!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
@@ -6853,6 +6868,67 @@
         };
         panel.append(input,button);
       }
+      const policyLabels={anyone:'Anyone',admins:'Room Admins',owner:'Owner only'};
+      const currentPolicy=frame.__sharikaRoomPolicy||{};
+      async function updatePolicy(change){
+        const updated=await api('PUT','/rooms/'+room.id+'/policy',change);
+        frame.__sharikaRoomPolicy=updated;
+        if(page.isConnected)openRoomSettingsPage();
+        syncFrame(room,frame).catch(error=>
+          console.warn('Room policy saved; voice refresh pending:',errText(error)));
+        frame.toast('Room policy saved ✓');
+      }
+      function policyModePage(title,key){
+        const panel=subpage(title);const state=status(panel);
+        state.textContent='Choose who may '+(key==='chat_mode'?'send room messages':'take a mic seat')+'.';
+        const options=doc.createElement('div');options.className='sh-room-settings-seat-options';
+        for(const [value,label] of Object.entries(policyLabels)){
+          const button=doc.createElement('button');button.type='button';
+          button.className=currentPolicy[key]===value?'selected':'';
+          button.textContent=label;
+          button.onclick=async()=>{
+            if(button.disabled)return;
+            options.querySelectorAll('button').forEach(item=>item.disabled=true);
+            state.textContent='Saving…';
+            try{await updatePolicy({[key]:value});}
+            catch(error){state.textContent='Not saved: '+errText(error);
+              options.querySelectorAll('button').forEach(item=>item.disabled=false);}
+          };
+          options.append(button);
+        }
+        panel.append(options);
+      }
+      function passwordPolicyPage(){
+        const panel=subpage('Room Password');const state=status(panel);
+        state.textContent='Use a 4–12 digit PIN. New visitors must enter it before joining. ' +
+          'Existing members and the owner stay connected.';
+        const input=doc.createElement('input');input.type='password';
+        input.className='sh-room-settings-input';input.inputMode='numeric';
+        input.autocomplete='new-password';input.maxLength=12;
+        input.placeholder='4–12 digit PIN';input.setAttribute('aria-label','New room password');
+        const save=doc.createElement('button');save.type='button';
+        save.className='sh-room-settings-primary';save.textContent='Set room password';
+        save.onclick=async()=>{
+          if(!/^[0-9]{4,12}$/.test(input.value)){
+            state.textContent='Enter 4–12 digits';return;
+          }
+          save.disabled=true;state.textContent='Saving protected password…';
+          try{await updatePolicy({password_action:'set',password:input.value});
+            input.value='';}
+          catch(error){state.textContent='Not saved: '+errText(error);save.disabled=false;}
+        };
+        panel.append(input,save);
+        if(currentPolicy.password_required){
+          const clear=doc.createElement('button');clear.type='button';
+          clear.className='sh-room-settings-primary';clear.textContent='Remove room password';
+          clear.onclick=async()=>{
+            clear.disabled=true;
+            try{await updatePolicy({password_action:'clear'});}
+            catch(error){state.textContent='Not removed: '+errText(error);clear.disabled=false;}
+          };
+          panel.append(clear);
+        }
+      }
       async function adminsPanel(){
         const panel=subpage('Room Admins');const state=status(panel);
         const draw=async()=>{
@@ -6938,8 +7014,12 @@
         });
       }:null);
       const micGroup=section('Chat & Microphones');
-      row(micGroup,'Who Can Send Room Chat','Server policy pending');
-      row(micGroup,'Who Can Take The Mic','Server policy pending');
+      const chatPolicyRow=row(micGroup,'Who Can Send Room Chat',
+        policyLabels[currentPolicy.chat_mode]||'Loading…',
+        owner?()=>policyModePage('Who Can Send Room Chat','chat_mode'):null);
+      const micPolicyRow=row(micGroup,'Who Can Take The Mic',
+        policyLabels[currentPolicy.mic_mode]||'Loading…',
+        owner?()=>policyModePage('Who Can Take The Mic','mic_mode'):null);
       row(micGroup,'Number of Mic',String(Number(room.seat_count)||0),owner?()=>{
         const panel=subpage('Number of Mic');const state=status(panel);
         const selector=doc.createElement('div');selector.className='sh-room-settings-seat-options';
@@ -6962,8 +7042,25 @@
         }
         panel.append(selector);
       }:null);
-      row(micGroup,'Room Password','Server policy pending');
-      row(micGroup,'Super Mic','Server policy pending');
+      const passwordRow=row(micGroup,'Room Password',
+        currentPolicy.password_required?'On':'Off',owner?passwordPolicyPage:null);
+      const superRow=row(micGroup,'Super Mic',
+        currentPolicy.super_mic===false?'Off':'On',owner?async()=>{
+          await updatePolicy({super_mic:currentPolicy.super_mic===false});
+        }:null);
+      if(!currentPolicy.chat_mode){
+        api('GET','/rooms/'+room.id+'/policy').then(policy=>{
+          Object.assign(currentPolicy,policy);
+          frame.__sharikaRoomPolicy=policy;
+          if(!page.isConnected)return;
+          chatPolicyRow.trail.textContent=policyLabels[policy.chat_mode]||'Anyone';
+          micPolicyRow.trail.textContent=policyLabels[policy.mic_mode]||'Anyone';
+          passwordRow.trail.textContent=policy.password_required?'On':'Off';
+          superRow.trail.textContent=policy.super_mic?'On':'Off';
+        }).catch(error=>{
+          if(page.isConnected)frame.toast('Room policy loading: '+errText(error));
+        });
+      }
       row(micGroup,'Room Theme','Golden / Premium',owner?()=>{
         page.remove();frame.themeSheet();
       }:null);
@@ -6979,8 +7076,8 @@
       row(modGroup,'Blocked List','Manage blocks',moderator?bansPanel:null);
       row(modGroup,'Kick History','View recent actions',moderator?kicksPanel:null);
       const footer=doc.createElement('p');footer.className='sh-room-settings-footnote';
-      footer.textContent='All active moderation changes are verified by Sharika server. '+
-        'Pending server policies cannot be changed from this screen yet.';
+      footer.textContent='Room changes are saved and enforced by Sharika server. '+
+        'Super Mic allows the owner to speak from the throne without a numbered mic seat.';
       body.append(footer);
       doc.body.append(page);
     }
@@ -7188,6 +7285,12 @@
     async function sendRoomMessage() {
       const body=messageInput?.value?.trim()||'';
       if(!body||chatSendBusy)return;
+      const policy=frame.__sharikaRoomPolicy||{};
+      const role=frame.__sharikaRoomRole;
+      if((policy.chat_mode==='owner'&&role!=='owner')||
+         (policy.chat_mode==='admins'&&!['owner','admin'].includes(role))){
+        frame.toast('Room chat is restricted by the owner');return;
+      }
       if(body.length>300){frame.toast('Room messages must be 300 characters or fewer');return;}
       chatSendBusy=true;
       if(messageSend)messageSend.disabled=true;
@@ -7206,7 +7309,7 @@
       }catch(error){frame.toast('Message not sent: '+errText(error));}
       finally {
         chatSendBusy=false;
-        if(messageSend)messageSend.disabled=false;
+        if(messageSend)messageSend.disabled=!!messageInput?.disabled;
       }
     }
     if(messageSend)messageSend.onclick=sendRoomMessage;
@@ -7604,6 +7707,72 @@
   }
   window.SharikaLuckyBox=Object.freeze({open:openVerifiedLuckyBox});
 
+  function askRoomPassword(room,reason){
+    return new Promise(resolve=>{
+      document.getElementById('sh-room-password-prompt')?.remove();
+      const overlay=document.createElement('div');overlay.id='sh-room-password-prompt';
+      overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');
+      overlay.setAttribute('aria-label','Room password required');
+      overlay.style.cssText='position:fixed;inset:0;z-index:999999;background:#08040bdc;'+
+        'display:flex;align-items:center;justify-content:center;padding:24px';
+      const panel=document.createElement('form');
+      panel.style.cssText='width:min(100%,380px);border:1px solid #e9bf67;'+
+        'border-radius:22px;padding:25px;background:linear-gradient(145deg,#29173a,#090514);'+
+        'color:#ffedc4;box-shadow:0 18px 65px #000a';
+      const heading=document.createElement('h2');heading.textContent='🔒 Private Room';
+      heading.style.cssText='font-size:23px;margin:0 0 12px';
+      const detail=document.createElement('p');
+      detail.textContent=(room.name||'This room')+' requires a 4–12 digit PIN to join.';
+      const error=document.createElement('p');error.setAttribute('role','status');
+      error.style.cssText='font-size:13px;color:#ffb9c9;min-height:18px;margin:8px 0';
+      error.textContent=reason==='room_password_incorrect'?'Incorrect PIN. Try again.':'';
+      const input=document.createElement('input');input.type='password';
+      input.inputMode='numeric';input.pattern='[0-9]{4,12}';
+      input.maxLength=12;input.required=true;input.autocomplete='off';
+      input.placeholder='Room PIN';input.setAttribute('aria-label','Room PIN');
+      input.style.cssText='width:100%;box-sizing:border-box;padding:14px;border-radius:12px;'+
+        'background:#fff;color:#171221;border:0;font-size:18px';
+      const controls=document.createElement('div');
+      controls.style.cssText='display:flex;gap:12px;margin-top:18px';
+      const cancel=document.createElement('button');cancel.type='button';
+      cancel.textContent='Cancel';
+      const submit=document.createElement('button');submit.type='submit';
+      submit.textContent='Join Room';
+      for(const button of [cancel,submit])
+        button.style.cssText='flex:1;padding:12px 6px;border:0;border-radius:14px;'+
+          'font-weight:700;font-size:15px';
+      cancel.style.background='#f9ecdf';submit.style.background='#e1b65e';
+      const finish=value=>{overlay.remove();document.removeEventListener('keydown',onKey);resolve(value);};
+      const onKey=event=>{if(event.key==='Escape'){event.preventDefault();finish(null);}};
+      document.addEventListener('keydown',onKey);
+      cancel.onclick=()=>finish(null);
+      panel.onsubmit=event=>{
+        event.preventDefault();
+        if(!/^[0-9]{4,12}$/.test(input.value)){
+          error.textContent='Enter a 4–12 digit PIN';return;
+        }
+        finish(input.value);
+      };
+      controls.append(cancel,submit);panel.append(heading,detail,error,input,controls);
+      overlay.append(panel);document.body.append(overlay);input.focus();
+    });
+  }
+
+  async function joinRoomWithPassword(room){
+    let password=null;
+    for(;;){
+      try{
+        await api('POST','/rooms/'+room.id+'/join',password===null?{}:{password});
+        return true;
+      }catch(error){
+        const reason=errText(error);
+        if(reason!=='room_password_required'&&reason!=='room_password_incorrect')throw error;
+        password=await askRoomPassword(room,reason);
+        if(password===null)return false;
+      }
+    }
+  }
+
   const originalOpenRoom=window.openRoom;
   window.openRoom=async function(room) {
     if(!session){ window.showAuth('welcome'); return; }
@@ -7629,7 +7798,7 @@
         await releaseVoice();
         await api('POST','/rooms/'+prior.id+'/leave',{});
       }
-      await api('POST','/rooms/'+room.id+'/join',{});
+      if(!await joinRoomWithPassword(room))return;
       // Start media immediately after verified join, while the room iframe
       // and decorative assets continue loading independently.
       ensureVoiceConnected(room.id).catch(error=>{

@@ -1130,6 +1130,8 @@ public final class SharikaActivity extends Activity {
             path.matches("^/api/v1/rooms/[0-9]{8}/bans$") ||
             path.matches("^/api/v1/rooms/[0-9]{8}/kick-history$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/policy$"))
+            return method.equals("GET") || method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))

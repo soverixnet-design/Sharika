@@ -87,7 +87,100 @@ export class SharikaVoiceRoom extends DurableObject {
         'CREATE INDEX IF NOT EXISTS room_seat_invites_expiry ' +
         'ON room_seat_invites(expires_at_ms)'
       );
+      // Backward-compatible room controls live beside the room coordinator.
+      // Existing D1 users, seats, coins and gift history are never migrated.
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_policy ('+
+        'id INTEGER PRIMARY KEY CHECK(id=1), chat_mode TEXT NOT NULL DEFAULT \'anyone\', '+
+        'mic_mode TEXT NOT NULL DEFAULT \'anyone\', '+
+        'super_mic INTEGER NOT NULL DEFAULT 1, '+
+        'password_salt TEXT, password_digest TEXT, revision INTEGER NOT NULL DEFAULT 1)'
+      );
+      this.ctx.storage.sql.exec(
+        "INSERT OR IGNORE INTO room_policy(id,chat_mode,mic_mode,super_mic) VALUES(1,'anyone','anyone',1)"
+      );
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_password_attempts ('+
+        'uid TEXT PRIMARY KEY, failures INTEGER NOT NULL, blocked_until_ms INTEGER NOT NULL)'
+      );
     });
+  }
+
+  roomPolicyRead() {
+    const row=this.ctx.storage.sql.exec(
+      'SELECT chat_mode,mic_mode,super_mic,password_digest,revision FROM room_policy WHERE id=1'
+    ).toArray()[0];
+    return {chat_mode:row?.chat_mode||'anyone',mic_mode:row?.mic_mode||'anyone',
+      super_mic:row?.super_mic!==0,password_required:!!row?.password_digest,
+      revision:Number(row?.revision)||1};
+  }
+
+  async roomPolicyUpdate(change) {
+    const old=this.ctx.storage.sql.exec('SELECT * FROM room_policy WHERE id=1').toArray()[0];
+    if(!old)return {error:'room_policy_unavailable'};
+    const modes=new Set(['anyone','admins','owner']);
+    const chat=change.chat_mode===undefined?old.chat_mode:change.chat_mode;
+    const mic=change.mic_mode===undefined?old.mic_mode:change.mic_mode;
+    const superMic=change.super_mic===undefined?!!old.super_mic:change.super_mic;
+    if(!modes.has(chat)||!modes.has(mic)||typeof superMic!=='boolean')
+      return {error:'invalid_room_policy'};
+    let salt=old.password_salt,digest=old.password_digest;
+    if(change.password_action==='clear'){salt=null;digest=null;}
+    else if(change.password_action==='set'){
+      if(typeof change.password!=='string'||!/^[0-9]{4,12}$/.test(change.password))
+        return {error:'invalid_room_password'};
+      const random=crypto.getRandomValues(new Uint8Array(16));
+      salt=Array.from(random,x=>x.toString(16).padStart(2,'0')).join('');
+      digest=await this.roomPasswordDigest(change.password,random);
+    }else if(change.password_action!==undefined&&change.password_action!=='keep')
+      return {error:'invalid_room_password_action'};
+    this.ctx.storage.sql.exec(
+      'UPDATE room_policy SET chat_mode=?,mic_mode=?,super_mic=?,password_salt=?, '+
+      'password_digest=?,revision=revision+1 WHERE id=1',
+      chat,mic,superMic?1:0,salt,digest
+    );
+    return {ok:true,...this.roomPolicyRead()};
+  }
+
+  async roomPasswordDigest(password,saltBytes){
+    const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),
+      'PBKDF2',false,['deriveBits']);
+    const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:saltBytes,
+      hash:'SHA-256',iterations:100000},key,256);
+    return Array.from(new Uint8Array(bits),x=>x.toString(16).padStart(2,'0')).join('');
+  }
+
+  async roomPasswordCheck(uid,password){
+    const row=this.ctx.storage.sql.exec(
+      'SELECT password_salt,password_digest FROM room_policy WHERE id=1'
+    ).toArray()[0];
+    if(!row?.password_digest)return {allowed:true};
+    const now=Date.now();
+    const attempts=this.ctx.storage.sql.exec(
+      'SELECT failures,blocked_until_ms FROM room_password_attempts WHERE uid=?',uid
+    ).toArray()[0];
+    if(Number(attempts?.blocked_until_ms)>now)
+      return {allowed:false,error:'room_password_rate_limited',
+        retry_after_seconds:Math.ceil((attempts.blocked_until_ms-now)/1000)};
+    if(typeof password!=='string'||!/^[0-9]{4,12}$/.test(password))
+      return {allowed:false,error:'room_password_required'};
+    const salt=Uint8Array.from(row.password_salt.match(/../g),h=>parseInt(h,16));
+    const actual=await this.roomPasswordDigest(password,salt);
+    let difference=0;
+    for(let i=0;i<row.password_digest.length;i++)
+      difference|=row.password_digest.charCodeAt(i)^actual.charCodeAt(i);
+    if(!difference){
+      this.ctx.storage.sql.exec('DELETE FROM room_password_attempts WHERE uid=?',uid);
+      return {allowed:true};
+    }
+    const failures=Number(attempts?.failures)||0;
+    const next=failures+1;
+    this.ctx.storage.sql.exec(
+      'INSERT INTO room_password_attempts(uid,failures,blocked_until_ms) VALUES(?,?,?) '+
+      'ON CONFLICT(uid) DO UPDATE SET failures=excluded.failures,blocked_until_ms=excluded.blocked_until_ms',
+      uid,next>=5?0:next,next>=5?now+5*60*1000:0
+    );
+    return {allowed:false,error:'room_password_incorrect'};
   }
 
   prune() {

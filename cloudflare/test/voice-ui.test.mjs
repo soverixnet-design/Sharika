@@ -279,9 +279,9 @@ test('voice begins at verified join before the room art and iframe are ready',()
   const end=ui.indexOf('  const originalLeaveRoom=',enter);
   assert.ok(enter>=0&&end>enter);
   const entry=ui.slice(enter,end);
-  assert.ok(entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})")>=0);
+  assert.ok(entry.indexOf('await joinRoomWithPassword(room)')>=0);
   assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')>
-    entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})"));
+    entry.indexOf('await joinRoomWithPassword(room)'));
   assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')<
     entry.indexOf('originalOpenRoom(room)'));
   // Voice still starts immediately after verified join, while the room UI can recover independently.

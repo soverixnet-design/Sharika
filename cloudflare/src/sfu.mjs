@@ -121,7 +121,11 @@ export async function handleVoiceOperation({
   request, env, room, member, uid, roomId, operation,
   reply, fail, cors, readBody
 }) {
-  const canPublish = room.owner_id === uid ||
+  const isOwner=room.owner_id===uid;
+  const ownerSuperMic=isOwner&&member.seat_no===null&&env.VOICE_ROOMS
+    ?(await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead()).super_mic
+    :true;
+  const canPublish = (isOwner&&(member.seat_no!==null||ownerSuperMic)) ||
     (member.seat_no !== null && Number(member.muted) === 0);
   if (operation === 'config' && request.method === 'GET') {
     if (sfuAvailable(env))

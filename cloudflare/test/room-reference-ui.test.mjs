@@ -43,7 +43,10 @@ test('standalone Room Settings reads real admins, blocks and kick history',()=>{
   assert.match(worker,/action==='kick-history'/);
   assert.match(java,/kick-history\$/);
   assert.match(css,/#sh-room-settings-page/);
-  // Avoid pretending the backend has authorization policies it does not expose.
-  assert.match(ui,/Who Can Send Room Chat','Server policy pending'/);
-  assert.match(ui,/Who Can Take The Mic','Server policy pending'/);
+  assert.match(ui,/policyModePage\('Who Can Send Room Chat','chat_mode'\)/);
+  assert.match(ui,/policyModePage\('Who Can Take The Mic','mic_mode'\)/);
+  assert.match(ui,/passwordPolicyPage/);
+  assert.match(ui,/super_mic:currentPolicy\.super_mic===false/);
+  assert.match(worker,/action==='policy'/);
+  assert.match(java,/\/policy\$/);
 });

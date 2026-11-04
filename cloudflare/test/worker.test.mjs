@@ -263,7 +263,8 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
       return stmt;
     };
     const env={DB:db,FIREBASE_PROJECT_ID:project,
-      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{}})}};
+      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{},
+        roomPolicyRead:async()=>({chat_mode:'anyone',mic_mode:'anyone',super_mic:true})})}};
     const ownerToken=await token();
     const guestToken=await token({sub:'room-guest'});
     const patch=(jwt,value)=>handleRequest(new Request(
@@ -963,6 +964,7 @@ test('room text chat requires verified membership and uses server identity',asyn
       getByName(name){
         assert.equal(name,'sharika:'+room);
         return {
+          async roomPolicyRead(){return {chat_mode:'anyone',mic_mode:'anyone',super_mic:true};},
           async roomChatRead(...args){calls.push(['read',...args]);return {messages:[]};},
           async roomChatSend(...params){
             calls.push(['send',...params]);
@@ -1000,6 +1002,89 @@ test('room text chat requires verified membership and uses server identity',asyn
     assert.deepEqual(calls.at(-1).slice(0,5),
       ['send',principal,'10000002','Verified Sharika User','Hello voice room']);
   }finally{globalThis.fetch=originalFetch;}
+});
+
+test('room policy is owner-controlled and enforces chat, mic and private-entry boundaries',async()=>{
+  const oldFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const roomId='10000001';
+    const jwt=await token();
+    const headers={Authorization:'Bearer '+jwt};
+    const url='https://example.test/api/v1/rooms/'+roomId;
+    let policy={chat_mode:'anyone',mic_mode:'anyone',super_mic:true,
+      password_required:false,revision:1};
+    const called=[];
+    const coordinator={
+      async roomPolicyRead(){return policy;},
+      async roomPolicyUpdate(change){
+        called.push(['update',change]);
+        policy={...policy,chat_mode:change.chat_mode||policy.chat_mode,
+          mic_mode:change.mic_mode||policy.mic_mode,
+          super_mic:change.super_mic===undefined?policy.super_mic:change.super_mic,
+          password_required:change.password_action==='set'?true:
+            change.password_action==='clear'?false:policy.password_required,
+          revision:policy.revision+1};
+        return {ok:true,...policy};
+      },
+      async publishedFor(){return [];},
+      async roomPasswordCheck(_uid,pin){
+        called.push(['password_attempt',pin]);
+        return pin==='1234'?{allowed:true}:{allowed:false,error:
+          pin?'room_password_incorrect':'room_password_required'};
+      }
+    };
+    const envFor=(owner,joined=true)=>{
+      const db=fakeDb();const original=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=original(sql);
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+          stmt.first=async()=>({id:roomId,owner_id:owner,seat_count:12});
+        if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+          stmt.first=async()=>joined?{user_id:uid,role:'member',seat_no:null,muted:0}:null;
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({auth_uid:uid,public_no:10000002,status:'active'});
+        return stmt;
+      };
+      return {DB:db,VOICE_ROOMS:{getByName:()=>coordinator},FIREBASE_PROJECT_ID:project};
+    };
+    const req=(route,method='GET',body)=>new Request(url+route,{
+      method,headers,...(body===undefined?{}:{body:JSON.stringify(body)})
+    });
+    const ownerEnv=envFor(uid);
+    const guestEnv=envFor('different-owner');
+    assert.equal((await handleRequest(req('/policy'),ownerEnv)).status,200);
+    assert.equal((await handleRequest(req('/policy'),envFor(uid,false))).status,403);
+    assert.equal((await handleRequest(req('/policy','PUT',{chat_mode:'owner'}),guestEnv)).status,403);
+    assert.equal((await handleRequest(req('/policy','PUT',{chat_mode:'unrestricted'}),ownerEnv)).status,400);
+    assert.equal((await handleRequest(req('/policy','PUT',{password:'1234'}),ownerEnv)).status,400);
+    const updated=await handleRequest(req('/policy','PUT',{
+      chat_mode:'owner',mic_mode:'owner',password_action:'set',password:'1234'
+    }),ownerEnv);
+    assert.equal(updated.status,200);
+    assert.equal((await updated.json()).password_required,true);
+    assert.equal((await (await handleRequest(req('/policy'),guestEnv)).json()).password,undefined);
+    assert.equal(called.filter(x=>x[0]==='update').length,1);
+    const deniedChat=await handleRequest(req('/chat','POST',{
+      body:'hello',request_id:'chat:verified-1234'
+    }),guestEnv);
+    assert.equal(deniedChat.status,403);
+    assert.equal((await deniedChat.json()).error,'room_chat_owner_only');
+    const deniedMic=await handleRequest(req('/seat','PUT',{seat_no:3}),guestEnv);
+    assert.equal(deniedMic.status,403);
+    assert.equal((await deniedMic.json()).error,'room_mic_owner_only');
+    const newcomer=envFor('different-owner',false);
+    const missingPin=await handleRequest(req('/join','POST',{}),newcomer);
+    assert.equal(missingPin.status,403);
+    assert.equal((await missingPin.json()).error,'room_password_required');
+    assert.equal(newcomer.DB.calls.filter(item=>item[0]==='run').length,0,
+      'wrong room PIN must not add a member to D1');
+    const incorrect=await handleRequest(req('/join','POST',{password:'9999'}),newcomer);
+    assert.equal(incorrect.status,403);
+    assert.equal((await incorrect.json()).error,'room_password_incorrect');
+    assert.equal(newcomer.DB.calls.filter(item=>item[0]==='run').length,0);
+  }finally{globalThis.fetch=oldFetch;}
 });
 
 test('room chat denies unverified requests before reaching the coordinator',async()=>{
@@ -1150,6 +1235,7 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
     };
     const calls=[];
     const coordinator={
+      async roomPolicyRead(){return {chat_mode:'anyone',mic_mode:'anyone',super_mic:true};},
       async lockedSeats(){return [3];},
       async changeSeatLock(roomId,seat,locked){
         calls.push(['lock',roomId,seat,locked]);return {locked_seats:locked?[3]:[]};
@@ -1255,6 +1341,7 @@ test('mic invitations require room owner, an unseated real member and recipient 
     const rooms={getByName(name){
       assert.equal(name,'sharika:'+roomId);
       return {
+        async roomPolicyRead(){return {chat_mode:'anyone',mic_mode:'anyone',super_mic:true};},
         async seatInvitePending(user){calls.push(['pending',user]);return {invite:null};},
         async seatInviteSend(...args){
           calls.push(['send',...args]);

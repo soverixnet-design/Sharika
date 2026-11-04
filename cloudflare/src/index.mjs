@@ -2,7 +2,7 @@ import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from '
 // Transaction receipts are recorded by the corresponding verified business handlers.
 import { verifyFirebaseToken } from './auth.mjs';
 import { allowSensitiveAction } from './security-rate-limit.mjs';
-import { handleVoiceOperation } from './sfu.mjs';
+import { handleVoiceOperation, forceCloseMicrophone } from './sfu.mjs';
 import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,handleRoomKickHistory,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
@@ -1068,6 +1068,44 @@ export async function handleRequest(request, env, ctx) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      if(parts.length===5&&action==='policy'){
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_policy_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET')
+          return reply(await coordinator.roomPolicyRead(),200,cors);
+        if(request.method!=='PUT')return fail('method_not_allowed',405,cors);
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        const body=await readBody(request);
+        const allowed=['chat_mode','mic_mode','super_mic','password_action','password'];
+        if(Object.keys(body).some(key=>!allowed.includes(key))||
+           (body.chat_mode!==undefined&&!['anyone','admins','owner'].includes(body.chat_mode))||
+           (body.mic_mode!==undefined&&!['anyone','admins','owner'].includes(body.mic_mode))||
+           (body.super_mic!==undefined&&typeof body.super_mic!=='boolean')||
+           (body.password_action!==undefined&&
+            !['set','clear','keep'].includes(body.password_action))||
+           (body.password!==undefined&&body.password_action!=='set')||
+           (body.password_action==='set'&&
+            (typeof body.password!=='string'||!/^[0-9]{4,12}$/.test(body.password))))
+          return fail('invalid_room_policy',400,cors);
+        // Revoking owner hands-free publishing must also close existing
+        // publications. Otherwise an already connected microphone would keep
+        // transmitting until its next reconnect despite the new policy.
+        if(body.super_mic===false&&member.seat_no===null){
+          const active=await coordinator.publishedFor(uid);
+          try{
+            for(const session of active)
+              await forceCloseMicrophone(env,session.sessionId);
+          }catch(error){
+            console.warn('room_policy_audio_revocation_pending',error?.message);
+            return fail('voice_policy_change_unavailable',502,cors);
+          }
+          if(active.length)await coordinator.withdrawUser(uid,false);
+        }
+        const result=await coordinator.roomPolicyUpdate(body);
+        if(result.error)return fail(result.error,400,cors);
+        return reply(result,200,cors);
+      }
       // One shared playback state per verified room. Only the owner or a
       // currently appointed Room Admin can change the song for everyone.
       if(parts.length===5&&action==='music'){
@@ -1147,6 +1185,14 @@ export async function handleRequest(request, env, ctx) {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_invites_unavailable',503,cors);
         const body=await readBody(request);
+        if(body.accept){
+          const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
+          if(policy.mic_mode==='owner'&&room.owner_id!==uid)
+            return fail('room_mic_owner_only',403,cors);
+          if(policy.mic_mode==='admins'&&room.owner_id!==uid&&
+             !await isRoomAdmin(env,roomId,uid))
+            return fail('room_mic_admin_only',403,cors);
+        }
         if(!Number.isInteger(body.seat_no)||body.seat_no<1||
            body.seat_no>room.seat_count||typeof body.accept!=='boolean')
           return fail('invalid_invitation_response',400,cors);
@@ -1170,6 +1216,12 @@ export async function handleRequest(request, env, ctx) {
         }
         if(request.method==='POST') {
           const payload=await readBody(request);
+          const policy=await coordinator.roomPolicyRead();
+          if(policy.chat_mode==='owner'&&room.owner_id!==uid)
+            return fail('room_chat_owner_only',403,cors);
+          if(policy.chat_mode==='admins'&&room.owner_id!==uid&&
+             !await isRoomAdmin(env,roomId,uid))
+            return fail('room_chat_admin_only',403,cors);
           const message=typeof payload.body==='string'?payload.body.trim():'';
           const requestId=typeof payload.request_id==='string'?payload.request_id.trim():'';
           if(!message||message.length>300||
@@ -1223,6 +1275,15 @@ export async function handleRequest(request, env, ctx) {
         if(ban&&Number(ban.banned_until_ms)>Date.now())
           return fail('room_temporarily_blocked',403,cors);
         if (!member) {
+          if(!env.VOICE_ROOMS)return fail('room_policy_unavailable',503,cors);
+          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+          const policy=await coordinator.roomPolicyRead();
+          if(policy.password_required && uid!==room.owner_id &&
+             !await isRoomAdmin(env,roomId,uid)){
+            const body=await readBody(request);
+            const check=await coordinator.roomPasswordCheck(uid,body.password);
+            if(!check.allowed)return fail(check.error,403,cors);
+          }
           await env.DB.prepare(`INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) VALUES(?,?,'member')`)
             .bind(roomId, uid).run();
         }
@@ -1657,6 +1718,14 @@ export async function handleRequest(request, env, ctx) {
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const body=await readBody(request);
         const seat = body.seat_no === null ? null : Number(body.seat_no);
+        if(seat!==null){
+          const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
+          if(policy.mic_mode==='owner'&&room.owner_id!==uid)
+            return fail('room_mic_owner_only',403,cors);
+          if(policy.mic_mode==='admins'&&room.owner_id!==uid&&
+             !await isRoomAdmin(env,roomId,uid))
+            return fail('room_mic_admin_only',403,cors);
+        }
         if (seat !== null && (!Number.isInteger(seat) || seat < 1 ||
           seat > room.seat_count)) return fail('invalid_seat', 400, cors);
         const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
@@ -1704,6 +1773,7 @@ export async function handleRequest(request, env, ctx) {
         }
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
+        const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
         const equipped=await readRoomEquipped(env.DB,roomId);
         // Room color and owner-selected photo are shared room state. Return
         // them with every member poll, so guests already inside and late
@@ -1715,6 +1785,7 @@ export async function handleRequest(request, env, ctx) {
           'SELECT version FROM sharika_room_covers WHERE room_id=?'
         ).bind(roomId).first() : null;
         return reply({ room: roomId,
+          policy,
           theme:ROOM_THEMES.has(room.theme)?room.theme:'mid',
           theme_background_url:wallpaper?.version
             ? url.origin+'/api/v1/rooms/'+roomId+'/theme-image?v='+wallpaper.version
@@ -1737,7 +1808,9 @@ export async function handleRequest(request, env, ctx) {
         if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET || !/^wss:\/\//.test(env.LIVEKIT_URL || '')) {
           return fail('voice_not_configured', 503, cors);
         }
-        const publish = room.owner_id === uid || (member.seat_no !== null && !member.muted);
+        const policy=await env.VOICE_ROOMS?.getByName('sharika:'+roomId)?.roomPolicyRead();
+        const publish = (room.owner_id === uid && (member.seat_no!==null||policy?.super_mic!==false)) ||
+          (member.seat_no !== null && !member.muted);
         const token = await createVoiceToken(env, uid, roomId, publish, room.owner_id === uid);
         return reply({ token, url: env.LIVEKIT_URL, room: 'sharika:' + roomId, publish }, 200, cors);
       }
