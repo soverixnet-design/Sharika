@@ -2252,6 +2252,53 @@
     '#sh-family-panel .sh-fam-feedback{min-height:18px;color:#ffd985;margin:8px 0}',
     '@media(prefers-reduced-motion:reduce){#sh-family-entries button{transition:none}}'
   ].join('');
+  familyStyles.textContent += [
+    '#sh-family-panel #sh-fam-body.sh-fam-dashboard{padding:0;border:0;',
+    'background:none;box-shadow:none}',
+    '#sh-family-panel .sh-fam-hero{position:relative;overflow:hidden;padding:25px 18px;',
+    'border:2px solid #f6d388;border-radius:26px;text-align:center;',
+    'background:radial-gradient(circle at 50% -10%,#d69e48,#613819 53%,#24131e);',
+    'box-shadow:inset 0 3px 5px #fff8,inset 0 -8px 17px #10070caa,0 12px 28px #080308cc}',
+    '#sh-family-panel .sh-fam-hero:before{content:"✦";position:absolute;left:10px;top:10px;',
+    'font-size:35px;color:#ffeab2;opacity:.7}',
+    '#sh-family-panel .sh-fam-crest{display:grid;place-items:center;width:78px;height:78px;',
+    'margin:0 auto 8px;border:3px solid #ffeba8;border-radius:25px;',
+    'background:linear-gradient(140deg,#ffe7a0,#a66d28 65%,#593215);',
+    'box-shadow:0 5px 0 #73451b,0 11px 18px #14080b99;font-size:43px;',
+    'transform:perspective(280px) rotateX(6deg)}',
+    '#sh-family-panel .sh-fam-hero h3{font-size:25px;color:#fff0b6;margin:12px 0 5px}',
+    '#sh-family-panel .sh-fam-hero small{font-size:12px;color:#f9dfab;letter-spacing:.06em}',
+    '#sh-family-panel .sh-fam-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:13px 0}',
+    '#sh-family-panel .sh-fam-kpi{padding:15px 12px;min-width:0;border:1px solid #dbad66;',
+    'border-radius:18px;background:linear-gradient(150deg,#5a3b2a,#221825);',
+    'box-shadow:inset 0 2px #fff2,0 5px 0 #160e17,0 9px 18px #0005}',
+    '#sh-family-panel .sh-fam-kpi small{display:block;color:#edc994;font-size:11px}',
+    '#sh-family-panel .sh-fam-kpi strong{display:block;font-size:21px;',
+    'color:#ffe49d;overflow-wrap:anywhere;margin-top:3px}',
+    '#sh-family-panel .sh-fam-section-title{display:flex;justify-content:space-between;',
+    'gap:9px;align-items:center;margin:22px 3px 12px}',
+    '#sh-family-panel .sh-fam-member-item{padding:9px 0;border-bottom:1px solid #b5874b55}',
+    '#sh-family-panel .sh-fam-member-row{display:flex;align-items:center;',
+    'gap:11px;width:100%;box-sizing:border-box;text-align:left;',
+    'background:linear-gradient(140deg,#473025,#251b28);color:#fff0ca;',
+    'box-shadow:inset 0 1px #fff3,0 4px 9px #0005;border-color:#a9824d}',
+    '#sh-family-panel .sh-fam-member-number{width:36px;flex:none;color:#ffdf86;font-size:16px}',
+    '#sh-family-panel .sh-fam-member-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}',
+    '#sh-family-panel .sh-fam-member-name small{display:block;font-size:11px;',
+    'font-weight:500;color:#eac99d;margin-top:3px}',
+    '#sh-family-panel .sh-fam-member-arrow{font-size:25px;color:#ffdc87}',
+    '#sh-family-panel .sh-fam-date-pills{display:flex;gap:7px;overflow:auto;padding:4px 0 10px}',
+    '#sh-family-panel .sh-fam-date-pills button{white-space:nowrap;flex:none}',
+    '#sh-family-panel .sh-fam-date-pills button[aria-pressed=true]{background:#3b2c35;color:#ffe3a2}',
+    '#sh-family-panel .sh-fam-gift-row{display:flex;gap:12px;align-items:start;',
+    'justify-content:space-between;padding:13px 2px;border-bottom:1px solid #f6d38833}',
+    '#sh-family-panel .sh-fam-gift-row small{display:block;color:#d3b88f;margin-top:3px}',
+    '@media(max-width:360px){#sh-family-panel .sh-fam-kpi strong{font-size:18px}',
+    '#sh-family-panel .sh-fam-hero h3{font-size:21px}}',
+    '@media(prefers-reduced-motion:no-preference){#sh-family-panel .sh-fam-crest{',
+    'animation:shFamFloat 4s ease-in-out infinite alternate}',
+    '@keyframes shFamFloat{to{transform:perspective(280px) rotateX(6deg) translateY(-4px)}}}'
+  ].join('');
   document.head.appendChild(familyStyles);
   const famEsc=x=>String(x==null?'':x).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
@@ -2338,6 +2385,7 @@
     const host=document.querySelector('#sh-family-panel #sh-fam-body');
     if(!host)return;
     const policy=data.policy||{},bd=data.bd||{};
+    host.classList.remove('sh-fam-dashboard');
     host.classList.add('sh-fam-discovery');
     host.innerHTML='<div class="sh-fam-lobby-head"><span>✦ ROYAL FAMILIES ✦</span>'+
       '<h3>Discover Your Family</h3><p>Join an existing Family or apply to create your own.</p></div>'+
@@ -2571,18 +2619,32 @@
     if(!target)return;
     const family=data.family,bd=data.bd||{},policy=data.policy||{},wallet=data.wallet||{};
     if(!family){renderFamilyDiscovery(data);return;}
+    target.classList.remove('sh-fam-discovery');
+    target.classList.add('sh-fam-dashboard');
     const fmtUnits=u=>(Number(u||0)/10000).toLocaleString('en-US',{maximumFractionDigits:4});
-    let html='<h3>💎 Crystal Wallet</h3><div class="sh-fam-stat">'+
+    const formatAmount=n=>Math.max(0,Number(n)||0).toLocaleString('en-US');
+    const progress=data.target_progress||{},activity=data.activity||{};
+    let html='<section class="sh-fam-hero"><span class="sh-fam-crest" aria-hidden="true">👑</span>'+
+      '<small>✦ SHARIKA ROYAL FAMILY ✦</small><h3>'+famEsc(family.name)+'</h3>'+
+      '<small>Family #'+famEsc(family.id)+' · LEVEL '+famEsc(family.level)+
+      ' · '+famEsc(family.status)+'</small></section>'+
+      '<div class="sh-fam-kpis">'+
+      '<div class="sh-fam-kpi"><small>👥 Family Members</small><strong>'+famEsc(family.member_count)+'</strong></div>'+
+      '<div class="sh-fam-kpi"><small>💎 All-Time Gift Diamonds</small><strong>'+formatAmount(progress.lifetime)+'</strong></div>'+
+      '<div class="sh-fam-kpi"><small>🗓️ Monthly Gift Diamonds</small><strong>'+formatAmount(progress.month)+'</strong></div>'+
+      '<div class="sh-fam-kpi"><small>✨ My Earned Crystal</small><strong>'+fmtUnits(wallet.total_units)+'</strong></div>'+
+      '</div><div class="sh-fam-card"><h3>💎 Crystal Wallet</h3><div class="sh-fam-stat">'+
       fmtUnits(wallet.available_units)+' Crystal</div>'+
-      '<p class="sh-fam-note">Total earned: '+fmtUnits(wallet.total_units)+
+      '<p class="sh-fam-note">Verified total: '+fmtUnits(wallet.total_units)+
       ' · Reserved / transferred: '+fmtUnits(wallet.transferred_units)+
-      '. Crystals are separate from spendable coins.</p>'+
-      '<button type="button" id="sh-fam-ledger">View Ledger</button>';
+      '. Crystal is separate from coins and gift diamonds.</p>'+
+      '<button type="button" id="sh-fam-ledger">Crystal & Coin Transfer History</button>';
     if(family.role==='leader'){
       html+='<p class="sh-fam-note" id="sh-fam-owner-commission-rule">Family Owner commission ('+
         famEsc(policy.owner_percent||0)+'%) comes from verified regular gifts sent by other Family members. '+
         'Your own gifts count toward the Family Gift Target, but do not earn Owner Crystal commission.</p>';
     }
+    html+='</div>';
     if(family){
       const activity=data.activity||{},progress=data.target_progress||{};
       const fmtDiamonds=value=>Math.max(0,Number(value)||0).toLocaleString('en-US',{maximumFractionDigits:0});
@@ -2602,9 +2664,13 @@
         '<p class="sh-fam-note">Owner: '+famEsc(family.owner_id)+
         ' · BD: '+famEsc(family.bd_id)+'</p>'+
         (family.status!=='active'?'<p class="sh-fam-status">This Family is suspended. Ask Admin to review it.</p>':'')+
-        '<ul class="sh-fam-list">'+
-        (family.members||[]).map(m=>'<li>'+famEsc(m.name)+' · '+famEsc(m.public_id)+
-          ' <small>('+famEsc(m.role)+')</small>'+
+        '<div class="sh-fam-section-title"><h3>👥 Member Directory</h3><small>'+famEsc(family.member_count)+' members</small></div>'+
+        '<ol class="sh-fam-list">'+
+        (family.members||[]).map((m,index)=>'<li class="sh-fam-member-item">'+
+          '<button type="button" class="sh-fam-member-row" data-fam-member-detail="'+famEsc(m.public_id)+'">'+
+          '<b class="sh-fam-member-number">#'+(index+1)+'</b><span class="sh-fam-member-name">'+
+          famEsc(m.name)+'<small>ID '+famEsc(m.public_id)+' · '+famEsc(m.role)+'</small></span>'+
+          '<span class="sh-fam-member-arrow" aria-hidden="true">›</span></button>'+
           (family.role==='leader'&&family.status==='active'&&m.role!=='leader'?
             '<details><summary>Manage member</summary>'+
             '<label>Family role<select data-fam-role="'+famEsc(m.public_id)+'">'+
@@ -2614,7 +2680,7 @@
             '<button type="button" data-fam-save-role="'+famEsc(m.public_id)+'">Save Role</button>'+
             '<button type="button" data-fam-transfer-owner="'+famEsc(m.public_id)+'">Make Owner</button>'+
             '<button type="button" data-fam-remove-member="'+famEsc(m.public_id)+'">Remove</button>'+
-            '</details>':'')+'</li>').join('')+'</ul>'+
+            '</details>':'')+'</li>').join('')+'</ol>'+
         (['leader','co_leader'].includes(family.role)&&family.status==='active'?
           '<button id="sh-fam-requests" type="button">Review Join Requests</button>':'')+
         (family.role==='leader'&&family.status==='active'?
@@ -2672,6 +2738,63 @@
         return saved;
       }catch(error){familyNotice('Not saved: '+errText(error));return null;}
     };
+    async function showMemberActivity(memberId,day){
+      const path='/family/members/'+memberId+'/activity'+
+        (day?'?date='+encodeURIComponent(day):'');
+      target.innerHTML='<p class="sh-fam-card">Loading verified member activity…</p>';
+      try{
+        const record=await api('GET',path);
+        if(!target.isConnected)return;
+        const user=record.member||{},total=record.total||{};
+        const selected=record.selected_date||new Date().toISOString().slice(0,10);
+        const days=Array.isArray(record.days)?record.days:[];
+        const gifts=Array.isArray(record.gifts)?record.gifts:[];
+        target.innerHTML='<button type="button" id="sh-fam-detail-back">‹ Family Dashboard</button>'+
+          '<section class="sh-fam-hero"><div class="sh-fam-crest" aria-hidden="true">👤</div>'+
+          '<h3>'+famEsc(user.name)+'</h3><small>ID '+famEsc(user.id)+
+          ' · '+famEsc(user.role)+' · Joined '+famEsc(user.joined_at)+'</small></section>'+
+          '<div class="sh-fam-kpis">'+
+          '<div class="sh-fam-kpi"><small>💎 Total Gift Diamonds</small><strong>'+formatAmount(total.gift_coins)+'</strong></div>'+
+          '<div class="sh-fam-kpi"><small>🎁 Verified Gift Events</small><strong>'+formatAmount(total.gift_count)+'</strong></div>'+
+          '<div class="sh-fam-kpi"><small>✨ Earned Crystal</small><strong>'+fmtUnits(total.earned_crystal_units)+'</strong></div>'+
+          '<div class="sh-fam-kpi"><small>📆 Selected Day · '+famEsc(selected)+'</small><strong>'+formatAmount(
+            gifts.reduce((sum,g)=>sum+Number(g.quantity||0)*Number(g.price_coins||0),0))+'</strong></div></div>'+
+          '<section class="sh-fam-card"><h3>📅 Daily Gift Statement (UTC)</h3>'+
+          '<label>Choose date<input id="sh-fam-selected-date" type="date" value="'+famEsc(selected)+
+          '" max="'+new Date().toISOString().slice(0,10)+'"></label>'+
+          '<div class="sh-fam-date-pills">'+days.slice(0,14).map(d=>
+            '<button type="button" data-fam-day="'+famEsc(d.day)+'" aria-pressed="'+
+            (d.day===selected)+'">'+famEsc(d.day.slice(5))+' · '+formatAmount(d.gift_coins)+'</button>'
+          ).join('')+'</div>'+
+          (gifts.length?gifts.map(g=>'<div class="sh-fam-gift-row"><div><b>'+famEsc(g.gift_name)+
+            ' ×'+formatAmount(g.quantity)+'</b><small>'+famEsc(g.created_at)+' UTC'+
+            ' · To ID '+famEsc(g.recipient_id)+'</small></div><b>💎 '+
+            formatAmount(Number(g.quantity||0)*Number(g.price_coins||0))+'</b></div>').join(''):
+            '<p class="sh-fam-note">No verified regular gifts on this date.</p>')+
+          (record.has_more_gifts?'<p class="sh-fam-note">Showing latest 100 gift events for this day.</p>':'')+
+          '</section><p class="sh-fam-note">Statements use server-verified regular gift events since this member joined. Crystal is not a spendable coin balance.</p>';
+        target.querySelector('#sh-fam-detail-back').onclick=()=>renderRoyalFamily(data);
+        target.querySelector('#sh-fam-selected-date').onchange=e=>{
+          if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value))showMemberActivity(memberId,e.target.value);
+        };
+        target.querySelectorAll('[data-fam-day]').forEach(button=>{
+          button.onclick=()=>showMemberActivity(memberId,button.dataset.famDay);
+        });
+        familyNotice('');
+      }catch(error){
+        target.innerHTML='<button type="button" id="sh-fam-detail-back">‹ Family Dashboard</button>'+
+          '<p class="sh-fam-card">Member details unavailable: '+famEsc(errText(error))+'</p>';
+        target.querySelector('#sh-fam-detail-back').onclick=()=>renderRoyalFamily(data);
+      }
+    }
+    target.querySelectorAll('[data-fam-member-detail]').forEach(button=>{
+      const memberId=button.dataset.famMemberDetail;
+      if(!['leader','co_leader'].includes(family.role)&&
+        String(profile?.public_id||'')!==memberId){
+        button.disabled=true;
+        button.title='Only Family leaders can view other members’ gift statements';
+      }else button.onclick=()=>showMemberActivity(memberId);
+    });
     target.querySelectorAll('[data-fam-save-role]').forEach(button=>{
       button.onclick=()=>{
         const id=button.dataset.famSaveRole;
@@ -2747,11 +2870,14 @@
       }catch(error){familyNotice('Unavailable: '+errText(error));}
     };
     target.querySelector('#sh-fam-ledger')?.addEventListener('click',()=>detail(
-      '/family/ledger','Crystal Transactions',r=>[
+      '/family/ledger','Verified Crystal & Coin Transfer Ledger',r=>[
         ...(r.credits||[]).map(x=>'<li>+'+fmtUnits(x.crystal_units)+
-          ' Crystal · '+famEsc(x.kind)+' · Gift #'+famEsc(x.transaction_id)+'</li>'),
+          ' Crystal · '+famEsc(x.kind)+' · Gift #'+famEsc(x.transaction_id)+
+          '<small> · '+famEsc(x.created_at)+' UTC</small></li>'),
         ...(r.transfers||[]).map(x=>'<li>−'+fmtUnits(x.crystal_units)+
-          ' Crystal · Seller '+famEsc(x.seller_id)+' · '+famEsc(x.status)+'</li>')
+          ' Crystal → '+formatAmount(x.coins_to_seller)+' coins · Seller ID '+
+          famEsc(x.seller_id)+' · '+famEsc(x.status)+
+          '<small> · '+famEsc(x.created_at)+' UTC</small></li>')
       ]));
     target.querySelector('#sh-fam-bd-list')?.addEventListener('click',()=>detail(
       '/family/bd/families','My Granted Families',r=>(r.families||[]).map(x=>
@@ -9460,6 +9586,8 @@
       'transform:none!important;box-sizing:border-box!important}',
       '#sh-original-host{flex:1!important;min-height:0!important;height:auto!important;',
       'max-height:none!important;overflow:hidden!important}',
+      '#sh.sh-game-catalog-sheet{height:auto!important;min-height:0!important;',
+      'max-height:min(76dvh,650px)!important;overflow-y:auto!important}',
       '#sh-original-host iframe{width:100%!important;height:100%!important;',
       'border:0!important;display:block!important}',
       '#sh-original-back{flex:none;align-self:flex-start;min-height:40px}',
@@ -9541,13 +9669,14 @@
     let visibleGameCards=[];
     function catalog(){
       overlay.classList.remove('sh-original-fullscreen');
-      sheet.innerHTML='<div class="grab"></div><h3>🎮 Sharika Games</h3>'+
+      sheet.classList.add('sh-game-catalog-sheet');
+      sheet.innerHTML='<div class="grab"></div><h3>👑 Sharika Royal Games</h3>'+
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
         '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
         'Original graphics · live virtual-coin server rounds</p>';
       const grid=sheet.querySelector('#sh-original-grid');
-      if(!visibleGameCards.length)grid.textContent='No games are enabled at the moment.';
+      if(!visibleGameCards.length)grid.textContent='All games are currently disabled by Admin.';
       visibleGameCards.forEach(item=>{
         const card=doc.createElement('button');
         card.type='button';
@@ -9688,6 +9817,7 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
+      sheet.classList.remove('sh-game-catalog-sheet');
       if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
       // In the room the game itself is the focus: the main close button
       // returns to voice chat, so the extra All games row is unnecessary.
@@ -9805,6 +9935,7 @@
       currentGameFrame?.element?.remove();
       currentGameFrame=null;
       overlay.classList.remove('sh-original-fullscreen');
+      sheet.classList.remove('sh-game-catalog-sheet');
     };
     overlay.classList.add('on');
     sheet.innerHTML='<div class="grab"></div><p style="padding:20px;text-align:center">Loading available games…</p>';

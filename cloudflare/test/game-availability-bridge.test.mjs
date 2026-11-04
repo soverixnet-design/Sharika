@@ -30,4 +30,6 @@ test('Games picker and Cloudflare Worker agree on the exact catalog path', () =>
   // previously hid Food Wheels and Greedy Wheel even when enabled in D1.
   assert.ok(client.includes('visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));'));
   assert.ok(!client.includes("originalGameCards.filter(game=>game.id==='fruit-royale'"));
+  assert.match(client,/Sharika Royal Games/);
+  assert.match(client,/All games are currently disabled by Admin/);
 });

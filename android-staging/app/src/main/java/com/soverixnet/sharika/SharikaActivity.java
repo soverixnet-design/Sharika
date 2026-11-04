@@ -1045,6 +1045,8 @@ public final class SharikaActivity extends Activity {
             path.matches("^/api/v1/family/requests/[1-9][0-9]{0,9}/(accept|reject)$") ||
             path.matches("^/api/v1/family/members/[0-9]{8}/(role|remove)$"))
             return method.equals("POST");
+        if (path.matches("^/api/v1/family/members/[0-9]{8}/activity(\\?date=[0-9]{4}-[0-9]{2}-[0-9]{2})?$"))
+            return method.equals("GET");
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
         if (path.equals("/api/v1/cosmetics/purchase") ||
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");

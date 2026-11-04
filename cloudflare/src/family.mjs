@@ -130,6 +130,61 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
         max_members:current.max_members,conversion_enabled:!!current.conversion_enabled,
         coins_per_crystal:current.coins_per_crystal}},200,cors);
   }
+  // A Family leader can inspect verified member gift activity by UTC day.
+  // Members may see their own details, never another Family's records or
+  // anyone's wallet balance. This endpoint does not change gift/coin ledgers.
+  const memberActivity=path.match(/^\/api\/v1\/family\/members\/([0-9]{8})\/activity$/);
+  if(memberActivity&&request.method==='GET'){
+    const family=await familyFor(db,uid);
+    if(!family)return fail('family_membership_required',403,cors);
+    const selectedId=memberActivity[1];
+    const viewer=await active(db,uid);
+    if(!['leader','co_leader'].includes(family.role)&&showId(viewer.public_no)!==selectedId)
+      return fail('family_member_detail_permission_denied',403,cors);
+    const member=await db.prepare(
+      'SELECT u.auth_uid,u.public_no,u.name,m.role,m.joined_at FROM sharika_family_members m '+
+      'JOIN sharika_users u ON u.auth_uid=m.user_uid '+
+      'WHERE m.family_id=? AND u.public_no=?'
+    ).bind(family.id,Number(selectedId)).first();
+    if(!member)return fail('family_member_not_found',404,cors);
+    const dateParam=new URL(request.url).searchParams.get('date');
+    const day=dateParam||new Date().toISOString().slice(0,10);
+    const parsedDay=Date.parse(day+'T00:00:00Z');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(parsedDay)||
+      new Date(parsedDay).toISOString().slice(0,10)!==day)
+      return fail('invalid_family_activity_date',400,cors);
+    const total=await db.prepare(
+      'SELECT COUNT(*) AS gift_count,COALESCE(SUM(e.quantity*e.price_coins),0) AS gift_coins '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND g.tab IN (0,1)'
+    ).bind(member.auth_uid,member.joined_at).first();
+    const byDay=rows(await db.prepare(
+      'SELECT date(e.created_at) AS day,COUNT(*) AS gift_count,'+
+      'SUM(e.quantity*e.price_coins) AS gift_coins '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND g.tab IN (0,1) '+
+      'GROUP BY date(e.created_at) ORDER BY day DESC LIMIT 31'
+    ).bind(member.auth_uid,member.joined_at).all());
+    const gifts=rows(await db.prepare(
+      'SELECT e.id,e.created_at,e.room_id,e.quantity,e.price_coins,'+
+      'g.name AS gift_name,u.public_no AS recipient_no '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'JOIN sharika_users u ON u.auth_uid=e.recipient_uid '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND date(e.created_at)=? '+
+      'AND g.tab IN (0,1) ORDER BY e.id DESC LIMIT 100'
+    ).bind(member.auth_uid,member.joined_at,day).all());
+    const earned=await db.prepare(
+      'SELECT COALESCE(SUM(crystal_units),0) AS units '+
+      'FROM sharika_family_crystal_ledger WHERE family_id=? AND beneficiary_uid=?'
+    ).bind(family.id,member.auth_uid).first();
+    return reply({member:{id:selectedId,name:member.name,role:member.role,
+      joined_at:member.joined_at},total:{gift_count:Number(total?.gift_count)||0,
+      gift_coins:Number(total?.gift_coins)||0,
+      earned_crystal_units:Number(earned?.units)||0},days:byDay,
+      selected_date:day,gifts:gifts.map(g=>({...g,recipient_id:showId(g.recipient_no),
+        recipient_no:undefined})),has_more_gifts:gifts.length===100,
+      source:'verified_regular_gifts_after_family_join',timezone:'UTC'},200,cors);
+  }
   if(path==='/api/v1/family/ledger'&&request.method==='GET'){
     const credits=rows(await db.prepare(
       'SELECT l.id,l.family_id,f.name AS family_name,l.kind,l.crystal_units,l.rate_bps,'+

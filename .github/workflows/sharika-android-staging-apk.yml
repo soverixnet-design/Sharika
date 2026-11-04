@@ -46,6 +46,7 @@ on:
       - feature/sharika-family-fruit-royale-sync-20261104
       - feature/sharika-room-free-lucky-box-20261104
       - feature/sharika-invite-auto-link-20261104
+      - fix/sharika-family-royal-games-20261104
     paths:
       - 'android-staging/**'
       - 'app/royal-room-ui.js'
@@ -410,7 +411,7 @@ jobs:
   royal-emulator-smoke:
     name: Royal UI emulator launch and Back smoke test
     # Only the isolated Option 1 candidate; no live app or staging data writes.
-    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103' || github.ref == 'refs/heads/feature/sharika-family-fruit-royale-sync-20261104' || github.ref == 'refs/heads/feature/sharika-room-free-lucky-box-20261104'
+    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103' || github.ref == 'refs/heads/feature/sharika-family-fruit-royale-sync-20261104' || github.ref == 'refs/heads/feature/sharika-room-free-lucky-box-20261104' || github.ref == 'refs/heads/fix/sharika-family-royal-games-20261104'
     needs: debug-apk
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -464,3 +465,109 @@ jobs:
           path: royal-qa/
           if-no-files-found: warn
           retention-days: 7
+
+  royal-family-api-staging:
+    name: Verify and deploy only the updated Family read endpoint to staging
+    if: github.ref == 'refs/heads/fix/sharika-family-royal-games-20261104'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: sharika-staging
+    concurrency:
+      group: sharika-isolated-staging-worker-publish
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse any non-staging target, missing secret or unexpected source
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const d=c.d1_databases?.[0];
+          const source=readFileSync('src/family.mjs','utf8');
+          if(process.env.GITHUB_REF!=='refs/heads/fix/sharika-family-royal-games-20261104'||
+             !process.env.CLOUDFLARE_API_TOKEN||c.name!=='sharika-api-staging'||
+             c.account_id!==process.env.CLOUDFLARE_ACCOUNT_ID||
+             c.vars?.SHARIKA_ENV!=='staging'||c.workers_dev!==true||
+             c.keep_vars!==true||c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             c.d1_databases?.length!==1||d?.binding!=='DB'||
+             d?.database_name!=='sharika-staging'||
+             d?.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             !source.includes("family_member_detail_permission_denied"))
+            throw Error('Refusing unsafe Family Worker publish');
+          console.log('SHARIKA_STAGING_FAMILY_READ_ENDPOINT_ONLY_TARGET_VERIFIED');
+          NODE
+      - name: Run all Worker, game-wallet and Family permission checks
+        run: npm run check
+      - name: Read-only remote D1 prerequisite check
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_game_catalog','sharika_family_members','sharika_families','sharika_gift_events','sharika_family_crystal_ledger') ORDER BY name"
+      - name: Dry-run Worker bundle without touching D1
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
+      - name: Publish only sharika-api-staging, no migration or balance writes
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Check Worker health after staging publish
+        run: curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+
+  royal-family-games-direct-apk:
+    name: Release tested Royal Family and Games staging APK directly
+    if: github.ref == 'refs/heads/fix/sharika-family-royal-games-20261104'
+    needs: [debug-apk, royal-emulator-smoke, royal-family-api-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download the exactly tested, stable-signed APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify Family dashboard, game selection and Native API inside APK
+        run: |
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/royal-family-games.js"
+          node - <<'NODE'
+          const js=require('node:fs').readFileSync(process.env.RUNNER_TEMP+'/royal-family-games.js','utf8');
+          for(const expected of [
+            'data-fam-member-detail','sh-fam-kpis','showMemberActivity(',
+            'Crystal & Coin Transfer History',
+            'visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id))',
+            'Sharika Royal Games','Retry loading games'
+          ])if(!js.includes(expected))throw Error('APK missing expected Family/Game behavior: '+expected);
+          if(js.includes("game.id==='fruit-royale'&&enabled.has(game.id)"))
+            throw Error('APK still hides active games');
+          console.log('FAMILY_GAMES_NATIVE_ASSETS_VERIFIED');
+          NODE
+          unzip -Z1 verified-apk/app-debug.apk | grep -Fx 'assets/fruit-royale/index.html'
+          unzip -Z1 verified-apk/app-debug.apk | grep -Fx 'assets/greedy-wheel/index.html'
+          cp verified-apk/app-debug.apk verified-apk/Sharika-Royal-Family-Games-Staging.apk
+          sha256sum verified-apk/Sharika-Royal-Family-Games-Staging.apk
+      - name: Publish a direct APK download as staging-only prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="sharika-royal-family-games-staging-${GITHUB_SHA:0:8}"
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Existing release tag; refusing to overwrite downloaded APK'
+            exit 1
+          fi
+          gh release create "$TAG" verified-apk/Sharika-Royal-Family-Games-Staging.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Royal Family Dashboard + Active Games — Staging APK' \
+            --notes 'Staging test APK: 3D Royal Family summary, member daily verified gift statements, Crystal/coin ledger, and all Admin-enabled bundled games. Fruit Royale stays hidden while disabled in staging Admin; no historical wallet, member or game records reset. Staging API permission checks and Android emulator passed. Not a Play Store production release.' \
+            --prerelease

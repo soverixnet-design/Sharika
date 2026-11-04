@@ -139,8 +139,60 @@ test('Android native bridge explicitly permits authenticated Family routes only'
   assert.ok(allow.includes('family/requests/[1-9][0-9]{0,9}/(accept|reject)'));
   assert.ok(allow.includes('family/invites/[1-9][0-9]{0,9}/(accept|decline)'));
   assert.ok(allow.includes('family/members/[0-9]{8}/(role|remove)'));
+  assert.ok(allow.includes('family/members/[0-9]{8}/activity'));
+  assert.ok(allow.includes('\\?date=[0-9]{4}-[0-9]{2}-[0-9]{2}'));
   assert.ok(!allow.includes('path.startsWith("/api/v1/family/")'));
   assert.ok(allow.includes('return method.equals("POST")'));
+});
+
+test('Family leader sees only verified same-family member gifts and dated totals',async()=>{
+  const db=fixture(),original=db.prepare.bind(db);
+  db.prepare=sql=>{
+    const stmt=original(sql);
+    if(sql.includes('WHERE m.family_id=? AND u.public_no=?'))
+      stmt.first=async()=>({auth_uid:'member',public_no:10000004,name:'Member',
+        role:'member',joined_at:'2026-11-01 00:00:00'});
+    if(sql.includes('COUNT(*) AS gift_count'))
+      stmt.first=async()=>({gift_count:3,gift_coins:450});
+    if(sql.includes('COALESCE(SUM(crystal_units),0) AS units')&&sql.includes('family_id=?'))
+      stmt.first=async()=>({units:2500});
+    return stmt;
+  };
+  const path='/api/v1/family/members/10000004/activity';
+  const res=await handleFamilyApp({request:new Request('https://example.test'+path+
+    '?date=2026-11-02'),env:{DB:db},uid:'leader',path,cors:{},reply,fail});
+  assert.equal(res.status,200);
+  const body=await res.json();
+  assert.equal(body.member.id,'10000004');
+  assert.equal(body.total.gift_coins,450);
+  assert.equal(body.total.earned_crystal_units,2500);
+  assert.equal(body.selected_date,'2026-11-02');
+  assert.ok(!JSON.stringify(body).includes('auth_uid'));
+  const sql=db.calls.map(x=>x.sql||'').join('\n');
+  assert.match(sql,/e\.created_at>=\?/);
+  assert.match(sql,/g\.tab IN \(0,1\)/);
+  assert.match(readFileSync(new URL('../src/family.mjs',import.meta.url),'utf8'),
+    /WHERE m\.family_id=\? AND u\.public_no=\?/);
+  assert.match(sql,/date\(e\.created_at\)=\?/);
+});
+
+test('Family member cannot view someone else’s detailed gifts or fake a date',async()=>{
+  const db=fixture({role:'member'});
+  const path='/api/v1/family/members/10000004/activity';
+  const denied=await handleFamilyApp({request:new Request('https://example.test'+path),
+    env:{DB:db},uid:'leader',path,cors:{},reply,fail});
+  assert.equal(denied.status,403);
+  const other=fixture(),original=other.prepare.bind(other);
+  other.prepare=sql=>{
+    const stmt=original(sql);
+    if(sql.includes('WHERE m.family_id=? AND u.public_no=?'))
+      stmt.first=async()=>({auth_uid:'member',public_no:10000004,
+        name:'Member',role:'member',joined_at:'2026-11-01 00:00:00'});
+    return stmt;
+  };
+  const invalid=await handleFamilyApp({request:new Request('https://example.test'+path+
+    '?date=2026-02-30'),env:{DB:other},uid:'leader',path,cors:{},reply,fail});
+  assert.equal(invalid.status,400);
 });
 
 test('Super Admin can revoke BD without touching Family/member/ledger records',async()=>{
