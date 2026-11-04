@@ -3475,7 +3475,8 @@
   // Android WebView may block a remote track's first autoplay attempt.
   // A later genuine room tap must retry playback synchronously in that gesture.
   function resumeRoomAudio() {
-    if(musicPlayer?.src&&musicPlayer.paused&&musicState?.mode==='library')
+    if(typeof musicPlayer!=='undefined'&&typeof musicState!=='undefined'&&
+       musicPlayer?.src&&musicPlayer.paused&&musicState?.mode==='library')
       musicPlayer.play().catch(()=>{});
     if(sfuState && !sfuState.closed) {
       if(sfuState.speakingContext?.state==='suspended')
