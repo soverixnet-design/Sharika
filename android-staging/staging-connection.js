@@ -2303,6 +2303,15 @@
     '#sh-family-panel .sh-fam-gift-row{display:flex;gap:12px;align-items:start;',
     'justify-content:space-between;padding:13px 2px;border-bottom:1px solid #f6d38833}',
     '#sh-family-panel .sh-fam-gift-row small{display:block;color:#d3b88f;margin-top:3px}',
+    '#sh-family-panel .sh-agency-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:15px 0}',
+    '#sh-family-panel .sh-agency-actions button{display:flex;align-items:center;justify-content:center;gap:6px;',
+    'margin:0;font-size:12px;min-width:0;line-height:1.3}',
+    '#sh-family-panel .sh-agency-report-row{padding:13px 10px;margin:9px 0;',
+    'border:1px solid #a98050;border-radius:15px;background:linear-gradient(135deg,#513624,#231826)}',
+    '#sh-family-panel .sh-agency-report-row b{display:block;color:#ffe0a0}',
+    '#sh-family-panel .sh-agency-report-row small{display:block;line-height:1.7;color:#ebd3ac}',
+    '#sh-family-panel .sh-agency-salary-note{border-left:4px solid #efb751;padding:11px 13px;',
+    'background:#422e21;border-radius:8px;line-height:1.6;font-size:13px}',
     '@media(max-width:360px){#sh-family-panel .sh-fam-kpi strong{font-size:18px}',
     '#sh-family-panel .sh-fam-hero h3{font-size:21px}}',
     '@media(prefers-reduced-motion:no-preference){#sh-family-panel .sh-fam-crest{',
@@ -2350,11 +2359,11 @@
         if(session?.user?.id!==current)return;
         familyCache=data;
         const tile=document.getElementById('sh-bd-entry');
-        if(tile)tile.hidden=!(data.bd?.active&&data.bd?.can_grant);
+        if(tile)tile.hidden=!data.bd?.active;
       }).catch(error=>{
         console.warn('Family status unavailable:',errText(error));
       });
-    }else if(familyCache)bd.hidden=!(familyCache.bd?.active&&familyCache.bd?.can_grant);
+    }else if(familyCache)bd.hidden=!familyCache.bd?.active;
   }
   async function openRoyalFamily(){
     if(!session){window.showAuth('welcome');return;}
@@ -2385,7 +2394,15 @@
       if(account!==session?.user?.id||layer.hidden)return;
       familyCache=data;familyCheckedAt=Date.now();familyCheckedUser=account;
       const bdTile=document.getElementById('sh-bd-entry');
-      if(bdTile)bdTile.hidden=!(data.bd?.active&&data.bd?.can_grant);
+      if(bdTile)bdTile.hidden=!data.bd?.active;
+      const header=layer.querySelector('.sh-fam-head');
+      header.querySelector('#sh-fam-open-bd')?.remove();
+      if(data.bd?.active){
+        const button=document.createElement('button');button.id='sh-fam-open-bd';
+        button.type='button';button.textContent='BD Overview';
+        button.onclick=()=>renderBDOverview(data);
+        header.appendChild(button);
+      }
       renderRoyalFamily(data);
     }catch(error){
       if(target)target.textContent='Family service unavailable: '+errText(error)+
@@ -2401,11 +2418,11 @@
     host.classList.add('sh-fam-discovery');
     host.innerHTML='<div class="sh-fam-lobby-head"><span>✦ ROYAL AGENCIES ✦</span>'+
       '<h3>Discover Your Agency</h3><p>Join an existing Agency or apply to create your own.</p></div>'+
-      '<div class="sh-fam-lobby-tabs" role="tablist" aria-label="Family list">'+
+      '<div class="sh-fam-lobby-tabs" role="tablist" aria-label="Agency list">'+
       '<button data-fam-sort="recommend" aria-selected="true" role="tab">✦ Recommend</button>'+
       '<button data-fam-sort="new" aria-selected="false" role="tab">✧ New</button></div>'+
-      '<label class="sh-fam-search">⌕ Search Families<input id="sh-fam-discover-q" placeholder="Family name" maxlength="60"></label>'+
-      '<div id="sh-fam-discover-list" aria-live="polite"><p>Loading Families…</p></div>'+
+      '<label class="sh-fam-search">⌕ Search Agencies<input id="sh-fam-discover-q" placeholder="Agency name" maxlength="60"></label>'+
+      '<div id="sh-fam-discover-list" aria-live="polite"><p>Loading Agencies…</p></div>'+
       '<div class="sh-fam-application-stack" id="sh-fam-application-stack"></div>'+
       ((data.invitations||[]).length?'<section class="sh-fam-app-card"><h3>✉️ Your Invitations</h3>'+
         data.invitations.map(a=>'<div class="sh-fam-invite-entry"><div><b>'+famEsc(a.family_name)+'</b>'+
@@ -2415,20 +2432,20 @@
       ((data.applications||[]).length?'<section class="sh-fam-app-card"><h3>📋 My Join Requests</h3>'+
         data.applications.map(a=>'<p>'+famEsc(a.family_name||a.family_id)+
         ' · '+famEsc(a.state)+'</p>').join('')+'</section>':'')+
-      (bd.active&&bd.can_grant?'<details class="sh-fam-app-card"><summary>💼 BD Family Grant</summary>'+
-        '<p>Active BD: '+famEsc(policy.bd_percent)+'% verified Family gift commission. Admin approval application is separate.</p>'+
+      (bd.active&&bd.can_grant?'<details class="sh-fam-app-card"><summary>💼 BD Agency Grant</summary>'+
+        '<p>Active BD: '+famEsc(policy.bd_percent)+'% verified Agency gift commission. Admin approval application is separate.</p>'+
         '<label>Owner 8-digit ID<input id="sh-fam-owner-id" maxlength="8" inputmode="numeric"></label>'+
-        '<label>Family Name<input id="sh-fam-name" maxlength="40"></label>'+
-        '<button id="sh-fam-grant">Grant Family</button>'+
-        '<button id="sh-fam-bd-list">My Granted Families</button></details>':'')+
+        '<label>Agency Name<input id="sh-fam-name" maxlength="40"></label>'+
+        '<button id="sh-fam-grant">Grant Agency</button>'+
+        '<button id="sh-fam-bd-list">My Granted Agencies</button></details>':'')+
       '<div class="sh-fam-create-dock"><button type="button" id="sh-fam-show-create">'+
-        '👑 Create Family <span>Admin approval</span></button></div>'+
+        '👑 Create Agency <span>Admin approval</span></button></div>'+
       '<section id="sh-fam-create-form" class="sh-fam-app-card" hidden>'+
-        '<h3>👑 Apply to Create a Family</h3>'+
-        '<p>Choose a unique Family name. An Admin must approve before the Family appears on your ID.</p>'+
-        '<label>Family Name<input id="sh-fam-create-request-name" maxlength="40" placeholder="Your Royal Family"></label>'+
+        '<h3>👑 Apply to Create an Agency</h3>'+
+        '<p>Choose a unique Agency name. An Admin must approve before the Agency appears on your ID.</p>'+
+        '<label>Agency Name<input id="sh-fam-create-request-name" maxlength="40" placeholder="Your Royal Agency"></label>'+
         '<label>Description (optional)<input id="sh-fam-create-request-description" maxlength="240" placeholder="Family introduction"></label>'+
-        '<label><input id="sh-fam-create-agree" type="checkbox"> I agree to the Family rules and Admin review.</label>'+
+        '<label><input id="sh-fam-create-agree" type="checkbox"> I agree to the Agency rules and Admin review.</label>'+
         '<button id="sh-fam-create-request">Submit Application</button>'+
         '<button id="sh-fam-close-create" type="button">Cancel</button></section>';
     const list=host.querySelector('#sh-fam-discover-list');
@@ -2626,6 +2643,113 @@
     'background:linear-gradient(#fff0ad,#e7b74d);color:#552909;font-weight:800;padding:7px 13px}';
   document.head.appendChild(familyDiscoveryRoyalCss);
 
+  function agencyReportFormat(n){
+    return Math.max(0,Number(n)||0).toLocaleString('en-US',{maximumFractionDigits:0});
+  }
+  function agencyReportCrystals(units){
+    return (Number(units||0)/10000).toLocaleString('en-US',{maximumFractionDigits:4});
+  }
+  function agencyReportBack(data){
+    const target=document.querySelector('#sh-family-panel #sh-fam-body');
+    target?.querySelector('#sh-agency-report-back')?.addEventListener('click',()=>renderRoyalFamily(data));
+  }
+  async function renderBDOverview(data){
+    const target=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!target||!data.bd?.active)return;
+    const account=session?.user?.id;
+    target.classList.remove('sh-fam-discovery');target.classList.add('sh-fam-dashboard');
+    target.textContent='Loading your verified BD agency report…';
+    try{
+      const result=await api('GET','/family/bd/overview');
+      if(!target.isConnected||session?.user?.id!==account||target.closest('#sh-family-panel')?.hidden)return;
+      const totals=result.totals||{},agencies=result.agencies||[];
+      const ranked=agencies.slice().sort((a,b)=>Number(b.month_diamonds||0)-Number(a.month_diamonds||0));
+      target.innerHTML='<button type="button" id="sh-agency-report-back">‹ Agency & Host</button>'+
+        '<section class="sh-fam-hero"><span class="sh-fam-crest">'+famIcon('bd')+'</span>'+
+        '<h3>BD Agency Management</h3><small>Your assigned agencies · verified D1 records</small></section>'+
+        '<div class="sh-fam-kpis">'+
+        '<div class="sh-fam-kpi"><small>'+famIcon('agency')+' Agencies</small><strong>'+agencyReportFormat(totals.agency_count)+'</strong></div>'+
+        '<div class="sh-fam-kpi"><small>'+famIcon('host')+' Hosts & Members</small><strong>'+agencyReportFormat(totals.host_count)+'</strong></div>'+
+        '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' Monthly Gift Diamonds</small><strong>'+agencyReportFormat(totals.month_gift_diamonds)+'</strong></div>'+
+        '<div class="sh-fam-kpi"><small>'+famIcon('commission')+' BD Earned Crystal</small><strong>'+agencyReportCrystals(totals.earned_crystal_units)+'</strong></div></div>'+
+        '<section class="sh-fam-card"><h3>'+famIcon('ranking')+' Agency Ranking · This Month (UTC)</h3>'+
+        (ranked.length?ranked.map((a,i)=>'<article class="sh-agency-report-row"><b>#'+(i+1)+' · '+
+          famEsc(a.name)+'</b><small>Owner ID '+famEsc(a.owner_id)+' · '+
+          agencyReportFormat(a.member_count)+' members · '+famEsc(a.status)+'</small>'+
+          '<small>Gift Diamonds: '+agencyReportFormat(a.month_diamonds)+' this month · '+
+          agencyReportFormat(a.lifetime_diamonds)+' lifetime</small><small>BD Crystal: '+
+          agencyReportCrystals(a.month_crystal_units)+' this month · '+
+          agencyReportCrystals(a.earned_crystal_units)+' lifetime</small></article>').join(''):
+          '<p>No agencies are assigned to this BD account yet.</p>')+
+        (result.has_more_agencies?'<p class="sh-fam-note">Showing the newest 100 agencies only; totals are for the displayed agencies.</p>':'')+
+        '<p class="sh-fam-note">BD commission is read from the immutable Crystal ledger. Gifts are verified regular gifts since a member joined; no wallet credit was performed.</p></section>';
+      agencyReportBack(data);familyNotice('');
+    }catch(error){target.innerHTML='<button type="button" id="sh-agency-report-back">‹ Back</button>'+
+      '<p class="sh-fam-card">BD report unavailable: '+famEsc(errText(error))+'</p>';
+      agencyReportBack(data);}
+  }
+  async function renderHostStatement(data){
+    const target=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!target||!data.family)return;
+    const account=session?.user?.id;
+    target.classList.remove('sh-fam-discovery');target.classList.add('sh-fam-dashboard');
+    target.textContent='Loading your verified Host statement…';
+    try{
+      const result=await api('GET','/family/host/statement');
+      if(!target.isConnected||session?.user?.id!==account||target.closest('#sh-family-panel')?.hidden)return;
+      const host=result.host||{},gifts=result.gifts||{},days=result.days||[];
+      target.innerHTML='<button type="button" id="sh-agency-report-back">‹ Agency Dashboard</button>'+
+        '<section class="sh-fam-hero"><span class="sh-fam-crest">'+famIcon('host')+'</span>'+
+        '<h3>My Host Performance</h3><small>'+famEsc(host.name)+' · ID '+famEsc(host.id)+
+        ' · '+famEsc(host.agency_name)+'</small></section>'+
+        '<div class="sh-fam-kpis">'+
+        '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' Today</small><strong>'+agencyReportFormat(gifts.today_diamonds)+'</strong></div>'+
+        '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' This Week</small><strong>'+agencyReportFormat(gifts.week_diamonds)+'</strong></div>'+
+        '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' This Month</small><strong>'+agencyReportFormat(gifts.month_diamonds)+'</strong></div>'+
+        '<div class="sh-fam-kpi"><small>'+famIcon('commission')+' Earned Crystal</small><strong>'+agencyReportCrystals(result.earned_crystal_units)+'</strong></div></div>'+
+        '<section class="sh-fam-card"><h3>'+famIcon('salary')+' Salary Statement</h3>'+
+        '<p class="sh-agency-salary-note">Not configured · No Host salary is due or paid yet. Admin must define the salary rules and approve payment separately. Gift diamonds and Crystal are not salary coins.</p>'+
+        '<p>Lifetime verified gifts: <b>'+agencyReportFormat(gifts.lifetime_gifts)+'</b> · '+
+        'Lifetime gift diamonds: <b>'+agencyReportFormat(gifts.lifetime_diamonds)+'</b></p></section>'+
+        '<section class="sh-fam-card"><h3>'+famIcon('reports')+' Daily Gift History (UTC)</h3>'+
+        (days.length?days.map(d=>'<div class="sh-agency-report-row"><b>'+famEsc(d.day)+
+          '</b><small>'+agencyReportFormat(d.gift_count)+' gifts · '+
+          agencyReportFormat(d.gift_diamonds)+' diamonds</small></div>').join(''):
+          '<p>No verified regular gifts have been recorded since you joined.</p>')+
+        '<p class="sh-fam-note">Showing up to 31 recent active days. The report comes from server gift events, not a demo counter.</p></section>';
+      agencyReportBack(data);familyNotice('');
+    }catch(error){target.innerHTML='<button type="button" id="sh-agency-report-back">‹ Back</button>'+
+      '<p class="sh-fam-card">Host statement unavailable: '+famEsc(errText(error))+'</p>';
+      agencyReportBack(data);}
+  }
+  async function renderAgencyHostRanking(data){
+    const target=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!target||!data.family)return;
+    const account=session?.user?.id;
+    target.classList.remove('sh-fam-discovery');target.classList.add('sh-fam-dashboard');
+    target.textContent='Loading verified Host rankings…';
+    try{
+      const result=await api('GET','/family/agency/hosts');
+      if(!target.isConnected||session?.user?.id!==account||target.closest('#sh-family-panel')?.hidden)return;
+      const hosts=result.hosts||[];
+      target.innerHTML='<button type="button" id="sh-agency-report-back">‹ Agency Dashboard</button>'+
+        '<section class="sh-fam-hero"><span class="sh-fam-crest">'+famIcon('ranking')+'</span>'+
+        '<h3>Agency Host Ranking</h3><small>'+famEsc(result.agency?.name||'')+' · Current UTC month</small></section>'+
+        '<section class="sh-fam-card"><h3>'+famIcon('gifts')+' Monthly Verified Gift Diamonds</h3>'+
+        (hosts.length?hosts.map((h,i)=>'<article class="sh-agency-report-row"><b>#'+(i+1)+' · '+
+          famEsc(h.name)+' · '+famEsc(h.host_id)+'</b><small>Role: '+famEsc(h.role)+
+          ' · Joined '+famEsc(h.joined_at)+'</small><small>Today: '+agencyReportFormat(h.today_diamonds)+
+          ' · Week: '+agencyReportFormat(h.week_diamonds)+' · Month: '+
+          agencyReportFormat(h.month_diamonds)+'</small><small>All-time: '+
+          agencyReportFormat(h.lifetime_diamonds)+' diamonds from '+agencyReportFormat(h.gift_count)+
+          ' verified gifts</small></article>').join(''):'<p>No hosts have joined this agency.</p>')+
+        '</section>';
+      agencyReportBack(data);familyNotice('');
+    }catch(error){target.innerHTML='<button type="button" id="sh-agency-report-back">‹ Back</button>'+
+      '<p class="sh-fam-card">Ranking unavailable: '+famEsc(errText(error))+'</p>';
+      agencyReportBack(data);}
+  }
+
   function renderRoyalFamily(data){
     const target=document.querySelector('#sh-family-panel #sh-fam-body');
     if(!target)return;
@@ -2638,8 +2762,14 @@
     const progress=data.target_progress||{},activity=data.activity||{};
     let html='<section class="sh-fam-hero"><span class="sh-fam-crest" aria-hidden="true">'+famIcon('agency')+'</span>'+
       '<small>✦ SHARIKA AGENCY & HOST ✦</small><h3>'+famEsc(family.name)+'</h3>'+
-      '<small>Family #'+famEsc(family.id)+' · LEVEL '+famEsc(family.level)+
+      '<small>Agency #'+famEsc(family.id)+' · LEVEL '+famEsc(family.level)+
       ' · '+famEsc(family.status)+'</small></section>'+
+      '<div class="sh-agency-actions">'+
+      '<button type="button" id="sh-open-host-statement">'+famIcon('salary')+' My Host Statement</button>'+
+      (['leader','co_leader'].includes(family.role)?'<button type="button" id="sh-open-agency-host-ranking">'+
+        famIcon('ranking')+' Host Ranking</button>':'')+
+      (bd.active?'<button type="button" id="sh-open-bd-dashboard">'+famIcon('bd')+' BD Overview</button>':'')+
+      '</div>'+
       '<div class="sh-fam-kpis">'+
       '<div class="sh-fam-kpi"><small>'+famIcon('host')+' Members</small><strong>'+famEsc(family.member_count)+'</strong></div>'+
       '<div class="sh-fam-kpi"><small>'+famIcon('gifts')+' All-Time Gift Diamonds</small><strong>'+formatAmount(progress.lifetime)+'</strong></div>'+
@@ -2652,26 +2782,26 @@
       '. Crystal is separate from coins and gift diamonds.</p>'+
       '<button type="button" id="sh-fam-ledger">Crystal & Coin Transfer History</button>';
     if(family.role==='leader'){
-      html+='<p class="sh-fam-note" id="sh-fam-owner-commission-rule">Family Owner commission ('+
-        famEsc(policy.owner_percent||0)+'%) comes from verified regular gifts sent by other Family members. '+
-        'Your own gifts count toward the Family Gift Target, but do not earn Owner Crystal commission.</p>';
+      html+='<p class="sh-fam-note" id="sh-fam-owner-commission-rule">Agency Owner commission ('+
+        famEsc(policy.owner_percent||0)+'%) comes from verified regular gifts sent by other Agency members. '+
+        'Your own gifts count toward the Agency Gift Target, but do not earn Owner Crystal commission.</p>';
     }
     html+='</div>';
     if(family){
       const activity=data.activity||{},progress=data.target_progress||{};
       const fmtDiamonds=value=>Math.max(0,Number(value)||0).toLocaleString('en-US',{maximumFractionDigits:0});
       html+='<div class="sh-fam-card" data-family-diamond-target="true">'+
-        '<h3>'+famIcon('gifts')+' Family Diamond Gift Target</h3>'+
+        '<h3>'+famIcon('gifts')+' Agency Diamond Gift Target</h3>'+
         '<div class="sh-fam-stat">'+fmtDiamonds(progress.month)+'</div>'+
         '<p class="sh-fam-note">Diamonds contributed this month (UTC)</p>'+
         '<p>Today: <strong>'+fmtDiamonds(progress.today)+'</strong> 💎 · '+
         'Week: <strong>'+fmtDiamonds(progress.week)+'</strong> 💎</p>'+
         '<p>All-time: <strong>'+fmtDiamonds(progress.lifetime)+'</strong> 💎 · '+
         'Verified gifts: <strong>'+famEsc(activity.total_gifts||0)+'</strong></p>'+
-        '<p class="sh-fam-note">Regular gifts from all current Family members, including the Owner, count from the day they joined. Lucky gifts do not create these diamonds. Crystal commissions are separate.</p>'+
+        '<p class="sh-fam-note">Regular gifts from all current Agency members, including the Owner, count from the day they joined. Lucky gifts do not create these diamonds. Crystal commissions are separate.</p>'+
         '<button type="button" id="sh-fam-refresh-target">↻ Refresh Gift Target</button></div>';
       html+='<div class="sh-fam-card"><h3>👑 '+famEsc(family.name)+' · Level '+
-        famEsc(family.level)+'</h3><p>Family ID: '+famEsc(family.id)+
+        famEsc(family.level)+'</h3><p>Agency ID: '+famEsc(family.id)+
         ' · '+famEsc(family.member_count)+' members</p>'+
         '<p class="sh-fam-note">Owner: '+famEsc(family.owner_id)+
         ' · BD: '+famEsc(family.bd_id)+'</p>'+
@@ -2685,7 +2815,7 @@
           '<span class="sh-fam-member-arrow" aria-hidden="true">›</span></button>'+
           (family.role==='leader'&&family.status==='active'&&m.role!=='leader'?
             '<details><summary>Manage member</summary>'+
-            '<label>Family role<select data-fam-role="'+famEsc(m.public_id)+'">'+
+            '<label>Agency role<select data-fam-role="'+famEsc(m.public_id)+'">'+
             ['member','elder','co_leader'].map(r=>
               '<option value="'+r+'" '+(r===m.role?'selected':'')+'>'+famEsc(r)+'</option>').join('')+
             '</select></label>'+
@@ -2699,18 +2829,18 @@
           '<div class="sh-fam-card"><h4>✉️ Invite User to '+famEsc(family.name)+'</h4>'+
           '<p class="sh-fam-note">Enter an 8-digit ID. User gets a notification and joins after accepting.</p>'+
           '<label>User ID<input id="sh-fam-invite-id" maxlength="8" inputmode="numeric" placeholder="8-digit ID"></label>'+
-          '<button id="sh-fam-invite" type="button">Send Family Invitation</button></div>':'')+
+          '<button id="sh-fam-invite" type="button">Send Agency Invitation</button></div>':'')+
         (family.role!=='leader'?
-          '<button id="sh-fam-leave" type="button">Leave Family</button>':'')+'</div>';
-    }else html+='<div class="sh-fam-card"><h3>Join a Family</h3>'+
+          '<button id="sh-fam-leave" type="button">Leave Agency</button>':'')+'</div>';
+    }else html+='<div class="sh-fam-card"><h3>Join an Agency</h3>'+
       '<p class="sh-fam-note">Only one family at a time. Leader approves membership.</p>'+
-      '<label>Family ID<input id="sh-fam-join-id" inputmode="numeric" placeholder="e.g. 1001"></label>'+
+      '<label>Agency ID<input id="sh-fam-join-id" inputmode="numeric" placeholder="e.g. 1001"></label>'+
       '<button id="sh-fam-join" type="button">Send Join Request</button>'+
       ((data.invitations||[]).length?
-        '<h3>✉️ Family Invitations</h3><div class="sh-fam-list">'+
+        '<h3>✉️ Agency Invitations</h3><div class="sh-fam-list">'+
         (data.invitations||[]).map(a=>'<div class="sh-fam-card">👑 '+famEsc(a.family_name)+
           ' · #'+famEsc(a.family_id)+'<p class="sh-fam-note">Invited by '+famEsc(a.inviter_id)+'</p>'+
-          '<button type="button" data-fam-accept-invite="'+famEsc(a.id)+'">Join Family</button>'+
+          '<button type="button" data-fam-accept-invite="'+famEsc(a.id)+'">Join Agency</button>'+
           '<button type="button" data-fam-decline-invite="'+famEsc(a.id)+'">Decline</button></div>').join('')+'</div>':'')+
       ((data.applications||[]).length?
         '<h3>Your recent applications</h3><ul class="sh-fam-list">'+
@@ -2719,12 +2849,12 @@
           famEsc(a.state)+'</span></li>').join('')+'</ul>':'')+'</div>';
     if(bd.active&&bd.can_grant){
       html+='<div class="sh-fam-card"><h3>'+famIcon('bd')+' BD Agency Grant</h3>'+
-        '<p class="sh-fam-note">Your account has Family Grant permission. BD commission: '+
+        '<p class="sh-fam-note">Your account has Agency Grant permission. BD commission: '+
         famEsc(policy.bd_percent)+'% on verified non-Lucky family member gifts.</p>'+
         '<label>Owner Sharika ID<input id="sh-fam-owner-id" inputmode="numeric" maxlength="8" placeholder="8-digit ID"></label>'+
-        '<label>Family Name<input id="sh-fam-name" maxlength="40" placeholder="Family name"></label>'+
-        '<button type="button" id="sh-fam-grant">Grant Family</button>'+
-        '<button type="button" id="sh-fam-bd-list">My Granted Families</button></div>';
+        '<label>Agency Name<input id="sh-fam-name" maxlength="40" placeholder="Agency name"></label>'+
+        '<button type="button" id="sh-fam-grant">Grant Agency</button>'+
+        '<button type="button" id="sh-fam-bd-list">My Granted Agencies</button></div>';
     }
     if(policy.conversion_enabled){
       html+='<div class="sh-fam-card"><h3>↔ Seller Transfer Request</h3>'+
@@ -2735,6 +2865,9 @@
         '<button type="button" id="sh-fam-transfer">Request Transfer</button></div>';
     }
     target.innerHTML=html;
+    target.querySelector('#sh-open-host-statement')?.addEventListener('click',()=>renderHostStatement(data));
+    target.querySelector('#sh-open-agency-host-ranking')?.addEventListener('click',()=>renderAgencyHostRanking(data));
+    target.querySelector('#sh-open-bd-dashboard')?.addEventListener('click',()=>renderBDOverview(data));
     target.querySelector('#sh-fam-refresh-target')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
       button.disabled=true;
@@ -2794,7 +2927,7 @@
         });
         familyNotice('');
       }catch(error){
-        target.innerHTML='<button type="button" id="sh-fam-detail-back">‹ Family Dashboard</button>'+
+        target.innerHTML='<button type="button" id="sh-fam-detail-back">‹ Agency Dashboard</button>'+
           '<p class="sh-fam-card">Member details unavailable: '+famEsc(errText(error))+'</p>';
         target.querySelector('#sh-fam-detail-back').onclick=()=>renderRoyalFamily(data);
       }
@@ -2846,7 +2979,7 @@
     });
     target.querySelector('#sh-fam-join')?.addEventListener('click',()=>{
       const id=Number(target.querySelector('#sh-fam-join-id')?.value);
-      if(!Number.isSafeInteger(id)||id<1)return familyNotice('Enter a valid Family ID');
+      if(!Number.isSafeInteger(id)||id<1)return familyNotice('Enter a valid Agency ID');
       invoke('POST','/family/join',{family_id:id});
     });
     target.querySelector('#sh-fam-grant')?.addEventListener('click',()=>{
@@ -2874,7 +3007,7 @@
         const result=await api('GET',url);
         const lines=map(result);
         target.innerHTML='<h3>'+famEsc(title)+'</h3>'+
-          '<button type="button" id="sh-fam-detail-back">‹ Family Dashboard</button>'+
+          '<button type="button" id="sh-fam-detail-back">‹ Agency Dashboard</button>'+
           (lines.length?'<ul class="sh-fam-list">'+lines.join('')+'</ul>':
             '<p>No verified records yet.</p>');
         target.querySelector('#sh-fam-detail-back').onclick=()=>renderRoyalFamily(data);
@@ -2892,7 +3025,7 @@
           '<small> · '+famEsc(x.created_at)+' UTC</small></li>')
       ]));
     target.querySelector('#sh-fam-bd-list')?.addEventListener('click',()=>detail(
-      '/family/bd/families','My Granted Families',r=>(r.families||[]).map(x=>
+      '/family/bd/families','My Granted Agencies',r=>(r.families||[]).map(x=>
         '<li>'+famEsc(x.name)+' · Owner '+famEsc(x.owner_id)+
         ' · '+famEsc(x.member_count)+' members</li>')));
     target.querySelector('#sh-fam-requests')?.addEventListener('click',async()=>{

@@ -46,8 +46,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 8
-        versionName '0.6.2-agency-3d-icons-staging'
+        versionCode 9
+        versionName '0.6.3-bd-agency-host-reports-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

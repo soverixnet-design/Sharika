@@ -56,13 +56,13 @@ test('Family gift target includes verified regular owner gifts independent of Cr
     'Owner self-gifts still do not earn owner Crystal commissions');
 });
 
-test('Royal Family UI presents diamond target values and user refresh',()=>{
+test('Royal Agency UI presents diamond target values and user refresh',()=>{
   const ui=readFileSync(new URL(
     '../../android-staging/staging-connection.js',import.meta.url),'utf8');
-  for(const required of ['Family Diamond Gift Target','data.target_progress',
+  for(const required of ['Agency Diamond Gift Target','data.target_progress',
     'fmtDiamonds(progress.month)','fmtDiamonds(progress.lifetime)',
     'sh-fam-refresh-target','await reloadRoyalFamily()',
-    'sh-fam-owner-commission-rule','Your own gifts count toward the Family Gift Target'])
+    'sh-fam-owner-commission-rule','Your own gifts count toward the Agency Gift Target'])
     assert.ok(ui.includes(required),required+' must be displayed by Android bridge');
 });
 

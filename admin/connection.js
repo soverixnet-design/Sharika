@@ -56,7 +56,7 @@
   if(!NAV_ALL.some(item=>item[0]==='family')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='events');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
-      ['family','👑','Family & BD System']);
+      ['family','👑','BD · Agency · Host']);
   }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
@@ -2952,8 +2952,8 @@
   document.head.appendChild(familyAdminCss);
   P.family=async function(){
     const root=byId('pg');
-    root.innerHTML='<div id="sh-family-admin"><h2>👑 Family & BD System</h2>'+
-      '<p class="n">Verified family grants, 5% BD commission and Crystal settlement. '+
+    root.innerHTML='<div id="sh-family-admin"><h2>👑 BD · Agency · Host</h2>'+
+      '<p class="n">Verified Agency grants, BD commission, Host gift performance and Crystal settlement. '+
       'Existing Room Gift rewards and original recipient diamonds are unchanged.</p>'+
       '<div class="sh-fam-card">Loading verified records…</div></div>';
     const parent=root.querySelector('#sh-family-admin');
@@ -2978,7 +2978,16 @@
         '<tr><td colspan="'+columns.length+'">No verified records</td></tr>')+
       '</tbody></table></div>';
     const box=(title,contents)=>'<section class="sh-fam-card"><h3>'+esc(title)+'</h3>'+contents+'</section>';
-    parent.innerHTML='<div class="sh-fam-cols">'+
+    parent.innerHTML='<h2>👑 BD · Agency · Host Control Center</h2>'+
+      '<p class="n">Existing Family records are preserved as Agencies. Host gift rankings and personal statements are available inside the app; no salary has been credited.</p>'+
+      '<div class="sh-fam-cols">'+
+      box('🏰 Registered Agencies','<span class="sh-fam-pill">'+
+        esc((data.families||[]).length)+'</span><p>Approved Agency records shown below.</p>')+
+      box('👥 Hosts & Members','<span class="sh-fam-pill">'+
+        esc((data.families||[]).reduce((total,f)=>total+Number(f.member_count||0),0))+
+        '</span><p>Members in listed Agencies.</p>')+
+      box('💼 Host Salary Policy','<span class="sh-fam-pill">Not configured</span>'+
+        '<p>No Host salary is auto-paid. A future payout policy must define targets, rates, and Admin approval first.</p>')+
       box('💼 BD Commission','<span class="sh-fam-pill">'+
         esc(Number(p.bd_bps||0)/100)+'%</span><p>Family Owner: '+
         esc(Number(p.owner_bps||0)/100)+'% · Mode: '+esc(p.settlement_mode||'monthly')+'</p>')+
@@ -3249,7 +3258,7 @@
       const shortcut=document.createElement('section');
       shortcut.className='card';
       shortcut.style.cssText='border:1px solid #d4ad59;background:linear-gradient(120deg,#35241a,#1b1526);margin-bottom:16px';
-      shortcut.innerHTML='<h3>👑 Family & BD System</h3>'+
+      shortcut.innerHTML='<h3>👑 BD · Agency · Host System</h3>'+
         '<p class="n">Family grants, 5% BD commission, Crystal ledger, weekly/monthly reports and Google Sheets Sync.</p>'+
         '<button type="button" class="btn" id="sh-open-family-admin">Open Family & BD System</button>';
       root.insertBefore(shortcut,root.firstChild);
