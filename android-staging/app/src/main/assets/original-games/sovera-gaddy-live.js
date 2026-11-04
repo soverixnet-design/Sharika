@@ -14,8 +14,9 @@
   const icons=Object.fromEntries(ITEMS.map(x=>[x[0],x[1]]));
   icons.salad='🥗';icons.pizza='🍕';
   const host=window.parent;
-  const pending=new Map();
-  let seq=0,active=true,authorized=false,betting=false,refreshing=false,selected=50,state=null;
+  const pending=new Map(),pendingPicks=new Set(),uncertainBets=new Map();
+  let seq=0,active=true,authorized=false,refreshing=false,selected=50,state=null;
+  let lastServerSeenAt=0,lastRankingAt=0,rankingPromise=null,rankCache=null;
   let offset=0,roundNo=-1,shownResult=-1,lastPoll=0,lastSpin=-1;
   const slots=new Map();
   function alertMessage(message,ms=2300){
@@ -53,7 +54,9 @@
     const image=document.createElement('span');image.className='e';image.textContent=emoji;
     const m=document.createElement('span');m.className='m';m.textContent='x'+mult;
     const amount=document.createElement('span');amount.className='b';amount.textContent='0';
-    button.append(image,m,amount);button.onclick=()=>place(i);
+    button.append(image,m,amount);button.dataset.pick=String(i);
+    button.setAttribute('aria-label',`Bet on ${key}, multiplier ${mult}`);
+    button.onclick=()=>place(i);
     const spoke=document.createElement('div');spoke.className='spoke';
     spoke.style.transform=`rotate(${i*45+180}deg)`;wheel.prepend(spoke);
     wheel.appendChild(button);slots.set(key,button);
@@ -65,6 +68,19 @@
     };$('chips').appendChild(el);
   });
   $('auto').style.display='none';$('mode').style.display='none';
+  const rankCard=document.createElement('aside');
+  rankCard.id='gaddy-bet-ranking';
+  const rankHeader=document.createElement('div');rankHeader.className='gaddy-rank-head';
+  const rankTitle=document.createElement('strong');rankTitle.textContent='🏆 DAILY BET RANKING';
+  const viewRank=document.createElement('button');viewRank.type='button';
+  viewRank.textContent='View all';viewRank.onclick=()=>$('rbtn').click();
+  rankHeader.append(rankTitle,viewRank);
+  const rankTop=document.createElement('ol');rankTop.id='gaddy-rank-top';
+  const rankNote=document.createElement('small');rankNote.id='gaddy-rank-my';
+  rankNote.textContent='Loading verified bets…';
+  rankCard.append(rankHeader,rankTop,rankNote);$('stage').appendChild(rankCard);
+  $('rbtn').title='Daily Bet Rankings';
+  $('rbtn').setAttribute('aria-label','Open daily bet rankings');
   function hub(icon,label,count){
     $('big').textContent=icon;$('ht').textContent=label;
     $('tm').textContent=count===null?'':String(count);
@@ -93,7 +109,7 @@
     for(const [key,button] of slots)button.querySelector('.b').textContent=format(counts.get(key)||0);
     $('rn').textContent=Math.floor(((state.round.starts_ms+6*3600000)%86400000)/CYCLE)+1;
     const old=$('res');old.replaceChildren();
-    const label=document.createElement('span');label.className='l';label.textContent='সার্ভার ফলাফল:';old.appendChild(label);
+    const label=document.createElement('span');label.className='l';label.textContent='Server result:';old.appendChild(label);
     const results=[state.current_result?.item,state.previous_result?.item].filter(Boolean);
     results.forEach(name=>{
       const el=document.createElement('i');el.textContent=icons[name]||'🎡';old.appendChild(el);
@@ -107,9 +123,23 @@
       const fresh=await request('state');
       if(!active||!fresh?.round||!fresh.virtual_coins_only)throw new Error('invalid_game_state');
       state=fresh;offset=Number(fresh.server_time)-Date.now();
+      authorized=true;lastServerSeenAt=Date.now();
+      for(const [pick,body] of uncertainBets){
+        if((fresh.my_bets||[]).some(b=>b.request_id===body.request_id)){
+          uncertainBets.delete(pick);
+          alertMessage('Bet accepted ✓',1700);
+        }else if(fresh.round.round_no>body.round_no+1){
+          // Keep stale, unconfirmed requests from locking a food in later rounds.
+          uncertainBets.delete(pick);
+        }
+      }
       render();
+      if(Date.now()-lastRankingAt>20000)refreshBetRanking();
     }catch(error){
-      authorized=false;alertMessage('সার্ভার সংযোগ নেই — বাজি বন্ধ',3500);
+      // One slow read must not disable every betting cell during an active round.
+      if(Date.now()-lastServerSeenAt>10000){
+        authorized=false;alertMessage('Connection lost. Reconnecting…',2200);
+      }
     }finally{refreshing=false;}
   }
   function requestId(){
@@ -118,25 +148,51 @@
       x=>x.toString(16).padStart(2,'0')).join('');
   }
   async function place(pick){
-    if(!authorized||betting||!state)return alertMessage('সার্ভার সংযোগের অপেক্ষায়');
+    if(!authorized||!state)return alertMessage('Connecting to game server…');
+    if(pendingPicks.has(pick))return alertMessage('Placing your bet…',900);
     const phase=(Date.now()+offset-state.round.starts_ms)%CYCLE;
-    if(phase>=BET)return alertMessage('বাজির সময় শেষ');
-    if(state.coins<selected)return alertMessage('পর্যাপ্ত কয়েন নেই');
-    const body={round_no:state.round.round_no,pick,amount:selected,request_id:requestId()};
-    betting=true;
+    const previous=uncertainBets.get(pick);
+    const existing=previous?.round_no===state.round.round_no?previous:null;
+    if(previous&&!existing)uncertainBets.delete(pick);
+    if(!existing&&phase>=BET)return alertMessage('Betting is closed');
+    if(!existing&&state.coins<selected)return alertMessage('Insufficient coins');
+    const body=existing||{round_no:state.round.round_no,pick,amount:selected,request_id:requestId()};
+    pendingPicks.add(pick);
+    const tile=slots.get(ITEMS[pick][0]);
+    tile?.classList.add('pending');
+    alertMessage(existing?'Checking previous bet…':'Placing your bet…',950);
+    let timedOut=false;
     try{
       let receipt;
       try{receipt=await request('bet',body);}catch(error){
         // Retry the same idempotency key; never debit twice after a timeout.
         if(error.message!=='server_timeout')throw error;
+        timedOut=true;alertMessage('Connection slow — retrying safely…',1700);
         receipt=await request('bet',body);
       }
       if(!receipt||!Number.isSafeInteger(receipt.coins))throw new Error('invalid_bet_receipt');
+      uncertainBets.delete(pick);
       state.coins=receipt.coins;
-      state.my_bets=[...(state.my_bets||[]),{round_no:body.round_no,pick_index:pick,amount:selected,status:'accepted',payout:0}];
-      render();alertMessage('✅ বাজি গ্রহণ করা হয়েছে',1200);
-    }catch(error){alertMessage('বাজি গ্রহণ হয়নি: '+error.message,3100);}
-    finally{betting=false;refresh();}
+      if(!(state.my_bets||[]).some(x=>x.request_id===body.request_id))
+        state.my_bets=[...(state.my_bets||[]),{round_no:body.round_no,
+          pick_index:pick,amount:body.amount,request_id:body.request_id,status:'accepted',payout:0}];
+      render();alertMessage('Bet accepted ✓',1500);
+      lastRankingAt=0;
+    }catch(error){
+      const code=String(error.message||error);
+      if(code==='server_timeout'||timedOut){
+        uncertainBets.set(pick,body);
+        alertMessage('Bet status pending. Tap again to check safely.',3800);
+      }else{
+        uncertainBets.delete(pick);
+        const reason=code==='insufficient_coins'?'Insufficient coins':
+          code==='betting_closed'?'Betting is closed':
+          /rate.?limit|too_many_requests/i.test(code)?'Too many bets. Please wait a moment.':code;
+        alertMessage('Bet not accepted: '+reason,3000);
+      }
+    }finally{
+      pendingPicks.delete(pick);tile?.classList.remove('pending');refresh();
+    }
   }
   function drawSpin(index){
     for(const item of slots.values())item.classList.remove('on');
@@ -149,7 +205,7 @@
     for(const key of record.visual||[])slots.get(key)?.classList.add('win');
     const winners=(record.top_winners||[]).slice(0,3);
     const box=$('winners');box.replaceChildren();
-    const title=document.createElement('h4');title.textContent='🏆 এই রাউন্ডের বিজয়ী';box.appendChild(title);
+    const title=document.createElement('h4');title.textContent='🏆 Top Winners This Round';box.appendChild(title);
     winners.forEach((w,i)=>{
       const div=document.createElement('div');div.className='row';
       div.textContent=['🥇','🥈','🥉'][i]+' '+(w.name||'Player')+'  +🪙'+format(w.total_win);
@@ -160,18 +216,18 @@
       '👑 '+winners[0].name+'  WIN 🪙'+format(winners[0].total_win):'';
     banner.classList.toggle('show',winners.length>0);
     if(winners.length)setTimeout(()=>{banner.classList.remove('show');box.classList.remove('show');},6500);
-    hub(icons[record.item]||'🎡','সার্ভার ফলাফল',null);
+    hub(icons[record.item]||'🎡','Server result',null);
   }
   function tick(){
     if(!active||!state)return;
     const now=Date.now()+offset;
     const n=Math.floor(now/CYCLE),t=now%CYCLE;
     if(n!==roundNo){roundNo=n;shownResult=-1;lastSpin=-1;for(const x of slots.values())x.classList.remove('win');}
-    const canBet=authorized&&!betting&&state.round.round_no===n&&t<BET;
-    for(const x of slots.values())x.disabled=!canBet;
-    if(t<BET)hub('🍽','বাজি চলছে',Math.ceil((BET-t)/1000));
+    const canBet=authorized&&state.round.round_no===n&&t<BET;
+    for(const x of slots.values())x.disabled=!canBet||pendingPicks.has(Number(x.dataset.pick));
+    if(t<BET)hub('🍽','Place your bets',Math.ceil((BET-t)/1000));
     else if(t<PAY){
-      hub('🎡','ঘুরছে...',null);
+      hub('🎡','Spinning…',null);
       if(state.round.round_no===n&&state.spin){
         const position=state.spin.target_index;
         const next=Math.floor((t-BET)/220)%8;
@@ -180,7 +236,7 @@
     }else{
       const result=state.round.round_no===n?state.current_result:state.previous_result;
       if(result)settleDisplay(result);
-      else hub('🎡','ফলাফল আসছে...',null);
+      else hub('🎡','Waiting for result…',null);
     }
     if(Date.now()-lastPoll>1800){lastPoll=Date.now();refresh();}
   }
@@ -188,35 +244,76 @@
     const rows=(data.bets||[]).slice(0,30);
     return rows.map(r=>'<tr><td>'+r.round_no+'</td><td>'+
       (ITEMS[r.pick_index]?.[1]||'🎡')+'</td><td>'+format(r.amount)+'</td><td>'+
-      (r.status==='settled'?format(r.payout):'অপেক্ষা')+
-      '</td></tr>').join('')||'<tr><td colspan="4">এখনো কোনো বাজি নেই</td></tr>';
+      (r.status==='settled'?format(r.payout):'Pending')+
+      '</td></tr>').join('')||'<tr><td colspan="4">No bets yet</td></tr>';
   }
   $('hbtn').onclick=async()=>{
-    $('sin').textContent='সার্ভার হিস্ট্রি লোড হচ্ছে…';$('sheet').classList.add('show');
-    try{const value=await request('history');$('sin').innerHTML='<b>আমার বাজির হিস্ট্রি</b><table><tr><th>রাউন্ড</th><th>খাবার</th><th>বাজি</th><th>জয়</th></tr>'+listHistory(value)+'</table>';}
-    catch{$('sin').textContent='হিস্ট্রি লোড করা যায়নি';}
+    $('sin').textContent='Loading bet history…';$('sheet').classList.add('show');
+    try{const value=await request('history');$('sin').innerHTML='<b>My Bet History</b><table><tr><th>Round</th><th>Food</th><th>Bet</th><th>Win</th></tr>'+listHistory(value)+'</table>';}
+    catch{$('sin').textContent='Unable to load bet history';}
   };
-  $('rbtn').onclick=async()=>{
-    $('rsheet').classList.add('show');$('plist').textContent='র‍্যাঙ্কিং লোড হচ্ছে…';
-    try{
-      const value=await request('rankings');$('plist').replaceChildren();
-      (value.list||[]).forEach((entry,i)=>{
+  function renderBetRanks(value){
+    rankTop.replaceChildren();
+    const leaders=(value?.list||[]).slice(0,3);
+    leaders.forEach((user,i)=>{
+      const li=document.createElement('li');
+      const who=document.createElement('span');
+      who.textContent=['🥇','🥈','🥉'][i]+' '+(user.name||'Player');
+      who.title='ID '+user.id;
+      const coins=document.createElement('b');coins.textContent=format(user.total);
+      li.append(who,coins);rankTop.appendChild(li);
+    });
+    if(!leaders.length){const li=document.createElement('li');
+      li.textContent='No verified bets yet';rankTop.appendChild(li);}
+    rankNote.textContent='My rank: '+(value?.me?.rank||'100+')+
+      '  ·  🪙 '+format(value?.me?.total);
+  }
+  function renderFullBetRanks(value){
+    $('plist').replaceChildren();
+    const header=document.createElement('div');header.className='ph';
+    header.textContent='🏆 Daily Bet Ranking · Top 100 (BD time)';
+    $('plist').appendChild(header);
+    (value?.list||[]).forEach((entry,i)=>{
         const row=document.createElement('div');row.className='pr';
         const position=document.createElement('span');position.className='pk';position.textContent=String(i+1);
         const name=document.createElement('span');name.className='pn';name.textContent=(entry.name||'Player')+' · '+entry.id;
         const total=document.createElement('span');total.className='pw';total.textContent='🪙 '+format(entry.total);
         row.append(position,name,total);$('plist').appendChild(row);
-      });
-      const me=document.createElement('div');me.className='pr me stick';
-      me.textContent='আমার র‍্যাঙ্ক: '+(value.me?.rank||'100+')+' · 🪙'+format(value.me?.total);
-      $('plist').appendChild(me);
-    }catch{$('plist').textContent='র‍্যাঙ্কিং লোড করা যায়নি';}
+    });
+    const me=document.createElement('div');me.className='pr me stick';
+    me.textContent='My rank: '+(value?.me?.rank||'100+')+' · 🪙'+format(value?.me?.total);
+    $('plist').appendChild(me);
+  }
+  async function refreshBetRanking(force=false){
+    if(!active)return null;
+    if(rankingPromise)return rankingPromise;
+    if(!force&&lastRankingAt&&Date.now()-lastRankingAt<10000)return rankCache;
+    rankingPromise=request('rankings').then(value=>{
+      if(!active)return null;
+      if(!Array.isArray(value?.list))throw new Error('Invalid betting rank');
+      rankCache=value;lastRankingAt=Date.now();renderBetRanks(value);
+      if($('rsheet').classList.contains('show'))renderFullBetRanks(value);
+      return value;
+    }).catch(()=>{
+      // Avoid immediately retrying failed ranking reads at every 1.8s state tick.
+      lastRankingAt=Date.now();
+      if(!rankCache)rankNote.textContent='Ranking unavailable · Tap View all';
+      return rankCache;
+    }).finally(()=>{rankingPromise=null;});
+    return rankingPromise;
+  }
+  $('rbtn').onclick=async()=>{
+    $('rsheet').classList.add('show');
+    $('plist').textContent='Loading verified bet rankings…';
+    if(rankCache)renderFullBetRanks(rankCache);
+    const ranking=await refreshBetRanking(true);
+    if(!ranking)$('plist').textContent='Ranking unavailable. Please retry.';
   };
   $('rclose').onclick=()=>$('rsheet').classList.remove('show');
   $('rsheet').onclick=e=>{if(e.target===$('rsheet'))$('rsheet').classList.remove('show');};
   $('sheet').onclick=e=>{if(e.target===$('sheet'))$('sheet').classList.remove('show');};
   $('help').onclick=()=>{
-    $('sin').textContent='২০ সেকেন্ড বাজি, ৫ সেকেন্ড স্পিন, ৫ সেকেন্ড ফলাফল। সালাদ/পিজা বোনাস x2। সব ফলাফল ও কয়েন Cloudflare সার্ভার থেকে আসে।';
+    $('sin').textContent='20 seconds to bet, 5 seconds to spin, 5 seconds for results. Salad and Pizza pay x2 on their food groups. All bets, winners and coins are verified by the server.';
     $('sheet').classList.add('show');
   };
   // The developer's original branding and 10-second loading animation stay.
@@ -225,8 +322,8 @@
   function updateLoading(){
     const elapsed=(Date.now()-began)/1000,p=Math.min(1,elapsed/10);
     if(bar)bar.style.width=(p*100)+'%';if(remaining)remaining.textContent=String(Math.ceil(10*(1-p)));
-    if(message)message.textContent=authorized?'সার্ভার যাচাই সম্পন্ন':
-      'সার্ভারের সঙ্গে নিরাপদ সংযোগ হচ্ছে…';
+    if(message)message.textContent=authorized?'Connected to game server':
+      'Connecting securely to game server…';
     if(p>=1){loader?.classList.add('off');clearInterval(loadTimer);}
   }
   const loadTimer=setInterval(updateLoading,150);

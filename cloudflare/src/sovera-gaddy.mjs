@@ -85,7 +85,9 @@ async function previous(db,n,now){
 async function state(db,uid,now=Date.now()){
   await settleGaddyDueBets(db,now);
   const n=number(now),t=timings(n),r=await ensureRound(db,n),u=await user(db,uid);
-  const bets=await db.prepare('SELECT round_no,pick_index,amount,status,payout,created_at FROM sharika_gaddy_bets WHERE user_uid=? AND round_no>=? ORDER BY id DESC LIMIT 100').bind(uid,n-1).all();
+  // Own request IDs let a slow/reconnected client reconcile an uncertain bet
+  // without sending a different ID and accidentally paying twice.
+  const bets=await db.prepare('SELECT round_no,pick_index,amount,request_id,status,payout,created_at FROM sharika_gaddy_bets WHERE user_uid=? AND round_no>=? ORDER BY id DESC LIMIT 100').bind(uid,n-1).all();
   const prior=await previous(db,n-1,now);
   const current=now>=t.betEnd?await previous(db,n,now):null;
   const myBets=bets.results||[];

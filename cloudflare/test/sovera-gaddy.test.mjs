@@ -46,6 +46,24 @@ test('standalone source never ships live client-side fake payouts or Socket.io t
   assert.match(live,/type:'sharika:original-request'/);
   assert.match(live,/game:GAME/);
   assert.match(live,/request\('bet',body\)/);
+  assert.match(live,/pendingPicks\.has\(Number\(x\.dataset\.pick\)\)/,
+    'only the tapped food locks while a bet is awaiting confirmation');
+  assert.doesNotMatch(live,/!betting/,'one pending request never locks every food');
+  assert.match(live,/Bet accepted ✓/,'English confirmation replaces the Bengali toast');
+  assert.doesNotMatch(live,/বাজি গ্রহণ/);
+  assert.match(live,/uncertainBets\.set\(pick,body\)/,
+    'uncertain timeout reuses its original idempotent request');
+  assert.match(live,/request_id===body\.request_id/,
+    'state refresh reconciles a previous slow server receipt');
+  assert.match(live,/gaddy-bet-ranking/);
+  assert.match(live,/Daily Bet Ranking · Top 100/);
+  assert.match(live,/My rank:/);
+  assert.match(html,/slot:disabled\{opacity:1;filter:none\}/,
+    'no greyed-out food tiles during bet requests');
+  assert.doesNotMatch(html,/slot:disabled\{opacity:\.65/);
+  assert.match(html,/DAILY BET RANKING|gaddy-bet-ranking/);
+  assert.match(html,/Round: <span id="rn">/);
+  assert.doesNotMatch(html,/>বাজি গ্রহণ/);
   assert.match(card,/id:'sovera-gaddy',name:'Sovera Gaddy Game'/);
   assert.match(card,/min\(65dvh,650px\)/);
   assert.match(native,/sovera-food\|sovera-gaddy\|night-food/);
