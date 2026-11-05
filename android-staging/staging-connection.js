@@ -5239,7 +5239,7 @@
     if(themeChanged&&typeof frame.applyTheme==='function')frame.applyTheme();
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
-    slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
+    const ownerSeat={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
       user_id:room.owner_id,public_id:owner.public_id||room.id,
       room_role:'owner',
       special_id:owner.special_id||null,
@@ -5248,20 +5248,28 @@
       svip_level:Number(owner.svip_level)||0,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
+    // The owner has a permanent room, NOT a permanent occupied seat. Keep
+    // the crown-only throne empty until they deliberately select a mic seat.
+    slots[0]={empty:1,i:0,owner_throne:true};
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
       if(!user)continue;
       if(member.user_id===room.owner_id){
-        // A moved owner appears exactly once. The throne becomes a decoration;
-        // otherwise the same verified ID appears in two seats.
+        // An owner only occupies a numbered mic seat after a real seat tap.
         if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
            member.seat_no<slots.length){
-          slots[member.seat_no]={...slots[0],i:member.seat_no,
+          slots[member.seat_no]={...ownerSeat,i:member.seat_no,
             owner_mic_seat:true,muted:!!member.muted||
               (member.user_id===session?.user?.id&&localMic===false)};
-          slots[0]={empty:1,i:0,owner_throne:true,
-            owner_mic_seat_no:member.seat_no};
+          slots[0].owner_mic_seat_no=member.seat_no;
+        }else{
+          audience.push({n:user.name,e:'👑',id:user.special_id||user.display_id||user.public_id,
+            canonical_id:user.public_id,room_role:'owner',special_id:user.special_id||null,
+            pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
+            svip_level:Number(user.svip_level)||0,
+            frame_style:user.frame_style||'',entry_style:user.entry_style||'',
+            medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''});
         }
         continue;
       }
@@ -6221,15 +6229,15 @@
       frame.__sharikaSeatSyncNo=(frame.__sharikaSeatSyncNo||0)+1;
       const before=frame.seats.map(slot=>slot?{...slot}:slot);
       const previous=frame.seats.find(slot=>slot?.i>0&&slot.user_id===uid);
-      const source=previous||(owner?frame.seats[0]:{
-        n:profile?.name||'Member',e:'👤',pic:verifiedAvatarUrl(profile?.pic),
+      const source=previous||{
+        n:profile?.name||'Member',e:owner?'👑':'👤',pic:verifiedAvatarUrl(profile?.pic),
         user_id:uid,public_id:profile?.public_id,
         display_id:profile?.display_id||profile?.public_id,
         special_id:profile?.special_id||null,svip_level:Number(profile?.svip_level)||0,
         frame_style:profile?.frame_style||'',entry_style:profile?.entry_style||'',
         medal_style:profile?.medal_style||'',name_tag_style:profile?.name_tag_style||'',
         muted:false,talk:false
-      });
+      };
       if(previous)frame.seats[previous.i]={empty:1,i:previous.i};
       frame.seats[seat]={...source,i:seat,owner_mic_seat:owner};
       frame.render();
@@ -8068,8 +8076,13 @@
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
     releaseVoice().catch(()=>{});
     setRoomScreenAwake(false);
-    if(current && session)api('POST','/rooms/'+current.id+'/leave',{}).catch(()=>{});
-    if(session)heartbeatPresence(null);
+    if(current && session){
+      // The Worker clears room presence and the mic seat atomically with the
+      // exit flow. Do not race an app-level heartbeat against a new room join.
+      api('POST','/rooms/'+current.id+'/leave',{}).then(()=>{
+        if(!window.cur&&session)heartbeatPresence(null);
+      }).catch(error=>console.warn('Sharika room leave:',errText(error)));
+    }else if(session)heartbeatPresence(null);
     const iframe=document.getElementById('rf');
     if(iframe) iframe.onload=null;
     document.getElementById('rw')?.classList.remove('sh-room-awaiting');
