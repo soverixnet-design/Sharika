@@ -1020,16 +1020,40 @@
       '.sh-gift-present b{font-size:25px;line-height:1.1}',
       '.sh-gift-parade-caption{text-align:center;font-size:11px;margin-top:7px;',
       'color:#fff5d8;font-weight:800;overflow-wrap:anywhere}',
-      '.sh-gift-parade.sh-gift-parade-video{inset:0;width:100%;max-width:none;'+
-      'border:0;border-radius:0;background:#080419e8;display:flex;flex-direction:column;'+
-      'justify-content:center;gap:10px;pointer-events:auto}',
-      '.sh-gift-parade-video video{width:100%;height:min(62vh,640px);object-fit:contain}',
+      // Luxury videos are cinematic, edge-to-edge celebrations. The video is
+      // behind the caption, never squeezed into a 62vh column by the flex UI.
+      '.sh-gift-parade.sh-gift-parade-video{inset:0;top:0;left:0;width:100%;height:100%;'+
+      'max-width:none;box-sizing:border-box;padding:0;border:0;border-radius:0;'+
+      'background:#080419;display:block;overflow:hidden;pointer-events:auto;'+
+      'animation:shGiftFullscreen 10s linear both}',
+      '@keyframes shGiftFullscreen{0%{opacity:0}7%{opacity:1}93%{opacity:1}100%{opacity:0}}',
+      '.sh-gift-parade-video video{position:absolute;inset:0;display:block;'+
+      'width:100%;height:100%;object-fit:cover;object-position:center center;'+
+      'transform-origin:center center;animation:shGiftCenterZoom 10s ease-out both}',
+      '@keyframes shGiftCenterZoom{0%{transform:scale(.32);opacity:0}'+
+      '12%{transform:scale(1.025);opacity:1}22%{transform:scale(1);opacity:1}'+
+      '85%{transform:scale(1);opacity:1}100%{transform:scale(1.05);opacity:1}}',
+      '.sh-gift-parade-video::after{content:"";position:absolute;inset:0;z-index:1;'+
+      'pointer-events:none;background:linear-gradient(180deg,#080419c0 0%,transparent 22%,'+
+      'transparent 68%,#080419ec 100%)}',
+      '.sh-gift-parade-video .sh-gift-parade-title{position:absolute;z-index:2;'+
+      'top:calc(24px + env(safe-area-inset-top,0px));left:8px;right:8px;'+
+      'font-size:clamp(12px,3.5vw,18px);text-shadow:0 2px 8px #080419}',
+      '.sh-gift-parade-video .sh-gift-parade-people{position:absolute;z-index:2;'+
+      'left:12px;right:12px;bottom:calc(86px + env(safe-area-inset-bottom,0px));'+
+      'gap:10px;margin:0}',
+      '.sh-gift-parade-video .sh-gift-avatar{width:48px;height:48px}',
+      '.sh-gift-parade-video .sh-gift-parade-caption{position:absolute;z-index:2;'+
+      'bottom:calc(28px + env(safe-area-inset-bottom,0px));left:12px;right:12px;'+
+      'margin:0;font-size:clamp(11px,3vw,15px);text-shadow:0 2px 8px #080419}',
       '.sh-gift-sound{position:absolute;right:12px;top:calc(16px + env(safe-area-inset-top,0px));'+
-      'border:1px solid #ffe2a0;border-radius:14px;padding:8px 12px;'+
+      'z-index:3;border:1px solid #ffe2a0;border-radius:14px;padding:8px 12px;'+
       'background:#301a49;color:#fff;font-size:13px}',
+      '.sh-gift-parade-video .sh-gift-sound{top:calc(64px + env(safe-area-inset-top,0px))}',
       '@media(max-width:350px){.sh-gift-parade-people{grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr)}',
       '.sh-gift-parade{padding:8px 7px}.sh-gift-avatar{width:35px;height:35px}}',
-      '@media(prefers-reduced-motion:reduce){.sh-gift-parade{animation:none}}'
+      '@media(prefers-reduced-motion:reduce){.sh-gift-parade{animation:none}'+
+      '.sh-gift-parade-video video{animation:none}}'
     ].join('');
     doc.head.appendChild(style);
   }

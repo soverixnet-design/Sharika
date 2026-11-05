@@ -42,6 +42,25 @@ test('top gift parade lasts 10 seconds with avatars and lower receipts remain vi
   assert.match(adapter,/presentVerifiedGift\(event\)/);
 });
 
+test('Luxury gift fills the phone screen and zooms in from its center',()=>{
+  const start=adapter.indexOf('  function giftPresentationCss(doc){');
+  const end=adapter.indexOf('  function giftParticipant(doc,name,id,pic){',start);
+  assert.ok(start>=0&&end>start);
+  let stylesheet='';
+  const doc={head:{appendChild(style){stylesheet=style.textContent;}},
+    createElement(){return {id:'',textContent:''};},getElementById(){return null;}};
+  const context=createContext({});
+  runInContext(adapter.slice(start,end),context);
+  context.doc=doc;
+  runInContext('giftPresentationCss(doc)',context);
+  assert.match(stylesheet,/\.sh-gift-parade\.sh-gift-parade-video\{[^}]*inset:0;top:0;left:0;width:100%;height:100%/);
+  assert.match(stylesheet,/\.sh-gift-parade-video video\{[^}]*position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover/);
+  assert.match(stylesheet,/@keyframes shGiftCenterZoom\{0%\{transform:scale\(\.32\);opacity:0\}/);
+  assert.match(stylesheet,/\.sh-gift-parade-video \.sh-gift-parade-people\{[^}]*position:absolute;z-index:2/);
+  assert.match(stylesheet,/\.sh-gift-parade-video \.sh-gift-parade-caption\{[^}]*position:absolute;z-index:2/);
+  assert.doesNotMatch(stylesheet,/height:min\(62vh,640px\);object-fit:contain/);
+});
+
 test('uploaded Luxury MP4 presents sound-capable fullscreen media and a tap fallback',async()=>{
   const start=adapter.indexOf('  function giftPresentationCss(doc){');
   const end=adapter.indexOf('  function decorateRoomPeople(frame){',start);
