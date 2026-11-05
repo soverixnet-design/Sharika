@@ -11,9 +11,13 @@ const roleArt=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,
  .map(number=>'role-frame-'+String(number).padStart(2,'0'));
 const KEYS={
  frame_style:new Set(['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love','ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
-  'vip5-animated','noble-gold-microphone','cs-royal-wings','coin-seller-royal',...numbered('svip-frame',8),...roleArt]),
+  'vip5-animated','noble-gold-microphone','cs-royal-wings','coin-seller-royal',...numbered('svip-frame',8),
+  ...[2,3,4,5].map(n=>'vip-royal-frame-'+String(n).padStart(2,'0')),
+  ...[4,5].map(n=>'svip-royal-frame-'+String(n).padStart(2,'0')),...roleArt]),
  entry_style:new Set(['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen',...numbered('svip-entry',8)]),
- medal_style:new Set(['bronze','silver','gold','top-host',...numbered('svip-medal',8)]),
+ medal_style:new Set(['bronze','silver','gold','top-host',...numbered('svip-medal',8),
+  ...[2,3,4,5].map(n=>'vip-royal-badge-'+String(n).padStart(2,'0')),
+  ...[1,2,3,4,5].map(n=>'svip-royal-badge-'+String(n).padStart(2,'0'))]),
  name_tag_style:new Set(['legend',...numbered('svip-tag',17)])
 };
 const ID=/^[a-z0-9][a-z0-9-]{2,39}$/;

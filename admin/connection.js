@@ -1290,9 +1290,14 @@
     const art={
       frame_style:['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love',
         'ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
-        'vip5-animated',...numbered('svip-frame',8),'noble-gold-microphone',...roleFrames],
+        'vip5-animated',...numbered('svip-frame',8),
+        ...[2,3,4,5].map(n=>'vip-royal-frame-'+String(n).padStart(2,'0')),
+        ...[4,5].map(n=>'svip-royal-frame-'+String(n).padStart(2,'0')),
+        'noble-gold-microphone',...roleFrames],
       entry_style:['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen'],
-      medal_style:['bronze','silver','gold','top-host',...numbered('svip-medal',8)],
+      medal_style:['bronze','silver','gold','top-host',...numbered('svip-medal',8),
+        ...[2,3,4,5].map(n=>'vip-royal-badge-'+String(n).padStart(2,'0')),
+        ...[1,2,3,4,5].map(n=>'svip-royal-badge-'+String(n).padStart(2,'0'))],
       name_tag_style:['legend',...numbered('svip-tag',17)]
     };
     const kinds=Object.keys(art);
