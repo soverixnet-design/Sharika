@@ -6,7 +6,7 @@ const reply = (value,status=200) => Response.json(value,{status});
 const fail = (error,status) => reply({error},status);
 const readBody = request => request.json();
 const owner = {owner_id:'u1'};
-const member = {seat_no:null,muted:0};
+const member = {seat_no:1,muted:0}; // An explicit, occupied seat is required for publishing.
 const room = {
   async roomPolicyRead(){return {super_mic:true};},
   async register() {return true;},
