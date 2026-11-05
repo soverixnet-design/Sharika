@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sharika-ranking-qa-migrations-only",
+  "main": "src/voice-worker.mjs",
+  "compatibility_date": "2026-10-29",
+  "account_id": "d81cf7c48fb9b36d468cb0a08720cd74",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sharika-ranking-qa-20261106",
+      "database_id": "c72c44fc-5e29-4338-9be5-1763b94acd46",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
