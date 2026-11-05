@@ -100,6 +100,7 @@
     const seats = app.querySelector('.stage');
     let blurTask;
     let keyboardActive = false;
+    let nativeImeOpen = false;
     let keepTopTask;
     let parentViewport;
     let parentWindow;
@@ -151,10 +152,11 @@
       clearTimeout(keepTopTask);
       keepTopTask = setTimeout(keepRoomAnchored, 220);
     };
-    const onBlur = () => {
+    const onBlur = (forceClose = false) => {
       clearTimeout(blurTask);
       blurTask = setTimeout(() => {
-        if (document.activeElement?.id !== 'txt' && keyboardInset() < 90) {
+        if (forceClose || (!nativeImeOpen &&
+            document.activeElement?.id !== 'txt' && keyboardInset() < 90)) {
           keyboardActive = false;
           app.classList.remove('sh-keyboard-open');
           app.style.removeProperty('--sh-seat-height');
@@ -185,6 +187,15 @@
     window.visualViewport?.addEventListener('resize', onViewportResize);
     parentViewport?.addEventListener('resize', onViewportResize);
     window.addEventListener('resize', onViewportResize);
+    // Native Android WindowInsets is an independent keyboard visibility
+    // signal. It also fires when a WebView inside srcdoc misses focusin.
+    window.SharikaRoyalKeyboard = Object.freeze({
+      setNativeIme(visible) {
+        nativeImeOpen = !!visible;
+        if (nativeImeOpen) onFocus();
+        else onBlur(true);
+      }
+    });
   }
 
   const toolRow = document.createElement('div');

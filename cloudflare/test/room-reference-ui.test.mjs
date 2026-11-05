@@ -12,6 +12,7 @@ const java=readFileSync(new URL(
 const host=readFileSync(new URL('../../app/index.html',import.meta.url),'utf8');
 const goldenHome=readFileSync(new URL('../../app/golden-home.css',import.meta.url),'utf8');
 const winged=readFileSync(new URL('../../android-staging/royal-winged-theme.css',import.meta.url),'utf8');
+const premium=readFileSync(new URL('../../android-staging/royal-premium.css',import.meta.url),'utf8');
 const gradle=readFileSync(new URL('../../android-staging/app/build.gradle',import.meta.url),'utf8');
 
 test('obsolete room demo timers and users are removed from the Android template',()=>{
@@ -76,8 +77,45 @@ test('Android keyboard focuses the composer without compressing the mic-seat gri
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.stage/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.dock/);
   assert.match(css,/bottom:var\(--sh-ime-inset,0px\)/);
+  assert.match(room,/window\.SharikaRoyalKeyboard = Object\.freeze/);
+  assert.match(java,/WindowInsets\.Type\.ime\(\)/);
+  assert.match(java,/SharikaRoyalKeyboard\?\.setNativeIme/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.chatw/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.sh-tools/);
+});
+
+test('last loaded Royal CSS honors new room card and IME layout on Android',()=>{
+  const correction=premium.slice(premium.lastIndexOf('/* Final Android room override.'));
+  assert.match(correction,/\.app\.sh-royal-room \.top\s*\{[\s\S]*?padding:36px 8px 5px/);
+  assert.match(correction,/\.top \.room\s*\{[\s\S]*?left:-8px/);
+  assert.match(correction,/\.top \.room\s*\{[\s\S]*?height:50px/);
+  assert.match(correction,/\.sh-keyboard-open \.stage/);
+  assert.match(correction,/\.sh-keyboard-open \.dock/);
+  assert.match(correction,/\.sh-keyboard-open \.sh-tools/);
+  assert.match(correction,/content:'QA12'/);
+  assert.match(gradle,/versionCode 12/);
+  assert.match(gradle,/versionName '0\.6\.6-room-entry-keyboard-qa'/);
+});
+
+test('one tap shows a room joining shell and forbids overlapping join requests',()=>{
+  assert.match(ui,/let roomEntryBusyToken=null/);
+  assert.match(ui,/if\(roomEntryBusyToken!==null\)return/);
+  assert.match(ui,/showRoomJoining\(room\)/);
+  assert.match(ui,/wrap\.classList\.add\('on','sh-room-awaiting','sh-room-joining'\)/);
+  assert.match(ui,/currentToken!==roomEntryToken/);
+  assert.match(ui,/hideRoomJoining\(\)/);
+  assert.match(premium,/\.roomwrap\.on\.sh-room-awaiting\.sh-room-joining/);
+  assert.match(ui,/const joined=await joinRoomWithPassword\(room\)/);
+  assert.match(ui,/if\(!joined\)return/);
+});
+
+test('join starts each verified visit before its arrival event with parallel independent reads',()=>{
+  const join=worker.slice(worker.indexOf("action === 'join' && request.method === 'POST'"),
+    worker.indexOf("action === 'leave' && request.method === 'POST'"));
+  assert.match(join,/\[latestGift,entrant,equipped,svipLevel\]=await Promise\.all\(\[/);
+  assert.match(join,/await coordinator\.beginRoomVisit\(uid,Number\(latestGift\?\.id\)\|\|0\)/);
+  assert.ok(join.indexOf('await coordinator.beginRoomVisit')<
+    join.indexOf('await coordinator.roomEntryAnnounce'));
 });
 
 test('top room card is shorter in width but thicker without changing microphone seat sizes',()=>{

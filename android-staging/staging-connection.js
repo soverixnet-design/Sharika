@@ -5250,6 +5250,7 @@
     if(window.cur?.id!==room.id || iframe?.contentWindow!==frame ||
        !frame.__sharikaRoomRenderSignature)return;
     document.getElementById('rw')?.classList?.remove('sh-room-awaiting');
+    if(typeof hideRoomJoining==='function')hideRoomJoining();
   }
   // Profile identity always follows the authenticated room member ID. The
   // original HTML treated seat zero as "my profile" even in another's room.
@@ -7792,9 +7793,46 @@
     }
   }
 
+  // The first tap must give visible feedback immediately. Joining requires a
+  // genuine server authorization, but previously no UI appeared during that
+  // network round-trip and repeated taps launched overlapping join requests.
+  let roomEntryBusyToken=null;
+  let roomEntryToken=0;
+  function showRoomJoining(room){
+    const wrap=document.getElementById('rw');
+    if(!wrap)return;
+    wrap.classList.add('on','sh-room-awaiting','sh-room-joining');
+    wrap.querySelector('#sh-room-joining-card')?.remove();
+    const card=document.createElement('section');
+    card.id='sh-room-joining-card';
+    card.setAttribute('role','status');
+    card.setAttribute('aria-live','polite');
+    const spinner=document.createElement('span');
+    spinner.className='sh-room-join-spinner';
+    spinner.setAttribute('aria-hidden','true');
+    const title=document.createElement('strong');
+    title.textContent=String(room.name||'Voice room');
+    const progress=document.createElement('small');
+    progress.textContent='Connecting to the room…';
+    const leave=document.createElement('button');
+    leave.type='button';leave.textContent='Back to rooms';
+    leave.onclick=()=>window.leaveRoom?.();
+    card.append(spinner,title,progress,leave);
+    wrap.append(card);
+  }
+  function hideRoomJoining(){
+    const wrap=document.getElementById('rw');
+    wrap?.classList.remove('sh-room-joining');
+    wrap?.querySelector('#sh-room-joining-card')?.remove();
+  }
   const originalOpenRoom=window.openRoom;
   window.openRoom=async function(room) {
     if(!session){ window.showAuth('welcome'); return; }
+    if(roomEntryBusyToken!==null)return;
+    const currentToken=++roomEntryToken;
+    roomEntryBusyToken=currentToken;
+    let roomOpened=false;
+    let oldRoomLeft=false;
     try {
       const prior=window.cur;
       if(prior?.id===room.id) {
@@ -7804,6 +7842,7 @@
         resumeRoomAudio();
         return;
       }
+      showRoomJoining(room);
       // Room-to-room navigation must release old seats, membership and audio.
       if(prior && prior.id!==room.id) {
         window.__sharikaRoomGameClose?.();
@@ -7816,8 +7855,14 @@
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
         await releaseVoice();
         await api('POST','/rooms/'+prior.id+'/leave',{});
+        oldRoomLeft=true;
       }
-      if(!await joinRoomWithPassword(room))return;
+      const joined=await joinRoomWithPassword(room);
+      if(currentToken!==roomEntryToken){
+        if(joined)api('POST','/rooms/'+room.id+'/leave',{}).catch(()=>{});
+        return;
+      }
+      if(!joined)return;
       // Start media immediately after verified join, while the room iframe
       // and decorative assets continue loading independently.
       ensureVoiceConnected(room.id).catch(error=>{
@@ -7872,11 +7917,26 @@
       // before the real room snapshot and premium UI arrive.
       const roomWrap=document.getElementById('rw');
       roomWrap?.classList.add('sh-room-awaiting');
+      const progress=roomWrap?.querySelector('#sh-room-joining-card small');
+      if(progress)progress.textContent='Loading verified seats…';
       originalOpenRoom(room);
+      roomOpened=true;
     } catch(error) { toast('Could not join: '+errText(error)); }
+    finally {
+      if(roomEntryBusyToken===currentToken)roomEntryBusyToken=null;
+      if(!roomOpened && currentToken===roomEntryToken){
+        hideRoomJoining();
+        document.getElementById('rw')?.classList.remove('sh-room-awaiting');
+        if(oldRoomLeft)originalLeaveRoom();
+        if(!window.cur)document.getElementById('rw')?.classList.remove('on');
+      }
+    }
   };
   const originalLeaveRoom=window.leaveRoom;
   window.leaveRoom=function() {
+    roomEntryToken++;
+    roomEntryBusyToken=null;
+    hideRoomJoining();
     window.__sharikaRoomGameClose?.();
     const current=window.cur;
     resetRoomMusic();

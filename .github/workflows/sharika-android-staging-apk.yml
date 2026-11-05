@@ -305,6 +305,7 @@ jobs:
         run: |
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "targetSdkVersion:'36'"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "versionCode='12'"
           echo 'SHARIKA_ANDROID_TARGET_API_36_VERIFIED'
 
       - name: Verify original Sovera cosmetics are inside the offline APK
@@ -374,6 +375,9 @@ jobs:
             unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/$asset"
           done
           node --check ../app/royal-room-ui.js
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-premium.css | grep -F "content:'QA12'"
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-room-ui.js | grep -F 'SharikaRoyalKeyboard'
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/connection.js | grep -F 'sh-room-joining-card'
           node - <<'NODE'
           const fs=require('fs');
           const bridge=fs.readFileSync('staging-connection.js','utf8');

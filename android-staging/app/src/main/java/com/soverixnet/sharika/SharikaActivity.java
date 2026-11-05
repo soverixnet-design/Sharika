@@ -28,6 +28,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.Gravity;
 import android.widget.FrameLayout;
@@ -123,6 +124,7 @@ public final class SharikaActivity extends Activity {
     private Runnable googleTimeout;
     private String pendingInviteCode = "";
     private boolean installReferrerResolved;
+    private boolean lastRoomImeVisible;
     private InstallReferrerClient installReferrerClient;
     private final ArrayList<String> pendingInviteRequests = new ArrayList<>();
     @Override
@@ -148,6 +150,26 @@ public final class SharikaActivity extends Activity {
         auth = FirebaseAuth.getInstance();
         credentials = CredentialManager.create(this);
         browser = new WebView(this);
+        // In Android 15/16 an iframe's focus event can arrive before its
+        // visual viewport reacts to Gboard. Propagate the *native* IME state
+        // to our packaged room UI as a fallback; do not change auth or WebView
+        // height here. The WebView retains the original, unconsumed insets.
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            browser.setOnApplyWindowInsetsListener((view, insets) -> {
+                boolean imeVisible = insets.isVisible(WindowInsets.Type.ime());
+                if (imeVisible != lastRoomImeVisible) {
+                    lastRoomImeVisible = imeVisible;
+                    browser.post(() -> {
+                        if (browser != view) return;
+                        browser.evaluateJavascript(
+                            "(function(){var f=document.getElementById('rf');" +
+                            "f?.contentWindow?.SharikaRoyalKeyboard?.setNativeIme(" +
+                            (imeVisible ? "true" : "false") + ");})()", null);
+                    });
+                }
+                return insets;
+            });
+        }
         // Never paint the legacy HTML before the packaged Royal sheets load.
         browser.setVisibility(View.INVISIBLE);
         browser.setBackgroundColor(Color.rgb(7, 3, 26));

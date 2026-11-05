@@ -1292,14 +1292,17 @@ export async function handleRequest(request, env, ctx) {
         // event. Prior chat, gift receipts and entries stay in the audit
         // store, but this visitor cannot replay them even with after=0.
         if(env.VOICE_ROOMS){
-          const latestGift=await env.DB.prepare(
-            'SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?'
-          ).bind(roomId).first();
+          // These reads are independent. Serial D1 round-trips delayed the
+          // first room entry on mobile networks even after authorization.
+          const [latestGift,entrant,equipped,svipLevel]=await Promise.all([
+            env.DB.prepare('SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?')
+              .bind(roomId).first(),
+            assertActive(env.DB,uid),
+            readEquipped(env.DB,uid),
+            readSvipLevel(env.DB,uid)
+          ]);
           const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
           await coordinator.beginRoomVisit(uid,Number(latestGift?.id)||0);
-          const entrant=await assertActive(env.DB,uid);
-          const equipped=await readEquipped(env.DB,uid);
-          const svipLevel=await readSvipLevel(env.DB,uid);
           const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
             ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
               ?'svip-entry-'+String(svipLevel).padStart(2,'0')

@@ -46,8 +46,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 11
-        versionName '0.6.5-bd-host-earnings-staging'
+        versionCode 12
+        versionName '0.6.6-room-entry-keyboard-qa'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
