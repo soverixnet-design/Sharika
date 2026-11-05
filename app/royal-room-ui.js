@@ -172,12 +172,9 @@
         }
       }, 180);
     };
-    // Capture focus even when the verified staging layer has rebound the
-    // composer input. A normal focus listener on a stale node is insufficient.
-    // Pointerdown primes the layout *before* Android starts focus auto-pan.
-    document.addEventListener('pointerdown', event => {
-      if (event.target?.id === 'txt') onFocus();
-    }, true);
+    // Never relocate the composer on pointerdown. Moving its hitbox before
+    // Android dispatches focus cancels the tap, so Gboard never opens.
+    // Focusin fires on the live input even if the connection layer rebinds it.
     document.addEventListener('focusin', event => {
       if (event.target?.id === 'txt') onFocus();
     }, true);
