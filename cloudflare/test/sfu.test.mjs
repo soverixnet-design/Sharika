@@ -6,7 +6,7 @@ const reply = (value,status=200) => Response.json(value,{status});
 const fail = (error,status) => reply({error},status);
 const readBody = request => request.json();
 const owner = {owner_id:'u1'};
-const member = {seat_no:null,muted:0};
+const member = {seat_no:1,muted:0}; // An explicit, occupied seat is required for publishing.
 const room = {
   async roomPolicyRead(){return {super_mic:true};},
   async register() {return true;},
@@ -64,7 +64,7 @@ test('Cloudflare TURN credentials reach verified phones with an explicit relay s
   }finally{globalThis.fetch=old;}
 });
 test('users without a mic seat cannot publish or mint a publisher session',async()=>{
-  const r=await handleVoiceOperation({...base,uid:'u2',operation:'session',
+  const r=await handleVoiceOperation({...base,uid:'u2',member:{seat_no:null,muted:0},operation:'session',
     request:req('POST','session',{mode:'publish'})});
   assert.equal(r.status,403);
   assert.equal((await r.json()).error,'voice_publish_forbidden');
@@ -184,7 +184,7 @@ test('legacy APKs without /voice/ready remain audible while new clients use read
 });
 
 test('unseated guest cannot activate somebody else\'s microphone',async()=>{
-  const r=await handleVoiceOperation({...base,uid:'u2',
+  const r=await handleVoiceOperation({...base,uid:'u2',member:{seat_no:null,muted:0},
     operation:'ready',request:req('POST','ready',{sessionId:'session-one'})});
   assert.equal(r.status,403);
   assert.equal((await r.json()).error,'voice_publish_forbidden');

@@ -84,6 +84,12 @@ export class SharikaVoiceRoom extends DurableObject {
         'seat_no INTEGER PRIMARY KEY CHECK(seat_no BETWEEN 1 AND 20), ' +
         'locked_at_ms INTEGER NOT NULL)'
       );
+      // Seat zero is the owner's explicit throne. D1 numbered seats remain
+      // 1..20; the room coordinator persists throne consent separately.
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS room_owner_throne ('+
+        'room_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, seated_at_ms INTEGER NOT NULL)'
+      );
       this.ctx.storage.sql.exec(
         'CREATE TABLE IF NOT EXISTS room_seat_invites (' +
         'invitee_uid TEXT PRIMARY KEY, inviter_uid TEXT NOT NULL, ' +
@@ -293,16 +299,46 @@ export class SharikaVoiceRoom extends DurableObject {
     ).toArray().map(row=>Number(row.seatNo));
   }
 
+  ownerThroneRead(roomId,uid) {
+    // Persistent owner membership alone does not mean the owner is present.
+    const visiting=this.ctx.storage.sql.exec(
+      'SELECT 1 AS joined FROM room_visits WHERE uid=?',uid
+    ).toArray()[0];
+    return !!visiting && !!this.ctx.storage.sql.exec(
+      'SELECT 1 AS seated FROM room_owner_throne WHERE room_id=? AND user_id=?',
+      roomId,uid
+    ).toArray()[0];
+  }
+
+  async ownerThroneClear(roomId,uid) {
+    return this.withSeatGate(async()=>{
+      this.ctx.storage.sql.exec(
+        'DELETE FROM room_owner_throne WHERE room_id=? AND user_id=?',
+        roomId,uid
+      );
+      return {seated:false};
+    });
+  }
+
   async changeMemberSeat(roomId,uid,seat) {
     return this.withSeatGate(async()=>{
-      if(seat!==null) {
+      if(seat===0){
+        if(!this.ctx.storage.sql.exec(
+          'SELECT 1 AS joined FROM room_visits WHERE uid=?',uid
+        ).toArray()[0])return {error:'join_room_first'};
+        const owner=await this.sharikaDb.prepare(
+          'SELECT owner_id FROM sharika_rooms WHERE id=?'
+        ).bind(roomId).first();
+        if(owner?.owner_id!==uid)return {error:'room_owner_only'};
+      }
+      if(seat!==null && seat!==0) {
         const locked=this.ctx.storage.sql.exec(
           'SELECT 1 AS locked FROM room_seat_locks WHERE seat_no=?',seat
         ).toArray()[0];
         if(locked)return {error:'seat_locked'};
       }
       const db=this.sharikaDb;
-      if(seat!==null){
+      if(seat!==null && seat!==0){
         // Any joined guest may claim an unlocked, empty seat without invite.
         // The same Durable Object gate serializes this with owner locking.
         const occupant=await db.prepare(
@@ -314,18 +350,26 @@ export class SharikaVoiceRoom extends DurableObject {
       try{
         changed=await db.prepare(
           'UPDATE sharika_room_members SET seat_no=? WHERE room_id=? AND user_id=?'
-        ).bind(seat,roomId,uid).run();
+        ).bind(seat===0?null:seat,roomId,uid).run();
       }catch(error){
         if(seat!==null&&/UNIQUE constraint/i.test(String(error?.message)))
           return {error:'seat_occupied'};
         throw error;
       }
       if(!changed.meta?.changes)return {error:'join_room_first'};
+      this.ctx.storage.sql.exec(
+        'DELETE FROM room_owner_throne WHERE room_id=? AND user_id=?',
+        roomId,uid
+      );
+      if(seat===0)this.ctx.storage.sql.exec(
+        'INSERT INTO room_owner_throne(room_id,user_id,seated_at_ms) VALUES(?,?,?)',
+        roomId,uid,Date.now()
+      );
       const member=await db.prepare(
         'SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?'
       ).bind(roomId,uid).first();
       this.ctx.storage.sql.exec('DELETE FROM room_seat_invites WHERE invitee_uid=?',uid);
-      if(seat!==null)this.ctx.storage.sql.exec(
+      if(seat!==null && seat!==0)this.ctx.storage.sql.exec(
         'DELETE FROM room_seat_invites WHERE seat_no=?',seat
       );
       return {member};

@@ -83,7 +83,9 @@ test('join and leave boundaries clear seats and enforce live-only roster',()=>{
 test('room owner throne remains empty until explicit seat action',()=>{
   const snapshot=adapter.slice(adapter.indexOf('  async function syncFrame(room,frame) {'),
     adapter.indexOf('    const renderSignature=',adapter.indexOf('  async function syncFrame(room,frame) {')));
-  assert.match(snapshot,/slots\[0\]=\{empty:1,i:0,owner_throne:true\}/);
+  assert.match(snapshot,/slots\[0\]=data\.owner_throne_seated===true/);
+  assert.match(snapshot,/\?\{\.\.\.ownerSeat,owner_throne:true\}/);
+  assert.match(snapshot,/:\{empty:1,i:0,owner_throne:true\}/);
   assert.match(snapshot,/slots\[member\.seat_no\]=\{\.\.\.ownerSeat/);
   assert.match(snapshot,/audience\.push\(\{n:user\.name,e:'👑'/);
   assert.doesNotMatch(snapshot,/slots\[0\]=\{n:owner\.name/);

@@ -54,7 +54,7 @@ test('Luxury gift fills the phone screen and zooms in from its center',()=>{
   context.doc=doc;
   runInContext('giftPresentationCss(doc)',context);
   assert.match(stylesheet,/\.sh-gift-parade\.sh-gift-parade-video\{[^}]*inset:0;top:0;left:0;width:100%;height:100%/);
-  assert.match(stylesheet,/\.sh-gift-parade-video video\{[^}]*position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover/);
+  assert.match(stylesheet,/\.sh-gift-parade-video video\{[^}]*position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain/);
   assert.match(stylesheet,/@keyframes shGiftCenterZoom\{0%\{transform:scale\(\.32\);opacity:0\}/);
   assert.match(stylesheet,/\.sh-gift-parade-video \.sh-gift-parade-people\{[^}]*position:absolute;z-index:2/);
   assert.match(stylesheet,/\.sh-gift-parade-video \.sh-gift-parade-caption\{[^}]*position:absolute;z-index:2/);
@@ -71,6 +71,7 @@ test('uploaded Luxury MP4 presents sound-capable fullscreen media and a tap fall
     const node={tag,children:[],attrs:{},className:'',textContent:'',muted:false,
       classList:{add(value){node.className+=' '+value;}},
       setAttribute(key,value){node.attrs[key]=value;},
+      addEventListener(name,handler){node.listeners??={};node.listeners[name]=handler;},
       append(...children){node.children.push(...children);},
       appendChild(child){node.children.push(child);},
       insertBefore(child,sibling){node.children.splice(node.children.indexOf(sibling),0,child);},

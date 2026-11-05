@@ -1296,6 +1296,8 @@ export async function handleRequest(request, env, ctx) {
         await env.DB.prepare(
           'UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?'
         ).bind(roomId,uid).run();
+        if(room.owner_id===uid)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          .ownerThroneClear?.(roomId,uid);
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
         await env.VOICE_ROOMS.getByName('sharika:presence:staging')
           .presenceJoin(uid,roomId);
@@ -1330,6 +1332,7 @@ export async function handleRequest(request, env, ctx) {
         if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:presence:staging')
           .presenceLeave(uid,roomId);
         if (room.owner_id === uid) {
+          await env.VOICE_ROOMS.getByName('sharika:'+roomId).ownerThroneClear?.(roomId,uid);
           await env.DB.prepare('UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?')
             .bind(roomId, uid).run();
         } else {
@@ -1746,8 +1749,11 @@ export async function handleRequest(request, env, ctx) {
              !await isRoomAdmin(env,roomId,uid))
             return fail('room_mic_admin_only',403,cors);
         }
-        if (seat !== null && (!Number.isInteger(seat) || seat < 1 ||
-          seat > room.seat_count)) return fail('invalid_seat', 400, cors);
+        // The crown throne is seat zero and belongs only to the verified
+        // owner. All other seats retain D1's existing 1..20 constraint.
+        if (seat !== null && (!Number.isInteger(seat) ||
+          (seat===0 ? room.owner_id!==uid : seat<1||seat>room.seat_count)))
+          return fail('invalid_seat',400,cors);
         const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .changeMemberSeat(roomId,uid,seat);
         if(result.error)return fail(result.error,
@@ -1793,8 +1799,13 @@ export async function handleRequest(request, env, ctx) {
           // Never display offline IDs when the presence coordinator is down.
           visibleMembers=[];
         }
-        const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-          .lockedSeats();
+        const roomCoordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        const [lockedSeats,ownerThroneSeated]=await Promise.all([
+          roomCoordinator.lockedSeats(),
+          visibleMembers.some(m=>m.user_id===room.owner_id)
+            ?roomCoordinator.ownerThroneRead?.(roomId,room.owner_id)??false
+            :Promise.resolve(false)
+        ]);
         const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
         const equipped=await readRoomEquipped(env.DB,roomId);
         // Room color and owner-selected photo are shared room state. Return
@@ -1816,6 +1827,7 @@ export async function handleRequest(request, env, ctx) {
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.
           seat_count:room.seat_count,
+          owner_throne_seated:ownerThroneSeated,
           seat_frame_style:room.seat_frame_style||'grad',
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
           bond_pairs:await roomBondPairs(env.DB,roomId),
@@ -1830,9 +1842,10 @@ export async function handleRequest(request, env, ctx) {
         if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET || !/^wss:\/\//.test(env.LIVEKIT_URL || '')) {
           return fail('voice_not_configured', 503, cors);
         }
-        const policy=await env.VOICE_ROOMS?.getByName('sharika:'+roomId)?.roomPolicyRead();
-        const publish = (room.owner_id === uid && (member.seat_no!==null||policy?.super_mic!==false)) ||
-          (member.seat_no !== null && !member.muted);
+        const ownerOnThrone=room.owner_id===uid&&member.seat_no===null&&
+          !!env.VOICE_ROOMS&&await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+            .ownerThroneRead?.(roomId,uid);
+        const publish=!member.muted&&(member.seat_no!==null||ownerOnThrone);
         const token = await createVoiceToken(env, uid, roomId, publish, room.owner_id === uid);
         return reply({ token, url: env.LIVEKIT_URL, room: 'sharika:' + roomId, publish }, 200, cors);
       }

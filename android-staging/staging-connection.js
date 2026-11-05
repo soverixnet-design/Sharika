@@ -1024,18 +1024,20 @@
       // behind the caption, never squeezed into a 62vh column by the flex UI.
       '.sh-gift-parade.sh-gift-parade-video{inset:0;top:0;left:0;width:100%;height:100%;'+
       'max-width:none;box-sizing:border-box;padding:0;border:0;border-radius:0;'+
-      'background:#080419;display:block;overflow:hidden;pointer-events:auto;'+
+      'background:transparent;display:block;overflow:hidden;pointer-events:none;'+
       'animation:shGiftFullscreen 10s linear both}',
       '@keyframes shGiftFullscreen{0%{opacity:0}7%{opacity:1}93%{opacity:1}100%{opacity:0}}',
       '.sh-gift-parade-video video{position:absolute;inset:0;display:block;'+
-      'width:100%;height:100%;object-fit:cover;object-position:center center;'+
-      'transform-origin:center center;animation:shGiftCenterZoom 10s ease-out both}',
+      'width:100%;height:100%;object-fit:contain;object-position:center center;'+
+      'mix-blend-mode:screen;visibility:hidden;transform-origin:center center;'+
+      'animation:shGiftCenterZoom 10s ease-out both}',
       '@keyframes shGiftCenterZoom{0%{transform:scale(.32);opacity:0}'+
       '12%{transform:scale(1.025);opacity:1}22%{transform:scale(1);opacity:1}'+
       '85%{transform:scale(1);opacity:1}100%{transform:scale(1.05);opacity:1}}',
+      '.sh-gift-parade-video video.sh-gift-playing{visibility:visible}',
       '.sh-gift-parade-video::after{content:"";position:absolute;inset:0;z-index:1;'+
-      'pointer-events:none;background:linear-gradient(180deg,#080419c0 0%,transparent 22%,'+
-      'transparent 68%,#080419ec 100%)}',
+      'pointer-events:none;background:linear-gradient(180deg,#08041930 0%,transparent 20%,'+
+      'transparent 79%,#08041960 100%)}',
       '.sh-gift-parade-video .sh-gift-parade-title{position:absolute;z-index:2;'+
       'top:calc(24px + env(safe-area-inset-top,0px));left:8px;right:8px;'+
       'font-size:clamp(12px,3.5vw,18px);text-shadow:0 2px 8px #080419}',
@@ -1048,7 +1050,7 @@
       'margin:0;font-size:clamp(11px,3vw,15px);text-shadow:0 2px 8px #080419}',
       '.sh-gift-sound{position:absolute;right:12px;top:calc(16px + env(safe-area-inset-top,0px));'+
       'z-index:3;border:1px solid #ffe2a0;border-radius:14px;padding:8px 12px;'+
-      'background:#301a49;color:#fff;font-size:13px}',
+      'background:#301a49;color:#fff;font-size:13px;pointer-events:auto}',
       '.sh-gift-parade-video .sh-gift-sound{top:calc(64px + env(safe-area-inset-top,0px))}',
       '@media(max-width:350px){.sh-gift-parade-people{grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr)}',
       '.sh-gift-parade{padding:8px 7px}.sh-gift-avatar{width:35px;height:35px}}',
@@ -1111,7 +1113,13 @@
           box.classList.add('sh-gift-parade-video');
           const video=doc.createElement('video');
           video.src=animation;video.autoplay=true;video.playsInline=true;
-          video.preload='auto';video.muted=!!soundtrack;
+          video.setAttribute('playsinline','');
+          video.setAttribute('webkit-playsinline','');
+          video.controls=false;video.disablePictureInPicture=true;
+          video.disableRemotePlayback=true;video.preload='auto';
+          video.muted=!!soundtrack;
+          video.addEventListener('playing',()=>video.classList.add('sh-gift-playing'),{once:true});
+          video.addEventListener('error',()=>video.remove(),{once:true});
           box.insertBefore(video,people);
           const audio=soundtrack?doc.createElement('audio'):null;
           if(audio){audio.src=soundtrack;box.appendChild(audio);}
@@ -5192,9 +5200,9 @@
       ['owner','admin'].includes(frame.__sharikaRoomRole)?'':'none';
     frame.__sharikaMemberRoles=new Map((data.members||[]).map(m=>
       [String(m.sharika_users?.public_id||''),String(m.role||'member')]));
-    const eligible=(room.owner_id===session?.user?.id&&
-      ((!!self&&self.seat_no!==null)||roomPolicy.super_mic!==false))||
-      (!!self && self.seat_no!==null && !self.muted);
+    const eligible=!!self && !self.muted &&
+      (self.seat_no!==null ||
+        (room.owner_id===session?.user?.id && data.owner_throne_seated===true));
     if(sfuState?.roomId===room.id && sfuState.canPublish!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
     if(voiceRoomId===room.id && voiceRoom &&
@@ -5250,7 +5258,9 @@
       medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
     // The owner has a permanent room, NOT a permanent occupied seat. Keep
     // the crown-only throne empty until they deliberately select a mic seat.
-    slots[0]={empty:1,i:0,owner_throne:true};
+    slots[0]=data.owner_throne_seated===true
+      ?{...ownerSeat,owner_throne:true}
+      :{empty:1,i:0,owner_throne:true};
     const audience=[];
     for(const member of data.members || []) {
       const user=member.sharika_users;
@@ -5263,7 +5273,7 @@
             owner_mic_seat:true,muted:!!member.muted||
               (member.user_id===session?.user?.id&&localMic===false)};
           slots[0].owner_mic_seat_no=member.seat_no;
-        }else{
+        }else if(data.owner_throne_seated!==true){
           audience.push({n:user.name,e:'👑',id:user.special_id||user.display_id||user.public_id,
             canonical_id:user.public_id,room_role:'owner',special_id:user.special_id||null,
             pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
@@ -5880,6 +5890,7 @@
     let pendingGiftRequest=null;
     let lastGiftEventId=null;
     const shownGiftEvents=new Set();
+    const shownGiftCelebrations=new Set();
     // A gift receipt is a lasting chat row, separate from the short animation.
     const shownGiftChatIds=new Set();
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
@@ -6147,9 +6158,18 @@
       if(shownGiftEvents.has(id))return;
       shownGiftEvents.add(id);
       if(shownGiftEvents.size>100)shownGiftEvents.clear();
-      queueGiftPresentation(frame,event);
-      if(Number(event.tab)===FEATURED_GIFT_TAB||isVideoMedia(verifiedMediaUrl(event.animation_url)))
-        queueGiftPresentation(frame,event,true);
+      const celebrationKey=String(event.transaction_id||'event:'+id);
+      // One purchase can create five recipient receipts. Play its luxury
+      // animation once; keep all five auditable chat receipts.
+      if(!shownGiftCelebrations.has(celebrationKey)){
+        shownGiftCelebrations.add(celebrationKey);
+        if(shownGiftCelebrations.size>200)
+          shownGiftCelebrations.delete(shownGiftCelebrations.values().next().value);
+        queueGiftPresentation(frame,event);
+        if(Number(event.tab)===FEATURED_GIFT_TAB||
+          isVideoMedia(verifiedMediaUrl(event.animation_url)))
+          queueGiftPresentation(frame,event,true);
+      }
     }
     async function pollGiftEvents(ownTransactionId=null){
       const data=await api('GET','/rooms/'+room.id+'/gifts');
@@ -6222,7 +6242,8 @@
       const uid=session?.user?.id;
       const owner=room.owner_id===uid;
       const target=frame.seats?.[seat];
-      if(!uid||!target?.empty||seat<1||seat>room.seat_count)
+      if(!uid||!target?.empty||
+         (seat===0?!owner:seat<1||seat>room.seat_count))
         throw new Error('Choose an unlocked empty seat');
       directSeatBusy=true;
       frame.__sharikaSeatMovePending=true;
@@ -6239,7 +6260,9 @@
         muted:false,talk:false
       };
       if(previous)frame.seats[previous.i]={empty:1,i:previous.i};
-      frame.seats[seat]={...source,i:seat,owner_mic_seat:owner};
+      if(owner && seat>0)frame.seats[0]={empty:1,i:0,owner_throne:true,
+        owner_mic_seat_no:seat};
+      frame.seats[seat]={...source,i:seat,owner_mic_seat:owner&&seat>0};
       frame.render();
       decorateRoomSeats(frame);
       paintVerifiedMicCount(frame);
@@ -6336,9 +6359,9 @@
             };
             list.append(button);
           }
-        } else if(action==='take' && seat>0) {
+        } else if(action==='take' && seat>=0) {
           await moveSelfToSeat(seat);
-        } else if(action==='down' && seat>0) {
+        } else if(action==='down' && seat>=0) {
           if(!isSelf && moderator && target?.user_id) {
             await moderateSeat('remove_seat',seat);
           } else if(isSelf) {
@@ -6426,7 +6449,8 @@
       overlay.onkeydown=e=>{
         if(e.key==='Escape'||e.key==='Backspace'){e.preventDefault();close();}
       };
-      const options=index===0?[]:selected.lock?
+      const options=index===0?
+        (room.owner_id===session?.user?.id?[['take','Sit on throne','take']]:[]):selected.lock?
         (owner?[['unlock','Unlock seat','lock'],['unlock_all','Unlock all','all']]:[]):
         (owner?[['take','Sit here','take'],['lock','Lock seat','lock'],
           ['lock_all','Lock all','all']]:[['take','Take Mic','take']]);
@@ -6531,7 +6555,7 @@
       const options=[['prof','👤','Profile'],['gift','🎁','Gift']];
       if(self)options.push(['mute',selected.muted?'🔊':'🔇',
         selected.muted?'Unmute':'Mute']);
-      if(self&&index>0)options.push(['down','⬇️','Leave mic']);
+      if(self)options.push(['down','⬇️','Leave mic']);
       if(owner&&index===0)options.push(['own','⚙️','Manage']);
       if(moderator&&index>0&&!self&&
          (owner||selected.room_role!=='admin'))options.push(
@@ -7517,6 +7541,11 @@
     // On actual phones there is no DevTools console. Long-press the mic to
     // display a private, packet-based voice check without changing its state.
     if(mic){
+      // An audience member, including the owner, starts muted until seated.
+      if(!frame.seats?.some(seat=>seat?.user_id===session?.user?.id &&
+        !seat.empty && !seat.lock)){
+        mic.textContent='🔇';mic.classList.add('off');
+      }
       let diagnosisTimer=null,diagnosisShown=false;
       mic.addEventListener('pointerdown',()=>{
         clearTimeout(diagnosisTimer);
