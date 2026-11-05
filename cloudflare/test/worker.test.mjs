@@ -663,6 +663,49 @@ test('regular gift atomically debits sender, credits diamonds and accrues 10% fo
   }finally{globalThis.fetch=prior;}
 });
 
+test('one million coin Luxury gift settles once at catalogue price without touching a real wallet',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000000,diamonds:0});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:uid});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
+      if(sql.includes('FROM sharika_gifts')&&sql.includes('tab IN (0,1,2)'))
+        stmt.first=async()=>({id:25,name:'Royal Wedding',emoji:'💍',price_coins:1000000,tab:1});
+      if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
+        stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,
+          status:'active',diamonds:0}]});
+      if(sql.startsWith('SELECT id,total_coins FROM sharika_gift_transactions'))
+        stmt.first=async()=>({id:72,total_coins:1000000});
+      return stmt;
+    };
+    const response=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:25,quantity:1,
+        recipient_public_ids:['10000001'],request_id:'gift_luxury_12345678'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(response.status,201);
+    const receipt=await response.json();
+    assert.equal(receipt.spent_coins,1000000);
+    assert.equal(receipt.recipient_diamonds_per_user,1000000);
+    assert.equal(receipt.room_reward_coins,100000);
+    assert.equal(receipt.owner_reward_pending_coins,100000);
+    const statements=db.calls.find(call=>call[0]==='batch')?.[1];
+    assert.ok(statements,'the server must atomically record the gift');
+    assert.equal(statements[0].values[0],1000000);
+    assert.equal(statements[2].values[1],-1000000);
+    assert.equal(statements[6].values[1],1000000);
+    assert.equal(statements[8].values[3],10000000);
+    assert.ok(statements.some(s=>s.sql.includes('sharika_gift_events')));
+  }finally{globalThis.fetch=prior;}
+});
+
 test('room rewards show audited ordinary-gift shares and actual owner wallet credits',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
