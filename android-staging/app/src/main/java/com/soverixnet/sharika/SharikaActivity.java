@@ -9,6 +9,7 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -126,6 +127,9 @@ public final class SharikaActivity extends Activity {
     private boolean installReferrerResolved;
     private boolean lastRoomImeVisible;
     private int lastRoomImeInsetPx = -1;
+    // The parent WebView container consumes system-bar insets so all pages
+    // share one safe viewport. Keep the original navigation height for IME math.
+    private int navigationBarBottomInsetPx;
     private InstallReferrerClient installReferrerClient;
     private final ArrayList<String> pendingInviteRequests = new ArrayList<>();
     @Override
@@ -160,7 +164,7 @@ public final class SharikaActivity extends Activity {
                 boolean imeVisible = insets.isVisible(WindowInsets.Type.ime());
                 int imeInsetPx = imeVisible ? Math.max(0,
                     insets.getInsets(WindowInsets.Type.ime()).bottom -
-                    insets.getInsets(WindowInsets.Type.navigationBars()).bottom) : 0;
+                    navigationBarBottomInsetPx) : 0;
                 if (imeVisible != lastRoomImeVisible || imeInsetPx != lastRoomImeInsetPx) {
                     lastRoomImeVisible = imeVisible;
                     lastRoomImeInsetPx = imeInsetPx;
@@ -260,17 +264,29 @@ public final class SharikaActivity extends Activity {
         // screen on slower phones before the Royal page was decoded.
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(7, 3, 26));
-        // targetSdk 36 draws behind the Android status bar on modern phones.
-        // Reserve that inset for the native WebView and branded opening layer;
-        // CSS safe-area env() is often zero in an embedded Android WebView.
-        // Keep the bottom edge unchanged for the existing room mic/IME flow.
+        // All screens (home, rooms, profile, games, shop, overlays) share
+        // this WebView, so keep its entire viewport outside system bars and
+        // notches. Android 15+ targets draw under those bars by default.
+        // After using these insets natively, zero only those types before
+        // forwarding to the WebView; otherwise newer WebViews can add a
+        // second CSS safe-area inset and create a ghost gap. Keep the IME
+        // untouched so the room composer still follows the keyboard.
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             root.setOnApplyWindowInsetsListener((view, insets) -> {
-                int statusTop = insets.getInsets(WindowInsets.Type.statusBars()).top;
-                if (view.getPaddingTop() != statusTop) {
-                    view.setPadding(0, statusTop, 0, 0);
+                int barTypes = WindowInsets.Type.systemBars()
+                    | WindowInsets.Type.displayCutout();
+                Insets safe = insets.getInsets(barTypes);
+                navigationBarBottomInsetPx =
+                    insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                if (view.getPaddingLeft() != safe.left
+                    || view.getPaddingTop() != safe.top
+                    || view.getPaddingRight() != safe.right
+                    || view.getPaddingBottom() != safe.bottom) {
+                    view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
                 }
-                return insets;
+                return new WindowInsets.Builder(insets)
+                    .setInsets(barTypes, Insets.NONE)
+                    .build();
             });
         }
         root.addView(browser, new FrameLayout.LayoutParams(-1, -1));
