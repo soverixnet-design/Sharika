@@ -70,10 +70,8 @@ public final class RoomQaActivity extends Activity {
                 int[] origin = new int[2];
                 browser.getLocationOnScreen(origin);
                 browser.evaluateJavascript("window.__roomQaOriginPx=[" +
-                    origin[0] + "," + origin[1] + "];" +
-                    "(function(){let s=document.createElement('script');" +
-                    "s.src='./room-qa.js';document.head.appendChild(s);})()", value ->
-                        Log.i("SharikaRoomQa", "{\"phase\":\"qa-script-injected\"}"));
+                    origin[0] + "," + origin[1] + "];", value ->
+                        Log.i("SharikaRoomQa", "{\"phase\":\"native-origin-injected\"}"));
                 browser.postDelayed(() -> browser.evaluateJavascript(
                     "JSON.stringify({hasOpenRoom:typeof openRoom==='function'," +
                     "hasQa:!!window.SharikaRoomQa,hasBridge:!!window.RoomQaReporter," +

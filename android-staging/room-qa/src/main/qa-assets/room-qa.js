@@ -44,9 +44,11 @@
   // into a server: only markup, style, and keyboard anchoring are measured.
   document.getElementById('sp')?.style.setProperty('display','none','important');
   document.querySelectorAll('.auth.on').forEach(el => el.classList.remove('on'));
-  frame.addEventListener('load', () => {
+  frame.addEventListener('load', function onRoomReady() {
+    if (!frame.contentDocument?.getElementById('app')) return;
+    frame.removeEventListener('load', onRoomReady);
     setTimeout(() => report('before'), 1100);
-  }, {once:true});
+  });
   if (typeof window.openRoom !== 'function') {
     bridge.record('{"phase":"error","reason":"missing openRoom"}');
     return;

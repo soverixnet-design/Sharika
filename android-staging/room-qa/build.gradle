@@ -22,11 +22,20 @@ android {
 // swapping only its privileged connection adapter for an inert fixture.
 // This module has no network permission, authentication, wallet or user data.
 def fixtureAssets = layout.buildDirectory.dir('generated/room-qa-assets')
+tasks.register('generateRoomQaIndex', Exec) {
+    commandLine 'node', 'scripts/generate-room-fixture.mjs'
+    workingDir projectDir
+    inputs.file(rootProject.file('../app/index.html'))
+    outputs.file(layout.buildDirectory.file('generated/room-qa-page/index.html'))
+}
 tasks.register('prepareRoomQaAssets', Sync) {
-    dependsOn ':app:prepareSharikaUiAssets'
+    dependsOn ':app:prepareSharikaUiAssets', 'generateRoomQaIndex'
     from(project(':app').layout.buildDirectory.dir('generated/sharika-ui-assets')) {
-        exclude 'connection.js'
+        // The full Sharika sign-in/splash is unrelated to room keyboard QA.
+        // It can overburden the small emulator and delay the room fixture.
+        exclude 'connection.js', 'index.html'
     }
+    from(layout.buildDirectory.dir('generated/room-qa-page'))
     from('src/main/qa-assets')
     into(fixtureAssets)
 }
