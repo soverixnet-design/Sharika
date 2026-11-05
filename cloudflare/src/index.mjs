@@ -19,6 +19,7 @@ import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements 
 import {readInviteRules} from './invite-rules.mjs';
 import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
+import {readVerifiedRankings} from './verified-rankings.mjs';
 import { handleOpeningApp } from './opening.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
@@ -752,6 +753,25 @@ export async function handleRequest(request, env, ctx) {
       const kind=url.searchParams.get('kind')||'rich';
       const result=await readGiftRankings(env.DB,period,kind);
       return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
+    }
+    if(path==='/api/v1/rankings/verified'){
+      if(request.method!=='GET')return fail('method_not_allowed',405,cors);
+      await assertActive(env.DB,uid);
+      const query={
+        kind:url.searchParams.get('kind')||'sending',
+        period:url.searchParams.get('period')||'weekly',
+        metric:url.searchParams.get('metric'),
+        game:url.searchParams.get('game')
+      };
+      try{
+        const result=await readVerifiedRankings(env.DB,query);
+        return result?reply(result,200,cors):fail('invalid_verified_ranking_filter',400,cors);
+      }catch(error){
+        // Workers may be deployed before the separate staging migration.
+        if(/no such table:\s*sharika_verified_activity_events/i.test(String(error?.message||error)))
+          return fail('verified_rankings_not_ready',503,cors);
+        throw error;
+      }
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {
       const viewer = await assertActive(env.DB, uid);
