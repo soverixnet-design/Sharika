@@ -49,6 +49,7 @@ on:
       - fix/sharika-family-royal-games-20261104
       - feature/sharika-sovera-gaddy-game-20261104
       - feature/sharika-bd-agency-host-20261104
+      - feature/sharika-agency-salary-targets-integrated-20261106
     paths:
       - 'android-staging/**'
       - 'app/golden-home.css'
