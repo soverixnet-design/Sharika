@@ -305,7 +305,7 @@ jobs:
         run: |
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "targetSdkVersion:'36'"
-          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "versionCode='12'"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "versionCode='13'"
           echo 'SHARIKA_ANDROID_TARGET_API_36_VERIFIED'
 
       - name: Verify original Sovera cosmetics are inside the offline APK
@@ -375,8 +375,9 @@ jobs:
             unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/$asset"
           done
           node --check ../app/royal-room-ui.js
-          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-premium.css | grep -F "content:'QA12'"
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-premium.css | grep -F "content:'QA13'"
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-room-ui.js | grep -F 'SharikaRoyalKeyboard'
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-room-ui.js | grep -F 'nativeImeInset'
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/connection.js | grep -F 'sh-room-joining-card'
           node - <<'NODE'
           const fs=require('fs');
@@ -426,8 +427,23 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Build separate no-network real-WebView keyboard QA harness
+        run: |
+          node --check room-qa/src/main/qa-assets/room-qa.js
+          gradle -PincludeRoomQa=1 :room-qa:assembleDebug --no-daemon
+          test -s room-qa/build/outputs/apk/debug/room-qa-debug.apk
+          echo 'SHARIKA_ROOM_WEBVIEW_KEYBOARD_HARNESS_BUILT'
+
+      - name: Save keyboard QA harness (never release with Sharika)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Room-Keyboard-QA-Only
+          path: android-staging/room-qa/build/outputs/apk/debug/room-qa-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
   royal-emulator-smoke:
-    name: Royal UI emulator launch and Back smoke test
+    name: Royal UI launch, Back and keyboard/seat stability emulator test
     # Only the isolated Option 1 candidate; no live app or staging data writes.
     if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103' || github.ref == 'refs/heads/feature/sharika-family-fruit-royale-sync-20261104' || github.ref == 'refs/heads/feature/sharika-room-free-lucky-box-20261104' || github.ref == 'refs/heads/fix/sharika-family-royal-games-20261104' || github.ref == 'refs/heads/feature/sharika-bd-agency-host-20261104'
     needs: debug-apk
@@ -439,6 +455,12 @@ jobs:
         with:
           name: Sharika-Android-Staging-Debug
           path: staging-apk
+
+      - name: Download isolated WebView keyboard test APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Room-Keyboard-QA-Only
+          path: keyboard-qa-apk
 
       - name: Permit emulator hardware acceleration
         run: |
@@ -474,6 +496,39 @@ jobs:
             adb logcat -d -v brief -s chromium:V AndroidRuntime:E > royal-qa/chromium-log.txt
             command -v tesseract >/dev/null 2>&1 && tesseract royal-qa/back-pressed.png stdout > royal-qa/back-ocr.txt 2>/dev/null || true
             echo 'SHARIKA_ANDROID_EMULATOR_LAUNCH_AND_BACK_NO_CRASH_OK'
+
+            # This separate, no-network APK renders the *same packaged room*
+            # on the same Android WebView. Tap the real input via ADB so Gboard
+            # is exercised instead of just checking CSS strings.
+            adb install -r keyboard-qa-apk/room-qa-debug.apk
+            adb logcat -c
+            adb shell am start -W -n com.soverixnet.sharika.roomqa/.RoomQaActivity
+            sleep 13
+            adb logcat -d -v raw -s SharikaRoomQa:I > royal-qa/room-before.jsonl
+            jq -ce 'select(.phase=="before" and .ready and (.fingerprint|contains("QA13")))' royal-qa/room-before.jsonl | tail -n 1 > royal-qa/room-baseline.json
+            test -s royal-qa/room-baseline.json
+            adb exec-out screencap -p > royal-qa/room-keyboard-before.png
+            INPUT_X="$(jq -r '.tapX' royal-qa/room-baseline.json)"
+            INPUT_Y="$(jq -r '.tapY' royal-qa/room-baseline.json)"
+            test "$INPUT_X" -gt 0
+            test "$INPUT_Y" -gt 0
+            adb shell input tap "$INPUT_X" "$INPUT_Y"
+            sleep 6
+            adb exec-out screencap -p > royal-qa/room-keyboard-after.png
+            adb logcat -d -v raw -s SharikaRoomQa:I > royal-qa/room-after.jsonl
+            jq -ce 'select(.phase=="ime" and .ready and .keyboardClass and (.imeInset|sub("px$";"")|tonumber)>100)' royal-qa/room-after.jsonl | tail -n 1 > royal-qa/room-ime.json
+            test -s royal-qa/room-ime.json
+            jq -n --argfile before royal-qa/room-baseline.json --argfile after royal-qa/room-ime.json '
+              def abs: if . < 0 then -. else . end;
+              {headerDelta:(($after.header.top-$before.header.top)|abs),
+               ownerDelta:(($after.owner.top-$before.owner.top)|abs),
+               firstSeatDelta:(($after.firstSeat.top-$before.firstSeat.top)|abs),
+               imeInset:$after.imeInset} |
+              if .headerDelta > 9 or .ownerDelta > 9 or .firstSeatDelta > 9
+                then error("Room seats or header shifted on real IME: " + tostring)
+                else . end' > royal-qa/keyboard-stability-result.json
+            adb shell dumpsys input_method > royal-qa/ime-state.txt
+            echo 'SHARIKA_REAL_ANDROID_IME_ROOM_HEADER_AND_SEATS_STABLE_OK'
 
       - name: Save emulator evidence even if UI test fails
         if: always()

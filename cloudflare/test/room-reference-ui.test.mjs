@@ -70,7 +70,10 @@ test('Android keyboard focuses the composer without compressing the mic-seat gri
   assert.match(room,/parentViewport\?\.addEventListener\('resize', onViewportResize\)/);
   assert.match(room,/app\.style\.removeProperty\('height'\)/);
   assert.match(java,/clearFlags\(WindowManager\.LayoutParams\.FLAG_FULLSCREEN\)/);
-  assert.match(java,/setSoftInputMode\(WindowManager\.LayoutParams\.SOFT_INPUT_ADJUST_RESIZE\)/);
+  assert.match(java,/setSoftInputMode\(WindowManager\.LayoutParams\.SOFT_INPUT_ADJUST_NOTHING\)/);
+  assert.match(java,/getInsets\(WindowInsets\.Type\.ime\(\)\)\.bottom/);
+  assert.match(java,/lastRoomImeInsetPx = imeInsetPx/);
+  assert.match(room,/nativeImeInset = nativeImeOpen/);
   assert.doesNotMatch(java,/getWindow\(\)\.setFlags\(WindowManager\.LayoutParams\.FLAG_FULLSCREEN/);
   assert.match(css,/\.app\.sh-royal-room\s*\{[\s\S]*?height:100%!important/);
   assert.match(css,/html:has\(\.sh-royal-room\),body:has\(\.sh-royal-room\)/);
@@ -92,9 +95,29 @@ test('last loaded Royal CSS honors new room card and IME layout on Android',()=>
   assert.match(correction,/\.sh-keyboard-open \.stage/);
   assert.match(correction,/\.sh-keyboard-open \.dock/);
   assert.match(correction,/\.sh-keyboard-open \.sh-tools/);
-  assert.match(correction,/content:'QA12'/);
-  assert.match(gradle,/versionCode 12/);
-  assert.match(gradle,/versionName '0\.6\.6-room-entry-keyboard-qa'/);
+  assert.match(correction,/content:'QA13'/);
+  assert.match(gradle,/versionCode 13/);
+  assert.match(gradle,/versionName '0\.6\.7-anchored-room-keyboard-qa'/);
+});
+
+test('CI can reproduce real Gboard and measure stable seats in an isolated WebView',()=>{
+  const qa=readFileSync(new URL('../../android-staging/room-qa/src/main/qa-assets/room-qa.js',
+    import.meta.url),'utf8');
+  const manifest=readFileSync(new URL('../../android-staging/room-qa/src/main/AndroidManifest.xml',
+    import.meta.url),'utf8');
+  const activity=readFileSync(new URL('../../android-staging/room-qa/src/main/java/com/soverixnet/sharika/roomqa/RoomQaActivity.java',
+    import.meta.url),'utf8');
+  const workflow=readFileSync(new URL('../../.github/workflows/sharika-android-staging-apk.yml',
+    import.meta.url),'utf8');
+  assert.match(qa,/window\.openRoom\(\{id:'10000006'/);
+  assert.match(qa,/firstSeat:get\('\.grid \.seat'\)/);
+  assert.match(qa,/fingerprint:/);
+  assert.doesNotMatch(manifest,/android\.permission\.INTERNET/);
+  assert.match(activity,/SOFT_INPUT_ADJUST_NOTHING/);
+  assert.match(activity,/WindowInsets\.Type\.ime\(\)/);
+  assert.match(workflow,/adb shell input tap "\$INPUT_X" "\$INPUT_Y"/);
+  assert.match(workflow,/firstSeatDelta/);
+  assert.match(workflow,/room-keyboard-after\.png/);
 });
 
 test('one tap shows a room joining shell and forbids overlapping join requests',()=>{

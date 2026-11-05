@@ -1,0 +1,34 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.soverixnet.sharika.roomqa'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.soverixnet.sharika.roomqa'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName 'room-webview-keyboard-harness'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// Use the exact production-generated room HTML/CSS/JS from the staging APK,
+// swapping only its privileged connection adapter for an inert fixture.
+// This module has no network permission, authentication, wallet or user data.
+def fixtureAssets = layout.buildDirectory.dir('generated/room-qa-assets')
+tasks.register('prepareRoomQaAssets', Sync) {
+    dependsOn ':app:prepareSharikaUiAssets'
+    from(project(':app').layout.buildDirectory.dir('generated/sharika-ui-assets')) {
+        exclude 'connection.js'
+    }
+    from('src/main/qa-assets')
+    into(fixtureAssets)
+}
+android.sourceSets.main.assets.srcDir(fixtureAssets)
+tasks.named('preBuild').configure { dependsOn('prepareRoomQaAssets') }

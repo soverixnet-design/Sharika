@@ -101,6 +101,7 @@
     let blurTask;
     let keyboardActive = false;
     let nativeImeOpen = false;
+    let nativeImeInset = 0;
     let keepTopTask;
     let parentViewport;
     let parentWindow;
@@ -121,7 +122,10 @@
           inset = Math.max(inset, frameBottom - visibleBottom);
         }
       } catch (_) { /* The parent may be cross-origin outside Android. */ }
-      return Math.max(0, Math.round(inset));
+      // ADJUST_NOTHING does not shrink the WebView or visualViewport. Android
+      // passes physical IME pixels; divide by the iframe's device pixel ratio
+      // to get CSS pixels before positioning the fixed composer.
+      return Math.max(nativeImeInset, 0, Math.round(inset));
     };
 
     const keepRoomAnchored = () => {
@@ -190,8 +194,10 @@
     // Native Android WindowInsets is an independent keyboard visibility
     // signal. It also fires when a WebView inside srcdoc misses focusin.
     window.SharikaRoyalKeyboard = Object.freeze({
-      setNativeIme(visible) {
+      setNativeIme(visible, physicalInsetPx = 0) {
         nativeImeOpen = !!visible;
+        nativeImeInset = nativeImeOpen ? Math.max(0, Math.round(
+          Number(physicalInsetPx || 0) / (window.devicePixelRatio || 1))) : 0;
         if (nativeImeOpen) onFocus();
         else onBlur(true);
       }

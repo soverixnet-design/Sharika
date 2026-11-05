@@ -596,7 +596,7 @@ html.royal-room .app.sh-royal-room .top .room {
 /* Staging-only visible fingerprint: a screenshot now proves which APK ran. */
 html.royal-room .app.sh-royal-room .sh-settings {position:relative;}
 html.royal-room .app.sh-royal-room .sh-settings::after {
-  content:'QA12';
+  content:'QA13';
   position:absolute;top:100%;left:50%;transform:translateX(-50%);
   padding:1px 4px;border-radius:5px;background:#170728b0;
   color:#ffe2a1;font:700 9px/1 system-ui,sans-serif;

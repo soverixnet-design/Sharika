@@ -125,6 +125,7 @@ public final class SharikaActivity extends Activity {
     private String pendingInviteCode = "";
     private boolean installReferrerResolved;
     private boolean lastRoomImeVisible;
+    private int lastRoomImeInsetPx = -1;
     private InstallReferrerClient installReferrerClient;
     private final ArrayList<String> pendingInviteRequests = new ArrayList<>();
     @Override
@@ -133,12 +134,12 @@ public final class SharikaActivity extends Activity {
         restorePendingInvite();
         captureInviteLink(getIntent());
         readPlayInstallReferrer();
-        // FLAG_FULLSCREEN makes adjustResize ineffective on many Android
-        // WebViews. Android then pans the *whole room* upward to reveal Gboard,
-        // hiding the room header and first mic rows. Keep the status bar in
-        // normal layout so the IME shrinks the WebView instead of panning it.
+        // Preserve the microphone seats and top room card while Gboard opens.
+        // Resizing the full WebView recalculates the iframe's flex geometry;
+        // panning it pushes the first seats offscreen. With ADJUST_NOTHING,
+        // native IME insets move ONLY the chat composer in royal-room-ui.js.
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         // Keep cutout support; Android now reserves its top inset normally.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             WindowManager.LayoutParams window = getWindow().getAttributes();
@@ -150,21 +151,26 @@ public final class SharikaActivity extends Activity {
         auth = FirebaseAuth.getInstance();
         credentials = CredentialManager.create(this);
         browser = new WebView(this);
-        // In Android 15/16 an iframe's focus event can arrive before its
-        // visual viewport reacts to Gboard. Propagate the *native* IME state
-        // to our packaged room UI as a fallback; do not change auth or WebView
-        // height here. The WebView retains the original, unconsumed insets.
+        // ADJUST_NOTHING deliberately keeps the WebView at its original height.
+        // Its visualViewport therefore may never shrink, so the room composer
+        // needs the *actual* IME obstruction height from Android. Re-dispatch
+        // while the IME animates or its suggestion toolbar changes height.
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             browser.setOnApplyWindowInsetsListener((view, insets) -> {
                 boolean imeVisible = insets.isVisible(WindowInsets.Type.ime());
-                if (imeVisible != lastRoomImeVisible) {
+                int imeInsetPx = imeVisible ? Math.max(0,
+                    insets.getInsets(WindowInsets.Type.ime()).bottom -
+                    insets.getInsets(WindowInsets.Type.navigationBars()).bottom) : 0;
+                if (imeVisible != lastRoomImeVisible || imeInsetPx != lastRoomImeInsetPx) {
                     lastRoomImeVisible = imeVisible;
+                    lastRoomImeInsetPx = imeInsetPx;
                     browser.post(() -> {
                         if (browser != view) return;
                         browser.evaluateJavascript(
                             "(function(){var f=document.getElementById('rf');" +
                             "f?.contentWindow?.SharikaRoyalKeyboard?.setNativeIme(" +
-                            (imeVisible ? "true" : "false") + ");})()", null);
+                            (imeVisible ? "true" : "false") + "," +
+                            imeInsetPx + ");})()", null);
                     });
                 }
                 return insets;
