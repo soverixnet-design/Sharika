@@ -50,6 +50,8 @@ public final class RoomQaActivity extends Activity {
             int bottom = visible ? Math.max(0,
                 insets.getInsets(WindowInsets.Type.ime()).bottom -
                 insets.getInsets(WindowInsets.Type.navigationBars()).bottom) : 0;
+            Log.i("SharikaRoomQa", "{\"phase\":\"native-insets\",\"visible\":" + visible +
+                ",\"bottomPx\":" + bottom + "}");
             if (visible != lastImeVisible || bottom != lastImeInset) {
                 lastImeVisible = visible;
                 lastImeInset = bottom;
@@ -58,7 +60,9 @@ public final class RoomQaActivity extends Activity {
                     "f?.contentWindow?.SharikaRoyalKeyboard?.setNativeIme(" +
                     (visible ? "true" : "false") + "," + bottom + ");" +
                     "setTimeout(()=>window.SharikaRoomQa?.report('" +
-                    (visible ? "ime" : "closed") + "'),240);})()", null));
+                    (visible ? "ime" : "closed") + "'),240);" +
+                    "return JSON.stringify({hasFrame:!!f,apiType:typeof f?.contentWindow?.SharikaRoyalKeyboard,active:f?.contentDocument?.activeElement?.id||''});})()",
+                    result -> Log.i("SharikaRoomQaState", "native-dispatch=" + result)));
             }
             return insets;
         });

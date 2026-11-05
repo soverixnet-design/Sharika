@@ -30,6 +30,9 @@
       (frameRect.top + input.top + input.height / 2) * ratio) : 0;
     bridge.record(JSON.stringify({phase,ready:true,
       keyboardClass:app.classList.contains('sh-keyboard-open'),
+      hasKeyboardApi:typeof w?.SharikaRoyalKeyboard,
+      focusTarget:doc?.activeElement?.id || doc?.activeElement?.tagName || '',
+      iframeFocused:!!doc?.hasFocus(),
       owner:get('.host'),firstSeat:get('.grid .seat'),
       header:get('.top'),stage:get('.stage'),composer:get('.sh-composer'),
       dock:get('.dock'),input,tapX,tapY,
