@@ -17,9 +17,15 @@
 .app.golden-home .blob { opacity: .045; }
 
 .app.golden-home #v-home .hd {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) minmax(54px, 66px) 42px;
+  grid-template-rows: 26px 28px;
+  column-gap: 6px;
+  row-gap: 2px;
+  align-items: center;
   margin: -2px 0 8px;
-  padding: 7px 8px;
-  min-height: 60px;
+  padding: 8px;
+  min-height: 72px;
   border-radius: 19px;
   border: 1.5px solid #d7ad72;
   background: rgba(39, 24, 21, .84);
@@ -27,31 +33,47 @@
   backdrop-filter: blur(14px);
 }
 .app.golden-home #v-home .hd .logo {
+  grid-column: 1; grid-row: 1 / span 2;
   width: 40px; height: 40px; border-radius: 50%; flex: none;
   border: 2px solid #ffe1a2;
   box-shadow: 0 0 0 3px #725028,0 4px 9px #0008;
 }
 .app.golden-home #v-home .hd h1 {
-  min-width: 0; color: #ffe8bd; font-size: 13px; line-height: 1.2;
+  grid-column: 2; grid-row: 1 / span 2;
+  min-width: 0; max-width: 100%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+  color: #ffe8bd; font-size: 13px; line-height: 1.2;
   background: none; -webkit-text-fill-color: #ffe8bd;
 }
-.app.golden-home #v-home .hd h1 small { color: #e5c9ae; -webkit-text-fill-color: #e5c9ae; font-size: 8px; margin-top: 3px; }
+.app.golden-home #v-home .hd h1 small {
+  color: #e5c9ae; -webkit-text-fill-color: #e5c9ae;
+  font-size: 8px; margin-top: 3px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
 .app.golden-home #v-home .pill {
+  grid-column: 3; grid-row: 1; justify-self: stretch; text-align: center;
+  min-width: 0; box-sizing: border-box;
   padding: 5px 6px; max-width: 66px; overflow: hidden;
   color: #ffe3a3; font-size: 10px;
   background: #4c372dcf;
   border-color: #d6ac79;
 }
 .app.golden-home #v-home .top-recharge {
+  grid-column: 3; grid-row: 2; justify-self: center;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 34px; height: 36px; padding: 0; flex: none; border-radius: 11px;
-  color: #583315; font-size: 20px; font-weight: 900; line-height: 1;
+  width: 38px; height: 27px; padding: 0; flex: none; border-radius: 9px;
+  color: #583315; font-size: 15px; font-weight: 900; line-height: 1;
   border: 1.5px solid #fff1c8;
   background: linear-gradient(160deg, #fff3c5 0%, #e7bd71 50%, #ab6c36 100%);
   box-shadow: inset 0 1px 2px #fff9,0 4px 11px #0008;
 }
 .app.golden-home #v-home .top-recharge small {
   font-size: 6px; line-height: 1.25; font-weight: 800;
+}
+.app.golden-home #v-home .hd .sh-notify-bell {
+  grid-column: 4; grid-row: 1 / span 2;
+  justify-self: center; align-self: center;
+  width: 40px; min-width: 0; height: 42px; min-height: 0;
 }
 
 .app.golden-home #v-home .srch {
@@ -156,6 +178,12 @@
 }
 
 @media (max-width: 365px) {
+  .app.golden-home #v-home .hd {
+    grid-template-columns: 38px minmax(0, 1fr) 58px 40px;
+    column-gap: 5px;
+    padding: 7px 6px;
+  }
+  .app.golden-home #v-home .hd .logo {width: 38px; height: 38px;}
   .app.golden-home #v-home .hd h1 {font-size: 12px;}
   .app.golden-home #v-home .hd h1 small {font-size: 8px;}
   .app.golden-home #v-home .pill {padding: 5px;max-width: 60px;}
