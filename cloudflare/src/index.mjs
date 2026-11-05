@@ -20,6 +20,7 @@ import {readInviteRules} from './invite-rules.mjs';
 import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
 import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import {readVerifiedRankings} from './verified-rankings.mjs';
+import {settleAutomaticRankingRewards} from './ranking-rewards.mjs';
 import { handleOpeningApp } from './opening.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
@@ -1688,6 +1689,8 @@ export default {
         .catch(error=>console.error('family_sheets_cron_error',error.message)));
       context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true,env,context)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
+      context.waitUntil(settleAutomaticRankingRewards(env.DB,env,Date.now(),context)
+        .catch(error=>console.error('ranking_reward_cron_error',error.message)));
     }
   }
 };
