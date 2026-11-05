@@ -1,6 +1,9 @@
 name: Sharika Agency BD Host isolated staging Worker
 
 on:
+  push:
+    branches: [feature/sharika-agency-salary-targets-integrated-20261106]
+    paths: ['.github/workflows/sharika-agency-host-worker-staging.yml']
   workflow_dispatch:
 
 permissions:
