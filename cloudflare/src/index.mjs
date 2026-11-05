@@ -1272,6 +1272,7 @@ export async function handleRequest(request, env, ctx) {
         return fail('method_not_allowed',405,cors);
       }
       if (parts.length === 5 && action === 'join' && request.method === 'POST') {
+        if(!env.VOICE_ROOMS)return fail('room_presence_unavailable',503,cors);
         const ban=await env.DB.prepare(
           'SELECT banned_until_ms FROM sharika_room_bans WHERE room_id=? AND user_id=?'
         ).bind(roomId,uid).first();
@@ -1290,7 +1291,14 @@ export async function handleRequest(request, env, ctx) {
           await env.DB.prepare(`INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) VALUES(?,?,'member')`)
             .bind(roomId, uid).run();
         }
+        // Joining a room never places someone on a mic. This also resets a
+        // retained owner seat from an older client/session.
+        await env.DB.prepare(
+          'UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?'
+        ).bind(roomId,uid).run();
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
+        await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+          .presenceJoin(uid,roomId);
         // The session boundary is established BEFORE the public arrival
         // event. Prior chat, gift receipts and entries stay in the audit
         // store, but this visitor cannot replay them even with after=0.
@@ -1316,6 +1324,11 @@ export async function handleRequest(request, env, ctx) {
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
       }
       if (parts.length === 5 && action === 'leave' && request.method === 'POST') {
+        // Remove the visible room ID immediately, including for the owner
+        // whose D1 membership remains for permission checks. The coordinator
+        // also blocks any delayed heartbeats from this departed visit.
+        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+          .presenceLeave(uid,roomId);
         if (room.owner_id === uid) {
           await env.DB.prepare('UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?')
             .bind(roomId, uid).run();
@@ -1761,9 +1774,9 @@ export async function handleRequest(request, env, ctx) {
           JOIN sharika_users u ON u.auth_uid=m.user_id
           LEFT JOIN sharika_room_admins ra ON ra.room_id=m.room_id AND ra.user_id=m.user_id
           WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(room.owner_id,roomId).all();
-        // A killed Android process may never call /leave. Show active presence
-        // (with a 90-second grace period for new joins), without mutating the
-        // membership ledger in this read-only room snapshot.
+        // Show only actively joined users. A persistent owner permission row
+        // is never proof that the owner is still physically in the room.
+        // /join registers presence before returning, so no grace is needed.
         let visibleMembers=result.results||[];
         let presence=null;
         try{presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');}
@@ -1771,12 +1784,14 @@ export async function handleRequest(request, env, ctx) {
         if(typeof presence?.presenceRoomMembers==='function') {
           try{
             const live=new Set(await presence.presenceRoomMembers(roomId));
-            const now=Date.now();
-            visibleMembers=visibleMembers.filter(m=>m.user_id===room.owner_id||
-              m.user_id===uid||live.has(m.user_id)||
-              (typeof m.joined_at==='string'&&
-                now-Date.parse(m.joined_at.replace(' ','T')+'Z')<90_000));
-          }catch(error){console.warn('presence_room_members_unavailable',error?.message);}
+            visibleMembers=visibleMembers.filter(m=>live.has(m.user_id));
+          }catch(error){
+            console.warn('presence_room_members_unavailable',error?.message);
+            visibleMembers=[];
+          }
+        }else{
+          // Never display offline IDs when the presence coordinator is down.
+          visibleMembers=[];
         }
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
