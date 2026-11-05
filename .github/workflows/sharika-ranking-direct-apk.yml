@@ -1,0 +1,79 @@
+name: Sharika verified Ranking API direct staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-ranked-agency-integration-20261106
+    paths:
+      - '.github/workflows/sharika-ranking-direct-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-staging-candidate:
+    name: Verify pinned signed APK and publish direct staging link
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require the exact passing ranking APK run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-ranked-agency-integration-20261106'
+          test "$(gh run view 42126143875 --repo soverixnet-design/Sharika --json conclusion --jq .conclusion)" = success
+          test "$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13461535961 --jq .workflow_run.head_sha)" = db062b1c8a4eb22e55f027c5ff57c02fa5324306
+          echo 'SHARIKA_PINNED_SIGNED_RANKING_APK_RUN_OK'
+
+      - name: Download only APK already verified by the build job
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 42126143875
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: candidate
+
+      - name: Inspect actual APK payload and prepare direct file
+        run: |
+          set -euo pipefail
+          test -s candidate/app-debug.apk
+          unzip -tqq candidate/app-debug.apk
+          unzip -p candidate/app-debug.apk assets/connection.js > "$RUNNER_TEMP/ranking-candidate.js"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const bridge=fs.readFileSync(process.env.RUNNER_TEMP+'/ranking-candidate.js','utf8');
+          const required=[
+            '/rankings/verified?period=',
+            "1:{kind:'sending'",
+            "5:{kind:'game'",
+            "6:{kind:'recharge'",
+            "window.sharikaOpenAgencyCenter?.('agency')",
+            'leader.display_id||leader.public_id'
+          ];
+          for(const token of required)if(!bridge.includes(token))
+            throw Error('Signed APK lacks Ranking/Agency requirement: '+token);
+          console.log('SHARIKA_SIGNED_APK_AGENCY_RANKING_INSPECTED');
+          NODE
+          unzip -Z1 candidate/app-debug.apk | grep -Fx 'assets/agency-center.js'
+          install -m 0644 candidate/app-debug.apk candidate/Sharika-Ranking-Agency-API-Staging.apk
+          sha256sum candidate/Sharika-Ranking-Agency-API-Staging.apk
+
+      - name: Publish direct APK as clearly non-production prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=sharika-api-ranking-staging-db062b1c
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Already published this immutable APK; refusing to overwrite'
+            exit 1
+          fi
+          gh release create "$TAG" candidate/Sharika-Ranking-Agency-API-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target db062b1c8a4eb22e55f027c5ff57c02fa5324306 \
+            --title 'Sharika Ranking API + Agency Center (STAGING TEST APK)' \
+            --notes 'STAGING TEST APK ONLY. Signed APK from successful run 42126143875. Original Android Royal Ranking tabs display verified Sending, Recharge and Game Wins once D1 migrations 0065/0066 and the matching staging Worker are approved and deployed. Before those backend steps, new rankings can show unavailable. Existing Agency/Host/Seller features and historical balances are not reset. Rewards and salary exchanges remain disabled; no real wallet payout. Not an AAB or Play Store production build.' \
+            --prerelease
