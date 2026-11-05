@@ -44,8 +44,7 @@
         const label = host?.querySelector('.nm');
         if (face) face.textContent = '👑';
         if (label) label.textContent = 'Owner throne';
-        if (host && Number.isInteger(throne.owner_mic_seat_no))
-          host.onclick = () => window.seatSheet?.(throne.owner_mic_seat_no);
+        if (host) host.onclick = () => window.seatSheet?.(0);
       }
       return result;
     };

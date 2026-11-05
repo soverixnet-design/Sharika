@@ -121,12 +121,13 @@ export async function handleVoiceOperation({
   request, env, room, member, uid, roomId, operation,
   reply, fail, cors, readBody
 }) {
-  const isOwner=room.owner_id===uid;
-  const ownerSuperMic=isOwner&&member.seat_no===null&&env.VOICE_ROOMS
-    ?(await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead()).super_mic
-    :true;
-  const canPublish = (isOwner&&(member.seat_no!==null||ownerSuperMic)) ||
-    (member.seat_no !== null && Number(member.muted) === 0);
+  // The owner has no implicit microphone privilege. Seat zero is a real
+  // opt-in throne recorded by the room coordinator; an empty seat is listen-only.
+  const ownerOnThrone=room.owner_id===uid && member.seat_no===null &&
+    !!env.VOICE_ROOMS && await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+      .ownerThroneRead?.(roomId,uid);
+  const canPublish=Number(member.muted)===0 &&
+    (member.seat_no!==null || ownerOnThrone);
   if (operation === 'config' && request.method === 'GET') {
     if (sfuAvailable(env))
       return reply({provider:'cloudflare_sfu', publish:canPublish,
