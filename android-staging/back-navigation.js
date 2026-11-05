@@ -56,6 +56,10 @@
       return 'exit';
     }
 
+    // BD, Agency and Host Center screens have their own nested back stack.
+    if (typeof window.sharikaCentersBack === 'function' &&
+        window.sharikaCentersBack()) return 'handled';
+
     // Keep Android Back inside the new Royal Shop/Backpack before navigating
     // the profile/home screen behind the full-screen collection.
     var royalMarket = get('sh-royal-market');
