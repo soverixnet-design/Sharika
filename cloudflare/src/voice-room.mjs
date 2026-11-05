@@ -300,7 +300,11 @@ export class SharikaVoiceRoom extends DurableObject {
   }
 
   ownerThroneRead(roomId,uid) {
-    return !!this.ctx.storage.sql.exec(
+    // Persistent owner membership alone does not mean the owner is present.
+    const visiting=this.ctx.storage.sql.exec(
+      'SELECT 1 AS joined FROM room_visits WHERE uid=?',uid
+    ).toArray()[0];
+    return !!visiting && !!this.ctx.storage.sql.exec(
       'SELECT 1 AS seated FROM room_owner_throne WHERE room_id=? AND user_id=?',
       roomId,uid
     ).toArray()[0];
@@ -319,6 +323,9 @@ export class SharikaVoiceRoom extends DurableObject {
   async changeMemberSeat(roomId,uid,seat) {
     return this.withSeatGate(async()=>{
       if(seat===0){
+        if(!this.ctx.storage.sql.exec(
+          'SELECT 1 AS joined FROM room_visits WHERE uid=?',uid
+        ).toArray()[0])return {error:'join_room_first'};
         const owner=await this.sharikaDb.prepare(
           'SELECT owner_id FROM sharika_rooms WHERE id=?'
         ).bind(roomId).first();
