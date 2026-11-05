@@ -44,6 +44,7 @@ test('banner input uses bounded text, colors and safe actions',()=>{
   assert.equal(normalizeBannerInput({title:'Hi',coins:1000000}),null);
   assert.equal(normalizeBannerInput({title:'Hi',sort_order:101}),null);
   assert.equal(normalizeBannerInput({active:true},true).active,1);
+  assert.equal(normalizeBannerInput({title:'Verified Gift Tournament',action:'events'}).action,'events');
   assert.deepEqual(normalizeBannerInput({title:' Hello ',action:'daily'}),{
     title:'Hello',subtitle:'',emoji:'🎉',color_a:'#9b4dff',color_b:'#ff3dc8',
     action:'daily',sort_order:0,active:0
