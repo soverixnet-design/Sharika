@@ -8,6 +8,8 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.ConsoleMessage;
+import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
@@ -28,6 +30,7 @@ public final class RoomQaActivity extends Activity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         getWindow().setStatusBarColor(Color.rgb(7, 3, 26));
         browser = new WebView(this);
+        Log.i("SharikaRoomQa", "{\"phase\":\"native-created\"}");
         browser.getSettings().setJavaScriptEnabled(true);
         browser.getSettings().setDomStorageEnabled(true);
         browser.getSettings().setAllowFileAccess(true);
@@ -35,6 +38,13 @@ public final class RoomQaActivity extends Activity {
         browser.getSettings().setAllowUniversalAccessFromFileURLs(false);
         browser.addJavascriptInterface(new Reporter(), "RoomQaReporter");
         browser.setBackgroundColor(Color.rgb(7, 3, 26));
+        browser.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onConsoleMessage(ConsoleMessage message) {
+                Log.i("SharikaRoomQaJs", message.messageLevel() + " " +
+                    message.sourceId() + ":" + message.lineNumber() + " " + message.message());
+                return true;
+            }
+        });
         browser.setOnApplyWindowInsetsListener((view, insets) -> {
             boolean visible = insets.isVisible(WindowInsets.Type.ime());
             int bottom = visible ? Math.max(0,
@@ -54,13 +64,21 @@ public final class RoomQaActivity extends Activity {
         });
         browser.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView view, String url) {
+                Log.i("SharikaRoomQa", "{\"phase\":\"page-finished\",\"url\":\"" +
+                    url + "\"}");
                 if (!"file:///android_asset/index.html".equals(url)) return;
                 int[] origin = new int[2];
                 browser.getLocationOnScreen(origin);
                 browser.evaluateJavascript("window.__roomQaOriginPx=[" +
                     origin[0] + "," + origin[1] + "];" +
                     "(function(){let s=document.createElement('script');" +
-                    "s.src='./room-qa.js';document.head.appendChild(s);})()", null);
+                    "s.src='./room-qa.js';document.head.appendChild(s);})()", value ->
+                        Log.i("SharikaRoomQa", "{\"phase\":\"qa-script-injected\"}"));
+                browser.postDelayed(() -> browser.evaluateJavascript(
+                    "JSON.stringify({hasOpenRoom:typeof openRoom==='function'," +
+                    "hasQa:!!window.SharikaRoomQa,hasBridge:!!window.RoomQaReporter," +
+                    "roomOn:!!document.getElementById('rw')?.classList.contains('on')})",
+                    value -> Log.i("SharikaRoomQaState", value)), 5000);
             }
         });
         setContentView(browser);
