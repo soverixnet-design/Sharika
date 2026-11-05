@@ -1295,6 +1295,13 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       }
     };
     const rooms={getByName(name){
+      if(name==='sharika:presence:staging'){
+        // The members endpoint now checks live presence before room seats.
+        // Keep the owner's active-room state realistic in the test fixture.
+        return {async presenceRoomMembers(roomId){
+          assert.equal(roomId,'10000001');return [uid];
+        }};
+      }
       assert.equal(name,'sharika:10000001');return coordinator;
     }};
     const headers={Authorization:'Bearer '+await token()};
