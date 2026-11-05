@@ -5,6 +5,7 @@ import { allowSensitiveAction } from './security-rate-limit.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
+import {handleAgencyApp} from './agencies.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
@@ -301,6 +302,9 @@ export async function handleRequest(request, env, ctx) {
     });
     if (path.startsWith('/api/v1/family')) return await handleFamilyApp({
       request, env, uid, path, cors, reply, fail, ctx
+    });
+    if(path.startsWith('/api/v1/agency'))return await handleAgencyApp({
+      request,env,uid,path,cors,reply,fail
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
       request, env, uid, path, cors, reply, fail, ctx
