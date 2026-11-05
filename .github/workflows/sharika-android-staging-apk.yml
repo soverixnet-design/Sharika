@@ -522,7 +522,7 @@ jobs:
             adb logcat -d -v raw -s SharikaRoomQa:I > royal-qa/room-after.jsonl
             jq -Rce 'fromjson? | select(.phase=="ime" and .ready and .keyboardClass and (.imeInset|sub("px$";"")|tonumber)>100)' royal-qa/room-after.jsonl | tail -n 1 > royal-qa/room-ime.json
             test -s royal-qa/room-ime.json
-            jq -n --argfile before royal-qa/room-baseline.json --argfile after royal-qa/room-ime.json 'def abs: if . < 0 then -. else . end; {headerDelta:(($after.header.top-$before.header.top)|abs),ownerDelta:(($after.owner.top-$before.owner.top)|abs),firstSeatDelta:(($after.firstSeat.top-$before.firstSeat.top)|abs),imeInset:$after.imeInset} | if .headerDelta > 9 or .ownerDelta > 9 or .firstSeatDelta > 9 then error("Room seats or header shifted on real IME: " + tostring) else . end' > royal-qa/keyboard-stability-result.json
+            jq -n --slurpfile before royal-qa/room-baseline.json --slurpfile after royal-qa/room-ime.json 'def abs: if . < 0 then -. else . end; ($before[0]) as $b | ($after[0]) as $a | {headerDelta:(($a.header.top-$b.header.top)|abs),ownerDelta:(($a.owner.top-$b.owner.top)|abs),firstSeatDelta:(($a.firstSeat.top-$b.firstSeat.top)|abs),imeInset:$a.imeInset} | if .headerDelta > 9 or .ownerDelta > 9 or .firstSeatDelta > 9 then error("Room seats or header shifted on real IME: " + tostring) else . end' > royal-qa/keyboard-stability-result.json
             adb shell dumpsys input_method > royal-qa/ime-state.txt
             echo 'SHARIKA_REAL_ANDROID_IME_ROOM_HEADER_AND_SEATS_STABLE_OK'
 

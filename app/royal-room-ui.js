@@ -196,8 +196,11 @@
     window.SharikaRoyalKeyboard = Object.freeze({
       setNativeIme(visible, physicalInsetPx = 0) {
         nativeImeOpen = !!visible;
+        // Some Android keyboards draw a suggestions/voice toolbar above the
+        // area reported by Type.ime(). Leave clearance for that toolbar so
+        // the entire composer remains touchable, not hidden under Gboard.
         nativeImeInset = nativeImeOpen ? Math.max(0, Math.round(
-          Number(physicalInsetPx || 0) / (window.devicePixelRatio || 1))) : 0;
+          Number(physicalInsetPx || 0) / (window.devicePixelRatio || 1))) + 56 : 0;
         if (nativeImeOpen) onFocus();
         else onBlur(true);
       }
