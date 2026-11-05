@@ -318,7 +318,7 @@ jobs:
       - name: Verify individual transparent SVIP animations are in the APK
         run: |
           test -s app/src/main/assets/sharika-premium/manifest.json
-          for asset in vip5-animated svip-frame-01 svip-frame-08 svip-medal-01 svip-tag-17 noble-gold-microphone role-frame-64; do
+          for asset in vip5-animated svip-frame-01 svip-frame-08 svip-medal-01 svip-tag-17 noble-gold-microphone role-frame-64 vip-royal-frame-02 vip-royal-badge-05 svip-royal-frame-04 svip-royal-badge-01; do
             test -s "app/src/main/assets/sharika-premium/$asset.webp"
             unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F "assets/sharika-premium/$asset.webp"
           done

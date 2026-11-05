@@ -544,6 +544,10 @@
   SOVERA_FRAMES.push(
     premiumItem('vip5-animated','VIP5 Royal Wings','vip'),
     ...premiumRange('svip-frame',8,'SVIP Animated Frame','svip'),
+    ...[2,3,4,5].map(level=>premiumItem('vip-royal-frame-'+String(level).padStart(2,'0'),
+      'VIP '+level+' Royal Frame','vip')),
+    ...[4,5].map(level=>premiumItem('svip-royal-frame-'+String(level).padStart(2,'0'),
+      'SVIP '+level+' Royal Frame','svip')),
     premiumItem('noble-gold-microphone','Noble Gold Microphone','noble'),
     premiumItem('cs-royal-wings','CS Royal Wings · Official','role'),
     premiumItem('coin-seller-royal','Coin Seller Crown · Official','role'),
@@ -557,6 +561,12 @@
       group:'svip',ms:3800};
   }));
   SOVERA_MEDALS.push(...premiumRange('svip-medal',8,'SVIP Animated Medal','svip'));
+  SOVERA_MEDALS.push(
+    ...[2,3,4,5].map(level=>premiumItem('vip-royal-badge-'+String(level).padStart(2,'0'),
+      'VIP '+level+' Royal Badge','vip')),
+    ...[1,2,3,4,5].map(level=>premiumItem('svip-royal-badge-'+String(level).padStart(2,'0'),
+      'SVIP '+level+' Royal Badge','svip'))
+  );
   SOVERA_TAGS.push(...premiumRange('svip-tag',17,'SVIP Nameplate','svip'));
   function medalArt(key){return SOVERA_MEDALS.find(m=>m.id===key);}
   function nameTagArt(key){return SOVERA_TAGS.find(m=>m.id===key);}

@@ -6,8 +6,8 @@ const folder=new URL('../../android-staging/app/src/main/assets/sharika-premium/
 const items=JSON.parse(readFileSync(new URL('manifest.json',folder),'utf8'));
 
 test('all source ornaments are individual non-empty animated WebP files',()=>{
-  assert.equal(items.length,97);
-  assert.equal(new Set(items.map(item=>item.id)).size,97);
+  assert.equal(items.length,112);
+  assert.equal(new Set(items.map(item=>item.id)).size,112);
   const allowed=new Set(['frame_style','medal_style','name_tag_style']);
   for(const item of items){
     assert.ok(allowed.has(item.kind),item.id);
@@ -23,11 +23,15 @@ test('all source ornaments are individual non-empty animated WebP files',()=>{
 
 test('SVIP, Noble and role ornaments remain separate categories',()=>{
   const count=group=>items.filter(item=>item.group===group).length;
-  assert.equal(count('vip'),1);
-  assert.equal(count('svip'),33);
+  assert.equal(count('vip'),9);
+  assert.equal(count('svip'),40);
   assert.equal(count('noble'),1);
   assert.equal(count('role'),62);
   assert.equal(items.filter(item=>item.id.startsWith('svip-frame-')).length,8);
   assert.equal(items.filter(item=>item.id.startsWith('svip-medal-')).length,8);
   assert.equal(items.filter(item=>item.id.startsWith('svip-tag-')).length,17);
+  assert.equal(items.filter(item=>item.id.startsWith('vip-royal-badge-')).length,4);
+  assert.equal(items.filter(item=>item.id.startsWith('svip-royal-badge-')).length,5);
+  assert.equal(items.filter(item=>item.id.startsWith('vip-royal-frame-')).length,4);
+  assert.equal(items.filter(item=>item.id.startsWith('svip-royal-frame-')).length,2);
 });
