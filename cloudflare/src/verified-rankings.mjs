@@ -12,6 +12,7 @@ const GAME_METRICS={
 const GAME_CODES=new Set([
   'food-wheel','jackpot-fruit','sovera-food','night-food','greedy-wheel','fruit-royale'
 ]);
+export const VERIFIED_GAME_CODES=GAME_CODES;
 const stamp=date=>date.toISOString().slice(0,19).replace('T',' ');
 const publicId=value=>String(value).padStart(8,'0');
 
