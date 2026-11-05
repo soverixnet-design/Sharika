@@ -1,6 +1,6 @@
 # Sharika Admin Media Studio — staging rollout
 
-Status: **code and local tests ready, remote upload blocked** (2026-11-05).
+Status (2026-11-05): **staging API and Admin frontend deployed**; real Super Admin upload and Android playback validation remain pending.
 
 ## What changed
 
@@ -10,9 +10,15 @@ Status: **code and local tests ready, remote upload blocked** (2026-11-05).
 - Room gift receipts send media URLs from the verified gift catalog; room clients display uploaded gift videos and offer a sound button if autoplay is blocked. Equipped custom entry videos and image/audio assets are resolved from the catalog.
 - Public GET/HEAD supports single-byte ranges so mobile video playback can seek.
 
-## Blocker: Cloudflare R2 has not been enabled
+## Verified staging rollout
 
-The connected account `d81cf7c48fb9b36d468cb0a08720cd74` returned Cloudflare error `10042`: **Please enable R2 through the Cloudflare Dashboard** when listing buckets. Do not deploy this binding until R2 is enabled and a dedicated staging bucket has been created.
+- R2 was enabled and the private APAC `sharika-staging-media` bucket was created. No public R2 domain was enabled.
+- Staging D1 migration `0062_admin_media_assets.sql` was applied with additive columns. Post-migration counts: **24 gifts** and **133 cosmetic catalog items**; migration journal shows one application. A D1 Time Travel bookmark was obtained before the update.
+- Staging API and separate Admin frontend were deployed via the guarded GitHub Actions workflow, run **#73**, commit `2a5a8ca3748e6a8c42d3b3bfb7af86dfd31658e1`; the run concluded **success**. Worker settings confirmed the `MEDIA_BUCKET` R2 binding and all prior voice/auth secrets remained present.
+- API `GET /health` returned `ok: true`, `environment: staging`, and `auth_configured: true`. Local Worker dry-run and all **528** backend tests passed.
+- The two previously supplied Luxury gift media files, `18309.mp4` and `18302.mp4`, were recovered. Both contain H.264 video with AAC audio, but **have not been uploaded to R2 or assigned to active catalog gifts**. Do not claim these gifts are live.
+
+Remaining: sign in as verified Super Admin, upload the supplied videos via Media Studio, create two 1,000,000-coin Luxury gift entries (inactive for inspection), then test media playback and ledger behavior on real devices before enabling them and distributing a new APK.
 
 ## Safe rollout checklist
 
