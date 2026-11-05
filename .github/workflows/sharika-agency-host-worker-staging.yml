@@ -1,18 +1,6 @@
 name: Sharika Agency BD Host isolated staging Worker
 
 on:
-  push:
-    branches: [feature/sharika-bd-agency-host-20261104]
-    paths:
-      - '.github/workflows/sharika-agency-host-worker-staging.yml'
-      - 'cloudflare/src/agency.mjs'
-      - 'cloudflare/src/agency-room-time.mjs'
-      - 'cloudflare/src/index.mjs'
-      - 'cloudflare/src/request-body.mjs'
-      - 'cloudflare/src/original-games.mjs'
-      - 'cloudflare/src/sovera-gaddy.mjs'
-      - 'cloudflare/src/greedy-wheel.mjs'
-      - 'cloudflare/test/voice-latency-security.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -24,7 +12,7 @@ concurrency:
 
 jobs:
   agency-api-staging:
-    name: Verify Agency tables and deploy staging API (no D1 writes)
+    name: Verify Agency salary schema and deploy isolated staging API
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: sharika-staging
@@ -43,7 +31,7 @@ jobs:
           node-version: '22'
       - name: Fail closed unless this is the exact isolated staging environment
         run: |
-          test "$GITHUB_REF" = 'refs/heads/feature/sharika-bd-agency-host-20261104'
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-agency-salary-targets-integrated-20261106'
           test -n "$CLOUDFLARE_API_TOKEN"
           node --input-type=module - <<'NODE'
           import {readFileSync} from 'node:fs';
@@ -75,7 +63,7 @@ jobs:
         run: npm run check
       - name: Require existing live staging API health
         run: curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
-      - name: Confirm only the two explicitly approved Agency D1 migrations already exist
+      - name: Confirm known staging Agency baseline before financial migration
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
             --command "SELECT key,host_bps,agency_bps,bd_bps FROM sharika_agency_policy WHERE key='standard'" \
@@ -83,9 +71,23 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
             --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_agency_earnings','sharika_agency_hosts','sharika_agency_room_activity','sharika_agency_presence_cursor') ORDER BY name" \
             | grep -F 'sharika_agency_room_activity' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1" \
+            | grep -F '0062_admin_media_assets.sql' >/dev/null
       - name: Dry-run exact staging Worker without editing D1 or production
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
-      - name: Deploy only sharika-api-staging (migrations already applied separately)
+      # Unrelated legacy migrations remain unapplied. Never run blanket
+      # 'd1 migrations apply', which could touch historic unrelated data.
+      - name: Apply only explicitly approved salary migration 0064
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --file migrations/0064_agency_salary_targets_exchange.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "INSERT INTO d1_migrations(name) SELECT '0064_agency_salary_targets_exchange.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0064_agency_salary_targets_exchange.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE name='sharika_agency_salary_exchanges'" \
+            | grep -F 'sharika_agency_salary_exchanges' >/dev/null
+      - name: Deploy only sharika-api-staging (historic D1 rows preserved)
         run: npx --yes wrangler@4 deploy --config wrangler.jsonc
       - name: Verify updated API remains healthy
         run: curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
@@ -111,7 +113,7 @@ jobs:
           node-version: '22'
       - name: Copy Admin frontend assets without modifying user data
         run: |
-          test "$GITHUB_REF" = 'refs/heads/feature/sharika-bd-agency-host-20261104'
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-agency-salary-targets-integrated-20261106'
           test -n "$CLOUDFLARE_API_TOKEN"
           cp ../admin/index.html src/admin-index.html
           cp ../admin/connection.js src/admin-connection.txt
