@@ -131,11 +131,7 @@
       '<div class="ag-hero">'+image(icon('agency'),'Royal Agency emblem','ag-icon')+
       '<h3>Agency / BD / Host</h3><p>Official approval required</p></div>'+
       '<div class="ag-empty">You are not yet an assigned Agency Owner, BD, or active Host.'+
-      '<p>Apply through the Royal Family system. Your approved Family can be linked as an Agency.</p></div>'+
-      '<button type="button" class="ag-big-button" data-ag-family>Open Royal Family</button>');
-    panel.querySelector('[data-ag-family]').onclick=()=>{
-      close();window.sharikaOpenRoyalFamily?.();
-    };
+      '<p>Contact your BD or Super Admin to request Agency approval. Agency access is assigned by authorized staff.</p></div>');
   }
   function renderBd(data){
     const agencies=data.families||[];
@@ -236,7 +232,7 @@
         await show('agency',agency.id,undefined,false);
       }catch(error){
         notice('Host assignment not saved: '+String(error?.message||error)+
-          '. Host must first accept the Royal Family invitation.');
+          '. Host must first be approved for this Agency.');
       }
     };
   }
