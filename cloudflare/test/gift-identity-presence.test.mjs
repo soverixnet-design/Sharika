@@ -42,6 +42,64 @@ test('top gift parade lasts 10 seconds with avatars and lower receipts remain vi
   assert.match(adapter,/presentVerifiedGift\(event\)/);
 });
 
+test('uploaded Luxury MP4 presents sound-capable fullscreen media and a tap fallback',async()=>{
+  const start=adapter.indexOf('  function giftPresentationCss(doc){');
+  const end=adapter.indexOf('  function decorateRoomPeople(frame){',start);
+  assert.ok(start>=0&&end>start);
+  const callbacks=[],elements=[];
+  let blockAutoplay=true;
+  const element=tag=>{
+    const node={tag,children:[],attrs:{},className:'',textContent:'',muted:false,
+      classList:{add(value){node.className+=' '+value;}},
+      setAttribute(key,value){node.attrs[key]=value;},
+      append(...children){node.children.push(...children);},
+      appendChild(child){node.children.push(child);},
+      insertBefore(child,sibling){node.children.splice(node.children.indexOf(sibling),0,child);},
+      querySelectorAll(selector){return selector==='video,audio'?
+        node.children.filter(child=>child.tag==='video'||child.tag==='audio'):[];},
+      remove(){node.removed=true;},pause(){node.paused=true;},
+      play(){node.playCalls=(node.playCalls||0)+1;
+        return blockAutoplay&&!node.muted?Promise.reject(new Error('gesture required')):
+          Promise.resolve();}
+    };
+    elements.push(node);return node;
+  };
+  const doc={head:{appendChild(){}},body:{children:[],appendChild(node){this.children.push(node);}},
+    createElement:element,getElementById(){return null;}};
+  const frame={document:doc,setTimeout(fn,ms){callbacks.push({fn,ms});}};
+  const ctx=createContext({
+    verifiedMediaUrl:url=>url,isVideoMedia:url=>/\.mp4$/.test(url),
+    formatCompactCoins:value=>String(value),paintVerifiedAvatar(){}
+  });
+  runInContext(adapter.slice(start,end),ctx);
+  ctx.frame=frame;
+  ctx.gift={id:25,tab:1,name:'Royal Wedding',emoji:'💍',quantity:1,
+    sender_name:'Sender',recipient_name:'Receiver',price_coins:1000000,
+    animation_url:'https://example.test/royal-wedding.mp4',audio_url:''};
+  runInContext('queueGiftPresentation(frame,gift,true)',ctx);
+  await new Promise(resolve=>setImmediate(resolve));
+  const overlay=doc.body.children[0];
+  assert.match(overlay.className,/sh-gift-parade-video/);
+  assert.equal(overlay.attrs['aria-label'],'Large gift celebration');
+  const video=elements.find(node=>node.tag==='video');
+  assert.equal(video.src,ctx.gift.animation_url);
+  assert.equal(video.playsInline,true);
+  assert.equal(video.autoplay,true);
+  assert.equal(video.muted,true,'blocked autoplay must restart muted for the receiver');
+  assert.equal(video.playCalls,2);
+  assert.ok(elements.some(node=>node.attrs['aria-label']==='Play gift sound'));
+  assert.deepEqual(callbacks.map(x=>x.ms),[10000,10000]);
+  blockAutoplay=false;
+  const sound=elements.find(node=>node.attrs['aria-label']==='Play gift sound');
+  sound.onclick();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(video.muted,false);
+  assert.equal(video.playCalls,3);
+  assert.equal(sound.removed,true);
+  callbacks[1].fn();
+  assert.equal(overlay.removed,true);
+});
+
 test('room roster uses expiring verified presence without deleting D1 members',()=>{
   assert.match(room,/async presenceRoomMembers\(roomId\)/);
   assert.match(room,/last_seen>=\? LIMIT 100/);
