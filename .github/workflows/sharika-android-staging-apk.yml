@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/sharika-android-staging-20261030
+      - fix/sharika-throne-mic-gift-overlay-20261105
       - feature/sharika-original-games-cards-20261030
       - feature/sharika-lucky-gifts-20261030
       - feature/sharika-staff-seller-entry-20261031
@@ -774,4 +775,48 @@ jobs:
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
             --title 'Sharika BD Agency Host — Staging APK' \
             --notes 'Staging test APK. Approved adult Agency Owners automatically become active Hosts; owners can assign other approved adult Agency members as Hosts. Main profile has separate Agency and Host earnings entries. Host 40%, Agency 10%, BD 5%, 100 diamonds to 40 coins. Real main IDs, avatars and server-recorded daily room time. Production unchanged; staging D1 history preserved. Android emulator and Worker checks passed.' \
+            --prerelease
+
+  throne-gift-direct-apk:
+    name: Publish isolated Owner throne and Luxury gift staging APK
+    if: github.ref == 'refs/heads/fix/sharika-throne-mic-gift-overlay-20261105'
+    needs: [debug-apk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download this run's verified staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify exact fixes are packaged
+        run: |
+          set -euo pipefail
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/connection.js | grep -F 'shownGiftCelebrations' >/dev/null
+          unzip -p verified-apk/app-debug.apk assets/connection.js | grep -F 'owner_throne_seated' >/dev/null
+          unzip -p verified-apk/app-debug.apk assets/royal-room-ui.js | grep -F 'seatSheet?.(0)' >/dev/null
+          cp verified-apk/app-debug.apk verified-apk/Sharika-Owner-Throne-Luxury-Gift-Staging.apk
+          cd verified-apk
+          sha256sum Sharika-Owner-Throne-Luxury-Gift-Staging.apk > Sharika-Owner-Throne-Luxury-Gift-Staging.apk.sha256
+      - name: Publish new never-overwritten direct APK prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="sharika-throne-gift-staging-${GITHUB_SHA:0:8}"
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'The staging release tag already exists; refusing overwrite'
+            exit 1
+          fi
+          gh release create "$TAG" \
+            verified-apk/Sharika-Owner-Throne-Luxury-Gift-Staging.apk \
+            verified-apk/Sharika-Owner-Throne-Luxury-Gift-Staging.apk.sha256 \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Owner Throne & Luxury Gift — Test APK' \
+            --notes 'Isolated Android staging debug APK for device QA only. Contains explicit owner-throne seating, mic eligibility UI, transparent-style Luxury gift overlay, and transaction-level gift-animation deduplication. Backend throne APIs must also be deployed to staging for full two-account voice testing. Not a Play Store release; production remains unchanged.' \
             --prerelease
