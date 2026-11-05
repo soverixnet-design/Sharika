@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.text.InputType;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
@@ -92,6 +93,21 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(BACKGROUND);
+        // Keep the isolated staging test screen clear of status/navigation
+        // bars and display cutouts on Android 15+ as well.
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            scroll.setOnApplyWindowInsetsListener((view, insets) -> {
+                android.graphics.Insets safe = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                if (view.getPaddingLeft() != safe.left
+                    || view.getPaddingTop() != safe.top
+                    || view.getPaddingRight() != safe.right
+                    || view.getPaddingBottom() != safe.bottom) {
+                    view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                }
+                return insets;
+            });
+        }
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
