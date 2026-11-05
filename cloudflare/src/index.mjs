@@ -5,7 +5,7 @@ import { allowSensitiveAction } from './security-rate-limit.mjs';
 import { handleVoiceOperation, forceCloseMicrophone } from './sfu.mjs';
 import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,handleRoomKickHistory,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
-import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
+import { handleFamilyApp } from './family.mjs';
 import {handleAgencyApp,agencyGiftEarningStatements} from './agency.mjs';
 import {MUSIC_LIBRARY_OBJECT,musicTitle} from './music-library.mjs';
 import {recordAgencyRoomActivity} from './agency-room-time.mjs';
@@ -1651,9 +1651,9 @@ export async function handleRequest(request, env, ctx) {
             ).bind(uid,requestId,roomId,room.owner_id,
               roomWeekStartUTC(Date.now()),regularRewardHundredths));
           }
-          // Family and BD Crystal commissions settle atomically with this gift.
-          // These entries are not spendable coins and exclude Lucky gifts.
-          statements.push(...familyGiftCommissionStatements(env.DB,uid,requestId,gift.tab));
+          // Family was retired from the user-facing earning program. Its
+          // historic Crystal records stay intact, but new gifts do not earn
+          // overlapping Family commissions alongside Agency salaries.
           // Pending Host/Agency/BD earnings are recorded with the same gift
           // transaction. This never credits a spendable wallet automatically.
           statements.push(...agencyGiftEarningStatements(env.DB,uid,requestId,gift.tab));

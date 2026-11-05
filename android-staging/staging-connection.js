@@ -2345,7 +2345,8 @@
     }finally{if(save.isConnected)save.disabled=false;}
   },true);
 
-  // Royal Family card lives under Account Features. BD entry is server-permission gated.
+  // Agency/BD/Host cards live under Account Features. Historical Family
+  // records remain in D1 for the verified Agency membership relationship.
   const familyStyles=document.createElement('style');
   familyStyles.id='sh-family-royal-css';
   familyStyles.textContent=[
@@ -2469,10 +2470,6 @@
     document.getElementById('sh-family-entries')?.remove();
     const entries=document.createElement('section');entries.id='sh-family-entries';
     entries.setAttribute('aria-label','Agency, Hosts and BD account features');
-    const family=document.createElement('button');family.type='button';
-    family.innerHTML='<span class="sh-fam-icon">'+famIcon('agency')+'</span><span>Royal Family'+
-      '<small>Members • Gift Records • Crystal Wallet</small></span>';
-    family.onclick=openRoyalFamily;entries.appendChild(family);
     const bd=document.createElement('button');bd.type='button';bd.id='sh-bd-entry';
     bd.innerHTML='<img class="sh-agency-tile-icon" src="./sharika-agency-icons/bd.webp" alt="">'+
       '<span>BD Center<small>Agencies • 5% Pending Earnings • Reports</small></span>';
@@ -2490,7 +2487,7 @@
     countryButton.innerHTML='<span class="sh-fam-icon">🌍</span><span>Country / Location'+
       '<small>Set your own country • profile and room card • no GPS</small></span>';
     countryButton.onclick=openManualCountryPicker;entries.appendChild(countryButton);
-    // Keep Family/BD inside the main profile Account Features section, not
+    // Keep BD/Agency/Host inside the main profile Account Features section, not
     // after the profile page where the bottom navigation may cover the icon.
     const accountSection=root.querySelector('.profile-royal-page .profile-account');
     (accountSection||root.querySelector('.profile-royal-page')||root).appendChild(entries);
@@ -5442,18 +5439,10 @@
         country.textContent='🌍 '+String(member.country);
         meta.appendChild(country);
       }
-      if(member.family){
-        const tag=document.createElement('button');
-        tag.type='button';tag.className='sh-royal-room-family-link';
-        tag.textContent='👑 '+String(member.family.name);
-        tag.onclick=async()=>{
-          if(String(member.family.status)!=='active')return toast('Family is suspended');
-          if(String(member.id)===String(profile?.public_id)){openRoyalFamily();return;}
-          if(!window.confirm('Request to join '+member.family.name+'? Family Owner approval is required.'))return;
-          try{await api('POST','/family/join',{family_id:Number(member.family.id)});
-            toast('Family Join Request sent ✓');}
-          catch(error){toast('Family request failed: '+errText(error));}
-        };
+      if(member.family?.status==='active'){
+        const tag=document.createElement('span');
+        tag.className='sh-royal-room-family-link';
+        tag.textContent='👑 Agency · '+String(member.family.name);
         meta.appendChild(tag);
       }
     }
@@ -10435,7 +10424,7 @@
         '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
         '<div class="sh-royal-idline"><span class="sh-royal-user-id">ID: '+sellerEscape(displayId)+'</span>'+        (person.bd_active?'<span class="sh-royal-role-tag sh-royal-bd">✦ BD</span>':'')+        (person.seller_active?'<span class="sh-royal-role-tag sh-royal-seller">✦ Seller</span>':'')+        '</div><div class="meta">'+
         (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
-        (person.family?'<span style="color:#f9d48b">👑 '+sellerEscape(person.family.name)+'</span>':'')+
+        (person.family?.status==='active'?'<span style="color:#f9d48b">👑 Agency · '+sellerEscape(person.family.name)+'</span>':'')+
         '</div></div><div class="lvs">'+
         '<div class="lvc w"><b>💰 Wealth level</b><div class="big3">'+
         wealth+'</div><small>Verified profile level</small></div>'+
@@ -10443,11 +10432,9 @@
         charm+'</div><small>Verified profile level</small></div></div>'+
         '<div class="sh-profile-note">This is the real Sharika profile for ID '+sellerEscape(displayId)+
         '. Only server-verified details are shown.</div>'+
-        (person.family?'<div class="sh-profile-note" style="border:1px solid #cc9d4b;border-radius:14px;padding:12px">'+
-          '👑 Royal Family · '+sellerEscape(person.family.name)+' · #'+sellerEscape(person.family.id)+
-          ' · '+sellerEscape(person.family.status)+
-          '<button id="sh-ranked-family-join" type="button">'+
-          (id===profile?.public_id?'Open My Family':'Request to Join Family')+'</button></div>':'')+
+        (person.family?.status==='active'?'<div class="sh-profile-note" style="border:1px solid #cc9d4b;border-radius:14px;padding:12px">'+
+          '👑 Agency · '+sellerEscape(person.family.name)+' · #'+sellerEscape(person.family.id)+
+          '</div>':'')+
         '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
         'Loading follow status…</button></div>'+
         '</div>';
@@ -10455,15 +10442,6 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       decorateVerifiedPublicProfile(root,person);
-      root.querySelector('#sh-ranked-family-join')?.addEventListener('click',async()=>{
-        if(id===profile?.public_id){openRoyalFamily();return;}
-        if(person.family?.status!=='active')return toast('This Family is suspended');
-        if(!window.confirm('Send a request to join '+person.family.name+'? The Owner must approve.'))return;
-        try{
-          await api('POST','/family/join',{family_id:Number(person.family.id)});
-          toast('Family Join Request sent ✓');
-        }catch(error){toast('Could not request Family join: '+errText(error));}
-      });
       mountBondDetails(root,canonicalId,person).catch(error=>
         console.warn('Ranked ID bond details:',errText(error)));
       const follow=root.querySelector('#sh-ranked-follow');

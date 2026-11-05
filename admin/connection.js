@@ -51,12 +51,13 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['profileDesigner','🖼️','Live Profile Designer']);
   }
-  // Keep the Family & BD controls next to room rewards. On narrow screens the
-  // former last menu item was buried below System and easily missed.
-  if(!NAV_ALL.some(item=>item[0]==='family')){
+  // Retire the Family navigation without deleting any historic Family data.
+  const historicFamilyIndex=NAV_ALL.findIndex(item=>item[0]==='family');
+  if(historicFamilyIndex>=0)NAV_ALL.splice(historicFamilyIndex,1);
+  if(!NAV_ALL.some(item=>item[0]==='agency')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='events');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
-      ['family','👑','BD · Agency · Host']);
+      ['agency','👑','BD · Agency · Host']);
   }
   if(!NAV_ALL.some(item=>item[0]==='musicLibrary')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='rooms');
@@ -3092,6 +3093,120 @@
     '#sh-family-admin small{opacity:.85}'
   ].join('');
   document.head.appendChild(familyAdminCss);
+  P.agency=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div id="sh-family-admin"><h2>👑 BD · Agency · Host Center</h2>'+
+      '<p class="n">Loading verified D1 policy and salary targets…</p></div>';
+    const parent=root.querySelector('#sh-family-admin');
+    let data,legacy;
+    try{
+      [data,legacy]=await Promise.all([api('GET','agency'),
+        api('GET','family').catch(()=>({agents:[],families:[]}))]);
+    }catch(error){parent.innerHTML=card('Agency service unavailable',error.message);return;}
+    if(!parent.isConnected)return;
+    const p=data.policy||{},s=data.salary_config||{},superAdmin=role==='super';
+    const control=(label,id,value,min,max)=>'<label>'+esc(label)+'<input id="'+id+
+      '" type="number" min="'+min+'" max="'+max+'" value="'+esc(value)+'"></label>';
+    const rows=(columns,records)=>'<div class="sh-fam-scroll"><table><thead><tr>'+
+      columns.map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>'+
+      (records.map(cols=>'<tr>'+cols.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')||
+        '<tr><td colspan="'+columns.length+'">No verified records yet</td></tr>')+
+      '</tbody></table></div>';
+    const section=(name,html)=>'<section class="sh-fam-card"><h3>'+esc(name)+'</h3>'+html+'</section>';
+    parent.innerHTML='<h2>👑 BD · Agency · Host Center</h2>'+
+      '<p class="n">Family has been removed from navigation; existing Agency membership and '+
+      'historic financial records are preserved. All values below come from Cloudflare D1.</p>'+
+      section('Verified gift policy • same recipient gift base',
+        '<div class="sh-fam-cols">'+
+        control('Host salary (4000 = 40%)','ag2-host',p.host_bps,0,8000)+
+        control('Agency commission (1000 = 10%)','ag2-agency',p.agency_bps,0,5000)+
+        control('BD commission (500 = 5%)','ag2-bd',p.bd_bps,0,3000)+
+        '<label>Salary settlement period<select id="ag2-mode">'+
+        '<option value="daily">Daily</option><option value="weekly">Weekly</option>'+
+        '<option value="monthly">Monthly</option></select></label>'+
+        '<label><input type="checkbox" id="ag2-enabled" '+(p.enabled?'checked':'')+
+        '> Verified Agency earnings enabled</label></div>'+
+        '<p class="n">Changes apply to future settled gifts only. Existing salary entries '+
+        'retain their earning percentage.</p>'+
+        (superAdmin?'<button class="btn" id="ag2-policy-save">Save Gift Commission Policy</button>':''))+
+      section('Salary Wallet • targets & exchange permission',
+        '<div class="sh-fam-cols">'+
+        control('Coins for $1 reference','ag2-usd',s.coins_per_usd||500000,1,1000000000)+
+        '<label>Target tiers, comma-separated coins<input id="ag2-targets" value="'+
+        esc((data.targets||[]).join(', '))+'" placeholder="5000000, 10000000, 20000000"></label>'+
+        '<label><input type="checkbox" id="ag2-salary-enabled" '+
+        (s.exchange_enabled?'checked':'')+'> Allow completed-period Salary Exchange</label></div>'+
+        '<p class="n">Initial first target: 5M gift coins. Admin may change any target. '+
+        'Salary payouts exchange to main coins, never direct USD. Permission starts OFF. '+
+        'Main Wallet Diamond Exchange is a separate editable rate.</p>'+
+        (superAdmin?'<button class="btn" id="ag2-salary-save">Save Targets & Salary Permission</button>':''))+
+      section('Assigned Hosts',rows(['Agency #','Host ID','Name','State'],
+        (data.hosts||[]).map(h=>[esc(h.family_id),esc(h.public_id),esc(h.name),
+          h.active?'Active':'Inactive']))+
+        (superAdmin?'<div class="sh-fam-cols"><label>Agency #'+
+          '<input id="ag2-agency-id" type="number" min="1"></label><label>Approved Host ID'+
+          '<input id="ag2-host-id" maxlength="8" inputmode="numeric"></label></div>'+
+          '<button class="btn" id="ag2-host-save">Assign Host</button>':''))+
+      section('BD Management',rows(['BD ID','Name','Active','Can Grant Agency'],
+        (legacy.agents||[]).map(a=>[esc(a.public_id),esc(a.name),
+          a.active?'Yes':'No',a.can_grant?'Yes':'No']))+
+        (superAdmin?'<div class="sh-fam-cols"><label>BD User ID'+
+          '<input id="ag2-bd-id" maxlength="8" inputmode="numeric"></label>'+
+          '<label><input type="checkbox" id="ag2-bd-active" checked> Active BD</label>'+
+          '<label><input type="checkbox" id="ag2-bd-can-grant" checked> Can grant Agency</label></div>'+
+          '<button class="btn" id="ag2-bd-save">Save BD Role</button>':''))+
+      section('Create Agency',superAdmin?'<div class="sh-fam-cols">'+
+        '<label>Owner ID<input id="ag2-owner-id" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Active BD ID<input id="ag2-owner-bd-id" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Agency name<input id="ag2-name" maxlength="40"></label></div>'+
+        '<button class="btn" id="ag2-create">Create Verified Agency</button>':
+        '<p class="n">Super Admin controls Agency creation.</p>')+
+      '<p id="ag2-status" role="status" aria-live="polite"></p>';
+    byId('ag2-mode').value=p.settlement_mode||'weekly';
+    const notice=message=>{const status=byId('ag2-status');if(status)status.textContent=message;};
+    const save=async(method,path,payload)=>{
+      notice('Saving to verified D1…');
+      try{await api(method,path,payload);notice('Saved ✓');await P.agency();}
+      catch(error){notice('Not saved: '+String(error?.message||error));}
+    };
+    byId('ag2-policy-save')?.addEventListener('click',()=>{
+      const h=Number(byId('ag2-host').value),a=Number(byId('ag2-agency').value),
+        b=Number(byId('ag2-bd').value);
+      if(![h,a,b].every(Number.isSafeInteger)||h<0||a<0||b<0||h+a+b>10000)
+        return notice('Invalid commission percentage.');
+      save('PATCH','agency/policy',{enabled:byId('ag2-enabled').checked,
+        host_bps:h,agency_bps:a,bd_bps:b,settlement_mode:byId('ag2-mode').value});
+    });
+    byId('ag2-salary-save')?.addEventListener('click',()=>{
+      const usd=Number(byId('ag2-usd').value);
+      const targets=byId('ag2-targets').value.split(',').map(x=>Number(x.trim()));
+      if(!Number.isSafeInteger(usd)||usd<1||targets.length<1||targets.length>12||
+        targets.some((x,i)=>!Number.isSafeInteger(x)||x<1||x>1000000000000||
+          (i>0&&x<=targets[i-1])))return notice('Targets must be unique, ascending whole coin amounts.');
+      save('PATCH','agency/salary/policy',{expected_version:s.version,coins_per_usd:usd,
+        exchange_enabled:byId('ag2-salary-enabled').checked,targets});
+    });
+    byId('ag2-host-save')?.addEventListener('click',()=>{
+      const id=byId('ag2-host-id').value.trim(),agencyId=Number(byId('ag2-agency-id').value);
+      if(!/^[0-9]{8}$/.test(id)||!Number.isSafeInteger(agencyId)||agencyId<1)
+        return notice('Enter a verified 8-digit Host ID and Agency number.');
+      save('POST','agency/hosts/assign',{agency_id:agencyId,host_public_id:id,active:true});
+    });
+    byId('ag2-bd-save')?.addEventListener('click',()=>{
+      const id=byId('ag2-bd-id').value.trim();
+      if(!/^[0-9]{8}$/.test(id))return notice('Enter a verified 8-digit BD ID.');
+      save('POST','family/bd',{public_id:id,active:byId('ag2-bd-active').checked,
+        can_grant:byId('ag2-bd-can-grant').checked});
+    });
+    byId('ag2-create')?.addEventListener('click',()=>{
+      const owner=byId('ag2-owner-id').value.trim(),bd=byId('ag2-owner-bd-id').value.trim(),
+        name=byId('ag2-name').value.trim();
+      if(!/^[0-9]{8}$/.test(owner)||!/^[0-9]{8}$/.test(bd)||name.length<3)
+        return notice('Enter the Agency name, Owner ID and active BD ID.');
+      save('POST','family/create',{owner_public_id:owner,bd_public_id:bd,name,
+        request_id:'admin:'+crypto.randomUUID()});
+    });
+  };
   P.family=async function(){
     const root=byId('pg');
     root.innerHTML='<div id="sh-family-admin"><h2>👑 BD · Agency · Host</h2>'+
