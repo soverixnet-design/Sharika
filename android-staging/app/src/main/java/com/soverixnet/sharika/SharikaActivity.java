@@ -260,6 +260,19 @@ public final class SharikaActivity extends Activity {
         // screen on slower phones before the Royal page was decoded.
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(7, 3, 26));
+        // targetSdk 36 draws behind the Android status bar on modern phones.
+        // Reserve that inset for the native WebView and branded opening layer;
+        // CSS safe-area env() is often zero in an embedded Android WebView.
+        // Keep the bottom edge unchanged for the existing room mic/IME flow.
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            root.setOnApplyWindowInsetsListener((view, insets) -> {
+                int statusTop = insets.getInsets(WindowInsets.Type.statusBars()).top;
+                if (view.getPaddingTop() != statusTop) {
+                    view.setPadding(0, statusTop, 0, 0);
+                }
+                return insets;
+            });
+        }
         root.addView(browser, new FrameLayout.LayoutParams(-1, -1));
         FrameLayout opening = new FrameLayout(this);
         opening.setBackground(new GradientDrawable(
