@@ -51,6 +51,7 @@ on:
       - feature/sharika-bd-agency-host-20261104
     paths:
       - 'android-staging/**'
+      - 'app/golden-home.css'
       - 'app/royal-room-ui.js'
       - 'app/royal-room-ui.css'
       - '.github/workflows/sharika-android-staging-apk.yml'
