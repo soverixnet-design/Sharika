@@ -508,7 +508,9 @@ jobs:
             adb logcat -d -v brief -s SharikaRoomQaJs:I SharikaRoomQaState:I chromium:V AndroidRuntime:E > royal-qa/room-qa-chromium.txt
             adb exec-out screencap -p > royal-qa/room-qa-before-assertion.png
             adb shell dumpsys activity activities > royal-qa/room-qa-activity.txt
-            jq -ce 'select(.phase=="before" and .ready and (.fingerprint|contains("QA13")))' royal-qa/room-before.jsonl | tail -n 1 > royal-qa/room-baseline.json
+            # Android logcat may prepend "--------- beginning of main"; read
+            # JSON records without failing on that non-JSON metadata line.
+            jq -Rce 'fromjson? | select(.phase=="before" and .ready and (.fingerprint|contains("QA13")))' royal-qa/room-before.jsonl | tail -n 1 > royal-qa/room-baseline.json
             test -s royal-qa/room-baseline.json
             adb exec-out screencap -p > royal-qa/room-keyboard-before.png
             INPUT_X="$(jq -r '.tapX' royal-qa/room-baseline.json)"
@@ -519,7 +521,7 @@ jobs:
             sleep 6
             adb exec-out screencap -p > royal-qa/room-keyboard-after.png
             adb logcat -d -v raw -s SharikaRoomQa:I > royal-qa/room-after.jsonl
-            jq -ce 'select(.phase=="ime" and .ready and .keyboardClass and (.imeInset|sub("px$";"")|tonumber)>100)' royal-qa/room-after.jsonl | tail -n 1 > royal-qa/room-ime.json
+            jq -Rce 'fromjson? | select(.phase=="ime" and .ready and .keyboardClass and (.imeInset|sub("px$";"")|tonumber)>100)' royal-qa/room-after.jsonl | tail -n 1 > royal-qa/room-ime.json
             test -s royal-qa/room-ime.json
             jq -n --argfile before royal-qa/room-baseline.json --argfile after royal-qa/room-ime.json '
               def abs: if . < 0 then -. else . end;
