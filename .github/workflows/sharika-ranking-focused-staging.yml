@@ -1,0 +1,209 @@
+name: Sharika verified Ranking guarded staging rollout
+
+on:
+  push:
+    branches:
+      - feature/sharika-ranked-agency-integration-20261106
+    paths:
+      - '.github/workflows/sharika-ranking-focused-staging.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  ranking-staging:
+    name: Add only verified ranking 0065-0066 then publish staging API and Admin
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify exact isolated staging resources, disabled payouts, and branch
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const api=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          const admin=JSON.parse(readFileSync('cloudflare/wrangler.admin.jsonc','utf8'));
+          const db=api.d1_databases?.[0];
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-ranked-agency-integration-20261106'||
+             !process.env.CLOUDFLARE_API_TOKEN||
+             api.name!=='sharika-api-staging'||api.main!=='src/voice-worker.mjs'||
+             api.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             api.vars?.SHARIKA_ENV!=='staging'||
+             api.vars?.SHARIKA_AUTOMATIC_RANKING_REWARDS_ENABLED!=='false'||
+             api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             api.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             api.keep_vars!==true||api.d1_databases?.length!==1||
+             db.binding!=='DB'||db.database_name!=='sharika-staging'||
+             db.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             api.durable_objects?.bindings?.[0]?.name!=='VOICE_ROOMS'||
+             admin.name!=='sharika-admin-staging'||
+             admin.account_id!==api.account_id||
+             admin.vars?.SHARIKA_ENV!=='staging'||
+             admin.services?.[0]?.binding!=='SHARIKA_API'||
+             admin.services?.[0]?.service!=='sharika-api-staging')
+            throw Error('Unexpected production/staging binding or enabled finance flag; refusing rollout');
+          console.log('EXACT_STAGING_AND_PAUSED_FINANCE_GUARD_OK');
+          NODE
+
+      - name: Verify backend, admin, SQL trigger and Android adapter tests
+        run: |
+          npm --prefix cloudflare run check
+          python3 cloudflare/test/verified-activity-sql.test.py
+
+      - name: Dry-run both Worker bundles before touching the database
+        run: |
+          set -euo pipefail
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --check admin/connection.js
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc \
+            --outdir "$RUNNER_TEMP/ranking-api-dry-run"
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc \
+            --outdir "$RUNNER_TEMP/ranking-admin-dry-run"
+
+      - name: Capture recovery bookmark and financial history baseline
+        run: |
+          node --input-type=module - <<'NODE'
+          import {writeFileSync} from 'node:fs';
+          const root='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a';
+          const headers={Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'};
+          async function call(path,body){
+            const response=await fetch(root+path,{method:body?'POST':'GET',headers,
+              ...(body?{body:JSON.stringify(body)}:{})});
+            const result=await response.json();
+            if(!response.ok||!result.success||!result.result)
+              throw Error('D1 preflight unavailable');
+            return result.result;
+          }
+          const query=async sql=>(await call('/query',{sql}))[0]?.results?.[0];
+          const baseline=await query("SELECT "+
+            "(SELECT COUNT(*) FROM d1_migrations) AS migrations,"+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE name IN ("+
+            "'0059_agency_host_earnings.sql','0060_agency_room_activity.sql',"+
+            "'0061_agency_owner_auto_host.sql','0062_admin_media_assets.sql',"+
+            "'0064_agency_salary_targets_exchange.sql')) AS agency_migrations,"+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE name IN ("+
+            "'0065_verified_activity_events.sql','0066_automatic_ranking_rewards.sql')) AS ranking_migrations,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ("+
+            "'sharika_gift_transactions','sharika_wallet_ledger',"+
+            "'sharika_game_bets','sharika_original_game_bets',"+
+            "'sharika_greedy_bets','sharika_fruit_royale_bets','sharika_gaddy_bets')) AS sources,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ("+
+            "'sharika_verified_activity_events','sharika_ranking_reward_policies')) AS ranking_tables,"+
+            "(SELECT COUNT(*) FROM sharika_wallet_ledger) AS wallet_ledger,"+
+            "(SELECT COUNT(*) FROM sharika_gift_transactions) AS gifts,"+
+            "(SELECT COUNT(*) FROM sharika_game_bets) AS game_bets,"+
+            "(SELECT COUNT(*) FROM sharika_users) AS users");
+          if(!baseline||baseline.migrations!==60||baseline.agency_migrations!==5||
+             baseline.ranking_migrations!==0||baseline.sources!==7||baseline.ranking_tables!==0||
+             [baseline.wallet_ledger,baseline.gifts,baseline.game_bets,baseline.users]
+               .some(n=>!Number.isSafeInteger(n)||n<0))
+            throw Error('Live D1 no longer matches reviewed preflight; refusing rollout');
+          const salary=await query("SELECT exchange_enabled FROM sharika_agency_salary_config WHERE key='standard'");
+          if(salary?.exchange_enabled!==0)
+            throw Error('Agency salary exchange is active: do not change financial schema');
+          const bookmark=await call('/time_travel/bookmark');
+          if(!bookmark.bookmark)throw Error('D1 recovery bookmark unavailable');
+          writeFileSync(process.env.RUNNER_TEMP+'/ranking-staging-baseline.json',
+            JSON.stringify({...baseline,bookmark:bookmark.bookmark}),{mode:0o600});
+          console.log('RECOVERY_BOOKMARK_AND_BASELINE_CAPTURED; no live data printed');
+          NODE
+
+      - name: Isolate only the two approved additive ranking migrations
+        run: |
+          set -euo pipefail
+          mkdir -p cloudflare/.sharika-ranking-approved
+          cp cloudflare/migrations/0065_verified_activity_events.sql cloudflare/.sharika-ranking-approved/
+          cp cloudflare/migrations/0066_automatic_ranking_rewards.sql cloudflare/.sharika-ranking-approved/
+          test "$(find cloudflare/.sharika-ranking-approved -type f -name '*.sql' | wc -l)" -eq 2
+          node --input-type=module - <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const config=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          config.d1_databases[0].migrations_dir='.sharika-ranking-approved';
+          writeFileSync('cloudflare/wrangler.ranking-staging-only.jsonc',JSON.stringify(config,null,2));
+          NODE
+
+      - name: Migrate only 0065 and 0066 with D1 journal tracking
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 migrations list sharika-staging --remote \
+            --config cloudflare/wrangler.ranking-staging-only.jsonc
+          npx --yes wrangler@4 d1 migrations apply sharika-staging --remote \
+            --config cloudflare/wrangler.ranking-staging-only.jsonc
+
+      - name: Verify historical finance preserved and ranking rewards still off
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const before=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/ranking-staging-baseline.json','utf8'));
+          const root='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          async function query(sql){
+            const r=await fetch(root,{method:'POST',headers:{
+              Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+              'Content-Type':'application/json'},body:JSON.stringify({sql})});
+            const j=await r.json();
+            if(!r.ok||!j.success||!j.result?.[0]?.success)throw Error('Post-migration D1 check failed');
+            return j.result[0].results?.[0];
+          }
+          const after=await query("SELECT "+
+            "(SELECT COUNT(*) FROM d1_migrations WHERE name IN ("+
+            "'0065_verified_activity_events.sql','0066_automatic_ranking_rewards.sql')) AS applied,"+
+            "(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ("+
+            "'sharika_verified_activity_events','sharika_ranking_reward_policies',"+
+            "'sharika_ranking_reward_batches','sharika_ranking_reward_awards',"+
+            "'sharika_ranking_reward_control')) AS ranking_tables,"+
+            "(SELECT paused FROM sharika_ranking_reward_control WHERE id=1) AS paused,"+
+            "(SELECT COUNT(*) FROM sharika_ranking_reward_batches) AS batches,"+
+            "(SELECT COUNT(*) FROM sharika_ranking_reward_awards) AS awards,"+
+            "(SELECT COUNT(*) FROM sharika_ranking_reward_policies) AS policies,"+
+            "(SELECT exchange_enabled FROM sharika_agency_salary_config WHERE key='standard') AS salary_exchange,"+
+            "(SELECT COUNT(*) FROM sharika_wallet_ledger) AS wallet_ledger,"+
+            "(SELECT COUNT(*) FROM sharika_gift_transactions) AS gifts,"+
+            "(SELECT COUNT(*) FROM sharika_game_bets) AS game_bets,"+
+            "(SELECT COUNT(*) FROM sharika_users) AS users");
+          if(!after||after.applied!==2||after.ranking_tables!==5||after.paused!==1||
+             after.batches!==0||after.awards!==0||after.policies!==0||after.salary_exchange!==0)
+            throw Error('Ranking schema or finance kill switch was not safely installed');
+          for(const key of ['wallet_ledger','gifts','game_bets','users'])
+            if(!Number.isSafeInteger(after[key])||after[key]<before[key])
+              throw Error('Historical source rows missing after migration: '+key);
+          console.log('RANKING_0065_0066_ONLY; HISTORICAL_FINANCE_PRESERVED; PAYOUTS_PAUSED');
+          NODE
+
+      - name: Publish only staging API and linked staging Admin panel
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+
+      - name: Confirm both staging health endpoints and Admin Ranking interface
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 4 --max-time 20 \
+            https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+          curl --fail --silent --show-error --retry 4 --max-time 20 \
+            https://sharika-admin-staging.soverixnet.workers.dev/health >/dev/null
+          curl --fail --silent --show-error --retry 4 --max-time 20 \
+            https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js |
+            grep -F 'ranking-rewards' >/dev/null
+          echo 'RANKING_STAGING_ROLLOUT_OK; live rewards remain paused'
