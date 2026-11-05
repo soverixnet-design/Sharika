@@ -1164,6 +1164,7 @@ test('each verified join resets the chat/gift boundary and announces the real na
     };
     const records=[];
     const coordinator={
+      async presenceJoin(...args){records.push(['presenceJoin',...args]);return true;},
       async beginRoomVisit(...args){records.push(['begin',...args]);return {joined:true};},
       async roomEntryAnnounce(...args){records.push(['entry',...args]);return {announced:true};},
       async roomGiftAfter(uid){records.push(['giftAfter',uid]);return 62;},
@@ -1175,8 +1176,9 @@ test('each verified join resets the chat/gift boundary and announces the real na
     const env={DB:db,VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project};
     const join=await handleRequest(new Request(endpoint+'/join',{method:'POST',headers}),env);
     assert.equal(join.status,200);
-    assert.deepEqual(records[0],['begin',principal,62]);
-    assert.deepEqual(records[1],['entry',principal,'10000003','Verified Room Guest','standard']);
+    assert.deepEqual(records[0],['presenceJoin',principal,'10000001']);
+    assert.deepEqual(records[1],['begin',principal,62]);
+    assert.deepEqual(records[2],['entry',principal,'10000003','Verified Room Guest','standard']);
 
     const gifts=await handleRequest(new Request(endpoint+'/gifts',{headers}),env);
     assert.equal(gifts.status,200);
