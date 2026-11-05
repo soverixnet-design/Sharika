@@ -25,6 +25,13 @@ export class SharikaVoiceRoom extends DurableObject {
       this.ctx.storage.sql.exec(
         'CREATE INDEX IF NOT EXISTS app_presence_seen ON app_presence(last_seen)'
       );
+      // An explicit room exit wins over delayed heartbeat requests from that
+      // visit. A new authenticated /join clears this marker for the next visit.
+      this.ctx.storage.sql.exec(
+        'CREATE TABLE IF NOT EXISTS app_presence_departures (' +
+        'uid TEXT NOT NULL, room_id TEXT NOT NULL, left_at INTEGER NOT NULL, ' +
+        'PRIMARY KEY(uid,room_id))'
+      );
       // Room text chat is durable, server-authored and isolated by coordinator.
       // No unverified browser names or local demo messages are accepted.
       this.ctx.storage.sql.exec(
@@ -734,10 +741,40 @@ export class SharikaVoiceRoom extends DurableObject {
   async presenceTouch(uid, roomId) {
     const now=Date.now();
     this.ctx.storage.sql.exec('DELETE FROM app_presence WHERE last_seen < ?',now-90_000);
+    if(roomId!==null){
+      const departed=this.ctx.storage.sql.exec(
+        'SELECT room_id FROM app_presence_departures WHERE uid=? AND room_id=?',uid,roomId
+      ).toArray()[0];
+      if(departed?.room_id===roomId)return false;
+    }
     this.ctx.storage.sql.exec(
       'INSERT INTO app_presence(uid,room_id,last_seen) VALUES(?,?,?) ' +
       'ON CONFLICT(uid) DO UPDATE SET room_id=excluded.room_id,last_seen=excluded.last_seen',
       uid,roomId,now
+    );
+    return true;
+  }
+  async presenceJoin(uid,roomId){
+    // Called only after the Worker has authenticated and authorized /join.
+    this.ctx.storage.sql.exec(
+      'DELETE FROM app_presence_departures WHERE uid=? AND room_id=?',uid,roomId
+    );
+    return this.presenceTouch(uid,roomId);
+  }
+  async presenceLeave(uid,roomId){
+    const now=Date.now();
+    this.ctx.storage.sql.exec(
+      'DELETE FROM app_presence_departures WHERE left_at<?',now-86_400_000
+    );
+    this.ctx.storage.sql.exec(
+      'INSERT INTO app_presence_departures(uid,room_id,left_at) VALUES(?,?,?) ' +
+      'ON CONFLICT(uid,room_id) DO UPDATE SET left_at=excluded.left_at',
+      uid,roomId,now
+    );
+    // Only clear this visit: a late /leave must not evict a different room.
+    this.ctx.storage.sql.exec(
+      'UPDATE app_presence SET room_id=NULL,last_seen=? WHERE uid=? AND room_id=?',
+      now,uid,roomId
     );
     return true;
   }
