@@ -118,6 +118,71 @@
     if (!response.ok) throw new Error(data.error || 'Admin service unavailable');
     return data;
   }
+  function mediaStudio(prefix){
+    return '<div class="card"><h3>🎬 Media Studio · Video, Frame, Entry & Sound</h3>'+
+      '<p class="n">Upload your own licensed MP4/WebM video, PNG/JPEG/WebP image or MP3/M4A/OGG sound (25 MB maximum). '+
+      'Choose an optional destination or copy the HTTPS link into any catalogue item. '+
+      'Videos may contain their own music.</p>'+
+      '<div class="row"><input class="field" type="file" id="'+prefix+'-file" '+
+      'accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/ogg">'+
+      '<select class="field" id="'+prefix+'-target" aria-label="Apply uploaded media to"></select>'+
+      '<button type="button" class="btn s" id="'+prefix+'-upload">Upload Media</button></div>'+
+      '<div id="'+prefix+'-preview" style="margin:10px 0;max-width:350px"></div>'+
+      '<label>Uploaded HTTPS media URL<input class="field" id="'+prefix+'-result" '+
+      'readonly aria-label="Uploaded media URL"></label>'+
+      '<button class="btn s" type="button" id="'+prefix+'-copy">Copy URL</button>'+
+      '<p class="n" id="'+prefix+'-status" role="status"></p></div>';
+  }
+  function wireMediaStudio(prefix,targets){
+    const file=byId(prefix+'-file'),preview=byId(prefix+'-preview');
+    const select=byId(prefix+'-target'),result=byId(prefix+'-result');
+    const status=byId(prefix+'-status'),button=byId(prefix+'-upload');
+    if(!file)return;
+    select.innerHTML='<option value="">Copy link only</option>'+targets.map(([id,label])=>
+      '<option value="'+esc(id)+'">'+esc(label)+'</option>').join('');
+    let localUrl='';
+    file.onchange=()=>{
+      if(localUrl)URL.revokeObjectURL(localUrl);
+      preview.replaceChildren();status.textContent='';
+      const item=file.files?.[0];if(!item)return;
+      localUrl=URL.createObjectURL(item);
+      const kind=item.type.split('/')[0];
+      const player=document.createElement(kind==='image'?'img':kind==='audio'?'audio':'video');
+      player.src=localUrl;player.style.maxWidth='100%';
+      if(kind==='image')player.alt='Media preview';
+      else{player.controls=true;player.preload='metadata';if(kind==='video')player.playsInline=true;}
+      preview.appendChild(player);
+      status.textContent=item.name+' · '+(item.size/1024/1024).toFixed(2)+' MB';
+    };
+    button.onclick=async()=>{
+      const item=file.files?.[0],category=item?.type?.split('/')[0];
+      if(!item||!['image','video','audio'].includes(category)||item.size>25*1024*1024){
+        status.textContent='Choose a supported media file under 25 MB.';return;
+      }
+      button.disabled=true;status.textContent='Uploading media securely…';
+      try{
+        const jwt=await idToken();
+        const response=await fetch(API+'/api/v1/admin/media/upload',{
+          method:'POST',headers:{authorization:'Bearer '+jwt,
+            'content-type':item.type,'x-sharika-media-category':category,
+            'x-sharika-media-size':String(item.size)},
+          body:item,cache:'no-store'
+        });
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(data.error||'Upload unavailable');
+        result.value=data.url;
+        const destination=byId(select.value);
+        if(destination){destination.value=data.url;destination.dispatchEvent(new Event('change'));}
+        status.textContent='Uploaded ✓ '+(destination?'URL applied to the selected form; save the item next.':'Copy the URL into an item and save.');
+      }catch(error){status.textContent='Upload failed: '+error.message;}
+      finally{button.disabled=false;}
+    };
+    byId(prefix+'-copy').onclick=async()=>{
+      if(!result.value)return;
+      try{await navigator.clipboard.writeText(result.value);status.textContent='URL copied ✓';}
+      catch(_){result.focus();result.select();status.textContent='Select and copy the URL.';}
+    };
+  }
   async function verifyAdmin() {
     const status = await api('GET','status');
     if (!['super','support','finance','staff'].includes(status.role))
@@ -1233,7 +1298,7 @@
     const kinds=Object.keys(art);
     const options=(list,selected)=>list.map(v=>'<option value="'+esc(v)+'"'+
       (v===selected?' selected':'')+'>'+esc(v.replaceAll('_',' '))+'</option>').join('');
-    root.innerHTML=card('Verified cosmetic inventory',
+    root.innerHTML=mediaStudio('cos-media')+card('Verified cosmetic inventory',
       'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
       '<div class="card"><h3>🎁 Give a frame or medal to a user</h3>'+
       '<p class="n">Super Admin: enter the real Sharika ID, find the frame or medal, and give it free. '+
@@ -1256,7 +1321,13 @@
       '<input class="field" id="sh-cos-price" type="number" min="1" max="1000000" placeholder="Coin price"></div>'+
       '<div class="row"><label>Existing bundled artwork <select class="field" id="sh-cos-art"></select></label>'+
       '<button class="btn s" type="button" id="sh-cos-create">Add item</button></div>'+
-      '<p class="n">New catalogue IDs may reuse a bundled entry/frame asset. Truly new art requires including its animation or image in an app update.</p></div>';
+      '<div class="row"><input class="field" id="sh-cos-image" maxlength="500" type="url" placeholder="Image / still URL">'+
+      '<input class="field" id="sh-cos-animation" maxlength="500" type="url" placeholder="Animated frame / entry video URL"></div>'+
+      '<input class="field" id="sh-cos-audio" maxlength="500" type="url" placeholder="Optional separate entry sound URL">'+
+      '<p class="n">Uploaded media overrides bundled artwork. Keep bundled artwork as a fallback for older app builds.</p></div>';
+    wireMediaStudio('cos-media',[
+      ['sh-cos-image','New item · image'],['sh-cos-animation','New item · video / animation'],
+      ['sh-cos-audio','New item · entry sound']]);
     const status=byId('sh-cos-note'),kind=byId('sh-cos-kind'),artSelect=byId('sh-cos-art');
     function fillArt(){artSelect.innerHTML=options(art[kind.value]||[],'');}
     kind.onchange=fillArt;fillArt();
@@ -1285,6 +1356,9 @@
         '<label>Price coins <input class="field" type="number" min="1" max="1000000" data-cos-field="price" data-id="'+esc(item.id)+'" value="'+Number(item.price_coins)+'"></label></div>'+
         '<div class="row"><label>Artwork <select class="field" data-cos-field="art" data-id="'+esc(item.id)+'">'+
         options(art[item.kind]||[],item.art_key)+'</select></label>'+
+        '<div class="row"><label>Image URL<input class="field" type="url" maxlength="500" data-cos-field="image" data-id="'+esc(item.id)+'" value="'+esc(item.image_url||'')+'"></label>'+
+        '<label>Animation / video URL<input class="field" type="url" maxlength="500" data-cos-field="animation" data-id="'+esc(item.id)+'" value="'+esc(item.animation_url||'')+'"></label>'+
+        '<label>Sound URL<input class="field" type="url" maxlength="500" data-cos-field="audio" data-id="'+esc(item.id)+'" value="'+esc(item.audio_url||'')+'"></label></div>'+
         '<label><input type="checkbox" data-cos-field="active" data-id="'+esc(item.id)+'"'+
         (item.active?' checked':'')+'> Available to buy</label>'+
         '<button class="btn s" type="button" data-cos-save="'+esc(item.id)+'">Save</button></div></div>').join('')||
@@ -1304,6 +1378,9 @@
             await api('PATCH','cosmetics',{
               item_id:id,kind:item.kind,name:field(id,'name').value.trim(),
               price_coins:price,art_key:field(id,'art').value,
+              image_url:field(id,'image').value.trim(),
+              animation_url:field(id,'animation').value.trim(),
+              audio_url:field(id,'audio').value.trim(),
               active:field(id,'active').checked
             });
             status.textContent='Saved and audited: '+id;
@@ -1316,6 +1393,9 @@
         const price=Number(byId('sh-cos-price').value);
         const payload={kind:kind.value,slug:byId('sh-cos-slug').value.trim(),
           name:byId('sh-cos-name').value.trim(),art_key:artSelect.value,
+          image_url:byId('sh-cos-image').value.trim(),
+          animation_url:byId('sh-cos-animation').value.trim(),
+          audio_url:byId('sh-cos-audio').value.trim(),
           price_coins:price};
         if(!/^[a-z0-9][a-z0-9-]{2,39}$/.test(payload.slug)||!Number.isSafeInteger(price)||
            price<1||price>1000000){status.textContent='Enter a valid slug and positive coin price.';return;}
@@ -1810,7 +1890,7 @@
   P.gifts=async function () {
     const root=byId('pg');
     const canEdit=role==='super';
-    root.innerHTML=(canEdit?'<div class="card"><h3>Add gift to real catalog</h3>'+
+    root.innerHTML=(canEdit?mediaStudio('gift-media')+'<div class="card"><h3>Add gift to real catalog</h3>'+
       '<p class="n">Regular gifts are settled through the verified wallet ledger. Lucky payouts are still disabled.</p>'+
       '<div class="row"><input id="gift-name" maxlength="80" placeholder="Gift name" aria-label="Gift name">'+
       '<input id="gift-emoji" maxlength="16" placeholder="🎁" aria-label="Gift emoji">'+
@@ -1820,12 +1900,16 @@
       '<button type="button" id="gift-create" class="btn s">Add gift</button></div>'+
       '<div class="row"><input id="gift-image-url" type="url" maxlength="500" placeholder="HTTPS gift image link" aria-label="Gift image URL">'+
       '<input id="gift-animation-url" type="url" maxlength="500" placeholder="HTTPS animation link (optional)" aria-label="Gift animation URL"></div>'+
-      '<p class="n">Use links to existing hosted image or animation assets. Direct gallery uploads need asset storage support.</p></div>':'')+
+      '<input class="field" id="gift-audio-url" type="url" maxlength="500" placeholder="Optional separate gift sound URL">'+
+      '<p class="n">Upload video with embedded music or add a separate sound. New gifts stay inactive until you review and enable them.</p></div>':'')+
       '<div class="card"><h3>Real gift catalog</h3><div id="gift-list">Loading…</div></div>'+
       '<div class="card"><h3>Verified gift transactions</h3><div id="gift-event-list">Loading…</div></div>'+
       '<div class="card"><h3>Gift wallet settlement audit</h3>'+
       '<p class="n">Read-only D1 transaction audit. Recipient diamonds may include fractional accrual; room shares are not credited to the owner wallet.</p>'+
       '<div id="gift-settlement-list">Loading…</div></div>';
+    if(canEdit)wireMediaStudio('gift-media',[
+      ['gift-image-url','New gift · image'],['gift-animation-url','New gift · video'],
+      ['gift-audio-url','New gift · separate sound']]);
     const list=byId('gift-list');
     async function refresh(){
       list.textContent='Loading verified gift catalog…';
@@ -1835,7 +1919,7 @@
           (data.gifts||[]).map(g=>{
             if(!canEdit)return[fmt(g.id),esc(g.name),esc(g.emoji),
               ['Gifts','Luxury','Lucky'][g.tab]||'Other',fmt(g.price_coins),
-              g.image_url?'🖼️ Image':'—',g.active?'Active':'Disabled','—'];
+              [g.image_url?'🖼️ Image':'',g.animation_url?'🎬 Video':'',g.audio_url?'🎵 Sound':''].filter(Boolean).join(' ')||'—',g.active?'Active':'Disabled','—'];
             const id=esc(g.id),input=(key,value,max=100)=>
               '<input class="field" data-gift-field="'+key+'" data-id="'+id+
               '" maxlength="'+max+'" value="'+esc(value??'')+'" style="min-width:100px;max-width:180px">';
@@ -1845,7 +1929,7 @@
                   (i===Number(g.tab)?' selected':'')+'>'+n+'</option>').join('')+'</select>',
               '<input class="field" type="number" min="1" max="1000000000" data-gift-field="price" data-id="'+id+
                 '" value="'+Number(g.price_coins)+'" style="width:115px">',
-              '<div>'+input('image',g.image_url||'',500)+input('animation',g.animation_url||'',500)+'</div>',
+              '<div>'+input('image',g.image_url||'',500)+input('animation',g.animation_url||'',500)+input('audio',g.audio_url||'',500)+'</div>',
               '<label><input type="checkbox" data-gift-field="active" data-id="'+id+'"'+
                 (g.active?' checked':'')+'> Live</label>',
               '<button type="button" class="btn s" data-gift-save="'+id+'">Save</button>'];
@@ -1859,11 +1943,12 @@
         const emoji=byId('gift-emoji').value.trim()||'🎁',tab=Number(byId('gift-category').value);
         const image_url=byId('gift-image-url').value.trim();
         const animation_url=byId('gift-animation-url').value.trim();
+        const audio_url=byId('gift-audio-url').value.trim();
         if(!name||!Number.isSafeInteger(price)||price<1){note('Enter gift name and valid coin price');return;}
         button.disabled=true;
         try{
-          await api('POST','gifts',{name,emoji,tab,price_coins:price,active:false,image_url,animation_url});
-          ['gift-name','gift-price','gift-emoji','gift-image-url','gift-animation-url'].forEach(id=>byId(id).value='');
+          await api('POST','gifts',{name,emoji,tab,price_coins:price,active:false,image_url,animation_url,audio_url});
+          ['gift-name','gift-price','gift-emoji','gift-image-url','gift-animation-url','gift-audio-url'].forEach(id=>byId(id).value='');
           note('Gift added; activate it when ready.');await refresh();
         }catch(error){note('Gift not created: '+error.message);}
         finally{button.disabled=false;}
@@ -1883,6 +1968,7 @@
         const payload={name,emoji,price_coins:price,tab,
           image_url:field('image')?.value.trim()||'',
           animation_url:field('animation')?.value.trim()||'',
+          audio_url:field('audio')?.value.trim()||'',
           active:!!field('active')?.checked};
         if(!window.confirm('Save gift #'+id+' on the server? This changes future sends.'))return;
         button.disabled=true;

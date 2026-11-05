@@ -1,5 +1,6 @@
 import {publicSvipSelect} from './premium.mjs';
 import {recordUserEvent} from './transaction-notices.mjs';
+import {safeMediaUrl} from './admin-media.mjs';
 // Server-owned paid cosmetics. Never trust client-side "owned" style flags.
 const KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
 const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
@@ -72,6 +73,7 @@ export async function readRoomEquipped(db,roomId){
 async function stock(db,uid,all=false){
  const list=values(await db.prepare(
   'SELECT c.id,c.kind,c.name,c.art_key,c.price_coins,c.active,'+
+  'c.image_url,c.animation_url,c.audio_url,'+
   'CASE WHEN i.item_id IS NULL THEN 0 ELSE 1 END AS owned,'+
   'CASE WHEN e.item_id=c.id AND i.item_id IS NOT NULL THEN 1 ELSE 0 END AS equipped,'+
   'i.expires_at_ms AS expires_at_ms FROM sharika_cosmetics_catalog c '+
@@ -212,6 +214,13 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
  if(!['POST','PATCH'].includes(request.method))return fail('admin_method_not_allowed',405,cors);
  const body=await readBody(request);
  const kind=body.kind,art=body.art_key,name=body.name,price=body.price_coins;
+ const media={};
+ for(const field of ['image_url','animation_url','audio_url']){
+  if(request.method==='PATCH'&&body[field]===undefined)continue;
+  const value=safeMediaUrl(body[field]??'');
+  if(value===null)return invalid(fail,cors);
+  media[field]=value;
+ }
  if(!KINDS.has(kind)||!KEYS[kind].has(art)||typeof name!=='string'||
     !name.trim()||name.trim().length>80||!safeAmount(price))
   return invalid(fail,cors);
@@ -220,8 +229,8 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
   const itemId=kind+':'+body.slug;
   try{
    await db.batch([
-    db.prepare("INSERT INTO sharika_cosmetics_catalog(id,kind,name,art_key,price_coins,active) VALUES(?,?,?,?,?,1)")
-     .bind(itemId,kind,name.trim(),art,price),
+    db.prepare("INSERT INTO sharika_cosmetics_catalog(id,kind,name,art_key,price_coins,active,image_url,animation_url,audio_url) VALUES(?,?,?,?,?,1,?,?,?)")
+     .bind(itemId,kind,name.trim(),art,price,media.image_url,media.animation_url,media.audio_url),
     db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
      .bind(uid,'cosmetic_catalog_add',JSON.stringify({item_id:itemId,price_coins:price,art_key:art}))
    ]);
@@ -235,8 +244,10 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
   .bind(body.item_id,kind).first();
  if(!old)return fail('cosmetic_unavailable',404,cors);
  await db.batch([
-  db.prepare("UPDATE sharika_cosmetics_catalog SET name=?,art_key=?,price_coins=?,active=?,updated_at=datetime('now') WHERE id=?")
-   .bind(name.trim(),art,price,body.active?1:0,old.id),
+  db.prepare("UPDATE sharika_cosmetics_catalog SET name=?,art_key=?,price_coins=?,active=?,image_url=?,animation_url=?,audio_url=?,updated_at=datetime('now') WHERE id=?")
+   .bind(name.trim(),art,price,body.active?1:0,
+     media.image_url??old.image_url??'',media.animation_url??old.animation_url??'',
+     media.audio_url??old.audio_url??'',old.id),
   db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
    .bind(uid,'cosmetic_catalog_update',JSON.stringify({
     item_id:old.id,old_price:old.price_coins,new_price:price,active:body.active,art_key:art

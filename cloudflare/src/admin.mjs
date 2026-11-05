@@ -20,6 +20,7 @@ import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs'
 import { handleFamilyAdmin } from './family.mjs';
 import {handleAgencyAdmin} from './agency.mjs';
 import {handleMusicAdmin} from './music-library.mjs';
+import {handleAdminMediaUpload,safeMediaUrl} from './admin-media.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
 import { handleNotificationAdmin } from './notifications.mjs';
 import { handleOperationalRead } from './admin-operations.mjs';
@@ -108,17 +109,6 @@ export async function readGiftRankings(db, period, kind) {
       kind==='lucky'?'verified_lucky_gift_payouts':'settled_gift_events'};
 }
 
-function safeGiftAssetUrl(value){
-  if(value==='')return '';
-  if(typeof value!=='string'||value.length>500)return null;
-  try{
-    const url=new URL(value);
-    if(url.protocol!=='https:'||url.username||url.password||!url.hostname||
-       /[\x00-\x20<>"']/u.test(value))return null;
-    return url.href;
-  }catch{return null;}
-}
-
 export async function handleAdminOperation({ request, env, uid, path, cors, reply, fail, ctx }) {
   if (!path.startsWith(ADMIN_PREFIX)) return null;
   let actor = await env.DB.prepare(
@@ -153,6 +143,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   });
   if(operation==='music-library')return await handleMusicAdmin({
     request,env,actor,cors,reply,fail
+  });
+  if(operation==='media/upload')return await handleAdminMediaUpload({
+    request,env,uid,role:actor.role,cors,reply,fail
   });
   const operational=await handleOperationalRead({request,env,actor,operation,cors,reply,fail});
   if(operational)return operational;
@@ -305,12 +298,13 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
           !Number.isInteger(tab) || tab < 0 || tab > 2)
         return fail('invalid_gift', 400, cors);
       const active=body.active===true ? 1 : 0;
-      const image=safeGiftAssetUrl(body.image_url??'');
-      const animation=safeGiftAssetUrl(body.animation_url??'');
-      if(image===null||animation===null)return fail('invalid_gift_asset_url',400,cors);
+      const image=safeMediaUrl(body.image_url??'');
+      const animation=safeMediaUrl(body.animation_url??'');
+      const audio=safeMediaUrl(body.audio_url??'');
+      if(image===null||animation===null||audio===null)return fail('invalid_gift_asset_url',400,cors);
       const result=await env.DB.batch([
-        env.DB.prepare('INSERT INTO sharika_gifts(name,emoji,tab,price_coins,active,image_url,animation_url) VALUES(?,?,?,?,?,?,?)')
-          .bind(name,emoji||'🎁',tab,price,active,image,animation),
+        env.DB.prepare('INSERT INTO sharika_gifts(name,emoji,tab,price_coins,active,image_url,animation_url,audio_url) VALUES(?,?,?,?,?,?,?,?)')
+          .bind(name,emoji||'🎁',tab,price,active,image,animation,audio),
         env.DB.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
           .bind(uid,'gift_create',JSON.stringify({name,tab,price,active}))
       ]);
@@ -345,14 +339,19 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
         update.emoji=body.emoji.trim()||'🎁';
       }
       if(body.image_url!==undefined){
-        const image=safeGiftAssetUrl(body.image_url);
+        const image=safeMediaUrl(body.image_url);
         if(image===null)return fail('invalid_gift_image_url',400,cors);
         update.image_url=image;
       }
       if(body.animation_url!==undefined){
-        const animation=safeGiftAssetUrl(body.animation_url);
+        const animation=safeMediaUrl(body.animation_url);
         if(animation===null)return fail('invalid_gift_animation_url',400,cors);
         update.animation_url=animation;
+      }
+      if(body.audio_url!==undefined){
+        const audio=safeMediaUrl(body.audio_url);
+        if(audio===null)return fail('invalid_gift_audio_url',400,cors);
+        update.audio_url=audio;
       }
       if(!Object.keys(update).length)return fail('no_gift_changes',400,cors);
       const keys=Object.keys(update);
@@ -611,7 +610,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   }
   if (operation === 'gifts') {
     const rows = values(await env.DB.prepare(
-      'SELECT id,name,emoji,tab,price_coins,active,image_url,animation_url FROM sharika_gifts ORDER BY id LIMIT 100'
+      'SELECT id,name,emoji,tab,price_coins,active,image_url,animation_url,audio_url FROM sharika_gifts ORDER BY id LIMIT 100'
     ).all());
     return reply({ gifts:rows, read_only:true }, 200, cors);
   }
