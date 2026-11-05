@@ -10,6 +10,7 @@ on:
       - fix/sharika-two-way-mic-direct-seat-20261031
       - feature/sharika-family-fruit-royale-sync-20261104
       - feature/sharika-invite-auto-link-20261104
+      - feature/sharika-ranked-agency-integration-20261106
     paths:
       - 'cloudflare/**'
       - '.github/workflows/sharika-cloudflare-check.yml'
@@ -32,6 +33,8 @@ jobs:
           node-version: '22'
       - name: Syntax and unit checks
         run: npm --prefix cloudflare run check
+      - name: Verify game, gift and recharge ranking receipts in SQLite
+        run: python3 cloudflare/test/verified-activity-sql.test.py
       - name: Verify direct guest seat claim and unique occupancy in SQLite
         run: python3 cloudflare/test/seat-schema-check.py
       - name: Verify staff quotas and immutable direct coin grants in SQLite

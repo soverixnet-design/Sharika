@@ -9858,8 +9858,10 @@
     return image;
   }
   function royalRankAction(node,leader,isRoom){
-    const target=String(isRoom?'':leader.public_id||'');
-    if(!/^[0-9]{8}$/.test(target))return;
+    // The verified API deliberately omits the canonical public ID when a
+    // Special ID is assigned. The profile route accepts either identifier.
+    const target=String(isRoom?'':leader.display_id||leader.public_id||'');
+    if(!/^[0-9]{1,10}$/.test(target))return;
     node.dataset.rankUser=target;
     node.tabIndex=0;node.setAttribute('role','button');
     node.setAttribute('aria-label','Open profile for ID '+target);
@@ -10507,13 +10509,15 @@
     }
     const requestNo=++rankingRequest;
     const periods=['daily','weekly','monthly'];
-    // Original navigation order: Lucky, Rich, Charm, Room, Noble, Play,
-    // Recharge. Never show Recharge data when the member tapped Lucky.
+    // Preserve the existing tabs/design. Rich, Play and Recharge display
+    // server-verified API activity; historic Charm/Room/Lucky keep their
+    // already-shipped settled-gift boards.
     const categories={
       0:{kind:'lucky',icon:'🎰',title:'Lucky Gift',description:'Verified lucky gift winnings'},
-      1:{kind:'rich',icon:'💎',title:'Rich',description:'Verified gifts sent to other members'},
+      1:{kind:'sending',icon:'💎',title:'Rich',description:'Verified gifts sent to other members'},
       2:{kind:'charm',icon:'💗',title:'Charm',description:'Verified gifts received'},
       3:{kind:'room',icon:'🎙️',title:'Room',description:'Gifts sent in each voice room'},
+      5:{kind:'game',icon:'🎮',title:'Play',description:'Server-settled game wins'},
       6:{kind:'recharge',icon:'🪙',title:'Recharge',description:'Approved coin recharge totals'}
     };
     const period=periods[window.rper]||'weekly';
@@ -10521,7 +10525,7 @@
     const kind=selected?.kind;
     view.innerHTML='<div class="sh-royal-empty">✦ Loading verified royal rankings…</div>';
     if(!selected){
-      const name={4:'Noble',5:'Play'}[window.rtab]||'This';
+      const name={4:'Noble'}[window.rtab]||'This';
       view.innerHTML='<div class="sh-royal-empty"><span aria-hidden="true">👑</span>'+
         '<strong>'+name+' ranking</strong>'+
         'This category is awaiting its verified ranking service. No demo users or '+
@@ -10534,7 +10538,9 @@
       return;
     }
     try{
-      const data=await api('GET','/rankings?period='+period+'&kind='+kind);
+      const verified=['sending','recharge','game'].includes(kind);
+      const data=await api('GET',verified?'/rankings/verified?period='+period+'&kind='+kind+
+        (kind==='game'?'&metric=wins':''):'/rankings?period='+period+'&kind='+kind);
       if(requestNo!==rankingRequest)return;
       const leaders=Array.isArray(data.leaders)?data.leaders:[];
       view.textContent='';
@@ -10577,7 +10583,8 @@
             leader.display_id||leader.public_id||'');
           const amount=document.createElement('div');
           amount.className='sh-royal-amount';
-          amount.textContent='🪙 '+fmt(leader.total);
+          amount.textContent=kind==='game'?'🏆 '+fmt(leader.total)+' wins':
+            '🪙 '+fmt(leader.total);
           card.append(trophy,avatar,name,id,amount);
           const tag=!isRoom&&royalRankNameTag(leader);
           if(tag)card.appendChild(tag);
@@ -10616,7 +10623,9 @@
         row.querySelector('.rn b').textContent=leader.name||'User';
         row.querySelector('.sid').textContent=isRoom?leader.room_id:
           leader.display_id||leader.public_id;
-        row.querySelector('.amt').textContent=fmt(leader.total);
+        row.querySelector('.amt').textContent=kind==='game'?
+          fmt(leader.total)+' wins':fmt(leader.total);
+        if(kind==='game')row.querySelector('.cn').textContent='🏆';
         const tag=!isRoom&&royalRankNameTag(leader);
         if(tag)row.querySelector('.rn')?.appendChild(tag);
         // Ranking user IDs, names and photos all open the same verified ID.
