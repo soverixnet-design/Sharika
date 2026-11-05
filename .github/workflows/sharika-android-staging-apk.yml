@@ -510,7 +510,7 @@ jobs:
             adb shell dumpsys activity activities > royal-qa/room-qa-activity.txt
             # adb logcat adds a non-JSON "--------- beginning of main" header.
             # Parse JSON records per line while ignoring that transport header.
-            jq -Rce 'fromjson? | select(.phase=="before" and .ready and (.fingerprint|contains("QA13")))' royal-qa/room-before.jsonl | tail -n 1 > royal-qa/room-baseline.json
+            jq -Rce 'fromjson? | select(.phase=="before" and .ready and .hasKeyboardApi=="object" and (.fingerprint|contains("QA13")))' royal-qa/room-before.jsonl | tail -n 1 > royal-qa/room-baseline.json
             test -s royal-qa/room-baseline.json
             adb exec-out screencap -p > royal-qa/room-keyboard-before.png
             # android-emulator-runner executes each script line in a separate

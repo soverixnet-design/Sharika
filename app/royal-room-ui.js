@@ -89,7 +89,10 @@
   const composer = document.createElement('div');
   composer.className = 'sh-composer';
   composer.append(input);
-  const text = byId('txt');
+  // `.inp` was just moved under an unattached composer. Lookup by
+  // document ID returned null here and silently skipped ALL keyboard hooks.
+  // Query the detached subtree until the composer is attached to the dock.
+  const text = input.querySelector('#txt');
   if (text) text.setAttribute('placeholder', 'Message in room…');
   // The original room still listens for visualViewport.resize and sets an
   // inline app height. CSS now overrides that legacy resize. Independently
