@@ -2184,7 +2184,8 @@
     }finally{if(save.isConnected)save.disabled=false;}
   },true);
 
-  // Royal Family card lives under Account Features. BD entry is server-permission gated.
+  // BD -> Agency -> Host cards use the existing Royal Gold profile styling.
+  // Legacy Family code remains for old data compatibility, but has no tile.
   const familyStyles=document.createElement('style');
   familyStyles.id='sh-family-royal-css';
   familyStyles.textContent=[
@@ -2238,36 +2239,158 @@
     if(!root||!session)return;
     document.getElementById('sh-family-entries')?.remove();
     const entries=document.createElement('section');entries.id='sh-family-entries';
-    entries.setAttribute('aria-label','Family and BD account features');
+    entries.setAttribute('aria-label','Agency and BD account features');
     const family=document.createElement('button');family.type='button';
-    family.innerHTML='<span class="sh-fam-icon">👑</span><span>Royal Family'+
-      '<small>Family • members • Crystal Wallet</small></span>';
-    family.onclick=openRoyalFamily;entries.appendChild(family);
+    family.innerHTML='<span class="sh-fam-icon">👑</span><span>Agency Center'+
+      '<small>Hosts • Gift Targets • Commission</small></span>';
+    family.onclick=openAgencyCenter;entries.appendChild(family);
     const bd=document.createElement('button');bd.type='button';bd.id='sh-bd-entry';
     bd.innerHTML='<span class="sh-fam-icon">💼</span><span>BD System'+
       '<small>BD Center • Commission • Statements</small></span>';
-    bd.hidden=true;bd.onclick=openRoyalBD;entries.appendChild(bd);
+    bd.hidden=true;bd.onclick=openAgencyCenter;entries.appendChild(bd);
     const countryButton=document.createElement('button');
     countryButton.type='button';countryButton.id='sh-country-entry';
     countryButton.innerHTML='<span class="sh-fam-icon">🌍</span><span>Country / Location'+
       '<small>Set your own country • profile and room card • no GPS</small></span>';
     countryButton.onclick=openManualCountryPicker;entries.appendChild(countryButton);
-    // Keep Family/BD inside the main profile Account Features section, not
+    // Keep Agency/BD inside the main profile Account Features section, not
     // after the profile page where the bottom navigation may cover the icon.
     const accountSection=root.querySelector('.profile-royal-page .profile-account');
     (accountSection||root.querySelector('.profile-royal-page')||root).appendChild(entries);
     const current=session.user?.id;
     if(current!==familyCheckedUser||Date.now()-familyCheckedAt>30000){
       familyCheckedUser=current;familyCheckedAt=Date.now();familyCache=null;
-      api('GET','/family/me').then(data=>{
+      api('GET','/agency/me').then(data=>{
         if(session?.user?.id!==current)return;
         familyCache=data;
         const tile=document.getElementById('sh-bd-entry');
-        if(tile)tile.hidden=!(data.bd?.active&&data.bd?.can_grant);
+        if(tile)tile.hidden=!(data.roles?.bd&&data.roles?.can_grant);
       }).catch(error=>{
-        console.warn('Family status unavailable:',errText(error));
+        console.warn('Agency status unavailable:',errText(error));
       });
-    }else if(familyCache)bd.hidden=!(familyCache.bd?.active&&familyCache.bd?.can_grant);
+    }else if(familyCache)bd.hidden=!(familyCache.roles?.bd&&familyCache.roles?.can_grant);
+  }
+  async function openAgencyCenter(){
+    if(!session){window.showAuth('welcome');return;}
+    let layer=document.getElementById('sh-family-panel');
+    if(!layer){
+      layer=document.createElement('section');layer.id='sh-family-panel';
+      document.body.appendChild(layer);
+    }
+    layer.setAttribute('aria-label','Sharika BD Agency Host Center');
+    layer.innerHTML='<div class="sh-fam-wrap"><div class="sh-fam-head">'+
+      '<small>SHARIKA · ROYAL GOLD</small><button type="button" class="sh-fam-close" '+
+      'id="sh-agency-close">✕ Close</button></div><h2>👑 BD · Agency · Host</h2>'+
+      '<div id="sh-fam-body" class="sh-fam-card">Loading your verified Agency data…</div>'+
+      '<p class="sh-fam-feedback" aria-live="polite"></p></div>';
+    layer.querySelector('#sh-agency-close').onclick=()=>layer.remove();
+    await reloadAgencyCenter();
+  }
+  async function reloadAgencyCenter(){
+    const root=document.getElementById('sh-fam-body');if(!root)return;
+    const label=n=>Number(n||0).toLocaleString('en-US');
+    const section=(title,content)=>'<div class="sh-fam-card"><h3>'+famEsc(title)+'</h3>'+content+'</div>';
+    let data;try{data=await api('GET','/agency/me');}
+    catch(error){root.textContent='Agency service unavailable: '+errText(error);return;}
+    const p=data.policy||{},r=data.roles||{},agency=data.agency;
+    const top=section('⚜️ Agency Commission Rules',
+      '<p>Host <b>'+famEsc(p.host_percent)+'%</b> · Agency <b>'+famEsc(p.agency_percent)+
+      '%</b> · BD <b>'+famEsc(p.bd_percent)+'%</b></p>'+
+      '<p class="sh-fam-note">'+(p.enabled?'Verified gift accrual is active.':
+        'Agency gift accrual is not activated yet.')+
+      ' Salary Exchange: '+famEsc(p.settlement_mode||'monthly')+
+      ' reporting; wallet payouts are not enabled. Diamond Exchange is separate.</p>');
+    const progress=section('🎯 Host / Agency / BD Targets',
+      ['host','agency','bd'].map(role=>{
+        const progress=data.targets?.[role]||{};
+        return '<details '+(role==='host'?'open':'')+'><summary>'+famEsc(role.toUpperCase())+'</summary>'+
+          ['daily','weekly','monthly'].map(period=>{
+            const t=progress[period]||{};
+            return '<p class="sh-fam-note"><b>'+famEsc(period)+':</b> '+
+              label(t.received_coins)+' / '+label(t.target_coins||5000000)+' coins '+
+              (t.reached?'✓ Target met':'· '+label(t.remaining_coins)+' to go')+'</p>';
+          }).join('')+'</details>';
+      }).join(''));
+    const earned=section('💎 Verified Salary / Commission Ledger',
+      ((data.earnings||[]).length?(data.earnings||[]).map(v=>'<p>'+famEsc(v.role)+
+        ': '+label(Number(v.accrued_units)/10000)+' accrued coins equivalent ('+
+        label(v.gifts)+' gifts)</p>').join(''):
+        '<p class="sh-fam-note">No new Agency commission entries yet.</p>')+
+      '<p class="sh-fam-note">Accrued amounts are not spendable wallet coins. '+
+      'No withdrawal or payment is triggered by viewing this page.</p>');
+    const myAgency=agency?section('🏰 '+agency.name,
+      '<p>Agency #'+famEsc(agency.id)+' · Owner '+famEsc(agency.owner_id)+
+      ' · BD '+famEsc(agency.bd_id)+'</p><p>'+(r.agency_owner?'You are the Agency Owner.':
+      'You are a verified Host.')+'</p>'):'';
+    const rankings=section('🏆 Agency Ranking',
+      '<p class="sh-fam-note">Daily / Weekly / Monthly rankings use verified gifts received by Host IDs.</p>'+
+      '<label>Role<select id="sh-agency-rank-role">'+['host','agency','bd'].map(k=>
+        '<option value="'+k+'">'+k.toUpperCase()+'</option>').join('')+'</select></label>'+
+      '<label>Period<select id="sh-agency-rank-period">'+['daily','weekly','monthly'].map(k=>
+        '<option value="'+k+'" '+(k==='weekly'?'selected':'')+'>'+k+'</option>').join('')+'</select></label>'+
+      '<button type="button" id="sh-agency-rank-load">Show verified ranking</button>'+
+      '<div id="sh-agency-rank-results" class="sh-fam-note"></div>');
+    const hosts=r.agency_owner?section('👥 Host Management',
+      '<ul class="sh-fam-list">'+(data.hosts||[]).map(h=>'<li>'+famEsc(h.id)+' · '+
+        famEsc(h.name)+' · '+famEsc(h.status)+
+        (h.id!==agency.owner_id&&h.status==='active'?'<button type="button" data-agency-remove="'+
+          famEsc(h.id)+'">Remove</button>':'')+'</li>').join('')+'</ul>'+
+      '<h3>Pending Host Applications</h3>'+
+      (data.requests||[]).map(q=>'<p>'+famEsc(q.user_id)+' · '+famEsc(q.name)+' '+
+        '<button type="button" data-agency-approve="'+famEsc(q.id)+'">Approve</button> '+
+        '<button type="button" data-agency-reject="'+famEsc(q.id)+'">Reject</button></p>').join('')||
+        '<p class="sh-fam-note">No pending applications.</p>'):'';
+    const bd=r.bd?section('💼 BD Center',
+      '<p>Your managed Agencies:</p>'+(data.bd_agencies||[]).map(a=>'<p>#'+famEsc(a.id)+' '+
+        famEsc(a.name)+' · Owner '+famEsc(a.owner_id)+'</p>').join('')+
+      (r.can_grant?'<details><summary>➕ Grant New Agency</summary><label>Owner ID'+
+        '<input id="sh-agency-owner-id" inputmode="numeric" maxlength="10"></label>'+
+        '<label>Agency Name<input id="sh-agency-name" maxlength="40"></label>'+
+        '<button type="button" id="sh-agency-grant">Create Agency</button></details>':'')) :'';
+    root.innerHTML=top+myAgency+progress+earned+rankings+hosts+bd+
+      (!agency?section('🔎 Discover Agencies',
+        '<p>Choose an Agency and request to become a Host. Owner approval is required.</p>'+
+        '<div id="sh-agency-discover">Loading Agencies…</div>'):'');
+    if(!agency){
+      const place=document.getElementById('sh-agency-discover');
+      try{const found=await api('GET','/agency/discover');
+        place.innerHTML=(found.agencies||[]).map(a=>'<p>'+famEsc(a.name)+
+          ' · Owner '+famEsc(a.owner_id)+' <button type="button" data-agency-join="'+
+          famEsc(a.id)+'">Request Host</button></p>').join('')||
+          '<p class="sh-fam-note">No Agency is available yet.</p>';}
+      catch(error){place.textContent='Agency list unavailable: '+errText(error);}
+    }
+    const action=async(path,payload,confirmText)=>{
+      if(confirmText&&!window.confirm(confirmText))return;
+      try{await api('POST',path,payload);familyNotice('Saved ✓');await reloadAgencyCenter();}
+      catch(error){familyNotice('Not saved: '+errText(error));}
+    };
+    document.getElementById('sh-agency-rank-load')?.addEventListener('click',async()=>{
+      const kind=document.getElementById('sh-agency-rank-role').value;
+      const period=document.getElementById('sh-agency-rank-period').value;
+      const view=document.getElementById('sh-agency-rank-results');
+      view.textContent='Loading verified ranking…';
+      try{const board=await api('GET','/agency/rankings?kind='+kind+'&period='+period);
+        view.innerHTML=(board.leaders||[]).slice(0,20).map(x=>'<p>#'+famEsc(x.rank)+
+          ' · '+famEsc(x.display_id)+' · '+famEsc(x.name)+' · '+
+          label(x.total)+' coins</p>').join('')||'No verified activity yet.';
+      }catch(error){view.textContent='Ranking unavailable: '+errText(error);}
+    });
+    root.querySelectorAll('[data-agency-join]').forEach(b=>b.onclick=()=>action('/agency/hosts/request',
+      {agency_id:Number(b.dataset.agencyJoin)},'Request Host approval from this Agency?'));
+    root.querySelectorAll('[data-agency-approve]').forEach(b=>b.onclick=()=>action(
+      '/agency/hosts/'+b.dataset.agencyApprove+'/approve',{},'Approve this Host?'));
+    root.querySelectorAll('[data-agency-reject]').forEach(b=>b.onclick=()=>action(
+      '/agency/hosts/'+b.dataset.agencyReject+'/reject',{},'Reject this Host application?'));
+    root.querySelectorAll('[data-agency-remove]').forEach(b=>b.onclick=()=>action(
+      '/agency/hosts/'+b.dataset.agencyRemove+'/remove',{},'Remove Host '+b.dataset.agencyRemove+'?'));
+    document.getElementById('sh-agency-grant')?.addEventListener('click',()=>{
+      const owner_public_id=document.getElementById('sh-agency-owner-id').value.trim();
+      const name=document.getElementById('sh-agency-name').value.trim();
+      if(!/^[0-9]{1,10}$/.test(owner_public_id)||name.length<3)return familyNotice('Enter valid Owner ID and Agency name.');
+      action('/agency/create',{owner_public_id,name,request_id:'agency:'+crypto.randomUUID()},
+        'Create this Agency for '+owner_public_id+'?');
+    });
   }
   async function openRoyalFamily(){
     if(!session){window.showAuth('welcome');return;}
@@ -7416,7 +7539,7 @@
       typeof row.title==='string'&&row.title.length<=80&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_a||'')&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_b||'')&&
-      ['none','daily','recharge','rank','invite'].includes(row.action)).slice(0,10):[];
+      ['none','daily','recharge','rank','invite','events'].includes(row.action)).slice(0,10):[];
     const cards=approved.map(row=>({
       t:row.title,s:String(row.subtitle||'').slice(0,160),
       e:String(row.emoji||'🎉').slice(0,12),
@@ -7436,6 +7559,19 @@
         (row.img?'':sellerEscape(row.e))+'</i></div>';
     }).join('');
     if(dots)dots.innerHTML=cards.map((_,i)=>'<u'+(!i?' class="on"':'')+'></u>').join('');
+    // A published banner may open the existing API-driven Event template;
+    // no new Android layout is needed for future event content.
+    if(slide&&!slide.dataset.shEventActionHook){
+      slide.dataset.shEventActionHook='1';
+      slide.addEventListener('click',event=>{
+        const tile=event.target.closest('.slide');
+        const selected=tile&&window.CFG.banners[Number(tile.dataset.i)];
+        if(selected?.a==='events'){
+          event.preventDefault();event.stopImmediatePropagation();
+          void showVerifiedEventSheet();
+        }
+      },true);
+    }
     window.bi=0;
   }
   async function refreshVerifiedBanners(){
