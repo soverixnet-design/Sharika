@@ -115,7 +115,7 @@ test('CI can reproduce real Gboard and measure stable seats in an isolated WebVi
   assert.doesNotMatch(manifest,/android\.permission\.INTERNET/);
   assert.match(activity,/SOFT_INPUT_ADJUST_NOTHING/);
   assert.match(activity,/WindowInsets\.Type\.ime\(\)/);
-  assert.match(workflow,/adb shell input tap "\$INPUT_X" "\$INPUT_Y"/);
+  assert.match(workflow,/adb shell input tap "\$\(jq -r '\.tapX'/);
   assert.match(workflow,/firstSeatDelta/);
   assert.match(workflow,/room-keyboard-after\.png/);
 });
