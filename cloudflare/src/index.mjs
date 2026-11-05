@@ -34,6 +34,7 @@ import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 import {handleLuckyBoxApp} from './lucky-box.mjs';
 import {handleInviteLanding} from './invite-link.mjs';
+import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
@@ -191,6 +192,8 @@ export async function handleRequest(request, env, ctx) {
   // No wallet or invite database write is performed on GET.
   const inviteLanding=handleInviteLanding(request,path);
   if(inviteLanding)return inviteLanding;
+  const publicMedia=await servePublicMedia(request,env,path);
+  if(publicMedia)return publicMedia;
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
   const themeImagePath=/^\/api\/v1\/rooms\/([0-9]{8})\/theme-image$/.exec(path);
   const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
@@ -805,7 +808,7 @@ export async function handleRequest(request, env, ctx) {
       const luckyAllowed = env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
         nonRedeemableLuckyEconomy(env) && !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
       const result = await env.DB.prepare(
-        'SELECT id,name,emoji,tab,price_coins,image_url,animation_url ' +
+        'SELECT id,name,emoji,tab,price_coins,image_url,animation_url,audio_url ' +
         'FROM sharika_gifts WHERE active=1 AND (tab IN (0,1) OR (tab=2 AND ?=1)) ORDER BY id LIMIT 100'
       ).bind(luckyAllowed ? 1 : 0).all();
       return reply({ gifts:result.results || [], lucky_enabled:luckyAllowed,
@@ -1433,8 +1436,8 @@ export async function handleRequest(request, env, ctx) {
             'SELECT e.id,e.transaction_id,e.quantity,e.price_coins,e.created_at,'+
             'su.public_no AS sender_no,su.name AS sender_name,su.pic AS sender_pic,'+
             'ru.public_no AS recipient_no,ru.name AS recipient_name,ru.pic AS recipient_pic,'+
-            (luckyEnabled?'g.name,g.emoji,g.tab,lo.payout_coins,lo.max_multiplier ':
-              'g.name,g.emoji,g.tab,NULL AS payout_coins,NULL AS max_multiplier ')+
+            (luckyEnabled?'g.name,g.emoji,g.tab,g.animation_url,g.audio_url,lo.payout_coins,lo.max_multiplier ':
+              'g.name,g.emoji,g.tab,g.animation_url,g.audio_url,NULL AS payout_coins,NULL AS max_multiplier ')+
             'FROM sharika_gift_events e '+
             'JOIN sharika_users su ON su.auth_uid=e.sender_uid '+
             'JOIN sharika_users ru ON ru.auth_uid=e.recipient_uid '+
@@ -1450,6 +1453,7 @@ export async function handleRequest(request, env, ctx) {
             recipient_id:publicId(e.recipient_no),
             recipient_name:e.recipient_name,recipient_pic:e.recipient_pic||null,
             name:e.name,emoji:e.emoji,tab:e.tab,
+            animation_url:e.animation_url||'',audio_url:e.audio_url||'',
             lucky:e.tab===2&&luckyEnabled?{payout_coins:Number(e.payout_coins)||0,
               max_multiplier:Number(e.max_multiplier)||0}:null
           }))},200,cors);

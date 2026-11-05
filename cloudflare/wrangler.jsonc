@@ -18,6 +18,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "sharika-staging-media"
+    }
+  ],
   "vars": {
     "SHARIKA_ENV": "staging",
     "FIREBASE_PROJECT_ID": "sharika-voice-chat-app",
