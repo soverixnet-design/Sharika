@@ -103,6 +103,9 @@
   box-shadow:0 5px 10px #0008;cursor:pointer}
 #sh-centers-panel .shc-primary{width:100%;margin-top:12px;background:linear-gradient(115deg,#80512c,#a77845)}
 #sh-centers-panel .shc-primary:disabled{opacity:.48;cursor:not-allowed}
+#sh-centers-panel input{display:block;width:100%;padding:12px 14px;background:#1d1038;
+  border:1px solid #ad825a;border-radius:12px;color:#ffe8ca;font:inherit}
+#sh-centers-panel input:disabled{opacity:.55}
 #sh-centers-panel .shc-ledger{width:100%;border-collapse:collapse;margin-top:13px;font-size:12px}
 #sh-centers-panel .shc-ledger th,#sh-centers-panel .shc-ledger td{
   border-bottom:1px solid #71537b;padding:10px 6px;text-align:left}

@@ -1,6 +1,5 @@
-/* Sharika Royal BD / Agency / Host Centers, staging presentation layer.
- * Money is deliberately read-only until a verified workforce ledger and
- * salary exchange endpoint exist. Never infer balances from demo/local state.
+/* Sharika Royal BD / Agency / Host Centers.
+ * Display only verified Cloudflare D1 workforce balances, policies and roles.
  */
 (function(){
   'use strict';
@@ -20,8 +19,7 @@
   };
   const sectionLabels={invite:'Invite & Assign',team:'Team Members',assistant:'Assistant Management',
     salary:'Salary Wallet',target:'Host Target',history:'Gift History',agency:'My Agency'};
-  const periods={today:'Today',week:'This week',month:'This month'};
-  const state={role:'bd',section:'overview',period:'month',identity:null,loading:false,error:''};
+  const state={role:'bd',section:'overview',identity:null,data:null,loading:false,error:'',message:''};
   let layer=null,requestSequence=0;
   function text(value){return String(value==null?'':value).replace(/[&<>"']/g,ch=>({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -47,57 +45,92 @@
       text(def.subtitle)+'</div></div></section>';
   }
   function policy(){
-    return '<div class="shc-policy" aria-label="Current design policy">'+
-      '<div><b>40%</b><small>Host Salary</small></div>'+
-      '<div><b>10%</b><small>Agency Share</small></div>'+
-      '<div><b>5%</b><small>BD Share</small></div></div>';
+    const p=state.data?.policy||{};
+    return '<div class="shc-policy" aria-label="Current income policy">'+
+      '<div><b>'+text(p.host_bps==null?'—':p.host_bps/100+'%')+'</b><small>Host Salary</small></div>'+
+      '<div><b>'+text(p.agency_bps==null?'—':p.agency_bps/100+'%')+'</b><small>Agency Share</small></div>'+
+      '<div><b>'+text(p.bd_bps==null?'—':p.bd_bps/100+'%')+'</b><small>BD Share</small></div></div>';
   }
   function note(message,warning){
     return '<div class="shc-note'+(warning?' shc-warning':'')+'">'+message+'</div>';
   }
   function overview(){
     const def=definitions[state.role];
+    const data=state.data,credits=data?.salary?.by_kind||[];
+    const match=credits.find(x=>x.kind===state.role);
+    const units=match?.units;
+    const roleAllowed=data?.role?.kind===state.role&&data?.role?.active;
     return '<span class="shc-kicker">'+(state.role==='bd'?'BD Services':state.role==='agency'?'Agency Services':'Host Services')+'</span>'+
       '<div class="shc-services">'+def.services.map(([id,label])=>
         '<button class="shc-service" type="button" data-shc-section="'+id+'">'+
         '<span class="shc-art '+id+'" aria-hidden="true"></span><b>'+text(label)+'</b><i>›</i></button>').join('')+'</div>'+
       '<section class="shc-income"><div class="shc-income-title"><h2>My Income</h2>'+
-      '<select class="shc-period" aria-label="Income period">'+
-      Object.keys(periods).map(key=>'<option value="'+key+'"'+(state.period===key?' selected':'')+'>'+periods[key]+'</option>').join('')+
-      '</select></div><div class="shc-income-grid">'+
-      '<div class="shc-stat"><span class="shc-mini" aria-hidden="true"></span><div><small>'+def.mine+'</small><strong>—</strong></div></div>'+
-      '<div class="shc-stat"><span class="shc-mini" aria-hidden="true"></span><div><small>'+def.team+'</small><strong>—</strong></div></div></div>'+policy()+'</section>'+
-      (state.role==='host'?'<section class="shc-target"><small>First Host Target</small><b>5M Gift Value</b>'+
-        '<div class="shc-track"><i></i></div><small>Target progress: awaiting verified gift records</small></section>':'')+
-      note('Main Wallet Diamond Exchange (30%) is separate from this Salary Wallet. '+
-        'Salary exchange needs Admin approval for daily, weekly or monthly settlement.',false)+
-      note('Verified BD / Agency / Host salary data is not connected to this staging backend yet. '+
-        'No balance or payment is being estimated.',true);
+      '<span class="shc-period">All time</span></div><div class="shc-income-grid">'+
+      '<div class="shc-stat"><span class="shc-mini" aria-hidden="true"></span><div><small>'+def.mine+'</small><strong>'+
+      (roleAllowed&&units!=null?salaryUnits(units):'—')+'</strong></div></div>'+
+      '<div class="shc-stat"><span class="shc-mini" aria-hidden="true"></span><div><small>'+def.team+'</small><strong>'+
+      (match?formatCoins(match.gift_coins):'—')+'</strong></div></div></div>'+policy()+'</section>'+
+      (state.role==='host'?targetSummary():'')+
+      note('Main Wallet Diamond Exchange ('+
+        (data?.policy?.direct_exchange_bps==null?'—':data.policy.direct_exchange_bps/100+'%')+
+        ') is separate from Salary Wallet. Salary credits become spendable coins only after their settlement period.',false)+
+      (state.loading?note('Loading verified salary data…',false):
+        (!data?note('Verified salary data is unavailable. No amount will be estimated.',true):
+          !roleAllowed?note('You do not have an active '+text(def.short)+' role. Ask an authorized manager to assign it.',true):''));
+  }
+  function formatCoins(number){
+    return Number.isFinite(Number(number))?Number(number).toLocaleString('en-US'):'—';
+  }
+  function salaryUnits(number){
+    return Number.isSafeInteger(Number(number))?formatCoins(Number(number)/10000):'—';
+  }
+  function targetSummary(){
+    const first=state.data?.targets?.[0];
+    if(!first)return '';
+    const received=Number(state.data.host_target_gifts||0);
+    return '<section class="shc-target"><small>First Host Target</small><b>'+text(first.label)+'</b>'+
+      '<div class="shc-track"><i style="width:'+Math.min(100,100*received/first.target_coins)+'%"></i></div>'+
+      '<small>'+formatCoins(received)+' / '+formatCoins(first.target_coins)+' eligible gift coins</small></section>';
   }
   function salary(){
+    const data=state.data,p=data?.policy||{},summary=data?.salary||{};
+    const active=data?.role?.kind===state.role&&data?.role?.active;
+    const matured=Math.floor(Number(summary.matured_available_units||0)/10000);
+    const allowed=active&&p.enabled&&p.salary_exchange_enabled&&matured>0;
     return '<div class="shc-subtitle">Salary Wallet</div>'+
       '<section class="shc-income"><div class="shc-income-grid">'+
-      '<div class="shc-stat"><span class="shc-mini" aria-hidden="true"></span><div><small>Available Salary</small><strong>—</strong></div></div>'+
-      '<div class="shc-stat"><span class="shc-mini" aria-hidden="true"></span><div><small>Pending Settlement</small><strong>—</strong></div></div></div>'+policy()+'</section>'+
+      '<div class="shc-stat"><span class="shc-mini" aria-hidden="true"></span><div><small>Matured Salary (coins)</small><strong>'+
+      (data?salaryUnits(summary.matured_available_units):'—')+'</strong></div></div>'+
+      '<div class="shc-stat"><span class="shc-mini" aria-hidden="true"></span><div><small>Salary Balance (coins)</small><strong>'+
+      (data?salaryUnits(summary.remaining_units):'—')+'</strong></div></div></div>'+policy()+'</section>'+
       '<span class="shc-kicker">Salary Exchange</span>'+
-      '<section class="shc-target"><small>Exchange permission</small><b>Admin controlled</b>'+
-      '<small>Daily / Weekly / Monthly schedules are configured by Admin.</small></section>'+
-      '<button class="shc-primary" type="button" disabled>Exchange Salary to Coins · Not Activated</button>'+
-      note('Only a server-verified salary ledger can become coins. '+
-        'No transfer, recharge or payout occurs from this design screen.',true)+
-      '<span class="shc-kicker">Salary Transfer History</span>'+ledger('No verified salary transfer records yet.');
+      '<section class="shc-target"><small>Exchange permission</small><b>'+
+      (p.salary_exchange_enabled?'Enabled':'Admin approval required')+'</b>'+
+      '<small>Settlement: '+text(p.settlement_mode||'—')+' · Policy version '+text(p.version||'—')+
+      '</small></section>'+
+      '<label class="shc-kicker" for="shc-exchange-amount">Coins to exchange (available: '+formatCoins(matured)+')</label>'+
+      '<input id="shc-exchange-amount" type="number" min="1" max="'+matured+'" value="'+
+      (allowed?matured:'')+'" inputmode="numeric" '+(allowed?'':'disabled')+'>'+
+      '<button class="shc-primary" type="button" data-shc-exchange '+
+      (allowed?'':'disabled')+'>Exchange matured salary to coins</button>'+
+      note('Only completed settlement periods are exchangeable. Every transfer is recorded in your main wallet ledger.',false)+
+      '<span class="shc-kicker">Salary Transfer History</span>'+ledger('No salary exchanges yet.',
+        (data?.exchanges||[]).map(row=>[row.created_at,'Salary → Coins',formatCoins(row.credited_coins)]));
   }
-  function ledger(empty){
-    return '<table class="shc-ledger"><thead><tr><th>Period</th><th>Details</th><th>Amount</th></tr></thead></table>'+
-      '<div class="shc-empty">'+text(empty)+'</div>';
+  function ledger(empty,entries){
+    return '<table class="shc-ledger"><thead><tr><th>Date</th><th>Details</th><th>Amount</th></tr></thead><tbody>'+
+      (entries||[]).map(row=>'<tr>'+row.map(cell=>'<td>'+text(cell)+'</td>').join('')+'</tr>').join('')+
+      '</tbody></table>'+(entries?.length?'':'<div class="shc-empty">'+text(empty)+'</div>');
   }
   function target(){
-    const tiers=['5M','10M','20M','50M'];
+    const tiers=state.data?.target_progress||[];
     return '<div class="shc-subtitle">Host Gift Targets</div>'+note(
-      'The first eligible gift target starts at 5 million. Progress counts verified Host gifts, including permitted self-gifts. No target reward is credited without the backend.',false)+
-      tiers.map((value,index)=>'<section class="shc-target"><small>Target '+(index+1)+'</small><b>'+value+'</b>'+
-      '<div class="shc-track"><i></i></div><small>Awaiting verified progress</small></section>').join('')+
-      note('Host salary policy: 40% of eligible Host gift value. Agency receives 10% and BD receives 5% from the same eligible Host gift base, once verified.',true);
+      'Gift targets count verified ordinary gifts sent to your Host ID (including self-gifts). Target milestones do not issue a second salary.',false)+
+      tiers.map((value,index)=>'<section class="shc-target"><small>Target '+(index+1)+'</small><b>'+text(value.label)+'</b>'+
+      '<div class="shc-track"><i style="width:'+Math.min(100,100*value.progress/value.target_coins)+'%"></i></div><small>'+
+      formatCoins(value.progress)+' / '+formatCoins(value.target_coins)+' · '+
+      (value.completed?'Completed':'In progress')+'</small></section>').join('')+
+      (state.data?'':note('Target settings unavailable from the backend.',true));
   }
   function nested(){
     const kind=state.section,role=state.role;
@@ -113,11 +146,24 @@
       history:'Verified gift records will list sender, receiver, date and eligible value.',
       agency:'Your assigned Agency details, owner and contact will appear here.'
     };
+    const data=state.data,roleAllowed=data?.role?.kind===role&&data?.role?.active;
+    const assignmentRole=kind==='invite'?(role==='bd'?'agency':'host'):
+      kind==='assistant'?(role==='bd'?'assistant_bd':'assistant_agency'):null;
+    const assignment=assignmentRole&&roleAllowed?'<label class="shc-kicker" for="shc-member-id">Member public ID</label>'+
+      '<input id="shc-member-id" inputmode="numeric" maxlength="8" placeholder="10000001">'+
+      '<button class="shc-primary" type="button" data-shc-assign="'+assignmentRole+'">Assign '+
+      text(assignmentRole.replace('_',' '))+'</button>':'';
+    const teamRows=(data?.roster||[]).filter(x=>kind==='assistant'?x.role.includes('assistant'):true)
+      .map(x=>[x.assigned_at||'—',x.name+' · '+x.public_id+' ('+x.role+')',x.active?'Active':'Inactive']);
+    const giftRows=(data?.recent_salary||[]).map(x=>[x.created_at,
+      x.host_id+' · '+x.kind,formatCoins(x.gift_coins)+' gifts']);
     return '<div class="shc-subtitle">'+text(sectionLabels[kind]||kind)+'</div>'+
-      note(text(hints[kind]||'Role information'),false)+
-      ledger('No verified '+(kind==='team'?'team records':kind==='history'?'gift records':'assignments')+' available.')+
-      note('This section requires the new server-side Agency and Host role endpoints. '+
-        'An invitation or role assignment cannot be created in this UI preview.',true);
+      note(text(hints[kind]||'Role information'),false)+assignment+
+      (kind==='agency'?'<section class="shc-target"><small>Assigned agency</small><b>'+text(
+        (data?.ancestry||[]).find(x=>x.role==='agency')?.name||'Not assigned')+'</b></section>':'')+
+      ledger('No verified '+(kind==='team'?'members':kind==='history'?'gift records':'assignments')+' available.',
+        kind==='history'?giftRows:teamRows)+
+      (!roleAllowed?note('This center is read-only until your role is active.',true):'');
   }
   function render(){
     if(!layer||layer.hidden)return;
@@ -131,6 +177,8 @@
       profile()+(state.section==='overview'?overview():
         '<button class="shc-backlink" type="button" data-shc-overview>‹ '+text(def.title)+'</button>'+nested())+
       '</div></div>';
+    const msg=state.message||state.error;
+    if(msg)layer.querySelector?.('.shc-content')?.insertAdjacentHTML?.('beforeend',note(text(msg),!!state.error));
   }
   function back(){
     if(!layer||layer.hidden)return false;
@@ -142,18 +190,73 @@
     const seq=++requestSequence;
     const service=window.SharikaServer;
     if(!service?.connected?.()||typeof service.api!=='function'){
-      state.identity=null;render();return;
+      state.identity=null;state.data=null;state.loading=false;
+      state.error='Sign in to load verified workforce data.';render();return;
     }
+    state.loading=true;state.error='';state.message='';render();
     try{
-      const result=await service.api('GET','/me');
+      const [result,workforce]=await Promise.all([
+        service.api('GET','/me'),service.api('GET','/workforce/me')]);
       if(seq!==requestSequence||!layer||layer.hidden)return;
       state.identity=result||null;
-    }catch(_){if(seq===requestSequence)state.identity=null;}
+      state.data=workforce||null;
+    }catch(error){
+      if(seq===requestSequence){state.identity=null;state.data=null;
+        state.error='Could not load verified workforce data: '+String(error?.message||error);}
+    }
+    if(seq!==requestSequence||!layer||layer.hidden)return;
+    state.loading=false;
     render();
+  }
+  function freshRequestId(){
+    const bytes=new Uint8Array(16);
+    if(typeof window.crypto?.getRandomValues!=='function')return null;
+    window.crypto.getRandomValues(bytes);
+    return 'salary:'+Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('');
+  }
+  async function exchange(){
+    const data=state.data,p=data?.policy||{},service=window.SharikaServer;
+    if(!data||!p.salary_exchange_enabled||!p.enabled||
+       data.role?.kind!==state.role||!data.role?.active)return;
+    const amount=Number(layer?.querySelector?.('#shc-exchange-amount')?.value);
+    const limit=Math.floor(Number(data.salary?.matured_available_units||0)/10000);
+    if(!Number.isSafeInteger(amount)||amount<1||amount>limit){
+      state.error='Enter a whole coin amount within your matured salary balance.';render();return;
+    }
+    const requestId=freshRequestId();
+    if(!requestId){state.error='Secure transaction ID unavailable. Please update Android WebView.';render();return;}
+    if(typeof window.confirm==='function'&&!window.confirm('Exchange '+formatCoins(amount)+
+      ' verified salary coins to your Main Wallet?'))return;
+    state.loading=true;state.error='';state.message='';render();
+    try{
+      await service.api('POST','/workforce/salary/exchange',{
+        coins:amount,expected_version:p.version,request_id:requestId});
+      state.message='Salary exchange completed. Main wallet balance updated.';
+      service.reloadWallet?.();
+      await loadIdentity();
+      state.message='Salary exchange completed. Main wallet balance updated.';
+    }catch(error){state.error='Salary exchange rejected: '+String(error?.message||error);}
+    state.loading=false;render();
+  }
+  async function assign(kind){
+    const data=state.data,service=window.SharikaServer;
+    if(!data?.role?.active||data.role.kind!==state.role||
+      !['agency','host','assistant_bd','assistant_agency'].includes(kind))return;
+    const id=String(layer?.querySelector?.('#shc-member-id')?.value||'').trim();
+    if(!/^[0-9]{8}$/.test(id)){
+      state.error='Enter the full 8-digit public ID.';render();return;
+    }
+    state.loading=true;state.error='';state.message='';render();
+    try{
+      await service.api('POST','/workforce/assign',{role:kind,public_id:id});
+      await loadIdentity();state.message='Role assigned successfully to ID '+id+'.';
+    }catch(error){state.error='Assignment rejected: '+String(error?.message||error);}
+    state.loading=false;render();
   }
   function open(role){
     if(!definitions[role])role='bd';
-    ensureLayer();state.role=role;state.section='overview';state.identity=null;
+    ensureLayer();state.role=role;state.section='overview';state.identity=null;state.data=null;
+    state.error='';state.message='';state.loading=true;
     layer.hidden=false;render();loadIdentity();
   }
   function ensureLayer(){
@@ -165,14 +268,11 @@
       const target=event.target.closest('button');if(!target)return;
       if(target.hasAttribute('data-shc-back')){back();return;}
       if(target.hasAttribute('data-shc-refresh')){loadIdentity();return;}
+      if(target.hasAttribute('data-shc-exchange')){exchange();return;}
+      if(target.dataset.shcAssign){assign(target.dataset.shcAssign);return;}
       if(target.hasAttribute('data-shc-overview')){state.section='overview';render();return;}
       if(target.dataset.shcRole){state.role=target.dataset.shcRole;state.section='overview';render();return;}
       if(target.dataset.shcSection){state.section=target.dataset.shcSection;render();}
-    });
-    layer.addEventListener('change',event=>{
-      if(event.target.classList.contains('shc-period')){
-        state.period=periods[event.target.value]?event.target.value:'month';render();
-      }
     });
     document.addEventListener('keydown',event=>{
       if(event.key==='Escape'&&back())event.preventDefault();
@@ -199,6 +299,20 @@
     const result=previousRender.apply(this,arguments);mountProfileLinks();return result;
   };
   mountProfileLinks();
+  // Keep the original recharge art and handlers, rename only the visible tab.
+  const previousRecharge=window.renderRcp;
+  if(typeof previousRecharge==='function')window.renderRcp=function(){
+    const result=previousRecharge.apply(this,arguments);
+    const exchangeTab=document.querySelector('#rcp [data-x="1"]');
+    if(exchangeTab)exchangeTab.textContent='Diamond Exchange';
+    return result;
+  };
+  // Keep currently opened centers in sync with Super Admin policy revisions.
+  // Hidden centers make no requests; app resume also refreshes immediately.
+  window.setInterval?.(()=>{if(layer&&!layer.hidden&&!state.loading)loadIdentity();},45000);
+  window.addEventListener?.('focus',()=>{
+    if(layer&&!layer.hidden&&!state.loading)loadIdentity();
+  });
   window.sharikaCentersOpen=open;
   window.sharikaCentersBack=back;
   window.sharikaCentersClose=close;
