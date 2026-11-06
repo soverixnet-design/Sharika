@@ -50,6 +50,7 @@ on:
       - feature/sharika-sovera-gaddy-game-20261104
       - feature/sharika-bd-agency-host-20261104
       - feature/sharika-agency-salary-targets-integrated-20261106
+      - feature/sharika-royal-clean-room-option1-20261106
     paths:
       - 'android-staging/**'
       - 'app/golden-home.css'
@@ -447,7 +448,7 @@ jobs:
   royal-emulator-smoke:
     name: Royal UI launch, Back and keyboard/seat stability emulator test
     # Only the isolated Option 1 candidate; no live app or staging data writes.
-    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103' || github.ref == 'refs/heads/feature/sharika-family-fruit-royale-sync-20261104' || github.ref == 'refs/heads/feature/sharika-room-free-lucky-box-20261104' || github.ref == 'refs/heads/fix/sharika-family-royal-games-20261104' || github.ref == 'refs/heads/feature/sharika-bd-agency-host-20261104'
+    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103' || github.ref == 'refs/heads/feature/sharika-family-fruit-royale-sync-20261104' || github.ref == 'refs/heads/feature/sharika-room-free-lucky-box-20261104' || github.ref == 'refs/heads/fix/sharika-family-royal-games-20261104' || github.ref == 'refs/heads/feature/sharika-bd-agency-host-20261104' || github.ref == 'refs/heads/feature/sharika-royal-clean-room-option1-20261106'
     needs: debug-apk
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -776,4 +777,49 @@ jobs:
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
             --title 'Sharika BD Agency Host — Staging APK' \
             --notes 'Staging test APK. Approved adult Agency Owners automatically become active Hosts; owners can assign other approved adult Agency members as Hosts. Main profile has separate Agency and Host earnings entries. Host 40%, Agency 10%, BD 5%, 100 diamonds to 40 coins. Real main IDs, avatars and server-recorded daily room time. Production unchanged; staging D1 history preserved. Android emulator and Worker checks passed.' \
+            --prerelease
+
+  
+  royal-room-friends-direct-apk:
+    name: Publish emulator-tested Royal Room Option 1 APK for friends
+    if: github.ref == 'refs/heads/feature/sharika-royal-clean-room-option1-20261106'
+    needs: [debug-apk, royal-emulator-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download exact APK from this emulator-tested run
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify Royal Room assets and keep the original binary
+        run: |
+          set -euo pipefail
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/royal-room-ui.js > "$RUNNER_TEMP/royal-room.js"
+          unzip -p verified-apk/app-debug.apk assets/royal-room-ui.css > "$RUNNER_TEMP/royal-room.css"
+          grep -F 'pinAvatarGeometry()' "$RUNNER_TEMP/royal-room.js"
+          grep -F 'top.insertBefore(bar,settingsButton)' "$RUNNER_TEMP/royal-room.js"
+          grep -F '.sh-royal-room .sh-room-masthead' "$RUNNER_TEMP/royal-room.css"
+          unzip -Z1 verified-apk/app-debug.apk | grep -Fx 'assets/royal-room-background.jpg'
+          mv verified-apk/app-debug.apk verified-apk/Sharika-Royal-Room-Option1-Staging.apk
+          sha256sum verified-apk/Sharika-Royal-Room-Option1-Staging.apk
+      - name: Create public direct APK link as staging-only prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="sharika-royal-room-option1-staging-${GITHUB_SHA:0:8}"
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Release already exists; will not replace the shared APK'
+            exit 1
+          fi
+          gh release create "$TAG" verified-apk/Sharika-Royal-Room-Option1-Staging.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Royal Premium Clean Room Option 1 — Friends Staging APK' \
+            --notes 'Android staging/test APK for invited friends. Royal Premium Clean room layout, four-column seats, compact header, and keyboard seat stability. APK built and Android emulator smoke tested on this same GitHub Actions run. Production app, Cloudflare D1 data, and Play Store are unchanged. Live two-person voice and full login/gift/game end-to-end testing on physical devices is still required. Not a production release.' \
             --prerelease

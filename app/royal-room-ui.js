@@ -101,6 +101,35 @@
   // viewport shrinks, so listen to both and calculate the obscured bottom.
   if (text) {
     const seats = app.querySelector('.stage');
+    // Freeze the actual pre-IME avatar geometry. Short Android WebViews can
+    // cross a max-height breakpoint while Gboard opens, enlarging the owner
+    // avatar and pushing the first seat downward.
+    let pinnedAvatars = [];
+    const releaseAvatarGeometry = () => {
+      for (const pin of pinnedAvatars) {
+        for (const prop of ['width', 'height']) {
+          const previous = pin[prop];
+          if (previous.value)
+            pin.element.style.setProperty(prop, previous.value, previous.priority);
+          else pin.element.style.removeProperty(prop);
+        }
+      }
+      pinnedAvatars = [];
+    };
+    const pinAvatarGeometry = () => {
+      releaseAvatarGeometry();
+      for (const element of seats?.querySelectorAll('.av') || []) {
+        const computed = window.getComputedStyle(element);
+        const width = computed.width;
+        const height = computed.height;
+        if (!width || !height || width === 'auto' || height === 'auto') continue;
+        const original = prop => ({ value:element.style.getPropertyValue(prop),
+          priority:element.style.getPropertyPriority(prop) });
+        pinnedAvatars.push({ element, width:original('width'), height:original('height') });
+        element.style.setProperty('width',width,'important');
+        element.style.setProperty('height',height,'important');
+      }
+    };
     let blurTask;
     let keyboardActive = false;
     let nativeImeOpen = false;
@@ -149,6 +178,7 @@
       if (!keyboardActive && seats) {
         // Capture once *before* IME resize; the seat grid must not reflow to
         // fit the keyboard or jump when its input becomes visible.
+        pinAvatarGeometry();
         const measured = Math.ceil(seats.getBoundingClientRect().height);
         if (measured > 0) app.style.setProperty('--sh-seat-height', measured + 'px');
       }
@@ -166,6 +196,7 @@
             document.activeElement?.id !== 'txt' && keyboardInset() < 90)) {
           keyboardActive = false;
           app.classList.remove('sh-keyboard-open');
+          releaseAvatarGeometry();
           app.style.removeProperty('--sh-seat-height');
           app.style.removeProperty('--sh-ime-inset');
           app.style.removeProperty('height');
@@ -583,7 +614,7 @@
       const people=document.createElement('div');
       people.id='sh-room-faces';people.className='sh-room-faces';
       bar.append(people);
-      top.after(bar);
+      top.insertBefore(bar,settingsButton);
     }
     const faces=document.getElementById('sh-room-faces');
     faces.replaceChildren();
