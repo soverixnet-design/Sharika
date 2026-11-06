@@ -42,8 +42,14 @@ export function staffProxyRole(actor,method,operation){
 }
 export async function lookupStaffActor(db,uid) {
   const row=await db.prepare(
-    'SELECT id,login_email,display_name,permissions_json,daily_coin_limit,active '+
-    'FROM sharika_admin_staff_accounts WHERE auth_uid=?'
+    'SELECT s.id,s.login_email,s.display_name,s.permissions_json,s.daily_coin_limit,s.active '+
+    'FROM sharika_admin_staff_accounts s '+
+    'LEFT JOIN sharika_users u ON u.auth_uid=s.auth_uid '+
+    'WHERE s.auth_uid=? '+
+    // Dedicated Firebase staff may not have a Sharika user profile. Existing
+    // member delegations must have one, and blocked members lose panel access.
+    "AND (u.auth_uid IS NULL OR u.status='active') "+
+    "AND (s.login_email NOT LIKE 'member-%@panel.sharika.invalid' OR u.auth_uid IS NOT NULL)"
   ).bind(uid).first();
   if(!row||!row.active)return null;
   let permissions;

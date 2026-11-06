@@ -9,7 +9,7 @@ function mock({
   staff={active:1,login_email:'helper@example.test',display_name:'Helper',
     permissions_json:'["view_users","coin_recharge"]',daily_coin_limit:5000},
   target={auth_uid:'recipient-uid',public_no:10000017,coins:100,status:'active'},
-  existing=null,account=null
+  existing=null,account=null,memberStatus='active'
 }={}) {
   const state={queries:[],batches:[]};
   const DB={
@@ -20,6 +20,12 @@ function mock({
           state.queries.push({sql,args:this.args});
           if(sql.includes('FROM sharika_admin_staff_accounts WHERE auth_uid=? OR login_email=?'))
             return null;
+          if(sql.includes('LEFT JOIN sharika_users u ON u.auth_uid=s.auth_uid')&&
+             sql.includes('WHERE s.auth_uid=?')){
+            if(memberStatus==='blocked'||memberStatus==='deleted')return null;
+            if(memberStatus===null&&staff.login_email?.endsWith('@panel.sharika.invalid'))return null;
+            return staff;
+          }
           if(sql.includes('FROM sharika_admin_staff_accounts WHERE auth_uid=?'))
             return staff;
           if(sql.includes('FROM sharika_admin_direct_recharges g ')&&
@@ -77,6 +83,20 @@ test('staff Firebase role requires active database record and recognized permiss
   assert.deepEqual(actor.permissions,['view_users','coin_recharge']);
   assert.equal((await lookupStaffActor(mock({staff:{active:0}}).DB,'uid')),null);
   assert.equal((await lookupStaffActor(mock({staff:{active:1,permissions_json:'["super"]'}}).DB,'uid')),null);
+});
+
+test('blocked or deleted delegated members lose access while dedicated staff without a member profile remain valid',async()=>{
+  const delegated={active:1,login_email:'member-10000017@panel.sharika.invalid',
+    display_name:'Member',permissions_json:'["view_users"]',daily_coin_limit:0};
+  const blocked=mock({staff:delegated,memberStatus:'blocked'});
+  assert.equal(await lookupStaffActor(blocked.DB,'uid'),null);
+  assert.match(blocked.state.queries[0].sql,/u\.status='active'/);
+  assert.equal(await lookupStaffActor(mock({staff:delegated,memberStatus:'deleted'}).DB,'uid'),null);
+  assert.equal(await lookupStaffActor(mock({staff:delegated,memberStatus:null}).DB,'uid'),null);
+  const allowed=await lookupStaffActor(mock({staff:delegated,memberStatus:'active'}).DB,'uid');
+  assert.equal(allowed.role,'staff');
+  const dedicated=await lookupStaffActor(mock({memberStatus:null}).DB,'uid');
+  assert.equal(dedicated.role,'staff');
 });
 
 test('super can create a Firebase-verified restricted staff record without storing password',async()=>{
