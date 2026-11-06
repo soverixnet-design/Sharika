@@ -176,8 +176,53 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
  return null;
 }
 export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,reply,fail,cors,env,ctx}){
- if(path!=='/api/v1/admin/cosmetics'&&path!=='/api/v1/admin/cosmetics/grant')return null;
+ if(!['/api/v1/admin/cosmetics','/api/v1/admin/cosmetics/grant',
+   '/api/v1/admin/cosmetics/grants','/api/v1/admin/cosmetics/revoke'].includes(path))return null;
  if(role!=='super')return fail('admin_permission_denied',403,cors);
+ if(path.endsWith('/grants')&&request.method==='GET'){
+  const publicId=new URL(request.url).searchParams.get('public_id');
+  if(!publicId||!PUBLIC.test(publicId))return invalid(fail,cors);
+  const target=await db.prepare("SELECT auth_uid FROM sharika_users WHERE public_no=? AND status='active'")
+    .bind(Number(publicId)).first();
+  if(!target)return fail('target_user_not_found',404,cors);
+  const result=await db.prepare('SELECT i.item_id,i.source,i.acquired_at,c.name,c.kind '+
+    'FROM sharika_cosmetic_inventory i JOIN sharika_cosmetics_catalog c ON c.id=i.item_id '+
+    "WHERE i.auth_uid=? AND i.source='admin_grant' ORDER BY i.acquired_at DESC LIMIT 100")
+    .bind(target.auth_uid).all();
+  return reply({public_id:publicId,grants:result.results||[],read_only:true},200,cors);
+ }
+ if(path.endsWith('/revoke')&&request.method==='POST'){
+  const body=await readBody(request);
+  if(typeof body.public_id!=='string'||!PUBLIC.test(body.public_id)||
+     typeof body.item_id!=='string'||body.item_id.length>70||
+     typeof body.reason!=='string'||body.reason.trim().length<8||
+     body.reason.trim().length>200)return invalid(fail,cors);
+  const target=await db.prepare("SELECT auth_uid FROM sharika_users WHERE public_no=? AND status='active'")
+    .bind(Number(body.public_id)).first();
+  if(!target)return fail('target_user_not_found',404,cors);
+  const entitlement=await db.prepare('SELECT i.source,c.kind,c.name '+
+    'FROM sharika_cosmetic_inventory i JOIN sharika_cosmetics_catalog c ON c.id=i.item_id '+
+    'WHERE i.auth_uid=? AND i.item_id=?').bind(target.auth_uid,body.item_id).first();
+  if(!entitlement)return fail('cosmetic_entitlement_not_found',404,cors);
+  // Paid items and rewards from other systems must not be removed by the
+  // "revoke admin grant" action. They have their own legal entitlement source.
+  if(entitlement.source!=='admin_grant')return fail('cosmetic_not_admin_grant',409,cors);
+  await db.batch([
+    db.prepare('DELETE FROM sharika_cosmetic_equipped WHERE auth_uid=? AND item_id=?')
+      .bind(target.auth_uid,body.item_id),
+    db.prepare("DELETE FROM sharika_cosmetic_inventory WHERE auth_uid=? AND item_id=? AND source='admin_grant'")
+      .bind(target.auth_uid,body.item_id),
+    db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
+      .bind(uid,'cosmetic_admin_grant_revoke',JSON.stringify({public_id:body.public_id,
+        item_id:body.item_id,kind:entitlement.kind,reason:body.reason.trim()}))
+  ]);
+  await recordUserEvent({db,env,ctx,recipientUid:target.auth_uid,kind:'reward',
+    title:'Admin item removed',body:'An admin-granted '+entitlement.kind.replaceAll('_',' ')+
+      ' was removed from your Backpack. Reason: '+body.reason.trim(),
+    dedupeKey:'cosmetic_admin_revoke:'+body.public_id+':'+body.item_id+':'+Date.now(),createdBy:uid});
+  return reply({revoked:true,public_id:body.public_id,item_id:body.item_id},200,cors);
+ }
+ if(path.endsWith('/grants')||path.endsWith('/revoke'))return fail('admin_method_not_allowed',405,cors);
  if(path.endsWith('/grant')&&request.method==='POST'){
   const body=await readBody(request);
   if(typeof body.public_id!=='string'||!PUBLIC.test(body.public_id)||

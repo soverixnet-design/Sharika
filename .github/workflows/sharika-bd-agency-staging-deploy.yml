@@ -8,6 +8,11 @@ on:
     paths:
       - '.github/workflows/sharika-bd-agency-staging-deploy.yml'
       - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/staff.mjs'
+      - 'cloudflare/src/cosmetics.mjs'
+      - 'cloudflare/src/admin.mjs'
+      - 'cloudflare/migrations/0071_admin_virtual_coin_debits.sql'
+      - 'admin/connection.js'
   workflow_dispatch:
 
 permissions:
@@ -69,7 +74,9 @@ jobs:
           console.log('EXACT_STAGING_WORKER_AND_D1_VERIFIED');
           NODE
       - name: Run backend, security, and immutable-wallet tests
-        run: npm run check
+        run: |
+          npm run check
+          python3 test/admin-coin-debit-sql.test.py
       - name: Confirm current staging health and migrations through 0067
         run: |
           set -euo pipefail
@@ -110,9 +117,19 @@ jobs:
             --file migrations/0070_agency_salary_seller_virtual.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
             --command "INSERT INTO d1_migrations(name) SELECT '0070_agency_salary_seller_virtual.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0070_agency_salary_seller_virtual.sql')"
+      - name: Apply additive immutable Super Admin virtual-coin debit receipts 0071
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --file migrations/0071_admin_virtual_coin_debits.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "INSERT INTO d1_migrations(name) SELECT '0071_admin_virtual_coin_debits.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0071_admin_virtual_coin_debits.sql')"
       - name: Verify new receipts and existing Agency ledger
         run: |
           set -euo pipefail
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name='sharika_admin_coin_adjustments'" \
+            | grep -F 'sharika_admin_coin_adjustments' >/dev/null
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
             --command "SELECT name FROM sqlite_master WHERE type='table' AND name='sharika_invite_usd_coin_conversions'" \
             | grep -F 'sharika_invite_usd_coin_conversions' >/dev/null

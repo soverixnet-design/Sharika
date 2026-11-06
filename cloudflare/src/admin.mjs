@@ -166,7 +166,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
       if(raw.length>16000)throw Error('body_too_large');return JSON.parse(raw||'{}');},
     reply,fail,cors
   });
-  if(operation==='cosmetics'||operation==='cosmetics/grant')
+  if(['cosmetics','cosmetics/grant','cosmetics/grants','cosmetics/revoke'].includes(operation))
     return await handleCosmeticAdmin({
       request,db:env.DB,env,ctx,uid,role:actor.role,path,
       readBody:async req=>{const raw=await req.text();

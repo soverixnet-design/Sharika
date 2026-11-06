@@ -1267,6 +1267,11 @@
       '<select class="field" id="sh-cos-grant-item" aria-label="Choose a frame or medal"></select>'+
       '<button class="btn s" type="button" id="sh-cos-grant">Give selected item to ID · Free</button>'+
       '<p class="n" role="status" id="sh-cos-note"></p></div>'+
+      '<div class="card"><h3>↩️ Remove an admin-granted item</h3>'+
+      '<p class="n">Only items previously given by an administrator can be removed here. Purchased items stay protected; every removal is audited.</p>'+
+      '<div class="row"><input id="sh-cos-revoke-user" maxlength="8" inputmode="numeric" placeholder="User ID (8 digits)">'+
+      '<button id="sh-cos-find-grants" class="btn s" type="button">Find granted items</button></div>'+
+      '<div id="sh-cos-grants-list"></div><p id="sh-cos-revoke-note" class="n" aria-live="polite"></p></div>'+
       '<div id="sh-cosmetic-list">Loading server catalogue…</div>'+
       '<div class="card"><h3>Add new catalog item</h3>'+
       '<div class="row"><select class="field" id="sh-cos-kind">'+options(kinds,'entry_style')+'</select>'+
@@ -1373,6 +1378,43 @@
         }catch(error){status.textContent='Grant failed: '+error.message;}
         finally{button.disabled=false;}
       };
+      const revokeNote=byId('sh-cos-revoke-note'),grantList=byId('sh-cos-grants-list');
+      const finder=byId('sh-cos-find-grants');
+      async function loadMemberGrants(){
+        const publicId=byId('sh-cos-revoke-user').value.trim();
+        if(!/^[0-9]{8}$/.test(publicId)){
+          revokeNote.textContent='Enter a verified eight-digit member ID.';return;
+        }
+        finder.disabled=true;
+        try{
+          const data=await api('GET','cosmetics/grants?public_id='+encodeURIComponent(publicId));
+          grantList.innerHTML=(data.grants||[]).map(item=>
+            '<div class="row"><span>'+esc(item.name)+' · '+esc(item.item_id)+'</span>'+
+            '<button class="btn s" data-cos-revoke="'+esc(item.item_id)+'" type="button">Remove</button></div>'
+          ).join('')||'<p class="n">No administrator-granted items found for this ID.</p>';
+          revokeNote.textContent='Only explicit admin gifts are listed; purchases cannot be revoked here.';
+          grantList.querySelectorAll('[data-cos-revoke]').forEach(button=>{
+            button.onclick=async()=>{
+              const itemId=button.dataset.cosRevoke;
+              const reason=window.prompt('Why are you removing this item? (8–200 characters)');
+              if(reason===null)return;
+              if(reason.trim().length<8||reason.trim().length>200){
+                revokeNote.textContent='A reason of 8–200 characters is required.';return;
+              }
+              if(!window.confirm('Remove '+itemId+' from member '+publicId+'? This is audited.'))return;
+              button.disabled=true;
+              try{
+                await api('POST','cosmetics/revoke',{public_id:publicId,item_id:itemId,reason:reason.trim()});
+                await loadMemberGrants();
+                revokeNote.textContent='Removed and audited: '+itemId;
+              }catch(error){revokeNote.textContent='Removal failed: '+error.message;
+                button.disabled=false;}
+            };
+          });
+        }catch(error){revokeNote.textContent='Could not find grants: '+error.message;}
+        finally{finder.disabled=false;}
+      }
+      finder.onclick=loadMemberGrants;
     }catch(error){status.textContent='Cosmetics unavailable: '+error.message;}
   };
 
@@ -1984,7 +2026,8 @@
         '"'+(selected.includes(key)?' checked':'')+'> '+esc(label)+'</label>').join('');
       const staffList=(team.staff||[]).map(item=>
         '<div class="card" data-staff-card="'+item.id+'" style="margin:12px 0">'+
-        '<h4>'+esc(item.name)+' · '+esc(item.email)+'</h4>'+
+        '<h4>'+esc(item.name)+' · '+(item.email.endsWith('@panel.sharika.invalid')?
+          'Sharika ID '+esc(item.public_id||'') : esc(item.email))+'</h4>'+
         '<p class="n">Staff #'+fmt(item.id)+' · Created '+esc(item.created_at)+'</p>'+
         '<div>'+scopeFields('edit',item.id,item.permissions||[])+'</div>'+
         '<div class="row"><label>Max staff coins/day <input inputmode="numeric" data-staff-limit="'+item.id+
@@ -1997,6 +2040,13 @@
         '<p class="n">Existing Super, Finance and Support accounts are protected; staff users cannot promote themselves.</p>'+
         window.T(['User ID','Name','Role','Assigned'],(data.admins||[]).map(a=>[
           esc(a.public_id),esc(a.name),esc(a.role),esc(a.assigned_at)]))+'</div>'+
+        '<div class="card"><h3>🔐 Give existing member admin-panel access</h3>'+
+        '<p class="n">Enter the existing Sharika member ID. They sign in to the panel with their OWN Google/Firebase account. No new password is needed, and they only receive the permissions you select.</p>'+
+        '<div class="row"><input id="staff-member-id" maxlength="8" inputmode="numeric" placeholder="Existing 8-digit Sharika ID" aria-label="Existing member ID"></div>'+
+        '<div>'+scopeFields('member','member')+'</div>'+
+        '<div class="row"><label>Maximum coins per day (if recharge enabled) <input id="staff-member-limit" inputmode="numeric" value="0"></label>'+
+        '<button class="btn s" id="staff-member-create" type="button">Grant selected panel permissions</button></div>'+
+        '<p id="staff-member-note" class="n" aria-live="polite"></p></div>'+
         '<div class="card"><h3>➕ Create staff login</h3>'+
         '<p class="n">Uses Firebase email/password. Passwords never reach the Sharika server or D1. Staff must verify their email before signing in.</p>'+
         '<div class="row"><input id="staff-name" maxlength="80" placeholder="Staff display name" aria-label="Staff name">'+
@@ -2022,6 +2072,29 @@
         return limit;
       }
       const create=byId('staff-create');
+      const memberButton=byId('staff-member-create');
+      memberButton.onclick=async()=>{
+        if(memberButton.disabled)return;
+        const publicId=byId('staff-member-id').value.trim(),permissions=picked('member');
+        const info=byId('staff-member-note');
+        let limit;
+        try{limit=validateLimit(byId('staff-member-limit').value.trim(),permissions);}
+        catch(error){info.textContent=error.message;return;}
+        if(!/^[0-9]{8}$/.test(publicId)||!permissions.length){
+          info.textContent='Select an existing 8-digit Sharika ID and at least one permission.';return;
+        }
+        if(!window.confirm('Enable ADMIN PANEL access for existing member '+publicId+
+          ' with ONLY these permissions: '+permissions.join(', ')+'?'))return;
+        memberButton.disabled=true;
+        try{
+          await api('POST','staff/existing',{
+            target_public_id:publicId,permissions,daily_coin_limit:limit
+          });
+          await P.admins();
+          byId('staff-member-note').textContent='Access granted. The member can log in using their own Sharika account.';
+        }catch(error){info.textContent='Access not granted: '+error.message;}
+        finally{if(memberButton.isConnected)memberButton.disabled=false;}
+      };
       create.onclick=async()=>{
         if(create.disabled)return;
         const name=byId('staff-name').value.trim();
@@ -2273,6 +2346,59 @@
       '<p id="direct-note" class="n" aria-live="polite"></p>'+
       '<h4>Verified direct credit history</h4><div id="direct-history">Loading…</div>';
     root.insertBefore(section,root.firstChild);
+    if(role==='super'){
+      const debit=document.createElement('div');
+      debit.className='card';
+      debit.innerHTML='<h3>↩️ Subtract virtual coins · Super Admin only</h3>'+
+        '<p class="n">Deduct only from the current available wallet. This does not edit old recharge receipts or other historic transactions. Every debit is a new immutable ledger entry with a mandatory reason.</p>'+
+        '<div class="row"><input id="debit-user" maxlength="10" inputmode="numeric" placeholder="Member / Special ID">'+
+        '<input id="debit-coins" inputmode="numeric" placeholder="Virtual coins to subtract"></div>'+
+        '<div class="row"><input id="debit-reason" maxlength="200" placeholder="Reason (8–200 characters)">'+
+        '<button class="btn s" id="debit-submit" type="button">Subtract virtual coins</button></div>'+
+        '<p id="debit-note" class="n" aria-live="polite"></p>'+
+        '<h4>Immutable debit history</h4><div id="debit-history">Loading…</div>';
+      section.insertAdjacentElement('afterend',debit);
+      const debitNote=byId('debit-note'),debitHistory=byId('debit-history');
+      let pendingDebit=null;
+      async function refreshDebits(){
+        try{
+          const res=await api('GET','coin-adjustments');
+          debitHistory.innerHTML=window.T(['Transaction','Recipient','Coins subtracted','Balance','Reason','Time'],
+            (res.adjustments||[]).map(a=>[fmt(a.id),esc(a.recipient_id),fmt(a.coins),
+              fmt(a.balance_after),esc(a.reason),esc(a.created_at)]));
+        }catch(error){debitHistory.textContent='Debit history unavailable: '+error.message;}
+      }
+      const debitButton=byId('debit-submit');
+      debitButton.onclick=async()=>{
+        if(debitButton.disabled)return;
+        const target=byId('debit-user').value.trim(),raw=byId('debit-coins').value.trim();
+        const amount=Number(raw),reason=byId('debit-reason').value.trim();
+        if(!/^[0-9]{1,10}$/.test(target)||!/^[0-9]+$/.test(raw)||
+           !Number.isSafeInteger(amount)||amount<1||amount>1000000000000||
+           reason.length<8||reason.length>200){
+          debitNote.textContent='Enter a valid ID, positive virtual coin amount and a reason of 8–200 characters.';return;
+        }
+        if(!window.confirm('SUBTRACT '+fmt(amount)+' VIRTUAL coins from member '+target+
+          '? Reason: '+reason+'\nThis cannot be undone except by a separate audited credit.'))return;
+        const fingerprint=target+':'+amount+':'+reason;
+        const requestId=pendingDebit?.fingerprint===fingerprint?pendingDebit.requestId:
+          'admin-debit:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
+        pendingDebit={fingerprint,requestId};
+        debitButton.disabled=true;debitNote.textContent='Submitting audited virtual coin adjustment…';
+        try{
+          const result=await api('POST','coin-adjustments',{
+            target_public_id:target,coins:amount,reason,request_id:requestId
+          });
+          pendingDebit=null;
+          debitNote.textContent=(result.duplicate?'Already processed safely. ':'Confirmed. ')+
+            'Transaction #'+result.transaction_id+' · Remaining '+fmt(result.balance_after)+' coins.';
+          byId('debit-coins').value='';
+          await refreshDebits();
+        }catch(error){debitNote.textContent='Not confirmed. Check debit history before retrying: '+error.message;}
+        finally{debitButton.disabled=false;}
+      };
+      await refreshDebits();
+    }
     const note=byId('direct-note'),history=byId('direct-history');
     async function refreshHistory(){
       try{
