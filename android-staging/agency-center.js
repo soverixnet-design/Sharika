@@ -422,10 +422,15 @@
     panel.querySelector('[data-ag-transactions]').onclick=()=>show('transactions');
   }
   async function renderSalary(token){
-    const latest=await api('GET','/agency/me');
+    const [latest,directory]=await Promise.all([
+      api('GET','/agency/me'),
+      api('GET','/sellers').catch(()=>({sellers:[]}))
+    ]);
     if(token!==generation)return;
     me=latest;
     const salary=latest.salary||{},history=latest.salary_exchanges||[];
+    const sellerTransfers=latest.seller_transfers||[];
+    const approvedSellers=(directory.sellers||[]).filter(s=>/^[0-9]{8}$/.test(String(s.public_id)));
     const maximum=Math.floor((Number(salary.matured_available_units)||0)/10000);
     const eligible=!!salary.exchange_enabled&&maximum>0;
     const role=latest.host?.active?'Host':latest.agency?'Agency Owner':
@@ -448,6 +453,21 @@
       '<button type="button" class="ag-wallet-action-selected">'+image(icon('gifts'))+
       'Exchange to Coins</button>'+
       '<button type="button" data-ag-wallet-ledger>'+image(icon('ranking'))+'Coin Ledger</button></div>'+
+      '<div class="ag-panel" data-ag-seller-panel style="display:none">'+
+      '<h3>Transfer Verified Salary to Coin Seller</h3>'+
+      '<p class="ag-muted">Only virtual coins go into an approved seller’s Sharika stock. No cash-out.</p>'+
+      '<label class="ag-wallet-label" for="ag-salary-seller">Approved Coin Seller</label>'+
+      '<select id="ag-salary-seller" class="ag-search" data-ag-seller-id>'+
+      '<option value="">Select a verified seller</option>'+
+      approvedSellers.map(s=>'<option value="'+esc(s.public_id)+'">'+
+        esc(s.name||'Seller')+' · ID '+esc(s.public_id)+'</option>').join('')+'</select>'+
+      '<label class="ag-wallet-label" for="ag-salary-send-coins">Virtual coins</label>'+
+      '<input id="ag-salary-send-coins" class="ag-search" type="number" inputmode="numeric" '+
+      'min="1" step="1" max="'+esc(maximum)+'" placeholder="Up to '+fmt(maximum)+'" '+
+      'data-ag-seller-coins '+(eligible?'':'disabled')+'>'+
+      '<button type="button" class="ag-big-button ag-purple-action" data-ag-seller-submit '+
+      (eligible&&approvedSellers.length?'':'disabled')+'>Confirm Virtual Transfer</button>'+
+      '<p class="ag-muted" data-ag-seller-result role="status"></p></div>'+
       '<div class="ag-panel ag-exchange-rate">'+image(icon('reports'))+
       '<span class="ag-grow"><b>Admin-set Rate</b><small>10,000 salary units = 1 virtual coin</small></span>'+
       '<b>1 USD reference = '+fmt(salary.coins_per_usd)+' coins</b></div>'+
@@ -456,7 +476,8 @@
       '<input type="number" min="1" step="1" max="'+esc(maximum)+'" '+
       'class="ag-search" placeholder="Enter whole coins (up to '+fmt(maximum)+')" data-ag-salary-coins '+
       (eligible?'':'disabled')+' aria-label="Salary exchange coins">'+
-      '<p class="ag-muted">Already exchanged: '+coinUnits(salary.exchanged_units)+' coins • '+
+      '<p class="ag-muted">Already exchanged: '+coinUnits(salary.exchanged_units)+
+      ' coins • Sent to sellers: '+coinUnits(salary.transferred_units)+' coins • '+
       'Settlement: '+esc(salary.settlement_mode||'weekly')+' • Target: '+
       fmt(salary.min_host_target_coins)+' received gift coins.</p>'+
       '<p class="ag-muted">'+(salary.exchange_enabled?
@@ -471,12 +492,51 @@
         fmt(item.credited_coins)+' coins</b><small>'+esc(item.settlement_mode)+' • '+
         readableDate(item.created_at)+'</small></span><span class="ag-value">✓</span></div>')
         .join('')||'<div class="ag-empty">No salary exchanges recorded.</div>')+'</div>'+
+      '<div class="ag-panel"><h3>Seller Transfer Records</h3>'+
+      (sellerTransfers.map(t=>'<div class="ag-activity"><span class="ag-grow"><b>'+
+        fmt(t.credited_coins)+' virtual coins → '+esc(t.seller_name||'Seller')+'</b><small>'+
+        'Seller ID '+esc(t.seller_public_id)+' • '+readableDate(t.created_at)+
+        '</small></span><span class="ag-value">✓</span></div>').join('')||
+        '<div class="ag-empty">No virtual seller transfers yet.</div>')+'</div>'+
       '<p class="ag-muted">This is virtual app currency only. No bank transfer or cash withdrawal.</p>','salary');
     panel.querySelector('[data-ag-detail]').onclick=()=>show('reports');
     panel.querySelector('[data-ag-history]').onclick=()=>show('transactions');
     panel.querySelector('[data-ag-wallet-ledger]').onclick=()=>show('transactions');
-    panel.querySelector('[data-ag-seller]').onclick=()=>notice(
-      'Agency salary cannot be transferred to a Seller. Only verified exchange to the in-app coin wallet is available.');
+    const sellerPanel=panel.querySelector('[data-ag-seller-panel]');
+    panel.querySelector('[data-ag-seller]').onclick=()=>{
+      sellerPanel.style.display=sellerPanel.style.display==='none'?'block':'none';
+      if(!approvedSellers.length)notice('No approved Coin Sellers are currently available.');
+    };
+    let pendingSellerTransfer=null;
+    panel.querySelector('[data-ag-seller-submit]').onclick=async()=>{
+      const sellerId=panel.querySelector('[data-ag-seller-id]')?.value||'';
+      const raw=panel.querySelector('[data-ag-seller-coins]')?.value||'';
+      const coins=Number(raw);
+      const status=panel.querySelector('[data-ag-seller-result]');
+      if(!approvedSellers.some(s=>s.public_id===sellerId)||
+         !/^[0-9]+$/.test(raw)||!Number.isSafeInteger(coins)||
+         coins<1||coins>maximum){
+        status.textContent='Select an approved seller and enter available whole virtual coins.';
+        return;
+      }
+      const key=sellerId+':'+coins;
+      if(pendingSellerTransfer?.key!==key)
+        pendingSellerTransfer={key,request_id:'salary-seller:'+crypto.randomUUID()};
+      const button=panel.querySelector('[data-ag-seller-submit]');
+      button.disabled=true;status.textContent='Verifying and transferring virtual coins…';
+      try{
+        await api('POST','/agency/salary/transfer-to-seller',{
+          seller_public_id:sellerId,coins,expected_version:salary.policy_version,
+          request_id:pendingSellerTransfer.request_id
+        });
+        pendingSellerTransfer=null;
+        await show('salary',undefined,undefined,false);
+      }catch(error){
+        button.disabled=false;
+        status.textContent='Transfer not confirmed: '+String(error?.message||error)+
+          '. Check records; retrying this amount uses the same request ID.';
+      }
+    };
     panel.querySelector('[data-ag-exchange]').onclick=async()=>{
       const field=panel.querySelector('[data-ag-salary-coins]');
       const coins=Number(field?.value);

@@ -85,7 +85,7 @@ jobs:
       - name: Dry-run exact staging API Worker
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
       # Migration gap 0063 is unrelated. Never run blanket migrations apply:
-      # only these two additive new receipt tables may be installed here.
+      # only the explicitly reviewed additive receipts and salary guard.
       - name: Apply additive Play Billing receipt migration 0068 (checkout still disabled)
         run: |
           set -euo pipefail
@@ -100,6 +100,16 @@ jobs:
             --file migrations/0069_invite_usd_to_virtual_coins.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
             --command "INSERT INTO d1_migrations(name) SELECT '0069_invite_usd_to_virtual_coins.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0069_invite_usd_to_virtual_coins.sql')"
+      - name: Apply guarded virtual salary-to-seller migration 0070
+        run: |
+          set -euo pipefail
+          # Re-applying this migration is safe: existing receipts are retained,
+          # tables and indexes are IF NOT EXISTS, and the budget trigger is
+          # recreated with the combined salary-spend guard.
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --file migrations/0070_agency_salary_seller_virtual.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "INSERT INTO d1_migrations(name) SELECT '0070_agency_salary_seller_virtual.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0070_agency_salary_seller_virtual.sql')"
       - name: Verify new receipts and existing Agency ledger
         run: |
           set -euo pipefail
@@ -111,6 +121,9 @@ jobs:
             | grep -F 'sharika_play_billing_purchases' >/dev/null
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
             --command "SELECT COUNT(*) AS preserved_agencies FROM sharika_families"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name='sharika_agency_salary_seller_transfers'" \
+            | grep -F 'sharika_agency_salary_seller_transfers' >/dev/null
       - name: Deploy only sharika-api-staging
         run: npx --yes wrangler@4 deploy --config wrangler.jsonc
       - name: Verify deployed staging API health

@@ -15,7 +15,7 @@ test('room list serves verified owner Special ID alongside canonical room ID',()
 });
 
 test('room header, mic seats, listeners and user profiles prefer active Special ID',()=>{
-  assert.match(ui,/roomHeaderId\.textContent=visibleOwnerId/);
+  assert.match(ui,/paintSpecialIdLabel\(roomHeaderId,visibleOwnerId/);
   assert.match(ui,/owner\.special_id\|\|owner\.display_id\|\|room\.id/);
   assert.match(ui,/display_id:user\.special_id\|\|user\.display_id\|\|user\.public_id/);
   assert.match(ui,/id:user\.special_id\|\|user\.display_id\|\|user\.public_id/);
@@ -29,7 +29,7 @@ test('outside room cards show account country, but photo management remains insi
   assert.match(ui,/flagForCountry\(storedCountry\)/);
   assert.match(ui,/countryCode\(storedCountry\)/);
   assert.match(ui,/location\.textContent=title/);
-  assert.match(ui,/summary\.textContent='ID '\+displayId/);
+  assert.match(ui,/paintSpecialIdLabel\(summary,displayId,!!room\.owner_special_id\)/);
   assert.doesNotMatch(ui,/textContent='📷 Edit photo'/);
   assert.match(ui,/row\(roomGroup,'Profile photo','Edit cover'/);
   assert.match(ui,/owner\?\(\)=>pickRoomCover\(room,frame\):null/);

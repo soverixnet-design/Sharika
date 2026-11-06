@@ -1200,6 +1200,7 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.equals("/api/v1/agency/hosts/assign") ||
             path.equals("/api/v1/agency/salary/exchange") ||
+            path.equals("/api/v1/agency/salary/transfer-to-seller") ||
             path.equals("/api/v1/agency/create/request") ||
             path.equals("/api/v1/agency/join") ||
             path.equals("/api/v1/agency/bd/grant") ||
@@ -1271,7 +1272,8 @@ public final class SharikaActivity extends Activity {
             path.matches("^/api/v1/bonds/[1-9][0-9]{0,11}/unbind$"))
             return method.equals("POST");
         if (path.equals("/api/v1/sellers") || path.equals("/api/v1/sellers/me") ||
-            path.equals("/api/v1/sellers/transfers") || path.equals("/api/v1/sellers/allocations"))
+            path.equals("/api/v1/sellers/transfers") || path.equals("/api/v1/sellers/allocations") ||
+            path.equals("/api/v1/sellers/salary-receipts"))
             return method.equals("GET");
         if (path.equals("/api/v1/sellers/transfer")) return method.equals("POST");
         if (path.equals("/api/v1/rooms"))

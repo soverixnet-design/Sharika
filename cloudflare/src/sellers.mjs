@@ -82,6 +82,19 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}
       stock_after:a.stock_after,created_at:a.created_at
     })),read_only:true},200,cors);
   }
+  if(path==='/api/v1/sellers/salary-receipts'&&request.method==='GET'){
+    const rows=resultRows(await env.DB.prepare(
+      'SELECT t.id,t.credited_coins,t.created_at,u.public_no AS sender_no '+
+      'FROM sharika_agency_salary_seller_transfers t '+
+      'JOIN sharika_users u ON u.auth_uid=t.auth_uid '+
+      'WHERE t.seller_uid=? ORDER BY t.id DESC LIMIT 100'
+    ).bind(uid).all());
+    return reply({receipts:rows.map(t=>({
+      id:t.id,sender_public_id:showId(t.sender_no),
+      coins:t.credited_coins,created_at:t.created_at,
+      source:'verified_virtual_agency_salary'
+    })),read_only:true},200,cors);
+  }
   if(path==='/api/v1/sellers/transfer'&&request.method==='POST'){
     let body;
     try{body=await input(request);}catch(error){return jsonFailure(fail,cors,error.message);}

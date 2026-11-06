@@ -738,6 +738,11 @@
       'font-weight:1000!important;letter-spacing:.065em!important;font-variant-numeric:tabular-nums;',
       'box-shadow:0 0 17px #ff304c88,inset 0 0 10px #b9273270;',
       'animation:sh-special-id-fire 2.8s ease-in-out infinite!important}',
+      '.sh-special-id-label{display:inline-flex!important;align-items:center;gap:5px;vertical-align:middle}',
+      '.sh-special-id-crest{display:inline-block;width:31px;height:31px;flex:0 0 31px;',
+      'background:url("./special-id-crest.jpg") center center / 235% auto no-repeat;',
+      'mix-blend-mode:screen;filter:drop-shadow(0 0 3px #ffc252);pointer-events:none}',
+      '#rf .sh-special-id-crest{width:23px;height:23px;flex-basis:23px}',
       '@media(prefers-reduced-motion:reduce){',
       '#v-me .mid.sh-neon-single-id,#pfc .pfh .meta .sh-neon-single-id{',
       'animation:none!important;color:#ff4055!important;-webkit-text-fill-color:#ff4055}}',
@@ -1730,11 +1735,39 @@
   // The old HTML creates random "Manager" badges locally. Never represent those
   // as real ranks in staging. Only verified server cosmetics are displayed.
   window.ownedMedals=function(){return [];};
+  // Show the exact owner-provided ID crest only beside an authenticated
+  // special number. Do not leak the hidden canonical public ID in the label.
+  function paintSpecialIdLabel(target,value,isSpecial,prefix='ID '){
+    if(!target)return;
+    const id=String(value||'');
+    if(!/^[0-9]{1,10}$/.test(id))return;
+    target.replaceChildren();
+    target.classList.toggle('sh-special-id-label',!!isSpecial);
+    if(isSpecial){
+      // The room is an about:srcdoc frame, so it cannot inherit the outer
+      // document stylesheet. Apply the compact badge layout in both contexts.
+      target.style.setProperty('display','inline-flex','important');
+      target.style.alignItems='center';target.style.gap='5px';
+      const crest=target.ownerDocument.createElement('span');
+      crest.className='sh-special-id-crest';
+      crest.setAttribute('aria-hidden','true');
+      crest.style.cssText='display:inline-block;width:29px;height:29px;flex:0 0 29px;'+
+        'background:url("./special-id-crest.jpg") center/235% auto no-repeat;'+
+        'mix-blend-mode:screen;filter:drop-shadow(0 0 3px #ffc252);pointer-events:none';
+      target.appendChild(crest);
+    }else{
+      target.style.removeProperty('display');
+      target.style.removeProperty('align-items');
+      target.style.removeProperty('gap');
+    }
+    target.appendChild(target.ownerDocument.createTextNode((isSpecial?'':prefix)+id));
+    target.setAttribute('aria-label','ID '+id);
+  }
   function renderVerifiedIdentity(){
     const anchor=document.querySelector('#v-me .mid');
     if(!anchor)return;
     const displayId=String(profile?.special_id||profile?.display_id||profile?.public_id||'');
-    if(/^[0-9]{1,10}$/.test(displayId))anchor.textContent='ID '+displayId;
+    paintSpecialIdLabel(anchor,displayId,!!profile?.special_id);
     // Tapping the public ID opens the separate rich ID detail profile,
     // never redirects back to the wallet/settings Main Profile.
     anchor.setAttribute('role','button');anchor.tabIndex=0;
@@ -4900,6 +4933,7 @@
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
         seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
         owner_country:r.owner_country||'',owner_display_id:r.owner_display_id||r.id,
+        owner_special_id:r.special_id||null,
         created_at:r.created_at||''
       }));
       window.A.myRoom = own ? {
@@ -4909,6 +4943,7 @@
         n:Number(own.online_count)||0,cover_url:own.cover_url||null,
         owner_country:own.owner_country||window.CFG.viewerCountry||'',
         owner_display_id:own.owner_display_id||own.id,
+        owner_special_id:own.special_id||null,
         created_at:own.created_at||''
       } : null;
       // Quiet background refresh: changing identical room cards restarts every
@@ -5070,8 +5105,10 @@
       // display the owner's active Special ID, if one exists.
       const displayId=String(room.owner_display_id||room.id);
       const summary=card.querySelector('.info small');
-      if(summary&&/^[0-9]{1,10}$/.test(displayId))
-        summary.textContent='ID '+displayId+' · 🔥 '+(Number(room.n)||0);
+      if(summary&&/^[0-9]{1,10}$/.test(displayId)){
+        paintSpecialIdLabel(summary,displayId,!!room.owner_special_id);
+        summary.appendChild(document.createTextNode(' · 🔥 '+(Number(room.n)||0)));
+      }
       // Show only broad, user-supplied account country, not GPS or street data.
       // The old top-right Edit photo button belongs inside owner settings.
       card.querySelector('.sh-room-cover-edit')?.remove();
@@ -5173,12 +5210,30 @@
       const cachedOwner=room.__sharikaVerifiedOwner;
       const ownerFresh=cachedOwner&&cachedOwner.userId===userId&&
         Date.now()-cachedOwner.fetchedAt<60000;
-      [data,owner] = await Promise.all([
-        api('GET','/rooms/'+room.id+'/members'),
-        ownerFresh?Promise.resolve(cachedOwner.value):api('GET','/users/'+room.id)
-      ]);
-      if(!ownerFresh&&owner&&session?.user?.id===userId)
-        room.__sharikaVerifiedOwner={userId,fetchedAt:Date.now(),value:owner};
+      // Render as soon as the authoritative seat snapshot arrives. Waiting
+      // for the optional /users owner lookup (sometimes a full native API
+      // timeout) was the source of the stuck "Loading verified seats" veil.
+      data=await api('GET','/rooms/'+room.id+'/members');
+      if(!ownerFresh&&!room.__sharikaOwnerProfileInFlight&&
+        Date.now()-(room.__sharikaOwnerLastAttempt||0)>=60000){
+        room.__sharikaOwnerLastAttempt=Date.now();
+        room.__sharikaOwnerProfileInFlight=api('GET','/users/'+room.id)
+          .then(value=>{
+            if(!value||session?.user?.id!==userId)return;
+            room.__sharikaVerifiedOwner={userId,fetchedAt:Date.now(),value};
+            if(window.cur?.id===room.id)
+              syncFrame(room,frame).catch(error=>
+                console.warn('Owner profile refresh deferred:',errText(error)));
+          }).catch(error=>console.warn('Owner profile deferred:',errText(error)))
+          .finally(()=>{room.__sharikaOwnerProfileInFlight=null;});
+      }
+      if(ownerFresh)owner=cachedOwner.value;
+      else{
+        const member=(data.members||[]).find(m=>m.user_id===room.owner_id)?.sharika_users;
+        owner=member||{name:'Room Owner',pic:null,public_id:room.id,
+          special_id:room.owner_special_id||null,
+          display_id:room.owner_display_id||room.id};
+      }
     } finally {
       // A 3-second presence refresh must not supersede a still-running first
       // snapshot on a slow connection, otherwise no room seats ever render.
@@ -5192,7 +5247,7 @@
     const visibleOwnerId=String(owner.special_id||owner.display_id||room.id);
     const roomHeaderId=frame.$?.('rid');
     if(roomHeaderId&&/^[0-9]{1,10}$/.test(visibleOwnerId))
-      roomHeaderId.textContent=visibleOwnerId;
+      paintSpecialIdLabel(roomHeaderId,visibleOwnerId,!!owner.special_id,'');
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     frame.__sharikaRoomRole=room.owner_id===session?.user?.id?'owner':
       self?.role==='admin'?'admin':'member';
@@ -5436,7 +5491,8 @@
       idLine.className='sh-royal-idline';
       const idLabel=document.createElement('span');
       idLabel.className='sh-royal-user-id';
-      idLabel.textContent='ID: '+String(member.special_id||member.display_id||member.id);
+      paintSpecialIdLabel(idLabel,member.special_id||member.display_id||member.id,
+        !!member.special_id,'ID: ');
       idLine.appendChild(idLabel);
       const roomRole=frame?.__sharikaMemberRoles?.get(String(member.id));
       if(roomRole==='owner'||roomRole==='admin'){
@@ -7950,6 +8006,7 @@
   let roomEntryBusyToken=null;
   let roomEntryToken=0;
   let roomJoinSlowTimer=null;
+  let initialRoomRetryTimer=null;
   function showRoomJoining(room){
     const wrap=document.getElementById('rw');
     if(!wrap)return;
@@ -7969,16 +8026,23 @@
     const leave=document.createElement('button');
     leave.type='button';leave.textContent='Back to rooms';
     leave.onclick=()=>window.leaveRoom?.();
-    card.append(spinner,title,progress,leave);
+    const retry=document.createElement('button');
+    retry.type='button';retry.textContent='Retry room details';
+    retry.hidden=true;
+    retry.onclick=()=>window.__sharikaRetryVerifiedRoom?.(room.id);
+    card.append(spinner,title,progress,retry,leave);
     wrap.append(card);
     if(roomJoinSlowTimer)clearTimeout(roomJoinSlowTimer);
     roomJoinSlowTimer=setTimeout(()=>{
       if(!card.isConnected)return;
-      progress.textContent='Network is slow. Retrying the verified room connection…';
+      progress.textContent='Room details are delayed. Retry now or go back to rooms.';
+      retry.hidden=false;
     },6500);
   }
   function hideRoomJoining(){
     if(roomJoinSlowTimer){clearTimeout(roomJoinSlowTimer);roomJoinSlowTimer=null;}
+    if(initialRoomRetryTimer){clearInterval(initialRoomRetryTimer);initialRoomRetryTimer=null;}
+    window.__sharikaRetryVerifiedRoom=null;
     const wrap=document.getElementById('rw');
     wrap?.classList.remove('sh-room-joining');
     wrap?.querySelector('#sh-room-joining-card')?.remove();
@@ -8005,6 +8069,22 @@
       // visitor and the verified member snapshot has replaced demo seats.
       const iframe=document.getElementById('rf');
       let frameLoaded=false;
+      window.__sharikaRetryVerifiedRoom=(id)=>{
+        if(id!==room.id||!roomAdmitted||currentToken!==roomEntryToken)return;
+        const progress=document.querySelector('#sh-room-joining-card small');
+        if(progress)progress.textContent='Retrying verified seat data…';
+        const frame=iframe.contentWindow;
+        if(frame?.seats){
+          if(frame.__sharikaAdapterAttached)
+            syncFrame(room,frame).catch(error=>{
+              if(progress)progress.textContent='Seats unavailable: '+errText(error)+'. Tap Retry.';
+            });
+          else onVerifiedRoomFrameLoad();
+        }else if(iframe.srcdoc){
+          frameLoaded=false;
+          iframe.srcdoc=iframe.srcdoc;
+        }
+      };
       pendingJoinRoomId=room.id;
       iframe.onload=()=>{
         frameLoaded=true;
@@ -8054,6 +8134,9 @@
       // Bind Games independently of the optional room/voice data sync.
       function onVerifiedRoomFrameLoad(){
         if(currentToken!==roomEntryToken||window.cur?.id!==room.id)return;
+        const frame=iframe.contentWindow;
+        if(!frame?.seats||frame.__sharikaAdapterAttached)return;
+        frame.__sharikaAdapterAttached=true;
         const games=iframe.contentWindow?.document?.getElementById('bGame');
         if(games)games.onclick=()=>showGameCard(document,true,toast);
         // The event shortcut stays just above the microphone/chat dock.
@@ -8083,7 +8166,14 @@
             if(count){button.textContent='🎉 Live Event · '+count;button.style.borderColor='#ffcd4f';}
           }).catch(()=>{});
         }
-        attachFrame(room).catch(error=>toast(errText(error)));
+        attachFrame(room).catch(error=>{
+          console.warn('Room first seat sync failed:',errText(error));
+          const progress=document.querySelector('#sh-room-joining-card small');
+          if(progress)progress.textContent='Room data unavailable: '+errText(error)+
+            '. Retry room details.';
+          const retry=document.querySelector('#sh-room-joining-card button:nth-last-child(2)');
+          if(retry)retry.hidden=false;
+        });
       }
       // Keep the room list visible while the new iframe loads. Otherwise
       // WebView shows a black frame, followed by unverified demo seats,
@@ -8093,6 +8183,23 @@
       const progress=roomWrap?.querySelector('#sh-room-joining-card small');
       if(progress)progress.textContent='Loading verified seats…';
       if(frameLoaded)onVerifiedRoomFrameLoad();
+      // A failed first snapshot previously meant no poll was installed, so
+      // the joining veil could remain forever. Recheck independent of audio.
+      if(initialRoomRetryTimer)clearInterval(initialRoomRetryTimer);
+      initialRoomRetryTimer=setInterval(()=>{
+        if(currentToken!==roomEntryToken||window.cur?.id!==room.id){
+          clearInterval(initialRoomRetryTimer);initialRoomRetryTimer=null;return;
+        }
+        const live=iframe.contentWindow;
+        if(live?.__sharikaRoomRenderSignature){
+          revealVerifiedRoom(room,live);return;
+        }
+        if(live?.seats){
+          if(!live.__sharikaAdapterAttached)onVerifiedRoomFrameLoad();
+          else syncFrame(room,live).catch(error=>
+            console.warn('Retrying verified seats:',errText(error)));
+        }
+      },3500);
     } catch(error) { toast('Could not join: '+errText(error)); }
     finally {
       if(roomEntryBusyToken===currentToken)roomEntryBusyToken=null;
@@ -8403,9 +8510,10 @@
         return;
       }
       // Private wallet: access and every stock movement are verified by the Worker.
-      const [mine,transfers,allocations]=await Promise.all([
+      const [mine,transfers,allocations,salaryReceipts]=await Promise.all([
         api('GET','/sellers/me'),api('GET','/sellers/transfers'),
-        api('GET','/sellers/allocations')
+        api('GET','/sellers/allocations'),
+        api('GET','/sellers/salary-receipts').catch(()=>({receipts:[]}))
       ]);
       if(!root.isConnected)return;
       const self=mine.seller;
@@ -8434,6 +8542,11 @@
         ' → Seller '+sellerEscape(visibleSellerId(a.seller_public_id))+
         (a.created_at?' · '+sellerEscape(a.created_at):'')+'</div>'
       ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';
+      const salaryEntries=(salaryReceipts.receipts||[]).slice(0,30).map(t=>
+        '<div class="shw-entry"><strong>💎 +'+coinsText(t.coins)+' virtual stock coins</strong>'+
+        'Verified Agency Salary · From ID '+sellerEscape(t.sender_public_id)+
+        (t.created_at?' · '+sellerEscape(t.created_at):'')+'</div>'
+      ).join('')||'<div class="shw-empty">No virtual salary receipts yet.</div>';
       root.innerHTML=
         '<section class="shw-hero">'+
           '<div class="shw-eyebrow">🪙 '+(unlimited?'Unlimited seller stock':'Available seller stock')+'</div>'+
@@ -8469,7 +8582,10 @@
         '</details>'+
         '<details class="shw-details"><summary>🏦 Stock allocations ('+
           (allocations.allocations||[]).length+')</summary>'+
-          allocationEntries+'</details>';
+          allocationEntries+'</details>'+
+        '<details class="shw-details"><summary>💎 Salary transfers received ('+
+          (salaryReceipts.receipts||[]).length+')</summary>'+
+          salaryEntries+'</details>';
       const targetField=document.getElementById('sharika-seller-target');
       const amountField=document.getElementById('sharika-seller-amount');
       const note=document.getElementById('sharika-seller-note');
@@ -10009,7 +10125,8 @@
     const publicLabel=root.querySelector('.pfh .meta span:first-child');
     if(publicLabel){
       publicLabel.classList.toggle('sh-neon-single-id',!!person.special_id);
-      publicLabel.textContent='ID '+String(person.display_id||person.special_id||person.id);
+      paintSpecialIdLabel(publicLabel,person.special_id||person.display_id||person.id,
+        !!person.special_id);
     }
     applyProfileLayout('public',root);
     refreshGlobalProfileLayouts().catch(()=>{});

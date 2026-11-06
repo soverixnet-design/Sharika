@@ -102,6 +102,55 @@ test('salary exchange credits main wallet only in guarded D1 batch',async()=>{
   assert.equal(operations[1].values[1],40);
   assert.equal(operations[2].values[1],40);
 });
+test('salary transfer adds virtual seller stock with an immutable D1 receipt, never cash',async()=>{
+  const {db}=mockDb(),operations=[];
+  db.batch=async statements=>{operations.push(...statements);};
+  const original=db.prepare.bind(db);
+  db.prepare=sql=>{
+    const statement=original(sql);
+    if(sql.includes('FROM sharika_agency_salary_config'))statement.first=async()=>({
+      coins_per_usd:500000,min_host_target_coins:5000000,
+      exchange_enabled:1,version:1
+    });
+    if(sql.includes('FROM sharika_coin_sellers s'))statement.first=async()=>({
+      seller_uid:'verified-seller',name:'Approved Seller'
+    });
+    return statement;
+  };
+  const path='/api/v1/agency/salary/transfer-to-seller';
+  const response=await handleAgencyApp({request:new Request('https://test.invalid'+path,{
+    method:'POST',body:JSON.stringify({seller_public_id:'10000053',coins:123,
+      expected_version:1,request_id:'seller-virtual-123456'})}),
+    env:{DB:db},uid:'host',path,cors:{},reply,fail});
+  assert.equal(response.status,200);
+  assert.equal(operations.length,2);
+  assert.match(operations[0].sql,/INSERT INTO sharika_agency_salary_seller_transfers/);
+  assert.match(operations[1].sql,/UPDATE sharika_coin_sellers SET available_coins/);
+  assert.equal(operations[0].values[3],1230000);
+  assert.equal(operations[1].values[0],123);
+  assert.ok(operations.every(op=>!/bank|cash|withdraw|UPDATE sharika_users SET coins/i.test(op.sql)));
+});
+test('virtual seller transfer replay succeeds after a seller is suspended without a second credit',async()=>{
+  const {db}=mockDb();
+  db.batch=async()=>{throw Error('A replay must never credit twice');};
+  const original=db.prepare.bind(db);
+  db.prepare=sql=>{
+    const stmt=original(sql);
+    if(sql.includes('FROM sharika_agency_salary_seller_transfers t'))
+      stmt.first=async()=>({seller_uid:'suspended-seller',seller_no:10000053,
+        credited_coins:123});
+    if(sql.includes('FROM sharika_coin_sellers s'))
+      stmt.first=async()=>{throw Error('Replay must not query current seller approval');};
+    return stmt;
+  };
+  const path='/api/v1/agency/salary/transfer-to-seller';
+  const response=await handleAgencyApp({request:new Request('https://test.invalid'+path,{
+    method:'POST',body:JSON.stringify({seller_public_id:'10000053',coins:123,
+      expected_version:1,request_id:'seller-virtual-123456'})}),
+    env:{DB:db},uid:'host',path,cors:{},reply,fail});
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).duplicate,true);
+});
 test('salary target settings are Super Admin only',async()=>{
   const {db}=mockDb();
   const response=await handleAgencyAdmin({
@@ -120,12 +169,13 @@ test('packaged Agency UI has all three real-data screens and Android back naviga
   const gradle=readFileSync(new URL('app/build.gradle',root),'utf8');
   for(const required of ['BD Center','Host Roster','Host Earnings','Estimated Host Salary',
     '/agency/bd/center','/agency/hosts/assign','/agency/host/','Coin Transactions',
-    'Salary Wallet','/agency/salary/exchange'])
+    'Salary Wallet','/agency/salary/exchange','/agency/salary/transfer-to-seller'])
     assert.ok(js.includes(required),required);
   assert.match(native,/sharikaOpenAgencyCenter/);
   assert.match(back,/sharikaAgencyBack/);
   assert.match(gradle,/agency-center\.js/);
   assert.match(gradle,/agency-center\.css/);
+  assert.match(gradle,/special-id-crest\.jpg/);
 });
 
 test('Agency screens keep a visible retry path and optional requests do not block discovery',()=>{
@@ -141,9 +191,12 @@ test('Agency screens keep a visible retry path and optional requests do not bloc
 test('room entry avoids sequential teardown delays and does not poll owner profile every three seconds',()=>{
   const room=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   assert.match(room,/Date\.now\(\)-cachedOwner\.fetchedAt<60000/);
-  assert.match(room,/ownerFresh\?Promise\.resolve\(cachedOwner\.value\):api\('GET','\/users\/'.*room\.id\)/);
+  assert.match(room,/room\.__sharikaOwnerLastAttempt=Date\.now\(\)/);
+  assert.match(room,/room\.__sharikaOwnerProfileInFlight=api\('GET','\/users\/'\+room\.id\)/);
+  assert.match(room,/data=await api\('GET','\/rooms\/'\+room\.id\+'\/members'\)/);
   assert.match(room,/await Promise\.all\(\[\s*releaseVoice\(\),api\('POST','\/rooms\/'.*prior\.id.*'\/leave'/);
-  assert.match(room,/progress\.textContent='Network is slow\. Retrying the verified room connection/);
+  assert.match(room,/progress\.textContent='Room details are delayed\. Retry now or go back to rooms/);
+  assert.match(room,/window\.__sharikaRetryVerifiedRoom/);
   assert.match(room,/window\.addEventListener\('online',\(\)=>\{\s*const room=window\.cur/);
 });
 

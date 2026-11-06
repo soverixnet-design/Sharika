@@ -40,7 +40,7 @@ const salaryMaturity=mode=>mode==='daily'?"datetime('now','start of day')":
   "datetime('now','start of month')";
 async function salarySummary(db,uid,mode){
   const condition=salaryMaturity(mode);
-  const [earned,matured,exchanged,config]=await Promise.all([
+  const [earned,matured,exchanged,transferred,config]=await Promise.all([
     db.prepare('SELECT COALESCE(SUM(amount_units),0) AS units FROM sharika_agency_earnings '+
       'WHERE beneficiary_uid=?').bind(uid).first(),
     db.prepare('SELECT COALESCE(SUM(a.amount_units),0) AS units FROM sharika_agency_earnings a '+
@@ -51,11 +51,15 @@ async function salarySummary(db,uid,mode){
       'AND h.host_uid=a.host_uid)>=c.min_host_target_coins').bind(uid).first(),
     db.prepare('SELECT COALESCE(SUM(salary_units),0) AS units FROM sharika_agency_salary_exchanges '+
       'WHERE auth_uid=?').bind(uid).first(),
+    db.prepare('SELECT COALESCE(SUM(salary_units),0) AS units FROM sharika_agency_salary_seller_transfers '+
+      'WHERE auth_uid=?').bind(uid).first(),
     salaryConfig(db)
   ]);
   const paid=Number(exchanged?.units)||0;
+  const sent=Number(transferred?.units)||0;
   return {earned_units:Number(earned?.units)||0,exchanged_units:paid,
-    matured_available_units:Math.max(0,(Number(matured?.units)||0)-paid),
+    transferred_units:sent,
+    matured_available_units:Math.max(0,(Number(matured?.units)||0)-paid-sent),
     exchange_enabled:!!config.exchange_enabled,settlement_mode:mode,
     min_host_target_coins:config.min_host_target_coins,
     coins_per_usd:config.coins_per_usd,policy_version:config.version};
@@ -139,7 +143,7 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail,ctx}
   }
   if(path==='/api/v1/agency/me'&&request.method==='GET'){
     const currentUser=await actor(db,uid);
-    const [bd,owned,host,personal,salary,targets,exchanges]=await Promise.all([
+    const [bd,owned,host,personal,salary,targets,exchanges,transfers]=await Promise.all([
       db.prepare('SELECT active,can_grant FROM sharika_bd_agents WHERE bd_uid=?').bind(uid).first(),
       db.prepare('SELECT id,name,status FROM sharika_families WHERE owner_uid=?').bind(uid).first(),
       db.prepare('SELECT h.active,h.family_id,f.name AS family_name FROM sharika_agency_hosts h '+
@@ -149,7 +153,12 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail,ctx}
       salarySummary(db,uid,terms.settlement_mode),salaryTargets(db),
       db.prepare('SELECT credited_coins,salary_units,settlement_mode,created_at '+
         'FROM sharika_agency_salary_exchanges WHERE auth_uid=? ORDER BY id DESC LIMIT 30')
-        .bind(uid).all()
+        .bind(uid).all(),
+      db.prepare('SELECT t.request_id,t.credited_coins,t.salary_units,t.settlement_mode,t.created_at,'+
+        'u.public_no AS seller_no,u.name AS seller_name '+
+        'FROM sharika_agency_salary_seller_transfers t '+
+        'JOIN sharika_users u ON u.auth_uid=t.seller_uid '+
+        'WHERE t.auth_uid=? ORDER BY t.id DESC LIMIT 30').bind(uid).all()
     ]);
     return reply({bd:{active:!!bd?.active,can_grant:!!bd?.active&&!!bd.can_grant},
       agency:owned||null,host:host?{...host,public_id:publicId(currentUser.public_no)}:null,
@@ -158,6 +167,9 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail,ctx}
         agency_percent:terms.agency_bps/100,bd_percent:terms.bd_bps/100,
         settlement_mode:terms.settlement_mode},
       salary,targets,salary_exchanges:results(exchanges),
+      seller_transfers:results(transfers).map(t=>({
+        ...t,seller_public_id:publicId(t.seller_no),seller_no:undefined
+      })),
       payout_status:salary.exchange_enabled?'eligible_after_target_and_period':'pending_admin_verification',
       source:'settled_regular_gift_events'},200,cors);
   }
@@ -196,6 +208,57 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail,ctx}
       throw error;
     }
     return reply({ok:true,duplicate:false,credited_coins:body.coins},200,cors);
+  }
+  if(path==='/api/v1/agency/salary/transfer-to-seller'&&request.method==='POST'){
+    let body;try{body=await parseBody(request);}catch{return fail('invalid_agency_body',400,cors);}
+    const requestId=typeof body.request_id==='string'?body.request_id.trim():'';
+    const sellerId=body.seller_public_id;
+    if(!/^[A-Za-z0-9:_-]{12,80}$/.test(requestId)||
+       !Number.isSafeInteger(body.coins)||body.coins<1||body.coins>100000000||
+       !isPublicId(sellerId))
+      return fail('invalid_salary_seller_transfer',400,cors);
+    // A completed request remains idempotent even if Admin later suspends the
+    // seller. Resolve its immutable recipient before checking new eligibility.
+    const previous=await db.prepare('SELECT t.seller_uid,t.credited_coins,'+
+      'u.public_no AS seller_no FROM sharika_agency_salary_seller_transfers t '+
+      'JOIN sharika_users u ON u.auth_uid=t.seller_uid '+
+      'WHERE t.auth_uid=? AND t.request_id=?')
+      .bind(uid,requestId).first();
+    if(previous){
+      if(publicId(previous.seller_no)!==sellerId||
+         Number(previous.credited_coins)!==body.coins)
+        return fail('idempotency_conflict',409,cors);
+      return reply({ok:true,duplicate:true,credited_coins:body.coins,
+        seller_public_id:sellerId},200,cors);
+    }
+    const seller=await db.prepare('SELECT s.seller_uid,u.name FROM sharika_coin_sellers s '+
+      'JOIN sharika_users u ON u.auth_uid=s.seller_uid '+
+      "WHERE u.public_no=? AND s.active=1 AND u.status='active'")
+      .bind(Number(sellerId)).first();
+    if(!seller)return fail('seller_unavailable',404,cors);
+    const config=await salaryConfig(db);
+    if(!config.exchange_enabled||!terms.active)return fail('salary_transfer_disabled',403,cors);
+    if(body.expected_version!==config.version)return fail('salary_policy_changed',409,cors);
+    try{
+      await db.batch([
+        db.prepare('INSERT INTO sharika_agency_salary_seller_transfers('+
+          'auth_uid,seller_uid,request_id,salary_units,credited_coins,'+
+          'settlement_mode,policy_version) VALUES(?,?,?,?,?,?,?)')
+          .bind(uid,seller.seller_uid,requestId,body.coins*10000,body.coins,
+            terms.settlement_mode,config.version),
+        db.prepare('UPDATE sharika_coin_sellers SET available_coins=available_coins+?,'+
+          "updated_at=datetime('now') WHERE seller_uid=? AND active=1 "+
+          'AND available_coins<=1000000000-?')
+          .bind(body.coins,seller.seller_uid,body.coins)
+      ]);
+    }catch(error){
+      const message=String(error?.message||error);
+      if(/agency_salary_|seller_unavailable|CHECK constraint|UNIQUE constraint/.test(message))
+        return fail('salary_seller_transfer_not_available',409,cors);
+      throw error;
+    }
+    return reply({ok:true,duplicate:false,credited_coins:body.coins,
+      seller_public_id:sellerId},200,cors);
   }
   if(path==='/api/v1/agency/bd/center'&&request.method==='GET'){
     const bd=await db.prepare('SELECT active FROM sharika_bd_agents WHERE bd_uid=?').bind(uid).first();

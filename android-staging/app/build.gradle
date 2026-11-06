@@ -138,6 +138,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('royal-market.css'))
     from(rootProject.file('agency-center.css'))
     from(rootProject.file('agency-center.js'))
+    // Exact owner-supplied gold/red ID crest, displayed only for Special IDs.
+    from(rootProject.file('special-id-crest.jpg'))
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }
