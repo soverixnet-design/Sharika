@@ -36,6 +36,7 @@ import {handleLuckyBoxApp} from './lucky-box.mjs';
 import {handleInviteLanding} from './invite-link.mjs';
 import {handlePublicAccountDeletion,handleAdminAccountDeletion} from './account-deletion.mjs';
 import {handlePublicPrivacyPolicy} from './privacy-policy.mjs';
+import {handlePlayBillingApp} from './play-billing.mjs';
 import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 
@@ -321,6 +322,10 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/events') return await handleEventApp({
       request,env,uid,path,cors,reply,fail
     });
+    if(path.startsWith('/api/v1/play-billing/')){
+      await assertActive(env.DB,uid);
+      return await handlePlayBillingApp({request,env,uid,path,cors,reply,fail,readBody});
+    }
     if(path==='/api/v1/notifications'||path.startsWith('/api/v1/notifications/'))
       return await handleNotificationApp({request,env,uid,path,cors,reply,fail});
     if (path==='/api/v1/admin/account-deletion-requests') return await handleAdminAccountDeletion({

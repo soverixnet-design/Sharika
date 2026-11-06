@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/sharika-play-release-aab-20261107
+      - feature/sharika-play-billing-20261107
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
@@ -30,6 +31,7 @@ jobs:
       - name: Complete safety, source and Cloudflare game/voice checks
         run: |
           set -euo pipefail
+          node --check cloudflare/src/play-billing.mjs
           node --check android-staging/staging-connection.js
           node --check android-staging/back-navigation.js
           node --check app/royal-room-ui.js
@@ -45,6 +47,7 @@ jobs:
           grep -F '>Sharika<' android-staging/app/src/main/res/values/strings.xml
           cd cloudflare
           npm run check
+          python3 test/play-billing-sql.test.py
           echo 'SHARIKA_SOURCE_AND_WORKER_RELEASE_PREFLIGHT_OK'
 
       - name: Checkout original Sovera cosmetic art at pinned commit
@@ -112,6 +115,10 @@ jobs:
       - name: Build optimized release-format signed AAB
         working-directory: android-staging
         env:
+          SHARIKA_PLAY_API_ORIGIN: ${{ vars.SHARIKA_PLAY_API_ORIGIN }}
+          # No production Worker is configured yet. Such a signed AAB is a
+          # downloadable staging candidate, NOT a Play publication artifact.
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'true'
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
           SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
           SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
@@ -138,6 +145,7 @@ jobs:
           node --check "$RUNNER_TEMP/release-connection.js"
           grep -F 'SHARIKA_CP_HERO_20261107' "$RUNNER_TEMP/release-connection.js"
           grep -F 'SHARIKA_ROYAL_LEVEL_20261107' "$RUNNER_TEMP/release-connection.js"
+          grep -F 'playBillingPurchase' "$RUNNER_TEMP/release-connection.js"
           grep -F 'SHARIKA_PROFILE_CLEAN_20261107' "$RUNNER_TEMP/release-profile.css"
           cp "$bundle" Sharika-v1.0.0-Play-Store-Candidate.aab
           sha256sum Sharika-v1.0.0-Play-Store-Candidate.aab
@@ -164,5 +172,5 @@ jobs:
           gh release create "$TAG" Sharika-v1.0.0-Play-Store-Candidate.aab \
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
             --title 'Sharika v1.0.0 — Android App Bundle candidate' \
-            --notes 'Direct, signed Android App Bundle for Sharika v1.0.0, versionCode 100, target API 36 and package com.soverixnet.sharika. Main Profile levels and CP design, Royal Room and full verified integration are bundled. Cloudflare tests and bundle signature passed. Signing method is reported in the workflow; if a dedicated Play upload key is unavailable, the existing stable key signs this candidate. Confirm upload certificate and production API configuration in Play Console before release to all users.' \
+            --notes 'Signed AAB test candidate for Sharika v1.0.0, versionCode 100, target API 36 and package com.soverixnet.sharika. Includes Google Play Billing 9.1 integration and a server-verified once-only coin ledger. If SHARIKA_PLAY_API_ORIGIN is not configured the bundle points to STAGING, where Play purchases remain disabled: DO NOT SUBMIT this test candidate to Google Play. A dedicated Play signing key, production Worker, verified products and Play Console declarations are required for publication.' \
             --prerelease
