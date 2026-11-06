@@ -328,7 +328,8 @@ export async function handleRequest(request, env, ctx) {
     });
     if (path==='/api/v1/invites'||path==='/api/v1/invites/redeem'||
         path==='/api/v1/invites/device'||
-        path==='/api/v1/invites/rankings'||path==='/api/v1/invites/withdrawals')
+        path==='/api/v1/invites/rankings'||path==='/api/v1/invites/withdrawals'||
+        path==='/api/v1/invites/convert')
       return await handleInviteApp({
       request, env, uid, path, cors, reply, fail
     });
@@ -348,7 +349,7 @@ export async function handleRequest(request, env, ctx) {
       request, env, uid, path, cors, reply, fail, ctx
     });
     if (path.startsWith('/api/v1/agency')) return await handleAgencyApp({
-      request,env,uid,path,cors,reply,fail
+      request,env,uid,path,cors,reply,fail,ctx
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
       request, env, uid, path, cors, reply, fail, ctx

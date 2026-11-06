@@ -168,3 +168,78 @@
   #sh-agency-panel .ag-hero .ag-icon,#sh-agency-panel .ag-role-emblem{
     animation:agFloat 3.7s ease-in-out infinite alternate}
   @keyframes agFloat{to{transform:translateY(-5px)}}}
+
+/* Separate BD Center and Agency Wallet: the owner's purple/gold two-screen
+   reference, using packaged 3D icons and verified account values. */
+#sh-agency-panel{background-color:#17082d;background-image:url('./royal-winged-bg.jpg');
+  background-position:center top;background-size:cover}
+#sh-agency-panel:before{background:radial-gradient(ellipse at 50% 4%,#aa35db50,transparent 48%),
+  linear-gradient(180deg,#1d0938e8,#140421ed 74%,#170829fa)}
+#sh-agency-panel .ag-header{position:sticky;top:0;z-index:2;margin:-7px -9px 20px;
+  padding:12px 10px;background:linear-gradient(120deg,#210b38f2,#200c36ec);
+  border-bottom:1px solid #d9aa79ac;backdrop-filter:blur(9px)}
+#sh-agency-panel .ag-header strong{font-size:15px;letter-spacing:.01em}
+#sh-agency-panel .ag-header strong span{font-size:18px;color:#fff7ea}
+#sh-agency-panel .ag-header strong i{font-style:normal;color:#eac381;margin:0 3px}
+#sh-agency-panel .ag-refresh{font-size:24px;background:transparent;border:0;color:#f9c779;
+  min-width:32px;min-height:36px}
+#sh-agency-panel .ag-panel,#sh-agency-panel .ag-card,#sh-agency-panel .ag-identity{
+  background:linear-gradient(145deg,#4d196da9,#230f42fa 50%,#270c41f5);
+  border-color:#d19b58;box-shadow:inset 0 1px #ffe4ae7a,0 0 0 1px #8543b251,
+    0 7px 17px #040009a6}
+#sh-agency-panel .ag-section-title{font:800 24px system-ui,sans-serif;
+  margin:24px 0 14px;padding-left:13px;position:relative}
+#sh-agency-panel .ag-section-title:before{content:'';position:absolute;left:0;top:5px;
+  height:23px;width:5px;border-radius:6px;background:#e6ad4a}
+#sh-agency-panel .ag-section-title small{float:right;font:500 11px system-ui,sans-serif}
+#sh-agency-panel .ag-identity{border-radius:24px;min-height:127px;border-width:2px;
+  background:linear-gradient(116deg,#5d1b86e0,#270a4feb 64%,#411276d9)}
+#sh-agency-panel .ag-identity h3{display:inline-block;font-size:22px;margin-right:9px}
+#sh-agency-panel .ag-identity .ag-bd-pill{font-weight:900;color:#fff;
+  background:linear-gradient(135deg,#6e1cba,#932bd5);border-color:#ebbb73}
+#sh-agency-panel .ag-service-grid,#sh-agency-panel .ag-income-grid,
+#sh-agency-panel .ag-wallet-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#sh-agency-panel .ag-service-grid>button{display:flex;align-items:center;gap:9px;
+  min-height:82px;padding:11px 7px;border:1.5px solid #d4a15f;border-radius:14px;
+  color:#fff8f0;text-align:left;font-size:14px;font-weight:800;
+  background:linear-gradient(140deg,#621c86,#261046 68%,#3f155f);
+  box-shadow:inset 0 2px #edbde87d,0 8px 18px #07020ea9}
+#sh-agency-panel .ag-service-grid img{width:46px;height:46px;object-fit:contain;flex:none}
+#sh-agency-panel .ag-income-grid>div,#sh-agency-panel .ag-wallet-metrics>div{
+  display:flex;align-items:center;gap:8px;min-height:111px;padding:11px 7px;
+  background:linear-gradient(142deg,#612189,#260e47 72%,#421264);
+  border:1.5px solid #d09e65;border-radius:17px;box-shadow:inset 0 2px #f1caed9c,0 8px 16px #0c0214be}
+#sh-agency-panel .ag-income-grid img,#sh-agency-panel .ag-wallet-metrics img{
+  width:65px;height:65px;object-fit:contain;flex:none}
+#sh-agency-panel .ag-income-grid span,#sh-agency-panel .ag-wallet-metrics span{min-width:0}
+#sh-agency-panel .ag-income-grid small,#sh-agency-panel .ag-wallet-metrics small{
+  display:block;font:750 12px system-ui,sans-serif;color:#fff0db}
+#sh-agency-panel .ag-income-grid b,#sh-agency-panel .ag-wallet-metrics b{
+  display:block;font:900 16px system-ui,sans-serif;color:#ffdc91;overflow-wrap:anywhere}
+#sh-agency-panel .ag-wallet-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:17px 0}
+#sh-agency-panel .ag-wallet-actions button{display:flex;flex-direction:column;
+  align-items:center;justify-content:center;min-height:117px;gap:5px;padding:7px 4px;
+  font-weight:800;font-size:12px;color:#fff5ea;border:1.5px solid #d09e65;
+  border-radius:15px;background:linear-gradient(150deg,#4d1c7f,#260b43);
+  box-shadow:inset 0 2px #ffceeb66,0 6px 14px #0c0214bf}
+#sh-agency-panel .ag-wallet-actions img{width:51px;height:51px;object-fit:contain}
+#sh-agency-panel .ag-wallet-actions .ag-wallet-action-selected{
+  background:linear-gradient(155deg,#8731d3,#480b87);box-shadow:0 0 19px #bb41ff70,inset 0 2px #ffddff80}
+#sh-agency-panel .ag-exchange-rate{display:flex;align-items:center;gap:7px;padding:12px 8px}
+#sh-agency-panel .ag-exchange-rate img{width:31px;height:31px;flex:none}
+#sh-agency-panel .ag-exchange-rate b{font-size:12px;color:#f8e3b9}
+#sh-agency-panel .ag-exchange-rate .ag-grow small{display:block}
+#sh-agency-panel .ag-wallet-label{display:block;font-weight:800;margin-bottom:9px}
+#sh-agency-panel .ag-purple-action{background:linear-gradient(150deg,#5b208f,#451262 56%,#23073e);
+  color:#fff5ed;border-color:#ffd68b;text-shadow:0 1px #10011c}
+#sh-agency-panel .ag-mini-button{background:#5c2088;border:1px solid #f4c575;border-radius:11px;
+  padding:9px;color:#ffe7bc;font-size:11px;font-weight:800;margin:2px}
+#sh-agency-panel .ag-bd-assigned{margin-top:18px}
+@media(max-width:370px){
+  #sh-agency-panel .ag-service-grid img{width:35px;height:35px}
+  #sh-agency-panel .ag-service-grid>button{gap:5px;font-size:12px}
+  #sh-agency-panel .ag-income-grid img,#sh-agency-panel .ag-wallet-metrics img{width:43px;height:43px}
+  #sh-agency-panel .ag-income-grid b,#sh-agency-panel .ag-wallet-metrics b{font-size:13px}
+  #sh-agency-panel .ag-wallet-actions img{width:43px;height:43px}
+  #sh-agency-panel .ag-header strong{font-size:12px}
+}

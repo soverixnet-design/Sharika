@@ -99,7 +99,8 @@ test('real inviter dashboard exposes public IDs, actual bonus totals and no priv
   assert.equal(data.signup_inviter_reward,100000);
   assert.equal(data.signup_invitee_reward,100000);
   assert.equal(data.invite_usd_cents_per_verified_user,10);
-  assert.deepEqual(data.withdrawal_options_cents,[5000,10000]);
+  assert.equal(data.cash_withdrawal_enabled,false);
+  assert.deepEqual(data.conversion_history,[]);
   assert.equal(data.recharge_coins_per_usd,500000);
   assert.equal(data.first_recharge_bonus_percent,40);
   assert.equal(data.recharge_bonus_percent,5);

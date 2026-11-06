@@ -10,6 +10,7 @@ export function sensitiveActionClass(method, path) {
     path === '/api/v1/sellers/transfer' ||
     path === '/api/v1/invites/redeem' ||
     path === '/api/v1/invites/withdrawals' ||
+    path === '/api/v1/invites/convert' ||
     /^\/api\/v1\/admin\/events\/[1-9]\d*\/award$/.test(path) ||
     /^\/api\/v1\/admin\/(?:sellers|recharge|wallet|coin|exchange-rate|family|invites|cosmetics\/grant)(?:\/|$)/.test(path) ||
     /^\/api\/v1\/rooms\/[0-9]{8}\/(?:gift|gifts|lucky-gift)(?:\/|$)/.test(path) ||

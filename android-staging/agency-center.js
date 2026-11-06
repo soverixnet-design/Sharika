@@ -87,10 +87,14 @@
   function shell(title,body,tab='home'){
     panel.innerHTML='<div class="ag-shell"><div class="ag-header">'+
       '<button type="button" class="ag-back" aria-label="Go back">‹</button>'+
-      '<strong>SHARIKA • VOICE CHAT</strong>'+image(icon('bd'),'BD emblem','ag-logo-mini')+
-      '</div>'+body+'</div>'+footer(tab);
+      '<strong><span>SHARIKA</span> <i>│</i> '+esc(title.toUpperCase())+'</strong>'+
+      image(icon('bd'),'BD emblem','ag-logo-mini')+
+      '<button type="button" class="ag-refresh" aria-label="Refresh '+esc(title)+'">↻</button>'+
+      '</div>'+body+'</div>'+(tab==='bd'||tab==='salary'||tab==='unassigned'?'':footer(tab));
     panel.querySelector('.ag-header img').style.cssText='width:41px;height:41px;object-fit:contain';
     panel.querySelector('.ag-back').onclick=back;
+    panel.querySelector('.ag-refresh').onclick=()=>show(lastView?.type||'overview',
+      lastView?.id,lastView?.period,false);
     panel.querySelectorAll('[data-ag-tab]').forEach(button=>button.onclick=()=>{
       const selected=button.dataset.agTab;
       if(selected==='host'){
@@ -129,12 +133,43 @@
     if(me?.host?.active)return show('host',me.host.public_id,undefined,false);
     return show('unassigned',undefined,undefined,false);
   }
-  function renderUnassigned(){
-    shell('Agency Center',title('Agency & Host')+
-      '<div class="ag-hero">'+image(icon('agency'),'Royal Agency emblem','ag-icon')+
-      '<h3>Agency / BD / Host</h3><p>Official approval required</p></div>'+
-      '<div class="ag-empty">You are not yet an assigned Agency Owner, BD, or active Host.'+
-      '<p>Contact your BD or Super Admin to request Agency approval. Agency access is assigned by authorized staff.</p></div>');
+  async function renderUnassigned(token){
+    const [discovery,applications]=await Promise.all([
+      api('GET','/agency/discover'),api('GET','/agency/create/requests')]);
+    if(token!==generation)return;
+    const agencies=discovery.families||[],requests=applications.requests||[];
+    shell('Agency Center',title('Discover Agency')+
+      '<div class="ag-hero">'+image(icon('agency'),'Agency crest','ag-icon')+
+      '<h3>BD • Agency • Host</h3><p>Choose an approved Agency or apply to create one.</p></div>'+
+      '<div class="ag-panel"><h3>Apply to Create an Agency</h3>'+
+      '<p class="ag-muted">Super Admin approval and an active BD assignment are required.</p>'+
+      '<label>Agency name<input data-ag-create-name class="ag-search" maxlength="40" '+
+      'placeholder="Royal Agency Name"></label>'+
+      '<button type="button" class="ag-big-button" data-ag-create-request>Submit Application</button>'+
+      (requests.length?'<p class="ag-muted">Your previous applications: '+
+        requests.slice(0,3).map(r=>esc(r.name)+' ('+esc(r.state)+')').join(' • ')+'</p>':'')+
+      '<p class="ag-muted" data-ag-notice></p></div>'+
+      '<h2>Registered Agencies</h2><div class="ag-agency-discovery">'+
+      (agencies.length?agencies.map(a=>'<div class="ag-card">'+portrait(a.logo,'agency')+
+        '<span class="ag-grow"><h3>'+esc(a.name)+'</h3><small>Owner ID '+esc(a.owner_id)+
+        ' · '+fmt(a.member_count)+' members</small></span>'+
+        '<button type="button" class="ag-mini-button" data-ag-join="'+esc(a.id)+'">Apply to Join</button></div>').join(''):
+        '<div class="ag-empty">No approved Agencies yet. Submit a new application.</div>')+
+      '</div>','unassigned');
+    panel.querySelector('[data-ag-create-request]').onclick=async()=>{
+      const name=panel.querySelector('[data-ag-create-name]').value.trim();
+      if(name.length<3||name.length>40)return notice('Enter an Agency name of 3–40 characters.');
+      const button=panel.querySelector('[data-ag-create-request]');button.disabled=true;
+      try{await api('POST','/agency/create/request',{name,description:'',accept_rules:true});
+        notice('Application received. The Super Admin must approve it and assign a BD.');
+      }catch(error){button.disabled=false;notice('Application failed: '+String(error?.message||error));}
+    };
+    panel.querySelectorAll('[data-ag-join]').forEach(button=>button.onclick=async()=>{
+      button.disabled=true;
+      try{await api('POST','/agency/join',{family_id:Number(button.dataset.agJoin)});
+        button.textContent='Pending Owner Approval';
+      }catch(error){button.disabled=false;notice('Join request failed: '+String(error?.message||error));}
+    });
   }
   function renderBd(data){
     const agencies=data.families||[];
@@ -148,27 +183,92 @@
         totalGifts?100*Number(item.week_gifts)/totalGifts:0)+'%"></span></div></span>'+
       '<span><small>Qualifying Gifts</small><span class="ag-value">'+fmt(item.week_gifts)+'</span></span>'+
       '<span class="ag-arrow">›</span></button>').join('');
-    shell('BD Center',title('BD Center',today())+
+    shell('BD Center',
       '<div class="ag-identity">'+portrait(bd.pic,'bd',true)+
-      '<div class="ag-grow"><small>VERIFIED BD PROFILE</small><h3>'+esc(bd.name)+'</h3>'+
-      '<p>Real ID '+esc(bd.public_id)+'</p><small>Today in Rooms: '+roomTime(data.today_active_seconds)+'</small></div>'+
+      '<div class="ag-grow"><h3>'+esc(bd.name)+'</h3><span class="ag-chip ag-bd-pill">BD</span>'+
+      '<p>ID: '+esc(bd.public_id)+'</p></div>'+
       image(icon('bd'),'BD badge','ag-role-emblem')+'</div>'+
-      '<div class="ag-hero"><small>Team Gift Performance • This Week</small>'+
-      '<div class="ag-hero-row">'+image(icon('gifts'),'Gifts','ag-icon')+
-      '<strong>'+fmt(totalGifts)+'</strong></div><p>Estimated BD commission</p>'+
-      '<span class="ag-chip">'+coinUnits(data.pending_bd_units)+' coins • Pending verification</span></div>'+
-      '<details class="ag-panel ag-days-collapse"><summary>My Daily Room Activity (UTC)</summary>'+
-      dayActivity(data.bd_activity_by_day)+'</details>'+
-      '<h2>Assigned Agencies ('+agencies.length+')</h2>'+
+      '<h2 class="ag-section-title">BD Services</h2>'+
+      '<div class="ag-service-grid">'+
+      '<button type="button" data-ag-grant>'+image(icon('host'))+'Invite Agent ›</button>'+
+      '<button type="button" data-ag-list>'+image(icon('ranking'))+'Team Members ›</button>'+
+      '<button type="button" data-ag-assistant>'+image(icon('bd'))+'Assistant BD ›</button>'+
+      '<button type="button" data-ag-hosts>'+image(icon('agency'))+'Agency Hosts ›</button></div>'+
+      '<h2 class="ag-section-title">My Income</h2><div class="ag-income-grid">'+
+      '<div>'+image(icon('salary'))+'<span><small>BD Salary</small><b>Pending review</b></span></div>'+
+      '<div>'+image(icon('commission'))+'<span><small>Team Income</small><b>'+
+      coinUnits(data.pending_bd_units)+' coins</b></span></div></div>'+
+      '<button type="button" class="ag-big-button ag-purple-action" data-ag-salary-wallet>'+
+      image(icon('salary'))+'Open Wallet ›</button>'+
+      '<details class="ag-panel ag-days-collapse"><summary>Verified BD Activity • UTC</summary>'+
+      '<p>This week: '+fmt(totalGifts)+' qualifying gift coins • Today in rooms: '+
+      roomTime(data.today_active_seconds)+'</p>'+dayActivity(data.bd_activity_by_day)+'</details>'+
+      '<section class="ag-bd-assigned"><h2>Assigned Agencies ('+agencies.length+')</h2>'+
       (rows||'<div class="ag-empty">No agencies have been assigned to this BD account.</div>')+
-      '<button type="button" class="ag-big-button" data-ag-salary-wallet>'+image(icon('salary'))+
-      'Salary Wallet & Exchange</button>'+
+      '</section><p class="ag-muted" data-ag-notice></p>'+
       '<button type="button" class="ag-big-button" data-ag-reports>'+image(icon('reports'))+
-      'View Agency Reports</button>','agency');
+      'View Detailed Reports</button>','bd');
     panel.querySelectorAll('[data-ag-agency]').forEach(button=>button.onclick=()=>
       show('agency',Number(button.dataset.agAgency)));
     panel.querySelector('[data-ag-reports]').onclick=()=>show('reports');
     panel.querySelector('[data-ag-salary-wallet]').onclick=()=>show('salary');
+    panel.querySelector('[data-ag-grant]').onclick=()=>{
+      if(!me?.bd?.can_grant)return notice('Agency grants require Super Admin BD permission.');
+      show('grant');
+    };
+    panel.querySelector('[data-ag-assistant]').onclick=()=>notice(
+      'Assistant BD permission is managed by Super Admin. No assistants are assigned automatically.');
+    for(const selector of ['[data-ag-list]','[data-ag-hosts]'])
+      panel.querySelector(selector).onclick=()=>panel.querySelector('.ag-bd-assigned')?.scrollIntoView({behavior:'smooth'});
+  }
+  function renderGrant(){
+    if(!me?.bd?.active||!me?.bd?.can_grant){
+      renderUnassigned(generation);return;
+    }
+    shell('BD • Invite Agent',title('Grant Agency')+
+      '<div class="ag-panel"><h3>Assign a new Agency Owner</h3>'+
+      '<p class="ag-muted">Only an active BD with grant permission may create an Agency. '+
+      'The Owner must have an active account and not belong to another Agency.</p>'+
+      '<label>Owner ID<input class="ag-search" data-ag-grant-owner inputmode="numeric" maxlength="8" '+
+      'placeholder="8-digit user ID"></label>'+
+      '<label>Agency Name<input class="ag-search" data-ag-grant-name maxlength="40" '+
+      'placeholder="Royal Agency"></label>'+
+      '<button type="button" class="ag-big-button" data-ag-grant-submit>Confirm BD Grant</button>'+
+      '<p class="ag-muted" data-ag-notice></p></div>','bd');
+    panel.querySelector('[data-ag-grant-submit]').onclick=async()=>{
+      const owner=panel.querySelector('[data-ag-grant-owner]').value.trim();
+      const name=panel.querySelector('[data-ag-grant-name]').value.trim();
+      if(!/^[0-9]{8}$/.test(owner)||name.length<3||name.length>40)
+        return notice('Enter a valid Owner ID and Agency name.');
+      const button=panel.querySelector('[data-ag-grant-submit]');button.disabled=true;
+      try{
+        await api('POST','/agency/bd/grant',{owner_public_id:owner,name,
+          request_id:'agency:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,13)});
+        notice('Agency granted ✓ Owner '+owner+' can now open the Agency Dashboard.');
+      }catch(error){button.disabled=false;notice('BD grant failed: '+String(error?.message||error));}
+    };
+  }
+  async function renderRequests(token){
+    const data=await api('GET','/agency/requests');
+    if(token!==generation)return;
+    const requests=data.requests||[];
+    shell('Agency Requests',title('Join Requests')+
+      '<div class="ag-panel"><h3>Owner Approval</h3><p class="ag-muted">'+
+      'Accept only people who should join your Agency. This does not transfer coins.</p>'+
+      (requests.map(r=>'<div class="ag-activity"><span class="ag-grow"><b>'+esc(r.name)+
+        '</b><small>ID '+esc(r.public_id)+' · '+readableDate(r.created_at)+'</small></span>'+
+        '<button type="button" class="ag-mini-button" data-ag-accept="'+esc(r.id)+'">Accept</button>'+
+        '<button type="button" class="ag-mini-button" data-ag-reject="'+esc(r.id)+'">Reject</button></div>').join('')||
+        '<p class="ag-empty">No pending requests.</p>')+
+      '<p class="ag-muted" data-ag-notice></p></div>','agency');
+    panel.querySelectorAll('[data-ag-accept],[data-ag-reject]').forEach(button=>button.onclick=async()=>{
+      const action=button.hasAttribute('data-ag-accept')?'accept':'reject';
+      const id=button.dataset.agAccept||button.dataset.agReject;
+      button.disabled=true;
+      try{await api('POST','/agency/requests/'+id+'/'+action,{});
+        await show('requests',undefined,undefined,false);
+      }catch(error){button.disabled=false;notice('Review failed: '+String(error?.message||error));}
+    });
   }
   function renderAgency(data){
     const agency=data.agency||{},hosts=data.hosts||[];
@@ -200,8 +300,10 @@
       '<button data-ag-filter="active" aria-pressed="false">Active</button>'+
       '<button data-ag-filter="review" aria-pressed="false">Review</button></div>'+
       '<div data-ag-hosts></div>'+
-      '<button type="button" class="ag-big-button" data-ag-add>'+image(icon('host'))+
-      'Invite / Assign Host</button>'+
+      (agency.viewer_can_manage?'<button type="button" class="ag-big-button" data-ag-requests>'+
+        image(icon('reports'))+'Review Join Requests</button>':'' )+
+      (agency.viewer_can_manage?'<button type="button" class="ag-big-button" data-ag-add>'+image(icon('host'))+
+        'Assign Approved Host</button>':'')+
       '<button type="button" class="ag-big-button" data-ag-salary-wallet>'+image(icon('salary'))+
       'Salary Wallet & Exchange</button><p class="ag-muted" data-ag-notice></p>','agency');
     let filter='all',query='';
@@ -228,7 +330,9 @@
       panel.querySelectorAll('[data-ag-filter]').forEach(b=>b.setAttribute('aria-pressed',
         String(b===button)));draw();
     });
-    panel.querySelector('[data-ag-add]').onclick=async()=>{
+    panel.querySelector('[data-ag-requests]')?.addEventListener('click',()=>show('requests'));
+    const assignHost=panel.querySelector('[data-ag-add]');
+    if(assignHost)assignHost.onclick=async()=>{
       const id=window.prompt('Enter the approved Agency member’s 8-digit ID:');
       if(id===null)return;
       if(!/^[0-9]{8}$/.test(id))return notice('Enter an 8-digit User ID.');
@@ -311,36 +415,51 @@
       latest.bd?.active?'BD':'Not assigned';
     const targets=(latest.targets||[]).map(target=>
       '<span class="ag-chip">'+fmt(target.target_coins)+' coins</span>').join(' ');
-    shell('Salary Wallet',title('Salary Wallet',role)+
-      '<div class="ag-hero"><small>Verified Salary Earnings</small>'+
-      '<div class="ag-hero-row">'+image(icon('salary'),'Salary','ag-icon')+
-      '<strong>'+coinUnits(salary.earned_units)+'</strong></div>'+
-      '<p>Salary units • 10,000 units = 1 coin</p></div>'+
-      '<div class="ag-stat-grid"><div class="ag-stat"><small>Exchangeable Now</small>'+
-      '<strong>'+fmt(maximum)+'</strong><small>coins</small></div>'+
-      '<div class="ag-stat"><small>Already Exchanged</small><strong>'+
-      coinUnits(salary.exchanged_units)+'</strong><small>coins</small></div></div>'+
-      '<div class="ag-panel"><h3>Salary Rules</h3><p>Settlement: <b>'+
-      esc(salary.settlement_mode||'weekly')+'</b> • Host minimum target: <b>'+
-      fmt(salary.min_host_target_coins)+'</b> received gift coins</p>'+
-      '<p>USD reference: $1 = '+fmt(salary.coins_per_usd)+' coins</p>'+
-      '<p>Targets: '+targets+'</p>'+
-      '<p class="ag-muted">Only completed-period, target-qualified gift salary can be exchanged. '+
-      'Main Wallet Diamond Exchange is separate and available to all users.</p></div>'+
-      '<div class="ag-panel"><h3>Exchange Salary to Coins</h3><p class="ag-muted">'+
-      (salary.exchange_enabled?'Admin has enabled salary exchange.':
-        'Admin permission is currently disabled.')+'</p>'+
+    shell('Agency Wallet',
+      '<h2 class="ag-section-title">Wallet <small>'+esc(role)+'</small></h2>'+
+      '<div class="ag-wallet-metrics">'+
+      '<div>'+image(icon('salary'))+'<span><small>Available Earnings</small><b>'+
+      (salary.exchange_enabled?fmt(maximum):'—')+'</b></span></div>'+
+      '<div>'+image(icon('bd'))+'<span><small>Pending Verification</small><b>'+
+      coinUnits(Math.max(0,(Number(salary.earned_units)||0)-(Number(salary.exchanged_units)||0)-
+        (Number(salary.matured_available_units)||0)))+'</b></span></div></div>'+
+      '<div class="ag-service-grid ag-wallet-nav">'+
+      '<button type="button" data-ag-detail>'+image(icon('reports'))+'Details</button>'+
+      '<button type="button" data-ag-history>'+image(icon('commission'))+'Transfer Records</button></div>'+
+      '<div class="ag-wallet-actions">'+
+      '<button type="button" data-ag-seller>'+image(icon('host'))+'Transfer to Seller</button>'+
+      '<button type="button" class="ag-wallet-action-selected">'+image(icon('gifts'))+
+      'Exchange to Coins</button>'+
+      '<button type="button" data-ag-wallet-ledger>'+image(icon('ranking'))+'Coin Ledger</button></div>'+
+      '<div class="ag-panel ag-exchange-rate">'+image(icon('reports'))+
+      '<span class="ag-grow"><b>Admin-set Rate</b><small>10,000 salary units = 1 virtual coin</small></span>'+
+      '<b>1 USD reference = '+fmt(salary.coins_per_usd)+' coins</b></div>'+
+      '<h2 class="ag-section-title">Amount</h2>'+
+      '<div class="ag-panel"><label class="ag-wallet-label">Virtual Coins to Exchange</label>'+
       '<input type="number" min="1" step="1" max="'+esc(maximum)+'" '+
-      'class="ag-search" placeholder="Coins to exchange" data-ag-salary-coins '+
+      'class="ag-search" placeholder="Enter whole coins (up to '+fmt(maximum)+')" data-ag-salary-coins '+
       (eligible?'':'disabled')+' aria-label="Salary exchange coins">'+
-      '<button type="button" class="ag-big-button" data-ag-exchange '+
+      '<p class="ag-muted">Already exchanged: '+coinUnits(salary.exchanged_units)+' coins • '+
+      'Settlement: '+esc(salary.settlement_mode||'weekly')+' • Target: '+
+      fmt(salary.min_host_target_coins)+' received gift coins.</p>'+
+      '<p class="ag-muted">'+(salary.exchange_enabled?
+        'Only verified earnings from completed periods can be converted.':
+        'Admin has not yet enabled exchange for this wallet.')+'</p>'+
+      '<p class="ag-muted">Target tiers: '+targets+'</p></div>'+
+      '<button type="button" class="ag-big-button ag-purple-action" data-ag-exchange '+
       (eligible?'':'disabled')+'>'+image(icon('commission'))+
-      'Exchange to Main Coin Wallet</button><p class="ag-muted" data-ag-notice></p></div>'+
-      '<div class="ag-panel"><h3>Salary Exchange Records</h3>'+
+      'Confirm Exchange</button><p class="ag-muted" data-ag-notice></p>'+
+      '<div class="ag-panel"><h3>Exchange Records</h3>'+
       (history.map(item=>'<div class="ag-activity"><span class="ag-grow"><b>'+
         fmt(item.credited_coins)+' coins</b><small>'+esc(item.settlement_mode)+' • '+
         readableDate(item.created_at)+'</small></span><span class="ag-value">✓</span></div>')
-        .join('')||'<div class="ag-empty">No salary exchanges recorded.</div>')+'</div>','salary');
+        .join('')||'<div class="ag-empty">No salary exchanges recorded.</div>')+'</div>'+
+      '<p class="ag-muted">This is virtual app currency only. No bank transfer or cash withdrawal.</p>','salary');
+    panel.querySelector('[data-ag-detail]').onclick=()=>show('reports');
+    panel.querySelector('[data-ag-history]').onclick=()=>show('transactions');
+    panel.querySelector('[data-ag-wallet-ledger]').onclick=()=>show('transactions');
+    panel.querySelector('[data-ag-seller]').onclick=()=>notice(
+      'Agency salary cannot be transferred to a Seller. Only verified exchange to the in-app coin wallet is available.');
     panel.querySelector('[data-ag-exchange]').onclick=async()=>{
       const field=panel.querySelector('[data-ag-salary-coins]');
       const coins=Number(field?.value);
@@ -398,10 +517,12 @@
     if(keepHistory&&lastView&&type!=='overview')stack.push(lastView);
     lastView={type,id,period};
     if(type==='overview')return showOverview();
-    if(type==='unassigned')return renderUnassigned();
     loading();const token=++generation;
     try{
-      if(type==='salary')await renderSalary(token);
+      if(type==='unassigned')await renderUnassigned(token);
+      else if(type==='grant')renderGrant();
+      else if(type==='requests')await renderRequests(token);
+      else if(type==='salary')await renderSalary(token);
       else if(type==='bd'){
         const data=await api('GET','/agency/bd/center');
         if(token===generation)renderBd(data);

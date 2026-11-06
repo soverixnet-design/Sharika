@@ -61,7 +61,7 @@ async function crystalSummary(db,uid){
   return {total_units:total,available_units:Math.max(0,total-reserved),
     transferred_units:reserved,crystals:total/10000};
 }
-export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}){
+export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx,agencyMode=false}){
   if(!path.startsWith('/api/v1/family'))return null;
   const db=env.DB;
   if(!await active(db,uid))return fail('profile_unavailable',403,cors);
@@ -347,7 +347,10 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
     return reply({requests},200,cors);
   }
   if(path==='/api/v1/family/creation/request'&&request.method==='POST'){
-    if(!current.active)return fail('family_disabled',403,cors);
+    // The retired Family surface can stay disabled while the separately
+    // configured Agency onboarding remains available. Existing schema is
+    // preserved for referential integrity and immutable earning history.
+    if(!current.active&&!agencyMode)return fail('family_disabled',403,cors);
     if(await familyFor(db,uid))return fail('already_in_family',409,cors);
     let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
     const name=typeof body.name==='string'?body.name.trim():'';
@@ -376,7 +379,7 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
     }catch(error){return errorResponse(fail,cors,error);}
   }
   if(path==='/api/v1/family/bd/grant'&&request.method==='POST'){
-    if(!current.active)return fail('family_disabled',403,cors);
+    if(!current.active&&!agencyMode)return fail('family_disabled',403,cors);
     const bd=await db.prepare('SELECT active,can_grant FROM sharika_bd_agents WHERE bd_uid=?').bind(uid).first();
     if(!bd?.active||!bd?.can_grant)return fail('bd_permission_denied',403,cors);
     let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
@@ -411,14 +414,16 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
       ]);
       const created=await db.prepare('SELECT id FROM sharika_families WHERE owner_uid=?')
         .bind(owner.auth_uid).first();
-      await recordUserEvent({env,ctx,recipientUid:owner.auth_uid,title:'Your Royal Family was created',
-        body:'You are now the leader of Family '+name+' (#'+created.id+').',
+      await recordUserEvent({env,ctx,recipientUid:owner.auth_uid,
+        title:agencyMode?'Your Agency was created':'Your Royal Family was created',
+        body:agencyMode?'You are now the Owner of Agency '+name+' (#'+created.id+').':
+          'You are now the leader of Family '+name+' (#'+created.id+').',
         dedupeKey:'family_bd_grant:'+created.id,createdBy:uid});
       return reply({created:true,family_id:created.id,owner_public_id:ownerId},201,cors);
     }catch(e){return errorResponse(fail,cors,e);}
   }
   if(path==='/api/v1/family/join'&&request.method==='POST'){
-    if(!current.active)return fail('family_disabled',403,cors);
+    if(!current.active&&!agencyMode)return fail('family_disabled',403,cors);
     let body;try{body=await input(request);}catch(_){return fail('invalid_family_body',400,cors);}
     if(!familyId(body.family_id))return fail('invalid_family_id',400,cors);
     if(await familyFor(db,uid))return fail('already_in_family',409,cors);
@@ -582,10 +587,11 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
         'SELECT 1 FROM sharika_family_members WHERE family_id=? AND user_uid=?'
       ).bind(mine.id,application.applicant_uid).first();
       if(acceptance[2]==='accept'&&!member)return fail('family_full',409,cors);
+      const label=agencyMode?'Agency':'Family';
       await recordUserEvent({env,ctx,recipientUid:application.applicant_uid,
-        title:acceptance[2]==='accept'?'Family membership approved':'Family request declined',
-        body:acceptance[2]==='accept'?'Your request to join Family #'+mine.id+' was accepted.':
-          'Your request to join Family #'+mine.id+' was declined.',
+        title:acceptance[2]==='accept'?label+' membership approved':label+' request declined',
+        body:acceptance[2]==='accept'?'Your request to join '+label+' #'+mine.id+' was accepted.':
+          'Your request to join '+label+' #'+mine.id+' was declined.',
         dedupeKey:'family_join_decision:'+application.id+':'+acceptance[2]+':'+Date.now(),createdBy:uid});
       return reply({ok:true,decision:acceptance[2]},200,cors);
     }catch(e){return errorResponse(fail,cors,e);}

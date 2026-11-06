@@ -1,0 +1,134 @@
+name: Sharika BD and Agency Wallet QA (STAGING ONLY)
+
+on:
+  push:
+    branches:
+      - feature/sharika-bd-agency-wallet-staging-20261106
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify Play purchase is disabled until store/service setup
+        run: |
+          set -euo pipefail
+          grep -Fq '"SHARIKA_PLAY_BILLING_ENABLED": "false"' cloudflare/wrangler.jsonc
+          grep -Fq 'https://sharika-api-staging.soverixnet.workers.dev' android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java
+          grep -Fq 'com.android.billingclient:billing:9.1.0' android-staging/app/build.gradle
+          grep -Fq 'versionCode 15' android-staging/app/build.gradle
+          test -f cloudflare/migrations/0068_google_play_billing.sql
+          echo 'Billing integration safe for staging only; do not upload bundle to Play.'
+
+          test -f cloudflare/migrations/0069_invite_usd_to_virtual_coins.sql
+          grep -Fq '/api/v1/agency/bd/center' android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java
+          grep -Fq 'BD Center' android-staging/agency-center.js
+          grep -Fq 'Agency Wallet' android-staging/agency-center.js
+          echo 'BD Center and Agency Wallet routes present; cash-out disabled.'
+
+      - name: Run full Cloudflare and wallet regression suite
+        working-directory: cloudflare
+        run: npm run check
+
+      - name: Checkout pinned original cosmetics
+        uses: actions/checkout@v4
+        with:
+          repository: soverixnet-design/sovera-voice-app
+          ref: 0e30b48962272b8a687509aef4dee9bc4a047767
+          path: _sovera_cosmetics
+          persist-credentials: false
+
+      - name: Include pinned original frames, medals and sounds
+        run: |
+          set -euo pipefail
+          mkdir -p android-staging/app/src/main/assets/sovera-effects android-staging/app/src/main/assets/sovera-medals android-staging/app/src/main/assets/sovera-sounds
+          cp -a _sovera_cosmetics/assets/effects/. android-staging/app/src/main/assets/sovera-effects/
+          cp -a _sovera_cosmetics/assets/medals/. android-staging/app/src/main/assets/sovera-medals/
+          cp -a _sovera_cosmetics/assets/sounds/. android-staging/app/src/main/assets/sovera-sounds/
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install Android API 36
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Restore verified STAGING signer
+        env:
+          KEY_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY_B64"
+          test -n "$KEY_PASSWORD"
+          printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
+          printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-staging-signing.p12" | sha256sum --check --status
+          chmod 600 "$RUNNER_TEMP/sharika-staging-signing.p12"
+          echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-staging-signing.p12" >> "$GITHUB_ENV"
+
+      - name: Compile signed Android review AAB and tester APK
+        working-directory: android-staging
+        env:
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          gradle :app:bundleRelease :app:assembleRelease --no-daemon --stacktrace
+          test -s app/build/outputs/bundle/release/app-release.aab
+          test -s app/build/outputs/apk/release/app-release.apk
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab
+
+      - name: Validate output and prepare direct downloads
+        run: |
+          set -euo pipefail
+          unzip -tqq android-staging/app/build/outputs/bundle/release/app-release.aab
+          unzip -Z1 android-staging/app/build/outputs/bundle/release/app-release.aab | grep -Fx 'base/assets/connection.js'
+          install -m 0644 android-staging/app/build/outputs/bundle/release/app-release.aab Sharika-BD-Agency-STAGING-REVIEW.aab
+          install -m 0644 android-staging/app/build/outputs/apk/release/app-release.apk Sharika-BD-Agency-STAGING-TEST.apk
+          sha256sum Sharika-BD-Agency-STAGING-REVIEW.aab Sharika-BD-Agency-STAGING-TEST.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-BD-Agency-Staging-Android
+          path: |
+            Sharika-BD-Agency-STAGING-REVIEW.aab
+            Sharika-BD-Agency-STAGING-TEST.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish direct tester APK and review AAB (NOT Play production)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sharika-bd-agency-staging-${GITHUB_SHA:0:8}"
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Refusing to overwrite a prior QA release'
+            exit 1
+          fi
+          gh release create "$tag" Sharika-BD-Agency-STAGING-REVIEW.aab Sharika-BD-Agency-STAGING-TEST.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika BD Center and Agency Wallet - STAGING QA ONLY' \
+            --notes 'BD Center, Agency Dashboard, Host Earnings and Agency Wallet are separate purple-and-gold views using verified Worker data. Secure API allowlist fixes; Agency discovery, applications, BD grant and owner approvals; virtual-only Agency salary exchange; invite virtual USD-equivalent credit to coin conversion without cash withdrawal. Google Play Billing remains DISABLED in staging. Full automated checks run. Cloudflare Worker and D1 migration NOT deployed by this build. STAGING tester APK and REVIEW AAB only; DO NOT SUBMIT to Play as production.' \
+            --prerelease

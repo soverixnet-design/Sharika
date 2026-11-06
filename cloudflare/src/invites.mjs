@@ -3,7 +3,6 @@
 // All signup/referral bonuses use the existing verified D1 wallet ledger.
 import {readInviteRules,validateInviteRules,RULE_FIELDS,DEFAULT_INVITE_RULES} from './invite-rules.mjs';
 import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
-import {validateBankForm,encryptBankDetails,decryptBankDetails} from './invite-bank.mjs';
 const PUBLIC_ID=/^[0-9]{8}$/;
 const REQUEST_ID=/^[A-Za-z0-9:_-]{12,80}$/;
 const showId=n=>String(n).padStart(8,'0');
@@ -11,11 +10,10 @@ const showId=n=>String(n).padStart(8,'0');
 export const INVITER_SIGNUP_COINS=100_000;
 export const INVITEE_SIGNUP_COINS=100_000;
 export const STANDARD_SIGNUP_COINS=2000;
-// Proposed USD 1 per ten *verified* new accounts. Amounts are integer cents,
-// not virtual coins. A finance reviewer must approve each claim before cash
-// becomes withdrawable; this code NEVER transfers real money.
+// Historical USD-equivalent invite points are integer cents, never cash.
+// Finance approves verified referrals; members may exchange approved points
+// into non-redeemable virtual coins. No payout or bank withdrawal is offered.
 export const INVITE_USD_CENTS_PER_VERIFIED_USER=10;
-export const INVITE_WITHDRAWAL_OPTIONS_CENTS=[5000,10000];
 // A newly registered member may attach one referral after account creation.
 // The owner previously requested a two-day grace period; keep it explicit
 // until the reference screenshot's 24-hour rule is confirmed.
@@ -54,7 +52,7 @@ export function signupReferralStatements({db,uid,inviterUid,rules=DEFAULT_INVITE
   ];
 }
 async function inviteCashBalance(db,uid){
-  const [earned,spent]=await Promise.all([
+  const [earned,spent,converted]=await Promise.all([
     db.prepare("SELECT "+
       "COALESCE(SUM(CASE WHEN status='pending' THEN amount_cents ELSE 0 END),0) AS pending_cents,"+
       "COALESCE(SUM(CASE WHEN status='approved' THEN amount_cents ELSE 0 END),0) AS approved_cents "+
@@ -62,13 +60,18 @@ async function inviteCashBalance(db,uid){
     db.prepare("SELECT "+
       "COALESCE(SUM(CASE WHEN status IN ('pending','paid') THEN amount_cents ELSE 0 END),0) AS reserved_cents,"+
       "COALESCE(SUM(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) AS paid_cents "+
-      'FROM sharika_invite_withdrawals WHERE inviter_uid=?').bind(uid).first()
+      'FROM sharika_invite_withdrawals WHERE inviter_uid=?').bind(uid).first(),
+    db.prepare('SELECT COALESCE(SUM(amount_cents),0) AS converted_cents,'+
+      'COALESCE(SUM(coins),0) AS converted_coins FROM sharika_invite_usd_coin_conversions '+
+      'WHERE inviter_uid=?').bind(uid).first()
   ]);
   const approved=Number(earned?.approved_cents)||0;
   const reserved=Number(spent?.reserved_cents)||0;
+  const convertedCents=Number(converted?.converted_cents)||0;
   return {pending_cents:Number(earned?.pending_cents)||0,
-    approved_cents:approved,available_cents:Math.max(0,approved-reserved),
-    paid_cents:Number(spent?.paid_cents)||0};
+    approved_cents:approved,available_cents:Math.max(0,approved-reserved-convertedCents),
+    converted_cents:convertedCents,converted_coins:Number(converted?.converted_coins)||0,
+    legacy_reserved_cents:reserved,paid_cents:Number(spent?.paid_cents)||0};
 }
 export function rechargeBonusCoins(amount,percent=5){
   if(!Number.isSafeInteger(amount)||amount<1)return 0;
@@ -110,6 +113,7 @@ export async function resolveInviter({db,uid,inviteCode,fail,cors}){
 export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
   if(!['/api/v1/invites','/api/v1/invites/redeem',
     '/api/v1/invites/rankings','/api/v1/invites/withdrawals',
+    '/api/v1/invites/convert',
     '/api/v1/invites/device'].includes(path))return null;
   const rules=await readInviteRules(env.DB);
   if(path==='/api/v1/invites/device'&&request.method==='POST'){
@@ -125,76 +129,83 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
     return reply({invite_eligible:binding.eligible,reason:binding.reason},200,cors);
   }
   if(path==='/api/v1/invites/withdrawals'){
+    // Old clients must not be able to submit cash requests. Historical
+    // encrypted bank records are kept for audit, not exposed to the app.
+    return fail('cash_withdrawals_disabled_virtual_coins_only',410,cors);
+  }
+  if(path==='/api/v1/invites/convert'){
     const member=await env.DB.prepare(
-      "SELECT auth_uid,minor FROM sharika_users WHERE auth_uid=? AND status='active'"
+      "SELECT auth_uid,coins,status FROM sharika_users WHERE auth_uid=?"
     ).bind(uid).first();
-    if(!member)return fail('profile_unavailable',403,cors);
+    if(!member||member.status!=='active')return fail('profile_unavailable',403,cors);
     if(request.method==='GET'){
-      const [balance,rows]=await Promise.all([
+      const [balance,history]=await Promise.all([
         inviteCashBalance(env.DB,uid),env.DB.prepare(
-        'SELECT id,amount_cents,status,created_at,reviewed_at,payout_method,bank_account_last4 FROM sharika_invite_withdrawals '+
-          'WHERE inviter_uid=? ORDER BY id DESC LIMIT 30'
-        ).bind(uid).all()
+          'SELECT id,amount_cents,coins,coins_per_usd,created_at '+
+          'FROM sharika_invite_usd_coin_conversions WHERE inviter_uid=? '+
+          'ORDER BY id DESC LIMIT 30').bind(uid).all()
       ]);
-      return reply({balance,requests:rows.results||[],
-        options_cents:[rules.withdrawal_option_1_cents,rules.withdrawal_option_2_cents],
-        manual_review_required:true,external_payout_automated:false,
-        can_request:!member.minor},200,cors);
+      return reply({balance,coins_per_usd:rules.recharge_coins_per_usd,
+        history:history.results||[],cash_withdrawal_enabled:false},200,cors);
     }
     if(request.method!=='POST')return fail('invite_method_not_allowed',405,cors);
-    if(member.minor)return fail('withdrawal_adult_only',403,cors);
     let input;
     try{
-      const raw=await request.text();if(raw.length>4096)throw Error();
+      const raw=await request.text();if(raw.length>1024)throw Error();
       input=JSON.parse(raw);
-    }catch(_){return fail('invalid_withdrawal_request',400,cors);}
+    }catch(_){return fail('invalid_conversion_request',400,cors);}
     const amount=input?.amount_cents,requestId=input?.request_id;
-    if(![rules.withdrawal_option_1_cents,rules.withdrawal_option_2_cents].includes(amount)||
+    if(!Number.isSafeInteger(amount)||amount<1||amount>1000000||
        typeof requestId!=='string'||!REQUEST_ID.test(requestId))
-      return fail('invalid_withdrawal_request',400,cors);
-    const existing=await env.DB.prepare('SELECT id,amount_cents,status FROM '+
-      'sharika_invite_withdrawals WHERE request_id=? AND inviter_uid=?')
-      .bind(requestId,uid).first();
-    if(existing)return Number(existing.amount_cents)===amount?
-      reply({duplicate:true,request:existing},200,cors):fail('idempotency_conflict',409,cors);
-    const bank=validateBankForm(input);
-    if(!bank)return fail('invalid_bank_details',400,cors);
-    let secured;
-    try{secured=await encryptBankDetails(env,bank);}
-    catch(_){return fail('secure_bank_storage_unavailable',503,cors);}
-    // A single conditional insert checks the latest approved dollar earnings
-    // and reserves the withdrawal, so simultaneous requests cannot overdraw.
-    const insert=env.DB.prepare('INSERT INTO sharika_invite_withdrawals '+
-      '(inviter_uid,amount_cents,request_id,payout_method,bank_account_last4,'+
-      'bank_details_ciphertext,bank_details_iv) SELECT ?,?,?,?,?,?,? WHERE '+
+      return fail('invalid_conversion_request',400,cors);
+    const existing=await env.DB.prepare('SELECT inviter_uid,amount_cents,coins FROM '+
+      'sharika_invite_usd_coin_conversions WHERE request_id=?').bind(requestId).first();
+    if(existing)return existing.inviter_uid===uid&&Number(existing.amount_cents)===amount?
+      reply({converted:true,duplicate:true,coins:existing.coins},200,cors):
+      fail('conversion_request_already_used',409,cors);
+    const coins=Math.floor(amount*rules.recharge_coins_per_usd/100);
+    if(!Number.isSafeInteger(coins)||coins<1||
+       !Number.isSafeInteger(Number(member.coins))||Number(member.coins)>MAX_USER_COINS-coins)
+      return fail('conversion_balance_limit',409,cors);
+    // The conditional insert is evaluated inside the D1 transaction. Old
+    // pending/paid requests remain reserved; previous conversions are
+    // subtracted, so parallel taps cannot spend the same approved cents.
+    const insert=env.DB.prepare('INSERT INTO sharika_invite_usd_coin_conversions '+
+      '(inviter_uid,amount_cents,coins,coins_per_usd,request_id) '+
+      'SELECT ?,?,?,?,? WHERE '+
       '(SELECT COALESCE(SUM(amount_cents),0) FROM sharika_invite_usd_earnings '+
       "WHERE inviter_uid=? AND status='approved')-"+
       '(SELECT COALESCE(SUM(amount_cents),0) FROM sharika_invite_withdrawals '+
-      "WHERE inviter_uid=? AND status IN ('pending','paid'))>=?")
-      .bind(uid,amount,requestId,'bank',secured.last4,secured.ciphertext,
-        secured.iv,uid,uid,amount);
+      "WHERE inviter_uid=? AND status IN ('pending','paid'))-"+
+      '(SELECT COALESCE(SUM(amount_cents),0) FROM sharika_invite_usd_coin_conversions '+
+      'WHERE inviter_uid=?)>=?')
+      .bind(uid,amount,coins,rules.recharge_coins_per_usd,requestId,uid,uid,uid,amount);
     try{
-      const created=await env.DB.batch([insert,env.DB.prepare(
-        'INSERT INTO sharika_invite_admin_inbox(withdrawal_id) '+
-        'SELECT id FROM sharika_invite_withdrawals WHERE inviter_uid=? AND request_id=?'
-      ).bind(uid,requestId)]);
+      const created=await env.DB.batch([insert,
+        env.DB.prepare("UPDATE sharika_users SET coins=CASE WHEN status='active' "+
+          "AND coins<=? THEN coins+? ELSE -1 END,updated_at=datetime('now') "+
+          'WHERE auth_uid=? AND EXISTS(SELECT 1 FROM sharika_invite_usd_coin_conversions '+
+          'WHERE request_id=? AND inviter_uid=?)')
+          .bind(MAX_USER_COINS-coins,coins,uid,requestId,uid),
+        env.DB.prepare('INSERT INTO sharika_wallet_ledger '+
+          '(auth_uid,currency,delta,balance_after,reason,request_id) '+
+          "SELECT ?,'coins',?,coins,'invite_usd_to_coins',? FROM sharika_users "+
+          'WHERE auth_uid=? AND EXISTS(SELECT 1 FROM sharika_invite_usd_coin_conversions '+
+          'WHERE request_id=? AND inviter_uid=?)')
+          .bind(uid,coins,'invite-convert:'+requestId,uid,requestId,uid)]);
       if(Number(created[0]?.meta?.changes)!==1)
-        return fail('withdrawal_balance_insufficient',409,cors);
-    }catch(error){
-      const duplicate=await env.DB.prepare('SELECT id,amount_cents,status FROM '+
-        'sharika_invite_withdrawals WHERE request_id=? AND inviter_uid=?')
-        .bind(requestId,uid).first();
-      if(duplicate&&Number(duplicate.amount_cents)===amount)
-        return reply({duplicate:true,request:duplicate},200,cors);
-      return fail('withdrawal_request_unavailable',409,cors);
+        return fail('approved_invite_credit_insufficient',409,cors);
+      if(Number(created[1]?.meta?.changes)!==1||Number(created[2]?.meta?.changes)!==1)
+        return fail('conversion_credit_unavailable',503,cors);
+    }catch(_){
+      const duplicate=await env.DB.prepare('SELECT inviter_uid,amount_cents,coins FROM '+
+        'sharika_invite_usd_coin_conversions WHERE request_id=?').bind(requestId).first();
+      if(duplicate&&duplicate.inviter_uid===uid&&Number(duplicate.amount_cents)===amount)
+        return reply({converted:true,duplicate:true,coins:duplicate.coins},200,cors);
+      return fail('conversion_credit_unavailable',409,cors);
     }
-    const saved=await env.DB.prepare('SELECT id,amount_cents,status,created_at,payout_method,bank_account_last4 FROM '+
-      'sharika_invite_withdrawals WHERE request_id=? AND inviter_uid=?')
-      .bind(requestId,uid).first();
-    // The finance/admin request list is the recipient's authenticated inbox;
-    // no plaintext banking data is included in notifications or audit logs.
-    return reply({requested:true,request:saved,
-      note:'Manual identity and external payout verification are required.'},201,cors);
+    return reply({converted:true,duplicate:false,coins,amount_cents:amount,
+      coins_per_usd:rules.recharge_coins_per_usd},201,cors);
   }
   if(path==='/api/v1/invites/redeem'&&request.method==='POST'){
     const member=await env.DB.prepare(
@@ -277,7 +288,7 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
     "SELECT public_no,created_at FROM sharika_users WHERE auth_uid=? AND status='active'"
   ).bind(uid).first();
   if(!user)return fail('profile_unavailable',403,cors);
-  const [count,rows,invitedBy,rewards,cash,withdrawals]=await Promise.all([
+  const [count,rows,invitedBy,rewards,cash,conversions]=await Promise.all([
     env.DB.prepare('SELECT COUNT(*) AS n FROM sharika_referrals WHERE inviter_uid=?')
       .bind(uid).first(),
     env.DB.prepare(
@@ -294,8 +305,8 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
       "COALESCE(SUM(CASE WHEN reason='referral_recharge' THEN delta ELSE 0 END),0) AS recharge_bonus_coins "+
       "FROM sharika_wallet_ledger WHERE auth_uid=? AND currency='coins'").bind(uid).first(),
     inviteCashBalance(env.DB,uid),
-    env.DB.prepare('SELECT id,amount_cents,status,created_at FROM '+
-      'sharika_invite_withdrawals WHERE inviter_uid=? ORDER BY id DESC LIMIT 10')
+    env.DB.prepare('SELECT id,amount_cents,coins,coins_per_usd,created_at FROM '+
+      'sharika_invite_usd_coin_conversions WHERE inviter_uid=? ORDER BY id DESC LIMIT 10')
       .bind(uid).all()
   ]);
   return reply({invite_code:showId(user.public_no),
@@ -314,13 +325,13 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
     signup_inviter_reward:rules.inviter_coins,
     signup_invitee_reward:rules.invitee_coins,recharge_bonus_percent:rules.inviter_recharge_percent,
     invite_usd_cents_per_verified_user:rules.invite_usd_cents,
-    cash_balance:cash,withdrawal_options_cents:[rules.withdrawal_option_1_cents,
-      rules.withdrawal_option_2_cents],
-    withdrawals:withdrawals.results||[],
+    cash_balance:cash,usd_balance:cash,
+    conversion_history:conversions.results||[],
+    cash_withdrawal_enabled:false,
     recharge_coins_per_usd:rules.recharge_coins_per_usd,
     first_recharge_bonus_percent:rules.first_recharge_percent,
     bonus_enabled:true,
-    note:'Reward rates are admin-managed. USD earnings require device verification and finance approval. Cash withdrawals are manual.'
+    note:'USD amounts are virtual accounting points, not cash. Approved credits convert into virtual Sharika coins only; no withdrawals.'
   },200,cors);
 }
 export async function handleInviteAdmin({request,env,uid,actor,operation,cors,reply,fail}){
@@ -432,54 +443,10 @@ export async function handleInviteAdmin({request,env,uid,actor,operation,cors,re
   }
   if(/^invites\/withdrawals\/[1-9][0-9]{0,11}$/.test(operation)&&
      request.method==='GET'){
-    const id=Number(operation.split('/')[2]);
-    const record=await env.DB.prepare('SELECT w.id,u.public_no,u.name,w.amount_cents,'+
-      'w.status,w.bank_details_ciphertext,w.bank_details_iv '+
-      'FROM sharika_invite_withdrawals w JOIN sharika_users u ON u.auth_uid=w.inviter_uid '+
-      'WHERE w.id=?').bind(id).first();
-    if(!record)return fail('withdrawal_not_found',404,cors);
-    if(!record.bank_details_ciphertext)return fail('bank_details_not_available',409,cors);
-    let details;
-    try{details=await decryptBankDetails(env,record);}
-    catch(_){return fail('secure_bank_storage_unavailable',503,cors);}
-    return reply({id:record.id,user_id:showId(record.public_no),name:record.name,
-      amount_cents:record.amount_cents,status:record.status,bank:details,
-      warning:'Finance access only. Do not copy bank details to public messages.'},200,cors);
+    return fail('cash_withdrawals_disabled_virtual_coins_only',410,cors);
   }
   if(operation==='invites/withdrawals/review'&&request.method==='POST'){
-    let input;
-    try{const raw=await request.text();if(raw.length>4096)throw Error();input=JSON.parse(raw);}
-    catch(_){return fail('invalid_withdrawal_review',400,cors);}
-    const paid=input?.status==='paid',rejected=input?.status==='rejected';
-    const reference=typeof input?.payment_reference==='string'?
-      input.payment_reference.trim():'';
-    if(!Number.isSafeInteger(input?.withdrawal_id)||input.withdrawal_id<1||
-       (!paid&&!rejected)||(paid&&(
-         input.confirm_external_payment!==true||input.confirm_identity_verified!==true||
-         !/^[A-Za-z0-9:/._-]{8,120}$/.test(reference))))
-      return fail('verified_external_payment_required',400,cors);
-    const row=await env.DB.prepare('SELECT id,inviter_uid,status FROM '+
-      'sharika_invite_withdrawals WHERE id=?').bind(input.withdrawal_id).first();
-    if(!row)return fail('withdrawal_not_found',404,cors);
-    if(row.status!=='pending')return fail('withdrawal_already_reviewed',409,cors);
-    if(uid===row.inviter_uid)return fail('cannot_review_own_withdrawal',403,cors);
-    if(paid){
-      const used=await env.DB.prepare('SELECT id FROM sharika_invite_withdrawals '+
-        "WHERE payment_reference=? AND status='paid'").bind(reference).first();
-      if(used)return fail('payment_reference_already_used',409,cors);
-    }
-    await env.DB.batch([
-      env.DB.prepare('UPDATE sharika_invite_withdrawals SET status=?,payment_reference=?,'+
-        "reviewed_by=?,reviewed_at=datetime('now') WHERE id=? AND status='pending'")
-        .bind(input.status,paid?reference:null,uid,input.withdrawal_id),
-      env.DB.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) '+
-        'VALUES(?,?,?)').bind(uid,'invite_withdrawal_review',JSON.stringify({
-          withdrawal_id:input.withdrawal_id,status:input.status,
-          payment_reference:paid?reference:null
-        }))
-    ]);
-    return reply({reviewed:true,status:input.status,
-      note:paid?'External payment attested by finance reviewer.':'Reserved earnings released.'},200,cors);
+    return fail('cash_withdrawals_disabled_virtual_coins_only',410,cors);
   }
   if(operation!=='invites')return fail('invite_admin_route_not_found',404,cors);
   if(request.method!=='GET')
@@ -505,7 +472,7 @@ export async function handleInviteAdmin({request,env,uid,actor,operation,cors,re
     signup_inviter_reward:rules.inviter_coins,signup_invitee_reward:rules.invitee_coins,
     recharge_bonus_percent:rules.inviter_recharge_percent,
     invite_usd_cents_per_verified_user:rules.invite_usd_cents,
-    withdrawal_options_cents:[rules.withdrawal_option_1_cents,rules.withdrawal_option_2_cents],
+    cash_withdrawal_enabled:false,
     usd_earning_totals:(usd.results||[]).map(x=>({
       status:x.status,count:Number(x.n)||0,cents:Number(x.cents)||0
     })),

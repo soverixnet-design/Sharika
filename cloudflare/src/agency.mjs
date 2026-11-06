@@ -1,5 +1,6 @@
 // Agency/BD/Host is an additive earnings projection on verified gift events.
 // A projection is never a coin, diamond, Crystal transfer, or paid salary.
+import {handleFamilyApp} from './family.mjs';
 const results=value=>value?.results||[];
 const publicId=n=>String(n).padStart(8,'0');
 const isPublicId=x=>typeof x==='string'&&/^[0-9]{8}$/.test(x);
@@ -109,11 +110,33 @@ export function agencyGiftEarningStatements(db,senderUid,requestId,giftTab){
   ];
 }
 
-export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
+export async function handleAgencyApp({request,env,uid,path,cors,reply,fail,ctx}){
   if(!path.startsWith('/api/v1/agency'))return null;
   const db=env.DB;
   if(!await actor(db,uid))return fail('profile_unavailable',403,cors);
   const terms=await policy(db);
+  // Agency has its own active policy. Reuse the existing approved membership
+  // and BD-grant records without resurrecting the retired Family UI or
+  // duplicating members, salary, or historic immutable ledgers.
+  const aliases={
+    '/api/v1/agency/discover':'/api/v1/family/discover',
+    '/api/v1/agency/create/requests':'/api/v1/family/creation/requests',
+    '/api/v1/agency/create/request':'/api/v1/family/creation/request',
+    '/api/v1/agency/join':'/api/v1/family/join',
+    '/api/v1/agency/requests':'/api/v1/family/requests',
+    '/api/v1/agency/bd/grant':'/api/v1/family/bd/grant',
+    '/api/v1/agency/bd/agencies':'/api/v1/family/bd/families'
+  };
+  let alias=aliases[path];
+  if(!alias){
+    const review=/^\/api\/v1\/agency\/requests\/([1-9][0-9]{0,9})\/(accept|reject)$/.exec(path);
+    if(review)alias='/api/v1/family/requests/'+review[1]+'/'+review[2];
+  }
+  if(alias){
+    if(!terms.active&&request.method!=='GET')return fail('agency_disabled',403,cors);
+    return handleFamilyApp({request,env,uid,path:alias,cors,reply,fail,ctx,
+      agencyMode:!!terms.active});
+  }
   if(path==='/api/v1/agency/me'&&request.method==='GET'){
     const currentUser=await actor(db,uid);
     const [bd,owned,host,personal,salary,targets,exchanges]=await Promise.all([
@@ -234,6 +257,7 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
       "WHERE user_uid=? AND utc_day=date('now')"
     ).bind(family.owner_uid).first(),roomActivityDays(db,family.owner_uid)]);
     return reply({agency:{id:family.id,name:family.name,status:family.status,logo:family.logo,
+      viewer_can_manage:!!family.is_owner,
       owner_name:family.owner_name,owner_id:publicId(family.owner_no),
       owner_today_seconds:Number(ownerTime?.seconds)||0,owner_activity_by_day:ownerDays},
       hosts:list.map(x=>({...x,public_id:publicId(x.public_no),public_no:undefined,

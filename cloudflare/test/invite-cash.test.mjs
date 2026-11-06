@@ -13,7 +13,8 @@ function fixture(){
   const sql=new DatabaseSync(':memory:');
   for(const name of ['0001_initial.sql','0011_referrals.sql',
     '0032_invite_cash_and_first_recharge.sql',
-    '0033_invite_admin_rules_devices_bank.sql']){
+    '0033_invite_admin_rules_devices_bank.sql',
+    '0069_invite_usd_to_virtual_coins.sql']){
     sql.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   }
   // First-recharge read dependencies, without altering real migration schemas.
@@ -31,8 +32,7 @@ function fixture(){
     sql.prepare('INSERT INTO sharika_invite_devices(user_uid,device_digest,invite_eligible) '+
       'VALUES(?,?,1)').run(uid,digest);
   }
-  const env={DB:null,INVITE_BANK_ENCRYPTION_KEY_B64:Buffer.alloc(32,7).toString('base64'),
-    INVITE_DEVICE_PEPPER:'test-secret-device-pepper-at-least-32-characters'};
+  const env={DB:null,INVITE_DEVICE_PEPPER:'test-secret-device-pepper-at-least-32-characters'};
   const DB={prepare(query){
     const stmt=sql.prepare(query);
     const handle={args:[],bind(...values){this.args=values;return this;},
@@ -64,10 +64,7 @@ function fixture(){
   };
   return {sql,DB,app,admin,env};
 }
-const bank={payout_method:'bank',bank_name:'Test Bank',account_holder:'Alice Test',
-  account_number:'123456789012',branch:'Central Branch'};
-
-test('one real referral earns 100k virtual coins and 10 pending USD cents, never cashes coins',async()=>{
+test('one real referral earns 100k coins and pending virtual USD credits; old cash API is disabled',async()=>{
   const f=fixture();
   f.sql.prepare('UPDATE sharika_users SET coins=100000 WHERE auth_uid=?').run('bob');
   await f.DB.batch(signupReferralStatements({db:f.DB,uid:'bob',inviterUid:'alice'}));
@@ -80,9 +77,11 @@ test('one real referral earns 100k virtual coins and 10 pending USD cents, never
   assert.equal(earning.data.signup_inviter_reward,100000);
   assert.equal(earning.data.signup_invitee_reward,100000);
   const attempt=await f.app('alice','/api/v1/invites/withdrawals','POST',{
-    ...bank,amount_cents:5000,request_id:'withdraw-no-approved-cash'
+    amount_cents:5000,request_id:'withdraw-no-approved-cash'
   });
-  assert.equal(attempt.status,409);
+  assert.equal(attempt.status,410);
+  assert.equal(attempt.data.error,'cash_withdrawals_disabled_virtual_coins_only');
+  assert.equal((await f.app('alice','/api/v1/invites/withdrawals')).status,410);
   assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sharika_invite_withdrawals').get().n,0);
   f.sql.close();
 });
@@ -103,7 +102,7 @@ test('reviewer alone can approve referral earnings, and may not review own accou
   f.sql.close();
 });
 
-test('500 approved real referrals permit exactly $50 reserved once, never automatic payment',async()=>{
+test('500 approved referral credits exchange exactly once into 25M virtual coins',async()=>{
   const f=fixture();
   const addMember=f.sql.prepare('INSERT INTO sharika_users(auth_uid,public_no,name,birthdate,minor) '+
     "VALUES(?,?,?,'2000-01-01',0)");
@@ -114,64 +113,56 @@ test('500 approved real referrals permit exactly $50 reserved once, never automa
     addMember.run(uid,10000100+i,uid);
     addEarning.run(uid);
   }
-  const before=await f.app('alice','/api/v1/invites/withdrawals');
+  const before=await f.app('alice','/api/v1/invites/convert');
   assert.equal(before.data.balance.available_cents,5000);
-  assert.deepEqual(before.data.options_cents,[5000,10000]);
-  const request={...bank,amount_cents:5000,request_id:'withdraw-500-invites-one'};
-  const result=await f.app('alice','/api/v1/invites/withdrawals','POST',request);
+  assert.equal(before.data.coins_per_usd,500000);
+  const request={amount_cents:5000,request_id:'convert-500-invites-one'};
+  const result=await f.app('alice','/api/v1/invites/convert','POST',request);
   assert.equal(result.status,201);
-  assert.equal(result.data.request.status,'pending');
-  assert.equal((await f.app('alice','/api/v1/invites/withdrawals','POST',request)).status,200);
-  assert.equal((await f.app('alice','/api/v1/invites/withdrawals','POST',{
-    ...bank,amount_cents:5000,request_id:'withdraw-500-invites-two'
+  assert.equal(result.data.coins,25000000);
+  assert.equal((await f.app('alice','/api/v1/invites/convert','POST',request)).data.duplicate,true);
+  assert.equal((await f.app('alice','/api/v1/invites/convert','POST',{
+    amount_cents:5000,request_id:'convert-500-invites-two'
   })).status,409);
-  assert.equal((await f.app('child','/api/v1/invites/withdrawals','POST',request)).status,403);
-  const after=await f.app('alice','/api/v1/invites/withdrawals');
+  assert.equal((await f.app('bob','/api/v1/invites/convert','POST',request)).status,409);
+  const after=await f.app('alice','/api/v1/invites/convert');
   assert.equal(after.data.balance.available_cents,0);
-  assert.equal(after.data.requests.length,1);
-  assert.equal(after.data.requests[0].bank_account_last4,'9012');
-  assert.equal(JSON.stringify(after.data).includes(bank.account_number),false);
-  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sharika_invite_withdrawals').get().n,1);
-  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sharika_invite_admin_inbox').get().n,1);
-  const messages=await f.admin('finance','finance','invites/inbox');
-  assert.equal(messages.data.messages[0].withdrawal_id,result.data.request.id);
-  assert.equal(JSON.stringify(messages.data).includes(bank.account_number),false);
-  const secure=await f.admin('finance','finance','invites/withdrawals/'+result.data.request.id);
-  assert.equal(secure.data.bank.account_number,bank.account_number);
-  assert.equal((await f.admin('support','support',
-    'invites/withdrawals/'+result.data.request.id)).status,403);
-  assert.equal(after.data.external_payout_automated,false);
+  assert.equal(after.data.balance.converted_cents,5000);
+  assert.equal(after.data.balance.converted_coins,25000000);
+  assert.equal(after.data.history.length,1);
+  assert.equal(f.sql.prepare('SELECT coins FROM sharika_users WHERE auth_uid=?')
+    .get('alice').coins,25002000);
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sharika_invite_withdrawals').get().n,0);
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sharika_invite_usd_coin_conversions').get().n,1);
+  const ledger=f.sql.prepare("SELECT delta,reason FROM sharika_wallet_ledger "+
+    "WHERE auth_uid='alice' AND reason='invite_usd_to_coins'").get();
+  assert.equal(ledger.delta,25000000);
+  assert.equal(ledger.reason,'invite_usd_to_coins');
   f.sql.close();
 });
 
-test('only externally attested, identity-checked payment can be marked paid by finance',async()=>{
+test('old pending bank requests remain preserved but can never be paid from the app or admin',async()=>{
   const f=fixture();
+  f.sql.prepare('INSERT INTO sharika_invite_usd_earnings ' +
+    "(referred_uid,inviter_uid,amount_cents,status) VALUES('bob','alice',6000,'approved')").run();
   f.sql.prepare('INSERT INTO sharika_invite_withdrawals '+
     '(inviter_uid,amount_cents,request_id) VALUES(?,?,?)')
     .run('alice',5000,'withdraw-review-test');
   const row=f.sql.prepare('SELECT id FROM sharika_invite_withdrawals').get();
   const payload={withdrawal_id:row.id,status:'paid',payment_reference:'BANK-TRANSFER-001'};
-  assert.equal((await f.admin('finance','finance','invites/withdrawals/review','POST',payload)).status,400);
-  assert.equal((await f.admin('alice','finance','invites/withdrawals/review','POST',{
+  assert.equal((await f.admin('finance','finance','invites/withdrawals/review','POST',{
     ...payload,confirm_identity_verified:true,confirm_external_payment:true
-  })).status,403);
-  const done=await f.admin('finance','finance','invites/withdrawals/review','POST',{
-    ...payload,confirm_identity_verified:true,confirm_external_payment:true
+  })).status,410);
+  assert.equal((await f.admin('finance','finance','invites/withdrawals/'+row.id)).status,410);
+  assert.equal(f.sql.prepare('SELECT status FROM sharika_invite_withdrawals').get().status,'pending');
+  const available=await f.app('alice','/api/v1/invites/convert');
+  assert.equal(available.data.balance.available_cents,1000);
+  assert.equal(available.data.balance.legacy_reserved_cents,5000);
+  const attempt=await f.app('alice','/api/v1/invites/convert','POST',{
+    amount_cents:5000,request_id:'reserved-old-withdrawal-123'
   });
-  assert.equal(done.status,200);
-  assert.equal(f.sql.prepare('SELECT status FROM sharika_invite_withdrawals').get().status,'paid');
-  assert.equal((await f.admin('finance','finance','invites/withdrawals/review','POST',{
-    ...payload,confirm_identity_verified:true,confirm_external_payment:true
-  })).status,409);
-  f.sql.prepare('INSERT INTO sharika_invite_withdrawals '+
-    '(inviter_uid,amount_cents,request_id) VALUES(?,?,?)')
-    .run('bob',5000,'second-withdrawal-review');
-  const second=f.sql.prepare('SELECT id FROM sharika_invite_withdrawals '+
-    'WHERE inviter_uid=?').get('bob');
-  assert.equal((await f.admin('finance','finance','invites/withdrawals/review','POST',{
-    ...payload,withdrawal_id:second.id,confirm_identity_verified:true,
-    confirm_external_payment:true
-  })).status,409);
+  assert.equal(attempt.status,409);
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sharika_invite_usd_coin_conversions').get().n,0);
   f.sql.close();
 });
 
@@ -235,19 +226,18 @@ test('second account on the same proof is ineligible; a distinct phone is eligib
   f.sql.close();
 });
 
-test('invalid bank instructions or missing encryption secret never reserve dollars',async()=>{
+test('malformed or unapproved conversion cannot change the virtual coin wallet',async()=>{
   const f=fixture();
-  const bad=await f.app('alice','/api/v1/invites/withdrawals','POST',{
-    amount_cents:5000,request_id:'invalid-bank-form-0001',
-    ...bank,account_number:'wrong'
+  const before=f.sql.prepare("SELECT coins FROM sharika_users WHERE auth_uid='alice'").get().coins;
+  const bad=await f.app('alice','/api/v1/invites/convert','POST',{
+    amount_cents:1.5,request_id:'invalid-conversion-0001'
   });
   assert.equal(bad.status,400);
-  // A bank detail is required before even checking the available balance.
-  delete f.env.INVITE_BANK_ENCRYPTION_KEY_B64;
-  const unavailable=await f.app('alice','/api/v1/invites/withdrawals','POST',{
-    amount_cents:5000,request_id:'no-bank-encryption-0001',...bank
+  const unavailable=await f.app('alice','/api/v1/invites/convert','POST',{
+    amount_cents:5000,request_id:'insufficient-approved-credit-0001'
   });
-  assert.equal(unavailable.status,503);
-  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sharika_invite_withdrawals').get().n,0);
+  assert.equal(unavailable.status,409);
+  assert.equal(f.sql.prepare("SELECT coins FROM sharika_users WHERE auth_uid='alice'").get().coins,before);
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sharika_invite_usd_coin_conversions').get().n,0);
   f.sql.close();
 });

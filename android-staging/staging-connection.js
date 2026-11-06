@@ -2492,26 +2492,22 @@
     const accountSection=root.querySelector('.profile-royal-page .profile-account');
     (accountSection||root.querySelector('.profile-royal-page')||root).appendChild(entries);
     const current=session.user?.id;
-    if(current!==familyCheckedUser||Date.now()-familyCheckedAt>30000){
-      familyCheckedUser=current;familyCheckedAt=Date.now();familyCache=null;
-      api('GET','/family/me').then(data=>{
-        if(session?.user?.id!==current)return;
-        familyCache=data;
-        const tile=document.getElementById('sh-bd-entry');
-        if(tile)tile.hidden=!data.bd?.active;
-      }).catch(error=>{
-        console.warn('Family status unavailable:',errText(error));
-      });
-    }else if(familyCache)bd.hidden=!familyCache.bd?.active;
+    // BD and Host are Agency roles. Never depend on the retired Family screen
+    // or its policy to decide whether their tiles are available.
     if(current!==agencyRoleCheckedUser||Date.now()-agencyRoleCheckedAt>30000){
       agencyRoleCheckedUser=current;agencyRoleCheckedAt=Date.now();agencyRoleCache=null;
       api('GET','/agency/me').then(data=>{
         if(session?.user?.id!==current)return;
         agencyRoleCache=data;
-        const tile=document.getElementById('sh-host-entry');
-        if(tile)tile.hidden=!data.host?.active;
+        const hostTile=document.getElementById('sh-host-entry');
+        const bdTile=document.getElementById('sh-bd-entry');
+        if(hostTile)hostTile.hidden=!data.host?.active;
+        if(bdTile)bdTile.hidden=!data.bd?.active;
       }).catch(error=>console.warn('Agency Host status unavailable:',errText(error)));
-    }else if(agencyRoleCache)host.hidden=!agencyRoleCache.host?.active;
+    }else if(agencyRoleCache){
+      host.hidden=!agencyRoleCache.host?.active;
+      bd.hidden=!agencyRoleCache.bd?.active;
+    }
   }
   async function openRoyalFamily(){
     if(!session){window.showAuth('welcome');return;}
@@ -8970,16 +8966,9 @@
       '#sh-invite-page .sh-invite-cash-grid{display:grid;grid-template-columns:1fr 1fr;',
       'gap:8px;margin:10px 0}',
       '#sh-invite-page [hidden]{display:none!important}',
-      '#sh-invite-page .sh-invite-withdraw-trigger{display:block;width:100%;margin:12px 0 5px}',
-      '#sh-invite-page .sh-invite-withdraw-hint{font-size:11px;color:#f0d9ff;',
+      '#sh-invite-page .sh-invite-convert{display:block;width:100%;margin:12px 0 5px}',
+      '#sh-invite-page .sh-invite-convert-hint{font-size:11px;color:#f0d9ff;',
       'line-height:1.5;text-align:center;margin:6px 2px 12px}',
-      '#sh-invite-page .sh-invite-withdraw-form{margin:14px 0 0;padding:14px 12px;',
-      'border:2px solid #e5b950;border-radius:19px;background:#240e41}',
-      '#sh-invite-page .sh-invite-withdraw-form h3{text-align:center;',
-      'font-size:16px;margin:0 0 9px;color:#ffe3a0}',
-      '#sh-invite-page .sh-invite-withdraw-form label{display:block;font-size:12px;',
-      'color:#f6e0ff;margin-top:8px}',
-      '#sh-invite-page .sh-invite-withdraw-form .sh-invite-entry{margin:4px 0 8px}',
       '#sh-invite-page .sh-invite-cash button:disabled{opacity:.5;filter:grayscale(.35)}',
       '#sh-invite-newbie{position:fixed;inset:0;z-index:2147483550;',
       'display:flex;align-items:center;justify-content:center;padding:18px;',
@@ -9039,60 +9028,36 @@
       }
     };
   }
-  function bindInviteWithdraw(root){
-    const open=root.querySelector('#sh-invite-open-withdraw');
-    const form=root.querySelector('#sh-invite-withdraw-form');
-    if(open&&form){
-      open.setAttribute('aria-expanded','false');
-      open.onclick=()=>{
-        if(open.disabled)return;
-        const reveal=form.hidden;
-        form.hidden=!reveal;
-        open.setAttribute('aria-expanded',String(reveal));
-        if(reveal){
-          form.querySelector('input')?.focus({preventScroll:true});
-          form.scrollIntoView({block:'nearest',behavior:'auto'});
-        }
-      };
-      form.querySelector('#sh-invite-withdraw-cancel')?.addEventListener('click',()=>{
-        form.hidden=true;
-        open.setAttribute('aria-expanded','false');
-        open.focus({preventScroll:true});
-      });
-    }
-    const buttons=[...root.querySelectorAll('[data-sh-invite-withdraw]')];
-    for(const button of buttons){
-      button.onclick=async()=>{
-        if(button.disabled||!form||form.hidden)return;
-        const amount=Number(button.dataset.shInviteWithdraw);
-        if(!Number.isSafeInteger(amount)||amount<1000)return;
-        const status=root.querySelector('#sh-invite-withdraw-status');
-        const getValue=id=>root.querySelector('#sh-withdraw-'+id)?.value.trim()||'';
-        const bank_name=getValue('bank');
-        const account_holder=getValue('holder');
-        const account_number=getValue('number');
-        const branch=getValue('branch');
-        if(!bank_name||!account_holder||!account_number||!branch){
-          if(status)status.textContent='Enter your bank, account holder, account number and branch first.';
-          return;
-        }
-        for(const item of buttons)item.disabled=true;
-        if(status)status.textContent='Submitting your $'+(amount/100)+' withdrawal request…';
-        try{
-          const result=await api('POST','/invites/withdrawals',{
-            amount_cents:amount,request_id:nextWalletRequestId('invite-withdraw'),
-            payout_method:'bank',bank_name,account_holder,account_number,branch
-          });
-          if(!result?.requested&&!result?.duplicate)
-            throw new Error('Withdrawal not submitted');
-          toast('$'+(amount/100)+' withdrawal request submitted for manual review ✓');
-          if(document.getElementById('sh-invite-page'))await showVerifiedInviteSheet();
-        }catch(error){
-          if(status)status.textContent='Request unavailable: '+errText(error);
-          for(const item of buttons)item.disabled=false;
-        }
-      };
-    }
+  function bindInviteConvert(root){
+    const button=root.querySelector('#sh-invite-convert');
+    const amountField=root.querySelector('#sh-invite-convert-amount');
+    const status=root.querySelector('#sh-invite-convert-status');
+    if(!button||!amountField)return;
+    button.onclick=async()=>{
+      if(button.disabled)return;
+      const amount=Number(amountField.value);
+      const cents=Math.round(amount*100);
+      if(!Number.isFinite(amount)||!Number.isSafeInteger(cents)||cents<1||
+         Math.abs(cents/100-amount)>0.000001){
+        if(status)status.textContent='Enter a valid USD-equivalent amount in cents.';
+        return;
+      }
+      button.disabled=true;
+      if(status)status.textContent='Converting verified invite credits to virtual coins…';
+      try{
+        const result=await api('POST','/invites/convert',{
+          amount_cents:cents,request_id:nextWalletRequestId('invite-coin-convert')
+        });
+        if(!result?.converted)throw new Error('Conversion unavailable');
+        await reloadWallet();
+        toast('🪙 '+Number(result.coins||0).toLocaleString('en-US')+
+          ' virtual coins added to your wallet ✓');
+        if(document.getElementById('sh-invite-page'))await showVerifiedInviteSheet();
+      }catch(error){
+        if(status)status.textContent='Conversion unavailable: '+errText(error);
+        button.disabled=false;
+      }
+    };
   }
   async function maybeShowNewUserInviteWelcome(){
     if(!session||!profile||document.getElementById('sh-invite-newbie'))return;
@@ -9141,8 +9106,8 @@
         'Your invitation claim period has ended.')+'</p>')+
       '<button class="sh-invite-gold" id="sh-invite-welcome-explore" type="button" '+
       'style="width:100%;margin-top:13px">👑 Explore Invite Rewards</button>'+
-      '<p style="margin:12px 0 0;font-size:11px">Invite cash earnings need '+
-      'finance review. No automatic USD payout is connected yet.</p></div>';
+      '<p style="margin:12px 0 0;font-size:11px">Approved invite USD-equivalent '+
+      'credits exchange only into Sharika virtual coins. No cash withdrawal.</p></div>';
     document.body.appendChild(overlay);
     try{localStorage.setItem(seenKey,'seen');}catch(_){}
     overlay.querySelector('.sh-invite-welcome-close').onclick=()=>overlay.remove();
@@ -9196,11 +9161,8 @@
       const percent=Number(result.recharge_bonus_percent)||0;
       const money=cents=>'$'+(Math.max(0,Number(cents)||0)/100).toFixed(2);
       const cash=result.cash_balance||{};
-      const withdrawable=Math.max(0,Number(cash.available_cents)||0);
-      const withdrawalChoices=[...new Set((result.withdrawal_options_cents||[5000,10000])
-        .map(Number).filter(n=>Number.isSafeInteger(n)&&n>=1000))].sort((a,b)=>a-b);
-      const minimumWithdrawal=withdrawalChoices[0]||5000;
-      const canWithdraw=!profile?.minor&&withdrawable>=minimumWithdrawal;
+      const convertible=Math.max(0,Number(cash.available_cents)||0);
+      const conversionRate=Number(result.recharge_coins_per_usd||500000);
       const newUserBonus=Math.floor(Number(result.recharge_coins_per_usd||500000)*
         Number(result.first_recharge_bonus_percent||40)/100);
       const history=(result.referrals||[]).slice(0,50).map(r=>
@@ -9216,7 +9178,7 @@
         '<p class="sh-invite-sub">Each eligible invite earns '+inviteReward+
         ' coins for you and '+newcomerReward+' coins for your friend. Your '+
         money(result.invite_usd_cents_per_verified_user??0)+
-        ' cash earning is tracked as Pending until reviewed.</p>'+
+        ' USD-equivalent virtual credits are pending until reviewed, then convertible to coins.</p>'+
         (deviceStatus&&!deviceStatus.invite_eligible?'<p class="sh-invite-alert">'+
         '⚠️ This device is not eligible for invitation earnings: '+
         sellerEscape(deviceStatus.reason||'verification required')+'</p>':'')+
@@ -9227,7 +9189,7 @@
         '</strong><small>Friend gets with valid invite</small></div>'+
         '<div class="sh-invite-reward"><span>💵</span><strong>'+
         money(result.invite_usd_cents_per_verified_user??0)+
-        '</strong><small>USD per verified invite · review first</small></div></div>'+
+        '</strong><small>Virtual USD-equivalent credits · review first</small></div></div>'+
         '<div class="sh-invite-code"><div><small>YOUR INVITE CODE</small>'+
         '<strong>'+sellerEscape(invite)+'</strong></div>'+
         '<button class="sh-invite-gold" id="sharika-copy-invite" type="button">COPY LINK</button></div>'+
@@ -9245,51 +9207,34 @@
         '<div class="sh-invite-stat"><strong>'+fmt(Number(result.signup_bonus_coins||0)+
         Number(result.recharge_bonus_coins||0))+
         '</strong><small>Total invite reward coins</small></div></div>'+
-        '<div class="sh-invite-cash"><h2 class="sh-invite-title">💵 Invite & Earn Dollars</h2>'+
+        '<div class="sh-invite-cash"><h2 class="sh-invite-title">🪙 Invite Credits → Coins</h2>'+
         '<p class="sh-invite-sub">Earn '+
         money(result.invite_usd_cents_per_verified_user??0)+
-        ' for each eligible first-device referral. Cash reward requires anti-fraud review.</p>'+
+        ' in virtual USD-equivalent credits per eligible referral. Finance verifies '+
+        'credits before exchange. No money can be withdrawn.</p>'+
         '<div class="sh-invite-stats">'+
         '<div class="sh-invite-stat"><strong>'+money(cash.pending_cents)+
         '</strong><small>Pending review</small></div>'+
-        '<div class="sh-invite-stat"><strong>'+money(withdrawable)+
-        '</strong><small>Available to request</small></div></div>'+
-        '<button type="button" id="sh-invite-open-withdraw" class="sh-invite-gold '+
-        'sh-invite-withdraw-trigger" aria-controls="sh-invite-withdraw-form" '+
-        (canWithdraw?'':'disabled')+'>Withdraw</button>'+
-        '<p class="sh-invite-withdraw-hint">'+
-        (profile?.minor?'Cash withdrawal is not available for minor accounts.':
-        canWithdraw?'Choose an available amount after opening Withdraw.':
-        'Withdraw unlocks at '+money(minimumWithdrawal)+
-        ' approved USD. Your pending earnings are not withdrawable yet.')+'</p>'+
-        '<div id="sh-invite-withdraw-form" class="sh-invite-withdraw-form" hidden>'+
-        '<h3>🏦 Bank transfer request</h3>'+
-        '<p class="sh-invite-sub">Your bank details are sent privately to the finance '+
-        'admin after you submit a withdrawal request. Payout is manual.</p>'+
-        '<label for="sh-withdraw-bank">Bank name</label>'+
-        '<input id="sh-withdraw-bank" class="sh-invite-entry" maxlength="100" autocomplete="organization" placeholder="Bank name">'+
-        '<label for="sh-withdraw-holder">Account holder name</label>'+
-        '<input id="sh-withdraw-holder" class="sh-invite-entry" maxlength="100" autocomplete="name" placeholder="Name on bank account">'+
-        '<label for="sh-withdraw-number">Bank account number</label>'+
-        '<input id="sh-withdraw-number" class="sh-invite-entry" maxlength="40" inputmode="numeric" autocomplete="off" placeholder="Bank account number">'+
-        '<label for="sh-withdraw-branch">Bank branch</label>'+
-        '<input id="sh-withdraw-branch" class="sh-invite-entry" maxlength="100" autocomplete="off" placeholder="Bank branch">'+
-        '<p class="sh-invite-sub">Select the amount to request:</p>'+
-        '<div class="sh-invite-cash-grid">'+withdrawalChoices.map(amount=>
-          '<button type="button" data-sh-invite-withdraw="'+amount+
-          '" class="sh-invite-gold" '+
-          (withdrawable<amount?'disabled':'')+'>Request '+money(amount)+'</button>'
-        ).join('')+'</div>'+
-        '<p id="sh-invite-withdraw-status" class="sh-invite-alert" role="status">'+
-        'Requests are checked by finance before any manual bank transfer.</p>'+
-        '<button type="button" class="sh-invite-gold" id="sh-invite-withdraw-cancel" '+
-        'style="width:100%;margin-top:9px">Cancel</button></div>'+
-        (result.withdrawals||[]).map(w=>'<div class="sh-invite-rankrow">'+
-          '<span>#'+fmt(w.id)+'</span><b>'+money(w.amount_cents)+
-          '<small>Requested '+sellerEscape(w.created_at||'')+'</small></b><em>'+
-          sellerEscape(w.status)+'</em></div>').join('')+
-        '<button type="button" class="sh-invite-gold" id="sh-invite-support" '+
-        'style="width:100%;margin-top:10px">💬 Contact Support for payout details</button></div>'+
+        '<div class="sh-invite-stat"><strong>'+money(convertible)+
+        '</strong><small>Approved for coin exchange</small></div>'+
+        '<div class="sh-invite-stat"><strong>'+fmt(cash.converted_coins)+
+        '</strong><small>Already converted coins</small></div></div>'+
+        '<p class="sh-invite-convert-hint">Rate: $1 equivalent = '+fmt(conversionRate)+
+        ' virtual coins. Available now: 🪙 '+fmt(Math.floor(convertible*conversionRate/100))+'.</p>'+
+        '<label for="sh-invite-convert-amount">USD-equivalent credits to convert</label>'+
+        '<input id="sh-invite-convert-amount" class="sh-invite-entry" type="number" '+
+        'min="0.01" max="'+(convertible/100).toFixed(2)+'" step="0.01" '+
+        'value="'+(convertible/100).toFixed(2)+'" inputmode="decimal" '+
+        'aria-label="Amount of approved invite credits to convert" '+
+        (convertible?'':'disabled')+'>'+
+        '<button type="button" id="sh-invite-convert" class="sh-invite-gold '+
+        'sh-invite-convert" '+(convertible?'':'disabled')+'>🪙 Convert to Coins</button>'+
+        '<p id="sh-invite-convert-status" class="sh-invite-alert" role="status">'+
+        'Only approved virtual credits may be converted. No cash payout.</p>'+
+        (result.conversion_history||[]).map(c=>'<div class="sh-invite-rankrow">'+
+          '<span>✓</span><b>'+money(c.amount_cents)+' converted'+
+          '<small>'+sellerEscape(c.created_at||'')+'</small></b><em>🪙 '+
+          fmt(c.coins)+'</em></div>').join('')+'</div>'+
         '<div class="sh-invite-cash"><h2 class="sh-invite-title">🎁 First Recharge Bonus</h2>'+
         '<p class="sh-invite-sub">Recharge equivalent: $1 = 🪙 '+
         fmt(result.recharge_coins_per_usd||500000)+'. The first verified recharge '+
@@ -9312,7 +9257,8 @@
         '<div class="sh-invite-rule">⑤ The inviter receives '+percent+
         '% of eligible verified recharge coins and '+
         money(result.invite_usd_cents_per_verified_user??0)+
-        ' pending USD earnings per referral. Cash is reviewed separately.</div>'+
+        ' virtual USD-equivalent credits per referral; approved credits '+
+        'convert to coins only, never cash.</div>'+
         (result.claim_eligible?'<div class="sh-invite-panel">'+
         '<h2 class="sh-invite-title">🎁 New User Bonus</h2>'+
         '<p class="sh-invite-sub">Have a friend’s invite code? Enter it before your window expires.</p>'+
@@ -9325,8 +9271,8 @@
           sellerEscape(result.invited_by)+'</p>':'')+
         '<h2 class="sh-invite-title">Verified invited friends</h2>'+
         (history||'<p class="sh-invite-alert">No verified referrals yet.</p>')+
-        '<p class="sh-invite-alert">Ranking cash prizes are separate from the regular '+
-        'per-referral USD earnings and have not been configured.</p></div>';
+        '<p class="sh-invite-alert">Ranking rewards are not yet configured. '+
+        'No cash prizes or withdrawals.</p></div>';
       root.querySelector('#sharika-copy-invite').onclick=async()=>{
         try{await native('copyInviteLink',{code:invite});toast('Invite link copied ✓');}
         catch(error){toast('Copy unavailable: '+errText(error));}
@@ -9347,7 +9293,7 @@
       const rankButton=root.querySelector('#sh-invite-tab-ranking');
       overviewButton.onclick=()=>{
         overviewButton.classList.add('on');rankButton.classList.remove('on');
-        body.innerHTML=overview;bindInviteRedeem(body);bindInviteWithdraw(body);
+        body.innerHTML=overview;bindInviteRedeem(body);bindInviteConvert(body);
       };
       rankButton.onclick=async()=>{
         overviewButton.classList.remove('on');rankButton.classList.add('on');
@@ -9364,11 +9310,11 @@
               fmt(r.total_invites)+' invited · '+money(r.estimated_usd_cents)+
               ' pending</em></div>').join('')||
               '<p class="sh-invite-alert">No ranking entries yet.</p>')+
-            '<p class="sh-invite-alert">Dollar estimates assume verified accounts; '+
-            'cash approval is required. Separate rank prizes are not enabled.</p></div>';
+            '<p class="sh-invite-alert">USD-equivalent estimates require verified '+
+            'accounts and admin approval; they convert only to virtual coins.</p></div>';
         }catch(error){if(body.isConnected)body.textContent='Ranking unavailable: '+errText(error);}
       };
-      bindInviteRedeem(body);bindInviteWithdraw(body);
+      bindInviteRedeem(body);bindInviteConvert(body);
     }catch(error){if(panel.isConnected)panel.textContent='Invite tracking unavailable: '+errText(error);}
   }
   window.dailySheet=showVerifiedDailySheet;

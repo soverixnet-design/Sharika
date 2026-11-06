@@ -1140,6 +1140,10 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/reactions\\?after=(0|[1-9][0-9]{0,11})$"))
             return method.equals("GET");
+        // Verified Agency/BD/Host reports have only the three supported UTC
+        // periods. Keep this ahead of the generic query-string rejection.
+        if (path.matches("^/api/v1/agency/host/[0-9]{8}/earnings\\?period=(today|week|month)$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/presence/heartbeat")) return method.equals("POST");
         if (path.equals("/api/v1/me/avatar")) return method.equals("PUT");
@@ -1182,6 +1186,25 @@ public final class SharikaActivity extends Activity {
             return method.equals("POST");
         if (path.matches("^/api/v1/family/members/[0-9]{8}/activity(\\?date=[0-9]{4}-[0-9]{2}-[0-9]{2})?$"))
             return method.equals("GET");
+        // Native bridge and Agency Center must agree on the exact methods and
+        // paths. Never permit /agency/* broadly (or any /admin/* endpoint).
+        if (path.equals("/api/v1/agency/me") ||
+            path.equals("/api/v1/agency/bd/center") ||
+            path.equals("/api/v1/agency/discover") ||
+            path.equals("/api/v1/agency/create/requests") ||
+            path.equals("/api/v1/agency/requests") ||
+            path.equals("/api/v1/agency/bd/agencies"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/agency/[1-9][0-9]{0,9}/hosts$") ||
+            path.matches("^/api/v1/agency/host/[0-9]{8}/earnings$"))
+            return method.equals("GET");
+        if (path.equals("/api/v1/agency/hosts/assign") ||
+            path.equals("/api/v1/agency/salary/exchange") ||
+            path.equals("/api/v1/agency/create/request") ||
+            path.equals("/api/v1/agency/join") ||
+            path.equals("/api/v1/agency/bd/grant") ||
+            path.matches("^/api/v1/agency/requests/[1-9][0-9]{0,9}/(accept|reject)$"))
+            return method.equals("POST");
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
         if (path.equals("/api/v1/cosmetics/purchase") ||
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
@@ -1228,7 +1251,7 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/invites/rankings")) return method.equals("GET");
         if (path.equals("/api/v1/invites/redeem")) return method.equals("POST");
         if (path.equals("/api/v1/invites/device")) return method.equals("POST");
-        if (path.equals("/api/v1/invites/withdrawals"))
+        if (path.equals("/api/v1/invites/convert"))
             return method.equals("GET") || method.equals("POST");
         if (path.equals("/api/v1/daily/check-in")) return method.equals("POST");
         if (path.equals("/api/v1/daily/tasks/claim")) return method.equals("POST");

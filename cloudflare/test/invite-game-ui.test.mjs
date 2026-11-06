@@ -9,15 +9,13 @@ const app=readFileSync(new URL('app/index.html',base),'utf8');
 const food=readFileSync(new URL(
   'android-staging/app/src/main/assets/original-games/sovera-food-wheel.html',base),'utf8');
 
-test('invite cash form stays hidden until eligible Withdraw is clicked',()=>{
-  assert.match(staging,/id=\\?"sh-invite-open-withdraw\\?"/);
-  assert.match(staging,/id=\\?"sh-invite-withdraw-form\\?"[^\n]*hidden/);
-  assert.match(staging,/if\(open\.disabled\)return/);
-  assert.match(staging,/form\.hidden=!reveal/);
-  assert.match(staging,/root\.querySelector\('#sh-invite-withdraw-cancel'\)|form\.querySelector\('#sh-invite-withdraw-cancel'\)/);
-  assert.match(staging,/withdrawable>=minimumWithdrawal/);
-  assert.match(staging,/withdrawal_options_cents/);
-  assert.match(staging,/amount_cents:amount,request_id:nextWalletRequestId/);
+test('invite page converts approved virtual credits to coins without bank or cash form',()=>{
+  assert.match(staging,/sh-invite-convert-amount/);
+  assert.match(staging,/bindInviteConvert\(body\)/);
+  assert.match(staging,/\/invites\/convert/);
+  assert.match(staging,/amount_cents:cents,request_id:nextWalletRequestId/);
+  assert.doesNotMatch(staging,/sh-invite-withdraw-form|sh-invite-open-withdraw/);
+  assert.doesNotMatch(staging,/bank_account|bank-details|Bank transfer request/);
 });
 
 test('royal invite page uses owner art and verified coin/dollar values',()=>{

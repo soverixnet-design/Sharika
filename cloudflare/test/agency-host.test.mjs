@@ -137,8 +137,69 @@ test('an Agency Owner can open Agency and Host earnings independently from main 
   assert.match(center,/show\('host',me\.host\.public_id\)/);
   assert.match(profile,/id='sh-host-entry'/);
   assert.match(profile,/host\.hidden=true/);
-  assert.match(profile,/tile\.hidden=!data\.host\?\.active/);
+  assert.match(profile,/hostTile\.hidden=!data\.host\?\.active/);
+  assert.match(profile,/bdTile\.hidden=!data\.bd\?\.active/);
   assert.match(profile,/sharikaOpenAgencyCenter\?\.\('agency'\)/);
   assert.match(profile,/sharikaOpenAgencyCenter\?\.\('host'\)/);
   assert.match(profile,/sharika-agency-icons\/host\.webp/);
+});
+
+test('Agency Center native bridge explicitly permits needed member endpoints, not admin',()=>{
+  const native=readFileSync(new URL('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
+  const center=readFileSync(new URL('../../android-staging/agency-center.js',import.meta.url),'utf8');
+  for(const path of ['me','bd/center','discover','create/requests','requests',
+    'bd/agencies','create/request','join','bd/grant','hosts/assign','salary/exchange']){
+    assert.ok(native.includes('"/api/v1/agency/'+path+'"'),path+' blocked by native allowlist');
+  }
+  assert.match(native,/api\/v1\/agency\/host\/\[0-9\]\{8\}\/earnings\\\\\?period=\(today\|week\|month\)/);
+  assert.match(native,/api\/v1\/agency\/requests\/\[1-9\]/);
+  assert.match(center,/data-ag-grant-submit/);
+  assert.match(center,/data-ag-create-request/);
+  assert.match(center,/data-ag-accept/);
+  assert.doesNotMatch(native,/if \(path\.startsWith\("\/api\/v1\/agency"\)\)/);
+});
+
+test('Agency application works when retired Family onboarding is off but Agency policy is on',async()=>{
+  const written=[];
+  const db={prepare(sql){return {sql,values:[],bind(...values){this.values=values;return this;},
+    async first(){
+      if(sql.includes('SELECT country FROM sharika_users'))return {country:'BD'};
+      if(sql.includes('FROM sharika_users WHERE auth_uid=?'))
+        return {auth_uid:'applicant',public_no:10000100,name:'Applicant',status:'active',minor:0};
+      if(sql.includes('FROM sharika_agency_policy'))return {active:1};
+      if(sql.includes('FROM sharika_family_policy'))return {active:0,max_members:20};
+      if(sql.includes('FROM sharika_family_settlement_preferences'))return {mode:'monthly'};
+      if(sql.includes('SELECT id FROM sharika_family_creation_requests'))return {id:71};
+      if(sql.includes('FROM sharika_family_creation_requests WHERE requester_uid=?'))return null;
+      if(sql.includes('FROM sharika_families WHERE name=?'))return null;
+      return null;
+    },
+    async run(){written.push({sql,values:this.values});return {meta:{changes:1}};}
+  };}};
+  const path='/api/v1/agency/create/request';
+  const response=await handleAgencyApp({request:new Request('https://test.invalid'+path,{
+    method:'POST',body:JSON.stringify({name:'Royal Star BD',description:'',accept_rules:true})}),
+    env:{DB:db},uid:'applicant',path,cors:{},reply,fail});
+  assert.equal(response.status,201);
+  assert.equal((await response.json()).request_id,71);
+  assert.equal(written.length,1);
+  assert.match(written[0].sql,/INSERT INTO sharika_family_creation_requests/);
+  assert.equal(written[0].values[1],'Royal Star BD');
+  assert.equal(written[0].values[3],'BD');
+});
+
+test('Agency onboarding cannot write when the separate Agency policy is disabled',async()=>{
+  const {db}=mockDb();
+  const prior=db.prepare.bind(db);
+  db.prepare=sql=>{
+    const statement=prior(sql);
+    if(sql.includes('FROM sharika_agency_policy'))statement.first=async()=>({active:0});
+    return statement;
+  };
+  const path='/api/v1/agency/join';
+  const response=await handleAgencyApp({request:new Request('https://test.invalid'+path,{
+    method:'POST',body:JSON.stringify({family_id:1})}),env:{DB:db},uid:'host',
+    path,cors:{},reply,fail});
+  assert.equal(response.status,403);
+  assert.equal((await response.json()).error,'agency_disabled');
 });
