@@ -329,23 +329,43 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
 </style>
 <link rel="stylesheet" href="./golden-home.css">
 <link rel="stylesheet" href="./royal-profile.css">
+<link rel="stylesheet" href="./royal-clean.css">
 <script src="./room-discovery.js"></script>
 </head>
 <body>
-<div class="app golden-home" id="app">
+<div class="app golden-home royal-clean" id="app">
 <i class="blob b1"></i><i class="blob b2"></i>
 <div class="views">
  <section class="view on" id="v-home">
-  <div class="hd"><img class="logo" data-logo alt="Sharika"><h1>Sharika Voice Chat App<small>Voice rooms for chat, songs and games</small></h1><span class="pill" id="hc"></span><button class="top-recharge" id="qr" type="button" title="Recharge your coins">＋<small>Recharge</small></button></div>
-  <div class="srch">🔍<input id="q" placeholder="Search room name or ID" autocomplete="off"></div>
+  <div class="hd"><img class="logo" data-logo alt="Sharika"><h1>SHARIKA<small>Royal Voice Community</small></h1><span class="pill" id="hc"></span><button class="top-recharge" id="qr" type="button" title="Recharge your coins">＋<small>Recharge</small></button></div>
+  <div class="srch">🔍<input id="q" placeholder="Search room name or ID" autocomplete="off"><button type="button" id="clean-home-menu" aria-label="Open services menu" title="Menu">☰</button></div>
   <div class="ban" id="ban"></div><div class="dots" id="dots"></div>
   <div class="qa"><button id="qd"><span class="home-icon hi-reward" aria-hidden="true"></span>Daily reward</button><button id="qg"><span class="home-icon hi-games" aria-hidden="true"></span>Games</button><button id="qi"><span class="home-icon hi-invite" aria-hidden="true"></span>Invite</button></div>
-  <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My room</button><button>🕘 History</button></div>
+  <div class="tabs" id="tabs"><button class="on">Popular</button><button>New</button><button>My</button><button>History</button></div>
   <div class="grid" id="grid"></div>
  </section>
  <section class="view" id="v-rank"><div class="rtop"><button class="rbk" id="rbk">‹</button><div id="rt"><button>Lucky</button><button class="on">Rich</button><button>Charm</button><button>Room</button><button>Noble</button><button>Play</button><button>Recharge</button></div></div><div class="seg" id="rp"><button>Daily</button><button class="on">Weekly</button><button>Monthly</button></div><div id="rb"></div></section>
  <section class="view" id="v-msg"><div class="hd"><div class="logo">💬</div><h1>Messages<small>Your conversations</small></h1></div><div id="ml"></div></section>
  <section class="view profile-royal" id="v-me"></section>
+ <section class="view" id="v-menu" aria-label="Sharika services menu">
+  <header class="clean-menu-top"><button type="button" id="clean-menu-back" aria-label="Back to profile">‹</button><div class="clean-menu-brand"><img data-logo alt=""><b>SHARIKA</b></div><h1>Menu</h1></header>
+  <div class="clean-menu-group"><h2>Essentials</h2><div class="clean-menu-list">
+   <button type="button" data-clean-action="wallet"><i class="clean-icon clean-wallet" aria-hidden="true"></i><span>Wallet &amp; Recharge</span><b>›</b></button>
+   <button type="button" data-clean-action="shop"><i class="clean-icon clean-shop" aria-hidden="true"></i><span>Shop</span><b>›</b></button>
+   <button type="button" data-clean-action="backpack"><i class="clean-icon clean-backpack" aria-hidden="true"></i><span>My Backpack</span><b>›</b></button>
+   <button type="button" data-clean-action="games"><i class="clean-icon clean-games" aria-hidden="true"></i><span>Games</span><b>›</b></button>
+  </div></div>
+  <div class="clean-menu-group"><h2>Services</h2><div class="clean-menu-list">
+   <button type="button" data-clean-action="agency"><i class="clean-icon clean-agency" aria-hidden="true"></i><span>BD Agency</span><b>›</b></button>
+   <button type="button" data-clean-action="host"><i class="clean-icon clean-host" aria-hidden="true"></i><span>Host Center</span><b>›</b></button>
+   <button type="button" data-clean-action="ranking"><i class="clean-icon clean-ranking" aria-hidden="true"></i><span>Ranking</span><b>›</b></button>
+   <button type="button" data-clean-action="tasks"><i class="clean-icon clean-tasks" aria-hidden="true"></i><span>Daily Tasks</span><b>›</b></button>
+  </div></div>
+  <div class="clean-menu-group"><h2>Account</h2><div class="clean-menu-list">
+   <button type="button" data-clean-action="settings"><i class="clean-icon clean-settings" aria-hidden="true"></i><span>Settings</span><b>›</b></button>
+   <button type="button" data-clean-action="help"><i class="clean-icon clean-help" aria-hidden="true"></i><span>Help &amp; Support</span><b>›</b></button>
+  </div></div>
+ </section>
 </div>
 <div class="nav">
  <button class="ni on" data-v="home"><span>🏠</span>Home</button>
@@ -421,10 +441,44 @@ function pickImage(max,cb){var f=document.createElement("input");f.type="file";f
 /* ===== Navigation ===== */
 function go(v){
   document.querySelectorAll(".view").forEach(function(s){s.classList.toggle("on",s.id==="v-"+v)});
-  document.querySelectorAll(".ni").forEach(function(b){b.classList.toggle("on",b.dataset.v===v)});
+  document.querySelectorAll(".ni").forEach(function(b){b.classList.toggle("on",b.dataset.v===v||(v==="menu"&&b.dataset.v==="me"))});
   $("app").classList.remove("lite");$("app").classList.toggle("royal-profile",v==="me");$("app").classList.toggle("golden-home",v==="home");if(v==="rank")renderRank();if(v==="msg")renderMsg();if(v==="me")renderMe();
 }
 document.querySelectorAll(".ni").forEach(function(b){b.onclick=function(){go(b.dataset.v)}});
+/* Royal Clean menu only routes to existing account, game and agency actions.
+   It does not create a wallet, duplicate entitlements, or change backend state. */
+var cleanMenuPrevious="me";
+function openCleanMenu(from){cleanMenuPrevious=from==="home"?"home":"me";go("menu")}
+$("clean-menu-back").onclick=function(){go(cleanMenuPrevious)};
+$("clean-home-menu").onclick=function(){openCleanMenu("home")};
+$("v-menu").querySelectorAll("[data-clean-action]").forEach(function(button){
+  button.onclick=function(){
+    var action=button.dataset.cleanAction;
+    if(action==="wallet"){$("qr").click();return}
+    if(action==="games"){$("qg").click();return}
+    if(action==="ranking"){go("rank");return}
+    if(action==="tasks"){$("qd").click();return}
+    if(action==="help"){go("msg");return}
+    if(action==="shop"||action==="backpack"){
+      if(typeof window.sharikaOpenRoyalMarket==="function"){
+        window.sharikaOpenRoyalMarket(action==="shop"?"shop":"backpack");return;
+      }
+      go("me");var shop=$("v-me").querySelector('[data-m="store"]');
+      if(shop)shop.click();return;
+    }
+    if(action==="agency"||action==="host"){
+      if(typeof window.sharikaOpenAgencyCenter==="function"){
+        window.sharikaOpenAgencyCenter(action);return;
+      }
+      go("me");var entry=$(action==="agency"?"sh-agency-entry":"sh-host-entry");
+      if(entry&&!entry.hidden)entry.click();else toast("Sign in to open the Agency Center");
+      return;
+    }
+    if(action==="settings"){
+      go("me");var settings=$("mtopset");if(settings)settings.click();
+    }
+  };
+});
 /* ===== Banners ===== */
 var bi=0,bpause=false;
 applyAdmin();$("ban").innerHTML=CFG.banners.map(function(b,i){return b.img
@@ -650,7 +704,7 @@ function meHTML(m){
   '<div class="mst"><button type="button" class="profile-stat-link" data-profile-follow="followers" aria-label="View my followers"><span class="profile-stat-icon">♟</span><b data-profile-stat="followers">'+fmt(m.fl)+'</b><small>Followers</small></button><button type="button" class="profile-stat-link" data-profile-follow="following" aria-label="View people I follow"><span class="profile-stat-icon">♟</span><b data-profile-stat="following">'+fmt(m.fg)+'</b><small>Following</small></button><div><span class="profile-stat-icon">◎</span><b data-profile-stat="visitors">'+fmt(A.vis||0)+'</b><small>Visitors</small></div></div>'+
   '<button class="wl" id="wr" aria-label="Open wallet"><span class="profile-wallet-pair"><span class="profile-wallet-symbol">🪙</span><span><small>Coins</small><strong>'+fmt(coins())+'</strong></span></span><span class="profile-wallet-pair"><span class="profile-wallet-symbol">💎</span><span><small>Diamonds</small><strong>'+(RS().dia||0).toLocaleString("en-US")+'</strong></span></span><span class="profile-wallet-action">Wallet ›</span></button>'+
   '<section class="profile-section"><h2 class="profile-section-title">♛ &nbsp;My Collection</h2><div class="tiles"><button data-m="store"><span class="profile-collection-icon pc-shop" aria-hidden="true"></span>Shop</button><button id="mbd"><span class="profile-collection-icon pc-badges" aria-hidden="true"></span>Badges</button><button data-m="frame"><span class="profile-collection-icon pc-frames" aria-hidden="true"></span>Frames</button><button data-m="daily"><span class="profile-collection-icon pc-daily" aria-hidden="true"></span>Daily Tasks</button></div></section>'+
-  '<section class="profile-section profile-account"><h2 class="profile-section-title">⚙ &nbsp;Account &amp; Features</h2><div class="ml2">'+
+  '<section class="profile-section profile-account"><h2 class="profile-section-title">⚙ &nbsp;Account &amp; Features</h2><button type="button" class="clean-open-menu" id="clean-open-menu">All Services <span>Open Menu ›</span></button><div class="ml2">'+
   '<button class="mr" data-m="home"><span class="profile-menu-icon pm-room" aria-hidden="true"></span><span>My Room</span><i>›</i></button>'+
   '<button class="mr" data-m="entry"><span class="profile-menu-icon pm-entry" aria-hidden="true"></span><span>Entry Effects</span><i>›</i></button>'+
   '<button class="mr" data-m="svip"><span class="profile-menu-icon pm-svip" aria-hidden="true"></span><span>SVIP Club</span><i>›</i></button>'+
@@ -660,6 +714,7 @@ function meHTML(m){
 }
 function renderMe(){var m=myModel(),r=$("v-me"),at=r.scrollTop;r.innerHTML=meHTML(m);pfWire(r,m,true);r.scrollTop=at;
   $("mback").onclick=function(){go("home")};$("mtopedit").onclick=editSheet;$("mnameedit").onclick=editSheet;$("mtopset").onclick=settingsSheet;
+  $("clean-open-menu").onclick=function(){openCleanMenu("me")};
   $("mbd").onclick=function(){openSheet('<h3>🏅 Badges</h3><div class="bdg">'+badgesOf(m).map(function(b){return'<div class="'+(b[2]?"":"off")+'"><span>'+b[0]+'</span>'+b[1]+'</div>'}).join("")+'</div>')};
 }
 function openProfile(u){ptab=0;gsub=0;var m=otherModel(u);$("pfc").innerHTML=pfHTML(m,false);pfWire($("pfc"),m,false);$("pfo").classList.add("on");$("pfo").scrollTop=0}

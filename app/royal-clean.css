@@ -1,0 +1,322 @@
+/* SHARIKA Royal Premium Clean — selected design 1, presentation only.
+   Existing auth, room, wallet, shop, agency and game handlers stay untouched. */
+.app.royal-clean {
+  --sh-clean-ink: #0e1015;
+  --sh-clean-panel: #1b1b20;
+  --sh-clean-line: rgba(218,178,107,.32);
+  --sh-clean-gold: #dec18b;
+  --sh-clean-subtle: #cfc7ba;
+  background: var(--sh-clean-ink) !important;
+  color: #fff4df;
+}
+.app.royal-clean .blob { display: none !important; }
+.app.royal-clean #v-home {
+  background: var(--sh-clean-ink) !important;
+  padding: 12px 14px 100px;
+}
+.app.royal-clean #v-home .hd {
+  display: grid;
+  grid-template-columns: 43px minmax(0,1fr) auto 50px 38px;
+  grid-template-rows: 48px;
+  align-items: center;
+  gap: 7px;
+  min-height: 62px;
+  margin: 0 0 10px;
+  padding: 4px 3px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.app.royal-clean #v-home .hd .logo {
+  grid-column: 1; grid-row: 1;
+  width: 41px; height: 41px;
+  border-radius: 11px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.app.royal-clean #v-home .hd h1 {
+  grid-column: 2; grid-row: 1;
+  min-width: 0;
+  color: #e7c88e;
+  -webkit-text-fill-color: #e7c88e;
+  font-size: clamp(16px,4.7vw,21px);
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.08;
+  letter-spacing: .4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app.royal-clean #v-home .hd h1 small {
+  color: #b7a995;
+  -webkit-text-fill-color: #b7a995;
+  font: 9px/1.3 system-ui,sans-serif;
+  letter-spacing: .1px;
+  margin-top: 4px;
+}
+.app.royal-clean #v-home .pill {
+  grid-column: 3; grid-row: 1;
+  justify-self: end;
+  max-width: 74px;
+  padding: 5px 7px;
+  color: #e3d0a7;
+  font-size: 10px;
+  border: 1px solid var(--sh-clean-line);
+  border-radius: 16px;
+  background: #202025;
+  box-shadow: none;
+}
+.app.royal-clean #v-home .top-recharge {
+  grid-column: 4; grid-row: 1;
+  justify-self: end;
+  width: 48px; height: 43px;
+  margin: 0; padding: 1px 2px;
+  background: linear-gradient(145deg,#f2d493,#b47e38);
+  border: 1px solid #f2d49b;
+  border-radius: 13px;
+  box-shadow: 0 3px 11px #0008;
+  color: #362414;
+  font-size: 20px;
+}
+.app.royal-clean #v-home .top-recharge small { font-size: 8px; font-weight: 750; }
+.app.royal-clean #v-home .hd .sh-notify-bell {
+  grid-column: 5; grid-row: 1;
+  position: static;
+  width: 38px; height: 40px;
+  z-index: 3;
+  min-width: 0;
+}
+.app.royal-clean #v-home .srch {
+  height: 39px;
+  margin: 0 0 14px;
+  padding: 0 13px;
+  border: 1px solid rgba(219,180,111,.22);
+  border-radius: 15px;
+  background: #17181d;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.app.royal-clean #v-home .srch input { font-size: 13px; }
+.app.royal-clean #v-home .srch input::placeholder { color: #b4a99c; }
+.app.royal-clean #clean-home-menu {
+  width: 34px; height: 34px; flex:none;
+  border: 0; border-left:1px solid rgba(213,178,108,.28);
+  background: transparent;
+  color: #ddbd84;
+  font-size: 21px;
+  cursor: pointer;
+}
+.app.royal-clean #v-home .ban { gap: 8px; }
+.app.royal-clean #v-home .slide,
+.app.royal-clean #v-home .slide.slide--image {
+  height: clamp(151px,43vw,179px);
+  border-radius: 17px;
+  border: 1px solid rgba(223,180,108,.53);
+  background-color: #17121a;
+  box-shadow: 0 8px 18px #0008;
+}
+.app.royal-clean #v-home .slide.slide--image { background: transparent; }
+.app.royal-clean #v-home .slide.slide--image::after { content: none; }
+.app.royal-clean #v-home .slide .banner-art {
+  object-fit: contain;
+  background: transparent;
+  filter: none;
+}
+.app.royal-clean #v-home .slide b { color: #ffefcf; font-size: 21px; }
+.app.royal-clean #v-home .dots { margin: 8px 0 16px; }
+.app.royal-clean #v-home .dots u { background: #655647; }
+.app.royal-clean #v-home .dots u.on { background: #e1c48d; }
+/* The three existing feature buttons remain mounted and callable from Menu. */
+.app.royal-clean #v-home .qa { display: none !important; }
+.app.royal-clean #v-home .tabs {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 5px;
+  margin-bottom: 14px;
+  overflow: visible;
+}
+.app.royal-clean #v-home .tabs button {
+  min-width: 0; min-height: 41px;
+  padding: 8px 3px;
+  font-size: clamp(11px,3vw,13px);
+  color: #e7dbcb;
+  background: transparent;
+  border: 0;
+  border-radius: 19px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.app.royal-clean #v-home .tabs button.on {
+  color: #27190b;
+  background: linear-gradient(170deg,#f4d79d,#bf8b45);
+  border: 1px solid #f6dfa8;
+  box-shadow: 0 2px 8px #0a070677;
+}
+.app.royal-clean #v-home .grid { gap: 11px 9px; }
+.app.royal-clean #v-home .card { height: clamp(161px,44vw,184px); }
+.app.royal-clean #v-home .card .sway { animation: none !important; }
+.app.royal-clean #v-home .card .tilt {
+  transform: none !important;
+  border: 1px solid rgba(212,174,109,.52);
+  border-radius: 19px;
+  box-shadow: 0 6px 14px #0009;
+}
+.app.royal-clean #v-home .card .bg { border-radius: 18px; filter: saturate(.65); }
+.app.royal-clean #v-home .card .pat { opacity: .035; }
+.app.royal-clean #v-home .card .shine { display: none; }
+.app.royal-clean #v-home .card .emo { top: 12px; right: 12px; font-size: 42px; }
+.app.royal-clean #v-home .card .live { background: #2c1720d9; border: 1px solid #ac5265; }
+.app.royal-clean #v-home .card .live u { background: #e7586b; }
+.app.royal-clean #v-home .card .info {
+  left: 7px; right: 7px; bottom: 7px;
+  padding: 12px 8px 5px;
+  border-radius: 0 0 14px 14px;
+  background: linear-gradient(180deg,transparent,#151218ea 44%,#131218f5);
+}
+.app.royal-clean #v-home .card .info b { color:#fff4de; font-size: 12px; }
+.app.royal-clean #v-home .card .info small { color: #e7d1ae; font-size: 9px; }
+.app.royal-clean #v-home .room-country { border-color: #dec18b; }
+.app.royal-clean .nav {
+  background: #17181eed !important;
+  border: 1px solid rgba(213,178,108,.22) !important;
+  border-radius: 22px;
+  box-shadow: 0 7px 20px #0009 !important;
+  backdrop-filter: none;
+}
+.app.royal-clean .nav .ni { color: #d8c6aa !important; }
+.app.royal-clean .nav .ni.on { color: #ffe1a0 !important; }
+.app.royal-clean .nav .ni.on span { filter: drop-shadow(0 0 4px #d6b778); }
+.app.royal-clean .nav .plus {
+  color: #2c1a0b !important;
+  background: linear-gradient(155deg,#f2d693,#ad7535) !important;
+  border: 3px solid #dfbd7c !important;
+  box-shadow: 0 5px 13px #0009 !important;
+}
+.app.royal-clean #v-home :is(button,.card):focus-visible,
+.app.royal-clean #v-menu button:focus-visible { outline: 3px solid #f4d498; outline-offset: 2px; }
+/* Use real, existing user frames, medals and entitlements on the profile. */
+.app.royal-clean #v-me.profile-royal {
+  background: #0d0e13 !important;
+  color: #fff4dd !important;
+}
+.app.royal-clean #v-me.profile-royal .profile-royal-page::before { background-image: none !important; }
+.app.royal-clean #v-me.profile-royal .profile-royal-page::after { background: none !important; }
+.app.royal-clean #v-me.profile-royal .profile-topbar {
+  background: #0e1015ec !important;
+  border-color: var(--sh-clean-line);
+  backdrop-filter: none;
+}
+.app.royal-clean #v-me.profile-royal .profile-topbar h1 { color: #e6c589; }
+.app.royal-clean #v-me.profile-royal .mav {
+  border-color: #edc878 !important;
+  box-shadow: 0 0 0 2px #80562d,0 10px 22px #000b !important;
+}
+.app.royal-clean #v-me.profile-royal .mnm { color: #fff7e8; }
+.app.royal-clean #v-me.profile-royal .mid,
+.app.royal-clean #v-me .mp-special-id {
+  background: #832631e6 !important;
+  color: #fff0e4 !important;
+  border: 1px solid #e45b60 !important;
+  box-shadow: 0 2px 8px #0008 !important;
+  font-weight: 800;
+}
+.app.royal-clean #v-me.profile-royal .mst,
+.app.royal-clean #v-me.profile-royal .wl,
+.app.royal-clean #v-me.profile-royal .profile-section,
+.app.royal-clean #v-me.profile-royal .ml2 {
+  background-color: #1a1b20 !important;
+  border-color: var(--sh-clean-line) !important;
+  box-shadow: none !important;
+}
+.app.royal-clean #v-me.profile-royal .mr {
+  background: #202126 !important;
+  color: #fff1dc !important;
+  border: 1px solid rgba(212,179,118,.25) !important;
+  box-shadow: none !important;
+  min-height: 50px;
+}
+.app.royal-clean #v-me.profile-royal .lps .lp {
+  background: #232128 !important;
+  border-color: #b18e5c !important;
+  box-shadow: none !important;
+}
+.app.royal-clean #v-me.profile-royal .profile-account { padding-bottom: 24px; }
+.app.royal-clean #v-me .clean-open-menu {
+  width: 100%; min-height: 50px; margin: 9px 0 14px;
+  border: 1px solid #e3bd74;
+  border-radius: 14px;
+  background: linear-gradient(105deg,#40301f,#1f2025);
+  color: #f6e0ac; font-size: 15px; font-weight: 750;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 14px;
+}
+.app.royal-clean #v-me .clean-open-menu span { font-size: 12px; color: #ead0a1; }
+/* Stand-alone, scrollable Menu screen; no new server endpoints or fake values. */
+.app.royal-clean #v-menu {
+  background: #0e1015;
+  padding: 16px 17px 105px;
+  overflow-y: auto;
+  color: #ffefda;
+}
+.app.royal-clean .clean-menu-top { position: relative; padding: 2px 0 10px; }
+.app.royal-clean #clean-menu-back {
+  position: absolute; right: 0; top: 0;
+  width: 43px; height: 43px;
+  border: 0; background: none; color: #e8c78e;
+  font-size: 32px; line-height: 1;
+}
+.app.royal-clean .clean-menu-brand { display:flex; align-items:center; gap:8px; }
+.app.royal-clean .clean-menu-brand img { width:35px; height:35px; object-fit:contain; }
+.app.royal-clean .clean-menu-brand b { font: bold 21px Georgia,serif; color:#dfbe83; }
+.app.royal-clean .clean-menu-top h1 { margin:22px 0 6px; font:700 26px Georgia,serif; }
+.app.royal-clean .clean-menu-group { margin: 15px 0 24px; }
+.app.royal-clean .clean-menu-group h2 { font:700 17px Georgia,serif; color: #dec18b; margin: 0 0 10px 4px; }
+.app.royal-clean .clean-menu-list {
+  background: #1d1e23;
+  border: 1px solid rgba(229,189,118,.24);
+  border-radius: 17px;
+  overflow: hidden;
+}
+.app.royal-clean .clean-menu-list button {
+  display: flex; align-items: center; gap: 13px;
+  width: 100%; height: 56px;
+  padding: 5px 16px; border: 0;
+  border-bottom: 1px solid rgba(255,239,213,.10);
+  background: transparent; color: #fff5e8;
+  text-align: left; font: 600 15px system-ui,sans-serif;
+}
+.app.royal-clean .clean-menu-list button:last-child { border-bottom: 0; }
+.app.royal-clean .clean-menu-list button:active { background: #313039; }
+.app.royal-clean .clean-menu-list button span { flex:1; }
+.app.royal-clean .clean-menu-list button b { color:#d8bea0; font-size:24px; font-weight:400; }
+.app.royal-clean .clean-icon {
+  display:block; flex:none; width:39px; height:39px;
+  border-radius:9px; background-repeat:no-repeat;
+  background-image: url('./royal-clean-icons.png');
+  background-size:400% 300%;
+  filter: drop-shadow(0 3px 3px #0007);
+}
+.app.royal-clean .clean-wallet {background-position:33.333% 100%}
+.app.royal-clean .clean-shop {background-position:33.333% 50%}
+.app.royal-clean .clean-backpack {background-position:66.667% 50%}
+.app.royal-clean .clean-games {background-position:100% 0}
+.app.royal-clean .clean-agency {background-position:0 50%}
+.app.royal-clean .clean-host {background-position:0 0}
+.app.royal-clean .clean-ranking {background-position:0 50%}
+.app.royal-clean .clean-tasks {background-position:0 100%}
+.app.royal-clean .clean-settings {background-position:66.667% 100%}
+.app.royal-clean .clean-help {background-position:100% 50%}
+@media (max-width:365px) {
+  .app.royal-clean #v-home .hd { grid-template-columns:36px minmax(0,1fr) 49px 43px 33px; gap:3px; }
+  .app.royal-clean #v-home .hd .logo { width:36px;height:36px; }
+  .app.royal-clean #v-home .pill { max-width:55px;font-size:9px;overflow:hidden; }
+  .app.royal-clean #v-home .top-recharge {width:42px;}
+  .app.royal-clean #v-home .hd .sh-notify-bell {width:33px;height:38px;}
+}
+@media (prefers-reduced-motion:reduce) {
+  .app.royal-clean *, .app.royal-clean *::before, .app.royal-clean *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}

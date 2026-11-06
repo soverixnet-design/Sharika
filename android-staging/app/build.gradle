@@ -112,6 +112,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/champagne-home-background.webp'))
     from(rootProject.file('../app/champagne-home-icons.webp'))
     from(rootProject.file('../app/golden-home.css'))
+    from(rootProject.file('../app/royal-clean.css'))
+    from(rootProject.file('../app/royal-clean-icons.png'))
     from(rootProject.file('../app/room-discovery.js'))
     from(rootProject.file('../app/royal-room-ui.js'))
     from(rootProject.file('../app/royal-room-ui.css'))
