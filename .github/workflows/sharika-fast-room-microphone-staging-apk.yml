@@ -1,0 +1,142 @@
+name: Sharika fast room and microphone consent staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-ranked-agency-integration-20261106
+    paths:
+      - 'android-staging/app/**'
+      - 'android-staging/staging-connection.js'
+      - 'android-staging/royal-premium.css'
+      - 'cloudflare/test/android-webview-security.test.mjs'
+      - 'cloudflare/test/room-reference-ui.test.mjs'
+      - '.github/workflows/sharika-fast-room-microphone-staging-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  fast-room-mic-apk:
+    name: Verify and publish updated, stable-signed staging APK
+    if: github.ref == 'refs/heads/feature/sharika-ranked-agency-integration-20261106'
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify all Android and Worker contracts without deploying
+        run: npm --prefix cloudflare run check
+
+      - name: Check exact staging package, voice permissions and installation version
+        run: |
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const gradle=readFileSync('android-staging/app/build.gradle','utf8');
+          const manifest=readFileSync('android-staging/app/src/main/AndroidManifest.xml','utf8');
+          const activity=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java','utf8');
+          if(!gradle.includes("applicationId 'com.soverixnet.sharika'")||
+             !gradle.includes('versionCode 14')||
+             !manifest.includes('android.permission.HIDE_OVERLAY_WINDOWS')||
+             !manifest.includes('android.permission.RECORD_AUDIO')||
+             !activity.includes('isRoomAdmissionRoute(path) ? roomIo : io')||
+             !activity.includes('setHideOverlayWindows(hide)')||
+             !activity.includes('onPermissionRequestCanceled(PermissionRequest request)'))
+            throw Error('Refusing APK without verified room priority and microphone consent safety');
+          console.log('STAGING_ROOM_PRIORITY_MICROPHONE_CONSENT_GUARDS_OK');
+          NODE
+
+      - uses: actions/checkout@v4
+        with:
+          repository: soverixnet-design/sovera-voice-app
+          ref: 0e30b48962272b8a687509aef4dee9bc4a047767
+          path: _sovera_cosmetics
+          persist-credentials: false
+
+      - name: Package the owner's original offline room art
+        run: |
+          mkdir -p android-staging/app/src/main/assets/sovera-effects android-staging/app/src/main/assets/sovera-medals android-staging/app/src/main/assets/sovera-sounds
+          cp -a _sovera_cosmetics/assets/effects/. android-staging/app/src/main/assets/sovera-effects/
+          cp -a _sovera_cosmetics/assets/medals/. android-staging/app/src/main/assets/sovera-medals/
+          cp -a _sovera_cosmetics/assets/sounds/. android-staging/app/src/main/assets/sovera-sounds/
+          test "$(find android-staging/app/src/main/assets/sovera-effects -type f | wc -l)" -ge 30
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install Android target SDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Restore existing staging signer, never create a different app identity
+        env:
+          KEY_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY_B64" && test -n "$KEY_PASSWORD"
+          printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
+          printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-staging-signing.p12" | sha256sum --check --status
+          chmod 600 "$RUNNER_TEMP/sharika-staging-signing.p12"
+          echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-staging-signing.p12" >> "$GITHUB_ENV"
+
+      - name: Build signed Android staging APK
+        env:
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        working-directory: android-staging
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify exact signed installable APK
+        run: |
+          set -euo pipefail
+          APK=android-staging/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -tqq "$APK"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.soverixnet.sharika' versionCode='14'"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump permissions "$APK" | grep -F 'android.permission.RECORD_AUDIO'
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump permissions "$APK" | grep -F 'android.permission.HIDE_OVERLAY_WINDOWS'
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | grep -qi 'Signer #1 certificate SHA-1 digest: ab491a1a905a42bf42417d7b62c658b379f32bb0'
+          unzip -p "$APK" assets/connection.js | grep -F 'Sit on throne' >/dev/null
+          echo 'SIGNED_ROOM_MIC_STAGING_APK_VERIFIED'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Fast-Room-Microphone-Staging-Signed
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish immutable direct APK prerelease for phone QA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="sharika-fast-room-microphone-staging-${GITHUB_SHA:0:8}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Staging release already exists; refusing to replace a downloaded APK' >&2
+            exit 1
+          fi
+          install -m 644 android-staging/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/Sharika-Fast-Room-Microphone-Fix-Staging.apk"
+          gh release create "$TAG" "$RUNNER_TEMP/Sharika-Fast-Room-Microphone-Fix-Staging.apk" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'Sharika Room Loading + Microphone Permission — Staging APK' \
+            --notes 'Staging phone-test APK v0.6.8: dedicated room admission queue, Android 12+ overlay protection for microphone consent, cancellation and duplicate prompt handling. Owner throne and explicit seats retained. No Cloudflare/D1 writes, no production deployment. Real phone mic taps and network entry latency still require verification.'
+          echo "DIRECT_STAGING_APK=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/Sharika-Fast-Room-Microphone-Fix-Staging.apk" >> "$GITHUB_STEP_SUMMARY"
