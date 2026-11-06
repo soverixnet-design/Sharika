@@ -2359,8 +2359,8 @@
   P.banners=async function(){
     const root=byId('pg');
     root.innerHTML=card('Home banners','Loading verified banner configuration…');
-    // The admin browser's gallery picker is the only image source. Convert
-    // locally to a bounded landscape JPEG; EXIF and device paths never upload.
+    // Keep the entire banner (including lettering close to the edges).
+    // Convert locally to a bounded JPEG; EXIF and device paths never upload.
     async function bannerJpeg(file){
       if(!file||!file.type.startsWith('image/')||file.size>12*1024*1024)
         throw new Error('Select an image smaller than 12 MB.');
@@ -2375,14 +2375,12 @@
         if(!picture.naturalWidth||!picture.naturalHeight)
           throw new Error('The photo has no usable dimensions.');
         const canvas=document.createElement('canvas');
-        canvas.width=1100;canvas.height=480;
+        const scale=Math.min(1,1100/picture.naturalWidth,480/picture.naturalHeight);
+        canvas.width=Math.max(1,Math.round(picture.naturalWidth*scale));
+        canvas.height=Math.max(1,Math.round(picture.naturalHeight*scale));
         const context=canvas.getContext('2d');
         if(!context)throw new Error('Banner image conversion unavailable.');
-        const scale=Math.max(canvas.width/picture.naturalWidth,
-          canvas.height/picture.naturalHeight);
-        const width=picture.naturalWidth*scale,height=picture.naturalHeight*scale;
-        context.drawImage(picture,(canvas.width-width)/2,
-          (canvas.height-height)/2,width,height);
+        context.drawImage(picture,0,0,canvas.width,canvas.height);
         for(const quality of [.79,.66,.53,.42]){
           const data=canvas.toDataURL('image/jpeg',quality);
           if(data.startsWith('data:image/jpeg;base64,')&&data.length<480000)
@@ -2408,14 +2406,17 @@
           row.image_url.includes('/banners/'+row.id+'/image?')
           ?row.image_url:null;
         return '<div class="card" style="margin:10px 0">'+
-          '<div style="position:relative;overflow:hidden;min-height:110px;padding:15px;'+
-          'border-radius:16px;background:linear-gradient(135deg,'+
-          esc(row.color_a)+','+esc(row.color_b)+');color:#fff">'+
-          (image?'<img src="'+esc(image)+'" alt="Banner #'+row.id+
-          '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">': '')+
-          '<div style="position:relative;text-shadow:0 2px 6px #000">'+
-          '<b>'+esc(row.emoji)+' '+esc(row.title)+'</b><small style="display:block">'+
-          esc(row.subtitle)+'</small></div></div>'+
+          (image
+            ?'<div style="height:170px;overflow:hidden;border:2px solid #f3d49b;'+
+              'border-radius:17px;box-shadow:0 8px 20px #0008;background:transparent">'+
+              '<img src="'+esc(image)+'" alt="Banner #'+row.id+' — '+esc(row.title)+
+              '" style="width:100%;height:100%;object-fit:contain;display:block"></div>'
+            :'<div style="position:relative;overflow:hidden;min-height:110px;padding:15px;'+
+              'border-radius:16px;background:linear-gradient(135deg,'+
+              esc(row.color_a)+','+esc(row.color_b)+');color:#fff">'+
+              '<div style="position:relative;text-shadow:0 2px 6px #000">'+
+              '<b>'+esc(row.emoji)+' '+esc(row.title)+'</b><small style="display:block">'+
+              esc(row.subtitle)+'</small></div></div>')+
           '<p class="n">Banner #'+esc(row.id)+' · '+(row.active?'Visible in app':'Hidden')+'</p>'+
           (canEdit?'<div class="row"><input data-bf="title" data-id="'+row.id+'" maxlength="80" value="'+esc(row.title)+'" aria-label="Banner title">'+
           '<input data-bf="subtitle" data-id="'+row.id+'" maxlength="160" value="'+esc(row.subtitle||'')+'" aria-label="Banner subtitle"></div>'+
@@ -2430,7 +2431,7 @@
           '</div>';
       }).join('');
       const create=role==='super'?'<div class="card"><h3>➕ Add home banner</h3>'+
-        '<p class="n">Choose a gallery photo, or keep a color banner. Photos are center-cropped for the home carousel.</p>'+
+        '<p class="n">Choose a gallery photo, or keep a color banner. The entire photo is kept; a wide image near 1100 × 480 looks best.</p>'+
         '<div class="row"><input id="new-banner-title" maxlength="80" placeholder="Banner headline">'+
         '<input id="new-banner-subtitle" maxlength="160" placeholder="Subtitle"></div>'+
         '<div class="row"><label>🖼️ Banner photo (optional)<input type="file" id="new-banner-image" accept="image/jpeg,image/png,image/webp"></label></div>'+
