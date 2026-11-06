@@ -3448,9 +3448,9 @@
   }
   function royalCoinsShort(value){
     const n=Math.max(0,Number(value)||0);
-    if(n>=1000000000)return (n/1000000000).toFixed(1).replace(/\\.0$/,'')+'B';
-    if(n>=1000000)return (n/1000000).toFixed(1).replace(/\\.0$/,'')+'M';
-    if(n>=1000)return (n/1000).toFixed(1).replace(/\\.0$/,'')+'K';
+    if(n>=1000000000)return (n/1000000000).toFixed(1).replace(/\.0$/,'')+'B';
+    if(n>=1000000)return (n/1000000).toFixed(1).replace(/\.0$/,'')+'M';
+    if(n>=1000)return (n/1000).toFixed(1).replace(/\.0$/,'')+'K';
     return String(Math.round(n));
   }
   function paintRoyalLevelCard(card,kind,raw,verified){
@@ -3464,6 +3464,28 @@
     if(next)next.textContent=level.level>=100?'MAX LEVEL · Royal Legend':
       royalCoinsShort(level.coins)+' / '+royalCoinsShort(level.next)+' gift coins';
     card.dataset.shRoyalLevel=String(level.level);
+  }
+  function paintRoyalPublicLevels(root,person,record){
+    if(!root||!person)return;
+    for(const [kind,selector,levelKey,totalKey] of [
+      ['wealth','.lvs .lvc.w','wealth_level','gift_value_sent'],
+      ['charm','.lvs .lvc.c','charm_level','gift_value_received']
+    ]){
+      const card=root.querySelector(selector);
+      if(!card)continue;
+      const heading=card.querySelector('b');
+      if(heading)heading.textContent=kind==='wealth'?'💝 Sent Level':'💎 Received Level';
+      let bar=card.querySelector('.lvb');
+      if(!bar){bar=document.createElement('div');bar.className='lvb';
+        const fill=document.createElement('i');bar.appendChild(fill);
+        const title=card.querySelector('.big3');
+        if(title)title.insertAdjacentElement('afterend',bar);
+        else card.appendChild(bar);
+      }else bar.style.display='';
+      let note=card.querySelector('small');
+      if(!note){note=document.createElement('small');card.appendChild(note);}
+      paintRoyalLevelCard(card,kind,person[levelKey],record?.[totalKey]);
+    }
   }
   function prepareRoyalLevelCards(root){
     if(!root)return;
@@ -5514,10 +5536,7 @@
     }
     const bio=root.querySelector('.pfh .bio');
     if(bio)bio.textContent='Verified Sharika member';
-    const levels=root.querySelectorAll('.lvc .big3');
-    if(levels[0])levels[0].textContent=Number(member.wealth_level)||1;
-    if(levels[1])levels[1].textContent=Number(member.charm_level)||1;
-    root.querySelectorAll('.lvc .lvb').forEach(el=>el.style.display='none');
+    paintRoyalPublicLevels(root,member,null);
     const fakeStats=root.querySelector('.st4');
     if(fakeStats)fakeStats.style.display='none';
     const fakeTabs=root.querySelector('.tabs');
@@ -10342,6 +10361,36 @@
     };
     await render(type,period);
   }
+
+  // SHARIKA_CP_HERO_20261107: show exactly the two verified, accepted CP identities.
+  function mountRoyalCpHero(root,id,person,cp){
+    const hero=root?.querySelector('.pfh');
+    const original=hero?.querySelector('.pavw');
+    const partner=cp?.partner;
+    if(!hero||!original||!/^[0-9]{8}$/.test(String(partner?.id||''))||
+       String(partner.id)===String(id))return false;
+    const pair=document.createElement('section');
+    pair.className='sh-royal-cp-profile-pair';
+    pair.setAttribute('aria-label','Verified CP couple');
+    const title=document.createElement('div');title.className='sh-royal-cp-kicker';
+    title.textContent='💞 VERIFIED CP PARTNERS';
+    const faces=document.createElement('div');faces.className='sh-royal-cp-faces';
+    const owner=document.createElement('div');owner.className='sh-royal-cp-owner';
+    owner.appendChild(original); // retain real avatar, frame, SVIP/medal ornaments
+    const ownName=document.createElement('strong');ownName.textContent=person?.name||'Sharika member';
+    const ownId=document.createElement('small');
+    ownId.textContent='ID '+String(person?.special_id||person?.display_id||
+      (id===profile?.public_id?(profile?.special_id||profile?.display_id):null)||id);
+    owner.append(ownName,ownId);
+    const heart=document.createElement('span');heart.className='sh-royal-cp-heart';
+    heart.textContent='💗';heart.setAttribute('aria-label','CP partner connection');
+    const other=bondPerson(partner,true);other.classList.add('sh-royal-cp-partner');
+    faces.append(owner,heart,other);
+    pair.append(title,faces);
+    hero.insertBefore(pair,hero.firstElementChild);
+    root.querySelector('.pf')?.classList.add('sh-cp-linked');
+    return true;
+  }
   async function mountBondDetails(root,id,person){
     if(!root||!root.isConnected)return;
     bondStyles();
@@ -10360,6 +10409,15 @@
       const data=await api('GET','/bonds/profile/'+id);
       if(!panel.isConnected||String(data.public_id)!==id)return;
       loading.remove();
+      paintRoyalPublicLevels(root,person,data);
+      const cpInHero=mountRoyalCpHero(root,id,person,data.cp);
+      const followerLine=root.querySelector('.pfh .sh-royal-idline');
+      if(followerLine&&!followerLine.querySelector('.sh-royal-follower-count')){
+        const followers=document.createElement('span');
+        followers.className='sh-royal-follower-count';
+        followers.textContent=Number(data.followers||0).toLocaleString('en-US')+' Followers';
+        followerLine.appendChild(followers);
+      }
       const stats=document.createElement('div');stats.className='sh-bond-stats';
       for(const [value,label] of [
         [data.followers,'Followers'],[data.following,'Following'],[data.visitors,'Visitors'],
@@ -10417,7 +10475,7 @@
       const cpHint=document.createElement('div');cpHint.className='sh-bond-muted';
       cpHint.textContent=data.cp?'Together since '+new Date(data.cp.created_at_ms).toLocaleDateString():
         'One CP partner at a time · Accept a Rose Promise gift to bind';
-      cp.appendChild(cpHint);panel.appendChild(cp);
+      cp.appendChild(cpHint);if(!cpInHero)panel.appendChild(cp);
       const friends=document.createElement('section');friends.className='sh-bond-section friends';
       const friendTitle=document.createElement('h3');
       friendTitle.textContent='🤝 Friendship Palace · '+(data.friendships?.length||0);
@@ -10511,6 +10569,7 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       decorateVerifiedPublicProfile(root,person);
+      paintRoyalPublicLevels(root,person,null);
       mountBondDetails(root,canonicalId,person).catch(error=>
         console.warn('Ranked ID bond details:',errText(error)));
       const follow=root.querySelector('#sh-ranked-follow');
