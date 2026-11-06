@@ -480,7 +480,7 @@ jobs:
   royal-emulator-smoke:
     name: Royal UI launch, Back and keyboard/seat stability emulator test
     # Only the isolated Option 1 candidate; no live app or staging data writes.
-    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103' || github.ref == 'refs/heads/feature/sharika-family-fruit-royale-sync-20261104' || github.ref == 'refs/heads/feature/sharika-room-free-lucky-box-20261104' || github.ref == 'refs/heads/fix/sharika-family-royal-games-20261104' || github.ref == 'refs/heads/feature/sharika-bd-agency-host-20261104' || github.ref == 'refs/heads/feature/sharika-royal-clean-room-option1-20261106'
+    if: github.ref == 'refs/heads/feature/sharika-option1-reference-polish-20261031' || github.ref == 'refs/heads/fix/sharika-remote-audio-unlock-staging-20261101' || github.ref == 'refs/heads/fix/sharika-chat-thread-stability-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-premium-bonds-integration-20261101' || github.ref == 'refs/heads/feature/sharika-hd-room-themes-staging-20261101' || github.ref == 'refs/heads/feature/sharika-royal-shop-backpack-20261101' || github.ref == 'refs/heads/feature/sharika-cp-weekly-rewards-20261101' || github.ref == 'refs/heads/feature/sharika-royal-frame-admin-grants-20261101' || github.ref == 'refs/heads/feature/sharika-master-integration-20261101' || github.ref == 'refs/heads/fix/sharika-google-login-hd-room-themes-20261101' || github.ref == 'refs/heads/fix/sharika-games-bet-integrity-20261101' || github.ref == 'refs/heads/feature/sharika-winged-royal-unlimited-seller-20261102' || github.ref == 'refs/heads/fix/sharika-live-voice-reliability-20261102' || github.ref == 'refs/heads/fix/sharika-voice-games-owner-prepublish-20261103' || github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103' || github.ref == 'refs/heads/feature/sharika-family-fruit-royale-sync-20261104' || github.ref == 'refs/heads/feature/sharika-room-free-lucky-box-20261104' || github.ref == 'refs/heads/fix/sharika-family-royal-games-20261104' || github.ref == 'refs/heads/feature/sharika-bd-agency-host-20261104' || github.ref == 'refs/heads/feature/sharika-royal-clean-room-option1-20261106' || github.ref == 'refs/heads/feature/sharika-profile-level-cp-20261107'
     needs: debug-apk
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -855,3 +855,48 @@ jobs:
             --title 'Sharika Royal Premium Clean Room Option 1 — Friends Staging APK' \
             --notes 'Android staging/test APK for invited friends. Royal Premium Clean room layout, four-column seats, compact header, and keyboard seat stability. APK built and Android emulator smoke tested on this same GitHub Actions run. Production app, Cloudflare D1 data, and Play Store are unchanged. Live two-person voice and full login/gift/game end-to-end testing on physical devices is still required. Not a production release.' \
             --prerelease
+
+  royal-profile-cp-direct-apk:
+    name: Release verified Royal Profile and CP staging APK for friends
+    if: github.ref == 'refs/heads/feature/sharika-profile-level-cp-20261107'
+    needs: [debug-apk, royal-emulator-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download same tested staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify packaged Royal Profile and CP identity implementation
+        run: |
+          set -euo pipefail
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/profile-cp-connection.js"
+          unzip -p verified-apk/app-debug.apk assets/royal-profile.css > "$RUNNER_TEMP/profile-cp-design.css"
+          node --check "$RUNNER_TEMP/profile-cp-connection.js"
+          grep -F 'SHARIKA_ROYAL_LEVEL_20261107' "$RUNNER_TEMP/profile-cp-connection.js"
+          grep -F 'SHARIKA_CP_HERO_20261107' "$RUNNER_TEMP/profile-cp-connection.js"
+          grep -F 'SHARIKA_PROFILE_CLEAN_20261107' "$RUNNER_TEMP/profile-cp-design.css"
+          grep -F 'SHARIKA_CP_PUBLIC_PROFILE_20261107' "$RUNNER_TEMP/profile-cp-design.css"
+          unzip -Z1 verified-apk/app-debug.apk | grep -Fx 'assets/profile-crown.webp'
+          cp verified-apk/app-debug.apk verified-apk/Sharika-Royal-Profile-CP-Staging.apk
+          sha256sum verified-apk/Sharika-Royal-Profile-CP-Staging.apk
+      - name: Publish direct APK link after emulator success only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="sharika-royal-profile-cp-staging-${GITHUB_SHA:0:8}"
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Never overwrite a previously shared APK.'
+            exit 1
+          fi
+          gh release create "$TAG" verified-apk/Sharika-Royal-Profile-CP-Staging.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Royal Profile + Verified CP — Staging APK' \
+            --notes 'Staging-only APK for invited friends. Main Profile royal portrait and framed identity cleanup, 1–100 display levels with verified gift totals, CP-linked public profile with real paired pictures and IDs, owner/role and follow labels. Existing Cloudflare D1 coin/gift balances, backend premium levels and history unchanged. Android emulator smoke tested; real CP and login interactions need tests on two phones. Not Play Store or production.'
