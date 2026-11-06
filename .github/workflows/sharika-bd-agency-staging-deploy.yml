@@ -1,0 +1,153 @@
+name: Sharika BD Agency virtual wallet STAGING deployment
+
+on:
+  push:
+    branches: [feature/sharika-bd-agency-wallet-staging-20261106]
+    paths: ['.github/workflows/sharika-bd-agency-staging-deploy.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  agency-api-staging:
+    name: Validate D1 and deploy isolated Sharika API staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse anything except exact existing staging services and data
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-bd-agency-wallet-staging-20261106'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const a=JSON.parse(readFileSync('wrangler.admin.jsonc','utf8'));
+          const d=c.d1_databases?.[0];
+          if(c.name!=='sharika-api-staging'||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             c.workers_dev!==true||c.keep_vars!==true||
+             c.vars?.SHARIKA_ENV!=='staging'||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             c.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false'||
+             c.d1_databases?.length!==1||d?.binding!=='DB'||
+             d.database_name!=='sharika-staging'||
+             d.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             c.durable_objects?.bindings?.length!==1||
+             c.durable_objects.bindings[0].name!=='VOICE_ROOMS'||
+             c.durable_objects.bindings[0].class_name!=='SharikaVoiceRoom'||
+             !c.secrets?.required?.includes('REALTIME_SFU_APP_ID')||
+             !c.secrets?.required?.includes('REALTIME_SFU_APP_SECRET')||
+             a.name!=='sharika-admin-staging'||
+             a.account_id!==c.account_id||
+             a.vars?.SHARIKA_ENV!=='staging'||
+             a.services?.length!==1||a.services[0].binding!=='SHARIKA_API'||
+             a.services[0].service!=='sharika-api-staging')
+            throw Error('Refusing non-staging Worker or unexpected bindings');
+          console.log('EXACT_STAGING_WORKER_AND_D1_VERIFIED');
+          NODE
+      - name: Run backend, security, and immutable-wallet tests
+        run: npm run check
+      - name: Confirm current staging health and migrations through 0067
+        run: |
+          set -euo pipefail
+          curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM d1_migrations WHERE name='0067_owner_throne_seat.sql'" \
+            | grep -F '0067_owner_throne_seat.sql' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT key,host_bps,agency_bps,bd_bps FROM sharika_agency_policy WHERE key='standard'" \
+            | grep -F 'standard' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT COUNT(*) AS preserved_users FROM sharika_users"
+      - name: Dry-run exact staging API Worker
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
+      # Migration gap 0063 is unrelated. Never run blanket migrations apply:
+      # only these two additive new receipt tables may be installed here.
+      - name: Apply additive Play Billing receipt migration 0068 (checkout still disabled)
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --file migrations/0068_google_play_billing.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "INSERT INTO d1_migrations(name) SELECT '0068_google_play_billing.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0068_google_play_billing.sql')"
+      - name: Apply additive invite virtual coin conversion migration 0069
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --file migrations/0069_invite_usd_to_virtual_coins.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "INSERT INTO d1_migrations(name) SELECT '0069_invite_usd_to_virtual_coins.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0069_invite_usd_to_virtual_coins.sql')"
+      - name: Verify new receipts and existing Agency ledger
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name='sharika_invite_usd_coin_conversions'" \
+            | grep -F 'sharika_invite_usd_coin_conversions' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name='sharika_play_billing_purchases'" \
+            | grep -F 'sharika_play_billing_purchases' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT COUNT(*) AS preserved_agencies FROM sharika_families"
+      - name: Deploy only sharika-api-staging
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify deployed staging API health
+        run: curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+
+  agency-admin-staging:
+    name: Publish BD Agency editor to isolated staging Admin
+    needs: agency-api-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Bundle existing Admin design with new verified Agency controls
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-bd-agency-wallet-staging-20261106'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          cp ../admin/index.html src/admin-index.html
+          cp ../admin/connection.js src/admin-connection.txt
+          node --check ../admin/connection.js
+          grep -F 'BD · Agency · Host Control Center' src/admin-connection.txt >/dev/null
+      - name: Dry-run and publish only sharika-admin-staging
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc
+          npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
+      - name: Verify Admin health and latest Agency editor
+        run: |
+          set -euo pipefail
+          curl -fSs --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/health >/dev/null
+          curl -fSs --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js \
+            | grep -F 'BD · Agency · Host Control Center' >/dev/null
