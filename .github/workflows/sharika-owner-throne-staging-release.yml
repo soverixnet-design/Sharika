@@ -1,0 +1,248 @@
+name: Sharika Owner Throne guarded staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-ranked-agency-integration-20261106
+    paths:
+      - '.github/workflows/sharika-owner-throne-staging-release.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  owner-throne-staging:
+    name: Migrate owner throne, verify data, publish staging API
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Refuse any unexpected production or financial target
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const config=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          const db=config.d1_databases?.[0];
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-ranked-agency-integration-20261106'||
+             !process.env.CLOUDFLARE_API_TOKEN||
+             config.name!=='sharika-api-staging'||config.main!=='src/voice-worker.mjs'||
+             config.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             config.vars?.SHARIKA_ENV!=='staging'||config.keep_vars!==true||
+             config.vars?.SHARIKA_AUTOMATIC_RANKING_REWARDS_ENABLED!=='false'||
+             config.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             config.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             config.d1_databases?.length!==1||db.binding!=='DB'||
+             db.database_name!=='sharika-staging'||
+             db.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             config.durable_objects?.bindings?.[0]?.name!=='VOICE_ROOMS')
+            throw Error('Refusing worker or database outside approved staging');
+          const migration=readFileSync('cloudflare/migrations/0067_owner_throne_seat.sql','utf8');
+          if(!/^--[^]*ALTER TABLE sharika_room_members ADD COLUMN owner_throne_active INTEGER NOT NULL DEFAULT 0\s+CHECK \(owner_throne_active IN \(0,1\)\);\s*$/.test(migration))
+            throw Error('Owner throne migration changed unexpectedly');
+          console.log('EXACT_STAGING_OWNER_THRONE_ONLY_GUARD_OK');
+          NODE
+
+      - name: Verify all Worker and Android seat tests
+        run: npm --prefix cloudflare run check
+
+      - name: Dry-run staging Worker before database writes
+        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir "$RUNNER_TEMP/seat-api-dry-run"
+
+      - name: Record D1 recovery bookmark and untouched financial counters
+        run: |
+          node --input-type=module - <<'NODE'
+          import {writeFileSync} from 'node:fs';
+          const root='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a';
+          const headers={Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'};
+          async function call(path,body){
+            const response=await fetch(root+path,{method:body?'POST':'GET',headers,
+              ...(body?{body:JSON.stringify(body)}:{})});
+            const data=await response.json();
+            if(!response.ok||!data.success||!data.result)
+              throw Error('Could not verify isolated staging D1');
+            return data.result;
+          }
+          const query=async sql=>(await call('/query',{sql}))[0]?.results;
+          const schema=await query("PRAGMA table_info('sharika_room_members')");
+          if(!Array.isArray(schema)||!schema.some(column=>column.name==='seat_no'))
+            throw Error('Unexpected existing room seat table');
+          const counts=(await query('SELECT '+
+            '(SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger,'+
+            '(SELECT COUNT(*) FROM sharika_gift_transactions) AS gifts,'+
+            '(SELECT COUNT(*) FROM sharika_users) AS users'))[0];
+          if(Object.values(counts||{}).some(n=>!Number.isSafeInteger(n)||n<0))
+            throw Error('Unverified finance baseline');
+          const bookmark=await call('/time_travel/bookmark');
+          if(!bookmark.bookmark)throw Error('D1 recovery bookmark missing');
+          writeFileSync(process.env.RUNNER_TEMP+'/seat-baseline.json',
+            JSON.stringify({...counts,hasColumn:schema.some(column=>column.name==='owner_throne_active'),
+              bookmark:bookmark.bookmark}),{mode:0o600});
+          console.log('OWNER_THRONE_RECOVERY_BOOKMARK_AND_LEDGER_BASELINE_OK');
+          NODE
+
+      - name: Apply only safe additive 0067 owner throne migration
+        run: |
+          set -euo pipefail
+          mkdir -p cloudflare/.sharika-throne-approved
+          cp cloudflare/migrations/0067_owner_throne_seat.sql cloudflare/.sharika-throne-approved/
+          node --input-type=module - <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const config=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          config.d1_databases[0].migrations_dir='.sharika-throne-approved';
+          writeFileSync('cloudflare/wrangler.throne-staging-only.jsonc',JSON.stringify(config,null,2));
+          NODE
+          npx --yes wrangler@4 d1 migrations list sharika-staging --remote --config cloudflare/wrangler.throne-staging-only.jsonc
+          npx --yes wrangler@4 d1 migrations apply sharika-staging --remote --config cloudflare/wrangler.throne-staging-only.jsonc
+
+      - name: Verify column and all financial counters preserved
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const before=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/seat-baseline.json','utf8'));
+          const endpoint='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          async function query(sql){
+            const response=await fetch(endpoint,{method:'POST',headers:{
+              Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+              'Content-Type':'application/json'},body:JSON.stringify({sql})});
+            const data=await response.json();
+            if(!response.ok||!data.success||!data.result?.[0]?.success)
+              throw Error('D1 verification failed');
+            return data.result[0].results;
+          }
+          const columns=await query("PRAGMA table_info('sharika_room_members')");
+          const column=columns?.find(c=>c.name==='owner_throne_active');
+          if(!column||column.notnull!==1||String(column.dflt_value)!=='0')
+            throw Error('Owner throne column not installed exactly');
+          const after=(await query('SELECT '+
+            '(SELECT COUNT(*) FROM sharika_wallet_ledger) AS ledger,'+
+            '(SELECT COUNT(*) FROM sharika_gift_transactions) AS gifts,'+
+            '(SELECT COUNT(*) FROM sharika_users) AS users'))[0];
+          for(const key of ['ledger','gifts','users'])
+            if(after[key]!==before[key])
+              throw Error('Unexpected financial/user count change: '+key);
+          console.log('ROOM_SCHEMA_READY; WALLET_AND_GIFTS_UNTOUCHED');
+          NODE
+
+      - name: Publish staging API only (never production or Admin)
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+
+      - name: Confirm staged API health
+        run: curl --fail --silent --show-error --retry 4 --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+
+  signed-test-apk:
+    name: Build and directly publish matched signed owner-throne staging APK
+    needs: owner-throne-staging
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: android-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: soverixnet-design/sovera-voice-app
+          ref: 0e30b48962272b8a687509aef4dee9bc4a047767
+          path: _sovera_cosmetics
+          persist-credentials: false
+
+      - name: Restore original cosmetic effects for offline APK
+        run: |
+          mkdir -p app/src/main/assets/sovera-effects app/src/main/assets/sovera-medals app/src/main/assets/sovera-sounds
+          cp -a ../_sovera_cosmetics/assets/effects/. app/src/main/assets/sovera-effects/
+          cp -a ../_sovera_cosmetics/assets/medals/. app/src/main/assets/sovera-medals/
+          cp -a ../_sovera_cosmetics/assets/sounds/. app/src/main/assets/sovera-sounds/
+          test "$(find app/src/main/assets/sovera-effects -type f | wc -l)" -ge 30
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install target Android SDK packages
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Restore exact authorized stable staging signing key
+        env:
+          KEY_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY_B64" && test -n "$KEY_PASSWORD"
+          printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
+          printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-staging-signing.p12" | sha256sum --check --status
+          chmod 600 "$RUNNER_TEMP/sharika-staging-signing.p12"
+          echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-staging-signing.p12" >> "$GITHUB_ENV"
+
+      - name: Assemble exact owner throne Android build
+        env:
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          node --check staging-connection.js
+          gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Inspect signed APK and owner throne packaged bridge
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.soverixnet.sharika'"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "targetSdkVersion:'36'"
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | grep -qi 'Signer #1 certificate SHA-1 digest: ab491a1a905a42bf42417d7b62c658b379f32bb0'
+          unzip -p "$APK" assets/connection.js | grep -F 'Sit on throne' >/dev/null
+          unzip -p "$APK" assets/connection.js | grep -F 'pendingJoinRoomId=room.id' >/dev/null
+          unzip -p "$APK" assets/connection.js | grep -F '__sharikaSeatSnapshotInFlight' >/dev/null
+          echo OWNER_THRONE_VERIFIED_STAGING_APK_READY
+
+      - name: Upload QA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Owner-Throne-Staging-Signed
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish direct APK prerelease for Android testers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA:0:8}"
+          TAG="sharika-owner-throne-staging-${SHORT_SHA}"
+          install -m 644 app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/Sharika-Owner-Seat-Fast-Room-Staging.apk"
+          gh release create "$TAG" "$RUNNER_TEMP/Sharika-Owner-Seat-Fast-Room-Staging.apk" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'Sharika Owner Seat + Room Join Staging' \
+            --notes 'Private staging test APK: owner throne Sit/Leave, explicit user seats, stale presence cleanup and early room paint. No Google Play production release. Ranking rewards remain disabled.'
+          echo "DIRECT_STAGING_APK=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/Sharika-Owner-Seat-Fast-Room-Staging.apk" >> "$GITHUB_STEP_SUMMARY"

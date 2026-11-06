@@ -115,7 +115,7 @@ test('verified profile photos follow the same public ID into room avatars and me
   assert.match(adapter,/roomFrame\.render\?\.\(\)/);
 });
 
-test('room polling keeps the newest seat count and ignores responses after leaving',async()=>{
+test('room polling coalesces slow snapshots and ignores responses after leaving',async()=>{
   const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const start=adapter.indexOf('  async function syncFrame(room,frame) {');
   const end=adapter.indexOf('  async function attachFrame(room) {');
@@ -143,18 +143,15 @@ test('room polling keeps the newest seat count and ignores responses after leavi
     );
   const older=sync(room,frame);
   const newer=sync(room,frame);
-  assert.equal(pending.length,2);
-  pending[1]({seat_count:4,members:[],locked_seats:[]});
+  assert.equal(pending.length,1,'slow first snapshot must not be superseded');
+  pending[0]({seat_count:4,members:[],locked_seats:[]});
   await newer;
+  await older;
   assert.equal(room.seat_count,4);
   assert.deepEqual(frame.renders,[5]);
-  pending[0]({seat_count:12,members:[],locked_seats:[]});
-  await older;
-  assert.equal(room.seat_count,4,'stale response must not restore old count');
-  assert.deepEqual(frame.renders,[5],'stale response must not re-render old seats');
   const leaving=sync(room,frame);
   state.cur={id:'10000002'};
-  pending[2]({seat_count:17,members:[],locked_seats:[]});
+  pending[1]({seat_count:17,members:[],locked_seats:[]});
   await leaving;
   assert.equal(room.seat_count,4,'completed request cannot edit an exited room');
   assert.deepEqual(frame.renders,[5]);

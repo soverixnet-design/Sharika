@@ -3565,11 +3565,9 @@
   function paintVoiceSpeakers(roomId,frame) {
     if(!frame?.seats)return;
     const ids=activeVoiceSpeakers.roomId===roomId?activeVoiceSpeakers.ids:new Set();
-    const ownerOnMic=frame.seats.some(seat=>seat?.owner_mic_seat);
     for(const seat of frame.seats){
       if(!seat||seat.empty||seat.lock)continue;
-      const speaking=!!seat.user_id&&!seat.muted&&ids.has(seat.user_id)&&
-        !(ownerOnMic&&seat.i===0);
+      const speaking=!!seat.user_id&&!seat.muted&&ids.has(seat.user_id);
       seat.talk=speaking;
       const el=frame.seatEl?.(seat.i);
       if(el)el.classList.toggle('talk',speaking);
@@ -4826,11 +4824,16 @@
   window.addDia = function () { toast('Diamond changes require the verified server'); };
   // Authenticated users only: a backgrounded app disappears after 90 seconds.
   let presenceTimer=null;
+  let pendingJoinRoomId=null;
   async function heartbeatPresence(roomId) {
     if(!session)return;
+    const target=roomId===undefined?(window.cur?.id||null):roomId;
+    // Rendering the room artwork before admission must never be interpreted
+    // as verified presence. Only the /join response authorizes heartbeats.
+    if(target!==null&&target===pendingJoinRoomId)return;
     try {
       await api('POST','/presence/heartbeat',{
-        room_id:roomId===undefined?(window.cur?.id||null):roomId
+        room_id:target
       });
     }catch(error){console.warn('Sharika presence:',errText(error));}
   }
@@ -5160,14 +5163,22 @@
   async function syncFrame(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
     // Out-of-order room polls cannot restore stale seats or old cosmetics.
-    if(frame.__sharikaSeatMovePending)return;
+    if(frame.__sharikaSeatMovePending||frame.__sharikaSeatSnapshotInFlight)return;
     const requestNo=(frame.__sharikaSeatSyncNo||0)+1;
     frame.__sharikaSeatSyncNo=requestNo;
     const userId=session?.user?.id;
-    const [data,owner] = await Promise.all([
-      api('GET','/rooms/'+room.id+'/members'),
-      api('GET','/users/'+room.id)
-    ]);
+    frame.__sharikaSeatSnapshotInFlight=true;
+    let data,owner;
+    try {
+      [data,owner] = await Promise.all([
+        api('GET','/rooms/'+room.id+'/members'),
+        api('GET','/users/'+room.id)
+      ]);
+    } finally {
+      // A 3-second presence refresh must not supersede a still-running first
+      // snapshot on a slow connection, otherwise no room seats ever render.
+      frame.__sharikaSeatSnapshotInFlight=false;
+    }
     if(frame.__sharikaSeatSyncNo!==requestNo ||
        !session || session.user.id!==userId || window.cur?.id!==room.id ||
        document.getElementById('rf')?.contentWindow!==frame)return;
@@ -5263,8 +5274,13 @@
       const user=member.sharika_users;
       if(!user)continue;
       if(member.user_id===room.owner_id){
-        // An owner only occupies a numbered mic seat after a real seat tap.
-        if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
+        // Seat zero is a separate, explicitly claimed owner throne. Joining
+        // the room does not claim it, even for the room owner.
+        if(member.seat_no===0){
+          slots[0]={...ownerSeat,i:0,owner_mic_seat:true,
+            muted:!!member.muted||
+              (member.user_id===session?.user?.id&&localMic===false)};
+        }else if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
            member.seat_no<slots.length){
           slots[member.seat_no]={...ownerSeat,i:member.seat_no,
             owner_mic_seat:true,muted:!!member.muted||
@@ -6221,13 +6237,14 @@
       const uid=session?.user?.id;
       const owner=room.owner_id===uid;
       const target=frame.seats?.[seat];
-      if(!uid||!target?.empty||seat<1||seat>room.seat_count)
+      if(!uid||!target?.empty||seat<0||seat>room.seat_count||
+         (seat===0&&!owner))
         throw new Error('Choose an unlocked empty seat');
       directSeatBusy=true;
       frame.__sharikaSeatMovePending=true;
       frame.__sharikaSeatSyncNo=(frame.__sharikaSeatSyncNo||0)+1;
       const before=frame.seats.map(slot=>slot?{...slot}:slot);
-      const previous=frame.seats.find(slot=>slot?.i>0&&slot.user_id===uid);
+      const previous=frame.seats.find(slot=>slot?.user_id===uid);
       const source=previous||{
         n:profile?.name||'Member',e:owner?'👑':'👤',pic:verifiedAvatarUrl(profile?.pic),
         user_id:uid,public_id:profile?.public_id,
@@ -6237,7 +6254,8 @@
         medal_style:profile?.medal_style||'',name_tag_style:profile?.name_tag_style||'',
         muted:false,talk:false
       };
-      if(previous)frame.seats[previous.i]={empty:1,i:previous.i};
+      if(previous)frame.seats[previous.i]={empty:1,i:previous.i,
+        ...(previous.i===0?{owner_throne:true}:{})};
       frame.seats[seat]={...source,i:seat,owner_mic_seat:owner};
       frame.render();
       decorateRoomSeats(frame);
@@ -6245,10 +6263,10 @@
       paintVoiceSpeakers(room.id,frame);
       frame.seatEl?.(seat)?.classList.add('sh-seat-pending');
       frame.close();
-      frame.toast('Moving to seat '+seat+'…');
+      frame.toast(seat===0?'Taking owner throne…':'Moving to seat '+seat+'…');
       try {
         await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
-        frame.toast('Seat '+seat+' selected');
+        frame.toast(seat===0?'Owner throne selected':'Seat '+seat+' selected');
       }catch(error) {
         if(window.cur?.id===room.id){
           frame.seats=before;
@@ -6335,9 +6353,9 @@
             };
             list.append(button);
           }
-        } else if(action==='take' && seat>0) {
+        } else if(action==='take' && seat>=0) {
           await moveSelfToSeat(seat);
-        } else if(action==='down' && seat>0) {
+        } else if(action==='down' && seat>=0) {
           if(!isSelf && moderator && target?.user_id) {
             await moderateSeat('remove_seat',seat);
           } else if(isSelf) {
@@ -6425,7 +6443,9 @@
       overlay.onkeydown=e=>{
         if(e.key==='Escape'||e.key==='Backspace'){e.preventDefault();close();}
       };
-      const options=index===0?[]:selected.lock?
+      const options=index===0?
+        (room.owner_id===session?.user?.id?[['take','Sit on throne','take']]:[]):
+        selected.lock?
         (owner?[['unlock','Unlock seat','lock'],['unlock_all','Unlock all','all']]:[]):
         (owner?[['take','Sit here','take'],['lock','Lock seat','lock'],
           ['lock_all','Lock all','all']]:[['take','Take Mic','take']]);
@@ -6530,7 +6550,7 @@
       const options=[['prof','👤','Profile'],['gift','🎁','Gift']];
       if(self)options.push(['mute',selected.muted?'🔊':'🔇',
         selected.muted?'Unmute':'Mute']);
-      if(self&&index>0)options.push(['down','⬇️','Leave mic']);
+      if(self)options.push(['down','⬇️',index===0?'Leave throne':'Leave mic']);
       if(owner&&index===0)options.push(['own','⚙️','Manage']);
       if(moderator&&index>0&&!self&&
          (owner||selected.room_role!=='admin'))options.push(
@@ -6554,9 +6574,7 @@
     // Original emoji box invokes seatEmoji(0,...) on every device. Resolve
     // the currently logged-in user's actual mic seat before animating.
     frame.seatEmoji=function(_ignoredIndex,emoji){
-      const mine=frame.seats?.find(slot=>slot?.i>0&&
-        slot.user_id===session?.user?.id)||
-        frame.seats?.find(slot=>slot?.user_id===session?.user?.id);
+      const mine=frame.seats?.find(slot=>slot?.user_id===session?.user?.id);
       if(!mine||mine.empty||mine.lock){
         frame.toast('Take an unlocked mic seat to show a seat emoji');return;
       }
@@ -7689,7 +7707,8 @@
       }
     };
     wireSoveraRoomFrames(frame);
-    await loadVerifiedCosmetics().catch(error=>console.warn('Cosmetic art:',errText(error)));
+    // Media catalogue is optional. Never wait for it before loading seats.
+    loadVerifiedCosmetics().catch(error=>console.warn('Cosmetic art:',errText(error)));
     try {
       await syncFrame(room,frame);
     } catch(error) {
@@ -7756,7 +7775,7 @@
           toast('The room owner removed you from the room');
         }
       });
-    },8000);
+    },3000);
     if(giftPoll)clearInterval(giftPoll);
     pollGiftEvents().catch(()=>{});
     giftPoll=setInterval(()=>{if(window.cur?.id===room.id)pollGiftEvents().catch(()=>{});},5000);
@@ -7958,8 +7977,7 @@
     if(roomEntryBusyToken!==null)return;
     const currentToken=++roomEntryToken;
     roomEntryBusyToken=currentToken;
-    let roomOpened=false;
-    let oldRoomLeft=false;
+    let roomAdmitted=false;
     try {
       const prior=window.cur;
       if(prior?.id===room.id) {
@@ -7970,6 +7988,17 @@
         return;
       }
       showRoomJoining(room);
+      // Begin painting the packaged room immediately. All actions remain
+      // covered by the admission overlay until /join has authorized the
+      // visitor and the verified member snapshot has replaced demo seats.
+      const iframe=document.getElementById('rf');
+      let frameLoaded=false;
+      pendingJoinRoomId=room.id;
+      iframe.onload=()=>{
+        frameLoaded=true;
+        if(roomAdmitted)onVerifiedRoomFrameLoad();
+      };
+      originalOpenRoom(room);
       // Room-to-room navigation must release old seats, membership and audio.
       if(prior && prior.id!==room.id) {
         window.__sharikaRoomGameClose?.();
@@ -7982,7 +8011,6 @@
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
         await releaseVoice();
         await api('POST','/rooms/'+prior.id+'/leave',{});
-        oldRoomLeft=true;
       }
       const joined=await joinRoomWithPassword(room);
       if(currentToken!==roomEntryToken){
@@ -7990,6 +8018,8 @@
         return;
       }
       if(!joined)return;
+      pendingJoinRoomId=null;
+      roomAdmitted=true;
       // Start media immediately after verified join, while the room iframe
       // and decorative assets continue loading independently.
       ensureVoiceConnected(room.id).catch(error=>{
@@ -8005,9 +8035,9 @@
         window.renderRooms();
       }
       heartbeatPresence(room.id);
-      const iframe=document.getElementById('rf');
       // Bind Games independently of the optional room/voice data sync.
-      iframe.onload=()=>{
+      function onVerifiedRoomFrameLoad(){
+        if(currentToken!==roomEntryToken||window.cur?.id!==room.id)return;
         const games=iframe.contentWindow?.document?.getElementById('bGame');
         if(games)games.onclick=()=>showGameCard(document,true,toast);
         // The event shortcut stays just above the microphone/chat dock.
@@ -8038,7 +8068,7 @@
           }).catch(()=>{});
         }
         attachFrame(room).catch(error=>toast(errText(error)));
-      };
+      }
       // Keep the room list visible while the new iframe loads. Otherwise
       // WebView shows a black frame, followed by unverified demo seats,
       // before the real room snapshot and premium UI arrive.
@@ -8046,16 +8076,16 @@
       roomWrap?.classList.add('sh-room-awaiting');
       const progress=roomWrap?.querySelector('#sh-room-joining-card small');
       if(progress)progress.textContent='Loading verified seats…';
-      originalOpenRoom(room);
-      roomOpened=true;
+      if(frameLoaded)onVerifiedRoomFrameLoad();
     } catch(error) { toast('Could not join: '+errText(error)); }
     finally {
       if(roomEntryBusyToken===currentToken)roomEntryBusyToken=null;
-      if(!roomOpened && currentToken===roomEntryToken){
+      if(!roomAdmitted && currentToken===roomEntryToken){
+        pendingJoinRoomId=null;
         hideRoomJoining();
         document.getElementById('rw')?.classList.remove('sh-room-awaiting');
-        if(oldRoomLeft)originalLeaveRoom();
-        if(!window.cur)document.getElementById('rw')?.classList.remove('on');
+        iframe.onload=null;
+        originalLeaveRoom();
       }
     }
   };
@@ -8063,6 +8093,7 @@
   window.leaveRoom=function() {
     roomEntryToken++;
     roomEntryBusyToken=null;
+    pendingJoinRoomId=null;
     hideRoomJoining();
     window.__sharikaRoomGameClose?.();
     const current=window.cur;

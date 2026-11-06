@@ -1115,7 +1115,7 @@ export async function handleRequest(request, env, ctx) {
         // Revoking owner hands-free publishing must also close existing
         // publications. Otherwise an already connected microphone would keep
         // transmitting until its next reconnect despite the new policy.
-        if(body.super_mic===false&&member.seat_no===null){
+        if(body.super_mic===false&&member.seat_no===null&&!member.owner_throne_active){
           const active=await coordinator.publishedFor(uid);
           try{
             for(const session of active)
@@ -1315,7 +1315,7 @@ export async function handleRequest(request, env, ctx) {
         // Joining a room never places someone on a mic. This also resets a
         // retained owner seat from an older client/session.
         await env.DB.prepare(
-          'UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?'
+          'UPDATE sharika_room_members SET seat_no=NULL,owner_throne_active=0 WHERE room_id=? AND user_id=?'
         ).bind(roomId,uid).run();
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
         await env.VOICE_ROOMS.getByName('sharika:presence:staging')
@@ -1326,21 +1326,33 @@ export async function handleRequest(request, env, ctx) {
         if(env.VOICE_ROOMS){
           // These reads are independent. Serial D1 round-trips delayed the
           // first room entry on mobile networks even after authorization.
-          const [latestGift,entrant,equipped,svipLevel]=await Promise.all([
-            env.DB.prepare('SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?')
-              .bind(roomId).first(),
-            assertActive(env.DB,uid),
-            readEquipped(env.DB,uid),
-            readSvipLevel(env.DB,uid)
-          ]);
+          const latestGift=await env.DB.prepare(
+            'SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?'
+          ).bind(roomId).first();
           const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
           await coordinator.beginRoomVisit(uid,Number(latestGift?.id)||0);
-          const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
-            ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
-              ?'svip-entry-'+String(svipLevel).padStart(2,'0')
-              :(entrant.entry_style||'');
-          await coordinator.roomEntryAnnounce(uid,publicId(entrant.public_no),
-            txt(entrant.name,80)||'Member',entry||'standard');
+          // Cosmetic and entry animation reads are not part of admission.
+          // Keep the room-visit boundary first, then publish the arrival in
+          // the request's background lifetime so a slow medal/media query
+          // does not hold the room card for another several seconds.
+          const announce=(async()=>{
+            const [entrant,equipped,svipLevel]=await Promise.all([
+              assertActive(env.DB,uid),readEquipped(env.DB,uid),readSvipLevel(env.DB,uid)
+            ]);
+            const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
+              ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
+                ?'svip-entry-'+String(svipLevel).padStart(2,'0')
+                :(entrant.entry_style||'');
+            // A visitor who left while the cosmetics were loading must not
+            // reappear as a delayed room-entry animation.
+            if(await coordinator.roomGiftAfter(uid)===null)return;
+            await coordinator.roomEntryAnnounce(uid,publicId(entrant.public_no),
+              txt(entrant.name,80)||'Member',entry||'standard');
+          })();
+          if(ctx?.waitUntil){
+            ctx.waitUntil(announce.catch(error=>
+              console.warn('room_entry_announcement_delayed',error?.message)));
+          }else await announce;
         }
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
       }
@@ -1351,7 +1363,7 @@ export async function handleRequest(request, env, ctx) {
         if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:presence:staging')
           .presenceLeave(uid,roomId);
         if (room.owner_id === uid) {
-          await env.DB.prepare('UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?')
+          await env.DB.prepare('UPDATE sharika_room_members SET seat_no=NULL,owner_throne_active=0 WHERE room_id=? AND user_id=?')
             .bind(roomId, uid).run();
         } else {
           await env.DB.prepare('DELETE FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId, uid).run();
@@ -1759,6 +1771,7 @@ export async function handleRequest(request, env, ctx) {
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const body=await readBody(request);
         const seat = body.seat_no === null ? null : Number(body.seat_no);
+        if(seat===0&&room.owner_id!==uid)return fail('room_owner_only',403,cors);
         if(seat!==null){
           const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
           if(policy.mic_mode==='owner'&&room.owner_id!==uid)
@@ -1767,7 +1780,7 @@ export async function handleRequest(request, env, ctx) {
              !await isRoomAdmin(env,roomId,uid))
             return fail('room_mic_admin_only',403,cors);
         }
-        if (seat !== null && (!Number.isInteger(seat) || seat < 1 ||
+        if (seat !== null && (!Number.isInteger(seat) || seat < 0 ||
           seat > room.seat_count)) return fail('invalid_seat', 400, cors);
         const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .changeMemberSeat(roomId,uid,seat);
@@ -1789,7 +1802,7 @@ export async function handleRequest(request, env, ctx) {
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,
           CASE WHEN m.user_id=? THEN 'owner' WHEN ra.user_id IS NOT NULL THEN 'admin' ELSE 'member' END AS role,
-          m.seat_no,m.muted,m.joined_at,
+          m.seat_no,m.owner_throne_active,m.muted,m.joined_at,
           u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style,
           ${activeSpecialSelect('u')},${publicSvipSelect('u')} FROM sharika_room_members m
           JOIN sharika_users u ON u.auth_uid=m.user_id
@@ -1798,32 +1811,29 @@ export async function handleRequest(request, env, ctx) {
         // Show only actively joined users. A persistent owner permission row
         // is never proof that the owner is still physically in the room.
         // /join registers presence before returning, so no grace is needed.
-        let visibleMembers=result.results||[];
         let presence=null;
         try{presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');}
         catch(error){console.warn('presence_coordinator_unavailable',error?.message);}
-        if(typeof presence?.presenceRoomMembers==='function') {
-          try{
-            const live=new Set(await presence.presenceRoomMembers(roomId));
-            visibleMembers=visibleMembers.filter(m=>live.has(m.user_id));
-          }catch(error){
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        // All these reads are independent; serial Durable Object and D1
+        // round-trips previously added seconds to the first seat snapshot.
+        const activeUsers=typeof presence?.presenceRoomMembers==='function'
+          ?presence.presenceRoomMembers(roomId).catch(error=>{
             console.warn('presence_room_members_unavailable',error?.message);
-            visibleMembers=[];
-          }
-        }else{
-          // Never display offline IDs when the presence coordinator is down.
-          visibleMembers=[];
-        }
-        const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-          .lockedSeats();
-        const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
-        const equipped=await readRoomEquipped(env.DB,roomId);
+            return [];
+          }):Promise.resolve([]);
+        const wallpaperTask=room.theme==='photo' ? env.DB.prepare(
+          'SELECT version FROM sharika_room_theme_images WHERE room_id=?'
+        ).bind(roomId).first():Promise.resolve(null);
+        const [liveIds,lockedSeats,policy,equipped,wallpaper,bondPairs]=await Promise.all([
+          activeUsers,coordinator.lockedSeats(),coordinator.roomPolicyRead(),
+          readRoomEquipped(env.DB,roomId),wallpaperTask,roomBondPairs(env.DB,roomId)
+        ]);
+        const live=new Set(liveIds);
+        const visibleMembers=(result.results||[]).filter(m=>live.has(m.user_id));
         // Room color and owner-selected photo are shared room state. Return
         // them with every member poll, so guests already inside and late
         // joiners see the same background without trusting localStorage.
-        const wallpaper=room.theme==='photo' ? await env.DB.prepare(
-          'SELECT version FROM sharika_room_theme_images WHERE room_id=?'
-        ).bind(roomId).first() : null;
         const cover=room.theme==='photo' && !wallpaper?.version ? await env.DB.prepare(
           'SELECT version FROM sharika_room_covers WHERE room_id=?'
         ).bind(roomId).first() : null;
@@ -1839,9 +1849,11 @@ export async function handleRequest(request, env, ctx) {
           seat_count:room.seat_count,
           seat_frame_style:room.seat_frame_style||'grad',
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
-          bond_pairs:await roomBondPairs(env.DB,roomId),
+          bond_pairs:bondPairs,
           members: visibleMembers.map(x => ({
-          room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
+          room_id: x.room_id, user_id: x.user_id, role: x.role,
+          seat_no:x.user_id===room.owner_id&&x.owner_throne_active?0:x.seat_no,
+          muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
             special_id:x.special_id||null,display_id:x.special_id||publicId(x.public_no),
             ...svipAppearance(x,equipped.get(x.user_id)||{}) }
@@ -1852,7 +1864,8 @@ export async function handleRequest(request, env, ctx) {
           return fail('voice_not_configured', 503, cors);
         }
         const policy=await env.VOICE_ROOMS?.getByName('sharika:'+roomId)?.roomPolicyRead();
-        const publish = (room.owner_id === uid && (member.seat_no!==null||policy?.super_mic!==false)) ||
+        const publish = (room.owner_id === uid &&
+          (member.seat_no!==null||member.owner_throne_active||policy?.super_mic!==false)) ||
           (member.seat_no !== null && !member.muted);
         const token = await createVoiceToken(env, uid, roomId, publish, room.owner_id === uid);
         return reply({ token, url: env.LIVEKIT_URL, room: 'sharika:' + roomId, publish }, 200, cors);

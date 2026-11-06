@@ -132,13 +132,15 @@ test('one tap shows a room joining shell and forbids overlapping join requests',
   assert.match(ui,/if\(!joined\)return/);
 });
 
-test('join starts each verified visit before its arrival event with parallel independent reads',()=>{
+test('join establishes visit boundary then defers optional arrival art reads',()=>{
   const join=worker.slice(worker.indexOf("action === 'join' && request.method === 'POST'"),
     worker.indexOf("action === 'leave' && request.method === 'POST'"));
-  assert.match(join,/\[latestGift,entrant,equipped,svipLevel\]=await Promise\.all\(\[/);
+  assert.match(join,/const latestGift=await env\.DB\.prepare/);
+  assert.match(join,/\[entrant,equipped,svipLevel\]=await Promise\.all\(\[/);
   assert.match(join,/await coordinator\.beginRoomVisit\(uid,Number\(latestGift\?\.id\)\|\|0\)/);
   assert.ok(join.indexOf('await coordinator.beginRoomVisit')<
     join.indexOf('await coordinator.roomEntryAnnounce'));
+  assert.match(join,/ctx\.waitUntil\(announce\.catch/);
 });
 
 test('top room card is shorter in width but thicker without changing microphone seat sizes',()=>{

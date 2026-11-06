@@ -1229,7 +1229,8 @@ test('each verified join resets the chat/gift boundary and announces the real na
     assert.equal(join.status,200);
     assert.deepEqual(records[0],['presenceJoin',principal,'10000001']);
     assert.deepEqual(records[1],['begin',principal,62]);
-    assert.deepEqual(records[2],['entry',principal,'10000003','Verified Room Guest','standard']);
+    assert.deepEqual(records[2],['giftAfter',principal]);
+    assert.deepEqual(records[3],['entry',principal,'10000003','Verified Room Guest','standard']);
 
     const gifts=await handleRequest(new Request(endpoint+'/gifts',{headers}),env);
     assert.equal(gifts.status,200);
