@@ -873,7 +873,7 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 .sh-royal-room .stage {
   display:flex;
   flex-direction:column;
-  justify-content:space-evenly;
+  justify-content:flex-start;
   flex:1 1 auto;
   min-height:0;
   padding:8px 10px 10px;
@@ -959,4 +959,23 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   .sh-royal-room .stage {justify-content:flex-start;gap:8px}
   .sh-royal-room .host {margin:2px 0 9px}
   .sh-royal-room .chatw {height:118px;min-height:118px}
+}
+
+
+/* Keyboard stability: preserve the same seat geometry before/after IME.
+   The native bridge measures the stage before it opens; do not change host
+   margins, row gap or avatar dimensions while Gboard is visible. */
+.sh-royal-room.sh-keyboard-open .stage {
+  justify-content:flex-start;
+  gap:8px;
+}
+.sh-royal-room.sh-keyboard-open .host {margin:7px 0 10px}
+.sh-royal-room.sh-keyboard-open .grid {gap:14px 5px}
+.sh-royal-room.sh-keyboard-open .seat .av {
+  width:clamp(48px,13.5vw,58px);
+  height:clamp(48px,13.5vw,58px);
+}
+.sh-royal-room.sh-keyboard-open .host .av {
+  width:clamp(65px,19vw,75px);
+  height:clamp(65px,19vw,75px);
 }
