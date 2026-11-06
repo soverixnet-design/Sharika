@@ -528,3 +528,146 @@
 @media (prefers-reduced-motion:reduce) {
   #v-me.profile-royal .sh-level-meter>i {transition:none}
 }
+
+/* SHARIKA_CP_PUBLIC_PROFILE_20261107 — verified room/member card, no demo IDs. */
+#pfc .pf.sh-ranked-profile {
+  padding-bottom:28px;
+  background:linear-gradient(170deg,#151320,#21132f 55%,#110c1c);
+  color:#fff4dc;
+}
+#pfc .pf.sh-ranked-profile .cov {
+  height:123px;border-radius:0 0 24px 24px;
+  background:radial-gradient(circle at 50% 0,#dfaa63a3,transparent 65%),
+    linear-gradient(135deg,#37204c,#161329 60%,#3b2742);
+}
+#pfc .pf.sh-ranked-profile .pfh {
+  margin-top:-49px;padding:0 8px 5px;
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+}
+#pfc .pf.sh-ranked-profile .pfh>.pavw {margin:0 auto 7px}
+#pfc .pf.sh-ranked-profile .pfh>h2 {
+  font-size:clamp(21px,6vw,27px);margin:6px 0 0;line-height:1.2;
+  color:#fff6e9;overflow-wrap:anywhere;
+}
+#pfc .pf.sh-ranked-profile .sh-svip-public-badge {
+  display:inline-flex;margin:2px auto;max-width:100%;
+}
+#pfc .pf.sh-ranked-profile .sh-royal-idline {
+  display:flex;align-items:center;justify-content:center;
+  flex-wrap:wrap;gap:6px;margin:4px auto 2px;max-width:100%;
+}
+#pfc .pf.sh-ranked-profile .sh-royal-user-id {
+  font-weight:850;color:#ffdd9a;letter-spacing:.3px;
+  white-space:normal;overflow-wrap:anywhere;
+}
+#pfc .pf.sh-ranked-profile .sh-royal-follower-count {
+  border-left:1px solid #f1d3a66b;padding-left:9px;
+  font-size:11px;color:#d8c7dc;
+}
+#pfc .pf.sh-ranked-profile .sh-layout-ornament {
+  display:flex;justify-content:center;max-width:95%;
+  margin:1px auto!important;min-height:0!important;max-height:29px;
+}
+#pfc .pf.sh-ranked-profile .sh-layout-ornament img {
+  max-height:26px!important;max-width:105px!important;object-fit:contain;
+}
+#pfc .pf.sh-ranked-profile .pfh .bio {
+  color:#cfc0d0;font-size:12px;line-height:1.4;
+  margin:3px 0 0;
+}
+#pfc .pf.sh-ranked-profile .lvs {gap:8px;margin:10px 0}
+#pfc .pf.sh-ranked-profile .lvc {
+  min-width:0;min-height:97px;border-radius:15px;
+  border:1px solid #eac3877a;padding:10px;
+  background:linear-gradient(145deg,#35233e,#24172f);
+}
+#pfc .pf.sh-ranked-profile .lvc.c {
+  background:linear-gradient(145deg,#262a47,#192138);
+  border-color:#9dc7ee88;
+}
+#pfc .pf.sh-ranked-profile .lvc .big3 {
+  margin:3px 0;font-size:23px;color:#ffe4a9;
+}
+#pfc .pf.sh-ranked-profile .lvc.c .big3 {color:#baddff}
+#pfc .pf.sh-ranked-profile .lvc .lvb {
+  display:block;width:100%;height:6px;border-radius:12px;
+  background:#fff2;overflow:hidden;margin:6px 0;
+}
+#pfc .pf.sh-ranked-profile .lvc .lvb>i {
+  display:block;height:100%;background:linear-gradient(90deg,#e76b9f,#f8ce86)
+}
+#pfc .pf.sh-ranked-profile .lvc.c .lvb>i {
+  background:linear-gradient(90deg,#529cf7,#aeefff)
+}
+#pfc .pf.sh-ranked-profile .lvc small {font-size:10px;line-height:1.3}
+#pfc .pf.sh-ranked-profile .pbtn {gap:8px;margin:13px 0}
+#pfc .pf.sh-ranked-profile .pbtn button {
+  min-height:45px;border:1px solid #e8c58b99;
+  background:linear-gradient(135deg,#51315a,#2c1b3f);
+  color:#ffeacb;border-radius:14px;
+}
+#pfc .pf.sh-ranked-profile .pbtn button.p {
+  background:linear-gradient(135deg,#ffdf91,#d1954d);
+  color:#3f2030;font-weight:900;
+}
+#pfc .pf.sh-ranked-profile.sh-cp-linked .pfh {margin-top:-58px}
+#pfc .sh-royal-cp-profile-pair {
+  width:min(100%,365px);max-width:100%;
+  border-radius:22px;border:1px solid #eac17c92;
+  padding:9px 8px 7px;margin:0 auto 8px;
+  background:linear-gradient(145deg,#2d234be0,#1c1939f0 55%,#4b2841e6);
+  box-shadow:inset 0 1px #fff4,0 10px 22px #070312ab;
+}
+#pfc .sh-royal-cp-kicker {
+  color:#ffe1a4;font-size:10px;font-weight:850;
+  letter-spacing:1.4px;line-height:1.4;margin:0 0 5px;
+}
+#pfc .sh-royal-cp-faces {
+  display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1fr);
+  align-items:start;justify-items:center;column-gap:3px;
+}
+#pfc .sh-royal-cp-owner,
+#pfc .sh-royal-cp-partner {
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-start;gap:4px;min-width:0;width:100%;
+  background:none!important;border:0;color:#fff;
+}
+#pfc .sh-royal-cp-owner .pavw {
+  position:relative;display:block;flex:none;
+  width:93px;height:93px;margin:8px auto 7px;
+}
+#pfc .sh-royal-cp-partner .sh-bond-avatar {
+  width:93px;height:93px;margin:8px auto 7px;flex:none;
+  border:3px solid #e6c58e;box-shadow:0 0 0 3px #9e5b9c,0 4px 12px #07021b;
+}
+#pfc .sh-royal-cp-owner strong,
+#pfc .sh-royal-cp-partner strong {
+  width:100%;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;font-size:12px;font-weight:850;
+  line-height:1.35;color:#fff1d5;
+}
+#pfc .sh-royal-cp-owner small,
+#pfc .sh-royal-cp-partner small {
+  font-size:10px;line-height:1.3;
+  color:#ffdca3;overflow-wrap:anywhere;
+}
+#pfc .sh-royal-cp-heart {
+  margin-top:37px;display:grid;place-items:center;
+  width:40px;height:40px;border-radius:50%;
+  background:radial-gradient(circle,#fda5cf,#703567);
+  font-size:25px;box-shadow:0 0 20px #eb6eaf7a;
+  animation:shBondPulse 2.5s ease-in-out infinite;
+}
+#pfc .sh-royal-cp-profile-pair .sh-sovera-frame {
+  pointer-events:none;max-width:none;
+}
+@media (max-width:370px){
+  #pfc .sh-royal-cp-profile-pair {padding-inline:5px}
+  #pfc .sh-royal-cp-owner .pavw,
+  #pfc .sh-royal-cp-partner .sh-bond-avatar {width:83px;height:83px}
+  #pfc .sh-royal-cp-faces {grid-template-columns:minmax(0,1fr) 35px minmax(0,1fr)}
+  #pfc .sh-royal-cp-heart {margin-top:30px;width:35px;height:35px;font-size:22px}
+}
+@media (prefers-reduced-motion:reduce) {
+  #pfc .sh-royal-cp-heart {animation:none}
+}
