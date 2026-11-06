@@ -99,6 +99,20 @@ jobs:
           test -s app/build/outputs/apk/release/app-release.apk
           jarsigner -verify app/build/outputs/bundle/release/app-release.aab
 
+      - name: Verify tester APK can be parsed and its signature is valid
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDK_TOOLS="$SDK_ROOT/build-tools/35.0.0"
+          APK='android-staging/app/build/outputs/apk/release/app-release.apk'
+          test -x "$SDK_TOOLS/apksigner"
+          test -x "$SDK_TOOLS/aapt"
+          test -x "$SDK_TOOLS/zipalign"
+          "$SDK_TOOLS/apksigner" verify --verbose --print-certs --min-sdk-version 26 "$APK"
+          "$SDK_TOOLS/aapt" dump badging "$APK"
+          "$SDK_TOOLS/zipalign" -c -P 16 -v 4 "$APK"
+          unzip -tqq "$APK"
+
       - name: Validate output and prepare direct downloads
         run: |
           set -euo pipefail
