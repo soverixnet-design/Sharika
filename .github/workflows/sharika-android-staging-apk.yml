@@ -899,4 +899,22 @@ jobs:
           gh release create "$TAG" verified-apk/Sharika-Royal-Profile-CP-Staging.apk \
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
             --title 'Sharika Royal Profile + Verified CP — Staging APK' \
-            --notes 'Staging-only APK for invited friends. Main Profile royal portrait and framed identity cleanup, 1–100 display levels with verified gift totals, CP-linked public profile with real paired pictures and IDs, owner/role and follow labels. Existing Cloudflare D1 coin/gift balances, backend premium levels and history unchanged. Android emulator smoke tested; real CP and login interactions need tests on two phones. Not Play Store or production.'
+            --notes 'Staging-only APK for invited friends. Main Profile royal portrait and framed identity cleanup, 1–100 display levels with verified gift totals, CP-linked public profile with real paired pictures and IDs, owner/role and follow labels. Existing Cloudflare D1 coin/gift balances, backend premium levels and history unchanged. Android emulator smoke tested; real CP and login interactions need tests on two phones. Not Play Store or production.' \
+            --prerelease
+
+  royal-profile-staging-label:
+    name: Ensure previously shared Royal Profile APK is marked prerelease
+    if: github.ref == 'refs/heads/feature/sharika-profile-level-cp-20261107'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Keep older friends APK explicitly staging-only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit sharika-royal-profile-cp-staging-98a4c707 \
+            --repo soverixnet-design/Sharika \
+            --prerelease --latest=false
