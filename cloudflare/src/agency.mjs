@@ -25,6 +25,40 @@ async function policy(db){
   if(!data)throw Error('agency_migration_required');
   return data;
 }
+async function salaryConfig(db){
+  const data=await db.prepare("SELECT * FROM sharika_agency_salary_config WHERE key='standard'").first();
+  if(!data)throw Error('agency_salary_migration_required');
+  return data;
+}
+async function salaryTargets(db){
+  return results(await db.prepare('SELECT target_coins FROM sharika_agency_salary_targets '+
+    'WHERE active=1 ORDER BY target_coins ASC LIMIT 20').all());
+}
+const salaryMaturity=mode=>mode==='daily'?"datetime('now','start of day')":
+  mode==='weekly'?"datetime('now','weekday 0','-6 days','start of day')":
+  "datetime('now','start of month')";
+async function salarySummary(db,uid,mode){
+  const condition=salaryMaturity(mode);
+  const [earned,matured,exchanged,config]=await Promise.all([
+    db.prepare('SELECT COALESCE(SUM(amount_units),0) AS units FROM sharika_agency_earnings '+
+      'WHERE beneficiary_uid=?').bind(uid).first(),
+    db.prepare('SELECT COALESCE(SUM(a.amount_units),0) AS units FROM sharika_agency_earnings a '+
+      'JOIN sharika_agency_salary_config c ON c.key=\'standard\' '+
+      `WHERE a.beneficiary_uid=? AND a.created_at<${condition} AND (`+
+      'SELECT COALESCE(SUM(e.quantity*e.price_coins),0) FROM sharika_agency_earnings h '+
+      "JOIN sharika_gift_events e ON e.id=h.gift_event_id WHERE h.kind='host_salary' "+
+      'AND h.host_uid=a.host_uid)>=c.min_host_target_coins').bind(uid).first(),
+    db.prepare('SELECT COALESCE(SUM(salary_units),0) AS units FROM sharika_agency_salary_exchanges '+
+      'WHERE auth_uid=?').bind(uid).first(),
+    salaryConfig(db)
+  ]);
+  const paid=Number(exchanged?.units)||0;
+  return {earned_units:Number(earned?.units)||0,exchanged_units:paid,
+    matured_available_units:Math.max(0,(Number(matured?.units)||0)-paid),
+    exchange_enabled:!!config.exchange_enabled,settlement_mode:mode,
+    min_host_target_coins:config.min_host_target_coins,
+    coins_per_usd:config.coins_per_usd,policy_version:config.version};
+}
 async function actor(db,uid){
   return db.prepare("SELECT auth_uid,public_no,name,pic,status FROM sharika_users WHERE auth_uid=? AND status='active'")
     .bind(uid).first();
@@ -64,7 +98,7 @@ export function agencyGiftEarningStatements(db,senderUid,requestId,giftTab){
     'beneficiary_uid,kind,rate_bps,amount_units) '+
     `SELECT e.id,f.id,h.host_uid,${beneficiary},'${kind}',p.${rate},`+
     `e.quantity*e.price_coins*p.${rate} `+eligible+joins+
-    `WHERE e.transaction_id=${transaction} AND e.sender_uid<>e.recipient_uid `+
+    `WHERE e.transaction_id=${transaction} `+
     `AND p.${rate}>0`
   ).bind(senderUid,requestId);
   return [
@@ -82,13 +116,17 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
   const terms=await policy(db);
   if(path==='/api/v1/agency/me'&&request.method==='GET'){
     const currentUser=await actor(db,uid);
-    const [bd,owned,host,personal]=await Promise.all([
+    const [bd,owned,host,personal,salary,targets,exchanges]=await Promise.all([
       db.prepare('SELECT active,can_grant FROM sharika_bd_agents WHERE bd_uid=?').bind(uid).first(),
       db.prepare('SELECT id,name,status FROM sharika_families WHERE owner_uid=?').bind(uid).first(),
       db.prepare('SELECT h.active,h.family_id,f.name AS family_name FROM sharika_agency_hosts h '+
         'JOIN sharika_families f ON f.id=h.family_id WHERE h.host_uid=?').bind(uid).first(),
       db.prepare('SELECT kind,COALESCE(SUM(amount_units),0) AS units FROM sharika_agency_earnings '+
-        'WHERE beneficiary_uid=? GROUP BY kind').bind(uid).all()
+        'WHERE beneficiary_uid=? GROUP BY kind').bind(uid).all(),
+      salarySummary(db,uid,terms.settlement_mode),salaryTargets(db),
+      db.prepare('SELECT credited_coins,salary_units,settlement_mode,created_at '+
+        'FROM sharika_agency_salary_exchanges WHERE auth_uid=? ORDER BY id DESC LIMIT 30')
+        .bind(uid).all()
     ]);
     return reply({bd:{active:!!bd?.active,can_grant:!!bd?.active&&!!bd.can_grant},
       agency:owned||null,host:host?{...host,public_id:publicId(currentUser.public_no)}:null,
@@ -96,8 +134,45 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
       policy:{enabled:!!terms.active,host_percent:terms.host_bps/100,
         agency_percent:terms.agency_bps/100,bd_percent:terms.bd_bps/100,
         settlement_mode:terms.settlement_mode},
-      payout_status:'pending_admin_verification',
+      salary,targets,salary_exchanges:results(exchanges),
+      payout_status:salary.exchange_enabled?'eligible_after_target_and_period':'pending_admin_verification',
       source:'settled_regular_gift_events'},200,cors);
+  }
+  if(path==='/api/v1/agency/salary/exchange'&&request.method==='POST'){
+    let body;try{body=await parseBody(request);}catch{return fail('invalid_agency_body',400,cors);}
+    const requestId=typeof body.request_id==='string'?body.request_id.trim():'';
+    if(!/^[A-Za-z0-9:_-]{12,80}$/.test(requestId)||
+      !Number.isSafeInteger(body.coins)||body.coins<1||body.coins>100000000)
+      return fail('invalid_salary_exchange',400,cors);
+    const previous=await db.prepare('SELECT credited_coins FROM sharika_agency_salary_exchanges '+
+      'WHERE auth_uid=? AND request_id=?').bind(uid,requestId).first();
+    if(previous)return Number(previous.credited_coins)===body.coins?
+      reply({ok:true,duplicate:true,credited_coins:body.coins},200,cors):
+      fail('idempotency_conflict',409,cors);
+    const config=await salaryConfig(db);
+    if(!config.exchange_enabled||!terms.active)return fail('salary_exchange_disabled',403,cors);
+    if(body.expected_version!==config.version)return fail('salary_policy_changed',409,cors);
+    const amount=body.coins*10000;
+    try{
+      await db.batch([
+        db.prepare('INSERT INTO sharika_agency_salary_exchanges(auth_uid,request_id,salary_units,'+
+          'credited_coins,settlement_mode,policy_version) VALUES(?,?,?,?,?,?)')
+          .bind(uid,requestId,amount,body.coins,terms.settlement_mode,config.version),
+        db.prepare("UPDATE sharika_users SET coins=CASE WHEN status='active' AND minor=0 "+
+          'AND coins<=? THEN coins+? ELSE -1 END,updated_at=datetime(\'now\') WHERE auth_uid=?')
+          .bind(1000000000000-body.coins,body.coins,uid),
+        db.prepare('INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,'+
+          "reason,request_id) VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),"+
+          "'agency_salary_exchange',?)")
+          .bind(uid,body.coins,uid,'agency-salary:'+requestId)
+      ]);
+    }catch(error){
+      const message=String(error?.message||error);
+      if(/agency_salary_not_matured_or_insufficient|agency_salary_exchange_disabled_or_changed|CHECK constraint|UNIQUE constraint/.test(message))
+        return fail('salary_exchange_not_available',409,cors);
+      throw error;
+    }
+    return reply({ok:true,duplicate:false,credited_coins:body.coins},200,cors);
   }
   if(path==='/api/v1/agency/bd/center'&&request.method==='GET'){
     const bd=await db.prepare('SELECT active FROM sharika_bd_agents WHERE bd_uid=?').bind(uid).first();
@@ -181,7 +256,7 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
     const period=new URL(request.url).searchParams.get('period')||'today';
     if(!periodSql(period))return fail('invalid_report_period',400,cors);
     const dateFrom=periodSql(period);
-    const [total,gifts,activity,days,rooms]=await Promise.all([
+    const [total,gifts,activity,days,rooms,progress,targets]=await Promise.all([
       db.prepare('SELECT COALESCE(SUM(amount_units),0) AS units,'+
         'COUNT(*) AS gift_count FROM sharika_agency_earnings '+
         "WHERE host_uid=? AND kind='host_salary' AND created_at>="+dateFrom)
@@ -202,7 +277,11 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
         'SUM(a.active_seconds) AS seconds FROM sharika_agency_room_activity a '+
         'LEFT JOIN sharika_rooms r ON r.id=a.room_id '+
         'WHERE a.user_uid=? AND a.utc_day>='+periodDaySql(period)+
-        ' GROUP BY a.room_id ORDER BY seconds DESC LIMIT 50').bind(host.host_uid).all()
+      ' GROUP BY a.room_id ORDER BY seconds DESC LIMIT 50').bind(host.host_uid).all(),
+      db.prepare('SELECT COALESCE(SUM(e.quantity*e.price_coins),0) AS coins '+
+        'FROM sharika_agency_earnings a JOIN sharika_gift_events e ON e.id=a.gift_event_id '+
+        "WHERE a.kind='host_salary' AND a.host_uid=?").bind(host.host_uid).first(),
+      salaryTargets(db)
     ]);
     return reply({host:{public_id:publicId(host.public_no),name:host.name,pic:host.pic,
       active:!!host.active,agency_id:host.family_id,agency_name:host.agency_name},
@@ -212,7 +291,9 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
       active_seconds:Number(activity?.seconds)||0,
       activity_by_day:days,
       activity_by_room:results(rooms).map(x=>({...x,seconds:Number(x.seconds)||0})),
-      activity_source:'server_verified_room_heartbeats',monthly_target:null,
+      activity_source:'server_verified_room_heartbeats',
+      target_progress_coins:Number(progress?.coins)||0,
+      targets:targets.map(t=>({...t,completed:(Number(progress?.coins)||0)>=t.target_coins})),
       payout_status:'pending_admin_verification',currency:'estimated_coins',
       source:'verified_regular_gifts_to_host'},200,cors);
   }
@@ -251,7 +332,8 @@ export async function handleAgencyAdmin({request,env,uid,actor:admin,operation,c
   if(!['super','finance'].includes(admin.role))return fail('admin_permission_denied',403,cors);
   const db=env.DB;
   if(operation==='agency'&&request.method==='GET'){
-    const settings=await policy(db);
+    const [settings,salary,targets]=await Promise.all([
+      policy(db),salaryConfig(db),salaryTargets(db)]);
     const hosts=results(await db.prepare('SELECT h.family_id,h.active,u.public_no,u.name,u.pic,'+
       'f.name AS agency_name FROM sharika_agency_hosts h '+
       'JOIN sharika_users u ON u.auth_uid=h.host_uid '+
@@ -259,10 +341,50 @@ export async function handleAgencyAdmin({request,env,uid,actor:admin,operation,c
     return reply({policy:{enabled:!!settings.active,host_bps:settings.host_bps,
       agency_bps:settings.agency_bps,bd_bps:settings.bd_bps,
       settlement_mode:settings.settlement_mode},
+      salary_config:{coins_per_usd:salary.coins_per_usd,
+        min_host_target_coins:salary.min_host_target_coins,
+        exchange_enabled:!!salary.exchange_enabled,version:salary.version},
+      targets:targets.map(t=>t.target_coins),
       hosts:hosts.map(h=>({...h,public_id:publicId(h.public_no),public_no:undefined})),
-      payouts_enabled:false,payout_status:'manual_review_required'},200,cors);
+      payouts_enabled:!!salary.exchange_enabled,
+      payout_status:salary.exchange_enabled?'configured_period_exchange':'manual_review_required'},200,cors);
   }
   if(admin.role!=='super')return fail('admin_permission_denied',403,cors);
+  if(operation==='agency/salary/policy'&&request.method==='PATCH'){
+    let body;try{body=await parseBody(request);}catch{return fail('invalid_agency_body',400,cors);}
+    const current=await salaryConfig(db);
+    const targets=body.targets;
+    if(!Number.isSafeInteger(body.expected_version)||body.expected_version!==current.version)
+      return fail('agency_salary_policy_changed',409,cors);
+    if(!Array.isArray(targets)||targets.length<1||targets.length>12||
+      targets.some((x,i)=>!Number.isSafeInteger(x)||
+        x<1||x>1000000000000||(i>0&&x<=targets[i-1]))||
+      !Number.isSafeInteger(body.coins_per_usd)||body.coins_per_usd<1||
+      body.coins_per_usd>1000000000||typeof body.exchange_enabled!=='boolean')
+      return fail('invalid_agency_salary_policy',400,cors);
+    const before={...current,targets:(await salaryTargets(db)).map(t=>t.target_coins)};
+    const statements=[
+      db.prepare('UPDATE sharika_agency_salary_config SET coins_per_usd=?,min_host_target_coins=?,'+
+        'exchange_enabled=?,version=CASE WHEN version=? THEN version+1 ELSE 0 END,'+
+        "updated_by=?,updated_at=datetime('now') WHERE key='standard'")
+        .bind(body.coins_per_usd,targets[0],Number(body.exchange_enabled),current.version,uid),
+      db.prepare('UPDATE sharika_agency_salary_targets SET active=0')
+    ];
+    for(const target of targets)statements.push(db.prepare(
+      'INSERT INTO sharika_agency_salary_targets(target_coins,active) VALUES(?,1) '+
+      "ON CONFLICT(target_coins) DO UPDATE SET active=1,updated_at=datetime('now')")
+      .bind(target));
+    statements.push(db.prepare('INSERT INTO sharika_agency_salary_policy_audit(actor_uid,'+
+      'old_json,new_json) VALUES(?,?,?)').bind(uid,JSON.stringify(before),
+      JSON.stringify({coins_per_usd:body.coins_per_usd,targets,
+        exchange_enabled:body.exchange_enabled,version:current.version+1})));
+    try{await db.batch(statements);}catch(error){
+      if(/CHECK constraint/.test(String(error)))return fail('agency_salary_policy_changed',409,cors);
+      throw error;
+    }
+    return reply({saved:true,version:current.version+1,
+      applies_to:'future_eligibility_and_exchange_only'},200,cors);
+  }
   if(operation==='agency/policy'&&request.method==='PATCH'){
     let body;try{body=await parseBody(request);}catch{return fail('invalid_agency_body',400,cors);}
     if(typeof body.enabled!=='boolean'||!['daily','weekly','monthly'].includes(body.settlement_mode)||

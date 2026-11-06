@@ -49,6 +49,7 @@ on:
       - fix/sharika-family-royal-games-20261104
       - feature/sharika-sovera-gaddy-game-20261104
       - feature/sharika-bd-agency-host-20261104
+      - feature/sharika-agency-salary-targets-integrated-20261106
     paths:
       - 'android-staging/**'
       - 'app/golden-home.css'
@@ -409,15 +410,15 @@ jobs:
           const js=fs.readFileSync(process.env.RUNNER_TEMP+'/sharika-family-connection.js','utf8');
           for(const expected of [
             "root.querySelector('.profile-royal-page .profile-account')",
-            "family.onclick=openRoyalFamily",
+            "window.sharikaOpenAgencyCenter?.('agency')",
             "tile.hidden=!data.bd?.active",
             "window.sharikaOpenRoyalFamily=openRoyalFamily",
             "/family/bd/overview",
             "/family/agency/hosts",
             "/family/host/statement",
             "sharika-agency-icons/"
-          ]) if(!js.includes(expected))throw Error('Family main profile packaging missing: '+expected);
-          console.log('SHARIKA_FAMILY_MAIN_PROFILE_ICON_PACKAGED');
+          ]) if(!js.includes(expected))throw Error('Agency profile packaging missing: '+expected);
+          console.log('SHARIKA_AGENCY_MAIN_PROFILE_ICON_PACKAGED');
           NODE
 
       - name: Save private-test APK artifact

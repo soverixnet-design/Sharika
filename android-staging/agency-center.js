@@ -76,11 +76,13 @@
     return true;
   }
   function footer(current){
-    const tabs=[['home','Overview'],['agency','Agencies'],['reports','Reports'],['host','Profile']];
+    const tabs=[['home','Overview'],['agency','Agencies'],['reports','Reports'],
+      ['salary','Salary'],['host','Profile']];
     return '<nav class="ag-bottom" aria-label="Agency navigation">'+
       tabs.map(([key,title])=>'<button type="button" data-ag-tab="'+key+'" '+
         (current===key?'aria-current="page"':'')+'>'+image(icon(key==='home'?'agency':
-          key==='agency'?'host':key==='reports'?'reports':'bd'))+esc(title)+'</button>').join('')+'</nav>';
+          key==='agency'?'host':key==='reports'?'reports':key==='salary'?'salary':'bd'))+
+          esc(title)+'</button>').join('')+'</nav>';
   }
   function shell(title,body,tab='home'){
     panel.innerHTML='<div class="ag-shell"><div class="ag-header">'+
@@ -100,6 +102,7 @@
         else if(me?.agency)show('agency',me.agency.id);
         else show('unassigned');
       }else if(selected==='reports')show('reports');
+      else if(selected==='salary')show('salary');
       else show('overview');
     });
     panel.scrollTop=0;
@@ -158,11 +161,14 @@
       dayActivity(data.bd_activity_by_day)+'</details>'+
       '<h2>Assigned Agencies ('+agencies.length+')</h2>'+
       (rows||'<div class="ag-empty">No agencies have been assigned to this BD account.</div>')+
+      '<button type="button" class="ag-big-button" data-ag-salary-wallet>'+image(icon('salary'))+
+      'Salary Wallet & Exchange</button>'+
       '<button type="button" class="ag-big-button" data-ag-reports>'+image(icon('reports'))+
       'View Agency Reports</button>','agency');
     panel.querySelectorAll('[data-ag-agency]').forEach(button=>button.onclick=()=>
       show('agency',Number(button.dataset.agAgency)));
     panel.querySelector('[data-ag-reports]').onclick=()=>show('reports');
+    panel.querySelector('[data-ag-salary-wallet]').onclick=()=>show('salary');
   }
   function renderAgency(data){
     const agency=data.agency||{},hosts=data.hosts||[];
@@ -195,7 +201,9 @@
       '<button data-ag-filter="review" aria-pressed="false">Review</button></div>'+
       '<div data-ag-hosts></div>'+
       '<button type="button" class="ag-big-button" data-ag-add>'+image(icon('host'))+
-      'Invite / Assign Host</button><p class="ag-muted" data-ag-notice></p>','agency');
+      'Invite / Assign Host</button>'+
+      '<button type="button" class="ag-big-button" data-ag-salary-wallet>'+image(icon('salary'))+
+      'Salary Wallet & Exchange</button><p class="ag-muted" data-ag-notice></p>','agency');
     let filter='all',query='';
     const draw=()=>{
       const matches=hosts.filter(h=>(filter==='all'||(filter==='active'?!!h.active:!h.active))&&
@@ -235,6 +243,7 @@
           '. Host must first be approved for this Agency.');
       }
     };
+    panel.querySelector('[data-ag-salary-wallet]').onclick=()=>show('salary');
   }
   function renderHost(data){
     const host=data.host||{},period=data.period||'today';
@@ -274,22 +283,82 @@
         '<small>Room ID '+esc(room.room_id)+'</small></span>'+
         '<span class="ag-value">'+roomTime(room.seconds)+'</span></div>').join('')||
         '<div class="ag-empty">No verified time in rooms during this period.</div>')+'</div>'+
-      '<div class="ag-panel"><h3>Monthly Target</h3>'+
-      '<p class="ag-muted">Admin has not configured a verified target yet.</p></div>'+
+      '<div class="ag-panel"><h3>Host Gift Target</h3>'+
+      '<p>Received gifts: <b>'+fmt(data.target_progress_coins)+'</b> coins</p>'+
+      (data.targets||[]).map(t=>'<div class="ag-activity ag-time-row"><span class="ag-grow">'+
+        '<b>'+fmt(t.target_coins)+'</b><small>Admin-configured target</small></span>'+
+        '<span class="ag-chip">'+(t.completed?'✓ Reached':'In progress')+'</span></div>').join('')+
+      '</div>'+
       '<div class="ag-panel"><h3>Gift Activity</h3><small>'+esc(period)+' • Gift values in coins</small>'+
       (gifts.map(item).join('')||'<div class="ag-empty">No qualifying gifts for this period.</div>')+'</div>'+
       '<button type="button" class="ag-big-button" data-ag-salary>'+image(icon('salary'))+
-      'View Salary Statement</button>'+
+      'Salary Wallet & Exchange</button>'+
       '<button type="button" class="ag-big-button" data-ag-transactions>'+image(icon('commission'))+
       'Coin Transactions</button><p class="ag-muted" data-ag-notice></p>','host');
     panel.querySelectorAll('[data-ag-period]').forEach(button=>button.onclick=()=>
       show('host',host.public_id,button.dataset.agPeriod,false));
-    panel.querySelector('[data-ag-salary]').onclick=()=>{
-      window.alert('Verified '+period+' host salary estimate: '+
-        coinUnits(data.estimated_salary_units)+' coins. Status: Pending Admin approval. '+
-        'This is not yet credited to your wallet.');
-    };
+    panel.querySelector('[data-ag-salary]').onclick=()=>show('salary');
     panel.querySelector('[data-ag-transactions]').onclick=()=>show('transactions');
+  }
+  async function renderSalary(token){
+    const latest=await api('GET','/agency/me');
+    if(token!==generation)return;
+    me=latest;
+    const salary=latest.salary||{},history=latest.salary_exchanges||[];
+    const maximum=Math.floor((Number(salary.matured_available_units)||0)/10000);
+    const eligible=!!salary.exchange_enabled&&maximum>0;
+    const role=latest.host?.active?'Host':latest.agency?'Agency Owner':
+      latest.bd?.active?'BD':'Not assigned';
+    const targets=(latest.targets||[]).map(target=>
+      '<span class="ag-chip">'+fmt(target.target_coins)+' coins</span>').join(' ');
+    shell('Salary Wallet',title('Salary Wallet',role)+
+      '<div class="ag-hero"><small>Verified Salary Earnings</small>'+
+      '<div class="ag-hero-row">'+image(icon('salary'),'Salary','ag-icon')+
+      '<strong>'+coinUnits(salary.earned_units)+'</strong></div>'+
+      '<p>Salary units • 10,000 units = 1 coin</p></div>'+
+      '<div class="ag-stat-grid"><div class="ag-stat"><small>Exchangeable Now</small>'+
+      '<strong>'+fmt(maximum)+'</strong><small>coins</small></div>'+
+      '<div class="ag-stat"><small>Already Exchanged</small><strong>'+
+      coinUnits(salary.exchanged_units)+'</strong><small>coins</small></div></div>'+
+      '<div class="ag-panel"><h3>Salary Rules</h3><p>Settlement: <b>'+
+      esc(salary.settlement_mode||'weekly')+'</b> • Host minimum target: <b>'+
+      fmt(salary.min_host_target_coins)+'</b> received gift coins</p>'+
+      '<p>USD reference: $1 = '+fmt(salary.coins_per_usd)+' coins</p>'+
+      '<p>Targets: '+targets+'</p>'+
+      '<p class="ag-muted">Only completed-period, target-qualified gift salary can be exchanged. '+
+      'Main Wallet Diamond Exchange is separate and available to all users.</p></div>'+
+      '<div class="ag-panel"><h3>Exchange Salary to Coins</h3><p class="ag-muted">'+
+      (salary.exchange_enabled?'Admin has enabled salary exchange.':
+        'Admin permission is currently disabled.')+'</p>'+
+      '<input type="number" min="1" step="1" max="'+esc(maximum)+'" '+
+      'class="ag-search" placeholder="Coins to exchange" data-ag-salary-coins '+
+      (eligible?'':'disabled')+' aria-label="Salary exchange coins">'+
+      '<button type="button" class="ag-big-button" data-ag-exchange '+
+      (eligible?'':'disabled')+'>'+image(icon('commission'))+
+      'Exchange to Main Coin Wallet</button><p class="ag-muted" data-ag-notice></p></div>'+
+      '<div class="ag-panel"><h3>Salary Exchange Records</h3>'+
+      (history.map(item=>'<div class="ag-activity"><span class="ag-grow"><b>'+
+        fmt(item.credited_coins)+' coins</b><small>'+esc(item.settlement_mode)+' • '+
+        readableDate(item.created_at)+'</small></span><span class="ag-value">✓</span></div>')
+        .join('')||'<div class="ag-empty">No salary exchanges recorded.</div>')+'</div>','salary');
+    panel.querySelector('[data-ag-exchange]').onclick=async()=>{
+      const field=panel.querySelector('[data-ag-salary-coins]');
+      const coins=Number(field?.value);
+      if(!Number.isSafeInteger(coins)||coins<1||coins>maximum)
+        return notice('Enter a whole coin amount within your verified available salary.');
+      const button=panel.querySelector('[data-ag-exchange]');
+      button.disabled=true;
+      try{
+        await api('POST','/agency/salary/exchange',{
+          coins,expected_version:salary.policy_version,
+          request_id:'salary:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,13)
+        });
+        await show('salary',undefined,undefined,false);
+      }catch(error){
+        button.disabled=false;
+        notice('Exchange was not completed: '+String(error?.message||error));
+      }
+    };
   }
   async function renderTransactions(token){
     const wallet=await api('GET','/wallet');
@@ -332,7 +401,8 @@
     if(type==='unassigned')return renderUnassigned();
     loading();const token=++generation;
     try{
-      if(type==='bd'){
+      if(type==='salary')await renderSalary(token);
+      else if(type==='bd'){
         const data=await api('GET','/agency/bd/center');
         if(token===generation)renderBd(data);
       }else if(type==='agency'){
