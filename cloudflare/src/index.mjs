@@ -35,6 +35,7 @@ import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS
 import {handleLuckyBoxApp} from './lucky-box.mjs';
 import {handleInviteLanding} from './invite-link.mjs';
 import {handlePublicAccountDeletion,handleAdminAccountDeletion} from './account-deletion.mjs';
+import {handlePublicPrivacyPolicy} from './privacy-policy.mjs';
 import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 
@@ -196,6 +197,8 @@ export async function handleRequest(request, env, ctx) {
   // Public deletion requests must remain usable after the app is uninstalled.
   const deletionLanding=await handlePublicAccountDeletion(request,env,path);
   if(deletionLanding)return deletionLanding;
+  const privacyPage=handlePublicPrivacyPolicy(request,path);
+  if(privacyPage)return privacyPage;
   const publicMedia=await servePublicMedia(request,env,path);
   if(publicMedia)return publicMedia;
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
