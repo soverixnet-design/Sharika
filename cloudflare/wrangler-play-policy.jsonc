@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sharika-play-policy",
+  "main": "src/play-policy-worker.mjs",
+  "compatibility_date": "2026-10-29",
+  "account_id": "d81cf7c48fb9b36d468cb0a08720cd74",
+  "workers_dev": true,
+  "vars": {
+    "SHARIKA_ENV": "production"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sharika-staging",
+      "database_id": "b2c62252-12a5-4740-90c7-01a536d9a39a"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "SHARIKA_ACTION_RATE_LIMIT",
+      "namespace_id": "410201",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    }
+  ]
+}
