@@ -96,8 +96,8 @@ test('last loaded Royal CSS honors new room card and IME layout on Android',()=>
   assert.match(correction,/\.sh-keyboard-open \.dock/);
   assert.match(correction,/\.sh-keyboard-open \.sh-tools/);
   assert.match(correction,/content:'QA14'/);
-  assert.match(gradle,/versionCode 14/);
-  assert.match(gradle,/versionName '0\.6\.8-fast-room-mic-consent-staging'/);
+  assert.match(gradle,/versionCode 15/);
+  assert.match(gradle,/versionName '0\.6\.9-play-billing-staging'/);
 });
 
 test('CI can reproduce real Gboard and measure stable seats in an isolated WebView',()=>{

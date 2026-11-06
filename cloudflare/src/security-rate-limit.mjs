@@ -6,6 +6,7 @@ export function sensitiveActionClass(method, path) {
   // Voice negotiation / heartbeat must never be throttled like purchases.
   if (/^\/api\/v1\/rooms\/[0-9]{8}\/voice(?:\/|$)/.test(path)) return null;
   if (
+    path === '/api/v1/billing/verify' ||
     path === '/api/v1/sellers/transfer' ||
     path === '/api/v1/invites/redeem' ||
     path === '/api/v1/invites/withdrawals' ||

@@ -65,6 +65,7 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import com.android.installreferrer.api.InstallReferrerClient;
 import com.android.installreferrer.api.InstallReferrerStateListener;
 import com.android.installreferrer.api.ReferrerDetails;
+import com.android.billingclient.api.Purchase;
 
 import org.json.JSONObject;
 import org.json.JSONException;
@@ -80,6 +81,8 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -106,6 +109,8 @@ public final class SharikaActivity extends Activity {
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
+    private PlayBillingController playBilling;
+    private final Set<String> billingInFlight = new HashSet<>();
     private View openingOverlay;
     private boolean backInProgress;
     private Runnable unregisterModernBack;
@@ -194,6 +199,18 @@ public final class SharikaActivity extends Activity {
         browser.getSettings().setJavaScriptCanOpenWindowsAutomatically(false);
         browser.getSettings().setMediaPlaybackRequiresUserGesture(false);
         browser.addJavascriptInterface(new NativeBridge(), "SharikaNative");
+        playBilling = new PlayBillingController(this, new PlayBillingController.Delegate() {
+            @Override public void reply(String id, JSONObject value, String error) {
+                sendResult(id, result(error == null, value, error));
+            }
+            @Override public void processPurchase(Purchase purchase) {
+                verifyPlayPurchase(purchase);
+            }
+            @Override public void event(String state, String message) {
+                emitPlayBillingEvent(state, message);
+            }
+            @Override public String obfuscatedAccountId() { return playAccountHash(); }
+        });
         browser.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 // The JavascriptInterface is injected into *every* frame. Block
@@ -882,6 +899,17 @@ public final class SharikaActivity extends Activity {
                 sendPushToken(id);
                 break;
             case "api": callStagingApi(id, data); break;
+            case "billingProducts":
+                if (playAccountHash() == null) sendResult(id,result(false,null,"login_required"));
+                else playBilling.listProducts(id);
+                break;
+            case "billingBuy":
+                preflightPlayBilling(id, data.optString("product_id", ""));
+                break;
+            case "billingRestore":
+                if (playAccountHash() == null) sendResult(id,result(false,null,"login_required"));
+                else playBilling.restore(id);
+                break;
             case "roomScreenAwake":
                 // Keep the display active only during an authenticated voice
                 // room, including when its mini-player is on another app page.
@@ -1159,6 +1187,9 @@ public final class SharikaActivity extends Activity {
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
         if (path.equals("/api/v1/music-library")) return method.equals("GET");
         if (path.equals("/api/v1/wallet")) return method.equals("GET");
+        // Play receipt verification is native-only; JS may list packs but
+        // cannot submit arbitrary client-minted tokens through this bridge.
+        if (path.equals("/api/v1/billing/catalog")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange-rate")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange")) return method.equals("POST");
         if (path.equals("/api/v1/follows") || path.equals("/api/v1/messages") ||
@@ -1333,6 +1364,137 @@ public final class SharikaActivity extends Activity {
         });
     }
 
+    private String playAccountHash() {
+        FirebaseUser user = auth == null ? null : auth.getCurrentUser();
+        if (user == null || !user.isEmailVerified()) return null;
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                user.getUid().getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(64);
+            for (byte value : digest) hex.append(String.format(java.util.Locale.ROOT,
+                "%02x", value & 0xff));
+            return hex.toString();
+        } catch (Exception ignored) { return null; }
+    }
+
+    private void emitPlayBillingEvent(String status, String message) {
+        JSONObject detail = object();
+        try { detail.put("status", status); detail.put("message", message); }
+        catch (JSONException ignored) { }
+        runOnUiThread(() -> {
+            if (browser != null) browser.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('sharika-play-billing',{detail:"+
+                detail.toString()+"}));", null);
+        });
+    }
+
+    // Only this native method reads a purchase token. The WebView receives no
+    // service account key and cannot manufacture a credited receipt.
+    private JSONObject authorizedBillingRequest(String jwt, String path, JSONObject body)
+        throws Exception {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(STAGING_API + path).openConnection();
+            connection.setRequestMethod(body == null ? "GET" : "POST");
+            connection.setConnectTimeout(12000);
+            connection.setReadTimeout(12000);
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Authorization", "Bearer " + jwt);
+            if (body != null) {
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                try (OutputStream stream = connection.getOutputStream()) {
+                    stream.write(body.toString().getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            int status = connection.getResponseCode();
+            InputStream raw = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            StringBuilder text = new StringBuilder();
+            if (raw != null) try (BufferedReader lines = new BufferedReader(
+                new InputStreamReader(raw, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = lines.readLine()) != null && text.length() < 8000)
+                    text.append(line);
+            }
+            JSONObject data = new JSONObject(text.toString());
+            if (status < 200 || status >= 300)
+                throw new IOException(data.optString("error", "billing_http_" + status));
+            return data;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private void preflightPlayBilling(String id, String sku) {
+        FirebaseUser user = auth.getCurrentUser();
+        if (playAccountHash() == null || user == null) {
+            sendResult(id,result(false,null,"login_required")); return;
+        }
+        user.getIdToken(false).addOnCompleteListener(this, token -> {
+            if (!token.isSuccessful() || token.getResult() == null) {
+                sendResult(id,result(false,null,"firebase_token_unavailable"));return;
+            }
+            io.execute(() -> {
+                try {
+                    JSONObject catalog = authorizedBillingRequest(token.getResult().getToken(),
+                        "/api/v1/billing/catalog", null);
+                    boolean matched = false;
+                    org.json.JSONArray available = catalog.optJSONArray("products");
+                    if (available != null) for (int i=0; i<available.length(); i++) {
+                        JSONObject item = available.optJSONObject(i);
+                        if (item != null && sku.equals(item.optString("id"))) matched = true;
+                    }
+                    if (!catalog.optBoolean("enabled") || !matched) {
+                        sendResult(id,result(false,null,"play_billing_not_configured"));return;
+                    }
+                    runOnUiThread(() -> playBilling.buy(id, sku));
+                } catch (Exception error) {
+                    sendResult(id,result(false,null,"play_billing_unavailable"));
+                }
+            });
+        });
+    }
+
+    private void verifyPlayPurchase(Purchase purchase) {
+        if (purchase.getProducts().size() != 1) return;
+        String sku = purchase.getProducts().get(0);
+        String receipt = purchase.getPurchaseToken();
+        if (receipt == null || receipt.length() < 20 || !billingInFlight.add(receipt)) return;
+        FirebaseUser user = auth.getCurrentUser();
+        if (playAccountHash() == null || user == null) {
+            billingInFlight.remove(receipt);
+            emitPlayBillingEvent("login_required", "Sign in to claim your Google Play purchase.");
+            return;
+        }
+        user.getIdToken(false).addOnCompleteListener(this, token -> {
+            if (!token.isSuccessful() || token.getResult() == null) {
+                billingInFlight.remove(receipt);
+                emitPlayBillingEvent("retry", "Payment verification will retry after sign-in.");
+                return;
+            }
+            io.execute(() -> {
+                boolean credited = false;
+                try {
+                    JSONObject payload = object();
+                    payload.put("product_id", sku);
+                    payload.put("purchase_token", receipt);
+                    JSONObject response = authorizedBillingRequest(token.getResult().getToken(),
+                        "/api/v1/billing/verify", payload);
+                    credited = response.optBoolean("credited", false);
+                } catch (Exception ignored) { /* Never credit from client state. */ }
+                final boolean granted = credited;
+                runOnUiThread(() -> {
+                    billingInFlight.remove(receipt);
+                    if (granted) {
+                        emitPlayBillingEvent("credited", "Verified coins added to your wallet.");
+                        playBilling.consumeVerified(receipt);
+                    } else emitPlayBillingEvent("retry",
+                        "Play receipt not yet verified. No coins added; try Restore purchases.");
+                });
+            });
+        });
+    }
+
     private void stageHttp(String id, String method, String path, JSONObject body, String jwt) {
         HttpURLConnection connection = null;
         try {
@@ -1396,6 +1558,7 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (playBilling != null) { playBilling.close(); playBilling = null; }
         if (googlePending) expireGoogleSignIn(googleAttempt);
         setRoomAudioRoute(false);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

@@ -8173,6 +8173,105 @@
     else refreshVerifiedRechargeRate().catch(error=>toast('Recharge rates unavailable: '+errText(error)));
     return value;
   };
+  // One-time Play products use the platform's *localized* prices. No price,
+  // purchase token, or virtual coin credit is accepted from this WebView;
+  // Android verifies the token with the Cloudflare Worker before consuming.
+  const originalRenderRecharge=window.renderRcp;
+  let playBillingViewSerial=0;
+  function playBillingNotice(host,message){
+    const status=host?.querySelector('[data-sh-play-status]');
+    if(status)status.textContent=message;
+  }
+  async function mountPlayBilling(){
+    if(!session||window.RCT===1)return;
+    const root=document.querySelector('#rcp .rcb');
+    if(!root)return;
+    const serial=++playBillingViewSerial;
+    const panel=document.createElement('section');
+    panel.id='sharika-play-billing';
+    panel.style.cssText='border:1px solid #e8b84c;border-radius:19px;'+
+      'padding:14px;margin:12px 0;color:#fff1c0;'+
+      'background:linear-gradient(145deg,#70461a,#2a1645 68%,#160d31);'+
+      'box-shadow:0 8px 20px #14032455';
+    panel.innerHTML='<h3 style="margin:0 0 7px;color:#ffe5a1">'+
+      '🛍️ Google Play Recharge</h3><p data-sh-play-status '+
+      'style="font-size:12px;line-height:1.5">Checking Play Store…</p>';
+    root.insertBefore(panel,root.querySelector('.pk'));
+    const live=()=>serial===playBillingViewSerial&&panel.isConnected&&session&&window.RCT===0;
+    try{
+      const catalog=await api('GET','/billing/catalog');
+      if(!live())return;
+      if(!catalog?.enabled){
+        playBillingNotice(panel,'Play checkout is being configured in Play Console. '+
+          'No payment can be taken yet.');
+        return;
+      }
+      const fromPlay=await native('billingProducts',{});
+      if(!live())return;
+      const prices=new Map((fromPlay.products||[]).map(p=>[p.id,p]));
+      const products=(catalog.products||[]).filter(p=>prices.has(p.id));
+      if(!products.length){
+        playBillingNotice(panel,'Google Play products are not yet available '+
+          'for this Google account or installation.');return;
+      }
+      playBillingNotice(panel,'Google Play handles secure payment. Coins arrive '+
+        'only after server verification.');
+      for(const product of products){
+        const offer=prices.get(product.id);
+        const button=document.createElement('button');
+        button.type='button';
+        button.style.cssText='display:flex;align-items:center;justify-content:space-between;'+
+          'width:100%;padding:12px;margin:7px 0;border-radius:12px;'+
+          'color:#342003;background:linear-gradient(180deg,#fff5bd,#f6c85b);'+
+          'font-weight:800;border:1px solid #c89631';
+        const count=document.createElement('span');
+        count.textContent='🪙 '+Number(product.coins).toLocaleString('en-US')+' coins';
+        const price=document.createElement('span');
+        price.textContent=String(offer.price||'');
+        button.append(count,price);
+        button.onclick=async()=>{
+          button.disabled=true;
+          playBillingNotice(panel,'Opening Google Play checkout…');
+          try{
+            await native('billingBuy',{product_id:product.id});
+            playBillingNotice(panel,'Finish payment in Google Play. '+
+              'Pending purchases never add coins.');
+          }catch(error){playBillingNotice(panel,'Play checkout unavailable: '+errText(error));}
+          finally{button.disabled=false;}
+        };
+        panel.appendChild(button);
+      }
+      const restore=document.createElement('button');
+      restore.type='button';restore.textContent='Restore pending Play purchases';
+      restore.style.cssText='margin-top:8px;padding:8px;color:#ffeab3;'+
+        'background:transparent;border:1px solid #ecc85b;border-radius:10px';
+      restore.onclick=async()=>{
+        restore.disabled=true;
+        try{
+          const result=await native('billingRestore',{});
+          playBillingNotice(panel,'Checking '+Number(result.checked||0)+
+            ' pending Google Play purchase(s)…');
+        }catch(error){playBillingNotice(panel,'Restore unavailable: '+errText(error));}
+        finally{restore.disabled=false;}
+      };
+      panel.appendChild(restore);
+    }catch(error){
+      if(live())playBillingNotice(panel,'Play checkout unavailable: '+errText(error));
+    }
+  }
+  if(typeof originalRenderRecharge==='function')window.renderRcp=function(...args){
+    const value=originalRenderRecharge.apply(this,args);
+    if(window.RCT===0)mountPlayBilling().catch(()=>{});
+    return value;
+  };
+  window.addEventListener('sharika-play-billing',async event=>{
+    const detail=event.detail||{};
+    if(detail.status==='credited'){
+      await refreshWalletAfterConfirmedTransaction().catch(()=>{});
+      if(document.getElementById('rcp')?.classList.contains('on')&&window.RCT===0)
+        window.renderRcp?.();
+    }else if(detail.message)toast(String(detail.message));
+  });
   document.addEventListener('click',event=>{
     if(event.target.closest?.('#rcp [data-x="1"]'))
       refreshVerifiedExchangeRate().catch(error=>toast('Exchange rate: '+errText(error)));

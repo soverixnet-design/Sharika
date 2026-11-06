@@ -30,6 +30,7 @@ import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.
 import {handleSoveraGaddy} from './sovera-gaddy.mjs';
 import {handleFruitRoyaleRequest,settleFruitDueBets} from './fruit-royale.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
+import {handlePlayBilling} from './play-billing.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
 import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
@@ -285,6 +286,10 @@ export async function handleRequest(request, env, ctx) {
   } catch (_) { return fail('rate_limiter_unavailable', 503, cors); }
   const parts = path.split('/').filter(Boolean);
   try {
+    if(path==='/api/v1/billing/catalog'||path==='/api/v1/billing/verify'){
+      await assertActive(env.DB,uid);
+      return await handlePlayBilling({request,env,uid,path,cors,reply,fail});
+    }
     if(path==='/api/v1/opening/next')return await handleOpeningApp({
       request,env,uid,path,cors,reply,fail
     });
