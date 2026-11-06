@@ -8472,12 +8472,15 @@
     window.CFG.banners=cards;
     const slide=document.getElementById('ban'),dots=document.getElementById('dots');
     if(slide)slide.innerHTML=cards.map((row,i)=>{
-      const background=row.img
-        ?'linear-gradient(90deg,rgba(15,5,28,.75),rgba(15,5,28,.12)),url('+row.img+') center/cover'
-        :'linear-gradient(135deg,'+row.c+')';
-      return '<div class="slide" data-i="'+i+'" style="background:'+background+'"><b>'+
-        sellerEscape(row.t)+'</b><small>'+sellerEscape(row.s)+'</small><i>'+
-        (row.img?'':sellerEscape(row.e))+'</i></div>';
+      // Uploaded artwork may already contain its own lettering. Show it in
+      // full, without a dark gradient or a second headline/subtitle layer.
+      if(row.img)return '<div class="slide slide--image" data-i="'+i+
+        '" role="button" tabindex="0" aria-label="'+sellerEscape(row.t)+
+        '"><img class="banner-art" src="'+sellerEscape(row.img)+
+        '" alt="'+sellerEscape(row.t)+'" loading="eager" decoding="async"></div>';
+      return '<div class="slide" data-i="'+i+'" role="button" tabindex="0" style="background:linear-gradient(135deg,'+
+        row.c+')"><b>'+sellerEscape(row.t)+'</b><small>'+sellerEscape(row.s)+
+        '</small><i>'+sellerEscape(row.e)+'</i></div>';
     }).join('');
     if(dots)dots.innerHTML=cards.map((_,i)=>'<u'+(!i?' class="on"':'')+'></u>').join('');
     window.bi=0;

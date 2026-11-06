@@ -28,10 +28,14 @@ button{font:inherit;color:inherit;cursor:pointer}
 .srch{display:flex;align-items:center;gap:8px;height:42px;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.08);padding:0 14px;margin-bottom:12px}
 .srch input{flex:1;min-width:0;border:0;outline:0;background:none;color:#fff;font:inherit;font-size:15px}.srch input::placeholder{color:var(--mu)}
 .ban{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 -14px;padding:0 14px}
-.slide{flex:none;width:100%;height:128px;border-radius:22px;scroll-snap-align:center;position:relative;overflow:hidden;padding:18px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;box-shadow:0 12px 28px rgba(0,0,0,.35)}
+.slide{flex:none;width:100%;height:148px;border-radius:22px;scroll-snap-align:center;position:relative;overflow:hidden;padding:18px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;box-shadow:0 12px 28px rgba(0,0,0,.35)}
 .slide::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 85% 0,rgba(255,255,255,.3),transparent 55%)}
 .slide b{font-size:19px;max-width:62%;line-height:1.25;position:relative;z-index:1;text-shadow:0 2px 8px rgba(0,0,0,.35)}.slide small{font-size:12px;max-width:62%;opacity:.9;margin-top:5px;position:relative;z-index:1}
 .slide i{position:absolute;right:16px;top:50%;font-size:74px;font-style:normal;transform:translateY(-50%);animation:fl 3s ease-in-out infinite;filter:drop-shadow(0 8px 12px rgba(0,0,0,.4));z-index:1}
+/* Image banners are finished artwork: no app-generated copy, tint or glare over them. */
+.slide.slide--image{padding:0;background:transparent;border:2px solid #f3d49b;box-shadow:0 12px 26px rgba(12,4,5,.55),0 0 0 1px #74421f,inset 0 0 0 1px #fff2ca}
+.slide.slide--image::after{content:none}
+.slide .banner-art{display:block;position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
 @keyframes fl{50%{transform:translateY(-58%) rotate(6deg)}}
 .dots{display:flex;justify-content:center;gap:6px;margin:8px 0 12px}.dots u{width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.3);transition:.3s}.dots u.on{width:18px;background:var(--gold)}
 .qa{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
@@ -423,10 +427,13 @@ function go(v){
 document.querySelectorAll(".ni").forEach(function(b){b.onclick=function(){go(b.dataset.v)}});
 /* ===== Banners ===== */
 var bi=0,bpause=false;
-applyAdmin();$("ban").innerHTML=CFG.banners.map(function(b,i){return'<div class="slide" data-i="'+i+'" style="'+(b.img?"background:linear-gradient(90deg,rgba(0,0,0,.6),transparent),url("+b.img+") center/cover":"background:linear-gradient(135deg,"+b.c+")")+'"><b>'+esc(b.t)+'</b><small>'+esc(b.s)+'</small><i>'+(b.img?"":b.e)+'</i></div>'}).join("");
+applyAdmin();$("ban").innerHTML=CFG.banners.map(function(b,i){return b.img
+  ?'<div class="slide slide--image" data-i="'+i+'" role="button" tabindex="0" aria-label="'+esc(b.t)+'"><img class="banner-art" src="'+esc(b.img)+'" alt="'+esc(b.t)+'" loading="eager" decoding="async"></div>'
+  :'<div class="slide" data-i="'+i+'" role="button" tabindex="0" style="background:linear-gradient(135deg,'+b.c+')"><b>'+esc(b.t)+'</b><small>'+esc(b.s)+'</small><i>'+esc(b.e)+'</i></div>'}).join("");
 $("dots").innerHTML=CFG.banners.map(function(_,i){return"<u"+(i?"":' class="on"')+"></u>"}).join("");
 $("ban").onscroll=function(){var w=this.children[0].offsetWidth+10;bi=Math.round(this.scrollLeft/w);document.querySelectorAll("#dots u").forEach(function(d,i){d.classList.toggle("on",i===bi)})};
 $("ban").onclick=function(e){var s=e.target.closest(".slide");if(!s)return;var a=CFG.banners[+s.dataset.i].a;if(a==="welcome")$("q").focus();if(a==="daily")dailySheet();if(a==="recharge")rechargeSheet();if(a==="rank")go("rank");if(a==="invite")inviteSheet()};
+$("ban").onkeydown=function(e){if((e.key==="Enter"||e.key===" ")&&e.target.classList.contains("slide")){e.preventDefault();e.target.click()}};
 $("ban").addEventListener("touchstart",function(){bpause=true});$("ban").addEventListener("touchend",function(){setTimeout(function(){bpause=false},3000)});
 setInterval(function(){if(bpause||!$("v-home").classList.contains("on"))return;bi=(bi+1)%CFG.banners.length;var b=$("ban");b.scrollTo({left:bi*(b.children[0].offsetWidth+10),behavior:"smooth"})},4200);
 /* ===== Room card (3D) ===== */
