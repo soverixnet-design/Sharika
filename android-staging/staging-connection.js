@@ -119,6 +119,12 @@
       const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
         action === 'googleSignIn' ? 70000 :
         action === 'pushToken' && payload?.promptPermission ? 60000 :
+        // Seat snapshots are read-only. A stalled native bridge must not
+        // leave the first room visit behind a 25-second loading veil. The
+        // verified room retry loop can safely request a new snapshot.
+        action === 'api' && payload?.method === 'GET' &&
+          /^\/api\/v1\/rooms\/[0-9]{8}\/members$/.test(payload?.path || '')
+          ? 10000 :
         action === 'api' && payload?.method === 'PUT' &&
           (payload?.path === '/api/v1/me/avatar' ||
            /^\/api\/v1\/rooms\/[0-9]{8}\/cover$/.test(payload?.path || ''))
@@ -8034,9 +8040,15 @@
     wrap.append(card);
     if(roomJoinSlowTimer)clearTimeout(roomJoinSlowTimer);
     roomJoinSlowTimer=setTimeout(()=>{
+      roomJoinSlowTimer=null;
       if(!card.isConnected)return;
-      progress.textContent='Room details are delayed. Retry now or go back to rooms.';
-      retry.hidden=false;
+      const admitted=card.dataset.admitted==='true';
+      progress.textContent=admitted?
+        'Verified seats are delayed. Retry room details or go back to rooms.':
+        'Waiting for room authorization. Go back and try again if it stays here.';
+      // Retry only re-reads member data after the Worker confirms /join.
+      // Previously this button was visible before admission and did nothing.
+      retry.hidden=!admitted;
     },6500);
   }
   function hideRoomJoining(){
@@ -8116,6 +8128,12 @@
       if(!joined)return;
       pendingJoinRoomId=null;
       roomAdmitted=true;
+      const joinCard=document.getElementById('sh-room-joining-card');
+      if(joinCard){
+        joinCard.dataset.admitted='true';
+        if(!roomJoinSlowTimer)
+          joinCard.querySelector('button:nth-last-child(2)')?.removeAttribute('hidden');
+      }
       // Start media immediately after verified join, while the room iframe
       // and decorative assets continue loading independently.
       ensureVoiceConnected(room.id).catch(error=>{

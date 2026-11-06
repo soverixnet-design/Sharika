@@ -195,7 +195,8 @@ test('room entry avoids sequential teardown delays and does not poll owner profi
   assert.match(room,/room\.__sharikaOwnerProfileInFlight=api\('GET','\/users\/'\+room\.id\)/);
   assert.match(room,/data=await api\('GET','\/rooms\/'\+room\.id\+'\/members'\)/);
   assert.match(room,/await Promise\.all\(\[\s*releaseVoice\(\),api\('POST','\/rooms\/'.*prior\.id.*'\/leave'/);
-  assert.match(room,/progress\.textContent='Room details are delayed\. Retry now or go back to rooms/);
+  assert.match(room,/Verified seats are delayed\. Retry room details or go back to rooms/);
+  assert.match(room,/Waiting for room authorization\. Go back and try again/);
   assert.match(room,/window\.__sharikaRetryVerifiedRoom/);
   assert.match(room,/window\.addEventListener\('online',\(\)=>\{\s*const room=window\.cur/);
 });

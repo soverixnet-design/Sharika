@@ -125,6 +125,9 @@ test('one tap shows a room joining shell and forbids overlapping join requests',
   assert.match(ui,/if\(roomEntryBusyToken!==null\)return/);
   assert.match(ui,/showRoomJoining\(room\)/);
   assert.match(ui,/wrap\.classList\.add\('on','sh-room-awaiting','sh-room-joining'\)/);
+  assert.match(ui,/Seat snapshots are read-only/);
+  assert.match(ui,/\? 10000 :/);
+  assert.match(ui,/retry\.hidden=!admitted/);
   assert.match(ui,/currentToken!==roomEntryToken/);
   assert.match(ui,/hideRoomJoining\(\)/);
   assert.match(premium,/\.roomwrap\.on\.sh-room-awaiting\.sh-room-joining/);
