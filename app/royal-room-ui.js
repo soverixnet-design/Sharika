@@ -583,7 +583,7 @@
       const people=document.createElement('div');
       people.id='sh-room-faces';people.className='sh-room-faces';
       bar.append(people);
-      top.after(bar);
+      top.insertBefore(bar,settingsButton);
     }
     const faces=document.getElementById('sh-room-faces');
     faces.replaceChildren();
