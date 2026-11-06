@@ -97,7 +97,7 @@ test('last loaded Royal CSS honors new room card and IME layout on Android',()=>
   assert.match(correction,/\.sh-keyboard-open \.sh-tools/);
   assert.match(correction,/content:'QA13'/);
   assert.match(gradle,/versionCode 100/);
-  assert.match(gradle,/versionName '0\.6\.7-anchored-room-keyboard-qa'/);
+  assert.match(gradle,/versionName '1\.0\.0'/);
 });
 
 test('CI can reproduce real Gboard and measure stable seats in an isolated WebView',()=>{
@@ -148,7 +148,11 @@ test('top room card is shorter in width but thicker without changing microphone 
   assert.match(latest,/min-height:50px;height:50px/);
   assert.match(latest,/border:2px solid #f3c777/);
   assert.match(latest,/\.top \.room>\.rav\{[\s\S]*?width:36px;height:36px/);
-  // Option 1 intentionally gives the seat grid a four-column geometry. Verify the\n  // keyboard-open rules preserve its actual dimensions and position.\n  assert.match(css,/\.sh-royal-room \.grid\s*\{\s*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);\n  assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.seat \.av/);\n  assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.host \.av/);
+  // Option 1 intentionally gives the seat grid a four-column geometry. Verify the
+  // keyboard-open rules preserve its actual dimensions and position.
+  assert.match(css,/\.sh-royal-room \.grid\s*\{\s*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.seat \.av/);
+  assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.host \.av/);
 });
 
 test('seat invitation requires authenticated response with verified inviter presentation',()=>{
