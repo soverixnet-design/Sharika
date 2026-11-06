@@ -128,6 +128,25 @@ test('packaged Agency UI has all three real-data screens and Android back naviga
   assert.match(gradle,/agency-center\.css/);
 });
 
+test('Agency screens keep a visible retry path and optional requests do not block discovery',()=>{
+  const center=readFileSync(new URL('../../android-staging/agency-center.js',import.meta.url),'utf8');
+  assert.match(center,/warnIfSlow\(token,\(\)=>show\(type,id,period,false\)\)/);
+  assert.match(center,/warnIfSlow\(token,\(\)=>open\(prefer\)\)/);
+  assert.match(center,/button\.textContent='Retry loading'/);
+  assert.match(center,/Promise\.allSettled\(\[\s*api\('GET','\/agency\/discover'\)/);
+  assert.match(center,/if\(discovery\.status==='rejected'\)throw discovery\.reason/);
+  assert.match(center,/else await renderUnassigned\(token\)/);
+});
+
+test('room entry avoids sequential teardown delays and does not poll owner profile every three seconds',()=>{
+  const room=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.match(room,/Date\.now\(\)-cachedOwner\.fetchedAt<60000/);
+  assert.match(room,/ownerFresh\?Promise\.resolve\(cachedOwner\.value\):api\('GET','\/users\/'.*room\.id\)/);
+  assert.match(room,/await Promise\.all\(\[\s*releaseVoice\(\),api\('POST','\/rooms\/'.*prior\.id.*'\/leave'/);
+  assert.match(room,/progress\.textContent='Network is slow\. Retrying the verified room connection/);
+  assert.match(room,/window\.addEventListener\('online',\(\)=>\{\s*const room=window\.cur/);
+});
+
 test('an Agency Owner can open Agency and Host earnings independently from main profile',()=>{
   const root=new URL('../../android-staging/',import.meta.url);
   const center=readFileSync(new URL('agency-center.js',root),'utf8');

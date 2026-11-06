@@ -263,8 +263,10 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
       return stmt;
     };
     const env={DB:db,FIREBASE_PROJECT_ID:project,
-      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{},
-        roomPolicyRead:async()=>({chat_mode:'anyone',mic_mode:'anyone',super_mic:true})})}};
+      VOICE_ROOMS:{getByName:name=>name==='sharika:presence:staging'
+        ?{presenceRoomMembers:async()=>[owner,'firebase:'+project+':room-guest']}
+        :{lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{},
+          roomPolicyRead:async()=>({chat_mode:'anyone',mic_mode:'anyone',super_mic:true})}}};
     const ownerToken=await token();
     const guestToken=await token({sub:'room-guest'});
     const patch=(jwt,value)=>handleRequest(new Request(
@@ -1346,11 +1348,13 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
         return seat===3?{error:'seat_locked'}:{member:{seat_no:seat}};
       }
     };
+    let presenceOffline=false;
     const rooms={getByName(name){
       if(name==='sharika:presence:staging'){
         // The members endpoint now checks live presence before room seats.
         // Keep the owner's active-room state realistic in the test fixture.
         return {async presenceRoomMembers(roomId){
+          if(presenceOffline)throw new Error('presence coordinator temporarily down');
           assert.equal(roomId,'10000001');return [uid];
         }};
       }
@@ -1407,6 +1411,14 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       'room seat count is returned for other members to refresh their view');
     assert.equal(memberSnapshot.seat_frame_style,'grad');
     assert.deepEqual(memberSnapshot.locked_seats,[3]);
+    presenceOffline=true;
+    const unavailable=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001/members',{headers}),
+      {DB:makeDb(uid),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
+    assert.equal(unavailable.status,503,
+      'a presence outage must not pretend all verified occupants left');
+    assert.equal((await unavailable.json()).error,'room_presence_unavailable');
+    presenceOffline=false;
     const notJoined=await handleRequest(new Request(
       'https://example.test/api/v1/rooms/10000001/members',{headers}),
       {DB:makeDb(uid,false),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});

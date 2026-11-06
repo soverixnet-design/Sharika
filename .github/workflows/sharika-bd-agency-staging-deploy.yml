@@ -3,7 +3,11 @@ name: Sharika BD Agency virtual wallet STAGING deployment
 on:
   push:
     branches: [feature/sharika-bd-agency-wallet-staging-20261106]
-    paths: ['.github/workflows/sharika-bd-agency-staging-deploy.yml']
+    # API-only bug fixes need the tested isolated staging Worker to pick them
+    # up alongside the tester APK. This never targets production services.
+    paths:
+      - '.github/workflows/sharika-bd-agency-staging-deploy.yml'
+      - 'cloudflare/src/index.mjs'
   workflow_dispatch:
 
 permissions:

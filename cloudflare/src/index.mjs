@@ -1821,13 +1821,17 @@ export async function handleRequest(request, env, ctx) {
         try{presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');}
         catch(error){console.warn('presence_coordinator_unavailable',error?.message);}
         const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        // A failed presence lookup does not mean everyone left the room.
+        // Returning an empty member list on a coordinator outage erased all
+        // occupied seats from every phone until the next successful poll.
+        if(typeof presence?.presenceRoomMembers!=='function')
+          return fail('room_presence_unavailable',503,cors);
         // All these reads are independent; serial Durable Object and D1
         // round-trips previously added seconds to the first seat snapshot.
-        const activeUsers=typeof presence?.presenceRoomMembers==='function'
-          ?presence.presenceRoomMembers(roomId).catch(error=>{
-            console.warn('presence_room_members_unavailable',error?.message);
-            return [];
-          }):Promise.resolve([]);
+        const activeUsers=presence.presenceRoomMembers(roomId).catch(error=>{
+          console.warn('presence_room_members_unavailable',error?.message);
+          return null;
+        });
         const wallpaperTask=room.theme==='photo' ? env.DB.prepare(
           'SELECT version FROM sharika_room_theme_images WHERE room_id=?'
         ).bind(roomId).first():Promise.resolve(null);
@@ -1835,6 +1839,7 @@ export async function handleRequest(request, env, ctx) {
           activeUsers,coordinator.lockedSeats(),coordinator.roomPolicyRead(),
           readRoomEquipped(env.DB,roomId),wallpaperTask,roomBondPairs(env.DB,roomId)
         ]);
+        if(liveIds===null)return fail('room_presence_unavailable',503,cors);
         const live=new Set(liveIds);
         const visibleMembers=(result.results||[]).filter(m=>live.has(m.user_id));
         // Room color and owner-selected photo are shared room state. Return

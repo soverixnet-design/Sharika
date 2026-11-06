@@ -118,7 +118,20 @@
   }
   function loading(){
     shell('Agency Center','<div class="ag-title"><span class="ag-crown">♛</span>'+
-      '<h1>Agency Center</h1></div><div class="ag-empty">Loading verified records…</div>');
+      '<h1>Agency Center</h1></div><div class="ag-empty" data-ag-loading-note>'+
+      'Loading verified records…</div>');
+  }
+  function warnIfSlow(token,retry){
+    setTimeout(()=>{
+      if(token!==generation||panel?.hidden)return;
+      const target=panel?.querySelector('[data-ag-loading-note]');
+      if(!target)return;
+      target.textContent='The connection is taking longer than expected. Your account is safe. ';
+      const button=document.createElement('button');
+      button.type='button';button.className='ag-mini-button';
+      button.textContent='Retry loading';button.onclick=retry;
+      target.appendChild(button);
+    },6500);
   }
   function fail(error){
     shell('Unavailable','<div class="ag-title"><h1>Agency Center</h1></div>'+
@@ -134,10 +147,14 @@
     return show('unassigned',undefined,undefined,false);
   }
   async function renderUnassigned(token){
-    const [discovery,applications]=await Promise.all([
+    // Application history must not make public Agency discovery unusable if
+    // that optional endpoint is temporarily unavailable.
+    const [discovery,applications]=await Promise.allSettled([
       api('GET','/agency/discover'),api('GET','/agency/create/requests')]);
     if(token!==generation)return;
-    const agencies=discovery.families||[],requests=applications.requests||[];
+    if(discovery.status==='rejected')throw discovery.reason;
+    const agencies=discovery.value.families||[];
+    const requests=applications.status==='fulfilled'?applications.value.requests||[]:[];
     shell('Agency Center',title('Discover Agency')+
       '<div class="ag-hero">'+image(icon('agency'),'Agency crest','ag-icon')+
       '<h3>BD • Agency • Host</h3><p>Choose an approved Agency or apply to create one.</p></div>'+
@@ -510,7 +527,7 @@
       panel.querySelectorAll('[data-ag-agency]').forEach(b=>b.onclick=()=>show('agency',Number(b.dataset.agAgency)));
     }else if(me?.agency){show('agency',me.agency.id,undefined,false);}
     else if(me?.host?.active){show('host',me.host.public_id,'month',false);}
-    else renderUnassigned();
+    else await renderUnassigned(token);
   }
   async function show(type,id,period,keepHistory=true){
     ensurePanel();panel.hidden=false;
@@ -518,6 +535,7 @@
     lastView={type,id,period};
     if(type==='overview')return showOverview();
     loading();const token=++generation;
+    warnIfSlow(token,()=>show(type,id,period,false));
     try{
       if(type==='unassigned')await renderUnassigned(token);
       else if(type==='grant')renderGrant();
@@ -540,6 +558,7 @@
   async function open(prefer){
     ensurePanel();panel.hidden=false;stack=[];lastView=null;loading();
     const token=++generation;
+    warnIfSlow(token,()=>open(prefer));
     try{
       me=await api('GET','/agency/me');
       if(token!==generation)return;

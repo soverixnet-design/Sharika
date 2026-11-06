@@ -5166,10 +5166,19 @@
     frame.__sharikaSeatSnapshotInFlight=true;
     let data,owner;
     try {
+      // Room presence needs a short poll, but a person's public profile does
+      // not. Cache the verified owner briefly to avoid an extra D1/Firebase
+      // bridge request on every three-second room refresh. A new room object
+      // or an expired entry always re-verifies the profile.
+      const cachedOwner=room.__sharikaVerifiedOwner;
+      const ownerFresh=cachedOwner&&cachedOwner.userId===userId&&
+        Date.now()-cachedOwner.fetchedAt<60000;
       [data,owner] = await Promise.all([
         api('GET','/rooms/'+room.id+'/members'),
-        api('GET','/users/'+room.id)
+        ownerFresh?Promise.resolve(cachedOwner.value):api('GET','/users/'+room.id)
       ]);
+      if(!ownerFresh&&owner&&session?.user?.id===userId)
+        room.__sharikaVerifiedOwner={userId,fetchedAt:Date.now(),value:owner};
     } finally {
       // A 3-second presence refresh must not supersede a still-running first
       // snapshot on a slow connection, otherwise no room seats ever render.
@@ -7940,6 +7949,7 @@
   // network round-trip and repeated taps launched overlapping join requests.
   let roomEntryBusyToken=null;
   let roomEntryToken=0;
+  let roomJoinSlowTimer=null;
   function showRoomJoining(room){
     const wrap=document.getElementById('rw');
     if(!wrap)return;
@@ -7961,8 +7971,14 @@
     leave.onclick=()=>window.leaveRoom?.();
     card.append(spinner,title,progress,leave);
     wrap.append(card);
+    if(roomJoinSlowTimer)clearTimeout(roomJoinSlowTimer);
+    roomJoinSlowTimer=setTimeout(()=>{
+      if(!card.isConnected)return;
+      progress.textContent='Network is slow. Retrying the verified room connection…';
+    },6500);
   }
   function hideRoomJoining(){
+    if(roomJoinSlowTimer){clearTimeout(roomJoinSlowTimer);roomJoinSlowTimer=null;}
     const wrap=document.getElementById('rw');
     wrap?.classList.remove('sh-room-joining');
     wrap?.querySelector('#sh-room-joining-card')?.remove();
@@ -8005,8 +8021,12 @@
         if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
         if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
         if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
-        await releaseVoice();
-        await api('POST','/rooms/'+prior.id+'/leave',{});
+        // Old audio teardown and the previous room's leave request have no
+        // dependency on each other. Running them together avoids serial
+        // network waits before the new room can authorize admission.
+        await Promise.all([
+          releaseVoice(),api('POST','/rooms/'+prior.id+'/leave',{})
+        ]);
       }
       const joined=await joinRoomWithPassword(room);
       if(currentToken!==roomEntryToken){
@@ -8114,6 +8134,15 @@
     document.getElementById('rw')?.classList.remove('sh-room-awaiting');
     originalLeaveRoom();
   };
+  // When mobile data resumes, request the verified seat snapshot immediately
+  // rather than waiting for the next polling tick. No client-made seats appear.
+  window.addEventListener('online',()=>{
+    const room=window.cur;
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(!session||!room||!frame?.seats||
+       roomEntryBusyToken!==null)return;
+    syncFrame(room,frame).catch(()=>{});
+  });
   // Preserve original recharge/exchange artwork and read the exact
   // Super-Admin controlled exchange quote from the verified Worker.
   window.RATE=0.7;
