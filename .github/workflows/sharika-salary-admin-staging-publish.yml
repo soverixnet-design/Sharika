@@ -89,5 +89,9 @@ jobs:
                 const x=JSON.parse(s);if(!x.ok||x.service!=="sharika-admin-staging"||
                    !x.api_service_configured)process.exit(1);});'
           curl --fail --silent --show-error --retry 4 --max-time 20 \
-            https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js \
-            | grep -F 'Salary → Seller audited transfers' >/dev/null
+            --output /tmp/sharika-salary-admin-live-connection.js \
+            https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js
+          test -s /tmp/sharika-salary-admin-live-connection.js
+          node --check /tmp/sharika-salary-admin-live-connection.js
+          grep -F 'Salary → Seller audited transfers' /tmp/sharika-salary-admin-live-connection.js >/dev/null
+          echo SHARIKA_SALARY_ADMIN_STAGING_PUBLISHED
