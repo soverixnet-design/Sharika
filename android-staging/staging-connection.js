@@ -1281,8 +1281,11 @@
           video.setAttribute('playsinline','');
           video.setAttribute('webkit-playsinline','true');
           video.preload='auto';video.loop=true;
-          // Muted inline video can autoplay on Android; sound is opt-in.
-          video.muted=true;
+          // The signed staging WebView permits media playback without a gesture.
+          // Play a gift's own AAC track when no separate soundtrack is supplied.
+          // If this device denies audible autoplay, retry muted and leave the
+          // explicit Sound button so the animation still appears.
+          video.muted=!!soundtrack;
           box.insertBefore(video,people);
           const audio=soundtrack?doc.createElement('audio'):null;
           if(audio){audio.src=soundtrack;audio.preload='auto';box.appendChild(audio);}
@@ -1335,6 +1338,7 @@
           const audio=box.querySelector('audio');
           const button=box.querySelector('.sh-gift-sound');
           if(audio)audio.play().then(()=>button?.remove()).catch(()=>{});
+          else if(!video.muted)button?.remove();
           // Ten seconds starts with the first PLAYING frame, not request time.
           finishAfter(10000);
         };
@@ -8915,12 +8919,30 @@
       const iframe=document.getElementById('rf');
       // Bind Games independently of the optional room/voice data sync.
       iframe.onload=()=>{
-        const games=iframe.contentWindow?.document?.getElementById('bGame');
+        const inside=iframe.contentWindow?.document;
+        const dock=inside?.querySelector('.dock');
+        let games=inside?.getElementById('bGame');
+        // Some older room templates omit bGame entirely. Keep the verified
+        // original-games entry reachable without rebuilding the room or
+        // replacing its existing microphone, gift and moderator controls.
+        if(!games&&dock&&!inside.getElementById('sharika-room-games')){
+          const shortcut=inside.createElement('button');
+          shortcut.id='sharika-room-games';
+          shortcut.type='button';
+          shortcut.setAttribute('aria-label','Open room games');
+          shortcut.textContent='🎮 Games';
+          shortcut.style.cssText='position:absolute;left:13px;bottom:calc(100% + 9px);'+
+            'z-index:30;border:1.5px solid #ffdf80;border-radius:18px;padding:7px 11px;'+
+            'min-height:37px;background:linear-gradient(145deg,#6c318d,#271043);'+
+            'color:#fff1ba;font-size:12px;font-weight:900;'+
+            'box-shadow:inset 0 2px 2px #fff7,inset 0 -3px 5px #130423,'+
+            '0 5px 0 #916323,0 8px 16px #11051c99';
+          dock.appendChild(shortcut);
+          games=shortcut;
+        }
         if(games)games.onclick=()=>showGameCard(document,true,toast);
         // The event shortcut stays just above the microphone/chat dock.
         // It opens the already verified event sheet, not a local demo.
-        const inside=iframe.contentWindow?.document;
-        const dock=inside?.querySelector('.dock');
         if(dock&&!inside.getElementById('sharika-room-events')){
           const button=inside.createElement('button');
           button.id='sharika-room-events';
