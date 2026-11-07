@@ -110,3 +110,18 @@ test('room-admin icon stays off purchased frames while safety actions remain usa
   assert.match(worker,/action==='bans'/);
   assert.match(java,/\/api\/v1\/rooms\/\[0-9\]\{8\}\/bans/);
 });
+
+
+test('owner and admin self-state survives transient presence roster gaps',()=>{
+  const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const ownRole=worker.indexOf('const ownMemberRole=');
+  const visibleRoster=worker.indexOf('let visibleMembers=result.results||[]',ownRole);
+  assert.ok(ownRole>0&&visibleRoster>ownRole,
+    'verified own role must be resolved before filtering the public roster');
+  assert.match(worker,/self_state:\{role:ownMemberRole,seat_no:member\.seat_no,muted:!!member\.muted\}/);
+  assert.match(ui,/const selfState=data\.self_state\|\|null/);
+  assert.match(ui,/selfState\?\.role==='admin'/);
+  assert.match(ui,/Number\.isInteger\(selfState\.seat_no\)&&selfState\.seat_no>0&&!selfState\.muted/);
+  assert.match(ui,/:\!\!self && self\.seat_no!==null && !self\.muted/);
+});
