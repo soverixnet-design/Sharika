@@ -4297,9 +4297,43 @@
       return record && record.email === email ? record : null;
     } catch (_) { return null; }
   }
-  function birthdateFromUi(value) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Use YYYY-MM-DD for your date of birth');
-    return value;
+  function birthdateFromUi(yearValue,monthValue,dayValue) {
+    const year=Number(yearValue),month=Number(monthValue),day=Number(dayValue);
+    if(!yearValue||!monthValue||!dayValue)
+      throw new Error('Select your birth year, month and day.');
+    if(!Number.isInteger(year)||!Number.isInteger(month)||!Number.isInteger(day)||
+       year<1900||month<1||month>12||day<1||day>31)
+      throw new Error('Choose a valid birth date.');
+    const birth=new Date(Date.UTC(year,month-1,day));
+    if(birth.getUTCFullYear()!==year||birth.getUTCMonth()!==month-1||birth.getUTCDate()!==day)
+      throw new Error('Choose a valid birth date.');
+    const now=new Date();
+    let age=now.getUTCFullYear()-year;
+    if(now.getUTCMonth()<month-1||
+       (now.getUTCMonth()===month-1&&now.getUTCDate()<day))age--;
+    if(age<13)throw new Error('You must be at least 13 years old to create a Sharika account.');
+    if(age>120)throw new Error('Please check your birth year.');
+    return String(year).padStart(4,'0')+'-'+String(month).padStart(2,'0')+'-'+
+      String(day).padStart(2,'0');
+  }
+  function birthYearOptions(){
+    let options='<option value="">Year</option>';
+    const year=new Date().getUTCFullYear();
+    for(let y=year;y>=year-120;y--)
+      options+='<option value="'+y+'">'+y+'</option>';
+    return options;
+  }
+  function birthMonthOptions(){
+    const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '<option value="">Month</option>'+months.map((name,index)=>
+      '<option value="'+(index+1)+'">'+name+'</option>').join('');
+  }
+  function birthDayOptions(year,month,selected){
+    const max=year&&month?new Date(Date.UTC(Number(year),Number(month),0)).getUTCDate():31;
+    let options='<option value="">Day</option>';
+    for(let day=1;day<=max;day++)
+      options+='<option value="'+day+'"'+(Number(selected)===day?' selected':'')+'>'+day+'</option>';
+    return options;
   }
   function manualCountryCode(value){
     const code=window.SharikaDiscovery?.countryCode(value)||
@@ -4329,11 +4363,16 @@
       const layer = document.createElement('div');
       layer.id = 'sharika-stage-profile-setup';
       layer.style.cssText = 'position:fixed;z-index:2147483646;inset:0;background:#0c0920f5;display:flex;align-items:center;justify-content:center;padding:22px;color:white;font-family:inherit';
-      layer.innerHTML = '<form style="width:min(100%,410px);background:linear-gradient(160deg,#2d2158,#131530);border:1px solid #6754c0;border-radius:24px;padding:24px;box-shadow:0 15px 45px #0008">' +
+      layer.innerHTML = '<form style="width:min(100%,410px);max-height:90vh;overflow-y:auto;background:linear-gradient(160deg,#2d2158,#131530);border:1px solid #6754c0;border-radius:24px;padding:24px;box-shadow:0 15px 45px #0008">' +
         '<h2 style="margin:0 0 8px">Finish your Sharika profile</h2>' +
         '<p style="font-size:13px;opacity:.8">A real name and birth date are needed for the new staging account. Existing accounts are not imported.</p>' +
         '<label>Name<input name="name" maxlength="80" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0" value=""></label>' +
-        '<label>Birth date<input name="birthdate" type="date" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
+        '<fieldset style="border:0;padding:0;margin:0 0 16px;min-width:0"><legend style="padding:0">Birth date</legend>'+
+        '<div style="display:flex;gap:7px;margin-top:8px">'+
+        '<select name="birth_year" aria-label="Birth year" required style="box-sizing:border-box;width:40%;min-width:0;padding:13px 7px;border-radius:10px;background:#fff;color:#161121;border:0">'+birthYearOptions()+'</select>'+
+        '<select name="birth_month" aria-label="Birth month" required style="box-sizing:border-box;width:32%;min-width:0;padding:13px 7px;border-radius:10px;background:#fff;color:#161121;border:0">'+birthMonthOptions()+'</select>'+
+        '<select name="birth_day" aria-label="Birth day" required style="box-sizing:border-box;width:28%;min-width:0;padding:13px 7px;border-radius:10px;background:#fff;color:#161121;border:0">'+birthDayOptions()+'</select>'+
+        '</div><small style="display:block;margin-top:7px;color:#d8caff">Choose your real birth date. Minimum signup age: 13.</small></fieldset>'+
         '<label>Country (you choose; no GPS)<select name="country" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0">'+
         manualCountryOptions()+'</select></label>' +
         '<label>Invite code (optional)<input name="invite_code" maxlength="8" inputmode="numeric" placeholder="8-digit inviter ID" style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
@@ -4343,6 +4382,16 @@
       document.body.appendChild(layer);
       const name = layer.querySelector('[name="name"]');
       name.value = account.displayName || '';
+      const yearSelect=layer.querySelector('[name="birth_year"]');
+      const monthSelect=layer.querySelector('[name="birth_month"]');
+      const daySelect=layer.querySelector('[name="birth_day"]');
+      const refreshDays=()=>{
+        const chosen=daySelect.value;
+        daySelect.innerHTML=birthDayOptions(yearSelect.value,monthSelect.value,chosen);
+        if(chosen&&daySelect.querySelector('option[value="'+chosen+'"]'))daySelect.value=chosen;
+      };
+      yearSelect.addEventListener('change',refreshDays);
+      monthSelect.addEventListener('change',refreshDays);
       layer.querySelector('[name="invite_code"]').value=cachedSignup(account.email)?.invite_code||deferredInviteCode;
       let finished = false;
       function close() { if (finished) return; finished = true; layer.remove(); }
@@ -4356,7 +4405,8 @@
         try {
           const data = {
             name:form.elements.name.value.trim(),
-            birthdate:birthdateFromUi(form.elements.birthdate.value),
+            birthdate:birthdateFromUi(form.elements.birth_year.value,
+              form.elements.birth_month.value,form.elements.birth_day.value),
             country:manualCountryCode(form.elements.country.value),
             invite_code:form.elements.invite_code.value.trim()
           };
@@ -4364,7 +4414,10 @@
           if(data.invite_code)clearIncomingInvite();
           close(); resolve(saved);
         } catch (error) {
-          layer.querySelector('#stage-profile-error').textContent = errText(error);
+          const message=errText(error);
+          layer.querySelector('#stage-profile-error').textContent = message==='invalid_profile'
+            ?'Please check your name and birth date. You must be at least 13 years old.'
+            :message;
           button.disabled = false;
         }
       };
