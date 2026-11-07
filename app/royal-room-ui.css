@@ -232,8 +232,9 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 .sh-royal-room #sendTxt {display:grid!important;opacity:.85}
 .sh-royal-room .sh-tools {
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:6px;
+  /* Keep all six primary room controls, especially Games, in one visible row. */
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:2px;
   align-items:end;
 }
 .sh-royal-room .sh-tool {
@@ -248,8 +249,8 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 }
 .sh-royal-room .sh-tool>button,
 .sh-royal-room .sh-tool .rb {
-  width:57px;
-  height:57px;
+  width:clamp(44px,12vw,50px);
+  height:clamp(44px,12vw,50px);
   display:grid;
   place-items:center;
   border:0;
@@ -260,8 +261,8 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 }
 .sh-royal-room .sh-sprite {
   display:inline-block;
-  width:54px;
-  height:54px;
+  width:clamp(44px,12vw,50px);
+  height:clamp(44px,12vw,50px);
   flex:none;
   background-image:url("./royal-room-icons.png");
   background-repeat:no-repeat;
@@ -344,8 +345,8 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   .sh-royal-room .sh-settings,.sh-royal-room .sh-settings .sh-sprite {width:38px;height:38px}
   .sh-royal-room .room>.rt b {font-size:12px}
   .sh-royal-room .grid {gap:14px 2px}
-  .sh-royal-room .sh-tool>button {width:49px;height:49px}
-  .sh-royal-room .sh-tool .sh-sprite {width:48px;height:48px}
+  .sh-royal-room .sh-tool>button {width:44px;height:44px}
+  .sh-royal-room .sh-tool .sh-sprite {width:44px;height:44px}
 }
 @media(max-height:690px) {
   .sh-royal-room .host {margin:4px 0 10px}
