@@ -318,9 +318,13 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
         'VALUES(?,?,?,?) ON CONFLICT(host_uid) DO UPDATE SET active=excluded.active,'+
         "updated_at=datetime('now')")
         .bind(member.user_uid,body.agency_id,Number(body.active),uid),
-      db.prepare('INSERT INTO sharika_family_activity(family_id,actor_uid,subject_uid,action,details_json) '+
-        "VALUES(?,?,?,'host_assignment',?)")
-        .bind(body.agency_id,uid,member.user_uid,JSON.stringify({active:body.active}))
+      // Admin audit accepts owner-originated role actions; the historical
+      // Family activity CHECK disallows 'host_assignment' and would roll
+      // back the whole D1 batch (including the Host activation).
+      db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
+        .bind(uid,'agency_owner_host_assignment',JSON.stringify({
+          agency_id:body.agency_id,host_public_id:body.host_public_id,active:body.active
+        }))
     ]);
     return reply({saved:true,host_public_id:body.host_public_id,active:body.active},200,cors);
   }
