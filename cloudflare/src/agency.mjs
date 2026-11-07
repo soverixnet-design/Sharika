@@ -404,8 +404,14 @@ export async function handleAgencyAdmin({request,env,uid,actor:admin,operation,c
   if(!['super','finance'].includes(admin.role))return fail('admin_permission_denied',403,cors);
   const db=env.DB;
   if(operation==='agency'&&request.method==='GET'){
-    const [settings,salary,targets]=await Promise.all([
-      policy(db),salaryConfig(db),salaryTargets(db)]);
+    const [settings,salary,targets,sellerTransfers]=await Promise.all([
+      policy(db),salaryConfig(db),salaryTargets(db),
+      db.prepare('SELECT t.id,t.credited_stock_coins,t.stock_after,t.created_at,'+
+        'su.public_no AS sender_no,cu.public_no AS seller_no '+
+        'FROM sharika_agency_salary_seller_transfers t '+
+        'JOIN sharika_users su ON su.auth_uid=t.auth_uid '+
+        'JOIN sharika_users cu ON cu.auth_uid=t.seller_uid '+
+        'ORDER BY t.id DESC LIMIT 100').all()]);
     const hosts=results(await db.prepare('SELECT h.family_id,h.active,u.public_no,u.name,u.pic,'+
       'f.name AS agency_name FROM sharika_agency_hosts h '+
       'JOIN sharika_users u ON u.auth_uid=h.host_uid '+
@@ -418,6 +424,9 @@ export async function handleAgencyAdmin({request,env,uid,actor:admin,operation,c
         exchange_enabled:!!salary.exchange_enabled,
         seller_transfer_enabled:!!salary.seller_transfer_enabled,version:salary.version},
       targets:targets.map(t=>t.target_coins),
+      salary_seller_transfers:results(sellerTransfers).map(t=>({...t,
+        sender_public_id:publicId(t.sender_no),seller_public_id:publicId(t.seller_no),
+        sender_no:undefined,seller_no:undefined})),
       hosts:hosts.map(h=>({...h,public_id:publicId(h.public_no),public_no:undefined})),
       payouts_enabled:!!salary.exchange_enabled,
       payout_status:salary.exchange_enabled?'configured_period_exchange':'manual_review_required'},200,cors);
