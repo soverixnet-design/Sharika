@@ -63,7 +63,7 @@ test('Luxury gift fills the phone screen and zooms in from its center',()=>{
   assert.doesNotMatch(stylesheet,/height:min\(62vh,640px\);object-fit:contain/);
 });
 
-test('uploaded Luxury MP4 attaches before playback, starts the 10s clock on playing and offers sound',async()=>{
+test('uploaded Luxury MP4 autoplays its AAC sound with a muted fallback and 10-second display',async()=>{
   const start=adapter.indexOf('  function giftPresentationCss(doc){');
   const end=adapter.indexOf('  function decorateRoomPeople(frame){',start);
   assert.ok(start>=0&&end>start);
@@ -118,7 +118,7 @@ test('uploaded Luxury MP4 attaches before playback, starts the 10s clock on play
   assert.equal(video.src,ctx.gift.animation_url);
   assert.equal(video.playsInline,true);
   assert.equal(video.autoplay,true);
-  assert.equal(video.muted,true,'Android inline autoplay starts muted');
+  assert.equal(video.muted,false,'AAC inside a gift MP4 should be audible when WebView allows autoplay');
   assert.equal(video.playCalls,1);
   assert.ok(doc.body.children.includes(overlay),'the overlay must be attached before video playback');
   assert.deepEqual(callbacks.map(x=>x.ms),[12000],'give the MP4 time to load before beginning the 10-second display');
@@ -128,11 +128,10 @@ test('uploaded Luxury MP4 attaches before playback, starts the 10s clock on play
   assert.deepEqual(callbacks.map(x=>x.ms),[12000,10000]);
   const sound=elements.find(node=>node.attrs['aria-label']==='Play gift sound');
   assert.ok(sound);
-  sound.onclick();
-  await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(video.muted,false);
-  assert.equal(video.playCalls,2);
-  assert.equal(sound.removed,true);
+  assert.equal(sound.removed,true,'the Sound button disappears when the MP4 starts audibly');
+  assert.equal(video.playCalls,1);
+  assert.match(adapter,/video\.play\(\)\.catch\(\(\)=>\{\s*video\.muted=true;/,
+    'a restricted Android WebView must retry the video silently');
   callbacks[1].fn();
   assert.equal(overlay.removed,true);
   assert.equal(video.paused,true);
