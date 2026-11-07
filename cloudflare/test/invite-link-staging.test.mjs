@@ -40,7 +40,9 @@ test('signup and existing-account retry use one server-verified inviter without 
   assert.match(adapter,/claimPendingInviteAfterLogin/);
   assert.match(adapter,/api\('POST','\/invites\/redeem',\{invite_code:code\}\)/);
   assert.match(adapter,/copyInviteLink/);
-  assert.match(adapter,/const PUBLIC_INVITE_URL='https:\/\/sharika-api-staging.soverixnet.workers.dev\/invite\/'/);
+  assert.match(adapter,/let PUBLIC_INVITE_URL='https:\/\/sharika-api-staging.soverixnet.workers.dev\/invite\/'/);
+  assert.match(adapter,/PUBLIC_INVITE_URL=result.api_origin\+'\/invite\/'/);
+  assert.match(activity,/STAGING_API\+"\/invite\/"\+linkCode/);
   assert.match(adapter,/Share your personal HTTPS invitation link/);
   assert.match(server,/const inviteLanding=handleInviteLanding\(request,path\)/);
   assert.doesNotMatch(activity,/creditWallet|mintCoins|awardReferralCoins/);

@@ -29,6 +29,7 @@
     "FIREBASE_PROJECT_ID": "sharika-voice-chat-app",
     "ALLOWED_ORIGINS": "",
     "SHARIKA_LUCKY_GIFTS_ENABLED": "false",
+    "SHARIKA_PLAY_BILLING_ENABLED": "false",
     "SHARIKA_COINS_CASH_REDEEMABLE": "false",
     "SHARIKA_FAMILY_SHEET_ID": "1u-6FRnn3noeK2-fQRT_FK_arengxQycZKXnJqjDEaxg",
     "SHARIKA_FAMILY_APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbzGb4_6f0poV_FsBuhHKR-huLT4H2-4cwYCKZ3qXtJKUTX8bISfdGRlX759EG3m351zUg/exec"

@@ -117,6 +117,7 @@
     return new Promise((resolve, reject) => {
       const id = String(++seq);
       const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
+        action === 'playBillingPurchase' ? 180000 :
         action === 'googleSignIn' ? 70000 :
         action === 'pushToken' && payload?.promptPermission ? 60000 :
         action === 'api' && payload?.method === 'PUT' &&
@@ -143,6 +144,23 @@
   async function api(method, path, body) {
     return native('api', { method, path: '/api/v1' + path, body });
   }
+  // The actual Android build type decides whether Play policy restrictions
+  // apply. Never trust a query string, localStorage, or a user-editable toggle.
+  let playStoreMode=null;
+  const playModeReady=native('clientMode',{}).then(result=>{
+    playStoreMode=result.play_store===true;
+    if(typeof result.api_origin==='string' && /^https:\/\/[A-Za-z0-9.-]+$/.test(result.api_origin))
+      PUBLIC_INVITE_URL=result.api_origin+'/invite/';
+    if(playStoreMode){
+      const style=document.createElement('style');
+      style.id='sharika-play-store-mode';
+      style.textContent='#sharika-recharge-seller-wallet,#rcl2{display:none!important}';
+      document.head.append(style);
+    }
+    return playStoreMode;
+  // Unknown mode must fail closed for payment routes; the Play build must
+  // never fall back to the old external recharge controls on bridge failure.
+  }).catch(()=>{playStoreMode=true;return true;});
   // The Agency Center is a separate first-party, packaged WebView module.
   // It reuses this authenticated native bridge; no demo login or wallet.
   window.sharikaAgencyApi=api;
@@ -300,7 +318,7 @@
   // 48-hour/new-device rules; this client never awards coins locally.
   // HTTPS links and Play Install Referrer provide a pending inviter ID.
   // The Worker alone decides if the account and device qualify for a reward.
-  const PUBLIC_INVITE_URL='https://sharika-api-staging.soverixnet.workers.dev/invite/';
+  let PUBLIC_INVITE_URL='https://sharika-api-staging.soverixnet.workers.dev/invite/';
   let deferredInviteCode='';
   let redeemingIncomingInvite=false;
   function rememberIncomingInvite(value){
@@ -8203,6 +8221,103 @@
     finally{exchangeRateFetch=null;}
   }
   const originalRechargeSheet=window.rechargeSheet;
+  const playCoinsByProduct=Object.freeze({
+    sharika_coins_500k:500000,sharika_coins_2500k:2500000,
+    sharika_coins_5000k:5000000
+  });
+  let playCoinCheckoutBusy=false;
+  async function claimOwnedPlayPurchases(purchases){
+    let credited=0;
+    for(const item of purchases||[]){
+      if(!Object.prototype.hasOwnProperty.call(playCoinsByProduct,item.product_id) ||
+         typeof item.purchase_token!=='string')continue;
+      // A receipt is never proof of coins by itself. The server checks Google,
+      // the Firebase account hash and its own immutable transaction ledger.
+      const claimed=await api('POST','/play-billing/claim',{
+        product_id:item.product_id,purchase_token:item.purchase_token
+      });
+      if(claimed.credited&&!claimed.duplicate)credited+=Number(claimed.coins)||0;
+    }
+    if(credited)await refreshWalletAfterConfirmedTransaction();
+    return credited;
+  }
+  async function showPlayCoinShop(){
+    if(!session){window.showAuth('welcome');return;}
+    document.getElementById('sh-play-coin-shop')?.remove();
+    const root=document.createElement('section');
+    root.id='sh-play-coin-shop';
+    root.setAttribute('role','dialog');
+    root.setAttribute('aria-modal','true');
+    root.setAttribute('aria-label','Buy Sharika Coins with Google Play');
+    root.style.cssText='position:fixed;inset:0;z-index:2147483400;'+
+      'display:grid;place-items:center;padding:16px;background:#070315e8;color:#fff';
+    root.innerHTML='<div style="width:min(100%,420px);max-height:85vh;overflow:auto;'+
+      'border:2px solid #deb366;border-radius:24px;padding:18px;'+
+      'background:linear-gradient(150deg,#351246,#120e24);'+
+      'box-shadow:0 14px 60px #000a">'+
+      '<button type="button" id="sh-play-close" aria-label="Close" '+
+      'style="float:right;font-size:23px;background:transparent;border:0;color:#f9dfa8">×</button>'+
+      '<h2 style="color:#ffe0a5;margin:5px 0 9px">👑 Sharika Coins</h2>'+
+      '<p style="font-size:13px;opacity:.8;margin:0 0 14px">Secure payment with Google Play</p>'+
+      '<div id="sh-play-coin-products" aria-live="polite">Checking available packages…</div>'+
+      '<p id="sh-play-coin-status" role="status" style="font-size:12px;min-height:20px;'+
+      'color:#ffe5ae;margin:14px 0 0"></p></div>';
+    document.body.append(root);
+    root.querySelector('#sh-play-close').onclick=()=>{if(!playCoinCheckoutBusy)root.remove();};
+    const list=root.querySelector('#sh-play-coin-products');
+    const status=root.querySelector('#sh-play-coin-status');
+    try {
+      const server=await api('GET','/play-billing/catalog');
+      if(!server.enabled){
+        list.textContent='Google Play coin purchases are temporarily unavailable.';return;
+      }
+      const store=await native('playBillingProducts',{});
+      if(!root.isConnected)return;
+      try {
+        const credited=await claimOwnedPlayPurchases(store.purchases||[]);
+        if(credited)status.textContent='Restored '+formatCompactCoins(credited)+' coins ✓';
+      }catch(error){status.textContent='Previous payment check: '+errText(error);}
+      list.replaceChildren();
+      const available=new Set((server.products||[]).filter(p=>
+        playCoinsByProduct[p.id]===Number(p.coins)).map(p=>p.id));
+      for(const product of store.products||[]){
+        if(!available.has(product.id)||typeof product.price!=='string')continue;
+        const row=document.createElement('button');
+        row.type='button';
+        row.style.cssText='display:flex;width:100%;align-items:center;justify-content:space-between;'+
+          'gap:10px;margin:10px 0;padding:16px;border-radius:16px;'+
+          'border:1px solid #e5b568;background:#382254;color:#fff;font-weight:800';
+        const label=document.createElement('span');
+        label.textContent='🪙 '+formatCompactCoins(playCoinsByProduct[product.id])+' coins';
+        const price=document.createElement('span');
+        price.style.color='#ffe0a0';
+        price.textContent=product.price;
+        row.append(label,price);list.append(row);
+        row.onclick=async()=>{
+          if(playCoinCheckoutBusy)return;
+          playCoinCheckoutBusy=true;
+          root.querySelectorAll('button').forEach(button=>button.disabled=true);
+          status.textContent='Opening Google Play…';
+          try {
+            const purchased=await native('playBillingPurchase',{product_id:product.id});
+            status.textContent='Verifying payment with Google…';
+            const total=await claimOwnedPlayPurchases(purchased.purchases);
+            status.textContent='Payment verified. Your wallet is updated ✓';
+            toast('Coins received: '+formatCompactCoins(total));
+          }catch(error){
+            status.textContent=errText(error)==='play_purchase_cancelled'
+              ?'Payment cancelled; no coins deducted.'
+              :'Payment not credited: '+errText(error)+
+                '. Reopen the shop to restore a completed purchase.';
+          }finally{
+            playCoinCheckoutBusy=false;
+            root.querySelectorAll('button').forEach(button=>button.disabled=false);
+          }
+        };
+      }
+      if(!list.childElementCount)list.textContent='No Google Play coin packages are available yet.';
+    }catch(error){if(root.isConnected)list.textContent='Unable to load Google Play packages: '+errText(error);}
+  }
   let verifiedRechargeFetch=null;
   async function refreshVerifiedRechargeRate(){
     if(!session)return;
@@ -8222,11 +8337,23 @@
     try{return await verifiedRechargeFetch;}finally{verifiedRechargeFetch=null;}
   }
   if(typeof originalRechargeSheet==='function')window.rechargeSheet=function(...args){
+    if(args[0]!==1){
+      if(playStoreMode===true){showPlayCoinShop();return;}
+      if(playStoreMode===null){playModeReady.then(()=>window.rechargeSheet(...args));return;}
+    }
     const value=originalRechargeSheet.apply(this,args);
     if(args[0]===1)refreshVerifiedExchangeRate().catch(error=>toast(errText(error)));
     else refreshVerifiedRechargeRate().catch(error=>toast('Recharge rates unavailable: '+errText(error)));
     return value;
   };
+  document.addEventListener('click',event=>{
+    if(playStoreMode!==true)return;
+    if(event.target.closest?.('#pc,#rcl2,#sharika-recharge-seller-wallet,'+
+        '#sh-invite-open-withdraw,[data-sh-invite-withdraw]')){
+      event.preventDefault();event.stopImmediatePropagation();
+      toast('This option is not available in the Google Play edition.');
+    }
+  },true);
   document.addEventListener('click',event=>{
     if(event.target.closest?.('#rcp [data-x="1"]'))
       refreshVerifiedExchangeRate().catch(error=>toast('Exchange rate: '+errText(error)));
@@ -8295,6 +8422,7 @@
     document.head.appendChild(style);
   }
   async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
+    if(playStoreMode===true){toast('Seller recharge is unavailable in the Google Play edition.');return;}
     if(walletOnly)ensureSellerWalletStyle();
     window.openSheet('<h3>🪙 '+(walletOnly?'Seller Wallet':'Coin sellers')+
       '</h3><div id="sharika-seller-content">Loading verified seller data…</div>');
@@ -8500,6 +8628,7 @@
   // button there only for authenticated, approved sellers.
   let sellerWalletButtonCheck=false;
   function mountRechargeSellerWallet(){
+    if(playStoreMode===true)return;
     const listButton=document.querySelector('#rcp #rcl2');
     if(!listButton||!session?.user?.id||sellerWalletButtonCheck||
        listButton.previousElementSibling?.id==='sharika-recharge-seller-wallet')return;
@@ -9053,6 +9182,8 @@
     }
   }
   async function maybeShowNewUserInviteWelcome(){
+    await playModeReady;
+    if(playStoreMode===true)return;
     if(!session||!profile||document.getElementById('sh-invite-newbie'))return;
     const publicId=String(profile.public_id||'');
     if(!/^[0-9]{8}$/.test(publicId))return;
@@ -9123,7 +9254,60 @@
       }
     };
   }
+  async function showPlayInviteSheet(){
+    if(!session){window.showAuth('welcome');return;}
+    verifiedInviteStyles();
+    document.getElementById('sh-invite-page')?.remove();
+    const root=document.createElement('section');
+    root.id='sh-invite-page';
+    root.innerHTML='<div class="sh-invite-head">'+
+      '<button class="sh-invite-back" type="button" aria-label="Close invites">‹</button>'+
+      '<div><div class="sh-invite-kicker">✦ SHARIKA ✦</div><h1>👑 Invite Friends</h1></div></div>'+
+      '<div class="sh-invite-panel">'+
+      '<h2 class="sh-invite-title">Your verified invite code</h2>'+
+      '<div id="sh-play-invite-code" style="font-size:32px;font-weight:900;color:#ffe09e">…</div>'+
+      '<p id="sh-play-invite-info" class="sh-invite-sub">Loading rewards…</p>'+
+      '<button id="sh-play-copy" class="sh-invite-gold" type="button">Copy Invite Link</button>'+
+      '<button id="sh-play-share" class="sh-invite-gold" type="button">Share Invite</button>'+
+      '<div id="sh-play-invite-claim" style="margin-top:24px">'+
+      '<label for="sh-play-friend-code">Enter a friend’s invite code</label>'+
+      '<input id="sh-play-friend-code" class="sh-invite-entry" inputmode="numeric" maxlength="8" />'+
+      '<button id="sh-play-claim" class="sh-invite-gold" type="button">Confirm Code</button></div>'+
+      '<p id="sh-play-invite-status" role="status" class="sh-invite-alert"></p></div>';
+    document.body.append(root);
+    root.querySelector('.sh-invite-back').onclick=()=>root.remove();
+    const status=root.querySelector('#sh-play-invite-status');
+    try {
+      const info=await api('GET','/invites');
+      if(!root.isConnected)return;
+      const code=String(info.invite_code||'');
+      if(!/^[0-9]{8}$/.test(code))throw Error('Verified invite code unavailable');
+      root.querySelector('#sh-play-invite-code').textContent=code;
+      root.querySelector('#sh-play-invite-info').textContent=
+        'Both friends can receive '+Number(info.signup_inviter_reward||0).toLocaleString('en-US')+
+        ' and '+Number(info.signup_invitee_reward||0).toLocaleString('en-US')+
+        ' bonus coins through an eligible verified invitation.';
+      root.querySelector('#sh-play-copy').onclick=async()=>{
+        try{await native('copyInviteLink',{code});status.textContent='Invite link copied ✓';}
+        catch(error){status.textContent=errText(error);}
+      };
+      root.querySelector('#sh-play-share').onclick=async()=>{
+        try{await native('shareInvite',{text:'Join me on Sharika Voice Chat! '+PUBLIC_INVITE_URL+code});}
+        catch(error){status.textContent=errText(error);}
+      };
+      if(!info.claim_eligible)root.querySelector('#sh-play-invite-claim').remove();
+      else root.querySelector('#sh-play-claim').onclick=async()=>{
+        try {
+          const field=root.querySelector('#sh-play-friend-code');
+          const result=await redeemVerifiedInvite(field.value.trim());
+          status.textContent='Invite verified! +'+Number(result.invitee_extra_coins||0).toLocaleString('en-US')+' coins ✓';
+          root.querySelector('#sh-play-invite-claim')?.remove();
+        }catch(error){status.textContent=errText(error);}
+      };
+    }catch(error){if(root.isConnected)status.textContent='Invite unavailable: '+errText(error);}
+  }
   async function showVerifiedInviteSheet(){
+    if(playStoreMode===true)return showPlayInviteSheet();
     if(!session){window.showAuth('welcome');return;}
     verifiedInviteStyles();
     document.getElementById('sh-invite-page')?.remove();
@@ -10887,6 +11071,10 @@
   }
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
+    if(playStoreMode===true){
+      showToast('Coin betting games are not available in the Google Play edition.');
+      return;
+    }
     const portal=insideRoom?ensureRoomGamePortal(doc):null;
     const sheet=portal?.sheet||doc.getElementById('sh');
     const overlay=portal?.overlay||doc.getElementById('shb');
