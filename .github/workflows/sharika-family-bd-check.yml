@@ -1,0 +1,29 @@
+name: Sharika Family BD staging checks
+on:
+  push:
+    branches:
+      - feature/sharika-family-bd-crystal-ledger-20261103
+    paths:
+      - cloudflare/**
+      - admin/connection.js
+      - android-staging/staging-connection.js
+      - .github/workflows/sharika-family-bd-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  family-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify Family BD backend and Android/Admin adapter syntax
+        working-directory: cloudflare
+        run: npm run check
+      - name: No production deployment
+        run: echo "Family/BD CI verification only; no D1 or Worker mutations."

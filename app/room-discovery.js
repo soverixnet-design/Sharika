@@ -20,8 +20,9 @@
   function countryCode(value){
     const raw=String(value||'').trim();
     if(!raw)return '';
-    const match=/^[\u{1F1E6}-\u{1F1FF}]{2}$/u.exec(raw);
-    if(match)return String.fromCodePoint(...Array.from(raw).map(c=>c.codePointAt(0)-0x1f1e6+65));
+    // Legacy signup stored "🇧🇩 Bangladesh" instead of an ISO code.
+    const match=/^([\u{1F1E6}-\u{1F1FF}]{2})(?:\s+.*)?$/u.exec(raw);
+    if(match)return String.fromCodePoint(...Array.from(match[1]).map(c=>c.codePointAt(0)-0x1f1e6+65));
     const normalized=raw.toUpperCase().replace(/[.\s-]+/g,'_');
     if(Object.prototype.hasOwnProperty.call(aliases,normalized))return aliases[normalized];
     const compact=normalized.replace(/_/g,'');

@@ -1,6 +1,7 @@
 // Sharika staging: granular staff access and immutable direct coin credits.
 // Firebase owns email/password authentication. Never store staff passwords in D1.
 import { verifyFirebaseToken } from './auth.mjs';
+import {recordUserEvent} from './transaction-notices.mjs';
 
 export const STAFF_SCOPES=Object.freeze([
   'view_users','view_rooms','view_sellers','view_ledger','support_reply','coin_recharge'
@@ -71,7 +72,7 @@ function normalizeSettings(data) {
 }
 const rows=r=>r.results||[];
 
-export async function handleStaffAdmin({request,env,uid,actor,operation,cors,reply,fail,
+export async function handleStaffAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx,
   verifyNewStaffToken=verifyFirebaseToken}) {
   const isStaffRoute=operation==='staff'||/^staff\/[1-9][0-9]{0,9}$/.test(operation);
   if(isStaffRoute){
@@ -123,6 +124,9 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
         ).bind(uid,'staff_create',JSON.stringify({email,name,permissions:settings.permissions,
           daily_coin_limit:settings.daily_coin_limit}))
       ]);
+      await recordUserEvent({env,ctx,recipientUid:child.uid,title:'Staff account activated',
+        body:'Your Sharika staff account has been created. Review your assigned permissions.',
+        dedupeKey:'staff_created:'+result[0]?.meta?.last_row_id,createdBy:uid});
       return reply({created:true,id:result[0]?.meta?.last_row_id||null,
         email,permissions:settings.permissions,requires_email_verification:true},201,cors);
     }
@@ -135,7 +139,7 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
       const settings=normalizeSettings(body);
       if(!settings)return fail('invalid_staff_permissions',400,cors);
       const existing=await env.DB.prepare(
-        'SELECT id,login_email FROM sharika_admin_staff_accounts WHERE id=?'
+        'SELECT id,auth_uid,login_email FROM sharika_admin_staff_accounts WHERE id=?'
       ).bind(Number(matched[1])).first();
       if(!existing)return fail('staff_not_found',404,cors);
       await env.DB.batch([
@@ -150,6 +154,10 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
           active:body.active,permissions:settings.permissions,
           daily_coin_limit:settings.daily_coin_limit}))
       ]);
+      await recordUserEvent({env,ctx,recipientUid:existing.auth_uid,title:'Staff permissions updated',
+        body:body.active?'Your Sharika staff access or permissions were updated.':
+          'Your Sharika staff access has been disabled.',
+        dedupeKey:'staff_permissions:'+existing.id+':'+Date.now(),createdBy:uid});
       return reply({updated:true,staff_id:existing.id,active:body.active},200,cors);
     }
     return fail('staff_method_not_allowed',405,cors);
@@ -260,6 +268,10 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
       'WHERE actor_uid=? AND request_id=?'
     ).bind(uid,requestId).first();
     if(!saved)return fail('recharge_commit_unconfirmed',503,cors);
+    await recordUserEvent({env,ctx,recipientUid:target.auth_uid,kind:'reward',
+      title:'Admin recharge successful',body:amount.toLocaleString('en-US')+
+        ' coins were added to your wallet by an authorized administrator.',
+      dedupeKey:'admin_recharge:'+saved.id,createdBy:uid});
     return reply({duplicate:false,transaction_id:saved.id,
       recipient_id:canonicalId,coins:amount,balance_after:saved.balance_after},201,cors);
   }

@@ -2,6 +2,7 @@
 // money is NEVER inferred from a client message or an unverified receipt.
 // Explicit finance/admin verification is required before one atomic coin grant.
 import { rechargeReferralStatements } from './invites.mjs';
+import {recordUserEvent} from './transaction-notices.mjs';
 import { firstRechargeBonusStatements } from './first-recharge.mjs';
 import {readInviteRules} from './invite-rules.mjs';
 const MAX_RECHARGE=1_000_000_000_000;
@@ -40,7 +41,7 @@ async function duplicateStatus(db,id,uid,coins,method,reference,reply,fail,cors)
     return reply({duplicate:true,approved:true,request_id:id,coins,referral_bonus_new:0},200,cors);
   return fail('recharge_already_reviewed',409,cors);
 }
-export async function handleRechargeAdmin({request,env,uid,actor,operation,cors,reply,fail}){
+export async function handleRechargeAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx}){
   if(!operation.startsWith('recharges'))return null;
   if(!MONEY_ROLES.has(actor.role))return fail('admin_permission_denied',403,cors);
   if(operation==='recharges'&&request.method==='GET'){
@@ -126,6 +127,10 @@ export async function handleRechargeAdmin({request,env,uid,actor,operation,cors,
           first_recharge_bonus_coins:firstRecharge.bonus
         }))
     ]);
+    await recordUserEvent({env,ctx,recipientUid:target.user_id,kind:'reward',
+      title:'Recharge approved',body:'Your recharge request #'+id+' was approved. '+
+        coins.toLocaleString('en-US')+' coins were added to your wallet.',
+      dedupeKey:'manual_recharge_approved:'+id,createdBy:uid});
     return reply({approved:true,duplicate:false,request_id:id,
       recipient_public_id:PUBLIC_ID(target.public_no),credited_coins:coins,
       referral_bonus_coins:referral.bonus,
@@ -156,6 +161,9 @@ export async function handleRechargeAdmin({request,env,uid,actor,operation,cors,
           request_id:id,target_public_id:PUBLIC_ID(target.public_no),note
         }))
     ]);
+    await recordUserEvent({env,ctx,recipientUid:target.user_id,title:'Recharge request rejected',
+      body:'Recharge request #'+id+' was not approved. Reason: '+note,
+      dedupeKey:'manual_recharge_rejected:'+id,createdBy:uid});
     return reply({rejected:true,request_id:id,coins_credited:0},201,cors);
   }
   return fail('recharge_method_not_allowed',405,cors);

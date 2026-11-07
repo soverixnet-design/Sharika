@@ -30,14 +30,24 @@ android {
                 signingConfig signingConfigs.sharikaStaging
             }
         }
+        // Play-review AAB only. This isolated branch still targets the
+        // staging API and uses the encrypted *staging* key, so do NOT submit
+        // this bundle as a production Play release.
+        release {
+            minifyEnabled false
+            shrinkResources false
+            if (stableStagingSigner) {
+                signingConfig signingConfigs.sharikaStaging
+            }
+        }
     }
 
     defaultConfig {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 3
-        versionName '0.3.0-staging-api36'
+        versionCode 4
+        versionName '0.4.0-rc-settings-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -66,8 +76,11 @@ tasks.register('prepareSharikaUiAssets', Copy) {
         // This filter affects the APK copy, never the owner's web template.
         // Bundle the theme controller before the original connection script.
         filter { String line ->
-            line.replace('<html lang="en">',
-                '<html lang="en" class="royal-premium royal-root">')
+            line.replaceFirst('^<head>$', '''<head>
+<script id="sharika-startup-safety" src="./startup-safety.js"></script>
+<meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''')
+                .replace('<html lang="en">',
+                    '<html lang="en" class="royal-premium royal-root">')
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
                     '<link rel="stylesheet" href="./royal-profile.css">\n' +
                     '<link id="sharika-royal-premium-style" rel="stylesheet" href="./royal-premium.css">\n' +
@@ -78,6 +91,12 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                     '#sp>b{font-size:26px!important;text-shadow:0 3px 12px #10031e}' +
                     '</style>')
                 .replace('<script src="./connection.js"></script>',
+                    // If the verified native adapter fails to load, the old
+                    // localStorage/SHA demo login must not become usable.
+                    '<script id="sharika-staging-auth-guard">' +
+                    'window.API.login=async function(){return {ok:false,msg:"Secure login unavailable. Restart Sharika."};};' +
+                    'window.API.signup=window.API.login;' +
+                    '</script>' +
                     '<script id="sharika-royal-ui" src="./royal-premium.js"></script>' +
                     '<script src="./connection.js"></script>')
         }
@@ -93,13 +112,17 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/room-discovery.js'))
     from(rootProject.file('../app/royal-room-ui.js'))
     from(rootProject.file('../app/royal-room-ui.css'))
+    from(rootProject.file('../app/reference-room.css'))
     from(rootProject.file('../app/royal-room-background.jpg'))
     from(rootProject.file('../app/royal-room-icons.png'))
     from(rootProject.file('../app/royal-profile.css'))
+    from(rootProject.file('../app/reference-profile.css'))
     from(rootProject.file('../app/royal-profile-background.jpg'))
     from(rootProject.file('../app/profile-collection-atlas.webp'))
     from(rootProject.file('../app/profile-menu-atlas.webp'))
     from(rootProject.file('../app/profile-crown.webp'))
+    from(rootProject.file('startup-safety.js'))
+    from(rootProject.file('app/src/main/res/mipmap-nodpi/sharika_logo.jpg'))
     from(rootProject.file('back-navigation.js'))
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))

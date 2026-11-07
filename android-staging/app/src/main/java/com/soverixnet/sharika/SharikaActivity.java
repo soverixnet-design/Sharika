@@ -150,9 +150,14 @@ public final class SharikaActivity extends Activity {
         browser.addJavascriptInterface(new NativeBridge(), "SharikaNative");
         browser.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                // Never navigate the privileged JS bridge to an arbitrary website.
-                if (!request.isForMainFrame()) return false;
+                // The JavascriptInterface is injected into *every* frame. Block
+                // third-party iframe navigation as well as top-level navigation.
                 String destination = request.getUrl().toString();
+                if (!request.isForMainFrame()) {
+                    return !("about:blank".equals(destination) ||
+                        "about:srcdoc".equals(destination) ||
+                        destination.startsWith("file:///android_asset/"));
+                }
                 return !destination.startsWith("file:///android_asset/");
             }
             @Override public void onPageFinished(WebView view, String url) {
@@ -523,6 +528,15 @@ public final class SharikaActivity extends Activity {
     }
 
     private void requestMicrophone(PermissionRequest request) {
+        // Never grant capture to an embedded remote page. Only the packaged
+        // Sharika document may ask for WebRTC microphone access.
+        Uri origin = request.getOrigin();
+        if (browser == null ||
+            !"file:///android_asset/index.html".equals(browser.getUrl()) ||
+            origin == null || !"file".equalsIgnoreCase(origin.getScheme())) {
+            request.deny();
+            return;
+        }
         // Grant only microphone, only after the Android runtime permission.
         boolean isAudio = false;
         for (String resource : request.getResources()) {
@@ -887,6 +901,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/original-games/(sovera-food|night-food)/rankings\\?period=(daily|weekly|monthly)&metric=(totalWin|totalBet|profitLoss|winCount)$"))
+            return method.equals("GET");
         // Only a numeric cursor on the verified room-chat route may carry a
         // query string. All other arbitrary query parameters stay blocked.
         if (path.matches("^/api/v1/rooms/[0-9]{8}/chat\\?after=(0|[1-9][0-9]{0,11})$"))
@@ -905,11 +921,38 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/events")) return method.equals("GET");
         // Notifications are authenticated and recipient-scoped by the Worker.
         if (path.equals("/api/v1/notifications")) return method.equals("GET");
+        if (path.matches("^/api/v1/notifications/history/[1-9][0-9]*$"))
+            return method.equals("GET");
         if (path.equals("/api/v1/notifications/read-all")) return method.equals("POST");
         if (path.equals("/api/v1/notifications/devices"))
             return method.equals("POST") || method.equals("DELETE");
         if (path.matches("^/api/v1/notifications/[1-9][0-9]*/read$"))
             return method.equals("PATCH");
+        // Family routes are authenticated and identity-scoped by the Worker.
+        // Keep this explicit; allowing an arbitrary /family/* path could expose
+        // the separate Admin API to a normal signed-in Android user.
+        if (path.equals("/api/v1/family/me") ||
+            path.equals("/api/v1/family/discover") ||
+            path.equals("/api/v1/family/creation/requests") ||
+            path.equals("/api/v1/family/ledger") ||
+            path.equals("/api/v1/family/bd/families") ||
+            path.equals("/api/v1/family/requests") ||
+            path.equals("/api/v1/family/invites"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/family/members/[0-9]{8}/report$"))
+            return method.equals("GET");
+        if (path.equals("/api/v1/family/invite") ||
+            path.equals("/api/v1/family/creation/request") ||
+            path.equals("/api/v1/family/bd/grant") ||
+            path.equals("/api/v1/family/join") ||
+            path.equals("/api/v1/family/leave") ||
+            path.equals("/api/v1/family/crystal/transfer") ||
+            path.equals("/api/v1/family/ownership/transfer"))
+            return method.equals("POST");
+        if (path.matches("^/api/v1/family/invites/[1-9][0-9]{0,9}/(accept|decline)$") ||
+            path.matches("^/api/v1/family/requests/[1-9][0-9]{0,9}/(accept|reject)$") ||
+            path.matches("^/api/v1/family/members/[0-9]{8}/(role|remove)$"))
+            return method.equals("POST");
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
         if (path.equals("/api/v1/cosmetics/purchase") ||
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
@@ -937,6 +980,9 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.equals("/api/v1/greedy-wheel/bet"))
             return method.equals("POST");
+        // The original game-card picker reads the server-controlled catalog.
+        // Keep the route GET-only; bets stay confined to the existing game APIs.
+        if (path.equals("/api/v1/game-catalog")) return method.equals("GET");
         if (path.equals("/api/v1/games")) return method.equals("GET");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
@@ -968,12 +1014,18 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/sellers/transfer")) return method.equals("POST");
         if (path.equals("/api/v1/rooms"))
             return method.equals("GET") || method.equals("POST");
+        if (path.equals("/api/v1/room-themes")) return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}$"))
             return method.equals("GET") || method.equals("PATCH");
-        if (path.matches("^/api/v1/rooms/[0-9]{8}/members$"))
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/members$") ||
+            path.matches("^/api/v1/rooms/[0-9]{8}/bans$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/announcement$"))
+            return method.equals("GET") || method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/access-lock$"))
+            return method.equals("GET") || method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/theme-image$"))
@@ -992,6 +1044,9 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}/(join|leave)$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/moderate$"))
+            return method.equals("POST");
+        // Room admin grants are owner-only and checked again by the Worker.
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/admins$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/seat$"))
             return method.equals("PUT");

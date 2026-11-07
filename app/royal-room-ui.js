@@ -31,25 +31,10 @@
   }
   refreshWallpaper();
 
-  // The owner's profile moves with their verified microphone seat. When it
-  // is elsewhere, keep seat 0 as a crown-only throne, not a second identity.
-  const originalRender = window.render;
-  if (typeof originalRender === 'function') {
-    window.render = function (...args) {
-      const result = originalRender.apply(this, args);
-      const throne = window.seats?.[0];
-      if (throne?.owner_throne) {
-        const host = byId('host')?.querySelector('.seat');
-        const face = host?.querySelector('.face');
-        const label = host?.querySelector('.nm');
-        if (face) face.textContent = '👑';
-        if (label) label.textContent = 'Owner throne';
-        if (host && Number.isInteger(throne.owner_mic_seat_no))
-          host.onclick = () => window.seatSheet?.(throne.owner_mic_seat_no);
-      }
-      return result;
-    };
-  }
+  // Seat zero remains an internal owner identity for the legacy transport.
+  // It must never render as a dedicated microphone/"owner throne" seat.
+  // Every visible seat is a normal, numbered mic seat (1..seat_count).
+  byId('host')?.setAttribute('aria-hidden', 'true');
 
   const top = app.querySelector('.top');
   const roomInfo = byId('roomBtn');
@@ -60,19 +45,14 @@
   settingsButton.className = 'sh-settings';
   settingsButton.setAttribute('aria-label', 'Room settings and themes');
   settingsButton.append(sprite('settings'));
-  settingsButton.onclick = () => roomInfo?.click();
+  settingsButton.onclick = () => window.settings?.();
   top?.append(settingsButton);
 
   const stage = app.querySelector('.stage');
   const games = byId('bGame');
-  if (stage && games) {
+  if (games) {
     games.className = 'sh-games';
     games.setAttribute('aria-label', 'Open games');
-    games.replaceChildren(sprite('games'));
-    const label = document.createElement('span');
-    label.textContent = 'Games';
-    games.append(label);
-    stage.append(games);
   }
 
   // Move existing, wired controls. Do not clone buttons, as the staging
@@ -83,12 +63,14 @@
   const inbox = byId('bMsg');
   const gifts = byId('bGift');
   const mic = byId('mic');
+  const emoji = byId('emo');
   const photo = byId('imgBtn');
-  if (!dock || !input || !row || !inbox || !gifts || !mic) return;
+  if (!dock || !input || !row || !inbox || !gifts || !mic || !emoji || !games) return;
 
   const composer = document.createElement('div');
   composer.className = 'sh-composer';
   composer.append(input);
+  composer.hidden = true;
   const text = byId('txt');
   if (text) text.setAttribute('placeholder', 'Message in room…');
 
@@ -105,10 +87,29 @@
     toolRow.append(wrapper);
     return button;
   }
-  addTool(inbox, 'dm', 'DM');
-  const box = addTool(document.createElement('button'), 'box', 'Lucky Box');
+  const chatToggle=document.createElement('button');
+  chatToggle.type='button';chatToggle.id='sh-chat-toggle';
+  chatToggle.setAttribute('aria-expanded','false');
+  chatToggle.setAttribute('aria-controls','sh-room-composer');
+  composer.id='sh-room-composer';
+  chatToggle.onclick=()=>{
+    const opening=composer.hidden;
+    composer.hidden=!opening;
+    chatToggle.setAttribute('aria-expanded',String(opening));
+    if(opening)text?.focus();
+  };
+  addTool(chatToggle,'dm','Chat');
+  mic.classList.remove('sh-mic-floating');
+  addTool(mic,'mic','Mic');
+  addTool(emoji,'emoji','Emoji');
+  addTool(inbox,'dm','DM');
+
+  const box=document.createElement('button');
   box.type = 'button';
   box.id = 'sh-lucky-box';
+  box.className='sh-room-side-box';
+  box.setAttribute('aria-label','Open Lucky Box');
+  box.append(sprite('box'));
   box.onclick = () => {
     if (window.__minor || window.__luckyOff) {
       window.toast?.('Lucky Box is unavailable for this account');
@@ -120,7 +121,9 @@
       window.giftSheet();
     } else gifts.click();
   };
-  addTool(gifts, 'gift', 'Gift');
+  gifts.classList.add('sh-room-side-gift');
+  gifts.setAttribute('aria-label','Send gift');
+  gifts.replaceChildren(sprite('gift'));
   gifts.addEventListener('click', () => { window.gtab = 0; }, { capture: true });
 
   const menuButton = addTool(document.createElement('button'), 'menu', 'Menu');
@@ -128,9 +131,9 @@
   menuButton.id = 'sh-room-menu';
   menuButton.setAttribute('aria-expanded', 'false');
   menuButton.setAttribute('aria-controls', 'sh-room-menu-panel');
+  addTool(games,'games','Games');
 
-  // The microphone stays a real, externally managed mic button.
-  mic.classList.add('sh-mic-floating');
+  // The microphone stays the original, externally managed mic button.
   mic.setAttribute('aria-label', 'Mute or unmute microphone');
 
   const menuPanel = document.createElement('section');
@@ -198,9 +201,11 @@
   });
   menuItem('🎨 Theme', () => window.themeSheet?.());
   menuItem('🪑 Seats', () => window.seatSet?.());
-  menuItem('⚙️ Settings', () => roomInfo?.click());
+  menuItem('🔒 Room Lock', () => window.roomLockSheet?.());
+  menuItem('⚙️ Settings', () => window.settings?.());
   menuItem('👑 Owner tools', () => byId('bOwn')?.click());
   menuItem('🖼️ Photo', () => photo?.click());
+  menuItem('📣 Announcement', () => editAnnouncement());
 
   // Photo remains reachable from the menu with its original permissions.
   if (photo) {
@@ -209,9 +214,370 @@
     photo.style.width = '1px';
     photo.style.height = '1px';
   }
-  dock.replaceChildren(byId('tray'), composer, toolRow, mic, menuPanel);
+  dock.replaceChildren(byId('tray'), composer, toolRow, gifts, box, menuPanel);
 
-  // The room's original renderer already uses one host and a four-column
-  // grid for 9 seats. Preserve seat click handlers and server seat ownership.
+  // Keep the original seat IDs/click targets and verified state. The visual
+  // grid now shows five seats per row without an owner-only slot.
   // CP/Friendship links are rendered only for verified D1 bond pairs.
+
+  // Real-time top strip and server-backed room detail panels.
+  // No mocked members, coin claims or duplicate wallet transfers.
+  const premiumState={room:null,rewards:null,rewardsAt:0,rewardPromise:null,
+    announcement:null,announcementAt:0,announcementPromise:null,
+    rankAt:0,rankPromise:null};
+  const fmtCoins=value=>{
+    const n=Number(value);
+    if(!Number.isFinite(n)||n<0)return '0';
+    if(n>=1e9)return (n/1e9).toFixed(n%1e9<1e8?1:2).replace(/\.0+$/,'')+'B';
+    if(n>=1e6)return (n/1e6).toFixed(n%1e6<1e5?1:2).replace(/\.0+$/,'')+'M';
+    if(n>=1e3)return (n/1e3).toFixed(n%1e3<1e2?1:2).replace(/\.0+$/,'')+'K';
+    return Math.floor(n).toLocaleString('en-US');
+  };
+  function vipAvatar(member,cls){
+    const el=document.createElement('span');
+    el.className='sh-vip-avatar'+(cls?' '+cls:'');
+    if(member?.pic){
+      const img=document.createElement('img');
+      img.src=member.pic;img.alt='';img.loading='lazy';
+      img.onerror=()=>{img.remove();el.textContent=(member.name||'?').trim().slice(0,1).toUpperCase();};
+      el.appendChild(img);
+    }else el.textContent=(member?.name||'?').trim().slice(0,1).toUpperCase();
+    return el;
+  }
+  function canShow(){
+    const v=premiumState.room;
+    return !!(v&&document.getElementById('app')&&window.parent?.cur?.id===v.roomId);
+  }
+  async function rewardInfo(force){
+    const v=premiumState.room;
+    if(!v||!canShow())return null;
+    if(!force&&premiumState.rewards&&Date.now()-premiumState.rewardsAt<60000)
+      return premiumState.rewards;
+    if(premiumState.rewardPromise)return premiumState.rewardPromise;
+    const roomId=v.roomId;
+    premiumState.rewardPromise=Promise.resolve().then(()=>v.loadRewards()).then(data=>{
+      if(premiumState.room?.roomId!==roomId)return null;
+      premiumState.rewards=data;premiumState.rewardsAt=Date.now();
+      const count=document.getElementById('sh-room-value-total');
+      if(count)count.textContent=fmtCoins(
+        Number(data.regular_reward_hundredths||0)/
+          Math.max(1,Number(data.regular_gift_percent||10)));
+      return data;
+    }).finally(()=>{premiumState.rewardPromise=null;});
+    return premiumState.rewardPromise;
+  }
+  function showMembers(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    window.open('<div class="sh-premium-sheet">'+
+      '<h3>👥 Online Users <span id="sh-online-total"></span></h3>'+
+      '<div class="sh-member-list" id="sh-live-members"></div>'+
+      '<p class="sh-footnote">Only members currently confirmed in this room are shown.</p></div>');
+    const list=document.getElementById('sh-live-members');
+    document.getElementById('sh-online-total').textContent=String(v.members.length);
+    if(!v.members.length){
+      list.textContent='No connected members right now.';return;
+    }
+    for(const member of v.members){
+      const row=document.createElement('button');
+      row.type='button';row.className='sh-member-row';
+      row.appendChild(vipAvatar(member));
+      const info=document.createElement('span');info.className='sh-member-info';
+      const name=document.createElement('b');
+      name.textContent=member.name||'Member';
+      const sub=document.createElement('small');
+      sub.textContent='ID: '+(member.displayId||'—')+
+        (member.role==='owner'?' · 👑 Owner':member.role==='admin'?' · 🛡 Admin':'');
+      info.append(name,sub);row.appendChild(info);
+      row.onclick=()=>Promise.resolve(v.openProfile(member)).catch(error=>
+        window.toast?.('Profile: '+String(error?.message||error)));
+      list.appendChild(row);
+    }
+  }
+  function showOverview(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    window.open('<div class="sh-premium-sheet">'+
+      '<div class="sh-overview-hero"><span id="sh-overview-avatar"></span>'+
+      '<div><h3 id="sh-overview-name"></h3><small id="sh-overview-id"></small></div></div>'+
+      '<div class="sh-segments"><button class="on" id="sh-tab-profile">Profile</button>'+
+      '<button id="sh-tab-members">Members</button></div>'+
+      '<div class="sh-overview-cards"><div class="sh-overview-card"><small>Room Value</small>'+
+      '<strong id="sh-overview-value">—</strong><span>Verified gift contribution</span></div>'+
+      '<div class="sh-overview-card"><small>Online Members</small>'+
+      '<strong id="sh-overview-members">0</strong><span>Currently in room</span></div></div>'+
+      '<button class="sh-wide-action" id="sh-overview-rewards">💎 Room Rewards <span>›</span></button>'+
+      '<button class="sh-wide-action alt" id="sh-overview-ranking">🏆 Room Ranking <span>›</span></button>'+
+      '<button class="sh-wide-action alt" id="sh-overview-manage" hidden>🎨 Room Theme & Settings <span>›</span></button>'+
+      '<p class="sh-footnote">Room statistics come from verified server data.</p></div>');
+    document.getElementById('sh-overview-avatar').appendChild(vipAvatar(v.owner,'large'));
+    document.getElementById('sh-overview-name').textContent=v.owner.name||'Room Owner';
+    document.getElementById('sh-overview-id').textContent='ID: '+(v.owner.displayId||v.roomId);
+    document.getElementById('sh-overview-members').textContent=String(v.members.length);
+    const valueNode=document.getElementById('sh-overview-value');
+    if(premiumState.rewards)
+      valueNode.textContent=fmtCoins(Number(premiumState.rewards.regular_reward_hundredths||0)/
+        Math.max(1,Number(premiumState.rewards.regular_gift_percent||10)));
+    rewardInfo().then(data=>{
+      if(data&&valueNode.isConnected)valueNode.textContent=fmtCoins(
+        Number(data.regular_reward_hundredths||0)/
+        Math.max(1,Number(data.regular_gift_percent||10)));
+    }).catch(()=>{if(valueNode.isConnected)valueNode.textContent='Unavailable';});
+    document.getElementById('sh-tab-members').onclick=showMembers;
+    document.getElementById('sh-overview-rewards').onclick=showRewards;
+    document.getElementById('sh-overview-ranking').onclick=()=>showRankings('daily');
+    const manage=document.getElementById('sh-overview-manage');
+    manage.hidden=!v.isOwner;
+    manage.onclick=()=>window.settings?.();
+  }
+  async function showRewards(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    window.open('<div class="sh-premium-sheet">'+
+      '<h3>💎 Room Reward Event</h3>'+
+      '<div class="sh-reward-cards">'+
+      '<div><small>Total earned</small><strong id="sh-reward-total">—</strong></div>'+
+      '<div><small>Already credited to owner wallet</small><strong id="sh-reward-paid">—</strong></div></div>'+
+      '<div class="sh-reward-week">🎁 Ordinary gifts: <b id="sh-reward-pct">10%</b>'+
+      '<small>Lucky Gift share: <span id="sh-reward-lucky">1%</span></small>'+
+      '<small>Weekly room contribution (UTC): <b id="sh-week-contribution">Loading…</b></small></div>'+
+      '<h3>Contribution → owner reward</h3>'+
+      '<div id="sh-reward-tiers" class="sh-tier-list"></div>'+
+      '<p class="sh-footnote">The existing 10% room share is credited to the owner as eligible gifts settle. This is not a second weekly payout. A separate weekly member reward still needs an approved payout rule.</p></div>');
+    const total=document.getElementById('sh-reward-total');
+    const paid=document.getElementById('sh-reward-paid');
+    try{
+      const data=await rewardInfo(true);
+      if(!data||!total.isConnected)return;
+      const ordinaryPct=Number(data.regular_gift_percent||10);
+      total.textContent=fmtCoins(Number(data.reward_hundredths||0)/100)+' 🪙';
+      paid.textContent=fmtCoins(data.owner_wallet_credited_coins||0)+' 🪙';
+      v.loadRankings('weekly').then(result=>{
+        const week=document.getElementById('sh-week-contribution');
+        if(week?.isConnected)
+          week.textContent=fmtCoins(result.total_contribution_coins)+' 🪙';
+      }).catch(()=>{
+        const week=document.getElementById('sh-week-contribution');
+        if(week?.isConnected)week.textContent='Unavailable';
+      });
+      document.getElementById('sh-reward-pct').textContent=ordinaryPct+'%';
+      document.getElementById('sh-reward-lucky').textContent=
+        Number(data.lucky_gift_percent||1)+'%';
+      const tiers=document.getElementById('sh-reward-tiers');
+      [3000000,6000000,10000000,14000000,20000000,30000000,40000000,
+        50000000,60000000,70000000,80000000].forEach((threshold,i)=>{
+        const row=document.createElement('div');row.className='sh-tier';
+        const left=document.createElement('span');
+        left.textContent=String(i+1).padStart(2,'0')+'   '+fmtCoins(threshold);
+        const right=document.createElement('strong');
+        right.textContent=fmtCoins(threshold*ordinaryPct/100)+' 🪙';
+        row.append(left,right);tiers.appendChild(row);
+      });
+    }catch(error){
+      if(total.isConnected)total.textContent='Unavailable';
+      if(paid.isConnected)paid.textContent=String(error?.message||error);
+    }
+  }
+  async function showRankings(period){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    const periods=[['daily','Day'],['weekly','Week'],['monthly','Monthly']];
+    window.open('<div class="sh-premium-sheet">'+
+      '<h3>🏆 Room Ranking</h3><div class="sh-segments sh-rank-tabs" id="sh-ranking-tabs"></div>'+
+      '<div id="sh-ranking-list" class="sh-rank-list">Loading verified results…</div>'+
+      '<p class="sh-footnote">Ranked by verified coins gifted in this room (UTC). Ranking does not issue an extra reward.</p></div>');
+    const tabs=document.getElementById('sh-ranking-tabs');
+    for(const entry of periods){
+      const b=document.createElement('button');
+      b.textContent=entry[1];b.className=entry[0]===period?'on':'';
+      b.onclick=()=>showRankings(entry[0]);
+      tabs.appendChild(b);
+    }
+    const list=document.getElementById('sh-ranking-list');
+    try{
+      const result=await v.loadRankings(period);
+      if(!list.isConnected||!canShow())return;
+      list.replaceChildren();
+      const leaders=Array.isArray(result.leaders)?result.leaders:[];
+      if(!leaders.length){list.textContent='No verified room gifts recorded for this period.';return;}
+      for(const member of leaders.slice(0,20)){
+        const row=document.createElement('button');
+        row.type='button';row.className='sh-rank-row';
+        const rank=document.createElement('span');rank.className='sh-rank-medal';
+        rank.textContent=Number(member.rank)<=3?
+          ['🥇','🥈','🥉'][Number(member.rank)-1]:'#'+String(member.rank||'—');
+        const profile={
+          publicId:String(member.public_id||''),
+          name:String(member.name||'Member'),
+          pic:member.pic||null,
+          displayId:String(member.display_id||member.public_id||''),
+          seatNo:null
+        };
+        const name=document.createElement('span');name.className='sh-rank-name';
+        name.textContent=profile.name;
+        const sum=document.createElement('b');
+        sum.textContent=fmtCoins(member.total)+' 🪙';
+        row.append(rank,vipAvatar(profile),name,sum);
+        row.onclick=()=>Promise.resolve(v.openProfile(profile)).catch(error=>
+          window.toast?.('Profile: '+String(error?.message||error)));
+        list.appendChild(row);
+      }
+    }catch(error){
+      if(list.isConnected)list.textContent='Ranking unavailable: '+String(error?.message||error);
+    }
+  }
+  function displayAnnouncement(text){
+    let strip=document.getElementById('sh-room-announcement');
+    if(!strip){
+      const stats=app.querySelector('.stats');
+      if(!stats)return;
+      strip=document.createElement('div');
+      strip.id='sh-room-announcement';
+      strip.className='sh-room-announcement';
+      strip.setAttribute('role','note');
+      stats.after(strip);
+    }
+    const value=String(text||'').trim().slice(0,280);
+    strip.hidden=!value;
+    strip.replaceChildren();
+    if(value){
+      const pin=document.createElement('span');
+      pin.textContent='📣';
+      const label=document.createElement('span');
+      label.textContent='Announcement · '+value;
+      strip.append(pin,label);
+    }
+  }
+  async function loadAnnouncement(force=false){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    if(!force&&premiumState.announcement!==null&&
+       Date.now()-premiumState.announcementAt<60000){
+      displayAnnouncement(premiumState.announcement);return;
+    }
+    if(premiumState.announcementPromise)return premiumState.announcementPromise;
+    const roomId=v.roomId;
+    premiumState.announcementPromise=Promise.resolve(v.loadAnnouncement()).then(result=>{
+      if(premiumState.room?.roomId!==roomId)return;
+      premiumState.announcement=String(result?.text||'');
+      premiumState.announcementAt=Date.now();
+      displayAnnouncement(premiumState.announcement);
+    }).finally(()=>{premiumState.announcementPromise=null;});
+    return premiumState.announcementPromise;
+  }
+  async function editAnnouncement(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    if(!v.isOwner){window.toast?.('Only the room owner can edit announcements');return;}
+    await loadAnnouncement().catch(()=>{});
+    window.open('<div class="sh-premium-sheet"><h3>📣 Room Announcement</h3>'+
+      '<p class="sh-footnote">Shown to every room member, including new arrivals.</p>'+
+      '<textarea id="sh-room-notice-input" maxlength="280" rows="4" '+
+      'placeholder="Write your room announcement…" '+
+      'style="width:100%;padding:12px;border:1px solid #e9b965;'+
+      'border-radius:14px;background:#1b0a32;color:#ffedc8"></textarea>'+
+      '<button class="sh-wide-action" id="sh-room-notice-save">Save announcement</button>'+
+      '<p id="sh-room-notice-status" class="sh-footnote"></p></div>');
+    const input=document.getElementById('sh-room-notice-input');
+    const save=document.getElementById('sh-room-notice-save');
+    if(!input||!save)return;
+    input.value=premiumState.announcement||'';
+    save.onclick=async()=>{
+      save.disabled=true;
+      const status=document.getElementById('sh-room-notice-status');
+      try{
+        const result=await v.saveAnnouncement(input.value);
+        if(premiumState.room?.roomId!==v.roomId)return;
+        premiumState.announcement=String(result?.text||'');
+        premiumState.announcementAt=Date.now();
+        displayAnnouncement(premiumState.announcement);
+        if(status?.isConnected)status.textContent='Saved for everyone in this room ✓';
+      }catch(error){
+        if(status?.isConnected)status.textContent='Save failed: '+String(error?.message||error);
+      }finally{save.disabled=false;}
+    };
+  }
+  async function refreshSmallRanking(force=false){
+    const v=premiumState.room;
+    const chip=document.getElementById('sh-room-rank-pill');
+    if(!v||!chip||!canShow())return;
+    if(!force&&Date.now()-premiumState.rankAt<60000)return;
+    if(premiumState.rankPromise)return premiumState.rankPromise;
+    const roomId=v.roomId;
+    premiumState.rankPromise=Promise.resolve(v.loadRankings('daily')).then(result=>{
+      if(premiumState.room?.roomId!==roomId||!chip.isConnected)return;
+      chip.textContent='🏆 '+fmtCoins(result?.total_contribution_coins||0)+' ›';
+      premiumState.rankAt=Date.now();
+    }).catch(()=>{if(chip.isConnected)chip.textContent='🏆 Ranking ›';})
+      .finally(()=>{premiumState.rankPromise=null;});
+    return premiumState.rankPromise;
+  }
+  function renderPremiumHeader(){
+    const v=premiumState.room;
+    if(!v||!canShow())return;
+    const top=app.querySelector('.top');
+    if(!top)return;
+    let bar=document.getElementById('sh-room-masthead');
+    if(!bar){
+      bar=document.createElement('div');
+      bar.id='sh-room-masthead';bar.className='sh-room-masthead';
+      const people=document.createElement('div');
+      people.id='sh-room-faces';people.className='sh-room-faces';
+      bar.append(people);
+      top.after(bar);
+    }
+    const faces=document.getElementById('sh-room-faces');
+    faces.replaceChildren();
+    for(const member of v.members.slice(0,4)){
+      const button=document.createElement('button');
+      button.type='button';button.className='sh-room-face-button';
+      button.title=member.name||'Room member';button.appendChild(vipAvatar(member));
+      button.onclick=()=>Promise.resolve(v.openProfile(member)).catch(error=>
+        window.toast?.('Profile: '+String(error?.message||error)));
+      faces.appendChild(button);
+    }
+    const count=document.createElement('button');
+    count.className='sh-room-face-count';count.type='button';
+    count.textContent=String(v.members.length);
+    count.setAttribute('aria-label','Online users: '+v.members.length);
+    count.onclick=showMembers;faces.appendChild(count);
+    const old=document.getElementById('ustat');
+    if(old){old.textContent='👥 '+v.members.length+' ›';old.onclick=showMembers;}
+    const stats=app.querySelector('.stats');
+    const smallRank=stats?.querySelector('.pill:not([id])');
+    if(smallRank){
+      smallRank.id='sh-room-rank-pill';
+      smallRank.style.cursor='pointer';
+      smallRank.setAttribute('role','button');
+      smallRank.tabIndex=0;
+      smallRank.setAttribute('aria-label','Show verified room contribution ranking');
+      smallRank.onclick=()=>showRankings('daily');
+      smallRank.onkeydown=event=>{
+        if(event.key==='Enter'||event.key===' '){event.preventDefault();showRankings('daily');}
+      };
+    }
+    const rewardChip=byId('rrpill');
+    if(rewardChip){
+      rewardChip.style.setProperty('display','inline-flex','important');
+      rewardChip.style.cursor='pointer';
+      rewardChip.textContent='💰 Reward ›';
+      rewardChip.onclick=showRewards;
+    }
+    refreshSmallRanking().catch(()=>{});
+    loadAnnouncement().catch(()=>{});
+  }
+  window.SharikaRoomPremium={
+    sync(view){
+      if(premiumState.room?.roomId!==view.roomId){
+        premiumState.rewards=null;premiumState.rewardsAt=0;
+        premiumState.announcement=null;premiumState.announcementAt=0;
+        premiumState.rankAt=0;
+      }
+      premiumState.room=view;
+      renderPremiumHeader();
+    },
+    showOverview,showMembers,showRewards,showRankings
+  };
+  if(roomInfo)roomInfo.onclick=showOverview;
+
 })();

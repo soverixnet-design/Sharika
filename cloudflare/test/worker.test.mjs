@@ -258,6 +258,10 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
         stmt.first=async()=>coverVersion?{version:coverVersion}:null;
       if(sql.startsWith('SELECT version FROM sharika_room_theme_images'))
         stmt.first=async()=>wallpaperVersion?{version:wallpaperVersion}:null;
+      if(sql.startsWith('SELECT active,image_bytes FROM sharika_room_theme_catalog'))
+        stmt.first=async()=>({active:1,image_bytes:120000});
+      if(sql.startsWith('SELECT image_bytes,image_version FROM sharika_room_theme_catalog'))
+        stmt.first=async()=>({image_bytes:120000,image_version:2});
       if(sql.startsWith('UPDATE sharika_rooms SET'))
         stmt.run=async()=>{theme=stmt.values[2];return {meta:{changes:1}};};
       return stmt;
@@ -279,21 +283,32 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
     assert.equal((await patch(ownerToken,'photo')).status,409);
     assert.equal(theme,'mid');
     coverVersion=9;
+    // A card-cover upload must never silently become a full-room wallpaper.
+    assert.equal((await patch(ownerToken,'photo')).status,409);
+    assert.equal(theme,'mid');
+    wallpaperVersion=3;
     assert.equal((await patch(ownerToken,'photo')).status,200);
     const shared=await read(guestToken);
     assert.equal(shared.status,200);
     const body=await shared.json();
     assert.equal(body.theme,'photo');
     assert.equal(body.theme_background_url,
-      'https://example.test/api/v1/rooms/10000001/cover?v=9');
-    wallpaperVersion=3;
+      'https://example.test/api/v1/rooms/10000001/theme-image?v=3');
+    // Old rooms without a separate wallpaper can still show their legacy
+    // cover until the owner selects a new HD background.
+    wallpaperVersion=0;
     const hdShared=await (await read(guestToken)).json();
     assert.equal(hdShared.theme_background_url,
-      'https://example.test/api/v1/rooms/10000001/theme-image?v=3');
+      'https://example.test/api/v1/rooms/10000001/cover?v=9');
     assert.equal((await patch(ownerToken,'ocean')).status,200);
     const palette=await (await read(guestToken)).json();
     assert.equal(palette.theme,'ocean');
     assert.equal(palette.theme_background_url,null);
+    assert.equal((await patch(ownerToken,'catalog:7')).status,200);
+    const official=await (await read(guestToken)).json();
+    assert.equal(official.theme,'catalog:7');
+    assert.equal(official.theme_background_url,
+      'https://example.test/api/v1/room-themes/7/image?v=2');
   }finally{globalThis.fetch=originalFetch;}
 });
 
@@ -628,7 +643,13 @@ test('regular gift atomically debits sender, credits recipient diamonds and 10% 
     assert.equal(json.recipient_diamonds_per_user,50);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.equal(stmts.length,11);
+    assert.equal(stmts.length,13);
+    assert.match(stmts[11].sql,/sharika_family_crystal_ledger/);
+    assert.match(stmts[11].sql,/family_owner/);
+    assert.deepEqual(stmts[11].values,[uid,'gift_atomic_12345678']);
+    assert.match(stmts[12].sql,/sharika_family_crystal_ledger/);
+    assert.match(stmts[12].sql,/\'bd\'/);
+    assert.deepEqual(stmts[12].values,[uid,'gift_atomic_12345678']);
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);
@@ -1419,7 +1440,8 @@ test('room listing returns only a versioned cover image URL, never image bytes',
       const stmt=prev(sql);
       if(sql.includes('FROM sharika_users WHERE auth_uid'))
         stmt.first=async()=>({status:'active'});
-      if(sql.includes('FROM sharika_rooms r LEFT JOIN sharika_room_covers c')){
+      if(sql.includes('FROM sharika_rooms r ')&&
+         sql.includes('LEFT JOIN sharika_room_covers c')){
         stmt.all=async()=>({results:[
           {id:'10000001',name:'Room with cover',cover_version:7},
           {id:'10000002',name:'No cover',cover_version:null}

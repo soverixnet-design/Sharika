@@ -1,0 +1,103 @@
+name: Sharika Original Food Wheels + Room Updates staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-family-bd-crystal-ledger-20261103
+    paths:
+      - '.github/workflows/sharika-original-wheels-room-prerelease.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-tested-original-wheels:
+    name: Publish verified original wheel and room-update APK (not ZIP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require successful integrated Android, emulator, and Cloudflare checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+          test "$(gh run view 41747672146 --repo soverixnet-design/Sharika --json conclusion,headSha --jq '.conclusion+" "+.headSha')" = 'success 71652f135ac2cc332c18ac23899f8341745be4bb'
+          
+          test "$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13284596692 --jq '.workflow_run.head_sha')" = 71652f135ac2cc332c18ac23899f8341745be4bb
+          test "$(gh run view 41747981468 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          
+          test "$(gh run view 41748487594 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          echo 'SHARIKA_UNIFIED_FAMILY_LOGIN_FRUIT_APK_SERVER_DEPLOY_EMULATOR_PASSED'
+
+      - name: Download only approved, stable-signed Android staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41747672146
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: integrated-apk
+
+      - name: Verify login, original wheels, and room UI inside Android APK
+        run: |
+          test -s integrated-apk/app-debug.apk
+          unzip -tqq integrated-apk/app-debug.apk
+          for asset in original-games/sovera-food-wheel.html original-games/night-food-wheel.html greedy-wheel/index.html greedy-wheel/sharika-bridge.js royal-room-ui.js royal-room-ui.css; do
+            unzip -Z1 integrated-apk/app-debug.apk | grep -Fx "assets/$asset"
+          done
+          unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/startup-safety.js'
+          unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/sharika_logo.jpg'
+          unzip -p integrated-apk/app-debug.apk assets/index.html > "$RUNNER_TEMP/verified-startup-index.html"
+          grep -Fq 'id="sharika-startup-safety"' "$RUNNER_TEMP/verified-startup-index.html"
+          test "$(grep -o 'http-equiv="Content-Security-Policy"' "$RUNNER_TEMP/verified-startup-index.html" | wc -l)" -eq 1
+          node - <<'NODE'
+          const fs=require('node:fs'),vm=require('node:vm');
+          const html=fs.readFileSync(process.env.RUNNER_TEMP+'/verified-startup-index.html','utf8');
+          const scripts=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+          let hasLogin=false;
+          for(const [i,match] of scripts.entries()){
+            if(!match[1].trim())continue;
+            new vm.Script(match[1],{filename:'packaged-inline-'+i+'.js'});
+            if(match[1].includes('function showAuth('))hasLogin=true;
+          }
+          if(!hasLogin)throw Error('Packaged login script missing');
+          console.log('SHARIKA_UNIFIED_LOGIN_SCRIPTS_PARSE_OK');
+          NODE
+          unzip -p integrated-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/original-wheels-connection.js"
+          unzip -p integrated-apk/app-debug.apk assets/royal-room-ui.js > "$RUNNER_TEMP/original-wheels-room-ui.js"
+          node - <<'NODE'
+          const fs=require('fs');
+          const parent=fs.readFileSync(process.env.RUNNER_TEMP+'/original-wheels-connection.js','utf8');
+          const room=fs.readFileSync(process.env.RUNNER_TEMP+'/original-wheels-room-ui.js','utf8');
+          const games=["id:'sovera-food'","id:'night-food'","id:'greedy-wheel'"];
+          if(!games.every(k=>parent.includes(k)) ||
+             !parent.includes("new Set(['sovera-food','night-food','greedy-wheel'])") ||
+             !parent.includes("requestedOriginalGames.has(game.id)&&enabled.has(game.id)") ||
+             !parent.includes('sharika:original-request') ||
+             !parent.includes('ensureRoomGamePortal') ||
+             parent.includes("game.id==='fruit-royale'&&enabled.has(game.id)") ||
+             !room.includes("smallRank.onclick=()=>showRankings('daily')") ||
+             !room.includes('sh-room-announcement') ||
+             !room.includes("menuItem('📣 Announcement'"))
+            throw Error('Original wheel menu or room UI missing from packaged APK');
+          console.log('ORIGINAL_WHEELS_LOGIN_AND_ROOM_UI_VERIFIED');
+          NODE
+          cp integrated-apk/app-debug.apk integrated-apk/Sharika-Original-Wheels-Room-Updates-Staging.apk
+          sha256sum integrated-apk/Sharika-Original-Wheels-Room-Updates-Staging.apk
+
+      - name: Publish direct test APK as a clearly marked GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=sharika-original-wheels-room-notices-staging-71652f1
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::A release with this tag already exists; never overwrite user downloads."
+            exit 1
+          fi
+          gh release create "$TAG" integrated-apk/Sharika-Original-Wheels-Room-Updates-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target 71652f135ac2cc332c18ac23899f8341745be4bb \
+            --title "Sharika Original Food Wheels + Room Notices — Staging APK" \
+            --notes "Staging test APK restoring Sovera Food Wheel, Night Food Wheel and Greedy Wheel from original assets. Jackpot Fruit and Fruit Royale are disabled; existing accepted bets still settle on the server. Includes smaller room header, real mini ranking, owner-managed persisted announcement, verified member join chat messages, read-only room reward. No new weekly member payout rule or production changes. Android emulator and Cloudflare checks passed. Test login, real-coin bets, ranking and two-phone voice before production." \
+            --prerelease

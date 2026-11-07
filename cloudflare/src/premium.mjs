@@ -1,3 +1,4 @@
+import {recordUserEvent} from './transaction-notices.mjs';
 // Isolated Sharika VIP / SVIP / Noble entitlements. The verified Worker owns
 // status, purchase debits, daily credits, administrative grants and audit.
 const RANK={none:0,vip:1,svip:2,noble:3};
@@ -149,7 +150,7 @@ async function payload(request,limit=4096){
 const readError=(fail,cors,error)=>fail(error.message==='premium_body_too_large'
   ?'premium_body_too_large':'invalid_premium_body',400,cors);
 
-export async function handlePremiumApp({request,env,uid,path,cors,reply,fail,nowMs=Date.now()}){
+export async function handlePremiumApp({request,env,uid,path,cors,reply,fail,ctx,nowMs=Date.now()}){
   if(!['/api/v1/premium','/api/v1/premium/purchase',
     '/api/v1/premium/daily/claim'].includes(path))return null;
   const cfg=await settings(env.DB);
@@ -162,13 +163,23 @@ export async function handlePremiumApp({request,env,uid,path,cors,reply,fail,now
     let body;
     try{body=await payload(request);}catch(error){return readError(fail,cors,error);}
     const chosen=cfg.tiers.find(t=>t.tier===body.tier),requestId=body.request_id;
+    const purchaseFailed=async(error,status)=>{
+      if(typeof requestId==='string'&&REQUEST_ID.test(requestId))
+        await recordUserEvent({env,ctx,recipientUid:uid,title:'VIP purchase unsuccessful',
+          body:'Your '+String(body.tier||'premium').slice(0,30)+' purchase was not completed: '+
+            ({wallet_insufficient:'insufficient coins',premium_downgrade_not_allowed:'a lower tier is not allowed',
+              svip_level_not_available:'the chosen SVIP level is unavailable',
+              premium_purchase_conflict_or_balance_changed:'balance or membership changed'}[error]||error)+'.',
+          dedupeKey:'premium_purchase_failed:'+requestId});
+      return fail(error,status,cors);
+    };
     if(!chosen||typeof requestId!=='string'||!REQUEST_ID.test(requestId))
       return fail('invalid_premium_purchase',400,cors);
     const level=chosen.tier==='svip'?Number(body.svip_level??1):1;
     if(!validSvipLevel(level))return fail('invalid_svip_level',400,cors);
     const svipConfig=chosen.tier==='svip'?cfg.svip_levels.find(x=>x.level===level):null;
     if(chosen.tier==='svip'&&(!svipConfig||!svipConfig.enabled))
-      return fail('svip_level_not_available',403,cors);
+      return purchaseFailed('svip_level_not_available',403);
     const price=svipConfig?svipConfig.price_coins:chosen.price_coins;
     const duration=svipConfig?SVIP_DURATION_DAYS:chosen.duration_days;
     const existing=await env.DB.prepare(
@@ -180,8 +191,8 @@ export async function handlePremiumApp({request,env,uid,path,cors,reply,fail,now
       return reply({duplicate:true,tier:existing.tier,svip_level:Number(existing.svip_level)||0,
         price_coins:Number(existing.price_coins),expires_at_ms:Number(existing.expires_at_ms)},200,cors);
     }
-    if(status.rank>chosen.rank)return fail('premium_downgrade_not_allowed',409,cors);
-    if(status.wallet_coins<price)return fail('wallet_insufficient',409,cors);
+    if(status.rank>chosen.rank)return purchaseFailed('premium_downgrade_not_allowed',409);
+    if(status.wallet_coins<price)return purchaseFailed('wallet_insufficient',409);
     const prior=await env.DB.prepare(
       'SELECT tier,expires_at_ms,svip_level FROM sharika_premium_memberships WHERE auth_uid=?'
     ).bind(uid).first();
@@ -217,9 +228,13 @@ export async function handlePremiumApp({request,env,uid,path,cors,reply,fail,now
       ]);
     }catch(error){
       if(/CONSTRAINT|constraint/i.test(String(error?.message||error)))
-        return fail('premium_purchase_conflict_or_balance_changed',409,cors);
+        return purchaseFailed('premium_purchase_conflict_or_balance_changed',409);
       throw error;
     }
+    await recordUserEvent({env,ctx,recipientUid:uid,kind:'reward',title:'VIP purchase successful',
+      body:'You purchased '+chosen.tier.toUpperCase()+(chosen.tier==='svip'?' level '+level:'')+
+        ' for '+price.toLocaleString('en-US')+' coins. Your pass lasts '+duration+' days.',
+      dedupeKey:'premium_purchase_success:'+requestId});
     return reply({duplicate:false,tier:chosen.tier,svip_level:chosen.tier==='svip'?level:0,
       price_coins:price,duration_days:duration,expires_at_ms:expiration},201,cors);
   }
@@ -251,7 +266,7 @@ export async function handlePremiumApp({request,env,uid,path,cors,reply,fail,now
   return fail('premium_method_not_allowed',405,cors);
 }
 
-export async function handlePremiumAdmin({request,env,uid,actor,operation,cors,reply,fail,nowMs=Date.now()}){
+export async function handlePremiumAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx,nowMs=Date.now()}){
   if(operation!=='premium'&&operation!=='premium/grant')return null;
   if(!['super','finance','support'].includes(actor.role))
     return fail('admin_permission_denied',403,cors);
@@ -338,6 +353,12 @@ export async function handlePremiumAdmin({request,env,uid,actor,operation,cors,r
         body.tier==='none'?'revoke':'grant',JSON.stringify({before:previous,
           tier:body.tier,svip_level:body.tier==='svip'?level:0,duration_days:body.duration_days||0}))
     ]);
+    await recordUserEvent({env,ctx,recipientUid:user.auth_uid,kind:'system',
+      title:body.tier==='none'?'VIP access removed':'VIP membership updated',
+      body:body.tier==='none'?'An administrator removed your VIP membership.':
+        'An administrator granted '+body.tier.toUpperCase()+
+          (body.tier==='svip'?' level '+level:'')+' for '+body.duration_days+' days.',
+      dedupeKey:'premium_admin_grant:'+body.public_id+':'+Date.now(),createdBy:uid});
     return reply({updated:true,public_id:body.public_id,tier:body.tier,
       svip_level:body.tier==='svip'?level:0,expires_at_ms:body.tier==='none'?null:nowMs+body.duration_days*MS_DAY},200,cors);
   }

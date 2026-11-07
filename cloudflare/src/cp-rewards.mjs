@@ -1,3 +1,4 @@
+import {recordUserEvent} from './transaction-notices.mjs';
 // Verified weekly CP rewards. Only a completed UTC week can be settled.
 // No gifts or balances are fabricated by the client. Rewards default OFF.
 const WEEK=7*24*60*60*1000;
@@ -112,7 +113,7 @@ export async function readCpRewardBoard(db,nowMs=Date.now()){
 
 // D1 batch is transactional. A unique week row is first, so overlapping admin
 // requests or a cron retry cannot double-credit any member or re-grant items.
-export async function settleLastCpWeek(db,nowMs=Date.now(),issuer='system',automatic=false){
+export async function settleLastCpWeek(db,nowMs=Date.now(),issuer='system',automatic=false,env=null,ctx=null){
   const current=cpWeekStart(nowMs),last=current-WEEK;
   if(last<=0)return {skipped:'no_completed_week'};
   const config=await policyAndRules(db);
@@ -179,11 +180,21 @@ export async function settleLastCpWeek(db,nowMs=Date.now(),issuer='system',autom
       winner_count:Number(committed.winner_count)};
     throw error;
   }
+  await Promise.all(winners.flatMap((pair,index)=>[pair.uid_a,pair.uid_b].map((member,side)=>{
+    const rule=rules.get(index+1);
+    return recordUserEvent({db,env,ctx,recipientUid:member,kind:'reward',
+      title:'CP Ranking reward — TOP '+(index+1),
+      body:'Your CP pair ranked TOP '+(index+1)+' this week. '+
+        rule.coins_each.toLocaleString('en-US')+' coins each'+
+        (rule.frame_item_id?', a special frame':'')+
+        (rule.medal_item_id?', and a medal':'')+' were awarded.',
+      dedupeKey:'cp_week_reward:'+last+':'+(index+1)+':'+side});
+  })));
   return {awarded:true,week_start_ms:last,winner_count:winners.length,
     recipients:winners.length*2};
 }
 
-export async function handleCpRewardAdmin({request,env,uid,actor,operation,cors,reply,fail}){
+export async function handleCpRewardAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx}){
   if(operation!=='bonds/rewards'&&operation!=='bonds/rewards/settle')return null;
   if(!['super','finance'].includes(actor.role))return fail('admin_permission_denied',403,cors);
   const db=env.DB;
@@ -207,7 +218,7 @@ export async function handleCpRewardAdmin({request,env,uid,actor,operation,cors,
     try{body=await boundedBody(request,256);}
     catch(_){return fail('invalid_cp_reward_request',400,cors);}
     if(body?.confirm!==true)return fail('cp_reward_confirmation_required',400,cors);
-    try{return reply(await settleLastCpWeek(db,Date.now(),uid,false),200,cors);}
+    try{return reply(await settleLastCpWeek(db,Date.now(),uid,false,env,ctx),200,cors);}
     catch(error){return fail('cp_reward_settlement_failed',409,cors);}
   }
   if(operation==='bonds/rewards'&&request.method==='PATCH'){

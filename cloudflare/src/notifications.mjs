@@ -128,14 +128,22 @@ export async function handleNotificationApp({request,env,uid,path,cors,reply,fai
     "SELECT auth_uid FROM sharika_users WHERE auth_uid=? AND status='active'"
   ).bind(uid).first();
   if(!active)return fail('profile_unavailable',403,cors);
-  if(path==='/api/v1/notifications'&&request.method==='GET'){
+  const older=/^\/api\/v1\/notifications\/history\/([1-9][0-9]*)$/.exec(path);
+  if((path==='/api/v1/notifications'||older)&&request.method==='GET'){
+    const cursor=older?Number(older[1]):null;
+    if(older&&(!Number.isSafeInteger(cursor)||cursor<1))
+      return fail('invalid_notification_cursor',400,cors);
+    // Notifications remain in D1; fetch older receipts in stable pages.
+    const query='SELECT id,kind,title,body,read_at,created_at FROM sharika_notifications '+
+      'WHERE recipient_uid=? '+(older?'AND id<? ':'')+'ORDER BY id DESC LIMIT 101';
     const [items,total]=await Promise.all([
-      db.prepare('SELECT id,kind,title,body,read_at,created_at FROM sharika_notifications '+
-        'WHERE recipient_uid=? ORDER BY id DESC LIMIT 100').bind(uid).all(),
+      (older?db.prepare(query).bind(uid,cursor):db.prepare(query).bind(uid)).all(),
       db.prepare('SELECT COUNT(*) AS n FROM sharika_notifications '+
         'WHERE recipient_uid=? AND read_at IS NULL').bind(uid).first()
     ]);
-    return reply({notifications:rows(items),unread_count:Number(total?.n||0)},200,cors);
+    const all=rows(items),page=all.slice(0,100);
+    return reply({notifications:page,unread_count:Number(total?.n||0),
+      next_before:all.length>100?page[page.length-1].id:null},200,cors);
   }
   if(path==='/api/v1/notifications/read-all'&&request.method==='POST'){
     const saved=await db.prepare(

@@ -1,3 +1,4 @@
+import {recordUserEvent} from './transaction-notices.mjs';
 // Verified, consent-based CP and Friendship links. Coins are held at the
 // invitation step, then either settled on acceptance or refunded exactly once.
 const PUBLIC_ID=/^[0-9]{8}$/;
@@ -172,7 +173,7 @@ export async function readBondRanking(db,type,period,nowMs=Date.now()){
 
 // Status transition + unique immutable wallet ledger in one D1 batch makes
 // refunds all-or-nothing even when two clients or cron race to refund.
-export async function expireBondInvites(db,nowMs=Date.now(),limit=30){
+export async function expireBondInvites(db,nowMs=Date.now(),limit=30,env=null,ctx=null){
   const expired=rows(await db.prepare('SELECT id,sender_uid,held_coins FROM sharika_bond_invites '+
     "WHERE status='pending' AND expires_at_ms<=? ORDER BY expires_at_ms LIMIT ?")
     .bind(nowMs,Math.max(1,Math.min(100,limit))).all());
@@ -180,6 +181,11 @@ export async function expireBondInvites(db,nowMs=Date.now(),limit=30){
   for(const invite of expired){
     try{
       await refundInvite(db,invite,'expired',nowMs,invite.sender_uid);
+      await recordUserEvent({db,env,ctx,recipientUid:invite.sender_uid,kind:'system',
+        title:'CP / Friendship invite expired',
+        body:'Your relationship invitation #'+invite.id+' expired. '+
+          Number(invite.held_coins).toLocaleString('en-US')+' held coins were refunded.',
+        dedupeKey:'bond_invite_expired:'+invite.id});
       resolved++;
     }catch(error){
       // A parallel request may have refunded it. Only an unresolved error is
@@ -208,7 +214,7 @@ async function refundInvite(db,invite,status,nowMs,actorUid){
   ]);
 }
 
-export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=Date.now()}){
+export async function handleBondApp({request,env,uid,path,cors,reply,fail,ctx,nowMs=Date.now()}){
   if(!path.startsWith('/api/v1/bonds'))return null;
   const db=env.DB;
   const actor=await db.prepare('SELECT auth_uid,public_no,status,coins FROM sharika_users WHERE auth_uid=?')
@@ -253,7 +259,7 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
     return rank?reply(rank,200,cors):fail('invalid_bond_ranking',400,cors);
   }
   if(path==='/api/v1/bonds/me'&&request.method==='GET'){
-    await expireBondInvites(db,nowMs);
+    await expireBondInvites(db,nowMs,30,env,ctx);
     const inviteSelect='SELECT i.*,s.public_no AS sender_no,s.name AS sender_name,'+
       'r.public_no AS recipient_no,r.name AS recipient_name,g.name AS gift_name,g.emoji '+
       'FROM sharika_bond_invites i '+
@@ -317,6 +323,17 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
       db.prepare('INSERT INTO sharika_bond_audit(actor_uid,action,bond_id,details_json,created_at_ms) '+
         "VALUES(?,'pair_gift',?,?,?)").bind(uid,bond.id,
           JSON.stringify({gift_id:giftId,coins:gift.price_coins}),nowMs)
+    ]);
+    await Promise.all([
+      recordUserEvent({db,env,ctx,recipientUid:target.auth_uid,kind:'gift',
+        title:gift.type==='cp'?'CP gift received':'Friendship gift received',
+        body:'You received '+gift.name+' from member '+pid(actor.public_no)+
+          '. Gift value: '+Number(gift.price_coins).toLocaleString('en-US')+' coins.',
+        dedupeKey:'bond_gift_received:'+requestId}),
+      recordUserEvent({db,env,ctx,recipientUid:uid,kind:'gift',
+        title:'Relationship gift sent',body:'You sent '+gift.name+' to member '+targetId+
+          ' for '+Number(gift.price_coins).toLocaleString('en-US')+' coins.',
+        dedupeKey:'bond_gift_sent:'+requestId})
     ]);
     return reply({duplicate:false,bond_id:Number(bond.id),
       spent_coins:Number(gift.price_coins)},201,cors);
@@ -392,6 +409,18 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
     ]);
     const created=await db.prepare('SELECT id FROM sharika_bond_invites WHERE sender_uid=? AND request_id=?')
       .bind(uid,requestId).first();
+    await Promise.all([
+      recordUserEvent({db,env,ctx,recipientUid:target.auth_uid,kind:'event',
+        title:gift.type==='cp'?'CP invitation received':'Friendship invitation received',
+        body:'Member '+pid(actor.public_no)+' sent a '+gift.name+' invitation ('+
+          Number(gift.price_coins).toLocaleString('en-US')+
+          ' coins). Open CP / Friends Invitations to accept or decline.',
+        dedupeKey:'bond_invite_received:'+created.id,createdBy:uid}),
+      recordUserEvent({db,env,ctx,recipientUid:uid,kind:'event',
+        title:'Relationship invitation sent',body:gift.name+' invitation sent to member '+
+          recipientId+'. Coins are held until they accept or decline.',
+        dedupeKey:'bond_invite_sent:'+created.id})
+    ]);
     return reply({duplicate:false,invite_id:Number(created.id),type:gift.type,
       status:'pending',held_coins:Number(gift.price_coins),expires_at_ms:expires},201,cors);
   }
@@ -406,11 +435,21 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
     if(invite.recipient_uid!==uid)return fail('bond_invite_recipient_only',403,cors);
     if(invite.status!=='pending')return reply({status:invite.status,duplicate:true},200,cors);
     if(invite.expires_at_ms<=nowMs){
-      await expireBondInvites(db,nowMs);
+      await expireBondInvites(db,nowMs,30,env,ctx);
       return fail('bond_invite_expired',409,cors);
     }
     if(!body.accept){
       await refundInvite(db,invite,'declined',nowMs,uid);
+      await Promise.all([
+        recordUserEvent({db,env,ctx,recipientUid:invite.sender_uid,kind:'system',
+          title:'Relationship invite declined — coins refunded',
+          body:'Your '+invite.type+' invitation was declined. '+
+            Number(invite.held_coins).toLocaleString('en-US')+' coins were refunded.',
+          dedupeKey:'bond_invite_declined:'+invite.id}),
+        recordUserEvent({db,env,ctx,recipientUid:uid,kind:'system',
+          title:'Invitation declined',body:'You declined the '+invite.type+' invitation.',
+          dedupeKey:'bond_decline_receipt:'+invite.id})
+      ]);
       return reply({status:'declined',refunded_coins:Number(invite.held_coins)},200,cors);
     }
     const from=await db.prepare("SELECT status FROM sharika_users WHERE auth_uid=?")
@@ -440,6 +479,16 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
         "VALUES(?,'accepted',?,?,?,?)").bind(uid,bondId,bondId,'{}',nowMs)
     );
     await db.batch(statements);
+    await Promise.all([
+      recordUserEvent({db,env,ctx,recipientUid:invite.sender_uid,kind:'event',
+        title:invite.type==='cp'?'CP invitation accepted':'Friendship invitation accepted',
+        body:'Your '+invite.type+' invitation was accepted. Relationship #'+bondId+' is active.',
+        dedupeKey:'bond_invite_accepted_sender:'+bondId}),
+      recordUserEvent({db,env,ctx,recipientUid:uid,kind:'event',
+        title:invite.type==='cp'?'CP relationship active':'Friendship confirmed',
+        body:'You accepted the invitation. Your '+invite.type+' relationship is active.',
+        dedupeKey:'bond_invite_accepted_recipient:'+bondId})
+    ]);
     return reply({status:'accepted',bond_id:bondId,type:invite.type},201,cors);
   }
   const unbindMatch=/^\/api\/v1\/bonds\/([1-9][0-9]{0,11})\/unbind$/.exec(path);
@@ -457,6 +506,14 @@ export async function handleBondApp({request,env,uid,path,cors,reply,fail,nowMs=
     statements.push(db.prepare('INSERT INTO sharika_bond_audit(actor_uid,action,bond_id,'+
       "details_json,created_at_ms) VALUES(?,'unbound',?,'{}',?)").bind(uid,bondId,nowMs));
     await db.batch(statements);
+    await Promise.all([
+      recordUserEvent({db,env,ctx,recipientUid:bond.uid_a,kind:'system',
+        title:'Relationship ended',body:'Your '+bond.type+' relationship #'+bondId+' has ended.',
+        dedupeKey:'bond_unbound_a:'+bondId}),
+      recordUserEvent({db,env,ctx,recipientUid:bond.uid_b,kind:'system',
+        title:'Relationship ended',body:'Your '+bond.type+' relationship #'+bondId+' has ended.',
+        dedupeKey:'bond_unbound_b:'+bondId})
+    ]);
     return reply({unbound:true,bond_id:bondId,type:bond.type},200,cors);
   }
   return fail('bond_route_not_found',404,cors);

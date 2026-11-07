@@ -12,12 +12,29 @@ on:
       - feature/sharika-weekly-opening-single-user-20261101
       - fix/sharika-live-voice-reliability-20261102
       - fix/sharika-voice-games-owner-prepublish-20261103
+      - feature/sharika-family-bd-crystal-ledger-20261103
     paths:
       - '.github/workflows/sharika-worker-staging-publish.yml'
       - 'cloudflare/src/sellers.mjs'
       - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/moderation.mjs'
+      - 'cloudflare/migrations/0052_room_admins.sql'
+      - 'cloudflare/migrations/0055_room_contributor_rankings.sql'
+      - 'cloudflare/test/room-admin.test.mjs'
+      - 'cloudflare/test/moderation.test.mjs'
+      - 'cloudflare/src/family-sheets.mjs'
+      - 'cloudflare/src/family.mjs'
+      - 'cloudflare/migrations/0050_family_invites_and_period.sql'
+      - 'cloudflare/migrations/0051_family_creation_requests.sql'
+      - 'cloudflare/test/family-management.test.mjs'
+      - 'cloudflare/wrangler.jsonc'
       - 'cloudflare/src/sfu.mjs'
+      - 'cloudflare/src/room-access-lock.mjs'
+      - 'cloudflare/migrations/0057_room_access_locks.sql'
+      - 'cloudflare/test/room-access-lock.test.mjs'
       - 'cloudflare/src/voice-room.mjs'
+      - 'cloudflare/migrations/0056_room_announcements.sql'
+      - 'cloudflare/test/room-announcement-and-legacy-games.test.mjs'
       - 'cloudflare/test/worker.test.mjs'
       - 'cloudflare/test/sfu.test.mjs'
       - 'cloudflare/test/voice-ui.test.mjs'
@@ -26,6 +43,8 @@ on:
       - 'cloudflare/test/profile-cosmetics.test.mjs'
       - 'cloudflare/test/sellers.test.mjs'
       - 'android-staging/staging-connection.js'
+      - 'admin/connection.js'
+      - 'admin/index.html'
 
 permissions:
   contents: read
@@ -54,7 +73,7 @@ jobs:
         env:
           EXPECTED_REF: refs/heads/feature/sharika-lucky-gifts-20261030
         run: |
-          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-seller-self-recharge-wallet-ui-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-profile-save-recovery-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-shared-room-themes-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-cp-friendship-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-weekly-opening-single-user-20261101" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-live-voice-reliability-20261102" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-voice-games-owner-prepublish-20261103" ]; then
+          if [ "$GITHUB_REF" != "$EXPECTED_REF" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-original-games-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-seller-self-recharge-wallet-ui-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-profile-save-recovery-20261031" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-shared-room-themes-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-cp-friendship-20261031" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-weekly-opening-single-user-20261101" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-live-voice-reliability-20261102" ] && [ "$GITHUB_REF" != "refs/heads/fix/sharika-voice-games-owner-prepublish-20261103" ] && [ "$GITHUB_REF" != "refs/heads/feature/sharika-family-bd-crystal-ledger-20261103" ]; then
             echo "::error::Refusing unexpected ref $GITHUB_REF"
             exit 1
           fi
@@ -120,6 +139,82 @@ jobs:
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0047_admin_profile_layouts.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS templates FROM sharika_profile_layouts"
+      # Family migration 0048 was applied and verified separately. Apply ONLY
+      # this additive management migration; never execute untracked D1 backlog.
+      - name: Apply additive Family membership management to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS existing_families FROM sharika_families"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0049_family_membership_management.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0049_family_membership_management.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0049_family_membership_management.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS family_management_triggers FROM sqlite_master WHERE type='trigger' AND name IN ('sharika_family_owner_transfer_guard','sharika_family_owner_transfer_roles','sharika_family_member_role_audit','sharika_family_reapply_guard','sharika_family_request_reopened_audit','sharika_family_activity_immutable_update','sharika_family_activity_immutable_delete')"
+      # The previous 0048/0049 schemas are already installed. This migration
+      # only adds invitation and settlement-frequency tables and updates the
+      # Family membership trigger, without deleting any user or commission data.
+      - name: Apply Family invitation and weekly settlement schema to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS pre_existing_families FROM sharika_families"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS pre_existing_commissions FROM sharika_family_crystal_ledger"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0050_family_invites_and_period.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0050_family_invites_and_period.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0050_family_invites_and_period.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT key,mode FROM sharika_family_settlement_preferences"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS pending_invitations FROM sharika_family_invites WHERE state='pending'"
+      # Additive Family creation request workflow: never delete existing Families or ledgers.
+      - name: Apply approved Family creation schema to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0051_family_creation_requests.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0051_family_creation_requests.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0051_family_creation_requests.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS creation_requests FROM sharika_family_creation_requests"
+      # Room Admin assignment is room-scoped. All prior rooms, seats and
+      # balances remain untouched; tables are additive and idempotent.
+      - name: Apply verified Room Admin schema to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0052_room_admins.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0052_room_admins.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0052_room_admins.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS active_room_admins FROM sharika_room_admins"
+      # An additive read index on settled room gifts. No wallet records or
+      # gift transactions are updated, and existing data is never rewritten.
+      - name: Apply room-contributor lookup index to staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0055_room_contributor_rankings.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0055_room_contributor_rankings.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0055_room_contributor_rankings.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_sharika_gift_transactions_room_time'"
+      # Independent room entry lock: existing rooms default to open. The
+      # idempotent tables never update members, wallets, seats or gifts.
+      - name: Apply room access-lock schema to isolated staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0057_room_access_locks.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0057_room_access_locks.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0057_room_access_locks.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS locked_rooms FROM sharika_room_access_locks WHERE locked=1"
+      # Idempotent official-wallpaper catalog; it does not migrate or rewrite
+      # existing room cards, member profiles, gift rows, balances or wallets.
+      - name: Apply Room Theme Gallery catalog to isolated staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0058_room_theme_gallery.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0058_room_theme_gallery.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0058_room_theme_gallery.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS official_themes FROM sharika_room_theme_catalog"
+      - name: Verify Family schema and explicitly approved seat-aware voice source
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          test "$(git hash-object src/voice-worker.mjs)" = 78ee1e9c17416945f8b3bca9863e7078f3615a5f
+          # Owner/guest microphone publishing now requires a real numbered
+          # seat. This exact, reviewed SFU blob replaces the previous pin;
+          # any further voice-source edit still stops staging publication.
+          test "$(git hash-object src/sfu.mjs)" = 052f52e84ecf485755e77b117544db3a6420d7ba
+          test "$(git hash-object src/voice-room.mjs)" = e328b22f7f63429cfef769949d34cca665afcead
+          test "$(git hash-object src/games.mjs)" = 0902ceded318e7ddd7575295557a0af83b884e43
+          test "$(git hash-object src/profile-layout.mjs)" = 55cb1785d2dfe2604c5ae1e88997728d0cde509c
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT key,active,owner_bps,bd_bps,conversion_enabled FROM sharika_family_policy WHERE key='standard'"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS ledger_rows FROM sharika_family_crystal_ledger"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS grants FROM sharika_family_grants"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS transfers FROM sharika_family_crystal_transfers"
+          echo 'SHARIKA_FAMILY_SCHEMA_AND_EXISTING_VOICE_GAME_SOURCE_VERIFIED'
       - name: Bundle and inspect without publishing
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-staging-worker-bundle
       - name: Deploy only the existing staging Worker
@@ -147,3 +242,4 @@ jobs:
       - name: Publish separate staging admin Worker
         if: github.ref != 'refs/heads/fix/sharika-live-voice-reliability-20261102'
         run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
+# Royal Family member reports: verified staging check and deploy trigger (2026-11-04).

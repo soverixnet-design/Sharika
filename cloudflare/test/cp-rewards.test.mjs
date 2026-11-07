@@ -122,11 +122,13 @@ test('Completed CP week awards BOTH partners exactly once with ledger and cosmet
     const ledger=sqlite.prepare("SELECT auth_uid,delta FROM sharika_wallet_ledger "+
       "WHERE reason='cp_weekly_reward'").all();
     assert.equal(ledger.length,2);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_notifications WHERE title='CP Ranking reward — TOP 1'").get().n,2);
     assert.deepEqual(ledger.map(entry=>entry.delta),[700,700]);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_cosmetic_inventory "+
       "WHERE request_id LIKE 'cpweek:%'").get().n,4);
     const duplicate=await settleLastCpWeek(db,MONDAY+5000,'person-3',false);
     assert.equal(duplicate.duplicate,true);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_notifications WHERE title='CP Ranking reward — TOP 1'").get().n,2);
     assert.equal(before.get('person-0').coins,a+700);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger "+
       "WHERE reason='cp_weekly_reward'").get().n,2);

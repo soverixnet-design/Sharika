@@ -121,8 +121,11 @@ export async function handleVoiceOperation({
   request, env, room, member, uid, roomId, operation,
   reply, fail, cors, readBody
 }) {
-  const canPublish = room.owner_id === uid ||
-    (member.seat_no !== null && Number(member.muted) === 0);
+  // The Owner has no reserved microphone chair. Owner and guest alike may
+  // publish only after selecting a verified, unmuted numbered mic seat.
+  const canPublish = member?.seat_no !== null &&
+    Number.isInteger(member?.seat_no) && member.seat_no > 0 &&
+    Number(member.muted) === 0;
   if (operation === 'config' && request.method === 'GET') {
     if (sfuAvailable(env))
       return reply({provider:'cloudflare_sfu', publish:canPublish,

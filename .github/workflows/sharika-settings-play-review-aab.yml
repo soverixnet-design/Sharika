@@ -1,0 +1,144 @@
+name: Sharika Settings signed Play-review AAB (staging only)
+
+on:
+  push:
+    branches:
+      - feature/sharika-family-bd-crystal-ledger-20261103
+    paths:
+      - '.github/workflows/sharika-settings-play-review-aab.yml'
+      - 'android-staging/staging-connection.js'
+      - 'android-staging/back-navigation.js'
+      - 'android-staging/app/build.gradle'
+      - 'cloudflare/test/settings-release-readiness.test.mjs'
+
+permissions:
+  contents: write
+
+jobs:
+  build-review-aab:
+    name: Build signed review-only Android App Bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check Settings, account safety and unchanged staging voice code
+        run: |
+          set -euo pipefail
+          node --check android-staging/staging-connection.js
+          node --check android-staging/back-navigation.js
+          node --test cloudflare/test/settings-release-readiness.test.mjs
+          node --check cloudflare/src/index.mjs
+
+      - name: Checkout pinned owner-owned Sovera cosmetics
+        uses: actions/checkout@v4
+        with:
+          repository: soverixnet-design/sovera-voice-app
+          ref: 0e30b48962272b8a687509aef4dee9bc4a047767
+          path: _sovera_cosmetics
+          persist-credentials: false
+
+      - name: Bundle owner-provided original cosmetics
+        working-directory: android-staging
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets/sovera-effects app/src/main/assets/sovera-medals app/src/main/assets/sovera-sounds
+          cp -a ../_sovera_cosmetics/assets/effects/. app/src/main/assets/sovera-effects/
+          cp -a ../_sovera_cosmetics/assets/medals/. app/src/main/assets/sovera-medals/
+          cp -a ../_sovera_cosmetics/assets/sounds/. app/src/main/assets/sovera-sounds/
+          test "$(find app/src/main/assets/sovera-effects -type f | wc -l)" -ge 30
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up pinned Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install Android 16 SDK and build tools
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Restore exact stable staging key from encrypted secrets
+        env:
+          KEY_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY_B64"
+          test -n "$KEY_PASSWORD"
+          printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-staging-signing.p12"
+          printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-staging-signing.p12" | sha256sum --check --status
+          chmod 600 "$RUNNER_TEMP/sharika-staging-signing.p12"
+          echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-staging-signing.p12" >> "$GITHUB_ENV"
+
+      - name: Compile signed release-format Android App Bundle for review
+        working-directory: android-staging
+        env:
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          gradle :app:bundleRelease --no-daemon --stacktrace
+          test -s app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab
+
+      - name: Verify exact bundled Settings, privacy and policy features
+        run: |
+          set -euo pipefail
+          bundle=android-staging/app/build/outputs/bundle/release/app-release.aab
+          unzip -tqq "$bundle"
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/connection.js'
+          unzip -p "$bundle" base/assets/connection.js > "$RUNNER_TEMP/sharika-settings-review.js"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const js=fs.readFileSync(process.env.RUNNER_TEMP+'/sharika-settings-review.js','utf8');
+          for(const expected of [
+            "page.id='sh-settings-page'",
+            "window.settingsSheet=sharikaOpenSettings",
+            "view==='safety'",
+            "view==='policies'",
+            "view==='voice'",
+            "'[ACCOUNT DELETION REQUEST] Verified user '"
+          ]) if(!js.includes(expected))throw Error('Settings not packaged: '+expected);
+          console.log('SHARIKA_SETTINGS_AND_POLICIES_BUNDLED');
+          NODE
+          test "$(sed -n 's/.*targetSdk \([0-9][0-9]*\).*/\1/p' android-staging/app/build.gradle | head -n 1)" = '36'
+          install -m 0644 "$bundle" Sharika-Settings-Play-Review-STAGING-ONLY.aab
+          sha256sum Sharika-Settings-Play-Review-STAGING-ONLY.aab
+
+      - name: Keep build artifact for internal review
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Settings-Play-Review-AAB
+          path: Sharika-Settings-Play-Review-STAGING-ONLY.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish direct downloadable review-only AAB (not a Play submission)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA:0:8}"
+          tag="sharika-settings-play-review-staging-$short"
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::Review release tag already exists; refusing to overwrite"
+            exit 1
+          fi
+          gh release create "$tag" Sharika-Settings-Play-Review-STAGING-ONLY.aab \
+            --repo soverixnet-design/Sharika \
+            --target "$GITHUB_SHA" \
+            --title "Sharika Settings - SIGNED AAB REVIEW ONLY (STAGING)" \
+            --notes "Signed release-format AAB directly downloadable (not a ZIP). Includes full-screen Main Profile Settings, Safety Center, report via authenticated Customer Service, policy pages, Account Deletion Request, manual country link, microphone permission check and Android Back handling. Target API 36, package com.soverixnet.sharika. IMPORTANT: uses the STAGING backend and existing STAGING signing key; NOT a production upload key and NOT approved for Google Play release. Play Billing/gambling policy, external account-deletion web URL, real-user QA, production backend and Play Console declarations remain pending. No financial or game logic changed." \
+            --prerelease

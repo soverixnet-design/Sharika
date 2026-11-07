@@ -1,0 +1,81 @@
+name: Sharika Settings verified direct test APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-family-bd-crystal-ledger-20261103
+    paths:
+      - '.github/workflows/sharika-settings-direct-test-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-tested-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Wait for exact Android emulator smoke test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run watch 41699367254 --repo soverixnet-design/Sharika --exit-status
+
+      - name: Require exact audited source and staging checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run_id in 41699367000 41699378620 41699367223 41699367254; do
+            conclusion="$(gh run view "$run_id" --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')"
+            test "$conclusion" = success || { echo "::error::Run $run_id not successful ($conclusion)"; exit 1; }
+            sha="$(gh api "repos/soverixnet-design/Sharika/actions/runs/$run_id" --jq '.head_sha')"
+            test "$sha" = 0c08b471f4e427b178bbdbf2e73aae71a6f7e7cb
+          done
+
+      - name: Download exact test APK from Android CI
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41699367254
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: verified-apk
+
+      - name: Verify Settings UI in APK and make direct APK
+        run: |
+          set -euo pipefail
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/sharika-settings.js"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const code=fs.readFileSync(process.env.RUNNER_TEMP+'/sharika-settings.js','utf8');
+          for(const term of [
+            "page.id='sh-settings-page'",
+            "window.sharikaOpenSettings=sharikaOpenSettings",
+            "view==='safety'",
+            "view==='policies'",
+            "view==='voice'",
+            "'[ACCOUNT DELETION REQUEST] Verified user '"
+          ]) if(!code.includes(term))throw Error('New Settings UI missing from APK: '+term);
+          console.log('VERIFIED_SETTINGS_IN_ANDROID_APK');
+          NODE
+          install -m 0644 verified-apk/app-debug.apk Sharika-Settings-Safety-Test.apk
+          sha256sum Sharika-Settings-Safety-Test.apk
+
+      - name: Publish direct staging test APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='sharika-settings-safety-test-0c08b471'
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing overwrite"; exit 1
+          fi
+          gh release create "$tag" Sharika-Settings-Safety-Test.apk \
+            --repo soverixnet-design/Sharika \
+            --target 0c08b471f4e427b178bbdbf2e73aae71a6f7e7cb \
+            --title "Sharika Full-screen Settings and Safety - TEST APK" \
+            --notes "Direct installable Android staging APK, NOT ZIP, NOT Play Store publication. Main Profile Settings now opens a separate full screen with Safety, Privacy/Terms, Account/Support, verified support reports, deletion request, voice/mic check and Back navigation. Current staging backend, gift balances and original four games unchanged. Automated CI and emulator startup/Back smoke checks passed; two real-device moderation/voice tests and store policy review remain necessary." \
+            --prerelease

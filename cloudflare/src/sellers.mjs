@@ -1,4 +1,5 @@
 import { rechargeReferralStatements } from './invites.mjs';
+import {recordUserEvent} from './transaction-notices.mjs';
 import { firstRechargeBonusStatements } from './first-recharge.mjs';
 import {readInviteRules} from './invite-rules.mjs';
 // Sharika staging: approved coin sellers with a separate audited stock ledger.
@@ -25,11 +26,12 @@ function sellerView(row){
     active:!!row.active,unlimited_stock:!!row.unlimited_stock,
     available_coins:Number(row.available_coins)||0};
 }
-// The public seller directory contains identity only, never private stock.
+// Authenticated users see approved seller exchange inventory; no private transactions.
 function publicSellerView(row){
-  return {public_id:showId(row.public_no),name:row.name,pic:row.pic||null};
+  return {public_id:showId(row.public_no),name:row.name,pic:row.pic||null,
+    available_coins:Number(row.available_coins)||0,unlimited_stock:!!row.unlimited_stock};
 }
-export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
+export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}){
   if(!path.startsWith('/api/v1/sellers'))return null;
   const actor=await env.DB.prepare(
     "SELECT auth_uid,minor,public_no FROM sharika_users WHERE auth_uid=? AND status='active'"
@@ -37,7 +39,7 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
   if(!actor)return fail('profile_unavailable',403,cors);
   if(path==='/api/v1/sellers'&&request.method==='GET'){
     const rows=resultRows(await env.DB.prepare(
-      "SELECT u.public_no,u.name,u.pic "+
+      "SELECT u.public_no,u.name,u.pic,s.available_coins,s.unlimited_stock "+
       "FROM sharika_coin_sellers s JOIN sharika_users u ON u.auth_uid=s.seller_uid "+
       "WHERE s.active=1 AND u.status='active' ORDER BY u.public_no LIMIT 100"
     ).all());
@@ -169,6 +171,10 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
       'SELECT id,stock_after FROM sharika_coin_seller_transfers '+
       'WHERE seller_uid=? AND request_id=?'
     ).bind(uid,requestId).first();
+    await recordUserEvent({env,ctx,recipientUid:recipient.auth_uid,kind:'reward',
+      title:'Coin recharge successful',body:amount.toLocaleString('en-US')+
+      ' coins were added to your wallet by an approved coin seller.',
+      dedupeKey:'seller_recharge:'+saved.id});
     return reply({duplicate:false,transfer_id:saved.id,coins:amount,
       recipient_public_id:publicId,
       sender_public_id:showId(actor.public_no),
@@ -180,7 +186,7 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail}){
   return fail('seller_method_not_allowed',405,cors);
 }
 
-export async function handleSellerAdmin({request,env,uid,actor,operation,cors,reply,fail}){
+export async function handleSellerAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx}){
   if(!operation.startsWith('sellers'))return null;
   if(!finance.has(actor.role))return fail('admin_permission_denied',403,cors);
   if(operation==='sellers'&&request.method==='GET'){
@@ -248,6 +254,10 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
         '(actor_uid,seller_uid,unlimited_stock,reason) VALUES(?,?,?,?)'
       ).bind(uid,seller.seller_uid,body.unlimited_stock?1:0,reason)
     ]);
+    await recordUserEvent({env,ctx,recipientUid:seller.seller_uid,title:'Seller stock mode changed',
+      body:body.unlimited_stock?'Unlimited seller stock has been enabled for your account.':
+        'Unlimited seller stock has been disabled for your account.',
+      dedupeKey:'seller_stock_mode:'+id+':'+crypto.randomUUID(),createdBy:uid});
     return reply({seller_public_id:id,unlimited_stock:body.unlimited_stock},200,cors);
   }
   if(operation==='sellers'&&request.method==='POST'){
@@ -270,6 +280,9 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
         "VALUES(?,?,?,0)"
       ).bind(uid,target.auth_uid,body.active?'approve':'suspend')
     ]);
+    await recordUserEvent({env,ctx,recipientUid:target.auth_uid,title:'Coin seller role updated',
+      body:body.active?'Your coin seller role is now active.':'Your coin seller role has been suspended.',
+      dedupeKey:'seller_role:'+body.target_public_id+':'+crypto.randomUUID(),createdBy:uid});
     return reply({public_id:body.target_public_id,active:body.active},200,cors);
   }
   if(operation==='sellers/allocate'&&request.method==='POST'){
@@ -318,6 +331,10 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
       'SELECT id,stock_after FROM sharika_coin_seller_allocations '+
       'WHERE request_id=? AND actor_uid=?'
     ).bind(requestId,uid).first();
+    await recordUserEvent({env,ctx,recipientUid:seller.seller_uid,kind:'reward',
+      title:'Seller stock allocated',body:amount.toLocaleString('en-US')+
+      ' coins were allocated to your seller stock by an administrator.',
+      dedupeKey:'seller_stock_allocation:'+result.id,createdBy:uid});
     return reply({duplicate:false,allocation_id:result.id,coins:amount,
       available_coins:result.stock_after,seller_public_id:id},201,cors);
   }

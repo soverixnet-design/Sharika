@@ -1,0 +1,294 @@
+/* Responsive microphone room with no designated owner chair.
+   Shared room themes, verified mic seats, gifts and roles remain untouched. */
+html.royal-room .app.sh-royal-room.royal-default-room {
+  background-image:linear-gradient(180deg,rgba(0,10,7,.75),rgba(0,12,10,.43) 32%,rgba(0,8,6,.77)),
+    url('./royal-room-background.jpg')!important;
+  background-position:center center!important;
+  background-size:cover!important;
+  background-color:#010b09!important;
+}
+.app.sh-royal-room .blob {display:none!important}
+.app.sh-royal-room .top {
+  flex:0 0 auto;
+  display:flex;
+  gap:7px!important;
+  padding:12px 10px 5px!important;
+  min-height:71px;
+  background:rgba(2,10,8,.66);
+}
+.app.sh-royal-room .top .room {
+  min-width:0;
+  flex:1 1 auto;
+  max-height:66px!important;
+  min-height:56px!important;
+  padding:4px 7px!important;
+  border:0!important;
+  border-radius:10px!important;
+  background:rgba(4,10,9,.66)!important;
+  box-shadow:none!important;
+  color:#fff!important;
+}
+.app.sh-royal-room .top .room .rav {
+  width:49px;
+  height:49px;
+  flex:none;
+  border-radius:8px;
+  border:1px solid #d9aa4d;
+  background:#12251f;
+}
+.app.sh-royal-room .top .room .rt b {
+  font-size:14px!important;
+  color:#f3f3ed!important;
+  font-weight:600!important;
+  text-shadow:0 1px 2px #000;
+}
+.app.sh-royal-room .top .room .rt small {
+  color:#e1e8df!important;
+  font-size:11px!important;
+}
+.app.sh-royal-room .sh-settings {
+  width:38px!important;height:38px!important;
+  filter:brightness(0) invert(1);
+}
+.app.sh-royal-room .top>.ib {width:34px!important;height:36px!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.app.sh-royal-room .stats {
+  display:flex!important;
+  align-items:center;
+  justify-content:flex-start;
+  flex-wrap:nowrap;
+  gap:6px!important;
+  padding:3px 11px 3px!important;
+  overflow-x:auto;
+  background:rgba(4,10,9,.42);
+  scrollbar-width:none;
+}
+.app.sh-royal-room .stats::-webkit-scrollbar {display:none}
+.app.sh-royal-room .stats .pill {
+  flex:none;
+  background:#07150fb3!important;
+  border:0!important;
+  border-radius:10px!important;
+  box-shadow:none!important;
+  color:#e8dabb!important;
+  font-size:11px!important;
+}
+.app.sh-royal-room .sh-room-masthead {
+  height:40px!important;
+  min-height:40px!important;
+  justify-content:flex-end!important;
+  background:rgba(0,10,8,.5);
+  padding:1px 12px 3px!important;
+}
+.app.sh-royal-room .sh-room-face-button,
+.app.sh-royal-room .sh-room-face-count {width:34px!important;height:34px!important}
+.app.sh-royal-room .sh-room-face-button {border-radius:50%!important;overflow:hidden}
+.app.sh-royal-room .sh-room-face-count {font-size:13px!important;color:#fff!important}
+.app.sh-royal-room .sh-room-announcement {
+  margin:3px 9px 6px!important;
+  padding:5px 9px!important;
+  background:#00120b9e!important;
+  border:1px solid #687e6a85!important;
+  border-radius:8px!important;
+  color:#f1ece0!important;
+  box-shadow:none!important;
+}
+/* The backend's slot 0 is not a visible seat. Only seats 1–20 are in grid. */
+.app.sh-royal-room #host,
+.app.sh-royal-room .host {display:none!important}
+.app.sh-royal-room .stage {
+  /* Seat rows take their natural height; chat uses the remaining space. */
+  flex:0 1 auto!important;
+  min-height:0!important;
+  padding:10px 6px 5px!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+  scrollbar-width:none;
+}
+.app.sh-royal-room .stage::-webkit-scrollbar {display:none}
+.app.sh-royal-room .stage::before {display:none!important}
+.app.sh-royal-room #grid.grid {
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  grid-auto-rows:min-content;
+  justify-items:center;
+  align-items:start;
+  column-gap:3px!important;
+  row-gap:clamp(13px,2.2vh,24px)!important;
+  padding:0 0 10px!important;
+  margin:0!important;
+}
+/* Large rooms retain the compact five-column layout seen in the reference. */
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) {
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+}
+.app.sh-royal-room #grid .seat {
+  display:flex!important;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  gap:3px!important;
+  min-width:0!important;
+  width:100%!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.app.sh-royal-room #grid .seat .av {
+  position:relative;
+  width:clamp(42px,12.8vw,65px)!important;
+  height:clamp(42px,12.8vw,65px)!important;
+  flex:none;
+  margin:0 auto!important;
+  border-radius:50%!important;
+  font-size:clamp(20px,5.5vw,26px)!important;
+}
+.app.sh-royal-room #grid .seat .face {border-radius:50%!important;overflow:hidden}
+.app.sh-royal-room #grid .seat .ring {
+  background:conic-gradient(#d9b960,#82572c,#f8eabd,#b77b33,#d9b960)!important;
+  filter:drop-shadow(0 0 2px #c9a360);
+}
+.app.sh-royal-room #grid .seat.empty .ring,
+.app.sh-royal-room #grid .seat.lock .ring {filter:none;opacity:.65}
+.app.sh-royal-room #grid .seat .nm {
+  width:100%;max-width:100%!important;
+  margin:0!important;padding:0 1px!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  color:#f1f3ed!important;
+  font:500 clamp(9px,2.8vw,12px)/1.2 system-ui,sans-serif!important;
+  text-shadow:0 2px 3px #000!important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.app.sh-royal-room #grid .seat .tag {font-size:9px!important;color:#ffda88!important}
+.app.sh-royal-room #grid .seat .sh-sovera-seat-tag,
+.app.sh-royal-room #grid .seat .sh-sovera-seat-medal {pointer-events:none}
+.app.sh-royal-room .chatw {
+  flex:1 1 180px!important;
+  min-height:135px!important;
+  max-height:none!important;
+  margin:0 9px 0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:rgba(0,8,6,.25)!important;
+  box-shadow:none!important;
+}
+.app.sh-royal-room .chat {
+  min-height:0!important;
+  padding:3px 4px 7px!important;
+  color:#f3e8dc!important;
+  font-size:12px!important;
+  -webkit-mask-image:none!important;
+  mask-image:none!important;
+}
+.app.sh-royal-room .dock {
+  position:relative!important;
+  z-index:8!important;
+  flex:0 0 auto!important;
+  padding:6px 4px max(10px,env(safe-area-inset-bottom))!important;
+  background:linear-gradient(180deg,#020907ef,#010403fc)!important;
+  border-top:1px solid #3c5145;
+  box-shadow:none!important;
+}
+.app.sh-royal-room .sh-composer {
+  display:flex;
+  padding:0 6px!important;
+  margin:0 0 6px!important;
+}
+.app.sh-royal-room .sh-composer[hidden] {display:none!important}
+.app.sh-royal-room .sh-composer .inp {
+  height:43px!important;
+  background:#142820!important;
+  border:1px solid #658674!important;
+  box-shadow:none!important;
+}
+.app.sh-royal-room .sh-tools {
+  display:grid!important;
+  grid-template-columns:repeat(6,minmax(0,1fr))!important;
+  gap:1px!important;
+  padding:0 63px 0 2px!important;
+  min-height:52px;
+  align-items:center;
+}
+.app.sh-royal-room .sh-tool {gap:1px!important;color:#f4edcb!important;font-size:9px!important;min-width:0!important}
+.app.sh-royal-room .sh-tool>button,
+.app.sh-royal-room .sh-tool .rb {
+  position:static!important;
+  display:grid!important;
+  place-items:center!important;
+  width:clamp(37px,10.8vw,47px)!important;
+  height:clamp(37px,10.8vw,47px)!important;
+  min-width:0!important;
+  padding:0!important;
+  border:1px solid #aebc72!important;
+  border-radius:50%!important;
+  background:#15291edd!important;
+  box-shadow:none!important;
+  filter:none!important;
+  color:#fff!important;
+  font-size:0!important;
+}
+.app.sh-royal-room .sh-tool>button .sh-sprite,
+.app.sh-royal-room .sh-tool #emo .sh-sprite {
+  display:block!important;
+  width:90%!important;height:90%!important;
+  background-image:url('./royal-room-icons.png')!important;
+  background-size:400% 200%!important;
+  background-repeat:no-repeat!important;
+  filter:grayscale(1) brightness(1.8)!important;
+}
+.app.sh-royal-room .sh-tool #bGame.sh-games span:last-child {display:none!important}
+/* The old games control was absolute-positioned before it was moved into
+   the new six-button toolbar. Reset that position so no empty cell remains. */
+.app.sh-royal-room .sh-tool #bGame.sh-games {
+  position:static!important;
+  inset:auto!important;
+  z-index:auto!important;
+  min-width:0!important;
+  display:grid!important;
+  flex-direction:initial!important;
+  cursor:pointer;
+}
+.app.sh-royal-room .sh-tool #bGame.sh-games .sh-sprite {
+  width:90%!important;
+  height:90%!important;
+  margin:0!important;
+}
+.app.sh-royal-room .sh-tool #mic.off {opacity:.55!important;border-color:#db668c!important}
+.app.sh-royal-room .sh-tool #emo {background-image:none!important}
+.app.sh-royal-room .sh-tool>span:last-child {display:none!important}
+.app.sh-royal-room .sh-room-side-gift,
+.app.sh-royal-room .sh-room-side-box {
+  display:grid!important;
+  place-items:center;
+  position:absolute!important;
+  right:7px;
+  width:54px!important;
+  height:54px!important;
+  margin:0!important;
+  padding:0!important;
+  border:2px solid #d4ce76!important;
+  border-radius:50%!important;
+  background:#225b2e!important;
+  box-shadow:0 0 10px #d7ae4399!important;
+  cursor:pointer;
+}
+.app.sh-royal-room .sh-room-side-gift {bottom:max(9px,env(safe-area-inset-bottom));z-index:11}
+.app.sh-royal-room .sh-room-side-box {bottom:112px;z-index:7;width:46px!important;height:46px!important;border-radius:13px!important}
+.app.sh-royal-room .sh-room-side-gift .sh-sprite,
+.app.sh-royal-room .sh-room-side-box .sh-sprite {width:50px!important;height:50px!important;display:block}
+.app.sh-royal-room .sh-room-side-box .sh-sprite {width:43px!important;height:43px!important}
+.app.sh-royal-room .sh-menu-panel {bottom:73px!important;background:#10251beF!important;border:1px solid #b99b57!important}
+.app.sh-royal-room .sh-menu-panel button {background:#254231!important;color:#fff!important}
+@media(max-width:350px) {
+  .app.sh-royal-room .top {min-height:61px;padding:8px 6px 4px!important}
+  .app.sh-royal-room .stage {padding-inline:3px!important}
+  .app.sh-royal-room #grid .seat .av {width:40px!important;height:40px!important}
+  .app.sh-royal-room .sh-tools {padding-right:52px!important}
+  .app.sh-royal-room .sh-tool>button {width:36px!important;height:36px!important}
+  .app.sh-royal-room .sh-room-side-gift {width:48px!important;height:48px!important}
+}
+@media(prefers-reduced-motion:reduce){.app.sh-royal-room .seat .ring{animation:none!important}}
