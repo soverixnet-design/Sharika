@@ -1,0 +1,8 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sharika-child-safety",
+  "main": "src/child-safety-worker.mjs",
+  "compatibility_date": "2026-11-07",
+  "account_id": "d81cf7c48fb9b36d468cb0a08720cd74",
+  "workers_dev": true
+}

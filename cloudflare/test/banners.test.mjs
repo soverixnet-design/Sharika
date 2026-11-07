@@ -131,7 +131,7 @@ test('gallery upload and larger home carousel are wired without replacing rechar
   assert.match(admin,/api\('PUT','banners\/'\+input.dataset.bimageId\+'\/image'/);
   assert.match(ui,/verifiedBannerImageUrl\(row.image_url,row.id\)/);
   assert.match(ui,/window.CFG.banners=cards/);
-  assert.match(css,/\.slide \{\s*height: 166px;/);
+  assert.match(css,/\.slide \{\s*height: 180px;/);
   assert.match(css,/\.top-recharge \{[\s\S]*?width: 34px; height: 36px;/);
   assert.match(migration,/CREATE TABLE IF NOT EXISTS sharika_banner_images/);
 });

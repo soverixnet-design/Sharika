@@ -9,11 +9,28 @@ def stagingKeystorePath = System.getenv('SHARIKA_STAGING_KEYSTORE_PATH')
 def stagingKeystorePassword = System.getenv('SHARIKA_STAGING_KEYSTORE_PASSWORD')
 def stableStagingSigner = stagingKeystorePath && stagingKeystorePassword
 
+// Production upload signing can be supplied entirely through CI secrets.
+// Never store the Play upload key, alias or passwords in this repository.
+def playUploadPath = System.getenv('SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH')
+def playUploadStorePassword = System.getenv('SHARIKA_PLAY_UPLOAD_STORE_PASSWORD')
+def playUploadAlias = System.getenv('SHARIKA_PLAY_UPLOAD_KEY_ALIAS')
+def playUploadKeyPassword = System.getenv('SHARIKA_PLAY_UPLOAD_KEY_PASSWORD')
+def stablePlayUploadSigner = playUploadPath && playUploadStorePassword &&
+    playUploadAlias && playUploadKeyPassword
+
 android {
     namespace 'com.soverixnet.sharika'
     compileSdk 36
 
     signingConfigs {
+        if (stablePlayUploadSigner) {
+            sharikaPlayUpload {
+                storeFile file(playUploadPath)
+                storePassword playUploadStorePassword
+                keyAlias playUploadAlias
+                keyPassword playUploadKeyPassword
+            }
+        }
         if (stableStagingSigner) {
             sharikaStaging {
                 storeFile file(stagingKeystorePath)
@@ -30,13 +47,15 @@ android {
                 signingConfig signingConfigs.sharikaStaging
             }
         }
-        // Play-review AAB only. This isolated branch still targets the
-        // staging API and uses the encrypted *staging* key, so do NOT submit
-        // this bundle as a production Play release.
+        // Release-format Android App Bundle; prefer the dedicated Play
+        // upload certificate when present. The fallback lets CI produce a
+        // verifiable signed candidate without exposing a new private key.
         release {
             minifyEnabled false
             shrinkResources false
-            if (stableStagingSigner) {
+            if (stablePlayUploadSigner) {
+                signingConfig signingConfigs.sharikaPlayUpload
+            } else if (stableStagingSigner) {
                 signingConfig signingConfigs.sharikaStaging
             }
         }
@@ -46,8 +65,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 13
-        versionName '0.6.7-anchored-room-keyboard-qa'
+        versionCode 100
+        versionName '1.0.0'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

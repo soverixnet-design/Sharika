@@ -1842,8 +1842,12 @@
     root.innerHTML='<div class="card"><h3>Verified support inbox</h3>'+
       '<p class="n">Messages are stored in the Sharika D1 database. No demo tickets.</p>'+
       '<button type="button" class="btn s" id="support-refresh">Refresh</button>'+
-      '<div id="support-list">Loading…</div></div><div id="support-thread"></div>';
+      '<div id="support-list">Loading…</div></div><div id="support-thread"></div>'+
+      '<div class="card"><h3>External account deletion requests</h3>'+
+      '<p class="n">Users can request deletion even after uninstalling. Verify account ownership before acting; a request never changes wallet balances.</p>'+
+      '<div id="account-deletion-list">Loading…</div></div>';
     const list=byId('support-list'),thread=byId('support-thread');
+    const deletionList=byId('account-deletion-list');
     let opened=null;
     async function refreshList(){
       try {
@@ -1855,6 +1859,18 @@
             '<button type="button" class="btn s" data-support-id="'+esc(c.public_id)+'">Open</button>'
           ]));
       }catch(error){list.textContent=error.message;}
+    }
+    async function refreshDeletionRequests(){
+      try{
+        const data=await api('GET','account-deletion-requests');
+        const rows=(data.requests||[]).map(item=>[
+          esc(item.id),esc(item.public_id),esc(item.contact_email),
+          esc(item.reason||'—'),esc(item.status),esc(item.created_at)
+        ]);
+        deletionList.innerHTML=rows.length
+          ?window.T(['Ticket','User ID','Contact email','Details','Status','Requested'],rows)
+          :'<p class="n">No external deletion requests.</p>';
+      }catch(error){deletionList.textContent='Deletion queue unavailable: '+error.message;}
     }
     async function refreshThread(){
       if(!opened)return;
@@ -1889,8 +1905,10 @@
       opened=button.dataset.supportId;
       refreshThread();
     };
-    byId('support-refresh').onclick=async()=>{await refreshList();await refreshThread();};
-    await refreshList();
+    byId('support-refresh').onclick=async()=>{
+      await Promise.all([refreshList(),refreshDeletionRequests()]);await refreshThread();
+    };
+    await Promise.all([refreshList(),refreshDeletionRequests()]);
   };
 
   P.gifts=async function () {

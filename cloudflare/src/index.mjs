@@ -34,6 +34,8 @@ import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
 import {handleLuckyBoxApp} from './lucky-box.mjs';
 import {handleInviteLanding} from './invite-link.mjs';
+import {handlePublicAccountDeletion,handleAdminAccountDeletion} from './account-deletion.mjs';
+import {handlePublicPrivacyPolicy} from './privacy-policy.mjs';
 import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 
@@ -192,6 +194,11 @@ export async function handleRequest(request, env, ctx) {
   // No wallet or invite database write is performed on GET.
   const inviteLanding=handleInviteLanding(request,path);
   if(inviteLanding)return inviteLanding;
+  // Public deletion requests must remain usable after the app is uninstalled.
+  const deletionLanding=await handlePublicAccountDeletion(request,env,path);
+  if(deletionLanding)return deletionLanding;
+  const privacyPage=handlePublicPrivacyPolicy(request,path);
+  if(privacyPage)return privacyPage;
   const publicMedia=await servePublicMedia(request,env,path);
   if(publicMedia)return publicMedia;
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
@@ -316,6 +323,9 @@ export async function handleRequest(request, env, ctx) {
     });
     if(path==='/api/v1/notifications'||path.startsWith('/api/v1/notifications/'))
       return await handleNotificationApp({request,env,uid,path,cors,reply,fail});
+    if (path==='/api/v1/admin/account-deletion-requests') return await handleAdminAccountDeletion({
+      request,env,uid,path,cors,reply,fail
+    });
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
       request, env, uid, path, cors, reply, fail, ctx
     });
