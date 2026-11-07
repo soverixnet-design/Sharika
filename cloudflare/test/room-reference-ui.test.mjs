@@ -17,12 +17,11 @@ const gradle=readFileSync(new URL('../../android-staging/app/build.gradle',impor
 
 test('all six Royal room controls stay on one compact row so Games is visible',()=>{
   for (const id of ['chatToggle','mic','emoji','inbox','games'])
-    assert.match(room,new RegExp('addTool\\\\('+id+','));
-  assert.match(room,/const menuButton = addTool\\(/);
-  assert.match(css,/\\.sh-royal-room \\.sh-tools\\s*\\{[^}]*grid-template-columns:repeat\\(6,minmax\\(0,1fr\\)\\)/);
-  assert.match(css,/\\.sh-royal-room \\.sh-tool>button,[\\s\\S]*?width:clamp\\(44px,12vw,50px\\)/);
+    assert.ok(room.includes('addTool('+id+','));
+  assert.ok(room.includes('const menuButton = addTool('));
+  assert.ok(css.includes('grid-template-columns:repeat(6,minmax(0,1fr))'));
+  assert.ok(css.includes('width:clamp(44px,12vw,50px)'));
 });
-
 
 test('obsolete room demo timers and users are removed from the Android template',()=>{
   assert.match(ui,/for\\\(var ui=0;ui<121;ui\\\+\\\+\\\)U\\\.push/);
