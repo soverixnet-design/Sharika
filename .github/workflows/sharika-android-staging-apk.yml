@@ -919,7 +919,7 @@ jobs:
           set -euo pipefail
           gh release edit sharika-royal-profile-cp-staging-98a4c707 \
             --repo soverixnet-design/Sharika \
-            --prerelease --latest=false
+            --prerelease
 
   level-room-greedy-direct-apk:
     name: Verify and publish level, room and Greedy Wheel private-test APK
@@ -1014,3 +1014,48 @@ jobs:
             --title 'Sharika Verified Global Celebrations — Private QA APK' \
             --notes 'Signed staging APK with global rich gift ticker, 3-second golden game winner popup and nonblocking high-tier gift overlay. Notifications are read from server-verified D1 events; no client-forged balances. Prior Royal Levels, room chat, Greedy reconciliation, gifts and agency features preserved. Requires separate successful staging Worker migration 0073/deployment. Invite private testers only; not a Play Store submission. Real-phone voice and media tests pending.' \
             --prerelease
+
+  full-integrated-friends-direct-apk:
+    name: Publish full integrated staging APK for friend testing
+    if: github.ref == 'refs/heads/feature/sharika-full-integrated-staging-20261107'
+    needs: debug-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download only the APK compiled in this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify merged room, games and Agency UI before sharing
+        run: |
+          set -euo pipefail
+          apk='verified-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js > "$RUNNER_TEMP/verified-friends-connection.js"
+          node --check "$RUNNER_TEMP/verified-friends-connection.js"
+          grep -F 'window.SharikaRoomMusic=Object.freeze({open:openRoomMusic})' "$RUNNER_TEMP/verified-friends-connection.js" >/dev/null
+          grep -F 'sh-theme-gallery-page' "$RUNNER_TEMP/verified-friends-connection.js" >/dev/null
+          grep -F 'sh-original-grid' "$RUNNER_TEMP/verified-friends-connection.js" >/dev/null
+          grep -F "window.sharikaOpenAgencyCenter?.('agency')" "$RUNNER_TEMP/verified-friends-connection.js" >/dev/null
+          cp "$apk" verified-apk/Sharika-Full-Integrated-Friends-20261107.apk
+          sha256sum verified-apk/Sharika-Full-Integrated-Friends-20261107.apk
+      - name: Publish direct staging APK as a separate GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sharika-full-integrated-friends-${GITHUB_SHA:0:8}"
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Full-Integrated-Friends-20261107.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Full Integrated — Friends Staging APK' \
+            --notes 'Direct Android APK for invited friends to test Sharika. Includes Royal Room themes, moderator seat locking and invitations, games menu, shared music, Agency/BD/Host views and premium visuals. Staging test build only: no Play Store publication, no production data changes, and real-device login, voice and games QA is still required.' \
+            --prerelease --latest=false
