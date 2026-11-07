@@ -3253,17 +3253,27 @@
         '<p class="n">Changes apply to future settled gifts only. Existing salary entries '+
         'retain their earning percentage.</p>'+
         (superAdmin?'<button class="btn" id="ag2-policy-save">Save Gift Commission Policy</button>':''))+
-      section('Salary Wallet • targets & exchange permission',
+      section('Salary Wallet • targets, exchange & seller transfer permission',
         '<div class="sh-fam-cols">'+
         control('Coins for $1 reference','ag2-usd',s.coins_per_usd||500000,1,1000000000)+
         '<label>Target tiers, comma-separated coins<input id="ag2-targets" value="'+
         esc((data.targets||[]).join(', '))+'" placeholder="5000000, 10000000, 20000000"></label>'+
         '<label><input type="checkbox" id="ag2-salary-enabled" '+
-        (s.exchange_enabled?'checked':'')+'> Allow completed-period Salary Exchange</label></div>'+
+        (s.exchange_enabled?'checked':'')+'> Allow completed-period Salary Exchange</label>'+
+        '<label><input type="checkbox" id="ag2-salary-seller-enabled" '+
+        (s.seller_transfer_enabled?'checked':'')+'> Allow direct Salary Wallet → Coin Seller stock transfers</label></div>'+
         '<p class="n">Initial first target: 5M gift coins. Admin may change any target. '+
-        'Salary payouts exchange to main coins, never direct USD. Permission starts OFF. '+
-        'Main Wallet Diamond Exchange is a separate editable rate.</p>'+
+        'Salary Exchange credits the user’s Main Coin Wallet. Salary Seller Transfer instead '+
+        'credits an approved Seller stock, without touching Main Wallet coins. Both debit '+
+        'the same matured Salary balance exactly once; separate permissions start OFF. '+
+        'Main Wallet Diamond Exchange is separate.</p>'+
         (superAdmin?'<button class="btn" id="ag2-salary-save">Save Targets & Salary Permission</button>':''))+
+      section('Salary → Seller audited transfers',
+        rows(['Transfer #','Salary User','Coin Seller','Stock Coins','Seller Stock After'],
+          (data.salary_seller_transfers||[]).map(t=>[
+            esc(t.id),esc(t.sender_public_id),esc(t.seller_public_id),
+            esc(t.credited_stock_coins),esc(t.stock_after)
+          ])))+
       section('Assigned Hosts',rows(['Agency #','Host ID','Name','State'],
         (data.hosts||[]).map(h=>[esc(h.family_id),esc(h.public_id),esc(h.name),
           h.active?'Active':'Inactive']))+
@@ -3319,7 +3329,8 @@
         targets.some((x,i)=>!Number.isSafeInteger(x)||x<1||x>1000000000000||
           (i>0&&x<=targets[i-1])))return notice('Targets must be unique, ascending whole coin amounts.');
       save('PATCH','agency/salary/policy',{expected_version:s.version,coins_per_usd:usd,
-        exchange_enabled:byId('ag2-salary-enabled').checked,targets});
+        exchange_enabled:byId('ag2-salary-enabled').checked,
+        seller_transfer_enabled:byId('ag2-salary-seller-enabled').checked,targets});
     });
     byId('ag2-host-save')?.addEventListener('click',()=>{
       const id=byId('ag2-host-id').value.trim(),agencyId=Number(byId('ag2-agency-id').value);
