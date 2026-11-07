@@ -4,7 +4,8 @@
 #v-me.profile-royal {
   color:#f2f8f3!important;
   background:#001b12!important;
-  padding:0 0 110px!important;
+  /* The fixed Rooms/Me navigation must not cover the last account card. */
+  padding:0 0 max(166px,calc(150px + env(safe-area-inset-bottom)))!important;
 }
 #v-me.profile-royal .profile-royal-page {
   padding:28px 16px 16px!important;
@@ -50,6 +51,43 @@
   background-color:#19372b!important;
   box-shadow:none!important;
   animation:none!important;
+}
+#v-me.profile-royal .mav.sh-has-sovera-frame {
+  /* The avatar owns its frame; don't introduce a phantom grid row. */
+  margin:0!important;
+}
+#v-me.profile-royal .mav>.sh-sovera-frame.fxr.sh-svip-frame {
+  width:154%!important;
+  height:154%!important;
+}
+#v-me.profile-royal .profile-hero>.sh-layout-ornament {
+  /* Admin-positioned ornaments previously became extra implicit grid cells. */
+  position:absolute!important;
+  z-index:5;
+  display:flex!important;
+  align-items:center;
+  justify-content:center;
+  max-width:52px!important;
+  width:52px;
+  min-height:0!important;
+  margin:0!important;
+  pointer-events:none;
+}
+#v-me.profile-royal .profile-hero>.sh-layout-ornament img {
+  max-width:100%!important;
+  max-height:35px!important;
+  object-fit:contain;
+}
+#v-me.profile-royal .profile-hero>.sh-layout-ornament[data-sh-position="name"] {
+  top:0;right:0;
+}
+#v-me.profile-royal .profile-hero>.sh-layout-ornament[data-sh-position="id"] {
+  top:51px;right:0;
+}
+#v-me.profile-royal .profile-hero>.sh-layout-ornament[data-sh-layout-ornament="tag"] {
+  transform:translateY(28px);
+  max-width:74px!important;
+  width:74px;
 }
 #v-me.profile-royal .profile-avatar-crown {display:none!important}
 #v-me.profile-royal .mnm {
@@ -210,25 +248,27 @@
   flex:none;
   margin:0 auto!important;
   aspect-ratio:1;
-  background-image:url('./profile-menu-atlas.webp')!important;
+  /* This artwork is a real 4-by-3 atlas; the previous 2-by-3 file was
+     rendered using 4-by-3 coordinates and produced fragmented white icons. */
+  background-image:url('./main-profile-icons.webp')!important;
   background-repeat:no-repeat!important;
   background-size:400% 300%!important;
   background-color:transparent!important;
   border:0!important;
   border-radius:0!important;
   box-shadow:none!important;
-  filter:brightness(0) invert(1)!important;
+  filter:none!important;
   transform:none!important;
   animation:none!important;
 }
-#v-me.profile-royal .pc-profile {background-position:0 0!important}
-#v-me.profile-royal .pc-wallet {background-position:33.333% 0!important}
-#v-me.profile-royal .pc-shop {background-position:66.666% 0!important}
-#v-me.profile-royal .pc-svip {background-position:100% 0!important}
-#v-me.profile-royal .pc-level {background-position:0 50%!important}
-#v-me.profile-royal .pc-badges {background-position:33.333% 50%!important}
-#v-me.profile-royal .pc-backpack {background-position:66.666% 50%!important}
-#v-me.profile-royal .pc-language {background-position:100% 50%!important}
+#v-me.profile-royal .pc-profile {background-position:100% 50%!important}
+#v-me.profile-royal .pc-wallet {background-position:66.666% 100%!important}
+#v-me.profile-royal .pc-shop {background-position:0 0!important}
+#v-me.profile-royal .pc-svip {background-position:66.666% 50%!important}
+#v-me.profile-royal .pc-level {background-position:100% 0!important}
+#v-me.profile-royal .pc-badges {background-position:33.333% 0!important}
+#v-me.profile-royal .pc-backpack {background-position:0 50%!important}
+#v-me.profile-royal .pc-language {background-position:33.333% 50%!important}
 #v-me.profile-royal .pc-feedback {background-position:0 100%!important}
 #v-me.profile-royal .profile-account {margin-top:22px!important}
 #v-me.profile-royal .profile-account .ml2 {
@@ -264,10 +304,11 @@
   width:38px!important;
   height:38px!important;
   flex:none;
-  background-image:url('./profile-menu-atlas.webp')!important;
+  background-image:url('./main-profile-icons.webp')!important;
+  background-repeat:no-repeat!important;
   background-size:400% 300%!important;
   background-color:transparent!important;
-  filter:brightness(0) invert(1)!important;
+  filter:none!important;
 }
 #v-me.profile-royal .profile-account-card .pm-svip {background-position:66.666% 50%!important}
 #v-me.profile-royal .profile-account-card .pm-invite {background-position:100% 50%!important}
@@ -283,6 +324,17 @@
   padding:12px 8px;border:1px solid #345a46;border-radius:11px;
   background:#1c2d26;color:#fff;text-align:left;font-size:13px;
 }
+#v-me.profile-royal #sh-family-entries {
+  margin:13px 0 18px!important;
+  gap:9px!important;
+}
+#v-me.profile-royal #sh-family-entries>button {
+  padding:11px 13px!important;
+  border-radius:13px!important;
+  box-shadow:none!important;
+  min-height:64px;
+}
+#v-me.profile-royal #sh-family-entries .sh-fam-icon {font-size:25px!important}
 #v-me.profile-royal button:focus-visible {outline:2px solid #b6dfca!important;outline-offset:2px}
 .app:has(#v-me.on) .nav {
   background:#142921!important;

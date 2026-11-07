@@ -1,4 +1,4 @@
-/* Screenshot-matched 5-column room with no designated owner chair.
+/* Responsive microphone room with no designated owner chair.
    Shared room themes, verified mic seats, gifts and roles remain untouched. */
 html.royal-room .app.sh-royal-room.royal-default-room {
   background-image:linear-gradient(180deg,rgba(0,10,7,.75),rgba(0,12,10,.43) 32%,rgba(0,8,6,.77)),
@@ -96,7 +96,8 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 .app.sh-royal-room #host,
 .app.sh-royal-room .host {display:none!important}
 .app.sh-royal-room .stage {
-  flex:1 1 320px!important;
+  /* Seat rows take their natural height; chat uses the remaining space. */
+  flex:0 1 auto!important;
   min-height:0!important;
   padding:10px 6px 5px!important;
   overflow-y:auto!important;
@@ -107,7 +108,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 .app.sh-royal-room .stage::before {display:none!important}
 .app.sh-royal-room #grid.grid {
   display:grid!important;
-  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
   grid-auto-rows:min-content;
   justify-items:center;
   align-items:start;
@@ -115,6 +116,10 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   row-gap:clamp(13px,2.2vh,24px)!important;
   padding:0 0 10px!important;
   margin:0!important;
+}
+/* Large rooms retain the compact five-column layout seen in the reference. */
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) {
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
 }
 .app.sh-royal-room #grid .seat {
   display:flex!important;
@@ -162,9 +167,9 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 .app.sh-royal-room #grid .seat .sh-sovera-seat-tag,
 .app.sh-royal-room #grid .seat .sh-sovera-seat-medal {pointer-events:none}
 .app.sh-royal-room .chatw {
-  flex:0 1 135px!important;
-  min-height:77px!important;
-  max-height:25vh!important;
+  flex:1 1 180px!important;
+  min-height:135px!important;
+  max-height:none!important;
   margin:0 9px 0!important;
   border:0!important;
   border-radius:0!important;
@@ -204,7 +209,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   display:grid!important;
   grid-template-columns:repeat(6,minmax(0,1fr))!important;
   gap:1px!important;
-  padding:0 60px 0 2px!important;
+  padding:0 63px 0 2px!important;
   min-height:52px;
   align-items:center;
 }
@@ -236,6 +241,22 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   filter:grayscale(1) brightness(1.8)!important;
 }
 .app.sh-royal-room .sh-tool #bGame.sh-games span:last-child {display:none!important}
+/* The old games control was absolute-positioned before it was moved into
+   the new six-button toolbar. Reset that position so no empty cell remains. */
+.app.sh-royal-room .sh-tool #bGame.sh-games {
+  position:static!important;
+  inset:auto!important;
+  z-index:auto!important;
+  min-width:0!important;
+  display:grid!important;
+  flex-direction:initial!important;
+  cursor:pointer;
+}
+.app.sh-royal-room .sh-tool #bGame.sh-games .sh-sprite {
+  width:90%!important;
+  height:90%!important;
+  margin:0!important;
+}
 .app.sh-royal-room .sh-tool #mic.off {opacity:.55!important;border-color:#db668c!important}
 .app.sh-royal-room .sh-tool #emo {background-image:none!important}
 .app.sh-royal-room .sh-tool>span:last-child {display:none!important}

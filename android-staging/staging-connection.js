@@ -198,6 +198,9 @@
       const position=layout[kind+'_position'];
       const target=position==='avatar'?avatar:position==='name'?name:id;
       if(!target)continue;
+      // Responsive profile CSS must know which anchor the admin selected.
+      // Otherwise ornaments become unnamed rows in the main profile grid.
+      ornament.dataset.shPosition=position;
       if(position==='avatar')target.appendChild(ornament);
       else{
         target.insertAdjacentElement('afterend',ornament);
