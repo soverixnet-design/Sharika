@@ -1,0 +1,108 @@
+name: Sharika Royal Levels and Greedy gross wins STAGING only
+
+on:
+  push:
+    branches:
+      - feature/sharika-royal-level-greedy-api-staging-20261107
+    paths:
+      - '.github/workflows/sharika-royal-level-greedy-staging.yml'
+      - 'cloudflare/src/bonds.mjs'
+      - 'cloudflare/src/greedy-wheel.mjs'
+      - 'cloudflare/migrations/0072_royal_level_v2_baselines.sql'
+      - 'cloudflare/test/royal-level-policy.test.mjs'
+      - 'cloudflare/test/greedy-wheel.test.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  deploy-royal-levels-staging:
+    name: Preserve old gift levels and deploy isolated API staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require existing isolated staging API and D1, never production
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-royal-level-greedy-api-staging-20261107'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const d=c.d1_databases?.[0];
+          if(c.name!=='sharika-api-staging'||
+            c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+            c.vars?.SHARIKA_ENV!=='staging'||
+            c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+            c.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false'||
+            c.keep_vars!==true||c.workers_dev!==true||
+            c.d1_databases?.length!==1||d?.binding!=='DB'||
+            d?.database_name!=='sharika-staging'||
+            d?.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+            c.durable_objects?.bindings?.[0]?.name!=='VOICE_ROOMS'||
+            c.durable_objects?.bindings?.[0]?.class_name!=='SharikaVoiceRoom'||
+            !c.secrets?.required?.includes('REALTIME_SFU_APP_ID')||
+            !c.secrets?.required?.includes('REALTIME_SFU_APP_SECRET'))
+            throw Error('Refusing unexpected Worker, database or credentials');
+          console.log('EXACT_ISOLATED_SHARIKA_STAGING_VERIFIED');
+          NODE
+      - name: Verify immutable wallet and gift policy via backend tests
+        run: |
+          npm run check
+          node --test test/royal-level-policy.test.mjs test/greedy-wheel.test.mjs
+      - name: Check current staging and newest approved upstream schema
+        run: |
+          set -euo pipefail
+          curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM d1_migrations WHERE name='0071_admin_virtual_coin_debits.sql'" \
+            | grep -F '0071_admin_virtual_coin_debits.sql' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command 'SELECT COUNT(*) AS preserved_users FROM sharika_users'
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command 'SELECT COUNT(*) AS preserved_wallet_entries FROM sharika_wallet_ledger'
+      - name: Validate staging Worker bundle without publishing
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
+      - name: Add only the one-time Royal level snapshot and Greedy daily index
+        run: |
+          set -euo pipefail
+          # Never run blanket migrations apply: the repository contains older
+          # feature branches with overlapping migration numbers.
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --file migrations/0072_royal_level_v2_baselines.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "INSERT INTO d1_migrations(name) SELECT '0072_royal_level_v2_baselines.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0072_royal_level_v2_baselines.sql')"
+      - name: Verify level baselines, old gifts and settled bet index
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command 'SELECT COUNT(*) AS protected_legacy_levels FROM sharika_royal_level_v2_baselines'
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_sharika_greedy_daily_wins'" \
+            | grep -F 'idx_sharika_greedy_daily_wins' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command 'SELECT COUNT(*) AS original_gifts_preserved FROM sharika_gift_events'
+      - name: Publish only existing sharika-api-staging Worker
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify staging health without submitting any game bets
+        run: |
+          set -euo pipefail
+          curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+          echo 'ROYAL_LEVEL_AND_GREEDY_STAGING_DEPLOYED_WITHOUT_WALLET_RESET'
