@@ -5,6 +5,7 @@ on:
     branches:
       - feature/sharika-play-release-aab-20261107
       - feature/sharika-play-billing-20261107
+      - feature/sharika-full-integrated-staging-20261107
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
