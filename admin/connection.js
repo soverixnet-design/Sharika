@@ -2135,9 +2135,22 @@
   };
   P.rank=async function () {
     const root=byId('pg');
-    let kind='rich',period='weekly',requestNo=0;
-    const kinds={rich:'Rich · sent',charm:'Charm · received',room:'Rooms',recharge:'Top Recharge'};
+    let kind='sending',period='weekly',requestNo=0;
+    const kinds={rich:'Rich · historic',charm:'Charm · received',room:'Rooms',recharge:'Top Recharge',
+      sending:'Verified Sending',game:'Verified Game Wins'};
     const periods={daily:'Daily',weekly:'Weekly',monthly:'Monthly'};
+    async function getVerifiedBoard(query){
+      // This is a member-authenticated read-only API, not an Admin mutation.
+      // The Admin api() helper prefixes /api/v1/admin, which would 404 here.
+      const jwt=await idToken();
+      const response=await fetch(API+'/api/v1/rankings/verified?'+query,{
+        headers:{authorization:'Bearer '+jwt,accept:'application/json'},
+        cache:'no-store'
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw Error(data.error||'Verified leaderboard unavailable');
+      return data;
+    }
     root.innerHTML='<div class="card"><h3>Verified wallet rankings</h3>'+
       '<p>Gift ranks reflect settled transfers; Top Recharge counts only approved seller or finance recharge coins. No simulated players or payouts.</p>'+
       '<div class="row" id="rank-kinds">'+Object.entries(kinds).map(([key,label])=>
@@ -2145,7 +2158,10 @@
       ).join('')+'</div>'+
       '<div class="row" id="rank-periods">'+Object.entries(periods).map(([key,label])=>
         '<button class="btn" type="button" data-rperiod="'+esc(key)+'">'+esc(label)+'</button>'
-      ).join('')+'</div><div id="rank-results">Loading verified rankings…</div></div>';
+      ).join('')+'</div><div id="rank-results">Loading verified rankings…</div></div>'+
+      '<div class="card"><h3>🏆 Automatic Ranking Targets & Rewards</h3>'+
+      '<p class="n">All scores come from verified server activity. New rules apply at the NEXT UTC period. No historical payouts. Seven optional TOP prizes, with a minimum target for each rank.</p>'+
+      '<div id="sh-rra-config">Loading reward controls…</div></div>';
     const results=byId('rank-results');
     async function reload(){
       const current=++requestNo;
@@ -2153,18 +2169,23 @@
       root.querySelectorAll('[data-rperiod]').forEach(b=>b.disabled=b.dataset.rperiod===period);
       results.textContent='Loading verified rankings…';
       try{
-        const data=await api('GET','rankings?kind='+kind+'&period='+period);
+        const verified=['sending','recharge','game'].includes(kind);
+        const data=verified?await getVerifiedBoard('kind='+kind+'&period='+period+
+          (kind==='game'?'&metric=wins':'')):
+          await api('GET','rankings?kind='+kind+'&period='+period);
         if(current!==requestNo)return;
         const leaders=Array.isArray(data.leaders)?data.leaders:[];
         if(!leaders.length){
-          results.textContent=kind==='recharge'?'No approved recharges recorded for this period.':'No settled gifts recorded for this period.';
+          results.textContent=kind==='recharge'?'No approved recharges recorded for this period.':
+            kind==='game'?'No server-settled game wins yet.':'No settled activity recorded for this period.';
           return;
         }
         const labels=kind==='room'?['Rank','Room ID','Room','Gift coins']:
-          ['Rank','User ID','Name',kind==='recharge'?'Approved recharge coins':'Gift coins'];
+          ['Rank','User ID','Name',kind==='game'?'Game wins':
+            kind==='recharge'?'Approved recharge coins':'Gift coins'];
         const rows=leaders.map(item=>kind==='room'
           ?[fmt(item.rank),esc(item.room_id),esc(item.name),fmt(item.total)]
-          :[fmt(item.rank),esc(item.public_id),esc(item.name),fmt(item.total)]);
+          :[fmt(item.rank),esc(item.display_id||item.public_id),esc(item.name),fmt(item.total)]);
         results.innerHTML=window.T(labels,rows);
       }catch(error){if(current===requestNo)results.textContent='Rankings unavailable: '+error.message;}
     }
@@ -2175,7 +2196,107 @@
       if(p){period=p.dataset.rperiod;reload();}
     };
     await reload();
+    await renderRankingRewardSettings();
   };
+  async function renderRankingRewardSettings(initial){
+    const box=byId('sh-rra-config');if(!box)return;
+    const selection=initial||{kind:'sending',period:'weekly',metric:'wins',game:''};
+    const select=(id,options,selected)=>'<select class="field" id="'+id+'">'+
+      options.map(([value,label])=>'<option value="'+esc(value)+'" '+
+      (value===selected?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select>';
+    const filters='<div class="row"><label>Leaderboard '+select('sh-rra-kind',[
+      ['sending','Gift Sending'],['recharge','Approved Recharge'],['game','Server-settled Games']],selection.kind)+
+      '</label><label>Period '+select('sh-rra-period',[
+        ['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']],selection.period)+
+      '</label>'+(selection.kind==='game'?'<label>Game metric '+select('sh-rra-metric',[
+        ['wins','Wins'],['stake','Total stakes'],['payout','Total payouts']],selection.metric)+
+      '</label><label>Game '+select('sh-rra-game',[
+        ['','All games'],['food-wheel','Food Wheel'],['jackpot-fruit','Fruit Jackpot'],
+        ['sovera-food','Sovera Food'],['night-food','Night Food'],
+        ['greedy-wheel','Greedy Wheel'],['fruit-royale','Fruit Royale'],
+        ['sovera-gaddy','Sovera Gaddy']],selection.game)+
+      '</label>':'')+'</div>';
+    box.innerHTML=filters+'<p class="n" id="sh-rra-status">Loading verified rewards…</p>';
+    const current=()=>({kind:byId('sh-rra-kind').value,
+      period:byId('sh-rra-period').value,metric:byId('sh-rra-metric')?.value||'wins',
+      game:byId('sh-rra-game')?.value||''});
+    for(const id of ['sh-rra-kind','sh-rra-period','sh-rra-metric','sh-rra-game']){
+      byId(id)?.addEventListener('change',()=>void renderRankingRewardSettings(current()));
+    }
+    const query='kind='+encodeURIComponent(selection.kind)+'&period='+encodeURIComponent(selection.period)+
+      (selection.kind==='game'?'&metric='+encodeURIComponent(selection.metric)+
+        (selection.game?'&game='+encodeURIComponent(selection.game):''):'');
+    let data;
+    try{data=await api('GET','ranking-rewards?'+query);}
+    catch(error){byId('sh-rra-status').textContent='Reward controls unavailable: '+error.message+
+      ' (new D1 migration may not be installed yet).';return;}
+    const editing=role==='super';
+    const targets=data.policy?.targets||Array(7).fill(0);
+    const prizes=data.policy?.prizes||Array(7).fill(0);
+    const row=Array.from({length:7},(_,i)=>'<tr><td>TOP '+(i+1)+'</td><td>'+
+      '<input class="field" type="number" min="0" max="1000000000000" step="1" ' +
+      'id="sh-rra-target-'+i+'" value="'+esc(targets[i])+'" '+(editing?'':'disabled')+'></td><td>'+
+      '<input class="field" type="number" min="0" max="1000000" step="1" ' +
+      'id="sh-rra-prize-'+i+'" value="'+esc(prizes[i])+'" '+(editing?'':'disabled')+'></td></tr>').join('');
+    const last=data.last_completed;
+    const winners=(last?.candidates||[]).map(item=>[
+      'TOP '+item.rank,esc(item.display_id),esc(item.score)]);
+    byId('sh-rra-status').outerHTML='<p class="n">'+
+      (data.paused?'🔒 Reward payments globally paused.':'🟢 Global reward payments unpaused.')+
+      ' · Latest version #'+esc(data.policy?.id||'none')+
+      ' · Future activation: '+esc(data.next_effective_from)+
+      ' · Automatic settlement additionally requires the server environment flag.</p>'+
+      '<div class="row"><label><input id="sh-rra-enabled" type="checkbox" '+
+      (data.policy?.enabled?'checked ':'')+(editing?'':'disabled')+'> Enable rules</label> '+
+      '<label><input id="sh-rra-auto" type="checkbox" '+
+      (data.policy?.auto_award?'checked ':'')+(editing?'':'disabled')+'> Enable automatic award</label></div>'+
+      '<div style="overflow-x:auto"><table><thead><tr><th>Rank</th><th>Minimum score</th><th>Reward (coins)</th></tr></thead><tbody>'+
+      row+'</tbody></table></div>'+
+      (editing?'<div class="row"><button class="btn s" type="button" id="sh-rra-save">Publish future rules</button> '+
+        '<button class="btn" type="button" id="sh-rra-pause">'+(data.paused?'Unpause rewards':'Pause all rewards')+'</button> '+
+        '<button class="btn" type="button" id="sh-rra-settle">Settle last completed period</button></div>':'')+
+      '<p class="n" id="sh-rra-feedback">'+(last?.settled?'Last period paid once.':'Last period has no settlement receipt.')+
+      '</p><h4>Last completed verified leaderboard · '+esc(last?.start_at||'')+'</h4>'+
+      (winners.length?window.T(['Rank','Displayed user ID','Verified score'],winners):
+        '<p class="n">No verified activity recorded in the last completed period.</p>')+
+      '<p class="n">Eligible award preview (using the rule active for that completed period): '+
+      (last?.preview_awards?.length?last.preview_awards.map(a=>'#'+a.rank+' '+esc(a.display_id)+
+        ' · '+fmt(a.coins)+' coins').join(', '):'None')+'</p>';
+    if(!editing)return;
+    byId('sh-rra-save').onclick=async()=>{
+      const readNums=prefix=>Array.from({length:7},(_,i)=>{
+        const raw=byId(prefix+i).value.trim();return /^\d+$/.test(raw)?Number(raw):NaN;});
+      const targets=readNums('sh-rra-target-'),prizes=readNums('sh-rra-prize-');
+      const enabled=byId('sh-rra-enabled').checked,auto_award=byId('sh-rra-auto').checked;
+      if(targets.some(n=>!Number.isSafeInteger(n)||n<0||n>1e12)||
+        prizes.some(n=>!Number.isSafeInteger(n)||n<0||n>1e6)||
+        (enabled&&!prizes.some(n=>n>0))||auto_award&&!enabled){
+        byId('sh-rra-feedback').textContent='Invalid targets/prizes: targets 0–1T; each prize 0–1M, at least one enabled prize.';
+        return;
+      }
+      if(!window.confirm('Publish these TOP 1–7 rules for the NEXT full UTC period? Older rules and payments remain unchanged.'))return;
+      try{await api('PATCH','ranking-rewards',{kind:selection.kind,period:selection.period,
+        ...(selection.kind==='game'?{metric:selection.metric,game:selection.game||null}:{}),
+        enabled,auto_award,targets,prizes});
+        note('Future ranking rules published and audited.');await renderRankingRewardSettings(selection);
+      }catch(error){byId('sh-rra-feedback').textContent='Not published: '+error.message;}
+    };
+    byId('sh-rra-pause').onclick=async()=>{
+      const paused=!data.paused;
+      if(!window.confirm((paused?'Pause':'Unpause')+' ALL ranking prize payments? This action is audited.'))return;
+      try{await api('POST','ranking-rewards/pause',{paused,confirm:true});
+        await renderRankingRewardSettings(selection);}catch(error){byId('sh-rra-feedback').textContent=error.message;}
+    };
+    byId('sh-rra-settle').onclick=async()=>{
+      if(!window.confirm('Settle the LAST completed UTC period? This may credit REAL user coin wallets according to previously published rules. Continue?'))return;
+      try{const result=await api('POST','ranking-rewards/settle',{kind:selection.kind,
+        period:selection.period,...(selection.kind==='game'?{
+          metric:selection.metric,game:selection.game||null}:{}),confirm:true});
+        note(result.awarded?'Ranking prizes credited once.':'Settlement: '+(result.skipped||'already settled'));
+        await renderRankingRewardSettings(selection);
+      }catch(error){byId('sh-rra-feedback').textContent='Not settled: '+error.message;}
+    };
+  }
   P.analytics=async function () {
     const root=byId('pg');root.innerHTML=card('Analytics','Loading verified statistics…');
     try{

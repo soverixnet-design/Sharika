@@ -97,9 +97,12 @@ public final class SharikaActivity extends Activity {
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 3415;
     // Background polling must not queue microphone negotiation behind slow image,
-// chat or presence requests on congested mobile networks.
+    // chat or presence requests on congested mobile networks.
     private final ExecutorService io = Executors.newFixedThreadPool(4);
     private final ExecutorService voiceIo = Executors.newFixedThreadPool(3);
+    // Room admission and its first verified seat snapshot must not wait for
+    // thumbnails, wallet polls, profile cards or other best-effort traffic.
+    private final ExecutorService roomIo = Executors.newFixedThreadPool(3);
     private FirebaseAuth auth;
     private CredentialManager credentials;
     private WebView browser;
@@ -229,6 +232,16 @@ public final class SharikaActivity extends Activity {
         browser.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> requestMicrophone(request));
+            }
+            @Override public void onPermissionRequestCanceled(PermissionRequest request) {
+                runOnUiThread(() -> {
+                    if (pendingMic == request) {
+                        pendingMic = null;
+                        // The system dialog may still be open even after the
+                        // WebRTC caller cancels. Wait for its Android result
+                        // before restoring third-party overlay visibility.
+                    }
+                });
             }
             @Override public boolean onShowFileChooser(WebView view,
                     ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
@@ -697,8 +710,31 @@ public final class SharikaActivity extends Activity {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             request.grant(new String[] { PermissionRequest.RESOURCE_AUDIO_CAPTURE });
         } else {
+            // Android can deliver more than one WebRTC capture request while
+            // the system consent sheet is showing. Keep the original callback;
+            // replacing it leaves a capture promise forever unresolved.
+            if (pendingMic != null) {
+                if (pendingMic != request) request.deny();
+                return;
+            }
             pendingMic = request;
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC_PERMISSION_REQUEST);
+            // A floating chat-head/mini-window can obscure sensitive taps on
+            // Android 12+. Hide third-party overlays only for this consent.
+            hideUntrustedOverlays(true);
+            try {
+                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC_PERMISSION_REQUEST);
+            } catch (RuntimeException error) {
+                pendingMic = null;
+                hideUntrustedOverlays(false);
+                request.deny();
+            }
+        }
+    }
+
+    private void hideUntrustedOverlays(boolean hide) {
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            try { getWindow().setHideOverlayWindows(hide); }
+            catch (RuntimeException ignored) { /* Continue with Android's own consent UI. */ }
         }
     }
 
@@ -713,9 +749,11 @@ public final class SharikaActivity extends Activity {
             else sendResult(id, result(false,null,"notification_permission_denied"));
             return;
         }
-        if (code != MIC_PERMISSION_REQUEST || pendingMic == null) return;
+        if (code != MIC_PERMISSION_REQUEST) return;
         PermissionRequest request = pendingMic;
         pendingMic = null;
+        hideUntrustedOverlays(false);
+        if (request == null) return;
         if (grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED)
             request.grant(new String[]{ PermissionRequest.RESOURCE_AUDIO_CAPTURE });
         else request.deny();
@@ -1262,6 +1300,10 @@ public final class SharikaActivity extends Activity {
         return path.matches("^/api/v1/rooms/[0-9]{8}/(seat|voice/(config|session|publish|ready|subscribe|renegotiate|publications|heartbeat|leave))$");
     }
 
+    private boolean isRoomAdmissionRoute(String path) {
+        return path.matches("^/api/v1/rooms/[0-9]{8}/(join|leave|members)$");
+    }
+
     private void sendPushToken(String id) {
         // An FCM device token is never an authentication credential.
         FirebaseMessaging.getInstance().getToken().addOnCompleteListener(this, task -> {
@@ -1285,7 +1327,8 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false,null,"firebase_token_unavailable")); return;
             }
             JSONObject body = data.optJSONObject("body");
-            ExecutorService queue = isRealtimeVoiceRoute(path) ? voiceIo : io;
+            ExecutorService queue = isRealtimeVoiceRoute(path) ? voiceIo :
+                isRoomAdmissionRoute(path) ? roomIo : io;
             queue.execute(() -> stageHttp(id, method, path, body, token.getResult().getToken()));
         });
     }
@@ -1361,6 +1404,7 @@ public final class SharikaActivity extends Activity {
             unregisterModernBack = null;
         }
         if (pendingMic != null) { pendingMic.deny(); pendingMic = null; }
+        hideUntrustedOverlays(false);
         pendingNotificationRequestId = null;
         if (browser != null) {
             browser.removeJavascriptInterface("SharikaNative");
@@ -1369,6 +1413,7 @@ public final class SharikaActivity extends Activity {
         }
         io.shutdownNow();
         voiceIo.shutdownNow();
+        roomIo.shutdownNow();
         super.onDestroy();
     }
 }

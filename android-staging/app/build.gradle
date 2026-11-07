@@ -46,8 +46,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 13
-        versionName '0.6.7-anchored-room-keyboard-qa'
+        versionCode 14
+        versionName '0.6.8-fast-room-mic-consent-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

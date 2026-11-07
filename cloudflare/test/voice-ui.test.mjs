@@ -14,7 +14,7 @@ test('owner and guest tap an open mic seat without waiting on the old invitation
   assert.match(ui,/api\('PUT','\/rooms\/'\+room\.id\+'\/seat',\{seat_no:seat\}\)/);
   assert.match(ui,/owner_mic_seat:owner/);
   assert.match(ui,/owner_mic_seat:true/);
-  assert.match(ui,/const ownerOnMic=frame\.seats\.some/);
+  assert.match(ui,/const speaking=!!seat\.user_id&&!seat\.muted&&ids\.has\(seat\.user_id\)/);
   assert.match(ui,/const people=new Set\(frame\.seats\.filter/);
 });
 
@@ -274,7 +274,7 @@ test('incoming voice and server permission changes are checked independently',()
   assert.match(ui,/local\.enabled=microphoneWanted\(roomId\)/);
 });
 
-test('voice begins at verified join before the room art and iframe are ready',()=>{
+test('room artwork opens immediately while voice begins only after verified join',()=>{
   const enter=ui.indexOf('  window.openRoom=async function(room) {');
   const end=ui.indexOf('  const originalLeaveRoom=',enter);
   assert.ok(enter>=0&&end>enter);
@@ -282,9 +282,11 @@ test('voice begins at verified join before the room art and iframe are ready',()
   assert.ok(entry.indexOf('await joinRoomWithPassword(room)')>=0);
   assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')>
     entry.indexOf('await joinRoomWithPassword(room)'));
-  assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')<
-    entry.indexOf('originalOpenRoom(room)'));
-  // Voice still starts immediately after verified join, while the room UI can recover independently.
+  assert.ok(entry.indexOf('originalOpenRoom(room)')<
+    entry.indexOf('await joinRoomWithPassword(room)'));
+  assert.match(entry,/if\(roomAdmitted\)onVerifiedRoomFrameLoad\(\)/);
+  assert.match(entry,/pendingJoinRoomId=room\.id/);
+  // Voice starts only after authentication; it does not delay first paint.
   assert.match(ui,/ensureVoiceConnected\(room\.id\)\.then\(voice=>/);
   assert.doesNotMatch(ui,/const voice=await ensureVoiceConnected\(room\.id\)/);
 });

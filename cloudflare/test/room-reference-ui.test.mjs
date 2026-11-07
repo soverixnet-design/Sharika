@@ -95,9 +95,9 @@ test('last loaded Royal CSS honors new room card and IME layout on Android',()=>
   assert.match(correction,/\.sh-keyboard-open \.stage/);
   assert.match(correction,/\.sh-keyboard-open \.dock/);
   assert.match(correction,/\.sh-keyboard-open \.sh-tools/);
-  assert.match(correction,/content:'QA13'/);
-  assert.match(gradle,/versionCode 13/);
-  assert.match(gradle,/versionName '0\.6\.7-anchored-room-keyboard-qa'/);
+  assert.match(correction,/content:'QA14'/);
+  assert.match(gradle,/versionCode 14/);
+  assert.match(gradle,/versionName '0\.6\.8-fast-room-mic-consent-staging'/);
 });
 
 test('CI can reproduce real Gboard and measure stable seats in an isolated WebView',()=>{
@@ -132,13 +132,15 @@ test('one tap shows a room joining shell and forbids overlapping join requests',
   assert.match(ui,/if\(!joined\)return/);
 });
 
-test('join starts each verified visit before its arrival event with parallel independent reads',()=>{
+test('join establishes visit boundary then defers optional arrival art reads',()=>{
   const join=worker.slice(worker.indexOf("action === 'join' && request.method === 'POST'"),
     worker.indexOf("action === 'leave' && request.method === 'POST'"));
-  assert.match(join,/\[latestGift,entrant,equipped,svipLevel\]=await Promise\.all\(\[/);
+  assert.match(join,/const latestGift=await env\.DB\.prepare/);
+  assert.match(join,/\[entrant,equipped,svipLevel\]=await Promise\.all\(\[/);
   assert.match(join,/await coordinator\.beginRoomVisit\(uid,Number\(latestGift\?\.id\)\|\|0\)/);
   assert.ok(join.indexOf('await coordinator.beginRoomVisit')<
     join.indexOf('await coordinator.roomEntryAnnounce'));
+  assert.match(join,/ctx\.waitUntil\(announce\.catch/);
 });
 
 test('top room card is shorter in width but thicker without changing microphone seat sizes',()=>{

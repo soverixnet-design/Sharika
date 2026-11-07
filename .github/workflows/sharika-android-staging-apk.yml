@@ -50,6 +50,7 @@ on:
       - feature/sharika-sovera-gaddy-game-20261104
       - feature/sharika-bd-agency-host-20261104
       - feature/sharika-agency-salary-targets-integrated-20261106
+      - feature/sharika-ranked-agency-integration-20261106
     paths:
       - 'android-staging/**'
       - 'app/golden-home.css'
@@ -419,6 +420,19 @@ jobs:
             "sharika-agency-icons/"
           ]) if(!js.includes(expected))throw Error('Agency profile packaging missing: '+expected);
           console.log('SHARIKA_AGENCY_MAIN_PROFILE_ICON_PACKAGED');
+          NODE
+
+      - name: Verify existing Royal Ranking screen uses trusted API feeds
+        run: |
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/connection.js > "$RUNNER_TEMP/sharika-ranking-connection.js"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const js=fs.readFileSync(process.env.RUNNER_TEMP+'/sharika-ranking-connection.js','utf8');
+          const expected=['/rankings/verified?period=',"1:{kind:'sending'",
+            "5:{kind:'game'","6:{kind:'recharge'",'leader.display_id||leader.public_id'];
+          for(const token of expected)if(!js.includes(token))
+            throw Error('Central verified API ranking not shipped: '+token);
+          console.log('SHARIKA_VERIFIED_RANKING_IN_APK');
           NODE
 
       - name: Save private-test APK artifact

@@ -25,6 +25,24 @@ test('WebView static guard: microphone origin and Android runtime grant are requ
   assert.match(mic, /request\.deny\(\)/);
 });
 
+test('runtime microphone consent hides untrusted overlays and preserves a pending WebRTC request', () => {
+  assert.match(manifest, /android\.permission\.HIDE_OVERLAY_WINDOWS/);
+  assert.match(java, /onPermissionRequestCanceled\(PermissionRequest request\)/);
+  assert.match(java, /if \(pendingMic != null\) \{/);
+  assert.match(java, /if \(pendingMic != request\) request\.deny\(\)/);
+  assert.match(java, /hideUntrustedOverlays\(true\);[\s\S]*?requestPermissions\(new String\[\]\{Manifest\.permission\.RECORD_AUDIO\}/);
+  assert.match(java, /getWindow\(\)\.setHideOverlayWindows\(hide\)/);
+  assert.match(java, /if \(code != MIC_PERMISSION_REQUEST\) return;[\s\S]*?hideUntrustedOverlays\(false\)/);
+});
+
+test('room admission and first member snapshot have a dedicated bounded executor', () => {
+  assert.match(java, /roomIo = Executors\.newFixedThreadPool\(3\)/);
+  assert.match(java, /isRoomAdmissionRoute\(String path\)/);
+  assert.match(java, /\(join\|leave\|members\)/);
+  assert.match(java, /isRoomAdmissionRoute\(path\) \? roomIo : io/);
+  assert.match(java, /roomIo\.shutdownNow\(\)/);
+});
+
 test('WebView static guard: packaged HTML limits nested frames', () => {
   assert.match(build, /Content-Security-Policy/);
   assert.match(build, /frame-src 'self' about:/);

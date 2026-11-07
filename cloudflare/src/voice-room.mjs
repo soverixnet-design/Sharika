@@ -295,14 +295,14 @@ export class SharikaVoiceRoom extends DurableObject {
 
   async changeMemberSeat(roomId,uid,seat) {
     return this.withSeatGate(async()=>{
-      if(seat!==null) {
+      if(seat!==null && seat!==0) {
         const locked=this.ctx.storage.sql.exec(
           'SELECT 1 AS locked FROM room_seat_locks WHERE seat_no=?',seat
         ).toArray()[0];
         if(locked)return {error:'seat_locked'};
       }
       const db=this.sharikaDb;
-      if(seat!==null){
+      if(seat!==null && seat!==0){
         // Any joined guest may claim an unlocked, empty seat without invite.
         // The same Durable Object gate serializes this with owner locking.
         const occupant=await db.prepare(
@@ -313,8 +313,9 @@ export class SharikaVoiceRoom extends DurableObject {
       let changed;
       try{
         changed=await db.prepare(
-          'UPDATE sharika_room_members SET seat_no=? WHERE room_id=? AND user_id=?'
-        ).bind(seat,roomId,uid).run();
+          'UPDATE sharika_room_members SET seat_no=?,owner_throne_active=? '+
+          'WHERE room_id=? AND user_id=?'
+        ).bind(seat===0?null:seat,seat===0?1:0,roomId,uid).run();
       }catch(error){
         if(seat!==null&&/UNIQUE constraint/i.test(String(error?.message)))
           return {error:'seat_occupied'};
@@ -325,10 +326,10 @@ export class SharikaVoiceRoom extends DurableObject {
         'SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?'
       ).bind(roomId,uid).first();
       this.ctx.storage.sql.exec('DELETE FROM room_seat_invites WHERE invitee_uid=?',uid);
-      if(seat!==null)this.ctx.storage.sql.exec(
+      if(seat!==null && seat!==0)this.ctx.storage.sql.exec(
         'DELETE FROM room_seat_invites WHERE seat_no=?',seat
       );
-      return {member};
+      return {member:{...member,seat_no:member.owner_throne_active?0:member.seat_no}};
     });
   }
 

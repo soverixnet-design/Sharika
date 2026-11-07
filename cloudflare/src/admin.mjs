@@ -7,6 +7,7 @@ import { handleDailyAdmin } from './daily.mjs';
 import { handlePremiumAdmin } from './premium.mjs';
 import { handleBondAdmin } from './bonds.mjs';
 import { handleCpRewardAdmin } from './cp-rewards.mjs';
+import {handleRankingRewardAdmin} from './ranking-rewards.mjs';
 import { handleEventAdmin } from './events.mjs';
 import {handleGameCatalogAdmin} from './game-catalog.mjs';
 import {handleProfileLayoutAdmin} from './profile-layout.mjs';
@@ -190,6 +191,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     });
   if(operation==='bonds/rewards'||operation==='bonds/rewards/settle')
     return await handleCpRewardAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
+  if(operation==='ranking-rewards'||operation.startsWith('ranking-rewards/'))
+    return await handleRankingRewardAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='bonds'||/^bonds\/gifts\/[1-9][0-9]{0,9}$/.test(operation))
     return await handleBondAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if (operation.startsWith('sellers')) return await handleSellerAdmin({

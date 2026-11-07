@@ -125,11 +125,11 @@ test('room roster uses expiring verified presence without deleting D1 members',(
   const start=worker.indexOf("if (parts.length === 5 && action === 'members'");
   const end=worker.indexOf("if (parts.length === 5 && action === 'voice-token'",start);
   const section=worker.slice(start,end);
-  assert.match(section,/new Set\(await presence\.presenceRoomMembers\(roomId\)\)/);
-  assert.match(section,/visibleMembers=visibleMembers\.filter/);
+  assert.match(section,/presence\.presenceRoomMembers\(roomId\)/);
+  assert.match(section,/visibleMembers=\(result\.results\|\|\[\]\)\.filter\(m=>live\.has\(m\.user_id\)\)/);
   assert.match(section,/visibleMembers\.map\(x =>/);
   assert.doesNotMatch(section,/DELETE FROM sharika_room_members|UPDATE sharika_room_members/);
-  assert.match(adapter,/\},8000\);/);
+  assert.match(adapter,/\},3000\);/);
 });
 
 test('room gift receipts remain in the scrollable chat, with sender and recipient',()=>{

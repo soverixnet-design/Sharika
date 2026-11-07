@@ -64,14 +64,17 @@ test('locked seat allows owner unlock and unlock all, but no guest lock',()=>{
   const y=menuFor({owner:false,seat:{lock:1,i:3}});
   assert.deepEqual(y.labels,['Cancel']);
 });
-test('guest may directly take open mic; owner throne is decorative',()=>{
+test('guest may take open mic and owner can claim the throne explicitly',()=>{
   const x=menuFor({owner:false,seat:{empty:1,i:3}});
   assert.deepEqual(x.labels,['Take Mic','Cancel']);
   x.buttons[0].onclick();
   assert.deepEqual(x.events,[['take',3]]);
   const y=menuFor({owner:true,index:0,seat:{empty:1,i:0}});
-  assert.deepEqual(y.labels,['Cancel']);
-  assert.equal(y.events.length,0);
+  assert.deepEqual(y.labels,['Sit on throne','Cancel']);
+  y.buttons[0].onclick();
+  assert.deepEqual(y.events,[['take',0]]);
+  const guest=menuFor({owner:false,index:0,seat:{empty:1,i:0}});
+  assert.deepEqual(guest.labels,['Cancel']);
 });
 
 function tapEmptySeatAs({owner}) {
