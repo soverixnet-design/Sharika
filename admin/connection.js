@@ -3219,10 +3219,13 @@
     root.innerHTML='<div id="sh-family-admin"><h2>👑 BD · Agency · Host Center</h2>'+
       '<p class="n">Loading verified D1 policy and salary targets…</p></div>';
     const parent=root.querySelector('#sh-family-admin');
-    let data,legacy;
+    let data,legacy,applications;
     try{
-      [data,legacy]=await Promise.all([api('GET','agency'),
-        api('GET','family').catch(()=>({agents:[],families:[]}))]);
+      [data,legacy,applications]=await Promise.all([api('GET','agency'),
+        api('GET','family').catch(()=>({agents:[],families:[]})),
+        role==='super'?api('GET','family/creation/requests').catch(error=>({
+          requests:[],error:String(error?.message||error)})):
+          Promise.resolve({requests:[]})]);
     }catch(error){parent.innerHTML=card('Agency service unavailable',error.message);return;}
     if(!parent.isConnected)return;
     const p=data.policy||{},s=data.salary_config||{},superAdmin=role==='super';
@@ -3282,6 +3285,17 @@
         '<label>Agency name<input id="ag2-name" maxlength="40"></label></div>'+
         '<button class="btn" id="ag2-create">Create Verified Agency</button>':
         '<p class="n">Super Admin controls Agency creation.</p>')+
+      (superAdmin?section('Pending Agency Creation Applications',
+        (applications.error?'<p class="n">Could not load applications: '+esc(applications.error)+'</p>':'')+
+        rows(['Request #','Applicant','Agency','Country','Review'],
+          (applications.requests||[]).map(req=>[
+            esc(req.id),esc(req.requester_name)+' ('+esc(req.requester_id)+')',
+            esc(req.name),esc(req.country||'—'),
+            '<button type="button" class="btn" data-ag2-approve="'+esc(req.id)+'">Approve</button> '+
+            '<button type="button" class="btn" data-ag2-reject="'+esc(req.id)+'">Reject</button>'
+          ]))+
+        '<p class="n">Approval requires an active BD ID and creates an audited Agency record. '+
+        'Rejecting an application does not delete any existing account or earnings.</p>'):'')+
       '<p id="ag2-status" role="status" aria-live="polite"></p>';
     byId('ag2-mode').value=p.settlement_mode||'weekly';
     const notice=message=>{const status=byId('ag2-status');if(status)status.textContent=message;};
@@ -3326,6 +3340,25 @@
         return notice('Enter the Agency name, Owner ID and active BD ID.');
       save('POST','family/create',{owner_public_id:owner,bd_public_id:bd,name,
         request_id:'admin:'+crypto.randomUUID()});
+    });
+    parent.querySelectorAll('[data-ag2-approve]').forEach(button=>button.onclick=()=>{
+      const id=Number(button.dataset.ag2Approve);
+      if(!Number.isSafeInteger(id)||id<1)return notice('Invalid Agency application.');
+      const bd=window.prompt('Enter the verified active BD 8-digit ID for this Agency:');
+      if(bd===null)return;
+      if(!/^[0-9]{8}$/.test(bd.trim()))return notice('Enter a valid active BD ID.');
+      if(!window.confirm('Approve this Agency application under BD '+bd.trim()+'?'))return;
+      button.disabled=true;
+      save('POST','family/creation/requests/'+id+'/approve',{bd_public_id:bd.trim()});
+    });
+    parent.querySelectorAll('[data-ag2-reject]').forEach(button=>button.onclick=()=>{
+      const id=Number(button.dataset.ag2Reject);
+      if(!Number.isSafeInteger(id)||id<1)return notice('Invalid Agency application.');
+      const reason=window.prompt('Reason for declining this Agency application (optional):','');
+      if(reason===null)return;
+      if(!window.confirm('Reject Agency application #'+id+'?'))return;
+      button.disabled=true;
+      save('POST','family/creation/requests/'+id+'/reject',{reason:reason.trim().slice(0,240)});
     });
   };
   P.family=async function(){
