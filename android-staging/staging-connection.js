@@ -9294,7 +9294,7 @@
         (a.created_at?' · '+sellerEscape(a.created_at):'')+'</div>'
       ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';
       const salaryEntries=(salaryIncoming.transfers||[]).slice(0,30).map(t=>
-        '<div class="shw-entry"><strong>💼 +'+coinsText(t.credited_stock_coins)+
+        '<div class="shw-entry"><strong>💼 +'+coinsText(t.credited_coins)+
         ' Seller stock coins</strong>'+sellerEscape(t.sender_name)+
         ' · Salary Wallet ID '+sellerEscape(t.sender_public_id)+
         ' · Transfer #'+sellerEscape(t.id)+
