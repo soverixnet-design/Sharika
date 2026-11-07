@@ -119,16 +119,20 @@ test('room discovery returns each verified room owner account country for its fl
   globalThis.fetch=certFetch;
   try{
     const db=fakeDb(),prior=db.prepare.bind(db),queries=[];
+    let countrySortBindings=null;
     db.prepare=sql=>{
       queries.push(sql);
       const stmt=prior(sql);
       if(sql.includes('FROM sharika_users WHERE auth_uid'))
-        stmt.first=async()=>({status:'active'});
-      if(sql.includes('FROM sharika_rooms r'))
+        stmt.first=async()=>({status:'active',country:'BD'});
+      if(sql.includes('FROM sharika_rooms r')){
+        const bind=stmt.bind.bind(stmt);
+        stmt.bind=(...values)=>{countrySortBindings=values;return bind(...values);};
         stmt.all=async()=>({results:[{
           id:'10000001',name:'Dhaka Room',owner_id:'firebase:owner',
           owner_country:'BD',created_at:'2026-01-01',cover_version:null
         }]});
+      }
       return stmt;
     };
     const result=await handleRequest(new Request('https://example.test/api/v1/rooms',{
@@ -137,6 +141,8 @@ test('room discovery returns each verified room owner account country for its fl
     assert.equal(result.status,200);
     assert.equal((await result.json()).rooms[0].owner_country,'BD');
     assert.ok(queries.some(sql=>sql.includes('LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id')));
+    assert.ok(queries.some(sql=>sql.includes('ORDER BY CASE WHEN UPPER(TRIM(u.country))=? THEN 0 ELSE 1 END')));
+    assert.deepEqual(countrySortBindings,['BD']);
   }finally{globalThis.fetch=originalFetch;}
 });
 test('unimplemented money-changing endpoints fail closed', async () => {

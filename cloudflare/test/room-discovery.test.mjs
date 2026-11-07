@@ -27,6 +27,24 @@ test('same-country rooms precede more popular foreign rooms; other rooms stay vi
     ['10000004','10000002','10000001','10000003']);
   assert.deepEqual(discovery.sortRooms(rooms,'US','popular').map(r=>r.id),
     ['10000001','10000003','10000004','10000002']);
+  assert.deepEqual(discovery.sortRooms(rooms,'IN','popular').map(r=>r.id),
+    ['10000003','10000001','10000004','10000002']);
+});
+
+test('Global keeps every room, while selecting a country shows only its rooms',()=>{
+  const rooms=[
+    {id:'10000001',owner_country:'BD'},
+    {id:'10000002',owner_country:'IN'},
+    {id:'10000003',owner_country:'Bangladesh'},
+    {id:'10000004',owner_country:'OM'}
+  ];
+  assert.deepEqual(discovery.filterRooms(rooms,''),rooms);
+  assert.deepEqual(discovery.filterRooms(rooms,'BD').map(r=>r.id),
+    ['10000001','10000003']);
+  assert.deepEqual(discovery.filterRooms(rooms,'🇮🇳 India').map(r=>r.id),
+    ['10000002']);
+  assert.deepEqual(discovery.filterRooms(rooms,'OM').map(r=>r.id),
+    ['10000004']);
 });
 
 test('New is country-first then newest; History only shows visited rooms',()=>{

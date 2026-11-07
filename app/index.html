@@ -341,6 +341,7 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
   <div class="srch">🔍<input id="q" placeholder="Search room name or ID" autocomplete="off"></div>
   <div class="ban" id="ban"></div><div class="dots" id="dots"></div>
   <div class="qa"><button id="qd"><span class="home-icon hi-reward" aria-hidden="true"></span>Daily reward</button><button id="qg"><span class="home-icon hi-games" aria-hidden="true"></span>Games</button><button id="qi"><span class="home-icon hi-invite" aria-hidden="true"></span>Invite</button></div>
+  <div class="country-room-filter"><label for="room-country">🌍 Country</label><select id="room-country" aria-label="Filter rooms by country"><option value="">🌍 Global · All Rooms</option></select><small id="room-country-hint">All countries · Your country first</small></div>
   <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My room</button><button>🕘 History</button></div>
   <div class="grid" id="grid"></div>
  </section>
@@ -440,11 +441,37 @@ $("ban").addEventListener("touchstart",function(){bpause=true});$("ban").addEven
 setInterval(function(){if(bpause||!$("v-home").classList.contains("on"))return;bi=(bi+1)%CFG.banners.length;var b=$("ban");b.scrollTo({left:bi*(b.children[0].offsetWidth+10),behavior:"smooth"})},4200);
 /* ===== Room card (3D) ===== */
 var tab=0;
-function myR(){return Object.assign({id:A.id,n:1,host:A.name,tag:"My room",mics:["😎"]},A.myRoom)}
+var roomCountryFilter='',roomCountryAccount='',roomCountryOptionsSignature='';
+function myR(){var own=Object.assign({id:A.id,n:1,host:A.name,tag:"My room",mics:["😎"]},A.myRoom);if(!own.owner_country)own.owner_country=A.country||'';return own}
+function updateRoomCountryFilter(){
+  var discovery=window.SharikaDiscovery,select=$("room-country");if(!discovery||!select)return;
+  var account=String(A.id||'');
+  if(account!==roomCountryAccount){roomCountryAccount=account;roomCountryFilter='';roomCountryOptionsSignature=''}
+  var viewer=discovery.countryCode(CFG.viewerCountry||A.country);
+  var countries=(CFG.rooms||[]).concat(A.myRoom?[myR()]:[]).map(function(r){return discovery.countryCode(r.owner_country||r.country)}).filter(Boolean);
+  if(viewer)countries.push(viewer);
+  countries=Array.from(new Set(countries)).sort(function(a,b){if(a===viewer)return -1;if(b===viewer)return 1;return a.localeCompare(b)});
+  if(roomCountryFilter&&countries.indexOf(roomCountryFilter)<0)roomCountryFilter='';
+  var signature=viewer+':'+countries.join(',');
+  if(signature!==roomCountryOptionsSignature){
+    roomCountryOptionsSignature=signature;
+    select.innerHTML='<option value="">🌍 Global · All Rooms</option>'+countries.map(function(code){
+      var info=CTRY.find(function(c){return c[2]===code});
+      return '<option value="'+code+'">'+discovery.flagForCountry(code)+' '+esc(info?info[1]:code)+'</option>';
+    }).join('');
+  }
+  select.value=roomCountryFilter;
+  var selected=roomCountryFilter||viewer;
+  var info=CTRY.find(function(c){return c[2]===selected});
+  $("room-country-hint").textContent=roomCountryFilter?
+    (discovery.flagForCountry(selected)+' '+(info?info[1]:selected)+' rooms only'):
+    (viewer?discovery.flagForCountry(viewer)+' '+(info?info[1]:viewer)+' rooms first · All countries visible':'All countries visible');
+}
 function roomList(){
   var q=($("q").value||"").trim().toLowerCase(),L=CFG.rooms.slice();if(A.myRoom)L.unshift(myR());
   if(tab===2)L=A.myRoom?[myR()]:[];
   else if(window.SharikaDiscovery)L=SharikaDiscovery.sortRooms(L,CFG.viewerCountry||A.country,tab===1?'new':tab===3?'history':'popular',CFG.roomHistoryIds||[]);
+  if(tab!==2&&roomCountryFilter&&window.SharikaDiscovery)L=SharikaDiscovery.filterRooms(L,roomCountryFilter);
   if(q)L=L.filter(function(r){return String(r.name||'').toLowerCase().indexOf(q)>-1||String(r.id).indexOf(q)>-1});return L;
 }
 function cardHTML(r,i){
@@ -458,11 +485,13 @@ function cardHTML(r,i){
   return'<div class="card" role="button" tabindex="0" aria-label="'+(roomLocked?'Locked room ':'Join ')+esc(r.name)+'" data-id="'+esc(r.id)+'" style="animation-delay:'+i*.06+'s"><div class="sway" style="animation-delay:-'+(i*.7)%5+'s"><div class="tilt"><i class="edge"></i><div class="bg" style="background:linear-gradient(150deg,'+r.c+')'+cover+'"><span class="pat">'+pat+'</span><i class="shine"></i></div><div class="emo">'+esc(r.emoji||'🎙️')+'</div><div class="live"><u></u><u></u><u></u>LIVE</div>'+lockBadge+countryBadge+'<div class="info"><b>'+esc(r.name)+'</b><small>ID '+esc(r.id)+' · 🔥 '+bn(Number(r.n)||0)+'</small><div class="mics">'+(r.mics||[]).map(function(m){return"<i>"+esc(m)+"</i>"}).join("")+'<em>'+esc(r.tag||'Voice Room')+'</em></div></div></div></div></div>';
 }
 function renderRooms(){
+  updateRoomCountryFilter();
   var L=roomList(),g=$("grid");
   g.innerHTML=L.length?L.map(cardHTML).join(""):'<div class="empty">'+(tab===2?"You do not have a room yet.<br>Create your own room!<button class=\"big\" id=\"mk\">🎙️ Create room</button>":tab===3?"No rooms visited yet. Enter a room to see it here.":"No rooms found")+'</div>';
   if($("mk"))$("mk").onclick=createSheet;
 }
 $("q").oninput=renderRooms;
+$("room-country").onchange=function(){roomCountryFilter=this.value;renderRooms()};
 $("tabs").querySelectorAll("button").forEach(function(b,i){b.onclick=function(){tab=i;$("tabs").querySelectorAll("button").forEach(function(x,k){x.classList.toggle("on",k===i)});renderRooms()}});
 var G=$("grid");
 function tl(e){var c=e.target.closest&&e.target.closest(".card");if(!c)return;var t=c.querySelector(".tilt"),b=c.getBoundingClientRect(),x=(e.clientX-b.left)/b.width,y=(e.clientY-b.top)/b.height;t.style.setProperty("--ry",((x-.5)*24)+"deg");t.style.setProperty("--rx",(-(y-.5)*24)+"deg");t.style.setProperty("--mx",x*100+"%");t.style.setProperty("--my",y*100+"%")}

@@ -1026,15 +1026,19 @@ export async function handleRequest(request, env, ctx) {
         theme_version:row.version,image_bytes:row.image_bytes},200,cors);
     }
     if (path === '/api/v1/rooms') {
-      await assertActive(env.DB, uid);
+      const viewer=await assertActive(env.DB, uid);
       if (request.method === 'GET') {
+        // Prioritize the account's signup country *before* limiting the feed.
+        // The client still shows foreign rooms in its Global list.
+        const viewerCountry=String(viewer.country||'').trim().toUpperCase()||'ZZ';
         const rows=await env.DB.prepare(
           'SELECT r.*,COALESCE(al.locked,0) AS access_locked,c.version AS cover_version,u.country AS owner_country,'+activeSpecialSelect('u')+' FROM sharika_rooms r '+
           'LEFT JOIN sharika_room_access_locks al ON al.room_id=r.id '+
           'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
           'LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id '+
-          'ORDER BY r.created_at DESC LIMIT 100'
-        ).all();
+          'ORDER BY CASE WHEN UPPER(TRIM(u.country))=? THEN 0 ELSE 1 END, '+
+          'r.created_at DESC LIMIT 100'
+        ).bind(viewerCountry).all();
         // One verified room presence snapshot for all displayed cards.
         let online={};
         if(env.VOICE_ROOMS) {

@@ -33,6 +33,10 @@
     const code=countryCode(value);
     return code?String.fromCodePoint(...Array.from(code).map(c=>127397+c.charCodeAt(0))):'';
   }
+  function filterRooms(rooms,selectedCountry){
+    const country=countryCode(selectedCountry);
+    return (rooms||[]).filter(room=>!country||countryCode(room.owner_country||room.country)===country);
+  }
   function sortRooms(rooms,viewerCountry,mode,historyIds){
     const country=countryCode(viewerCountry);
     const order=Array.isArray(historyIds)?historyIds:[];
@@ -70,5 +74,5 @@
     try{storage.setItem(historyKey(userId),JSON.stringify(entries));}catch(_){}
     return entries;
   }
-  return {countryCode,flagForCountry,sortRooms,readHistory,recordVisit};
+  return {countryCode,flagForCountry,filterRooms,sortRooms,readHistory,recordVisit};
 });

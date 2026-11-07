@@ -86,6 +86,42 @@
 }
 .app.golden-home #v-home .srch input::placeholder { color: #e8d0b7; }
 
+.app.golden-home #v-home .country-room-filter {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 10px;
+  margin: 7px 0 9px;
+  padding: 9px 12px;
+  color: #ffe5b4;
+  background: rgba(36, 23, 20, .88);
+  border: 1px solid #c59a62;
+  border-radius: 15px;
+  box-shadow: inset 0 1px 0 #ffe0a030, 0 5px 14px #10050255;
+}
+.app.golden-home #v-home .country-room-filter label {
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.app.golden-home #v-home .country-room-filter select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px;
+  border-radius: 10px;
+  border: 1px solid #d6ad71;
+  color: #ffe9c6;
+  background: #4b3027;
+  font: inherit;
+  font-size: 12px;
+}
+.app.golden-home #v-home .country-room-filter small {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  color: #e4c399;
+}
+
 .app.golden-home #v-home .slide {
   height: 180px;
   padding: 20px;
