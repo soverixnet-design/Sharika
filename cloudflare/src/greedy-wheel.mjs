@@ -101,11 +101,20 @@ async function currentState(db,uid){
   await settleGreedyDueBets(db,now);
   const row=await ensureRound(db,roundNumber(now));
   const user=await wallet(db,uid),amounts=await roundAmounts(db,row.id,uid);
+  // Gross credited winnings for this UTC day. Stakes are never subtracted;
+  // settled_at is written by the one-time D1 settlement trigger.
+  const todayDay=new Date(now).toISOString().slice(0,10);
+  const nextDay=new Date(Date.parse(todayDay+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+  const daily=await db.prepare('SELECT COALESCE(SUM(payout),0) AS total '+
+    'FROM sharika_greedy_bets WHERE user_uid=? AND status=\'settled\' '+
+    'AND settled_at>=? AND settled_at<?')
+    .bind(uid,todayDay+' 00:00:00',nextDay+' 00:00:00').first();
   const phase=now<row.bet_closes_ms?'betting':now<row.settles_ms?'spinning':'result';
   const state={round:row.round_no,phase,
     endsAt:phase==='betting'?row.bet_closes_ms:phase==='spinning'?row.settles_ms:row.ends_ms,
     totals:amounts.totals,online:amounts.online};
   const response={serverTime:now,balance:user.coins,
+    todayDay,todayWin:Math.max(0,Number(daily?.total)||0),
     user:{id:String(user.public_no).padStart(8,'0'),name:user.name,avatar:user.pic||''},
     config:{chips:CHIPS,maxBetPerRound:MAX_ROUND_STAKE},
     state,myBets:amounts.myBets,history:await recentHistory(db,now)};

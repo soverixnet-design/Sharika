@@ -104,7 +104,7 @@
     phase: 'betting', endsAt: 0, timeLeft: CONFIG.bettingSeconds,
     chipIdx: 1,
     myBets: new Array(N).fill(0), allBets: new Array(N).fill(0), lastBets: null,
-    auto: false, todayRev: 0, lastWin: 0,
+    auto: false, todayRev: 0, todayDay: new Date().toISOString().slice(0,10), lastWin: 0,
     history: [], records: [],
     lit: -1, sound: qs.get('sound') !== '0',
     bots: [], online: 0,
@@ -210,7 +210,6 @@
     $('lblRoundTop').firstChild.textContent = t('round') + ' ';
     $('lblResult').textContent = t('result');
     $('lblToday').textContent = t('today');
-    $('lblOnline').textContent = t('online');
     $('tagLeft').textContent = t('veg');
     $('tagRight').textContent = t('meat');
     $('btnRepeat').textContent = t('repeat');
@@ -239,9 +238,15 @@
     $('userAvatar').src = S.user.avatar || avatarData(S.user.name);
   }
   function renderBalance() {
+    // The live counter is gross settled payouts, never profit/loss.
+    // A new UTC day starts at zero until its verified server total arrives.
+    if (S.todayDay !== new Date().toISOString().slice(0,10)) {
+      S.todayDay = new Date().toISOString().slice(0,10);
+      S.todayRev = 0;
+    }
     $('balance').textContent = fmt(S.balance);
     $('todayRev').textContent = (S.todayRev > 0 ? '+' : '') + fmt(S.todayRev);
-    $('todayRev').parentElement.classList.toggle('neg', S.todayRev < 0);
+    $('todayRev').parentElement.classList.remove('neg');
     $('lastWin').textContent = fmt(S.lastWin);
     renderChips();
   }
@@ -482,7 +487,6 @@
       budget: [500, 2000, 5000, 20000, 60000][Math.floor(Math.random() * 5)]
     }));
     S.online = 40 + Math.floor(Math.random() * 120);
-    $('onlineCount').textContent = S.online;
   }
   function botTick() {
     if (!CONFIG.simulateOtherPlayers || S.phase !== 'betting') return;
@@ -541,7 +545,11 @@
     S.phase = 'result';
     const myTotal = sumMy();
     const winAmt = payoutOf(result, S.myBets);
-    S.balance += winAmt; S.lastWin = winAmt; S.todayRev += winAmt - myTotal;
+    S.balance += winAmt; S.lastWin = winAmt;
+    if (S.todayDay !== new Date().toISOString().slice(0,10)) {
+      S.todayDay = new Date().toISOString().slice(0,10); S.todayRev = 0;
+    }
+    S.todayRev += winAmt;
     if (myTotal > 0) { S.lastBets = S.myBets.slice(); S.records.unshift({ round: S.round, idx: result, bet: myTotal, win: winAmt }); }
     S.history.unshift({ round: S.round, idx: result });
     if (S.history.length > 100) S.history.length = 100;
@@ -623,7 +631,7 @@
       S.myBets = st.myBets;
     }
     S.allBets = st.totals || S.allBets;
-    S.online = st.online; $('onlineCount').textContent = st.online;
+    S.online = st.online;
     renderBets(); renderHub();
   }
 
@@ -653,7 +661,17 @@
         break;
       }
       case 'state': if (m.phase === 'betting') onBetting(m); break;
-      case 'totals': if (m.round === S.round) { S.allBets = m.totals; S.online = m.online; $('onlineCount').textContent = m.online; renderBets(); } break;
+      case 'totals': if (m.round === S.round) { S.allBets = m.totals; S.online = m.online; renderBets(); } break;
+      case 'daily': {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(m.dayKey||'') ||
+          !Number.isSafeInteger(m.total) || m.total < 0) break;
+        if (S.todayDay !== m.dayKey) {
+          S.todayDay = m.dayKey;
+          S.todayRev = m.total;
+        } else S.todayRev = Math.max(S.todayRev,m.total);
+        renderBalance();
+        break;
+      }
       case 'bet_ok': {
         const p = S.pending.get(m.reqId); S.pending.delete(m.reqId);
         S.myBets = m.myBets; S.balance = m.balance;
@@ -666,7 +684,7 @@
         S.pending.delete(m.reqId);
         if (typeof m.balance === 'number') { S.balance = m.balance; renderBalance(); }
         const map = { INSUFFICIENT_BALANCE: t('noCoins'), BETTING_CLOSED: t('betClosed'), ROUND_CHANGED: t('betClosed'), MAX_BET: t('maxBet'),
-          BET_UNCONFIRMED: 'Verifying your previous bet. Please wait; no new wager was sent.' };
+          BET_UNCONFIRMED: 'Checking previous bet safely…' };
         toast(map[m.code] || t('walletErr'));
         if (m.code === 'INSUFFICIENT_BALANCE') emit('insufficient_balance', { balance: S.balance });
         break;
@@ -687,7 +705,9 @@
         clearTimeout(spinTimer);
         const you = m.you || { bet: 0, win: 0 };
         if (typeof you.balance === 'number') S.balance = you.balance;
-        S.lastWin = you.win; S.todayRev += you.win - you.bet;
+        // The following verified daily snapshot owns the counter. A result
+        // can be replayed after reconnect, so never add payouts here.
+        S.lastWin = you.win;
         if (you.bet > 0) { S.lastBets = S.myBets.slice(); S.records.unshift({ round: m.round, idx: o, bet: you.bet, win: you.win }); }
         S.history.unshift({ round: m.round, idx: o });
         const top = (m.top || []).map((r) => ({ name: r.name, avatar: r.avatar, amt: r.win, me: r.userId === S.user.id }));
@@ -769,7 +789,7 @@
       S.history = (list || []).map((h) => ({ round: h.round, idx: outIdx(h.itemId) })).filter((h) => h.idx >= 0);
       renderHistory(false);
     },
-    setOnline(n) { S.online = n; $('onlineCount').textContent = n; },
+    setOnline(n) { S.online = n; },
     getState() { return { mode: S.mode, round: S.round, phase: S.phase, timeLeft: S.timeLeft, balance: S.balance, myBets: S.myBets.slice(), history: S.history.slice(0, 20).map((h) => ({ round: h.round, itemId: OUT[h.idx].id })), records: S.records.slice(0, 20) }; },
     setLang(l) { if (T[l]) { S.lang = l; applyLang(); renderHub(); renderHistory(false); } },
     setSound(on) { S.sound = !!on; renderSound(); },

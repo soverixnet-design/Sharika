@@ -734,31 +734,25 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 .sh-royal-room .stats>.pill[role=button]:focus-visible{
   outline:2px solid #fff6c8;outline-offset:2px;
 }
-.sh-royal-room .sh-room-announcement{
-  display:flex;align-items:center;gap:7px;min-height:42px;
-  margin:4px 9px 6px;padding:6px 9px;
-  border:1.4px solid #f4bc68;border-radius:15px;
-  background:linear-gradient(105deg,#230a3de8,#582568e8);
-  box-shadow:inset 0 1px #ffe9ba70,0 4px 10px #0c001b99;
-  color:#ffe2ad;font-size:11px;line-height:1.3;
+.sh-royal-room .chat .sh-room-announcement-entry{
+  display:flex;align-items:flex-start;gap:7px;
+  padding:7px 9px;margin:3px 0 6px;flex-shrink:0;
+  border-left:3px solid #f4bc68;border-radius:10px;
+  background:linear-gradient(105deg,#2b1647e3,#301333bd);
+  color:#ffe2ad;font-size:12px;line-height:1.45;
 }
-.sh-royal-room .sh-room-announcement>b{
-  white-space:nowrap;color:#ffdc93;font-size:11px;
+.sh-royal-room .chat .sh-room-announcement-entry[hidden]{display:none}
+.sh-royal-room .sh-room-announcement-copy{flex:1;min-width:0}
+.sh-royal-room .sh-room-announcement-copy>b{color:#ffdc93;font-size:11px}
+.sh-royal-room .sh-room-announcement-text{
+  color:#fff3e0;white-space:pre-wrap;overflow-wrap:anywhere;
+  margin:3px 0 0;max-width:100%;
 }
-.sh-royal-room #sh-room-announcement-text{
-  color:#fff3e0;flex:1;min-width:0;overflow:hidden;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
-  line-clamp:2;
+.sh-royal-room .sh-room-announcement-edit{
+  border:0;background:transparent;color:#ffdd94;padding:3px;
+  font-size:15px;flex:none;cursor:pointer;
 }
-.sh-royal-room #sh-room-announcement-edit{
-  border:0;background:transparent;color:#ffdd94;padding:4px;
-  font-size:16px;flex:none;cursor:pointer;
-}
-.sh-royal-room #sh-room-announcement-edit[hidden]{display:none}
-@media(max-width:360px){
-  .sh-royal-room .sh-room-announcement{gap:4px;padding:5px 6px;font-size:10px}
-  .sh-royal-room .sh-room-announcement>b{font-size:10px}
-}
+.sh-royal-room .sh-room-announcement-edit[hidden]{display:none}
 
 /* Compact, thicker room card: keep the name/ID legible while giving the
    right-side room controls their own space. Never resize the mic-seat grid. */
@@ -906,15 +900,16 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 .sh-royal-room .sh-games .sh-sprite {width:39px;height:39px}
 .sh-royal-room .chatw {
   flex:0 0 auto;
-  height:clamp(118px,18vh,168px);
-  min-height:118px;
-  max-height:168px;
+  height:clamp(178px,27vh,245px);
+  min-height:165px;
+  max-height:245px;
   margin:3px 9px 0;
-  border:1px solid #d3b37e70;
-  border-radius:17px;
-  background:#100d1ad8;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
 }
-.sh-royal-room .chat {padding:8px 9px 9px;font-size:12px}
+.sh-royal-room .chat {padding:8px 3px 9px;font-size:12px;background:transparent}
 .sh-royal-room .dock {
   padding:6px 10px max(7px,env(safe-area-inset-bottom));
   background:linear-gradient(#150a238a,#18072af5 25%,#130421);
@@ -958,7 +953,7 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 @media (max-height:690px) {
   .sh-royal-room .stage {justify-content:flex-start;gap:8px}
   .sh-royal-room .host {margin:2px 0 9px}
-  .sh-royal-room .chatw {height:118px;min-height:118px}
+  .sh-royal-room .chatw {height:clamp(145px,24vh,185px);min-height:145px}
 }
 
 

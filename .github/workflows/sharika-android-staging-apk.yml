@@ -52,6 +52,7 @@ on:
       - feature/sharika-agency-salary-targets-integrated-20261106
       - feature/sharika-royal-clean-room-option1-20261106
       - feature/sharika-profile-level-cp-20261107
+      - feature/sharika-level-room-greedy-20261107
     paths:
       - 'android-staging/**'
       - 'app/royal-profile.css'
@@ -918,3 +919,51 @@ jobs:
           gh release edit sharika-royal-profile-cp-staging-98a4c707 \
             --repo soverixnet-design/Sharika \
             --prerelease --latest=false
+
+  level-room-greedy-direct-apk:
+    name: Verify and publish level, room and Greedy Wheel private-test APK
+    if: github.ref == 'refs/heads/feature/sharika-level-room-greedy-20261107'
+    needs: debug-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download newly built signed staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify exact level, room chat and Greedy UI bundled in signed APK
+        run: |
+          set -euo pipefail
+          apk='verified-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js > "$RUNNER_TEMP/verified-connection.js"
+          unzip -p "$apk" assets/royal-room-ui.js > "$RUNNER_TEMP/verified-room.js"
+          unzip -p "$apk" assets/greedy-wheel/sharika-bridge.js > "$RUNNER_TEMP/verified-greedy-bridge.js"
+          unzip -p "$apk" assets/greedy-wheel/game.js > "$RUNNER_TEMP/verified-greedy-game.js"
+          grep -F 'function royalProgressV2(' "$RUNNER_TEMP/verified-connection.js" >/dev/null
+          grep -F 'function openRoyalLevelRoadmap(' "$RUNNER_TEMP/verified-connection.js" >/dev/null
+          grep -F 'sh-room-announcement-entry' "$RUNNER_TEMP/verified-room.js" >/dev/null
+          grep -F 'reconcileUnconfirmed()' "$RUNNER_TEMP/verified-greedy-bridge.js" >/dev/null
+          grep -F "case 'daily':" "$RUNNER_TEMP/verified-greedy-game.js" >/dev/null
+          cp "$apk" verified-apk/Sharika-Level-Room-Greedy-QA.apk
+          sha256sum verified-apk/Sharika-Level-Room-Greedy-QA.apk
+      - name: Share direct APK as a prerelease (never overwrite earlier releases)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sharika-level-room-greedy-qa-${GITHUB_SHA:0:8}"
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Level-Room-Greedy-QA.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Levels, Room Chat and Greedy Wheel — Private QA APK' \
+            --notes 'Signed staging Android APK (direct .apk, not ZIP). Includes slower gift levels with roadmap, in-chat room announcement and larger transparent transcript, faster same-ID Greedy bet receipt recovery, UTC daily gross winnings and hidden player count. Backend D1 migration/staging API deployment is separate; until verified live staging, progression and daily revenue may fall back to previous behavior. Invite testers only; not a Play Store release or approval. Real-phone login, voice and live bet tests still required.' \
+            --prerelease

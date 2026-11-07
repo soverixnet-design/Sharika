@@ -91,7 +91,7 @@ import java.util.concurrent.Executors;
  * The current feature branch is an isolated staging candidate, not production.
  */
 public final class SharikaActivity extends Activity {
-    private static final String STAGING_API = "https://sharika-api-staging.soverixnet.workers.dev";
+    private static final String STAGING_API = BuildConfig.SHARIKA_API_ORIGIN;
     private static final int MIC_PERMISSION_REQUEST = 3412;
     private static final int IMAGE_PICKER_REQUEST = 3413;
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
@@ -101,6 +101,7 @@ public final class SharikaActivity extends Activity {
     private final ExecutorService io = Executors.newFixedThreadPool(4);
     private final ExecutorService voiceIo = Executors.newFixedThreadPool(3);
     private FirebaseAuth auth;
+    private SharikaPlayBilling playBilling;
     private CredentialManager credentials;
     private WebView browser;
     private View openingOverlay;
@@ -153,6 +154,7 @@ public final class SharikaActivity extends Activity {
         }
         getWindow().setNavigationBarColor(Color.rgb(10, 7, 29));
         auth = FirebaseAuth.getInstance();
+        if (BuildConfig.SHARIKA_PLAY_BUILD) playBilling = new SharikaPlayBilling(this);
         credentials = CredentialManager.create(this);
         browser = new WebView(this);
         // ADJUST_NOTHING deliberately keeps the WebView at its original height.
@@ -844,6 +846,32 @@ public final class SharikaActivity extends Activity {
                 sendPushToken(id);
                 break;
             case "api": callStagingApi(id, data); break;
+            case "clientMode":
+                JSONObject mode = object();
+                try {
+                    mode.put("play_store", BuildConfig.SHARIKA_PLAY_BUILD);
+                    mode.put("api_origin", BuildConfig.SHARIKA_API_ORIGIN);
+                }
+                catch (JSONException ignored) {}
+                sendResult(id, result(true,mode,null));
+                break;
+            case "playBillingProducts":
+                if (!BuildConfig.SHARIKA_PLAY_BUILD || playBilling == null ||
+                    auth.getCurrentUser() == null) {
+                    sendResult(id, result(false,null,"play_billing_unavailable")); break;
+                }
+                playBilling.catalog((value,error) ->
+                    sendResult(id,result(error==null,value,error)));
+                break;
+            case "playBillingPurchase":
+                FirebaseUser buyer = auth.getCurrentUser();
+                if (!BuildConfig.SHARIKA_PLAY_BUILD || playBilling == null || buyer == null ||
+                    (!buyer.isEmailVerified())) {
+                    sendResult(id,result(false,null,"verified_login_required")); break;
+                }
+                playBilling.purchase(data.optString("product_id", ""), buyer.getUid(),
+                    (value,error) -> sendResult(id,result(error==null,value,error)));
+                break;
             case "roomScreenAwake":
                 // Keep the display active only during an authenticated voice
                 // room, including when its mini-player is on another app page.
@@ -891,7 +919,7 @@ public final class SharikaActivity extends Activity {
                 android.content.ClipboardManager linkClipboard=
                     (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
                 linkClipboard.setPrimaryClip(android.content.ClipData.newPlainText(
-                    "Sharika invitation","https://sharika-api-staging.soverixnet.workers.dev/invite/"+linkCode));
+                    "Sharika invitation",STAGING_API+"/invite/"+linkCode));
                 sendResult(id,result(true,object(),null));
                 break;
             case "shareInvite":
@@ -1121,6 +1149,17 @@ public final class SharikaActivity extends Activity {
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
         if (path.equals("/api/v1/music-library")) return method.equals("GET");
         if (path.equals("/api/v1/wallet")) return method.equals("GET");
+        if (BuildConfig.SHARIKA_PLAY_BUILD) {
+            // The Play build does not expose seller recharge, cash withdrawals,
+            // or real-coin betting. Staging remains unchanged.
+            if (path.matches("^/api/v1/(games|original-games)/[^/]+/bet$") ||
+                path.equals("/api/v1/greedy-wheel/bet") ||
+                path.equals("/api/v1/sellers/transfer") ||
+                path.equals("/api/v1/invites/withdrawals")) return false;
+        }
+        if (path.equals("/api/v1/play-billing/catalog")) return method.equals("GET");
+        if (path.equals("/api/v1/play-billing/claim"))
+            return BuildConfig.SHARIKA_PLAY_BUILD && method.equals("POST");
         if (path.equals("/api/v1/wallet/exchange-rate")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange")) return method.equals("POST");
         if (path.equals("/api/v1/follows") || path.equals("/api/v1/messages") ||
@@ -1353,6 +1392,7 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (playBilling != null) { playBilling.close(); playBilling = null; }
         if (googlePending) expireGoogleSignIn(googleAttempt);
         setRoomAudioRoute(false);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

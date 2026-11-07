@@ -548,17 +548,31 @@
   async function renderAnnouncement(force=false){
     const v=premiumState.room;
     if(!v||!canShow())return;
-    let bar=document.getElementById('sh-room-announcement');
+    const chat=byId('chat');
+    if(!chat)return;
+    let bar=chat.querySelector('.sh-room-announcement-entry');
+    if(bar&&bar.dataset.roomId!==String(v.roomId)){
+      bar.remove();bar=null;noticeLoadedAt=0;
+    }
     if(!bar){
+      // The room UI may rebuild the transcript while staying in the room.
+      // A newly inserted entry must fetch its notice even within the cache TTL.
+      noticeLoadedAt=0;
+      // Announcements are real transcript entries, not a fixed top banner.
+      // New chat messages naturally push them upward, and users can scroll
+      // back to read the full 3–4-line welcome notice.
       bar=document.createElement('section');
-      bar.id='sh-room-announcement';bar.className='sh-room-announcement';
+      bar.className='sh-room-announcement-entry';
+      bar.dataset.roomId=String(v.roomId);
+      bar.hidden=true;
       const icon=document.createElement('span');icon.textContent='📣';
-      const label=document.createElement('b');label.textContent='Announcement';
-      const message=document.createElement('span');
-      message.id='sh-room-announcement-text';
-      message.textContent='Loading announcement…';
+      const copy=document.createElement('div');copy.className='sh-room-announcement-copy';
+      const label=document.createElement('b');label.textContent='Room announcement';
+      const message=document.createElement('p');
+      message.className='sh-room-announcement-text';
+      copy.append(label,message);
       const edit=document.createElement('button');edit.type='button';
-      edit.id='sh-room-announcement-edit';edit.textContent='✏️';
+      edit.className='sh-room-announcement-edit';edit.textContent='✏️';
       edit.setAttribute('aria-label','Edit room announcement');
       edit.onclick=()=>{
         const selected=premiumState.room;
@@ -578,16 +592,17 @@
             const result=await selected.saveAnnouncement(input.value);
             status.textContent='Announcement saved for everyone ✓';
             bar.dataset.text=String(result.announcement||'');
-            message.textContent=bar.dataset.text||'No announcement yet';
+            message.textContent=bar.dataset.text;
+            bar.hidden=!bar.dataset.text;
             noticeLoadedAt=0;
           }catch(error){status.textContent='Not saved: '+String(error?.message||error);}
           finally{save.disabled=false;}
         };
       };
-      bar.append(icon,label,message,edit);
-      app.querySelector('.stats')?.after(bar);
+      bar.append(icon,copy,edit);
+      chat.appendChild(bar);
     }
-    bar.querySelector('#sh-room-announcement-edit').hidden=!v.isOwner;
+    bar.querySelector('.sh-room-announcement-edit').hidden=!v.isOwner;
     if(!force&&noticeRoomId===v.roomId&&Date.now()-noticeLoadedAt<30000)return;
     noticeRoomId=v.roomId;noticeLoadedAt=Date.now();
     const roomId=v.roomId;
@@ -595,11 +610,13 @@
       const data=await v.loadAnnouncement();
       if(premiumState.room?.roomId!==roomId||!bar.isConnected)return;
       bar.dataset.text=String(data.announcement||'');
-      bar.querySelector('#sh-room-announcement-text').textContent=
-        bar.dataset.text||'No announcement yet';
+      bar.querySelector('.sh-room-announcement-text').textContent=bar.dataset.text;
+      const wasHidden=bar.hidden;
+      bar.hidden=!bar.dataset.text;
+      if(wasHidden&&!bar.hidden)chat.scrollTop=chat.scrollHeight;
     }catch(error){
-      if(bar.isConnected&&premiumState.room?.roomId===roomId)
-        bar.querySelector('#sh-room-announcement-text').textContent='Announcement unavailable';
+      // A failed announcement request must not leave a fake system message.
+      if(bar.isConnected&&premiumState.room?.roomId===roomId)bar.hidden=true;
     }
   }
   function renderPremiumHeader(){
@@ -657,7 +674,8 @@
       premiumState.room=view;
       renderPremiumHeader();
     },
-    showOverview,showMembers,showRewards,showRankings
+    showOverview,showMembers,showRewards,showRankings,
+    refreshAnnouncement:()=>renderAnnouncement(true)
   };
   if(roomInfo)roomInfo.onclick=showOverview;
 

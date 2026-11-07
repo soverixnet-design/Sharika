@@ -515,6 +515,18 @@
 #v-me.profile-royal .sh-level-meter>i {display:block;height:100%;width:0;background:linear-gradient(90deg,#ff99bd,#f7d49e);border-radius:999px;transition:width .25s}
 #v-me.profile-royal .lp.r .sh-level-meter>i {background:linear-gradient(90deg,#64b9ff,#b3edff)}
 #v-me.profile-royal .sh-level-next {font-size:10px;color:#dfc4df;line-height:1.25}
+#v-me.profile-royal .lps .lp[data-sh-royal-interactive="1"],
+#pfc .lvc[data-sh-royal-interactive="1"] {cursor:pointer}
+.sh-royal-level-roadmap {color:#ffedcf;display:flex;flex-direction:column;gap:10px}
+.sh-royal-level-roadmap p {font-size:12px;line-height:1.5;color:#d3c4e5;margin:0}
+.sh-royal-level-summary {padding:12px;border:1px solid #e7bd74;border-radius:12px;
+  background:linear-gradient(115deg,#452048,#1f173b);font-weight:800;line-height:1.5}
+.sh-royal-level-costs {max-height:48vh;overflow-y:auto;border:1px solid #a7837777;border-radius:12px}
+.sh-royal-level-row {display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:8px 11px;border-bottom:1px solid #e6c48b22;font-size:12px}
+.sh-royal-level-row:last-child {border-bottom:0}
+.sh-royal-level-row b {color:#ffe09e;font-size:12px;text-align:right}
+.sh-royal-level-row.is-current {background:#f7ba412b;border-left:3px solid #ffcf71}
 #v-me.profile-royal .edp {width:min(190px,62%);min-height:42px;margin:5px auto 4px}
 #v-me.profile-royal .mst {margin:9px 0 10px}
 #v-me.profile-royal .wl {min-height:75px;padding:11px 9px;margin-bottom:13px}

@@ -17,10 +17,19 @@ def playUploadAlias = System.getenv('SHARIKA_PLAY_UPLOAD_KEY_ALIAS')
 def playUploadKeyPassword = System.getenv('SHARIKA_PLAY_UPLOAD_KEY_PASSWORD')
 def stablePlayUploadSigner = playUploadPath && playUploadStorePassword &&
     playUploadAlias && playUploadKeyPassword
+// Play distribution must point at a separately configured production Worker.
+// A staging-backed build is allowed only when CI explicitly requests a test candidate.
+def productionApiOrigin = System.getenv('SHARIKA_PLAY_API_ORIGIN')?.trim()
+def allowStagingCandidate = System.getenv('SHARIKA_PLAY_STAGING_CANDIDATE') == 'true'
+if (productionApiOrigin && !(productionApiOrigin ==~ /^https:\/\/[a-zA-Z0-9.-]+$/)) {
+    throw new GradleException('SHARIKA_PLAY_API_ORIGIN must be an HTTPS origin without a path')
+}
+def chosenPlayOrigin = productionApiOrigin ?: 'https://sharika-api-staging.soverixnet.workers.dev'
 
 android {
     namespace 'com.soverixnet.sharika'
     compileSdk 36
+    buildFeatures { buildConfig true }
 
     signingConfigs {
         if (stablePlayUploadSigner) {
@@ -43,6 +52,8 @@ android {
 
     buildTypes {
         debug {
+            buildConfigField 'boolean', 'SHARIKA_PLAY_BUILD', 'false'
+            buildConfigField 'String', 'SHARIKA_API_ORIGIN', '"https://sharika-api-staging.soverixnet.workers.dev"'
             if (stableStagingSigner) {
                 signingConfig signingConfigs.sharikaStaging
             }
@@ -51,6 +62,8 @@ android {
         // upload certificate when present. The fallback lets CI produce a
         // verifiable signed candidate without exposing a new private key.
         release {
+            buildConfigField 'boolean', 'SHARIKA_PLAY_BUILD', 'true'
+            buildConfigField 'String', 'SHARIKA_API_ORIGIN', '"' + chosenPlayOrigin + '"'
             minifyEnabled false
             shrinkResources false
             if (stablePlayUploadSigner) {
@@ -75,6 +88,8 @@ android {
 }
 
 dependencies {
+    // Google Play one-time consumable coins; receipts are verified on our Worker.
+    implementation 'com.android.billingclient:billing:9.1.0'
     implementation platform('com.google.firebase:firebase-bom:35.1.0')
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-messaging'
@@ -84,6 +99,17 @@ dependencies {
     implementation 'com.google.android.libraries.identity.googleid:googleid:1.2.1'
     // Carry a verified Play Store invite across installation into first signup.
     implementation 'com.android.installreferrer:installreferrer:2.2'
+}
+
+// Building an upload bundle against staging is an explicit non-publishable
+// candidate. Never accidentally ship it as the Play Store production build.
+tasks.configureEach { task ->
+    if (task.name == 'bundleRelease' || task.name == 'assembleRelease') {
+        task.doFirst {
+            if (!productionApiOrigin && !allowStagingCandidate)
+                throw new GradleException('Production API missing: set SHARIKA_PLAY_API_ORIGIN before Play release')
+        }
+    }
 }
 
  
