@@ -60,7 +60,7 @@ const BOND_SELECT='SELECT b.id,b.type,b.uid_a,b.uid_b,b.created_at_ms,'+
   'JOIN sharika_users c ON c.auth_uid=b.uid_b ';
 
 export async function readBondProfile(db,targetUid){
-  const [links,counts,visitors,received,sent,bondReceived,bondSent]=await Promise.all([
+  const [links,counts,visitors,received,sent,bondReceived,bondSent,legacyLevels]=await Promise.all([
     db.prepare(BOND_SELECT+'WHERE b.ended_at_ms IS NULL AND (b.uid_a=? OR b.uid_b=?) '+
       'ORDER BY CASE b.type WHEN \'cp\' THEN 0 ELSE 1 END,b.created_at_ms DESC LIMIT 100')
       .bind(targetUid,targetUid).all(),
@@ -77,7 +77,13 @@ export async function readBondProfile(db,targetUid){
     db.prepare('SELECT COUNT(*) AS n,COALESCE(SUM(value_coins),0) AS total '+
       'FROM sharika_bond_gift_events WHERE recipient_uid=?').bind(targetUid).first(),
     db.prepare('SELECT COUNT(*) AS n,COALESCE(SUM(value_coins),0) AS total '+
-      'FROM sharika_bond_gift_events WHERE sender_uid=?').bind(targetUid).first()
+      'FROM sharika_bond_gift_events WHERE sender_uid=?').bind(targetUid).first(),
+    (async()=>{
+      try{return await db.prepare('SELECT sent_baseline_coins,received_baseline_coins,'+
+        'old_wealth_level,old_charm_level FROM sharika_royal_level_v2_baselines '+
+        'WHERE auth_uid=?').bind(targetUid).first();}
+      catch{return {unavailable:true};} // Staged rollout: old DB is still readable.
+    })()
   ]);
   const bonds=rows(links).map(row=>bondView(row,targetUid));
   return {cp:bonds.find(b=>b.type==='cp')||null,
@@ -87,7 +93,13 @@ export async function readBondProfile(db,targetUid){
     gifts_received:Number(received?.n||0)+Number(bondReceived?.n||0),
     gift_value_received:Number(received?.total||0)+Number(bondReceived?.total||0),
     gifts_sent:Number(sent?.n||0)+Number(bondSent?.n||0),
-    gift_value_sent:Number(sent?.total||0)+Number(bondSent?.total||0)};
+    gift_value_sent:Number(sent?.total||0)+Number(bondSent?.total||0),
+    ...(legacyLevels?.unavailable?{}:{level_progress_v2:{
+      sent_baseline_coins:Number(legacyLevels?.sent_baseline_coins||0),
+      received_baseline_coins:Number(legacyLevels?.received_baseline_coins||0),
+      old_wealth_level:Number(legacyLevels?.old_wealth_level||1),
+      old_charm_level:Number(legacyLevels?.old_charm_level||1)
+    }})};
 }
 
 async function readBondSocialActivity(db,targetUid){

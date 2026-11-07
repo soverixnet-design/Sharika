@@ -19,7 +19,9 @@
   function request(action,body){
     const id=++nextId;
     return new Promise((resolve,reject)=>{
-      const timeout=setTimeout(()=>{pending.delete(id);reject(Error('server_timeout'));},15000);
+      // A timed-out reply is ambiguous, not a rejected wager. Replays use
+      // the identical request_id, so a shorter check cannot double debit.
+      const timeout=setTimeout(()=>{pending.delete(id);reject(Error('server_timeout'));},8000);
       pending.set(id,{resolve,reject,timeout});
       window.parent.postMessage({type:'sharika:greedy-request',id,action,body},'*');
     });
@@ -33,9 +35,18 @@
     if(socket.readyState!==1)return;
     socket.onmessage?.({data:JSON.stringify(data)});
   }
+  function syncDaily(socket,data){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(data.todayDay||'')||
+      !Number.isSafeInteger(data.todayWin)||data.todayWin<0)return;
+    const signature=data.todayDay+':'+data.todayWin;
+    if(socket.dailySignature===signature)return;
+    socket.dailySignature=signature;
+    emit(socket,{t:'daily',dayKey:data.todayDay,total:data.todayWin});
+  }
   function handleState(socket,data){
     const st=data.state;
     if(!st||!Number.isSafeInteger(st.round))return;
+    syncDaily(socket,data);
     if(!socket.initialized){
       socket.initialized=true;
       socket.round=st.round;socket.phase=st.phase;
@@ -79,7 +90,7 @@
     constructor(url){
       if(!String(url).startsWith(SERVER+'/ws'))return new NativeWebSocket(url);
       this.readyState=0;this.initialized=false;this.round=null;this.phase=null;
-      this.balance=null;this.unconfirmedBets=new Map();
+      this.balance=null;this.unconfirmedBets=new Map();this.recoveryTimer=null;
       this.recoveringBet=false;activeSocket=this;
       queueMicrotask(()=>{
         if(this.readyState!==0)return;
@@ -121,6 +132,10 @@
       }finally{
         this.recoveringBet=false;
         if(resolved&&this.readyState===1)void this.poll();
+        if(this.unconfirmedBets.size&&this.readyState===1){
+          clearTimeout(this.recoveryTimer);
+          this.recoveryTimer=setTimeout(()=>void this.reconcileUnconfirmed(),1500);
+        }
       }
     }
     send(raw){
@@ -130,6 +145,7 @@
         // A missing acknowledgment must never turn the next tap into another
         // independent debit. Confirm all uncertain requests by ID first.
         if(this.unconfirmedBets.size){
+          void this.reconcileUnconfirmed();
           emit(this,{t:'bet_err',reqId:message.reqId,code:'BET_UNCONFIRMED'});
           return;
         }
@@ -145,6 +161,7 @@
           if(!DEFINITIVE_BET_ERRORS.has(code)){
             // Even after two timeouts, replay this exact ID in the background.
             this.unconfirmedBets.set(body.request_id,body);
+            void this.reconcileUnconfirmed();
           }
           emit(this,{t:'bet_err',reqId:message.reqId,
             code:this.unconfirmedBets.has(body.request_id)?'BET_UNCONFIRMED':code});
@@ -158,7 +175,7 @@
       }
     }
     close(){
-      clearInterval(this.timer);this.readyState=3;
+      clearInterval(this.timer);clearTimeout(this.recoveryTimer);this.readyState=3;
       if(activeSocket===this)activeSocket=null;
     }
   }

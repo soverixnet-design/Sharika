@@ -1,0 +1,176 @@
+name: Sharika v1.0.0 Play Store AAB candidate
+
+on:
+  push:
+    branches:
+      - feature/sharika-play-release-aab-20261107
+      - feature/sharika-play-billing-20261107
+    paths:
+      - '.github/workflows/sharika-play-release-aab.yml'
+      - 'android-staging/**'
+      - 'app/**'
+      - 'cloudflare/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  play-aab:
+    name: Verify current Sharika code and build signed Android App Bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout current candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Complete safety, source and Cloudflare game/voice checks
+        run: |
+          set -euo pipefail
+          node --check cloudflare/src/play-billing.mjs
+          node --check android-staging/staging-connection.js
+          node --check android-staging/back-navigation.js
+          node --check app/royal-room-ui.js
+          test -s app/royal-profile.css
+          grep -F 'SHARIKA_PROFILE_CLEAN_20261107' app/royal-profile.css
+          grep -F 'SHARIKA_CP_PUBLIC_PROFILE_20261107' app/royal-profile.css
+          grep -F 'SHARIKA_CP_HERO_20261107' android-staging/staging-connection.js
+          grep -F 'SHARIKA_ROYAL_LEVEL_20261107' android-staging/staging-connection.js
+          grep -F "applicationId 'com.soverixnet.sharika'" android-staging/app/build.gradle
+          grep -F 'targetSdk 36' android-staging/app/build.gradle
+          grep -F 'versionCode 100' android-staging/app/build.gradle
+          grep -F "versionName '1.0.0'" android-staging/app/build.gradle
+          grep -F '>Sharika<' android-staging/app/src/main/res/values/strings.xml
+          cd cloudflare
+          npm run check
+          python3 test/play-billing-sql.test.py
+          echo 'SHARIKA_SOURCE_AND_WORKER_RELEASE_PREFLIGHT_OK'
+
+      - name: Checkout original Sovera cosmetic art at pinned commit
+        uses: actions/checkout@v4
+        with:
+          repository: soverixnet-design/sovera-voice-app
+          ref: 0e30b48962272b8a687509aef4dee9bc4a047767
+          path: _sovera_cosmetics
+          persist-credentials: false
+
+      - name: Bundle original user-owned frames, entries, medals and audio
+        working-directory: android-staging
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets/sovera-effects app/src/main/assets/sovera-medals app/src/main/assets/sovera-sounds
+          cp -a ../_sovera_cosmetics/assets/effects/. app/src/main/assets/sovera-effects/
+          cp -a ../_sovera_cosmetics/assets/medals/. app/src/main/assets/sovera-medals/
+          cp -a ../_sovera_cosmetics/assets/sounds/. app/src/main/assets/sovera-sounds/
+          test "$(find app/src/main/assets/sovera-effects -type f | wc -l)" -ge 30
+
+      - name: Set up JDK 17 and Gradle 8.11.1
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install Android 16 compile platform
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Select secure Play upload signing or existing stable signer
+        env:
+          PLAY_B64: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEYSTORE_B64 }}
+          PLAY_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+          STAGING_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          STAGING_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$PLAY_B64" && -n "$PLAY_STORE_PASSWORD" && -n "$PLAY_ALIAS" && -n "$PLAY_KEY_PASSWORD" ]]; then
+            printf '%s' "$PLAY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-play-upload.p12"
+            chmod 600 "$RUNNER_TEMP/sharika-play-upload.p12"
+            echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$RUNNER_TEMP/sharika-play-upload.p12" >> "$GITHUB_ENV"
+            echo 'SHARIKA_UPLOAD_SIGNER_KIND=play-upload' >> "$GITHUB_ENV"
+          elif [[ -n "$STAGING_B64" && -n "$STAGING_PASSWORD" ]]; then
+            printf '%s' "$STAGING_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-existing-stable.p12"
+            printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-existing-stable.p12" | sha256sum --check --status
+            chmod 600 "$RUNNER_TEMP/sharika-existing-stable.p12"
+            echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-existing-stable.p12" >> "$GITHUB_ENV"
+            echo 'SHARIKA_UPLOAD_SIGNER_KIND=existing-stable' >> "$GITHUB_ENV"
+          else
+            echo 'Missing encrypted upload key and stable fallback key.'
+            exit 1
+          fi
+
+      - name: Build optimized release-format signed AAB
+        working-directory: android-staging
+        env:
+          SHARIKA_PLAY_API_ORIGIN: ${{ vars.SHARIKA_PLAY_API_ORIGIN }}
+          # No production Worker is configured yet. Such a signed AAB is a
+          # downloadable staging candidate, NOT a Play publication artifact.
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'true'
+          SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          gradle :app:bundleRelease --no-daemon --stacktrace
+          test -s app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab
+          echo "SHARIKA_RELEASE_AAB_SIGNER_KIND=$SHARIKA_UPLOAD_SIGNER_KIND"
+
+      - name: Verify actual packaged app ID, current UI and signed AAB
+        run: |
+          set -euo pipefail
+          bundle=android-staging/app/build/outputs/bundle/release/app-release.aab
+          unzip -tqq "$bundle"
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/index.html'
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/connection.js'
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/royal-profile.css'
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/royal-room-ui.js'
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/fruit-royale/index.html'
+          unzip -p "$bundle" base/assets/connection.js > "$RUNNER_TEMP/release-connection.js"
+          unzip -p "$bundle" base/assets/royal-profile.css > "$RUNNER_TEMP/release-profile.css"
+          node --check "$RUNNER_TEMP/release-connection.js"
+          grep -F 'SHARIKA_CP_HERO_20261107' "$RUNNER_TEMP/release-connection.js"
+          grep -F 'SHARIKA_ROYAL_LEVEL_20261107' "$RUNNER_TEMP/release-connection.js"
+          grep -F 'playBillingPurchase' "$RUNNER_TEMP/release-connection.js"
+          grep -F 'SHARIKA_PROFILE_CLEAN_20261107' "$RUNNER_TEMP/release-profile.css"
+          cp "$bundle" Sharika-v1.0.0-Play-Store-Candidate.aab
+          sha256sum Sharika-v1.0.0-Play-Store-Candidate.aab
+          echo 'SHARIKA_PLAY_STORE_AAB_PACKAGING_AND_SIGNATURE_OK'
+
+      - name: Save raw AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-v1.0.0-Play-Store-Candidate-AAB
+          path: Sharika-v1.0.0-Play-Store-Candidate.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish direct AAB asset to GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="sharika-play-aab-v1.0.0-${GITHUB_SHA:0:8}"
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Release tag exists; refusing to overwrite signed AAB.'
+            exit 1
+          fi
+          gh release create "$TAG" Sharika-v1.0.0-Play-Store-Candidate.aab \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika v1.0.0 — Android App Bundle candidate' \
+            --notes 'Signed AAB test candidate for Sharika v1.0.0, versionCode 100, target API 36 and package com.soverixnet.sharika. Includes Google Play Billing 9.1 integration and a server-verified once-only coin ledger. If SHARIKA_PLAY_API_ORIGIN is not configured the bundle points to STAGING, where Play purchases remain disabled: DO NOT SUBMIT this test candidate to Google Play. A dedicated Play signing key, production Worker, verified products and Play Console declarations are required for publication.' \
+            --prerelease

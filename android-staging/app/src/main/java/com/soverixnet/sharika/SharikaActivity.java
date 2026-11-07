@@ -9,6 +9,7 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -28,6 +29,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.Gravity;
 import android.widget.FrameLayout;
@@ -60,6 +62,9 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.android.installreferrer.api.InstallReferrerClient;
+import com.android.installreferrer.api.InstallReferrerStateListener;
+import com.android.installreferrer.api.ReferrerDetails;
 
 import org.json.JSONObject;
 import org.json.JSONException;
@@ -74,6 +79,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -85,7 +91,7 @@ import java.util.concurrent.Executors;
  * The current feature branch is an isolated staging candidate, not production.
  */
 public final class SharikaActivity extends Activity {
-    private static final String STAGING_API = "https://sharika-api-staging.soverixnet.workers.dev";
+    private static final String STAGING_API = BuildConfig.SHARIKA_API_ORIGIN;
     private static final int MIC_PERMISSION_REQUEST = 3412;
     private static final int IMAGE_PICKER_REQUEST = 3413;
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
@@ -95,6 +101,7 @@ public final class SharikaActivity extends Activity {
     private final ExecutorService io = Executors.newFixedThreadPool(4);
     private final ExecutorService voiceIo = Executors.newFixedThreadPool(3);
     private FirebaseAuth auth;
+    private SharikaPlayBilling playBilling;
     private CredentialManager credentials;
     private WebView browser;
     private View openingOverlay;
@@ -118,15 +125,27 @@ public final class SharikaActivity extends Activity {
     private CancellationSignal googleCancellation;
     private Runnable googleTimeout;
     private String pendingInviteCode = "";
+    private boolean installReferrerResolved;
+    private boolean lastRoomImeVisible;
+    private int lastRoomImeInsetPx = -1;
+    // The parent WebView container consumes system-bar insets so all pages
+    // share one safe viewport. Keep the original navigation height for IME math.
+    private int navigationBarBottomInsetPx;
+    private InstallReferrerClient installReferrerClient;
+    private final ArrayList<String> pendingInviteRequests = new ArrayList<>();
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         restorePendingInvite();
         captureInviteLink(getIntent());
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        // Let the app background reach the physical top edge on phones with a
-        // camera cutout. CSS keeps interactive controls below safe-area insets.
+        readPlayInstallReferrer();
+        // Preserve the microphone seats and top room card while Gboard opens.
+        // Resizing the full WebView recalculates the iframe's flex geometry;
+        // panning it pushes the first seats offscreen. With ADJUST_NOTHING,
+        // native IME insets move ONLY the chat composer in royal-room-ui.js.
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+        // Keep cutout support; Android now reserves its top inset normally.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             WindowManager.LayoutParams window = getWindow().getAttributes();
             window.layoutInDisplayCutoutMode =
@@ -135,8 +154,34 @@ public final class SharikaActivity extends Activity {
         }
         getWindow().setNavigationBarColor(Color.rgb(10, 7, 29));
         auth = FirebaseAuth.getInstance();
+        if (BuildConfig.SHARIKA_PLAY_BUILD) playBilling = new SharikaPlayBilling(this);
         credentials = CredentialManager.create(this);
         browser = new WebView(this);
+        // ADJUST_NOTHING deliberately keeps the WebView at its original height.
+        // Its visualViewport therefore may never shrink, so the room composer
+        // needs the *actual* IME obstruction height from Android. Re-dispatch
+        // while the IME animates or its suggestion toolbar changes height.
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            browser.setOnApplyWindowInsetsListener((view, insets) -> {
+                boolean imeVisible = insets.isVisible(WindowInsets.Type.ime());
+                int imeInsetPx = imeVisible ? Math.max(0,
+                    insets.getInsets(WindowInsets.Type.ime()).bottom -
+                    navigationBarBottomInsetPx) : 0;
+                if (imeVisible != lastRoomImeVisible || imeInsetPx != lastRoomImeInsetPx) {
+                    lastRoomImeVisible = imeVisible;
+                    lastRoomImeInsetPx = imeInsetPx;
+                    browser.post(() -> {
+                        if (browser != view) return;
+                        browser.evaluateJavascript(
+                            "(function(){var f=document.getElementById('rf');" +
+                            "f?.contentWindow?.SharikaRoyalKeyboard?.setNativeIme(" +
+                            (imeVisible ? "true" : "false") + "," +
+                            imeInsetPx + ");})()", null);
+                    });
+                }
+                return insets;
+            });
+        }
         // Never paint the legacy HTML before the packaged Royal sheets load.
         browser.setVisibility(View.INVISIBLE);
         browser.setBackgroundColor(Color.rgb(7, 3, 26));
@@ -189,13 +234,22 @@ public final class SharikaActivity extends Activity {
             }
             @Override public boolean onShowFileChooser(WebView view,
                     ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
-                // Android grants access only to the selected image. Do not
-                // request blanket READ_MEDIA_IMAGES or storage permissions.
+                // Android grants access only to the selected image or audio
+                // file. Never request blanket media storage permissions.
                 if (pendingImageSelection != null) pendingImageSelection.onReceiveValue(null);
                 pendingImageSelection = callback;
                 Intent chooser = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 chooser.addCategory(Intent.CATEGORY_OPENABLE);
-                chooser.setType("image/*");
+                boolean audioPicker = false;
+                for (String accepted : params.getAcceptTypes()) {
+                    if (accepted != null && (accepted.startsWith("audio/") ||
+                            accepted.equalsIgnoreCase(".mp3") ||
+                            accepted.equalsIgnoreCase(".m4a"))) {
+                        audioPicker = true;
+                        break;
+                    }
+                }
+                chooser.setType(audioPicker ? "audio/*" : "image/*");
                 chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 try {
                     startActivityForResult(chooser, IMAGE_PICKER_REQUEST);
@@ -212,6 +266,31 @@ public final class SharikaActivity extends Activity {
         // screen on slower phones before the Royal page was decoded.
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(7, 3, 26));
+        // All screens (home, rooms, profile, games, shop, overlays) share
+        // this WebView, so keep its entire viewport outside system bars and
+        // notches. Android 15+ targets draw under those bars by default.
+        // After using these insets natively, zero only those types before
+        // forwarding to the WebView; otherwise newer WebViews can add a
+        // second CSS safe-area inset and create a ghost gap. Keep the IME
+        // untouched so the room composer still follows the keyboard.
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            root.setOnApplyWindowInsetsListener((view, insets) -> {
+                int barTypes = WindowInsets.Type.systemBars()
+                    | WindowInsets.Type.displayCutout();
+                Insets safe = insets.getInsets(barTypes);
+                navigationBarBottomInsetPx =
+                    insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                if (view.getPaddingLeft() != safe.left
+                    || view.getPaddingTop() != safe.top
+                    || view.getPaddingRight() != safe.right
+                    || view.getPaddingBottom() != safe.bottom) {
+                    view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                }
+                return new WindowInsets.Builder(insets)
+                    .setInsets(barTypes, Insets.NONE)
+                    .build();
+            });
+        }
         root.addView(browser, new FrameLayout.LayoutParams(-1, -1));
         FrameLayout opening = new FrameLayout(this);
         opening.setBackground(new GradientDrawable(
@@ -267,17 +346,90 @@ public final class SharikaActivity extends Activity {
         } else pref.edit().clear().apply();
     }
 
-    private void captureInviteLink(Intent intent) {
-        Uri uri=intent==null?null:intent.getData();
-        if(uri==null || !"sharika".equals(uri.getScheme()) ||
-            !"invite".equals(uri.getHost()))return;
-        String code=uri.getLastPathSegment();
+    private void savePendingInvite(String code) {
         if(code==null || !code.matches("[0-9]{8}"))return;
         pendingInviteCode=code;
         getSharedPreferences("sharika_pending_invite",MODE_PRIVATE).edit()
             .putString("code",code).putLong("saved_ms",System.currentTimeMillis()).apply();
         if(browser!=null)browser.evaluateJavascript(
             "window.SharikaIncomingInvite && window.SharikaIncomingInvite('"+code+"')",null);
+    }
+
+    private void captureInviteLink(Intent intent) {
+        Uri uri=intent==null?null:intent.getData();
+        if(uri==null)return;
+        boolean custom="sharika".equals(uri.getScheme()) && "invite".equals(uri.getHost()) &&
+            uri.getPathSegments().size()==1;
+        boolean web="https".equals(uri.getScheme()) &&
+            "sharika-api-staging.soverixnet.workers.dev".equals(uri.getHost()) &&
+            uri.getPathSegments().size()==2 && "invite".equals(uri.getPathSegments().get(0));
+        if(!custom&&!web)return;
+        String code=uri.getLastPathSegment();
+        if(code==null || !code.matches("[0-9]{8}"))return;
+        savePendingInvite(code);
+        finishPlayInviteLookup();
+    }
+
+    private void finishPlayInviteLookup() {
+        if(installReferrerResolved)return;
+        installReferrerResolved=true;
+        if(installReferrerClient!=null) {
+            try { installReferrerClient.endConnection(); }
+            catch (RuntimeException ignored) {}
+            installReferrerClient=null;
+        }
+        for(String requestId:pendingInviteRequests) {
+            JSONObject pending=object();
+            try { pending.put("code",pendingInviteCode); }
+            catch(JSONException ignored) {}
+            sendResult(requestId,result(true,pending,null));
+        }
+        pendingInviteRequests.clear();
+    }
+
+    private void readPlayInstallReferrer() {
+        if(!pendingInviteCode.isEmpty() ||
+            getSharedPreferences("sharika_play_install_referrer_v1",MODE_PRIVATE)
+                .getBoolean("checked",false)) {
+            finishPlayInviteLookup();
+            return;
+        }
+        try {
+            installReferrerClient=InstallReferrerClient.newBuilder(this).build();
+            final InstallReferrerClient referrer=installReferrerClient;
+            // Do not block Google/email sign-in if the Play Store service is slow.
+            googleHandler.postDelayed(this::finishPlayInviteLookup,3000);
+            referrer.startConnection(new InstallReferrerStateListener() {
+                @Override public void onInstallReferrerSetupFinished(int status) {
+                    runOnUiThread(() -> {
+                        if(installReferrerResolved)return;
+                        if(status==InstallReferrerClient.InstallReferrerResponse.OK) {
+                            try {
+                                ReferrerDetails details=referrer.getInstallReferrer();
+                                Uri params=Uri.parse("https://sharika.app/?"+
+                                    details.getInstallReferrer());
+                                String code=params.getQueryParameter("sharika_invite");
+                                if(code!=null && code.matches("[0-9]{8}") &&
+                                    pendingInviteCode.isEmpty())savePendingInvite(code);
+                                getSharedPreferences("sharika_play_install_referrer_v1",MODE_PRIVATE)
+                                    .edit().putBoolean("checked",true).apply();
+                            } catch(Exception ignored) {
+                                // Offline/unsupported Play installation: original app still opens.
+                            }
+                        } else if(status==InstallReferrerClient.InstallReferrerResponse.FEATURE_NOT_SUPPORTED) {
+                            getSharedPreferences("sharika_play_install_referrer_v1",MODE_PRIVATE)
+                                .edit().putBoolean("checked",true).apply();
+                        }
+                        finishPlayInviteLookup();
+                    });
+                }
+                @Override public void onInstallReferrerServiceDisconnected() {
+                    runOnUiThread(SharikaActivity.this::finishPlayInviteLookup);
+                }
+            });
+        } catch(RuntimeException error) {
+            finishPlayInviteLookup();
+        }
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -694,6 +846,32 @@ public final class SharikaActivity extends Activity {
                 sendPushToken(id);
                 break;
             case "api": callStagingApi(id, data); break;
+            case "clientMode":
+                JSONObject mode = object();
+                try {
+                    mode.put("play_store", BuildConfig.SHARIKA_PLAY_BUILD);
+                    mode.put("api_origin", BuildConfig.SHARIKA_API_ORIGIN);
+                }
+                catch (JSONException ignored) {}
+                sendResult(id, result(true,mode,null));
+                break;
+            case "playBillingProducts":
+                if (!BuildConfig.SHARIKA_PLAY_BUILD || playBilling == null ||
+                    auth.getCurrentUser() == null) {
+                    sendResult(id, result(false,null,"play_billing_unavailable")); break;
+                }
+                playBilling.catalog((value,error) ->
+                    sendResult(id,result(error==null,value,error)));
+                break;
+            case "playBillingPurchase":
+                FirebaseUser buyer = auth.getCurrentUser();
+                if (!BuildConfig.SHARIKA_PLAY_BUILD || playBilling == null || buyer == null ||
+                    (!buyer.isEmailVerified())) {
+                    sendResult(id,result(false,null,"verified_login_required")); break;
+                }
+                playBilling.purchase(data.optString("product_id", ""), buyer.getUid(),
+                    (value,error) -> sendResult(id,result(error==null,value,error)));
+                break;
             case "roomScreenAwake":
                 // Keep the display active only during an authenticated voice
                 // room, including when its mini-player is on another app page.
@@ -707,10 +885,14 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, object(), null));
                 break;
             case "invitePending":
-                JSONObject pending=object();
-                try { pending.put("code",pendingInviteCode); }
-                catch (JSONException ignored) {}
-                sendResult(id,result(true,pending,null));
+                if(!installReferrerResolved) {
+                    pendingInviteRequests.add(id);
+                } else {
+                    JSONObject pending=object();
+                    try { pending.put("code",pendingInviteCode); }
+                    catch (JSONException ignored) {}
+                    sendResult(id,result(true,pending,null));
+                }
                 break;
             case "inviteClear":
                 pendingInviteCode="";
@@ -728,6 +910,17 @@ public final class SharikaActivity extends Activity {
                     (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Sharika invite code", inviteCode));
                 sendResult(id, result(true, object(), null));
+                break;
+            case "copyInviteLink":
+                String linkCode=data.optString("code","");
+                if(!linkCode.matches("[0-9]{8}")) {
+                    sendResult(id,result(false,null,"invalid_invite_code"));break;
+                }
+                android.content.ClipboardManager linkClipboard=
+                    (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+                linkClipboard.setPrimaryClip(android.content.ClipData.newPlainText(
+                    "Sharika invitation",STAGING_API+"/invite/"+linkCode));
+                sendResult(id,result(true,object(),null));
                 break;
             case "shareInvite":
                 String invitation = data.optString("text", "");
@@ -899,7 +1092,7 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
-        if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
+        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|night-food)/rankings\\?period=(daily|weekly|monthly)&metric=(totalWin|totalBet|profitLoss|winCount)$"))
             return method.equals("GET");
@@ -917,6 +1110,7 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/me"))
             return method.equals("GET") || method.equals("POST") || method.equals("PATCH");
         if (path.equals("/api/v1/banners")) return method.equals("GET");
+        if (path.equals("/api/v1/celebrations")) return method.equals("GET");
         if (path.equals("/api/v1/opening/next")) return method.equals("POST");
         if (path.equals("/api/v1/events")) return method.equals("GET");
         // Notifications are authenticated and recipient-scoped by the Worker.
@@ -953,10 +1147,24 @@ public final class SharikaActivity extends Activity {
             path.matches("^/api/v1/family/requests/[1-9][0-9]{0,9}/(accept|reject)$") ||
             path.matches("^/api/v1/family/members/[0-9]{8}/(role|remove)$"))
             return method.equals("POST");
+        if (path.matches("^/api/v1/family/members/[0-9]{8}/activity(\\?date=[0-9]{4}-[0-9]{2}-[0-9]{2})?$"))
+            return method.equals("GET");
         if (path.equals("/api/v1/cosmetics")) return method.equals("GET");
         if (path.equals("/api/v1/cosmetics/purchase") ||
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
+        if (path.equals("/api/v1/music-library")) return method.equals("GET");
         if (path.equals("/api/v1/wallet")) return method.equals("GET");
+        if (BuildConfig.SHARIKA_PLAY_BUILD) {
+            // The Play build does not expose seller recharge, cash withdrawals,
+            // or real-coin betting. Staging remains unchanged.
+            if (path.matches("^/api/v1/(games|original-games)/[^/]+/bet$") ||
+                path.equals("/api/v1/greedy-wheel/bet") ||
+                path.equals("/api/v1/sellers/transfer") ||
+                path.equals("/api/v1/invites/withdrawals")) return false;
+        }
+        if (path.equals("/api/v1/play-billing/catalog")) return method.equals("GET");
+        if (path.equals("/api/v1/play-billing/claim"))
+            return BuildConfig.SHARIKA_PLAY_BUILD && method.equals("POST");
         if (path.equals("/api/v1/wallet/exchange-rate")) return method.equals("GET");
         if (path.equals("/api/v1/wallet/exchange")) return method.equals("POST");
         if (path.equals("/api/v1/follows") || path.equals("/api/v1/messages") ||
@@ -972,9 +1180,9 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/bet$"))
             return method.equals("POST");
-        if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/(state|history|stats|rankings)$"))
+        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit)/(state|history|stats|rankings)$"))
             return method.equals("GET");
-        if (path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit)/bet$"))
+        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit)/bet$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/greedy-wheel/(state|records)$"))
             return method.equals("GET");
@@ -984,6 +1192,12 @@ public final class SharikaActivity extends Activity {
         // Keep the route GET-only; bets stay confined to the existing game APIs.
         if (path.equals("/api/v1/game-catalog")) return method.equals("GET");
         if (path.equals("/api/v1/games")) return method.equals("GET");
+        if (path.equals("/api/v1/lucky-box")) return method.equals("GET");
+        if (path.equals("/api/v1/lucky-box/open")) return method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/announcement$"))
+            return method.equals("GET") || method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/music$"))
+            return method.equals("GET") || method.equals("PUT");
         if (path.equals("/api/v1/daily")) return method.equals("GET");
         if (path.equals("/api/v1/invites")) return method.equals("GET");
         if (path.equals("/api/v1/invites/rankings")) return method.equals("GET");
@@ -1018,8 +1232,11 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}$"))
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$") ||
-            path.matches("^/api/v1/rooms/[0-9]{8}/bans$"))
+            path.matches("^/api/v1/rooms/[0-9]{8}/bans$") ||
+            path.matches("^/api/v1/rooms/[0-9]{8}/kick-history$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/policy$"))
+            return method.equals("GET") || method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/announcement$"))
@@ -1047,7 +1264,7 @@ public final class SharikaActivity extends Activity {
             return method.equals("POST");
         // Room admin grants are owner-only and checked again by the Worker.
         if (path.matches("^/api/v1/rooms/[0-9]{8}/admins$"))
-            return method.equals("POST");
+            return method.equals("GET") || method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/seat$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/gifts$"))
@@ -1185,6 +1402,7 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (playBilling != null) { playBilling.close(); playBilling = null; }
         if (googlePending) expireGoogleSignIn(googleAttempt);
         setRoomAudioRoute(false);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

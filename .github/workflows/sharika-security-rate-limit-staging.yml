@@ -1,0 +1,73 @@
+name: Sharika financial rate-limit hardening staging rollout
+
+on:
+  push:
+    branches:
+      - feature/sharika-room-free-lucky-box-20261104
+    paths:
+      - '.github/workflows/sharika-security-rate-limit-staging.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging-security:
+    name: Verify security regressions and deploy API only to staging
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse production or unexpected Cloudflare targets
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-room-free-lucky-box-20261104'||
+             !process.env.CLOUDFLARE_API_TOKEN ||
+             c.name!=='sharika-api-staging'||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             c.vars?.SHARIKA_ENV!=='staging'||
+             c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             c.keep_vars!==true||
+             c.d1_databases?.length!==1||
+             c.d1_databases[0].database_name!=='sharika-staging'||
+             c.d1_databases[0].database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             c.durable_objects?.bindings?.[0]?.name!=='VOICE_ROOMS') {
+            throw Error('Unsafe destination or missing Cloudflare security bindings');
+          }
+          import {sensitiveActionClass} from './src/security-rate-limit.mjs';
+          for(const path of ['/api/v1/invites/withdrawals','/api/v1/admin/events/3/award'])
+            if(sensitiveActionClass('POST',path)!=='finance')
+              throw Error('Financial rate-limiting regression: '+path);
+          if(sensitiveActionClass('POST','/api/v1/rooms/10000001/voice/heartbeat')!==null)
+            throw Error('Voice heartbeat unexpectedly throttled');
+          console.log('Staging-only security preflight verified');
+          NODE
+      - name: Run the full Worker and SQLite regression suite
+        run: npm run check
+      - name: Verify staging service is healthy before any deployment
+        run: curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+      - name: Compile staging worker without publishing
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-security-review
+      - name: Publish API code only, no D1 migrations or admin mutations
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify the same staging API is healthy after deployment
+        run: curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health

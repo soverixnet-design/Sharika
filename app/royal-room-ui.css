@@ -5,11 +5,23 @@
   --sh-gold-deep:#ad6820;
   --sh-purple:#240a45;
   color:#fff0d7;
+  /* Legacy ROOM_HTML used to force an inline height equal to the *visual*
+     viewport on IME resize. That compressed the seats, then WebView panned
+     the whole iframe to the focused composer. The layout viewport must own
+     room height; only the composer follows the smaller visual viewport. */
+  height:100%!important;
+  max-height:100%!important;
+}
+html:has(.sh-royal-room),body:has(.sh-royal-room) {
+  height:100%!important;
+  overflow:hidden!important;
+  overscroll-behavior:none;
 }
 .app.sh-royal-room.sh-royal-wallpaper {
   background-image:url("./royal-room-background.jpg");
   background-position:center center;
-  background-size:100% 100%;
+  /* Preserve original image aspect ratio instead of stretching it blurry. */
+  background-size:cover;
   background-repeat:no-repeat;
 }
 .sh-royal-room .blob {display:none}
@@ -162,6 +174,29 @@
   padding:3px 10px max(10px,env(safe-area-inset-bottom));
   background:linear-gradient(transparent,#17052fe8 19%,#130421f5);
 }
+/* Keep the actual seats in their original coordinate space when the Android
+   keyboard shrinks the WebView. Only the composer docks above the keyboard. */
+.sh-royal-room.sh-keyboard-open .stage {
+  flex:0 0 var(--sh-seat-height,auto);
+  height:var(--sh-seat-height,auto);
+  max-height:none;
+  overflow-y:auto;
+  scroll-behavior:auto;
+}
+.sh-royal-room.sh-keyboard-open .chatw,
+.sh-royal-room.sh-keyboard-open .sh-tools,
+.sh-royal-room.sh-keyboard-open .sh-mic-floating,
+.sh-royal-room.sh-keyboard-open .sh-menu-panel {display:none!important}
+.sh-royal-room.sh-keyboard-open .dock {
+  position:absolute;
+  bottom:var(--sh-ime-inset,0px);
+  left:0;
+  right:0;
+  padding:8px 10px 6px;
+  background:#19092eea;
+  box-shadow:0 -6px 24px #0a0313ad;
+}
+.sh-royal-room.sh-keyboard-open .sh-composer {padding-right:0;margin:0}
 .sh-royal-room .sh-composer {
   display:flex;
   padding-right:68px;
@@ -320,9 +355,196 @@
   .sh-royal-room .seat .av {width:43px;height:43px}
   .sh-royal-room .host .av {width:60px;height:60px}
 }
+@media(max-height:690px) {
+  .sh-royal-room.sh-keyboard-open .host {margin:14px 0 22px}
+  .sh-royal-room.sh-keyboard-open .grid {gap:19px 4px}
+  .sh-royal-room.sh-keyboard-open .seat .av {
+    width:clamp(44px,13vw,54px);height:clamp(44px,13vw,54px)
+  }
+  .sh-royal-room.sh-keyboard-open .host .av {
+    width:clamp(63px,19vw,74px);height:clamp(63px,19vw,74px)
+  }
+}
 @media(prefers-reduced-motion:reduce) {
   .sh-royal-room .host .av,.sh-royal-room .crown {animation:none}
 }
+
+/* Occupied-seat preview: tapping the avatar/name opens the complete verified
+   profile, while moderation and gift actions remain within the half-sheet. */
+.sh-royal-room .sheet .who.sh-member-half {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  text-align:center;
+  padding:20px 10px 18px;
+  margin:-4px 0 12px;
+  border-radius:22px;
+  border:1px solid #f2c98688;
+  background:#211032;
+}
+.sh-royal-room .sh-member-portrait {
+  display:grid;
+  place-items:center;
+  width:112px;
+  height:112px;
+  border:0;
+  background:none;
+  padding:0;
+  margin:12px auto 8px;
+  cursor:pointer;
+}
+.sh-royal-room .sh-member-portrait .sh-sovera-preview {
+  width:94px!important;
+  height:94px!important;
+  margin:0!important;
+  border:2px solid #eac276;
+  box-shadow:0 4px 20px #0c041db3;
+}
+.sh-royal-room .sh-member-title {
+  display:block;
+  border:0;
+  padding:4px 10px;
+  background:none;
+  color:#fff3cf;
+  font-weight:900;
+  font-size:20px;
+  cursor:pointer;
+}
+.sh-royal-room .sh-member-meta {font-size:12px;color:#d8c4e1}
+.sh-royal-room .sh-member-labels {
+  display:flex;flex-wrap:wrap;justify-content:center;gap:5px;margin:7px auto
+}
+.sh-royal-room .sh-member-labels span {
+  border:1px solid #d4aa77aa;
+  border-radius:999px;
+  padding:3px 9px;
+  background:#4b285e;
+  font-size:10px;
+  color:#ffe9c2;
+}
+.sh-royal-room .sh-member-levels {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  width:100%;gap:6px;margin:6px 0;
+}
+.sh-royal-room .sh-member-levels span {
+  display:grid;gap:3px;
+  padding:8px 2px;
+  background:#4a2460;
+  border:1px solid #e6b36d7a;
+  border-radius:12px;
+  font-size:10px;
+  color:#efcfff;
+}
+.sh-royal-room .sh-member-levels b {font-size:14px;color:#ffe9a0}
+.sh-royal-room .seat .av > .badge {
+  z-index:32!important;
+  right:-8px!important;
+  bottom:-7px!important;
+  background:#f13b66;
+  border:2px solid #fff3cd;
+  box-shadow:0 3px 8px #100416;
+}
+
+/* A seat invitation is a confirmation dialog, never a locally assigned mic. */
+.sh-royal-room .sh-invite-preview {
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  padding:20px 12px;gap:14px;color:#fff0d5
+}
+.sh-royal-room .sh-invite-preview .sh-sovera-preview {
+  width:86px!important;height:86px!important;margin:8px auto 0!important;
+  border:2px solid #f3ca82;box-shadow:0 5px 24px #090315;
+}
+.sh-royal-room .sh-invite-preview p {font-size:17px;line-height:1.5}
+.sh-royal-room .sh-invite-preview strong {color:#ffdc91}
+.sh-royal-room .sh-invite-actions {display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%}
+.sh-royal-room .sh-invite-actions button {
+  min-height:47px;border-radius:999px;font-size:14px;font-weight:850;
+  border:1px solid #cda97f;color:#fff0d5;background:#301344;cursor:pointer
+}
+.sh-royal-room .sh-invite-actions button:last-child {
+  color:#30142c;border-color:#ffe7a9;background:#f3cc83
+}
+
+/* Full-height owner configuration with room-scoped server authorization. */
+#sh-room-settings-page {
+  position:fixed;inset:0;z-index:2147483100;display:flex;flex-direction:column;
+  background:#140920;color:#fff0d6;font-family:system-ui,sans-serif;
+  overflow:hidden;box-sizing:border-box
+}
+#sh-room-settings-page * {box-sizing:border-box}
+.sh-room-settings-top {
+  flex:none;position:relative;min-height:66px;display:flex;align-items:center;
+  justify-content:center;border-bottom:1px solid #c5955e5c;background:#24113b
+}
+.sh-room-settings-top h2 {font-size:19px;margin:0;font-weight:850;color:#ffe0a6}
+.sh-room-settings-back {
+  position:absolute;left:15px;top:9px;display:grid;place-items:center;
+  width:48px;height:48px;border:0;background:none;color:#ffe2a6;
+  font-size:38px;cursor:pointer
+}
+.sh-room-settings-body {
+  overflow-y:auto;overscroll-behavior:contain;flex:1;padding:14px 13px 26px
+}
+.sh-room-settings-group {
+  border:1px solid #ae7b566a;border-radius:17px;overflow:hidden;
+  background:#241238;margin:0 0 18px;box-shadow:0 8px 20px #09031554
+}
+.sh-room-settings-group h3 {
+  padding:12px 14px;margin:0;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:#e2bb7b;background:#32174a
+}
+.sh-room-settings-row {
+  display:flex;align-items:center;gap:10px;text-align:left;width:100%;
+  min-height:57px;border:0;border-top:1px solid #f4d8a624;background:transparent;
+  padding:12px 13px;color:#fff0db;font:inherit;font-size:13px;cursor:pointer
+}
+.sh-room-settings-row>span {flex:1;min-width:0;font-weight:750}
+.sh-room-settings-row>small {
+  max-width:43%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-align:right;font-size:11px;color:#e5c68d
+}
+.sh-room-settings-row>b {font-size:24px;font-weight:400;color:#efc685}
+.sh-room-settings-row:disabled {opacity:.68;cursor:default}
+.sh-room-settings-row:focus-visible,.sh-room-settings-back:focus-visible {
+  outline:2px solid #ffe29b;outline-offset:-3px
+}
+.sh-room-settings-subhead {display:flex;align-items:center;gap:12px;margin:7px 0 19px}
+.sh-room-settings-subhead button {
+  border:1px solid #b58b65;background:#341c4c;color:#fce3ac;
+  border-radius:11px;padding:9px 13px;cursor:pointer
+}
+.sh-room-settings-subhead h3 {font-size:19px;color:#ffe2a6;margin:0}
+.sh-room-settings-input {
+  display:block;width:100%;border:1px solid #d6b67e;border-radius:16px;
+  padding:13px;resize:vertical;background:#2e1742;color:white;
+  font:inherit;font-size:15px;line-height:1.5
+}
+.sh-room-settings-primary {
+  display:block;width:100%;min-height:48px;margin:17px auto 8px;
+  border-radius:14px;border:1px solid #ffe8ad;background:#efc47a;
+  color:#2c162d;font-size:15px;font-weight:900;cursor:pointer
+}
+.sh-room-settings-primary:disabled {opacity:.65}
+.sh-room-settings-status {font-size:12px;color:#f4d393;padding:12px 4px}
+.sh-room-settings-list {border:1px solid #a47c6e88;border-radius:15px;overflow:hidden}
+.sh-room-settings-history {
+  display:flex;flex-direction:column;gap:5px;padding:15px 11px;
+  border-bottom:1px solid #e7c69b44
+}
+.sh-room-settings-history small {color:#ceb8d8;font-size:11px}
+.sh-room-settings-seat-options {
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px
+}
+.sh-room-settings-seat-options button {
+  padding:13px 0;border:1px solid #b78a5c;border-radius:13px;
+  background:#321c4f;color:#ffe3a9;font-size:16px;font-weight:800;cursor:pointer
+}
+.sh-room-settings-seat-options button.selected {
+  background:#efc47a;color:#24102c;border-color:#fff0bb
+}
+.sh-room-settings-footnote {font-size:11px;color:#c8b3d4;line-height:1.6;margin:20px 4px}
 
 
 /* Purple-gold room header inspired by the supplied room reference.
@@ -543,3 +765,14 @@
   .sh-royal-room .sh-room-face-button,
   .sh-royal-room .sh-room-face-count{width:29px;height:29px}
 }
+
+/* Compact, thicker room card: leave space for room controls without moving
+   or resizing the microphone grid, while keeping the newer safe-area offset. */
+.sh-royal-room .top .room{
+  flex:0 1 clamp(145px,47vw,188px);
+  width:clamp(145px,47vw,188px);
+  min-width:0;min-height:50px;height:50px;max-height:50px;
+  gap:7px;padding:4px 9px 4px 5px;
+  border:2px solid #f3c777;border-radius:15px;
+}
+.sh-royal-room .top .room>.rav{width:36px;height:36px;flex:none}

@@ -1,5 +1,6 @@
 import {publicSvipSelect} from './premium.mjs';
 import {recordUserEvent} from './transaction-notices.mjs';
+import {safeMediaUrl} from './admin-media.mjs';
 // Server-owned paid cosmetics. Never trust client-side "owned" style flags.
 const KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
 const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
@@ -10,9 +11,13 @@ const roleArt=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,
  .map(number=>'role-frame-'+String(number).padStart(2,'0'));
 const KEYS={
  frame_style:new Set(['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love','ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
-  'vip5-animated','noble-gold-microphone','cs-royal-wings','coin-seller-royal',...numbered('svip-frame',8),...roleArt]),
+  'vip5-animated','noble-gold-microphone','cs-royal-wings','coin-seller-royal',...numbered('svip-frame',8),
+  ...[2,3,4,5].map(n=>'vip-royal-frame-'+String(n).padStart(2,'0')),
+  ...[4,5].map(n=>'svip-royal-frame-'+String(n).padStart(2,'0')),...roleArt]),
  entry_style:new Set(['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen',...numbered('svip-entry',8)]),
- medal_style:new Set(['bronze','silver','gold','top-host',...numbered('svip-medal',8)]),
+ medal_style:new Set(['bronze','silver','gold','top-host',...numbered('svip-medal',8),
+  ...[2,3,4,5].map(n=>'vip-royal-badge-'+String(n).padStart(2,'0')),
+  ...[1,2,3,4,5].map(n=>'svip-royal-badge-'+String(n).padStart(2,'0'))]),
  name_tag_style:new Set(['legend',...numbered('svip-tag',17)])
 };
 const ID=/^[a-z0-9][a-z0-9-]{2,39}$/;
@@ -72,6 +77,7 @@ export async function readRoomEquipped(db,roomId){
 async function stock(db,uid,all=false){
  const list=values(await db.prepare(
   'SELECT c.id,c.kind,c.name,c.art_key,c.price_coins,c.active,'+
+  'c.image_url,c.animation_url,c.audio_url,'+
   'CASE WHEN i.item_id IS NULL THEN 0 ELSE 1 END AS owned,'+
   'CASE WHEN e.item_id=c.id AND i.item_id IS NOT NULL THEN 1 ELSE 0 END AS equipped,'+
   'i.expires_at_ms AS expires_at_ms FROM sharika_cosmetics_catalog c '+
@@ -110,11 +116,12 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
   if(typeof itemId!=='string'||itemId.length>70||
      typeof requestId!=='string'||!TX.test(requestId))return invalid(fail,cors);
   const prior=await db.prepare(
-   'SELECT item_id,request_id FROM sharika_cosmetic_inventory WHERE auth_uid=? AND (item_id=? OR request_id=?)'
+   'SELECT item_id,request_id,expires_at_ms FROM sharika_cosmetic_inventory WHERE auth_uid=? AND (item_id=? OR request_id=?)'
   ).bind(uid,itemId,'purchase:'+requestId).first();
-  if(prior)return prior.item_id===itemId?
-   reply({owned:true,duplicate:true,item_id:itemId},200,cors):
-   fail('idempotency_conflict',409,cors);
+  if(prior&&prior.item_id!==itemId)return fail('idempotency_conflict',409,cors);
+  if(prior&&(prior.request_id==='purchase:'+requestId||prior.expires_at_ms===null))
+   return reply({owned:true,duplicate:true,item_id:itemId},200,cors);
+  // A temporary Lucky Box frame may be upgraded to a permanent paid item.
   const item=await db.prepare('SELECT id,name,kind,price_coins,active FROM sharika_cosmetics_catalog WHERE id=?')
    .bind(itemId).first();
   if(!item||!item.active)return purchaseFailed('cosmetic_unavailable',404);
@@ -126,7 +133,10 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
    await db.batch([
     db.prepare("UPDATE sharika_users SET coins=CASE WHEN status='active' AND coins>=? THEN coins-? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
      .bind(debit,debit,uid),
-    db.prepare("INSERT INTO sharika_cosmetic_inventory(auth_uid,item_id,source,request_id) VALUES(?,?,'purchase',?)")
+    db.prepare("INSERT INTO sharika_cosmetic_inventory(auth_uid,item_id,source,request_id,expires_at_ms) "+
+      "VALUES(?,?,'purchase',?,NULL) ON CONFLICT(auth_uid,item_id) DO UPDATE SET "+
+      "source='purchase',request_id=excluded.request_id,expires_at_ms=NULL "+
+      "WHERE sharika_cosmetic_inventory.expires_at_ms IS NOT NULL")
      .bind(uid,itemId,'purchase:'+requestId),
     db.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'cosmetic_purchase',?)")
      .bind(uid,-debit,uid,'cosmetic:'+requestId)
@@ -208,6 +218,13 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
  if(!['POST','PATCH'].includes(request.method))return fail('admin_method_not_allowed',405,cors);
  const body=await readBody(request);
  const kind=body.kind,art=body.art_key,name=body.name,price=body.price_coins;
+ const media={};
+ for(const field of ['image_url','animation_url','audio_url']){
+  if(request.method==='PATCH'&&body[field]===undefined)continue;
+  const value=safeMediaUrl(body[field]??'');
+  if(value===null)return invalid(fail,cors);
+  media[field]=value;
+ }
  if(!KINDS.has(kind)||!KEYS[kind].has(art)||typeof name!=='string'||
     !name.trim()||name.trim().length>80||!safeAmount(price))
   return invalid(fail,cors);
@@ -216,8 +233,8 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
   const itemId=kind+':'+body.slug;
   try{
    await db.batch([
-    db.prepare("INSERT INTO sharika_cosmetics_catalog(id,kind,name,art_key,price_coins,active) VALUES(?,?,?,?,?,1)")
-     .bind(itemId,kind,name.trim(),art,price),
+    db.prepare("INSERT INTO sharika_cosmetics_catalog(id,kind,name,art_key,price_coins,active,image_url,animation_url,audio_url) VALUES(?,?,?,?,?,1,?,?,?)")
+     .bind(itemId,kind,name.trim(),art,price,media.image_url,media.animation_url,media.audio_url),
     db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
      .bind(uid,'cosmetic_catalog_add',JSON.stringify({item_id:itemId,price_coins:price,art_key:art}))
    ]);
@@ -231,8 +248,10 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
   .bind(body.item_id,kind).first();
  if(!old)return fail('cosmetic_unavailable',404,cors);
  await db.batch([
-  db.prepare("UPDATE sharika_cosmetics_catalog SET name=?,art_key=?,price_coins=?,active=?,updated_at=datetime('now') WHERE id=?")
-   .bind(name.trim(),art,price,body.active?1:0,old.id),
+  db.prepare("UPDATE sharika_cosmetics_catalog SET name=?,art_key=?,price_coins=?,active=?,image_url=?,animation_url=?,audio_url=?,updated_at=datetime('now') WHERE id=?")
+   .bind(name.trim(),art,price,body.active?1:0,
+     media.image_url??old.image_url??'',media.animation_url??old.animation_url??'',
+     media.audio_url??old.audio_url??'',old.id),
   db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
    .bind(uid,'cosmetic_catalog_update',JSON.stringify({
     item_id:old.id,old_price:old.price_coins,new_price:price,active:body.active,art_key:art

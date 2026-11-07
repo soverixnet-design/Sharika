@@ -44,9 +44,7 @@ body.sheet-mode #app{border-radius:22px 22px 0 0;box-shadow:0 -8px 30px rgba(0,0
 .logo-sub{font-size:12px;font-weight:700;color:#e6d4ff;margin-top:2px}
 .logo-sub b{color:#fff}
 
-.infostrip{display:flex;justify-content:space-between;align-items:center;padding:6px 12px 0;font-size:12px;font-weight:700;color:#e6d4ff}
-.online{display:flex;align-items:center;gap:5px}
-.online .dot{width:7px;height:7px;border-radius:50%;background:#3dff8a;box-shadow:0 0 8px #3dff8a}
+.infostrip{display:flex;justify-content:flex-end;align-items:center;padding:6px 12px 0;font-size:12px;font-weight:700;color:#e6d4ff}
 .lastwin{display:flex;align-items:center;gap:5px;padding:2px 10px;border-radius:12px;background:rgba(0,0,0,.25)}
 .lastwin b{color:var(--gold);font-variant-numeric:tabular-nums}
 .coin{display:inline-block;width:16px;height:16px;border-radius:50%;flex:none;vertical-align:-3px;
@@ -216,7 +214,7 @@ body.sheet-mode #app{border-radius:22px 22px 0 0;box-shadow:0 -8px 30px rgba(0,0
 .odds img{width:26px;height:26px;object-fit:contain}
 .odds b{margin-left:auto;color:#c4193f}
 
-.toast{position:absolute;left:50%;top:42%;z-index:50;transform:translateX(-50%);padding:8px 16px;border-radius:20px;background:rgba(0,0,0,.8);color:#fff;font-weight:700;font-size:14px;white-space:nowrap;animation:fade .2s}
+.toast{position:absolute;left:50%;top:12%;z-index:50;transform:translateX(-50%);padding:7px 13px;border-radius:18px;background:rgba(0,0,0,.76);color:#fff;font-weight:700;font-size:12px;white-space:normal;text-align:center;max-width:calc(100% - 40px);pointer-events:none;animation:fade .2s}
 .toast[hidden]{display:none}
 .float-win{position:absolute;left:0;right:0;top:40%;z-index:45;text-align:center;font-family:var(--display);font-size:38px;color:var(--gold);
   text-shadow:0 3px 0 #7a3a00,0 0 18px rgba(255,200,60,.8);pointer-events:none;animation:floatup 1.6s ease-out forwards}

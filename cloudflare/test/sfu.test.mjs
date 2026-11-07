@@ -8,6 +8,7 @@ const readBody = request => request.json();
 const owner = {owner_id:'u1'};
 const member = {seat_no:2,muted:0};
 const room = {
+  async roomPolicyRead(){return {super_mic:true};},
   async register() {return true;},
   async owns(uid,sid) {return sid==='session-one' ? {canPublish:true,requiresReady:true}:null;},
   async permittedPublications() {return [];},

@@ -575,3 +575,79 @@ html.royal-room .inp {min-height:48px;}
     min-width:48px;min-height:48px;
   }
 }
+
+/* Final Android room override. The Royal sheet is loaded *after* the room's
+   own stylesheet, so its older .top/.dock rules previously undid the newer
+   card positioning on real phones. Keep this after those legacy rules. */
+html.royal-room .app.sh-royal-room .top {
+  padding:36px 8px 5px;
+  gap:5px;
+  justify-content:space-between;
+}
+html.royal-room .app.sh-royal-room .top .room {
+  position:relative;
+  left:-8px;
+  flex:0 1 clamp(145px,47vw,188px);
+  width:clamp(145px,47vw,188px);
+  min-height:50px;
+  height:50px;
+  border:2px solid #f3c777;
+}
+/* Staging-only visible fingerprint: a screenshot now proves which APK ran. */
+html.royal-room .app.sh-royal-room .sh-settings {position:relative;}
+html.royal-room .app.sh-royal-room .sh-settings::after {
+  content:'QA13';
+  position:absolute;top:100%;left:50%;transform:translateX(-50%);
+  padding:1px 4px;border-radius:5px;background:#170728b0;
+  color:#ffe2a1;font:700 9px/1 system-ui,sans-serif;
+  pointer-events:none;
+}
+html.royal-room .app.sh-royal-room.sh-keyboard-open .stage {
+  flex:0 0 var(--sh-seat-height,auto);
+  height:var(--sh-seat-height,auto);
+  max-height:none;
+}
+html.royal-room .app.sh-royal-room.sh-keyboard-open .dock {
+  position:absolute;
+  bottom:var(--sh-ime-inset,0px);
+  left:0;
+  right:0;
+  padding:8px 10px 6px;
+  background:#19092eea;
+}
+html.royal-room .app.sh-royal-room.sh-keyboard-open .sh-tools,
+html.royal-room .app.sh-royal-room.sh-keyboard-open .chatw,
+html.royal-room .app.sh-royal-room.sh-keyboard-open .sh-mic-floating {
+  display:none!important;
+}
+
+/* Show a responsive room shell from the first tap while the real, authorized
+   join and seat snapshot load. Its Back action prevents repeated room joins. */
+html.royal-root .roomwrap.on.sh-room-awaiting.sh-room-joining {
+  background:radial-gradient(ellipse at 50% 28%,#52226b,#12041f 66%)!important;
+  pointer-events:auto!important;
+}
+html.royal-root #sh-room-joining-card {
+  position:absolute;inset:0;z-index:10;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:13px;padding:20px;
+  color:#fff0d3;text-align:center;
+}
+html.royal-root #sh-room-joining-card strong {
+  max-width:95%;font-size:17px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;
+}
+html.royal-root #sh-room-joining-card small {color:#d7c4e2;font-size:13px;}
+html.royal-root #sh-room-joining-card button {
+  border:1px solid #efc875;border-radius:12px;padding:10px 17px;
+  color:#ffe8a8;background:#29113d;font-size:12px;
+}
+html.royal-root .sh-room-join-spinner {
+  width:48px;height:48px;border-radius:50%;
+  border:4px solid #d4aa6760;border-top-color:#ffe0a0;
+  animation:sh-room-join-spin .85s linear infinite;
+}
+@keyframes sh-room-join-spin {to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){
+  html.royal-root .sh-room-join-spinner {animation:none;border-top-color:#f3bd70}
+}

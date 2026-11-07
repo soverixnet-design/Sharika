@@ -4,10 +4,11 @@ import {readFileSync} from 'node:fs';
 
 const src = relative => readFileSync(new URL(relative,import.meta.url),'utf8');
 
-test('original wheel picker respects server enablement but hides jackpot games',()=>{
+test('original game picker follows the server catalogue with no stale client allowlist',()=>{
   const bridge=src('../../android-staging/staging-connection.js');
-  assert.ok(bridge.includes("new Set(['sovera-food','night-food','greedy-wheel'])"));
-  assert.ok(bridge.includes("requestedOriginalGames.has(game.id)&&enabled.has(game.id)"));
+  assert.ok(bridge.includes('visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id))'));
+  assert.ok(!bridge.includes('requestedOriginalGames.has(game.id)'));
+  assert.ok(bridge.includes('const catalogRequestNo=++gameCatalogRequestSequence'));
   assert.ok(!bridge.includes("visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale'"));
   assert.ok(bridge.includes("'/original-games/'+current.item.id"));
 });
@@ -31,7 +32,7 @@ test('room joins are recorded for signed-in members without paid entry styles',(
   const worker=src('../src/index.mjs');
   const coordinator=src('../src/voice-room.mjs');
   const bridge=src('../../android-staging/staging-connection.js');
-  assert.ok(worker.includes('roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry)'));
+  assert.match(worker,/roomEntryAnnounce\(\s*uid,publicId\(entrant\.public_no\),txt\(entrant\.name,80\)\|\|'Member',entry\|\|'standard'/);
   assert.ok(!coordinator.includes('if(!style)return {announced:false};'));
   assert.ok(bridge.includes("verifiedName+' joined the room'"));
 });

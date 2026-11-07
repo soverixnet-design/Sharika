@@ -21,6 +21,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['cosmetics','✨','Frames, Entry & Name Tags']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='luckyBox')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='lucky');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['luckyBox','🎁','Free Lucky Box · 2 Hours']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='premium')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='cosmetics');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -46,12 +51,18 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['profileDesigner','🖼️','Live Profile Designer']);
   }
-  // Keep the Family & BD controls next to room rewards. On narrow screens the
-  // former last menu item was buried below System and easily missed.
-  if(!NAV_ALL.some(item=>item[0]==='family')){
+  // Retire the Family navigation without deleting any historic Family data.
+  const historicFamilyIndex=NAV_ALL.findIndex(item=>item[0]==='family');
+  if(historicFamilyIndex>=0)NAV_ALL.splice(historicFamilyIndex,1);
+  if(!NAV_ALL.some(item=>item[0]==='agency')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='events');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
-      ['family','👑','Family & BD System']);
+      ['agency','👑','BD · Agency · Host']);
+  }
+  if(!NAV_ALL.some(item=>item[0]==='musicLibrary')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='rooms');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['musicLibrary','🎵','Room Music Library']);
   }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
@@ -108,6 +119,71 @@
     if (!response.ok) throw new Error(data.error || 'Admin service unavailable');
     return data;
   }
+  function mediaStudio(prefix){
+    return '<div class="card"><h3>🎬 Media Studio · Video, Frame, Entry & Sound</h3>'+
+      '<p class="n">Upload your own licensed MP4/WebM video, PNG/JPEG/WebP image or MP3/M4A/OGG sound (25 MB maximum). '+
+      'Choose an optional destination or copy the HTTPS link into any catalogue item. '+
+      'Videos may contain their own music.</p>'+
+      '<div class="row"><input class="field" type="file" id="'+prefix+'-file" '+
+      'accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/ogg">'+
+      '<select class="field" id="'+prefix+'-target" aria-label="Apply uploaded media to"></select>'+
+      '<button type="button" class="btn s" id="'+prefix+'-upload">Upload Media</button></div>'+
+      '<div id="'+prefix+'-preview" style="margin:10px 0;max-width:350px"></div>'+
+      '<label>Uploaded HTTPS media URL<input class="field" id="'+prefix+'-result" '+
+      'readonly aria-label="Uploaded media URL"></label>'+
+      '<button class="btn s" type="button" id="'+prefix+'-copy">Copy URL</button>'+
+      '<p class="n" id="'+prefix+'-status" role="status"></p></div>';
+  }
+  function wireMediaStudio(prefix,targets){
+    const file=byId(prefix+'-file'),preview=byId(prefix+'-preview');
+    const select=byId(prefix+'-target'),result=byId(prefix+'-result');
+    const status=byId(prefix+'-status'),button=byId(prefix+'-upload');
+    if(!file)return;
+    select.innerHTML='<option value="">Copy link only</option>'+targets.map(([id,label])=>
+      '<option value="'+esc(id)+'">'+esc(label)+'</option>').join('');
+    let localUrl='';
+    file.onchange=()=>{
+      if(localUrl)URL.revokeObjectURL(localUrl);
+      preview.replaceChildren();status.textContent='';
+      const item=file.files?.[0];if(!item)return;
+      localUrl=URL.createObjectURL(item);
+      const kind=item.type.split('/')[0];
+      const player=document.createElement(kind==='image'?'img':kind==='audio'?'audio':'video');
+      player.src=localUrl;player.style.maxWidth='100%';
+      if(kind==='image')player.alt='Media preview';
+      else{player.controls=true;player.preload='metadata';if(kind==='video')player.playsInline=true;}
+      preview.appendChild(player);
+      status.textContent=item.name+' · '+(item.size/1024/1024).toFixed(2)+' MB';
+    };
+    button.onclick=async()=>{
+      const item=file.files?.[0],category=item?.type?.split('/')[0];
+      if(!item||!['image','video','audio'].includes(category)||item.size>25*1024*1024){
+        status.textContent='Choose a supported media file under 25 MB.';return;
+      }
+      button.disabled=true;status.textContent='Uploading media securely…';
+      try{
+        const jwt=await idToken();
+        const response=await fetch(API+'/api/v1/admin/media/upload',{
+          method:'POST',headers:{authorization:'Bearer '+jwt,
+            'content-type':item.type,'x-sharika-media-category':category,
+            'x-sharika-media-size':String(item.size)},
+          body:item,cache:'no-store'
+        });
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(data.error||'Upload unavailable');
+        result.value=data.url;
+        const destination=byId(select.value);
+        if(destination){destination.value=data.url;destination.dispatchEvent(new Event('change'));}
+        status.textContent='Uploaded ✓ '+(destination?'URL applied to the selected form; save the item next.':'Copy the URL into an item and save.');
+      }catch(error){status.textContent='Upload failed: '+error.message;}
+      finally{button.disabled=false;}
+    };
+    byId(prefix+'-copy').onclick=async()=>{
+      if(!result.value)return;
+      try{await navigator.clipboard.writeText(result.value);status.textContent='URL copied ✓';}
+      catch(_){result.focus();result.select();status.textContent='Select and copy the URL.';}
+    };
+  }
   async function verifyAdmin() {
     const status = await api('GET','status');
     if (!['super','support','finance','staff'].includes(status.role))
@@ -117,7 +193,8 @@
     window.NAV=role==='staff'?NAV_ALL.filter(item=>
       !item[0]||Object.prototype.hasOwnProperty.call(allowedStaffPage,item[0])&&
       (!allowedStaffPage[item[0]]||status.permissions?.includes(allowedStaffPage[item[0]]))
-    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'&&
+    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>
+      !['specialIds','musicLibrary'].includes(item[0])&&
       (role==='finance'||item[0]!=='family')));
     window.ME = session.email || status.name || 'Administrator';
     return status;
@@ -686,6 +763,51 @@
     }catch(error){root.innerHTML=card('Rooms unavailable',error.message);}
   };
 
+  P.musicLibrary=async function(){
+    const root=byId('pg');
+    root.innerHTML=card('🎵 Room Music Library','Loading Super Admin music catalogue…');
+    try{
+      const data=await api('GET','music-library');
+      const rows=Array.isArray(data.tracks)?data.tracks:[];
+      root.innerHTML='<div class="card"><h3>🎵 Room Music Library</h3>'+
+        '<p class="n">Add direct HTTPS audio-file links to music you own or are licensed to stream. '+
+        'Room Owner and Room Admin can play these songs for every listener. '+
+        'No MP3 bytes are uploaded into D1, and listener wallets are not affected.</p>'+
+        '<label>Song title<input id="sh-music-title" class="field" maxlength="100" placeholder="Song title"></label>'+
+        '<label>Direct HTTPS audio URL<input id="sh-music-url" class="field" type="url" '+
+        'placeholder="https://example.com/music/song.mp3"></label>'+
+        '<button type="button" id="sh-music-add" class="btn">Add to Music Library</button>'+
+        '<div style="margin-top:16px">'+window.T(['ID','Title','Source','Status','Action'],rows.map(track=>[
+          fmt(track.id),esc(track.title),
+          '<a href="'+esc(track.url)+'" target="_blank" rel="noopener noreferrer">Play / Check</a>',
+          track.active?'Active':'Disabled',
+          '<button type="button" class="btn s" data-music-id="'+esc(track.id)+'">'+
+          (track.active?'Disable':'Enable')+'</button>'
+        ]))+'</div></div>';
+      byId('sh-music-add').onclick=async()=>{
+        const button=byId('sh-music-add');
+        const title=byId('sh-music-title').value.trim();
+        const url=byId('sh-music-url').value.trim();
+        if(!title||!url){note('Enter a title and direct HTTPS MP3 link');return;}
+        button.disabled=true;
+        try{await api('POST','music-library',{title,url});note('Music Library updated ✓');await P.musicLibrary();}
+        catch(error){note('Music not added: '+error.message);button.disabled=false;}
+      };
+      root.querySelectorAll('[data-music-id]').forEach(button=>{
+        button.onclick=async()=>{
+          const item=rows.find(row=>String(row.id)===button.dataset.musicId);
+          if(!item)return;
+          button.disabled=true;
+          try{
+            await api('PATCH','music-library',{id:Number(item.id),title:item.title,
+              url:item.url,active:!item.active});
+            note('Music track updated ✓');await P.musicLibrary();
+          }catch(error){note('Music update failed: '+error.message);button.disabled=false;}
+        };
+      });
+    }catch(error){root.innerHTML=card('Music Library unavailable',error.message);}
+  };
+
   P.daily=async function(){
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>🎁 Verified Daily Check-in</h3>'+
@@ -1169,15 +1291,20 @@
     const art={
       frame_style:['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love',
         'ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
-        'vip5-animated',...numbered('svip-frame',8),'noble-gold-microphone',...roleFrames],
+        'vip5-animated',...numbered('svip-frame',8),
+        ...[2,3,4,5].map(n=>'vip-royal-frame-'+String(n).padStart(2,'0')),
+        ...[4,5].map(n=>'svip-royal-frame-'+String(n).padStart(2,'0')),
+        'noble-gold-microphone',...roleFrames],
       entry_style:['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen'],
-      medal_style:['bronze','silver','gold','top-host',...numbered('svip-medal',8)],
+      medal_style:['bronze','silver','gold','top-host',...numbered('svip-medal',8),
+        ...[2,3,4,5].map(n=>'vip-royal-badge-'+String(n).padStart(2,'0')),
+        ...[1,2,3,4,5].map(n=>'svip-royal-badge-'+String(n).padStart(2,'0'))],
       name_tag_style:['legend',...numbered('svip-tag',17)]
     };
     const kinds=Object.keys(art);
     const options=(list,selected)=>list.map(v=>'<option value="'+esc(v)+'"'+
       (v===selected?' selected':'')+'>'+esc(v.replaceAll('_',' '))+'</option>').join('');
-    root.innerHTML=card('Verified cosmetic inventory',
+    root.innerHTML=mediaStudio('cos-media')+card('Verified cosmetic inventory',
       'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
       '<div class="card"><h3>🎁 Give a frame or medal to a user</h3>'+
       '<p class="n">Super Admin: enter the real Sharika ID, find the frame or medal, and give it free. '+
@@ -1200,7 +1327,13 @@
       '<input class="field" id="sh-cos-price" type="number" min="1" max="1000000" placeholder="Coin price"></div>'+
       '<div class="row"><label>Existing bundled artwork <select class="field" id="sh-cos-art"></select></label>'+
       '<button class="btn s" type="button" id="sh-cos-create">Add item</button></div>'+
-      '<p class="n">New catalogue IDs may reuse a bundled entry/frame asset. Truly new art requires including its animation or image in an app update.</p></div>';
+      '<div class="row"><input class="field" id="sh-cos-image" maxlength="500" type="url" placeholder="Image / still URL">'+
+      '<input class="field" id="sh-cos-animation" maxlength="500" type="url" placeholder="Animated frame / entry video URL"></div>'+
+      '<input class="field" id="sh-cos-audio" maxlength="500" type="url" placeholder="Optional separate entry sound URL">'+
+      '<p class="n">Uploaded media overrides bundled artwork. Keep bundled artwork as a fallback for older app builds.</p></div>';
+    wireMediaStudio('cos-media',[
+      ['sh-cos-image','New item · image'],['sh-cos-animation','New item · video / animation'],
+      ['sh-cos-audio','New item · entry sound']]);
     const status=byId('sh-cos-note'),kind=byId('sh-cos-kind'),artSelect=byId('sh-cos-art');
     function fillArt(){artSelect.innerHTML=options(art[kind.value]||[],'');}
     kind.onchange=fillArt;fillArt();
@@ -1229,6 +1362,9 @@
         '<label>Price coins <input class="field" type="number" min="1" max="1000000" data-cos-field="price" data-id="'+esc(item.id)+'" value="'+Number(item.price_coins)+'"></label></div>'+
         '<div class="row"><label>Artwork <select class="field" data-cos-field="art" data-id="'+esc(item.id)+'">'+
         options(art[item.kind]||[],item.art_key)+'</select></label>'+
+        '<div class="row"><label>Image URL<input class="field" type="url" maxlength="500" data-cos-field="image" data-id="'+esc(item.id)+'" value="'+esc(item.image_url||'')+'"></label>'+
+        '<label>Animation / video URL<input class="field" type="url" maxlength="500" data-cos-field="animation" data-id="'+esc(item.id)+'" value="'+esc(item.animation_url||'')+'"></label>'+
+        '<label>Sound URL<input class="field" type="url" maxlength="500" data-cos-field="audio" data-id="'+esc(item.id)+'" value="'+esc(item.audio_url||'')+'"></label></div>'+
         '<label><input type="checkbox" data-cos-field="active" data-id="'+esc(item.id)+'"'+
         (item.active?' checked':'')+'> Available to buy</label>'+
         '<button class="btn s" type="button" data-cos-save="'+esc(item.id)+'">Save</button></div></div>').join('')||
@@ -1248,6 +1384,9 @@
             await api('PATCH','cosmetics',{
               item_id:id,kind:item.kind,name:field(id,'name').value.trim(),
               price_coins:price,art_key:field(id,'art').value,
+              image_url:field(id,'image').value.trim(),
+              animation_url:field(id,'animation').value.trim(),
+              audio_url:field(id,'audio').value.trim(),
               active:field(id,'active').checked
             });
             status.textContent='Saved and audited: '+id;
@@ -1260,6 +1399,9 @@
         const price=Number(byId('sh-cos-price').value);
         const payload={kind:kind.value,slug:byId('sh-cos-slug').value.trim(),
           name:byId('sh-cos-name').value.trim(),art_key:artSelect.value,
+          image_url:byId('sh-cos-image').value.trim(),
+          animation_url:byId('sh-cos-animation').value.trim(),
+          audio_url:byId('sh-cos-audio').value.trim(),
           price_coins:price};
         if(!/^[a-z0-9][a-z0-9-]{2,39}$/.test(payload.slug)||!Number.isSafeInteger(price)||
            price<1||price>1000000){status.textContent='Enter a valid slug and positive coin price.';return;}
@@ -1700,8 +1842,12 @@
     root.innerHTML='<div class="card"><h3>Verified support inbox</h3>'+
       '<p class="n">Messages are stored in the Sharika D1 database. No demo tickets.</p>'+
       '<button type="button" class="btn s" id="support-refresh">Refresh</button>'+
-      '<div id="support-list">Loading…</div></div><div id="support-thread"></div>';
+      '<div id="support-list">Loading…</div></div><div id="support-thread"></div>'+
+      '<div class="card"><h3>External account deletion requests</h3>'+
+      '<p class="n">Users can request deletion even after uninstalling. Verify account ownership before acting; a request never changes wallet balances.</p>'+
+      '<div id="account-deletion-list">Loading…</div></div>';
     const list=byId('support-list'),thread=byId('support-thread');
+    const deletionList=byId('account-deletion-list');
     let opened=null;
     async function refreshList(){
       try {
@@ -1713,6 +1859,18 @@
             '<button type="button" class="btn s" data-support-id="'+esc(c.public_id)+'">Open</button>'
           ]));
       }catch(error){list.textContent=error.message;}
+    }
+    async function refreshDeletionRequests(){
+      try{
+        const data=await api('GET','account-deletion-requests');
+        const rows=(data.requests||[]).map(item=>[
+          esc(item.id),esc(item.public_id),esc(item.contact_email),
+          esc(item.reason||'—'),esc(item.status),esc(item.created_at)
+        ]);
+        deletionList.innerHTML=rows.length
+          ?window.T(['Ticket','User ID','Contact email','Details','Status','Requested'],rows)
+          :'<p class="n">No external deletion requests.</p>';
+      }catch(error){deletionList.textContent='Deletion queue unavailable: '+error.message;}
     }
     async function refreshThread(){
       if(!opened)return;
@@ -1747,14 +1905,16 @@
       opened=button.dataset.supportId;
       refreshThread();
     };
-    byId('support-refresh').onclick=async()=>{await refreshList();await refreshThread();};
-    await refreshList();
+    byId('support-refresh').onclick=async()=>{
+      await Promise.all([refreshList(),refreshDeletionRequests()]);await refreshThread();
+    };
+    await Promise.all([refreshList(),refreshDeletionRequests()]);
   };
 
   P.gifts=async function () {
     const root=byId('pg');
     const canEdit=role==='super';
-    root.innerHTML=(canEdit?'<div class="card"><h3>Add gift to real catalog</h3>'+
+    root.innerHTML=(canEdit?mediaStudio('gift-media')+'<div class="card"><h3>Add gift to real catalog</h3>'+
       '<p class="n">Regular gifts are settled through the verified wallet ledger. Lucky payouts are still disabled.</p>'+
       '<div class="row"><input id="gift-name" maxlength="80" placeholder="Gift name" aria-label="Gift name">'+
       '<input id="gift-emoji" maxlength="16" placeholder="🎁" aria-label="Gift emoji">'+
@@ -1764,12 +1924,16 @@
       '<button type="button" id="gift-create" class="btn s">Add gift</button></div>'+
       '<div class="row"><input id="gift-image-url" type="url" maxlength="500" placeholder="HTTPS gift image link" aria-label="Gift image URL">'+
       '<input id="gift-animation-url" type="url" maxlength="500" placeholder="HTTPS animation link (optional)" aria-label="Gift animation URL"></div>'+
-      '<p class="n">Use links to existing hosted image or animation assets. Direct gallery uploads need asset storage support.</p></div>':'')+
+      '<input class="field" id="gift-audio-url" type="url" maxlength="500" placeholder="Optional separate gift sound URL">'+
+      '<p class="n">Upload video with embedded music or add a separate sound. New gifts stay inactive until you review and enable them.</p></div>':'')+
       '<div class="card"><h3>Real gift catalog</h3><div id="gift-list">Loading…</div></div>'+
       '<div class="card"><h3>Verified gift transactions</h3><div id="gift-event-list">Loading…</div></div>'+
       '<div class="card"><h3>Gift wallet settlement audit</h3>'+
       '<p class="n">Read-only D1 transaction audit. Recipient diamonds may include fractional accrual; room shares are not credited to the owner wallet.</p>'+
       '<div id="gift-settlement-list">Loading…</div></div>';
+    if(canEdit)wireMediaStudio('gift-media',[
+      ['gift-image-url','New gift · image'],['gift-animation-url','New gift · video'],
+      ['gift-audio-url','New gift · separate sound']]);
     const list=byId('gift-list');
     async function refresh(){
       list.textContent='Loading verified gift catalog…';
@@ -1779,7 +1943,7 @@
           (data.gifts||[]).map(g=>{
             if(!canEdit)return[fmt(g.id),esc(g.name),esc(g.emoji),
               ['Gifts','Luxury','Lucky'][g.tab]||'Other',fmt(g.price_coins),
-              g.image_url?'🖼️ Image':'—',g.active?'Active':'Disabled','—'];
+              [g.image_url?'🖼️ Image':'',g.animation_url?'🎬 Video':'',g.audio_url?'🎵 Sound':''].filter(Boolean).join(' ')||'—',g.active?'Active':'Disabled','—'];
             const id=esc(g.id),input=(key,value,max=100)=>
               '<input class="field" data-gift-field="'+key+'" data-id="'+id+
               '" maxlength="'+max+'" value="'+esc(value??'')+'" style="min-width:100px;max-width:180px">';
@@ -1789,7 +1953,7 @@
                   (i===Number(g.tab)?' selected':'')+'>'+n+'</option>').join('')+'</select>',
               '<input class="field" type="number" min="1" max="1000000000" data-gift-field="price" data-id="'+id+
                 '" value="'+Number(g.price_coins)+'" style="width:115px">',
-              '<div>'+input('image',g.image_url||'',500)+input('animation',g.animation_url||'',500)+'</div>',
+              '<div>'+input('image',g.image_url||'',500)+input('animation',g.animation_url||'',500)+input('audio',g.audio_url||'',500)+'</div>',
               '<label><input type="checkbox" data-gift-field="active" data-id="'+id+'"'+
                 (g.active?' checked':'')+'> Live</label>',
               '<button type="button" class="btn s" data-gift-save="'+id+'">Save</button>'];
@@ -1803,11 +1967,12 @@
         const emoji=byId('gift-emoji').value.trim()||'🎁',tab=Number(byId('gift-category').value);
         const image_url=byId('gift-image-url').value.trim();
         const animation_url=byId('gift-animation-url').value.trim();
+        const audio_url=byId('gift-audio-url').value.trim();
         if(!name||!Number.isSafeInteger(price)||price<1){note('Enter gift name and valid coin price');return;}
         button.disabled=true;
         try{
-          await api('POST','gifts',{name,emoji,tab,price_coins:price,active:false,image_url,animation_url});
-          ['gift-name','gift-price','gift-emoji','gift-image-url','gift-animation-url'].forEach(id=>byId(id).value='');
+          await api('POST','gifts',{name,emoji,tab,price_coins:price,active:false,image_url,animation_url,audio_url});
+          ['gift-name','gift-price','gift-emoji','gift-image-url','gift-animation-url','gift-audio-url'].forEach(id=>byId(id).value='');
           note('Gift added; activate it when ready.');await refresh();
         }catch(error){note('Gift not created: '+error.message);}
         finally{button.disabled=false;}
@@ -1827,6 +1992,7 @@
         const payload={name,emoji,price_coins:price,tab,
           image_url:field('image')?.value.trim()||'',
           animation_url:field('animation')?.value.trim()||'',
+          audio_url:field('audio')?.value.trim()||'',
           active:!!field('active')?.checked};
         if(!window.confirm('Save gift #'+id+' on the server? This changes future sends.'))return;
         button.disabled=true;
@@ -2211,8 +2377,8 @@
   P.banners=async function(){
     const root=byId('pg');
     root.innerHTML=card('Home banners','Loading verified banner configuration…');
-    // The admin browser's gallery picker is the only image source. Convert
-    // locally to a bounded landscape JPEG; EXIF and device paths never upload.
+    // Keep the entire banner (including lettering close to the edges).
+    // Convert locally to a bounded JPEG; EXIF and device paths never upload.
     async function bannerJpeg(file){
       if(!file||!file.type.startsWith('image/')||file.size>12*1024*1024)
         throw new Error('Select an image smaller than 12 MB.');
@@ -2227,14 +2393,12 @@
         if(!picture.naturalWidth||!picture.naturalHeight)
           throw new Error('The photo has no usable dimensions.');
         const canvas=document.createElement('canvas');
-        canvas.width=1100;canvas.height=480;
+        const scale=Math.min(1,1100/picture.naturalWidth,480/picture.naturalHeight);
+        canvas.width=Math.max(1,Math.round(picture.naturalWidth*scale));
+        canvas.height=Math.max(1,Math.round(picture.naturalHeight*scale));
         const context=canvas.getContext('2d');
         if(!context)throw new Error('Banner image conversion unavailable.');
-        const scale=Math.max(canvas.width/picture.naturalWidth,
-          canvas.height/picture.naturalHeight);
-        const width=picture.naturalWidth*scale,height=picture.naturalHeight*scale;
-        context.drawImage(picture,(canvas.width-width)/2,
-          (canvas.height-height)/2,width,height);
+        context.drawImage(picture,0,0,canvas.width,canvas.height);
         for(const quality of [.79,.66,.53,.42]){
           const data=canvas.toDataURL('image/jpeg',quality);
           if(data.startsWith('data:image/jpeg;base64,')&&data.length<480000)
@@ -2260,14 +2424,17 @@
           row.image_url.includes('/banners/'+row.id+'/image?')
           ?row.image_url:null;
         return '<div class="card" style="margin:10px 0">'+
-          '<div style="position:relative;overflow:hidden;min-height:110px;padding:15px;'+
-          'border-radius:16px;background:linear-gradient(135deg,'+
-          esc(row.color_a)+','+esc(row.color_b)+');color:#fff">'+
-          (image?'<img src="'+esc(image)+'" alt="Banner #'+row.id+
-          '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">': '')+
-          '<div style="position:relative;text-shadow:0 2px 6px #000">'+
-          '<b>'+esc(row.emoji)+' '+esc(row.title)+'</b><small style="display:block">'+
-          esc(row.subtitle)+'</small></div></div>'+
+          (image
+            ?'<div style="height:170px;overflow:hidden;border:2px solid #f3d49b;'+
+              'border-radius:17px;box-shadow:0 8px 20px #0008;background:transparent">'+
+              '<img src="'+esc(image)+'" alt="Banner #'+row.id+' — '+esc(row.title)+
+              '" style="width:100%;height:100%;object-fit:contain;display:block"></div>'
+            :'<div style="position:relative;overflow:hidden;min-height:110px;padding:15px;'+
+              'border-radius:16px;background:linear-gradient(135deg,'+
+              esc(row.color_a)+','+esc(row.color_b)+');color:#fff">'+
+              '<div style="position:relative;text-shadow:0 2px 6px #000">'+
+              '<b>'+esc(row.emoji)+' '+esc(row.title)+'</b><small style="display:block">'+
+              esc(row.subtitle)+'</small></div></div>')+
           '<p class="n">Banner #'+esc(row.id)+' · '+(row.active?'Visible in app':'Hidden')+'</p>'+
           (canEdit?'<div class="row"><input data-bf="title" data-id="'+row.id+'" maxlength="80" value="'+esc(row.title)+'" aria-label="Banner title">'+
           '<input data-bf="subtitle" data-id="'+row.id+'" maxlength="160" value="'+esc(row.subtitle||'')+'" aria-label="Banner subtitle"></div>'+
@@ -2282,7 +2449,7 @@
           '</div>';
       }).join('');
       const create=role==='super'?'<div class="card"><h3>➕ Add home banner</h3>'+
-        '<p class="n">Choose a gallery photo, or keep a color banner. Photos are center-cropped for the home carousel.</p>'+
+        '<p class="n">Choose a gallery photo, or keep a color banner. The entire photo is kept; a wide image near 1100 × 480 looks best.</p>'+
         '<div class="row"><input id="new-banner-title" maxlength="80" placeholder="Banner headline">'+
         '<input id="new-banner-subtitle" maxlength="160" placeholder="Subtitle"></div>'+
         '<div class="row"><label>🖼️ Banner photo (optional)<input type="file" id="new-banner-image" accept="image/jpeg,image/png,image/webp"></label></div>'+
@@ -2856,6 +3023,61 @@
   async function featureHealth(){
     return await api('GET','feature-health');
   }
+  // Free two-hour Lucky Box is deliberately separate from paid Lucky Gifts.
+  P.luckyBox=async function(){
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Lucky Box','Only Super Admin may change free-box rewards.');
+      return;
+    }
+    root.innerHTML=card('🎁 Free Lucky Box','Loading server-controlled rewards…');
+    try{
+      const data=await api('GET','lucky-box');
+      if(!root.isConnected)return;
+      const cfg=data.settings||{};
+      const items=Array.isArray(data.items)?data.items.filter(i=>i.active):[];
+      const number=(key,unit='')=>'<label>'+esc(key.replaceAll('_',' '))+
+        '<input class="field" type="number" min="0" max="100" data-sh-box-weight="'+esc(key)+
+        '" value="'+Number(cfg[key]||0)+'">'+unit+'</label>';
+      root.innerHTML='<div class="card" style="border:1.5px solid #e8b45d;background:linear-gradient(145deg,#351447,#1c0a35);color:#ffecc2">'+
+        '<h3>🎁 Lucky Box · Free every 2 hours</h3>'+
+        '<p class="n">One server-verified opening per user every 2 hours. Frames and entry effects expire after 24 hours. An empty box awards nothing. Paid Lucky Gifts are a separate feature.</p>'+
+        '<label><input id="sh-box-enabled" type="checkbox"'+(cfg.enabled?' checked':'')+'> Enable free Lucky Box</label>'+
+        '<div class="row"><label>Coin prize <input class="field" id="sh-box-coins" type="number" min="1" max="1000000" value="'+Number(cfg.coin_reward||200)+'"></label>'+
+        '<label>Cooldown <input class="field" value="2 hours" disabled></label>'+
+        '<label>Temporary items <input class="field" value="24 hours" disabled></label></div>'+
+        '<h4>Prize probabilities (must total 100%)</h4><div class="row">'+
+        number('coin_weight')+number('frame_weight')+
+        number('entry_weight')+number('empty_weight')+'</div>'+
+        '<h4>Choose frames and entry effects in the prize pool</h4>'+
+        '<p class="n">Add as many of the existing verified artworks as needed. Add new artwork first through Frames, Entry & Name Tags.</p>'+
+        '<div id="sh-box-items" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;max-height:320px;overflow:auto">'+
+        items.map(item=>'<label style="display:flex;gap:7px;align-items:center;padding:6px;border:1px solid #9b6b9b;border-radius:9px">'+
+          '<input type="checkbox" data-box-item="'+esc(item.id)+'"'+(item.in_box?' checked':'')+'>'+
+          esc(item.kind==='frame_style'?'🖼️ ':'✨ ')+esc(item.name)+'</label>').join('')+
+        '</div><button class="btn s" id="sh-box-save" type="button" style="margin-top:13px">Save Lucky Box settings</button>'+
+        '<p id="sh-box-result" class="n" role="status"></p></div>';
+      byId('sh-box-save').onclick=async event=>{
+        const button=event.currentTarget,status=byId('sh-box-result');
+        const keys=['coin_weight','frame_weight','entry_weight','empty_weight'];
+        const payload={enabled:byId('sh-box-enabled').checked,
+          coin_reward:Number(byId('sh-box-coins').value),
+          item_ids:Array.from(root.querySelectorAll('[data-box-item]:checked')).map(x=>x.dataset.boxItem)};
+        for(const key of keys)payload[key]=Number(root.querySelector('[data-sh-box-weight="'+key+'"]').value);
+        if(keys.reduce((sum,key)=>sum+payload[key],0)!==100||
+          !Number.isSafeInteger(payload.coin_reward)||payload.coin_reward<1){
+          status.textContent='Prize weights must add to 100%, and coin amount must be positive.';return;
+        }
+        button.disabled=true;status.textContent='Saving and auditing…';
+        try{
+          const result=await api('POST','lucky-box',payload);
+          status.textContent='Saved! '+result.item_count+' items available in the Lucky Box.';
+        }catch(error){status.textContent='Could not save: '+error.message;}
+        finally{button.disabled=false;}
+      };
+    }catch(error){root.innerHTML=card('Lucky Box unavailable',error.message);}
+  };
+
   P.lucky=async function(){
     const root=byId('pg');root.innerHTML=card('Lucky gifts','Checking server switch…');
     try{
@@ -2992,10 +3214,124 @@
     '#sh-family-admin small{opacity:.85}'
   ].join('');
   document.head.appendChild(familyAdminCss);
+  P.agency=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div id="sh-family-admin"><h2>👑 BD · Agency · Host Center</h2>'+
+      '<p class="n">Loading verified D1 policy and salary targets…</p></div>';
+    const parent=root.querySelector('#sh-family-admin');
+    let data,legacy;
+    try{
+      [data,legacy]=await Promise.all([api('GET','agency'),
+        api('GET','family').catch(()=>({agents:[],families:[]}))]);
+    }catch(error){parent.innerHTML=card('Agency service unavailable',error.message);return;}
+    if(!parent.isConnected)return;
+    const p=data.policy||{},s=data.salary_config||{},superAdmin=role==='super';
+    const control=(label,id,value,min,max)=>'<label>'+esc(label)+'<input id="'+id+
+      '" type="number" min="'+min+'" max="'+max+'" value="'+esc(value)+'"></label>';
+    const rows=(columns,records)=>'<div class="sh-fam-scroll"><table><thead><tr>'+
+      columns.map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>'+
+      (records.map(cols=>'<tr>'+cols.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')||
+        '<tr><td colspan="'+columns.length+'">No verified records yet</td></tr>')+
+      '</tbody></table></div>';
+    const section=(name,html)=>'<section class="sh-fam-card"><h3>'+esc(name)+'</h3>'+html+'</section>';
+    parent.innerHTML='<h2>👑 BD · Agency · Host Center</h2>'+
+      '<p class="n">Family has been removed from navigation; existing Agency membership and '+
+      'historic financial records are preserved. All values below come from Cloudflare D1.</p>'+
+      section('Verified gift policy • same recipient gift base',
+        '<div class="sh-fam-cols">'+
+        control('Host salary (4000 = 40%)','ag2-host',p.host_bps,0,8000)+
+        control('Agency commission (1000 = 10%)','ag2-agency',p.agency_bps,0,5000)+
+        control('BD commission (500 = 5%)','ag2-bd',p.bd_bps,0,3000)+
+        '<label>Salary settlement period<select id="ag2-mode">'+
+        '<option value="daily">Daily</option><option value="weekly">Weekly</option>'+
+        '<option value="monthly">Monthly</option></select></label>'+
+        '<label><input type="checkbox" id="ag2-enabled" '+(p.enabled?'checked':'')+
+        '> Verified Agency earnings enabled</label></div>'+
+        '<p class="n">Changes apply to future settled gifts only. Existing salary entries '+
+        'retain their earning percentage.</p>'+
+        (superAdmin?'<button class="btn" id="ag2-policy-save">Save Gift Commission Policy</button>':''))+
+      section('Salary Wallet • targets & exchange permission',
+        '<div class="sh-fam-cols">'+
+        control('Coins for $1 reference','ag2-usd',s.coins_per_usd||500000,1,1000000000)+
+        '<label>Target tiers, comma-separated coins<input id="ag2-targets" value="'+
+        esc((data.targets||[]).join(', '))+'" placeholder="5000000, 10000000, 20000000"></label>'+
+        '<label><input type="checkbox" id="ag2-salary-enabled" '+
+        (s.exchange_enabled?'checked':'')+'> Allow completed-period Salary Exchange</label></div>'+
+        '<p class="n">Initial first target: 5M gift coins. Admin may change any target. '+
+        'Salary payouts exchange to main coins, never direct USD. Permission starts OFF. '+
+        'Main Wallet Diamond Exchange is a separate editable rate.</p>'+
+        (superAdmin?'<button class="btn" id="ag2-salary-save">Save Targets & Salary Permission</button>':''))+
+      section('Assigned Hosts',rows(['Agency #','Host ID','Name','State'],
+        (data.hosts||[]).map(h=>[esc(h.family_id),esc(h.public_id),esc(h.name),
+          h.active?'Active':'Inactive']))+
+        (superAdmin?'<div class="sh-fam-cols"><label>Agency #'+
+          '<input id="ag2-agency-id" type="number" min="1"></label><label>Approved Host ID'+
+          '<input id="ag2-host-id" maxlength="8" inputmode="numeric"></label></div>'+
+          '<button class="btn" id="ag2-host-save">Assign Host</button>':''))+
+      section('BD Management',rows(['BD ID','Name','Active','Can Grant Agency'],
+        (legacy.agents||[]).map(a=>[esc(a.public_id),esc(a.name),
+          a.active?'Yes':'No',a.can_grant?'Yes':'No']))+
+        (superAdmin?'<div class="sh-fam-cols"><label>BD User ID'+
+          '<input id="ag2-bd-id" maxlength="8" inputmode="numeric"></label>'+
+          '<label><input type="checkbox" id="ag2-bd-active" checked> Active BD</label>'+
+          '<label><input type="checkbox" id="ag2-bd-can-grant" checked> Can grant Agency</label></div>'+
+          '<button class="btn" id="ag2-bd-save">Save BD Role</button>':''))+
+      section('Create Agency',superAdmin?'<div class="sh-fam-cols">'+
+        '<label>Owner ID<input id="ag2-owner-id" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Active BD ID<input id="ag2-owner-bd-id" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Agency name<input id="ag2-name" maxlength="40"></label></div>'+
+        '<button class="btn" id="ag2-create">Create Verified Agency</button>':
+        '<p class="n">Super Admin controls Agency creation.</p>')+
+      '<p id="ag2-status" role="status" aria-live="polite"></p>';
+    byId('ag2-mode').value=p.settlement_mode||'weekly';
+    const notice=message=>{const status=byId('ag2-status');if(status)status.textContent=message;};
+    const save=async(method,path,payload)=>{
+      notice('Saving to verified D1…');
+      try{await api(method,path,payload);notice('Saved ✓');await P.agency();}
+      catch(error){notice('Not saved: '+String(error?.message||error));}
+    };
+    byId('ag2-policy-save')?.addEventListener('click',()=>{
+      const h=Number(byId('ag2-host').value),a=Number(byId('ag2-agency').value),
+        b=Number(byId('ag2-bd').value);
+      if(![h,a,b].every(Number.isSafeInteger)||h<0||a<0||b<0||h+a+b>10000)
+        return notice('Invalid commission percentage.');
+      save('PATCH','agency/policy',{enabled:byId('ag2-enabled').checked,
+        host_bps:h,agency_bps:a,bd_bps:b,settlement_mode:byId('ag2-mode').value});
+    });
+    byId('ag2-salary-save')?.addEventListener('click',()=>{
+      const usd=Number(byId('ag2-usd').value);
+      const targets=byId('ag2-targets').value.split(',').map(x=>Number(x.trim()));
+      if(!Number.isSafeInteger(usd)||usd<1||targets.length<1||targets.length>12||
+        targets.some((x,i)=>!Number.isSafeInteger(x)||x<1||x>1000000000000||
+          (i>0&&x<=targets[i-1])))return notice('Targets must be unique, ascending whole coin amounts.');
+      save('PATCH','agency/salary/policy',{expected_version:s.version,coins_per_usd:usd,
+        exchange_enabled:byId('ag2-salary-enabled').checked,targets});
+    });
+    byId('ag2-host-save')?.addEventListener('click',()=>{
+      const id=byId('ag2-host-id').value.trim(),agencyId=Number(byId('ag2-agency-id').value);
+      if(!/^[0-9]{8}$/.test(id)||!Number.isSafeInteger(agencyId)||agencyId<1)
+        return notice('Enter a verified 8-digit Host ID and Agency number.');
+      save('POST','agency/hosts/assign',{agency_id:agencyId,host_public_id:id,active:true});
+    });
+    byId('ag2-bd-save')?.addEventListener('click',()=>{
+      const id=byId('ag2-bd-id').value.trim();
+      if(!/^[0-9]{8}$/.test(id))return notice('Enter a verified 8-digit BD ID.');
+      save('POST','family/bd',{public_id:id,active:byId('ag2-bd-active').checked,
+        can_grant:byId('ag2-bd-can-grant').checked});
+    });
+    byId('ag2-create')?.addEventListener('click',()=>{
+      const owner=byId('ag2-owner-id').value.trim(),bd=byId('ag2-owner-bd-id').value.trim(),
+        name=byId('ag2-name').value.trim();
+      if(!/^[0-9]{8}$/.test(owner)||!/^[0-9]{8}$/.test(bd)||name.length<3)
+        return notice('Enter the Agency name, Owner ID and active BD ID.');
+      save('POST','family/create',{owner_public_id:owner,bd_public_id:bd,name,
+        request_id:'admin:'+crypto.randomUUID()});
+    });
+  };
   P.family=async function(){
     const root=byId('pg');
-    root.innerHTML='<div id="sh-family-admin"><h2>👑 Family & BD System</h2>'+
-      '<p class="n">Verified family grants, 5% BD commission and Crystal settlement. '+
+    root.innerHTML='<div id="sh-family-admin"><h2>👑 BD · Agency · Host</h2>'+
+      '<p class="n">Verified Agency grants, BD commission, Host gift performance and Crystal settlement. '+
       'Existing Room Gift rewards and original recipient diamonds are unchanged.</p>'+
       '<div class="sh-fam-card">Loading verified records…</div></div>';
     const parent=root.querySelector('#sh-family-admin');
@@ -3014,13 +3350,25 @@
     if(!parent.isConnected)return;
     const p=data.policy||{};
     const isSuper=role==='super';
+    let agencyData=null,agencyError='';
+    try{agencyData=await api('GET','agency');}
+    catch(error){agencyError=error.message||'Migration required';}
     const table=(columns,entries)=>'<div class="sh-fam-scroll"><table><thead><tr>'+
       columns.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+
       (entries.length?entries.map(items=>'<tr>'+items.map(cell=>'<td>'+cell+'</td>').join('')+'</tr>').join(''):
         '<tr><td colspan="'+columns.length+'">No verified records</td></tr>')+
       '</tbody></table></div>';
     const box=(title,contents)=>'<section class="sh-fam-card"><h3>'+esc(title)+'</h3>'+contents+'</section>';
-    parent.innerHTML='<div class="sh-fam-cols">'+
+    parent.innerHTML='<h2>👑 BD · Agency · Host Control Center</h2>'+
+      '<p class="n">Existing Family records are preserved as Agencies. Host gift rankings and personal statements are available inside the app; no salary has been credited.</p>'+
+      '<div class="sh-fam-cols">'+
+      box('🏰 Registered Agencies','<span class="sh-fam-pill">'+
+        esc((data.families||[]).length)+'</span><p>Approved Agency records shown below.</p>')+
+      box('👥 Hosts & Members','<span class="sh-fam-pill">'+
+        esc((data.families||[]).reduce((total,f)=>total+Number(f.member_count||0),0))+
+        '</span><p>Members in listed Agencies.</p>')+
+      box('💼 Host Salary Policy','<span class="sh-fam-pill">Not configured</span>'+
+        '<p>No Host salary is auto-paid. A future payout policy must define targets, rates, and Admin approval first.</p>')+
       box('💼 BD Commission','<span class="sh-fam-pill">'+
         esc(Number(p.bd_bps||0)/100)+'%</span><p>Family Owner: '+
         esc(Number(p.owner_bps||0)/100)+'% · Mode: '+esc(p.settlement_mode||'monthly')+'</p>')+
@@ -3111,8 +3459,37 @@
         ])))+
       '<p id="sh-fam-admin-status" role="status" aria-live="polite"></p>'+
       '<div id="sh-fam-report-results"></div>';
+    const ap=agencyData?.policy||{};
+    const agencyBox=box('🏆 Agency / BD / Host Earnings Policy',
+      !agencyData?'<p class="n">Agency service not connected: '+esc(agencyError)+
+        '. Deploy migration 0059 with the Worker to enable live controls.</p>':
+      '<p class="n">Real Host gifts → 100% diamonds. The separate Diamond Exchange editor is ' +
+        'set to 100 diamonds → 40 coins by the new migration only if the old 100:70 rate was unchanged. ' +
+        'Host salary, Agency and BD amounts are pending estimates, not wallet payments.</p>'+
+      '<div class="sh-fam-cols">'+
+      '<label>Host salary (4000 = 40%)<input id="sh-ag-host" type="number" min="0" max="8000" value="'+esc(ap.host_bps)+'"></label>'+
+      '<label>Agency share (1000 = 10%)<input id="sh-ag-agency" type="number" min="0" max="5000" value="'+esc(ap.agency_bps)+'"></label>'+
+      '<label>BD share (500 = 5%)<input id="sh-ag-bd" type="number" min="0" max="3000" value="'+esc(ap.bd_bps)+'"></label>'+
+      '<label>Salary statement period<select id="sh-ag-period"><option value="daily">Daily</option>'+
+      '<option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>'+
+      '<label><input id="sh-ag-enabled" type="checkbox" '+(ap.enabled?'checked':'')+'> Agency earnings active</label></div>'+
+      '<p class="n">New policy applies only to future verified regular gifts. ' +
+      'Current Room Reward and legacy Family Crystal ledgers stay separate. ' +
+      'Admin verification is required before any real salary payout.</p>'+
+      (isSuper?'<button class="btn" id="sh-ag-policy-save">Save Agency Policy</button>':'')+
+      '<h4>Host role assignment</h4>'+table(['Agency ID','Host ID','Name','State'],
+        (agencyData.hosts||[]).map(h=>[esc(h.family_id),esc(h.public_id),
+          esc(h.name),h.active?'Active':'Inactive']))+
+      (isSuper?'<div class="sh-fam-cols"><label>Agency / Family ID'+
+        '<input id="sh-ag-family-id" type="number" min="1" placeholder="Family #"></label>'+
+        '<label>Approved adult Host ID<input id="sh-ag-host-id" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Host status<select id="sh-ag-host-state"><option value="on">Active</option>'+
+        '<option value="off">Deactivate</option></select></label></div>'+
+        '<button class="btn" id="sh-ag-host-save">Save Host Role</button>':''));
+    parent.querySelector('.sh-fam-cols')?.insertAdjacentHTML('beforeend',agencyBox);
     const selected=byId('sh-fam-period');
     if(selected)selected.value=p.settlement_mode||'monthly';
+    if(agencyData&&byId('sh-ag-period'))byId('sh-ag-period').value=ap.settlement_mode||'weekly';
     const reload=()=>P.family();
     const trySave=async(method,route,payload,confirmation)=>{
       if(confirmation&&!window.confirm(confirmation))return;
@@ -3120,6 +3497,24 @@
       try{await api(method,route,payload);notice('Saved ✓');await reload();}
       catch(error){notice('Not saved: '+error.message);}
     };
+    byId('sh-ag-policy-save')?.addEventListener('click',()=>{
+      const host=Number(byId('sh-ag-host').value),agency=Number(byId('sh-ag-agency').value),
+        bd=Number(byId('sh-ag-bd').value);
+      if(![host,agency,bd].every(Number.isSafeInteger)||host<0||agency<0||bd<0||
+        host+agency+bd>10000)return notice('Agency shares must be whole basis points, total maximum 100%.');
+      trySave('PATCH','agency/policy',{enabled:byId('sh-ag-enabled').checked,
+        host_bps:host,agency_bps:agency,bd_bps:bd,
+        settlement_mode:byId('sh-ag-period').value},
+      'Apply Host / Agency / BD percentages to FUTURE gifts only?');
+    });
+    byId('sh-ag-host-save')?.addEventListener('click',()=>{
+      const family=Number(byId('sh-ag-family-id').value),id=byId('sh-ag-host-id').value.trim(),
+        active=byId('sh-ag-host-state').value==='on';
+      if(!Number.isSafeInteger(family)||family<1||!/^[0-9]{8}$/.test(id))
+        return notice('Enter a valid Agency ID and 8-digit Host ID.');
+      trySave('POST','agency/hosts/assign',{agency_id:family,host_public_id:id,active},
+        'Change Host role for '+id+'? They must already be an approved adult Agency member.');
+    });
     parent.querySelectorAll('[data-fam-approve-creation]').forEach(button=>{
       button.onclick=()=>{
         const id=button.dataset.famApproveCreation;
@@ -3291,7 +3686,7 @@
       const shortcut=document.createElement('section');
       shortcut.className='card';
       shortcut.style.cssText='border:1px solid #d4ad59;background:linear-gradient(120deg,#35241a,#1b1526);margin-bottom:16px';
-      shortcut.innerHTML='<h3>👑 Family & BD System</h3>'+
+      shortcut.innerHTML='<h3>👑 BD · Agency · Host System</h3>'+
         '<p class="n">Family grants, 5% BD commission, Crystal ledger, weekly/monthly reports and Google Sheets Sync.</p>'+
         '<button type="button" class="btn" id="sh-open-family-admin">Open Family & BD System</button>';
       root.insertBefore(shortcut,root.firstChild);
@@ -3302,7 +3697,7 @@
   };
 
   const verifiedPages=new Set([
-    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
+    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','luckyBox','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

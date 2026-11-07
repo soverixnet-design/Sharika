@@ -1,0 +1,73 @@
+name: Sharika BD Agency Host admin staging frontend
+
+on:
+  push:
+    branches:
+      - feature/sharika-sovera-gaddy-game-20261104
+    paths:
+      - '.github/workflows/sharika-agency-host-admin-staging.yml'
+      - 'admin/connection.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-agency-host-admin-staging-only
+  cancel-in-progress: false
+
+jobs:
+  publish-admin:
+    name: Verify and publish isolated staging Admin interface
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require the approved staging Admin Worker and API service binding
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-sovera-gaddy-game-20261104'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const config=JSON.parse(readFileSync('wrangler.admin.jsonc','utf8'));
+          if(config.name!=='sharika-admin-staging'||
+             config.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             config.vars?.SHARIKA_ENV!=='staging'||
+             config.workers_dev!==true||
+             config.services?.length!==1||
+             config.services[0].binding!=='SHARIKA_API'||
+             config.services[0].service!=='sharika-api-staging'||
+             config.services[0].environment!=='production')
+            throw Error('Refusing to update unexpected Admin Worker or service binding');
+          NODE
+      - name: Verify API contracts and static Admin script
+        run: |
+          npm run check
+          node --check ../admin/connection.js
+      - name: Bundle the existing Admin UI without changing user or D1 data
+        run: |
+          cp ../admin/index.html src/admin-index.html
+          cp ../admin/connection.js src/admin-connection.txt
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc --outdir /tmp/sharika-agency-host-admin
+      - name: Deploy the isolated staging Admin Worker only
+        run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
+      - name: Verify live Admin endpoint contains the Agency control center
+        run: |
+          curl --fail --silent --show-error --retry 4 --max-time 20 \
+            https://sharika-admin-staging.soverixnet.workers.dev/health | node -e '
+              let body="";process.stdin.on("data",d=>body+=d).on("end",()=>{
+                const value=JSON.parse(body);
+                if(value.service!=="sharika-admin-staging"||!value.api_service_configured)process.exit(1);
+              });'
+          curl --fail --silent --show-error --retry 4 --max-time 20 \
+            https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js \
+            | grep -F 'BD · Agency · Host Control Center' >/dev/null

@@ -102,7 +102,14 @@ def main():
     # This unlabelled gold-microphone animation is available for Noble styling.
     add(items, roles, "noble-gold-microphone", "frame_style", "noble",
         (595, 979, 119, 106), name="Noble Gold Microphone")
-    (DEST / "manifest.json").write_text(json.dumps(items, indent=2) + "\n", encoding="utf-8")
+    # A later supplied video provides distinct VIP/SVIP badges and frames.
+    # Rebuilding this original trio must not silently drop those ornaments.
+    manifest = DEST / "manifest.json"
+    if manifest.exists():
+        previous = json.loads(manifest.read_text(encoding="utf-8"))
+        items.extend(item for item in previous if
+                     item["id"].startswith(("vip-royal-", "svip-royal-")))
+    manifest.write_text(json.dumps(items, indent=2) + "\n", encoding="utf-8")
     # Some remote scratch filesystems briefly leave a truncated target after
     # the media encoder exits; verify and repair the completed batch.
     for _ in range(4):

@@ -56,11 +56,31 @@ test('Family gift target includes verified regular owner gifts independent of Cr
     'Owner self-gifts still do not earn owner Crystal commissions');
 });
 
-test('Royal Family UI presents diamond target values and user refresh',()=>{
+test('Royal Agency UI presents diamond target values and user refresh',()=>{
   const ui=readFileSync(new URL(
     '../../android-staging/staging-connection.js',import.meta.url),'utf8');
-  for(const required of ['Family Diamond Gift Target','data.target_progress',
+  for(const required of ['Agency Diamond Gift Target','data.target_progress',
     'fmtDiamonds(progress.month)','fmtDiamonds(progress.lifetime)',
-    'sh-fam-refresh-target','await reloadRoyalFamily()'])
+    'sh-fam-refresh-target','await reloadRoyalFamily()',
+    'sh-fam-owner-commission-rule','Your own gifts count toward the Agency Gift Target'])
     assert.ok(ui.includes(required),required+' must be displayed by Android bridge');
+});
+
+test('Agency/BD/Host Royal 3D icons are bundled and preserve existing Family ledger behavior',()=>{
+  const root=new URL('../../android-staging/app/src/main/assets/sharika-agency-icons/',import.meta.url);
+  const names=['bd','agency','host','gifts','commission','salary','reports','ranking'];
+  for(const name of names){
+    const file=readFileSync(new URL(name+'.webp',root));
+    assert.equal(file.toString('ascii',0,4),'RIFF',name+' must be a real WebP image');
+    assert.equal(file.toString('ascii',8,12),'WEBP',name+' must be WebP');
+    assert.ok(file.length>1000&&file.length<300000,name+' must be optimized for mobile');
+  }
+  const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.match(ui,/sharika-agency-icons\//);
+  assert.match(ui,/famIcon\('agency'\)/);
+  assert.match(ui,/famIcon\('host'\)/);
+  assert.match(ui,/famIcon\('bd'\)/);
+  assert.match(ui,/prefers-reduced-motion:no-preference/);
+  assert.match(ui,/api\('GET','\/family\/me'\)/,
+    'visual redesign must preserve server-owned member/commission data');
 });

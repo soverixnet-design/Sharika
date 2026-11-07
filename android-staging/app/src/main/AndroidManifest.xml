@@ -17,7 +17,7 @@
             android:enableOnBackInvokedCallback="true"
             android:exported="true"
             android:launchMode="singleTop"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustNothing">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -28,6 +28,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="sharika" android:host="invite" />
+            </intent-filter>
+            <!-- HTTPS invite entry. Until Play signing assetlinks.json is live,
+                 the Worker landing page offers a native Open App button. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                    android:host="sharika-api-staging.soverixnet.workers.dev"
+                    android:pathPrefix="/invite/" />
             </intent-filter>
         </activity>
         <service

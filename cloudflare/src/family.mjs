@@ -136,6 +136,62 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
         coins_per_crystal:current.coins_per_crystal}},200,cors);
   }
 
+  // Keep the existing date-selectable member activity API for older Android
+  // clients. It is a read-only view of immutable, verified regular gifts;
+  // the newer /report API below remains available independently.
+  const memberActivity=/^\/api\/v1\/family\/members\/([0-9]{8})\/activity$/.exec(path);
+  if(memberActivity&&request.method==='GET'){
+    const family=await familyFor(db,uid);
+    if(!family)return fail('family_membership_required',403,cors);
+    const selectedId=memberActivity[1];
+    const viewer=await active(db,uid);
+    if(!['leader','co_leader'].includes(family.role)&&
+       showId(viewer.public_no)!==selectedId)
+      return fail('family_member_detail_permission_denied',403,cors);
+    const member=await db.prepare(
+      'SELECT u.auth_uid,u.public_no,u.name,m.role,m.joined_at FROM sharika_family_members m '+
+      'JOIN sharika_users u ON u.auth_uid=m.user_uid '+
+      'WHERE m.family_id=? AND u.public_no=?'
+    ).bind(family.id,Number(selectedId)).first();
+    if(!member)return fail('family_member_not_found',404,cors);
+    const dateParam=new URL(request.url).searchParams.get('date');
+    const day=dateParam||new Date().toISOString().slice(0,10);
+    const parsedDay=Date.parse(day+'T00:00:00Z');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(parsedDay)||
+      new Date(parsedDay).toISOString().slice(0,10)!==day)
+      return fail('invalid_family_activity_date',400,cors);
+    const total=await db.prepare(
+      'SELECT COUNT(*) AS gift_count,COALESCE(SUM(e.quantity*e.price_coins),0) AS gift_coins '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND g.tab IN (0,1)'
+    ).bind(member.auth_uid,member.joined_at).first();
+    const byDay=rows(await db.prepare(
+      'SELECT date(e.created_at) AS day,COUNT(*) AS gift_count,'+
+      'SUM(e.quantity*e.price_coins) AS gift_coins '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND g.tab IN (0,1) '+
+      'GROUP BY date(e.created_at) ORDER BY day DESC LIMIT 31'
+    ).bind(member.auth_uid,member.joined_at).all());
+    const gifts=rows(await db.prepare(
+      'SELECT e.id,e.created_at,e.room_id,e.quantity,e.price_coins,'+
+      'g.name AS gift_name,u.public_no AS recipient_no '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'JOIN sharika_users u ON u.auth_uid=e.recipient_uid '+
+      'WHERE e.sender_uid=? AND e.created_at>=? AND date(e.created_at)=? '+
+      'AND g.tab IN (0,1) ORDER BY e.id DESC LIMIT 100'
+    ).bind(member.auth_uid,member.joined_at,day).all());
+    const earned=await db.prepare(
+      'SELECT COALESCE(SUM(crystal_units),0) AS units '+
+      'FROM sharika_family_crystal_ledger WHERE family_id=? AND beneficiary_uid=?'
+    ).bind(family.id,member.auth_uid).first();
+    return reply({member:{id:selectedId,name:member.name,role:member.role,
+      joined_at:member.joined_at},total:{gift_count:Number(total?.gift_count)||0,
+      gift_coins:Number(total?.gift_coins)||0,
+      earned_crystal_units:Number(earned?.units)||0},days:byDay,
+      selected_date:day,gifts:gifts.map(g=>({...g,recipient_id:showId(g.recipient_no),
+        recipient_no:undefined})),has_more_gifts:gifts.length===100,
+      source:'verified_regular_gifts_after_family_join',timezone:'UTC'},200,cors);
+  }
   // A family member sees their own verified activity. Only the Family Owner
   // may inspect other members; BD identity alone never grants this access.
   const memberReport=/^\/api\/v1\/family\/members\/([0-9]{8})\/report$/.exec(path);
@@ -201,6 +257,113 @@ export async function handleFamilyApp({request,env,uid,path,cors,reply,fail,ctx}
       'WHERE t.sender_uid=? ORDER BY t.id DESC LIMIT 100'
     ).bind(uid).all()).map(x=>({...x,seller_id:showId(x.seller_no),seller_no:undefined}));
     return reply({wallet:await crystalSummary(db,uid),credits,transfers},200,cors);
+  }
+  // Host statements are derived from immutable, server-verified regular gifts.
+  // A statement is NOT a salary credit; salary policies/payments require an
+  // explicit, audited Admin decision before any money-like ledger is affected.
+  if(path==='/api/v1/family/host/statement'&&request.method==='GET'){
+    const family=await familyFor(db,uid);
+    if(!family)return fail('family_membership_required',403,cors);
+    const user=await active(db,uid);
+    const statement=await db.prepare(
+      'SELECT COUNT(e.id) AS lifetime_gifts,'+
+      'COALESCE(SUM(e.quantity*e.price_coins),0) AS lifetime_diamonds,'+
+      "COALESCE(SUM(CASE WHEN e.created_at>=datetime('now','start of day') "+
+      'THEN e.quantity*e.price_coins ELSE 0 END),0) AS today_diamonds,'+
+      "COALESCE(SUM(CASE WHEN e.created_at>=datetime('now','weekday 0','-6 days','start of day') "+
+      'THEN e.quantity*e.price_coins ELSE 0 END),0) AS week_diamonds,'+
+      "COALESCE(SUM(CASE WHEN e.created_at>=datetime('now','start of month') "+
+      'THEN e.quantity*e.price_coins ELSE 0 END),0) AS month_diamonds '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'JOIN sharika_family_members m ON m.user_uid=e.sender_uid '+
+      'WHERE m.family_id=? AND m.user_uid=? AND e.created_at>=m.joined_at AND g.tab IN (0,1)'
+    ).bind(family.id,uid).first();
+    const days=rows(await db.prepare(
+      'SELECT date(e.created_at) AS day,COUNT(*) AS gift_count,'+
+      'SUM(e.quantity*e.price_coins) AS gift_diamonds '+
+      'FROM sharika_gift_events e JOIN sharika_gifts g ON g.id=e.gift_id '+
+      'JOIN sharika_family_members m ON m.user_uid=e.sender_uid '+
+      'WHERE m.family_id=? AND m.user_uid=? AND e.created_at>=m.joined_at AND g.tab IN (0,1) '+
+      'GROUP BY date(e.created_at) ORDER BY day DESC LIMIT 31'
+    ).bind(family.id,uid).all());
+    const earned=await db.prepare(
+      'SELECT COALESCE(SUM(crystal_units),0) AS units FROM sharika_family_crystal_ledger '+
+      'WHERE beneficiary_uid=? AND family_id=?'
+    ).bind(uid,family.id).first();
+    return reply({host:{id:showId(user.public_no),name:user.name,role:family.role,
+      agency_id:family.id,agency_name:family.name,joined_at:family.joined_at},
+      gifts:statement||{lifetime_gifts:0,lifetime_diamonds:0,today_diamonds:0,
+        week_diamonds:0,month_diamonds:0},days,
+      earned_crystal_units:Number(earned?.units)||0,
+      salary:{state:'not_configured',payable_units:0,automatic_payment:false,
+        note:'Host salary policy and payment approval have not been configured by Admin.'},
+      source:'verified_regular_gift_events_since_join',timezone:'UTC'},200,cors);
+  }
+  if(path==='/api/v1/family/agency/hosts'&&request.method==='GET'){
+    const family=await familyFor(db,uid);
+    if(!family||!['leader','co_leader'].includes(family.role))
+      return fail('agency_report_permission_denied',403,cors);
+    const hosts=rows(await db.prepare(
+      'SELECT u.public_no AS host_no,u.name,m.role,m.joined_at,'+
+      'COUNT(e.id) AS gift_count,'+
+      'COALESCE(SUM(e.quantity*e.price_coins),0) AS lifetime_diamonds,'+
+      "COALESCE(SUM(CASE WHEN e.created_at>=datetime('now','start of day') "+
+      'THEN e.quantity*e.price_coins ELSE 0 END),0) AS today_diamonds,'+
+      "COALESCE(SUM(CASE WHEN e.created_at>=datetime('now','weekday 0','-6 days','start of day') "+
+      'THEN e.quantity*e.price_coins ELSE 0 END),0) AS week_diamonds,'+
+      "COALESCE(SUM(CASE WHEN e.created_at>=datetime('now','start of month') "+
+      'THEN e.quantity*e.price_coins ELSE 0 END),0) AS month_diamonds '+
+      'FROM sharika_family_members m JOIN sharika_users u ON u.auth_uid=m.user_uid '+
+      'LEFT JOIN sharika_gift_events e ON e.sender_uid=m.user_uid AND e.created_at>=m.joined_at '+
+      'AND EXISTS(SELECT 1 FROM sharika_gifts g WHERE g.id=e.gift_id AND g.tab IN (0,1)) '+
+      'WHERE m.family_id=? GROUP BY m.user_uid '+
+      'ORDER BY month_diamonds DESC,lifetime_diamonds DESC,u.public_no ASC LIMIT 200'
+    ).bind(family.id).all()).map(h=>({...h,host_id:showId(h.host_no),host_no:undefined}));
+    return reply({agency:{id:family.id,name:family.name,role:family.role},hosts,
+      period:'UTC_calendar_month',source:'verified_regular_gifts_after_join'},200,cors);
+  }
+  // BD oversight is strictly scoped by the authenticated active BD's UID.
+  // Never expose other agents' agencies, personal wallets, or member gift events.
+  if(path==='/api/v1/family/bd/overview'&&request.method==='GET'){
+    const agent=await db.prepare('SELECT active,can_grant FROM sharika_bd_agents WHERE bd_uid=?')
+      .bind(uid).first();
+    if(!agent?.active)return fail('bd_permission_denied',403,cors);
+    const agencies=rows(await db.prepare(
+      'WITH gift_totals AS ('+
+      'SELECT m.family_id,COUNT(e.id) AS gift_count,'+
+      'COALESCE(SUM(e.quantity*e.price_coins),0) AS lifetime_diamonds,'+
+      "COALESCE(SUM(CASE WHEN e.created_at>=datetime('now','start of month') "+
+      'THEN e.quantity*e.price_coins ELSE 0 END),0) AS month_diamonds '+
+      'FROM sharika_families f JOIN sharika_family_members m ON m.family_id=f.id '+
+      'JOIN sharika_gift_events e ON e.sender_uid=m.user_uid AND e.created_at>=m.joined_at '+
+      'JOIN sharika_gifts g ON g.id=e.gift_id AND g.tab IN (0,1) '+
+      'WHERE f.bd_uid=? GROUP BY m.family_id),'+
+      'commission_totals AS ('+
+      'SELECT family_id,SUM(crystal_units) AS earned_units,'+
+      "SUM(CASE WHEN created_at>=datetime('now','start of month') "+
+      'THEN crystal_units ELSE 0 END) AS month_units '+
+      "FROM sharika_family_crystal_ledger WHERE beneficiary_uid=? AND kind='bd' "+
+      'GROUP BY family_id) '+
+      'SELECT f.id,f.name,f.level,f.status,u.public_no AS owner_no,'+
+      'COUNT(m.user_uid) AS member_count,'+
+      'COALESCE(g.gift_count,0) AS gift_count,'+
+      'COALESCE(g.lifetime_diamonds,0) AS lifetime_diamonds,'+
+      'COALESCE(g.month_diamonds,0) AS month_diamonds,'+
+      'COALESCE(c.earned_units,0) AS earned_crystal_units,'+
+      'COALESCE(c.month_units,0) AS month_crystal_units '+
+      'FROM sharika_families f JOIN sharika_users u ON u.auth_uid=f.owner_uid '+
+      'LEFT JOIN sharika_family_members m ON m.family_id=f.id '+
+      'LEFT JOIN gift_totals g ON g.family_id=f.id '+
+      'LEFT JOIN commission_totals c ON c.family_id=f.id '+
+      'WHERE f.bd_uid=? GROUP BY f.id ORDER BY f.id DESC LIMIT 100'
+    ).bind(uid,uid,uid).all()).map(a=>({...a,owner_id:showId(a.owner_no),owner_no:undefined}));
+    return reply({bd:{active:true,can_grant:!!agent.can_grant},
+      totals:{agency_count:agencies.length,
+        host_count:agencies.reduce((sum,a)=>sum+Number(a.member_count||0),0),
+        month_gift_diamonds:agencies.reduce((sum,a)=>sum+Number(a.month_diamonds||0),0),
+        earned_crystal_units:agencies.reduce((sum,a)=>sum+Number(a.earned_crystal_units||0),0)},
+      agencies,has_more_agencies:agencies.length===100,
+      source:'verified_regular_gifts_and_immutable_bd_crystal_ledger',timezone:'UTC'},200,cors);
   }
   if(path==='/api/v1/family/bd/families'&&request.method==='GET'){
     const bd=await db.prepare('SELECT active FROM sharika_bd_agents WHERE bd_uid=?').bind(uid).first();

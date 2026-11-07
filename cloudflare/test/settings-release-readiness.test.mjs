@@ -47,5 +47,8 @@ test('Play-review AAB is distinguished from production, with API 36 and stable s
   assert.ok(build.includes('targetSdk 36'));
   assert.ok(build.includes('release {'));
   assert.ok(build.includes('signingConfig signingConfigs.sharikaStaging'));
-  assert.ok(native.includes('https://sharika-api-staging.soverixnet.workers.dev'));
+  assert.ok(native.includes('BuildConfig.SHARIKA_API_ORIGIN'));
+  assert.ok(build.includes('https://sharika-api-staging.soverixnet.workers.dev'));
+  assert.ok(build.includes('SHARIKA_PLAY_API_ORIGIN'));
+  assert.ok(build.includes('SHARIKA_PLAY_STAGING_CANDIDATE'));
 });

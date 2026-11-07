@@ -31,8 +31,8 @@ test('outside room cards show account country, but photo management remains insi
   assert.match(ui,/location\.textContent=title/);
   assert.match(ui,/summary\.textContent='ID '\+displayId/);
   assert.doesNotMatch(ui,/textContent='📷 Edit photo'/);
-  assert.match(ui,/button\.textContent='📷 Change room card photo'/);
-  assert.match(ui,/button\.onclick=\(\)=>pickRoomCover\(room,frame\)/);
+  assert.match(ui,/row\(roomGroup,'Profile photo','Edit cover'/);
+  assert.match(ui,/owner\?\(\)=>pickRoomCover\(room,frame\):null/);
 });
 
 test('signup requires manual ISO country; existing users can choose a country without GPS',()=>{

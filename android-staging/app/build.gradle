@@ -9,11 +9,37 @@ def stagingKeystorePath = System.getenv('SHARIKA_STAGING_KEYSTORE_PATH')
 def stagingKeystorePassword = System.getenv('SHARIKA_STAGING_KEYSTORE_PASSWORD')
 def stableStagingSigner = stagingKeystorePath && stagingKeystorePassword
 
+// Production upload signing can be supplied entirely through CI secrets.
+// Never store the Play upload key, alias or passwords in this repository.
+def playUploadPath = System.getenv('SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH')
+def playUploadStorePassword = System.getenv('SHARIKA_PLAY_UPLOAD_STORE_PASSWORD')
+def playUploadAlias = System.getenv('SHARIKA_PLAY_UPLOAD_KEY_ALIAS')
+def playUploadKeyPassword = System.getenv('SHARIKA_PLAY_UPLOAD_KEY_PASSWORD')
+def stablePlayUploadSigner = playUploadPath && playUploadStorePassword &&
+    playUploadAlias && playUploadKeyPassword
+// Play distribution must point at a separately configured production Worker.
+// A staging-backed build is allowed only when CI explicitly requests a test candidate.
+def productionApiOrigin = System.getenv('SHARIKA_PLAY_API_ORIGIN')?.trim()
+def allowStagingCandidate = System.getenv('SHARIKA_PLAY_STAGING_CANDIDATE') == 'true'
+if (productionApiOrigin && !(productionApiOrigin ==~ /^https:\/\/[a-zA-Z0-9.-]+$/)) {
+    throw new GradleException('SHARIKA_PLAY_API_ORIGIN must be an HTTPS origin without a path')
+}
+def chosenPlayOrigin = productionApiOrigin ?: 'https://sharika-api-staging.soverixnet.workers.dev'
+
 android {
     namespace 'com.soverixnet.sharika'
     compileSdk 36
+    buildFeatures { buildConfig true }
 
     signingConfigs {
+        if (stablePlayUploadSigner) {
+            sharikaPlayUpload {
+                storeFile file(playUploadPath)
+                storePassword playUploadStorePassword
+                keyAlias playUploadAlias
+                keyPassword playUploadKeyPassword
+            }
+        }
         if (stableStagingSigner) {
             sharikaStaging {
                 storeFile file(stagingKeystorePath)
@@ -26,17 +52,23 @@ android {
 
     buildTypes {
         debug {
+            buildConfigField 'boolean', 'SHARIKA_PLAY_BUILD', 'false'
+            buildConfigField 'String', 'SHARIKA_API_ORIGIN', '"https://sharika-api-staging.soverixnet.workers.dev"'
             if (stableStagingSigner) {
                 signingConfig signingConfigs.sharikaStaging
             }
         }
-        // Play-review AAB only. This isolated branch still targets the
-        // staging API and uses the encrypted *staging* key, so do NOT submit
-        // this bundle as a production Play release.
+        // Release-format Android App Bundle; prefer the dedicated Play
+        // upload certificate when present. The fallback lets CI produce a
+        // verifiable signed candidate without exposing a new private key.
         release {
+            buildConfigField 'boolean', 'SHARIKA_PLAY_BUILD', 'true'
+            buildConfigField 'String', 'SHARIKA_API_ORIGIN', '"' + chosenPlayOrigin + '"'
             minifyEnabled false
             shrinkResources false
-            if (stableStagingSigner) {
+            if (stablePlayUploadSigner) {
+                signingConfig signingConfigs.sharikaPlayUpload
+            } else if (stableStagingSigner) {
                 signingConfig signingConfigs.sharikaStaging
             }
         }
@@ -46,8 +78,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 4
-        versionName '0.4.0-rc-settings-staging'
+        versionCode 100
+        versionName '1.0.0'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -56,6 +88,8 @@ android {
 }
 
 dependencies {
+    // Google Play one-time consumable coins; receipts are verified on our Worker.
+    implementation 'com.android.billingclient:billing:9.1.0'
     implementation platform('com.google.firebase:firebase-bom:35.1.0')
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-messaging'
@@ -63,6 +97,19 @@ dependencies {
     implementation 'androidx.credentials:credentials:1.3.0'
     implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'
     implementation 'com.google.android.libraries.identity.googleid:googleid:1.2.1'
+    // Carry a verified Play Store invite across installation into first signup.
+    implementation 'com.android.installreferrer:installreferrer:2.2'
+}
+
+// Building an upload bundle against staging is an explicit non-publishable
+// candidate. Never accidentally ship it as the Play Store production build.
+tasks.configureEach { task ->
+    if (task.name == 'bundleRelease' || task.name == 'assembleRelease') {
+        task.doFirst {
+            if (!productionApiOrigin && !allowStagingCandidate)
+                throw new GradleException('Production API missing: set SHARIKA_PLAY_API_ORIGIN before Play release')
+        }
+    }
 }
 
  
@@ -84,6 +131,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
                     '<link rel="stylesheet" href="./royal-profile.css">\n' +
                     '<link id="sharika-royal-premium-style" rel="stylesheet" href="./royal-premium.css">\n' +
+                    '<link id="sharika-agency-style" rel="stylesheet" href="./agency-center.css">\n' +
                     '<link id="sharika-winged-theme-style" rel="stylesheet" href="./royal-winged-theme.css">\n' +
                     '<style id="sharika-royal-splash">' +
                     '#sp{background:linear-gradient(180deg,#230c48bb,#070315ef),url(./royal-winged-bg.jpg) center/cover!important;color:#ffebad!important}' +
@@ -98,14 +146,14 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                     'window.API.signup=window.API.login;' +
                     '</script>' +
                     '<script id="sharika-royal-ui" src="./royal-premium.js"></script>' +
-                    '<script src="./connection.js"></script>')
+                    '<script src="./connection.js"></script>' +
+                    '<script id="sharika-agency-script" src="./agency-center.js"></script>')
         }
     }
     // Owner-provided royal profile art; keep the original JPEG and PNG intact.
     from(rootProject.file('../app/main-profile-bg.jpg'))
     from(rootProject.file('../app/main-profile-icons.webp'))
     from(rootProject.file('../app/invite-royal-chest.webp'))
-    from(rootProject.file('../app/golden-home-background.jpg'))
     from(rootProject.file('../app/champagne-home-background.webp'))
     from(rootProject.file('../app/champagne-home-icons.webp'))
     from(rootProject.file('../app/golden-home.css'))
@@ -134,6 +182,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('royal-shop-bg.png'))
     from(rootProject.file('royal-backpack-bg.png'))
     from(rootProject.file('royal-market.css'))
+    from(rootProject.file('agency-center.css'))
+    from(rootProject.file('agency-center.js'))
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }

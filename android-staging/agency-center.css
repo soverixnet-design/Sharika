@@ -1,0 +1,170 @@
+/* Sharika Agency / BD / Host, native WebView screen. Gold-on-obsidian reference. */
+#sh-agency-panel[hidden]{display:none!important}
+#sh-agency-panel,#sh-agency-panel *{box-sizing:border-box}
+#sh-agency-panel{position:fixed;z-index:2147483600;inset:0;overflow-y:auto;
+  overscroll-behavior:contain;color:#f9f1e0;font-family:system-ui,-apple-system,sans-serif;
+  background:#0d101a url('./royal-winged-bg.jpg') center top/cover fixed;
+  padding:calc(8px + env(safe-area-inset-top,0px)) 13px calc(88px + env(safe-area-inset-bottom,0px))}
+#sh-agency-panel:before{content:'';position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% -15%,#c58b3725,transparent 45%),
+    linear-gradient(180deg,#09101ce8,#11101bde 60%,#0b0c15f8);z-index:-1}
+#sh-agency-panel .ag-shell{width:100%;max-width:530px;margin:0 auto}
+#sh-agency-panel button{font-family:inherit;cursor:pointer}
+#sh-agency-panel button:focus-visible,#sh-agency-panel input:focus-visible{
+  outline:3px solid #ffe79d;outline-offset:3px}
+#sh-agency-panel .ag-back{border:0;background:#171b29b8;color:#f4d994;
+  border-radius:50%;width:43px;height:43px;font-size:27px;line-height:1}
+#sh-agency-panel .ag-header{display:flex;align-items:center;gap:10px;padding:12px 4px 7px}
+#sh-agency-panel .ag-header strong{flex:1;font-size:14px;letter-spacing:.12em;color:#ffe2aa}
+#sh-agency-panel .ag-title{text-align:center;margin:7px 0 16px}
+#sh-agency-panel .ag-title .ag-crown{display:block;font-size:40px;color:#ffde86;
+  filter:drop-shadow(0 3px 0 #673e0d) drop-shadow(0 6px 6px #e1a44890)}
+#sh-agency-panel h1{margin:2px 0 4px;font-family:Georgia,serif;font-weight:800;
+  text-transform:uppercase;color:#ffe7ae;letter-spacing:.025em;font-size:34px;
+  text-shadow:0 1px 0 #fff6d6,0 3px 0 #a96624,0 5px 1px #5d310c,0 9px 15px #ad711fa8}
+#sh-agency-panel h2{font-family:Georgia,serif;color:#fff0cc;font-size:23px;margin:22px 0 12px}
+#sh-agency-panel h3{margin:0;font-family:Georgia,serif;font-size:18px;color:#ffe8b5}
+#sh-agency-panel p{margin:7px 0;line-height:1.45}
+#sh-agency-panel small{font-size:11px;color:#ddcfbd}
+#sh-agency-panel .ag-id{display:inline-block;border:1px solid #d3a15b;
+  border-radius:99px;background:#11131f;padding:5px 22px;color:#f9d68a;
+  box-shadow:0 0 0 2px #70421b44,inset 0 1px 2px #f7cc8859}
+#sh-agency-panel .ag-panel{border:1px solid #b68a5c;border-radius:20px;
+  background:linear-gradient(150deg,#cfa26725,transparent 28%),
+    linear-gradient(140deg,#322c32f4,#171820ed 65%,#292022e5);
+  box-shadow:inset 0 2px 1px #fff4,inset 1px 0 2px #ffe6a52b,
+    inset 0 -4px 9px #02040899,0 4px 0 #4d3220,0 13px 20px #000a;
+  padding:15px;margin:15px 0}
+#sh-agency-panel .ag-panel>img{width:42px;height:42px;object-fit:contain;vertical-align:middle}
+#sh-agency-panel .ag-hero{border:2px solid #f6cc7b;border-radius:25px;position:relative;
+  padding:24px 15px;text-align:center;overflow:hidden;
+  background:radial-gradient(ellipse at 20% 20%,#ffd88b37,transparent 53%),
+    linear-gradient(145deg,#39272a 2%,#54371d 36%,#171826 76%,#33201c 100%);
+  box-shadow:inset 0 3px 2px #fff5cd91,inset 3px 0 5px #e8b75540,
+    inset 0 -8px 16px #07070fbd,0 1px 0 #f4d58e,0 5px 0 #65401e,
+    0 0 22px #c78a3442,0 18px 27px #000b}
+#sh-agency-panel .ag-hero:before{content:'';position:absolute;inset:5px;
+  border:1px solid #ffdea344;border-radius:19px;pointer-events:none;
+  box-shadow:inset 0 1px 2px #ffdb9136}
+#sh-agency-panel .ag-hero:after{content:'';position:absolute;right:-20px;top:-40px;
+  width:120px;height:140px;transform:rotate(30deg);
+  background:linear-gradient(90deg,transparent,#ffe6aa27,transparent);pointer-events:none}
+#sh-agency-panel .ag-hero small{font-size:14px;color:#eed5ae}
+#sh-agency-panel .ag-hero strong{display:block;font-size:55px;font-weight:900;line-height:1.2;
+  color:#ffe9aa;text-shadow:0 2px 0 #fff5c77f,0 4px 0 #93520e,
+    0 7px 1px #472400,0 10px 21px #e2a13bb0;letter-spacing:-.035em}
+#sh-agency-panel .ag-hero .ag-icon{width:98px;height:98px;object-fit:contain;
+  filter:drop-shadow(0 4px 0 #805122) drop-shadow(0 12px 9px #000a)}
+#sh-agency-panel .ag-hero-row{display:flex;align-items:center;justify-content:center;gap:12px}
+#sh-agency-panel .ag-chip{display:inline-block;border:1px solid #b89153;background:#46331caa;
+  padding:5px 13px;border-radius:30px;font-size:12px;color:#f5e1bc}
+#sh-agency-panel .ag-row{display:flex;align-items:center;gap:11px;min-width:0}
+#sh-agency-panel .ag-grow{flex:1;min-width:0}
+#sh-agency-panel .ag-card .ag-grow>small{display:block;line-height:1.5}
+#sh-agency-panel .ag-card{width:100%;border:1px solid #bca16b;
+  border-radius:19px;position:relative;overflow:hidden;
+  background:linear-gradient(146deg,#d6ac6d26,transparent 35%),
+    linear-gradient(120deg,#35303aef,#161923f6 75%,#3d2c24eb);
+  padding:11px;display:flex;align-items:center;gap:12px;text-align:left;color:#fff1db;
+  box-shadow:inset 0 2px 1px #ffe2ac58,inset 0 -4px 7px #06071099,
+    0 3px 0 #493421,0 9px 13px #000a;margin:12px 0;
+  transition:transform .18s ease,box-shadow .18s ease}
+#sh-agency-panel .ag-card:before{content:'';position:absolute;left:8%;right:18%;top:0;
+  height:1px;background:linear-gradient(90deg,transparent,#fff0b9a3,transparent);pointer-events:none}
+#sh-agency-panel .ag-card:active{transform:translateY(3px);
+  box-shadow:inset 0 3px 5px #0009,0 2px 5px #0007}
+#sh-agency-panel .ag-card .ag-logo{width:66px;height:66px;object-fit:cover;border-radius:18px;
+  border:1px solid #eac681;background:#271926;box-shadow:0 0 12px #f6b84944}
+#sh-agency-panel .ag-card h3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sh-agency-panel .ag-card .ag-value{font-size:21px;font-weight:850;color:#ffe19b;
+  text-shadow:0 2px 0 #663916,0 6px 9px #efb25247}
+#sh-agency-panel .ag-card-metric{flex:0 0 78px;text-align:right;min-width:0}
+#sh-agency-panel .ag-card-metric small{display:block}
+#sh-agency-panel .ag-card-metric .ag-value{display:block}
+#sh-agency-panel .ag-time-label{display:block;color:#ffdf8f;font-size:11px;margin-top:4px}
+#sh-agency-panel .ag-card .ag-arrow{font-size:29px;color:#ffe6a7;margin-left:auto}
+#sh-agency-panel .ag-stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:13px 0}
+#sh-agency-panel .ag-stat{border:1px solid #c3a573;border-radius:16px;padding:13px;
+  min-width:0;background:linear-gradient(135deg,#e6bd752a,transparent 36%),
+    linear-gradient(130deg,#3a2b28ea,#171922f2);
+  box-shadow:inset 0 2px 2px #ffdc9242,inset 0 -4px 8px #0007,
+    0 3px 0 #5c4026,0 8px 12px #0009}
+#sh-agency-panel .ag-stat small{display:block;margin-bottom:3px}
+#sh-agency-panel .ag-stat strong{font-size:26px;color:#ffdf92;white-space:nowrap}
+#sh-agency-panel .ag-stat img{width:38px;height:38px;float:left;margin-right:8px;object-fit:contain}
+#sh-agency-panel .ag-big-button{width:100%;display:flex;align-items:center;justify-content:center;
+  gap:12px;min-height:57px;margin:21px 0;border-radius:24px;border:2px solid #fff0ad;
+  background:linear-gradient(160deg,#fff1b9,#e6b75e 42%,#b37826 82%,#ffdfa0);
+  box-shadow:inset 0 3px 4px #fff8,inset 0 -5px 7px #92531a88,0 7px 0 #5a391a,0 11px 23px #000a;
+  font-family:Georgia,serif!important;font-size:19px;font-weight:900;color:#301c0e}
+#sh-agency-panel .ag-big-button img{width:42px;height:42px;object-fit:contain}
+#sh-agency-panel .ag-big-button:active{transform:translateY(4px);box-shadow:0 3px 0 #5a391a}
+#sh-agency-panel .ag-period{display:flex;margin:16px 0;gap:3px;border:1px solid #8a7563;
+  border-radius:18px;background:#231d21aa;padding:3px}
+#sh-agency-panel .ag-period button{flex:1;min-width:0;color:#f3e3ce;background:transparent;
+  padding:11px 6px;border:0;border-radius:14px;font-size:14px}
+#sh-agency-panel .ag-period button[aria-pressed=true]{color:#25130b;font-weight:900;
+  background:linear-gradient(#fce3a9,#ad7139);box-shadow:inset 0 2px #fff7}
+#sh-agency-panel .ag-search{width:100%;border:1px solid #d8ad6b;border-radius:22px;
+  background:#161a23;color:#fff8e3;padding:13px 17px;font-size:15px}
+#sh-agency-panel .ag-avatar{width:64px;height:64px;object-fit:cover;border-radius:19px;
+  border:3px ridge #edc987;background:#221b22;
+  box-shadow:inset 0 0 0 2px #ffecba55,0 3px 0 #774b20,0 8px 12px #0009}
+#sh-agency-panel .ag-avatar-round{width:82px;height:82px;border-radius:50%;object-fit:cover;
+  border:3px ridge #efca83;background:#2b2331;
+  box-shadow:0 0 0 3px #663f24,0 3px 0 #926333,0 10px 17px #0009,0 0 16px #dca84e55}
+#sh-agency-panel .ag-identity{display:flex;align-items:center;gap:13px;margin:12px 0 20px;
+  padding:13px 10px;border-radius:21px;border:1px solid #d2a15a;
+  background:linear-gradient(125deg,#6946207a,#251e25eb 55%,#1b1b2bed);
+  box-shadow:inset 0 2px 1px #ffe3ac7a,inset 0 -5px 8px #0007,
+    0 4px 0 #5d3a1d,0 10px 17px #0009}
+#sh-agency-panel .ag-identity h3{font:800 19px system-ui,sans-serif}
+#sh-agency-panel .ag-identity p{font-size:12px;color:#ffe2a5;font-weight:700}
+#sh-agency-panel .ag-identity .ag-avatar-round{width:69px;height:69px;flex:none}
+#sh-agency-panel .ag-role-emblem{width:48px;height:48px;object-fit:contain;flex:none;
+  filter:drop-shadow(0 3px 0 #7f4e14) drop-shadow(0 6px 6px #000a)}
+#sh-agency-panel .ag-real-id{color:#ffe2a5;font-weight:750;font-size:14px}
+#sh-agency-panel .ag-time-value{font-size:21px!important;color:#ffdf92}
+#sh-agency-panel .ag-time-row .ag-gift-icon{width:35px;height:35px}
+#sh-agency-panel .ag-time-row .ag-grow>small{display:block;margin-top:3px}
+#sh-agency-panel .ag-days-collapse summary{cursor:pointer;color:#ffe3ac;font-weight:750;
+  list-style:none;padding:3px 0}
+#sh-agency-panel .ag-days-collapse summary:after{content:'⌄';float:right;color:#ffce77}
+#sh-agency-panel .ag-days-collapse[open] summary:after{content:'⌃'}
+#sh-agency-panel .ag-host-head{margin:15px 0;display:flex;gap:17px;align-items:center}
+#sh-agency-panel .ag-host-head h2{margin:0;font-family:system-ui;font-size:21px}
+#sh-agency-panel .ag-positive{color:#b0ecaa;font-size:13px}
+#sh-agency-panel .ag-activity{border-top:1px solid #ffffff24;display:flex;align-items:center;
+  gap:12px;padding:12px 0}
+#sh-agency-panel .ag-activity .ag-gift-icon{width:45px;height:45px;object-fit:contain}
+#sh-agency-panel .ag-activity b{font-size:14px}
+#sh-agency-panel .ag-activity .ag-value{margin-left:auto;color:#ffe49c;font-weight:800}
+#sh-agency-panel .ag-progress{height:11px;border-radius:99px;background:#62544d;overflow:hidden;margin:13px 0}
+#sh-agency-panel .ag-progress span{display:block;height:100%;background:linear-gradient(90deg,#ab722e,#ffe1a0)}
+#sh-agency-panel .ag-muted{color:#c6b6a1;font-size:12px}
+#sh-agency-panel .ag-error{background:#4e2029;color:#ffd7cd;padding:15px;border-radius:14px}
+#sh-agency-panel .ag-empty{border:1px dashed #9f835e;border-radius:17px;padding:25px 17px;
+  color:#d8ccb7;text-align:center;margin:15px 0;font-size:14px}
+#sh-agency-panel .ag-bottom{position:fixed;left:0;right:0;bottom:0;z-index:3;
+  display:flex;justify-content:center;gap:4px;background:#0b101af7;
+  border-top:2px solid #d8ab65;box-shadow:0 -5px 14px #06050cc7,inset 0 2px 2px #ffe6a92c;
+  padding:9px 10px calc(9px + env(safe-area-inset-bottom,0px))}
+#sh-agency-panel .ag-bottom button{width:min(24%,115px);border:0;background:transparent;
+  color:#d2c1a6;font-size:11px;padding:5px 1px}
+#sh-agency-panel .ag-bottom button[aria-current=page]{color:#ffe09c;font-weight:900}
+#sh-agency-panel .ag-bottom img{width:28px;height:28px;object-fit:contain;display:block;margin:0 auto 2px}
+#sh-family-entries .sh-agency-tile-icon{width:52px;height:52px;object-fit:contain;
+  filter:drop-shadow(0 4px 5px #190a0899)}
+@media(max-width:365px){#sh-agency-panel h1{font-size:29px}
+  #sh-agency-panel .ag-hero strong{font-size:44px}
+  #sh-agency-panel .ag-card .ag-logo{width:54px;height:54px}
+  #sh-agency-panel .ag-stat strong{font-size:20px}
+  #sh-agency-panel .ag-card{gap:7px;padding:9px}
+  #sh-agency-panel .ag-card .ag-avatar{width:50px;height:50px}
+  #sh-agency-panel .ag-card-metric{flex-basis:62px}
+  #sh-agency-panel .ag-card .ag-value{font-size:17px}
+  #sh-agency-panel .ag-role-emblem{width:37px;height:37px}}
+@media(prefers-reduced-motion:no-preference){
+  #sh-agency-panel .ag-hero .ag-icon,#sh-agency-panel .ag-role-emblem{
+    animation:agFloat 3.7s ease-in-out infinite alternate}
+  @keyframes agFloat{to{transform:translateY(-5px)}}}

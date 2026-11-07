@@ -1,3 +1,5 @@
+import {readBoundedJson} from './request-body.mjs';
+
 // Three original Sharika games, with *server-owned* virtual coin balances.
 // The uploaded HTML's localStorage balances, bots and random payouts are never used.
 // Round seed is committed in D1 before bets; clients see it only after the round ends.
@@ -180,7 +182,7 @@ export async function handleOriginalGameRequest({request,db,uid,game,action,repl
     const wallet=await userCoins(db,uid);
     if(!wallet||wallet.status!=='active')return fail('profile_required',403,cors);
     if(wallet.minor)return fail('game_adult_only',403,cors);
-    let b;try{b=await request.json();}catch{return fail('invalid_json',400,cors);}
+    let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
     if(!b||typeof b!=='object'||Array.isArray(b)||
       !Number.isSafeInteger(b.round_no)||b.round_no<0||
       !Number.isSafeInteger(b.pick)||b.pick<0||b.pick>(game==='night-food'?9:7)||

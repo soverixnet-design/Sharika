@@ -267,7 +267,8 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
       return stmt;
     };
     const env={DB:db,FIREBASE_PROJECT_ID:project,
-      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{}})}};
+      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{},
+        roomPolicyRead:async()=>({chat_mode:'anyone',mic_mode:'anyone',super_mic:true})})}};
     const ownerToken=await token();
     const guestToken=await token({sub:'room-guest'});
     const patch=(jwt,value)=>handleRequest(new Request(
@@ -493,12 +494,12 @@ test('diamond exchange batches both balances and immutable double-entry ledger',
       body:JSON.stringify({diamonds:100,request_id:'exchange_test_atomic123'})
     }),{DB:db,FIREBASE_PROJECT_ID:project});
     assert.equal(res.status,200);
-    assert.equal((await res.json()).credited_coins,70);
+    assert.equal((await res.json()).credited_coins,40);
     const batch=db.calls.find(c=>c[0]==='batch');
     assert.equal(batch[1].length,4);
-    assert.deepEqual(batch[1].map(s=>s.values[0]),[100,'firebase:'+project+':secure-user',70,'firebase:'+project+':secure-user']);
+    assert.deepEqual(batch[1].map(s=>s.values[0]),[100,'firebase:'+project+':secure-user',40,'firebase:'+project+':secure-user']);
     assert.equal(batch[1][1].values[1],-100);
-    assert.equal(batch[1][3].values[1],70);
+    assert.equal(batch[1][3].values[1],40);
   }finally{globalThis.fetch=originalFetch;}
 });
 
@@ -609,7 +610,7 @@ test('room gifts require Firebase auth and a verified room membership',async()=>
   }finally{globalThis.fetch=prior;}
 });
 
-test('regular gift atomically debits sender, credits recipient diamonds and 10% to the owner',async()=>{
+test('regular gift atomically debits sender, credits diamonds and accrues 10% for the next owner week',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
     const uid='firebase:'+project+':secure-user';
@@ -639,17 +640,20 @@ test('regular gift atomically debits sender, credits recipient diamonds and 10% 
     const json=await res.json();
     assert.equal(json.spent_coins,50);
     assert.equal(json.room_reward_coins,5);
-    assert.equal(json.owner_reward_coins,5);
+    assert.equal(json.owner_reward_coins,0);
+    assert.equal(json.owner_reward_pending_coins,5);
     assert.equal(json.recipient_diamonds_per_user,50);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
+    // Retired Family Crystal earnings do not double-count Agency salaries.
     assert.equal(stmts.length,13);
-    assert.match(stmts[11].sql,/sharika_family_crystal_ledger/);
-    assert.match(stmts[11].sql,/family_owner/);
-    assert.deepEqual(stmts[11].values,[uid,'gift_atomic_12345678']);
-    assert.match(stmts[12].sql,/sharika_family_crystal_ledger/);
-    assert.match(stmts[12].sql,/\'bd\'/);
-    assert.deepEqual(stmts[12].values,[uid,'gift_atomic_12345678']);
+    assert.ok(stmts.every(s=>!s.sql.includes('sharika_family_crystal_ledger')));
+    assert.deepEqual(stmts.slice(10).map(s=>s.values),[
+      [uid,'gift_atomic_12345678'],[uid,'gift_atomic_12345678'],
+      [uid,'gift_atomic_12345678']]);
+    assert.match(stmts[10].sql,/host_salary/);
+    assert.match(stmts[11].sql,/agency/);
+    assert.match(stmts[12].sql,/sharika_bd_agents/);
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);
@@ -662,12 +666,54 @@ test('regular gift atomically debits sender, credits recipient diamonds and 10% 
     assert.deepEqual(stmts[7].values,[uid,50,uid,uid,'gift_atomic_12345678']);
     assert.match(stmts[8].sql,/sharika_regular_room_rewards/);
     assert.equal(stmts[8].values[3],500);
-    assert.match(stmts[9].sql,/UPDATE sharika_users SET coins=CASE/);
-    assert.equal(stmts[9].values[1],5);
-    assert.equal(stmts[9].values[2],uid);
-    assert.match(stmts[10].sql,/room_gift_reward/);
-    assert.match(stmts[10].sql,/roomgift:/);
-    assert.equal(stmts[10].values[1],5);
+    assert.match(stmts[9].sql,/sharika_room_weekly_accruals/);
+    assert.deepEqual(stmts[9].values.slice(0,4),
+      [uid,'gift_atomic_12345678','10000001',uid]);
+    assert.equal(stmts[9].values[5],500);
+    assert.equal(stmts.some(v=>v.sql.includes('room_gift_reward')),false);
+  }finally{globalThis.fetch=prior;}
+});
+
+test('one million coin Luxury gift settles once at catalogue price without touching a real wallet',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000000,diamonds:0});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:uid});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
+      if(sql.includes('FROM sharika_gifts')&&sql.includes('tab IN (0,1,2)'))
+        stmt.first=async()=>({id:25,name:'Royal Wedding',emoji:'💍',price_coins:1000000,tab:1});
+      if(sql.includes('JOIN sharika_room_members m ON m.user_id'))
+        stmt.all=async()=>({results:[{auth_uid:uid,public_no:10000001,
+          status:'active',diamonds:0}]});
+      if(sql.startsWith('SELECT id,total_coins FROM sharika_gift_transactions'))
+        stmt.first=async()=>({id:72,total_coins:1000000});
+      return stmt;
+    };
+    const response=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/gifts',{
+      method:'POST',headers:{Authorization:'Bearer '+await token()},
+      body:JSON.stringify({gift_id:25,quantity:1,
+        recipient_public_ids:['10000001'],request_id:'gift_luxury_12345678'})
+    }),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(response.status,201);
+    const receipt=await response.json();
+    assert.equal(receipt.spent_coins,1000000);
+    assert.equal(receipt.recipient_diamonds_per_user,1000000);
+    assert.equal(receipt.room_reward_coins,100000);
+    assert.equal(receipt.owner_reward_pending_coins,100000);
+    const statements=db.calls.find(call=>call[0]==='batch')?.[1];
+    assert.ok(statements,'the server must atomically record the gift');
+    assert.equal(statements[0].values[0],1000000);
+    assert.equal(statements[2].values[1],-1000000);
+    assert.equal(statements[6].values[1],1000000);
+    assert.equal(statements[8].values[3],10000000);
+    assert.ok(statements.some(s=>s.sql.includes('sharika_gift_events')));
   }finally{globalThis.fetch=prior;}
 });
 
@@ -972,7 +1018,8 @@ test('room text chat requires verified membership and uses server identity',asyn
       getByName(name){
         assert.equal(name,'sharika:'+room);
         return {
-          async roomChatRead(after){calls.push(['read',after]);return {messages:[]};},
+          async roomPolicyRead(){return {chat_mode:'anyone',mic_mode:'anyone',super_mic:true};},
+          async roomChatRead(...args){calls.push(['read',...args]);return {messages:[]};},
           async roomChatSend(...params){
             calls.push(['send',...params]);
             return {message:{id:1,sender_id:params[1],name:params[2],
@@ -990,7 +1037,7 @@ test('room text chat requires verified membership and uses server identity',asyn
     const read=await handleRequest(new Request(endpoint+'?after=17',{headers}),
       {DB:roomDb(true),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
     assert.equal(read.status,200);
-    assert.deepEqual(calls[0],['read',17]);
+    assert.deepEqual(calls[0],['read',principal,17]);
     const invalid=await handleRequest(new Request(endpoint,{
       method:'POST',headers,
       body:JSON.stringify({body:'x'.repeat(301),request_id:'chat:request-12345'})
@@ -1011,12 +1058,148 @@ test('room text chat requires verified membership and uses server identity',asyn
   }finally{globalThis.fetch=originalFetch;}
 });
 
+test('room policy is owner-controlled and enforces chat, mic and private-entry boundaries',async()=>{
+  const oldFetch=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const roomId='10000001';
+    const jwt=await token();
+    const headers={Authorization:'Bearer '+jwt};
+    const url='https://example.test/api/v1/rooms/'+roomId;
+    let policy={chat_mode:'anyone',mic_mode:'anyone',super_mic:true,
+      password_required:false,revision:1};
+    const called=[];
+    const coordinator={
+      async roomPolicyRead(){return policy;},
+      async roomPolicyUpdate(change){
+        called.push(['update',change]);
+        policy={...policy,chat_mode:change.chat_mode||policy.chat_mode,
+          mic_mode:change.mic_mode||policy.mic_mode,
+          super_mic:change.super_mic===undefined?policy.super_mic:change.super_mic,
+          password_required:change.password_action==='set'?true:
+            change.password_action==='clear'?false:policy.password_required,
+          revision:policy.revision+1};
+        return {ok:true,...policy};
+      },
+      async publishedFor(){return [];},
+      async roomPasswordCheck(_uid,pin){
+        called.push(['password_attempt',pin]);
+        return pin==='1234'?{allowed:true}:{allowed:false,error:
+          pin?'room_password_incorrect':'room_password_required'};
+      }
+    };
+    const envFor=(owner,joined=true)=>{
+      const db=fakeDb();const original=db.prepare.bind(db);
+      db.prepare=sql=>{
+        const stmt=original(sql);
+        if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+          stmt.first=async()=>({id:roomId,owner_id:owner,seat_count:12});
+        if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+          stmt.first=async()=>joined?{user_id:uid,role:'member',seat_no:null,muted:0}:null;
+        if(sql.includes('FROM sharika_users WHERE auth_uid'))
+          stmt.first=async()=>({auth_uid:uid,public_no:10000002,status:'active'});
+        return stmt;
+      };
+      return {DB:db,VOICE_ROOMS:{getByName:()=>coordinator},FIREBASE_PROJECT_ID:project};
+    };
+    const req=(route,method='GET',body)=>new Request(url+route,{
+      method,headers,...(body===undefined?{}:{body:JSON.stringify(body)})
+    });
+    const ownerEnv=envFor(uid);
+    const guestEnv=envFor('different-owner');
+    assert.equal((await handleRequest(req('/policy'),ownerEnv)).status,200);
+    assert.equal((await handleRequest(req('/policy'),envFor(uid,false))).status,403);
+    assert.equal((await handleRequest(req('/policy','PUT',{chat_mode:'owner'}),guestEnv)).status,403);
+    assert.equal((await handleRequest(req('/policy','PUT',{chat_mode:'unrestricted'}),ownerEnv)).status,400);
+    assert.equal((await handleRequest(req('/policy','PUT',{password:'1234'}),ownerEnv)).status,400);
+    const updated=await handleRequest(req('/policy','PUT',{
+      chat_mode:'owner',mic_mode:'owner',password_action:'set',password:'1234'
+    }),ownerEnv);
+    assert.equal(updated.status,200);
+    assert.equal((await updated.json()).password_required,true);
+    assert.equal((await (await handleRequest(req('/policy'),guestEnv)).json()).password,undefined);
+    assert.equal(called.filter(x=>x[0]==='update').length,1);
+    const deniedChat=await handleRequest(req('/chat','POST',{
+      body:'hello',request_id:'chat:verified-1234'
+    }),guestEnv);
+    assert.equal(deniedChat.status,403);
+    assert.equal((await deniedChat.json()).error,'room_chat_owner_only');
+    const deniedMic=await handleRequest(req('/seat','PUT',{seat_no:3}),guestEnv);
+    assert.equal(deniedMic.status,403);
+    assert.equal((await deniedMic.json()).error,'room_mic_owner_only');
+    const newcomer=envFor('different-owner',false);
+    const missingPin=await handleRequest(req('/join','POST',{}),newcomer);
+    assert.equal(missingPin.status,403);
+    assert.equal((await missingPin.json()).error,'room_password_required');
+    assert.equal(newcomer.DB.calls.filter(item=>item[0]==='run').length,0,
+      'wrong room PIN must not add a member to D1');
+    const incorrect=await handleRequest(req('/join','POST',{password:'9999'}),newcomer);
+    assert.equal(incorrect.status,403);
+    assert.equal((await incorrect.json()).error,'room_password_incorrect');
+    assert.equal(newcomer.DB.calls.filter(item=>item[0]==='run').length,0);
+  }finally{globalThis.fetch=oldFetch;}
+});
+
 test('room chat denies unverified requests before reaching the coordinator',async()=>{
   const response=await handleRequest(new Request(
     'https://example.test/api/v1/rooms/10000001/chat',{
       method:'POST',body:JSON.stringify({body:'hello'})}),
     {DB:fakeDb(),FIREBASE_PROJECT_ID:project});
   assert.equal(response.status,401);
+});
+
+test('each verified join resets the chat/gift boundary and announces the real name',async()=>{
+  const prior=globalThis.fetch;
+  globalThis.fetch=certFetch;
+  try{
+    const principal='firebase:'+project+':secure-user';
+    const db=fakeDb(),original=db.prepare.bind(db);
+    let giftSql=null,giftValues=null;
+    db.prepare=sql=>{
+      const stmt=original(sql);
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id=?'))
+        stmt.first=async()=>({id:'10000001',owner_id:'someone-else'});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id=?'))
+        stmt.first=async()=>({user_id:principal,room_id:'10000001',role:'member'});
+      if(sql.includes('SELECT * FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({auth_uid:principal,public_no:10000003,
+          status:'active',name:'Verified Room Guest'});
+      if(sql.includes('COALESCE(MAX(id),0) AS id FROM sharika_gift_events'))
+        stmt.first=async()=>({id:62});
+      if(sql.includes('FROM sharika_gift_events e')){
+        giftSql=sql;
+        stmt.all=async()=>{giftValues=stmt.values;return {results:[]};};
+      }
+      return stmt;
+    };
+    const records=[];
+    const coordinator={
+      async presenceJoin(...args){records.push(['presenceJoin',...args]);return true;},
+      async beginRoomVisit(...args){records.push(['begin',...args]);return {joined:true};},
+      async roomEntryAnnounce(...args){records.push(['entry',...args]);return {announced:true};},
+      async roomGiftAfter(uid){records.push(['giftAfter',uid]);return 62;},
+      async roomEntryRead(...args){records.push(['entries',...args]);return {events:[]};}
+    };
+    const rooms={getByName(){return coordinator;}};
+    const headers={Authorization:'Bearer '+await token()};
+    const endpoint='https://example.test/api/v1/rooms/10000001';
+    const env={DB:db,VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project};
+    const join=await handleRequest(new Request(endpoint+'/join',{method:'POST',headers}),env);
+    assert.equal(join.status,200);
+    assert.deepEqual(records[0],['presenceJoin',principal,'10000001']);
+    assert.deepEqual(records[1],['begin',principal,62]);
+    assert.deepEqual(records[2],['entry',principal,'10000003','Verified Room Guest','standard']);
+
+    const gifts=await handleRequest(new Request(endpoint+'/gifts',{headers}),env);
+    assert.equal(gifts.status,200);
+    assert.match(giftSql,/WHERE e\.room_id=\? AND e\.id>\?/);
+    assert.deepEqual(giftValues,['10000001',62]);
+
+    const entries=await handleRequest(new Request(endpoint+'/entries',{headers}),env);
+    assert.equal(entries.status,200);
+    assert.deepEqual(records.at(-1),['entries',principal,0]);
+  }finally{globalThis.fetch=prior;}
 });
 
 test('room seat emojis use verified sender ID, require a real mic seat and reject forged reactions',async()=>{
@@ -1108,6 +1291,7 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
     };
     const calls=[];
     const coordinator={
+      async roomPolicyRead(){return {chat_mode:'anyone',mic_mode:'anyone',super_mic:true};},
       async lockedSeats(){return [3];},
       async changeSeatLock(roomId,seat,locked){
         calls.push(['lock',roomId,seat,locked]);return {locked_seats:locked?[3]:[]};
@@ -1122,6 +1306,13 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       }
     };
     const rooms={getByName(name){
+      if(name==='sharika:presence:staging'){
+        // The members endpoint now checks live presence before room seats.
+        // Keep the owner's active-room state realistic in the test fixture.
+        return {async presenceRoomMembers(roomId){
+          assert.equal(roomId,'10000001');return [uid];
+        }};
+      }
       assert.equal(name,'sharika:10000001');return coordinator;
     }};
     const headers={Authorization:'Bearer '+await token()};
@@ -1215,6 +1406,7 @@ test('mic invitations require a verified room moderator, an unseated real member
     const rooms={getByName(name){
       assert.equal(name,'sharika:'+roomId);
       return {
+        async roomPolicyRead(){return {chat_mode:'anyone',mic_mode:'anyone',super_mic:true};},
         async seatInvitePending(user){calls.push(['pending',user]);return {invite:null};},
         async seatInviteSend(...args){
           calls.push(['send',...args]);

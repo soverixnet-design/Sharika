@@ -1,0 +1,81 @@
+name: Sharika pre-Play security and Family QA direct staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-room-free-lucky-box-20261104
+    paths:
+      - '.github/workflows/sharika-preplay-qa-direct-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Require pinned Android build and successful staging tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          android_run=41769652096
+          test_run=41770182343
+          staging_run=41770321770
+          gh run watch "$android_run" --repo "$repo" --exit-status
+          gh run watch "$test_run" --repo "$repo" --exit-status
+          gh run watch "$staging_run" --repo "$repo" --exit-status
+          test "$(gh api repos/$repo/actions/runs/$android_run --jq '.head_sha')" = f05f7d24ccbfc760575af26df01bf8fa0165ce68
+          test "$(gh api repos/$repo/actions/runs/$test_run --jq '.head_sha')" = 47fe7dd8d6491103de5f6c95f95d9bbdfbc17a08
+          test "$(gh api repos/$repo/actions/runs/$staging_run --jq '.head_sha')" = 151fd234a40766547646a9b557f2523c19f76347
+          for run in "$android_run" "$test_run" "$staging_run"; do
+            test "$(gh run view "$run" --repo "$repo" --json conclusion --jq '.conclusion')" = success
+          done
+      - name: Download the exact verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41769652096
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: verified-apk
+      - name: Verify APK content and direct-download payload
+        run: |
+          set -euo pipefail
+          apk='verified-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js | grep -F 'visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'Retry loading games' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'Royal Family' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'sh-fam-owner-commission-rule' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'Room details reconnecting automatically' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'ensureVoiceConnected(room.id).then(voice=>' >/dev/null
+          unzip -p "$apk" assets/royal-room-ui.js | grep -F 'renderPremiumHeader()' >/dev/null
+          for game in sovera-food-wheel night-food-wheel; do
+            unzip -l "$apk" | grep -F "assets/original-games/$game.html" >/dev/null
+          done
+          unzip -l "$apk" | grep -F 'assets/fruit-royale/index.html' >/dev/null
+          unzip -l "$apk" | grep -F 'assets/greedy-wheel/index.html' >/dev/null
+          install -m 0644 "$apk" verified-apk/Sharika-PrePlay-Family-Room-QA-Staging.apk
+          sha256sum verified-apk/Sharika-PrePlay-Family-Room-QA-Staging.apk
+      - name: Publish unique public direct APK prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-preplay-family-qa-staging-f05f7d24'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-PrePlay-Family-Room-QA-Staging.apk \
+            --repo "$repo" \
+            --target f05f7d24ccbfc760575af26df01bf8fa0165ce68 \
+            --title 'Sharika Pre-Play QA: games, room, Family, finance-limit (STAGING)' \
+            --notes 'Direct Android staging APK (not ZIP) for private QA. Includes game visibility Retry, room auto-recovery, and Family Owner commission eligibility explanation. Staging API finance rate limit for withdrawal requests and event prize awards was separately deployed with 472 passing checks and health verification. The live Family has no eligible non-owner gift yet, and the draft event is expired; they were not altered. Google login, two-way voice, actual game bets and privileged Admin Panel flows require physical devices/authenticated testers. NOT PRODUCTION, NOT A PLAY STORE BUNDLE, NOT PLAY-POLICY-APPROVED.' \
+            --prerelease

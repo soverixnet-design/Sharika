@@ -1,0 +1,70 @@
+name: Sharika Room and free Lucky Box direct staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-room-free-lucky-box-20261104
+    paths:
+      - '.github/workflows/sharika-room-lucky-box-direct-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-direct-staging-apk:
+    name: Verify exact emulator and publish direct APK prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Wait for exact approved APK build and emulator check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run watch 41762651772 --repo soverixnet-design/Sharika --exit-status
+      - name: Require pinned staging source, backend checks and successful deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          source_sha="$(gh api repos/soverixnet-design/Sharika/actions/runs/41762651772 --jq '.head_sha')"
+          test "$source_sha" = e79ce00e149b0f24426ef716e5a7b1c01de71dfe
+          for run_id in 41762651772 41762493014 41762499422; do
+            result="$(gh run view "$run_id" --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')"
+            test "$result" = success || { echo "::error::Staging run $run_id failed"; exit 1; }
+          done
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+          echo 'PINNED_SOURCE_STAGING_API_AND_EMULATOR_VERIFIED'
+      - name: Download the exact compiled Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41762651772
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: verified-apk
+      - name: Check APK payload and publish a direct file, not ZIP
+        run: |
+          set -euo pipefail
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/connection.js | grep -F 'SharikaLuckyBox' >/dev/null
+          unzip -p verified-apk/app-debug.apk assets/royal-room-ui.js | grep -F 'sh-week-payout' >/dev/null
+          unzip -p verified-apk/app-debug.apk assets/royal-room-ui.js | grep -F 'sh-overview-rewards' >/dev/null
+          install -m 0644 verified-apk/app-debug.apk verified-apk/Sharika-Free-Lucky-Box-Weekly-Staging.apk
+          sha256sum verified-apk/Sharika-Free-Lucky-Box-Weekly-Staging.apk
+      - name: Create a unique public staging prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='sharika-free-luckybox-weekly-staging-e79ce00e'
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing overwrite"
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Free-Lucky-Box-Weekly-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target e79ce00e149b0f24426ef716e5a7b1c01de71dfe \
+            --title "Sharika Room + Free Lucky Box + Weekly Reward (STAGING)" \
+            --notes "Direct Android staging APK (not a ZIP). Royal room with small Ranking, owner-only Room Reward dashboard, editable announcement, free two-hour Lucky Box (200 coins / temporary 24h frame / 24h entry / empty), and automatic audited weekly ordinary room gift payouts. Additive D1 migrations 0056 and 0057 were deployed to isolated staging without changing pre-existing user counts, coins or wallet ledger. Cloudflare tests and Android emulator smoke test passed. New features still need authenticated two-phone validation. DEBUG STAGING ONLY, not Play Store production." \
+            --prerelease

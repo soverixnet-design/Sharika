@@ -1,0 +1,71 @@
+name: Sharika auto invite HTTPS direct staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-invite-auto-link-20261104
+    paths:
+      - '.github/workflows/sharika-invite-direct-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Wait for exact Android, Worker and public link checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=soverixnet-design/Sharika
+          for run in 41772065540 41772065440; do
+            test "$(gh api repos/$repo/actions/runs/$run --jq '.head_sha')" = c8f6d6931efb69f1d876052f4c4106f4a898340d
+            gh run watch "$run" --repo "$repo" --exit-status
+            test "$(gh run view "$run" --repo "$repo" --json conclusion --jq '.conclusion')" = success
+          done
+          test "$(gh api repos/$repo/actions/runs/41772146329 --jq '.head_sha')" = 0ff2529fa0c9d7d9fff18738dab17fbb808179de
+          gh run watch 41772146329 --repo "$repo" --exit-status
+          test "$(gh run view 41772146329 --repo "$repo" --json conclusion --jq '.conclusion')" = success
+      - name: Download APK built from validated invite source
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41772065540
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: verified-apk
+      - name: Verify APK is direct installable and includes invite features
+        run: |
+          set -euo pipefail
+          apk='verified-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js | grep -F "const PUBLIC_INVITE_URL='https://sharika-api-staging.soverixnet.workers.dev/invite/'" >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F "native('copyInviteLink',{code:invite})" >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'await invitePendingReady;' >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'claimPendingInviteAfterLogin' >/dev/null
+          unzip -l "$apk" | grep -F 'assets/royal-room-ui.js' >/dev/null
+          unzip -l "$apk" | grep -F 'assets/greedy-wheel/index.html' >/dev/null
+          install -m 0644 "$apk" verified-apk/Sharika-Invite-Auto-Link-Staging.apk
+          sha256sum verified-apk/Sharika-Invite-Auto-Link-Staging.apk
+      - name: Publish unique direct APK prerelease for invite testing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=soverixnet-design/Sharika
+          tag='sharika-invite-autolink-staging-c8f6d693'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo 'Refusing to overwrite existing tagged APK'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Invite-Auto-Link-Staging.apk \
+            --repo "$repo" \
+            --target c8f6d6931efb69f1d876052f4c4106f4a898340d \
+            --title 'Sharika HTTPS Invite Link Auto Binding (STAGING)' \
+            --notes 'Direct Android staging APK: Share/Copy HTTPS Invite Link, native deep-link capture, first-install Play Install Referrer, auto-prefilled signup and server-verified referral claim. Existing Family, games, room and security logic retained. Cloudflare D1 tests, Android build and emulator smoke, and HTTPS landing deployment are required. For a manually sideloaded APK, tap the same invite link AGAIN after installation; Play Store installations can carry referrer automatically once the Play listing is live. Staging/tester only. Never upload to Play as production.' \
+            --prerelease

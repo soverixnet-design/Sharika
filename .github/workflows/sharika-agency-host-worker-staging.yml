@@ -1,0 +1,132 @@
+name: Sharika Agency BD Host isolated staging Worker
+
+on:
+  push:
+    branches: [feature/sharika-agency-salary-targets-integrated-20261106]
+    paths: ['.github/workflows/sharika-agency-host-worker-staging.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  agency-api-staging:
+    name: Verify Agency salary schema and deploy isolated staging API
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fail closed unless this is the exact isolated staging environment
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-agency-salary-targets-integrated-20261106'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const d=c.d1_databases?.[0];
+          const a=JSON.parse(readFileSync('wrangler.admin.jsonc','utf8'));
+          if(c.name!=='sharika-api-staging'||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             c.vars?.SHARIKA_ENV!=='staging'||c.workers_dev!==true||
+             c.keep_vars!==true||c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             c.d1_databases?.length!==1||d?.binding!=='DB'||
+             d.database_name!=='sharika-staging'||
+             d.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             c.durable_objects?.bindings?.length!==1||
+             c.durable_objects.bindings[0].name!=='VOICE_ROOMS'||
+             c.durable_objects.bindings[0].class_name!=='SharikaVoiceRoom'||
+             !c.secrets?.required?.includes('REALTIME_SFU_APP_ID')||
+             !c.secrets?.required?.includes('REALTIME_SFU_APP_SECRET')||
+             a.name!=='sharika-admin-staging'||
+             a.account_id!==c.account_id||
+             a.vars?.SHARIKA_ENV!=='staging'||
+             a.services?.length!==1||a.services[0].binding!=='SHARIKA_API'||
+             a.services[0].service!=='sharika-api-staging')
+            throw Error('Agency staging Worker target/bindings differ from approved environment');
+          console.log('SHARIKA_AGENCY_STAGING_TARGET_GUARDED');
+          NODE
+      - name: Run complete tests, including independent SQL ledger and room-time checks
+        run: npm run check
+      - name: Require existing live staging API health
+        run: curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+      - name: Confirm known staging Agency baseline before financial migration
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT key,host_bps,agency_bps,bd_bps FROM sharika_agency_policy WHERE key='standard'" \
+            | grep -F '4000' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_agency_earnings','sharika_agency_hosts','sharika_agency_room_activity','sharika_agency_presence_cursor') ORDER BY name" \
+            | grep -F 'sharika_agency_room_activity' >/dev/null
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1" \
+            | grep -F '0062_admin_media_assets.sql' >/dev/null
+      - name: Dry-run exact staging Worker without editing D1 or production
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
+      # Unrelated legacy migrations remain unapplied. Never run blanket
+      # 'd1 migrations apply', which could touch historic unrelated data.
+      - name: Apply only explicitly approved salary migration 0064
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --file migrations/0064_agency_salary_targets_exchange.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "INSERT INTO d1_migrations(name) SELECT '0064_agency_salary_targets_exchange.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0064_agency_salary_targets_exchange.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE name='sharika_agency_salary_exchanges'" \
+            | grep -F 'sharika_agency_salary_exchanges' >/dev/null
+      - name: Deploy only sharika-api-staging (historic D1 rows preserved)
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify updated API remains healthy
+        run: curl -fSs --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health >/dev/null
+
+  agency-admin-staging:
+    name: Publish the linked Agency policy editor to staging Admin
+    needs: agency-api-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Copy Admin frontend assets without modifying user data
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-agency-salary-targets-integrated-20261106'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          cp ../admin/index.html src/admin-index.html
+          cp ../admin/connection.js src/admin-connection.txt
+          grep -F 'BD · Agency · Host Control Center' src/admin-connection.txt >/dev/null
+      - name: Check and deploy isolated staging Admin frontend
+        run: |
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc
+          npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
+      - name: Verify Admin health and published Agency editor
+        run: |
+          curl -fSs --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/health >/dev/null
+          curl -fSs --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js \
+            | grep -F 'BD · Agency · Host Control Center' >/dev/null

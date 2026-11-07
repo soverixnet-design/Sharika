@@ -1,0 +1,68 @@
+name: Sharika staging invite link points to verified APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-invite-auto-link-20261104
+    paths:
+      - '.github/workflows/sharika-invite-qa-link-refresh.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify staging isolation and published APK match
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const link=readFileSync('src/invite-link.mjs','utf8');
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-invite-auto-link-20261104' ||
+             !process.env.CLOUDFLARE_API_TOKEN ||
+             c.name!=='sharika-api-staging' || c.vars?.SHARIKA_ENV!=='staging' ||
+             c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false' ||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             c.keep_vars!==true ||
+             c.d1_databases?.[0]?.database_name!=='sharika-staging' ||
+             !link.includes('sharika-invite-autolink-staging-c8f6d693/Sharika-Invite-Auto-Link-Staging.apk'))
+            throw Error('Unsafe target, feature flags or download path');
+          NODE
+          test "$(gh api repos/soverixnet-design/Sharika/releases/tags/sharika-invite-autolink-staging-c8f6d693 --jq '.assets[0].name')" = Sharika-Invite-Auto-Link-Staging.apk
+          test "$(gh api repos/soverixnet-design/Sharika/releases/tags/sharika-invite-autolink-staging-c8f6d693 --jq '.assets[0].digest')" = sha256:985a5e6621c6d63f9728118cdc61a98ab67b6a080cfa662365f85818fe1f7d0d
+      - name: Recheck D1, referral and game invariants
+        run: npm run check
+      - name: Verify staging healthy and Wrangler compiles before update
+        run: |
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-invite-download-review
+      - name: Deploy code only to staging Worker
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Confirm public invite displays the just-tested APK
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 20             https://sharika-api-staging.soverixnet.workers.dev/invite/10000001             | grep -F 'sharika-invite-autolink-staging-c8f6d693/Sharika-Invite-Auto-Link-Staging.apk' >/dev/null
+          echo 'SHARIKA_INVITE_DIRECT_APK_VERIFIED'

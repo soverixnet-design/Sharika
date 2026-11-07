@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleRoomModeration,handleRoomBanList } from '../src/moderation.mjs';
+import { handleRoomModeration,handleRoomBanList,handleRoomKickHistory } from '../src/moderation.mjs';
 
 function setup({role='owner',closeFails=false,targetIsAdmin=false,targetIsOwner=false}={}) {
   const calls=[];
@@ -104,12 +104,15 @@ test('a room admin can mute and kick a regular guest, without appointing other a
   assert.equal(kicked.status,200);
 });
 
-test('a room admin cannot moderate another admin or the room owner',async()=>{
-  const adminTarget=setup({role:'admin',targetIsAdmin:true});
-  const denied=await adminTarget.send('kick');
-  assert.equal(denied.status,403);
-  assert.equal(denied.body.error,'cannot_moderate_room_admin');
-  assert.equal(adminTarget.calls.some(c=>c.event==='batch'),false);
+test('a room admin cannot kick, block, mute, unmute or remove another admin',async()=>{
+  for(const action of ['kick','block','mute','unmute','remove_seat']){
+    const otherAdmin=setup({role:'admin',targetIsAdmin:true});
+    const denied=await otherAdmin.send(action);
+    assert.equal(denied.status,403,action);
+    assert.equal(denied.body.error,'cannot_moderate_room_admin',action);
+    assert.equal(otherAdmin.calls.some(c=>['batch','close','withdraw'].includes(c.event)),
+      false,action+' must not change the target, voice or room membership');
+  }
   const ownerTarget=setup({role:'admin',targetIsOwner:true});
   const owner=await ownerTarget.send('mute');
   assert.equal(owner.status,403);
@@ -165,4 +168,32 @@ test('Room Ban list is private to owner or assigned Room Admin',async()=>{
   assert.equal((await call('admin')).status,200);
   assert.equal((await call('member')).status,403);
   assert.ok(actions.some(sql=>sql.includes('b.banned_until_ms>?')));
+});
+
+test('Kick History shows verified room-scoped actions only to moderators',async()=>{
+  const sqls=[];
+  const env={DB:{prepare(sql){sqls.push(sql);return {
+    bind(...args){this.args=args;return this;},
+    async first(){return this.args?.[1]==='admin'?{active:1}:null;},
+    async all(){return {results:[{
+      id:41,action:'kick',created_at:'2026-11-05 00:00:00',
+      actor_name:'Owner',target_name:'Guest',target_public_no:10000002
+    }]};}
+  };}}};
+  async function check(uid){
+    const res=await handleRoomKickHistory({
+      request:new Request('https://api.example/api/v1/rooms/10000001/kick-history'),
+      env,uid,room:{owner_id:'owner'},roomId:'10000001',cors:{},
+      reply:(data,status)=>Response.json(data,{status}),
+      fail:(error,status)=>Response.json({error},{status})
+    });
+    return {status:res.status,body:await res.json()};
+  }
+  const owner=await check('owner');
+  assert.equal(owner.status,200);
+  assert.deepEqual(owner.body.history.map(entry=>entry.target_public_id),['10000002']);
+  assert.equal((await check('admin')).status,200);
+  assert.equal((await check('member')).status,403);
+  assert.ok(sqls.some(sql=>sql.includes("h.action='kick'")));
+  assert.ok(sqls.some(sql=>sql.includes('WHERE h.room_id=?')));
 });

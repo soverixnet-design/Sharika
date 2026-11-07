@@ -122,6 +122,35 @@ test('verified adult state uses the server wallet and never exposes seed during 
   sqlite.close();
 });
 
+test('Today revenue counts settled gross winnings only and resets on UTC day',async()=>{
+  const {sqlite,db}=database();
+  const now=Date.now(),n=Math.floor(now/41000);
+  round(sqlite,n,now);
+  const add=sqlite.prepare('INSERT INTO sharika_greedy_bets '+
+    '(round_id,round_no,user_uid,item_id,amount,request_id) VALUES(?,?,?,?,?,?)');
+  add.run('greedy:'+n,n,'adult-1','corn',1000,'greedy-daily-win-000001');
+  add.run('greedy:'+n,n,'adult-1','fish',1000,'greedy-daily-lose-000002');
+  add.run('greedy:'+n,n,'adult-1','steak',1000,'greedy-daily-old-000003');
+  sqlite.prepare("UPDATE sharika_greedy_bets SET status='settled',result_id='corn',payout=5000,"+
+    "settled_at=datetime('now') WHERE request_id='greedy-daily-win-000001'").run();
+  sqlite.prepare("UPDATE sharika_greedy_bets SET status='settled',result_id='corn',payout=0,"+
+    "settled_at=datetime('now') WHERE request_id='greedy-daily-lose-000002'").run();
+  sqlite.prepare("UPDATE sharika_greedy_bets SET status='settled',result_id='corn',payout=120000,"+
+    "settled_at=datetime('now','-1 day') WHERE request_id='greedy-daily-old-000003'").run();
+  const response=await handleGreedyRequest({
+    request:new Request('https://sharika.test/api/v1/greedy-wheel/state'),db,
+    uid:'adult-1',action:'state',reply:(data,status)=>Response.json(data,{status}),
+    fail:(error,status)=>Response.json({error},{status}),cors:{}
+  });
+  assert.equal(response.status,200);
+  const state=await response.json();
+  assert.equal(state.todayDay,new Date().toISOString().slice(0,10));
+  assert.equal(state.todayWin,5000,'gross payout excludes losing stakes and prior-day wins');
+  assert.equal(state.balance,100000-3000+5000+120000,
+    'server wallet preserves all actual stake debits and payout credits');
+  sqlite.close();
+});
+
 test('Android iframe always uses authenticated parent bridge, not fake local money',()=>{
   const root=new URL('../../android-staging/app/src/main/assets/greedy-wheel/',import.meta.url);
   const html=readFileSync(new URL('index.html',root),'utf8');
@@ -200,18 +229,15 @@ test('Greedy lost receipts are retried by ID and cannot double-charge a later ta
   assert.equal(betRequests()[1].body.request_id,originalId);
   timeoutNext();await flush();
   assert.ok(seen.some(m=>m.t==='bet_err'&&m.reqId===1&&m.code==='BET_UNCONFIRMED'));
-  send(2,'chicken');
-  assert.equal(betRequests().length,2);
-  assert.ok(seen.some(m=>m.t==='bet_err'&&m.reqId===2&&m.code==='BET_UNCONFIRMED'));
-  // A server read finishes, so the bridge automatically confirms the
-  // uncertain old request_id before accepting any new coin debit.
-  const stateRead=requests.find(m=>m.action==='state');
-  assert.ok(stateRead);
-  listeners.get('message')({source:parent,data:{type:'sharika:greedy-response',
-    id:stateRead.id,ok:false,error:'temporary_network_failure'}});
-  await flush();
+  // Recovery now starts immediately instead of waiting for the next 1.6 s
+  // state poll. It always uses exactly the prior request ID.
   assert.equal(betRequests().length,3);
   assert.equal(betRequests()[2].body.request_id,originalId);
+  send(2,'chicken');
+  assert.equal(betRequests().length,3);
+  assert.ok(seen.some(m=>m.t==='bet_err'&&m.reqId===2&&m.code==='BET_UNCONFIRMED'));
+  // The verified replay clears the guard; no extra debit can be created by
+  // a second tap while that recovery remains pending.
   listeners.get('message')({source:parent,data:{type:'sharika:greedy-response',
     id:betRequests()[2].id,ok:true,value:{balance:99000}}});
   await flush();

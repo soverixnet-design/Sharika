@@ -2,6 +2,7 @@
 // Turning a game off rejects NEW bets but never interrupts historical settlement.
 export const GAME_DEFINITIONS=Object.freeze([
   {id:'sovera-food',name:'Sovera Food Wheel',engine:'original'},
+  {id:'sovera-gaddy',name:'Sovera Gaddy Game',engine:'gaddy-d1'},
   {id:'night-food',name:'Night Food Wheel',engine:'original'},
   {id:'jackpot-fruit',name:'Jackpot Fruit',engine:'original/legacy'},
   {id:'fruit-royale',name:'Fruit Royale V2',engine:'fruit-royale'},

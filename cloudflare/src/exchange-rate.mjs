@@ -1,7 +1,7 @@
-// Server-owned diamond exchange terms. Default is exactly 100 diamonds -> 70 coins.
+// Server-owned diamond exchange terms. Default is 100 diamonds -> 40 coins.
 // Persisted terms are Super-Admin controlled, revisioned and audited in D1.
 export const DEFAULT_EXCHANGE_RATE=Object.freeze({
-  diamonds_per_unit:100,coins_per_unit:70,revision:1,persisted:false
+  diamonds_per_unit:100,coins_per_unit:40,revision:1,persisted:false
 });
 const RATE_MIN=1,RATE_MAX=10000;
 const MAX_DIAMONDS=1000000;
@@ -20,7 +20,7 @@ export async function readExchangeRate(db){
       'SELECT diamonds_per_unit,coins_per_unit,revision FROM sharika_exchange_rate WHERE id=1'
     ).first();
   }catch(error){
-    // Older staging schemas keep the known 100:70 terms while migration is
+    // Older staging schemas use the current 100:40 default while migration is
     // separately approved. Other SQL errors must never be concealed.
     if(/no such table:\s*sharika_exchange_rate/i.test(String(error?.message||error)))
       return {...DEFAULT_EXCHANGE_RATE};

@@ -14,3 +14,6 @@ dependencyResolutionManagement {
 }
 rootProject.name = 'SharikaAndroidStaging'
 include ':app'
+// The UI emulator fixture is never included in the installable Sharika APK.
+// CI opts into this isolated module with -PincludeRoomQa=1.
+if (providers.gradleProperty('includeRoomQa').isPresent()) include ':room-qa'

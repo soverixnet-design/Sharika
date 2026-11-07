@@ -39,6 +39,7 @@ function fixture({owner=false,admin=false,member=false,locked=true}={}){
             return {locked:state.locked?1:0,updated_at:'2026-11-07 08:00:00'};
           return null;
         },
+        async all(){return {results:[]};},
         async run(){
           state.writes.push(sql);
           if(sql.includes('INSERT OR IGNORE INTO sharika_room_members')){
@@ -57,7 +58,14 @@ function fixture({owner=false,admin=false,member=false,locked=true}={}){
       return statements.map(()=>({success:true}));
     }
   };
-  const env={DB:db,FIREBASE_PROJECT_ID:project};
+  const coordinator={
+    async roomPolicyRead(){return {password_required:false};},
+    async presenceJoin(){return {joined:true};},
+    async beginRoomVisit(){return {started:true};},
+    async roomEntryAnnounce(){return {announced:true};}
+  };
+  const env={DB:db,FIREBASE_PROJECT_ID:project,
+    VOICE_ROOMS:{getByName:()=>coordinator}};
   return {state,db,env};
 }
 async function send(env,action,method='GET',body){

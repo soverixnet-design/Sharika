@@ -677,5 +677,110 @@
     "group": "noble",
     "name": "Noble Gold Microphone",
     "art": "noble-gold-microphone.webp"
+  },
+  {
+    "id": "svip-royal-badge-04",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Royal Badge 04",
+    "art": "svip-royal-badge-04.webp"
+  },
+  {
+    "id": "svip-royal-badge-05",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Royal Badge 05",
+    "art": "svip-royal-badge-05.webp"
+  },
+  {
+    "id": "svip-royal-badge-01",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Royal Badge 01",
+    "art": "svip-royal-badge-01.webp"
+  },
+  {
+    "id": "svip-royal-badge-02",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Royal Badge 02",
+    "art": "svip-royal-badge-02.webp"
+  },
+  {
+    "id": "svip-royal-badge-03",
+    "kind": "medal_style",
+    "group": "svip",
+    "name": "SVIP Royal Badge 03",
+    "art": "svip-royal-badge-03.webp"
+  },
+  {
+    "id": "vip-royal-badge-04",
+    "kind": "medal_style",
+    "group": "vip",
+    "name": "VIP Royal Badge 04",
+    "art": "vip-royal-badge-04.webp"
+  },
+  {
+    "id": "vip-royal-badge-05",
+    "kind": "medal_style",
+    "group": "vip",
+    "name": "VIP Royal Badge 05",
+    "art": "vip-royal-badge-05.webp"
+  },
+  {
+    "id": "vip-royal-badge-02",
+    "kind": "medal_style",
+    "group": "vip",
+    "name": "VIP Royal Badge 02",
+    "art": "vip-royal-badge-02.webp"
+  },
+  {
+    "id": "vip-royal-badge-03",
+    "kind": "medal_style",
+    "group": "vip",
+    "name": "VIP Royal Badge 03",
+    "art": "vip-royal-badge-03.webp"
+  },
+  {
+    "id": "vip-royal-frame-02",
+    "kind": "frame_style",
+    "group": "vip",
+    "name": "VIP Royal Frame 02",
+    "art": "vip-royal-frame-02.webp"
+  },
+  {
+    "id": "vip-royal-frame-03",
+    "kind": "frame_style",
+    "group": "vip",
+    "name": "VIP Royal Frame 03",
+    "art": "vip-royal-frame-03.webp"
+  },
+  {
+    "id": "svip-royal-frame-04",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP Royal Frame 04",
+    "art": "svip-royal-frame-04.webp"
+  },
+  {
+    "id": "svip-royal-frame-05",
+    "kind": "frame_style",
+    "group": "svip",
+    "name": "SVIP Royal Frame 05",
+    "art": "svip-royal-frame-05.webp"
+  },
+  {
+    "id": "vip-royal-frame-04",
+    "kind": "frame_style",
+    "group": "vip",
+    "name": "VIP Royal Frame 04",
+    "art": "vip-royal-frame-04.webp"
+  },
+  {
+    "id": "vip-royal-frame-05",
+    "kind": "frame_style",
+    "group": "vip",
+    "name": "VIP Royal Frame 05",
+    "art": "vip-royal-frame-05.webp"
   }
 ]

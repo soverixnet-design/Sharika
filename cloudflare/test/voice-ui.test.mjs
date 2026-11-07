@@ -192,7 +192,10 @@ test('two-way audio recovers an ended microphone and a failed remote receiver',(
   const end=ui.indexOf('  function localIceCandidates(peer)',begin);
   assert.ok(begin>=0 && end>begin);
   const timers=[],reconnects=[];
+  const deterministicMath=Object.create(Math);
+  deterministicMath.random=()=>0.5;
   const context=createContext({
+    Math:deterministicMath,
     document:{getElementById:()=>null},
     console:{warn(){}},
     setTimeout(fn,delay){timers.push({fn,delay});return timers.length;},
@@ -238,6 +241,30 @@ test('two-way audio recovers an ended microphone and a failed remote receiver',(
     'a new room starts with the microphone enabled');
 });
 
+test('a simultaneous 300-device outage spreads bounded reconnect attempts without muting seats',()=>{
+  const begin=ui.indexOf('  let voiceRecoveryRoom=null,voiceRecoveryAttempts=0,voiceRetryTimer=null;');
+  const end=ui.indexOf('  function localIceCandidates(peer)',begin);
+  const sample=ui.slice(begin,end);
+  const delays=[];
+  // Each phone has its own random source, but they share an outage instant.
+  for(let phone=0;phone<300;phone++){
+    const math=Object.create(Math);
+    math.random=()=>phone/299;
+    const tasks=[];
+    const context=createContext({Math:math,document:{getElementById:()=>null},
+      console:{warn(){}},setTimeout(fn,ms){tasks.push({fn,ms});return tasks.length;},
+      errText:String,connectVoice(){return Promise.resolve({publishing:true});}});
+    runInContext("let sfuState=null,wantedVoiceRoom='roomA';"+sample,context);
+    runInContext("scheduleVoiceRetry('roomA','mobile network outage',true)",context);
+    delays.push(tasks[0].ms);
+  }
+  assert.ok(Math.min(...delays)>=350);
+  assert.ok(Math.max(...delays)<=650);
+  assert.ok(new Set(delays).size>100,'clients should not all reconnect at once');
+  assert.match(sample,/microphoneWanted\(roomId\)/,
+    'manual mic preference remains independent of reconnection');
+});
+
 test('incoming voice and server permission changes are checked independently',()=>{
   assert.match(ui,/incoming audio path unavailable/);
   assert.match(ui,/state\.subscriptionFailures>=2/);
@@ -252,12 +279,14 @@ test('voice begins at verified join before the room art and iframe are ready',()
   const end=ui.indexOf('  const originalLeaveRoom=',enter);
   assert.ok(enter>=0&&end>enter);
   const entry=ui.slice(enter,end);
-  assert.ok(entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})")>=0);
+  assert.ok(entry.indexOf('await joinRoomWithPassword(room)')>=0);
   assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')>
-    entry.indexOf("await api('POST','/rooms/'+room.id+'/join',{})"));
+    entry.indexOf('await joinRoomWithPassword(room)'));
   assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')<
     entry.indexOf('originalOpenRoom(room)'));
-  assert.match(ui,/const voice=await ensureVoiceConnected\(room\.id\)/);
+  // Voice still starts immediately after verified join, while the room UI can recover independently.
+  assert.match(ui,/ensureVoiceConnected\(room\.id\)\.then\(voice=>/);
+  assert.doesNotMatch(ui,/const voice=await ensureVoiceConnected\(room\.id\)/);
 });
 
 test('SFU starts listening independently of microphone capture',()=>{
@@ -382,6 +411,36 @@ test('RTP watchdog distinguishes a connected transport from actual moving microp
   report.get('audio').packetsSent++;
   await runInContext('inspectSfuAudio(state)',context);
   assert.equal(state.outgoingStalls,0,'forward progress clears the stall counter');
+});
+
+test('high voice packet loss warns early without dropping any of the active microphones',async()=>{
+  const begin=ui.indexOf('  function audioRtpCounters(report,type) {');
+  const end=ui.indexOf('  function addAudioTrack(state,event)',begin);
+  const notices=[],recoveries=[];
+  const context=createContext({Date,Promise,Number,
+    document:{getElementById(){return {contentWindow:{toast(t){notices.push(t);}}};}},
+    console:{warn(){}},errText:String,
+    recoverSfuPublication(...args){recoveries.push(args);},resumeRoomAudio(){}
+  });
+  runInContext('let sfuState=null;'+ui.slice(begin,end),context);
+  const row={type:'inbound-rtp',kind:'audio',packetsReceived:100,packetsLost:10,bytesReceived:5000};
+  const recvReport=new Map([['voice',row]]);
+  const state={closed:false,statsInFlight:false,readyPublication:false,
+    roomId:'roomA',publishPC:null,
+    receivePC:{connectionState:'connected',async getStats(){return recvReport;}},
+    media:null,audioElements:new Set()};
+  context.state=state;
+  await runInContext('sfuState=state;inspectSfuAudio(state)',context);
+  row.packetsReceived=160;row.packetsLost=30;
+  await runInContext('inspectSfuAudio(state)',context);
+  assert.equal(notices.length,0,'one bad interval is not enough to panic');
+  row.packetsReceived=220;row.packetsLost=50;
+  await runInContext('inspectSfuAudio(state)',context);
+  assert.match(notices[0],/Voice network is unstable/);
+  row.packetsReceived=280;row.packetsLost=70;
+  await runInContext('inspectSfuAudio(state)',context);
+  assert.equal(notices.length,1,'avoid repeated alerts across a busy room');
+  assert.equal(recoveries.length,0,'packet loss must not force reconnects or mute seats');
 });
 
 test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>{

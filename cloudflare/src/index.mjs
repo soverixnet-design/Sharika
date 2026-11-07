@@ -2,11 +2,14 @@ import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from '
 // Transaction receipts are recorded by the corresponding verified business handlers.
 import { verifyFirebaseToken } from './auth.mjs';
 import { allowSensitiveAction } from './security-rate-limit.mjs';
-import { handleVoiceOperation } from './sfu.mjs';
-import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
+import { handleVoiceOperation,forceCloseMicrophone } from './sfu.mjs';
+import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,handleRoomKickHistory,isRoomAdmin } from './moderation.mjs';
 import {readRoomAccessLock,writeRoomAccessLock} from './room-access-lock.mjs';
 import { handleSellerApp } from './sellers.mjs';
-import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
+import { handleFamilyApp } from './family.mjs';
+import {handleAgencyApp,agencyGiftEarningStatements} from './agency.mjs';
+import {MUSIC_LIBRARY_OBJECT,musicTitle} from './music-library.mjs';
+import {recordAgencyRoomActivity} from './agency-room-time.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
 import {listRoomThemes,roomThemeId,catalogThemeImage,validateCatalogTheme} from './room-themes.mjs';
@@ -24,12 +27,20 @@ import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleOpeningApp } from './opening.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import {handleSoveraGaddy} from './sovera-gaddy.mjs';
 import {handleFruitRoyaleRequest,settleFruitDueBets} from './fruit-royale.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
 import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
+import {handleLuckyBoxApp} from './lucky-box.mjs';
+import {handleInviteLanding} from './invite-link.mjs';
+import {handlePublicAccountDeletion,handleAdminAccountDeletion} from './account-deletion.mjs';
+import {handlePublicPrivacyPolicy} from './privacy-policy.mjs';
+import {handlePlayBillingApp} from './play-billing.mjs';
+import {servePublicMedia} from './admin-media.mjs';
+import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -103,8 +114,30 @@ function ageFromDate(raw) {
   return age >= 13 && age <= 120 ? age : null;
 }
 async function readBody(request) {
-  const body = await request.text();
-  if (body.length > MAX_BODY) throw new Error('body_too_large');
+  // A Content-Length header can be omitted or forged. Enforce the JSON cap
+  // while consuming the stream so an oversized request cannot allocate an
+  // unbounded string in a 128 MB Worker isolate before validation runs.
+  const byteCap=MAX_BODY*4;
+  const declared=Number(request.headers?.get?.('content-length'));
+  if(Number.isFinite(declared)&&declared>byteCap)
+    throw new Error('body_too_large');
+  let body='';
+  if(request.body&&typeof request.body.getReader==='function'){
+    const reader=request.body.getReader(),decoder=new TextDecoder();
+    let received=0;
+    try{
+      while(true){
+        const next=await reader.read();
+        if(next.done)break;
+        received+=next.value?.byteLength||0;
+        if(received>byteCap){await reader.cancel();throw new Error('body_too_large');}
+        body+=decoder.decode(next.value,{stream:true});
+        if(body.length>MAX_BODY){await reader.cancel();throw new Error('body_too_large');}
+      }
+      body+=decoder.decode();
+    }finally{reader.releaseLock();}
+  }else body=await request.text();
+  if(body.length>MAX_BODY)throw new Error('body_too_large');
   const parsed = body ? JSON.parse(body) : {};
   if (typeof parsed !== 'object' || !parsed || Array.isArray(parsed)) throw new Error('invalid_body');
   return parsed;
@@ -160,6 +193,17 @@ async function createVoiceToken(env, uid, room, publish, owner) {
 export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+  // Public invitation landing must load without a Firebase session.
+  // No wallet or invite database write is performed on GET.
+  const inviteLanding=handleInviteLanding(request,path);
+  if(inviteLanding)return inviteLanding;
+  // Public deletion requests must remain usable after the app is uninstalled.
+  const deletionLanding=await handlePublicAccountDeletion(request,env,path);
+  if(deletionLanding)return deletionLanding;
+  const privacyPage=handlePublicPrivacyPolicy(request,path);
+  if(privacyPage)return privacyPage;
+  const publicMedia=await servePublicMedia(request,env,path);
+  if(publicMedia)return publicMedia;
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
   const themeImagePath=/^\/api\/v1\/rooms\/([0-9]{8})\/theme-image$/.exec(path);
   const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
@@ -298,8 +342,15 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/events') return await handleEventApp({
       request,env,uid,path,cors,reply,fail
     });
+    if(path.startsWith('/api/v1/play-billing/')){
+      await assertActive(env.DB,uid);
+      return await handlePlayBillingApp({request,env,uid,path,cors,reply,fail,readBody});
+    }
     if(path==='/api/v1/notifications'||path.startsWith('/api/v1/notifications/'))
       return await handleNotificationApp({request,env,uid,path,cors,reply,fail});
+    if (path==='/api/v1/admin/account-deletion-requests') return await handleAdminAccountDeletion({
+      request,env,uid,path,cors,reply,fail
+    });
     if (path.startsWith('/api/v1/admin/')) return await handleAdminOperation({
       request, env, uid, path, cors, reply, fail, ctx
     });
@@ -309,6 +360,10 @@ export async function handleRequest(request, env, ctx) {
       return await handleInviteApp({
       request, env, uid, path, cors, reply, fail
     });
+    if(path==='/api/v1/lucky-box' || path==='/api/v1/lucky-box/open'){
+      await assertActive(env.DB,uid);
+      return await handleLuckyBoxApp({request,db:env.DB,uid,path,readBody,reply,fail,cors});
+    }
     if (path==='/api/v1/daily' || path==='/api/v1/daily/check-in' ||
         path==='/api/v1/daily/tasks/claim') return await handleDailyApp({
       request, env, uid, path, cors, reply, fail, ctx
@@ -319,6 +374,9 @@ export async function handleRequest(request, env, ctx) {
     });
     if (path.startsWith('/api/v1/family')) return await handleFamilyApp({
       request, env, uid, path, cors, reply, fail, ctx
+    });
+    if (path.startsWith('/api/v1/agency')) return await handleAgencyApp({
+      request,env,uid,path,cors,reply,fail
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
       request, env, uid, path, cors, reply, fail, ctx
@@ -338,6 +396,10 @@ export async function handleRequest(request, env, ctx) {
       }
       const coordinator=env.VOICE_ROOMS.getByName('sharika:presence:staging');
       await coordinator.presenceTouch(uid,roomId);
+      // Activity accounting is best-effort: reporting must never prevent a
+      // verified listener from keeping voice-room presence alive.
+      try{await recordAgencyRoomActivity(env.DB,uid,roomId);}
+      catch(error){console.warn('agency_activity_write_failed',String(error));}
       return reply({ok:true,window_seconds:90},200,cors);
     }
     if(path === '/api/v1/me/avatar' && request.method==='PUT') {
@@ -729,12 +791,15 @@ export async function handleRequest(request, env, ctx) {
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='original-games'){
       await assertActive(env.DB,uid);
       if(parts.length===3&&request.method==='GET')
-        return reply({games:['sovera-food','night-food','fruit-royale'],virtual_coins_only:true},200,cors);
+        return reply({games:['sovera-food','sovera-gaddy','night-food','fruit-royale'],virtual_coins_only:true},200,cors);
       if(parts.length===5){
         if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
         if(parts[3]==='fruit-royale')
           return await handleFruitRoyaleRequest({request,db:env.DB,uid,
+            action:parts[4],reply,fail,cors});
+        if(parts[3]==='sovera-gaddy')
+          return await handleSoveraGaddy({request,db:env.DB,uid,
             action:parts[4],reply,fail,cors});
         return await handleOriginalGameRequest({request,db:env.DB,uid,game:parts[3],
           action:parts[4],reply,fail,cors});
@@ -778,13 +843,19 @@ export async function handleRequest(request, env, ctx) {
       const luckyAllowed = env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
         nonRedeemableLuckyEconomy(env) && !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
       const result = await env.DB.prepare(
-        'SELECT id,name,emoji,tab,price_coins,image_url,animation_url ' +
+        'SELECT id,name,emoji,tab,price_coins,image_url,animation_url,audio_url ' +
         'FROM sharika_gifts WHERE active=1 AND (tab IN (0,1) OR (tab=2 AND ?=1)) ORDER BY id LIMIT 100'
       ).bind(luckyAllowed ? 1 : 0).all();
       return reply({ gifts:result.results || [], lucky_enabled:luckyAllowed,
         lucky_odds:luckyAllowed ? LUCKY_ODDS.map(x=>({
           multiplier:x.multiplier,probability_percent:x.weight/100
         })) : [],read_only:true }, 200, cors);
+    }
+    if(path==='/api/v1/music-library'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      if(!env.VOICE_ROOMS)return fail('music_library_unavailable',503,cors);
+      return reply(await env.VOICE_ROOMS.getByName(MUSIC_LIBRARY_OBJECT)
+        .musicLibraryList(false),200,cors);
     }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       await assertActive(env.DB, uid);
@@ -798,7 +869,7 @@ export async function handleRequest(request, env, ctx) {
       return reply({ coins: user.coins, diamonds: user.diamonds, xp: user.xp, ledger: rows.results || [] }, 200, cors);
     }
     // Exchange terms are quoted by the server and editable only by Super
-    // Admin. Without the new D1 table, existing 100:70 terms still apply.
+    // Admin. The new policy defaults to 100:40 even on older staging schemas.
     if(path==='/api/v1/wallet/exchange-rate'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       return reply(respondRate(await readExchangeRate(env.DB)),200,cors);
@@ -1046,6 +1117,73 @@ export async function handleRequest(request, env, ctx) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // Room-specific chat, microphone and entry policies remain independent
+      // of D1 entry locks and of the public theme gallery.
+      if(parts.length===5&&action==='policy'){
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_policy_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET')return reply(await coordinator.roomPolicyRead(),200,cors);
+        if(request.method!=='PUT')return fail('method_not_allowed',405,cors);
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        const body=await readBody(request);
+        const allowed=['chat_mode','mic_mode','super_mic','password_action','password'];
+        if(Object.keys(body).some(key=>!allowed.includes(key))||
+           (body.chat_mode!==undefined&&!['anyone','admins','owner'].includes(body.chat_mode))||
+           (body.mic_mode!==undefined&&!['anyone','admins','owner'].includes(body.mic_mode))||
+           (body.super_mic!==undefined&&typeof body.super_mic!=='boolean')||
+           (body.password_action!==undefined&&
+            !['set','clear','keep'].includes(body.password_action))||
+           (body.password!==undefined&&body.password_action!=='set')||
+           (body.password_action==='set'&&
+            (typeof body.password!=='string'||!/^[0-9]{4,12}$/.test(body.password))))
+          return fail('invalid_room_policy',400,cors);
+        if(body.super_mic===false&&member.seat_no===null){
+          const active=await coordinator.publishedFor(uid);
+          try{
+            for(const session of active)
+              await forceCloseMicrophone(env,session.sessionId);
+          }catch(error){
+            console.warn('room_policy_audio_revocation_pending',error?.message);
+            return fail('voice_policy_change_unavailable',502,cors);
+          }
+          if(active.length)await coordinator.withdrawUser(uid,false);
+        }
+        const result=await coordinator.roomPolicyUpdate(body);
+        if(result.error)return fail(result.error,400,cors);
+        return reply(result,200,cors);
+      }
+      // Every listener reads shared music, but only a verified moderator may
+      // change it. Never take permissions from browser-declared role flags.
+      if(parts.length===5&&action==='music'){
+        if(!member)return fail('join_room_first',403,cors);
+        if(!env.VOICE_ROOMS)return fail('room_music_unavailable',503,cors);
+        const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+        if(request.method==='GET')return reply(await coordinator.roomMusicRead(),200,cors);
+        if(request.method!=='PUT')return fail('method_not_allowed',405,cors);
+        if(room.owner_id!==uid&&!await isRoomAdmin(env,roomId,uid))
+          return fail('room_music_moderator_only',403,cors);
+        const body=await readBody(request);
+        const mode=body.action;
+        if(!['library','local','stop','stop_self','heartbeat'].includes(mode))
+          return fail('invalid_music_action',400,cors);
+        let track=null;
+        if(mode==='library'){
+          if(!Number.isSafeInteger(body.track_id)||body.track_id<1)
+            return fail('invalid_music_track',400,cors);
+          track=await env.VOICE_ROOMS.getByName(MUSIC_LIBRARY_OBJECT)
+            .musicLibraryTrack(body.track_id);
+          if(!track)return fail('music_track_unavailable',404,cors);
+        }
+        if(mode==='local'){
+          const title=musicTitle(body.title);
+          if(!title)return fail('invalid_music_track',400,cors);
+          track={title};
+        }
+        const result=await coordinator.roomMusicSet(uid,mode,track);
+        if(result.error)return fail(result.error,409,cors);
+        return reply(result,200,cors);
+      }
       // A room-entry lock is distinct from mic-seat locks. Existing members
       // stay in the room; new guests cannot enter until Owner/Admin unlocks.
       if(parts.length===5 && action==='access-lock') {
@@ -1095,6 +1233,14 @@ export async function handleRequest(request, env, ctx) {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_invites_unavailable',503,cors);
         const body=await readBody(request);
+        if(body.accept){
+          const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
+          if(policy.mic_mode==='owner'&&room.owner_id!==uid)
+            return fail('room_mic_owner_only',403,cors);
+          if(policy.mic_mode==='admins'&&room.owner_id!==uid&&
+             !await isRoomAdmin(env,roomId,uid))
+            return fail('room_mic_admin_only',403,cors);
+        }
         if(!Number.isInteger(body.seat_no)||body.seat_no<1||
            body.seat_no>room.seat_count||typeof body.accept!=='boolean')
           return fail('invalid_invitation_response',400,cors);
@@ -1138,10 +1284,16 @@ export async function handleRequest(request, env, ctx) {
           const raw=url.searchParams.get('after')||'0';
           if(!/^[0-9]{1,12}$/.test(raw) || !Number.isSafeInteger(Number(raw)))
             return fail('invalid_chat_cursor',400,cors);
-          return reply(await coordinator.roomChatRead(Number(raw)),200,cors);
+          return reply(await coordinator.roomChatRead(uid,Number(raw)),200,cors);
         }
         if(request.method==='POST') {
           const payload=await readBody(request);
+          const policy=await coordinator.roomPolicyRead();
+          if(policy.chat_mode==='owner'&&room.owner_id!==uid)
+            return fail('room_chat_owner_only',403,cors);
+          if(policy.chat_mode==='admins'&&room.owner_id!==uid&&
+             !await isRoomAdmin(env,roomId,uid))
+            return fail('room_chat_admin_only',403,cors);
           const message=typeof payload.body==='string'?payload.body.trim():'';
           const requestId=typeof payload.request_id==='string'?payload.request_id.trim():'';
           if(!message||message.length>300||
@@ -1189,6 +1341,7 @@ export async function handleRequest(request, env, ctx) {
         return fail('method_not_allowed',405,cors);
       }
       if (parts.length === 5 && action === 'join' && request.method === 'POST') {
+        if(!env.VOICE_ROOMS)return fail('room_presence_unavailable',503,cors);
         const ban=await env.DB.prepare(
           'SELECT banned_until_ms FROM sharika_room_bans WHERE room_id=? AND user_id=?'
         ).bind(roomId,uid).first();
@@ -1196,6 +1349,18 @@ export async function handleRequest(request, env, ctx) {
           return fail('room_temporarily_blocked',403,cors);
         if (!member) {
           const privileged=room.owner_id===uid||await isRoomAdmin(env,roomId,uid);
+          // Room passwords and the D1 entry lock are independent controls:
+          // validate the guest password before the atomic membership insert.
+          // The insert still rechecks the lock to prevent a join/lock race.
+          if(!privileged){
+            const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+            const policy=await coordinator.roomPolicyRead();
+            if(policy.password_required){
+              const body=await readBody(request);
+              const check=await coordinator.roomPasswordCheck(uid,body.password);
+              if(!check.allowed)return fail(check.error,403,cors);
+            }
+          }
           // Guests are admitted with one conditional D1 statement. A lock
           // racing with their join cannot slip between a read and the insert.
           const added=privileged
@@ -1213,32 +1378,57 @@ export async function handleRequest(request, env, ctx) {
             if(!current)return fail('room_locked',403,cors);
           }
         }
+        // Joining a room never places someone on a mic. This also resets a
+        // retained owner seat from an older client/session.
+        await env.DB.prepare(
+          'UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?'
+        ).bind(roomId,uid).run();
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
-        // Room-wide arrival event uses the verified equipped style and ID.
-        // Its coordinator retains a short event history for other phones.
+        await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+          .presenceJoin(uid,roomId);
+        // The session boundary is established BEFORE the public arrival
+        // event. Prior chat, gift receipts and entries stay in the audit
+        // store, but this visitor cannot replay them even with after=0.
         if(env.VOICE_ROOMS){
-          const entrant=await assertActive(env.DB,uid);
-          const equipped=await readEquipped(env.DB,uid);
-          const svipLevel=await readSvipLevel(env.DB,uid);
+          // These reads are independent. Serial D1 round-trips delayed the
+          // first room entry on mobile networks even after authorization.
+          const [latestGift,entrant,equipped,svipLevel]=await Promise.all([
+            env.DB.prepare('SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?')
+              .bind(roomId).first(),
+            assertActive(env.DB,uid),
+            readEquipped(env.DB,uid),
+            readSvipLevel(env.DB,uid)
+          ]);
+          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+          await coordinator.beginRoomVisit(uid,Number(latestGift?.id)||0);
           const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
             ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
               ?'svip-entry-'+String(svipLevel).padStart(2,'0')
               :(entrant.entry_style||'');
           // Record every verified join, including users without a paid entry effect.
-          await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-            .roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry);
+          await coordinator.roomEntryAnnounce(
+            uid,publicId(entrant.public_no),txt(entrant.name,80)||'Member',entry||'standard');
         }
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
       }
       if (parts.length === 5 && action === 'leave' && request.method === 'POST') {
+        // Remove the visible room ID immediately, including for the owner
+        // whose D1 membership remains for permission checks. The coordinator
+        // also blocks any delayed heartbeats from this departed visit.
+        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+          .presenceLeave(uid,roomId);
         if (room.owner_id === uid) {
           await env.DB.prepare('UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?')
             .bind(roomId, uid).run();
         } else {
           await env.DB.prepare('DELETE FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId, uid).run();
         }
-        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-          .seatInviteClear(uid);
+        if(env.VOICE_ROOMS){
+          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+          await coordinator.roomMusicStopFor(uid);
+          await coordinator.endRoomVisit(uid);
+          await coordinator.seatInviteClear(uid);
+        }
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
       }
       // Day/week/month room rankings show real senders to members of this
@@ -1286,7 +1476,7 @@ export async function handleRequest(request, env, ctx) {
       // ledger remains a report, not another claimable balance.
       // Lucky Gifts retain their separate 1% rule.
       if (parts.length===5 && action==='rewards' && request.method==='GET') {
-        if(!member)return fail('join_room_first',403,cors);
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
         const regular=await env.DB.prepare(
           'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
           'FROM sharika_regular_room_rewards WHERE room_id=?'
@@ -1306,13 +1496,30 @@ export async function handleRequest(request, env, ctx) {
           "AND l.reason='room_gift_reward' AND l.request_id=('roomgift:'||t.id) "+
           "WHERE t.room_id=?"
         ).bind(room.owner_id,roomId).first();
-        const ownerWalletCreditedCoins=Number(credited?.coins)||0;
+        const weekly=await env.DB.prepare(
+          'SELECT COALESCE(SUM(coins_paid),0) AS coins '+
+          'FROM sharika_room_weekly_payouts WHERE room_id=? AND owner_uid=?'
+        ).bind(roomId,room.owner_id).first();
+        const pending=await env.DB.prepare(
+          'SELECT COALESCE(SUM(a.reward_hundredths),0) AS points '+
+          'FROM sharika_room_weekly_accruals a WHERE a.room_id=? AND a.owner_uid=? '+
+          'AND NOT EXISTS(SELECT 1 FROM sharika_room_weekly_payouts p '+
+          'WHERE p.room_id=a.room_id AND p.owner_uid=a.owner_uid '+
+          'AND p.week_start_utc=a.week_start_utc)'
+        ).bind(roomId,room.owner_id).first();
+        const ownerWalletCreditedCoins=(Number(credited?.coins)||0)+
+          (Number(weekly?.coins)||0);
+        const nextWeek=new Date(Date.parse(roomWeekStartUTC(Date.now())+
+          'T00:00:00Z')+7*86400000).toISOString();
         return reply({room_id:roomId,reward_coins:Math.floor(points/100),
           reward_fraction_hundredths:points%100,reward_hundredths:points,
           regular_reward_hundredths:regularPoints,lucky_reward_hundredths:luckyPoints,
           regular_gift_percent:10,lucky_gift_percent:1,
           owner_wallet_credited:ownerWalletCreditedCoins>0,
           owner_wallet_credited_coins:ownerWalletCreditedCoins,
+          weekly_pending_hundredths:Number(pending?.points)||0,
+          weekly_pending_coins:(Number(pending?.points)||0)/100,
+          weekly_next_settlement_utc:nextWeek,
           owner_wallet_credit_enabled:true,withdrawal_enabled:false},200,cors);
       }
       // Gift sending uses the real D1 catalog and an all-or-nothing ledger.
@@ -1320,21 +1527,25 @@ export async function handleRequest(request, env, ctx) {
       if (parts.length===5 && action==='gifts') {
         if(!member)return fail('join_room_first',403,cors);
         if(request.method==='GET') {
+          if(!env.VOICE_ROOMS)return fail('room_gifts_unavailable',503,cors);
+          const giftAfter=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+            .roomGiftAfter(uid);
+          if(giftAfter===null)return reply({events:[]},200,cors);
           const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
             nonRedeemableLuckyEconomy(env);
           const rows=await env.DB.prepare(
             'SELECT e.id,e.transaction_id,e.quantity,e.price_coins,e.created_at,'+
             'su.public_no AS sender_no,su.name AS sender_name,su.pic AS sender_pic,'+
             'ru.public_no AS recipient_no,ru.name AS recipient_name,ru.pic AS recipient_pic,'+
-            (luckyEnabled?'g.name,g.emoji,g.tab,lo.payout_coins,lo.max_multiplier ':
-              'g.name,g.emoji,g.tab,NULL AS payout_coins,NULL AS max_multiplier ')+
+            (luckyEnabled?'g.name,g.emoji,g.tab,g.animation_url,g.audio_url,lo.payout_coins,lo.max_multiplier ':
+              'g.name,g.emoji,g.tab,g.animation_url,g.audio_url,NULL AS payout_coins,NULL AS max_multiplier ')+
             'FROM sharika_gift_events e '+
             'JOIN sharika_users su ON su.auth_uid=e.sender_uid '+
             'JOIN sharika_users ru ON ru.auth_uid=e.recipient_uid '+
             'JOIN sharika_gifts g ON g.id=e.gift_id '+
             (luckyEnabled?'LEFT JOIN sharika_lucky_gift_outcomes lo ON lo.transaction_id=e.transaction_id ':'')+
-            'WHERE e.room_id=? ORDER BY e.id DESC LIMIT 40'
-          ).bind(roomId).all();
+            'WHERE e.room_id=? AND e.id>? ORDER BY e.id DESC LIMIT 40'
+          ).bind(roomId,giftAfter).all();
           return reply({events:(rows.results||[]).reverse().map(e=>({
             id:e.id,transaction_id:e.transaction_id,
             quantity:e.quantity,price_coins:e.price_coins,
@@ -1343,6 +1554,7 @@ export async function handleRequest(request, env, ctx) {
             recipient_id:publicId(e.recipient_no),
             recipient_name:e.recipient_name,recipient_pic:e.recipient_pic||null,
             name:e.name,emoji:e.emoji,tab:e.tab,
+            animation_url:e.animation_url||'',audio_url:e.audio_url||'',
             lucky:e.tab===2&&luckyEnabled?{payout_coins:Number(e.payout_coins)||0,
               max_multiplier:Number(e.max_multiplier)||0}:null
           }))},200,cors);
@@ -1386,6 +1598,8 @@ export async function handleRequest(request, env, ctx) {
               coins:wallet.coins,spent_coins:existing.total_coins,
               room_reward_coins:Number(regularShare?.reward_hundredths||0)/100,
               owner_reward_coins:Number(ownerCredit?.delta)||0,
+              owner_reward_pending_coins:ownerCredit?0:
+                Math.floor(Number(regularShare?.reward_hundredths||0)/100),
               lucky:outcome?{payout_coins:outcome.payout_coins,
                 max_multiplier:outcome.max_multiplier}:null},200,cors);
           }
@@ -1512,25 +1726,25 @@ export async function handleRequest(request, env, ctx) {
             'INSERT INTO sharika_regular_room_rewards(transaction_id,room_id,reward_hundredths) '+
             'VALUES((SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
           ).bind(uid,requestId,roomId,regularRewardHundredths));
-          // The room ledger retains the exact 10% share in hundredths.
-          // Whole coins are also credited once to the room owner's wallet
-          // in this same atomic gift settlement (no second claim).
+          // Reward is earned now but transferred at the end of this UTC week.
+          // Only post-upgrade transactions are in this table: older immediate
+          // credits can never be paid a second time by the weekly cron.
           const ownerRewardCoins=gift.tab===2?0:Math.floor(spend/10);
-          if(ownerRewardCoins>0){
+          if(regularRewardHundredths>0){
             statements.push(env.DB.prepare(
-              "UPDATE sharika_users SET coins=CASE WHEN status='active' AND coins<=? "+
-              "THEN coins+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?"
-            ).bind(Number.MAX_SAFE_INTEGER-ownerRewardCoins,ownerRewardCoins,room.owner_id));
-            statements.push(env.DB.prepare(
-              "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
-              "VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),"+
-              "'room_gift_reward','roomgift:'||(SELECT id FROM sharika_gift_transactions "+
-              "WHERE sender_uid=? AND request_id=?))"
-            ).bind(room.owner_id,ownerRewardCoins,room.owner_id,uid,requestId));
+              'INSERT INTO sharika_room_weekly_accruals('+
+              'transaction_id,room_id,owner_uid,week_start_utc,reward_hundredths) '+
+              'VALUES((SELECT id FROM sharika_gift_transactions '+
+              'WHERE sender_uid=? AND request_id=?),?,?,?,?)'
+            ).bind(uid,requestId,roomId,room.owner_id,
+              roomWeekStartUTC(Date.now()),regularRewardHundredths));
           }
-          // Family and BD Crystal commissions settle atomically with this gift.
-          // These entries are not spendable coins and exclude Lucky gifts.
-          statements.push(...familyGiftCommissionStatements(env.DB,uid,requestId,gift.tab));
+          // Family was retired from the user-facing earning program. Its
+          // historic Crystal records stay intact, but new gifts do not earn
+          // overlapping Family commissions alongside Agency salaries.
+          // Pending Host/Agency/BD earnings are recorded with the same gift
+          // transaction. This never credits a spendable wallet automatically.
+          statements.push(...agencyGiftEarningStatements(env.DB,uid,requestId,gift.tab));
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
@@ -1548,22 +1762,14 @@ export async function handleRequest(request, env, ctx) {
                 ctx?.waitUntil(deliverNotification(env,notice.notification));
             }catch(error){console.error('gift_notice_failed',String(error.message||error));}
           }
-          if(ownerRewardCoins>0){
-            try{
-              const notice=await notifyUser(env.DB,{recipientUid:room.owner_id,
-                kind:'reward',title:'Room gift reward',
-                body:'Your room earned '+ownerRewardCoins+' coins from gifts.',
-                dedupeKey:'room-reward:'+saved.id});
-              if(notice.created&&notice.notification)
-                ctx?.waitUntil(deliverNotification(env,notice.notification));
-            }catch(error){console.error('room_reward_notice_failed',String(error.message||error));}
-          }
+          // Weekly payout will notify the room owner when due; gifts do not
+          // make immediate owner-wallet credits after this upgrade.
           return reply({duplicate:false,transaction_id:saved.id,
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
             quantity,recipient_diamonds_per_user:diamondsPerRecipient,
             room_reward_coins:regularRewardHundredths/100,
-            owner_reward_coins:ownerRewardCoins,
+            owner_reward_coins:0,owner_reward_pending_coins:ownerRewardCoins,
             lucky:lucky?{payout_coins:lucky.payout_coins,
               max_multiplier:lucky.max_multiplier,
               recipient_reward_diamonds:benefits.recipient_hundredths/100,
@@ -1585,10 +1791,16 @@ export async function handleRequest(request, env, ctx) {
         return handleRoomBanList({
           request,env,uid,room,roomId,reply,fail,cors
         });
+      if(parts.length===5 && action==='kick-history')
+        return handleRoomKickHistory({
+          request,env,uid,room,roomId,reply,fail,cors
+        });
       if(parts.length===5 && action==='admins')
         return handleRoomAdminAssignment({
           request,env,uid,room,roomId,reply,fail,cors,readBody
         });
+      if(parts.length===5 && action==='kick-history')
+        return handleRoomKickHistory({request,env,uid,room,roomId,reply,fail,cors});
       if(parts.length===6 && action==='locks' && parts[5]==='all' &&
          request.method==='PUT') {
         if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid)) return fail('room_owner_only',403,cors);
@@ -1618,6 +1830,14 @@ export async function handleRequest(request, env, ctx) {
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const body=await readBody(request);
         const seat = body.seat_no === null ? null : Number(body.seat_no);
+        if(seat!==null){
+          const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
+          if(policy.mic_mode==='owner'&&room.owner_id!==uid)
+            return fail('room_mic_owner_only',403,cors);
+          if(policy.mic_mode==='admins'&&room.owner_id!==uid&&
+             !await isRoomAdmin(env,roomId,uid))
+            return fail('room_mic_admin_only',403,cors);
+        }
         if (seat !== null && (!Number.isInteger(seat) || seat < 1 ||
           seat > room.seat_count)) return fail('invalid_seat', 400, cors);
         const result=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
@@ -1633,7 +1853,7 @@ export async function handleRequest(request, env, ctx) {
         if(!/^[0-9]{1,12}$/.test(after)||!Number.isSafeInteger(Number(after)))
           return fail('invalid_entry_cursor',400,cors);
         return reply(await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-          .roomEntryRead(Number(after)),200,cors);
+          .roomEntryRead(uid,Number(after)),200,cors);
       }
       if (parts.length === 5 && action === 'members' && request.method === 'GET') {
         if(!member)return fail('join_room_first',403,cors);
@@ -1646,9 +1866,9 @@ export async function handleRequest(request, env, ctx) {
           JOIN sharika_users u ON u.auth_uid=m.user_id
           LEFT JOIN sharika_room_admins ra ON ra.room_id=m.room_id AND ra.user_id=m.user_id
           WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(room.owner_id,roomId).all();
-        // A killed Android process may never call /leave. Show active presence
-        // (with a 90-second grace period for new joins), without mutating the
-        // membership ledger in this read-only room snapshot.
+        // Show only actively joined users. A persistent owner permission row
+        // is never proof that the owner is still physically in the room.
+        // /join registers presence before returning, so no grace is needed.
         let visibleMembers=result.results||[];
         let presence=null;
         try{presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');}
@@ -1656,15 +1876,18 @@ export async function handleRequest(request, env, ctx) {
         if(typeof presence?.presenceRoomMembers==='function') {
           try{
             const live=new Set(await presence.presenceRoomMembers(roomId));
-            const now=Date.now();
-            visibleMembers=visibleMembers.filter(m=>m.user_id===room.owner_id||
-              m.user_id===uid||live.has(m.user_id)||
-              (typeof m.joined_at==='string'&&
-                now-Date.parse(m.joined_at.replace(' ','T')+'Z')<90_000));
-          }catch(error){console.warn('presence_room_members_unavailable',error?.message);}
+            visibleMembers=visibleMembers.filter(m=>live.has(m.user_id));
+          }catch(error){
+            console.warn('presence_room_members_unavailable',error?.message);
+            visibleMembers=[];
+          }
+        }else{
+          // Never display offline IDs when the presence coordinator is down.
+          visibleMembers=[];
         }
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
+        const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
         const equipped=await readRoomEquipped(env.DB,roomId);
         // Room color and owner-selected photo are shared room state. Return
         // them with every member poll, so guests already inside and late
@@ -1739,6 +1962,11 @@ export default {
         .catch(error=>console.error('family_sheets_cron_error',error.message)));
       context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true,env,context)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
+      context.waitUntil(settleDueRoomWeeks(env.DB,Date.now(),40)
+        .then(result=>{
+          if(result.errors.length)
+            console.error('room_weekly_reward_settlement_errors',result.errors.length);
+        }).catch(error=>console.error('room_weekly_reward_cron_error',error.message)));
     }
   }
 };
