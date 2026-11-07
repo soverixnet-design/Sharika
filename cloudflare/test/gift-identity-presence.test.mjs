@@ -38,7 +38,9 @@ test('top gift parade lasts 10 seconds with avatars and lower receipts remain vi
   assert.match(adapter,/animation:shGiftParade 10s linear forwards/);
   assert.match(adapter,/giftParticipant\(doc,item\.sender_name,item\.sender_id,item\.sender_pic\)/);
   assert.match(adapter,/giftParticipant\(doc,item\.recipient_name,item\.recipient_id,item\.recipient_pic\)/);
-  assert.match(adapter,/frame\.setTimeout\(\(\)=>\{box\.remove\(\);next\(\);\},featured\?10000:4700\)/);
+  assert.match(adapter,/finishAfter\(featured\?10000:4700\)/);
+  assert.match(adapter,/finishAfter\(10000\)/);
+  assert.match(adapter,/finishAfter\(4700\)/);
   assert.match(adapter,/presentVerifiedGift\(event\)/);
 });
 
@@ -54,41 +56,53 @@ test('Luxury gift fills the phone screen and zooms in from its center',()=>{
   context.doc=doc;
   runInContext('giftPresentationCss(doc)',context);
   assert.match(stylesheet,/\.sh-gift-parade\.sh-gift-parade-video\{[^}]*inset:0;top:0;left:0;width:100%;height:100%/);
-  assert.match(stylesheet,/\.sh-gift-parade-video video\{[^}]*position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover/);
+  assert.match(stylesheet,/\.sh-gift-parade-video video\{[^}]*position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain/);
   assert.match(stylesheet,/@keyframes shGiftCenterZoom\{0%\{transform:scale\(\.32\);opacity:0\}/);
   assert.match(stylesheet,/\.sh-gift-parade-video \.sh-gift-parade-people\{[^}]*position:absolute;z-index:2/);
   assert.match(stylesheet,/\.sh-gift-parade-video \.sh-gift-parade-caption\{[^}]*position:absolute;z-index:2/);
   assert.doesNotMatch(stylesheet,/height:min\(62vh,640px\);object-fit:contain/);
 });
 
-test('uploaded Luxury MP4 presents sound-capable fullscreen media and a tap fallback',async()=>{
+test('uploaded Luxury MP4 attaches before playback, starts the 10s clock on playing and offers sound',async()=>{
   const start=adapter.indexOf('  function giftPresentationCss(doc){');
   const end=adapter.indexOf('  function decorateRoomPeople(frame){',start);
   assert.ok(start>=0&&end>start);
   const callbacks=[],elements=[];
-  let blockAutoplay=true;
   const element=tag=>{
-    const node={tag,children:[],attrs:{},className:'',textContent:'',muted:false,
-      classList:{add(value){node.className+=' '+value;}},
+    const node={tag,children:[],attrs:{},events:{},className:'',textContent:'',
+      muted:false,isConnected:true,
+      classList:{
+        add(value){node.className+=' '+value;},
+        remove(value){node.className=node.className.replace(' '+value,'');}
+      },
       setAttribute(key,value){node.attrs[key]=value;},
       append(...children){node.children.push(...children);},
       appendChild(child){node.children.push(child);},
       insertBefore(child,sibling){node.children.splice(node.children.indexOf(sibling),0,child);},
+      addEventListener(name,fn){node.events[name]=fn;},
+      querySelector(selector){
+        if(selector==='video'||selector==='audio')
+          return node.children.find(child=>child.tag===selector)||null;
+        if(selector==='.sh-gift-sound')
+          return node.children.find(child=>child.className==='sh-gift-sound')||null;
+        return null;
+      },
       querySelectorAll(selector){return selector==='video,audio'?
         node.children.filter(child=>child.tag==='video'||child.tag==='audio'):[];},
-      remove(){node.removed=true;},pause(){node.paused=true;},
-      play(){node.playCalls=(node.playCalls||0)+1;
-        return blockAutoplay&&!node.muted?Promise.reject(new Error('gesture required')):
-          Promise.resolve();}
+      remove(){node.removed=true;node.isConnected=false;},
+      pause(){node.paused=true;},
+      play(){node.playCalls=(node.playCalls||0)+1;return Promise.resolve();}
     };
     elements.push(node);return node;
   };
-  const doc={head:{appendChild(){}},body:{children:[],appendChild(node){this.children.push(node);}},
+  const doc={head:{appendChild(){}},body:{children:[],appendChild(node){
+    this.children.push(node);node.isConnected=true;}},
     createElement:element,getElementById(){return null;}};
-  const frame={document:doc,setTimeout(fn,ms){callbacks.push({fn,ms});}};
+  const frame={document:doc,setTimeout(fn,ms){const timer={fn,ms};callbacks.push(timer);return timer;},
+    clearTimeout(timer){if(timer)timer.cleared=true;}};
   const ctx=createContext({
     verifiedMediaUrl:url=>url,isVideoMedia:url=>/\.mp4$/.test(url),
-    formatCompactCoins:value=>String(value),paintVerifiedAvatar(){}
+    formatCompactCoins:value=>String(value),paintVerifiedAvatar(){},console:{warn(){}}
   });
   runInContext(adapter.slice(start,end),ctx);
   ctx.frame=frame;
@@ -104,19 +118,24 @@ test('uploaded Luxury MP4 presents sound-capable fullscreen media and a tap fall
   assert.equal(video.src,ctx.gift.animation_url);
   assert.equal(video.playsInline,true);
   assert.equal(video.autoplay,true);
-  assert.equal(video.muted,true,'blocked autoplay must restart muted for the receiver');
-  assert.equal(video.playCalls,2);
-  assert.ok(elements.some(node=>node.attrs['aria-label']==='Play gift sound'));
-  assert.deepEqual(callbacks.map(x=>x.ms),[10000,10000]);
-  blockAutoplay=false;
+  assert.equal(video.muted,true,'Android inline autoplay starts muted');
+  assert.equal(video.playCalls,1);
+  assert.ok(doc.body.children.includes(overlay),'the overlay must be attached before video playback');
+  assert.deepEqual(callbacks.map(x=>x.ms),[12000],'give the MP4 time to load before beginning the 10-second display');
+  video.events.playing();
+  assert.match(overlay.className,/sh-gift-video-playing/);
+  assert.equal(callbacks[0].cleared,true);
+  assert.deepEqual(callbacks.map(x=>x.ms),[12000,10000]);
   const sound=elements.find(node=>node.attrs['aria-label']==='Play gift sound');
+  assert.ok(sound);
   sound.onclick();
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(video.muted,false);
-  assert.equal(video.playCalls,3);
+  assert.equal(video.playCalls,2);
   assert.equal(sound.removed,true);
   callbacks[1].fn();
   assert.equal(overlay.removed,true);
+  assert.equal(video.paused,true);
 });
 
 test('room roster uses expiring verified presence without deleting D1 members',()=>{
