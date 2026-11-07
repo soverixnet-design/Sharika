@@ -87,7 +87,7 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}
   // and from seller-to-user coin transfers. No user wallet debit is involved.
   if(path==='/api/v1/sellers/salary-incoming'&&request.method==='GET'){
     const rows=resultRows(await env.DB.prepare(
-      'SELECT t.id,t.credited_stock_coins,t.stock_after,t.created_at,'+
+      'SELECT t.id,t.credited_coins,t.created_at,'+
       'u.public_no AS sender_no,u.name AS sender_name '+
       'FROM sharika_agency_salary_seller_transfers t '+
       'JOIN sharika_users u ON u.auth_uid=t.auth_uid '+
