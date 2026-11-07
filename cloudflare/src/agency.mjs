@@ -59,7 +59,7 @@ async function salarySummary(db,uid,mode){
     seller_transferred_units:transferred,
     matured_available_units:Math.max(0,(Number(matured?.units)||0)-paid-transferred),
     exchange_enabled:!!config.exchange_enabled,
-    seller_transfer_enabled:!!config.seller_transfer_enabled,settlement_mode:mode,
+    seller_transfer_enabled:!!config.exchange_enabled,settlement_mode:mode,
     min_host_target_coins:config.min_host_target_coins,
     coins_per_usd:config.coins_per_usd,policy_version:config.version};
 }
@@ -131,7 +131,7 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
       db.prepare('SELECT credited_coins,salary_units,settlement_mode,created_at '+
         'FROM sharika_agency_salary_exchanges WHERE auth_uid=? ORDER BY id DESC LIMIT 30')
         .bind(uid).all(),
-      db.prepare('SELECT t.id,t.credited_stock_coins,t.stock_after,t.created_at,'+
+      db.prepare('SELECT t.id,t.credited_coins,t.created_at,'+
         'u.public_no AS seller_no,u.name AS seller_name FROM sharika_agency_salary_seller_transfers t '+
         'JOIN sharika_users u ON u.auth_uid=t.seller_uid '+
         'WHERE t.auth_uid=? ORDER BY t.id DESC LIMIT 30').bind(uid).all()
@@ -193,20 +193,20 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
       !isPublicId(body.seller_public_id)||!Number.isSafeInteger(body.coins)||
       body.coins<1||body.coins>100000000)
       return fail('invalid_salary_seller_transfer',400,cors);
-    const prior=await db.prepare('SELECT t.id,t.seller_uid,t.credited_stock_coins,'+
-      't.stock_after,u.public_no AS seller_no FROM sharika_agency_salary_seller_transfers t '+
+    const prior=await db.prepare('SELECT t.id,t.seller_uid,t.credited_coins,'+
+      'u.public_no AS seller_no FROM sharika_agency_salary_seller_transfers t '+
       'JOIN sharika_users u ON u.auth_uid=t.seller_uid '+
       'WHERE t.auth_uid=? AND t.request_id=?').bind(uid,requestId).first();
     if(prior){
-      if(Number(prior.credited_stock_coins)!==body.coins||
+      if(Number(prior.credited_coins)!==body.coins||
         publicId(prior.seller_no)!==body.seller_public_id)
         return fail('idempotency_conflict',409,cors);
       return reply({transferred:true,duplicate:true,transfer_id:prior.id,
-        seller_public_id:body.seller_public_id,credited_stock_coins:body.coins,
-        seller_stock_after:prior.stock_after,main_wallet_unchanged:true},200,cors);
+        seller_public_id:body.seller_public_id,credited_coins:body.coins,
+        main_wallet_unchanged:true},200,cors);
     }
     const config=await salaryConfig(db);
-    if(!config.seller_transfer_enabled||!terms.active)
+    if(!config.exchange_enabled||!terms.active)
       return fail('salary_seller_transfer_disabled',403,cors);
     if(body.expected_version!==config.version)
       return fail('salary_policy_changed',409,cors);
@@ -219,16 +219,15 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
       return fail('seller_stock_limit',409,cors);
     try{
       await db.batch([
+        db.prepare('INSERT INTO sharika_agency_salary_seller_transfers('+
+          'auth_uid,seller_uid,request_id,salary_units,credited_coins,'+
+          'settlement_mode,policy_version) VALUES(?,?,?,?,?,?,?)')
+          .bind(uid,seller.seller_uid,requestId,body.coins*10000,body.coins,
+            terms.settlement_mode,config.version),
         db.prepare('UPDATE sharika_coin_sellers SET available_coins='+
           'CASE WHEN active=1 AND available_coins<=? THEN available_coins+? ELSE -1 END,'+
           "updated_at=datetime('now') WHERE seller_uid=?")
-          .bind(1000000000-body.coins,body.coins,seller.seller_uid),
-        db.prepare('INSERT INTO sharika_agency_salary_seller_transfers('+
-          'auth_uid,seller_uid,request_id,salary_units,credited_stock_coins,stock_after,'+
-          'settlement_mode,policy_version) VALUES(?,?,?,?,?,('+
-          'SELECT available_coins FROM sharika_coin_sellers WHERE seller_uid=?),?,?)')
-          .bind(uid,seller.seller_uid,requestId,body.coins*10000,body.coins,
-            seller.seller_uid,terms.settlement_mode,config.version)
+          .bind(1000000000-body.coins,body.coins,seller.seller_uid)
       ]);
     }catch(error){
       if(/agency_salary_|CHECK constraint|UNIQUE constraint|FOREIGN KEY constraint/.test(
@@ -236,11 +235,11 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
         return fail('salary_seller_transfer_not_available',409,cors);
       throw error;
     }
-    const saved=await db.prepare('SELECT id,stock_after FROM sharika_agency_salary_seller_transfers '+
+    const saved=await db.prepare('SELECT id FROM sharika_agency_salary_seller_transfers '+
       'WHERE auth_uid=? AND request_id=?').bind(uid,requestId).first();
     return reply({transferred:true,duplicate:false,transfer_id:saved.id,
-      seller_public_id:body.seller_public_id,credited_stock_coins:body.coins,
-      seller_stock_after:saved.stock_after,main_wallet_unchanged:true},201,cors);
+      seller_public_id:body.seller_public_id,credited_coins:body.coins,
+      main_wallet_unchanged:true},201,cors);
   }
   if(path==='/api/v1/agency/bd/center'&&request.method==='GET'){
     const bd=await db.prepare('SELECT active FROM sharika_bd_agents WHERE bd_uid=?').bind(uid).first();
@@ -406,7 +405,7 @@ export async function handleAgencyAdmin({request,env,uid,actor:admin,operation,c
   if(operation==='agency'&&request.method==='GET'){
     const [settings,salary,targets,sellerTransfers]=await Promise.all([
       policy(db),salaryConfig(db),salaryTargets(db),
-      db.prepare('SELECT t.id,t.credited_stock_coins,t.stock_after,t.created_at,'+
+      db.prepare('SELECT t.id,t.credited_coins,t.created_at,'+
         'su.public_no AS sender_no,cu.public_no AS seller_no '+
         'FROM sharika_agency_salary_seller_transfers t '+
         'JOIN sharika_users su ON su.auth_uid=t.auth_uid '+
@@ -422,7 +421,7 @@ export async function handleAgencyAdmin({request,env,uid,actor:admin,operation,c
       salary_config:{coins_per_usd:salary.coins_per_usd,
         min_host_target_coins:salary.min_host_target_coins,
         exchange_enabled:!!salary.exchange_enabled,
-        seller_transfer_enabled:!!salary.seller_transfer_enabled,version:salary.version},
+        seller_transfer_enabled:!!salary.exchange_enabled,version:salary.version},
       targets:targets.map(t=>t.target_coins),
       salary_seller_transfers:results(sellerTransfers).map(t=>({...t,
         sender_public_id:publicId(t.sender_no),seller_public_id:publicId(t.seller_no),
@@ -442,19 +441,15 @@ export async function handleAgencyAdmin({request,env,uid,actor:admin,operation,c
       targets.some((x,i)=>!Number.isSafeInteger(x)||
         x<1||x>1000000000000||(i>0&&x<=targets[i-1]))||
       !Number.isSafeInteger(body.coins_per_usd)||body.coins_per_usd<1||
-      body.coins_per_usd>1000000000||typeof body.exchange_enabled!=='boolean'||
-      (body.seller_transfer_enabled!==undefined&&
-        typeof body.seller_transfer_enabled!=='boolean'))
+      body.coins_per_usd>1000000000||typeof body.exchange_enabled!=='boolean')
       return fail('invalid_agency_salary_policy',400,cors);
     const before={...current,targets:(await salaryTargets(db)).map(t=>t.target_coins)};
-    const sellerTransferEnabled=body.seller_transfer_enabled===undefined?
-      !!current.seller_transfer_enabled:body.seller_transfer_enabled;
     const statements=[
       db.prepare('UPDATE sharika_agency_salary_config SET coins_per_usd=?,min_host_target_coins=?,'+
-        'exchange_enabled=?,seller_transfer_enabled=?,version=CASE WHEN version=? THEN version+1 ELSE 0 END,'+
+        'exchange_enabled=?,version=CASE WHEN version=? THEN version+1 ELSE 0 END,'+
         "updated_by=?,updated_at=datetime('now') WHERE key='standard'")
         .bind(body.coins_per_usd,targets[0],Number(body.exchange_enabled),
-          Number(sellerTransferEnabled),current.version,uid),
+          current.version,uid),
       db.prepare('UPDATE sharika_agency_salary_targets SET active=0')
     ];
     for(const target of targets)statements.push(db.prepare(
@@ -464,8 +459,7 @@ export async function handleAgencyAdmin({request,env,uid,actor:admin,operation,c
     statements.push(db.prepare('INSERT INTO sharika_agency_salary_policy_audit(actor_uid,'+
       'old_json,new_json) VALUES(?,?,?)').bind(uid,JSON.stringify(before),
       JSON.stringify({coins_per_usd:body.coins_per_usd,targets,
-        exchange_enabled:body.exchange_enabled,
-        seller_transfer_enabled:sellerTransferEnabled,version:current.version+1})));
+        exchange_enabled:body.exchange_enabled,version:current.version+1})));
     try{await db.batch(statements);}catch(error){
       if(/CHECK constraint/.test(String(error)))return fail('agency_salary_policy_changed',409,cors);
       throw error;
