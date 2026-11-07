@@ -1870,6 +1870,12 @@ export async function handleRequest(request, env, ctx) {
           JOIN sharika_users u ON u.auth_uid=m.user_id
           LEFT JOIN sharika_room_admins ra ON ra.room_id=m.room_id AND ra.user_id=m.user_id
           WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(room.owner_id,roomId).all();
+        // A member's own verified role and microphone permission must not
+        // disappear just because the separately maintained presence roster
+        // temporarily omits their row. Never trust a browser-supplied role.
+        const ownMemberRole=(result.results||[]).find(row=>row.user_id===uid)?.role||
+          (room.owner_id===uid?'owner':
+            await isRoomAdmin(env,roomId,uid)?'admin':'member');
         // Show only actively joined users. A persistent owner permission row
         // is never proof that the owner is still physically in the room.
         // /join registers presence before returning, so no grace is needed.
@@ -1906,6 +1912,7 @@ export async function handleRequest(request, env, ctx) {
         const catalogBackground=selectedCatalogId!==null
           ?await catalogThemeImage(env.DB,selectedCatalogId,url.origin):null;
         return reply({ room: roomId,
+          self_state:{role:ownMemberRole,seat_no:member.seat_no,muted:!!member.muted},
           access_locked:(await readRoomAccessLock(env.DB,roomId)).locked,
           theme:ROOM_THEMES.has(room.theme)||catalogBackground?room.theme:'mid',
           theme_background_url:catalogBackground || (wallpaper?.version
