@@ -191,6 +191,14 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0057_room_access_locks.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0057_room_access_locks.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0057_room_access_locks.sql')"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS locked_rooms FROM sharika_room_access_locks WHERE locked=1"
+      # Idempotent official-wallpaper catalog; it does not migrate or rewrite
+      # existing room cards, member profiles, gift rows, balances or wallets.
+      - name: Apply Room Theme Gallery catalog to isolated staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0058_room_theme_gallery.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0058_room_theme_gallery.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0058_room_theme_gallery.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS official_themes FROM sharika_room_theme_catalog"
       - name: Verify Family schema and explicitly approved seat-aware voice source
         if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
         run: |

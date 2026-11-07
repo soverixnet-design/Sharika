@@ -258,6 +258,10 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
         stmt.first=async()=>coverVersion?{version:coverVersion}:null;
       if(sql.startsWith('SELECT version FROM sharika_room_theme_images'))
         stmt.first=async()=>wallpaperVersion?{version:wallpaperVersion}:null;
+      if(sql.startsWith('SELECT active,image_bytes FROM sharika_room_theme_catalog'))
+        stmt.first=async()=>({active:1,image_bytes:120000});
+      if(sql.startsWith('SELECT image_bytes,image_version FROM sharika_room_theme_catalog'))
+        stmt.first=async()=>({image_bytes:120000,image_version:2});
       if(sql.startsWith('UPDATE sharika_rooms SET'))
         stmt.run=async()=>{theme=stmt.values[2];return {meta:{changes:1}};};
       return stmt;
@@ -279,21 +283,32 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
     assert.equal((await patch(ownerToken,'photo')).status,409);
     assert.equal(theme,'mid');
     coverVersion=9;
+    // A card-cover upload must never silently become a full-room wallpaper.
+    assert.equal((await patch(ownerToken,'photo')).status,409);
+    assert.equal(theme,'mid');
+    wallpaperVersion=3;
     assert.equal((await patch(ownerToken,'photo')).status,200);
     const shared=await read(guestToken);
     assert.equal(shared.status,200);
     const body=await shared.json();
     assert.equal(body.theme,'photo');
     assert.equal(body.theme_background_url,
-      'https://example.test/api/v1/rooms/10000001/cover?v=9');
-    wallpaperVersion=3;
+      'https://example.test/api/v1/rooms/10000001/theme-image?v=3');
+    // Old rooms without a separate wallpaper can still show their legacy
+    // cover until the owner selects a new HD background.
+    wallpaperVersion=0;
     const hdShared=await (await read(guestToken)).json();
     assert.equal(hdShared.theme_background_url,
-      'https://example.test/api/v1/rooms/10000001/theme-image?v=3');
+      'https://example.test/api/v1/rooms/10000001/cover?v=9');
     assert.equal((await patch(ownerToken,'ocean')).status,200);
     const palette=await (await read(guestToken)).json();
     assert.equal(palette.theme,'ocean');
     assert.equal(palette.theme_background_url,null);
+    assert.equal((await patch(ownerToken,'catalog:7')).status,200);
+    const official=await (await read(guestToken)).json();
+    assert.equal(official.theme,'catalog:7');
+    assert.equal(official.theme_background_url,
+      'https://example.test/api/v1/room-themes/7/image?v=2');
   }finally{globalThis.fetch=originalFetch;}
 });
 

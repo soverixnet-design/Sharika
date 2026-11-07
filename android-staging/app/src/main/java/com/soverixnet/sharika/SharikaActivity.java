@@ -1014,6 +1014,7 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/sellers/transfer")) return method.equals("POST");
         if (path.equals("/api/v1/rooms"))
             return method.equals("GET") || method.equals("POST");
+        if (path.equals("/api/v1/room-themes")) return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}$"))
             return method.equals("GET") || method.equals("PATCH");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/members$") ||

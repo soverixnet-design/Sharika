@@ -2652,15 +2652,117 @@
       [['Open verified Invite settings','daily'],['Create event campaign','events']]);
   };
   P.themes=async function(){
-    const root=byId('pg');root.innerHTML=card('Room themes','Reading real room theme usage…');
+    const root=byId('pg');root.innerHTML=card('Room Theme Gallery','Loading official themes…');
+    async function themeJpeg(file){
+      if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
+        throw Error('Select an image under 15 MB');
+      const url=URL.createObjectURL(file),image=new Image();
+      try{
+        await new Promise((resolve,reject)=>{
+          image.onload=resolve;
+          image.onerror=()=>reject(Error('Cannot read this image'));
+          image.src=url;
+        });
+        const w=image.naturalWidth,h=image.naturalHeight;
+        if(Math.min(w,h)<720)throw Error('Select an HD theme (at least 720 px wide and tall)');
+        const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+        if(!ctx)throw Error('Image editor is unavailable');
+        for(const longest of [1600,1440,1280,1080,900]){
+          const scale=Math.min(1,longest/Math.max(w,h));
+          canvas.width=Math.round(w*scale);canvas.height=Math.round(h*scale);
+          ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+          ctx.drawImage(image,0,0,canvas.width,canvas.height);
+          for(const q of [.86,.76,.66,.54]){
+            const result=canvas.toDataURL('image/jpeg',q);
+            if(result.startsWith('data:image/jpeg;base64,')&&result.length<480000)
+              return result;
+          }
+        }
+        throw Error('This theme is too detailed; choose a smaller photo');
+      }finally{URL.revokeObjectURL(url);}
+    }
     try{
-      const data=await api('GET','theme-usage');
-      root.innerHTML='<div class="card"><h3>Actual room backgrounds in use</h3>'+
-        '<p class="n">Existing room themes are chosen by room owners. Admin-uploaded themes are not available yet; no demo previews are saved.</p>'+
-        window.T(['Theme','Rooms using'],(data.themes||[]).map(t=>[
+      const [catalog,usage]=await Promise.all([
+        api('GET','room-themes'),api('GET','theme-usage')
+      ]);
+      const items=catalog.themes||[];
+      const edit=role==='super';
+      const validImage=url=>typeof url==='string'&&
+        /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/room-themes\/[1-9][0-9]{0,8}\/image\?v=[1-9][0-9]*$/.test(url);
+      root.innerHTML='<div class="card"><h3>🎨 Official Room Theme Gallery</h3>'+
+        '<p class="n">Uploaded themes are shown in the dedicated Room Theme Gallery. Only the room owner can apply them. Room-card photos and member profile photos do not change.</p>'+
+        (edit?'<div class="row"><label>Theme name<input id="sh-new-theme-name" maxlength="60" placeholder="Royal Palace"></label>'+
+          '<label>Order<input id="sh-new-theme-order" type="number" min="0" max="10000" value="0"></label></div>'+
+          '<div class="row"><label>HD wallpaper<input id="sh-new-theme-file" type="file" accept="image/*"></label>'+
+          '<button class="btn" id="sh-new-theme-create" type="button">Add official theme</button></div>':'')+
+        '<div id="sh-theme-feedback" role="status" class="n"></div>'+
+        '<div id="sh-theme-list" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px"></div></div>'+
+        '<div class="card"><h3>Actual room theme usage</h3>'+
+        window.T(['Theme','Rooms using'],(usage.themes||[]).map(t=>[
           esc(t.theme),fmt(t.rooms)
-        ]))+'<button class="btn s" id="theme-rooms" type="button">Open real rooms</button></div>';
+        ]))+'<button class="btn s" id="theme-rooms" type="button">Open rooms</button></div>';
       byId('theme-rooms').onclick=()=>openVerifiedPage('rooms');
+      const note=byId('sh-theme-feedback');
+      const list=byId('sh-theme-list');
+      async function applyAction(action){
+        note.textContent='Saving changes…';
+        try{await action();await P.themes();}
+        catch(error){note.textContent='Not saved: '+error.message;}
+      }
+      for(const item of items){
+        const wrap=document.createElement('div');wrap.className='card';
+        wrap.style.cssText='margin:0;padding:10px;border-radius:12px';
+        const preview=document.createElement('div');
+        preview.style.cssText='height:135px;border-radius:10px;background:#203527 center/cover;'+
+          'border:1px solid #ac9159';
+        if(validImage(item.image_url))preview.style.backgroundImage='url("'+item.image_url+'")';
+        const caption=document.createElement('strong');
+        caption.textContent=item.name+' · #'+item.id;
+        const state=document.createElement('div');state.className='n';
+        state.textContent=(item.active?'● Published':'○ Hidden')+
+          (item.image_url?'':' · Needs image');
+        wrap.append(preview,caption,state);
+        if(edit){
+          const controls=document.createElement('div');
+          controls.style.cssText='display:grid;gap:7px;margin-top:9px';
+          const newName=document.createElement('input');newName.value=item.name;
+          newName.maxLength=60;newName.setAttribute('aria-label','Theme name');
+          const order=document.createElement('input');order.type='number';
+          order.min=0;order.max=10000;order.value=String(item.sort_order||0);
+          order.setAttribute('aria-label','Theme order');
+          const save=document.createElement('button');save.className='btn s';
+          save.type='button';save.textContent='Save title and order';
+          save.onclick=()=>applyAction(()=>api('PATCH','room-themes/'+item.id,{
+            name:newName.value.trim(),sort_order:Number(order.value)
+          }));
+          const upload=document.createElement('input');upload.type='file';
+          upload.accept='image/*';upload.setAttribute('aria-label','Upload theme image');
+          upload.onchange=()=>{const file=upload.files?.[0];if(file)applyAction(async()=>{
+            const image_data=await themeJpeg(file);
+            await api('PUT','room-themes/'+item.id+'/image',{image_data});
+          });};
+          const toggle=document.createElement('button');toggle.className='btn s';
+          toggle.type='button';toggle.disabled=!item.image_url&&!item.active;
+          toggle.textContent=item.active?'Hide from users':'Publish to users';
+          toggle.onclick=()=>applyAction(()=>api('PATCH','room-themes/'+item.id,
+            {active:!item.active}));
+          controls.append(newName,order,save,upload,toggle);wrap.append(controls);
+        }
+        list.appendChild(wrap);
+      }
+      if(!items.length)list.textContent='No uploaded official themes yet.';
+      if(edit)byId('sh-new-theme-create').onclick=()=>applyAction(async()=>{
+        const name=byId('sh-new-theme-name').value.trim();
+        const sort_order=Number(byId('sh-new-theme-order').value);
+        const file=byId('sh-new-theme-file').files?.[0];
+        if(!file)throw Error('Select the wallpaper image first');
+        // Decode and validate the image before reserving a database entry.
+        const image_data=await themeJpeg(file);
+        const created=await api('POST','room-themes',{name,sort_order});
+        if(!Number.isSafeInteger(created.id))throw Error('Theme ID unavailable');
+        await api('PUT','room-themes/'+created.id+'/image',{image_data});
+        await api('PATCH','room-themes/'+created.id,{active:true});
+      });
     }catch(error){root.innerHTML=card('Theme usage unavailable',error.message);}
   };
   P.rr=async function(){

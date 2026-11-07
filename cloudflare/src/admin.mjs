@@ -3,6 +3,7 @@
 // Only explicitly audited seller inventory and verified grants may credit wallets.
 import { handleSellerAdmin } from './sellers.mjs';
 import { handleBannerAdmin } from './banners.mjs';
+import { handleRoomThemeAdmin } from './room-themes.mjs';
 import { handleDailyAdmin } from './daily.mjs';
 import { handlePremiumAdmin } from './premium.mjs';
 import { handleBondAdmin } from './bonds.mjs';
@@ -190,6 +191,10 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if(operation==='banners'||/^banners\/[1-9][0-9]{0,8}(?:\/image)?$/.test(operation))
     return await handleBannerAdmin({
       request,env,uid,role:actor.role,operation,cors,reply,fail
+    });
+  if(operation==='room-themes'||/^room-themes\/[1-9][0-9]{0,8}(?:\/image)?$/.test(operation))
+    return await handleRoomThemeAdmin({
+      request,db:env.DB,uid,role:actor.role,operation,cors,reply,fail
     });
 
   // Support agents may reply to real user conversations, with explicit scope.

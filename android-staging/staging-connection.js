@@ -4810,7 +4810,7 @@
   }
   function verifiedThemeUrl(value){
     return typeof value==='string' &&
-      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/(cover|theme-image)\?v=[0-9]+$/.test(value)
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/(?:rooms\/[0-9]{8}\/(?:cover|theme-image)|room-themes\/[1-9][0-9]{0,8}\/image)\?v=[0-9]+$/.test(value)
       ?value:null;
   }
   async function jpegRoomPreview(file,highDefinition=false,legacy=false){
@@ -4871,16 +4871,25 @@
       coverUploadBusy=true;
       toast('Preparing your room photo…');
       try{
-        // The full-room wallpaper needs far more detail than the small card.
-        // Keep both assets separate, but retain the existing card-cover route.
-        if(useAsTheme || room.th==='photo'){
-          try{
-            const hd_image_data=await jpegRoomPreview(file,true);
-            await api('PUT','/rooms/'+room.id+'/theme-image',{image_data:hd_image_data});
-          }catch(error){
-            console.warn('HD room theme image not available; using compatible cover:',errText(error));
-          }
+        if(useAsTheme){
+          // A room wallpaper and the small room-card photo are independent.
+          // Never upload to /cover when selecting a wallpaper.
+          const hd_image_data=await jpegRoomPreview(file,true);
+          await api('PUT','/rooms/'+room.id+'/theme-image',{image_data:hd_image_data});
+          const result=await api('PATCH','/rooms/'+room.id,{theme:'photo'});
+          if(result.room?.theme!=='photo')
+            throw new Error('Shared room background was not confirmed');
+          room.th='photo';
+          if(frame?.S&&window.cur?.id===room.id)
+            await syncFrame(room,frame).catch(error=>
+              console.warn('Theme saved; room refresh delayed:',errText(error)));
+          if(frame?.$?.('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))
+            frame.themeSheet();
+          toast('Room background saved for everyone · card photo unchanged ✓');
+          return;
         }
+        // Cover editing must never overwrite the wallpaper, including when
+        // the room currently uses a personal photo as its theme.
         const image_data=await jpegRoomPreview(file);
         let saved,standardQualityOnly=false;
         try{
@@ -4901,23 +4910,9 @@
           preview.style.backgroundSize='cover';
           preview.textContent='';
         }
-        if(useAsTheme){
-          // Gallery artwork is a verified room image, never a device-local
-          // data URL. Reuse its versioned room-cover asset for all guests.
-          const result=await api('PATCH','/rooms/'+room.id,{theme:'photo'});
-          if(result.room?.theme!=='photo')
-            throw new Error('Shared room background was not confirmed');
-          room.th='photo';
-          if(frame?.S && window.cur?.id===room.id)
-            await syncFrame(room,frame).catch(error=>
-              console.warn('Theme saved; room refresh delayed:',errText(error)));
-        }
         await reloadRooms().catch(error=>
           console.warn('Room photo saved; card refresh delayed:',errText(error)));
-        if(useAsTheme && frame?.$?.('sheet')?.querySelector('h3')?.textContent?.includes('Room theme'))
-          frame.themeSheet();
         toast(standardQualityOnly?'Room saved at standard quality · HD server update pending':
-          useAsTheme?'Room background saved for everyone ✓':
           'Room photo saved · visible on room cards ✓');
       }catch(error){toast((useAsTheme?'Room background':'Room photo')+
         ' not fully saved: '+errText(error));}
@@ -5098,10 +5093,12 @@
     // Theme is authoritative in the shared room snapshot. Neither the
     // owner's phone nor a guest's stale localStorage may override it.
     const chosenTheme=['mid','gold','ocean','rose','forest','sunset','photo']
-      .includes(data.theme)?data.theme:'mid';
-    const sharedImage=chosenTheme==='photo'
+      .includes(data.theme)||/^catalog:[1-9][0-9]{0,8}$/.test(String(data.theme||''))
+      ?data.theme:'mid';
+    const sharedImage=(chosenTheme==='photo'||chosenTheme.startsWith('catalog:'))
       ?verifiedThemeUrl(data.theme_background_url):null;
-    const palette=chosenTheme==='photo'?'mid':chosenTheme;
+    const palette=(chosenTheme==='photo'||chosenTheme.startsWith('catalog:'))
+      ?'mid':chosenTheme;
     const themeChanged=room.th!==chosenTheme||frame.S.theme!==palette||
       frame.S.bg!==sharedImage||frame.S.frame!==chosenSeatFrame;
     room.th=chosenTheme;
@@ -5416,6 +5413,137 @@
     openVerifiedRoomMemberProfile(id,roomId,seat).catch(error=>
       toast('Profile unavailable: '+errText(error)));
   },true);
+  // A dedicated, scrollable theme gallery is separate from Room Settings
+  // and never edits the room cover/profile picture. Guests may browse all
+  // published artwork; the verified room owner alone may apply a wallpaper.
+  async function showRoomThemeGallery(room,frame){
+    const doc=frame?.document;
+    if(!doc||!room||window.cur?.id!==room.id)return;
+    doc.getElementById('sh-theme-gallery-page')?.remove();
+    frame.$?.('bg')?.classList.remove('on');
+    const owner=room.owner_id===session?.user?.id;
+    const panel=doc.createElement('section');
+    panel.id='sh-theme-gallery-page';
+    panel.setAttribute('role','dialog');
+    panel.setAttribute('aria-modal','true');
+    panel.setAttribute('aria-label','Room Theme Gallery');
+    panel.style.cssText='position:fixed;inset:0;z-index:2147483500;overflow-y:auto;'+
+      'background:linear-gradient(165deg,#291a0d,#071d15 40%,#03120c);'+
+      'color:#fff0ca;padding:calc(16px + env(safe-area-inset-top,0px)) 14px 28px;'+
+      'font:14px/1.4 system-ui,sans-serif;overscroll-behavior:contain';
+    const header=doc.createElement('div');
+    header.style.cssText='display:flex;align-items:center;gap:11px;margin-bottom:12px';
+    const back=doc.createElement('button');
+    back.type='button';back.textContent='‹';back.setAttribute('aria-label','Back to room');
+    back.style.cssText='width:43px;height:43px;border:1px solid #bd9759;border-radius:13px;'+
+      'background:#1b2f25;color:#ffe2a1;font-size:31px';
+    back.onclick=()=>panel.remove();
+    const heading=doc.createElement('div');
+    const title=doc.createElement('h2');title.textContent='🎨 Room Theme Gallery';
+    title.style.cssText='font-size:20px;margin:0;color:#f5d487';
+    const subtitle=doc.createElement('div');
+    subtitle.textContent='Theme changes only the room background · profile photo stays the same';
+    subtitle.style.cssText='font-size:11px;color:#c7d2c7;max-width:300px';
+    heading.append(title,subtitle);header.append(back,heading);
+    const status=doc.createElement('p');
+    status.setAttribute('role','status');
+    status.style.cssText='font-size:12px;color:#bedbc8;margin:8px 2px 15px';
+    status.textContent=owner?'Choose a design for everyone in this room.':
+      'Only the room owner can select a theme. You can preview every design.';
+    const grid=doc.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
+      'gap:12px;padding-bottom:20px';
+    panel.append(header,status,grid);doc.body.appendChild(panel);
+    const builtins=[
+      {id:'mid',name:'Midnight Royal',bg:'linear-gradient(145deg,#402582,#140c27,#b545c2)'},
+      {id:'gold',name:'Royal Gold',bg:'linear-gradient(145deg,#ab7a27,#24180e,#e6b95d)'},
+      {id:'ocean',name:'Ocean Crown',bg:'linear-gradient(145deg,#127ba4,#071a42,#4fc1db)'},
+      {id:'rose',name:'Rose Palace',bg:'linear-gradient(145deg,#ac387d,#301330,#f8a5bc)'},
+      {id:'forest',name:'Emerald Garden',bg:'linear-gradient(145deg,#136e48,#041e1a,#8acc81)'},
+      {id:'sunset',name:'Sunset Royal',bg:'linear-gradient(145deg,#e98141,#442052,#df84bf)'}
+    ];
+    let saving=false;
+    async function saveTheme(id){
+      if(!owner||saving)return;
+      saving=true;status.textContent='Saving theme for everyone…';
+      grid.querySelectorAll('button').forEach(b=>{b.disabled=true;});
+      try{
+        const saved=await api('PATCH','/rooms/'+room.id,{theme:id});
+        if(saved.room?.theme!==id)throw Error('Theme not confirmed by server');
+        room.th=id;
+        if(window.cur?.id===room.id)await syncFrame(room,frame);
+        await reloadRooms().catch(()=>{});
+        status.textContent='Theme saved ✓ All room members can see it.';
+        grid.querySelectorAll('button[data-theme-id]').forEach(b=>{
+          b.setAttribute('aria-pressed',String(b.dataset.themeId===id));
+          b.style.borderColor=b.dataset.themeId===id?'#ffe09a':'#836b48';
+        });
+      }catch(error){
+        status.textContent='Unable to save: '+errText(error);
+      }finally{
+        saving=false;
+        grid.querySelectorAll('button').forEach(b=>{b.disabled=!owner;});
+      }
+    }
+    function themeCard(id,name,bg){
+      const button=doc.createElement('button');
+      button.type='button';button.dataset.themeId=id;
+      button.setAttribute('aria-pressed',String(room.th===id));
+      button.setAttribute('aria-label','Theme: '+name);
+      button.disabled=!owner;
+      button.style.cssText='position:relative;display:flex;flex-direction:column;'+
+        'align-items:stretch;justify-content:flex-end;height:156px;overflow:hidden;'+
+        'border:2px solid '+(room.th===id?'#ffe09a':'#836b48')+';'+
+        'border-radius:18px;padding:0;background:#173428;'+
+        'box-shadow:inset 0 2px #fff4,0 7px 14px #0008;text-align:left;'+
+        'color:#fff;opacity:'+(owner?'1':'.82');
+      const photo=doc.createElement('div');
+      photo.style.cssText='position:absolute;inset:0;background-position:center;'+
+        'background-size:cover;'+(bg.startsWith('https:')
+          ?'background-image:url("'+bg+'")':'background-image:'+bg);
+      const namebar=doc.createElement('strong');namebar.textContent=name;
+      namebar.style.cssText='position:relative;background:#03140cdd;padding:9px;'+
+        'font-size:12px;text-shadow:0 1px #000';
+      button.append(photo,namebar);button.onclick=()=>saveTheme(id);
+      grid.appendChild(button);
+    }
+    for(const item of builtins)themeCard(item.id,item.name,item.bg);
+    if(owner){
+      const custom=doc.createElement('button');custom.type='button';
+      custom.textContent='＋ Upload My HD Background';
+      custom.style.cssText='grid-column:1 / -1;padding:16px;'+
+        'border:1px dashed #e1bc76;border-radius:15px;background:#263b2a;color:#ffe7a9';
+      custom.onclick=()=>{panel.remove();pickRoomCover(room,frame,true);};
+      grid.appendChild(custom);
+    }
+    const published=doc.createElement('h3');
+    published.textContent='✨ Official Themes';
+    published.style.cssText='grid-column:1 / -1;margin:8px 0 0;font-size:17px;color:#f3d387';
+    grid.appendChild(published);
+    try{
+      const listing=await api('GET','/room-themes');
+      if(!panel.isConnected)return;
+      const themes=Array.isArray(listing.themes)?listing.themes:[];
+      if(!themes.length){
+        const empty=doc.createElement('p');
+        empty.style.cssText='grid-column:1 / -1;color:#c3cebf;font-size:12px';
+        empty.textContent='Official themes will appear here when published by the admin.';
+        grid.appendChild(empty);
+      }
+      for(const item of themes){
+        const url=verifiedThemeUrl(item?.image_url);
+        if(url&&Number.isSafeInteger(item?.id)&&item.id>0)
+          themeCard('catalog:'+item.id,String(item.name||'Official Theme'),url);
+      }
+    }catch(error){
+      if(panel.isConnected){
+        const note=doc.createElement('p');
+        note.style.cssText='grid-column:1 / -1;color:#f7c2a0;font-size:12px';
+        note.textContent='Official themes unavailable: '+errText(error);
+        grid.appendChild(note);
+      }
+    }
+  }
   async function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
     if (frame && frame.document) fitAndroidViewport(frame.document, true);
@@ -5448,32 +5576,13 @@
       ].join('');
       frame.document.head.appendChild(seatStyle);
     }
-    // Keep the original 3D theme tiles while explaining their shared scope.
-    const originalThemeSheet=frame.themeSheet;
-    if(typeof originalThemeSheet==='function'){
-      frame.themeSheet=function(...args){
-        const result=originalThemeSheet.apply(this,args);
-        const gallery=frame.$('gal');
-        if(gallery){
-          const caption=gallery.querySelector('small');
-          if(caption)caption.textContent=room.th==='photo'
-            ?'Shared with everyone · also updates the room card photo'
-            :'Choose a photo · all room members will see it';
-          if(room.th==='photo'){
-            gallery.style.background='linear-gradient(125deg,rgba(156,99,255,.25),rgba(41,22,83,.85))';
-            gallery.style.border='1px solid rgba(233,207,255,.56)';
-          }
-          const note=frame.document.createElement('div');
-          note.setAttribute('role','status');
-          note.style.cssText='margin:8px 0 12px;padding:11px 12px;border-radius:13px;'+
-            'border:1px solid rgba(203,179,255,.22);background:rgba(35,20,78,.58);'+
-            'color:#d9cef8;font-size:12px;line-height:1.45';
-          note.textContent='✓ Theme changes are saved to this room and shown to everyone.';
-          gallery.after(note);
-        }
-        return result;
-      };
-    }
+    frame.themeSheet=()=>showRoomThemeGallery(room,frame);
+    // The legacy Settings row binds its local themeSheet function directly.
+    frame.document.addEventListener('click',event=>{
+      if(!event.target.closest?.('#rTh'))return;
+      event.preventDefault();event.stopImmediatePropagation();
+      showRoomThemeGallery(room,frame);
+    },true);
     frame.tick=function(){};
     frame.U=[];
     frame.G=[];

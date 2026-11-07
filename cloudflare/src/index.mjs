@@ -9,6 +9,7 @@ import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
+import {listRoomThemes,roomThemeId,catalogThemeImage,validateCatalogTheme} from './room-themes.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
 import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
@@ -163,9 +164,10 @@ export async function handleRequest(request, env, ctx) {
   const themeImagePath=/^\/api\/v1\/rooms\/([0-9]{8})\/theme-image$/.exec(path);
   const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
   const bannerImagePath=/^\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image$/.exec(path);
+  const galleryImagePath=/^\/api\/v1\/room-themes\/([1-9][0-9]{0,8})\/image$/.exec(path);
   // Public image thumbnails support anonymous GET; edits remain authenticated.
   // all mutations continue through strict origin and Firebase checks.
-  const cors = (coverPath || themeImagePath || avatarPath || bannerImagePath) && request.method==='GET'
+  const cors = (coverPath || themeImagePath || avatarPath || bannerImagePath || galleryImagePath) && request.method==='GET'
     ? {'access-control-allow-origin':'*'} : corsFor(request, env);
   if (!cors) return fail('origin_forbidden', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -222,6 +224,23 @@ export async function handleRequest(request, env, ctx) {
       'content-type':'image/jpeg','cache-control':'public, max-age=3600',
       'x-content-type-options':'nosniff',...cors
     }});
+  }
+  if(galleryImagePath && request.method==='GET'){
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const art=await env.DB.prepare(
+      'SELECT image_base64 FROM sharika_room_theme_catalog WHERE id=? AND image_bytes>0'
+    ).bind(Number(galleryImagePath[1])).first();
+    if(!art)return fail('room_theme_image_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(art.image_base64),c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public,max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  if(path==='/api/v1/room-themes'&&request.method==='GET'){
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const themes=await listRoomThemes(env.DB,url.origin,true);
+    return reply({themes},200,cors);
   }
   if (path === '/health' && request.method === 'GET') {
     // A database-only diagnostic for staging. Authentication remains unavailable
@@ -991,16 +1010,26 @@ export async function handleRequest(request, env, ctx) {
       const name=body.name===undefined ? room.name : txt(body.name,100);
       const seatCount=body.seat_count===undefined ? room.seat_count : body.seat_count;
       const theme=body.theme===undefined ? (room.theme||'mid') : body.theme;
+      const catalogId=roomThemeId(theme);
+      const catalogValid=catalogId!==null&&(
+        theme===room.theme || await validateCatalogTheme(env.DB,catalogId));
       const seatFrame=body.seat_frame_style===undefined
         ? (room.seat_frame_style||'grad') : body.seat_frame_style;
       if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20 ||
-         !ROOM_THEMES.has(theme) || !ROOM_SEAT_FRAMES.has(seatFrame))
+         !(ROOM_THEMES.has(theme)||catalogValid) || !ROOM_SEAT_FRAMES.has(seatFrame))
         return fail('invalid_room_settings',400,cors);
       if(theme==='photo'){
         const photo=await env.DB.prepare(
-          'SELECT version FROM sharika_room_covers WHERE room_id=?'
+          'SELECT version FROM sharika_room_theme_images WHERE room_id=?'
         ).bind(roomId).first();
-        if(!photo?.version)return fail('room_theme_photo_missing',409,cors);
+        // Previously saved photo themes may have used the room-card cover.
+        if(!photo?.version){
+          const legacy=await env.DB.prepare(
+            'SELECT version FROM sharika_room_covers WHERE room_id=?'
+          ).bind(roomId).first();
+          if(!legacy?.version||room.theme!=='photo')
+            return fail('room_theme_photo_missing',409,cors);
+        }
       }
       const updated=await env.DB.prepare(
         'UPDATE sharika_rooms SET name=?,seat_count=?,theme=?,seat_frame_style=? WHERE id=? AND owner_id=? '+
@@ -1644,13 +1673,16 @@ export async function handleRequest(request, env, ctx) {
         const cover=room.theme==='photo' && !wallpaper?.version ? await env.DB.prepare(
           'SELECT version FROM sharika_room_covers WHERE room_id=?'
         ).bind(roomId).first() : null;
+        const selectedCatalogId=roomThemeId(room.theme);
+        const catalogBackground=selectedCatalogId!==null
+          ?await catalogThemeImage(env.DB,selectedCatalogId,url.origin):null;
         return reply({ room: roomId,
           access_locked:(await readRoomAccessLock(env.DB,roomId)).locked,
-          theme:ROOM_THEMES.has(room.theme)?room.theme:'mid',
-          theme_background_url:wallpaper?.version
+          theme:ROOM_THEMES.has(room.theme)||catalogBackground?room.theme:'mid',
+          theme_background_url:catalogBackground || (wallpaper?.version
             ? url.origin+'/api/v1/rooms/'+roomId+'/theme-image?v='+wallpaper.version
             :cover?.version
-              ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null,
+              ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null),
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.
           seat_count:room.seat_count,
