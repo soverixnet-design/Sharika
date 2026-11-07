@@ -61,7 +61,10 @@ test('room mini-game portal is reusable, compact, closable, and preserves room D
 
 test('room games use the verified top-level game bridge and do not replace voice room',()=>{
   assert.match(adapter,/roomGameButton\.onclick=\(\)=>showGameCard\(document,true,toast\)/);
-  assert.match(adapter,/const games=iframe\.contentWindow\?\.document\?\.getElementById\('bGame'\)/);
+  assert.match(adapter,/let games=inside\?\.getElementById\('bGame'\)/);
+  assert.match(adapter,/if\(!games&&dock&&!inside\.getElementById\('sharika-room-games'\)\)/,
+    'a verified Games shortcut must appear when an older room template omits bGame');
+  assert.match(adapter,/shortcut\.setAttribute\('aria-label','Open room games'\)/);
   assert.match(adapter,/games\.onclick=\(\)=>showGameCard\(document,true,toast\)/);
   assert.match(adapter,/const portal=insideRoom\?ensureRoomGamePortal\(doc\):null/);
   assert.match(adapter,/if\(!insideRoom\)overlay\.classList\.add\('sh-original-fullscreen'\)/);
