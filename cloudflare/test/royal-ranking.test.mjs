@@ -129,6 +129,7 @@ test('selected Royal Champions design has real assets, server prizes and histori
   assert.match(ui,/appendRoyalRankingExtras\(view,data,selected,period,requestNo\)/);
   assert.match(ui,/api\('GET','\/bonds\/rewards'\)/);
   assert.match(ui,/week_offset=1/);
+  assert.match(ui,/previous_week_endpoint_not_updated/);
   assert.match(ui,/This does not imply that coin rewards were awarded/);
   assert.match(java,/week_offset=1/);
   assert.doesNotMatch(ui,/Royal Champions fake users/);

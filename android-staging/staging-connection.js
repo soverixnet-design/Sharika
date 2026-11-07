@@ -11732,6 +11732,13 @@
     api('GET','/rankings?period=weekly&kind='+selected.kind+'&week_offset=1')
       .then(previous=>{
         if(requestNo!==rankingRequest||!history.isConnected)return;
+        // An older staging Worker can silently ignore week_offset. Never
+        // mislabel the current week's leaders as previous-week winners.
+        const requestedEnd=Date.parse(previous.end_at||'');
+        const currentStart=Date.parse(data.start_at||'');
+        if(!Number.isFinite(requestedEnd)||!Number.isFinite(currentStart)||
+           requestedEnd>currentStart)
+          throw new Error('previous_week_endpoint_not_updated');
         const leaders=Array.isArray(previous.leaders)?previous.leaders:[];
         detail.textContent=formatRoyalWeek(previous.start_at,previous.end_at)+
           (leaders.length?' · Top '+Math.min(3,leaders.length):' · No verified winners');
