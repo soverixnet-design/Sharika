@@ -46,12 +46,13 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['profileDesigner','🖼️','Live Profile Designer']);
   }
-  // Keep the Family & BD controls next to room rewards. On narrow screens the
-  // former last menu item was buried below System and easily missed.
-  if(!NAV_ALL.some(item=>item[0]==='family')){
+  // Legacy Family records remain in D1, but Family is not a user-facing
+  // product. The verified BD -> Agency -> Host dashboard replaces its menu.
+  for(let i=NAV_ALL.length-1;i>=0;i--)if(NAV_ALL[i][0]==='family')NAV_ALL.splice(i,1);
+  if(!NAV_ALL.some(item=>item[0]==='agency')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='events');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
-      ['family','👑','Family & BD System']);
+      ['agency','👑','BD · Agency · Host Center']);
   }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
@@ -118,7 +119,7 @@
       !item[0]||Object.prototype.hasOwnProperty.call(allowedStaffPage,item[0])&&
       (!allowedStaffPage[item[0]]||status.permissions?.includes(allowedStaffPage[item[0]]))
     ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'&&
-      (role==='finance'||item[0]!=='family')));
+      (role==='finance'||item[0]!=='agency')));
     window.ME = session.email || status.name || 'Administrator';
     return status;
   }
@@ -1997,7 +1998,10 @@
       ).join('')+'</div>'+
       '<div class="row" id="rank-periods">'+Object.entries(periods).map(([key,label])=>
         '<button class="btn" type="button" data-rperiod="'+esc(key)+'">'+esc(label)+'</button>'
-      ).join('')+'</div><div id="rank-results">Loading verified rankings…</div></div>';
+      ).join('')+'</div><div id="rank-results">Loading verified rankings…</div></div>'+
+      '<div class="card"><h3>🏆 Automatic Ranking Targets & Rewards</h3>'+
+      '<p class="n">All scores come from verified server activity. New rules apply at the NEXT UTC period. No historical payouts. Seven optional TOP prizes, with a minimum target for each rank.</p>'+
+      '<div id="sh-rra-config">Loading reward controls…</div></div>';
     const results=byId('rank-results');
     async function reload(){
       const current=++requestNo;
@@ -2027,7 +2031,106 @@
       if(p){period=p.dataset.rperiod;reload();}
     };
     await reload();
+    await renderRankingRewardSettings();
   };
+  async function renderRankingRewardSettings(initial){
+    const box=byId('sh-rra-config');if(!box)return;
+    const selection=initial||{kind:'sending',period:'weekly',metric:'wins',game:''};
+    const select=(id,options,selected)=>'<select class="field" id="'+id+'">'+
+      options.map(([value,label])=>'<option value="'+esc(value)+'" '+
+      (value===selected?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select>';
+    const filters='<div class="row"><label>Leaderboard '+select('sh-rra-kind',[
+      ['sending','Gift Sending'],['recharge','Approved Recharge'],['game','Server-settled Games']],selection.kind)+
+      '</label><label>Period '+select('sh-rra-period',[
+        ['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']],selection.period)+
+      '</label>'+(selection.kind==='game'?'<label>Game metric '+select('sh-rra-metric',[
+        ['wins','Wins'],['stake','Total stakes'],['payout','Total payouts']],selection.metric)+
+      '</label><label>Game '+select('sh-rra-game',[
+        ['','All games'],['food-wheel','Food Wheel'],['jackpot-fruit','Fruit Jackpot'],
+        ['sovera-food','Sovera Food'],['night-food','Night Food'],
+        ['greedy-wheel','Greedy Wheel'],['fruit-royale','Fruit Royale']],selection.game)+
+      '</label>':'')+'</div>';
+    box.innerHTML=filters+'<p class="n" id="sh-rra-status">Loading verified rewards…</p>';
+    const current=()=>({kind:byId('sh-rra-kind').value,
+      period:byId('sh-rra-period').value,metric:byId('sh-rra-metric')?.value||'wins',
+      game:byId('sh-rra-game')?.value||''});
+    for(const id of ['sh-rra-kind','sh-rra-period','sh-rra-metric','sh-rra-game']){
+      byId(id)?.addEventListener('change',()=>void renderRankingRewardSettings(current()));
+    }
+    const query='kind='+encodeURIComponent(selection.kind)+'&period='+encodeURIComponent(selection.period)+
+      (selection.kind==='game'?'&metric='+encodeURIComponent(selection.metric)+
+        (selection.game?'&game='+encodeURIComponent(selection.game):''):'');
+    let data;
+    try{data=await api('GET','ranking-rewards?'+query);}
+    catch(error){byId('sh-rra-status').textContent='Reward controls unavailable: '+error.message+
+      ' (new D1 migration may not be installed yet).';return;}
+    const editing=role==='super';
+    const targets=data.policy?.targets||Array(7).fill(0);
+    const prizes=data.policy?.prizes||Array(7).fill(0);
+    const row=Array.from({length:7},(_,i)=>'<tr><td>TOP '+(i+1)+'</td><td>'+
+      '<input class="field" type="number" min="0" max="1000000000000" step="1" ' +
+      'id="sh-rra-target-'+i+'" value="'+esc(targets[i])+'" '+(editing?'':'disabled')+'></td><td>'+
+      '<input class="field" type="number" min="0" max="1000000" step="1" ' +
+      'id="sh-rra-prize-'+i+'" value="'+esc(prizes[i])+'" '+(editing?'':'disabled')+'></td></tr>').join('');
+    const last=data.last_completed;
+    const winners=(last?.candidates||[]).map(item=>[
+      'TOP '+item.rank,esc(item.display_id),esc(item.score)]);
+    byId('sh-rra-status').outerHTML='<p class="n">'+
+      (data.paused?'🔒 Reward payments globally paused.':'🟢 Global reward payments unpaused.')+
+      ' · Latest version #'+esc(data.policy?.id||'none')+
+      ' · Future activation: '+esc(data.next_effective_from)+
+      ' · Automatic settlement additionally requires the server environment flag.</p>'+
+      '<div class="row"><label><input id="sh-rra-enabled" type="checkbox" '+
+      (data.policy?.enabled?'checked ':'')+(editing?'':'disabled')+'> Enable rules</label> '+
+      '<label><input id="sh-rra-auto" type="checkbox" '+
+      (data.policy?.auto_award?'checked ':'')+(editing?'':'disabled')+'> Enable automatic award</label></div>'+
+      '<div style="overflow-x:auto"><table><thead><tr><th>Rank</th><th>Minimum score</th><th>Reward (coins)</th></tr></thead><tbody>'+
+      row+'</tbody></table></div>'+
+      (editing?'<div class="row"><button class="btn s" type="button" id="sh-rra-save">Publish future rules</button> '+
+        '<button class="btn" type="button" id="sh-rra-pause">'+(data.paused?'Unpause rewards':'Pause all rewards')+'</button> '+
+        '<button class="btn" type="button" id="sh-rra-settle">Settle last completed period</button></div>':'')+
+      '<p class="n" id="sh-rra-feedback">'+(last?.settled?'Last period paid once.':'Last period has no settlement receipt.')+
+      '</p><h4>Last completed verified leaderboard · '+esc(last?.start_at||'')+'</h4>'+
+      (winners.length?window.T(['Rank','Displayed user ID','Verified score'],winners):
+        '<p class="n">No verified activity recorded in the last completed period.</p>')+
+      '<p class="n">Eligible award preview (using the rule active for that completed period): '+
+      (last?.preview_awards?.length?last.preview_awards.map(a=>'#'+a.rank+' '+esc(a.display_id)+
+        ' · '+fmt(a.coins)+' coins').join(', '):'None')+'</p>';
+    if(!editing)return;
+    byId('sh-rra-save').onclick=async()=>{
+      const readNums=prefix=>Array.from({length:7},(_,i)=>{
+        const raw=byId(prefix+i).value.trim();return /^\d+$/.test(raw)?Number(raw):NaN;});
+      const targets=readNums('sh-rra-target-'),prizes=readNums('sh-rra-prize-');
+      const enabled=byId('sh-rra-enabled').checked,auto_award=byId('sh-rra-auto').checked;
+      if(targets.some(n=>!Number.isSafeInteger(n)||n<0||n>1e12)||
+        prizes.some(n=>!Number.isSafeInteger(n)||n<0||n>1e6)||
+        (enabled&&!prizes.some(n=>n>0))||auto_award&&!enabled){
+        byId('sh-rra-feedback').textContent='Invalid targets/prizes: targets 0–1T; each prize 0–1M, at least one enabled prize.';
+        return;
+      }
+      if(!window.confirm('Publish these TOP 1–7 rules for the NEXT full UTC period? Older rules and payments remain unchanged.'))return;
+      try{await api('PATCH','ranking-rewards',{kind:selection.kind,period:selection.period,
+        ...(selection.kind==='game'?{metric:selection.metric,game:selection.game||null}:{}),
+        enabled,auto_award,targets,prizes});
+        note('Future ranking rules published and audited.');await renderRankingRewardSettings(selection);
+      }catch(error){byId('sh-rra-feedback').textContent='Not published: '+error.message;}
+    };
+    byId('sh-rra-pause').onclick=async()=>{
+      const paused=!data.paused;
+      if(!window.confirm((paused?'Pause':'Unpause')+' ALL ranking prize payments? This action is audited.'))return;
+      try{await api('POST','ranking-rewards/pause',{paused,confirm:true});
+        await renderRankingRewardSettings(selection);}catch(error){byId('sh-rra-feedback').textContent=error.message;}
+    };
+    byId('sh-rra-settle').onclick=async()=>{
+      if(!window.confirm('Settle the LAST completed UTC period? This may credit REAL user coin wallets according to previously published rules. Continue?'))return;
+      try{const result=await api('POST','ranking-rewards/settle',{kind:selection.kind,
+        period:selection.period,...(selection.kind==='game'?{
+          metric:selection.metric,game:selection.game||null}:{}),confirm:true});
+        note(result.awarded?'Ranking prizes credited once.':'Settlement: '+(result.skipped||'already settled'));
+        await renderRankingRewardSettings(selection);
+      }catch(error){byId('sh-rra-feedback').textContent='Not settled: '+error.message;}
+    };
+  }
   P.analytics=async function () {
     const root=byId('pg');root.innerHTML=card('Analytics','Loading verified statistics…');
     try{
@@ -2246,7 +2349,7 @@
     try{
       const data=await api('GET','banners');
       const rows=data.banners||[];
-      const actions=[['none','No action'],['daily','Daily check-in'],['recharge','Recharge'],['rank','Rankings'],['invite','Invite friends']];
+      const actions=[['none','No action'],['daily','Daily check-in'],['recharge','Recharge'],['rank','Rankings'],['invite','Invite friends'],['events','Events & Rewards']];
       const choices=selected=>actions.map(([key,label])=>
         '<option value="'+key+'"'+(selected===key?' selected':'')+'>'+label+'</option>').join('');
       const palette={
@@ -3177,8 +3280,108 @@
     }
   };
 
+  // New Agency Center: same Royal Gold design language, independent of old
+  // Family statements. Targets and rates always read the authoritative API.
+  P.agency=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card" style="border:1px solid #d4ad59;'+
+      'background:linear-gradient(145deg,#483114,#160c2d)"><h2>👑 BD · Agency · Host Center</h2>'+
+      '<p class="n">Verified gifts received by Host IDs. Host salary accrual 40%, Agency 10%, BD 5% by default. '+
+      'No dollars or simulated payouts; Diamond Exchange remains separate.</p>'+
+      '<div id="sh-agency-panel">Loading live Agency policies…</div></div>';
+    let data;
+    try{data=await api('GET','agency');}
+    catch(error){byId('sh-agency-panel').textContent='Agency API unavailable: '+error.message+
+      '. Apply migration 0059 before testing the new dashboard.';return;}
+    const p=data.policy||{},superAdmin=role==='super';
+    const input=(id,value,min=0,max=10000)=>'<input class="field" id="'+id+'" '+
+      'type="number" min="'+min+'" max="'+max+'" step="1" value="'+esc(value)+'" '+
+      (superAdmin?'':'disabled')+'>';
+    const cards='<div class="kp">'+[
+      ['Host Salary',p.host_percent+'%'],['Agency Owner',p.agency_percent+'%'],
+      ['BD Commission',p.bd_percent+'%'],['Agencies',(data.agencies||[]).length]
+    ].map(([name,value])=>'<div class="k"><small>'+esc(name)+'</small><b>'+esc(value)+'</b></div>').join('')+'</div>';
+    const targetRows=(p.targets||[]).map(t=>'<tr><td>'+esc(t.role.toUpperCase())+'</td><td>'+
+      esc(t.period)+'</td><td>'+input('sh-agency-target-'+t.role+'-'+t.period,
+        t.target_coins,1,1e12)+'</td></tr>').join('');
+    const table=(headers,body)=>window.T(headers,body);
+    const agencyRows=(data.agencies||[]).map(a=>[
+      esc(a.id),esc(a.name),esc(a.owner_id),esc(a.bd_id),esc(a.host_count),esc(a.status)]);
+    const bdRows=(data.bds||[]).map(b=>[esc(b.public_id),b.active?'Active':'Inactive',
+      b.can_grant?'Can grant':'Read only']);
+    byId('sh-agency-panel').innerHTML=cards+
+      '<div class="card"><h3>⚙️ Global Agency Commission Policy</h3><p class="n">'+
+      (p.enabled?'🟢 New Agency accrual active.':'🔒 Agency accrual paused by default.')+
+      ' Version '+esc(p.revision)+' · No spendable wallet salary payouts enabled.</p>'+
+      '<div class="row"><label>Host % (basis points)'+input('sh-agency-host-bps',p.host_bps)+'</label>'+
+      '<label>Agency %'+input('sh-agency-owner-bps',p.agency_bps)+'</label>'+
+      '<label>BD %'+input('sh-agency-bd-bps',p.bd_bps)+'</label></div>'+
+      '<label>Salary statement period<select class="field" id="sh-agency-period" '+
+      (superAdmin?'':'disabled')+'>'+['daily','weekly','monthly'].map(v=>'<option value="'+v+'" '+
+      (v===p.settlement_mode?'selected':'')+'>'+v+'</option>').join('')+'</select></label> '+
+      '<label><input type="checkbox" id="sh-agency-enabled" '+(p.enabled?'checked ':'')+
+      (superAdmin?'':'disabled')+'> Activate verified Agency accrual</label>'+
+      '<p class="n">Activation atomically stops future LEGACY Family commission accrual. '+
+      'Previous Family records stay intact. Salary withdrawals and user wallets are unaffected.</p>'+
+      '<h3>🎯 Host / Agency / BD Targets</h3><div style="overflow-x:auto">'+
+      '<table><thead><tr><th>Role</th><th>Period</th><th>Target gift coins</th></tr></thead><tbody>'+
+      targetRows+'</tbody></table></div>'+
+      (superAdmin?'<button type="button" class="btn s" id="sh-agency-save">Save targets & rates</button>':'')+
+      '<p class="n" id="sh-agency-note">Changes apply to future verified gifts; past ledger rates never change.</p></div>'+
+      (superAdmin?'<div class="card"><h3>💼 Assign Business Developer</h3>'+
+        '<label>BD user ID<input class="field" id="sh-agency-bd-id" maxlength="8" inputmode="numeric"></label> '+
+        '<label><input id="sh-agency-bd-active" type="checkbox" checked> BD active</label> '+
+        '<label><input id="sh-agency-bd-grant" type="checkbox" checked> Can grant Agencies</label> '+
+        '<button class="btn" type="button" id="sh-agency-bd-save">Save BD role</button></div>'+
+        '<div class="card"><h3>🏰 Create Agency</h3>'+
+        '<label>Active BD ID<input class="field" id="sh-agency-create-bd" maxlength="8" inputmode="numeric"></label> '+
+        '<label>Agency Owner ID<input class="field" id="sh-agency-create-owner" maxlength="8" inputmode="numeric"></label> '+
+        '<label>Agency name<input class="field" id="sh-agency-create-name" maxlength="40"></label> '+
+        '<button class="btn s" type="button" id="sh-agency-create">Create & auto-enroll Owner as Host</button></div>':'')+
+      '<div class="card"><h3>🏆 Registered Agencies</h3>'+
+      (agencyRows.length?table(['#','Name','Owner','BD','Hosts','Status'],agencyRows):
+        '<p class="n">No registered Agencies yet.</p>')+'</div>'+
+      '<div class="card"><h3>💼 BD Accounts</h3>'+
+      (bdRows.length?table(['BD ID','Status','Authority'],bdRows):'<p class="n">No BD assignments yet.</p>')+'</div>';
+    if(!superAdmin)return;
+    const save=async(method,path,payload,message)=>{
+      if(!window.confirm(message))return;
+      try{await api(method,path,payload);note('Agency settings saved ✓');await P.agency();}
+      catch(error){byId('sh-agency-note').textContent='Not saved: '+error.message;}
+    };
+    byId('sh-agency-save').onclick=()=>{
+      const targets=(p.targets||[]).map(t=>({role:t.role,period:t.period,
+        target_coins:Number(byId('sh-agency-target-'+t.role+'-'+t.period).value)}));
+      const payload={enabled:byId('sh-agency-enabled').checked,
+        host_bps:Number(byId('sh-agency-host-bps').value),
+        agency_bps:Number(byId('sh-agency-owner-bps').value),
+        bd_bps:Number(byId('sh-agency-bd-bps').value),
+        settlement_mode:byId('sh-agency-period').value,targets};
+      if(![payload.host_bps,payload.agency_bps,payload.bd_bps].every(n=>Number.isSafeInteger(n)&&n>=0&&n<=10000)||
+        payload.host_bps+payload.agency_bps+payload.bd_bps>10000||
+        targets.length!==9||targets.some(t=>!Number.isSafeInteger(t.target_coins)||
+          t.target_coins<1||t.target_coins>1e12))return note('Invalid commission percentage or target.');
+      save('PATCH','agency',payload,'Publish Agency targets/rates for future gifts? Activation stops legacy Family accrual.');
+    };
+    byId('sh-agency-bd-save').onclick=()=>{
+      const public_id=byId('sh-agency-bd-id').value.trim();
+      if(!/^[0-9]{8}$/.test(public_id))return note('Enter an 8-digit user ID.');
+      save('POST','agency/bd',{public_id,active:byId('sh-agency-bd-active').checked,
+        can_grant:byId('sh-agency-bd-grant').checked},'Save BD authority for '+public_id+'?');
+    };
+    byId('sh-agency-create').onclick=()=>{
+      const bd_public_id=byId('sh-agency-create-bd').value.trim();
+      const owner_public_id=byId('sh-agency-create-owner').value.trim();
+      const name=byId('sh-agency-create-name').value.trim();
+      if(!/^[0-9]{8}$/.test(bd_public_id)||!/^[0-9]{8}$/.test(owner_public_id)||
+        name.length<3)return note('Enter valid BD ID, Owner ID and Agency name.');
+      save('POST','agency/create',{bd_public_id,owner_public_id,name,
+        request_id:'agency:'+crypto.randomUUID()},'Create Agency '+name+' under Owner '+owner_public_id+'?');
+    };
+  };
+
   // A discoverable, permission-aware shortcut above the dashboard counters.
-  // Sensitive Family and Google Sheets operations still require server-side roles.
+  // Legacy Family history is retained in D1, but Agency owns future accrual.
   const verifiedFamilyDashboard=P.dash;
   P.dash=async function(){
     await verifiedFamilyDashboard();
@@ -3189,18 +3392,18 @@
       const shortcut=document.createElement('section');
       shortcut.className='card';
       shortcut.style.cssText='border:1px solid #d4ad59;background:linear-gradient(120deg,#35241a,#1b1526);margin-bottom:16px';
-      shortcut.innerHTML='<h3>👑 Family & BD System</h3>'+
-        '<p class="n">Family grants, 5% BD commission, Crystal ledger, weekly/monthly reports and Google Sheets Sync.</p>'+
-        '<button type="button" class="btn" id="sh-open-family-admin">Open Family & BD System</button>';
+      shortcut.innerHTML='<h3>👑 BD · Agency · Host Center</h3>'+
+        '<p class="n">Verified Host gifts, separate Agency / BD commissions, 5M targets and real progress.</p>'+
+        '<button type="button" class="btn" id="sh-open-agency-admin">Open Agency Center</button>';
       root.insertBefore(shortcut,root.firstChild);
       shortcut.querySelector('button').onclick=()=>{
-        window.V='family';window.shell();
+        window.V='agency';window.shell();
       };
     }
   };
 
   const verifiedPages=new Set([
-    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
+    'family','agency','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
