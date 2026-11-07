@@ -1,7 +1,7 @@
 -- Salary Wallet has two mutually exclusive settlement paths:
 -- exchange -> user's Main Coin Wallet, or transfer -> an approved Coin Seller's stock.
 -- No user coins/diamonds are debited by seller transfer. This migration is additive,
--- preserves all existing earnings/exchanges, and starts seller transfer disabled.
+-- preserves all existing earnings/exchanges, and uses the existing shared Salary settlement enable switch.
 CREATE TABLE IF NOT EXISTS sharika_agency_salary_seller_transfers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   auth_uid TEXT NOT NULL REFERENCES sharika_users(auth_uid),
