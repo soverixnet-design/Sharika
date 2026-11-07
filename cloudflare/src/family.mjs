@@ -1036,7 +1036,7 @@ export async function handleFamilyAdmin({request,env,uid,actor,operation,cors,re
       if(!result[2]?.meta?.changes)return fail('family_add_conflict',409,cors);
       try{
         const n=await notifyUser(db,{recipientUid:person.auth_uid,kind:'system',
-          title:'Family membership updated',body:'An administrator added you to Agency #'+family.id,
+          title:'Agency membership updated',body:'An administrator added you to Agency #'+family.id,
           dedupeKey:'family_admin_add:'+family.id+':'+Date.now(),createdBy:uid});
         if(n.created)await deliverNotification(env,n.notification);
       }catch(e){console.error('family_admin_notification',String(e.message||e));}
