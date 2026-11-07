@@ -58,6 +58,7 @@ on:
     paths:
       - 'android-staging/**'
       - 'app/royal-profile.css'
+      - 'app/reference-profile.css'
       - 'app/golden-home.css'
       - 'app/royal-room-ui.js'
       - 'app/royal-room-ui.css'
@@ -293,6 +294,23 @@ jobs:
             throw new Error('Royal Premium packaging/theme safety check failed');
           }
           console.log('SHARIKA_ROYAL_VISUAL_LAYER_STATIC_CHECKS_OK');
+          NODE
+
+      - name: Verify complete profile navigation and uncropped premium icons
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const css=fs.readFileSync('../app/reference-profile.css','utf8');
+          for(const rule of [
+            '.profile-quick-menu .tiles span.profile-collection-icon',
+            'background-size:400% 300%!important',
+            '.profile-hero .lps .sh-level-meter',
+            '.app:has(#v-me.on) .nav .plus',
+            'display:grid!important'
+          ])if(!css.includes(rule))throw Error('Profile design fix missing: '+rule);
+          if(css.includes('.nav .ni:not([data-v="home"])'))
+            throw Error('Main profile still hides Rank, Messages or center Room button');
+          console.log('SHARIKA_PROFILE_5_TAB_PREMIUM_ICON_AND_NUMERIC_LEVELS_OK');
           NODE
 
       - name: Set up Java 17
