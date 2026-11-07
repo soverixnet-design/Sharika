@@ -195,6 +195,7 @@
     };
   }
   menuItem('🎵 Music', musicSheet);
+  menuItem('🎮 Games', () => games?.click());
   menuItem('🔊 Audio', musicSheet);
   menuItem('✨ Effects', () => {
     window.toast?.('Voice effects need an enabled audio processing service');

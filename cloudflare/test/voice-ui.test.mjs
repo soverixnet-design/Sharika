@@ -7,7 +7,7 @@ import {readFileSync} from 'node:fs';
 // protect the user-facing seat and microphone recovery wiring from regression.
 const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
 
-test('owner and guest tap an open mic seat without waiting on the old invitation UI',()=>{
+test('guest directly takes an open mic seat while moderators have verified controls',()=>{
   assert.match(ui,/\.seat\.empty\[data-i\]/);
   assert.doesNotMatch(ui,/room\.owner_id===session\?\.user\?\.id\)return/);
   assert.match(ui,/async function moveSelfToSeat\(seat\)/);

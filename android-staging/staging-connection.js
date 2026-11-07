@@ -6068,7 +6068,7 @@
           await syncFrame(room,frame);
           frame.toast(action==='lock'?'Seat locked':'Seat unlocked');
         } else if((action==='inv'||action==='invite') && seat>0) {
-          if(!owner)throw new Error('Only the room owner may invite members');
+          if(!moderator)throw new Error('Only Room Owner or Room Admin may invite members');
           const data=await api('GET','/rooms/'+room.id+'/members');
           const listeners=(data.members||[]).filter(m=>
             m.seat_no===null&&m.user_id!==room.owner_id&&m.sharika_users?.public_id
@@ -6194,7 +6194,7 @@
       };
       const options=index===0?[]:selected.lock?
         (owner?[['unlock','Unlock seat','lock'],['unlock_all','Unlock all','all']]:[]):
-        (owner?[['take','Sit here','take'],['lock','Lock seat','lock'],
+        (owner?[['take','Sit here','take'],['invite','Invite to mic','invite'],['lock','Lock seat','lock'],
           ['lock_all','Lock all','all']]:[['take','Take Mic','take']]);
       for(const [action,label,kind] of options){
         const button=doc.createElement('button');
@@ -6270,15 +6270,19 @@
         emoji:emoji[0],request_id:requestId
       }).catch(error=>frame.toast('Emoji shown locally: '+errText(error)));
     };
-    // Owner and guests both take an unlocked seat with one deliberate tap.
-    // A long press still opens the verified seat-management sheet for Owner;
-    // its Seat arrangement page remains available from the room menu.
+    // A moderator's tap opens the verified seat-management sheet, so entering
+    // their room never automatically seats the Owner or Room Admin. Guests may
+    // still take an unlocked mic seat with one deliberate tap.
     frame.document.addEventListener('click',event=>{
-      const button=event.target.closest?.('.seat.empty[data-i]');
+      const moderator=room.owner_id===session?.user?.id||
+        frame.__sharikaRoomRole==='admin';
+      const button=event.target.closest?.(moderator?
+        '#grid .seat[data-i]':'.seat.empty[data-i]');
       if(!button||!frame.document.querySelector('#grid')?.contains(button))return;
       const seat=Number(button.dataset.i);
       if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
       event.preventDefault();event.stopImmediatePropagation();
+      if(moderator){frame.seatSheet(seat);return;}
       moveSelfToSeat(seat).catch(error=>
         frame.toast('Unable to change seat: '+errText(error)));
     },true);
@@ -6472,8 +6476,9 @@
       const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
       if(inviteButton)inviteButton.onclick=async()=>{
         if(inviteButton.disabled)return;
-        if(room.owner_id!==session?.user?.id) {
-          frame.toast('Only the room owner can send a mic invite');return;
+        if(!verified){frame.toast('Verified member ID unavailable');return;}
+        if(room.owner_id!==session?.user?.id&&frame.__sharikaRoomRole!=='admin') {
+          frame.toast('Only Room Owner or Room Admin can invite');return;
         }
         const seat=frame.seats.findIndex((item,index)=>
           index>0&&item?.empty&&!item?.lock
@@ -6482,10 +6487,10 @@
         inviteButton.disabled=true;
         try {
           await api('POST','/rooms/'+room.id+'/invitations',{
-            seat_no:seat,target_public_id:String(user.id)
+            seat_no:seat,target_public_id:verifiedId
           });
           frame.close();
-          frame.toast('Invitation sent to ID '+String(user.id));
+          frame.toast('Invitation sent to ID '+verifiedId);
         }catch(error) {
           inviteButton.disabled=false;
           frame.toast('Invite not sent: '+errText(error));

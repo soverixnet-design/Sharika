@@ -1183,7 +1183,7 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
   }finally{globalThis.fetch=oldFetch;}
 });
 
-test('mic invitations require room owner, an unseated real member and recipient consent',async()=>{
+test('mic invitations require a verified room moderator, an unseated real member and recipient consent',async()=>{
   const previousFetch=globalThis.fetch;
   globalThis.fetch=certFetch;
   try {
@@ -1191,7 +1191,7 @@ test('mic invitations require room owner, an unseated real member and recipient 
     const roomId='10000001';
     const base='https://example.test/api/v1/rooms/'+roomId+'/invitations';
     const headers={Authorization:'Bearer '+await token()};
-    function roomDb(owner,joined=true,targetJoined=true){
+    function roomDb(owner,joined=true,targetJoined=true,admin=false){
       const db=fakeDb(),previous=db.prepare.bind(db);
       db.prepare=sql=>{
         const statement=previous(sql);
@@ -1205,6 +1205,8 @@ test('mic invitations require room owner, an unseated real member and recipient 
           statement.first=async()=>targetJoined?{
             auth_uid:'target-uid',status:'active',seat_no:null
           }:null;
+        if(sql.startsWith('SELECT 1 AS active FROM sharika_room_admins'))
+          statement.first=async()=>admin?{active:1}:null;
         return statement;
       };
       return db;
@@ -1228,12 +1230,13 @@ test('mic invitations require room owner, an unseated real member and recipient 
       method:'POST',headers,body:JSON.stringify(body)
     });
     const correct={seat_no:4,target_public_id:'10000003'};
-    const env=(owner,joined=true,targetJoined=true)=>({
-      DB:roomDb(owner,joined,targetJoined),
+    const env=(owner,joined=true,targetJoined=true,admin=false)=>({
+      DB:roomDb(owner,joined,targetJoined,admin),
       VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
     });
     const denied=await handleRequest(post(correct),env('different-owner'));
     assert.equal(denied.status,403);
+    assert.equal((await denied.json()).error,'room_moderator_only');
     assert.equal(calls.length,0);
     const outsider=await handleRequest(new Request(base,{headers}),env(uid,false));
     assert.equal(outsider.status,403);
@@ -1245,9 +1248,12 @@ test('mic invitations require room owner, an unseated real member and recipient 
     const sent=await handleRequest(post(correct),env(uid));
     assert.equal(sent.status,201);
     assert.deepEqual(calls[0],['send',roomId,uid,'target-uid',4]);
+    const adminSent=await handleRequest(post(correct),env('different-owner',true,true,true));
+    assert.equal(adminSent.status,201,'assigned Room Admin may invite a real member');
+    assert.deepEqual(calls[1],['send',roomId,uid,'target-uid',4]);
     const pending=await handleRequest(new Request(base,{headers}),env('different-owner'));
     assert.equal(pending.status,200);
-    assert.deepEqual(calls[1],['pending',uid]);
+    assert.deepEqual(calls[2],['pending',uid]);
     const response=(body)=>new Request(base+'/respond',{
       method:'POST',headers,body:JSON.stringify(body)
     });
@@ -1256,7 +1262,7 @@ test('mic invitations require room owner, an unseated real member and recipient 
     const accepted=await handleRequest(response({seat_no:4,accept:true}),env('different-owner'));
     assert.equal(accepted.status,200);
     assert.equal((await accepted.json()).accepted,true);
-    assert.deepEqual(calls[2],['respond',roomId,uid,4,true]);
+    assert.deepEqual(calls[3],['respond',roomId,uid,4,true]);
     const declined=await handleRequest(response({seat_no:4,accept:false}),env('different-owner'));
     assert.equal(declined.status,200);
     assert.equal((await declined.json()).accepted,false);

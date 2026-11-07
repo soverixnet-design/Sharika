@@ -1062,14 +1062,16 @@ export async function handleRequest(request, env, ctx) {
         }
         return fail('method_not_allowed',405,cors);
       }
-      // An owner may invite an unseated, verified member to an unlocked mic seat.
+      // Verified owners and assigned Room Admins may invite an unseated member
+      // to an unlocked mic seat. Invitation acceptance is still voluntary.
       if(parts.length===5 && action==='invitations') {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_invites_unavailable',503,cors);
         const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
         if(request.method==='GET')return reply(await coordinator.seatInvitePending(uid),200,cors);
         if(request.method==='POST') {
-          if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+          if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid))
+            return fail('room_moderator_only',403,cors);
           const body=await readBody(request);
           if(!Number.isInteger(body.seat_no)||body.seat_no<1||
              body.seat_no>room.seat_count||
