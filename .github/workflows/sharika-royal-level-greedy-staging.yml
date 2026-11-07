@@ -9,8 +9,8 @@ on:
       - 'cloudflare/src/bonds.mjs'
       - 'cloudflare/src/greedy-wheel.mjs'
       - 'cloudflare/migrations/0072_royal_level_v2_baselines.sql'
-      - 'cloudflare/test/royal-level-policy.test.mjs'
-      - 'cloudflare/test/greedy-wheel.test.mjs'
+      - 'cloudflare/test/royal-level-staging-migration.test.mjs'
+      - 'cloudflare/test/greedy-daily-wins.test.mjs'
 
 permissions:
   contents: read
@@ -66,7 +66,7 @@ jobs:
       - name: Verify immutable wallet and gift policy via backend tests
         run: |
           npm run check
-          node --test test/royal-level-policy.test.mjs test/greedy-wheel.test.mjs
+          node --test test/royal-level-staging-migration.test.mjs test/greedy-daily-wins.test.mjs
       - name: Check current staging and newest approved upstream schema
         run: |
           set -euo pipefail
