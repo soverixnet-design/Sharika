@@ -160,6 +160,9 @@ jobs:
           retention-days: 30
 
       - name: Publish direct AAB asset to GitHub
+        # The integrated staging branch produces a private downloadable build
+        # artifact only. A public prerelease is a separate release decision.
+        if: github.ref == 'refs/heads/feature/sharika-play-release-aab-20261107' || github.ref == 'refs/heads/feature/sharika-play-billing-20261107'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
