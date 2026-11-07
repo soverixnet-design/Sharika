@@ -28,8 +28,11 @@ http.createServer(async(req,res)=>{
       const serialized=source.match(/var ROOM_HTML=("(?:\\.|[^"\\])*");/);
       if(!serialized){res.writeHead(500).end('Room preview unavailable');return;}
       let interior=JSON.parse(serialized[1]);
+      interior=interior.replace('<html lang="en">','<html lang="en" class="royal-room">')
+        .replace('n:9,frame:"grad"','n:21,frame:"grad"');
       interior=interior.replace('</head>',
-        '<link rel="stylesheet" href="./royal-room-ui.css"></head>');
+        '<link rel="stylesheet" href="./royal-room-ui.css">'+
+        '<link rel="stylesheet" href="./reference-room.css"></head>');
       interior=interior.replace('</body>',
         '<script src="./royal-room-ui.js"></script></body>');
       data=Buffer.from(interior);

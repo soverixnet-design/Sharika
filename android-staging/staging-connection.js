@@ -106,7 +106,7 @@
   let balance = { coins: 0, dia: 0, xp: 0 };
   let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null,
     reactionPoll = null;
-  let voiceRoom = null, voiceRoomId = null, voiceSdkPromise = null;
+  let voiceRoom = null, voiceRoomId = null;
   let voiceBackend = null;
 
   function errText(error) { return String(error && error.message || error || 'Connection unavailable'); }
@@ -1006,6 +1006,17 @@
       paintVerifiedAvatar(row.querySelector('.ua'),item.pic,doc);
       row.querySelector('.sh-sovera-user-tag')?.remove();
       row.querySelector('.sh-svip-badge')?.remove();
+      row.querySelector('.sh-room-admin-tag')?.remove();
+      if(item.room_role==='admin'||item.room_role==='owner'){
+        const roleBadge=doc.createElement('span');
+        roleBadge.className='sh-room-admin-tag';
+        roleBadge.textContent=item.room_role==='owner'?'👑 OWNER':'🛡 ADMIN';
+        roleBadge.style.cssText='display:inline-flex;align-items:center;max-width:100px;'+
+          'border-radius:10px;border:1px solid #f9cf72;padding:2px 7px;'+
+          'background:linear-gradient(100deg,#522a18,#b47622);color:#fff0b8;'+
+          'font-size:10px;font-weight:800;white-space:nowrap';
+        row.appendChild(roleBadge);
+      }
       const level=svipLevel(item.svip_level);
       if(level)row.appendChild(makeSvipBadge(doc,level));
       const tag=nameTagArt(item.name_tag_style);
@@ -1045,8 +1056,23 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge')
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge')
         .forEach(decoration=>decoration.remove());
+      // Room Admin power is shown in the management menu, never as a
+      // shield drawn across a user's purchased or animated avatar frame.
+      if(seat.room_role==='owner'){
+        const roomBadge=doc.createElement('span');
+        roomBadge.className='sh-room-admin-badge';
+        roomBadge.textContent='👑';
+        roomBadge.title='Room Owner';
+        roomBadge.setAttribute('aria-label',roomBadge.title);
+        roomBadge.style.cssText='position:absolute;right:-6px;top:-8px;z-index:18;'+
+          'display:grid;place-items:center;width:23px;height:23px;border-radius:50%;'+
+          'background:linear-gradient(140deg,#ffe4a1,#c78c27);border:1px solid #fff1c7;'+
+          'box-shadow:0 2px 10px #3d160b;color:#2d1932;font-size:12px';
+        avatar.style.position='relative';
+        avatar.appendChild(roomBadge);
+      }
       const svip=svipLevel(seat.svip_level);
       // VIP/SVIP status belongs beside the avatar frame; IDs are profile-only.
       if(svip)avatar.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
@@ -2157,6 +2183,1088 @@
       toast('Profile not saved: '+errText(error));
     }finally{if(save.isConnected)save.disabled=false;}
   },true);
+
+  // Royal Family card lives under Account Features. BD entry is server-permission gated.
+  const familyStyles=document.createElement('style');
+  familyStyles.id='sh-family-royal-css';
+  familyStyles.textContent=[
+    '#sh-family-entries{margin:14px 12px 20px;display:grid;gap:10px}',
+    '#sh-family-entries button{width:100%;display:flex;gap:14px;align-items:center;',
+    'border:1px solid #f5d387;border-radius:20px;text-align:left;padding:14px;',
+    'background:linear-gradient(145deg,#654113,#b98129 40%,#6b3c18 80%,#34220f);',
+    'box-shadow:inset 0 2px 2px #ffecb988,0 5px 0 #35200f,0 9px 20px #09041499;',
+    'color:#ffefc9;text-shadow:0 1px 2px #2b160a;font-weight:800}',
+    '#sh-family-entries button .sh-fam-icon{font-size:31px;filter:drop-shadow(0 3px 3px #0008)}',
+    '#sh-family-entries button small{display:block;font-size:11px;opacity:.9;font-weight:500}',
+    '#sh-family-entries button:active{transform:translateY(3px)}',
+    '#sh-family-entries button[hidden]{display:none!important}',
+    '#sh-family-panel{position:fixed;inset:0;z-index:2147483500;overflow:auto;',
+    'background:radial-gradient(ellipse at 50% -20%,#9e6d2b 0%,#271b18 38%,#100c18 85%);',
+    'color:#ffebc5;padding:calc(14px + env(safe-area-inset-top,0px)) 15px 24px}',
+    '#sh-family-panel .sh-fam-wrap{max-width:620px;margin:auto}',
+    '#sh-family-panel h2{font-size:23px;color:#ffe4a2;text-align:center;margin:8px 0 20px}',
+    '#sh-family-panel h3{color:#f4d289;margin:3px 0 10px;font-size:17px}',
+    '#sh-family-panel .sh-fam-card{border:1px solid #bd873f;border-radius:18px;',
+    'background:linear-gradient(145deg,#3b2a2a,#241926);padding:15px;margin:12px 0;',
+    'box-shadow:inset 0 1px 1px #fff3,0 8px 20px #0007}',
+    '#sh-family-panel .sh-fam-stat{font-size:24px;font-weight:900;color:#ffe59e}',
+    '#sh-family-panel .sh-fam-note{font-size:12px;opacity:.8;line-height:1.5}',
+    '#sh-family-panel input,#sh-family-panel select{display:block;width:100%;padding:12px;border:1px solid #be8c47;',
+    'border-radius:12px;background:#160f1c;color:white;margin:7px 0 11px;font-size:15px}',
+    '#sh-family-panel details{margin-top:6px;padding:7px;border:1px solid #795c32;border-radius:10px}',
+    '#sh-family-panel summary{color:#ffe09f;cursor:pointer;font-weight:700}',
+    '#sh-family-panel .sh-fam-status{color:#ffd990;font-weight:700}',
+    '#sh-family-panel button{border:1px solid #f1c777;border-radius:12px;padding:11px 15px;',
+    'font-weight:800;background:linear-gradient(#fff0af,#c58c35);color:#38200c;margin:4px 5px 4px 0}',
+    '#sh-family-panel button:disabled{opacity:.45}',
+    '#sh-family-panel .sh-fam-head{display:flex;align-items:center;justify-content:space-between}',
+    '#sh-family-panel .sh-fam-list{list-style:none;padding:0;margin:0}',
+    '#sh-family-panel .sh-fam-list li{padding:8px 0;border-bottom:1px solid #fff2}',
+    '#sh-family-panel .sh-fam-close{background:#241726;color:#ffe1a0}',
+    '#sh-family-panel .sh-fam-feedback{min-height:18px;color:#ffd985;margin:8px 0}',
+    '@media(prefers-reduced-motion:reduce){#sh-family-entries button{transition:none}}'
+  ].join('');
+  document.head.appendChild(familyStyles);
+  const famEsc=x=>String(x==null?'':x).replace(/[&<>"']/g,
+    c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+  let familyCache=null,familyCheckedAt=0,familyCheckedUser=null;
+  function familyNotice(message){
+    const info=document.querySelector('#sh-family-panel .sh-fam-feedback');
+    if(info)info.textContent=String(message||'');
+    else toast(String(message||''));
+  }
+  function mountFamilyTiles(){
+    const root=document.getElementById('v-me');
+    if(!root||!session)return;
+    document.getElementById('sh-family-entries')?.remove();
+    const entries=document.createElement('section');entries.id='sh-family-entries';
+    entries.setAttribute('aria-label','Family and BD account features');
+    const family=document.createElement('button');family.type='button';
+    family.innerHTML='<span class="sh-fam-icon">👑</span><span>Royal Family'+
+      '<small>Family • members • Crystal Wallet</small></span>';
+    family.onclick=openRoyalFamily;entries.appendChild(family);
+    const bd=document.createElement('button');bd.type='button';bd.id='sh-bd-entry';
+    bd.innerHTML='<span class="sh-fam-icon">💼</span><span>BD System'+
+      '<small>BD Center • Commission • Statements</small></span>';
+    bd.hidden=true;bd.onclick=openRoyalBD;entries.appendChild(bd);
+    const countryButton=document.createElement('button');
+    countryButton.type='button';countryButton.id='sh-country-entry';
+    countryButton.innerHTML='<span class="sh-fam-icon">🌍</span><span>Country / Location'+
+      '<small>Set your own country • profile and room card • no GPS</small></span>';
+    countryButton.onclick=openManualCountryPicker;entries.appendChild(countryButton);
+    // Keep Family/BD inside the main profile Account Features section, not
+    // after the profile page where the bottom navigation may cover the icon.
+    const accountSection=root.querySelector('.profile-royal-page .profile-account');
+    (accountSection||root.querySelector('.profile-royal-page')||root).appendChild(entries);
+    const current=session.user?.id;
+    if(current!==familyCheckedUser||Date.now()-familyCheckedAt>30000){
+      familyCheckedUser=current;familyCheckedAt=Date.now();familyCache=null;
+      api('GET','/family/me').then(data=>{
+        if(session?.user?.id!==current)return;
+        familyCache=data;
+        const tile=document.getElementById('sh-bd-entry');
+        if(tile)tile.hidden=!(data.bd?.active&&data.bd?.can_grant);
+      }).catch(error=>{
+        console.warn('Family status unavailable:',errText(error));
+      });
+    }else if(familyCache)bd.hidden=!(familyCache.bd?.active&&familyCache.bd?.can_grant);
+  }
+  async function openRoyalFamily(){
+    if(!session){window.showAuth('welcome');return;}
+    let layer=document.getElementById('sh-family-panel');
+    if(!layer){
+      layer=document.createElement('section');layer.id='sh-family-panel';
+      layer.setAttribute('role','dialog');layer.setAttribute('aria-modal','true');
+      layer.setAttribute('aria-label','Sharika Royal Family');
+      document.body.appendChild(layer);
+    }
+    layer.hidden=false;
+    layer.innerHTML='<div class="sh-fam-wrap"><div class="sh-fam-head">'+
+      '<button type="button" class="sh-fam-close" id="sh-fam-back">‹ Back</button>'+
+      '<small>SHARIKA · ROYAL FAMILY</small></div><h2>👑 Royal Family</h2>'+
+      '<div id="sh-fam-body" class="sh-fam-card">Loading verified family data…</div>'+
+      '<p class="sh-fam-feedback" role="status"></p></div>';
+    layer.querySelector('#sh-fam-back').onclick=()=>{layer.hidden=true;};
+    await reloadRoyalFamily();
+  }
+  async function reloadRoyalFamily(){
+    const layer=document.getElementById('sh-family-panel');
+    if(!layer||layer.hidden||!session)return;
+    const target=layer.querySelector('#sh-fam-body');
+    if(target)target.textContent='Loading verified family data…';
+    const account=session.user?.id;
+    try{
+      const data=await api('GET','/family/me');
+      if(account!==session?.user?.id||layer.hidden)return;
+      familyCache=data;familyCheckedAt=Date.now();familyCheckedUser=account;
+      const bdTile=document.getElementById('sh-bd-entry');
+      if(bdTile)bdTile.hidden=!(data.bd?.active&&data.bd?.can_grant);
+      renderRoyalFamily(data);
+    }catch(error){
+      if(target)target.textContent='Family service unavailable: '+errText(error)+
+        '. Try again after the staging update.';
+    }
+  }
+
+  async function renderFamilyDiscovery(data){
+    const host=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!host)return;
+    const policy=data.policy||{},bd=data.bd||{};
+    host.classList.add('sh-fam-discovery');
+    host.innerHTML='<div class="sh-fam-lobby-head"><span>✦ ROYAL FAMILIES ✦</span>'+
+      '<h3>Discover Your Family</h3><p>Join an existing Family or apply to create your own.</p></div>'+
+      '<div class="sh-fam-lobby-tabs" role="tablist" aria-label="Family list">'+
+      '<button data-fam-sort="recommend" aria-selected="true" role="tab">✦ Recommend</button>'+
+      '<button data-fam-sort="new" aria-selected="false" role="tab">✧ New</button></div>'+
+      '<label class="sh-fam-search">⌕ Search Families<input id="sh-fam-discover-q" placeholder="Family name" maxlength="60"></label>'+
+      '<div id="sh-fam-discover-list" aria-live="polite"><p>Loading Families…</p></div>'+
+      '<div class="sh-fam-application-stack" id="sh-fam-application-stack"></div>'+
+      ((data.invitations||[]).length?'<section class="sh-fam-app-card"><h3>✉️ Your Invitations</h3>'+
+        data.invitations.map(a=>'<div class="sh-fam-invite-entry"><div><b>'+famEsc(a.family_name)+'</b>'+
+          '<small>Invited by '+famEsc(a.inviter_id)+'</small></div>'+
+          '<button data-fam-accept-invite="'+famEsc(a.id)+'">Join</button>'+
+          '<button data-fam-decline-invite="'+famEsc(a.id)+'">Decline</button></div>').join('')+'</section>':'')+
+      ((data.applications||[]).length?'<section class="sh-fam-app-card"><h3>📋 My Join Requests</h3>'+
+        data.applications.map(a=>'<p>'+famEsc(a.family_name||a.family_id)+
+        ' · '+famEsc(a.state)+'</p>').join('')+'</section>':'')+
+      (bd.active&&bd.can_grant?'<details class="sh-fam-app-card"><summary>💼 BD Family Grant</summary>'+
+        '<p>Active BD: '+famEsc(policy.bd_percent)+'% verified Family gift commission. Admin approval application is separate.</p>'+
+        '<label>Owner 8-digit ID<input id="sh-fam-owner-id" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Family Name<input id="sh-fam-name" maxlength="40"></label>'+
+        '<button id="sh-fam-grant">Grant Family</button>'+
+        '<button id="sh-fam-bd-list">My Granted Families</button></details>':'')+
+      '<div class="sh-fam-create-dock"><button type="button" id="sh-fam-show-create">'+
+        '👑 Create Family <span>Admin approval</span></button></div>'+
+      '<section id="sh-fam-create-form" class="sh-fam-app-card" hidden>'+
+        '<h3>👑 Apply to Create a Family</h3>'+
+        '<p>Choose a unique Family name. An Admin must approve before the Family appears on your ID.</p>'+
+        '<label>Family Name<input id="sh-fam-create-request-name" maxlength="40" placeholder="Your Royal Family"></label>'+
+        '<label>Description (optional)<input id="sh-fam-create-request-description" maxlength="240" placeholder="Family introduction"></label>'+
+        '<label><input id="sh-fam-create-agree" type="checkbox"> I agree to the Family rules and Admin review.</label>'+
+        '<button id="sh-fam-create-request">Submit Application</button>'+
+        '<button id="sh-fam-close-create" type="button">Cancel</button></section>';
+    const list=host.querySelector('#sh-fam-discover-list');
+    let rows=[],selectedSort='recommend',query='';
+    const paint=()=>{
+      if(!list.isConnected)return;
+      const filtered=rows.filter(x=>String(x.name||'').toLowerCase().includes(query));
+      const ordered=filtered.slice().sort((a,b)=>selectedSort==='new'?
+        String(b.created_at||'').localeCompare(String(a.created_at||''))||Number(b.id)-Number(a.id):
+        Number(b.member_count||0)-Number(a.member_count||0)||Number(b.level||0)-Number(a.level||0));
+      list.innerHTML=ordered.length?ordered.map(f=>{
+        const logo=verifiedAvatarUrl(f.logo);
+        const full=Number(f.member_count||0)>=Number(f.max_members||20);
+        return '<article class="sh-fam-discover-row">'+
+          '<div class="sh-fam-row-emblem">'+(logo?'<img src="'+famEsc(logo)+'" alt="">':'👑')+'</div>'+
+          '<div class="sh-fam-row-data"><b>'+famEsc(f.name)+'</b>'+
+          '<small>Owner ID: '+famEsc(f.owner_id)+' · Lv '+famEsc(f.level||1)+'</small>'+
+          '<small>♟ '+famEsc(f.member_count)+' / '+famEsc(f.max_members||20)+' members</small></div>'+
+          '<button type="button" data-fam-discovery-apply="'+famEsc(f.id)+'" '+(full?'disabled':'')+'>'+
+          (full?'Full':'Apply')+'</button></article>';
+      }).join(''):'<p class="sh-fam-discover-empty">No matching Families found.</p>';
+      list.querySelectorAll('[data-fam-discovery-apply]').forEach(btn=>btn.onclick=async()=>{
+        const id=Number(btn.dataset.famDiscoveryApply);
+        const item=rows.find(f=>Number(f.id)===id);
+        if(!window.confirm('Apply to join '+(item?.name||'this Family')+'? The Owner must approve.'))return;
+        btn.disabled=true;familyNotice('Sending join request…');
+        try{await api('POST','/family/join',{family_id:id});
+          familyNotice('Application sent ✓ Waiting for the Family Owner.');}
+        catch(error){familyNotice('Application failed: '+errText(error));btn.disabled=false;}
+      });
+    };
+    host.querySelectorAll('[data-fam-sort]').forEach(btn=>btn.onclick=()=>{
+      selectedSort=btn.dataset.famSort;
+      host.querySelectorAll('[data-fam-sort]').forEach(t=>t.setAttribute(
+        'aria-selected',String(t===btn)));
+      paint();
+    });
+    host.querySelector('#sh-fam-discover-q').oninput=e=>{
+      query=String(e.target.value||'').trim().toLowerCase();paint();
+    };
+    const form=host.querySelector('#sh-fam-create-form');
+    host.querySelector('#sh-fam-show-create').onclick=()=>{form.hidden=false;form.scrollIntoView({behavior:'smooth'});};
+    host.querySelector('#sh-fam-close-create').onclick=()=>{form.hidden=true;};
+    host.querySelector('#sh-fam-create-request').onclick=async()=>{
+      const name=host.querySelector('#sh-fam-create-request-name').value.trim();
+      const description=host.querySelector('#sh-fam-create-request-description').value.trim();
+      const accept_rules=host.querySelector('#sh-fam-create-agree').checked;
+      if(name.length<3||name.length>40||!accept_rules){
+        familyNotice('Enter a name (3–40 characters) and accept the rules.');return;
+      }
+      const btn=host.querySelector('#sh-fam-create-request');btn.disabled=true;
+      try{await api('POST','/family/creation/request',{name,description,accept_rules});
+        familyNotice('Family application sent ✓ Admin approval required.');
+        await reloadRoyalFamily();
+      }catch(error){familyNotice('Application failed: '+errText(error));btn.disabled=false;}
+    };
+    host.querySelectorAll('[data-fam-accept-invite],[data-fam-decline-invite]').forEach(btn=>
+      btn.onclick=async()=>{
+        const accepted=!!btn.dataset.famAcceptInvite;
+        const id=btn.dataset.famAcceptInvite||btn.dataset.famDeclineInvite;
+        try{await api('POST','/family/invites/'+id+'/'+(accepted?'accept':'decline'),{});
+          await reloadRoyalFamily();familyNotice(accepted?'Joined Family ✓':'Invitation declined');}
+        catch(error){familyNotice('Invite response failed: '+errText(error));}
+      });
+    host.querySelector('#sh-fam-grant')?.addEventListener('click',async()=>{
+      const id=host.querySelector('#sh-fam-owner-id').value.trim();
+      const name=host.querySelector('#sh-fam-name').value.trim();
+      if(!/^[0-9]{8}$/.test(id)||name.length<3)return familyNotice('Enter Owner ID and Family name.');
+      if(!window.confirm('Grant '+name+' to '+id+'?'))return;
+      try{await api('POST','/family/bd/grant',{owner_public_id:id,name,
+        request_id:'family:'+crypto.randomUUID()});await reloadRoyalFamily();}
+      catch(error){familyNotice('BD grant failed: '+errText(error));}
+    });
+    host.querySelector('#sh-fam-bd-list')?.addEventListener('click',async()=>{
+      try{const r=await api('GET','/family/bd/families');
+        familyNotice((r.families||[]).map(x=>x.name+' #'+x.id).join(' • ')||'No granted Families.');}
+      catch(error){familyNotice('BD list unavailable: '+errText(error));}
+    });
+    try{
+      const [found,applications]=await Promise.all([
+        api('GET','/family/discover'),api('GET','/family/creation/requests')
+      ]);
+      if(!list.isConnected)return;
+      rows=Array.isArray(found.families)?found.families:[];
+      paint();
+      const stack=host.querySelector('#sh-fam-application-stack');
+      const entries=applications.requests||[];
+      if(stack&&entries.length)
+        stack.innerHTML='<section class="sh-fam-app-card"><h3>🗂️ Family Creation Applications</h3>'+
+          entries.slice(0,5).map(x=>'<p><strong>'+famEsc(x.name)+'</strong>'+
+            ' <span class="sh-fam-state">'+famEsc(x.state)+'</span>'+
+            (x.decision_reason?' · '+famEsc(x.decision_reason):'')+'</p>').join('')+
+          '</section>';
+    }catch(error){if(list.isConnected)list.textContent='Family list unavailable: '+errText(error);}
+  }
+
+  const familyDiscoveryRoyalCss=document.createElement('style');
+  familyDiscoveryRoyalCss.id='sharika-family-discovery-premium';
+  familyDiscoveryRoyalCss.textContent=[
+    '#sh-family-panel:has(.sh-fam-discovery){padding-bottom:0;background:',
+    'radial-gradient(ellipse at 50% -10%,#b97e28a8,transparent 48%),',
+    'repeating-conic-gradient(from 22deg at 50% 21%,#d59a2512 0deg 12deg,transparent 12deg 30deg),',
+    'linear-gradient(180deg,#170d14 0%,#221408 44%,#0f0a11 100%)}',
+    '#sh-family-panel:has(.sh-fam-discovery) .sh-fam-wrap{min-height:100%;position:relative}',
+    '#sh-family-panel:has(.sh-fam-discovery) .sh-fam-wrap:before{content:"✦";',
+    'position:absolute;top:7px;left:45%;z-index:-1;color:#bd8c3040;',
+    'font-size:230px;text-shadow:0 0 75px #d6a54455}',
+    '#sh-family-panel:has(.sh-fam-discovery) h2{font-size:27px;',
+    'text-shadow:0 2px 8px #efb74a77}',
+    '#sh-family-panel .sh-fam-discovery{padding:0;margin:0;',
+    'background:transparent;border:0;box-shadow:none}',
+    '#sh-family-panel .sh-fam-lobby-head{text-align:center;margin:10px 0 20px}',
+    '#sh-family-panel .sh-fam-lobby-head>span{letter-spacing:3px;font-size:10px;color:#e6b95c}',
+    '#sh-family-panel .sh-fam-lobby-head h3{font-size:23px;color:#ffdf96;margin:7px 0}',
+    '#sh-family-panel .sh-fam-lobby-head p{font-size:13px;color:#e0c99c}',
+    '#sh-family-panel .sh-fam-lobby-tabs{display:flex;padding:4px;gap:5px;',
+    'border:1px solid #b98b3d;border-radius:22px;background:#251812dd}',
+    '#sh-family-panel .sh-fam-lobby-tabs button{width:50%;margin:0;border:0;',
+    'border-radius:18px;font-size:16px;box-shadow:none;background:transparent;color:#edcb8b}',
+    '#sh-family-panel .sh-fam-lobby-tabs button[aria-selected=true]{',
+    'background:linear-gradient(125deg,#fff0a3,#d79b29 65%,#996319);color:#3d2109}',
+    '#sh-family-panel .sh-fam-search{display:block;margin:14px 0;color:#e5c48b;font-size:12px}',
+    '#sh-family-panel .sh-fam-search input{margin:4px 0}',
+    '#sh-family-panel .sh-fam-discover-row{display:flex;align-items:center;gap:11px;',
+    'padding:14px 2px;border-bottom:1px solid #c69a3d55;background:linear-gradient(90deg,#3a251266,#120b0a33)}',
+    '#sh-family-panel .sh-fam-row-emblem{height:64px;width:64px;flex:none;',
+    'display:grid;place-items:center;border:2px solid #f1ca72;border-radius:17px;',
+    'background:linear-gradient(135deg,#694112,#1e1a18);font-size:32px;overflow:hidden;',
+    'box-shadow:inset 0 1px 4px #ffdf8b66,0 6px 16px #0008}',
+    '#sh-family-panel .sh-fam-row-emblem img{height:100%;width:100%;object-fit:cover}',
+    '#sh-family-panel .sh-fam-row-data{min-width:0;flex:1}',
+    '#sh-family-panel .sh-fam-row-data b{display:block;white-space:nowrap;',
+    'overflow:hidden;text-overflow:ellipsis;font-size:16px;color:#ffebc0}',
+    '#sh-family-panel .sh-fam-row-data small{display:block;color:#e4bd77;',
+    'font-size:11px;line-height:1.7}',
+    '#sh-family-panel .sh-fam-discover-row button{flex:none;margin:0;padding:9px 13px;',
+    'border-radius:13px;font-size:13px}',
+    '#sh-family-panel .sh-fam-discover-empty{text-align:center;padding:25px;color:#e4c98d}',
+    '#sh-family-panel .sh-fam-application-stack,.sh-fam-app-card{margin:14px 0}',
+    '#sh-family-panel .sh-fam-app-card{padding:16px;border:1px solid #bb8c43;',
+    'background:linear-gradient(135deg,#4a2e1c,#231519);border-radius:18px;',
+    'box-shadow:0 6px 18px #0008}',
+    '#sh-family-panel .sh-fam-app-card p{font-size:12px;color:#e6d2ad}',
+    '#sh-family-panel .sh-fam-invite-entry{display:flex;align-items:center;gap:8px;margin:8px 0}',
+    '#sh-family-panel .sh-fam-invite-entry div{flex:1;min-width:0}',
+    '#sh-family-panel .sh-fam-invite-entry b,#sh-family-panel .sh-fam-invite-entry small{display:block}',
+    '#sh-family-panel .sh-fam-state{font-weight:900;color:#ffcc64;text-transform:uppercase}',
+    '#sh-family-panel .sh-fam-create-dock{position:sticky;bottom:0;margin:16px -15px 0;',
+    'background:linear-gradient(0deg,#150b09 70%,#150b09aa);padding:13px 17px 20px;',
+    'z-index:2;text-align:center;border-top:1px solid #ad803366}',
+    '#sh-family-panel .sh-fam-create-dock button{width:100%;max-width:380px;',
+    'font-size:18px;border:2px solid #ffdd85;border-radius:20px;',
+    'background:linear-gradient(175deg,#ffed9d 0%,#ecb345 45%,#b97717 100%);',
+    'box-shadow:inset 0 2px 2px #fff9a0,0 5px 0 #744407,0 8px 22px #000b}',
+    '#sh-family-panel .sh-fam-create-dock span{display:block;font-size:10px;opacity:.8}',
+    '#sh-family-panel #sh-fam-create-form[hidden]{display:none}',
+    '#sh-family-panel #sh-fam-create-agree{display:inline-block;width:18px;vertical-align:middle}',
+    '#pfo .sh-ranked-profile{background:radial-gradient(ellipse at 50% 18%,#ffe19c,#f3ba38 50%,#ba6917 100%)!important;',
+    'border:2px solid #f3d175;box-shadow:inset 0 0 20px #fff1a6,0 10px 40px #000b}',
+    '#pfo .sh-ranked-profile .cov{height:115px;background:',
+    'radial-gradient(ellipse at 50% -100%,#fff7d0,transparent 70%),',
+    'repeating-conic-gradient(from 12deg at 50% 50%,#ffeca655 0deg 8deg,transparent 9deg 26deg),',
+    'linear-gradient(135deg,#9b440d,#efb239 55%,#8e420a)!important}',
+    '#pfo .sh-ranked-profile .pfh{position:relative;padding-top:2px}',
+    '#pfo .sh-ranked-profile .pfh:before{content:"♛";position:absolute;top:-77px;',
+    'left:50%;transform:translateX(-50%);font-size:47px;color:#ffe99e;',
+    'filter:drop-shadow(0 2px 3px #76370a)}',
+    '#pfo .sh-ranked-profile .pfh h2{color:#49220b!important;text-shadow:0 1px 0 #fff4c1}',
+    '#pfo .sh-ranked-profile .pavr{border-color:#ffd273!important;',
+    'box-shadow:0 0 0 3px #be771b,0 0 20px #fff1b8}',
+    '#pfo .sh-ranked-profile .sh-royal-idline{display:flex;align-items:center;',
+    'justify-content:center;flex-wrap:wrap;gap:5px;margin:9px auto;padding:5px;',
+    'max-width:100%;font-size:12px;color:#6c390a}',
+    '#pfo .sh-ranked-profile .sh-royal-user-id{font-weight:900;color:#723014;',
+    'padding:7px 8px;background:#fff0b2;border:1px solid #d29427;border-radius:9px}',
+    '#pfo .sh-ranked-profile .sh-royal-role-tag{font-weight:900;padding:7px 10px;',
+    'border-radius:999px;border:1px solid #ffdd92;box-shadow:inset 0 1px 2px #fff8;',
+    'color:#fff0cb;text-transform:uppercase;white-space:nowrap}',
+    '#pfo .sh-ranked-profile .sh-royal-bd{background:linear-gradient(125deg,#d43768,#74174d)}',
+    '#pfo .sh-ranked-profile .sh-royal-seller{background:linear-gradient(125deg,#269de4,#14559d)}',
+    '#pfo .sh-ranked-profile .meta{color:#623708!important}',
+    '#pfo .sh-ranked-profile .sh-profile-note{background:linear-gradient(150deg,#704017,#321e1b)!important;',
+    'border:1px solid #ffc869!important;color:#ffe6b7!important}',
+    '#pfo .sh-ranked-profile .pbtn button{background:linear-gradient(140deg,#ffeaa0,#d4992e)!important;',
+    'color:#4b2106!important;border:1px solid #ffdb74!important}',
+    '@media(max-width:380px){#sh-family-panel .sh-fam-row-emblem{width:53px;height:53px}',
+    '#sh-family-panel .sh-fam-row-data b{font-size:14px}',
+    '#sh-family-panel .sh-fam-discover-row button{padding:8px}}',
+    '@media(prefers-reduced-motion:reduce){#sh-family-panel .sh-fam-create-dock button{transition:none}}'
+  ].join('');
+  familyDiscoveryRoyalCss.textContent +=
+    '#pfo .sh-room-royal .pfh .meta{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px}'+
+    '#pfo .sh-room-royal .pfh .meta .sh-royal-idline{width:100%;margin:0}'+
+    '#pfo .sh-room-royal .sh-royal-room-family-link{border:1px solid #c58d22;border-radius:99px;'+
+    'background:linear-gradient(#fff0ad,#e7b74d);color:#552909;font-weight:800;padding:7px 13px}';
+  document.head.appendChild(familyDiscoveryRoyalCss);
+
+  function renderRoyalFamily(data){
+    const target=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!target)return;
+    const family=data.family,bd=data.bd||{},policy=data.policy||{},wallet=data.wallet||{};
+    if(!family){renderFamilyDiscovery(data);return;}
+    const fmtUnits=u=>(Number(u||0)/10000).toLocaleString('en-US',{maximumFractionDigits:4});
+    let html='<h3>💎 Crystal Wallet</h3><div class="sh-fam-stat">'+
+      fmtUnits(wallet.available_units)+' Crystal</div>'+
+      '<p class="sh-fam-note">Total earned: '+fmtUnits(wallet.total_units)+
+      ' · Reserved / transferred: '+fmtUnits(wallet.transferred_units)+
+      '. Crystals are separate from spendable coins.</p>'+
+      '<button type="button" id="sh-fam-ledger">View Ledger</button>';
+    if(family){
+      const activity=data.activity||{},progress=data.target_progress||{};
+      const fmtDiamonds=value=>Math.max(0,Number(value)||0).toLocaleString('en-US',{maximumFractionDigits:0});
+      html+='<div class="sh-fam-card" data-family-diamond-target="true">'+
+        '<h3>💎 Family Diamond Gift Target</h3>'+
+        '<div class="sh-fam-stat">'+fmtDiamonds(progress.month)+'</div>'+
+        '<p class="sh-fam-note">Diamonds contributed this month (UTC)</p>'+
+        '<p>Today: <strong>'+fmtDiamonds(progress.today)+'</strong> 💎 · '+
+        'Week: <strong>'+fmtDiamonds(progress.week)+'</strong> 💎</p>'+
+        '<p>All-time: <strong>'+fmtDiamonds(progress.lifetime)+'</strong> 💎 · '+
+        'Verified gifts: <strong>'+famEsc(activity.total_gifts||0)+'</strong></p>'+
+        '<p class="sh-fam-note">Regular gifts from all current Family members, including the Owner, count from the day they joined. Lucky gifts do not create these diamonds. Crystal commissions are separate.</p>'+
+        '<button type="button" id="sh-fam-refresh-target">↻ Refresh Gift Target</button></div>';
+      html+='<div class="sh-fam-card"><h3>👑 '+famEsc(family.name)+' · Level '+
+        famEsc(family.level)+'</h3><p>Family ID: '+famEsc(family.id)+
+        ' · '+famEsc(family.member_count)+' members</p>'+
+        '<p class="sh-fam-note">Owner: '+famEsc(family.owner_id)+
+        ' · BD: '+famEsc(family.bd_id)+'</p>'+
+        (family.status!=='active'?'<p class="sh-fam-status">This Family is suspended. Ask Admin to review it.</p>':'')+
+        '<ul class="sh-fam-list">'+
+        (family.members||[]).map(m=>'<li>'+famEsc(m.name)+' · '+famEsc(m.public_id)+
+          ' <small>('+famEsc(m.role)+')</small>'+
+          (family.role==='leader'&&family.status==='active'&&m.role!=='leader'?
+            '<details><summary>Manage member</summary>'+
+            '<label>Family role<select data-fam-role="'+famEsc(m.public_id)+'">'+
+            ['member','elder','co_leader'].map(r=>
+              '<option value="'+r+'" '+(r===m.role?'selected':'')+'>'+famEsc(r)+'</option>').join('')+
+            '</select></label>'+
+            '<button type="button" data-fam-save-role="'+famEsc(m.public_id)+'">Save Role</button>'+
+            '<button type="button" data-fam-transfer-owner="'+famEsc(m.public_id)+'">Make Owner</button>'+
+            '<button type="button" data-fam-remove-member="'+famEsc(m.public_id)+'">Remove</button>'+
+            '</details>':'')+'</li>').join('')+'</ul>'+
+        (['leader','co_leader'].includes(family.role)&&family.status==='active'?
+          '<button id="sh-fam-requests" type="button">Review Join Requests</button>':'')+
+        (family.role==='leader'&&family.status==='active'?
+          '<div class="sh-fam-card"><h4>✉️ Invite User to '+famEsc(family.name)+'</h4>'+
+          '<p class="sh-fam-note">Enter an 8-digit ID. User gets a notification and joins after accepting.</p>'+
+          '<label>User ID<input id="sh-fam-invite-id" maxlength="8" inputmode="numeric" placeholder="8-digit ID"></label>'+
+          '<button id="sh-fam-invite" type="button">Send Family Invitation</button></div>':'')+
+        (family.role!=='leader'?
+          '<button id="sh-fam-leave" type="button">Leave Family</button>':'')+'</div>';
+    }else html+='<div class="sh-fam-card"><h3>Join a Family</h3>'+
+      '<p class="sh-fam-note">Only one family at a time. Leader approves membership.</p>'+
+      '<label>Family ID<input id="sh-fam-join-id" inputmode="numeric" placeholder="e.g. 1001"></label>'+
+      '<button id="sh-fam-join" type="button">Send Join Request</button>'+
+      ((data.invitations||[]).length?
+        '<h3>✉️ Family Invitations</h3><div class="sh-fam-list">'+
+        (data.invitations||[]).map(a=>'<div class="sh-fam-card">👑 '+famEsc(a.family_name)+
+          ' · #'+famEsc(a.family_id)+'<p class="sh-fam-note">Invited by '+famEsc(a.inviter_id)+'</p>'+
+          '<button type="button" data-fam-accept-invite="'+famEsc(a.id)+'">Join Family</button>'+
+          '<button type="button" data-fam-decline-invite="'+famEsc(a.id)+'">Decline</button></div>').join('')+'</div>':'')+
+      ((data.applications||[]).length?
+        '<h3>Your recent applications</h3><ul class="sh-fam-list">'+
+        (data.applications||[]).map(a=>'<li>#'+famEsc(a.family_id)+' · '+
+          famEsc(a.family_name)+' · <span class="sh-fam-status">'+
+          famEsc(a.state)+'</span></li>').join('')+'</ul>':'')+'</div>';
+    if(bd.active&&bd.can_grant){
+      html+='<div class="sh-fam-card"><h3>💼 BD Family Grant</h3>'+
+        '<p class="sh-fam-note">Your account has Family Grant permission. BD commission: '+
+        famEsc(policy.bd_percent)+'% on verified non-Lucky family member gifts.</p>'+
+        '<label>Owner Sharika ID<input id="sh-fam-owner-id" inputmode="numeric" maxlength="8" placeholder="8-digit ID"></label>'+
+        '<label>Family Name<input id="sh-fam-name" maxlength="40" placeholder="Family name"></label>'+
+        '<button type="button" id="sh-fam-grant">Grant Family</button>'+
+        '<button type="button" id="sh-fam-bd-list">My Granted Families</button></div>';
+    }
+    if(policy.conversion_enabled){
+      html+='<div class="sh-fam-card"><h3>↔ Seller Transfer Request</h3>'+
+        '<p class="sh-fam-note">Approval required before seller stock receives coins. Rate: '+
+        famEsc(policy.coins_per_crystal)+' coins per Crystal.</p>'+
+        '<label>Seller ID<input id="sh-fam-seller" maxlength="8" inputmode="numeric"></label>'+
+        '<label>Whole Crystals<input id="sh-fam-amount" inputmode="numeric" type="number" min="1"></label>'+
+        '<button type="button" id="sh-fam-transfer">Request Transfer</button></div>';
+    }
+    target.innerHTML=html;
+    target.querySelector('#sh-fam-refresh-target')?.addEventListener('click',async event=>{
+      const button=event.currentTarget;
+      button.disabled=true;
+      await reloadRoyalFamily();
+    });
+    const invoke=async(method,url,body,confirmText)=>{
+      if(confirmText&&!window.confirm(confirmText))return;
+      familyNotice('Saving…');
+      try{
+        const saved=await api(method,url,body);
+        familyNotice('Verified ✓');
+        await reloadRoyalFamily();familyNotice('Saved successfully ✓');
+        return saved;
+      }catch(error){familyNotice('Not saved: '+errText(error));return null;}
+    };
+    target.querySelectorAll('[data-fam-save-role]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.famSaveRole;
+        const role=target.querySelector('[data-fam-role="'+id+'"]')?.value;
+        if(!['member','elder','co_leader'].includes(role))return familyNotice('Choose a valid role');
+        invoke('POST','/family/members/'+id+'/role',{role},
+          'Change Family member '+id+' to '+role+'?');
+      };
+    });
+    target.querySelectorAll('[data-fam-transfer-owner]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.famTransferOwner;
+        invoke('POST','/family/ownership/transfer',{new_owner_public_id:id},
+          'Transfer ownership to '+id+'? You will become Co-leader. Future Family owner Crystal goes to the new owner.');
+      };
+    });
+    target.querySelectorAll('[data-fam-remove-member]').forEach(button=>{
+      button.onclick=()=>{
+        const id=button.dataset.famRemoveMember;
+        invoke('POST','/family/members/'+id+'/remove',{},
+          'Remove member '+id+'? A 24-hour Family join cooldown will apply.');
+      };
+    });
+    target.querySelector('#sh-fam-invite')?.addEventListener('click',()=>{
+      const id=target.querySelector('#sh-fam-invite-id')?.value?.trim();
+      if(!/^[0-9]{8}$/.test(id||''))return familyNotice('Enter an 8-digit User ID');
+      invoke('POST','/family/invite',{public_id:id},
+        'Invite '+id+' to Family '+family.name+'? They must accept the invitation.');
+    });
+    target.querySelectorAll('[data-fam-accept-invite],[data-fam-decline-invite]').forEach(btn=>{
+      btn.onclick=()=>{
+        const yes=btn.dataset.famAcceptInvite;
+        const id=yes||btn.dataset.famDeclineInvite;
+        invoke('POST','/family/invites/'+id+'/'+(yes?'accept':'decline'),{},
+          yes?'Join this Family?':'Decline this Family invitation?');
+      };
+    });
+    target.querySelector('#sh-fam-join')?.addEventListener('click',()=>{
+      const id=Number(target.querySelector('#sh-fam-join-id')?.value);
+      if(!Number.isSafeInteger(id)||id<1)return familyNotice('Enter a valid Family ID');
+      invoke('POST','/family/join',{family_id:id});
+    });
+    target.querySelector('#sh-fam-grant')?.addEventListener('click',()=>{
+      const id=target.querySelector('#sh-fam-owner-id')?.value?.trim();
+      const name=target.querySelector('#sh-fam-name')?.value?.trim();
+      if(!/^[0-9]{8}$/.test(id||'')||!name||name.length<3)
+        return familyNotice('Enter the 8-digit ID and Family Name');
+      invoke('POST','/family/bd/grant',{owner_public_id:id,name,
+        request_id:'family:'+crypto.randomUUID()},'Grant family to '+id+'?');
+    });
+    target.querySelector('#sh-fam-leave')?.addEventListener('click',()=>
+      invoke('POST','/family/leave',{},'Leave this Family?'));
+    target.querySelector('#sh-fam-transfer')?.addEventListener('click',()=>{
+      const id=target.querySelector('#sh-fam-seller')?.value?.trim();
+      const crystals=Number(target.querySelector('#sh-fam-amount')?.value);
+      if(!/^[0-9]{8}$/.test(id||'')||!Number.isSafeInteger(crystals)||crystals<1)
+        return familyNotice('Enter seller ID and whole Crystals');
+      invoke('POST','/family/crystal/transfer',{seller_public_id:id,crystals,
+        request_id:'crystal:'+crypto.randomUUID()},
+      'Reserve '+crystals+' Crystal for seller '+id+'?');
+    });
+    const detail=async(url,title,map)=>{
+      familyNotice('Loading…');
+      try{
+        const result=await api('GET',url);
+        const lines=map(result);
+        target.innerHTML='<h3>'+famEsc(title)+'</h3>'+
+          '<button type="button" id="sh-fam-detail-back">‹ Family Dashboard</button>'+
+          (lines.length?'<ul class="sh-fam-list">'+lines.join('')+'</ul>':
+            '<p>No verified records yet.</p>');
+        target.querySelector('#sh-fam-detail-back').onclick=()=>renderRoyalFamily(data);
+        familyNotice('');
+      }catch(error){familyNotice('Unavailable: '+errText(error));}
+    };
+    target.querySelector('#sh-fam-ledger')?.addEventListener('click',()=>detail(
+      '/family/ledger','Crystal Transactions',r=>[
+        ...(r.credits||[]).map(x=>'<li>+'+fmtUnits(x.crystal_units)+
+          ' Crystal · '+famEsc(x.kind)+' · Gift #'+famEsc(x.transaction_id)+'</li>'),
+        ...(r.transfers||[]).map(x=>'<li>−'+fmtUnits(x.crystal_units)+
+          ' Crystal · Seller '+famEsc(x.seller_id)+' · '+famEsc(x.status)+'</li>')
+      ]));
+    target.querySelector('#sh-fam-bd-list')?.addEventListener('click',()=>detail(
+      '/family/bd/families','My Granted Families',r=>(r.families||[]).map(x=>
+        '<li>'+famEsc(x.name)+' · Owner '+famEsc(x.owner_id)+
+        ' · '+famEsc(x.member_count)+' members</li>')));
+    target.querySelector('#sh-fam-requests')?.addEventListener('click',async()=>{
+      familyNotice('Loading requests…');
+      try{
+        const result=await api('GET','/family/requests');
+        target.innerHTML='<h3>Family Join Requests</h3>'+
+          '<button type="button" id="sh-fam-requests-back">‹ Dashboard</button>'+
+          (result.requests||[]).map(x=>'<div class="sh-fam-card">'+famEsc(x.name)+
+            ' · '+famEsc(x.public_id)+'<br>'+
+            '<button data-fam-accept="'+x.id+'">Accept</button>'+
+            '<button data-fam-reject="'+x.id+'">Reject</button></div>').join('');
+        target.querySelector('#sh-fam-requests-back').onclick=()=>renderRoyalFamily(data);
+        target.querySelectorAll('[data-fam-accept],[data-fam-reject]').forEach(button=>{
+          button.onclick=()=>invoke('POST','/family/requests/'+
+            (button.dataset.famAccept||button.dataset.famReject)+'/'+
+            (button.dataset.famAccept?'accept':'reject'),{});
+        });
+        familyNotice('');
+      }catch(error){familyNotice('Unavailable: '+errText(error));}
+    });
+  }
+
+  // Royal Family V2: faithful four-screen layout without changing balances or payouts.
+  const familyRoyalV2Styles=document.createElement('style');
+  familyRoyalV2Styles.id='sh-family-v2-royal-css';
+  familyRoyalV2Styles.textContent="\n#sh-family-panel{background:radial-gradient(ellipse at 54% -7%,#70401e 0%,#341929 27%,#1b0b20 68%,#100817 100%);color:#f9e9c5;overscroll-behavior:contain}\n#sh-family-panel .sh-fam-wrap{max-width:580px}\n#sh-family-panel .sh-fam-head{padding:8px 0 3px}\n#sh-family-panel .sh-fam-head small{font-size:10px;letter-spacing:1.5px;color:#efc777}\n#sh-family-panel .sh-fam-head+.sh-fam-v2-title,#sh-family-panel h2{font-family:Georgia,serif;font-size:27px;font-weight:900;text-shadow:0 2px 14px #db893b44;letter-spacing:.4px}\n#sh-family-panel .sh-fam-card,#sh-family-panel .sh-fam-app-card{background:linear-gradient(157deg,#512a35 0%,#331a31 52%,#220f26 100%);border:1px solid #ba8439;border-radius:17px;box-shadow:inset 0 1px 0 #ffe2a92e,0 9px 25px #1005168a}\n#sh-family-panel .sh-fam-v2-hero{text-align:center;margin:6px 0 17px;position:relative}\n#sh-family-panel .sh-fam-v2-hero .sh-fam-v2-kicker{display:block;letter-spacing:2px;font-size:10px;color:#efc471;font-weight:800}\n#sh-family-panel .sh-fam-v2-hero h2{display:flex;justify-content:center;align-items:center;gap:8px;margin:11px 0 13px;font-family:Georgia,serif;font-weight:900;letter-spacing:.8px;color:#ffe0a2}\n#sh-family-panel .sh-fam-v2-crown{width:46px;height:46px;object-fit:contain;filter:drop-shadow(0 3px 6px #e59f23b5);animation:shFamCrownFloat 4.2s ease-in-out infinite}\n#sh-family-panel .sh-fam-v2-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px}\n#sh-family-panel .sh-fam-v2-stat{border:1px solid #d3a257;border-radius:15px;background:linear-gradient(153deg,#583140,#34192f 70%);min-height:94px;padding:13px 11px;box-shadow:inset 0 1px 0 #fff1bf33,0 8px 18px #0501084d;display:flex;align-items:center;gap:9px;position:relative;overflow:hidden;animation:shFamCardEnter .4s ease both}\n#sh-family-panel .sh-fam-v2-stat:after{content:\"\";position:absolute;width:55px;height:200%;background:#fff5ab0d;transform:rotate(22deg);right:0;top:-50%;pointer-events:none}\n#sh-family-panel .sh-fam-v2-ico{font-size:29px;filter:drop-shadow(0 3px 2px #0006);flex:0 0 35px;animation:shFamIconFloat 4.4s ease-in-out infinite}\n#sh-family-panel .sh-fam-v2-stat small{display:block;font-size:11px;color:#ecd4a6;margin-bottom:4px}\n#sh-family-panel .sh-fam-v2-stat b{display:block;font-size:21px;color:#ffe3a2;line-height:1.12;font-weight:900}\n#sh-family-panel .sh-fam-v2-stat em{font-size:10px;font-style:normal;color:#f5d59a}\n#sh-family-panel .sh-fam-v2-tabs{display:flex;gap:0;border:1px solid #b88a52;border-radius:99px;margin:11px 0 18px;overflow:hidden;background:#251426}\n#sh-family-panel .sh-fam-v2-tabs button{flex:1;padding:11px 5px;background:transparent;color:#f6dfaa;border:0;border-right:1px solid #ae885233;border-radius:0;margin:0;box-shadow:none}\n#sh-family-panel .sh-fam-v2-tabs button[aria-selected=\"true\"]{background:linear-gradient(155deg,#fff1b1,#dca448);color:#361b0a;box-shadow:inset 0 2px 2px #fff7c5aa}\n#sh-family-panel .sh-fam-v2-members{padding:14px 11px}\n#sh-family-panel .sh-fam-v2-members h3{display:flex;align-items:center;justify-content:space-between;margin:1px 0 13px;font-size:17px}\n#sh-family-panel .sh-fam-v2-members h3 small{color:#ffe7b4;font-size:12px;font-weight:600}\n#sh-family-panel .sh-fam-v2-member{width:100%;display:flex;align-items:center;gap:9px;min-height:74px;text-align:left;background:linear-gradient(145deg,#66384d,#381830)!important;color:#ffe5ad!important;border:1px solid #c28c4c!important;border-radius:14px!important;padding:8px 10px!important;margin:6px 0!important;box-shadow:inset 0 1px 0 #ffe3b73d,0 4px 8px #0701076e;transition:transform .18s ease,box-shadow .18s ease}\n#sh-family-panel .sh-fam-v2-member:active,#sh-family-panel .sh-fam-v2-action:active{transform:perspective(550px) rotateX(4deg) scale(.98)}\n#sh-family-panel .sh-fam-v2-member-num{flex:0 0 27px;font-family:Georgia,serif;font-size:17px;font-weight:900;color:#ffd076}\n#sh-family-panel .sh-fam-v2-member-avatar{width:43px;height:43px;border:2px solid #e0ac4c;border-radius:50%;object-fit:cover;background:#653c50;box-shadow:0 0 13px #e8a64277}\n#sh-family-panel .sh-fam-v2-member-copy{flex:1;min-width:0}\n#sh-family-panel .sh-fam-v2-member-copy b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n#sh-family-panel .sh-fam-v2-member-copy small{display:block;font-size:10px;color:#dbbc98;margin-top:4px}\n#sh-family-panel .sh-fam-v2-member-total{font-size:12px;text-align:right;font-weight:900;white-space:nowrap}\n#sh-family-panel .sh-fam-v2-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}\n#sh-family-panel .sh-fam-v2-action{min-height:53px;width:100%;font-size:12px;text-align:center;padding:10px 6px!important;margin:0!important;border-radius:13px!important}\n#sh-family-panel .sh-fam-v2-advanced{margin-top:18px;padding:12px;border-color:#805c47;background:#1f1025a8}\n#sh-family-panel .sh-fam-v2-advanced>summary{font-size:14px;color:#ffdfa4;cursor:pointer}\n#sh-family-panel .sh-fam-v2-advanced .sh-fam-card{margin:12px 0}\n#sh-family-panel .sh-fam-v2-detail-card{padding:15px 13px;text-align:left}\n#sh-family-panel .sh-fam-v2-member-head{display:flex;align-items:center;gap:14px;margin:4px 0 16px}\n#sh-family-panel .sh-fam-v2-member-head img{width:63px;height:63px;border-radius:50%;border:2px solid #e7b85b;object-fit:cover}\n#sh-family-panel .sh-fam-v2-member-head strong{font-size:18px;color:#ffdfa2}\n#sh-family-panel .sh-fam-v2-member-head small{display:block;font-size:12px;color:#ebd1aa}\n#sh-family-panel .sh-fam-v2-daily{display:flex;flex-direction:column;gap:7px;margin-top:12px}\n#sh-family-panel .sh-fam-v2-daily button{width:100%;text-align:left;background:linear-gradient(110deg,#654050,#422037);color:#ffdfb5;border:1px solid #82576b;display:flex;align-items:center;justify-content:space-between}\n#sh-family-panel .sh-fam-v2-daily button[aria-selected=\"true\"]{border-color:#ffdf92;background:#7a4666}\n#sh-family-panel .sh-fam-v2-seller-row{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px;border:1px solid #9b7157;background:#3f2235;border-radius:14px;margin:9px 0}\n#sh-family-panel .sh-fam-v2-seller-row b{display:block;font-size:14px}\n#sh-family-panel .sh-fam-v2-seller-row small{display:block;font-size:11px;color:#eed1a8}\n#sh-family-panel .sh-fam-v2-seller-row button{margin:0;font-size:12px}\n#sh-family-panel .sh-fam-v2-seller-row[aria-selected=\"true\"]{border:2px solid #f6cb64}\n#sh-family-panel .sh-fam-v2-hint{font-size:12px;color:#f9d58f;line-height:1.5}\n#sh-family-panel .sh-fam-v2-pending{background:#3a1b2a;border:1px solid #c8934b;border-radius:12px;padding:10px;font-size:12px;margin:10px 0}\n#sh-family-panel .sh-fam-v2-title{margin:8px 0 12px;text-align:center}\n#sh-family-panel .sh-fam-v2-topline{color:#eabc67;text-align:center;letter-spacing:1.5px;font-weight:800;font-size:11px}\n#sh-family-panel .sh-fam-v2-bd{padding:20px 15px}\n#sh-family-panel button:focus-visible{outline:2px solid #fff1ac;outline-offset:2px}\n@keyframes shFamCrownFloat{0%,100%{transform:translateY(0) rotateY(-6deg)}50%{transform:translateY(-5px) rotateY(6deg)}}\n@keyframes shFamIconFloat{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-3px) rotate(3deg)}}\n@keyframes shFamCardEnter{from{opacity:0;transform:perspective(700px) rotateX(8deg) translateY(8px)}to{opacity:1;transform:perspective(700px) rotateX(0) translateY(0)}}\n@media(max-width:380px){#sh-family-panel .sh-fam-v2-stat{padding:10px 7px}#sh-family-panel .sh-fam-v2-ico{font-size:23px;flex-basis:27px}#sh-family-panel .sh-fam-v2-stat b{font-size:17px}}\n@media(prefers-reduced-motion:reduce){#sh-family-panel .sh-fam-v2-ico,#sh-family-panel .sh-fam-v2-crown,#sh-family-panel .sh-fam-v2-stat{animation:none!important}#sh-family-panel .sh-fam-v2-member{transition:none}}\n\n#sh-family-panel .sh-fam-wrap>h2{display:none}\n#sh-family-panel #sh-fam-body.sh-fam-v2-dashboard{background:transparent;border:0;box-shadow:none;padding:0;margin:0}\n#sh-family-panel #sh-fam-body.sh-fam-v2-dashboard>.sh-fam-v2-advanced{margin-bottom:24px}\n";
+  document.head.appendChild(familyRoyalV2Styles);
+  const famAmount=n=>Math.max(0,Number(n)||0).toLocaleString('en-US',{maximumFractionDigits:0});
+  const famCrystals=n=>(Math.max(0,Number(n)||0)/10000).toLocaleString('en-US',{maximumFractionDigits:4});
+  const famPic=(name,pic)=>{
+    const url=verifiedAvatarUrl(pic);
+    return url?'<img class="sh-fam-v2-member-avatar" src="'+famEsc(url)+'" alt="">':
+      '<span class="sh-fam-v2-member-avatar" style="display:grid;place-items:center">👤</span>';
+  };
+  const famTopLabel=title=>'<div class="sh-fam-v2-topline">SHARIKA · '+famEsc(title)+'</div>';
+  const famViewBack=()=>{
+    const panel=document.getElementById('sh-family-panel');
+    if(panel){panel.dataset.mode='family';panel.querySelector('.sh-fam-head small').textContent='SHARIKA · ROYAL FAMILY';}
+    if(familyCache)renderRoyalFamily(familyCache);
+  };
+  async function showFamilyMemberReport(id,data){
+    const host=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!host)return;
+    host.innerHTML='<p role="status">Loading verified member report…</p>';
+    try{
+      const r=await api('GET','/family/members/'+encodeURIComponent(id)+'/report');
+      if(!host.isConnected||document.getElementById('sh-family-panel')?.hidden)return;
+      const m=r.member||{},summary=r.summary||{},daily=r.daily||[],events=r.events||[];
+      const today=new Date().toISOString().slice(0,10);
+      let selected=daily[0]?.day||today,period='daily';
+      const avatar=verifiedAvatarUrl(m.pic);
+      host.innerHTML=famTopLabel('FAMILY MEMBER REPORT')+
+        '<button id="sh-fam-member-back" type="button">‹ Family Dashboard</button>'+
+        '<h2 class="sh-fam-v2-title">👑 MEMBER REPORT</h2>'+
+        '<section class="sh-fam-card sh-fam-v2-detail-card">'+
+          '<div class="sh-fam-v2-member-head">'+(avatar?'<img src="'+famEsc(avatar)+'" alt="">':'<span class="sh-fam-v2-ico">👤</span>')+
+          '<div><strong>'+famEsc(m.name)+'</strong><small>ID '+famEsc(m.public_id)+
+          ' · '+famEsc(m.role)+'</small></div></div>'+
+          '<div class="sh-fam-v2-stats">'+
+          '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">💎</span><div><small>Lifetime Gifts</small><b>'+
+          famAmount(summary.total_diamonds)+'</b><em>Diamonds</em></div></div>'+
+          '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">🪙</span><div><small>Family Salary</small><b>'+
+          (summary.salary_coins==null?'Not set':famAmount(summary.salary_coins))+
+          '</b><em>Coins</em></div></div>'+
+          '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">🎁</span><div><small>Verified Gifts</small><b>'+
+          famAmount(summary.gift_count)+'</b><em>Events</em></div></div>'+
+          '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">💠</span><div><small>Current Crystal</small><b>'+
+          famCrystals(r.crystal_wallet?.available_units)+'</b><em>Crystal</em></div></div>'+
+          '</div><small class="sh-fam-note">Verified regular gifts after joining this Family · UTC dates. Lucky gifts excluded from diamond target.</small></section>'+
+        '<section class="sh-fam-card sh-fam-v2-detail-card"><h3>📅 Daily Activity Ledger</h3>'+
+        '<div class="sh-fam-v2-tabs" role="tablist" aria-label="Gift report period">'+
+        '<button data-fam-report-period="daily" aria-selected="true">Daily</button>'+
+        '<button data-fam-report-period="weekly" aria-selected="false">Weekly</button>'+
+        '<button data-fam-report-period="monthly" aria-selected="false">Monthly</button></div>'+
+        '<div id="sh-fam-member-daily" class="sh-fam-v2-daily"></div></section>'+
+        '<section class="sh-fam-card sh-fam-v2-detail-card"><h3>🎁 Gift History</h3>'+
+        '<p class="sh-fam-v2-hint" id="sh-fam-member-date"></p>'+
+        '<div id="sh-fam-member-gifts" class="sh-fam-v2-daily"></div></section>';
+      host.querySelector('#sh-fam-member-back').onclick=famViewBack;
+      const dailyHost=host.querySelector('#sh-fam-member-daily');
+      const giftsHost=host.querySelector('#sh-fam-member-gifts');
+      const draw=()=>{
+        const days=period==='daily'?daily:
+          Object.values(daily.reduce((acc,x)=>{
+            const d=new Date(x.day+'T00:00:00Z'),key=period==='weekly'?
+              new Date(d.getTime()-((d.getUTCDay()+6)%7)*86400000).toISOString().slice(0,10):
+              x.day.slice(0,7);
+            const ref=acc[key]||(acc[key]={day:key,diamonds:0,gift_count:0});
+            ref.diamonds+=Number(x.diamonds)||0;ref.gift_count+=Number(x.gift_count)||0;return acc;
+          },{})).sort((a,b)=>b.day.localeCompare(a.day));
+        dailyHost.innerHTML=days.length?days.slice(0,90).map(x=>
+          '<button type="button" data-fam-day="'+famEsc(x.day)+'" aria-selected="'+String(selected===x.day)+'">'+
+          '<span>💎 '+famEsc(x.day)+'</span><strong>'+famAmount(x.diamonds)+' Diamonds</strong></button>').join(''):
+          '<p class="sh-fam-note">No verified gifts in this period.</p>';
+        const matches=events.filter(x=>period==='daily'?x.day===selected:
+          period==='monthly'?x.day.slice(0,7)===selected:
+          x.day>=selected&&x.day<=new Date(new Date(selected+'T00:00:00Z').getTime()+6*86400000).toISOString().slice(0,10));
+        host.querySelector('#sh-fam-member-date').textContent='Selected '+selected+' · '+period+' · UTC';
+        giftsHost.innerHTML=matches.length?matches.map((x,i)=>
+          '<div class="sh-fam-v2-seller-row"><div><b>'+famEsc(x.gift_name)+' ×'+famAmount(x.quantity)+
+          '</b><small>'+famEsc(x.created_at)+'</small></div><strong>💎 '+famAmount(x.diamonds)+'</strong></div>').join(''):
+          '<p class="sh-fam-note">No gifts recorded for this date.</p>';
+        dailyHost.querySelectorAll('[data-fam-day]').forEach(button=>button.onclick=()=>{
+          selected=button.dataset.famDay;draw();
+        });
+      };
+      host.querySelectorAll('[data-fam-report-period]').forEach(button=>button.onclick=()=>{
+        period=button.dataset.famReportPeriod;
+        host.querySelectorAll('[data-fam-report-period]').forEach(x=>x.setAttribute('aria-selected',String(x===button)));
+        selected=period==='monthly'?today.slice(0,7):today;
+        const available=period==='daily'?daily:
+          daily.map(x=>({day:period==='monthly'?x.day.slice(0,7):x.day}));
+        if(!available.some(x=>x.day===selected))selected=available[0]?.day||selected;
+        draw();
+      });
+      draw();
+    }catch(error){
+      host.innerHTML='<button id="sh-fam-member-back" type="button">‹ Family Dashboard</button>'+
+        '<p class="sh-fam-status">Member report unavailable: '+famEsc(errText(error))+'</p>';
+      host.querySelector('#sh-fam-member-back').onclick=famViewBack;
+    }
+  }
+  async function showFamilySellerDirectory(data){
+    const host=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!host)return;
+    host.innerHTML='<p role="status">Loading verified Coin Sellers…</p>';
+    try{
+      const result=await api('GET','/sellers');
+      if(!host.isConnected)return;
+      const sellers=result.sellers||[],policy=data.policy||{},wallet=data.wallet||{};
+      let selected=sellers[0]?.public_id||'';
+      host.innerHTML=famTopLabel('FAMILY CENTER · CRYSTAL TRANSFER')+
+        '<button id="sh-fam-sellers-back" type="button">‹ Family Dashboard</button>'+
+        '<h2 class="sh-fam-v2-title">👑 COIN SELLERS</h2>'+
+        '<section class="sh-fam-card sh-fam-v2-detail-card">'+
+        '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">💎</span><div>'+
+        '<small>Available Crystal</small><b>'+famCrystals(wallet.available_units)+'</b><em>Crystal</em></div></div>'+
+        '<label>Search Seller ID<input type="search" id="sh-fam-seller-search" placeholder="Search seller name or ID"></label>'+
+        '<div id="sh-fam-seller-list"></div></section>'+
+        '<section class="sh-fam-card sh-fam-v2-detail-card"><h3>💎 Exchange Request</h3>'+
+        '<p class="sh-fam-v2-hint" id="sh-fam-selected-seller"></p>'+
+        '<label>Amount to Send (whole Crystals)<input id="sh-fam-seller-amount" inputmode="numeric" type="number" min="1" max="1000000"></label>'+
+        '<p class="sh-fam-v2-hint">Rate: '+famAmount(policy.coins_per_crystal)+
+        ' coins per Crystal · Admin-configured.</p>'+
+        '<button type="button" id="sh-fam-seller-send">Send Transfer Request</button>'+
+        '<p class="sh-fam-v2-pending">⚠ Transfer reserves Crystals until approval. No coins are settled before the required authorization.</p></section>';
+      host.querySelector('#sh-fam-sellers-back').onclick=famViewBack;
+      const list=host.querySelector('#sh-fam-seller-list');
+      const search=host.querySelector('#sh-fam-seller-search');
+      const paint=()=>{
+        const q=String(search.value||'').trim().toLowerCase();
+        const filtered=sellers.filter(s=>String(s.public_id).includes(q)||String(s.name||'').toLowerCase().includes(q));
+        list.innerHTML=filtered.length?filtered.map(s=>
+          '<div class="sh-fam-v2-seller-row" aria-selected="'+String(selected===s.public_id)+'">'+
+          '<div><b>'+famEsc(s.name)+'</b><small>Verified · ID '+famEsc(s.public_id)+
+          ' · '+(s.unlimited_stock?'Unlimited Stock':s.available_coins==null?'Coins: ask seller':'Available: '+formatCompactCoins(s.available_coins)+' Coins')+
+          '</small></div><button type="button" data-fam-seller="'+famEsc(s.public_id)+'">Select</button></div>').join(''):
+          '<p class="sh-fam-note">No matching approved sellers.</p>';
+        const picked=sellers.find(s=>s.public_id===selected);
+        host.querySelector('#sh-fam-selected-seller').textContent=picked?
+          'Selected: '+picked.name+' · '+picked.public_id:'Choose a seller';
+        list.querySelectorAll('[data-fam-seller]').forEach(btn=>btn.onclick=()=>{
+          selected=btn.dataset.famSeller;paint();
+        });
+      };
+      search.oninput=paint;paint();
+      host.querySelector('#sh-fam-seller-send').onclick=async()=>{
+        const crystals=Number(host.querySelector('#sh-fam-seller-amount').value);
+        if(!selected||!Number.isSafeInteger(crystals)||crystals<1||
+          crystals>1000000||crystals>Number(wallet.available_units||0)/10000)
+          return familyNotice('Select a seller and enter an available whole-Crystal amount.');
+        if(!window.confirm('Request transfer of '+crystals+' Crystal to seller '+selected+'?'))return;
+        const button=host.querySelector('#sh-fam-seller-send');button.disabled=true;
+        familyNotice('Submitting verified request…');
+        try{
+          const response=await api('POST','/family/crystal/transfer',{
+            seller_public_id:selected,crystals,request_id:'crystal:'+crypto.randomUUID()
+          });
+          familyNotice('Request #'+response.transfer_id+' is '+response.status+
+            '. Crystal is reserved until the server-authorized decision.');
+          button.textContent='Request Submitted ✓';
+          setTimeout(()=>{if(button.isConnected){button.disabled=false;button.textContent='Send Transfer Request';}},2500);
+        }catch(error){familyNotice('Transfer failed: '+errText(error));button.disabled=false;}
+      };
+    }catch(error){
+      host.innerHTML='<button id="sh-fam-sellers-back" type="button">‹ Family Dashboard</button>'+
+        '<p class="sh-fam-status">Seller directory unavailable: '+famEsc(errText(error))+'</p>';
+      host.querySelector('#sh-fam-sellers-back').onclick=famViewBack;
+    }
+  }
+  const renderRoyalFamilyLegacy=renderRoyalFamily;
+  renderRoyalFamily=function(data){
+    renderRoyalFamilyLegacy(data);
+    const host=document.querySelector('#sh-family-panel #sh-fam-body');
+    if(!host)return;
+    if(!data.family){
+      host.querySelectorAll('details').forEach(x=>{
+        if(x.querySelector('summary')?.textContent.includes('BD Family Grant'))x.remove();
+      });
+      return;
+    }
+    const family=data.family,progress=data.target_progress||{},wallet=data.wallet||{};
+    const members=family.members||[];
+    const original=document.createElement('div');
+    while(host.firstChild)original.appendChild(host.firstChild);
+    original.querySelectorAll('.sh-fam-card').forEach(x=>{
+      if(x.querySelector('h3')?.textContent.includes('BD Family Grant'))x.remove();
+    });
+    const advanced=document.createElement('details');
+    advanced.className='sh-fam-v2-advanced';
+    advanced.innerHTML='<summary>⚙ Family Management, Invitations & Verified Ledger</summary>';
+    advanced.appendChild(original);
+    host.classList.add('sh-fam-v2-dashboard');
+    const dashboard=document.createElement('div');
+    dashboard.innerHTML='<header class="sh-fam-v2-hero">'+
+      '<small class="sh-fam-v2-kicker">SHARIKA · FAMILY CENTER</small>'+
+      '<h2><img class="sh-fam-v2-crown" src="profile-crown.webp" alt="">ROYAL FAMILY</h2>'+
+      '<small class="sh-fam-note">'+famEsc(family.name)+' · Level '+famEsc(family.level)+'</small></header>'+
+      '<div class="sh-fam-v2-stats">'+
+      '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">💠</span><div><small>Crystal Wallet</small><b>'+
+      famCrystals(wallet.available_units)+'</b><em>Crystal</em></div></div>'+
+      '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">👥</span><div><small>Family Members</small><b>'+
+      famAmount(family.member_count)+'</b><em>Members</em></div></div>'+
+      '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">💎</span><div><small id="sh-fam-v2-period-label">Verified Gift Total</small><b id="sh-fam-v2-gift-value">'+
+      famAmount(progress.lifetime)+'</b><em>Diamonds</em></div></div>'+
+      '<div class="sh-fam-v2-stat"><span class="sh-fam-v2-ico">🪙</span><div><small>Family Salary</small><b>Not set</b><em>Coins · awaiting policy</em></div></div>'+
+      '</div><div class="sh-fam-v2-tabs" role="tablist" aria-label="Family activity range">'+
+      '<button type="button" data-fam-stat-period="today" aria-selected="true">Today</button>'+
+      '<button type="button" data-fam-stat-period="week" aria-selected="false">Week</button>'+
+      '<button type="button" data-fam-stat-period="month" aria-selected="false">Month</button></div>'+
+      '<section class="sh-fam-card sh-fam-v2-members"><h3>👥 Family Members <small>'+
+      famAmount(members.length)+' Members</small></h3>'+
+      members.map((m,i)=>'<button type="button" class="sh-fam-v2-member" data-fam-v2-member="'+famEsc(m.public_id)+'">'+
+        '<span class="sh-fam-v2-member-num">'+String(i+1).padStart(2,'0')+'</span>'+
+        famPic(m.name,m.pic)+'<span class="sh-fam-v2-member-copy"><b>'+famEsc(m.name)+
+        '</b><small>ID: '+famEsc(m.public_id)+' · '+famEsc(m.role)+'</small></span>'+
+        '<span class="sh-fam-v2-member-total">💎 '+famAmount(m.total_diamonds)+' ›</span></button>').join('')+
+      '</section>'+
+      '<div class="sh-fam-v2-actions"><button type="button" id="sh-fam-v2-ledger" class="sh-fam-v2-action">💎 Crystal Ledger</button>'+
+      '<button type="button" id="sh-fam-v2-sellers" class="sh-fam-v2-action">🪙 Find Coin Seller</button></div>';
+    host.appendChild(dashboard);
+    host.appendChild(advanced);
+    dashboard.querySelectorAll('[data-fam-stat-period]').forEach(button=>button.onclick=()=>{
+      const range=button.dataset.famStatPeriod;
+      dashboard.querySelectorAll('[data-fam-stat-period]').forEach(x=>x.setAttribute('aria-selected',String(x===button)));
+      dashboard.querySelector('#sh-fam-v2-gift-value').textContent=
+        famAmount(progress[range]||0);
+      dashboard.querySelector('#sh-fam-v2-period-label').textContent=
+        (range==='today'?'Today':range==='week'?'This Week':'This Month')+' Gift Total';
+    });
+    dashboard.querySelector('[data-fam-stat-period="today"]')?.click();
+    dashboard.querySelectorAll('[data-fam-v2-member]').forEach(button=>button.onclick=()=>{
+      const id=button.dataset.famV2Member;
+      if(family.role!=='leader'&&id!==profile?.public_id)
+        return familyNotice('Only the Family Owner can view another member’s private report.');
+      showFamilyMemberReport(id,data);
+    });
+    dashboard.querySelector('#sh-fam-v2-ledger').onclick=()=>{
+      advanced.open=true;
+      const ledger=advanced.querySelector('#sh-fam-ledger');
+      if(ledger){ledger.click();advanced.scrollIntoView({behavior:'smooth'});}
+    };
+    dashboard.querySelector('#sh-fam-v2-sellers').onclick=()=>{
+      if(data.policy?.conversion_enabled)showFamilySellerDirectory(data);
+      else familyNotice('Crystal conversion is currently disabled by Admin.');
+    };
+  };
+  async function openRoyalBD(){
+    if(!session){window.showAuth('welcome');return;}
+    await openRoyalFamily();
+    const layer=document.getElementById('sh-family-panel');
+    const data=familyCache;
+    if(!layer||!data)return;
+    const host=layer.querySelector('#sh-fam-body');
+    layer.dataset.mode='bd';
+    layer.querySelector('.sh-fam-head small').textContent='SHARIKA · BD CENTER';
+    layer.querySelector('h2').textContent='💼 BD CENTER';
+    if(!data.bd?.active||!data.bd?.can_grant){
+      host.innerHTML='<p class="sh-fam-status">BD permissions are required.</p>';return;
+    }
+    host.innerHTML=famTopLabel('SEPARATE BD MANAGEMENT')+
+      '<section class="sh-fam-card sh-fam-v2-bd"><h3>💼 BD Family Grant</h3>'+
+      '<p class="sh-fam-v2-hint">BD commission: '+famEsc(data.policy?.bd_percent)+
+      '% of eligible Family gifts. This dashboard is independent of your own Family.</p>'+
+      '<label>Owner 8-digit ID<input id="sh-bd-v2-owner" maxlength="8" inputmode="numeric"></label>'+
+      '<label>Family Name<input id="sh-bd-v2-name" maxlength="40"></label>'+
+      '<button type="button" id="sh-bd-v2-grant">Grant Family</button>'+
+      '<button type="button" id="sh-bd-v2-list">My Granted Families</button>'+
+      '<div id="sh-bd-v2-result"></div></section>';
+    host.querySelector('#sh-bd-v2-grant').onclick=async()=>{
+      const id=host.querySelector('#sh-bd-v2-owner').value.trim();
+      const name=host.querySelector('#sh-bd-v2-name').value.trim();
+      if(!/^[0-9]{8}$/.test(id)||name.length<3)return familyNotice('Enter valid owner ID and Family name.');
+      if(!window.confirm('Grant Family '+name+' to '+id+'?'))return;
+      try{
+        await api('POST','/family/bd/grant',{owner_public_id:id,name,
+          request_id:'family:'+crypto.randomUUID()});
+        familyNotice('BD Family Grant verified ✓');
+        host.querySelector('#sh-bd-v2-name').value='';
+      }catch(error){familyNotice('Grant failed: '+errText(error));}
+    };
+    host.querySelector('#sh-bd-v2-list').onclick=async()=>{
+      const target=host.querySelector('#sh-bd-v2-result');target.textContent='Loading…';
+      try{
+        const result=await api('GET','/family/bd/families');
+        target.innerHTML=(result.families||[]).map(x=>
+          '<div class="sh-fam-v2-seller-row"><div><b>'+famEsc(x.name)+'</b>'+
+          '<small>Owner '+famEsc(x.owner_id)+' · '+famAmount(x.member_count)+
+          ' members · '+famEsc(x.status)+'</small></div></div>').join('')||
+          '<p class="sh-fam-note">No BD grants yet.</p>';
+      }catch(error){target.textContent='Unavailable: '+errText(error);}
+    };
+  }
+
+  window.sharikaOpenRoyalFamily=openRoyalFamily;
+
+
+  // A real, separate Settings Center replaces the inherited small settings sheet.
+  // Existing profile identity, balances and backend permissions are unchanged.
+  const royalSettingsCss=document.createElement('style');
+  royalSettingsCss.id='sh-royal-settings-css';
+  royalSettingsCss.textContent=[
+    '#sh-settings-page[hidden]{display:none!important}',
+    '#sh-settings-page{position:fixed;z-index:2147483550;inset:0;overflow:auto;',
+    'background:radial-gradient(circle at 50% -12%,#65459b 0%,#21143f 45%,#0c0618 100%);',
+    'color:#fef0ca;padding:calc(18px + env(safe-area-inset-top,0px)) 16px calc(26px + env(safe-area-inset-bottom,0px))}',
+    '#sh-settings-page .sh-set-wrap{max-width:640px;margin:auto}',
+    '#sh-settings-page .sh-set-head{display:flex;align-items:center;gap:12px;margin-bottom:20px}',
+    '#sh-settings-page .sh-set-back{min-width:44px;height:44px;border-radius:15px;background:#251638;color:#ffe3a0;',
+    'border:1px solid #d9aa53;font-size:26px}',
+    '#sh-settings-page .sh-set-title{font-size:23px;font-weight:900;color:#ffe8a7}',
+    '#sh-settings-page .sh-set-intro{font-size:13px;opacity:.88;line-height:1.5;margin:2px 0 20px}',
+    '#sh-settings-page .sh-set-card{background:linear-gradient(142deg,#4d3158,#201532);',
+    'border:1px solid #c59a58;border-radius:20px;padding:16px;margin:12px 0;',
+    'box-shadow:inset 0 1px #fff4,0 8px 24px #05020e77}',
+    '#sh-settings-page .sh-set-card h3{color:#ffe1a1;font-size:17px;margin:0 0 12px}',
+    '#sh-settings-page .sh-set-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;',
+    'padding:15px 12px;margin:6px 0;color:#fff1d1;border:1px solid #ae8553;border-radius:14px;',
+    'background:linear-gradient(105deg,#4c2a5d,#241633);font-size:15px;font-weight:750}',
+    '#sh-settings-page .sh-set-row .sh-set-ico{font-size:23px;min-width:32px;text-align:center}',
+    '#sh-settings-page .sh-set-row small{display:block;font-weight:450;font-size:11px;opacity:.85;margin-top:3px}',
+    '#sh-settings-page .sh-set-row b:last-child{margin-left:auto;font-size:20px;color:#e1b971}',
+    '#sh-settings-page .sh-set-note{font-size:13px;line-height:1.6;opacity:.94}',
+    '#sh-settings-page .sh-set-field{display:block;width:100%;box-sizing:border-box;margin:10px 0;',
+    'border:1px solid #b59562;border-radius:12px;background:#140f25;color:#fff;padding:13px;font-size:15px}',
+    '#sh-settings-page .sh-set-cta{width:100%;padding:14px;margin-top:10px;border:1px solid #f5d58a;',
+    'border-radius:14px;background:linear-gradient(#fff1b2,#ce984a);color:#2e173a;font-weight:900;font-size:15px}',
+    '#sh-settings-page .sh-set-cta:disabled{opacity:.55}',
+    '#sh-settings-page .sh-set-error{color:#ffc0c0;min-height:20px;margin:8px 0;font-size:13px}',
+    '#sh-settings-page .sh-set-policy h4{color:#ffe2a8;margin:18px 0 7px}',
+    '#sh-settings-page .sh-set-policy p{white-space:pre-wrap;line-height:1.58;font-size:13px}',
+    '#sh-settings-page button:focus-visible,#sh-settings-page input:focus-visible,',
+    '#sh-settings-page textarea:focus-visible{outline:2px solid #ffe9a8;outline-offset:3px}'
+  ].join('');
+  document.head.appendChild(royalSettingsCss);
+  let settingsPageView='home';
+  function sharikaCloseSettings(){
+    const page=document.getElementById('sh-settings-page');
+    if(page)page.hidden=true;
+  }
+  function sharikaSettingsBack(){
+    const page=document.getElementById('sh-settings-page');
+    if(!page||page.hidden)return false;
+    if(settingsPageView==='home')sharikaCloseSettings();
+    else showSettingsView('home');
+    return true;
+  }
+  window.sharikaSettingsBack=sharikaSettingsBack;
+  function settingActionButton(label,icon,sub,route){
+    return '<button type="button" class="sh-set-row" data-sh-settings-route="'+route+'">'+
+      '<span class="sh-set-ico" aria-hidden="true">'+icon+'</span><span>'+label+
+      '<small>'+sub+'</small></span><b aria-hidden="true">›</b></button>';
+  }
+  function showSettingsView(view){
+    const page=document.getElementById('sh-settings-page');
+    if(!page)return;
+    settingsPageView=view;
+    page.querySelector('.sh-set-title').textContent=({
+      home:'Settings',safety:'Safety Center',policies:'Privacy & Policies',
+      privacy:'Privacy Policy',terms:'Terms & Conditions',
+      community:'Community Rules',account:'Account & Support',
+      voice:'Voice & Notifications',report:'Report a User',deletion:'Delete Account Request'
+    })[view]||'Settings';
+    const body=page.querySelector('.sh-set-body');body.textContent='';
+    let html='';
+    if(view==='home')html=
+      '<p class="sh-set-intro">Your account, safety, privacy and community policies in one place.</p>'+
+      settingActionButton('Safety Center','🛡️','Report users • room moderation • community rules','safety')+
+      settingActionButton('Privacy & Policies','🔒','Privacy Policy • Terms & Conditions','policies')+
+      settingActionButton('Account & Support','👤','Country • customer support • deletion request','account')+
+      settingActionButton('Voice & Notifications','🎙️','Microphone check • phone alerts','voice');
+    if(view==='safety')html=
+      '<div class="sh-set-card"><h3>Stay safe in Sharika</h3><p class="sh-set-note">Do not share passwords, verification codes or private information. Report abuse to customer support. Room owners and assigned admins can kick or block users from their own rooms using Room Safety.</p></div>'+
+      settingActionButton('Report a User','🚩','Send a verified abuse report to Sharika support','report')+
+      settingActionButton('Community Rules','📜','Abuse, harassment, fraud and unsafe content','community')+
+      '<div class="sh-set-card"><h3>Room controls</h3><p class="sh-set-note">Open the room management button while in your room to use Kick (10 min), Block and Unblock. Only the owner or a granted room admin has those permissions.</p></div>';
+    if(view==='policies')html=
+      settingActionButton('Privacy Policy','🔒','What Sharika collects and why','privacy')+
+      settingActionButton('Terms & Conditions','📄','Accounts • coins • gifts • community','terms')+
+      settingActionButton('Community Rules','🛡️','How to report unsafe behavior','community');
+    if(view==='account')html=
+      '<div class="sh-set-card"><h3>My account</h3><p class="sh-set-note" id="sh-set-account-summary"></p></div>'+
+      '<button class="sh-set-row" data-sh-settings-action="country"><span class="sh-set-ico">🌍</span><span>Country / Location<small>Choose manually • GPS is not required</small></span><b>›</b></button>'+
+      settingActionButton('Request Account Deletion','🗑️','Verified support request • review required','deletion')+
+      '<button class="sh-set-row" data-sh-settings-action="support"><span class="sh-set-ico">🎧</span><span>Customer Service<small>See your support conversation</small></span><b>›</b></button>'+
+      '<button class="sh-set-row" data-sh-settings-action="logout"><span class="sh-set-ico">🚪</span><span>Sign out<small>Leave this device signed out</small></span><b>›</b></button>';
+    if(view==='voice')html=
+      '<div class="sh-set-card"><h3>Voice quality</h3><p class="sh-set-note">Sharika requests echo cancellation, noise suppression and automatic gain control when starting the room microphone. Use wired headphones in a noisy place, and check your Internet connection if speech drops. No voice recording is saved by this test.</p>'+
+      '<button class="sh-set-cta" data-sh-settings-action="microphone">🎙️ Check my microphone permission</button><p class="sh-set-error" role="status"></p></div>'+
+      '<button class="sh-set-row" data-sh-settings-action="enablepush"><span class="sh-set-ico">🔔</span><span>Enable phone alerts<small>Notification permission is requested only when you tap here</small></span><b>›</b></button>';
+    if(view==='report')html=
+      '<div class="sh-set-card"><h3>Report a user</h3><p class="sh-set-note">Reports go to Sharika Customer Service for review. Reporting does not instantly block the user.</p>'+
+      '<input class="sh-set-field" id="sh-set-report-id" inputmode="numeric" maxlength="10" placeholder="User ID (1–10 digits)" aria-label="User ID">'+
+      '<textarea class="sh-set-field" id="sh-set-report-reason" maxlength="600" rows="4" placeholder="Describe what happened (at least 10 characters)" aria-label="Report reason"></textarea>'+
+      '<button class="sh-set-cta" data-sh-settings-action="report">Send report</button><p class="sh-set-error" role="status"></p></div>';
+    if(view==='deletion')html=
+      '<div class="sh-set-card"><h3>Request deletion of your Sharika account</h3>'+
+      '<p class="sh-set-note">This submits an authenticated request to Customer Service. Your account is NOT automatically deleted. Sharika must verify ownership and review balances, transactions and any records that must legally be retained. Support will respond in your Customer Service thread.</p>'+
+      '<label class="sh-set-note"><input type="checkbox" id="sh-set-delete-confirm"> I understand my account and associated app data may be permanently deleted after verification.</label>'+
+      '<button class="sh-set-cta" data-sh-settings-action="delete">Submit deletion request</button><p class="sh-set-error" role="status"></p></div>';
+    if(view==='community')html='<div class="sh-set-card sh-set-policy"><h3>Sharika Community Rules</h3>'+
+      '<p>No harassment, threats, bullying, hate speech, sexual exploitation, violence, illegal content, fraud, impersonation, spam, or exposing others’ private information. Do not share another user’s voice or images without their permission.</p>'+
+      '<p>Report users and incidents through Safety Center. Room owners and room admins may moderate their own room. Customer Service reviews reports and may restrict accounts under the Terms.</p></div>';
+    if(view==='privacy'||view==='terms'){
+      const data=window.POLD?.[view];
+      if(data&&Array.isArray(data[1])){
+        const panel=document.createElement('div');panel.className='sh-set-card sh-set-policy';
+        for(const entry of data[1]){
+          const title=document.createElement('h4');title.textContent=entry[0];
+          const para=document.createElement('p');para.textContent=entry[1];panel.append(title,para);
+        }
+        body.appendChild(panel);
+      }else html='<div class="sh-set-card">This policy is temporarily unavailable. Contact Customer Service.</div>';
+    }
+    if(html)body.innerHTML=html;
+    const summary=body.querySelector('#sh-set-account-summary');
+    if(summary)summary.textContent='ID: '+String(profile?.display_id||profile?.public_id||'')+
+      ' • Country: '+String(profile?.country||'Not set')+
+      ' • Login: '+String(session?.user?.email||'Verified account');
+    page.scrollTop=0;
+    page.querySelector('.sh-set-back')?.focus({preventScroll:true});
+  }
+  function sharikaOpenSettings(){
+    if(!session){window.showAuth('welcome');return;}
+    let page=document.getElementById('sh-settings-page');
+    if(!page){
+      page=document.createElement('section');page.id='sh-settings-page';
+      page.setAttribute('role','dialog');page.setAttribute('aria-modal','true');
+      page.setAttribute('aria-label','Settings Center');
+      page.innerHTML='<div class="sh-set-wrap"><header class="sh-set-head">'+
+        '<button type="button" class="sh-set-back" aria-label="Back">‹</button>'+
+        '<span class="sh-set-title">Settings</span></header><main class="sh-set-body"></main></div>';
+      document.body.appendChild(page);
+      page.querySelector('.sh-set-back').onclick=sharikaSettingsBack;
+      page.addEventListener('click',async event=>{
+        const route=event.target.closest?.('[data-sh-settings-route]');
+        if(route){showSettingsView(route.dataset.shSettingsRoute);return;}
+        const button=event.target.closest?.('[data-sh-settings-action]');
+        if(!button)return;
+        const action=button.dataset.shSettingsAction;
+        if(action==='country'){sharikaCloseSettings();openManualCountryPicker();return;}
+        if(action==='support'){sharikaCloseSettings();openSupportThread();return;}
+        if(action==='logout'){sharikaCloseSettings();window.logout();return;}
+        const status=page.querySelector('.sh-set-error');
+        if(action==='report'||action==='delete'){
+          let message='';
+          if(action==='report'){
+            const id=page.querySelector('#sh-set-report-id')?.value.trim()||'';
+            const reason=page.querySelector('#sh-set-report-reason')?.value.trim()||'';
+            if(!/^[0-9]{1,10}$/.test(id)||reason.length<10){
+              if(status)status.textContent='Enter a valid ID and at least 10 characters of detail.';
+              return;
+            }
+            message='[Safety report] User ID: '+id+'\\nDetails: '+reason;
+          }else{
+            if(!page.querySelector('#sh-set-delete-confirm')?.checked){
+              if(status)status.textContent='Please confirm you understand the deletion request.';
+              return;
+            }
+            message='[ACCOUNT DELETION REQUEST] Verified user '+String(profile?.public_id||'')+
+              ' requests deletion of their Sharika account and associated data. Verify ownership, applicable retention and reply to this support thread.';
+          }
+          button.disabled=true;
+          if(status)status.textContent='Submitting verified request…';
+          try{
+            await api('POST','/support/messages',{
+              body:message,request_id:'settings:'+Date.now().toString(36)+':'+
+                Math.random().toString(36).slice(2,14)
+            });
+            if(status)status.textContent='Request received by Customer Service. You can follow up in your support conversation.';
+            button.textContent='Request submitted ✓';
+          }catch(error){
+            if(status)status.textContent='Could not submit: '+errText(error);
+            button.disabled=false;
+          }
+          return;
+        }
+        if(action==='microphone'){
+          button.disabled=true;
+          if(status)status.textContent='Checking microphone permission…';
+          let stream=null;
+          try{
+            stream=await navigator.mediaDevices.getUserMedia({
+              audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
+            });
+            if(status)status.textContent=stream.getAudioTracks().some(track=>track.readyState==='live')?
+              'Microphone permission is working. Test finished; no audio was recorded or uploaded.':
+              'Microphone track unavailable. Check Android app permissions.';
+          }catch(error){
+            if(status)status.textContent='Microphone unavailable: '+errText(error);
+          }finally{
+            if(stream)stream.getTracks().forEach(track=>track.stop());
+            button.disabled=false;
+          }
+        }
+        if(action==='enablepush'){
+          button.disabled=true;
+          try{
+            const enabled=await registerPushDevice(true);
+            if(status)status.textContent=enabled?'Phone alerts enabled.':'Permission not granted or push service unavailable.';
+            toast(enabled?'Phone alerts enabled':'Phone alerts not enabled');
+          }catch(error){toast('Notifications: '+errText(error));}
+          finally{button.disabled=false;}
+        }
+      });
+    }
+    page.hidden=false;
+    showSettingsView('home');
+  }
+  // Original profile header and its Account & Features row both enter this page.
+  window.settingsSheet=sharikaOpenSettings;
+  window.sharikaOpenSettings=sharikaOpenSettings;
+  document.getElementById('v-me')?.addEventListener('click',event=>{
+    const target=event.target.closest?.('#mtopset,[data-m="set"]');
+    if(!target||!target.closest('#v-me'))return;
+    event.preventDefault();event.stopImmediatePropagation();
+    sharikaOpenSettings();
+  },true);
+  window.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&sharikaSettingsBack())event.preventDefault();
+  });
+
   const priorRenderMe=window.renderMe;
   let mainProfileStatsRequest=0;
   async function renderVerifiedMainProfileStats(){
@@ -2218,6 +3326,7 @@
     refreshGlobalProfileLayouts().catch(()=>{});
     renderVerifiedMainProfileStats().catch(()=>{});
     mountPremiumProfileEntry().catch(()=>{});
+    mountFamilyTiles();
     refreshVerifiedAppearance().catch(()=>{});
     return result;
   };
@@ -2246,6 +3355,32 @@
       return;
     }
     openRoyalMarket('shop');
+  },true);
+  // Screenshot-matched main profile shortcuts use the existing verified
+  // destinations. Do not fall through to the original demo placeholder menu.
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('#v-me [data-sh-profile-action]');
+    if(!button)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    switch(button.dataset.shProfileAction){
+      case 'wallet':
+        document.querySelector('#v-me #wr')?.click();
+        break;
+      case 'details':
+      case 'level':
+        if(profile?.public_id)openVerifiedRankProfile(profile.public_id);
+        else toast('Sign in to open your verified profile');
+        break;
+      case 'backpack':
+        openRoyalMarket('backpack');
+        break;
+      case 'language':
+        sharikaOpenSettings();
+        break;
+      case 'feedback':
+        openSupportThread();
+        break;
+    }
   },true);
   // Both the old SVIP shortcut and the new profile badge open the one verified
   // membership screen. No localStorage coin minting or demo tier changes.
@@ -2939,22 +4074,9 @@
     }
   }
 
-  async function voiceSdk() {
-    if (window.LivekitClient) return window.LivekitClient;
-    if (!voiceSdkPromise) {
-      voiceSdkPromise = new Promise((resolve,reject)=>{
-        const script = document.createElement('script');
-        // The version is pinned; only fetched when a Sharika-scoped token is
-        // available. Never load the live user's Supabase voice adapter.
-        script.src='https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js';
-        script.onload=()=>window.LivekitClient ?
-          resolve(window.LivekitClient) : reject(new Error('LiveKit SDK unavailable'));
-        script.onerror=()=>reject(new Error('LiveKit SDK could not load'));
-        document.head.appendChild(script);
-      });
-    }
-    return voiceSdkPromise;
-  }
+  // Sharika staging uses the first-party Cloudflare SFU. The retired LiveKit
+  // fallback dynamically loaded third-party JavaScript inside the privileged
+  // Android WebView; never reintroduce that remote-code path.
   async function disconnectVoice() {
     clearVoiceSpeakers();
     if(sfuState)await disconnectSfu();
@@ -3015,43 +4137,7 @@
         voiceBackend='cloudflare_sfu';
         return connectSfu(roomId,!!config.publish,iceConfig);
       }
-      if(config.provider!=='livekit')throw new Error('Voice provider unavailable');
-      // Keep the isolated LiveKit fallback only when explicitly configured.
-      const info=await api('POST','/rooms/'+roomId+'/voice-token',{});
-      const sdk=await voiceSdk();
-      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
-      voiceBackend='livekit';
-      const room=new sdk.Room({
-        audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true}
-      });
-      room.on(sdk.RoomEvent.TrackSubscribed,(track)=>{
-        if(track.kind===sdk.Track.Kind.Audio) {
-          const element=track.attach();
-          element.autoplay=true;
-          element.dataset.sharikaVoice='true';
-          document.body.appendChild(element);
-        }
-      });
-      room.on(sdk.RoomEvent.TrackUnsubscribed,(track)=>{
-        track.detach().forEach(node=>node.remove());
-      });
-      room.on(sdk.RoomEvent.ActiveSpeakersChanged,(speakers)=>{
-        setVoiceSpeakers(roomId,speakers.map(p=>String(p.identity||''))
-          .filter(identity=>identity.startsWith('sharika:'))
-          .map(identity=>identity.slice('sharika:'.length)));
-      });
-      try{await room.connect(info.url,info.token);}
-      catch(error){await room.disconnect().catch(()=>{});throw error;}
-      if(wantedVoiceRoom!==roomId) {
-        await room.disconnect().catch(()=>{});
-        return {publishing:false,stale:true};
-      }
-      voiceRoom=room;voiceRoomId=roomId;
-      try{await room.startAudio();}catch(_){}
-      room.sharikaPublishAllowed=!!info.publish;
-      if(info.publish)
-        await room.localParticipant.setMicrophoneEnabled(microphoneWanted(roomId));
-      return {publishing:!!info.publish};
+      throw new Error('Unsupported voice provider; verified Cloudflare SFU required');
     });
     voiceOperation=task;
     pendingVoice={roomId,promise:task};
@@ -3114,8 +4200,9 @@
     }
     const mic=frame.$?.('mic');
     if(mic) {
-      mic.textContent=enabled?'🎤':'🔇';
+      if(!mic.closest('.sh-tool'))mic.textContent=enabled?'🎤':'🔇';
       mic.classList.toggle('off',!enabled);
+      mic.setAttribute('aria-pressed',String(enabled));
     }
   }
   async function restartMicrophone(roomId) {
@@ -3182,7 +4269,8 @@
       key,
       p: {
         id: current.public_id, name: current.name, pic: current.pic || null,
-        country: current.country || '', dob: current.birthdate || '',
+        country: manualCountryLabel(current.country) || current.country || '',
+        dob: current.birthdate || '',
         minor: !!current.minor, cover: current.cover || null, bio: current.bio || '',
         frame: current.frame_style || '', entry: current.entry_style || '',
         cosmeticMedal: current.medal_style || '', cosmeticTag: current.name_tag_style || '',
@@ -3213,6 +4301,29 @@
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Use YYYY-MM-DD for your date of birth');
     return value;
   }
+  function manualCountryCode(value){
+    const code=window.SharikaDiscovery?.countryCode(value)||
+      (/^[A-Za-z]{2}$/.test(String(value||''))?String(value).toUpperCase():'');
+    return /^[A-Z]{2}$/.test(code)?code:'';
+  }
+  function manualCountryLabel(value){
+    const code=manualCountryCode(value);
+    if(!code)return '';
+    const flag=window.SharikaDiscovery?.flagForCountry(code)||'🌍';
+    let name=code;
+    if(typeof Intl.DisplayNames==='function'){
+      try{name=new Intl.DisplayNames(['en'],{type:'region'}).of(code)||code;}
+      catch(_error){}
+    }
+    return flag+' '+name;
+  }
+  function manualCountryOptions(){
+    const choices=Array.isArray(window.CTRY)?window.CTRY:[];
+    return '<option value="">Choose your country</option>'+choices.map(item=>{
+      const code=manualCountryCode(item[2]||item[0]+' '+item[1]);
+      return code?'<option value="'+code+'">'+item[0]+' '+item[1]+'</option>':'';
+    }).join('');
+  }
   function profileForm(account) {
     return new Promise((resolve, reject) => {
       const layer = document.createElement('div');
@@ -3223,7 +4334,8 @@
         '<p style="font-size:13px;opacity:.8">A real name and birth date are needed for the new staging account. Existing accounts are not imported.</p>' +
         '<label>Name<input name="name" maxlength="80" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0" value=""></label>' +
         '<label>Birth date<input name="birthdate" type="date" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
-        '<label>Country<input name="country" maxlength="16" placeholder="BD" style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
+        '<label>Country (you choose; no GPS)<select name="country" required style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0">'+
+        manualCountryOptions()+'</select></label>' +
         '<label>Invite code (optional)<input name="invite_code" maxlength="8" inputmode="numeric" placeholder="8-digit inviter ID" style="box-sizing:border-box;width:100%;margin:8px 0 16px;padding:13px;border-radius:10px;background:#fff;color:#161121;border:0"></label>' +
         '<div id="stage-profile-error" style="color:#ffb4b4;font-size:13px"></div>' +
         '<button type="submit" style="width:100%;padding:15px;border:0;border-radius:14px;background:#8e72f6;color:#fff;font-weight:700">Create staging profile</button>' +
@@ -3245,7 +4357,7 @@
           const data = {
             name:form.elements.name.value.trim(),
             birthdate:birthdateFromUi(form.elements.birthdate.value),
-            country:form.elements.country.value.trim(),
+            country:manualCountryCode(form.elements.country.value),
             invite_code:form.elements.invite_code.value.trim()
           };
           const saved = await api('POST','/me',data);
@@ -3258,15 +4370,59 @@
       };
     });
   }
+  async function openManualCountryPicker(){
+    if(!session){window.showAuth('welcome');return;}
+    document.getElementById('sh-country-picker')?.remove();
+    const layer=document.createElement('section');
+    layer.id='sh-country-picker';
+    layer.style.cssText='position:fixed;z-index:2147483500;inset:0;display:grid;place-items:center;'+
+      'padding:20px;background:#0b071deE;color:#ffe2a0;font-family:inherit';
+    layer.innerHTML='<form style="width:min(100%,420px);padding:25px;border:1px solid #f1c46b;'+
+      'border-radius:24px;background:linear-gradient(155deg,#332049,#170e2b);'+
+      'box-shadow:0 20px 60px #0009">'+
+      '<h2 style="margin:0 0 10px">🌍 Country / Location</h2>'+
+      '<p style="font-size:13px;line-height:1.5">Select your country yourself. It appears on your profile and room card. No GPS permission is used.</p>'+
+      '<select name="country" required style="width:100%;margin:14px 0;padding:13px;'+
+      'border-radius:12px;background:#fff;color:#161121">'+manualCountryOptions()+'</select>'+
+      '<div id="sh-country-error" style="min-height:18px;color:#ffb7b7;font-size:12px"></div>'+
+      '<button type="submit" style="width:100%;padding:13px;border-radius:12px;'+
+      'background:linear-gradient(130deg,#f9d77c,#bf7d16);color:#24112d;font-weight:900">Save Country</button>'+
+      '<button type="button" id="sh-country-cancel" style="width:100%;padding:12px;'+
+      'background:transparent;color:#ffde9a;border:0">Cancel</button></form>';
+    document.body.appendChild(layer);
+    const select=layer.querySelector('[name="country"]');
+    select.value=manualCountryCode(profile?.country);
+    layer.querySelector('#sh-country-cancel').onclick=()=>layer.remove();
+    layer.querySelector('form').onsubmit=async event=>{
+      event.preventDefault();
+      const code=manualCountryCode(select.value);
+      if(!code)return;
+      const button=layer.querySelector('[type="submit"]');
+      button.disabled=true;
+      try{
+        const saved=await api('PATCH','/me',{country:code});
+        profile={...profile,...saved};
+        if(window.A)window.A.country=manualCountryLabel(code);
+        if(typeof window.saveA==='function')window.saveA();
+        layer.remove();
+        if(typeof window.renderMe==='function')window.renderMe();
+        await reloadRooms();
+        toast('Country saved to your profile and room card');
+      }catch(error){
+        button.disabled=false;
+        layer.querySelector('#sh-country-error').textContent=errText(error);
+      }
+    };
+  }
   async function ensureProfile(account, form) {
     try { return await api('GET', '/me'); }
     catch (error) {
       if (errText(error) !== 'profile_not_found') throw error;
       const cached = form || cachedSignup(account.email);
-      if (cached && cached.name && cached.dob) {
+      if (cached && cached.name && cached.dob && manualCountryCode(cached.country)) {
         try{
           const saved = await api('POST','/me',{
-            name:cached.name,birthdate:cached.dob,country:cached.country||'',
+            name:cached.name,birthdate:cached.dob,country:manualCountryCode(cached.country),
             invite_code:cached.invite_code||deferredInviteCode
           });
           if(cached.invite_code||deferredInviteCode)clearIncomingInvite();
@@ -3336,7 +4492,8 @@
       const result = await native('emailSignUp', {email:form.key.trim(), password:form.pw});
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
-          email:form.key.trim(), name:form.name, dob:form.dob, country:form.country,
+          email:form.key.trim(), name:form.name, dob:form.dob,
+          country:manualCountryCode(form.country),
           invite_code:document.getElementById('stage-invite-code')?.value.trim()||deferredInviteCode
         }));
       } catch (_) {}
@@ -3560,14 +4717,19 @@
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
         seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
-        owner_country:r.owner_country||'',created_at:r.created_at||''
+        access_locked:Number(r.access_locked)===1?1:0,
+        owner_country:r.owner_country||'',owner_display_id:r.owner_display_id||r.id,
+        created_at:r.created_at||''
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
         c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
         seat_frame_style:own.seat_frame_style||'grad',
         n:Number(own.online_count)||0,cover_url:own.cover_url||null,
-        owner_country:own.owner_country||window.CFG.viewerCountry||'',created_at:own.created_at||''
+        access_locked:Number(own.access_locked)===1?1:0,
+        owner_country:own.owner_country||window.CFG.viewerCountry||'',
+        owner_display_id:own.owner_display_id||own.id,
+        created_at:own.created_at||''
       } : null;
       // Quiet background refresh: changing identical room cards restarts every
       // CSS animation and drops touch/scroll state on slower Android WebViews.
@@ -3724,18 +4886,41 @@
         }
         const emoji=card.querySelector('.emo');if(emoji)emoji.style.display='none';
       }
-      if(room.owner_id===session?.user?.id&&!card.querySelector('.sh-room-cover-edit')){
-        const button=document.createElement('button');
-        button.type='button';button.className='sh-room-cover-edit';
-        button.textContent='📷 Edit photo';
-        button.setAttribute('aria-label','Add or change room cover photo');
-        button.style.cssText='position:absolute;z-index:30;top:8px;right:8px;'+
-          'border:1px solid #fff9;border-radius:12px;background:#140b35d9;'+
-          'color:#fff;padding:7px 9px;font-size:12px;font-weight:700';
-        button.onpointerdown=e=>e.stopPropagation();
-        button.onclick=e=>{e.preventDefault();e.stopPropagation();pickRoomCover(room);};
-        card.style.position='relative';card.appendChild(button);
+      // The canonical room/user ID stays in API routing. Public room cards
+      // display the owner's active Special ID, if one exists.
+      const displayId=String(room.owner_display_id||room.id);
+      const summary=card.querySelector('.info small');
+      if(summary&&/^[0-9]{1,10}$/.test(displayId))
+        summary.textContent='ID '+displayId+' · 🔥 '+(Number(room.n)||0);
+      // Show only broad, user-supplied account country, not GPS or street data.
+      // The old top-right Edit photo button belongs inside owner settings.
+      card.querySelector('.sh-room-cover-edit')?.remove();
+      card.querySelector('.room-country')?.remove();
+      const storedCountry=String(room.owner_country||'').trim();
+      const code=window.SharikaDiscovery?.countryCode(storedCountry)||'';
+      const flag=window.SharikaDiscovery?.flagForCountry(storedCountry)||'';
+      let countryName=storedCountry;
+      if(code&&typeof Intl.DisplayNames==='function'){
+        try{countryName=new Intl.DisplayNames(['en'],{type:'region'}).of(code)||storedCountry;}
+        catch(_error){countryName=storedCountry||code;}
       }
+      const title=code&&countryName?flag+' '+countryName:'🌍 Location not set';
+      let location=card.querySelector('.sh-room-country-label');
+      if(!location){
+        location=document.createElement('span');
+        location.className='sh-room-country-label';
+        location.style.cssText='position:absolute;z-index:22;top:8px;right:8px;'+
+          'max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+
+          'border:1px solid #f3d68e;border-radius:13px;'+
+          'background:linear-gradient(125deg,#372018ed,#150e2ce8);'+
+          'box-shadow:0 4px 12px #13082288;color:#ffe8a3;'+
+          'padding:5px 9px;font-size:11px;font-weight:800;pointer-events:none';
+        card.style.position='relative';
+        card.appendChild(location);
+      }
+      location.textContent=title;
+      location.title=code?'Account country: '+countryName:'Account country not set';
+      location.setAttribute('aria-label',location.title);
     }
   }
   // Original tab/search handlers call their lexical renderRooms binding rather
@@ -3805,9 +4990,39 @@
     if(frame.__sharikaSeatSyncNo!==requestNo ||
        !session || session.user.id!==userId || window.cur?.id!==room.id ||
        document.getElementById('rf')?.contentWindow!==frame)return;
+    // The room header displays the owner's active Special ID while all
+    // calls, membership actions and room navigation keep the canonical ID.
+    const visibleOwnerId=String(owner.special_id||owner.display_id||room.id);
+    const roomHeaderId=frame.$?.('rid');
+    if(roomHeaderId&&/^[0-9]{1,10}$/.test(visibleOwnerId))
+      roomHeaderId.textContent=visibleOwnerId;
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
-    const eligible=room.owner_id===session?.user?.id||
-      (!!self && self.seat_no!==null && !self.muted);
+    frame.__sharikaRoomRole=room.owner_id===session?.user?.id?'owner':
+      self?.role==='admin'?'admin':'member';
+    frame.__sharikaRoomLocked=!!data.access_locked;
+    room.access_locked=frame.__sharikaRoomLocked?1:0;
+    if(frame.document?.querySelector){
+      let accessBadge=frame.document.getElementById('sh-room-access-badge');
+      if(!accessBadge){
+        accessBadge=frame.document.createElement('span');
+        accessBadge.id='sh-room-access-badge';
+        accessBadge.setAttribute('aria-live','polite');
+        accessBadge.style.cssText='padding:4px 8px;border:1px solid #e4bf70;'+
+          'border-radius:11px;background:#14251f;color:#ffe5a3;font-size:11px;'+
+          'font-weight:750;white-space:nowrap';
+        frame.document.querySelector('.stats')?.appendChild(accessBadge);
+      }
+      accessBadge.textContent=frame.__sharikaRoomLocked?'🔒 Room locked':'';
+      accessBadge.style.display=frame.__sharikaRoomLocked?'inline-flex':'none';
+    }
+    const safetyButton=frame.$?.('bOwn');
+    if(safetyButton)safetyButton.style.display=
+      ['owner','admin'].includes(frame.__sharikaRoomRole)?'':'none';
+    frame.__sharikaMemberRoles=new Map((data.members||[]).map(m=>
+      [String(m.sharika_users?.public_id||''),String(m.role||'member')]));
+    // No reserved Owner mic: listening starts on entry, publishing only
+    // after that Owner/guest deliberately takes an unlocked microphone seat.
+    const eligible=!!self && self.seat_no!==null && !self.muted;
     if(sfuState?.roomId===room.id && sfuState.canPublish!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
     if(voiceRoomId===room.id && voiceRoom &&
@@ -3842,6 +5057,28 @@
       // Keep the verified, shared wallpaper in a sharp image layer rather
       // than enlarging a compressed thumbnail behind heavy dark overlays.
       roomApp.classList.toggle('sharika-hd-room-bg',!!sharedImage);
+      let familyBadge=roomApp.querySelector('#sh-room-owner-family-badge');
+      if(owner.family&&owner.family.status==='active'){
+        if(!familyBadge){
+          familyBadge=frame.document.createElement('button');
+          familyBadge.id='sh-room-owner-family-badge';familyBadge.type='button';
+          familyBadge.style.cssText='position:fixed;top:47px;right:12px;z-index:600;'+
+            'border:1px solid #e5c26b;background:linear-gradient(135deg,#3d2a19,#14101f);'+
+            'color:#ffe6a2;padding:5px 10px;border-radius:15px;'+
+            'font-weight:700;font-size:11px;max-width:46vw;'+
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+          roomApp.appendChild(familyBadge);
+        }
+        familyBadge.textContent='👑 '+owner.family.name;
+        familyBadge.title='Request to join '+owner.family.name;
+        familyBadge.onclick=async()=>{
+          if(!window.confirm('Request to join '+owner.family.name+'? Family Owner approval required.'))return;
+          try{
+            await api('POST','/family/join',{family_id:Number(owner.family.id)});
+            frame.toast('Family Join Request sent ✓');
+          }catch(error){frame.toast('Family: '+errText(error));}
+        };
+      }else familyBadge?.remove();
       if(sharedImage)
         roomApp.style.setProperty('--sharika-shared-wallpaper','url("'+sharedImage+'")');
       else roomApp.style.removeProperty('--sharika-shared-wallpaper');
@@ -3851,8 +5088,9 @@
       (_,i)=>({empty:1,i}));
     slots[0]={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
       user_id:room.owner_id,public_id:owner.public_id||room.id,
+      room_role:'owner',
       special_id:owner.special_id||null,
-      display_id:owner.display_id||owner.public_id||room.id,
+      display_id:owner.special_id||owner.display_id||owner.public_id||room.id,
       muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
       svip_level:Number(owner.svip_level)||0,
       frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
@@ -3877,15 +5115,17 @@
       if(Number.isInteger(member.seat_no) && member.seat_no>0 && member.seat_no<slots.length)
         slots[member.seat_no]={
           n:user.name,e:'👤',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
-          user_id:member.user_id,public_id:user.public_id,special_id:user.special_id||null,
-          display_id:user.display_id||user.public_id,
+          user_id:member.user_id,public_id:user.public_id,room_role:member.role,
+          special_id:user.special_id||null,
+          display_id:user.special_id||user.display_id||user.public_id,
           muted:!!member.muted||(member.user_id===session?.user?.id&&localMic===false),talk:false,
           svip_level:Number(user.svip_level)||0,
           frame_style:user.frame_style||'',entry_style:user.entry_style||'',
           medal_style:user.medal_style||'',name_tag_style:user.name_tag_style||''
         };
-      else audience.push({n:user.name,e:'👤',id:user.display_id||user.public_id,
-         canonical_id:user.public_id,special_id:user.special_id||null,
+      else audience.push({n:user.name,e:'👤',id:user.special_id||user.display_id||user.public_id,
+         canonical_id:user.public_id,room_role:member.role,
+         special_id:user.special_id||null,
         pic:verifiedAvatarUrl(user.pic),lv:user.wealth_level,
         svip_level:Number(user.svip_level)||0,
         frame_style:user.frame_style||'',entry_style:user.entry_style||'',
@@ -3908,6 +5148,50 @@
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
+    // Server-verified members, owner and room rewards drive the premium
+    // header. The iframe is the visual layer; all authoritative state stays
+    // with this authenticated D1/LiveKit adapter.
+    if(typeof frame.SharikaRoomPremium?.sync==='function'){
+      const liveMembers=(data.members||[])
+        .filter(m=>m.user_id&&m.sharika_users?.public_id)
+        .sort((a,b)=>{
+          if(a.user_id===room.owner_id)return -1;
+          if(b.user_id===room.owner_id)return 1;
+          const sa=Number.isInteger(a.seat_no)?a.seat_no:999;
+          const sb=Number.isInteger(b.seat_no)?b.seat_no:999;
+          return sa-sb;
+        })
+        .map(m=>({
+          name:String(m.sharika_users.name||'Member'),
+          pic:verifiedAvatarUrl(m.sharika_users.pic),
+          publicId:String(m.sharika_users.public_id),
+          displayId:String(m.sharika_users.special_id||
+            m.sharika_users.display_id||m.sharika_users.public_id),
+          seatNo:Number.isInteger(m.seat_no)?m.seat_no:null,
+          role:String(m.role||'member')
+        }));
+      frame.SharikaRoomPremium.sync({
+        roomId:room.id,isOwner:room.owner_id===session?.user?.id,
+        owner:{
+          name:String(owner.name||'Room Owner'),
+          pic:verifiedAvatarUrl(owner.pic),
+          displayId:String(owner.special_id||owner.display_id||
+            owner.public_id||room.id)
+        },
+        members:liveMembers,
+        openProfile:member=>openVerifiedRoomMemberProfile(
+          member.publicId,room.id,member.seatNo),
+        loadRewards:()=>api('GET','/rooms/'+room.id+'/rewards'),
+        loadAnnouncement:()=>api('GET','/rooms/'+room.id+'/announcement'),
+        saveAnnouncement:text=>api('PUT','/rooms/'+room.id+'/announcement',{text}),
+        loadRankings:period=>api('GET','/rooms/'+room.id+
+          '/contributors?period='+encodeURIComponent(period)).then(result=>({
+            ...result,leaders:(result.leaders||[]).map(item=>({
+              ...item,pic:verifiedAvatarUrl(item.pic)
+            }))
+          }))
+      });
+    }
     if(!snapshotChanged)return;
     frame.__sharikaRoomRenderSignature=renderSignature;
     frame.render();
@@ -3941,13 +5225,51 @@
     // badges. Do not present those demo numbers as verified public records.
     paintVerifiedAvatar(root.querySelector('.pfh .pav3'),member.pic,document);
     decorateVerifiedPublicProfile(root,member);
+    root.querySelector('.pf')?.classList.add('sh-ranked-profile','sh-room-royal');
     const meta=root.querySelector('.pfh .meta');
     if(meta){
-      for(const item of [...meta.children].slice(1))item.remove();
+      meta.replaceChildren();
+      const idLine=document.createElement('div');
+      idLine.className='sh-royal-idline';
+      const idLabel=document.createElement('span');
+      idLabel.className='sh-royal-user-id';
+      idLabel.textContent='ID: '+String(member.special_id||member.display_id||member.id);
+      idLine.appendChild(idLabel);
+      const roomRole=frame?.__sharikaMemberRoles?.get(String(member.id));
+      if(roomRole==='owner'||roomRole==='admin'){
+        const roomTag=document.createElement('span');
+        roomTag.className='sh-royal-role-tag sh-royal-room-admin';
+        roomTag.textContent=roomRole==='owner'?'👑 ROOM OWNER':'🛡 ROOM ADMIN';
+        idLine.appendChild(roomTag);
+      }
+      for(const [yes,label,kind] of [
+        [member.bd_active,'✦ BD','sh-royal-bd'],
+        [member.seller_active,'✦ Seller','sh-royal-seller']
+      ]){
+        if(!yes)continue;
+        const badge=document.createElement('span');
+        badge.className='sh-royal-role-tag '+kind;
+        badge.textContent=label;idLine.appendChild(badge);
+      }
+      meta.appendChild(idLine);
       if(member.country){
         const country=document.createElement('span');
-        country.textContent=String(member.country);
+        country.textContent='🌍 '+String(member.country);
         meta.appendChild(country);
+      }
+      if(member.family){
+        const tag=document.createElement('button');
+        tag.type='button';tag.className='sh-royal-room-family-link';
+        tag.textContent='👑 '+String(member.family.name);
+        tag.onclick=async()=>{
+          if(String(member.family.status)!=='active')return toast('Family is suspended');
+          if(String(member.id)===String(profile?.public_id)){openRoyalFamily();return;}
+          if(!window.confirm('Request to join '+member.family.name+'? Family Owner approval is required.'))return;
+          try{await api('POST','/family/join',{family_id:Number(member.family.id)});
+            toast('Family Join Request sent ✓');}
+          catch(error){toast('Family request failed: '+errText(error));}
+        };
+        meta.appendChild(tag);
       }
     }
     const bio=root.querySelector('.pfh .bio');
@@ -4105,7 +5427,7 @@
     frame.sid=function(seat){
       const canonical=String(seat?.public_id||'');
       if(!/^[0-9]{8}$/.test(canonical))return '';
-      const display=String(seat?.display_id||seat?.special_id||canonical);
+      const display=String(seat?.special_id||seat?.display_id||canonical);
       return /^[0-9]{1,10}$/.test(display)?display:canonical;
     };
     frame.others=function(){return (frame.seats||[]).filter(s=>s&&!s.empty&&!s.lock);};
@@ -4428,11 +5750,27 @@
       if(receivedGift||(sawNewGift&&room.owner_id===session?.user?.id))
         await reloadWallet();
     }
-    async function moderateSeat(action,seat) {
+    async function setRoomAdmin(publicId,makeAdmin){
       if(room.owner_id!==session?.user?.id)throw new Error('Room owner only');
+      if(!/^[0-9]{8}$/.test(String(publicId||''))||
+         frame.__sharikaMemberRoles?.get(String(publicId))==='owner')
+        throw new Error('Choose another verified room member');
+      const result=await api('POST','/rooms/'+room.id+'/admins',{
+        action:makeAdmin?'grant':'revoke',target_public_id:String(publicId)
+      });
+      frame.close();
+      await syncFrame(room,frame);
+      frame.toast(makeAdmin?'🛡 Room Admin assigned':'Room Admin removed');
+      return result;
+    }
+    async function moderateSeat(action,seat) {
+      if(room.owner_id!==session?.user?.id&&
+         frame.__sharikaRoomRole!=='admin')throw new Error('Room admin only');
       const target=frame.seats?.[seat];
       if(!target||target.empty||!target.public_id||
-         target.user_id===room.owner_id)throw new Error('Choose a guest seat');
+         target.user_id===room.owner_id||
+         (frame.__sharikaRoomRole==='admin'&&target.room_role==='admin'))
+        throw new Error('Cannot moderate Owner or another Admin');
       const result=await api('POST','/rooms/'+room.id+'/moderate',{
         action,target_public_id:target.public_id
       });
@@ -4502,13 +5840,50 @@
       syncFrame(room,frame).catch(error=>
         frame.toast('Seat refresh: '+errText(error)));
     }
+    frame.roomLockSheet=async function(){
+      if(!['owner','admin'].includes(frame.__sharikaRoomRole)){
+        frame.toast('Only the Room Owner or Room Admin can lock this room');
+        return;
+      }
+      try{
+        const state=await api('GET','/rooms/'+room.id+'/access-lock');
+        if(window.cur?.id!==room.id)return;
+        const locked=!!state.locked;
+        frame.open('<h3>🔒 Room Access</h3>'+
+          '<div class="row">'+(locked
+            ?'Room is locked. Existing members stay; new guests cannot enter.'
+            :'Room is open. Anyone eligible can enter.')+'</div>'+
+          '<div class="row">Only the verified Owner or Room Admin can change this setting.</div>'+
+          '<button class="big" id="sh-room-lock-toggle">'+
+          (locked?'🔓 Unlock Room':'🔒 Lock Room')+'</button>');
+        const button=frame.$('sh-room-lock-toggle');
+        if(!button)return;
+        button.onclick=async()=>{
+          if(button.disabled)return;
+          button.disabled=true;
+          try{
+            const saved=await api('PUT','/rooms/'+room.id+'/access-lock',{locked:!locked});
+            room.access_locked=saved.locked?1:0;
+            frame.__sharikaRoomLocked=!!saved.locked;
+            frame.close();
+            frame.toast(saved.locked?'🔒 Room locked for new guests':'🔓 Room open to guests');
+            await reloadRooms();
+            await syncFrame(room,frame);
+          }catch(error){
+            button.disabled=false;
+            frame.toast('Room lock: '+errText(error));
+          }
+        };
+      }catch(error){frame.toast('Room access unavailable: '+errText(error));}
+    };
     frame.act=async function(action,seat) {
       try {
         const target=frame.seats?.[seat];
         const isSelf=target?.user_id===session?.user?.id;
         const owner=room.owner_id===session?.user?.id;
+        const moderator=owner||frame.__sharikaRoomRole==='admin';
         if(action==='lock_all'||action==='unlock_all') {
-          if(!owner)throw new Error('Room owner only');
+          if(!moderator)throw new Error('Room admin only');
           const result=await api('PUT','/rooms/'+room.id+'/locks/all',{
             locked:action==='lock_all'
           });
@@ -4520,7 +5895,7 @@
               (skipped?' ('+skipped+' occupied seats unchanged)':'')
             : 'All mic seats unlocked');
         } else if((action==='lock'||action==='unlock')&&seat>0) {
-          if(!owner)throw new Error('Room owner only');
+          if(!moderator)throw new Error('Room admin only');
           await api('PUT','/rooms/'+room.id+'/locks',{
             seat_no:seat,locked:action==='lock'
           });
@@ -4565,7 +5940,7 @@
         } else if(action==='take' && seat>0) {
           await moveSelfToSeat(seat);
         } else if(action==='down' && seat>0) {
-          if(!isSelf && owner && target?.user_id) {
+          if(!isSelf && moderator && target?.user_id) {
             await moderateSeat('remove_seat',seat);
           } else if(isSelf) {
             await api('PUT','/rooms/'+room.id+'/seat',{seat_no:null});
@@ -4574,15 +5949,17 @@
             frame.toast('Seat released; listening only');
           } else throw new Error('You can only leave your own seat');
         } else if(action==='mute' && seat>=0) {
-          if(owner && target?.user_id && !isSelf)
+          if(moderator && target?.user_id && !isSelf)
             await moderateSeat(target.muted?'unmute':'mute',seat);
           else if(isSelf) {
             const enabled=await toggleVoice();
             frame.close();
             frame.toast(enabled?'Microphone on':'Microphone off');
-          } else throw new Error('Only the owner can mute another user');
+          } else throw new Error('Only a Room Admin can mute another user');
         } else if(action==='kick' && seat>0) {
           await moderateSeat('kick',seat);
+        } else if(action==='admin_toggle' && owner && target?.public_id && !isSelf) {
+          await setRoomAdmin(target.public_id,target.room_role!=='admin');
         } else if(action==='own' && owner) {
           frame.open('<h3>👑 Verified owner controls</h3>'+
             '<div class="row">Tap an occupied seat to mute, unmute, remove from mic or kick a guest.</div>');
@@ -4673,8 +6050,9 @@
       const selected=frame.seats?.[index];
       if(!selected)return;
       const owner=room.owner_id===session?.user?.id;
+      const moderator=owner||frame.__sharikaRoomRole==='admin';
       if(selected.empty||selected.lock){
-        verifiedSeatMenu(index,selected,owner);
+        verifiedSeatMenu(index,selected,moderator);
         return;
       }
       const result=originalSeatSheet(index);
@@ -4682,6 +6060,8 @@
       const actions=frame.$('sheet')?.querySelector('.acts');
       const detail=frame.$('sheet')?.querySelector('.who small');
       if(detail)detail.textContent=index===0?'Room owner':'Mic seat '+index;
+      if(detail&&selected.room_role==='admin')
+        detail.textContent='Room Admin · Mic seat '+index;
       if(!actions)return result;
       actions.replaceChildren();
       const options=[['prof','👤','Profile'],['gift','🎁','Gift']];
@@ -4689,9 +6069,13 @@
         selected.muted?'Unmute':'Mute']);
       if(self&&index>0)options.push(['down','⬇️','Leave mic']);
       if(owner&&index===0)options.push(['own','⚙️','Manage']);
-      if(owner&&index>0&&!self)options.push(
+      if(moderator&&index>0&&!self&&
+         (owner||selected.room_role!=='admin'))options.push(
         ['mute',selected.muted?'🔊':'🔇',selected.muted?'Unmute':'Mute'],
         ['down','⬇️','Remove from mic'],['kick','🚫','Kick out']);
+      if(owner&&index>0&&!self)options.push(
+        ['admin_toggle','🛡',selected.room_role==='admin'
+          ?'Remove Room Admin':'Make Room Admin']);
       for(const [action,icon,label] of options){
         const button=frame.document.createElement('button');
         button.className='act'+(action==='kick'?' dg':'');
@@ -4721,22 +6105,26 @@
         emoji:emoji[0],request_id:requestId
       }).catch(error=>frame.toast('Emoji shown locally: '+errText(error)));
     };
-    // Owner taps are management actions, never an automatic seat move.
-    // The old capture handler bypassed frame.seatSheet entirely, so owners
-    // could not lock or unlock an otherwise free microphone seat.
-    // Guests retain their existing one-tap seating on unlocked empty seats.
+    // Owner and guests both take an unlocked seat with one deliberate tap.
+    // A long press still opens the verified seat-management sheet for Owner;
+    // its Seat arrangement page remains available from the room menu.
     frame.document.addEventListener('click',event=>{
       const button=event.target.closest?.('.seat.empty[data-i]');
       if(!button||!frame.document.querySelector('#grid')?.contains(button))return;
       const seat=Number(button.dataset.i);
       if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
       event.preventDefault();event.stopImmediatePropagation();
-      if(room.owner_id===session?.user?.id){
-        frame.seatSheet(seat);
-        return;
-      }
       moveSelfToSeat(seat).catch(error=>
         frame.toast('Unable to change seat: '+errText(error)));
+    },true);
+    frame.document.addEventListener('contextmenu',event=>{
+      if(room.owner_id!==session?.user?.id&&frame.__sharikaRoomRole!=='admin')return;
+      const button=event.target.closest?.('#grid .seat[data-i]');
+      if(!button)return;
+      const seat=Number(button.dataset.i);
+      if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      frame.seatSheet(seat);
     },true);
     // The room template's audience menu previously changed local demo seats.
     // Wire those buttons to authenticated server operations instead.
@@ -4750,6 +6138,10 @@
       const verifiedId=String(user?.seat!=null?
         frame.seats?.[user.seat]?.public_id:frame.U?.[user?.k]?.canonical_id||'');
       const verified=/^[0-9]{8}$/.test(verifiedId);
+      const selectedRole=frame.__sharikaMemberRoles?.get(verifiedId)||'member';
+      const roleLabel=sheet?.querySelector('.who small');
+      if(roleLabel&&selectedRole==='admin')
+        roleLabel.textContent='🛡 Room Admin';
       const profileButton=sheet?.querySelector('button.act[data-a="pf"]');
       if(profileButton)profileButton.onclick=async()=>{
         if(!verified){frame.toast('Verified member ID unavailable');return;}
@@ -4777,7 +6169,9 @@
             const name=frame.document.createElement('div');
             name.className='row';
             name.textContent=String(member.name||'Member')+' · ID '+
-              String(member.display_id||member.id);
+              String(member.special_id||member.display_id||member.id)+
+              (selectedRole==='admin'?' · 🛡 ROOM ADMIN':
+               selectedRole==='owner'?' · 👑 OWNER':'');
             const details=frame.document.createElement('div');
             details.className='lbl';
             details.textContent='Country: '+String(member.country||'Not set')+
@@ -4892,6 +6286,24 @@
         if(!verified){frame.toast('Verified member ID unavailable');return;}
         openVerifiedReport('user',verifiedId,String(user.n||'Member'));
       };
+      if(verified&&room.owner_id===session?.user?.id&&
+         selectedRole!=='owner'){
+        const adminButton=frame.document.createElement('button');
+        adminButton.type='button';
+        adminButton.className='act';
+        adminButton.textContent=selectedRole==='admin'
+          ?'🛡 Remove Room Admin':'🛡 Make Room Admin';
+        sheet?.querySelector('.acts')?.appendChild(adminButton);
+        adminButton.onclick=async()=>{
+          if(adminButton.disabled)return;
+          adminButton.disabled=true;
+          try{await setRoomAdmin(verifiedId,selectedRole!=='admin');}
+          catch(error){
+            if(adminButton.isConnected)adminButton.disabled=false;
+            frame.toast('Room Admin: '+errText(error));
+          }
+        };
+      }
       const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
       if(inviteButton)inviteButton.onclick=async()=>{
         if(inviteButton.disabled)return;
@@ -4922,8 +6334,13 @@
           const onSeat=Number.isInteger(user.seat)&&user.seat>0;
           const target=onSeat?frame.seats[user.seat]:null;
           const isSelf=target?.user_id===session?.user?.id;
-          if(!isSelf && room.owner_id!==session?.user?.id) {
-            frame.toast('Room owner only');return;
+          if(!isSelf&&room.owner_id!==session?.user?.id&&
+             frame.__sharikaRoomRole!=='admin'){
+            frame.toast('Room Admin only');return;
+          }
+          if(!isSelf&&frame.__sharikaRoomRole==='admin'&&
+             selectedRole==='admin'){
+            frame.toast('Room Admin cannot moderate another Admin');return;
           }
           button.disabled=true;
           try {
@@ -4933,7 +6350,7 @@
             }else if(onSeat)await moderateSeat(action,user.seat);
             else if(action==='kick') {
               await api('POST','/rooms/'+room.id+'/moderate',{
-                action,target_public_id:String(user.id)
+                action,target_public_id:verifiedId
               });
               frame.close();await syncFrame(room,frame);
               frame.toast('Guest removed for 10 minutes');
@@ -5002,6 +6419,18 @@
         frame.$('sheet')?.querySelectorAll('.fr button').forEach(button=>{button.disabled=false;});
       }
     },true);
+    const originalSeatArrangement=frame.seatSet;
+    if(typeof originalSeatArrangement==='function')frame.seatSet=function(...args){
+      const result=originalSeatArrangement.apply(this,args);
+      const sheet=frame.$('sheet');
+      if(sheet?.querySelector('h3')?.textContent?.includes('Seat arrangement')){
+        const label=sheet.querySelector('.lbl');
+        if(label)label.textContent='Microphone seats · Owner can use any seat';
+        const count=frame.$('cnt');
+        if(count)count.textContent=String(room.seat_count);
+      }
+      return result;
+    };
     let seatCountSaveBusy=false;
     frame.document.addEventListener('click',async event=>{
       const control=event.target.closest?.('#mn,#pl');
@@ -5018,7 +6447,7 @@
       }
       const requested=oldCount+(control.id==='pl'?1:-1);
       if(requested<4||requested>20){
-        frame.toast('Choose between 5 and 21 total seats');return;
+        frame.toast('Choose between 4 and 20 mic seats');return;
       }
       seatCountSaveBusy=true;
       const buttons=[frame.$('mn'),frame.$('pl')].filter(Boolean);
@@ -5047,8 +6476,8 @@
         await syncFrame(room,frame).catch(error=>
           console.warn('Seat count saved; member refresh delayed:',errText(error)));
         await reloadRooms();
-        if(frame.$('cnt'))frame.$('cnt').textContent=String(room.seat_count+1);
-        if(note.isConnected)note.textContent='Saved ✓ '+String(room.seat_count+1)+' total seats';
+        if(frame.$('cnt'))frame.$('cnt').textContent=String(room.seat_count);
+        if(note.isConnected)note.textContent='Saved ✓ '+String(room.seat_count)+' mic seats';
         frame.toast('Seat count saved to room ✓');
       }catch(error){
         await syncFrame(room,frame).catch(()=>{});
@@ -5162,7 +6591,7 @@
       const name=frame.$('nm')?.value?.trim()||'My Sharika room';
       const newSeatCount=Number(frame.S.n)-1;
       if(!Number.isInteger(newSeatCount)||newSeatCount<4||newSeatCount>20){
-        frame.toast('Please choose 5–21 total seats');return;
+        frame.toast('Please choose 4–20 mic seats');return;
       }
       saveButton.disabled=true;
       try{
@@ -5383,8 +6812,9 @@
     if(mic) mic.onclick=async ()=>{
       try {
         const enabled=await toggleVoice();
-        mic.textContent=enabled?'🎤':'🔇';
+        if(!mic.closest('.sh-tool'))mic.textContent=enabled?'🎤':'🔇';
         mic.classList.toggle('off',!enabled);
+        mic.setAttribute('aria-pressed',String(enabled));
         frame.toast(enabled?'Microphone enabled':'Microphone muted');
       } catch(error) {frame.toast(errText(error));}
     };
@@ -5402,11 +6832,95 @@
         window.go('msg'); // Reuses verified direct messages and mutual-follow checks.
       };
     }
+    async function showRoomSafetyPanel(){
+      const owner=room.owner_id===session?.user?.id;
+      if(!owner&&frame.__sharikaRoomRole!=='admin'){
+        frame.toast('Room Admin only');return;
+      }
+      frame.open('<h3>🛡 Room Safety</h3>'+
+        '<p class="row">Kick: 10-minute removal. Block: cannot rejoin until unblocked.</p>'+
+        '<div id="sh-room-safety-list" class="row">Loading verified members…</div>');
+      const host=frame.$('sh-room-safety-list');
+      if(!host)return;
+      try{
+        const [snapshot,blocked]=await Promise.all([
+          api('GET','/rooms/'+room.id+'/members'),
+          api('GET','/rooms/'+room.id+'/bans')
+        ]);
+        if(!host.isConnected)return;
+        host.replaceChildren();
+        const addTitle=text=>{
+          const heading=frame.document.createElement('h4');
+          heading.textContent=text;heading.style.cssText='color:#ffe5a1;margin:14px 0 8px';
+          host.appendChild(heading);
+        };
+        const addButton=(container,label,action,publicId)=>{
+          const button=frame.document.createElement('button');
+          button.type='button';button.className='act';
+          button.style.cssText='margin:5px;padding:9px 11px;border-radius:12px';
+          button.textContent=label;
+          button.onclick=async()=>{
+            const verb=action==='kick'?'kick for 10 minutes':action==='block'?'block until unblocked':'unblock';
+            if(!window.confirm('Confirm '+verb+' for ID '+publicId+'?'))return;
+            button.disabled=true;
+            try{
+              await api('POST','/rooms/'+room.id+'/moderate',{
+                action,target_public_id:publicId
+              });
+              await syncFrame(room,frame);
+              await showRoomSafetyPanel();
+              frame.toast('Room '+action+' completed');
+            }catch(error){
+              button.disabled=false;frame.toast('Room '+action+': '+errText(error));
+            }
+          };
+          container.appendChild(button);
+        };
+        addTitle('Members in this room');
+        const guests=(snapshot.members||[]).filter(member=>
+          member.user_id!==session?.user?.id &&
+          member.role!=='owner' && (owner||member.role!=='admin') &&
+          /^[0-9]{8}$/.test(String(member.sharika_users?.public_id||'')));
+        if(!guests.length){
+          const empty=frame.document.createElement('p');empty.textContent='No guests available for moderation.';
+          host.appendChild(empty);
+        }
+        for(const member of guests){
+          const row=frame.document.createElement('div');row.className='row';
+          const display=member.sharika_users?.display_id||member.sharika_users?.public_id;
+          const title=frame.document.createElement('strong');
+          title.textContent=String(member.sharika_users?.name||'Guest')+' · ID '+display;
+          row.appendChild(title);
+          addButton(row,'🚪 Kick 10m','kick',member.sharika_users.public_id);
+          addButton(row,'🚫 Block','block',member.sharika_users.public_id);
+          host.appendChild(row);
+        }
+        addTitle('Blocked users');
+        const bans=blocked.bans||[];
+        if(!bans.length){
+          const empty=frame.document.createElement('p');empty.textContent='No users are currently blocked.';
+          host.appendChild(empty);
+        }
+        for(const item of bans){
+          const row=frame.document.createElement('div');row.className='row';
+          const title=frame.document.createElement('strong');
+          title.textContent=String(item.name||'User')+' · ID '+item.public_id+
+            (item.blocked_until_unblocked?' · Blocked':' · Temporary kick');
+          row.appendChild(title);
+          addButton(row,'✅ Unblock','unblock',item.public_id);
+          host.appendChild(row);
+        }
+      }catch(error){
+        if(host.isConnected)host.textContent='Room Safety unavailable: '+errText(error);
+      }
+    }
     const ownerButton=frame.$ && frame.$('bOwn');
     if(ownerButton) {
-      ownerButton.style.display=room.owner_id===session?.user?.id?'':'none';
-      ownerButton.onclick=()=>frame.open('<h3>👑 Verified owner controls</h3>'+
-        '<div class="row">Tap any occupied guest seat to mute, unmute, remove from mic or kick.</div>');
+      const canModerate=room.owner_id===session?.user?.id||
+        frame.__sharikaRoomRole==='admin';
+      ownerButton.style.display=canModerate?'':'none';
+      ownerButton.title='Room Safety: kick, block, unblock';
+      ownerButton.onclick=showRoomSafetyPanel;
     }
     const roomGameButton=frame.$ && frame.$('bGame');
     if(roomGameButton)roomGameButton.onclick=()=>showGameCard(document,true,toast);
@@ -5459,6 +6973,20 @@
           if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
           lastEntryEventId=id;
           if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          // Arrival comes from the room coordinator and verified Firebase identity.
+          // Show the name in the existing chat feed, not a fabricated local user.
+          const verifiedName=String(event.name||'Member').trim().slice(0,80);
+          const chat=frame.document.getElementById('chat');
+          if(chat&&verifiedName){
+            const entry=frame.document.createElement('div');
+            entry.className='sh-verified-room-join';
+            entry.textContent='👋 '+verifiedName+' joined the room';
+            entry.setAttribute('role','status');
+            chat.appendChild(entry);
+            const notices=chat.querySelectorAll('.sh-verified-room-join');
+            if(notices.length>20)notices[0].remove();
+            chat.scrollTop=chat.scrollHeight;
+          }
           const levelMatch=/^svip-entry-0([1-8])$/.exec(String(event.entry_style||''));
           if(levelMatch){
             playSvipRoomEntry(frame.document,Number(levelMatch[1]),event.name);
@@ -5591,7 +7119,11 @@
         attachFrame(room).catch(error=>toast(errText(error)));
       };
       originalOpenRoom(room);
-    } catch(error) { toast('Could not join: '+errText(error)); }
+    } catch(error) {
+      toast(errText(error)==='room_locked'
+        ?'🔒 This room is locked. Ask the Owner or Room Admin to unlock it.'
+        :'Could not join: '+errText(error));
+    }
   };
   const originalLeaveRoom=window.leaveRoom;
   window.leaveRoom=function() {
@@ -5731,6 +7263,7 @@
       '@media(max-width:360px){#sharika-seller-content .shw-stock{font-size:25px}#sharika-seller-content .shw-section{padding:12px}#sharika-seller-content .shw-mini{padding:0 8px}}',
       '@media(prefers-reduced-motion:reduce){#sharika-seller-content .shw-chip:active{transform:none}}'
     ].join('');
+    style.textContent += "\n#sharika-seller-content{color:#ffe8b8}\n#sharika-seller-content .shw-hero{border:1px solid #d9a35d;background:linear-gradient(125deg,#61331c 0%,#4d2637 50%,#30132d 100%);box-shadow:inset 0 2px 1px #fff0bb55,0 10px 22px #0c041455}\n#sharika-seller-content .shw-hero:after{background:radial-gradient(circle,#ffcc6759 0%,transparent 70%)}\n#sharika-seller-content .shw-eyebrow{color:#ffdf9c}\n#sharika-seller-content .shw-stock{color:#ffe7ad;text-shadow:0 1px 8px #e7a93e88;font-family:Georgia,serif}\n#sharika-seller-content .shw-stock small{color:#ffc75c}\n#sharika-seller-content .shw-id{border-color:#c69659;background:#2e1439;color:#ffe2ac}\n#sharika-seller-content .shw-section{background:linear-gradient(155deg,#563042,#2e1934 75%);border:1px solid #c59558;box-shadow:inset 0 1px #ffe3b438,0 8px 22px #08040b88}\n#sharika-seller-content .shw-title{color:#ffe0a2;font-family:Georgia,serif}\n#sharika-seller-content .shw-sub{color:#edd2b5}\n#sharika-seller-content .shw-label{color:#f8deb8}\n#sharika-seller-content .shw-input{background:#24152b!important;color:#fff0ce!important;border:1px solid #d2a45e!important}\n#sharika-seller-content .shw-input::placeholder{color:#bba4a8}\n#sharika-seller-content .shw-mini{background:#4d2c40;border-color:#efc46f;color:#ffdea3}\n#sharika-seller-content .shw-chip{background:#4d2d44;border:1px solid #c28d56;color:#ffdc9b}\n#sharika-seller-content .shw-submit{background:linear-gradient(175deg,#ffedac,#eebd62 65%,#bc883e);border:1px solid #ffe1a5;color:#432307;box-shadow:inset 0 1px #fff6c1b8,0 8px 18px #08020955;transition:transform .2s ease,filter .2s ease}\n#sharika-seller-content .shw-submit:active{transform:perspective(500px) rotateX(5deg) scale(.98)}\n#sharika-seller-content .shw-details{background:#3c2034;border:1px solid #966b4b}\n#sharika-seller-content .shw-details summary{color:#ffdfa7}\n#sharika-seller-content .shw-entry{background:#563547;border:1px solid #8c5a6b;color:#efdbbf}\n#sharika-seller-content .shw-entry strong{color:#ffe3aa}\n#sharika-seller-content .shw-tag{background:#326d493d;color:#92efb5}\n#sharika-seller-content .shw-empty{color:#e6c8b0}\n@media(prefers-reduced-motion:reduce){#sharika-seller-content .shw-submit{transition:none!important}}\n";
     document.head.appendChild(style);
   }
   async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
@@ -5741,8 +7274,8 @@
     if(!root)return;
     try{
       if(!walletOnly){
-        // Public directory only. Never fetch private stock, allocations or
-        // transfers, and never render a recharge control on this screen.
+        // Public seller exchange inventory is read-only; private allocations,
+        // transfer receipts and recharge controls remain seller-only.
         const directory=await api('GET','/sellers');
         if(!root.isConnected)return;
         const listed=(directory.sellers||[]).map(s=>{
@@ -5755,7 +7288,9 @@
               '<span style="font-size:31px;flex-shrink:0">🪙</span>')+
             '<div style="min-width:0;flex:1"><b>'+sellerEscape(s.name||'Coin seller')+
             '</b><div style="font-size:12px;margin-top:5px">ID '+
-            sellerEscape(s.public_id)+'</div></div>'+
+            sellerEscape(s.public_id)+'</div><small style="color:#ffe0a8">'+
+            (s.unlimited_stock?'Unlimited Coins':
+            'Available '+formatCompactCoins(s.available_coins||0)+' Coins')+'</small></div>'+
             '<button class="btn" type="button" data-seller-copy="'+
             sellerEscape(s.public_id)+'" style="padding:8px 10px;flex-shrink:0">'+
             'Copy ID</button></div>';
@@ -6843,7 +8378,9 @@
     try {
       const name=document.getElementById('cn')?.value?.trim() || 'My Sharika room';
       const chosen=document.querySelector('#ce button.sel');
-      await api('POST','/rooms',{name,emoji:chosen?.textContent?.trim() || '🎙️',theme:'mid'});
+      // New rooms use the reference screenshot's 5 × 4 seat arrangement.
+      // Existing rooms keep their server-stored owner-adjustable capacity.
+      await api('POST','/rooms',{name,emoji:chosen?.textContent?.trim() || '🎙️',theme:'mid',seat_count:20});
       window.closeSheet();
       await reloadRooms();
       const room=window.myR();
@@ -7150,7 +8687,28 @@
     '#rb .rr[data-rank-user]{cursor:pointer;touch-action:manipulation}',
     '#rb .rr[data-rank-user]:active{transform:translateY(2px);filter:brightness(1.12)}',
     '#rb .rr[data-rank-user]:focus-visible{outline:3px solid #ffd875;outline-offset:3px}',
-    '#pfo .sh-ranked-profile .pavw{width:118px;height:118px}',
+    // One fixed-size positioning context for the verified photo and every
+    // cosmetic overlay. Flex profile layouts must not shift the photo alone.
+    '#pfo .sh-ranked-profile .pfh .pavw{position:relative!important;',
+    'display:block!important;flex:0 0 118px!important;width:118px!important;',
+    'height:118px!important;min-width:118px!important;min-height:118px!important;',
+    'max-width:118px!important;max-height:118px!important;',
+    'box-sizing:border-box!important;margin-left:auto!important;margin-right:auto!important;',
+    'isolation:isolate!important;overflow:visible!important}',
+    '#pfo .sh-ranked-profile .pfh .pav3{position:absolute!important;',
+    'inset:0!important;width:100%!important;height:100%!important;',
+    'margin:0!important;box-sizing:border-box!important;transform:none!important;',
+    'z-index:2!important}',
+    '#pfo .sh-ranked-profile .pfh .pav3>.sh-verified-avatar-image{',
+    'position:absolute!important;inset:0!important;width:100%!important;',
+    'height:100%!important;max-width:100%!important;max-height:100%!important;',
+    'display:block!important;object-fit:cover!important;',
+    'object-position:center 32%!important;border-radius:50%!important;',
+    'transform:none!important}',
+    '#pfo .sh-ranked-profile .pfh .pavw>.sh-sovera-frame.fxr{',
+    'position:absolute!important;top:50%!important;left:50%!important;',
+    'right:auto!important;bottom:auto!important;transform:translate(-50%,-50%)!important;',
+    'transform-origin:center center!important;background-position:center center!important}',
     '#pfo .sh-ranked-profile .pav3{overflow:hidden!important;border-radius:50%!important;',
     'background-position:50% 32%!important;background-size:cover!important;',
     'box-shadow:inset 0 3px 6px #120b3955,0 9px 24px #0007}',
@@ -7927,8 +9485,9 @@
         '<div class="pavr" style="--g1:#ffdc7b;--g2:#a06bff"></div>'+
         '<div class="pav3" id="sh-ranked-avatar" role="img" aria-label="Profile photo"></div>'+
         '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
-        '<div class="meta"><span>🆔 '+sellerEscape(displayId)+'</span>'+
+        '<div class="sh-royal-idline"><span class="sh-royal-user-id">ID: '+sellerEscape(displayId)+'</span>'+        (person.bd_active?'<span class="sh-royal-role-tag sh-royal-bd">✦ BD</span>':'')+        (person.seller_active?'<span class="sh-royal-role-tag sh-royal-seller">✦ Seller</span>':'')+        '</div><div class="meta">'+
         (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
+        (person.family?'<span style="color:#f9d48b">👑 '+sellerEscape(person.family.name)+'</span>':'')+
         '</div></div><div class="lvs">'+
         '<div class="lvc w"><b>💰 Wealth level</b><div class="big3">'+
         wealth+'</div><small>Verified profile level</small></div>'+
@@ -7936,6 +9495,11 @@
         charm+'</div><small>Verified profile level</small></div></div>'+
         '<div class="sh-profile-note">This is the real Sharika profile for ID '+sellerEscape(displayId)+
         '. Only server-verified details are shown.</div>'+
+        (person.family?'<div class="sh-profile-note" style="border:1px solid #cc9d4b;border-radius:14px;padding:12px">'+
+          '👑 Royal Family · '+sellerEscape(person.family.name)+' · #'+sellerEscape(person.family.id)+
+          ' · '+sellerEscape(person.family.status)+
+          '<button id="sh-ranked-family-join" type="button">'+
+          (id===profile?.public_id?'Open My Family':'Request to Join Family')+'</button></div>':'')+
         '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
         'Loading follow status…</button></div>'+
         '</div>';
@@ -7943,6 +9507,15 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       decorateVerifiedPublicProfile(root,person);
+      root.querySelector('#sh-ranked-family-join')?.addEventListener('click',async()=>{
+        if(id===profile?.public_id){openRoyalFamily();return;}
+        if(person.family?.status!=='active')return toast('This Family is suspended');
+        if(!window.confirm('Send a request to join '+person.family.name+'? The Owner must approve.'))return;
+        try{
+          await api('POST','/family/join',{family_id:Number(person.family.id)});
+          toast('Family Join Request sent ✓');
+        }catch(error){toast('Could not request Family join: '+errText(error));}
+      });
       mountBondDetails(root,canonicalId,person).catch(error=>
         console.warn('Ranked ID bond details:',errText(error)));
       const follow=root.querySelector('#sh-ranked-follow');
@@ -8139,9 +9712,9 @@
     {id:'night-food',name:'Night Food Wheel',tag:'🌙 Night',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/night-food-wheel.html'},
-    {id:'jackpot-fruit',name:'Jackpot Fruit',tag:'🎰 Jackpot',
+    {id:'fruit-royale',name:'Fruit Royale',tag:'👑 New Royal Jackpot',
       image:'file:///android_asset/jackpot-fruit-original-card.png',
-      page:'file:///android_asset/original-games/jackpot-fruit.html'},
+      page:'file:///android_asset/fruit-royale/index.html'},
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
       page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'}
@@ -8155,7 +9728,7 @@
     const elapsed=Number(state.server_time)-(prev.round_no+1)*40000;
     if(!Number.isFinite(elapsed)||elapsed<0||elapsed>10000)return null;
     const winners=Array.isArray(prev.top_winners)?prev.top_winners.slice(0,3)
-      .filter(w=>w&&/^[0-9]{8}$/.test(String(w.public_id||''))&&
+      .filter(w=>w&&/^[0-9]{1,10}$/.test(String(w.public_id||''))&&
         typeof w.name==='string'&&w.name.trim()&&
         Number.isSafeInteger(Number(w.total_win))&&Number(w.total_win)>0):[];
     if(!winners.length||announcedOriginalGameRounds.get(game)===prev.round_no)return null;
@@ -8259,10 +9832,11 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
-    let visibleGameCards=originalGameCards;
+    const requestedOriginalGames=new Set(['sovera-food','night-food','greedy-wheel']);
+    let visibleGameCards=originalGameCards.filter(game=>requestedOriginalGames.has(game.id));
     function catalog(){
       overlay.classList.remove('sh-original-fullscreen');
-      sheet.innerHTML='<div class="grab"></div><h3>🎮 Original Games</h3>'+
+      sheet.innerHTML='<div class="grab"></div><h3>🎡 Original Food Wheel Games</h3>'+
         '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));'+
         'gap:10px;padding:8px 1px 16px;max-height:70vh;overflow:auto" id="sh-original-grid"></div>'+
         '<p style="font-size:12px;opacity:.8;text-align:center;margin:3px 0">'+
@@ -8356,7 +9930,7 @@
       banner.id='sh-verified-original-winners';
       banner.setAttribute('role','status');
       banner.setAttribute('aria-live','polite');
-      const gameIcon=game==='jackpot-fruit'?'🎰':game==='night-food'?'🌙':'🎡';
+      const gameIcon=(game==='jackpot-fruit'||game==='fruit-royale')?'🎰':game==='night-food'?'🌙':'🎡';
       let currentIndex=0;
       function paint(winner){
         const pill=doc.createElement('div');
@@ -8487,7 +10061,11 @@
       const target=current.element.contentWindow;
       if(!target)return;
       try{
-        const result=await api(method,'/original-games/'+current.item.id+'/'+data.action,
+        const query=data.action==='rankings'&&data.query&&
+          ['daily','weekly','monthly'].includes(data.query.period)&&
+          ['totalWin','totalBet','profitLoss','winCount'].includes(data.query.metric)
+          ?'?period='+data.query.period+'&metric='+data.query.metric:'';
+        const result=await api(method,'/original-games/'+current.item.id+'/'+data.action+query,
           data.action==='bet'?data.body:undefined);
         // If the user changed games mid-request, do not send any data to it.
         if(!session||currentGameFrame!==current)return;
@@ -8496,8 +10074,9 @@
           announceRoundWinners(current.item.id,result);
           // A winning round credits D1 on state reads. Refresh the shared
           // profile/room wallet when its coin balance changes, not just on bets.
-          if(Number.isSafeInteger(result?.coins)&&result.coins>=0&&
-             result.coins!==balance.coins&&
+          const authoritativeCoins=Number.isSafeInteger(result?.coins)?result.coins:result?.balance;
+          if(Number.isSafeInteger(authoritativeCoins)&&authoritativeCoins>=0&&
+             authoritativeCoins!==balance.coins&&
              Date.now()-originalGameWalletRefreshTime>=2500){
             originalGameWalletRefreshTime=Date.now();
             reloadWallet().catch(()=>{});
@@ -8527,7 +10106,7 @@
     api('GET','/game-catalog').then(result=>{
       if(!overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));
+      visibleGameCards=originalGameCards.filter(game=>requestedOriginalGames.has(game.id)&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(sheet.isConnected)sheet.textContent='Games are temporarily unavailable: '+errText(error);
@@ -8668,12 +10247,13 @@
     notificationPanel.setAttribute('aria-label','Notifications');
     notificationPanel.innerHTML='<div class="sh-notify-head">'+
       '<button class="sh-notify-action" type="button" id="sh-notify-back">‹ Back</button>'+
-      '<div><h2>🔔 Notifications</h2><p>Official notices, rewards, gifts & events</p></div>'+
+      '<div><h2>🔔 Notifications</h2><p>Receipts · recharge · shop · Family · BD · official notices</p></div>'+
       '</div><div class="sh-notify-head">'+
       '<span id="sh-notify-unread"></span>'+
       '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
       '</div><div style="margin:8px 0 14px">'+
-      '<button class="sh-notify-action" id="sh-notify-enable" type="button">🔔 Enable phone alerts</button>'+
+      '<button class="sh-notify-action" id="sh-notify-enable" type="button">🔔 Enable phone alerts</button>'+ 
+      '<button class="sh-notify-action" id="sh-notify-bonds" type="button" style="margin-left:7px">💌 CP / Friends Invitations</button>'+ 
       '</div><div class="sh-notify-list" id="sh-notify-list"></div>';
     document.getElementById('app').appendChild(notificationPanel);
     notificationPanel.querySelector('#sh-notify-back').onclick=()=>{
@@ -8682,6 +10262,10 @@
     notificationPanel.querySelector('#sh-notify-enable').onclick=async()=>{
       const enabled=await registerPushDevice(true);
       toast(enabled ? 'Phone alerts enabled' : 'Phone alerts not enabled. You can still use Sharika.');
+    };
+    notificationPanel.querySelector('#sh-notify-bonds').onclick=()=>{
+      notificationPanel.classList.remove('on');
+      showBondInbox();
     };
     notificationPanel.querySelector('#sh-notify-readall').onclick=async()=>{
       if(!session)return;
@@ -8692,22 +10276,24 @@
     };
     notificationBadges();
   }
-  async function refreshNotifications(render){
+  async function refreshNotifications(render,beforeId=null){
     if(!session)return;
     try{
-      const data=await api('GET','/notifications');
+      const data=await api('GET',beforeId?'/notifications/history/'+beforeId:'/notifications');
       notificationUnread=Number(data.unread_count)||0;
       notificationBadges();
       if(render||notificationPanel?.classList.contains('on')){
         const list=document.getElementById('sh-notify-list');
         if(!list)return;
-        list.textContent='';
+        const oldMore=list.querySelector('[data-notify-more]');
+        if(oldMore)oldMore.remove();
+        if(!beforeId)list.textContent='';
         const count=document.getElementById('sh-notify-unread');
         if(count)count.textContent=notificationUnread+' unread';
-        if(!(data.notifications||[]).length){
+        if(!(data.notifications||[]).length&&!beforeId){
           const empty=document.createElement('div');
           empty.className='sh-notify-empty';
-          empty.textContent='No notifications yet. Official notices and earned rewards will appear here.';
+          empty.textContent='No notifications yet. Your purchase receipts, recharge history, Family and BD updates will appear here.';
           list.appendChild(empty);return;
         }
         for(const item of data.notifications||[]){
@@ -8723,17 +10309,30 @@
           date.textContent=notificationDate(item.created_at)+(item.read_at?'':' · New');
           content.append(title,body,date);button.append(icon,content);
           button.onclick=async()=>{
-            if(item.read_at)return;
-            try{await api('PATCH','/notifications/'+item.id+'/read',{});await refreshNotifications(true);}
-            catch(error){toast('Unable to mark read: '+errText(error));}
+            if(!item.read_at){
+              try{await api('PATCH','/notifications/'+item.id+'/read',{});await refreshNotifications(true);}
+              catch(error){toast('Unable to mark read: '+errText(error));}
+            }
+            if(/^(CP|Friendship) invitation received$/.test(item.title)){
+              notificationPanel?.classList.remove('on');
+              await showBondInbox();
+            }
           };
           list.appendChild(button);
+        }
+        if(Number.isSafeInteger(Number(data.next_before))&&Number(data.next_before)>0){
+          const more=document.createElement('button');
+          more.type='button';more.dataset.notifyMore='1';
+          more.className='sh-notify-action';
+          more.style.cssText='width:100%;margin-top:12px;padding:12px';
+          more.textContent='View older notifications';
+          more.onclick=()=>refreshNotifications(true,Number(data.next_before));
+          list.appendChild(more);
         }
       }
     }catch(error){
       if(render&&notificationPanel?.classList.contains('on')){
-        document.getElementById('sh-notify-list').textContent=
-          'Unable to load notifications: '+errText(error);
+        toast('Unable to load notifications: '+errText(error));
       }
     }
   }

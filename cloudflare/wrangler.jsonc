@@ -5,7 +5,11 @@
   "compatibility_date": "2026-10-29",
   "account_id": "d81cf7c48fb9b36d468cb0a08720cd74",
   "workers_dev": true,
-  "triggers": { "crons": ["*/5 * * * *"] },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -19,7 +23,9 @@
     "FIREBASE_PROJECT_ID": "sharika-voice-chat-app",
     "ALLOWED_ORIGINS": "",
     "SHARIKA_LUCKY_GIFTS_ENABLED": "false",
-    "SHARIKA_COINS_CASH_REDEEMABLE": "false"
+    "SHARIKA_COINS_CASH_REDEEMABLE": "false",
+    "SHARIKA_FAMILY_SHEET_ID": "1u-6FRnn3noeK2-fQRT_FK_arengxQycZKXnJqjDEaxg",
+    "SHARIKA_FAMILY_APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbzGb4_6f0poV_FsBuhHKR-huLT4H2-4cwYCKZ3qXtJKUTX8bISfdGRlX759EG3m351zUg/exec"
   },
   "durable_objects": {
     "bindings": [
@@ -43,5 +49,23 @@
       "REALTIME_SFU_APP_ID",
       "REALTIME_SFU_APP_SECRET"
     ]
-  }
+  },
+  "ratelimits": [
+    {
+      "name": "SHARIKA_ACTION_RATE_LIMIT",
+      "namespace_id": "410201",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    },
+    {
+      "name": "SHARIKA_FINANCE_RATE_LIMIT",
+      "namespace_id": "410202",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    }
+  ]
 }

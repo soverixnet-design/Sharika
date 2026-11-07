@@ -1,0 +1,77 @@
+name: Sharika verified Family Diamond Target direct staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-family-bd-crystal-ledger-20261103
+    paths:
+      - '.github/workflows/sharika-family-diamond-target-direct-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-direct-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require all exact staging checks and Android emulator smoke tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run_id in 41692423718 41692412887 41692412672 41692412668; do
+            result="$(gh run view "$run_id" --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')"
+            test "$result" = success || { echo "::error::Run $run_id is not verified success ($result)"; exit 1; }
+          done
+          source_sha="$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13256514424 --jq '.workflow_run.head_sha')"
+          test "$source_sha" = c9bfc9d3916175f37d3352e4b08764c57438f6a0
+          echo 'EXACT_FAMILY_TARGET_SOURCE_BACKEND_TESTS_AND_EMULATOR_VERIFIED'
+
+      - name: Download only the verified Family Diamond Target APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41692412668
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: verified-apk
+
+      - name: Inspect APK and rename to direct downloadable Android file
+        run: |
+          set -euo pipefail
+          test -s verified-apk/app-debug.apk
+          unzip -tqq verified-apk/app-debug.apk
+          unzip -p verified-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/family-target.js"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const code=fs.readFileSync(process.env.RUNNER_TEMP+'/family-target.js','utf8');
+          for(const text of [
+            'Family Diamond Gift Target',
+            'data.target_progress',
+            'fmtDiamonds(progress.month)',
+            'fmtDiamonds(progress.lifetime)',
+            'sh-fam-refresh-target'
+          ]) if(!code.includes(text))throw Error('New Family target UI missing: '+text);
+          console.log('FAMILY_DIAMOND_PROGRESS_BUNDLED_VERIFIED');
+          NODE
+          install -m 0644 verified-apk/app-debug.apk verified-apk/Sharika-Family-Diamond-Target-Staging.apk
+          sha256sum verified-apk/Sharika-Family-Diamond-Target-Staging.apk
+
+      - name: Publish unique public staging prerelease with direct APK asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='sharika-family-diamond-target-staging-c9bfc9d3'
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing to overwrite it"
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Family-Diamond-Target-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target c9bfc9d3916175f37d3352e4b08764c57438f6a0 \
+            --title "Sharika Family Diamond Target (STAGING TEST APK)" \
+            --notes "Direct Android staging APK, not a ZIP. Shows Family ordinary-gift diamond target progress for today/week/month/all-time including owner gifts, with Refresh button. Current live staging API version 97 computes target totals without changing existing wallets, BD/Owner Crystal commissions, room rewards or gifts. Automated tests and Android emulator Back smoke test passed. DEBUG STAGING ONLY: not a Play Store release." \
+            --prerelease

@@ -73,15 +73,17 @@ const validAllocation={
   seller_public_id:'10000002',coins:200,request_id:'seller-allocate-test-1'
 };
 
-test('public seller list shows verified IDs but hides wallet stock',async()=>{
+test('authenticated approved seller directory exposes read-only exchange stock',async()=>{
   const {DB,state}=mockDB();
   const list=await app(DB,'GET','/api/v1/sellers');
   assert.equal(list.status,200);
   assert.deepEqual(list.data.sellers,[{
-    public_id:'10000003',name:'Approved Seller',pic:null
+    public_id:'10000003',name:'Approved Seller',pic:null,
+    available_coins:3000,unlimited_stock:false
   }]);
   assert.ok(state.queries.some(q=>q.sql.includes("WHERE s.active=1")));
-  assert.ok(!state.queries.some(q=>q.sql.includes('SELECT u.public_no,u.name,u.pic,s.active,s.available_coins')));
+  assert.ok(state.queries.some(q=>q.sql.includes('s.available_coins,s.unlimited_stock')));
+  assert.equal(list.data.read_only,true);
   const mine=await app(DB,'GET','/api/v1/sellers/me');
   assert.equal(mine.status,200);
   assert.equal(mine.data.seller.available_coins,3000);

@@ -55,7 +55,7 @@ test('Special IDs accept 1–10 decimal digits and preserve the real account ID'
     assert.equal(valid.status,200,value);
     assert.equal(valid.data.public_id,'10000001');
     assert.equal(valid.data.display_id,value);
-    assert.equal(valid.calls.at(-1).batch,2);
+    assert.equal(valid.calls.findLast(call=>call.batch!==undefined).batch,2);
     assert.ok(valid.calls.some(call=>call.sql?.includes('INSERT INTO sharika_admin_audit')));
   }
   for(const value of ['', '12345678901','1a','-1','1.0',' 7']){
@@ -111,7 +111,7 @@ test('revoke requires a stored assignment and writes audit in the same batch',as
     method:'PATCH',state:{assigned:true},body:{}});
   assert.equal(revoked.status,200);
   assert.equal(revoked.data.revoked,true);
-  assert.equal(revoked.calls.at(-1).batch,2);
+  assert.equal(revoked.calls.findLast(call=>call.batch!==undefined).batch,2);
 });
 test('lookup helper only reads unexpired aliases',()=>{
   assert.match(activeSpecialSelect('u'),/expires_at>datetime\('now'\)/);

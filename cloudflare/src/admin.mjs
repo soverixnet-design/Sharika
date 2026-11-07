@@ -16,6 +16,7 @@ import { handleAdminExchangeRate } from './exchange-rate.mjs';
 import { handleCosmeticAdmin,publicAppearanceSelect } from './cosmetics.mjs';
 import { handleOpeningAdmin } from './opening.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
+import { handleFamilyAdmin } from './family.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
 import { handleNotificationAdmin } from './notifications.mjs';
 import { handleOperationalRead } from './admin-operations.mjs';
@@ -131,7 +132,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   // The only routes delegated to legacy handlers are exact allow-listed
   // read/reply operations, and they can never acquire Super-Admin writes.
   const staffAction=await handleStaffAdmin({
-    request,env,uid,actor,operation,cors,reply,fail
+    request,env,uid,actor,operation,cors,reply,fail,ctx
   });
   if(staffAction)return staffAction;
   if(actor.role==='staff'&&operation!=='status'){
@@ -141,10 +142,13 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   }
 
   if(operation==='notifications')return await handleNotificationAdmin({request,env,uid,actor,operation,cors,reply,fail});
+  if(operation==='family'||operation.startsWith('family/'))return await handleFamilyAdmin({
+    request,env,uid,actor,operation,cors,reply,fail,ctx
+  });
   const operational=await handleOperationalRead({request,env,actor,operation,cors,reply,fail});
   if(operational)return operational;
   if(operation.startsWith('special-ids'))
-    return await handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail});
+    return await handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='profile-layout')return await handleProfileLayoutAdmin({
     request,db:env.DB,uid,role:actor.role,reply,fail,cors
   });
@@ -155,7 +159,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     return await handleEventAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='cosmetics'||operation==='cosmetics/grant')
     return await handleCosmeticAdmin({
-      request,db:env.DB,uid,role:actor.role,path,
+      request,db:env.DB,env,ctx,uid,role:actor.role,path,
       readBody:async req=>{const raw=await req.text();
         if(raw.length>8192)throw Error('body_too_large');return JSON.parse(raw||'{}');},
       reply,fail,cors
@@ -164,7 +168,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     request,db:env.DB,uid,role:actor.role,reply,fail,cors
   });
   if (operation.startsWith('recharges')) return await handleRechargeAdmin({
-    request, env, uid, actor, operation, cors, reply, fail
+    request, env, uid, actor, operation, cors, reply, fail, ctx
   });
   if (operation==='invites'||operation.startsWith('invites/')) return await handleInviteAdmin({
     request, env, uid, actor, operation, cors, reply, fail
@@ -174,14 +178,14 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   });
   if(operation==='premium'||operation==='premium/grant')
     return await handlePremiumAdmin({
-      request,env,uid,actor,operation,cors,reply,fail
+      request,env,uid,actor,operation,cors,reply,fail,ctx
     });
   if(operation==='bonds/rewards'||operation==='bonds/rewards/settle')
-    return await handleCpRewardAdmin({request,env,uid,actor,operation,cors,reply,fail});
+    return await handleCpRewardAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='bonds'||/^bonds\/gifts\/[1-9][0-9]{0,9}$/.test(operation))
     return await handleBondAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if (operation.startsWith('sellers')) return await handleSellerAdmin({
-    request, env, uid, actor, operation, cors, reply, fail
+    request, env, uid, actor, operation, cors, reply, fail, ctx
   });
   if(operation==='banners'||/^banners\/[1-9][0-9]{0,8}(?:\/image)?$/.test(operation))
     return await handleBannerAdmin({

@@ -422,7 +422,7 @@ export class SharikaVoiceRoom extends DurableObject {
   // Every room attendee reads the same server-authored entry events; join
   // animations cannot be forged with a client-only decorative style.
   async roomEntryAnnounce(uid,publicId,displayName,style) {
-    if(!style)return {announced:false};
+    // No decorative entry effect is required for a genuine join notification.
     const now=Date.now();
     const recent=this.ctx.storage.sql.exec(
       'SELECT created_at_ms FROM room_entry_events WHERE uid=? ORDER BY id DESC LIMIT 1',uid

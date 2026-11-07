@@ -1,0 +1,113 @@
+name: Sharika Royal Family V2 staging APK
+
+on:
+  push:
+    branches:
+      - feature/sharika-family-bd-crystal-ledger-20261103
+    paths:
+      - '.github/workflows/sharika-royal-family-v2-prerelease.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-tested-royal-family-v2:
+    name: Publish tested Royal Family V2 APK (not ZIP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require successful integrated Android, emulator, and Cloudflare checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+          test "$(gh run view 41754145282 --repo soverixnet-design/Sharika --json conclusion,headSha --jq '.conclusion+" "+.headSha')" = 'success 7cc74095890775d281497398108cae15025f2688'
+          
+          test "$(gh api repos/soverixnet-design/Sharika/actions/artifacts/13287069691 --jq '.workflow_run.head_sha')" = 7cc74095890775d281497398108cae15025f2688
+          test "$(gh run view 41754321754 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          test "$(gh run view 41754321795 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          
+          test "$(gh run view 41754474493 --repo soverixnet-design/Sharika --json conclusion --jq '.conclusion')" = success
+          echo 'SHARIKA_ROYAL_FAMILY_V2_APK_SERVER_AND_EMULATOR_PASSED'
+
+      - name: Download only approved, stable-signed Android staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          run-id: 41754145282
+          repository: soverixnet-design/Sharika
+          github-token: ${{ github.token }}
+          path: integrated-apk
+
+      - name: Verify login, original wheels, and room UI inside Android APK
+        run: |
+          test -s integrated-apk/app-debug.apk
+          unzip -tqq integrated-apk/app-debug.apk
+          for asset in original-games/sovera-food-wheel.html original-games/night-food-wheel.html greedy-wheel/index.html greedy-wheel/sharika-bridge.js royal-room-ui.js royal-room-ui.css; do
+            unzip -Z1 integrated-apk/app-debug.apk | grep -Fx "assets/$asset"
+          done
+          unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/startup-safety.js'
+          unzip -Z1 integrated-apk/app-debug.apk | grep -Fx 'assets/sharika_logo.jpg'
+          unzip -p integrated-apk/app-debug.apk assets/index.html > "$RUNNER_TEMP/verified-startup-index.html"
+          grep -Fq 'id="sharika-startup-safety"' "$RUNNER_TEMP/verified-startup-index.html"
+          test "$(grep -o 'http-equiv="Content-Security-Policy"' "$RUNNER_TEMP/verified-startup-index.html" | wc -l)" -eq 1
+          node - <<'NODE'
+          const fs=require('node:fs'),vm=require('node:vm');
+          const html=fs.readFileSync(process.env.RUNNER_TEMP+'/verified-startup-index.html','utf8');
+          const scripts=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+          let hasLogin=false;
+          for(const [i,match] of scripts.entries()){
+            if(!match[1].trim())continue;
+            new vm.Script(match[1],{filename:'packaged-inline-'+i+'.js'});
+            if(match[1].includes('function showAuth('))hasLogin=true;
+          }
+          if(!hasLogin)throw Error('Packaged login script missing');
+          console.log('SHARIKA_UNIFIED_LOGIN_SCRIPTS_PARSE_OK');
+          NODE
+          unzip -p integrated-apk/app-debug.apk assets/connection.js > "$RUNNER_TEMP/original-wheels-connection.js"
+          unzip -p integrated-apk/app-debug.apk assets/royal-room-ui.js > "$RUNNER_TEMP/original-wheels-room-ui.js"
+          node - <<'NODE'
+          const fs=require('fs');
+          const parent=fs.readFileSync(process.env.RUNNER_TEMP+'/original-wheels-connection.js','utf8');
+          const room=fs.readFileSync(process.env.RUNNER_TEMP+'/original-wheels-room-ui.js','utf8');
+          const games=["id:'sovera-food'","id:'night-food'","id:'greedy-wheel'"];
+          if(!games.every(k=>parent.includes(k)) ||
+             !parent.includes("new Set(['sovera-food','night-food','greedy-wheel'])") ||
+             !parent.includes("requestedOriginalGames.has(game.id)&&enabled.has(game.id)") ||
+             !parent.includes('sharika:original-request') ||
+             !parent.includes('ensureRoomGamePortal') ||
+             parent.includes("game.id==='fruit-royale'&&enabled.has(game.id)") ||
+             !room.includes("smallRank.onclick=()=>showRankings('daily')") ||
+             !room.includes('sh-room-announcement') ||
+             !room.includes("menuItem('📣 Announcement'"))
+            throw Error('Original wheel menu or room UI missing from packaged APK');
+
+          if(!parent.includes('renderRoyalFamily=function(data)') ||
+             !parent.includes('sh-fam-v2-stats') ||
+             !parent.includes('showFamilyMemberReport') ||
+             !parent.includes('showFamilySellerDirectory') ||
+             !parent.includes('bd.onclick=openRoyalBD') ||
+             !parent.includes('sharika-seller-wallet-v2-style') ||
+             !parent.includes('shFamCrownFloat'))
+             throw Error('Royal Family V2 design or separate BD entry missing in packaged APK');
+          console.log('ROYAL_FAMILY_V2_AND_ORIGINAL_WHEELS_VERIFIED');
+          NODE
+          cp integrated-apk/app-debug.apk integrated-apk/Sharika-Royal-Family-3D-Staging.apk
+          sha256sum integrated-apk/Sharika-Royal-Family-3D-Staging.apk
+
+      - name: Publish direct test APK as a clearly marked GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=sharika-royal-family-3d-staging-7cc7409
+          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo "::error::A release with this tag already exists; never overwrite user downloads."
+            exit 1
+          fi
+          gh release create "$TAG" integrated-apk/Sharika-Royal-Family-3D-Staging.apk \
+            --repo soverixnet-design/Sharika \
+            --target 7cc74095890775d281497398108cae15025f2688 \
+            --title "Sharika Royal Family 3D UI + Original Wheels — Staging APK" \
+            --notes "Staging test APK with original Sovera Food Wheel, Night Food Wheel, Greedy Wheel, Jackpot disabled. New Royal Family V2 gold-purple 3D-style UI includes member roster, verified dated gift report restricted to owner or self, Crystal ledger, approved seller directory with read-only available coins, separate BD Center and restyled Seller Wallet. Existing seller transfer continues through audited Admin approval; Seller Accept/Reject workflow is not yet enabled. Family salary displays Not set until policy configured. Preserves existing users, rooms, balances, and real-time voice. Automated backend tests and Android emulator Back smoke test passed; physical-device UI fidelity, Google login, two-phone voice, and transfers still need end-to-end testing before production." \
+            --prerelease

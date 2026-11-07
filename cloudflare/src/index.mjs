@@ -1,8 +1,13 @@
 import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from './notifications.mjs';
+// Transaction receipts are recorded by the corresponding verified business handlers.
 import { verifyFirebaseToken } from './auth.mjs';
+import { allowSensitiveAction } from './security-rate-limit.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
-import { handleRoomModeration } from './moderation.mjs';
+import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
+import {readRoomAccessLock,writeRoomAccessLock} from './room-access-lock.mjs';
 import { handleSellerApp } from './sellers.mjs';
+import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
+import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
@@ -18,6 +23,7 @@ import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleOpeningApp } from './opening.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import {handleFruitRoyaleRequest,settleFruitDueBets} from './fruit-royale.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
@@ -234,6 +240,12 @@ export async function handleRequest(request, env, ctx) {
   if (!actor || !actor.verified) return fail('not_authenticated', 401, cors);
 
   const uid = actor.uid;
+  // Per-user edge throttling for sensitive state changes; safe read-only
+  // requests and real-time SFU signaling are intentionally unaffected.
+  try {
+    if (!await allowSensitiveAction({ env, uid, path, method: request.method }))
+      return fail('request_rate_limited', 429, cors);
+  } catch (_) { return fail('rate_limiter_unavailable', 503, cors); }
   const parts = path.split('/').filter(Boolean);
   try {
     if(path==='/api/v1/opening/next')return await handleOpeningApp({
@@ -246,12 +258,12 @@ export async function handleRequest(request, env, ctx) {
       return reply(await readCpRewardBoard(env.DB),200,cors);
     }
     if(path.startsWith('/api/v1/bonds'))return await handleBondApp({
-      request,env,uid,path,cors,reply,fail
+      request,env,uid,path,cors,reply,fail,ctx
     });
     if(path==='/api/v1/cosmetics'||path.startsWith('/api/v1/cosmetics/')){
       await assertActive(env.DB,uid);
       const result=await handleCosmeticApp({
-        request,db:env.DB,uid,path,readBody,reply,fail,cors
+        request,db:env.DB,env,ctx,uid,path,readBody,reply,fail,cors
       });
       if(result)return result;
       return fail('cosmetic_route_not_found',404,cors);
@@ -284,10 +296,13 @@ export async function handleRequest(request, env, ctx) {
     });
     if(path==='/api/v1/premium'||path==='/api/v1/premium/purchase'||
        path==='/api/v1/premium/daily/claim')return await handlePremiumApp({
-      request,env,uid,path,cors,reply,fail
+      request,env,uid,path,cors,reply,fail,ctx
+    });
+    if (path.startsWith('/api/v1/family')) return await handleFamilyApp({
+      request, env, uid, path, cors, reply, fail, ctx
     });
     if (path.startsWith('/api/v1/sellers')) return await handleSellerApp({
-      request, env, uid, path, cors, reply, fail
+      request, env, uid, path, cors, reply, fail, ctx
     });
     // Authenticated presence is independent of microphone permission. This
     // allows the admin panel to count listeners as well as speakers.
@@ -464,7 +479,19 @@ export async function handleRequest(request, env, ctx) {
         "WHERE u.public_no=? OR (s.special_id=? AND (s.expires_at IS NULL OR s.expires_at>datetime('now'))) LIMIT 1")
         .bind(Number(parts[3]),parts[3]).first();
       const special=user?await activeSpecial(env.DB,user.auth_uid):null;
+      const family=user?await env.DB.prepare(
+        'SELECT f.id,f.name,f.status,m.role FROM sharika_family_members m '+
+        'JOIN sharika_families f ON f.id=m.family_id WHERE m.user_uid=? LIMIT 1'
+      ).bind(user.auth_uid).first():null;
+      const [activeBD,activeSeller]=user?await Promise.all([
+        env.DB.prepare('SELECT 1 AS active FROM sharika_bd_agents WHERE bd_uid=? AND active=1')
+          .bind(user.auth_uid).first(),
+        env.DB.prepare('SELECT 1 AS active FROM sharika_coin_sellers WHERE seller_uid=? AND active=1')
+          .bind(user.auth_uid).first()
+      ]):[null,null];
       return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
+        bd_active:!!activeBD,seller_active:!!activeSeller,
+        family:family?{id:family.id,name:family.name,status:family.status,role:family.role}:null,
         special_id:special?.special_id||null,display_id:special?.special_id||publicId(user.public_no),
         special_frame:special?.frame||null,
         wealth_level: user.wealth_level, charm_level: user.charm_level,
@@ -683,10 +710,13 @@ export async function handleRequest(request, env, ctx) {
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='original-games'){
       await assertActive(env.DB,uid);
       if(parts.length===3&&request.method==='GET')
-        return reply({games:['sovera-food','night-food','jackpot-fruit'],virtual_coins_only:true},200,cors);
+        return reply({games:['sovera-food','night-food','fruit-royale'],virtual_coins_only:true},200,cors);
       if(parts.length===5){
         if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
+        if(parts[3]==='fruit-royale')
+          return await handleFruitRoyaleRequest({request,db:env.DB,uid,
+            action:parts[4],reply,fail,cors});
         return await handleOriginalGameRequest({request,db:env.DB,uid,game:parts[3],
           action:parts[4],reply,fail,cors});
       }
@@ -742,6 +772,7 @@ export async function handleRequest(request, env, ctx) {
       await settleDueBets(env.DB,uid);
       await settleOriginalDueBets(env.DB);
       await settleGreedyDueBets(env.DB);
+      await settleFruitDueBets(env.DB);
       const user = await me(env.DB,uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
@@ -908,7 +939,8 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {
         const rows=await env.DB.prepare(
-          'SELECT r.*,c.version AS cover_version,u.country AS owner_country FROM sharika_rooms r '+
+          'SELECT r.*,COALESCE(al.locked,0) AS access_locked,c.version AS cover_version,u.country AS owner_country,'+activeSpecialSelect('u')+' FROM sharika_rooms r '+
+          'LEFT JOIN sharika_room_access_locks al ON al.room_id=r.id '+
           'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
           'LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id '+
           'ORDER BY r.created_at DESC LIMIT 100'
@@ -922,7 +954,8 @@ export async function handleRequest(request, env, ctx) {
           } catch(error) {console.warn('room_presence_unavailable',error?.message);}
         }
         return reply({rooms:(rows.results||[]).map(r=>({
-          ...r,cover_url:r.cover_version?url.origin+'/api/v1/rooms/'+r.id+
+          ...r,owner_display_id:r.special_id||r.id,
+          cover_url:r.cover_version?url.origin+'/api/v1/rooms/'+r.id+
             '/cover?v='+r.cover_version:null,
           online_count:Number(online?.[r.id])||0
         }))},200,cors);
@@ -984,6 +1017,22 @@ export async function handleRequest(request, env, ctx) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // A room-entry lock is distinct from mic-seat locks. Existing members
+      // stay in the room; new guests cannot enter until Owner/Admin unlocks.
+      if(parts.length===5 && action==='access-lock') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(request.method==='GET')
+          return reply({room_id:roomId,...await readRoomAccessLock(env.DB,roomId)},200,cors);
+        if(request.method==='PUT') {
+          if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid))
+            return fail('room_moderator_only',403,cors);
+          const body=await readBody(request);
+          if(typeof body.locked!=='boolean')return fail('invalid_room_access_lock',400,cors);
+          const state=await writeRoomAccessLock(env.DB,roomId,uid,body.locked);
+          return reply({room_id:roomId,...state},200,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       // An owner may invite an unseated, verified member to an unlocked mic seat.
       if(parts.length===5 && action==='invitations') {
         if(!member)return fail('join_room_first',403,cors);
@@ -1023,6 +1072,30 @@ export async function handleRequest(request, env, ctx) {
         if(result.error)return fail(result.error,
           result.error==='invite_not_found'?404:409,cors);
         return reply(result,200,cors);
+      }
+      // Persistent, owner-editable room announcement. Every newly joined member
+      // reads the same text from D1; it never modifies chat or wallet balances.
+      if(parts.length===5 && action==='announcement'){
+        if(!member)return fail('join_room_first',403,cors);
+        if(request.method==='GET'){
+          const row=await env.DB.prepare(
+            'SELECT body,updated_at FROM sharika_room_announcements WHERE room_id=?'
+          ).bind(roomId).first();
+          return reply({room_id:roomId,text:row?.body||'',updated_at:row?.updated_at||null},200,cors);
+        }
+        if(request.method==='PUT'){
+          if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+          const body=await readBody(request);
+          if(typeof body.text!=='string'||body.text.length>280)
+            return fail('invalid_room_announcement',400,cors);
+          const value=body.text.trim();
+          await env.DB.prepare(
+            "INSERT INTO sharika_room_announcements(room_id,body,updated_by,updated_at) VALUES(?,?,?,datetime('now')) "+
+            "ON CONFLICT(room_id) DO UPDATE SET body=excluded.body,updated_by=excluded.updated_by,updated_at=excluded.updated_at"
+          ).bind(roomId,value,uid).run();
+          return reply({room_id:roomId,text:value,saved:true},200,cors);
+        }
+        return fail('method_not_allowed',405,cors);
       }
       // Text chat is real-time room data, not a browser-only fake conversation.
       // Only verified members may read or send, and the Worker supplies identity.
@@ -1091,8 +1164,23 @@ export async function handleRequest(request, env, ctx) {
         if(ban&&Number(ban.banned_until_ms)>Date.now())
           return fail('room_temporarily_blocked',403,cors);
         if (!member) {
-          await env.DB.prepare(`INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) VALUES(?,?,'member')`)
-            .bind(roomId, uid).run();
+          const privileged=room.owner_id===uid||await isRoomAdmin(env,roomId,uid);
+          // Guests are admitted with one conditional D1 statement. A lock
+          // racing with their join cannot slip between a read and the insert.
+          const added=privileged
+            ?await env.DB.prepare("INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) VALUES(?,?,'member')")
+              .bind(roomId,uid).run()
+            :await env.DB.prepare(
+              "INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) "+
+              "SELECT ?,?,'member' WHERE NOT EXISTS ("+
+              'SELECT 1 FROM sharika_room_access_locks WHERE room_id=? AND locked=1)'
+            ).bind(roomId,uid,roomId).run();
+          if(!privileged && !added.meta?.changes){
+            const current=await env.DB.prepare(
+              'SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?'
+            ).bind(roomId,uid).first();
+            if(!current)return fail('room_locked',403,cors);
+          }
         }
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
         // Room-wide arrival event uses the verified equipped style and ID.
@@ -1105,7 +1193,8 @@ export async function handleRequest(request, env, ctx) {
             ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
               ?'svip-entry-'+String(svipLevel).padStart(2,'0')
               :(entrant.entry_style||'');
-          if(entry)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
+          // Record every verified join, including users without a paid entry effect.
+          await env.VOICE_ROOMS.getByName('sharika:'+roomId)
             .roomEntryAnnounce(uid,publicId(entrant.public_no),entrant.name,entry);
         }
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
@@ -1120,6 +1209,46 @@ export async function handleRequest(request, env, ctx) {
         if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .seatInviteClear(uid);
         return reply({ left: true, owner: room.owner_id === uid }, 200, cors);
+      }
+      // Day/week/month room rankings show real senders to members of this
+      // room only. This read-only leaderboard never awards or moves coins.
+      if (parts.length===5 && action==='contributors' && request.method==='GET') {
+        if(!member)return fail('join_room_first',403,cors);
+        const period=url.searchParams.get('period')||'daily';
+        if(!['daily','weekly','monthly'].includes(period))
+          return fail('invalid_ranking_period',400,cors);
+        const now=new Date();
+        const since=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),
+          period==='monthly'?1:now.getUTCDate()));
+        if(period==='weekly')
+          since.setUTCDate(since.getUTCDate()-(since.getUTCDay()+6)%7);
+        const after=since.toISOString().slice(0,19).replace('T',' ');
+        const [group,summary]=await Promise.all([
+          env.DB.prepare(
+            'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
+            'u.pic AS sender_pic,u.special_id AS sender_special_id,'+
+            'SUM(t.total_coins) AS total '+
+            'FROM sharika_gift_transactions t '+
+            'JOIN sharika_users u ON u.auth_uid=t.sender_uid '+
+            'WHERE t.room_id=? AND t.created_at>=? '+
+            'GROUP BY t.sender_uid '+
+            'ORDER BY total DESC,u.public_no ASC LIMIT 30'
+          ).bind(roomId,after).all(),
+          env.DB.prepare(
+            'SELECT COALESCE(SUM(total_coins),0) AS total '+
+            'FROM sharika_gift_transactions WHERE room_id=? AND created_at>=?'
+          ).bind(roomId,after).first()
+        ]);
+        return reply({room_id:roomId,period,timezone:'UTC',
+          since_utc:since.toISOString(),
+          total_contribution_coins:Number(summary?.total)||0,
+          leaders:(group.results||[]).map((row,i)=>({
+            rank:i+1,name:row.sender_name||'Member',
+            pic:row.sender_pic||null,
+            public_id:publicId(row.sender_no),
+            display_id:row.sender_special_id||publicId(row.sender_no),
+            total:Number(row.total)||0
+          }))},200,cors);
       }
       // Ordinary gifts earn a 10% room share. Newly settled gifts also credit
       // whole coins once to the owner's audited personal wallet; the room
@@ -1368,6 +1497,9 @@ export async function handleRequest(request, env, ctx) {
               "WHERE sender_uid=? AND request_id=?))"
             ).bind(room.owner_id,ownerRewardCoins,room.owner_id,uid,requestId));
           }
+          // Family and BD Crystal commissions settle atomically with this gift.
+          // These entries are not spendable coins and exclude Lucky gifts.
+          statements.push(...familyGiftCommissionStatements(env.DB,uid,requestId,gift.tab));
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
@@ -1418,9 +1550,17 @@ export async function handleRequest(request, env, ctx) {
         return handleRoomModeration({
           request,env,uid,room,roomId,reply,fail,cors,readBody
         });
+      if(parts.length===5 && action==='bans')
+        return handleRoomBanList({
+          request,env,uid,room,roomId,reply,fail,cors
+        });
+      if(parts.length===5 && action==='admins')
+        return handleRoomAdminAssignment({
+          request,env,uid,room,roomId,reply,fail,cors,readBody
+        });
       if(parts.length===6 && action==='locks' && parts[5]==='all' &&
          request.method==='PUT') {
-        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid)) return fail('room_owner_only',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const body=await readBody(request);
         if(typeof body.locked!=='boolean')
@@ -1431,7 +1571,7 @@ export async function handleRequest(request, env, ctx) {
         return reply(result,200,cors);
       }
       if (parts.length===5 && action==='locks' && request.method==='PUT') {
-        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid)) return fail('room_owner_only',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
         const body=await readBody(request);
         if(!Number.isInteger(body.seat_no)||body.seat_no<1||
@@ -1467,10 +1607,14 @@ export async function handleRequest(request, env, ctx) {
       if (parts.length === 5 && action === 'members' && request.method === 'GET') {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_seats_unavailable',503,cors);
-        const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,m.role,m.seat_no,m.muted,m.joined_at,
+        const result = await env.DB.prepare(`SELECT m.room_id,m.user_id,
+          CASE WHEN m.user_id=? THEN 'owner' WHEN ra.user_id IS NOT NULL THEN 'admin' ELSE 'member' END AS role,
+          m.seat_no,m.muted,m.joined_at,
           u.public_no,u.name,u.pic,u.wealth_level,u.frame_style,u.entry_style,u.medal_style,u.name_tag_style,
           ${activeSpecialSelect('u')},${publicSvipSelect('u')} FROM sharika_room_members m
-          JOIN sharika_users u ON u.auth_uid=m.user_id WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(roomId).all();
+          JOIN sharika_users u ON u.auth_uid=m.user_id
+          LEFT JOIN sharika_room_admins ra ON ra.room_id=m.room_id AND ra.user_id=m.user_id
+          WHERE m.room_id=? ORDER BY m.joined_at LIMIT 100`).bind(room.owner_id,roomId).all();
         // A killed Android process may never call /leave. Show active presence
         // (with a 90-second grace period for new joins), without mutating the
         // membership ledger in this read-only room snapshot.
@@ -1501,6 +1645,7 @@ export async function handleRequest(request, env, ctx) {
           'SELECT version FROM sharika_room_covers WHERE room_id=?'
         ).bind(roomId).first() : null;
         return reply({ room: roomId,
+          access_locked:(await readRoomAccessLock(env.DB,roomId)).locked,
           theme:ROOM_THEMES.has(room.theme)?room.theme:'mid',
           theme_background_url:wallpaper?.version
             ? url.origin+'/api/v1/rooms/'+roomId+'/theme-image?v='+wallpaper.version
@@ -1523,7 +1668,10 @@ export async function handleRequest(request, env, ctx) {
         if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET || !/^wss:\/\//.test(env.LIVEKIT_URL || '')) {
           return fail('voice_not_configured', 503, cors);
         }
-        const publish = room.owner_id === uid || (member.seat_no !== null && !member.muted);
+        // Match the SFU seat permission: the owner is a listener until they
+        // deliberately choose an unlocked microphone seat, just like guests.
+        const publish = Number.isInteger(member.seat_no) && member.seat_no > 0 &&
+          !member.muted;
         const token = await createVoiceToken(env, uid, roomId, publish, room.owner_id === uid);
         return reply({ token, url: env.LIVEKIT_URL, room: 'sharika:' + roomId, publish }, 200, cors);
       }
@@ -1549,9 +1697,13 @@ export default {
   fetch:handleRequest,
   scheduled(_event,env,context){
     if(env.DB){
-      context.waitUntil(expireBondInvites(env.DB,Date.now(),100)
+      context.waitUntil(settleFruitDueBets(env.DB)
+        .catch(error=>console.error('fruit_royale_settlement_cron_error',error.message)));
+      context.waitUntil(expireBondInvites(env.DB,Date.now(),100,env,context)
         .catch(error=>console.error('bond_expiry_cron_error',error.message)));
-      context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true)
+      context.waitUntil(syncFamilyGoogleSheetIfDue(env)
+        .catch(error=>console.error('family_sheets_cron_error',error.message)));
+      context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true,env,context)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
     }
   }
