@@ -9262,9 +9262,9 @@
         return;
       }
       // Private wallet: access and every stock movement are verified by the Worker.
-      const [mine,transfers,allocations]=await Promise.all([
+      const [mine,transfers,allocations,salaryIncoming]=await Promise.all([
         api('GET','/sellers/me'),api('GET','/sellers/transfers'),
-        api('GET','/sellers/allocations')
+        api('GET','/sellers/allocations'),api('GET','/sellers/salary-incoming')
       ]);
       if(!root.isConnected)return;
       const self=mine.seller;
@@ -9293,6 +9293,13 @@
         ' → Seller '+sellerEscape(visibleSellerId(a.seller_public_id))+
         (a.created_at?' · '+sellerEscape(a.created_at):'')+'</div>'
       ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';
+      const salaryEntries=(salaryIncoming.transfers||[]).slice(0,30).map(t=>
+        '<div class="shw-entry"><strong>💼 +'+coinsText(t.credited_stock_coins)+
+        ' Seller stock coins</strong>'+sellerEscape(t.sender_name)+
+        ' · Salary Wallet ID '+sellerEscape(t.sender_public_id)+
+        ' · Transfer #'+sellerEscape(t.id)+
+        (t.created_at?' · '+sellerEscape(t.created_at):'')+'</div>'
+      ).join('')||'<div class="shw-empty">No salary transfers received.</div>';
       root.innerHTML=
         '<section class="shw-hero">'+
           '<div class="shw-eyebrow">🪙 '+(unlimited?'Unlimited seller stock':'Available seller stock')+'</div>'+
@@ -9328,7 +9335,10 @@
         '</details>'+
         '<details class="shw-details"><summary>🏦 Stock allocations ('+
           (allocations.allocations||[]).length+')</summary>'+
-          allocationEntries+'</details>';
+          allocationEntries+'</details>'+
+        '<details class="shw-details"><summary>💼 Salary Wallet transfers received ('+
+          (salaryIncoming.transfers||[]).length+')</summary>'+
+          salaryEntries+'</details>';
       const targetField=document.getElementById('sharika-seller-target');
       const amountField=document.getElementById('sharika-seller-amount');
       const note=document.getElementById('sharika-seller-note');
