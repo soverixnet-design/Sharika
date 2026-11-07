@@ -534,7 +534,7 @@
       '<p class="ag-muted">Seller receives stock coins. No Main Wallet coins are deducted.</p>'+ 
       '<div class="ag-panel"><h3>Salary Seller Transfer History</h3>'+
       (sellerHistory.map(t=>'<div class="ag-activity"><span class="ag-grow"><b>'+
-        fmt(t.credited_stock_coins)+' coins → '+esc(t.seller_name||'Coin Seller')+'</b><small>Seller ID '+
+        fmt(t.credited_coins)+' coins → '+esc(t.seller_name||'Coin Seller')+'</b><small>Seller ID '+
         esc(t.seller_public_id)+' · '+readableDate(t.created_at)+'</small></span>'+ 
         '<span class="ag-value">✓</span></div>').join('')||
         '<div class="ag-empty">No Seller Salary transfers yet.</div>')+'</div></div>'+ 
