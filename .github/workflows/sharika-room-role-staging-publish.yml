@@ -1,0 +1,96 @@
+name: Sharika verified room-role staging Worker publish
+
+# One-shot, isolated staging rollout. Edits to ordinary app/Worker files do
+# not trigger another deployment; never deploy production or reset D1.
+on:
+  push:
+    branches:
+      - feature/sharika-full-integrated-staging-20261107
+    paths:
+      - '.github/workflows/sharika-room-role-staging-publish.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  staging-api-only:
+    name: Test and publish only existing Sharika staging API Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Checkout this exact staging branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Node for project tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Refuse production, missing secrets, wrong D1, or altered voice bindings
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-full-integrated-staging-20261107'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const db=c.d1_databases?.[0],voice=c.durable_objects?.bindings?.[0];
+          const bucket=c.r2_buckets?.[0];
+          const source=readFileSync('src/index.mjs','utf8');
+          if(c.name!=='sharika-api-staging' ||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74' ||
+             c.main!=='src/voice-worker.mjs' ||
+             c.workers_dev!==true || c.keep_vars!==true ||
+             c.vars?.SHARIKA_ENV!=='staging' ||
+             c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false' ||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             c.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false' ||
+             c.d1_databases?.length!==1 || db?.binding!=='DB' ||
+             db.database_name!=='sharika-staging' ||
+             db.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a' ||
+             c.r2_buckets?.length!==1 || bucket?.binding!=='MEDIA_BUCKET' ||
+             bucket.bucket_name!=='sharika-staging-media' ||
+             c.durable_objects?.bindings?.length!==1 ||
+             voice?.name!=='VOICE_ROOMS' ||
+             voice.class_name!=='SharikaVoiceRoom' ||
+             !c.secrets?.required?.includes('REALTIME_SFU_APP_ID') ||
+             !c.secrets?.required?.includes('REALTIME_SFU_APP_SECRET') ||
+             !source.includes('self_state:{role:ownMemberRole,seat_no:member.seat_no,muted:!!member.muted}')) {
+            throw new Error('Refusing unexpected staging target, bindings or room-role source');
+          }
+          console.log('Safe staging-only Worker source and bindings verified');
+          NODE
+
+      - name: Run complete Worker and room-role regression tests
+        run: npm run check
+
+      - name: Verify existing staging D1 without changing any data
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS existing_rooms FROM sharika_rooms"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS room_admin_grants FROM sharika_room_admins"
+
+      - name: Build the Worker bundle with zero remote writes
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-room-role-staging-dry-run
+
+      - name: Publish verified code only to existing staging Worker
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+
+      - name: Verify staging health and D1 after rollout
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 4 --retry-delay 2             https://sharika-api-staging.soverixnet.workers.dev/health |
+          node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const r=JSON.parse(s);if(r.ok!==true||r.service!=="sharika-cloudflare-staging"||r.environment!=="staging")process.exit(1);console.log("SHARIKA_STAGING_WORKER_AND_D1_HEALTH_OK")})'
