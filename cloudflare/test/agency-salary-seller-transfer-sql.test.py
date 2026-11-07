@@ -46,6 +46,12 @@ for kind, beneficiary, rate in (("host_salary", "host", 4000), ("agency", "owner
         "VALUES(1,1,'host',?,?,?,?,datetime('now','-2 days'))",
         (beneficiary, kind, rate, 5000000*rate),
     )
+# A fully isolated clone of two test identities covers real weekly cutoff behavior.
+# No data from the deployed staging D1 is copied or modified.
+db.commit()
+weekly = sqlite3.connect(":memory:")
+db.backup(weekly)
+weekly.execute("PRAGMA foreign_keys=ON")
 db.execute("UPDATE sharika_agency_policy SET settlement_mode='daily'")
 
 
@@ -133,3 +139,89 @@ except sqlite3.IntegrityError as e:
 assert db.execute("SELECT COUNT(*) FROM sharika_agency_salary_seller_transfers").fetchone() == (1,)
 print("Salary -> Seller SQL: shared settlement permission, atomic seller stock, "
       "no main-wallet debit, exchange/transfer shared balance, replay guard and immutable history")
+
+# WEEKLY PATH: the same Salary cannot be spent before period close, even when
+# Host gifts exceed target; once mature, Seller transfer and personal Exchange
+# must share one remaining balance and leave Main Wallet untouched on transfer.
+weekly.execute("UPDATE sharika_agency_policy SET settlement_mode='weekly'")
+weekly.execute("UPDATE sharika_agency_salary_config SET exchange_enabled=1")
+weekly.execute(
+    "UPDATE sharika_agency_earnings SET created_at="
+    "datetime('now','weekday 0','-6 days','start of day','+1 day')"
+)
+
+def weekly_transfer(coins, key):
+    weekly.execute("SAVEPOINT weekly_salary_transfer")
+    try:
+        weekly.execute(
+            "INSERT INTO sharika_agency_salary_seller_transfers("
+            "auth_uid,seller_uid,request_id,salary_units,credited_coins,"
+            "settlement_mode,policy_version) VALUES("
+            "'host','seller',?,?,?,'weekly',1)",
+            (key, coins * 10000, coins)
+        )
+        weekly.execute(
+            "UPDATE sharika_coin_sellers SET available_coins="
+            "CASE WHEN active=1 AND available_coins<=? THEN available_coins+? ELSE -1 END "
+            "WHERE seller_uid='seller'", (1000000000-coins, coins)
+        )
+        weekly.execute("RELEASE weekly_salary_transfer")
+    except sqlite3.IntegrityError:
+        weekly.execute("ROLLBACK TO weekly_salary_transfer")
+        weekly.execute("RELEASE weekly_salary_transfer")
+        raise
+
+assert weekly.execute(
+    "SELECT coins FROM sharika_users WHERE auth_uid='host'"
+).fetchone() == (1000,)
+try:
+    weekly_transfer(500000, "weekly-before-cutoff")
+    raise AssertionError("Current-week Salary must not transfer before weekly maturity")
+except sqlite3.IntegrityError as error:
+    assert "agency_salary_not_matured_or_insufficient" in str(error)
+assert weekly.execute(
+    "SELECT available_coins FROM sharika_coin_sellers WHERE seller_uid='seller'"
+).fetchone() == (1000,)
+
+# Simulate the next weekly settlement only in the isolated SQLite fixture.
+weekly.execute(
+    "UPDATE sharika_agency_earnings SET created_at="
+    "datetime('now','weekday 0','-6 days','start of day','-1 day')"
+)
+weekly_transfer(500000, "weekly-after-cutoff")
+assert weekly.execute(
+    "SELECT coins FROM sharika_users WHERE auth_uid='host'"
+).fetchone() == (1000,), "Salary Transfer must never debit or credit Main Wallet"
+assert weekly.execute(
+    "SELECT available_coins FROM sharika_coin_sellers WHERE seller_uid='seller'"
+).fetchone() == (501000,)
+weekly.execute(
+    "INSERT INTO sharika_agency_salary_exchanges("
+    "auth_uid,request_id,salary_units,credited_coins,settlement_mode,policy_version)"
+    " VALUES('host','weekly-exchange-rest',15000000000,1500000,'weekly',1)"
+)
+weekly.execute(
+    "UPDATE sharika_users SET coins=coins+1500000 WHERE auth_uid='host'"
+)
+weekly.execute(
+    "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id)"
+    " VALUES('host','coins',1500000,"
+    "(SELECT coins FROM sharika_users WHERE auth_uid='host'),"
+    "'agency_salary_exchange','agency-salary:weekly-exchange-rest')"
+)
+assert weekly.execute(
+    "SELECT coins FROM sharika_users WHERE auth_uid='host'"
+).fetchone() == (1501000,)
+try:
+    weekly_transfer(1, "weekly-after-spent")
+    raise AssertionError("Same Salary cannot be transferred after full Exchange")
+except sqlite3.IntegrityError as error:
+    assert "agency_salary_not_matured_or_insufficient" in str(error)
+assert weekly.execute(
+    "SELECT available_coins FROM sharika_coin_sellers WHERE seller_uid='seller'"
+).fetchone() == (501000,)
+assert weekly.execute(
+    "SELECT COUNT(*) FROM sharika_agency_salary_seller_transfers"
+).fetchone() == (1,)
+print("Weekly Salary: early transfer blocked; after cutoff Seller gets 500K, "
+      "Main Wallet unchanged until 1.5M Exchange, no double-spend")
