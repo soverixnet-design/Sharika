@@ -835,7 +835,9 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB,uid);
       const period=url.searchParams.get('period')||'weekly';
       const kind=url.searchParams.get('kind')||'rich';
-      const result=await readGiftRankings(env.DB,period,kind);
+      const weekOffset=url.searchParams.get('week_offset');
+      const result=await readGiftRankings(env.DB,period,kind,
+        weekOffset===null?0:weekOffset==='1'?1:NaN);
       return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {

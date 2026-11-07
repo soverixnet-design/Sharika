@@ -176,6 +176,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/profile-collection-atlas.webp'))
     from(rootProject.file('../app/profile-menu-atlas.webp'))
     from(rootProject.file('../app/profile-crown.webp'))
+    from(rootProject.file('../app/royal-ranking-v2.css'))
+    from(rootProject.file('../app/royal-ranking-podium.webp'))
     from(rootProject.file('startup-safety.js'))
     from(rootProject.file('app/src/main/res/mipmap-nodpi/sharika_logo.jpg'))
     from(rootProject.file('back-navigation.js'))

@@ -39,9 +39,11 @@ function allowed(role, roles, fail, cors) {
 // Public rankings use only verified gift events or approved recharge ledger
 // credits, never demo users, payment references or client-reported balances.
 // UTC boundaries are half-open so each transaction belongs to one period.
-export async function readGiftRankings(db, period, kind) {
+export async function readGiftRankings(db, period, kind, weekOffset=0) {
   if (!['daily','weekly','monthly'].includes(period) ||
       !['lucky','rich','charm','room','recharge'].includes(kind)) return null;
+  // Completed historical week only. This never changes awards or balances.
+  if (![0,1].includes(weekOffset) || (weekOffset===1&&period!=='weekly'))return null;
   const now=new Date(), year=now.getUTCFullYear(), month=now.getUTCMonth();
   let start;
   if (period==='daily') {
@@ -52,6 +54,7 @@ export async function readGiftRankings(db, period, kind) {
   } else {
     start=new Date(Date.UTC(year,month,1));
   }
+  if(weekOffset===1)start.setUTCDate(start.getUTCDate()-7);
   const end=new Date(start.getTime());
   if (period==='daily') end.setUTCDate(end.getUTCDate()+1);
   else if (period==='weekly') end.setUTCDate(end.getUTCDate()+7);

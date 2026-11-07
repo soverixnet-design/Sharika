@@ -1,0 +1,186 @@
+/* Sharika Royal Champions — stage-only visual upgrade.
+   Data, buttons and profiles remain owned by staging-connection.js. */
+#v-rank {
+  background:#110b2f url('./royal-room-background.jpg') center top/auto 900px no-repeat!important;
+}
+#v-rank .rtop {
+  min-height:64px;display:flex;justify-content:space-between;
+  border-bottom:1px solid #d9a45e55!important;
+  background:#1a1139eb!important;backdrop-filter:blur(14px);
+}
+#v-rank .sh-rank-brand {display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+#v-rank .sh-rank-brand-title {
+  font-family:Georgia,'Times New Roman',serif;font-weight:800;
+  font-size:clamp(25px,7vw,32px);letter-spacing:-1px;
+  background:linear-gradient(180deg,#fff7d4,#efba66 55%,#bc769c);
+  background-clip:text;-webkit-background-clip:text;color:transparent;
+  filter:drop-shadow(0 2px 2px #5b286e);
+}
+#v-rank .sh-rank-brand-divider {height:25px;width:1px;background:#dfad7280;margin:0 3px}
+#v-rank .sh-rank-brand-sub {color:#fce5c2;font-size:12px;font-weight:800;white-space:nowrap}
+#v-rank .sh-rank-brand-crown {width:31px;height:23px;object-fit:contain}
+#v-rank .sh-rank-quick {
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;
+  margin:12px 12px 6px;padding:5px;border-radius:24px;
+  background:#30204de3;border:1px solid #d2a16c77;
+  box-shadow:inset 0 1px 2px #f7d5aa55,0 6px 15px #08031966;
+}
+#v-rank .sh-rank-quick button {
+  border:1px solid transparent;border-radius:18px;background:transparent;
+  color:#f7e5ce;padding:11px 1px;font-size:12px;font-weight:800;
+  display:flex;justify-content:center;gap:4px;align-items:center;
+  min-width:0;min-height:45px;cursor:pointer;
+}
+#v-rank .sh-rank-quick button.active {
+  background:linear-gradient(165deg,#ffecb0,#efbb69 65%,#be7338);
+  color:#572c25;border-color:#ffedc5;
+  box-shadow:inset 0 2px 1px #fff9,0 3px 7px #d08c5588;
+}
+#v-rank .sh-rank-more {margin:0 15px;color:#ddc4ec;font-size:11px}
+#v-rank .sh-rank-more summary {list-style:none;cursor:pointer;text-align:center;padding:6px}
+#v-rank .sh-rank-more summary::-webkit-details-marker {display:none}
+#v-rank .sh-rank-more #rt {
+  display:flex!important;flex-wrap:wrap;justify-content:center;gap:6px!important;
+  overflow:visible!important;padding:8px 2px!important;
+}
+#v-rank .sh-rank-more #rt button {
+  font-size:11px!important;padding:7px 9px!important;border-radius:14px!important;
+}
+#v-rank .seg {margin:8px auto 3px!important;width:min(320px,86%)!important}
+#v-rank .seg button {padding:8px 0!important;font-size:12px!important}
+#v-rank #rb {padding:1px 12px 125px!important}
+#rb .sh-royal-hero {
+  overflow:visible;margin:2px 0 6px;padding:12px 0 2px;
+  border:0;background:none;box-shadow:none;
+}
+#rb .sh-royal-hero:before {content:none}
+#rb .sh-royal-kicker {font-size:10px;letter-spacing:2px;color:#f4cb88}
+#rb .sh-royal-title {
+  font-family:Georgia,'Times New Roman',serif;
+  font-size:clamp(25px,7.5vw,36px);line-height:1.14;margin:8px 0 4px;
+  color:#ffeac0;text-shadow:0 3px 2px #3c1137,0 0 18px #eab66888;
+}
+#rb .sh-royal-sub {font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#f1d8df}
+#rb .sh-rank-week {
+  width:max-content;max-width:100%;margin:4px auto 8px;padding:8px 16px;
+  border:1px solid #d8ac856b;border-radius:99px;
+  background:#291747c9;color:#f7e2d2;font-size:11px;font-weight:750;
+}
+#rb .sh-royal-podium {
+  position:relative;min-height:282px;padding:24px 0 42px;margin:9px -7px 0;
+  gap:1px;align-items:end;
+  background:url('./royal-ranking-podium.webp') center bottom/100% auto no-repeat;
+}
+#rb .sh-royal-podium-card,#rb .sh-royal-podium-card.first,
+#rb .sh-royal-podium-card.second,#rb .sh-royal-podium-card.third {
+  z-index:1;border:0;background:transparent;box-shadow:none;border-radius:0;
+  padding:0 1px 10px;gap:4px;min-height:182px;
+}
+#rb .sh-royal-podium-card.first {min-height:230px;transform:translateY(-8px)}
+#rb .sh-royal-podium-card.second,#rb .sh-royal-podium-card.third {transform:translateY(2px)}
+#rb .sh-royal-podium-card .sh-royal-avatar {width:70px;height:70px;margin:0 auto 5px}
+#rb .sh-royal-podium-card.first .sh-royal-avatar {width:97px;height:97px}
+#rb .sh-royal-podium-card .sh-royal-face {
+  border:3px solid #e9dfed;box-shadow:0 0 0 3px #af87c0,0 0 15px #ffe8a088;
+}
+#rb .sh-royal-podium-card.third .sh-royal-face {border-color:#efb591}
+#rb .sh-royal-podium-card.first .sh-royal-face {
+  border:3px solid #ffe6a0;box-shadow:0 0 0 4px #bf873e,0 0 19px #f8d887ad;
+}
+#rb .sh-royal-podium-card .sh-royal-place {
+  top:-18px;font-size:24px;filter:drop-shadow(0 2px 4px #241036);
+}
+#rb .sh-royal-podium-card.first .sh-royal-place {
+  width:87px;height:51px;top:-25px;font-size:0;
+  background:url('./profile-crown.webp') center/contain no-repeat;
+}
+#rb .sh-royal-podium-card .sh-royal-name {
+  max-width:100%;padding:3px 4px;border-radius:8px;
+  background:#301b47c7;color:#fff1d4;font-size:clamp(10px,3vw,13px);
+  text-shadow:0 1px 2px #110722;
+}
+#rb .sh-royal-podium-card.first .sh-royal-name {
+  color:#542411;background:#f6d494;font-size:13px;
+  box-shadow:0 2px 3px #6f361a;
+}
+#rb .sh-royal-podium-card .sh-royal-id {
+  font-size:8px;background:#140c2cae;border:0;padding:1px 3px;
+}
+#rb .sh-royal-podium-card .sh-royal-amount {
+  font-size:clamp(9px,2.6vw,12px);color:#fff2cc;
+  background:#32134a91;border-radius:10px;padding:3px 4px;
+  white-space:normal;overflow-wrap:anywhere;
+}
+#rb .sh-royal-podium-card.first .sh-royal-amount {color:#ffedb3}
+#rb .sh-rank-rewards {
+  border:1px solid #e0a97dac;border-radius:24px;
+  background:linear-gradient(165deg,#422349ed,#25143edd);
+  box-shadow:inset 0 2px 1px #ffedd044,0 9px 26px #1005218c;
+  padding:15px 11px 14px;margin:13px 0 13px;
+}
+#rb .sh-rank-section-title {
+  color:#ffe8bd;font-family:Georgia,'Times New Roman',serif;
+  text-align:center;font-size:clamp(19px,6vw,25px);font-weight:800;margin:0 0 5px;
+}
+#rb .sh-rank-section-note {
+  font-size:10px;line-height:1.45;color:#e0c8e6;text-align:center;
+  margin:0 0 11px;
+}
+#rb .sh-rank-prizes {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px}
+#rb .sh-rank-prize {min-width:0;text-align:center;color:#ffecd6;font-size:11px;line-height:1.35}
+#rb .sh-rank-prize+ .sh-rank-prize {border-left:1px solid #d0a67b4f}
+#rb .sh-rank-prize-asset {display:block;width:72px;height:72px;max-width:100%;margin:0 auto 3px;
+  background-repeat:no-repeat;background-position:center;background-size:contain}
+#rb .sh-rank-prize-asset.coins {background-image:url('./invite-royal-chest.webp')}
+#rb .sh-rank-prize-asset.frame {background-image:url('./profile-collection-atlas.webp');background-size:200% 200%;background-position:0% 100%}
+#rb .sh-rank-prize-asset.medal {background-image:url('./profile-collection-atlas.webp');background-size:200% 200%;background-position:100% 0%}
+#rb .sh-rank-prize strong {display:block;font-size:11px;margin:3px 0;overflow-wrap:anywhere}
+#rb .sh-rank-prize small {color:#ead2ec;font-size:10px;overflow-wrap:anywhere}
+#rb .sh-rank-rewards-button {
+  display:block;width:90%;min-height:47px;margin:12px auto 0;
+  border:1px solid #fff1ba;border-radius:99px;
+  background:linear-gradient(155deg,#fff0bd,#f5c572 62%,#d68a45);
+  box-shadow:inset 0 2px 1px #fff9,0 4px 9px #ffc26e59;
+  color:#502a22;font-size:15px;font-weight:900;cursor:pointer;
+}
+#rb .sh-rank-history {
+  display:flex;align-items:center;gap:10px;width:100%;min-height:76px;
+  border:1px solid #c39fa68a;border-radius:20px;
+  padding:11px 13px;background:#40244fcf;color:#fbe4c9;text-align:left;
+  box-shadow:inset 0 1px 1px #ffeedb47;cursor:pointer;
+}
+#rb .sh-rank-history-copy {flex:1;min-width:0}
+#rb .sh-rank-history strong {display:block;font-size:13px;margin-bottom:3px}
+#rb .sh-rank-history small {display:block;font-size:10px;color:#dcc3de}
+#rb .sh-rank-history-faces {display:flex;flex-direction:row-reverse;padding-left:13px}
+#rb .sh-rank-history-faces .sh-royal-avatar {
+  width:35px;height:35px;margin:0 0 0 -11px;pointer-events:none;
+}
+#rb .sh-rank-history-faces .sh-royal-face {border:2px solid #f4ce8f}
+#rb .sh-rank-history .sh-rank-chevron {font-size:22px;color:#f3dca6}
+.sh-rank-history-list {padding:8px 12px;color:#f7e7dc}
+.sh-rank-history-list p {font-size:12px;line-height:1.45;color:#ecd0ed;margin:3px 0 10px}
+.sh-rank-history-list .sh-rank-history-line {
+  padding:8px 10px;border-bottom:1px solid #d0ae7744;
+  display:flex;align-items:center;gap:10px;color:#f5e2d9;
+}
+.sh-rank-history-line .sh-royal-avatar {
+  width:42px;height:42px;margin:0;display:grid;place-items:center;flex:none;
+}
+.sh-rank-history-line .sh-royal-face {
+  width:100%;height:100%;border-radius:50%;border:2px solid #eec789;
+  display:grid;place-items:center;overflow:hidden;
+}
+.sh-rank-history-line .sh-royal-face img {width:100%;height:100%;object-fit:cover}
+.sh-rank-history-line strong {flex:1;font-size:13px;min-width:0}
+.sh-rank-history-line small {font-size:11px;color:#f4d08b}
+@media(max-width:365px) {
+  #rb .sh-royal-podium {min-height:260px;padding-bottom:33px}
+  #rb .sh-royal-podium-card .sh-royal-avatar {width:58px;height:58px}
+  #rb .sh-royal-podium-card.first .sh-royal-avatar {width:79px;height:79px}
+  #rb .sh-royal-podium-card.first {min-height:210px}
+  #v-rank .sh-rank-quick button {font-size:11px}
+}
+@media(prefers-reduced-motion:reduce) {
+  #v-rank .sh-rank-quick button,#rb .sh-rank-rewards-button {transition:none!important}
+}

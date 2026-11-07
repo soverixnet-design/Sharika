@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync,readdirSync} from 'node:fs';
+import {readFileSync,readdirSync,existsSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import {readGiftRankings} from '../src/admin.mjs';
 
@@ -90,6 +90,48 @@ test('Lucky leaderboard uses settled gift outcomes, never Recharge wallet totals
     const recharge=await readGiftRankings(d1,'daily','recharge');
     assert.equal(recharge.leaders.length,0,'Lucky payout must never appear as recharge');
   }finally{sqlite.close();}
+});
+
+test('previous UTC week champions are read-only verified ledger results',async()=>{
+  const {sqlite,d1}=stagedRankDB();
+  try{
+    const now=new Date();
+    const monday=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()-
+      (now.getUTCDay()+6)%7);
+    const prior=new Date(monday-6*86400000).toISOString().slice(0,19).replace('T',' ');
+    sqlite.prepare('INSERT INTO sharika_wallet_ledger '+
+      '(auth_uid,currency,delta,balance_after,reason,request_id,created_at) '+
+      'VALUES(?,?,?,?,?,?,?)').run('royal-user','coins',1200,10200,
+      'seller_recharge','previous-week-champions-001',prior);
+    const previous=await readGiftRankings(d1,'weekly','recharge',1);
+    assert.equal(previous.leaders.length,1);
+    assert.equal(previous.leaders[0].total,1200);
+    assert.equal(new Date(previous.end_at).getTime(),monday);
+    const current=await readGiftRankings(d1,'weekly','recharge');
+    assert.equal(current.leaders.length,0,'last week never leaks into current week');
+    assert.equal(await readGiftRankings(d1,'daily','recharge',1),null);
+    assert.equal(await readGiftRankings(d1,'weekly','recharge',2),null);
+  }finally{sqlite.close();}
+});
+
+test('selected Royal Champions design has real assets, server prizes and historical view',()=>{
+  const root=new URL('../../',import.meta.url);
+  const ui=readFileSync(new URL('android-staging/staging-connection.js',root),'utf8');
+  const css=readFileSync(new URL('app/royal-ranking-v2.css',root),'utf8');
+  const java=readFileSync(new URL(
+    'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',root),'utf8');
+  const gradle=readFileSync(new URL('android-staging/app/build.gradle',root),'utf8');
+  assert.ok(existsSync(new URL('app/royal-ranking-podium.webp',root)));
+  assert.match(gradle,/from\(rootProject\.file\('\.\.\/app\/royal-ranking-podium\.webp'\)\)/);
+  assert.match(gradle,/royal-ranking-v2\.css/);
+  assert.match(css,/royal-ranking-podium\.webp/);
+  assert.match(ui,/ensureRoyalRankNavigation\(rankView\)/);
+  assert.match(ui,/appendRoyalRankingExtras\(view,data,selected,period,requestNo\)/);
+  assert.match(ui,/api\('GET','\/bonds\/rewards'\)/);
+  assert.match(ui,/week_offset=1/);
+  assert.match(ui,/This does not imply that coin rewards were awarded/);
+  assert.match(java,/week_offset=1/);
+  assert.doesNotMatch(ui,/Royal Champions fake users/);
 });
 
 test('original ranking UI uses a real 3-place podium and equipped profile media',()=>{

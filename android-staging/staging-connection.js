@@ -10918,6 +10918,12 @@
     '@media(prefers-reduced-motion:reduce){#v-rank #rt button{transition:none!important}}'
   ].join('');
   document.head.appendChild(royalRankingStyle);
+  // The selected Champions Podium theme is a separate, removable visual
+  // layer. The original ranking buttons, server results and profiles remain.
+  const royalRankingV2=document.createElement('link');
+  royalRankingV2.rel='stylesheet';
+  royalRankingV2.href='./royal-ranking-v2.css';
+  document.head.appendChild(royalRankingV2);
 
   // One authoritative appearance helper powers both podium and list cards.
   // Unknown/unequipped server keys never become untrusted remote media URLs.
@@ -11257,7 +11263,7 @@
         empty.textContent='No pending CP or Friendship invitations.';root.appendChild(empty);}
     }catch(error){if(root?.isConnected)root.textContent='Invitations unavailable: '+errText(error);}
   }
-  async function showBondRanking(type='cp',period='weekly'){
+  async function showBondRanking(type='cp',period='weekly',initialView='this'){
     bondStyles();
     window.openSheet('<h3>👑 Royal Relationship Ranking</h3><div class="sh-bond-sheet" id="sh-bond-rank">Loading ranking…</div>');
     const root=document.getElementById('sh-bond-rank');if(!root)return;
@@ -11378,7 +11384,7 @@
         }
       }catch(error){if(root.isConnected)root.textContent='Ranking unavailable: '+errText(error);}
     };
-    await render(type,period);
+    await render(type,period,initialView);
   }
 
   // SHARIKA_CP_HERO_20261107: show exactly the two verified, accepted CP identities.
@@ -11621,11 +11627,158 @@
     }
   }
 
+  function ensureRoyalRankNavigation(rankView){
+    if(!rankView||document.getElementById('sh-rank-quick'))return;
+    const top=rankView.querySelector('.rtop');
+    const originalTabs=rankView.querySelector('#rt');
+    const periodTabs=rankView.querySelector('#rp');
+    if(!top||!originalTabs||!periodTabs)return;
+    const brand=document.createElement('div');
+    brand.className='sh-rank-brand';
+    const title=document.createElement('strong');
+    title.className='sh-rank-brand-title';title.textContent='Sharika';
+    const divider=document.createElement('span');divider.className='sh-rank-brand-divider';
+    const sub=document.createElement('span');
+    sub.className='sh-rank-brand-sub';sub.textContent='🏆 Rankings';
+    brand.append(title,divider,sub);
+    top.appendChild(brand);
+    const quick=document.createElement('nav');
+    quick.className='sh-rank-quick';quick.id='sh-rank-quick';
+    quick.setAttribute('aria-label','Top ranking categories');
+    for(const item of [{label:'🎁 Gift',index:1},{label:'🪙 Recharge',index:6},
+      {label:'🎮 Games',index:5},{label:'💗 CP',index:null}]){
+      const button=document.createElement('button');button.type='button';
+      button.textContent=item.label;
+      if(item.index!==null)button.dataset.rankTab=String(item.index);
+      button.onclick=()=>item.index===null?showBondRanking('cp','weekly'):
+        originalTabs.querySelectorAll('button')[item.index]?.click();
+      quick.appendChild(button);
+    }
+    const more=document.createElement('details');more.className='sh-rank-more';
+    more.id='sh-rank-more';
+    const summary=document.createElement('summary');
+    summary.textContent='More Rankings · Lucky, Charm, Room, Noble';
+    more.append(summary,originalTabs);
+    rankView.insertBefore(quick,periodTabs);
+    rankView.insertBefore(more,periodTabs);
+  }
+  function formatRoyalWeek(startAt,endAt){
+    const start=new Date(startAt),end=new Date(new Date(endAt).getTime()-86400000);
+    if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime()))
+      return 'Verified UTC week';
+    const options={month:'short',day:'numeric',timeZone:'UTC'};
+    const left=start.toLocaleDateString('en-US',options);
+    const right=end.toLocaleDateString('en-US',options);
+    return left+' – '+right+', '+end.getUTCFullYear();
+  }
   let rankingRequest=0;
+  function appendRoyalRankingExtras(view,data,selected,period,requestNo){
+    const rewards=document.createElement('section');
+    rewards.className='sh-rank-rewards';
+    rewards.setAttribute('aria-label','Official weekly ranking rewards');
+    const title=document.createElement('h3');title.className='sh-rank-section-title';
+    title.textContent='🎁 Top 1–7 Rewards';
+    const note=document.createElement('p');note.className='sh-rank-section-note';
+    note.textContent='CP weekly reward rules · Checking administrator settings…';
+    const prizes=document.createElement('div');prizes.className='sh-rank-prizes';
+    const values=[];
+    for(const item of [{kind:'coins',label:'Coins'},
+      {kind:'frame',label:'Exclusive Frame'},{kind:'medal',label:'Champion Medal'}]){
+      const section=document.createElement('div');section.className='sh-rank-prize';
+      const picture=document.createElement('span');
+      picture.className='sh-rank-prize-asset '+item.kind;
+      picture.setAttribute('aria-hidden','true');
+      const heading=document.createElement('strong');heading.textContent=item.label;
+      const value=document.createElement('small');value.textContent='Admin configured';
+      values.push(value);section.append(picture,heading,value);prizes.appendChild(section);
+    }
+    const button=document.createElement('button');button.type='button';
+    button.className='sh-rank-rewards-button';
+    button.textContent='View Official CP Reward Rules  ›';
+    button.onclick=()=>showBondRanking('cp','weekly','reward');
+    rewards.append(title,note,prizes,button);view.appendChild(rewards);
+    // Do not present a configured prize as actually paid until an immutable
+    // server award receipt exists. This teaser contains no payout action.
+    api('GET','/bonds/rewards').then(board=>{
+      if(requestNo!==rankingRequest||!rewards.isConnected)return;
+      if(!board.policy?.enabled){
+        note.textContent='CP weekly rewards are currently disabled by Admin.';
+        values.forEach(v=>v.textContent='Not active');
+        return;
+      }
+      note.textContent='CP rewards enabled · Paid only after the weekly result is settled.';
+      const first=(board.rules||[]).find(r=>Number(r.rank)===1);
+      values[0].textContent=first?'Top 1: '+formatCompactCoins(first.coins_each):'See rules';
+      values[1].textContent=first?.frame_name||'See rules';
+      values[2].textContent=first?.medal_name||'See rules';
+    }).catch(()=>{
+      if(requestNo===rankingRequest&&rewards.isConnected)
+        note.textContent='Reward details unavailable. Try the official CP Reward page.';
+    });
+    if(period!=='weekly')return;
+    const history=document.createElement('button');history.type='button';
+    history.className='sh-rank-history';history.disabled=true;
+    const trophy=document.createElement('span');trophy.textContent='🏆';
+    trophy.setAttribute('aria-hidden','true');
+    const copy=document.createElement('span');copy.className='sh-rank-history-copy';
+    const heading=document.createElement('strong');heading.textContent='Previous Week Winners';
+    const detail=document.createElement('small');
+    detail.textContent='Loading verified previous-week rankings…';
+    copy.append(heading,detail);
+    const faces=document.createElement('span');faces.className='sh-rank-history-faces';
+    const chevron=document.createElement('span');chevron.className='sh-rank-chevron';
+    chevron.textContent='›';history.append(trophy,copy,faces,chevron);
+    view.appendChild(history);
+    api('GET','/rankings?period=weekly&kind='+selected.kind+'&week_offset=1')
+      .then(previous=>{
+        if(requestNo!==rankingRequest||!history.isConnected)return;
+        const leaders=Array.isArray(previous.leaders)?previous.leaders:[];
+        detail.textContent=formatRoyalWeek(previous.start_at,previous.end_at)+
+          (leaders.length?' · Top '+Math.min(3,leaders.length):' · No verified winners');
+        if(!leaders.length)return;
+        const isRoom=selected.kind==='room';
+        for(const leader of leaders.slice(0,3))
+          faces.appendChild(royalRankAvatar(leader,isRoom));
+        history.disabled=false;
+        history.onclick=()=>{
+          if(typeof window.openSheet!=='function')return;
+          window.openSheet('<h3>🏆 Previous Week Winners</h3>'+
+            '<div class="sh-rank-history-list" id="sh-rank-history-list"></div>');
+          const list=document.getElementById('sh-rank-history-list');if(!list)return;
+          const msg=document.createElement('p');
+          msg.textContent='Verified ranking positions for '+
+            formatRoyalWeek(previous.start_at,previous.end_at)+
+            '. This does not imply that coin rewards were awarded.';
+          list.appendChild(msg);
+          for(const leader of leaders.slice(0,7)){
+            const row=document.createElement('div');row.className='sh-rank-history-line';
+            const rank=document.createElement('b');rank.textContent='#'+leader.rank;
+            const avatar=royalRankAvatar(leader,isRoom);
+            const name=document.createElement('strong');
+            name.textContent=leader.name||'Member';
+            const value=document.createElement('small');
+            value.textContent=formatCompactCoins(leader.total);
+            row.append(rank,avatar,name,value);
+            royalRankAction(row,leader,isRoom);list.appendChild(row);
+          }
+        };
+      }).catch(()=>{
+        if(requestNo===rankingRequest&&history.isConnected)
+          detail.textContent='Previous week results unavailable';
+      });
+  }
   window.renderRank=async function(){
     const view=document.getElementById('rb');
     if(!view)return;
     const rankView=document.getElementById('v-rank');
+    ensureRoyalRankNavigation(rankView);
+    if(rankView){
+      for(const button of rankView.querySelectorAll('#sh-rank-quick button'))
+        button.classList.toggle('active',button.dataset.rankTab===String(window.rtab));
+      const more=rankView.querySelector('#sh-rank-more');
+      if(more&&!more.contains(document.activeElement))
+        more.open=![1,5,6].includes(window.rtab);
+    }
     if(rankView&&!document.getElementById('sh-bond-rank-shortcuts')){
       bondStyles();
       const shortcuts=document.createElement('div');
@@ -11692,14 +11845,19 @@
       hero.className='sh-royal-hero';
       const kicker=document.createElement('div');
       kicker.className='sh-royal-kicker';
-      kicker.textContent='✦ Sharika Royal Ranking ✦';
+      kicker.textContent=selected.icon+' '+selected.title+' · SHARIKA ROYAL LEAGUE';
       const heading=document.createElement('h2');
       heading.className='sh-royal-title';
-      heading.textContent=selected.icon+' '+selected.title+' Champions';
+      heading.textContent=period==='weekly'?'Current Week Rankings':
+        selected.title+' Champions';
       const description=document.createElement('p');
       description.className='sh-royal-sub';
-      description.textContent=selected.description+' · '+period.toUpperCase()+' · UTC';
+      description.textContent='TOP CHAMPIONS · '+selected.description;
       hero.append(kicker,heading,description);
+      const week=document.createElement('div');week.className='sh-rank-week';
+      week.textContent='▣ '+formatRoyalWeek(data.start_at,data.end_at)+
+        ' · '+period.toUpperCase()+' · UTC';
+      hero.appendChild(week);
       if(leaders.length){
         const podium=document.createElement('div');
         podium.className='sh-royal-podium';
@@ -11736,6 +11894,7 @@
         hero.appendChild(podium);
       }
       view.appendChild(hero);
+      appendRoyalRankingExtras(view,data,selected,period,requestNo);
       if(!leaders.length){
         const empty=document.createElement('div');
         empty.className='sh-royal-empty';
