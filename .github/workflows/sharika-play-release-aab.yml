@@ -1,4 +1,4 @@
-name: Sharika v1.0.0 Play Store AAB candidate
+name: Sharika Play Store AAB candidate
 
 on:
   push:
@@ -43,8 +43,10 @@ jobs:
           grep -F 'SHARIKA_ROYAL_LEVEL_20261107' android-staging/staging-connection.js
           grep -F "applicationId 'com.soverixnet.sharika'" android-staging/app/build.gradle
           grep -F 'targetSdk 36' android-staging/app/build.gradle
-          grep -F 'versionCode 100' android-staging/app/build.gradle
-          grep -F "versionName '1.0.0'" android-staging/app/build.gradle
+          # Keep test candidate source checks valid across signed staging updates.
+          # A fixed v100 assertion incorrectly blocked a legitimate v102 build.
+          grep -E 'versionCode [1-9][0-9]+' android-staging/app/build.gradle
+          grep -E "versionName '[^']+'" android-staging/app/build.gradle
           grep -F '>Sharika<' android-staging/app/src/main/res/values/strings.xml
           cd cloudflare
           npm run check
@@ -148,15 +150,15 @@ jobs:
           grep -F 'SHARIKA_ROYAL_LEVEL_20261107' "$RUNNER_TEMP/release-connection.js"
           grep -F 'playBillingPurchase' "$RUNNER_TEMP/release-connection.js"
           grep -F 'SHARIKA_PROFILE_CLEAN_20261107' "$RUNNER_TEMP/release-profile.css"
-          cp "$bundle" Sharika-v1.0.0-Play-Store-Candidate.aab
-          sha256sum Sharika-v1.0.0-Play-Store-Candidate.aab
+          cp "$bundle" Sharika-Play-Store-Candidate.aab
+          sha256sum Sharika-Play-Store-Candidate.aab
           echo 'SHARIKA_PLAY_STORE_AAB_PACKAGING_AND_SIGNATURE_OK'
 
       - name: Save raw AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sharika-v1.0.0-Play-Store-Candidate-AAB
-          path: Sharika-v1.0.0-Play-Store-Candidate.aab
+          name: Sharika-Play-Store-Candidate-AAB
+          path: Sharika-Play-Store-Candidate.aab
           if-no-files-found: error
           retention-days: 30
 
@@ -168,13 +170,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="sharika-play-aab-v1.0.0-${GITHUB_SHA:0:8}"
+          TAG="sharika-play-aab-${GITHUB_SHA:0:8}"
           if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
             echo 'Release tag exists; refusing to overwrite signed AAB.'
             exit 1
           fi
-          gh release create "$TAG" Sharika-v1.0.0-Play-Store-Candidate.aab \
+          gh release create "$TAG" Sharika-Play-Store-Candidate.aab \
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
-            --title 'Sharika v1.0.0 — Android App Bundle candidate' \
-            --notes 'Signed AAB test candidate for Sharika v1.0.0, versionCode 100, target API 36 and package com.soverixnet.sharika. Includes Google Play Billing 9.1 integration and a server-verified once-only coin ledger. If SHARIKA_PLAY_API_ORIGIN is not configured the bundle points to STAGING, where Play purchases remain disabled: DO NOT SUBMIT this test candidate to Google Play. A dedicated Play signing key, production Worker, verified products and Play Console declarations are required for publication.' \
+            --title 'Sharika — Android App Bundle candidate' \
+            --notes 'Signed AAB test candidate for current Sharika version defined by Gradle, target API 36 and package com.soverixnet.sharika. Includes Google Play Billing 9.1 integration and a server-verified once-only coin ledger. If SHARIKA_PLAY_API_ORIGIN is not configured the bundle points to STAGING, where Play purchases remain disabled: DO NOT SUBMIT this test candidate to Google Play. A dedicated Play signing key, production Worker, verified products and Play Console declarations are required for publication.' \
             --prerelease
