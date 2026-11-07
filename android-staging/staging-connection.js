@@ -1188,11 +1188,15 @@
       '.sh-gift-parade.sh-gift-parade-video{inset:0;top:0;left:0;width:100%;height:100%;'+
       'max-width:none;box-sizing:border-box;padding:0;border:0;border-radius:0;'+
       'background:transparent;display:block;overflow:hidden;pointer-events:none;'+
-      'animation:shGiftFullscreen 10s linear both}',
+      'opacity:0;animation:none}',
+      '.sh-gift-parade.sh-gift-parade-video.sh-gift-video-playing{'+
+      'opacity:1;animation:shGiftFullscreen 10s linear both}',
       '@keyframes shGiftFullscreen{0%{opacity:0}7%{opacity:1}93%{opacity:1}100%{opacity:0}}',
       '.sh-gift-parade-video video{position:absolute;inset:0;display:block;'+
-      'width:100%;height:100%;object-fit:cover;object-position:center center;'+
-      'transform-origin:center center;animation:shGiftCenterZoom 10s ease-out both}',
+      'width:100%;height:100%;object-fit:contain;object-position:center center;'+
+      'transform-origin:center center;opacity:0;animation:none}',
+      '.sh-gift-parade-video.sh-gift-video-playing video{opacity:1;'+
+      'animation:shGiftCenterZoom 10s ease-out both}',
       '@keyframes shGiftCenterZoom{0%{transform:scale(.32);opacity:0}'+
       '12%{transform:scale(1.025);opacity:1}22%{transform:scale(1);opacity:1}'+
       '85%{transform:scale(1);opacity:1}100%{transform:scale(1.05);opacity:1}}',
@@ -1274,33 +1278,74 @@
           box.classList.add('sh-gift-parade-video');
           const video=doc.createElement('video');
           video.src=animation;video.autoplay=true;video.playsInline=true;
-          video.preload='auto';video.muted=!!soundtrack;
+          video.setAttribute('playsinline','');
+          video.setAttribute('webkit-playsinline','true');
+          video.preload='auto';video.loop=true;
+          // Muted inline video can autoplay on Android; sound is opt-in.
+          video.muted=true;
           box.insertBefore(video,people);
           const audio=soundtrack?doc.createElement('audio'):null;
-          if(audio){audio.src=soundtrack;box.appendChild(audio);}
+          if(audio){audio.src=soundtrack;audio.preload='auto';box.appendChild(audio);}
           const unmute=doc.createElement('button');
           unmute.type='button';unmute.className='sh-gift-sound';unmute.textContent='🔊 Sound';
           unmute.setAttribute('aria-label','Play gift sound');
           unmute.onclick=()=>{
-            if(audio){audio.currentTime=0;audio.play().catch(()=>{});}
-            else{video.muted=false;video.play().catch(()=>{});}
-            unmute.remove();
+            if(audio){
+              audio.currentTime=0;
+              audio.play().then(()=>unmute.remove()).catch(()=>{});
+            }else{
+              video.muted=false;
+              video.play().then(()=>unmute.remove()).catch(()=>{video.muted=true;});
+            }
           };
           box.appendChild(unmute);
-          video.play().then(()=>{if(!video.muted)unmute.remove();}).catch(()=>{
-            video.muted=true;video.play().catch(()=>{});
-          });
-          if(audio)audio.play().then(()=>unmute.remove()).catch(()=>{});
         }
       }else{
         box.className='sh-gift-live';
         box.textContent='🎁 '+giftEventText(item);
         box.setAttribute('role','status');
       }
+      // Attach media BEFORE calling play(). Starting detached video/audio
+      // silently fails on several Android WebView versions.
       doc.body.appendChild(box);
-      frame.setTimeout(()=>{box.querySelectorAll('video,audio').forEach(media=>media.pause());},
-        featured?10000:4700);
-      frame.setTimeout(()=>{box.remove();next();},featured?10000:4700);
+      const video=box.querySelector('video');
+      const finishAfter=ms=>frame.setTimeout(()=>{
+        box.querySelectorAll('video,audio').forEach(media=>media.pause());
+        box.remove();next();
+      },ms);
+      if(video){
+        let began=false,loadTimer=null;
+        const fallback=()=>{
+          if(began||!box.isConnected)return;
+          began=true;
+          frame.clearTimeout(loadTimer);
+          video.pause();video.remove();
+          box.querySelector('audio')?.pause();
+          box.querySelector('.sh-gift-sound')?.remove();
+          box.classList.remove('sh-gift-parade-video');
+          // Never make a paid gift disappear if its MP4 or network fails.
+          // Keep the verified sender/recipient/gift banner visible.
+          console.warn('Gift video could not play; showing verified gift banner');
+          finishAfter(4700);
+        };
+        const started=()=>{
+          if(began||!box.isConnected)return;
+          began=true;frame.clearTimeout(loadTimer);
+          box.classList.add('sh-gift-video-playing');
+          const audio=box.querySelector('audio');
+          const button=box.querySelector('.sh-gift-sound');
+          if(audio)audio.play().then(()=>button?.remove()).catch(()=>{});
+          // Ten seconds starts with the first PLAYING frame, not request time.
+          finishAfter(10000);
+        };
+        video.addEventListener('playing',started,{once:true});
+        video.addEventListener('error',fallback,{once:true});
+        loadTimer=frame.setTimeout(fallback,12000);
+        video.play().catch(()=>{
+          video.muted=true;
+          video.play().catch(fallback);
+        });
+      }else finishAfter(featured?10000:4700);
     }
     next();
   }

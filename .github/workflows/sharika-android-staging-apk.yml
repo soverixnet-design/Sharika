@@ -59,6 +59,7 @@ on:
       - 'android-staging/**'
       - 'app/royal-profile.css'
       - 'app/reference-profile.css'
+      - 'app/reference-room.css'
       - 'app/golden-home.css'
       - 'app/royal-room-ui.js'
       - 'app/royal-room-ui.css'
@@ -357,6 +358,26 @@ jobs:
           SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Verify visible room Games icon and verified gift video playback
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs'), assert=require('node:assert/strict');
+          const room=fs.readFileSync('../app/reference-room.css','utf8');
+          const bridge=fs.readFileSync('staging-connection.js','utf8');
+          assert(!room.includes('#bGame.sh-games span:last-child {display:none'),
+            'Room Games icon must not be hidden by a last-child selector');
+          assert(room.includes('#bGame.sh-games .sh-sprite'));
+          const clip=bridge.slice(bridge.indexOf('function queueGiftPresentation('),
+            bridge.indexOf('function decorateRoomPeople('));
+          assert(clip.includes("video.addEventListener('playing',started"));
+          assert(clip.includes('loadTimer=frame.setTimeout(fallback,12000)'));
+          assert(clip.includes("box.classList.add('sh-gift-video-playing')"));
+          assert(clip.includes("video.muted=true"));
+          assert(clip.indexOf('doc.body.appendChild(box)') < clip.indexOf('video.play().catch'),
+            'Gift video must be attached before play()');
+          console.log('SHARIKA_GAMES_ICON_VISIBLE_AND_GIFT_VIDEO_LOAD_AWARE_OK');
+          NODE
+
       - name: Verify actual APK has first-paint profile CSS, whole icons and five-tab navigation
         run: |
           apk='app/build/outputs/apk/debug/app-debug.apk'
@@ -368,11 +389,19 @@ jobs:
           unzip -p "$apk" assets/reference-profile.css | grep -F 'Compact Rich / Received badges'
           echo 'SHARIKA_APK_INLINE_PROFILE_CSS_AND_5_NAV_BUTTONS_VERIFIED'
 
+      - name: Verify playable gift video and visible Games sprite are packaged
+        run: |
+          apk='app/build/outputs/apk/debug/app-debug.apk'
+          unzip -p "$apk" assets/reference-room.css | grep -F 'visibility:visible!important'
+          unzip -p "$apk" assets/connection.js | grep -F "video.addEventListener('playing',started"
+          unzip -p "$apk" assets/connection.js | grep -F "box.classList.add('sh-gift-video-playing')"
+          echo 'SHARIKA_ROOM_GAME_SPRITE_AND_GIFT_VIDEO_PRESENT_IN_APK'
+
       - name: Verify Android 16 target SDK in compiled APK
         run: |
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "targetSdkVersion:'36'"
-          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "versionCode='101'"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "versionCode='102'"
           echo 'SHARIKA_ANDROID_TARGET_API_36_VERIFIED'
 
       - name: Verify original Sovera cosmetics are inside the offline APK
@@ -1086,5 +1115,5 @@ jobs:
           gh release create "$tag" verified-apk/Sharika-Full-Integrated-Friends-20261107.apk \
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
             --title 'Sharika Full Integrated — Friends Staging APK' \
-            --notes 'Direct Android APK for invited friends to test Sharika. Includes Royal Room themes, moderator seat locking and invitations, games menu, shared music, Agency/BD/Host views and premium visuals. Staging test build only: no Play Store publication, no production data changes, and real-device login, voice and games QA is still required.' \
+            --notes 'Direct Android APK for invited friends to test Sharika. Includes visible room Games icon, load-aware full-screen video gifts with fallback, Royal Room themes, moderator seat locking and invitations, shared music, Agency/BD/Host views and premium visuals. Staging test build only: no Play Store publication, no production data changes, and real-device login, voice and games QA is still required.' \
             --prerelease --latest=false

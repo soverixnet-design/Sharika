@@ -240,7 +240,12 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   background-repeat:no-repeat!important;
   filter:grayscale(1) brightness(1.8)!important;
 }
-.app.sh-royal-room .sh-tool #bGame.sh-games span:last-child {display:none!important}
+/* Games has one child span: the icon sprite. The old :last-child rule hid it. */
+.app.sh-royal-room .sh-tool #bGame.sh-games .sh-sprite {
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+}
 /* The old games control was absolute-positioned before it was moved into
    the new six-button toolbar. Reset that position so no empty cell remains. */
 .app.sh-royal-room .sh-tool #bGame.sh-games {
