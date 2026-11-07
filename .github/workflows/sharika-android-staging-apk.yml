@@ -357,11 +357,22 @@ jobs:
           SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Verify actual APK has first-paint profile CSS, whole icons and five-tab navigation
+        run: |
+          apk='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$apk"
+          unzip -p "$apk" assets/index.html | grep -F '<style id="sharika-main-profile-inline-v101">'
+          unzip -p "$apk" assets/index.html | grep -F 'background-size:400% 300%!important'
+          unzip -p "$apk" assets/index.html | grep -F '#v-me.profile-royal .profile-hero .lps .sh-level-meter'
+          unzip -p "$apk" assets/index.html | grep -F '.app:has(#v-me.on) .nav .plus'
+          unzip -p "$apk" assets/reference-profile.css | grep -F 'Compact Rich / Received badges'
+          echo 'SHARIKA_APK_INLINE_PROFILE_CSS_AND_5_NAV_BUTTONS_VERIFIED'
+
       - name: Verify Android 16 target SDK in compiled APK
         run: |
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "targetSdkVersion:'36'"
-          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "versionCode='100'"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "versionCode='101'"
           echo 'SHARIKA_ANDROID_TARGET_API_36_VERIFIED'
 
       - name: Verify original Sovera cosmetics are inside the offline APK

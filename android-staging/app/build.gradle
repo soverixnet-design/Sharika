@@ -78,8 +78,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 100
-        versionName '1.0.0'
+        versionCode 101
+        versionName '1.0.1-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -116,6 +116,10 @@ tasks.configureEach { task ->
 // Package Sharika's homepage assets for Android. The staging-specific connection
 // adapter replaces only connection.js in the packaged copy.
 def sharikaUiAssets = layout.buildDirectory.dir('generated/sharika-ui-assets')
+// Package the verified profile CSS inline too, so an upgraded Android WebView
+// cannot display a cached older icon atlas, two-tab navbar or large level cards.
+// The external stylesheet still ships unchanged for other app surfaces.
+def sharikaInlineProfileCss = rootProject.file('../app/reference-profile.css').getText('UTF-8')
 tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/index.html')) {
         // Package the final Royal CSS before WebView's first paint. Injecting
@@ -148,6 +152,9 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                     '<script id="sharika-royal-ui" src="./royal-premium.js"></script>' +
                     '<script src="./connection.js"></script>' +
                     '<script id="sharika-agency-script" src="./agency-center.js"></script>')
+                .replaceFirst('^</head>$',
+                    '<style id="sharika-main-profile-inline-v101">\n' +
+                    sharikaInlineProfileCss + '\n</style>\n</head>')
         }
     }
     // Owner-provided royal profile art; keep the original JPEG and PNG intact.
