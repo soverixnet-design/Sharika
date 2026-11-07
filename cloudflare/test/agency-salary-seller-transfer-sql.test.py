@@ -39,6 +39,30 @@ db.execute(
     "INSERT INTO sharika_gift_events(transaction_id,room_id,sender_uid,recipient_uid,gift_id,quantity,price_coins) "
     "VALUES(1,'12345678','sender','host',1,1,5000000)"
 )
+# Test weekly periods in distinct isolated fixtures. Earnings receipts are immutable,
+# so each fixture receives its own original timestamp (nothing is backdated).
+db.commit()
+weekly = sqlite3.connect(":memory:")
+weekly_ready = sqlite3.connect(":memory:")
+db.backup(weekly)
+db.backup(weekly_ready)
+for period_db, date_sql in (
+    (weekly, "datetime('now','weekday 0','-6 days','start of day','+1 day')"),
+    (weekly_ready, "datetime('now','weekday 0','-6 days','start of day','-1 day')"),
+):
+    period_db.execute("PRAGMA foreign_keys=ON")
+    period_db.execute("UPDATE sharika_agency_policy SET settlement_mode='weekly'")
+    period_db.execute("UPDATE sharika_agency_salary_config SET exchange_enabled=1")
+    for kind, beneficiary, rate in (
+        ("host_salary", "host", 4000), ("agency", "owner", 1000), ("bd", "bd", 500)
+    ):
+        period_db.execute(
+            "INSERT INTO sharika_agency_earnings("
+            "gift_event_id,family_id,host_uid,beneficiary_uid,kind,rate_bps,amount_units,created_at) "
+            f"VALUES(1,1,'host',?,?,?,?,{date_sql})",
+            (beneficiary, kind, rate, 5000000 * rate),
+        )
+
 for kind, beneficiary, rate in (("host_salary", "host", 4000), ("agency", "owner", 1000), ("bd", "bd", 500)):
     db.execute(
         "INSERT INTO sharika_agency_earnings(gift_event_id,family_id,host_uid,"
@@ -46,12 +70,6 @@ for kind, beneficiary, rate in (("host_salary", "host", 4000), ("agency", "owner
         "VALUES(1,1,'host',?,?,?,?,datetime('now','-2 days'))",
         (beneficiary, kind, rate, 5000000*rate),
     )
-# A fully isolated clone of two test identities covers real weekly cutoff behavior.
-# No data from the deployed staging D1 is copied or modified.
-db.commit()
-weekly = sqlite3.connect(":memory:")
-db.backup(weekly)
-weekly.execute("PRAGMA foreign_keys=ON")
 db.execute("UPDATE sharika_agency_policy SET settlement_mode='daily'")
 
 
@@ -143,12 +161,6 @@ print("Salary -> Seller SQL: shared settlement permission, atomic seller stock, 
 # WEEKLY PATH: the same Salary cannot be spent before period close, even when
 # Host gifts exceed target; once mature, Seller transfer and personal Exchange
 # must share one remaining balance and leave Main Wallet untouched on transfer.
-weekly.execute("UPDATE sharika_agency_policy SET settlement_mode='weekly'")
-weekly.execute("UPDATE sharika_agency_salary_config SET exchange_enabled=1")
-weekly.execute(
-    "UPDATE sharika_agency_earnings SET created_at="
-    "datetime('now','weekday 0','-6 days','start of day','+1 day')"
-)
 
 def weekly_transfer(coins, key):
     weekly.execute("SAVEPOINT weekly_salary_transfer")
@@ -183,11 +195,8 @@ assert weekly.execute(
     "SELECT available_coins FROM sharika_coin_sellers WHERE seller_uid='seller'"
 ).fetchone() == (1000,)
 
-# Simulate the next weekly settlement only in the isolated SQLite fixture.
-weekly.execute(
-    "UPDATE sharika_agency_earnings SET created_at="
-    "datetime('now','weekday 0','-6 days','start of day','-1 day')"
-)
+# Check the separately created, already-matured weekly fixture.
+weekly = weekly_ready
 weekly_transfer(500000, "weekly-after-cutoff")
 assert weekly.execute(
     "SELECT coins FROM sharika_users WHERE auth_uid='host'"
