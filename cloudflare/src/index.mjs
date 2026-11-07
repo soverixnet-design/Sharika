@@ -18,6 +18,7 @@ import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
 import {readGameCatalog,gameAcceptsBets} from './game-catalog.mjs';
 import {readPublishedProfileLayouts} from './profile-layout.mjs';
+import {readGlobalCelebrations} from './global-celebrations.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import {readInviteRules} from './invite-rules.mjs';
 import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
@@ -317,6 +318,10 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/game-catalog'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       return reply({games:await readGameCatalog(env.DB)},200,cors);
+    }
+    if(path==='/api/v1/celebrations'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      return reply(await readGlobalCelebrations(env.DB),200,cors);
     }
     if(path==='/api/v1/events') return await handleEventApp({
       request,env,uid,path,cors,reply,fail
