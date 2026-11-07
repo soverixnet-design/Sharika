@@ -69,14 +69,15 @@ test('users without a mic seat cannot publish or mint a publisher session',async
   assert.equal((await r.json()).error,'voice_publish_forbidden');
 });
 test('owner has no reserved mic and must tap a numbered seat before speaking',async()=>{
-  const unseated={seat_no:null,muted:0};
-  const config=await handleVoiceOperation({...base,member:unseated,
-    operation:'config',request:req('GET','config')});
-  assert.equal((await config.json()).publish,false);
-  const attempt=await handleVoiceOperation({...base,member:unseated,
-    operation:'session',request:req('POST','session',{mode:'publish'})});
-  assert.equal(attempt.status,403);
-  assert.equal((await attempt.json()).error,'voice_publish_forbidden');
+  for(const unseated of [{seat_no:null,muted:0},{seat_no:0,muted:0}]){
+    const config=await handleVoiceOperation({...base,member:unseated,
+      operation:'config',request:req('GET','config')});
+    assert.equal((await config.json()).publish,false);
+    const attempt=await handleVoiceOperation({...base,member:unseated,
+      operation:'session',request:req('POST','session',{mode:'publish'})});
+    assert.equal(attempt.status,403);
+    assert.equal((await attempt.json()).error,'voice_publish_forbidden');
+  }
 });
 test('unmuted guest on an open mic seat can publish without any invitation',async()=>{
   const r=await handleVoiceOperation({...base,uid:'u2',member:{seat_no:3,muted:0},

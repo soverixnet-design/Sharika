@@ -180,11 +180,14 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0055_room_contributor_rankings.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0055_room_contributor_rankings.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0055_room_contributor_rankings.sql')"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_sharika_gift_transactions_room_time'"
-      - name: Verify Family schema and preserve existing voice/game source
+      - name: Verify Family schema and explicitly approved seat-aware voice source
         if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
         run: |
           test "$(git hash-object src/voice-worker.mjs)" = 78ee1e9c17416945f8b3bca9863e7078f3615a5f
-          test "$(git hash-object src/sfu.mjs)" = 7aeb1b9339bdc97f6cdd91fcf08d975020309378
+          # Owner/guest microphone publishing now requires a real numbered
+          # seat. This exact, reviewed SFU blob replaces the previous pin;
+          # any further voice-source edit still stops staging publication.
+          test "$(git hash-object src/sfu.mjs)" = 052f52e84ecf485755e77b117544db3a6420d7ba
           test "$(git hash-object src/voice-room.mjs)" = e328b22f7f63429cfef769949d34cca665afcead
           test "$(git hash-object src/games.mjs)" = 0902ceded318e7ddd7575295557a0af83b884e43
           test "$(git hash-object src/profile-layout.mjs)" = 55cb1785d2dfe2604c5ae1e88997728d0cde509c
