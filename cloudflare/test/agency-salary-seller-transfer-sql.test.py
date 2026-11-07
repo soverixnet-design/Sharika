@@ -47,24 +47,23 @@ for kind, beneficiary, rate in (("host_salary", "host", 4000), ("agency", "owner
         (beneficiary, kind, rate, 5000000*rate),
     )
 db.execute("UPDATE sharika_agency_policy SET settlement_mode='daily'")
-db.execute("UPDATE sharika_agency_salary_config SET exchange_enabled=1")
+
 
 def seller_transfer(uid, coins, key):
     """Mirror Worker D1.batch as a rollback-safe SQLite savepoint."""
     db.execute("SAVEPOINT salary_to_seller")
     try:
         db.execute(
+            "INSERT INTO sharika_agency_salary_seller_transfers("
+            "auth_uid,seller_uid,request_id,salary_units,credited_coins,"
+            "settlement_mode,policy_version) VALUES("
+            "?, 'seller', ?, ?, ?, 'daily', 1)",
+            (uid, key, coins*10000, coins),
+        )
+        db.execute(
             "UPDATE sharika_coin_sellers SET available_coins="
             "CASE WHEN active=1 AND available_coins<=? THEN available_coins+? ELSE -1 END "
             "WHERE seller_uid='seller'", (1000000000-coins, coins)
-        )
-        db.execute(
-            "INSERT INTO sharika_agency_salary_seller_transfers("
-            "auth_uid,seller_uid,request_id,salary_units,credited_stock_coins,"
-            "stock_after,settlement_mode,policy_version) VALUES("
-            "?, 'seller', ?, ?, ?, (SELECT available_coins FROM sharika_coin_sellers "
-            "WHERE seller_uid='seller'), 'daily', 1)",
-            (uid, key, coins*10000, coins),
         )
         db.execute("RELEASE salary_to_seller")
     except sqlite3.IntegrityError:
@@ -83,16 +82,16 @@ try:
     seller_transfer("host", 500000, "seller-disabled-request")
     raise AssertionError("seller transfer must be disabled until Super Admin enables it")
 except sqlite3.IntegrityError as e:
-    assert "agency_salary_seller_transfer_disabled_or_changed" in str(e)
+    assert "agency_salary_transfer_disabled_or_changed" in str(e)
 assert db.execute("SELECT available_coins FROM sharika_coin_sellers").fetchone() == (1000,)
 
-db.execute("UPDATE sharika_agency_salary_config SET seller_transfer_enabled=1")
+db.execute("UPDATE sharika_agency_salary_config SET exchange_enabled=1")
 seller_transfer("host", 500000, "salary-to-seller-0001")
 assert db.execute("SELECT available_coins FROM sharika_coin_sellers").fetchone() == (501000,)
 assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='host'").fetchone() == (1000,)
 assert db.execute(
-    "SELECT salary_units,credited_stock_coins,stock_after FROM sharika_agency_salary_seller_transfers"
-).fetchone() == (500000*10000, 500000, 501000)
+    "SELECT salary_units,credited_coins FROM sharika_agency_salary_seller_transfers"
+).fetchone() == (500000*10000, 500000)
 
 exchange("host", 1500000, "remaining-to-main-0002")
 assert db.execute("SELECT SUM(credited_coins) FROM sharika_agency_salary_exchanges").fetchone() == (1500000,)
@@ -120,17 +119,17 @@ try:
 except sqlite3.IntegrityError:
     pass
 db.execute("UPDATE sharika_coin_sellers SET active=1 WHERE seller_uid='seller'")
-db.execute("UPDATE sharika_agency_salary_config SET seller_transfer_enabled=0")
+db.execute("UPDATE sharika_agency_salary_config SET exchange_enabled=0")
 try:
     seller_transfer("owner", 1000, "policy-disabled-request")
-    raise AssertionError("Super Admin can disable salary transfer independently")
+    raise AssertionError("Super Admin can disable both Salary settlement paths")
 except sqlite3.IntegrityError:
     pass
 try:
-    db.execute("UPDATE sharika_agency_salary_seller_transfers SET credited_stock_coins=1")
+    db.execute("UPDATE sharika_agency_salary_seller_transfers SET credited_coins=1")
     raise AssertionError("Seller transfer history is immutable")
 except sqlite3.IntegrityError as e:
-    assert "agency_salary_seller_transfer_immutable" in str(e)
+    assert "agency_salary_seller_immutable" in str(e)
 assert db.execute("SELECT COUNT(*) FROM sharika_agency_salary_seller_transfers").fetchone() == (1,)
-print("Salary -> Seller SQL: independent disabled permission, atomic seller stock, "
+print("Salary -> Seller SQL: shared settlement permission, atomic seller stock, "
       "no main-wallet debit, exchange/transfer shared balance, replay guard and immutable history")
