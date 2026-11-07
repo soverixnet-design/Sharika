@@ -15,6 +15,15 @@ const winged=readFileSync(new URL('../../android-staging/royal-winged-theme.css'
 const premium=readFileSync(new URL('../../android-staging/royal-premium.css',import.meta.url),'utf8');
 const gradle=readFileSync(new URL('../../android-staging/app/build.gradle',import.meta.url),'utf8');
 
+test('all six Royal room controls stay on one compact row so Games is visible',()=>{
+  for (const id of ['chatToggle','mic','emoji','inbox','games'])
+    assert.match(room,new RegExp('addTool\\\\('+id+','));
+  assert.match(room,/const menuButton = addTool\\(/);
+  assert.match(css,/\\.sh-royal-room \\.sh-tools\\s*\\{[^}]*grid-template-columns:repeat\\(6,minmax\\(0,1fr\\)\\)/);
+  assert.match(css,/\\.sh-royal-room \\.sh-tool>button,[\\s\\S]*?width:clamp\\(44px,12vw,50px\\)/);
+});
+
+
 test('obsolete room demo timers and users are removed from the Android template',()=>{
   assert.match(ui,/for\\\(var ui=0;ui<121;ui\\\+\\\+\\\)U\\\.push/);
   assert.match(ui,/setInterval\(function\(\)\{tick\(false\)\},1600\)/);
