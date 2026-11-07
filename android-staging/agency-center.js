@@ -470,13 +470,20 @@
     panel.querySelector('[data-ag-salary]').onclick=()=>show('salary');
     panel.querySelector('[data-ag-transactions]').onclick=()=>show('transactions');
   }
+  let pendingSalarySellerTransfer=null;
   async function renderSalary(token){
-    const latest=await api('GET','/agency/me');
+    const [latest,directory]=await Promise.all([
+      api('GET','/agency/me'),api('GET','/sellers').catch(()=>({sellers:[]}))
+    ]);
     if(token!==generation)return;
     me=latest;
     const salary=latest.salary||{},history=latest.salary_exchanges||[];
+    const sellerHistory=latest.salary_seller_transfers||[];
+    const sellers=(directory.sellers||[]).filter(s=>/^[0-9]{8}$/.test(s.public_id));
     const maximum=Math.floor((Number(salary.matured_available_units)||0)/10000);
+    const maxTransfer=Math.min(maximum,100000000);
     const eligible=!!salary.exchange_enabled&&maximum>0;
+    const transferEligible=!!salary.seller_transfer_enabled&&maxTransfer>0&&sellers.length>0;
     const role=latest.host?.active?'Host':latest.agency?'Agency Owner':
       latest.bd?.active?'BD':'Not assigned';
     const targets=(latest.targets||[]).map(target=>
@@ -489,7 +496,9 @@
       '<div class="ag-stat-grid"><div class="ag-stat"><small>Exchangeable Now</small>'+
       '<strong>'+fmt(maximum)+'</strong><small>coins</small></div>'+
       '<div class="ag-stat"><small>Already Exchanged</small><strong>'+
-      coinUnits(salary.exchanged_units)+'</strong><small>coins</small></div></div>'+
+      coinUnits(salary.exchanged_units)+'</strong><small>coins</small></div>'+
+      '<div class="ag-stat"><small>Sent to Coin Sellers</small><strong>'+
+      coinUnits(salary.seller_transferred_units)+'</strong><small>coins</small></div></div>'+
       '<div class="ag-panel"><h3>Salary Rules</h3><p>Settlement: <b>'+
       esc(salary.settlement_mode||'weekly')+'</b> • Host minimum target: <b>'+
       fmt(salary.min_host_target_coins)+'</b> received gift coins</p>'+
@@ -506,11 +515,60 @@
       '<button type="button" class="ag-big-button" data-ag-exchange '+
       (eligible?'':'disabled')+'>'+image(icon('commission'))+
       'Exchange to Main Coin Wallet</button><p class="ag-muted" data-ag-notice></p></div>'+
+      '<div class="ag-panel"><h3>Transfer Salary Directly to Coin Seller</h3>'+
+      '<p class="ag-muted">Salary Wallet is debited; the selected Seller stock is credited. '+
+      'Your Main Coin Wallet is not touched. This is separate from Salary Exchange.</p>'+
+      '<p class="ag-muted">'+(salary.seller_transfer_enabled?
+        'Super Admin has enabled Salary Seller Transfer.':
+        'Salary Seller Transfer needs Super Admin permission.')+'</p>'+
+      '<select class="ag-search" aria-label="Choose approved Coin Seller" data-ag-seller '+
+        (transferEligible?'':'disabled')+'><option value="">Choose approved Coin Seller</option>'+
+      sellers.map(s=>'<option value="'+esc(s.public_id)+'">'+esc(s.name)+' · ID '+
+        esc(s.public_id)+'</option>').join('')+'</select>'+
+      '<input class="ag-search" type="number" min="1" step="1" max="'+esc(maxTransfer)+'" '+
+      'placeholder="Salary coins to send" data-ag-transfer-coins '+
+        (transferEligible?'':'disabled')+' aria-label="Salary coins to transfer">'+
+      '<button type="button" class="ag-big-button" data-ag-transfer '+
+        (transferEligible?'':'disabled')+'>'+image(icon('commission'))+
+      'Transfer Salary to Seller Wallet</button>'+ 
+      '<p class="ag-muted">Seller receives stock coins. No Main Wallet coins are deducted.</p>'+ 
+      '<div class="ag-panel"><h3>Salary Seller Transfer History</h3>'+
+      (sellerHistory.map(t=>'<div class="ag-activity"><span class="ag-grow"><b>'+
+        fmt(t.credited_stock_coins)+' coins → '+esc(t.seller_name||'Coin Seller')+'</b><small>Seller ID '+
+        esc(t.seller_public_id)+' · '+readableDate(t.created_at)+'</small></span>'+ 
+        '<span class="ag-value">✓</span></div>').join('')||
+        '<div class="ag-empty">No Seller Salary transfers yet.</div>')+'</div></div>'+ 
       '<div class="ag-panel"><h3>Salary Exchange Records</h3>'+
       (history.map(item=>'<div class="ag-activity"><span class="ag-grow"><b>'+
         fmt(item.credited_coins)+' coins</b><small>'+esc(item.settlement_mode)+' • '+
         readableDate(item.created_at)+'</small></span><span class="ag-value">✓</span></div>')
         .join('')||'<div class="ag-empty">No salary exchanges recorded.</div>')+'</div>','salary');
+    panel.querySelector('[data-ag-transfer]').onclick=async()=>{
+      const sellerId=panel.querySelector('[data-ag-seller]')?.value||'';
+      const coins=Number(panel.querySelector('[data-ag-transfer-coins]')?.value);
+      if(!/^[0-9]{8}$/.test(sellerId)||!Number.isSafeInteger(coins)||
+        coins<1||coins>maxTransfer)
+        return notice('Choose an approved Seller and enter available whole Salary coins.');
+      const seller=sellers.find(s=>s.public_id===sellerId);
+      if(!seller||!window.confirm('Transfer '+fmt(coins)+' coins from Salary Wallet to '+
+        seller.name+' (Seller ID '+sellerId+')? Main Wallet coins will not be used.'))return;
+      const button=panel.querySelector('[data-ag-transfer]');button.disabled=true;
+      const fingerprint=sellerId+':'+coins;
+      const requestId=pendingSalarySellerTransfer?.fingerprint===fingerprint?
+        pendingSalarySellerTransfer.requestId:'salary-seller:'+crypto.randomUUID();
+      pendingSalarySellerTransfer={fingerprint,requestId};
+      try{
+        await api('POST','/agency/salary/transfer',{
+          seller_public_id:sellerId,coins,expected_version:salary.policy_version,request_id:requestId
+        });
+        pendingSalarySellerTransfer=null;
+        await show('salary',undefined,undefined,false);
+      }catch(error){
+        button.disabled=false;
+        notice('Salary Seller Transfer not confirmed. Check history before retrying: '+
+          String(error?.message||error));
+      }
+    };
     panel.querySelector('[data-ag-exchange]').onclick=async()=>{
       const field=panel.querySelector('[data-ag-salary-coins]');
       const coins=Number(field?.value);
