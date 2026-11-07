@@ -4920,8 +4920,8 @@
     }
   }
   async function authenticated(account, form, expectedAttempt=authAttemptId) {
-    if (!account.signedIn || !account.emailVerified)
-      throw new Error('Check your email verification link, then sign in again');
+    if (!account.signedIn)
+      throw new Error('Please sign in to your account');
     const current = await ensureProfile(account, form);
     if (expectedAttempt!==authAttemptId) throw new Error('sign_in_superseded');
     const local = remember(account, current);
@@ -4973,8 +4973,10 @@
       return { ok:false, msg:'Use an email address. Phone OTP is not enabled yet.' };
     if (String(form.pw || '').length < 12)
       return { ok:false, msg:'Use at least 12 characters for your password.' };
+    const attempt=++authAttemptId;
     try {
       const result = await native('emailSignUp', {email:form.key.trim(), password:form.pw});
+      if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
           email:form.key.trim(), name:form.name, dob:form.dob,
@@ -4982,9 +4984,10 @@
           invite_code:document.getElementById('stage-invite-code')?.value.trim()||deferredInviteCode
         }));
       } catch (_) {}
-      return { ok:false, msg:result.verificationSent ?
-        'Account created. Verify your email, then log in.' :
-        'Account created. Verification email could not be sent; try again later.' };
+      const local=await authenticated(result,form,attempt);
+      if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
+      document.getElementById('sh-login-recovery')?.remove();
+      return {ok:true,acct:local};
     } catch (error) { return { ok:false, msg:errText(error) }; }
   };
   function showConnectionRecovery(error) {
@@ -5017,7 +5020,7 @@
       layer.appendChild(panel);document.body.appendChild(layer);
     }
     layer.querySelector('[data-sh-login-status]').textContent=
-      'Your Google account is still signed in. The server did not finish loading: '+
+      'Your account is still signed in. The server did not finish loading: '+
       errText(error)+'. Please retry when your connection is available.';
     document.getElementById('sp')?.classList.remove('sharika-opening-pending');
     window.hideAuth();
@@ -5035,7 +5038,7 @@
       document.getElementById('sh-login-recovery')?.remove();
       return {ok:true,acct:local};
     } catch (error) {
-      if(attempt===authAttemptId && account?.signedIn && account.emailVerified)
+      if(attempt===authAttemptId && account?.signedIn)
         showConnectionRecovery(error);
       return {ok:false,msg:errText(error)};
     }
@@ -5076,7 +5079,7 @@
       finishVerifiedStartup();
     } catch (error) {
       if(attempt!==authAttemptId)return;
-      if(account?.signedIn && account.emailVerified)showConnectionRecovery(error);
+      if(account?.signedIn)showConnectionRecovery(error);
       else {
         const message=googleLoginError(error);
         toast(message);
@@ -11869,10 +11872,9 @@
     try{
       account=await native('session');
       if(attempt!==authAttemptId)return;
-      if(!account.signedIn || !account.emailVerified) {
+      if(!account.signedIn) {
         document.getElementById('sh-login-recovery')?.remove();
         window.showAuth('welcome');
-        if(account.signedIn)toast('Verify your email, then sign in');
         return;
       }
       const local=await authenticated(account,undefined,attempt);

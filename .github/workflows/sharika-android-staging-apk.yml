@@ -54,6 +54,7 @@ on:
       - feature/sharika-profile-level-cp-20261107
       - feature/sharika-level-room-greedy-20261107
       - feature/sharika-global-celebrations-qa-20261107
+      - feature/sharika-email-password-one-step-qa-20261107
     paths:
       - 'android-staging/**'
       - 'app/royal-profile.css'
@@ -1013,4 +1014,53 @@ jobs:
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
             --title 'Sharika Verified Global Celebrations — Private QA APK' \
             --notes 'Signed staging APK with global rich gift ticker, 3-second golden game winner popup and nonblocking high-tier gift overlay. Notifications are read from server-verified D1 events; no client-forged balances. Prior Royal Levels, room chat, Greedy reconciliation, gifts and agency features preserved. Requires separate successful staging Worker migration 0073/deployment. Invite private testers only; not a Play Store submission. Real-phone voice and media tests pending.' \
+            --prerelease
+
+  email-password-no-otp-direct-apk:
+    name: Publish one-step email signup private staging APK
+    if: github.ref == 'refs/heads/feature/sharika-email-password-one-step-qa-20261107'
+    needs: debug-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download signed staging build
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify one-step signup reaches the actual packaged WebView
+        run: |
+          set -euo pipefail
+          apk='verified-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js > "$RUNNER_TEMP/email-signup-bridge.js"
+          unzip -p "$apk" assets/index.html > "$RUNNER_TEMP/email-signup-screen.html"
+          node --check "$RUNNER_TEMP/email-signup-bridge.js"
+          grep -F "native('emailSignUp'" "$RUNNER_TEMP/email-signup-bridge.js" >/dev/null
+          grep -F "await authenticated(result,form,attempt)" "$RUNNER_TEMP/email-signup-bridge.js" >/dev/null
+          grep -F 'Email address (no confirmation code needed)' "$RUNNER_TEMP/email-signup-screen.html" >/dev/null
+          if grep -F 'Verify your email before continuing' "$RUNNER_TEMP/email-signup-bridge.js"; then
+            echo 'Email confirmation gate must not be present in this build'
+            exit 1
+          fi
+          cp "$apk" verified-apk/Sharika-Email-Password-No-OTP-QA.apk
+          sha256sum verified-apk/Sharika-Email-Password-No-OTP-QA.apk
+      - name: Publish new direct APK without overwriting any earlier version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sharika-email-password-no-otp-qa-${GITHUB_SHA:0:8}"
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Tag already exists; refusing to overwrite published APK'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Email-Password-No-OTP-QA.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Email and Password Without OTP — Staging QA APK' \
+            --notes 'Signed private staging Android APK. A new user signs up with an email and a password of at least 12 characters and proceeds without OTP or email-confirmation link. Valid Firebase login token is still checked by the staging API; no unauthenticated access. Google sign-in remains available. Does not implement phone-number registration, production Play Store rollout or verified ownership of entered email. The email address must belong to the registrant for later password recovery. Real-device sign-up test still required.' \
             --prerelease

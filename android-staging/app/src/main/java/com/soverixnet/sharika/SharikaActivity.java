@@ -788,25 +788,10 @@ public final class SharikaActivity extends Activity {
                 break;
             case "session":
                 FirebaseUser signedIn = auth.getCurrentUser();
-                if (signedIn == null) {
-                    sendResult(id, result(true, identity(null), null));
-                    return;
-                }
-                // A verified Firebase session is already durable. Calling
-                // reload() on every app launch can hang or throw during a
-                // temporary network outage and incorrectly show login again.
-                if (signedIn.isEmailVerified()) {
-                    sendResult(id, result(true, identity(signedIn), null));
-                    return;
-                }
-                // Unverified email accounts still need to refresh the flag
-                // after the member taps the verification email link.
-                signedIn.reload().addOnCompleteListener(this, task -> {
-                    FirebaseUser user = auth.getCurrentUser();
-                    if (!task.isSuccessful() || user == null)
-                        sendResult(id, result(false, null, safe(task.getException())));
-                    else sendResult(id, result(true, identity(user), null));
-                });
+                // Firebase persists both Google and email/password sessions.
+                // Email confirmation is not required for Sharika registration;
+                // reloading on launch can block users during network hiccups.
+                sendResult(id, result(true, identity(signedIn), null));
                 break;
             case "emailSignIn": emailSignIn(id, data); break;
             case "emailSignUp": emailSignUp(id, data); break;
@@ -865,9 +850,8 @@ public final class SharikaActivity extends Activity {
                 break;
             case "playBillingPurchase":
                 FirebaseUser buyer = auth.getCurrentUser();
-                if (!BuildConfig.SHARIKA_PLAY_BUILD || playBilling == null || buyer == null ||
-                    (!buyer.isEmailVerified())) {
-                    sendResult(id,result(false,null,"verified_login_required")); break;
+                if (!BuildConfig.SHARIKA_PLAY_BUILD || playBilling == null || buyer == null) {
+                    sendResult(id,result(false,null,"login_required")); break;
                 }
                 playBilling.purchase(data.optString("product_id", ""), buyer.getUid(),
                     (value,error) -> sendResult(id,result(error==null,value,error)));
@@ -959,12 +943,9 @@ public final class SharikaActivity extends Activity {
                     sendResult(id, result(false,null,"firebase_session_missing"));
                     return;
                 }
-                current.reload().addOnCompleteListener(this, refreshed -> {
-                    FirebaseUser updated = auth.getCurrentUser();
-                    if (!refreshed.isSuccessful() || updated == null)
-                        sendResult(id, result(false,null,"firebase_session_refresh_failed"));
-                    else sendResult(id, result(true, identity(updated), null));
-                });
+                // signInWithEmailAndPassword already authenticated this user.
+                // Do not make a second network request for email confirmation.
+                sendResult(id, result(true, identity(current), null));
             }
         });
     }
@@ -982,12 +963,9 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false, null, safe(task.getException())));
                 return;
             }
-            user.sendEmailVerification().addOnCompleteListener(this, sent -> {
-                JSONObject account = identity(user);
-                try { account.put("verificationSent", sent.isSuccessful()); }
-                catch (JSONException ignored) {}
-                sendResult(id, result(true, account, null));
-            });
+            // Password proves returning account control; no email-link or OTP
+            // is needed during this first sign-up. Never store that password.
+            sendResult(id, result(true, identity(user), null));
         });
     }
 
@@ -1278,24 +1256,9 @@ public final class SharikaActivity extends Activity {
         if (user == null) {
             sendResult(id, result(false,null,"login_required")); return;
         }
-        // A Firebase-issued ID token is validated by the Worker for every
-        // API request. Do not also block all wallet/room requests on a
-        // periodic network reload; that made a successful login appear lost.
-        if (user.isEmailVerified()) {
-            requestStagingToken(id, method, path, data, user);
-            return;
-        }
-        // An email/password member may have verified since the last app use.
-        user.reload().addOnCompleteListener(this, reload -> {
-            FirebaseUser current = auth.getCurrentUser();
-            if (!reload.isSuccessful() || current == null) {
-                sendResult(id, result(false,null,"login_refresh_failed")); return;
-            }
-            if (!current.isEmailVerified()) {
-                sendResult(id, result(false,null,"email_verification_required")); return;
-            }
-            requestStagingToken(id, method, path, data, current);
-        });
+        // Worker verifies the Firebase signature, UID, issuer and expiry on
+        // each request. Email ownership verification is not a login gate.
+        requestStagingToken(id, method, path, data, user);
     }
 
     private boolean isRealtimeVoiceRoute(String path) {

@@ -37,7 +37,7 @@ public final class SharikaMessagingService extends FirebaseMessagingService {
         super.onNewToken(token);
         // Best-effort rotation registration; the WebView also registers on sign-in.
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-        if (user == null || !user.isEmailVerified() || token == null) return;
+        if (user == null || token == null) return;
         user.getIdToken(false).addOnSuccessListener(id -> {
             if (id.getToken() == null) return;
             final String jwt = id.getToken();

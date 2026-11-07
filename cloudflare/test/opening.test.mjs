@@ -175,11 +175,12 @@ test('weekly opening reuses the first splash and never flashes a second design',
   assert.match(native,/showVerifiedWebView\(\)/);
 });
 
-test('verified Google session opens home without redundant Firebase reload or false logout',()=>{
+test('signed-in Google or password session opens home without Firebase reload or false logout',()=>{
   const source=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const native=readFileSync(new URL('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
-  assert.match(native,/if \(signedIn\.isEmailVerified\(\)\) \{\s*sendResult\(id, result\(true, identity\(signedIn\), null\)\)/);
-  assert.match(native,/if \(user\.isEmailVerified\(\)\) \{\s*requestStagingToken/);
+  assert.match(native,/case "session":[\s\S]*?sendResult\(id, result\(true, identity\(signedIn\), null\)\)/);
+  assert.match(native,/if \(user == null\) \{[\s\S]*?requestStagingToken\(id, method, path, data, user\)/);
+  assert.doesNotMatch(native,/signedIn\.reload\(|user\.sendEmailVerification\(/);
   assert.match(source,/function showConnectionRecovery\(error\)/);
   assert.match(source,/retry\.textContent='Retry connection'/);
   assert.match(source,/if\(attempt!==authAttemptId\)return/);

@@ -732,15 +732,15 @@ function authRender(){
   if(s){
     h+='<div class="apic" id="apic" style="'+(apic?"background-image:url("+apic+");border-style:solid":"")+'">'+(apic?"":"📷")+'</div><div class="lbl" style="text-align:center;margin-top:2px">Profile photo from gallery (optional)</div>';
     h+='<div class="lbl">Your name</div><input class="field" id="an" maxlength="20" placeholder="e.g. Shakil" autocomplete="name">';
-    h+='<div class="lbl">Email or phone number</div><input class="field" id="aid" placeholder="name@email.com or +8801XXXXXXXXX" autocomplete="username">';
-    h+='<div class="lbl">Password (at least 6 characters)</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="new-password"><button type="button" class="eye" id="eye">👁️</button></div>';
+    h+='<div class="lbl">Email address (no confirmation code needed)</div><input class="field" id="aid" type="email" placeholder="name@email.com" autocomplete="username">';
+    h+='<div class="lbl">Password (at least 12 characters)</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="new-password"><button type="button" class="eye" id="eye">👁️</button></div>';
     h+='<div class="lbl">Re-enter password</div><input class="field" id="apw2" type="password" autocomplete="new-password">';
     h+='<div class="lbl">Country</div><select class="field" id="ac"><option value="">Select country</option>'+CTRY.map(function(c){return'<option value="'+c[2]+'">'+c[0]+" "+c[1]+'</option>'}).join("")+'</select>';
     h+='<div class="lbl">Date of birth (cannot be changed later)</div><div class="drow"><select class="field" id="ad"><option value="">Day</option>';for(i=1;i<=31;i++)h+='<option value="'+i+'">'+bn(i)+'</option>';
     h+='</select><select class="field" id="am"><option value="">Month</option>'+MONTHS.map(function(m,k){return'<option value="'+k+'">'+m+'</option>'}).join("")+'</select><select class="field" id="ay"><option value="">Year</option>';for(i=yr-5;i>=yr-90;i--)h+='<option value="'+i+'">'+bn(i)+'</option>';
     h+='</select></div><label class="tc"><input type="checkbox" id="at"><span>I agree to the <a href="#" data-pol="terms">Terms &amp; Conditions</a> and <a href="#" data-pol="privacy">Privacy Policy</a>. Accounts cannot be created under age 13; Betting-style games stay closed under age 18.</span></label>';
   }else{
-    h+='<div class="lbl">Email, phone number or ID</div><input class="field" id="aid" placeholder="name@email.com / +8801… / ID" autocomplete="username"><div class="lbl">Password</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="current-password"><button type="button" class="eye" id="eye">👁️</button></div>';
+    h+='<div class="lbl">Email address</div><input class="field" id="aid" type="email" placeholder="name@email.com" autocomplete="username"><div class="lbl">Password</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="current-password"><button type="button" class="eye" id="eye">👁️</button></div>';
   }
   h+='<div class="aerr" id="ae"></div><button class="big" id="ago" style="margin-top:4px">'+(s?"Create account":"Log in")+'</button>';
   if(!s)h+='<div class="alt"><button id="af">🔑 Forgot password?</button></div>';
@@ -763,7 +763,7 @@ async function doSignup(){
   var name=$("an").value.trim(),key=norm($("aid").value),pw=$("apw").value,c=$("ac").value,dd=+$("ad").value,mm=$("am").value,yy=+$("ay").value;
   if(name.length<2)return aerr("Enter at least 2 characters for the name");
   if(!validIdent(key))return aerr("Enter a valid email or phone number");
-  if(pw.length<6)return aerr("Password must be at least 6 characters");
+  if(pw.length<12)return aerr("Password must be at least 12 characters");
   if(pw!==$("apw2").value)return aerr("Passwords do not match");
   if(!c)return aerr("Select country");
   if(!dd||mm===""||!yy)return aerr("Select day, month and year of birth");
