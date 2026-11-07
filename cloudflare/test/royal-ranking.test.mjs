@@ -132,6 +132,14 @@ test('selected Royal Champions design has real assets, server prizes and histori
   assert.match(ui,/previous_week_endpoint_not_updated/);
   assert.match(ui,/This does not imply that coin rewards were awarded/);
   assert.match(java,/week_offset=1/);
+  // Only a completed CP award batch may create a paid-prize badge. A
+  // verified previous-week position alone is not a payout receipt.
+  assert.match(ui,/const paid=!!board\.last_week\?\.awarded&&!!pair\.reward/);
+  assert.match(ui,/Awarded · /);
+  assert.match(ui,/No prize awarded/);
+  assert.match(ui,/Ranking position only · Not a payment receipt/);
+  assert.match(ui,/Frame: /);
+  assert.match(ui,/Medal: /);
   assert.doesNotMatch(ui,/Royal Champions fake users/);
 });
 

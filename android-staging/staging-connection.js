@@ -11087,6 +11087,10 @@
       '.sh-cp-card .sh-bond-heart{font-size:25px}.sh-cp-card .sh-bond-avatar{width:50px;height:50px}',
       '.sh-cp-card.champion .sh-bond-avatar{width:70px;height:70px}',
       '.sh-cp-score{color:#ffebbd;font-size:12px;font-weight:900;margin:6px 0 0}',
+      '.sh-cp-award{margin:10px 2px 0;padding:9px 7px;border:1px solid #fbe1aa9e;border-radius:13px;background:#251239b8;color:#ffebbd;text-align:center}',
+      '.sh-cp-award strong{display:block;font-size:12px;line-height:1.35}',
+      '.sh-cp-award small{display:block;margin-top:4px;color:#e8d0e8;font-size:10px;line-height:1.45;overflow-wrap:anywhere}',
+      '.sh-cp-award.pending{border-color:#d5b7db66;background:#281c43a8}',
       '.sh-cp-reward-list{display:grid;gap:9px;margin:12px 0}',
       '.sh-cp-reward-item{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #f4c8fc;border-radius:18px;background:linear-gradient(110deg,#9a488b,#33226c)}',
       '.sh-cp-reward-item strong{display:block;color:#ffeaa2}.sh-cp-reward-item small{display:block;color:#f7dded;margin-top:3px}',
@@ -11343,8 +11347,10 @@
           if(view==='last'){
             const status=document.createElement('p');status.className='sh-bond-muted';
             status.textContent=board.last_week?.awarded?
-              '🏅 Last week is paid and locked. Historical winners cannot be changed.':
-              'Last week has ended. Rewards are awaiting Super Admin settlement or enabled automation.';
+              '🏅 Verified award receipts · Last week’s prizes are paid and locked.':
+              board.policy?.enabled?
+                'Last week’s verified leaders · Prizes are not paid yet. Awaiting settlement.':
+                'Last week’s verified leaders · Rewards are disabled; no prize has been paid.';
             root.appendChild(status);
           }
         }
@@ -11366,7 +11372,24 @@
             couple.appendChild(bondPerson(pair.b));
             const score=document.createElement('p');score.className='sh-cp-score';
             score.textContent='🪙 '+bondFmt(pair.total)+' CP gift value';
-            card.append(badge,couple,score);stage.appendChild(card);
+            card.append(badge,couple,score);
+            if(view==='last'){
+              const paid=!!board.last_week?.awarded&&!!pair.reward;
+              const award=document.createElement('div');
+              award.className='sh-cp-award'+(paid?'':' pending');
+              const reward=paid?pair.reward:null;
+              const label=document.createElement('strong');
+              label.textContent=paid&&reward?
+                '✓ Awarded · '+bondFmt(reward.coins_each)+' coins each':
+                '⏳ No prize awarded';
+              const items=document.createElement('small');
+              items.textContent=paid&&reward?
+                'Frame: '+(reward.frame_name||'None')+' · Medal: '+
+                  (reward.medal_name||'None'):
+                'Ranking position only · Not a payment receipt';
+              award.append(label,items);card.appendChild(award);
+            }
+            stage.appendChild(card);
           }root.appendChild(stage);
         }
         for(const pair of weeklyCp?leaders.slice(7):leaders){
@@ -11677,7 +11700,7 @@
     rewards.className='sh-rank-rewards';
     rewards.setAttribute('aria-label','Official weekly ranking rewards');
     const title=document.createElement('h3');title.className='sh-rank-section-title';
-    title.textContent='🎁 Top 1–7 Rewards';
+    title.textContent='🎁 CP Top 1–7 Rewards';
     const note=document.createElement('p');note.className='sh-rank-section-note';
     note.textContent='CP weekly reward rules · Checking administrator settings…';
     const prizes=document.createElement('div');prizes.className='sh-rank-prizes';

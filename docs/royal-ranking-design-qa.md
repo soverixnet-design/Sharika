@@ -11,12 +11,13 @@ Target: isolated Sharika Android staging branch `feature/sharika-full-integrated
 - Current verified UTC-week label, official CP Top 1–7 coin/frame/medal rules from the existing `/bonds/rewards` endpoint.
 - Previous-week leaderboard view from read-only, completed-week `week_offset=1` query, with a strict date guard against an older Worker silently ignoring that parameter.
 - Historical position is explicitly **not** a claim that a prize was awarded. Existing CP award receipts remain authoritative.
+- The CP **Last Week** Top 1–7 cards now show the coins awarded to **each partner** and the actual frame/medal from the completed award batch. Until a batch exists, each card visibly says **No prize awarded**; disabled policies are named explicitly.
 - No modifications to coin balances, award rules, gift values or payout paths.
 
 ## Verification
 
 - Backend and Android bridge static checks: passed.
-- Existing Cloudflare test suite: 593 tests passed, 0 failed.
+- Existing Cloudflare test suite after the CP receipt UI correction: 593 tests passed, 0 failed; focused ranking/reward tests: 10 passed.
 - Staging GitHub Actions APK and Play candidate build for first implementation commit: succeeded.
 - Browser visual review: **blocked**. The isolated UI browser cannot connect to the local preview server (`ERR_CONNECTION_REFUSED`), so no rendered screenshot comparison was completed.
 - Historical staging data: **not yet verified end-to-end**. The staging Worker carrying `week_offset=1` is not confirmed deployed; the UI fails closed instead of showing the current week as history.
