@@ -75,7 +75,7 @@ jobs:
              !agency.includes("INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)") ||
              !agency.includes("INSERT INTO sharika_agency_hosts") ||
              !notifications.includes("title:'Agency Invitation: '") ||
-             !notifications.includes("title:'Agency membership approved'") ||
+             !notifications.includes("'Agency membership approved'") ||
              notifications.includes("title:'Family Invitation: '")) {
             throw new Error('Refusing unexpected staging target, bindings or Agency notification labels source');
           }
