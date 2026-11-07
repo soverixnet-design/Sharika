@@ -5898,8 +5898,11 @@
     if(roomHeaderId&&/^[0-9]{1,10}$/.test(visibleOwnerId))
       roomHeaderId.textContent=visibleOwnerId;
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
+    // The verified self-state is separate from the public presence roster.
+    // A lost heartbeat must not revoke Room Admin controls or auto-mute mic.
+    const selfState=data.self_state||null;
     frame.__sharikaRoomRole=room.owner_id===session?.user?.id?'owner':
-      self?.role==='admin'?'admin':'member';
+      (selfState?.role==='admin'||(!selfState&&self?.role==='admin'))?'admin':'member';
     frame.__sharikaRoomLocked=!!data.access_locked;
     room.access_locked=frame.__sharikaRoomLocked?1:0;
     if(frame.document?.querySelector){
@@ -5923,7 +5926,9 @@
       [String(m.sharika_users?.public_id||''),String(m.role||'member')]));
     // No reserved Owner mic: listening starts on entry, publishing only
     // after that Owner/guest deliberately takes an unlocked microphone seat.
-    const eligible=!!self && self.seat_no!==null && !self.muted;
+    const eligible=selfState
+      ?Number.isInteger(selfState.seat_no)&&selfState.seat_no>0&&!selfState.muted
+      :!!self && self.seat_no!==null && !self.muted;
     if(sfuState?.roomId===room.id && sfuState.canPublish!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
     if(voiceRoomId===room.id && voiceRoom &&
