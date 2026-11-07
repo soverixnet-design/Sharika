@@ -4717,6 +4717,7 @@
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
         seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
+        access_locked:Number(r.access_locked)===1?1:0,
         owner_country:r.owner_country||'',owner_display_id:r.owner_display_id||r.id,
         created_at:r.created_at||''
       }));
@@ -4725,6 +4726,7 @@
         c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
         seat_frame_style:own.seat_frame_style||'grad',
         n:Number(own.online_count)||0,cover_url:own.cover_url||null,
+        access_locked:Number(own.access_locked)===1?1:0,
         owner_country:own.owner_country||window.CFG.viewerCountry||'',
         owner_display_id:own.owner_display_id||own.id,
         created_at:own.created_at||''
@@ -4997,6 +4999,22 @@
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     frame.__sharikaRoomRole=room.owner_id===session?.user?.id?'owner':
       self?.role==='admin'?'admin':'member';
+    frame.__sharikaRoomLocked=!!data.access_locked;
+    room.access_locked=frame.__sharikaRoomLocked?1:0;
+    if(frame.document?.querySelector){
+      let accessBadge=frame.document.getElementById('sh-room-access-badge');
+      if(!accessBadge){
+        accessBadge=frame.document.createElement('span');
+        accessBadge.id='sh-room-access-badge';
+        accessBadge.setAttribute('aria-live','polite');
+        accessBadge.style.cssText='padding:4px 8px;border:1px solid #e4bf70;'+
+          'border-radius:11px;background:#14251f;color:#ffe5a3;font-size:11px;'+
+          'font-weight:750;white-space:nowrap';
+        frame.document.querySelector('.stats')?.appendChild(accessBadge);
+      }
+      accessBadge.textContent=frame.__sharikaRoomLocked?'🔒 Room locked':'';
+      accessBadge.style.display=frame.__sharikaRoomLocked?'inline-flex':'none';
+    }
     const safetyButton=frame.$?.('bOwn');
     if(safetyButton)safetyButton.style.display=
       ['owner','admin'].includes(frame.__sharikaRoomRole)?'':'none';
@@ -5822,6 +5840,42 @@
       syncFrame(room,frame).catch(error=>
         frame.toast('Seat refresh: '+errText(error)));
     }
+    frame.roomLockSheet=async function(){
+      if(!['owner','admin'].includes(frame.__sharikaRoomRole)){
+        frame.toast('Only the Room Owner or Room Admin can lock this room');
+        return;
+      }
+      try{
+        const state=await api('GET','/rooms/'+room.id+'/access-lock');
+        if(window.cur?.id!==room.id)return;
+        const locked=!!state.locked;
+        frame.open('<h3>🔒 Room Access</h3>'+
+          '<div class="row">'+(locked
+            ?'Room is locked. Existing members stay; new guests cannot enter.'
+            :'Room is open. Anyone eligible can enter.')+'</div>'+
+          '<div class="row">Only the verified Owner or Room Admin can change this setting.</div>'+
+          '<button class="big" id="sh-room-lock-toggle">'+
+          (locked?'🔓 Unlock Room':'🔒 Lock Room')+'</button>');
+        const button=frame.$('sh-room-lock-toggle');
+        if(!button)return;
+        button.onclick=async()=>{
+          if(button.disabled)return;
+          button.disabled=true;
+          try{
+            const saved=await api('PUT','/rooms/'+room.id+'/access-lock',{locked:!locked});
+            room.access_locked=saved.locked?1:0;
+            frame.__sharikaRoomLocked=!!saved.locked;
+            frame.close();
+            frame.toast(saved.locked?'🔒 Room locked for new guests':'🔓 Room open to guests');
+            await reloadRooms();
+            await syncFrame(room,frame);
+          }catch(error){
+            button.disabled=false;
+            frame.toast('Room lock: '+errText(error));
+          }
+        };
+      }catch(error){frame.toast('Room access unavailable: '+errText(error));}
+    };
     frame.act=async function(action,seat) {
       try {
         const target=frame.seats?.[seat];
@@ -7065,7 +7119,11 @@
         attachFrame(room).catch(error=>toast(errText(error)));
       };
       originalOpenRoom(room);
-    } catch(error) { toast('Could not join: '+errText(error)); }
+    } catch(error) {
+      toast(errText(error)==='room_locked'
+        ?'🔒 This room is locked. Ask the Owner or Room Admin to unlock it.'
+        :'Could not join: '+errText(error));
+    }
   };
   const originalLeaveRoom=window.leaveRoom;
   window.leaveRoom=function() {

@@ -4,6 +4,7 @@ import { verifyFirebaseToken } from './auth.mjs';
 import { allowSensitiveAction } from './security-rate-limit.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
+import {readRoomAccessLock,writeRoomAccessLock} from './room-access-lock.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
@@ -938,7 +939,8 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB, uid);
       if (request.method === 'GET') {
         const rows=await env.DB.prepare(
-          'SELECT r.*,c.version AS cover_version,u.country AS owner_country,'+activeSpecialSelect('u')+' FROM sharika_rooms r '+
+          'SELECT r.*,COALESCE(al.locked,0) AS access_locked,c.version AS cover_version,u.country AS owner_country,'+activeSpecialSelect('u')+' FROM sharika_rooms r '+
+          'LEFT JOIN sharika_room_access_locks al ON al.room_id=r.id '+
           'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
           'LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id '+
           'ORDER BY r.created_at DESC LIMIT 100'
@@ -1015,6 +1017,22 @@ export async function handleRequest(request, env, ctx) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // A room-entry lock is distinct from mic-seat locks. Existing members
+      // stay in the room; new guests cannot enter until Owner/Admin unlocks.
+      if(parts.length===5 && action==='access-lock') {
+        if(!member)return fail('join_room_first',403,cors);
+        if(request.method==='GET')
+          return reply({room_id:roomId,...await readRoomAccessLock(env.DB,roomId)},200,cors);
+        if(request.method==='PUT') {
+          if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid))
+            return fail('room_moderator_only',403,cors);
+          const body=await readBody(request);
+          if(typeof body.locked!=='boolean')return fail('invalid_room_access_lock',400,cors);
+          const state=await writeRoomAccessLock(env.DB,roomId,uid,body.locked);
+          return reply({room_id:roomId,...state},200,cors);
+        }
+        return fail('method_not_allowed',405,cors);
+      }
       // An owner may invite an unseated, verified member to an unlocked mic seat.
       if(parts.length===5 && action==='invitations') {
         if(!member)return fail('join_room_first',403,cors);
@@ -1146,8 +1164,23 @@ export async function handleRequest(request, env, ctx) {
         if(ban&&Number(ban.banned_until_ms)>Date.now())
           return fail('room_temporarily_blocked',403,cors);
         if (!member) {
-          await env.DB.prepare(`INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) VALUES(?,?,'member')`)
-            .bind(roomId, uid).run();
+          const privileged=room.owner_id===uid||await isRoomAdmin(env,roomId,uid);
+          // Guests are admitted with one conditional D1 statement. A lock
+          // racing with their join cannot slip between a read and the insert.
+          const added=privileged
+            ?await env.DB.prepare("INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) VALUES(?,?,'member')")
+              .bind(roomId,uid).run()
+            :await env.DB.prepare(
+              "INSERT OR IGNORE INTO sharika_room_members(room_id,user_id,role) "+
+              "SELECT ?,?,'member' WHERE NOT EXISTS ("+
+              'SELECT 1 FROM sharika_room_access_locks WHERE room_id=? AND locked=1)'
+            ).bind(roomId,uid,roomId).run();
+          if(!privileged && !added.meta?.changes){
+            const current=await env.DB.prepare(
+              'SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?'
+            ).bind(roomId,uid).first();
+            if(!current)return fail('room_locked',403,cors);
+          }
         }
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
         // Room-wide arrival event uses the verified equipped style and ID.
@@ -1612,6 +1645,7 @@ export async function handleRequest(request, env, ctx) {
           'SELECT version FROM sharika_room_covers WHERE room_id=?'
         ).bind(roomId).first() : null;
         return reply({ room: roomId,
+          access_locked:(await readRoomAccessLock(env.DB,roomId)).locked,
           theme:ROOM_THEMES.has(room.theme)?room.theme:'mid',
           theme_background_url:wallpaper?.version
             ? url.origin+'/api/v1/rooms/'+roomId+'/theme-image?v='+wallpaper.version

@@ -1425,7 +1425,8 @@ test('room listing returns only a versioned cover image URL, never image bytes',
       const stmt=prev(sql);
       if(sql.includes('FROM sharika_users WHERE auth_uid'))
         stmt.first=async()=>({status:'active'});
-      if(sql.includes('FROM sharika_rooms r LEFT JOIN sharika_room_covers c')){
+      if(sql.includes('FROM sharika_rooms r ')&&
+         sql.includes('LEFT JOIN sharika_room_covers c')){
         stmt.all=async()=>({results:[
           {id:'10000001',name:'Room with cover',cover_version:7},
           {id:'10000002',name:'No cover',cover_version:null}

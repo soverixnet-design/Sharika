@@ -1023,6 +1023,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/announcement$"))
             return method.equals("GET") || method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/access-lock$"))
+            return method.equals("GET") || method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/cover$"))
             return method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/theme-image$"))

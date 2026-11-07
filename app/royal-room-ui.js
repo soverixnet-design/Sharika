@@ -201,6 +201,7 @@
   });
   menuItem('🎨 Theme', () => window.themeSheet?.());
   menuItem('🪑 Seats', () => window.seatSet?.());
+  menuItem('🔒 Room Lock', () => window.roomLockSheet?.());
   menuItem('⚙️ Settings', () => window.settings?.());
   menuItem('👑 Owner tools', () => byId('bOwn')?.click());
   menuItem('🖼️ Photo', () => photo?.click());

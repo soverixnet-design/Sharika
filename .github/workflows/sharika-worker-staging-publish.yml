@@ -29,6 +29,9 @@ on:
       - 'cloudflare/test/family-management.test.mjs'
       - 'cloudflare/wrangler.jsonc'
       - 'cloudflare/src/sfu.mjs'
+      - 'cloudflare/src/room-access-lock.mjs'
+      - 'cloudflare/migrations/0057_room_access_locks.sql'
+      - 'cloudflare/test/room-access-lock.test.mjs'
       - 'cloudflare/src/voice-room.mjs'
       - 'cloudflare/migrations/0056_room_announcements.sql'
       - 'cloudflare/test/room-announcement-and-legacy-games.test.mjs'
@@ -180,6 +183,14 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0055_room_contributor_rankings.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0055_room_contributor_rankings.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0055_room_contributor_rankings.sql')"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_sharika_gift_transactions_room_time'"
+      # Independent room entry lock: existing rooms default to open. The
+      # idempotent tables never update members, wallets, seats or gifts.
+      - name: Apply room access-lock schema to isolated staging D1
+        if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0057_room_access_locks.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0057_room_access_locks.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0057_room_access_locks.sql')"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS locked_rooms FROM sharika_room_access_locks WHERE locked=1"
       - name: Verify Family schema and explicitly approved seat-aware voice source
         if: github.ref == 'refs/heads/feature/sharika-family-bd-crystal-ledger-20261103'
         run: |

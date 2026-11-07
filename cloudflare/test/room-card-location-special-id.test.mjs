@@ -7,7 +7,7 @@ const ui=readFileSync(new URL('../../android-staging/staging-connection.js',impo
 
 test('room list serves verified owner Special ID alongside canonical room ID',()=>{
   assert.match(worker,/owner_display_id:r\.special_id\|\|r\.id/);
-  assert.match(worker,/SELECT r\.\*,c\.version AS cover_version,u\.country AS owner_country/);
+  assert.match(worker,/SELECT r\.\*,COALESCE\(al\.locked,0\) AS access_locked,c\.version AS cover_version,u\.country AS owner_country/);
   assert.match(worker,/activeSpecialSelect\('u'\)\+' FROM sharika_rooms r '/);
   // The canonical r.id remains authoritative for API operations.
   assert.match(ui,/id:r\.id,name:r\.name/);
