@@ -72,6 +72,17 @@ test('requires a cryptographically valid Firebase ID token', async () => {
   const damaged = jwt.slice(0, -sigPart.length) + (sigPart[0] === 'A' ? 'B' : 'A') + sigPart.slice(1);
   assert.equal(await verifyFirebaseToken('Bearer ' + damaged, project, certFetch), null);
 });
+test('signed email/password JWT works without an email-confirmation link', async () => {
+  const jwt = await token({ email: 'new-member@example.test', email_verified: false });
+  const actor = await verifyFirebaseToken('Bearer ' + jwt, project, certFetch);
+  assert.equal(actor?.uid, 'firebase:' + project + ':secure-user');
+  assert.equal(actor?.verified, true, 'signature verifies the member identity');
+  assert.equal(actor?.emailVerified, false, 'email ownership is still unverified');
+  const [header,payload,signature]=jwt.split('.');
+  const damaged=header+'.'+payload+'.'+(signature[0]==='A'?'B':'A')+signature.slice(1);
+  assert.equal(await verifyFirebaseToken('Bearer ' + damaged,
+    project, certFetch), null, 'changing the JWT signature must never authenticate');
+});
 test('unknown HTTP origin is denied before credentials', async () => {
   const response = await handleRequest(new Request('https://example.test/health', { headers: { Origin: 'https://untrusted.example' } }),
     { DB: fakeDb(), FIREBASE_PROJECT_ID: project, ALLOWED_ORIGINS: 'https://sharika.example' });

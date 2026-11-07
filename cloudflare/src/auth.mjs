@@ -53,7 +53,12 @@ export async function verifyFirebaseToken(headerValue, projectId, fetcher = fetc
     }
     const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', imported, bytes(parts[2]), new TextEncoder().encode(parts[0] + '.' + parts[1]));
     if (!valid) return null;
-    return { uid: 'firebase:' + projectId + ':' + payload.sub, email: payload.email || '', verified: payload.email_verified === true };
+    // `verified` describes the cryptographic Firebase token, not ownership
+    // of the email address. Email/password sign-up is intentionally usable
+    // without a confirmation link; never accept an unsigned client UID.
+    return { uid: 'firebase:' + projectId + ':' + payload.sub,
+      email: payload.email || '', verified: true,
+      emailVerified: payload.email_verified === true };
   } catch (error) {
     if (error.message === 'identity_provider_unavailable') throw error;
     return null;
