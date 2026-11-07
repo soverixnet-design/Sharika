@@ -132,9 +132,100 @@
   function renderUnassigned(){
     shell('Agency Center',title('Agency & Host')+
       '<div class="ag-hero">'+image(icon('agency'),'Royal Agency emblem','ag-icon')+
-      '<h3>Agency / BD / Host</h3><p>Official approval required</p></div>'+
-      '<div class="ag-empty">You are not yet an assigned Agency Owner, BD, or active Host.'+
-      '<p>Contact your BD or Super Admin to request Agency approval. Agency access is assigned by authorized staff.</p></div>');
+      '<h3>Agency / BD / Host</h3><p>Verified membership and approval</p></div>'+
+      '<div class="ag-empty">You do not have an active Agency Owner, BD, or Host role yet.'+
+      '<p>Explore Agencies, request to join, or apply to create your own Agency.</p></div>'+
+      '<button type="button" class="ag-big-button" data-ag-directory>'+
+      image(icon('agency'),'Agency directory')+'Explore & Join Agencies</button>','agency');
+    panel.querySelector('[data-ag-directory]').onclick=()=>show('directory');
+  }
+  async function renderDirectory(token){
+    const [catalog,membership,creation]=await Promise.all([
+      api('GET','/family/discover?sort=recommend'),
+      api('GET','/family/me'),
+      api('GET','/family/creation/requests')
+    ]);
+    if(token!==generation)return;
+    const agencies=catalog.families||[],joined=membership.family,
+      applications=membership.applications||[],invites=membership.invitations||[],
+      creationRequests=creation.requests||[];
+    const status=joined?'<div class="ag-panel"><b>Current Agency: '+esc(joined.name)+
+      '</b><p class="ag-muted">You are an approved member. The Agency Owner must assign an active Host role before Host earnings appear.</p></div>':
+      '<p class="ag-muted">Tap Apply to request membership. The Agency Owner must approve.</p>';
+    const pending=applications.map(x=>'<div class="ag-activity"><span class="ag-grow"><b>'+
+      esc(x.family_name)+'</b><small>Membership request</small></span><span class="ag-chip">'+
+      esc(x.state)+'</span></div>').join('');
+    const invitationRows=invites.map(x=>'<div class="ag-card">'+
+      image(icon('agency'),'Agency invitation','ag-gift-icon')+
+      '<span class="ag-grow"><b>'+esc(x.family_name)+'</b><small>Invitation received</small></span>'+
+      '<button type="button" data-ag-invite-accept="'+esc(x.id)+'">Join</button>'+
+      '<button type="button" data-ag-invite-decline="'+esc(x.id)+'">Decline</button></div>').join('');
+    const requestRows=creationRequests.map(x=>'<div class="ag-activity">'+
+      '<span class="ag-grow"><b>'+esc(x.name)+'</b><small>'+esc(x.decision_reason||
+      'Agency creation application')+'</small></span><span class="ag-chip">'+esc(x.state)+
+      '</span></div>').join('');
+    const cards=agencies.map(x=>'<button type="button" class="ag-card" data-ag-join="'+
+      esc(x.id)+'" '+(joined?'disabled':'')+'>'+
+      portrait(x.logo,'agency')+'<span class="ag-grow"><h3>'+esc(x.name)+'</h3>'+
+      '<small>Owner: '+esc(x.owner_name)+' · '+esc(x.owner_id)+'</small>'+
+      '<small>'+fmt(x.member_count)+' / '+fmt(x.max_members)+' members</small></span>'+
+      '<span class="ag-arrow">'+(joined?'✓':'Apply ›')+'</span></button>').join('');
+    shell('Agency Directory',title('Discover Agencies')+
+      status+
+      (invitationRows?'<div class="ag-panel"><h3>Invitations</h3>'+invitationRows+'</div>':'')+
+      (pending?'<div class="ag-panel"><h3>My Join Requests</h3>'+pending+'</div>':'')+
+      '<input type="search" class="ag-search" placeholder="Search Agencies" '+
+      'aria-label="Search Agencies" data-ag-directory-search>'+
+      '<div data-ag-directory-list>'+cards+'</div>'+
+      '<div class="ag-panel"><h3>Apply to Create an Agency</h3>'+
+      '<p class="ag-muted">Creation requires Super Admin approval and an active BD assignment.</p>'+
+      '<input class="ag-search" maxlength="40" placeholder="Agency name (3–40 characters)" '+
+      'aria-label="Agency name" data-ag-create-name>'+
+      '<textarea class="ag-search" maxlength="240" placeholder="Description (optional)" '+
+      'aria-label="Agency description" data-ag-create-description></textarea>'+
+      '<label><input type="checkbox" data-ag-create-agree> I agree to the Agency rules.</label>'+
+      '<button type="button" class="ag-big-button" data-ag-create'+(joined?' disabled':'')+'>'+
+      image(icon('agency'))+'Send Agency Application</button>'+
+      (requestRows?'<h3>My Creation Requests</h3>'+requestRows:'')+
+      '<p class="ag-muted" role="status" data-ag-notice></p></div>','agency');
+    const list=panel.querySelector('[data-ag-directory-list]');
+    panel.querySelector('[data-ag-directory-search]').oninput=event=>{
+      const q=String(event.target.value||'').trim().toLowerCase();
+      list.querySelectorAll('[data-ag-join]').forEach(button=>{
+        const item=agencies.find(x=>String(x.id)===button.dataset.agJoin);
+        button.hidden=!!q&&!String(item?.name||'').toLowerCase().includes(q);
+      });
+    };
+    panel.querySelectorAll('[data-ag-join]').forEach(button=>button.onclick=async()=>{
+      const agency=agencies.find(x=>String(x.id)===button.dataset.agJoin);
+      if(!agency||!window.confirm('Request to join '+agency.name+'? The Owner must approve.'))return;
+      button.disabled=true;
+      try{await api('POST','/family/join',{family_id:Number(agency.id)});
+        await show('directory',undefined,undefined,false);}
+      catch(error){button.disabled=false;notice('Request not saved: '+String(error?.message||error));}
+    });
+    panel.querySelectorAll('[data-ag-invite-accept],[data-ag-invite-decline]').forEach(button=>{
+      button.onclick=async()=>{
+        const accept=button.hasAttribute('data-ag-invite-accept');
+        const id=accept?button.dataset.agInviteAccept:button.dataset.agInviteDecline;
+        button.disabled=true;
+        try{await api('POST','/family/invites/'+encodeURIComponent(id)+
+          (accept?'/accept':'/decline'),{});
+          await show('directory',undefined,undefined,false);}
+        catch(error){button.disabled=false;notice('Invitation update failed: '+String(error?.message||error));}
+      };
+    });
+    panel.querySelector('[data-ag-create]').onclick=async()=>{
+      const name=panel.querySelector('[data-ag-create-name]').value.trim();
+      const description=panel.querySelector('[data-ag-create-description]').value.trim();
+      const agree=panel.querySelector('[data-ag-create-agree]').checked;
+      if(name.length<3||name.length>40||!agree)
+        return notice('Enter a 3–40 character Agency name and accept the rules.');
+      const button=panel.querySelector('[data-ag-create]');button.disabled=true;
+      try{await api('POST','/family/creation/request',{name,description,accept_rules:true});
+        await show('directory',undefined,undefined,false);}
+      catch(error){button.disabled=false;notice('Application not saved: '+String(error?.message||error));}
+    };
   }
   function renderBd(data){
     const agencies=data.families||[];
@@ -172,6 +263,7 @@
   }
   function renderAgency(data){
     const agency=data.agency||{},hosts=data.hosts||[];
+    const ownAgency=Number(me?.agency?.id)===Number(agency.id);
     const active=hosts.filter(h=>h.active);
     const totalWeek=hosts.reduce((sum,h)=>sum+(Number(h.week_gifts)||0),0);
     const teamToday=hosts.reduce((sum,h)=>sum+(Number(h.today_seconds)||0),0);
@@ -200,8 +292,10 @@
       '<button data-ag-filter="active" aria-pressed="false">Active</button>'+
       '<button data-ag-filter="review" aria-pressed="false">Review</button></div>'+
       '<div data-ag-hosts></div>'+
+      (ownAgency?'<button type="button" class="ag-big-button" data-ag-manage>'+image(icon('agency'))+
+      'Manage Members & Join Requests</button>'+
       '<button type="button" class="ag-big-button" data-ag-add>'+image(icon('host'))+
-      'Invite / Assign Host</button>'+
+      'Assign an Approved Host</button>':'')+
       '<button type="button" class="ag-big-button" data-ag-salary-wallet>'+image(icon('salary'))+
       'Salary Wallet & Exchange</button><p class="ag-muted" data-ag-notice></p>','agency');
     let filter='all',query='';
@@ -228,7 +322,8 @@
       panel.querySelectorAll('[data-ag-filter]').forEach(b=>b.setAttribute('aria-pressed',
         String(b===button)));draw();
     });
-    panel.querySelector('[data-ag-add]').onclick=async()=>{
+    if(ownAgency)panel.querySelector('[data-ag-manage]').onclick=()=>show('members',agency.id);
+    if(ownAgency)panel.querySelector('[data-ag-add]').onclick=async()=>{
       const id=window.prompt('Enter the approved Agency member’s 8-digit ID:');
       if(id===null)return;
       if(!/^[0-9]{8}$/.test(id))return notice('Enter an 8-digit User ID.');
@@ -244,6 +339,81 @@
       }
     };
     panel.querySelector('[data-ag-salary-wallet]').onclick=()=>show('salary');
+  }
+  async function renderMembers(token,id){
+    const [membership,pending,roster]=await Promise.all([
+      api('GET','/family/me'),
+      api('GET','/family/requests'),
+      api('GET','/agency/'+encodeURIComponent(String(id))+'/hosts')
+    ]);
+    if(token!==generation)return;
+    const agency=membership.family,requests=pending.requests||[],hosts=roster.hosts||[];
+    if(!agency||Number(agency.id)!==Number(id)||agency.role!=='leader')
+      throw Error('Only the Agency Owner can manage member approvals.');
+    const hostById=new Map(hosts.map(h=>[String(h.public_id),h]));
+    const applications=requests.map(req=>'<div class="ag-card">'+
+      image(icon('host'),'Pending member','ag-gift-icon')+
+      '<span class="ag-grow"><h3>'+esc(req.name)+'</h3><small>ID '+esc(req.public_id)+
+      ' · Applied '+readableDate(req.created_at)+'</small></span>'+
+      '<button type="button" data-ag-approve="'+esc(req.id)+'">Approve</button>'+
+      '<button type="button" data-ag-reject="'+esc(req.id)+'">Reject</button></div>').join('')||
+      '<div class="ag-empty">No membership requests waiting for approval.</div>';
+    const memberCards=(agency.members||[]).map(member=>{
+      const id=String(member.public_id),host=hostById.get(id);
+      return '<div class="ag-card">'+portrait(member.pic,'host')+
+        '<span class="ag-grow"><h3>'+esc(member.name)+'</h3>'+
+        '<small>ID '+esc(id)+' · '+esc(member.role)+'</small>'+
+        '<small>'+(host?(host.active?'Active Host':'Host paused'):'Approved member')+
+        '</small></span><button type="button" data-ag-toggle-host="'+esc(id)+'" '+
+        'data-ag-active="'+(host?.active?'0':'1')+'">'+
+        (host?.active?'Pause Host':host?'Reactivate':'Activate Host')+
+        '</button></div>';
+    }).join('');
+    shell('Agency Members',title('Manage Members',agency.name)+
+      '<div class="ag-hero"><strong>'+fmt(agency.member_count)+'</strong>'+
+      '<p>Verified approved members</p></div>'+
+      '<div class="ag-panel"><h3>Invite a Member by ID</h3>'+
+      '<input class="ag-search" maxlength="8" inputmode="numeric" '+
+      'placeholder="8-digit User ID" aria-label="User ID" data-ag-member-invite>'+
+      '<button type="button" class="ag-big-button" data-ag-send-invite>'+
+      image(icon('host'))+'Send Agency Invitation</button></div>'+
+      '<div class="ag-panel"><h3>Pending Join Requests ('+requests.length+')</h3>'+
+      applications+'</div>'+
+      '<div class="ag-panel"><h3>Approved Members & Host Roles</h3>'+
+      '<p class="ag-muted">Only approved adult members may become active Hosts. '+
+      'Host assignment affects future qualified gifts, not past earnings.</p>'+
+      (memberCards||'<div class="ag-empty">No approved members yet.</div>')+
+      '</div><p class="ag-muted" role="status" data-ag-notice></p>','agency');
+    panel.querySelector('[data-ag-send-invite]').onclick=async()=>{
+      const id=panel.querySelector('[data-ag-member-invite]').value.trim();
+      if(!/^[0-9]{8}$/.test(id))return notice('Enter a valid 8-digit User ID.');
+      const button=panel.querySelector('[data-ag-send-invite]');button.disabled=true;
+      try{await api('POST','/family/invite',{public_id:id});
+        notice('Invitation sent. The user must accept it.');}
+      catch(error){notice('Invite failed: '+String(error?.message||error));}
+      finally{button.disabled=false;}
+    };
+    panel.querySelectorAll('[data-ag-approve],[data-ag-reject]').forEach(button=>{
+      button.onclick=async()=>{
+        const approving=button.hasAttribute('data-ag-approve');
+        const requestId=approving?button.dataset.agApprove:button.dataset.agReject;
+        if(!window.confirm((approving?'Approve':'Reject')+' this Agency membership request?'))return;
+        button.disabled=true;
+        try{await api('POST','/family/requests/'+encodeURIComponent(requestId)+
+          (approving?'/accept':'/reject'),{});
+          await show('members',id,undefined,false);}
+        catch(error){button.disabled=false;notice('Review failed: '+String(error?.message||error));}
+      };
+    });
+    panel.querySelectorAll('[data-ag-toggle-host]').forEach(button=>button.onclick=async()=>{
+      const userId=button.dataset.agToggleHost,active=button.dataset.agActive==='1';
+      if(!window.confirm((active?'Activate':'Pause')+' Host '+userId+'?'))return;
+      button.disabled=true;
+      try{await api('POST','/agency/hosts/assign',{
+        agency_id:Number(agency.id),host_public_id:userId,active
+      });await show('members',id,undefined,false);}
+      catch(error){button.disabled=false;notice('Host assignment failed: '+String(error?.message||error));}
+    });
   }
   function renderHost(data){
     const host=data.host||{},period=data.period||'today';
@@ -402,6 +572,8 @@
     loading();const token=++generation;
     try{
       if(type==='salary')await renderSalary(token);
+      else if(type==='directory')await renderDirectory(token);
+      else if(type==='members')await renderMembers(token,id);
       else if(type==='bd'){
         const data=await api('GET','/agency/bd/center');
         if(token===generation)renderBd(data);
