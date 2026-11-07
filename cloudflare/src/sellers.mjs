@@ -83,6 +83,19 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}
       stock_after:a.stock_after,created_at:a.created_at
     })),read_only:true},200,cors);
   }
+  // Verified salary-to-seller deposits are distinct from Admin stock allocations
+  // and from seller-to-user coin transfers. No user wallet debit is involved.
+  if(path==='/api/v1/sellers/salary-incoming'&&request.method==='GET'){
+    const rows=resultRows(await env.DB.prepare(
+      'SELECT t.id,t.credited_stock_coins,t.stock_after,t.created_at,'+
+      'u.public_no AS sender_no,u.name AS sender_name '+
+      'FROM sharika_agency_salary_seller_transfers t '+
+      'JOIN sharika_users u ON u.auth_uid=t.auth_uid '+
+      'WHERE t.seller_uid=? ORDER BY t.id DESC LIMIT 100'
+    ).bind(uid).all());
+    return reply({transfers:rows.map(t=>({...t,sender_public_id:showId(t.sender_no),
+      sender_no:undefined})),read_only:true},200,cors);
+  }
   if(path==='/api/v1/sellers/transfer'&&request.method==='POST'){
     let body;
     try{body=await input(request);}catch(error){return jsonFailure(fail,cors,error.message);}
