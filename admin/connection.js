@@ -16,6 +16,13 @@
     support_reply:'Support inbox and reply',coin_recharge:'Credit user coins'
   };
   const NAV_ALL=(window.NAV||[]).slice();
+  // Family is retired from new user flows. Keep historical D1 records for audit.
+  for(let i=NAV_ALL.length-1;i>=0;i--)if(NAV_ALL[i][0]==='family')NAV_ALL.splice(i,1);
+  if(!NAV_ALL.some(item=>item[0]==='workforce')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='events');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['workforce','🏛️','BD · Agency · Host']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='cosmetics')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='gifts');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -45,13 +52,6 @@
     const idx=NAV_ALL.findIndex(item=>item[0]==='specialIds');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['profileDesigner','🖼️','Live Profile Designer']);
-  }
-  // Keep the Family & BD controls next to room rewards. On narrow screens the
-  // former last menu item was buried below System and easily missed.
-  if(!NAV_ALL.some(item=>item[0]==='family')){
-    const idx=NAV_ALL.findIndex(item=>item[0]==='events');
-    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
-      ['family','👑','Family & BD System']);
   }
   const allowedStaffPage={
     dash:null,users:'view_users',rooms:'view_rooms',sellers:'view_sellers',
@@ -117,8 +117,7 @@
     window.NAV=role==='staff'?NAV_ALL.filter(item=>
       !item[0]||Object.prototype.hasOwnProperty.call(allowedStaffPage,item[0])&&
       (!allowedStaffPage[item[0]]||status.permissions?.includes(allowedStaffPage[item[0]]))
-    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'&&
-      (role==='finance'||item[0]!=='family')));
+    ):(role==='super'?NAV_ALL.slice():NAV_ALL.filter(item=>item[0]!=='specialIds'));
     window.ME = session.email || status.name || 'Administrator';
     return status;
   }
@@ -916,7 +915,7 @@
       if(!panel?.isConnected)return;
       const currentPercent=Number((100*Number(current.coins_per_unit)/
         Number(current.diamonds_per_unit)).toFixed(2));
-      const canEdit=role==='super'&&current.editable;
+      const canEdit=role==='super'&&current.editable&&!current.controlled_by;
       panel.innerHTML='<p class="n"><b id="sharika-exchange-current"></b></p>'+
         (canEdit?'<label for="sharika-exchange-percent">Exchange Percentage (%)</label>'+
           '<div class="row">'+
@@ -927,7 +926,8 @@
           '<button class="btn s" type="button" id="sharika-percent-plus" aria-label="Increase percentage">+</button></div>'+
           '<p class="n" id="sharika-percent-preview" aria-live="polite"></p>'+
           '<button class="btn" id="sharika-rate-save" type="button">Save percentage</button>':
-          '<p class="n">'+(current.editable?
+          '<p class="n">'+(current.controlled_by?
+          'This percentage is controlled centrally in BD · Agency · Host Policy. Open that page to change it for all users.':current.editable?
           'Only Super Admin can change this percentage.':
           'Exchange settings migration is pending. The existing rate remains active.')+'</p>')+
         '<p id="sharika-exchange-status" class="n" role="status"></p>';
@@ -3177,8 +3177,93 @@
     }
   };
 
+  P.workforce=async function(){
+    const root=byId('pg');
+    root.innerHTML='<div class="card"><h2>🏛️ BD · Agency · Host</h2><p class="n">Loading verified workforce policy, targets and roles…</p></div>';
+    let data;
+    try{data=await api('GET','workforce');}
+    catch(error){root.innerHTML=card('Workforce service unavailable',error.message+
+      '. Apply D1 migration 0057 and deploy the matching staging Worker first.');return;}
+    if(window.V!=='workforce')return;
+    const current=data.policy||{},targets=data.targets||[],people=data.members||[];
+    const superAdmin=role==='super',percentage=value=>Number(value||0)/100;
+    const status='<div class="n" id="sh-workforce-notice" aria-live="polite"></div>';
+    const field=(name,label,value,min,max,step)=>'<label style="display:block;min-width:155px;flex:1">'+esc(label)+
+      '<input style="width:100%;padding:10px;border-radius:9px" type="number" id="wf-'+esc(name)+'" '+
+      'min="'+min+'" max="'+max+'" step="'+(step||1)+'" value="'+esc(value)+'" '+
+      (superAdmin?'':'disabled')+'></label>';
+    const list=people.map(x=>'<tr><td>'+esc(x.public_id)+'</td><td>'+esc(x.name)+'</td><td>'+
+      esc(x.role)+'</td><td>'+(x.active?'<span class="tag t-ok">Active</span>':'Inactive')+
+      '</td><td>'+fmt(x.earned_units/10000)+' coins</td></tr>').join('');
+    root.innerHTML='<div class="card" id="sh-workforce-admin" style="border:1px solid #d4ad59;'+
+      'background:linear-gradient(150deg,#30201f,#151329);color:#ffe8b3">'+
+      '<h2>🏛️ BD · Agency · Host Centers</h2><p>All values come from verified gift events and the D1 salary ledger. ' +
+      'New policy revisions apply to future gifts; historical earnings never change.</p>'+
+      '<p><b>Version '+esc(current.version)+'</b> · 1 USD reference = '+fmt(current.coins_per_usd)+
+      ' coins · Salary exchange '+(current.salary_exchange_enabled?'Enabled':'Disabled')+'</p>'+status+'</div>'+
+      '<div class="card"><h3>⚙️ Live Salary & Exchange Policy</h3><p class="n">Host, Agency and BD ' +
+      'percentages are calculated independently from each Host gift. Main Wallet Diamond Exchange is separate.</p>'+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+      field('host','Host Salary (%)',percentage(current.host_bps),0,100,.01)+
+      field('agency','Agency Commission (%)',percentage(current.agency_bps),0,100,.01)+
+      field('bd','BD Commission (%)',percentage(current.bd_bps),0,100,.01)+
+      field('direct','Direct Diamond Exchange (%)',percentage(current.direct_exchange_bps),0,100,.01)+
+      field('usd','Coins per USD reference',current.coins_per_usd,1,1000000000,1)+'</div>'+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+      '<label>Salary settlement<select id="wf-mode" '+(superAdmin?'':'disabled')+'>'+['daily','weekly','monthly'].
+        map(t=>'<option value="'+t+'" '+(t===current.settlement_mode?'selected':'')+'>'+t+'</option>').join('')+
+      '</select></label><label><input type="checkbox" id="wf-enabled" '+(current.enabled?'checked':'')+
+      (superAdmin?'':' disabled')+'> Workforce earning enabled</label>'+
+      '<label><input type="checkbox" id="wf-exchange" '+(current.salary_exchange_enabled?'checked':'')+
+      (superAdmin?'':' disabled')+'> Salary-to-coins exchange enabled</label></div>'+
+      '<label>Host targets (million coins, comma-separated; first target = 5M)'+
+      '<input id="wf-targets" type="text" style="width:100%;padding:10px" value="'+
+      esc(targets.map(t=>Number(t.target_coins)/1000000).join(', '))+'" '+
+      (superAdmin?'':'disabled')+'></label><p class="n">Targets are milestones, not extra automatic payouts.</p>'+
+      (superAdmin?'<button class="btn" id="wf-save">Save & update all apps</button>':'<p>Read-only role</p>')+'</div>'+
+      '<div class="card"><h3>👥 BD, Agency, Host & Assistant Assignment</h3><p class="n">' +
+      'Super Admin assigns BD; BD assigns Agency; Agency assigns Host. Assistant roles do not earn commissions.</p>'+
+      (superAdmin?'<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+        '<label>User ID<input id="wf-member" placeholder="10000001" inputmode="numeric" maxlength="8"></label>'+
+        '<label>Role<select id="wf-role"><option value="bd">BD</option><option value="agency">Agency</option>'+
+        '<option value="host">Host</option><option value="assistant_bd">Assistant BD</option>'+
+        '<option value="assistant_agency">Agency Assistant</option></select></label>'+
+        '<label>Parent BD / Agency ID<input id="wf-parent" placeholder="Required except BD" inputmode="numeric" maxlength="8"></label>'+
+        '</div><button class="btn" id="wf-assign">Grant Role</button> '+
+        '<button class="btn" id="wf-deactivate">Deactivate ID</button>':'')+
+      '<div style="overflow:auto"><table style="width:100%"><thead><tr><th>ID</th><th>Name</th><th>Role</th>'+
+      '<th>Status</th><th>Verified salary</th></tr></thead><tbody>'+(list||
+        '<tr><td colspan="5">No workforce roles assigned yet.</td></tr>')+'</tbody></table></div></div>';
+    const statusNode=()=>byId('sh-workforce-notice');
+    const feedback=text=>{const n=statusNode();if(n)n.textContent=text;};
+    const numberValue=id=>Number(byId(id).value);
+    const perform=async(method,endpoint,payload)=>{
+      try{await api(method,endpoint,payload);note('Workforce changes saved ✓');await P.workforce();}
+      catch(error){feedback('Not saved: '+error.message);}
+    };
+    if(superAdmin){
+      byId('wf-save').onclick=()=>{
+        const scaled=id=>Math.round(numberValue(id)*100);
+        const targets=byId('wf-targets').value.split(',').map(t=>Number(t.trim())*1000000);
+        const payload={expected_version:Number(current.version),host_bps:scaled('wf-host'),
+          agency_bps:scaled('wf-agency'),bd_bps:scaled('wf-bd'),
+          direct_exchange_bps:scaled('wf-direct'),coins_per_usd:numberValue('wf-usd'),
+          enabled:byId('wf-enabled').checked?1:0,
+          salary_exchange_enabled:byId('wf-exchange').checked?1:0,
+          settlement_mode:byId('wf-mode').value,targets};
+        if([payload.host_bps,payload.agency_bps,payload.bd_bps,payload.direct_exchange_bps]
+          .reduce((a,b)=>a+b,0)>10000){feedback('All payouts and exchange exceed 100%.');return;}
+        perform('PATCH','workforce/policy',payload);
+      };
+      byId('wf-assign').onclick=()=>perform('POST','workforce/assign',{
+        public_id:byId('wf-member').value.trim(),role:byId('wf-role').value,
+        parent_public_id:byId('wf-parent').value.trim()||undefined});
+      byId('wf-deactivate').onclick=()=>perform('POST','workforce/deactivate',{
+        public_id:byId('wf-member').value.trim()});
+    }
+  };
+
   // A discoverable, permission-aware shortcut above the dashboard counters.
-  // Sensitive Family and Google Sheets operations still require server-side roles.
   const verifiedFamilyDashboard=P.dash;
   P.dash=async function(){
     await verifiedFamilyDashboard();
@@ -3189,18 +3274,18 @@
       const shortcut=document.createElement('section');
       shortcut.className='card';
       shortcut.style.cssText='border:1px solid #d4ad59;background:linear-gradient(120deg,#35241a,#1b1526);margin-bottom:16px';
-      shortcut.innerHTML='<h3>👑 Family & BD System</h3>'+
-        '<p class="n">Family grants, 5% BD commission, Crystal ledger, weekly/monthly reports and Google Sheets Sync.</p>'+
-        '<button type="button" class="btn" id="sh-open-family-admin">Open Family & BD System</button>';
+      shortcut.innerHTML='<h3>🏛️ BD · Agency · Host Centers</h3>'+
+        '<p class="n">Verified Host salaries (40%), Agency share (10%), BD share (5%), editable targets and settlement permissions.</p>'+
+        '<button type="button" class="btn" id="sh-open-workforce-admin">Open Workforce Policy</button>';
       root.insertBefore(shortcut,root.firstChild);
       shortcut.querySelector('button').onclick=()=>{
-        window.V='family';window.shell();
+        window.V='workforce';window.shell();
       };
     }
   };
 
   const verifiedPages=new Set([
-    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
+    'family','workforce','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

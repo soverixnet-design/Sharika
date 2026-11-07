@@ -6,7 +6,8 @@ import {DEFAULT_EXCHANGE_RATE,readExchangeRate,exchangeCredit,
 
 const reply=(body,status)=>Response.json(body,{status});
 const fail=(error,status)=>Response.json({error},{status});
-function fakeConfig({stored=true,rate={diamonds_per_unit:100,coins_per_unit:70,revision:1}}={}){
+function fakeConfig({stored=true,rate={diamonds_per_unit:100,coins_per_unit:70,revision:1},
+  workforce=null}={}){
   const state={queries:[],batch:[]};
   const db={
     prepare(sql){
@@ -15,6 +16,10 @@ function fakeConfig({stored=true,rate={diamonds_per_unit:100,coins_per_unit:70,r
         bind(...values){this.values=values;return this;},
         async first(){
           state.queries.push({sql,values:this.values});
+          if(sql.includes('FROM sharika_workforce_policy')){
+            if(!workforce)throw Error('D1_ERROR: no such table: sharika_workforce_policy');
+            return workforce;
+          }
           if(sql.includes('FROM sharika_exchange_rate')){
             if(!stored)throw Error('D1_ERROR: no such table: sharika_exchange_rate');
             return rate;
@@ -47,6 +52,21 @@ test('missing exchange configuration retains known 100 diamonds = 70 coins',asyn
   assert.equal(exchangeCredit(100,rate),70);
   assert.equal(exchangeCredit(500,rate),350);
   assert.equal(exchangeCredit(125,rate),null);
+  assert.equal(state.batch.length,0);
+});
+test('new Workforce policy sets 30% universal Diamond Exchange with revision guard',async()=>{
+  const {db,state}=fakeConfig({workforce:{direct_exchange_bps:3000,version:4}});
+  const rate=await readExchangeRate(db);
+  assert.equal(rate.source,'workforce');
+  assert.equal(rate.revision,1000004);
+  assert.equal(exchangeCredit(100,rate),30);
+  assert.equal(exchangeCredit(500,rate),150);
+  const read=await admin(db,'super','GET');
+  assert.equal(read.data.controlled_by,'workforce_policy');
+  assert.equal(read.data.read_only,true);
+  const denied=await admin(db,'super','PATCH',{
+    diamonds_per_unit:100,coins_per_unit:70,expected_revision:1000004});
+  assert.equal(denied.status,409);
   assert.equal(state.batch.length,0);
 });
 test('super admin may configure 50:50 or 100:100 with exact integer credit',()=>{

@@ -5,7 +5,8 @@ import { allowSensitiveAction } from './security-rate-limit.mjs';
 import { handleVoiceOperation } from './sfu.mjs';
 import { handleRoomModeration,handleRoomBanList,handleRoomAdminAssignment,isRoomAdmin } from './moderation.mjs';
 import { handleSellerApp } from './sellers.mjs';
-import { handleFamilyApp, familyGiftCommissionStatements } from './family.mjs';
+import { handleFamilyApp } from './family.mjs';
+import { handleWorkforceApp } from './workforce.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
 import { handleDailyApp } from './daily.mjs';
@@ -297,6 +298,8 @@ export async function handleRequest(request, env, ctx) {
        path==='/api/v1/premium/daily/claim')return await handlePremiumApp({
       request,env,uid,path,cors,reply,fail,ctx
     });
+    if (path==='/api/v1/workforce'||path.startsWith('/api/v1/workforce/'))
+      return await handleWorkforceApp({request,env,uid,path,cors,reply,fail});
     if (path.startsWith('/api/v1/family')) return await handleFamilyApp({
       request, env, uid, path, cors, reply, fail, ctx
     });
@@ -824,9 +827,12 @@ export async function handleRequest(request, env, ctx) {
       if(user.coins>1000000000000-coins)return fail('coin_balance_limit',409,cors);
       const coinChange="UPDATE sharika_users SET coins=CASE WHEN status='active' "+
         "AND coins+?<=1000000000000 "+
-        (rate.persisted?"AND (SELECT revision FROM sharika_exchange_rate WHERE id=1)=? ":"")+
+        (rate.source==='workforce'?
+          "AND (SELECT version FROM sharika_workforce_policy WHERE id=1)=? ":
+          rate.persisted?"AND (SELECT revision FROM sharika_exchange_rate WHERE id=1)=? ":"")+
         "THEN coins+? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?";
-      const creditArgs=rate.persisted?[coins,rate.revision,coins,uid]:[coins,coins,uid];
+      const creditArgs=rate.persisted?[coins,
+        rate.source==='workforce'?rate.revision-1000000:rate.revision,coins,uid]:[coins,coins,uid];
       try{
         await env.DB.batch([
           env.DB.prepare("UPDATE sharika_users SET diamonds=CASE WHEN status='active' AND diamonds>=? THEN diamonds-? ELSE -1 END,updated_at=datetime('now') WHERE auth_uid=?")
@@ -1464,9 +1470,9 @@ export async function handleRequest(request, env, ctx) {
               "WHERE sender_uid=? AND request_id=?))"
             ).bind(room.owner_id,ownerRewardCoins,room.owner_id,uid,requestId));
           }
-          // Family and BD Crystal commissions settle atomically with this gift.
-          // These entries are not spendable coins and exclude Lucky gifts.
-          statements.push(...familyGiftCommissionStatements(env.DB,uid,requestId,gift.tab));
+          // Migration 0057's immutable D1 gift-event trigger creates verified
+          // Host (40%), Agency (10%) and BD (5%) salary units atomically.
+          // Legacy Family records remain readable, but accrue no new salary.
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'

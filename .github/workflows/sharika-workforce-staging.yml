@@ -1,0 +1,88 @@
+name: Sharika BD Agency Host preflight and manual staging rollout
+
+on:
+  pull_request:
+    branches:
+      - feature/sharika-family-bd-crystal-ledger-20261103
+    paths:
+      - 'cloudflare/**'
+      - 'admin/connection.js'
+      - 'android-staging/agency-centers*'
+      - '.github/workflows/sharika-workforce-staging.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Validate only or apply migration 0057 and publish staging Worker together'
+        type: choice
+        required: true
+        default: validate
+        options:
+          - validate
+          - publish-staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-workforce-staging
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify staging Cloudflare target
+        working-directory: cloudflare
+        run: |
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            const cfg=JSON.parse(readFileSync("wrangler.jsonc","utf8"));
+            const db=cfg.d1_databases?.[0];
+            if(cfg.name!=="sharika-api-staging" || cfg.vars?.SHARIKA_ENV!=="staging" ||
+              cfg.account_id!=="d81cf7c48fb9b36d468cb0a08720cd74" ||
+              cfg.d1_databases?.length!==1 || db?.binding!=="DB" ||
+              db.database_name!=="sharika-staging" ||
+              db.database_id!=="b2c62252-12a5-4740-90c7-01a536d9a39a")
+              throw Error("Refusing non-staging Cloudflare target");
+          '
+      - name: Syntax, D1 transaction guards, full Worker test suite
+        working-directory: cloudflare
+        run: npm run check
+      - name: Android BD Agency Host WebView UI tests
+        run: node --test android-staging/tests/agency-centers.test.cjs
+
+  publish-staging:
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'publish-staging' && github.ref == 'refs/heads/feature/sharika-bd-agency-host-centers-20261106' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require configured staging credentials
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo '::error::CLOUDFLARE_API_TOKEN missing: nothing deployed'
+            exit 1
+          fi
+      - name: Apply only the audited additive workforce migration
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0057_workforce_bd_agency_host.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "INSERT INTO d1_migrations(name) SELECT '0057_workforce_bd_agency_host.sql' WHERE NOT EXISTS (SELECT 1 FROM d1_migrations WHERE name='0057_workforce_bd_agency_host.sql')"
+      - name: Publish staging Worker with the matching D1 workforce routes
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+

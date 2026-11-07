@@ -14,6 +14,24 @@ const respondRate=rate=>({
   editable:!!rate.persisted
 });
 export async function readExchangeRate(db){
+  // Workforce policy owns the universal 30% Diamond Exchange after migration
+  // 0057. Older staging schemas retain the audited legacy exchange setting.
+  try{
+    const workforce=await db.prepare(
+      'SELECT direct_exchange_bps,version FROM sharika_workforce_policy WHERE id=1'
+    ).first();
+    if(workforce){
+      const basis=Number(workforce.direct_exchange_bps);
+      const version=Number(workforce.version);
+      if(!Number.isSafeInteger(basis)||basis<100||basis>10000||basis%100!==0||
+         !Number.isSafeInteger(version)||version<1)throw Error('invalid_workforce_exchange_configuration');
+      return {diamonds_per_unit:100,coins_per_unit:basis/100,
+        revision:1000000+version,persisted:true,source:'workforce'};
+    }
+  }catch(error){
+    if(!/no such table:\s*sharika_workforce_policy/i.test(String(error?.message||error)))
+      throw error;
+  }
   let row;
   try{
     row=await db.prepare(
@@ -41,12 +59,14 @@ export function exchangeCredit(diamonds,rate){
   return Number.isSafeInteger(coins)&&coins>0&&coins<=MAX_CREDIT?coins:null;
 }
 export async function handleAdminExchangeRate({request,db,uid,role,reply,fail,cors}){
+  const current=await readExchangeRate(db);
   if(request.method==='GET'){
-    const current=await readExchangeRate(db);
-    return reply({...respondRate(current),read_only:role!=='super'},200,cors);
+    return reply({...respondRate(current),read_only:role!=='super'||current.source==='workforce',
+      controlled_by:current.source==='workforce'?'workforce_policy':undefined},200,cors);
   }
   if(request.method!=='PATCH')return fail('admin_method_not_allowed',405,cors);
   if(role!=='super')return fail('admin_permission_denied',403,cors);
+  if(current.source==='workforce')return fail('edit_exchange_rate_in_workforce_policy',409,cors);
   let body;
   try{
     const raw=await request.text();
@@ -57,7 +77,6 @@ export async function handleAdminExchangeRate({request,db,uid,role,reply,fail,co
      !validUnits(body.diamonds_per_unit)||!validUnits(body.coins_per_unit)||
      !Number.isSafeInteger(body.expected_revision)||body.expected_revision<1)
     return fail('invalid_exchange_rate',400,cors);
-  const current=await readExchangeRate(db);
   if(!current.persisted)return fail('exchange_rate_migration_pending',503,cors);
   if(current.revision!==body.expected_revision)
     return fail('exchange_rate_changed',409,cors);

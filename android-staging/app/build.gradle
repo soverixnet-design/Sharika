@@ -83,6 +83,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                     '<html lang="en" class="royal-premium royal-root">')
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
                     '<link rel="stylesheet" href="./royal-profile.css">\n' +
+                    '<link id="sharika-centers-style" rel="stylesheet" href="./agency-centers.css">\n' +
                     '<link id="sharika-royal-premium-style" rel="stylesheet" href="./royal-premium.css">\n' +
                     '<link id="sharika-winged-theme-style" rel="stylesheet" href="./royal-winged-theme.css">\n' +
                     '<style id="sharika-royal-splash">' +
@@ -98,7 +99,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                     'window.API.signup=window.API.login;' +
                     '</script>' +
                     '<script id="sharika-royal-ui" src="./royal-premium.js"></script>' +
-                    '<script src="./connection.js"></script>')
+                    '<script src="./connection.js"></script>\n' +
+                    '<script id="sharika-centers-ui" src="./agency-centers.js"></script>')
         }
     }
     // Owner-provided royal profile art; keep the original JPEG and PNG intact.
@@ -126,6 +128,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('back-navigation.js'))
     from(rootProject.file('royal-premium.js'))
     from(rootProject.file('royal-premium.css'))
+    from(rootProject.file('agency-centers.js'))
+    from(rootProject.file('agency-centers.css'))
     from(rootProject.file('royal-winged-theme.css'))
     from(rootProject.file('royal-winged-bg.jpg'))
     from(rootProject.file('royal-icon-atlas.png'))
