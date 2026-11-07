@@ -401,7 +401,7 @@ jobs:
         run: |
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "targetSdkVersion:'36'"
-          expected_version=$(sed -n "s/^[[:space:]]*versionCode[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" app/build.gradle | head -n 1)
+          expected_version=$(awk '/^[[:space:]]*versionCode[[:space:]]+[0-9]+/ {print $2; exit}' app/build.gradle)
           test -n "$expected_version"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "versionCode='$expected_version'"
           echo 'SHARIKA_ANDROID_TARGET_API_36_VERIFIED'
