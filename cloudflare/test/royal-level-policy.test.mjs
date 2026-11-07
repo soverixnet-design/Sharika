@@ -55,7 +55,7 @@ test('migration takes one-time gift and legacy-level snapshot without touching e
     INSERT INTO sharika_gift_events VALUES ('existing','other',2,500000);
     INSERT INTO sharika_bond_gift_events VALUES ('other','existing',10000);
   `);
-  sqlite.exec(readFileSync(new URL('../migrations/0067_royal_level_v2_baselines.sql',import.meta.url),'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0072_royal_level_v2_baselines.sql',import.meta.url),'utf8'));
   const prior=sqlite.prepare("SELECT * FROM sharika_royal_level_v2_baselines WHERE auth_uid='existing'").get();
   assert.equal(prior.sent_baseline_coins,1_000_000);
   assert.equal(prior.received_baseline_coins,10_000);

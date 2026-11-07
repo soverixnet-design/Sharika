@@ -1,6 +1,8 @@
 -- Grandfather the visible gift levels before introducing much slower
 -- progression. Existing gift/coin history and premium entitlements are not
 -- rewritten, and new users start with zero baseline.
+-- 0072 follows staging's existing 0067 owner-throne through 0071 admin
+-- coin policies; it must not reuse an older migration number.
 CREATE TABLE IF NOT EXISTS sharika_royal_level_v2_baselines (
   auth_uid TEXT PRIMARY KEY REFERENCES sharika_users(auth_uid) ON DELETE CASCADE,
   sent_baseline_coins INTEGER NOT NULL CHECK(sent_baseline_coins>=0),
