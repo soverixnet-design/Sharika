@@ -63,16 +63,17 @@
   settingsButton.onclick = () => window.settings?.();
   top?.append(settingsButton);
 
-  const stage = app.querySelector('.stage');
   const games = byId('bGame');
-  if (stage && games) {
+  if (top && games) {
     games.className = 'sh-games';
     games.setAttribute('aria-label', 'Open games');
     games.replaceChildren(sprite('games'));
     const label = document.createElement('span');
     label.textContent = 'Games';
     games.append(label);
-    stage.append(games);
+    // Keep Games outside the scrolling seat stage: on shorter Android screens
+    // that stage clips its top-right corner and makes the icon disappear.
+    top.insertBefore(games, settingsButton);
   }
 
   // Move existing, wired controls. Do not clone buttons, as the staging
@@ -314,6 +315,7 @@
     else window.toast?.('Update Sharika to use shared room music');
   }
   menuItem('🎵 Music', musicSheet);
+  menuItem('🎮 Games', () => games?.click());
   menuItem('🔊 Audio', musicSheet);
   menuItem('✨ Effects', () => {
     window.toast?.('Voice effects need an enabled audio processing service');

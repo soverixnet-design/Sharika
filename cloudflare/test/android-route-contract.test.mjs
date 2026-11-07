@@ -34,6 +34,8 @@ test('room-entry polling permits only a bounded numeric cursor before generic qu
 });
 
 test('HD room backgrounds are saved through an owner-authenticated route and displayed for guests',()=>{
+  assert.match(routes,/path\.equals\("\/api\/v1\/room-themes"\)\)\s*return method\.equals\("GET"\)/);
+  assert.match(app,/api\('GET','\/room-themes'\)/);
   assert.match(routes,/rooms\/\[0-9\]\{8\}\/theme-image\$"\)\)\s*return method\.equals\("PUT"\)/);
   assert.match(app,/api\('PUT','\/rooms\/'\+room\.id\+'\/theme-image'/);
   assert.match(app,/verifiedThemeUrl\(data\.theme_background_url\)/);

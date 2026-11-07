@@ -890,14 +890,17 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   justify-self:center;
 }
 .sh-royal-room #bGame.sh-games {
-  right:1px;
-  top:7px;
-  min-width:50px;
-  font-size:10px;
+  position:relative;
+  right:auto;
+  top:auto;
+  flex:0 0 43px;
+  min-width:43px;
+  min-height:43px;
+  font-size:9px;
   background:#0b081280;
   border-radius:12px;
 }
-.sh-royal-room .sh-games .sh-sprite {width:39px;height:39px}
+.sh-royal-room .sh-games .sh-sprite {width:32px;height:32px}
 .sh-royal-room .chatw {
   flex:0 0 auto;
   height:clamp(178px,27vh,245px);

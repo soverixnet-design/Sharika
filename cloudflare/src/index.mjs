@@ -38,6 +38,8 @@ import {handlePublicAccountDeletion,handleAdminAccountDeletion} from './account-
 import {handlePublicPrivacyPolicy} from './privacy-policy.mjs';
 import {handlePlayBillingApp} from './play-billing.mjs';
 import {servePublicMedia} from './admin-media.mjs';
+import {isCatalogTheme,catalogWallpaper,selectableCatalogTheme,publicRoomThemes}
+  from './room-theme-catalog.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
@@ -318,6 +320,10 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/game-catalog'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       return reply({games:await readGameCatalog(env.DB)},200,cors);
+    }
+    if(path==='/api/v1/room-themes'){
+      await assertActive(env.DB,uid);
+      return await publicRoomThemes({request,env,cors,reply,fail});
     }
     if(path==='/api/v1/events') return await handleEventApp({
       request,env,uid,path,cors,reply,fail
@@ -1063,7 +1069,9 @@ export async function handleRequest(request, env, ctx) {
       const seatFrame=body.seat_frame_style===undefined
         ? (room.seat_frame_style||'grad') : body.seat_frame_style;
       if(!name || !Number.isInteger(seatCount) || seatCount<4 || seatCount>20 ||
-         !ROOM_THEMES.has(theme) || !ROOM_SEAT_FRAMES.has(seatFrame))
+         !(ROOM_THEMES.has(theme)||(theme===room.theme&&isCatalogTheme(theme))||
+           await selectableCatalogTheme(env.DB,theme)) ||
+         !ROOM_SEAT_FRAMES.has(seatFrame))
         return fail('invalid_room_settings',400,cors);
       if(theme==='photo'){
         const photo=await env.DB.prepare(
@@ -1172,14 +1180,16 @@ export async function handleRequest(request, env, ctx) {
         }
         return fail('method_not_allowed',405,cors);
       }
-      // An owner may invite an unseated, verified member to an unlocked mic seat.
+      // An owner or an appointed Room Admin may invite an unseated, verified
+      // member. The Durable Object still checks the seat and requires consent.
       if(parts.length===5 && action==='invitations') {
         if(!member)return fail('join_room_first',403,cors);
         if(!env.VOICE_ROOMS)return fail('room_invites_unavailable',503,cors);
         const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
         if(request.method==='GET')return reply(await coordinator.seatInvitePending(uid),200,cors);
         if(request.method==='POST') {
-          if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+          if(room.owner_id!==uid && !await isRoomAdmin(env,roomId,uid))
+            return fail('room_owner_only',403,cors);
           const body=await readBody(request);
           if(!Number.isInteger(body.seat_no)||body.seat_no<1||
              body.seat_no>room.seat_count||
@@ -1821,13 +1831,15 @@ export async function handleRequest(request, env, ctx) {
         const cover=room.theme==='photo' && !wallpaper?.version ? await env.DB.prepare(
           'SELECT version FROM sharika_room_covers WHERE room_id=?'
         ).bind(roomId).first() : null;
+        const catalogImage=isCatalogTheme(room.theme)
+          ?await catalogWallpaper(env.DB,room.theme,url.origin):null;
         return reply({ room: roomId,
           policy,
-          theme:ROOM_THEMES.has(room.theme)?room.theme:'mid',
-          theme_background_url:wallpaper?.version
+          theme:ROOM_THEMES.has(room.theme)||isCatalogTheme(room.theme)?room.theme:'mid',
+          theme_background_url:catalogImage|| (wallpaper?.version
             ? url.origin+'/api/v1/rooms/'+roomId+'/theme-image?v='+wallpaper.version
             :cover?.version
-              ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null,
+              ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null),
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.
           seat_count:room.seat_count,

@@ -21,6 +21,7 @@ import { handleFamilyAdmin } from './family.mjs';
 import {handleAgencyAdmin} from './agency.mjs';
 import {handleMusicAdmin} from './music-library.mjs';
 import {handleAdminMediaUpload,safeMediaUrl} from './admin-media.mjs';
+import {adminRoomThemes} from './room-theme-catalog.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
 import { handleNotificationAdmin } from './notifications.mjs';
 import { handleOperationalRead } from './admin-operations.mjs';
@@ -147,6 +148,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if(operation==='media/upload')return await handleAdminMediaUpload({
     request,env,uid,role:actor.role,cors,reply,fail
   });
+  if(operation==='room-themes'||operation.startsWith('room-themes/'))
+    return await adminRoomThemes({request,env,uid,role:actor.role,operation,cors,reply,fail});
   const operational=await handleOperationalRead({request,env,actor,operation,cors,reply,fail});
   if(operational)return operational;
   if(operation.startsWith('special-ids'))

@@ -2819,15 +2819,74 @@
       [['Open verified Invite settings','daily'],['Create event campaign','events']]);
   };
   P.themes=async function(){
-    const root=byId('pg');root.innerHTML=card('Room themes','Reading real room theme usage…');
+    const root=byId('pg');root.innerHTML=card('Room themes','Loading published themes and room usage…');
     try{
-      const data=await api('GET','theme-usage');
-      root.innerHTML='<div class="card"><h3>Actual room backgrounds in use</h3>'+
-        '<p class="n">Existing room themes are chosen by room owners. Admin-uploaded themes are not available yet; no demo previews are saved.</p>'+
-        window.T(['Theme','Rooms using'],(data.themes||[]).map(t=>[
+      const [usage,catalog]=await Promise.all([
+        api('GET','theme-usage'),api('GET','room-themes')
+      ]);
+      root.innerHTML='<div class="card"><h3>🎨 Published Room Wallpaper Gallery</h3>'+
+        '<p class="n">Wallpapers are separate from room profile photos. Active themes appear in every room’s Theme page. Room owners choose the theme; all users see it. Disable a theme to stop new selections without deleting its image.</p>'+
+        (role==='super'?'<label>Theme name<input class="field" id="theme-name" maxlength="60" placeholder="Royal Golden Night"></label>'+
+          '<label>Display order<input class="field" id="theme-order" type="number" min="0" max="10000" value="0"></label>'+
+          '<label>Uploaded image URL<input class="field" id="theme-media-url" readonly placeholder="Use Media Studio below"></label>'+
+          '<button class="btn" id="theme-publish" type="button">Publish Theme</button>':'')+
+        '<p id="theme-action-status" class="n" role="status"></p></div>'+
+        (role==='super'?mediaStudio('sh-theme-media'):'')+
+        '<div class="card"><h3>Saved themes</h3><div id="theme-catalog-list"></div></div>'+
+        '<div class="card"><h3>Actual room backgrounds in use</h3>'+
+        window.T(['Theme','Rooms using'],(usage.themes||[]).map(t=>[
           esc(t.theme),fmt(t.rooms)
         ]))+'<button class="btn s" id="theme-rooms" type="button">Open real rooms</button></div>';
       byId('theme-rooms').onclick=()=>openVerifiedPage('rooms');
+      const list=byId('theme-catalog-list');
+      const status=byId('theme-action-status');
+      const items=catalog.themes||[];
+      if(!items.length)list.textContent='No admin wallpaper has been published yet.';
+      for(const item of items){
+        const row=document.createElement('div');row.className='row';
+        row.style.cssText='display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0';
+        const picture=document.createElement('img');picture.src=item.image_url;
+        picture.alt='Room theme preview';picture.loading='lazy';
+        picture.style.cssText='width:104px;height:78px;object-fit:cover;border-radius:12px';
+        const info=document.createElement('div');info.style.flex='1';
+        const name=document.createElement('b');name.textContent=item.name;
+        const detail=document.createElement('small');detail.style.display='block';
+        detail.textContent=(item.active?'Active':'Hidden')+' · order '+item.sort_order;
+        info.append(name,detail);row.append(picture,info);
+        if(role==='super'){
+          const toggle=document.createElement('button');toggle.type='button';
+          toggle.className='btn s';toggle.textContent=item.active?'Disable':'Enable';
+          toggle.onclick=async()=>{
+            toggle.disabled=true;status.textContent='Updating '+item.name+'…';
+            try{
+              await api('PATCH','room-themes/'+item.key.slice('catalog:'.length),
+                {active:!item.active});
+              status.textContent='Theme status saved ✓';await P.themes();
+            }catch(error){status.textContent='Not saved: '+error.message;toggle.disabled=false;}
+          };
+          row.append(toggle);
+        }
+        list.append(row);
+      }
+      if(role==='super'){
+        wireMediaStudio('sh-theme-media',[['theme-media-url','New room wallpaper']]);
+        byId('sh-theme-media-file').accept='image/png,image/jpeg,image/webp';
+        byId('theme-publish').onclick=async()=>{
+          const name=byId('theme-name').value.trim();
+          const image_url=byId('theme-media-url').value;
+          const sort_order=Number(byId('theme-order').value);
+          if(!name||!image_url||!Number.isInteger(sort_order)){
+            status.textContent='Enter the theme name and upload an image first.';return;
+          }
+          const button=byId('theme-publish');button.disabled=true;
+          status.textContent='Publishing theme…';
+          try{
+            await api('POST','room-themes',{name,image_url,sort_order,active:true});
+            await P.themes();
+            byId('theme-action-status').textContent='Theme published ✓';
+          }catch(error){status.textContent='Not published: '+error.message;button.disabled=false;}
+        };
+      }
     }catch(error){root.innerHTML=card('Theme usage unavailable',error.message);}
   };
   P.rr=async function(){

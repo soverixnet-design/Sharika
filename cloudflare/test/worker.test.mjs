@@ -1359,7 +1359,7 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
   }finally{globalThis.fetch=oldFetch;}
 });
 
-test('mic invitations require room owner, an unseated real member and recipient consent',async()=>{
+test('mic invitations require owner/admin, an unseated real member and recipient consent',async()=>{
   const previousFetch=globalThis.fetch;
   globalThis.fetch=certFetch;
   try {
@@ -1367,7 +1367,7 @@ test('mic invitations require room owner, an unseated real member and recipient 
     const roomId='10000001';
     const base='https://example.test/api/v1/rooms/'+roomId+'/invitations';
     const headers={Authorization:'Bearer '+await token()};
-    function roomDb(owner,joined=true,targetJoined=true){
+    function roomDb(owner,joined=true,targetJoined=true,isAdmin=false){
       const db=fakeDb(),previous=db.prepare.bind(db);
       db.prepare=sql=>{
         const statement=previous(sql);
@@ -1381,6 +1381,8 @@ test('mic invitations require room owner, an unseated real member and recipient 
           statement.first=async()=>targetJoined?{
             auth_uid:'target-uid',status:'active',seat_no:null
           }:null;
+        if(sql.includes('FROM sharika_room_admins WHERE room_id=?'))
+          statement.first=async()=>isAdmin?{active:1}:null;
         return statement;
       };
       return db;
@@ -1405,13 +1407,16 @@ test('mic invitations require room owner, an unseated real member and recipient 
       method:'POST',headers,body:JSON.stringify(body)
     });
     const correct={seat_no:4,target_public_id:'10000003'};
-    const env=(owner,joined=true,targetJoined=true)=>({
-      DB:roomDb(owner,joined,targetJoined),
+    const env=(owner,joined=true,targetJoined=true,isAdmin=false)=>({
+      DB:roomDb(owner,joined,targetJoined,isAdmin),
       VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project
     });
     const denied=await handleRequest(post(correct),env('different-owner'));
     assert.equal(denied.status,403);
     assert.equal(calls.length,0);
+    const admin=await handleRequest(post(correct),env('different-owner',true,true,true));
+    assert.equal(admin.status,201);
+    assert.deepEqual(calls.pop(),['send',roomId,uid,'target-uid',4]);
     const outsider=await handleRequest(new Request(base,{headers}),env(uid,false));
     assert.equal(outsider.status,403);
     const missing=await handleRequest(post(correct),env(uid,true,false));

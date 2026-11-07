@@ -54,7 +54,9 @@ test('Luxury gift fills the phone screen and zooms in from its center',()=>{
   context.doc=doc;
   runInContext('giftPresentationCss(doc)',context);
   assert.match(stylesheet,/\.sh-gift-parade\.sh-gift-parade-video\{[^}]*inset:0;top:0;left:0;width:100%;height:100%/);
-  assert.match(stylesheet,/\.sh-gift-parade-video video\{[^}]*position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover/);
+  // Preserve the entire uploaded video frame on every phone ratio; cover
+  // cropped expensive gifts and contradicted the fullscreen gift design.
+  assert.match(stylesheet,/\.sh-gift-parade-video video\{[^}]*position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain/);
   assert.match(stylesheet,/@keyframes shGiftCenterZoom\{0%\{transform:scale\(\.32\);opacity:0\}/);
   assert.match(stylesheet,/\.sh-gift-parade-video \.sh-gift-parade-people\{[^}]*position:absolute;z-index:2/);
   assert.match(stylesheet,/\.sh-gift-parade-video \.sh-gift-parade-caption\{[^}]*position:absolute;z-index:2/);
