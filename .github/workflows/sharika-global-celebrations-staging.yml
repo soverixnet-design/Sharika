@@ -10,6 +10,7 @@ on:
       - 'cloudflare/src/index.mjs'
       - 'cloudflare/migrations/0073_global_celebrations.sql'
       - 'cloudflare/test/global-celebrations.test.mjs'
+      - 'cloudflare/test/greedy-daily-wins.test.mjs'
 
 permissions:
   contents: read
