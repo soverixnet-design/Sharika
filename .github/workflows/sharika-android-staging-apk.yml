@@ -53,6 +53,7 @@ on:
       - feature/sharika-royal-clean-room-option1-20261106
       - feature/sharika-profile-level-cp-20261107
       - feature/sharika-level-room-greedy-20261107
+      - feature/sharika-global-celebrations-qa-20261107
     paths:
       - 'android-staging/**'
       - 'app/royal-profile.css'
@@ -966,4 +967,50 @@ jobs:
             --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
             --title 'Sharika Levels, Room Chat and Greedy Wheel — Private QA APK' \
             --notes 'Signed staging Android APK (direct .apk, not ZIP). Includes slower gift levels with roadmap, in-chat room announcement and larger transparent transcript, faster same-ID Greedy bet receipt recovery, UTC daily gross winnings and hidden player count. Backend D1 migration/staging API deployment is separate; until verified live staging, progression and daily revenue may fall back to previous behavior. Invite testers only; not a Play Store release or approval. Real-phone login, voice and live bet tests still required.' \
+            --prerelease
+
+  global-celebrations-direct-apk:
+    name: Publish verified broadcast and golden winner direct staging APK
+    if: github.ref == 'refs/heads/feature/sharika-global-celebrations-qa-20261107'
+    needs: debug-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download newly built signed staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Verify three global presentation features and native route in APK
+        run: |
+          set -euo pipefail
+          apk='verified-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js > "$RUNNER_TEMP/celebration-connection.js"
+          node --check "$RUNNER_TEMP/celebration-connection.js"
+          grep -F "api('GET','/celebrations')" "$RUNNER_TEMP/celebration-connection.js" >/dev/null
+          grep -F '#sh-global-marquee' "$RUNNER_TEMP/celebration-connection.js" >/dev/null
+          grep -F '#sh-global-winner' "$RUNNER_TEMP/celebration-connection.js" >/dev/null
+          grep -F 'sh-gift-parade-video' "$RUNNER_TEMP/celebration-connection.js" >/dev/null
+          grep -F 'Math.min(9000,confirmed.winners.length*3000)' "$RUNNER_TEMP/celebration-connection.js" >/dev/null
+          cp "$apk" verified-apk/Sharika-Global-Celebrations-QA.apk
+          sha256sum verified-apk/Sharika-Global-Celebrations-QA.apk
+      - name: Publish direct APK link as a separate prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sharika-global-celebrations-qa-${GITHUB_SHA:0:8}"
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Global-Celebrations-QA.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Verified Global Celebrations — Private QA APK' \
+            --notes 'Signed staging APK with global rich gift ticker, 3-second golden game winner popup and nonblocking high-tier gift overlay. Notifications are read from server-verified D1 events; no client-forged balances. Prior Royal Levels, room chat, Greedy reconciliation, gifts and agency features preserved. Requires separate successful staging Worker migration 0073/deployment. Invite private testers only; not a Play Store submission. Real-phone voice and media tests pending.' \
             --prerelease

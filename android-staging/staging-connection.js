@@ -144,6 +144,138 @@
   async function api(method, path, body) {
     return native('api', { method, path: '/api/v1' + path, body });
   }
+  // The same verified rich-gift/jackpot feed plays above every app view,
+  // including voice rooms and embedded games. No iframe or client can claim
+  // a win: only an authenticated Worker response supplies these events.
+  const celebrationQueues={ticker:[],winner:[]};
+  const celebrationBusy={ticker:false,winner:false};
+  let lastCelebrationId=0,celebrationFirstPoll=true,celebrationFetching=false;
+  function ensureCelebrationStyle(){
+    if(document.getElementById('sh-global-celebration-style'))return;
+    const style=document.createElement('style');
+    style.id='sh-global-celebration-style';
+    style.textContent=[
+      '#sh-global-marquee{position:fixed;z-index:2147483300;pointer-events:none;',
+      'top:calc(4px + env(safe-area-inset-top,0px));left:8px;right:8px;',
+      'max-width:580px;margin:auto;min-height:58px;box-sizing:border-box;',
+      'display:flex;align-items:center;gap:8px;padding:6px 10px;overflow:hidden;',
+      'border-radius:23px;border:1.5px solid #ffe39b;color:#fff4dc;',
+      'background:linear-gradient(110deg,#32134bea,#75315fed,#24124af2);',
+      'box-shadow:0 6px 18px #03000bbb,inset 0 1px 2px #fffa;',
+      'animation:shGlobalMarquee 6s linear both}',
+      '#sh-global-marquee .sh-gc-portrait{flex:none;width:41px;height:41px;',
+      'overflow:hidden;display:grid;place-items:center;border-radius:50%;',
+      'border:2px solid #f8d57a;background:#411b64;font-size:24px}',
+      '#sh-global-marquee .sh-gc-portrait img,#sh-global-winner .sh-gc-portrait img{',
+      'display:block;width:100%;height:100%;object-fit:cover}',
+      '#sh-global-marquee .sh-gc-copy{min-width:0;flex:1;font-size:12px;line-height:1.35}',
+      '#sh-global-marquee .sh-gc-copy strong{display:block;color:#ffe28b;',
+      'font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '#sh-global-marquee .sh-gc-copy span{display:block;max-height:38px;overflow:hidden}',
+      '#sh-global-marquee .sh-gc-icon{flex:none;font-size:28px}',
+      '@keyframes shGlobalMarquee{0%{transform:translateX(112vw);opacity:0}',
+      '13%{opacity:1}80%{opacity:1}100%{transform:translateX(-112vw);opacity:0}}',
+      '#sh-global-winner{position:fixed;z-index:2147483350;pointer-events:none;',
+      'top:42%;left:50%;width:min(90vw,430px);box-sizing:border-box;',
+      'display:flex;align-items:center;gap:12px;padding:14px 16px;',
+      'border-radius:25px;border:2px solid #ffe49b;',
+      'background:linear-gradient(140deg,#7c3e0c,#db9d38 46%,#442151);',
+      'color:#fff9de;box-shadow:0 0 35px #ffce6699,0 14px 35px #000b,',
+      'inset 0 2px 3px #fff8;animation:shGlobalWinner .32s ease-out both}',
+      '#sh-global-winner .sh-gc-portrait{flex:none;width:56px;height:56px;',
+      'display:grid;place-items:center;overflow:hidden;border-radius:50%;',
+      'border:2px solid #fff2be;background:#521f64;font-size:27px}',
+      '#sh-global-winner .sh-gc-copy{flex:1;min-width:0;text-shadow:0 2px 5px #371b25}',
+      '#sh-global-winner .sh-gc-copy b{display:block;font-size:18px;color:#fff2b5}',
+      '#sh-global-winner .sh-gc-copy strong{display:block;font-size:13px;',
+      'white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '#sh-global-winner .sh-gc-copy em{font-style:normal;font-size:20px;',
+      'font-weight:900;color:#fff}',
+      '@keyframes shGlobalWinner{from{transform:translate(-50%,-30%) scale(.74);opacity:0}',
+      'to{transform:translate(-50%,-50%) scale(1);opacity:1}}',
+      '@media(prefers-reduced-motion:reduce){#sh-global-marquee{animation:none}',
+      '#sh-global-winner{animation:none;transform:translate(-50%,-50%)}}'
+    ].join('');
+    document.head.appendChild(style);
+  }
+  function celebrationAvatar(pic,sizeClass){
+    const box=document.createElement('span');box.className=sizeClass||'sh-gc-portrait';
+    const src=verifiedAvatarUrl(pic);
+    if(src){const img=document.createElement('img');img.src=src;img.alt='';
+      img.onerror=()=>{box.replaceChildren(document.createTextNode('👤'));};
+      box.appendChild(img);
+    }else box.textContent='👤';
+    return box;
+  }
+  function playCelebrations(kind){
+    if(celebrationBusy[kind])return;
+    const item=celebrationQueues[kind].shift();
+    if(!item)return;
+    celebrationBusy[kind]=true;
+    ensureCelebrationStyle();
+    const outer=document.createElement('aside');
+    outer.id=kind==='ticker'?'sh-global-marquee':'sh-global-winner';
+    outer.setAttribute('role','status');
+    const copy=document.createElement('div');copy.className='sh-gc-copy';
+    const from=String(item.sender_name||'Member');
+    if(kind==='ticker'){
+      const title=document.createElement('strong');
+      title.textContent=item.kind==='gift'?'👑 ROYAL GIFT':'🏆 GLOBAL JACKPOT';
+      const detail=document.createElement('span');
+      detail.textContent=item.kind==='gift'?from+' sent '+
+        String(item.gift_name||'Luxury Gift')+' ×'+item.quantity+' to '+
+        String(item.recipient_name||'Member')+' · 🪙 '+formatCompactCoins(item.amount_coins):
+        from+' won 🪙 '+formatCompactCoins(item.amount_coins)+' in '+String(item.game||'Game');
+      copy.append(title,detail);
+      const gift=document.createElement('span');gift.className='sh-gc-icon';
+      gift.textContent=item.kind==='gift'?String(item.gift_emoji||'🎁'):'🏆';
+      outer.append(celebrationAvatar(item.sender_pic),copy,gift);
+    }else{
+      const title=document.createElement('b');title.textContent='🎉 Congratulations!';
+      const name=document.createElement('strong');name.textContent=from+' · '+String(item.game||'Game');
+      const amount=document.createElement('em');
+      amount.textContent='🪙 '+Number(item.amount_coins).toLocaleString('en-US');
+      copy.append(title,name,amount);
+      outer.append(celebrationAvatar(item.sender_pic),copy);
+    }
+    document.body.appendChild(outer);
+    window.setTimeout(()=>{outer.remove();celebrationBusy[kind]=false;playCelebrations(kind);},
+      kind==='ticker'?6000:3000);
+  }
+  function offerCelebration(item){
+    if(!item||!Number.isSafeInteger(item.id)||item.id<1||
+       !Number.isSafeInteger(item.amount_coins)||item.amount_coins<=0)return;
+    if(celebrationQueues.ticker.length<8)celebrationQueues.ticker.push(item);
+    playCelebrations('ticker');
+    if(item.kind==='win'){
+      if(celebrationQueues.winner.length<6)celebrationQueues.winner.push(item);
+      playCelebrations('winner');
+    }
+  }
+  async function pollGlobalCelebrations(){
+    if(!session||celebrationFetching||document.visibilityState==='hidden')return;
+    celebrationFetching=true;
+    try{
+      const data=await api('GET','/celebrations');
+      const events=Array.isArray(data.events)?data.events:[];
+      const now=Date.now();
+      for(const event of events){
+        if(!Number.isSafeInteger(event.id)||event.id<=lastCelebrationId)continue;
+        // On sign-in, don't replay an entire previous minute of celebrations.
+        const then=Date.parse(String(event.created_at||'').replace(' ','T')+'Z');
+        if(!celebrationFirstPoll||Number.isFinite(then)&&now-then<12000)
+          offerCelebration(event);
+      }
+      lastCelebrationId=Math.max(lastCelebrationId,Number(data.latest_id)||0,
+        ...events.map(e=>Number(e.id)||0));
+      celebrationFirstPoll=false;
+    }catch(error){console.info('Celebration feed unavailable',errText(error));}
+    finally{celebrationFetching=false;}
+  }
+  const celebrationTimer=window.setInterval(pollGlobalCelebrations,6500);
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible')pollGlobalCelebrations();
+  });
   // The actual Android build type decides whether Play policy restrictions
   // apply. Never trust a query string, localStorage, or a user-editable toggle.
   let playStoreMode=null;
@@ -1052,11 +1184,11 @@
       // behind the caption, never squeezed into a 62vh column by the flex UI.
       '.sh-gift-parade.sh-gift-parade-video{inset:0;top:0;left:0;width:100%;height:100%;'+
       'max-width:none;box-sizing:border-box;padding:0;border:0;border-radius:0;'+
-      'background:#080419;display:block;overflow:hidden;pointer-events:auto;'+
+      'background:transparent;display:block;overflow:hidden;pointer-events:none;'+
       'animation:shGiftFullscreen 10s linear both}',
       '@keyframes shGiftFullscreen{0%{opacity:0}7%{opacity:1}93%{opacity:1}100%{opacity:0}}',
       '.sh-gift-parade-video video{position:absolute;inset:0;display:block;'+
-      'width:100%;height:100%;object-fit:cover;object-position:center center;'+
+      'width:100%;height:100%;object-fit:contain;object-position:center center;'+
       'transform-origin:center center;animation:shGiftCenterZoom 10s ease-out both}',
       '@keyframes shGiftCenterZoom{0%{transform:scale(.32);opacity:0}'+
       '12%{transform:scale(1.025);opacity:1}22%{transform:scale(1);opacity:1}'+
@@ -1076,7 +1208,7 @@
       'margin:0;font-size:clamp(11px,3vw,15px);text-shadow:0 2px 8px #080419}',
       '.sh-gift-sound{position:absolute;right:12px;top:calc(16px + env(safe-area-inset-top,0px));'+
       'z-index:3;border:1px solid #ffe2a0;border-radius:14px;padding:8px 12px;'+
-      'background:#301a49;color:#fff;font-size:13px}',
+      'background:#301a49;color:#fff;font-size:13px;pointer-events:auto}',
       '.sh-gift-parade-video .sh-gift-sound{top:calc(64px + env(safe-area-inset-top,0px))}',
       '@media(max-width:350px){.sh-gift-parade-people{grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr)}',
       '.sh-gift-parade{padding:8px 7px}.sh-gift-avatar{width:35px;height:35px}}',
@@ -4628,6 +4760,7 @@
     };
     balance = { ...local.state };
     session = { email: account.email, user: { id:current.user_id, email:account.email } };
+    pollGlobalCelebrations().catch(()=>{});
     // A restored session can finish while Recharge is already visible.
     mountRechargeSellerWallet();
     startPresence();
@@ -11200,8 +11333,8 @@
       const style=doc.createElement('style');
       style.id='sh-verified-win-style';
       style.textContent=[
-        '#sh-verified-original-winners{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;width:min(82vw,560px);max-width:calc(100vw - 44px);z-index:2147483000;pointer-events:none;filter:drop-shadow(0 10px 18px #000b);animation:shWinSlide .65s cubic-bezier(.18,1.4,.36,1) both}',
-        '#sh-verified-original-winners .sh-win-pill{position:relative;isolation:isolate;display:flex;align-items:center;gap:8px;min-height:62px;padding:6px 7px;border:2px solid #ffdf75;border-radius:46px;background:linear-gradient(110deg,#276578,#1b8c97 52%,#1baea6);box-shadow:inset 0 2px 4px #ffffff66,inset 0 -5px 10px #064c6299,0 0 12px #f7d46eaa;color:#fff}',
+        '#sh-verified-original-winners{position:fixed;top:42%;left:50%;width:min(82vw,560px);max-width:calc(100vw - 44px);z-index:2147483000;pointer-events:none;filter:drop-shadow(0 10px 18px #000b);animation:shWinSlide .42s cubic-bezier(.18,1.4,.36,1) both}',
+        '#sh-verified-original-winners .sh-win-pill{position:relative;isolation:isolate;display:flex;align-items:center;gap:8px;min-height:62px;padding:6px 7px;border:2px solid #ffdf75;border-radius:46px;background:linear-gradient(110deg,#754018,#d59b37 52%,#542859);box-shadow:inset 0 2px 4px #ffffff66,inset 0 -5px 10px #65391799,0 0 12px #f7d46eaa;color:#fff}',
         '#sh-verified-original-winners .sh-win-wing{position:absolute;z-index:-1;top:-20px;width:108px;height:105px;filter:drop-shadow(0 2px 2px #ad6f25)}',
         '#sh-verified-original-winners .sh-win-left{left:-76px;animation:shWinWingLeft 1.15s ease-in-out infinite alternate}',
         '#sh-verified-original-winners .sh-win-right{right:-76px;transform:scaleX(-1);animation:shWinWingRight 1.15s ease-in-out infinite alternate}',
@@ -11214,7 +11347,7 @@
         '#sh-verified-original-winners .sh-win-number em{font-style:normal;color:#ffe27a}',
         '#sh-verified-original-winners .sh-win-game{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:50%;background:#00bcbc;border:2px dotted #ffe998;font-size:25px;box-shadow:inset 0 0 9px #00383c}',
         '#sh-verified-original-winners .sh-win-go{pointer-events:auto;flex:none;display:grid;place-items:center;width:47px;height:47px;padding:0;border:3px solid #fbe49d;border-radius:50%;background:radial-gradient(circle at 30% 28%,#fff8c7,#e5a837 68%,#b36d18);color:#9e3a03;font:1000 17px system-ui;box-shadow:0 2px 6px #31230d;cursor:pointer}',
-        '@keyframes shWinSlide{0%{transform:translate(-50%,-170%) scale(.88);opacity:0}65%{transform:translate(-50%,5%) scale(1.03);opacity:1}100%{transform:translate(-50%,0) scale(1);opacity:1}}',
+        '@keyframes shWinSlide{0%{transform:translate(-50%,-170%) scale(.88);opacity:0}65%{transform:translate(-50%,-46%) scale(1.03);opacity:1}100%{transform:translate(-50%,-50%) scale(1);opacity:1}}',
         '@keyframes shWinWingLeft{to{transform:rotate(-8deg)}}@keyframes shWinWingRight{to{transform:scaleX(-1) rotate(-8deg)}}',
         '@media(max-width:360px){#sh-verified-original-winners .sh-win-pill{gap:5px;min-height:56px;padding:5px}#sh-verified-original-winners .sh-win-avatar{width:43px;height:43px}#sh-verified-original-winners .sh-win-game{width:35px;height:35px;font-size:21px}#sh-verified-original-winners .sh-win-go{width:41px;height:41px;font-size:15px}#sh-verified-original-winners .sh-win-wing{width:85px;left:-62px}#sh-verified-original-winners .sh-win-right{left:auto;right:-62px}}',
         '@media(prefers-reduced-motion:reduce){#sh-verified-original-winners,#sh-verified-original-winners .sh-win-wing{animation:none!important}}'
@@ -11292,7 +11425,7 @@
         },3000);
       }
       winnerBannerTimer=view.setTimeout(clearWinnerBanner,
-        Math.min(9500,confirmed.winners.length*3200));
+        Math.min(9000,confirmed.winners.length*3000));
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
@@ -11717,6 +11850,10 @@
     document.getElementById('sh-invite-newbie')?.remove();
     document.getElementById('sh-invite-page')?.remove();
     session=null;profile=null;balance={coins:0,dia:0,xp:0};
+    lastCelebrationId=0;celebrationFirstPoll=true;
+    celebrationQueues.ticker.length=0;celebrationQueues.winner.length=0;
+    document.getElementById('sh-global-marquee')?.remove();
+    document.getElementById('sh-global-winner')?.remove();
     notificationUnread=0;messageUnread=0;notificationBadges();
     notificationPanel?.classList.remove('on');
     native('signOut').catch(()=>{});
