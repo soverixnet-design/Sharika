@@ -31,25 +31,10 @@
   }
   refreshWallpaper();
 
-  // The owner's profile moves with their verified microphone seat. When it
-  // is elsewhere, keep seat 0 as a crown-only throne, not a second identity.
-  const originalRender = window.render;
-  if (typeof originalRender === 'function') {
-    window.render = function (...args) {
-      const result = originalRender.apply(this, args);
-      const throne = window.seats?.[0];
-      if (throne?.owner_throne) {
-        const host = byId('host')?.querySelector('.seat');
-        const face = host?.querySelector('.face');
-        const label = host?.querySelector('.nm');
-        if (face) face.textContent = '👑';
-        if (label) label.textContent = 'Owner throne';
-        if (host && Number.isInteger(throne.owner_mic_seat_no))
-          host.onclick = () => window.seatSheet?.(throne.owner_mic_seat_no);
-      }
-      return result;
-    };
-  }
+  // Seat zero remains an internal owner identity for the legacy transport.
+  // It must never render as a dedicated microphone/"owner throne" seat.
+  // Every visible seat is a normal, numbered mic seat (1..seat_count).
+  byId('host')?.setAttribute('aria-hidden', 'true');
 
   const top = app.querySelector('.top');
   const roomInfo = byId('roomBtn');
@@ -65,14 +50,9 @@
 
   const stage = app.querySelector('.stage');
   const games = byId('bGame');
-  if (stage && games) {
+  if (games) {
     games.className = 'sh-games';
     games.setAttribute('aria-label', 'Open games');
-    games.replaceChildren(sprite('games'));
-    const label = document.createElement('span');
-    label.textContent = 'Games';
-    games.append(label);
-    stage.append(games);
   }
 
   // Move existing, wired controls. Do not clone buttons, as the staging
@@ -83,12 +63,14 @@
   const inbox = byId('bMsg');
   const gifts = byId('bGift');
   const mic = byId('mic');
+  const emoji = byId('emo');
   const photo = byId('imgBtn');
-  if (!dock || !input || !row || !inbox || !gifts || !mic) return;
+  if (!dock || !input || !row || !inbox || !gifts || !mic || !emoji || !games) return;
 
   const composer = document.createElement('div');
   composer.className = 'sh-composer';
   composer.append(input);
+  composer.hidden = true;
   const text = byId('txt');
   if (text) text.setAttribute('placeholder', 'Message in room…');
 
@@ -105,10 +87,29 @@
     toolRow.append(wrapper);
     return button;
   }
-  addTool(inbox, 'dm', 'DM');
-  const box = addTool(document.createElement('button'), 'box', 'Lucky Box');
+  const chatToggle=document.createElement('button');
+  chatToggle.type='button';chatToggle.id='sh-chat-toggle';
+  chatToggle.setAttribute('aria-expanded','false');
+  chatToggle.setAttribute('aria-controls','sh-room-composer');
+  composer.id='sh-room-composer';
+  chatToggle.onclick=()=>{
+    const opening=composer.hidden;
+    composer.hidden=!opening;
+    chatToggle.setAttribute('aria-expanded',String(opening));
+    if(opening)text?.focus();
+  };
+  addTool(chatToggle,'dm','Chat');
+  mic.classList.remove('sh-mic-floating');
+  addTool(mic,'mic','Mic');
+  addTool(emoji,'emoji','Emoji');
+  addTool(inbox,'dm','DM');
+
+  const box=document.createElement('button');
   box.type = 'button';
   box.id = 'sh-lucky-box';
+  box.className='sh-room-side-box';
+  box.setAttribute('aria-label','Open Lucky Box');
+  box.append(sprite('box'));
   box.onclick = () => {
     if (window.__minor || window.__luckyOff) {
       window.toast?.('Lucky Box is unavailable for this account');
@@ -120,7 +121,9 @@
       window.giftSheet();
     } else gifts.click();
   };
-  addTool(gifts, 'gift', 'Gift');
+  gifts.classList.add('sh-room-side-gift');
+  gifts.setAttribute('aria-label','Send gift');
+  gifts.replaceChildren(sprite('gift'));
   gifts.addEventListener('click', () => { window.gtab = 0; }, { capture: true });
 
   const menuButton = addTool(document.createElement('button'), 'menu', 'Menu');
@@ -128,9 +131,9 @@
   menuButton.id = 'sh-room-menu';
   menuButton.setAttribute('aria-expanded', 'false');
   menuButton.setAttribute('aria-controls', 'sh-room-menu-panel');
+  addTool(games,'games','Games');
 
-  // The microphone stays a real, externally managed mic button.
-  mic.classList.add('sh-mic-floating');
+  // The microphone stays the original, externally managed mic button.
   mic.setAttribute('aria-label', 'Mute or unmute microphone');
 
   const menuPanel = document.createElement('section');
@@ -210,10 +213,10 @@
     photo.style.width = '1px';
     photo.style.height = '1px';
   }
-  dock.replaceChildren(byId('tray'), composer, toolRow, mic, menuPanel);
+  dock.replaceChildren(byId('tray'), composer, toolRow, gifts, box, menuPanel);
 
-  // The room's original renderer already uses one host and a four-column
-  // grid for 9 seats. Preserve seat click handlers and server seat ownership.
+  // Keep the original seat IDs/click targets and verified state. The visual
+  // grid now shows five seats per row without an owner-only slot.
   // CP/Friendship links are rendered only for verified D1 bond pairs.
 
   // Real-time top strip and server-backed room detail panels.

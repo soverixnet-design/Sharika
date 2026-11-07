@@ -26,7 +26,10 @@
     return [
       ensureSheet(doc,'sharika-royal-premium-style',SHEET_URL),
       ensureSheet(doc,'sharika-winged-theme-style',
-        'file:///android_asset/royal-winged-theme.css')
+        'file:///android_asset/royal-winged-theme.css'),
+      ensureSheet(doc,role==='royal-room'?'sharika-reference-room-style':'sharika-reference-profile-style',
+        role==='royal-room'?'file:///android_asset/reference-room.css':
+          'file:///android_asset/reference-profile.css')
     ];
   }
 
@@ -37,7 +40,8 @@
        window.ROOM_HTML.includes('sharika-winged-theme-style'))return;
     var head='<script>document.documentElement.classList.add("royal-premium","royal-room")<\/script>'+
       '<link id="sharika-royal-premium-style" rel="stylesheet" href="'+SHEET_URL+'">'+
-      '<link id="sharika-winged-theme-style" rel="stylesheet" href="file:///android_asset/royal-winged-theme.css">';
+      '<link id="sharika-winged-theme-style" rel="stylesheet" href="file:///android_asset/royal-winged-theme.css">'+
+      '<link id="sharika-reference-room-style" rel="stylesheet" href="file:///android_asset/reference-room.css">';
     window.ROOM_HTML=window.ROOM_HTML.replace('</head>',head+'</head>');
   }
 

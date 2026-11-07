@@ -3356,6 +3356,32 @@
     }
     openRoyalMarket('shop');
   },true);
+  // Screenshot-matched main profile shortcuts use the existing verified
+  // destinations. Do not fall through to the original demo placeholder menu.
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('#v-me [data-sh-profile-action]');
+    if(!button)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    switch(button.dataset.shProfileAction){
+      case 'wallet':
+        document.querySelector('#v-me #wr')?.click();
+        break;
+      case 'details':
+      case 'level':
+        if(profile?.public_id)openVerifiedRankProfile(profile.public_id);
+        else toast('Sign in to open your verified profile');
+        break;
+      case 'backpack':
+        openRoyalMarket('backpack');
+        break;
+      case 'language':
+        sharikaOpenSettings();
+        break;
+      case 'feedback':
+        openSupportThread();
+        break;
+    }
+  },true);
   // Both the old SVIP shortcut and the new profile badge open the one verified
   // membership screen. No localStorage coin minting or demo tier changes.
   document.addEventListener('click',event=>{
@@ -4174,8 +4200,9 @@
     }
     const mic=frame.$?.('mic');
     if(mic) {
-      mic.textContent=enabled?'🎤':'🔇';
+      if(!mic.closest('.sh-tool'))mic.textContent=enabled?'🎤':'🔇';
       mic.classList.toggle('off',!enabled);
+      mic.setAttribute('aria-pressed',String(enabled));
     }
   }
   async function restartMicrophone(roomId) {
@@ -4975,8 +5002,9 @@
       ['owner','admin'].includes(frame.__sharikaRoomRole)?'':'none';
     frame.__sharikaMemberRoles=new Map((data.members||[]).map(m=>
       [String(m.sharika_users?.public_id||''),String(m.role||'member')]));
-    const eligible=room.owner_id===session?.user?.id||
-      (!!self && self.seat_no!==null && !self.muted);
+    // No reserved Owner mic: listening starts on entry, publishing only
+    // after that Owner/guest deliberately takes an unlocked microphone seat.
+    const eligible=!!self && self.seat_no!==null && !self.muted;
     if(sfuState?.roomId===room.id && sfuState.canPublish!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
     if(voiceRoomId===room.id && voiceRoom &&
@@ -6023,22 +6051,26 @@
         emoji:emoji[0],request_id:requestId
       }).catch(error=>frame.toast('Emoji shown locally: '+errText(error)));
     };
-    // Owner taps are management actions, never an automatic seat move.
-    // The old capture handler bypassed frame.seatSheet entirely, so owners
-    // could not lock or unlock an otherwise free microphone seat.
-    // Guests retain their existing one-tap seating on unlocked empty seats.
+    // Owner and guests both take an unlocked seat with one deliberate tap.
+    // A long press still opens the verified seat-management sheet for Owner;
+    // its Seat arrangement page remains available from the room menu.
     frame.document.addEventListener('click',event=>{
       const button=event.target.closest?.('.seat.empty[data-i]');
       if(!button||!frame.document.querySelector('#grid')?.contains(button))return;
       const seat=Number(button.dataset.i);
       if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
       event.preventDefault();event.stopImmediatePropagation();
-      if(room.owner_id===session?.user?.id){
-        frame.seatSheet(seat);
-        return;
-      }
       moveSelfToSeat(seat).catch(error=>
         frame.toast('Unable to change seat: '+errText(error)));
+    },true);
+    frame.document.addEventListener('contextmenu',event=>{
+      if(room.owner_id!==session?.user?.id&&frame.__sharikaRoomRole!=='admin')return;
+      const button=event.target.closest?.('#grid .seat[data-i]');
+      if(!button)return;
+      const seat=Number(button.dataset.i);
+      if(!Number.isInteger(seat)||seat<1||seat>room.seat_count)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      frame.seatSheet(seat);
     },true);
     // The room template's audience menu previously changed local demo seats.
     // Wire those buttons to authenticated server operations instead.
@@ -6333,6 +6365,18 @@
         frame.$('sheet')?.querySelectorAll('.fr button').forEach(button=>{button.disabled=false;});
       }
     },true);
+    const originalSeatArrangement=frame.seatSet;
+    if(typeof originalSeatArrangement==='function')frame.seatSet=function(...args){
+      const result=originalSeatArrangement.apply(this,args);
+      const sheet=frame.$('sheet');
+      if(sheet?.querySelector('h3')?.textContent?.includes('Seat arrangement')){
+        const label=sheet.querySelector('.lbl');
+        if(label)label.textContent='Microphone seats · Owner can use any seat';
+        const count=frame.$('cnt');
+        if(count)count.textContent=String(room.seat_count);
+      }
+      return result;
+    };
     let seatCountSaveBusy=false;
     frame.document.addEventListener('click',async event=>{
       const control=event.target.closest?.('#mn,#pl');
@@ -6349,7 +6393,7 @@
       }
       const requested=oldCount+(control.id==='pl'?1:-1);
       if(requested<4||requested>20){
-        frame.toast('Choose between 5 and 21 total seats');return;
+        frame.toast('Choose between 4 and 20 mic seats');return;
       }
       seatCountSaveBusy=true;
       const buttons=[frame.$('mn'),frame.$('pl')].filter(Boolean);
@@ -6378,8 +6422,8 @@
         await syncFrame(room,frame).catch(error=>
           console.warn('Seat count saved; member refresh delayed:',errText(error)));
         await reloadRooms();
-        if(frame.$('cnt'))frame.$('cnt').textContent=String(room.seat_count+1);
-        if(note.isConnected)note.textContent='Saved ✓ '+String(room.seat_count+1)+' total seats';
+        if(frame.$('cnt'))frame.$('cnt').textContent=String(room.seat_count);
+        if(note.isConnected)note.textContent='Saved ✓ '+String(room.seat_count)+' mic seats';
         frame.toast('Seat count saved to room ✓');
       }catch(error){
         await syncFrame(room,frame).catch(()=>{});
@@ -6493,7 +6537,7 @@
       const name=frame.$('nm')?.value?.trim()||'My Sharika room';
       const newSeatCount=Number(frame.S.n)-1;
       if(!Number.isInteger(newSeatCount)||newSeatCount<4||newSeatCount>20){
-        frame.toast('Please choose 5–21 total seats');return;
+        frame.toast('Please choose 4–20 mic seats');return;
       }
       saveButton.disabled=true;
       try{
@@ -6714,8 +6758,9 @@
     if(mic) mic.onclick=async ()=>{
       try {
         const enabled=await toggleVoice();
-        mic.textContent=enabled?'🎤':'🔇';
+        if(!mic.closest('.sh-tool'))mic.textContent=enabled?'🎤':'🔇';
         mic.classList.toggle('off',!enabled);
+        mic.setAttribute('aria-pressed',String(enabled));
         frame.toast(enabled?'Microphone enabled':'Microphone muted');
       } catch(error) {frame.toast(errText(error));}
     };
@@ -8275,7 +8320,9 @@
     try {
       const name=document.getElementById('cn')?.value?.trim() || 'My Sharika room';
       const chosen=document.querySelector('#ce button.sel');
-      await api('POST','/rooms',{name,emoji:chosen?.textContent?.trim() || '🎙️',theme:'mid'});
+      // New rooms use the reference screenshot's 5 × 4 seat arrangement.
+      // Existing rooms keep their server-stored owner-adjustable capacity.
+      await api('POST','/rooms',{name,emoji:chosen?.textContent?.trim() || '🎙️',theme:'mid',seat_count:20});
       window.closeSheet();
       await reloadRooms();
       const room=window.myR();

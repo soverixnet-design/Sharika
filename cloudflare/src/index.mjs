@@ -1634,7 +1634,10 @@ export async function handleRequest(request, env, ctx) {
         if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET || !/^wss:\/\//.test(env.LIVEKIT_URL || '')) {
           return fail('voice_not_configured', 503, cors);
         }
-        const publish = room.owner_id === uid || (member.seat_no !== null && !member.muted);
+        // Match the SFU seat permission: the owner is a listener until they
+        // deliberately choose an unlocked microphone seat, just like guests.
+        const publish = Number.isInteger(member.seat_no) && member.seat_no > 0 &&
+          !member.muted;
         const token = await createVoiceToken(env, uid, roomId, publish, room.owner_id === uid);
         return reply({ token, url: env.LIVEKIT_URL, room: 'sharika:' + roomId, publish }, 200, cors);
       }

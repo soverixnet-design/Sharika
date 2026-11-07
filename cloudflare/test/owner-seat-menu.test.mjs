@@ -74,9 +74,9 @@ test('guest may directly take open mic; owner throne is decorative',()=>{
   assert.equal(y.events.length,0);
 });
 
-function tapEmptySeatAs({owner}) {
+function tapEmptySeatAs({owner,longPress=false}) {
   const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
-  const start=adapter.indexOf('    // Owner taps are management actions');
+  const start=adapter.indexOf('    // Owner and guests both take an unlocked seat');
   const end=adapter.indexOf('    // The room template\'s audience menu',start);
   assert.ok(start>=0&&end>start,'owner/guest seat click interception must exist');
   const events=[];
@@ -84,7 +84,11 @@ function tapEmptySeatAs({owner}) {
   const grid={contains(value){return value===button;}};
   const frame={
     document:{
-      addEventListener(name,callback,capture){assert.equal(name,'click');assert.equal(capture,true);this.onSeatClick=callback;},
+      addEventListener(name,callback,capture){
+        assert.ok(['click','contextmenu'].includes(name));
+        assert.equal(capture,true);
+        this[name==='click'?'onSeatClick':'onSeatContext']=callback;
+      },
       querySelector(selector){return selector==='#grid'?grid:null;}
     },
     seatSheet(index){events.push(['menu',index]);},
@@ -97,8 +101,8 @@ function tapEmptySeatAs({owner}) {
   new Function('frame','room','session','moveSelfToSeat','errText',
     adapter.slice(start,end))(frame,room,session,
       seat=>{events.push(['move',seat]);return Promise.resolve();},String);
-  frame.document.onSeatClick({
-    target:{closest(selector){assert.equal(selector,'.seat.empty[data-i]');return button;}},
+  (longPress?frame.document.onSeatContext:frame.document.onSeatClick)({
+    target:{closest(selector){assert.equal(selector,longPress?'#grid .seat[data-i]':'.seat.empty[data-i]');return button;}},
     preventDefault(){prevented=true;},
     stopImmediatePropagation(){stopped=true;}
   });
@@ -107,8 +111,12 @@ function tapEmptySeatAs({owner}) {
   return events;
 }
 
-test('empty seat tap opens owner management sheet without automatically seating owner',()=>{
-  assert.deepEqual(tapEmptySeatAs({owner:true}),[['menu',3]]);
+test('owner takes any free mic with one tap, without a reserved owner chair',()=>{
+  assert.deepEqual(tapEmptySeatAs({owner:true}),[['move',3]]);
+});
+
+test('owner long-press opens verified seat management',()=>{
+  assert.deepEqual(tapEmptySeatAs({owner:true,longPress:true}),[['menu',3]]);
 });
 
 test('empty seat tap lets a regular guest join directly without owner controls',()=>{
