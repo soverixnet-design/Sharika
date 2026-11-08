@@ -31,3 +31,13 @@ test('weekly winner slots stay centered regardless of missing third winner',()=>
   assert.match(ranking,/\.sh-rw-winner\s*\{grid-column:3/);
   assert.match(ranking,/\.sh-rw-winner small\s*\{[\s\S]*?text-overflow:ellipsis/);
 });
+
+test('full integrated staging runs real Android emulator keyboard and Back QA',()=>{
+  const workflow=readFileSync(new URL(
+    '../../.github/workflows/sharika-android-staging-apk.yml',import.meta.url),'utf8');
+  const emulator=workflow.slice(workflow.indexOf('  royal-emulator-smoke:'),
+    workflow.indexOf('  royal-family-api-staging:'));
+  assert.match(emulator,/feature\/sharika-full-integrated-staging-20261107/);
+  assert.match(emulator,/SHARIKA_REAL_ANDROID_IME_ROOM_HEADER_AND_SEATS_STABLE_OK/);
+  assert.match(emulator,/SHARIKA_ANDROID_EMULATOR_LAUNCH_AND_BACK_NO_CRASH_OK/);
+});
