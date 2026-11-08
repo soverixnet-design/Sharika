@@ -332,3 +332,33 @@ verify Firebase identity against separate Production app records, two-device
 voice and media, coin ledger/recharge/agency invariants, app URL routing and
 Play upload certificate. Do **not** open public routes or upload a
 Production-origin AAB until these release checks pass.
+
+## Follow-up: Access-protected QA URL prerequisite blocked (2026-11-09)
+
+- Investigated the next release gate: an **Access-protected** restricted QA
+  hostname, intended to allow verified testers to exercise Production before
+  any public API release. The Cloudflare API responded **HTTP 403** with
+  `access.api.error.not_enabled` for Access apps, reusable policies, and
+  identity-provider inventory. This is a **Zero Trust Access onboarding
+  prerequisite**, not evidence that a policy is protecting an endpoint.
+- Opened the Cloudflare Dashboard in the available cloud browser, but it
+  presented the **Sign in to Cloudflare** page; no authenticated owner session
+  or Access onboarding was available there. No credentials were requested or
+  reproduced. Access onboarding could involve organization/team or plan
+  choices, so no new account setup was attempted without the owner.
+- **Safety gate upheld:** no QA DNS record, Cloudflare Access application or
+  reusable policy, Worker route, public workers.dev URL, or preview URL was
+  created. The Production API remains compile-time locked and unreachable
+  publicly. No policy-bypass substitute was introduced.
+- A separate **read-only** D1 `PRAGMA quick_check` returned `ok` for both
+  isolated Production and Staging databases. The check did not create or
+  mutate tables or user data.
+
+**Owner prerequisite:** enable Cloudflare Zero Trust Access in the existing
+Cloudflare account through an authenticated owner Dashboard session (choose
+the intended plan/team identity as applicable). After that, recheck the
+identity providers, create a reusable **single-email allow** policy and
+self-hosted QA application, test unauthorized denial **before** attaching any
+restricted route, and retain `RELEASE_REVIEW_APPROVED=false` until separate
+on-device functional QA is ready. Production API must remain closed in the
+interim.
