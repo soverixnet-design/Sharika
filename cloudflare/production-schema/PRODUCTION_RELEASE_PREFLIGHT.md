@@ -113,17 +113,20 @@ Production-only Cloudflare Realtime resources were created:
   Cloudflare subsequently generated new internal deployments on bulk-secret
   updates. The Worker still serves the **fail-closed 503 placeholder**, not the
   real application. Its workers.dev subdomain and preview URLs remain disabled;
-  the `sharika.app` zone has **no Worker routes**. This is **not a public API**.
+  the `sharika.app` zone has **no Worker routes**, and the script has no custom
+  Worker domain. This is **not a public API**.
 - Live read-only bindings inspection confirms D1 `DB` points to the Production
   database `44425c0a-c691-4e39-a11a-a6e29089d1a3` and R2 `MEDIA_BUCKET`
   points to `sharika-production-media`. No D1 migrations were rerun and no
-  R2 contents were copied.
+  R2 contents were copied. Read-only journal counts: Production 1 baseline,
+  Staging 71 entries; no old migration was blindly replayed.
 - During setup, four incomplete, newly created and unused Realtime resources
   were removed after verifying their exact IDs. The sole existing staging SFU
   and TURN resources were preserved. Those removed empty resources can be
   recreated with new IDs but their one-time keys cannot be recovered.
 - The planned future Production origin is `https://api.sharika.app`; it is
-  **not yet configured, verified, or routed**. Do not point a Play release AAB
+  **not yet configured, verified, or routed**, and there is no DNS record for
+  `api.sharika.app`. Do not point a Play release AAB
   or users to it before application QA and a separately reviewed activation.
 
 Still blocked: Production Firebase identity and auth validation; full Worker
