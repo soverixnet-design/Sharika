@@ -20,9 +20,11 @@ async function settledEventRanking(db,event,limit=100){
   const matches=rules.map(()=>'?').join(',');
   const weights=rules.map(()=> 'WHEN ? THEN ?').join(' ');
   const weightsArgs=rules.flatMap(r=>[r.gift_id,r.points]);
-  const query='SELECT u.public_no,u.name,u.pic,COUNT(g.id) AS gift_count,'+
+  const query='SELECT u.public_no,u.name,u.pic,s.special_id,COUNT(g.id) AS gift_count,'+
     'SUM(g.quantity * CASE g.gift_id '+weights+' ELSE 0 END) AS points '+
     'FROM sharika_gift_events g JOIN sharika_users u ON u.auth_uid=g.sender_uid '+
+    'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+    "AND (s.expires_at IS NULL OR s.expires_at>datetime('now')) "+
     'WHERE g.gift_id IN ('+matches+') AND g.created_at>=? AND g.created_at<? '+
     "AND u.status='active' GROUP BY g.sender_uid ORDER BY points DESC,gift_count DESC,"+
     'u.public_no ASC LIMIT '+(limit===3?3:100);
@@ -65,7 +67,7 @@ function eventDto(row,awards,now){
     banner_image_url:row.banner_image_version>0&&row.banner_id!=null?
       '/api/v1/banners/'+Number(row.banner_id)+'/image?v='+Number(row.banner_image_version):null,
     awards:awards.filter(a=>Number(a.event_id)===Number(row.id)).map(a=>({
-      rank:Number(a.rank),coins:Number(a.coins),public_id:pad(a.public_no),
+      rank:Number(a.rank),coins:Number(a.coins),public_id:a.special_id||pad(a.public_no),
       name:a.name,created_at:a.created_at
     })),locked:awards.some(a=>Number(a.event_id)===Number(row.id))};
 }
@@ -107,8 +109,10 @@ export async function listEventData(db,admin=false,now=new Date()){
   if(!events.length)return {events:[],server_time:now.toISOString()};
   const minId=Math.min(...events.map(e=>Number(e.id)));
   const prizeRows=rows(await db.prepare(
-    'SELECT a.event_id,a.rank,a.coins,a.created_at,u.public_no,u.name '+
+    'SELECT a.event_id,a.rank,a.coins,a.created_at,u.public_no,u.name,s.special_id '+
     'FROM sharika_event_awards a JOIN sharika_users u ON u.auth_uid=a.auth_uid '+
+    'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+    "AND (s.expires_at IS NULL OR s.expires_at>datetime('now')) "+
     'WHERE a.event_id>=? ORDER BY a.event_id DESC,a.rank ASC LIMIT 200'
   ).bind(minId).all());
   const eventIds=new Set(events.map(e=>Number(e.id)));
@@ -130,7 +134,7 @@ export async function handleEventApp({request,env,uid,path,cors,reply,fail}){
     if(!event||event.status!=='published')return fail('event_unavailable',404,cors);
     const ranked=await settledEventRanking(env.DB,event);
     return reply({event_id:event.id,ranking:ranked.map((r,i)=>({rank:i+1,
-      public_id:pad(r.public_no),name:r.name,pic:r.pic||null,
+      public_id:r.special_id||pad(r.public_no),name:r.name,pic:r.pic||null,
       points:Number(r.points)||0,gift_count:Number(r.gift_count)||0})),
       scoring:'selected_settled_gifts',server_time:new Date().toISOString()},200,cors);
   }

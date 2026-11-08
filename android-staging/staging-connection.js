@@ -9607,6 +9607,16 @@
     const close=()=>{page.remove();};
     page.addEventListener('click',click=>{
       if(click.target.closest('.she-back'))close();
+      const user=click.target.closest('[data-she-user]');
+      if(user&&/^[0-9]{1,10}$/.test(user.dataset.sheUser||'')){
+        const target=user.dataset.sheUser;
+        close();window.openProfile?.({id:target});
+      }
+    });
+    page.addEventListener('keydown',key=>{
+      if((key.key==='Enter'||key.key===' ')&&key.target.closest('[data-she-user]')){
+        key.preventDefault();key.target.click();
+      }
     });
     let eventClock=null;
     try{
@@ -9633,11 +9643,13 @@
         month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
       const start=date(event.starts_at),end=date(event.ends_at);
       const podium=[rank[1],rank[0],rank[2]].map((r,i)=>
-        '<div class="she-podium'+(i===1?' first':'')+'">'+
+        '<div class="she-podium'+(i===1?' first':'')+'"'+
+        (r?' role="button" tabindex="0" data-she-user="'+sellerEscape(r.public_id)+'"':'')+'>'+
         '<div style="font-size:23px">'+['🥈','🥇','🥉'][i]+'</div>'+rankPicture(r)+
         '<b>'+rankName(r)+'</b><small>'+(r?'ID '+sellerEscape(r.public_id):'—')+'</small>'+
         '<small>'+(r?formatCompactCoins(r.points)+' points':'No score')+'</small></div>').join('');
-      const allRanks=rank.map(r=>'<div class="she-entry"><b>#'+Number(r.rank)+'</b>'+
+      const allRanks=rank.map(r=>'<div class="she-entry" role="button" tabindex="0" '+
+        'data-she-user="'+sellerEscape(r.public_id)+'"><b>#'+Number(r.rank)+'</b>'+
         rankPicture(r)+'<strong>'+sellerEscape(r.name)+
         '<small>ID '+sellerEscape(r.public_id)+' · '+Number(r.gift_count)+' gifts</small></strong>'+
         '<em>'+formatCompactCoins(r.points)+' pts</em></div>').join('');
@@ -9671,7 +9683,12 @@
         '<h2 style="margin-top:19px">📊 Event Ranking · Top 100</h2>'+
         (allRanks||'<p style="text-align:center">No verified event gifts sent yet.</p>')+
         '</section><section class="she-box"><h2>🎖️ Event Rewards · Top 1–7</h2>'+
-        '<div class="she-rewards">'+rewardCards+'</div></section>'+
+        '<div class="she-rewards">'+rewardCards+'</div>'+
+        ((event.awards||[]).length?'<h2 style="margin-top:17px">✅ Verified Previous Winners</h2>'+
+          event.awards.map(a=>'<p style="margin:8px 0;padding:9px;background:#302045;'+
+            'border-radius:12px;font-size:12px">Rank #'+Number(a.rank)+' · '+
+            sellerEscape(a.name)+' · ID '+sellerEscape(a.public_id)+' · '+
+            formatCompactCoins(a.coins)+' coins credited</p>').join(''):'')+'</section>'+
         '<p class="she-foot">Scores come only from server-settled selected gifts within the event window. '+
         'Reward labels are announcements, not automatic wallet or item grants. '+
         'After the event ends, administrators verify and issue eligible coin awards.</p>';
