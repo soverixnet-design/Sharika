@@ -36,15 +36,19 @@ const HEADERS = {
   "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
 };
 
-export default {
-  async fetch(request) {
-    const url = new URL(request.url);
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD", "cache-control": "no-store" } });
-    }
-    if (url.pathname !== "/") {
-      return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
-    }
-    return new Response(request.method === "HEAD" ? null : PAGE, { status: 200, headers: HEADERS });
-  },
-};
+async function handleFetch(request) {
+  const url = new URL(request.url);
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD", "cache-control": "no-store" } });
+  }
+  if (url.pathname !== "/") {
+    return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
+  }
+  return new Response(request.method === "HEAD" ? null : PAGE, { status: 200, headers: HEADERS });
+}
+
+// The small QA Worker is uploaded using the classic application/javascript
+// script API. No bindings, credentials, data, or external requests are used.
+addEventListener("fetch", (event) => {
+  event.respondWith(handleFetch(event.request));
+});
