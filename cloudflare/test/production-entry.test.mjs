@@ -68,6 +68,11 @@ test('production config uses only isolated resources with public routes disabled
   assert.equal(config.d1_databases[0].database_name,'sharika-production');
   assert.equal(config.d1_databases[0].database_id,'44425c0a-c691-4e39-a11a-a6e29089d1a3');
   assert.equal(config.r2_buckets[0].bucket_name,'sharika-production-media');
+  const androidFirebase=JSON.parse(readFileSync(new URL(
+    '../../android-staging/app/google-services.json',import.meta.url),'utf8'));
+  const stagingConfig=JSON.parse(readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8'));
+  assert.equal(androidFirebase.project_info.project_id,stagingConfig.vars.FIREBASE_PROJECT_ID);
+  assert.ok(config.secrets.required.includes('FIREBASE_PROJECT_ID'));
   assert.equal(config.durable_objects.bindings[0].name,'VOICE_ROOMS');
   assert.deepEqual(config.ratelimits.map(x=>x.namespace_id),['410301','410302']);
   assert.ok(config.secrets.required.includes('INVITE_DEVICE_PEPPER'));
