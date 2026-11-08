@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sharika-api-production",
+  "main": "src/production-placeholder.mjs",
+  "compatibility_date": "2026-11-08",
+  "account_id": "d81cf7c48fb9b36d468cb0a08720cd74",
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": {
+    "crons": []
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sharika-production",
+      "database_id": "44425c0a-c691-4e39-a11a-a6e29089d1a3",
+      "migrations_dir": "migrations-production"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "sharika-production-media"
+    }
+  ],
+  "vars": {
+    "SHARIKA_ENV": "production",
+    "SHARIKA_COINS_CASH_REDEEMABLE": "false",
+    "SHARIKA_LUCKY_GIFTS_ENABLED": "false",
+    "SHARIKA_PLAY_BILLING_ENABLED": "false",
+    "SHARIKA_AUTOMATIC_RANKING_REWARDS_ENABLED": "false"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
