@@ -8921,31 +8921,6 @@
           games=shortcut;
         }
         if(games)games.onclick=()=>showGameCard(document,true,toast);
-        // The event shortcut stays just above the microphone/chat dock.
-        // It opens the already verified event sheet, not a local demo.
-        if(dock&&!inside.getElementById('sharika-room-events')){
-          const button=inside.createElement('button');
-          button.id='sharika-room-events';
-          button.type='button';
-          button.setAttribute('aria-label','Open Sharika events');
-          button.textContent='🎉 Events';
-          button.style.cssText='position:absolute;right:13px;bottom:calc(100% + 9px);'+
-            'z-index:30;border:1.5px solid #ffdf80;border-radius:18px;padding:7px 11px;'+
-            'min-height:37px;background:linear-gradient(145deg,#6c318d,#271043);'+
-            'color:#fff1ba;font-size:12px;font-weight:900;letter-spacing:.2px;'+
-            'box-shadow:inset 0 2px 2px #fff7,inset 0 -3px 5px #130423,0 5px 0 #916323,0 8px 16px #11051c99';
-          button.onclick=event=>{
-            event.preventDefault();event.stopPropagation();
-            if(typeof window.showVerifiedEvents==='function')window.showVerifiedEvents();
-            else toast('Events are loading. Please retry.');
-          };
-          dock.appendChild(button);
-          api('GET','/events').then(result=>{
-            if(!button.isConnected)return;
-            const count=(result.events||[]).filter(e=>e.status==='live').length;
-            if(count){button.textContent='🎉 Live Event · '+count;button.style.borderColor='#ffcd4f';}
-          }).catch(()=>{});
-        }
         attachFrame(room).catch(error=>toast(errText(error)));
       };
       // Keep the room list visible while the new iframe loads. Otherwise
@@ -9482,7 +9457,8 @@
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image\?v=[1-9][0-9]*$/.exec(value);
     return match&&Number(match[1])===Number(bannerId)?value:null;
   }
-  function renderVerifiedBanners(list){
+  let lastVerifiedBannerSignature='';
+  function renderVerifiedBanners(list,eventList){
     const approved=Array.isArray(list)?list.filter(row=>row&&
       typeof row.title==='string'&&row.title.length<=80&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_a||'')&&
@@ -9494,8 +9470,28 @@
       c:row.color_a+','+row.color_b,a:row.action,
       img:verifiedBannerImageUrl(row.image_url,row.id)
     }));
+    // An event is discoverable only from a currently published home banner.
+    // Draft, cancelled and expired campaigns are never advertised here.
+    const campaigns=Array.isArray(eventList)?eventList.filter(event=>
+      event&&event.published&&['live','scheduled'].includes(event.status)&&
+      Number.isSafeInteger(event.id)&&event.id>0).slice(0,6):[];
+    for(const event of campaigns){
+      const imagePath=typeof event.banner_image_url==='string'?
+        /^\/api\/v1\/banners\/([1-9]\d*)\/image\?v=([1-9]\d*)$/.exec(event.banner_image_url):null;
+      const image=imagePath&&Number(imagePath[1])===Number(event.banner_id)?
+        verifiedBannerImageUrl('https://sharika-api-staging.soverixnet.workers.dev'+
+          event.banner_image_url,event.banner_id):null;
+      cards.unshift({t:String(event.title).slice(0,80),
+        s:event.status==='live'?'🔴 Live now · Tap for event ranking and rewards':
+          '⏰ Coming soon · Tap for gift list and rewards',
+        e:'🏆',c:'#4b1959,#c99138',a:'event',event_id:event.id,img:image});
+    }
+    cards.splice(10);
     if(!cards.length)cards.push({t:'Welcome to Sharika',
       s:'Talk with friends in voice rooms',e:'🎙️',c:'#9b4dff,#0ea5e9',a:'none'});
+    const signature=JSON.stringify(cards);
+    if(signature===lastVerifiedBannerSignature)return;
+    lastVerifiedBannerSignature=signature;
     window.CFG.banners=cards;
     const slide=document.getElementById('ban'),dots=document.getElementById('dots');
     if(slide)slide.innerHTML=cards.map((row,i)=>{
@@ -9514,10 +9510,190 @@
   }
   async function refreshVerifiedBanners(){
     if(!session)return;
-    const data=await api('GET','/banners');
-    if(session)renderVerifiedBanners(data.banners);
+    const [bannerResult,eventResult]=await Promise.allSettled([
+      api('GET','/banners'),api('GET','/events')]);
+    if(session)renderVerifiedBanners(bannerResult.status==='fulfilled'?bannerResult.value.banners:[],
+      eventResult.status==='fulfilled'?eventResult.value.events:[]);
   }
   renderVerifiedBanners([]);
+  setInterval(()=>{
+    if(session&&document.getElementById('v-home')?.classList.contains('on'))
+      refreshVerifiedBanners().catch(error=>console.warn('Event banner refresh:',errText(error)));
+  },60000);
+
+  // Banner-only event destination: its ranking and rewards are independent
+  // from Daily/Weekly/Monthly Sharika Rankings. No client-side score writes.
+  const eventRoyalStyle=document.createElement('style');
+  eventRoyalStyle.id='sh-banner-events-style';
+  eventRoyalStyle.textContent=[
+    '#sh-banner-event{position:fixed;inset:0;z-index:2147483100;overflow-y:auto;'+
+      'overscroll-behavior:contain;background:radial-gradient(ellipse at 50% 0%,#662475,#200b37 55%,#10091e);'+
+      'color:#fbe7b6;font-family:system-ui,-apple-system,sans-serif}',
+    '#sh-banner-event *{box-sizing:border-box}',
+    '#sh-banner-event .she-wrap{max-width:630px;margin:auto;padding:18px 13px 50px}',
+    '#sh-banner-event .she-top{display:flex;align-items:center;gap:12px;'+
+      'margin:0 0 16px;padding:8px 0;border-bottom:1px solid #fad7878a}',
+    '#sh-banner-event .she-back{width:43px;height:43px;flex:none;border:2px solid #f9d78a;'+
+      'border-radius:13px;color:#ffe8a9;background:#36134c;font-size:23px}',
+    '#sh-banner-event .she-brand{min-width:0;font:900 25px Georgia,serif;color:#ffe6a4}',
+    '#sh-banner-event .she-hero{position:relative;min-height:174px;border:2px solid #f9d47b;'+
+      'border-radius:22px;overflow:hidden;background:linear-gradient(135deg,#92308e,#d49b3f 80%);'+
+      'box-shadow:0 7px 0 #6e3681,0 14px 28px #080211aa;display:flex;align-items:end}',
+    '#sh-banner-event .she-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}',
+    '#sh-banner-event .she-hero.has-img{background:#23152d}',
+    '#sh-banner-event .she-title{position:relative;z-index:1;width:100%;padding:16px;'+
+      'background:linear-gradient(0deg,#14051bd9,transparent);text-shadow:0 2px 7px #000}',
+    '#sh-banner-event .she-hero.has-img .she-title{background:#130823c9;padding:8px 14px}',
+    '#sh-banner-event .she-title h1{font:900 clamp(22px,7vw,33px) Georgia,serif;margin:3px 0}',
+    '#sh-banner-event .she-status{display:inline-block;padding:6px 10px;border-radius:99px;'+
+      'background:#e8bb5b;color:#3c1d25;font-size:11px;font-weight:900;letter-spacing:.8px}',
+    '#sh-banner-event .she-info{margin:19px 0 14px;text-align:center}',
+    '#sh-banner-event .she-info b{display:block;font-size:17px;color:#ffe79f}',
+    '#sh-banner-event .she-info p{font-size:12px;line-height:1.55;color:#efdbec;white-space:pre-wrap}',
+    '#sh-banner-event .she-box{margin:16px 0;border:1.5px solid #eab65b;border-radius:21px;'+
+      'background:linear-gradient(155deg,#58255e,#281331 72%);'+
+      'box-shadow:inset 0 2px 0 #ffeab52b,0 6px 0 #120b1f;padding:13px}',
+    '#sh-banner-event .she-box h2{margin:1px 0 12px;color:#ffdda0;'+
+      'font:900 20px Georgia,serif;text-align:center}',
+    '#sh-banner-event .she-gifts{display:flex;gap:9px;overflow-x:auto;padding:5px 1px 10px}',
+    '#sh-banner-event .she-gift{flex:0 0 100px;border-radius:14px;padding:9px 6px;'+
+      'border:1px solid #e4bb72;background:#271a3c;text-align:center}',
+    '#sh-banner-event .she-gift span{font-size:30px;display:block;margin:2px 0 5px}',
+    '#sh-banner-event .she-gift b{display:block;word-break:break-word;font-size:11px;color:#fff}',
+    '#sh-banner-event .she-gift small{font-size:11px;color:#fcd475}',
+    '#sh-banner-event .she-top3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}',
+    '#sh-banner-event .she-podium{min-width:0;text-align:center;border-radius:16px;padding:13px 5px;'+
+      'background:linear-gradient(160deg,#74438c,#291834);border:1px solid #edbc61}',
+    '#sh-banner-event .she-podium.first{border:2px solid #fff2b4;'+
+      'background:linear-gradient(160deg,#aa6b39,#5b2646);box-shadow:0 0 18px #ffd37b36}',
+    '#sh-banner-event .she-podium img{width:52px;height:52px;border-radius:50%;'+
+      'border:2px solid #f0d07b;object-fit:cover;background:#3a2d49}',
+    '#sh-banner-event .she-podium b{display:block;font-size:12px;overflow:hidden;'+
+      'text-overflow:ellipsis;white-space:nowrap;color:#fff7df}',
+    '#sh-banner-event .she-podium small{display:block;color:#f7cc84;font-size:11px;margin-top:4px}',
+    '#sh-banner-event .she-entry{display:flex;align-items:center;gap:10px;padding:10px;'+
+      'border-bottom:1px solid #f5d17e38}',
+    '#sh-banner-event .she-entry img{width:37px;height:37px;object-fit:cover;'+
+      'border-radius:50%;border:1px solid #d8b774}',
+    '#sh-banner-event .she-entry strong{flex:1;min-width:0;overflow:hidden;'+
+      'text-overflow:ellipsis;white-space:nowrap;font-size:12px}',
+    '#sh-banner-event .she-entry small{display:block;font-size:10px;font-weight:500}',
+    '#sh-banner-event .she-entry em{font-size:12px;color:#ffdd80;font-style:normal;font-weight:900}',
+    '#sh-banner-event .she-rewards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}',
+    '#sh-banner-event .she-reward{border:1px solid #f7d07c;border-radius:14px;'+
+      'padding:12px 9px;background:linear-gradient(140deg,#67356c,#321d47)}',
+    '#sh-banner-event .she-reward b{display:block;color:#ffdb83;font-size:15px}',
+    '#sh-banner-event .she-reward span{display:block;color:#fff;font-size:12px;'+
+      'word-break:break-word;margin-top:5px}',
+    '#sh-banner-event .she-foot{text-align:center;margin-top:18px;color:#e7d0e1;'+
+      'font-size:11px;line-height:1.5}',
+    '@media(max-width:360px){#sh-banner-event .she-wrap{padding:10px 8px 45px}'+
+      '#sh-banner-event .she-podium img{width:43px;height:43px}}'
+  ].join('');
+  document.head.appendChild(eventRoyalStyle);
+
+  window.showSharikaEvent=async function(eventId){
+    if(!session){window.showAuth('welcome');return;}
+    const id=Number(eventId);
+    if(!Number.isSafeInteger(id)||id<1)return;
+    document.getElementById('sh-banner-event')?.remove();
+    const page=document.createElement('div');
+    page.id='sh-banner-event';
+    page.innerHTML='<div class="she-wrap"><div class="she-top">'+
+      '<button type="button" class="she-back" aria-label="Back to home">‹</button>'+
+      '<div class="she-brand">👑 Sharika Events</div></div>'+
+      '<p style="text-align:center;padding:25px">Loading verified event…</p></div>';
+    document.body.appendChild(page);
+    const close=()=>{page.remove();};
+    page.addEventListener('click',click=>{
+      if(click.target.closest('.she-back'))close();
+    });
+    let eventClock=null;
+    try{
+      const [eventResult,rankingResult,giftResult]=await Promise.all([
+        api('GET','/events'),api('GET','/events/'+id+'/ranking'),api('GET','/gifts')]);
+      if(!page.isConnected)return;
+      const event=(eventResult.events||[]).find(e=>e.id===id&&e.published);
+      if(!event){page.querySelector('.she-wrap').innerHTML='<button class="she-back">‹</button>'+
+        '<p>This event is no longer available.</p>';return;}
+      const rank=Array.isArray(rankingResult.ranking)?rankingResult.ranking:[];
+      const gifts=Array.isArray(giftResult.gifts)?giftResult.gifts:[];
+      const rankName=r=>r?sellerEscape(r.name):'Waiting for entries';
+      const rankPicture=r=>{
+        const url=verifiedAvatarUrl(r?.pic);
+        return url?'<img src="'+sellerEscape(url)+'" alt="User portrait" loading="lazy">':
+          '<span style="display:block;font-size:40px">👤</span>';
+      };
+      const status=event.status==='live'?'🔴 LIVE EVENT':event.status==='scheduled'?
+        '⏰ UPCOMING':'🏁 COMPLETED';
+      const banner=typeof event.banner_image_url==='string'&&
+        /^\/api\/v1\/banners\/[1-9]\d*\/image\?v=[1-9]\d*$/.test(event.banner_image_url)?
+        'https://sharika-api-staging.soverixnet.workers.dev'+event.banner_image_url:null;
+      const date=iso=>new Date(iso).toLocaleString('en-US',{
+        month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const start=date(event.starts_at),end=date(event.ends_at);
+      const podium=[rank[1],rank[0],rank[2]].map((r,i)=>
+        '<div class="she-podium'+(i===1?' first':'')+'">'+
+        '<div style="font-size:23px">'+['🥈','🥇','🥉'][i]+'</div>'+rankPicture(r)+
+        '<b>'+rankName(r)+'</b><small>'+(r?'ID '+sellerEscape(r.public_id):'—')+'</small>'+
+        '<small>'+(r?formatCompactCoins(r.points)+' points':'No score')+'</small></div>').join('');
+      const allRanks=rank.map(r=>'<div class="she-entry"><b>#'+Number(r.rank)+'</b>'+
+        rankPicture(r)+'<strong>'+sellerEscape(r.name)+
+        '<small>ID '+sellerEscape(r.public_id)+' · '+Number(r.gift_count)+' gifts</small></strong>'+
+        '<em>'+formatCompactCoins(r.points)+' pts</em></div>').join('');
+      const rewardCards=Array.from({length:7},(_,i)=>{
+        const coins=Number(event.prizes?.[i]||0);
+        const label=String(event.reward_labels?.[i]||'').trim();
+        return '<div class="she-reward"><b>'+['🥇','🥈','🥉','🏅','🏅','🏅','🏅'][i]+
+          ' Top '+(i+1)+'</b><span>'+(coins?formatCompactCoins(coins)+' coins':'')+
+          (coins&&label?' + ':'')+(label?sellerEscape(label):coins?'':'Reward not announced')+
+          '</span></div>';
+      }).join('');
+      page.querySelector('.she-wrap').innerHTML='<div class="she-top">'+
+        '<button type="button" class="she-back" aria-label="Back to home">‹</button>'+
+        '<div class="she-brand">👑 Sharika Events</div></div>'+
+        '<section class="she-hero'+(banner?' has-img':'')+'">'+
+        (banner?'<img src="'+sellerEscape(banner)+'" alt="'+sellerEscape(event.title)+'">':'')+
+        '<div class="she-title"><span class="she-status">'+status+'</span>'+
+        '<h1>'+sellerEscape(event.title)+'</h1></div></section>'+
+        '<div id="sh-ev-clock" style="margin:19px 0 0;text-align:center;font-weight:900;'+
+        'color:#ffe5a1;font-size:17px" aria-live="off"></div>'+
+        '<div class="she-info"><b>📆 '+sellerEscape(start)+' — '+sellerEscape(end)+'</b>'+
+        '<p>'+sellerEscape(event.description||'Official Sharika event')+'</p></div>'+
+        '<section class="she-box"><h2>🎁 Eligible Event Gifts</h2><div class="she-gifts">'+
+        ((event.gift_rules||[]).length?event.gift_rules.map(rule=>{
+          const gift=gifts.find(g=>Number(g.id)===Number(rule.gift_id));
+          return '<div class="she-gift"><span>'+sellerEscape(gift?.emoji||'🎁')+'</span>'+
+            '<b>'+sellerEscape(gift?.name||'Gift #'+rule.gift_id)+'</b>'+
+            '<small>+'+formatCompactCoins(Number(rule.points))+' pts</small></div>';
+        }).join(''):'<p>No eligible gifts have been announced.</p>')+'</div></section>'+
+        '<section class="she-box"><h2>🏆 Event Champions</h2><div class="she-top3">'+podium+'</div>'+
+        '<h2 style="margin-top:19px">📊 Event Ranking · Top 100</h2>'+
+        (allRanks||'<p style="text-align:center">No verified event gifts sent yet.</p>')+
+        '</section><section class="she-box"><h2>🎖️ Event Rewards · Top 1–7</h2>'+
+        '<div class="she-rewards">'+rewardCards+'</div></section>'+
+        '<p class="she-foot">Scores come only from server-settled selected gifts within the event window. '+
+        'Reward labels are announcements, not automatic wallet or item grants. '+
+        'After the event ends, administrators verify and issue eligible coin awards.</p>';
+      const tick=()=>{
+        const clock=page.querySelector('#sh-ev-clock');
+        if(!clock?.isConnected){clearInterval(eventClock);return;}
+        const now=Date.now();
+        const endMs=Date.parse(event.ends_at),startMs=Date.parse(event.starts_at);
+        const remaining=Math.max(0,Math.ceil(((now<startMs?startMs:endMs)-now)/1000));
+        const d=Math.floor(remaining/86400),h=Math.floor(remaining%86400/3600);
+        const m=Math.floor(remaining%3600/60),s=remaining%60;
+        clock.textContent=now>=endMs?'🏁 This event has ended':
+          (now<startMs?'⏳ Starts in ':'⏳ Ends in ')+d+'d '+h+'h '+
+          String(m).padStart(2,'0')+'m '+String(s).padStart(2,'0')+'s';
+      };
+      tick();eventClock=setInterval(tick,1000);
+    }catch(error){
+      if(page.isConnected)page.querySelector('.she-wrap').innerHTML=
+        '<button type="button" class="she-back">‹</button><p>Could not load event: '+
+        sellerEscape(errText(error))+'</p>';
+    }
+  };
 
   // Seller tools belong only in the verified seller's own wallet/profile.
   // Showing a seller action on a stranger's public ID falsely suggests that
@@ -9652,10 +9828,6 @@
         Number(data.streak||0)+' day(s). Miss a UTC day and your streak restarts at Day 1.</p>'+
         '<div id="sh-daily-activities"><h4>⭐ Today’s Tasks</h4>'+
         (tasks||'<p>Tasks unavailable</p>')+'</div>'+
-        '<button type="button" id="sh-event-launch" style="display:block;width:100%;margin:18px 0;'+
-        'padding:15px;border-radius:19px;border:2px solid #ffdb7c;background:linear-gradient(155deg,#a64bff,#573ac4);'+
-        'color:#fff;font-size:17px;font-weight:900;box-shadow:0 6px 0 #332179,0 11px 20px #100d4c">'+
-        '🏆 Events & Rewards →</button>'+
         '<p id="sh-daily-foot">Rewards can be claimed once per task per UTC day. '+
         'Tomorrow tasks reset automatically; your previous coins remain in your wallet.</p>';
       setDailyClock(data.next_reset_utc);

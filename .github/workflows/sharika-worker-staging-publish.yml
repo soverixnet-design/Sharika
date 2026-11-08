@@ -117,7 +117,9 @@ jobs:
             exit 1
           fi
       - name: Run backend tests
-        run: npm run check
+        run: |
+          npm run check
+          python3 test/banner-only-events-sql.test.py
       - name: Install additive ranking reward announcement schema in staging only
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0074_royal_ranking_reward_display.sql
@@ -125,6 +127,14 @@ jobs:
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0076_public_profile_cover_images.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS categories FROM sharika_rank_reward_policy"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS extra_categories FROM sharika_rank_reward_policy_extra"
+      - name: Install additive banner-only event campaign schema in staging only
+        run: |
+          if npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT banner_id,gift_rules_json,reward_labels_json FROM sharika_events LIMIT 0" >/dev/null 2>&1; then
+            echo "Staging event campaign fields already exist; keeping previous data."
+          else
+            npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0077_banner_only_gift_events.sql
+          fi
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS event_campaigns FROM sharika_events"
       - name: Verify staging D1 has exchange settings before publish
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT diamonds_per_unit,coins_per_unit,revision FROM sharika_exchange_rate WHERE id=1"

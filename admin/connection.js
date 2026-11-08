@@ -2713,9 +2713,16 @@
   };
 
   P.events=async function(){
+    const catalogs=await Promise.allSettled([api('GET','gifts'),api('GET','banners')]);
+    const availableGifts=(catalogs[0].status==='fulfilled'?catalogs[0].value.gifts||[]:[])
+      .filter(g=>Number(g.tab)<=1).slice(0,100);
+    const availableBanners=catalogs[1].status==='fulfilled'?
+      catalogs[1].value.banners||[]:[];
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>🎉 Verified Events & Rewards</h3>'+
-      '<p class="n">Events appear in the app as soon as they are published. '+
+      '<p class="n">Only published and upcoming/live events appear in the home banner slider. '+
+      'Each banner opens its own gift leaderboard and Top 1–7 reward preview; '+
+      'the regular Rankings page stays separate. '+
       'Set UTC event dates and prize coins; select real winning user IDs only after the event ends. '+
       'Every winner is paid once through the server wallet and immutable ledger.</p>'+
       '<div id="sh-event-stats">Loading verified events…</div></div>'+
@@ -2733,9 +2740,32 @@
       '<label>Status<select class="field" id="sh-ev-status">'+
       '<option value="draft">Draft (hidden)</option><option value="published">Publish in app</option>'+
       '<option value="cancelled">Cancelled</option></select></label></div>'+
+      '<label>🖼️ Event home banner (upload artwork in Home banners first)'+
+      '<select class="field" id="sh-ev-banner"><option value="0">Royal gradient / no uploaded image</option>'+
+      availableBanners.map(b=>'<option value="'+Number(b.id)+'">#'+Number(b.id)+' · '+
+        esc(b.title)+(b.image_url?' · 🖼️':' · no photo')+'</option>').join('')+
+      '</select></label>'+
+      '<div style="margin:13px 0;border:1px solid #d8b363;border-radius:16px;padding:12px">'+
+      '<h4>🎁 Only these gifts earn event points</h4>'+
+      '<p class="n">Select up to 12 regular/luxury gifts. Points count only from real settled gifts sent during the event. Other gifts earn zero event points.</p>'+
+      '<div id="sh-ev-gift-options" style="max-height:245px;overflow-y:auto;display:grid;'+
+      'grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:7px">'+
+      (availableGifts.length?availableGifts.map(g=>'<label style="display:flex;'+
+        'align-items:center;gap:6px;border:1px solid #c1a57a;border-radius:10px;padding:8px">'+
+        '<input type="checkbox" data-sh-ev-gift="'+Number(g.id)+'">'+esc(g.emoji||'🎁')+' '+
+        esc(g.name)+(g.active?'':' (inactive)')+' <input class="field" type="number" data-sh-ev-points="'+Number(g.id)+'" '+
+        'min="1" max="1000000" value="1" aria-label="Event points for '+esc(g.name)+'" '+
+        'style="width:70px;min-width:70px;padding:5px"></label>').join(''):
+        '<p class="n">No active regular/luxury gifts available. Add gifts in Gift Catalog first.</p>')+
+      '</div></div>'+
       '<div class="row"><label>🥇 Rank 1 coins<input class="field" type="number" id="sh-ev-p1" min="0" max="1000000" value="10000"></label>'+
       '<label>🥈 Rank 2 coins<input class="field" type="number" id="sh-ev-p2" min="0" max="1000000" value="5000"></label>'+
       '<label>🥉 Rank 3 coins<input class="field" type="number" id="sh-ev-p3" min="0" max="1000000" value="2500"></label></div>'+
+      '<h4>🏅 Top 1–7 reward descriptions (display only)</h4>'+
+      '<p class="n">These labels explain prizes in the event page. They never grant frames, medals or coins automatically. Coin awards for ranks 1–3 are manually verified above.</p>'+
+      '<div class="row" style="flex-wrap:wrap">'+Array.from({length:7},(_,i)=>
+        '<label>#'+(i+1)+'<input class="field" id="sh-ev-label-'+(i+1)+'" '+
+        'maxlength="80" placeholder="e.g. Royal medal + frame" style="min-width:130px"></label>').join('')+'</div>'+
       '<button class="btn s" type="button" id="sh-event-save">Create event</button>'+
       ' <button class="btn" type="button" id="sh-event-clear">Clear form</button>'+
       '<p class="n" id="sh-event-note">Use 0 to disable a prize. Awarded events are locked to protect old receipts.</p>'+
@@ -2780,6 +2810,9 @@
         '<h3>🏆 '+esc(e.title)+' <small>#'+e.id+'</small></h3>'+
         '<p class="n">'+esc(EVENT_KINDS[e.kind]||e.kind)+' · <b>'+esc(e.status.toUpperCase())+'</b></p>'+
         '<p class="n">'+schedule+'</p><p>'+esc(e.description||'No rules entered')+'</p>'+
+        '<p class="n">Home banner: '+(e.banner_id?'#'+Number(e.banner_id):'Royal gradient')+
+          ' · Scoring gifts: '+(e.gift_rules||[]).map(g=>
+            '#'+Number(g.gift_id)+' × '+Number(g.points)).join(', ')+(e.gift_rules?.length?'':'none')+'</p>'+
         '<div>'+prizes+'</div>'+
         (role==='super'&&!e.locked?
           '<button class="btn" type="button" data-sh-event-edit="'+e.id+'">Edit event / prizes</button>':
@@ -2797,6 +2830,10 @@
       byId('sh-ev-start').value=eventLocal(now.toISOString());
       byId('sh-ev-end').value=eventLocal(tomorrow.toISOString());
       byId('sh-ev-status').value='draft';
+      byId('sh-ev-banner').value='0';
+      root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>input.checked=false);
+      root.querySelectorAll('[data-sh-ev-points]').forEach(input=>input.value='1');
+      for(let i=1;i<=7;i++)byId('sh-ev-label-'+i).value='';
       ['10000','5000','2500'].forEach((v,i)=>byId('sh-ev-p'+(i+1)).value=v);
       byId('sh-event-save').textContent='Create event';
     }
@@ -2814,6 +2851,14 @@
         byId('sh-ev-start').value=eventLocal(e.starts_at);
         byId('sh-ev-end').value=eventLocal(e.ends_at);
         byId('sh-ev-status').value=e.published?'published':e.status;
+        byId('sh-ev-banner').value=String(e.banner_id||0);
+        root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>{
+          const found=(e.gift_rules||[]).find(rule=>Number(rule.gift_id)===Number(input.dataset.shEvGift));
+          input.checked=!!found;
+          const points=root.querySelector('[data-sh-ev-points="'+input.dataset.shEvGift+'"]');
+          if(points)points.value=found?Number(found.points):1;
+        });
+        for(let i=1;i<=7;i++)byId('sh-ev-label-'+i).value=e.reward_labels?.[i-1]||'';
         (e.prizes||[]).forEach((n,i)=>byId('sh-ev-p'+(i+1)).value=n);
         byId('sh-event-save').textContent='Save event changes';
         byId('sh-event-form-title').scrollIntoView({behavior:'smooth',block:'start'});
@@ -2826,6 +2871,17 @@
         });
         const start=Date.parse(byId('sh-ev-start').value);
         const end=Date.parse(byId('sh-ev-end').value);
+        const gift_rules=Array.from(root.querySelectorAll('[data-sh-ev-gift]:checked')).map(input=>{
+          const id=Number(input.dataset.shEvGift);
+          const value=root.querySelector('[data-sh-ev-points="'+id+'"]')?.value||'';
+          return {gift_id:id,points:/^\d+$/.test(value)?Number(value):NaN};
+        });
+        if(gift_rules.length>12||gift_rules.some(g=>!Number.isSafeInteger(g.points)||
+          g.points<1||g.points>1000000)){
+          hint.textContent='Select at most 12 gifts with integer points from 1 to 1,000,000.';return;
+        }
+        if(byId('sh-ev-kind').value==='gift_race'&&byId('sh-ev-status').value==='published'&&
+          !gift_rules.length){hint.textContent='Pick at least one gift before publishing a Gift Race.';return;}
         if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start||
           end-start>366*86400000||p.some(n=>!Number.isSafeInteger(n)||n<0||n>1000000)||
           !p.some(n=>n>0)){
@@ -2833,7 +2889,9 @@
         }
         const payload={title:byId('sh-ev-title').value.trim(),kind:byId('sh-ev-kind').value,
           description:byId('sh-ev-desc').value.trim(),starts_at:new Date(start).toISOString(),
-          ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p};
+          ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p,
+          banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,
+          reward_labels:Array.from({length:7},(_,i)=>byId('sh-ev-label-'+(i+1)).value.trim())};
         if(payload.title.length<3){hint.textContent='Enter an event name of at least 3 characters.';return;}
         if(!window.confirm((editing?'Update event #'+editing:'Create this event')+
           ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;

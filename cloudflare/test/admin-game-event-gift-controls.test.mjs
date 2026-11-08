@@ -98,11 +98,12 @@ test('gift image links reject script URLs and accept HTTPS library images',async
   assert.equal((await post({...base,image_url:'https://cdn.example.com/gift.webp'})).status,201);
   assert.ok(f.changes.some(c=>c.sql.includes('image_url,animation_url')));
 });
-test('room event shortcut and game list call real authenticated endpoints',()=>{
+test('events are banner-only and room games still call real authenticated endpoints',()=>{
   const js=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const ui=readFileSync(new URL('../../admin/connection.js',import.meta.url),'utf8');
-  assert.match(js,/sharika-room-events/);
-  assert.match(js,/window\.showVerifiedEvents\(\)/);
+  assert.doesNotMatch(js,/sharika-room-events/);
+  assert.match(js,/window\.showSharikaEvent=async function/);
+  assert.ok(js.includes("api('GET','/events/'+id+'/ranking')"));
   assert.match(js,/api\('GET','\/game-catalog'\)/);
   assert.match(ui,/api\('PATCH','game-catalog'/);
   assert.match(ui,/data-gift-save/);

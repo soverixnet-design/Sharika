@@ -356,7 +356,7 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB,uid);
       return reply({games:await readGameCatalog(env.DB)},200,cors);
     }
-    if(path==='/api/v1/events') return await handleEventApp({
+    if(path==='/api/v1/events'||/^\/api\/v1\/events\/[1-9]\d*\/ranking$/.test(path)) return await handleEventApp({
       request,env,uid,path,cors,reply,fail
     });
     if(path.startsWith('/api/v1/play-billing/')){

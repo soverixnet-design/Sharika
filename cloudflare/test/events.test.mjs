@@ -58,6 +58,13 @@ test('valid event requires truthful UTC window and integer coin tiers',()=>{
   assert.equal(validEventPayload({...eventPayload,ends_at:eventPayload.starts_at}),false);
   assert.equal(validEventPayload({...eventPayload,status:'live'}),false);
   assert.equal(validEventPayload({...eventPayload,kind:'casino_jackpot'}),false);
+  assert.equal(validEventPayload({...eventPayload,gift_rules:[{gift_id:4,points:10}],
+    reward_labels:['Frame','Medal','','','','',''],banner_id:3}),true);
+  assert.equal(validEventPayload({...eventPayload,gift_rules:[{gift_id:4,points:1},
+    {gift_id:4,points:10}]}),false);
+  assert.equal(validEventPayload({...eventPayload,gift_rules:[{gift_id:4,points:-10}]}),false);
+  assert.equal(validEventPayload({...eventPayload,banner_id:-1}),false);
+  assert.equal(validEventPayload({...eventPayload,reward_labels:['only one']}),false);
 });
 test('support staff cannot read events and finance cannot create payouts',async()=>{
   const f=fixture();
@@ -116,8 +123,31 @@ test('app GET lists only published public events while writes are denied',async(
   const data=await listEventData(f.db,false);
   assert.deepEqual(data.events,[]);
   const statement=f.state.queries.find(x=>x.sql.includes('FROM sharika_events'));
-  assert.match(statement.sql,/WHERE status=\? AND ends_at>=\?/);
+  assert.match(statement.sql,/WHERE e\.status=\? AND e\.ends_at>=\?/);
   const response=await handleEventApp({request:new Request('https://x.invalid/api/v1/events',{
     method:'POST'}),env:{DB:f.db},uid:'winner',path:'/api/v1/events',cors:{},reply,fail});
   assert.equal(response.status,405);
+});
+test('unpublished event-specific leaderboard is hidden',async()=>{
+  const f=fixture({event:{id:3,status:'draft',gift_rules_json:'[]'}});
+  const response=await handleEventApp({request:new Request('https://x.invalid/api/v1/events/3/ranking'),
+    env:{DB:f.db},uid:'winner',path:'/api/v1/events/3/ranking',cors:{},reply,fail});
+  assert.equal(response.status,404);
+  assert.equal((await response.json()).error,'event_unavailable');
+});
+test('published event-specific leaderboard uses only configured settled gifts within UTC window',async()=>{
+  const f=fixture({event:{id:3,status:'published',
+    starts_at:'2026-11-01T00:00:00.000Z',ends_at:'2026-11-08T00:00:00.000Z',
+    gift_rules_json:JSON.stringify([{gift_id:17,points:9},{gift_id:18,points:12}])}});
+  const response=await handleEventApp({request:new Request('https://x.invalid/api/v1/events/3/ranking'),
+    env:{DB:f.db},uid:'winner',path:'/api/v1/events/3/ranking',cors:{},reply,fail});
+  assert.equal(response.status,200);
+  const data=await response.json();
+  assert.deepEqual(data.ranking,[]);
+  const statement=f.state.queries.find(row=>row.sql.includes('FROM sharika_gift_events g'));
+  assert.ok(statement);
+  assert.match(statement.sql,/g\.gift_id IN \(\?,\?\)/);
+  assert.match(statement.sql,/g\.created_at>=\? AND g\.created_at<\?/);
+  assert.match(statement.sql,/SUM\(g\.quantity \* CASE g\.gift_id/);
+  assert.deepEqual(statement.args,[17,9,18,12,17,18,'2026-11-01 00:00:00','2026-11-08 00:00:00']);
 });
