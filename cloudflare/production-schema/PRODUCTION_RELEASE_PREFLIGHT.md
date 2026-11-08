@@ -1,8 +1,9 @@
-# Sharika Production Worker — release preflight (not deployed)
+# Sharika Production Worker — release preflight (public release blocked)
 
-Date: 2026-11-08 (UTC). No Cloudflare Worker deployment or D1/R2 mutation
-was performed during this preflight; existing staging resources and user data
-remain untouched.
+Date: 2026-11-08 (UTC). The initial offline preflight did not deploy a
+Worker or mutate D1/R2. A subsequent separate infrastructure setup deployed
+only the fail-closed 503 maintenance Worker internally, without any public
+route or URL. Existing staging resources and user data remain untouched.
 
 ## Prepared in the isolated GitHub production branch
 
@@ -35,8 +36,8 @@ remain untouched.
 
 ## Unresolved release blockers
 
-1. **Production Firebase identity and Cloudflare Realtime SFU/TURN secrets**
-   must be scoped to production and verified without copying staging secrets.
+1. **Production Firebase identity** remains unverified. Separate Production
+   SFU/TURN credentials have since been provisioned (see final follow-up).
 2. **Android app and invite URLs are hard-coded to Staging** in several places:
    `MainActivity.java`, `SharikaMessagingService.java`,
    `SharikaActivity.java`, `android-staging/staging-connection.js`,
@@ -80,10 +81,10 @@ an explicit production release review when the above blockers are cleared.
   landing still has its test download option.
 - The production Worker config requires *separately provisioned* SFU and TURN
   secret bindings. The preflight gate rejects a missing TURN relay as well as
-  missing SFU credentials. No credentials have been copied or created.
-- Read-only Cloudflare binding inspection: staging has the four named SFU/TURN
-  secret bindings; production has **zero** secret bindings. Production Worker
-  remains undeployed, and no public route is available.
+  missing SFU credentials. At this earlier checkpoint, none had been created.
+- Earlier read-only Cloudflare binding inspection: staging had the four named
+  SFU/TURN secret bindings; production then had **zero** secret bindings and
+  was undeployed. See final follow-up for the newer Production state.
 - Offline Node tests: **638 passed**, none failed. This includes tests for
   Android variant host references and staging/production URL replacement.
 - No Gradle/Android SDK build was available in this executor, so the new
@@ -91,7 +92,41 @@ an explicit production release review when the above blockers are cleared.
   remain **unverified**. No new AAB was produced or submitted to Play.
 
 Next release gate: choose and verify the eventual HTTPS Production API origin,
-provision independent SFU/TURN credentials through the authorized secret
-workflow, run a real release-format build and inspect its merged Android
+run a real release-format build and inspect its merged Android
 manifest/packaged `connection.js`, then test audio on two devices. Retain the
 compile-time Worker gate until full app and economic QA passes.
+
+## Follow-up: isolated Production SFU/TURN provisioned (2026-11-08)
+
+Production-only Cloudflare Realtime resources were created:
+
+| Resource | Name | Cloudflare resource ID |
+| --- | --- | --- |
+| SFU application | `sharika-production-audio` | `e5be747936071f3b0bdaea80d26d9793` |
+| TURN key | `sharika-production-voice-turn` | `62335412afb939c770491eeeb73267cd` |
+
+- The Production Worker `sharika-api-production` has all four bindings of type
+  `secret_text`: `REALTIME_SFU_APP_ID`, `REALTIME_SFU_APP_SECRET`,
+  `REALTIME_TURN_KEY_ID`, and `REALTIME_TURN_API_TOKEN`. Secret **values are not
+  stored in this repository** and were not copied from staging.
+- An internal maintenance version was deployed to permit secret binding.
+  Cloudflare subsequently generated new internal deployments on bulk-secret
+  updates. The Worker still serves the **fail-closed 503 placeholder**, not the
+  real application. Its workers.dev subdomain and preview URLs remain disabled;
+  the `sharika.app` zone has **no Worker routes**. This is **not a public API**.
+- Live read-only bindings inspection confirms D1 `DB` points to the Production
+  database `44425c0a-c691-4e39-a11a-a6e29089d1a3` and R2 `MEDIA_BUCKET`
+  points to `sharika-production-media`. No D1 migrations were rerun and no
+  R2 contents were copied.
+- During setup, four incomplete, newly created and unused Realtime resources
+  were removed after verifying their exact IDs. The sole existing staging SFU
+  and TURN resources were preserved. Those removed empty resources can be
+  recreated with new IDs but their one-time keys cannot be recovered.
+- The planned future Production origin is `https://api.sharika.app`; it is
+  **not yet configured, verified, or routed**. Do not point a Play release AAB
+  or users to it before application QA and a separately reviewed activation.
+
+Still blocked: Production Firebase identity and auth validation; full Worker
+app deployment with Durable Objects and isolated rate-limit bindings;
+production media population; server-side wallet/recharge/agency/game audit;
+two-device voice QA; Android release build/signing; Play Store review.
