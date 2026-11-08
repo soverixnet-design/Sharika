@@ -28,6 +28,8 @@ test('a dashboard-only activation flag cannot skip the production release review
     FIREBASE_PROJECT_ID:'sharika-voice-chat-app',
     REALTIME_SFU_APP_ID:'local-placeholder', REALTIME_SFU_APP_SECRET:'local-placeholder',
     REALTIME_TURN_KEY_ID:'local-placeholder', REALTIME_TURN_API_TOKEN:'local-placeholder',
+    INVITE_DEVICE_PEPPER:'local-placeholder-device-pepper-at-least-32-characters',
+    INVITE_BANK_ENCRYPTION_KEY_B64:'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
     DB:{prepare(){}}, MEDIA_BUCKET:{get(){}}, VOICE_ROOMS:{getByName(){}},
     SHARIKA_ACTION_RATE_LIMIT:{limit(){}}, SHARIKA_FINANCE_RATE_LIMIT:{limit(){}},
   };
@@ -43,7 +45,7 @@ test('missing financial throttles, identity and real-time credentials block read
   const missing=missingProductionPrerequisites({SHARIKA_ENV:'production'});
   for(const name of ['activation_flag','production_d1','production_r2','voice_coordinator',
     'action_rate_limit','finance_rate_limit','firebase_project','realtime_sfu_credentials',
-    'realtime_turn_credentials',
+    'realtime_turn_credentials','invite_device_pepper','invite_bank_encryption_key',
     'client_and_invite_urls'])assert.ok(missing.includes(name),name);
 });
 
@@ -68,5 +70,7 @@ test('production config uses only isolated resources with public routes disabled
   assert.equal(config.r2_buckets[0].bucket_name,'sharika-production-media');
   assert.equal(config.durable_objects.bindings[0].name,'VOICE_ROOMS');
   assert.deepEqual(config.ratelimits.map(x=>x.namespace_id),['410301','410302']);
+  assert.ok(config.secrets.required.includes('INVITE_DEVICE_PEPPER'));
+  assert.ok(config.secrets.required.includes('INVITE_BANK_ENCRYPTION_KEY_B64'));
   assert.equal(config.observability.traces.enabled,true);
 });
