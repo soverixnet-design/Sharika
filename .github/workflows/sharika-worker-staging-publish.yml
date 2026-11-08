@@ -23,6 +23,9 @@ on:
       - 'cloudflare/migrations/0074_royal_ranking_reward_display.sql'
       - 'cloudflare/migrations/0075_noble_games_ranking_reward_announcements.sql'
       - 'cloudflare/migrations/0076_public_profile_cover_images.sql'
+      - 'cloudflare/migrations/0078_staff_access_expiry_and_revoke.sql'
+      - 'cloudflare/src/staff.mjs'
+      - 'cloudflare/test/staff.test.mjs'
       - 'cloudflare/src/profile-showcase.mjs'
       - 'cloudflare/test/profile-showcase.test.mjs'
       - 'cloudflare/test/ranking-rewards.test.mjs'
@@ -120,6 +123,7 @@ jobs:
         run: |
           npm run check
           python3 test/banner-only-events-sql.test.py
+          python3 test/staff-expiry-sql.test.py
       - name: Install additive ranking reward announcement schema in staging only
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0074_royal_ranking_reward_display.sql
@@ -135,6 +139,14 @@ jobs:
             npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0077_banner_only_gift_events.sql
           fi
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS event_campaigns FROM sharika_events"
+      - name: Install staff access expiration and revocation guard in staging only
+        run: |
+          if npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT expires_at_ms FROM sharika_admin_staff_accounts LIMIT 0" >/dev/null 2>&1; then
+            echo "Staff expiration field already installed; preserving existing access records."
+          else
+            npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0078_staff_access_expiry_and_revoke.sql
+          fi
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS staff_accounts FROM sharika_admin_staff_accounts"
       - name: Verify staging D1 has exchange settings before publish
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT diamonds_per_unit,coins_per_unit,revision FROM sharika_exchange_rate WHERE id=1"

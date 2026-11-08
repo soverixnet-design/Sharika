@@ -77,6 +77,9 @@ test('staff Firebase role requires active database record and recognized permiss
   assert.deepEqual(actor.permissions,['view_users','coin_recharge']);
   assert.equal((await lookupStaffActor(mock({staff:{active:0}}).DB,'uid')),null);
   assert.equal((await lookupStaffActor(mock({staff:{active:1,permissions_json:'["super"]'}}).DB,'uid')),null);
+  assert.equal((await lookupStaffActor(mock({staff:{active:1,permissions_json:'["view_users"]',
+    expires_at_ms:Date.now()-1000}}).DB,'uid')),null);
+  assert.equal(staffProxyRole({...staffActor,expires_at_ms:Date.now()-1000},'GET','users'),null);
 });
 
 test('super can create a Firebase-verified restricted staff record without storing password',async()=>{
@@ -93,10 +96,52 @@ test('super can create a Firebase-verified restricted staff record without stori
   assert.equal(state.batches.length,1);
   assert.equal(state.batches[0].length,2);
   assert.match(state.batches[0][0].sql,/INSERT INTO sharika_admin_staff_accounts/);
+  assert.match(state.batches[0][0].sql,/expires_at_ms/);
+  assert.ok(state.batches[0][0].args.at(-1)>Date.now()+29*86400000);
   assert.equal(JSON.stringify(state.batches).includes(data.new_staff_id_token),false);
   const denied=await run(DB,{role:'staff',active:true,permissions:['coin_recharge']},
     'staff','GET');
   assert.equal(denied.status,403);
+});
+
+test('new staff access rejects expired or excessively long grants',async()=>{
+  const {DB,state}=mock();
+  const data={name:'Helper',email:'helper@example.test',new_staff_id_token:'a'.repeat(220),
+    permissions:[],daily_coin_limit:0};
+  for(const expiry of [Date.now()-1000,Date.now()+370*86400000,null]){
+    const r=await run(DB,{role:'super'},'staff','POST',
+      {...data,expires_at_ms:expiry});
+    assert.equal(r.status,400);
+  }
+  assert.equal(state.batches.length,0);
+});
+
+test('super can immediately revoke all staff privileges without deleting history',async()=>{
+  const {DB,state}=mock();
+  const result=await run(DB,{role:'super'},'staff/7','DELETE');
+  assert.equal(result.status,200);
+  assert.equal(result.data.revoked,true);
+  assert.equal(state.batches.length,1);
+  assert.match(state.batches[0][0].sql,/active=0/);
+  assert.match(state.batches[0][0].sql,/permissions_json='\[\]'/);
+  assert.equal(state.batches[0][1].args[1],'staff_revoke');
+  const denied=await run(DB,{role:'staff',active:true,permissions:['view_users']},
+    'staff/7','DELETE');
+  assert.equal(denied.status,403);
+});
+
+test('super can change staff expiry and rejects an already-expired active login',async()=>{
+  const {DB,state}=mock();
+  const expiry=Date.now()+7*86400000;
+  const settings={active:true,permissions:['view_users'],daily_coin_limit:0,
+    expires_at_ms:expiry};
+  const changed=await run(DB,{role:'super'},'staff/7','PATCH',settings);
+  assert.equal(changed.status,200);
+  assert.equal(changed.data.expires_at_ms,expiry);
+  assert.match(state.batches[0][0].sql,/expires_at_ms=\?/);
+  const blocked=await run(DB,{role:'super'},'staff/7','PATCH',{
+    ...settings,expires_at_ms:Date.now()-1000});
+  assert.equal(blocked.status,400);
 });
 
 test('staff account creation rejects mismatched Firebase identity proof',async()=>{

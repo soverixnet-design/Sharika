@@ -13,7 +13,14 @@ const REQUEST_ID=/^[a-zA-Z0-9:_-]{12,80}$/;
 const MAX_STAFF_GRANT=1_000_000;
 const MAX_SUPER_GRANT=1_000_000_000_000;
 const MAX_USER_BALANCE=1_000_000_000_000;
+const DAY_MS=86_400_000;
+const MAX_ACCESS_MS=365*DAY_MS;
 const uidId=n=>String(n).padStart(8,'0');
+
+function validAccessExpiry(value,now=Date.now()){
+  return Number.isSafeInteger(value)&&value>now+300_000&&
+    value<=now+MAX_ACCESS_MS;
+}
 
 function scopes(value){
   if(!Array.isArray(value) || value.length>STAFF_SCOPES.length) return null;
@@ -23,6 +30,7 @@ function scopes(value){
 }
 export function hasStaffScope(actor,scope){
   return actor?.role==='staff'&&actor.active===true&&
+    (actor.expires_at_ms==null||actor.expires_at_ms>Date.now())&&
     Array.isArray(actor.permissions)&&actor.permissions.includes(scope);
 }
 export function staffProxyRole(actor,method,operation){
@@ -42,16 +50,18 @@ export function staffProxyRole(actor,method,operation){
 }
 export async function lookupStaffActor(db,uid) {
   const row=await db.prepare(
-    'SELECT id,login_email,display_name,permissions_json,daily_coin_limit,active '+
+    'SELECT id,login_email,display_name,permissions_json,daily_coin_limit,active,expires_at_ms '+
     'FROM sharika_admin_staff_accounts WHERE auth_uid=?'
   ).bind(uid).first();
-  if(!row||!row.active)return null;
+  if(!row||!row.active||
+     (row.expires_at_ms!=null&&Number(row.expires_at_ms)<=Date.now()))return null;
   let permissions;
   try {permissions=scopes(JSON.parse(row.permissions_json));}
   catch(_){return null;}
   if(!permissions)return null;
   return {role:'staff',name:row.display_name,email:row.login_email,
-    permissions,active:true,daily_coin_limit:Number(row.daily_coin_limit)||0};
+    permissions,active:true,daily_coin_limit:Number(row.daily_coin_limit)||0,
+    expires_at_ms:row.expires_at_ms==null?null:Number(row.expires_at_ms)};
 }
 async function bodyJson(request){
   const raw=await request.text();
@@ -79,13 +89,14 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
     if(actor.role!=='super')return fail('admin_permission_denied',403,cors);
     if(operation==='staff'&&request.method==='GET'){
       const found=rows(await env.DB.prepare(
-        'SELECT id,login_email,display_name,permissions_json,daily_coin_limit,active,created_at '+
+        'SELECT id,login_email,display_name,permissions_json,daily_coin_limit,active,expires_at_ms,created_at '+
         'FROM sharika_admin_staff_accounts ORDER BY id DESC LIMIT 100'
       ).all());
       return reply({staff:found.map(row=>({
         id:row.id,email:row.login_email,name:row.display_name,
         permissions:scopes(JSON.parse(row.permissions_json))||[],
         daily_coin_limit:row.daily_coin_limit,active:!!row.active,
+        expires_at_ms:row.expires_at_ms==null?null:Number(row.expires_at_ms),
         created_at:row.created_at
       })),read_only:true},200,cors);
     }
@@ -97,9 +108,11 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
       const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
       const token=typeof body.new_staff_id_token==='string'?body.new_staff_id_token:'';
       const settings=normalizeSettings(body);
+      const expiresAt=body.expires_at_ms===undefined?Date.now()+30*DAY_MS:body.expires_at_ms;
       if(!name||name.length>80||email.length>254||
          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
-         token.length<200||token.length>8192||!settings)
+         token.length<200||token.length>8192||!settings||
+         !validAccessExpiry(expiresAt))
         return fail('invalid_staff_account',400,cors);
       const child=await verifyNewStaffToken('Bearer '+token,env.FIREBASE_PROJECT_ID);
       if(!child||!child.uid.startsWith('firebase:'+env.FIREBASE_PROJECT_ID+':')||
@@ -116,21 +129,40 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
       const result=await env.DB.batch([
         env.DB.prepare(
           'INSERT INTO sharika_admin_staff_accounts'+
-          '(auth_uid,login_email,display_name,permissions_json,daily_coin_limit,active,created_by) '+
-          'VALUES(?,?,?,?,?,1,?)'
-        ).bind(child.uid,email,name,JSON.stringify(settings.permissions),settings.daily_coin_limit,uid),
+          '(auth_uid,login_email,display_name,permissions_json,daily_coin_limit,active,created_by,expires_at_ms) '+
+          'VALUES(?,?,?,?,?,1,?,?)'
+        ).bind(child.uid,email,name,JSON.stringify(settings.permissions),settings.daily_coin_limit,uid,expiresAt),
         env.DB.prepare(
           'INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)'
         ).bind(uid,'staff_create',JSON.stringify({email,name,permissions:settings.permissions,
-          daily_coin_limit:settings.daily_coin_limit}))
+          daily_coin_limit:settings.daily_coin_limit,expires_at_ms:expiresAt}))
       ]);
       await recordUserEvent({env,ctx,recipientUid:child.uid,title:'Staff account activated',
         body:'Your Sharika staff account has been created. Review your assigned permissions.',
         dedupeKey:'staff_created:'+result[0]?.meta?.last_row_id,createdBy:uid});
       return reply({created:true,id:result[0]?.meta?.last_row_id||null,
-        email,permissions:settings.permissions,requires_email_verification:true},201,cors);
+        email,permissions:settings.permissions,expires_at_ms:expiresAt,
+        requires_email_verification:true},201,cors);
     }
     const matched=/^staff\/([1-9][0-9]{0,9})$/.exec(operation);
+    if(matched&&request.method==='DELETE'){
+      const staffId=Number(matched[1]);
+      const existing=await env.DB.prepare(
+        'SELECT id,auth_uid,login_email,active FROM sharika_admin_staff_accounts WHERE id=?'
+      ).bind(staffId).first();
+      if(!existing)return fail('staff_not_found',404,cors);
+      await env.DB.batch([
+        env.DB.prepare('UPDATE sharika_admin_staff_accounts SET active=0,'+
+          "permissions_json='[]',daily_coin_limit=0,updated_at=datetime('now') WHERE id=?")
+          .bind(staffId),
+        env.DB.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
+          .bind(uid,'staff_revoke',JSON.stringify({staff_id:staffId,email:existing.login_email}))
+      ]);
+      await recordUserEvent({env,ctx,recipientUid:existing.auth_uid,
+        title:'Staff access revoked',body:'Your Sharika staff access has been revoked.',
+        dedupeKey:'staff_revoke:'+staffId+':'+Date.now(),createdBy:uid});
+      return reply({revoked:true,staff_id:staffId,active:false},200,cors);
+    }
     if(matched&&request.method==='PATCH'){
       let body;
       try{body=await bodyJson(request);}
@@ -139,26 +171,33 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
       const settings=normalizeSettings(body);
       if(!settings)return fail('invalid_staff_permissions',400,cors);
       const existing=await env.DB.prepare(
-        'SELECT id,auth_uid,login_email FROM sharika_admin_staff_accounts WHERE id=?'
+        'SELECT id,auth_uid,login_email,expires_at_ms FROM sharika_admin_staff_accounts WHERE id=?'
       ).bind(Number(matched[1])).first();
       if(!existing)return fail('staff_not_found',404,cors);
+      const expiresAt=body.expires_at_ms===undefined?existing.expires_at_ms:body.expires_at_ms;
+      if(body.expires_at_ms===null||
+         (body.expires_at_ms!==undefined&&!validAccessExpiry(expiresAt)))
+        return fail('invalid_staff_expiry',400,cors);
+      if(body.active&&expiresAt!=null&&Number(expiresAt)<=Date.now())
+        return fail('staff_access_expired',409,cors);
       await env.DB.batch([
         env.DB.prepare(
           'UPDATE sharika_admin_staff_accounts SET permissions_json=?,daily_coin_limit=?,'+
-          "active=?,updated_at=datetime('now') WHERE id=?"
+          "active=?,expires_at_ms=?,updated_at=datetime('now') WHERE id=?"
         ).bind(JSON.stringify(settings.permissions),settings.daily_coin_limit,
-          body.active?1:0,Number(matched[1])),
+          body.active?1:0,expiresAt,Number(matched[1])),
         env.DB.prepare(
           'INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)'
         ).bind(uid,'staff_update',JSON.stringify({staff_id:existing.id,email:existing.login_email,
           active:body.active,permissions:settings.permissions,
-          daily_coin_limit:settings.daily_coin_limit}))
+          daily_coin_limit:settings.daily_coin_limit,expires_at_ms:expiresAt}))
       ]);
       await recordUserEvent({env,ctx,recipientUid:existing.auth_uid,title:'Staff permissions updated',
         body:body.active?'Your Sharika staff access or permissions were updated.':
           'Your Sharika staff access has been disabled.',
         dedupeKey:'staff_permissions:'+existing.id+':'+Date.now(),createdBy:uid});
-      return reply({updated:true,staff_id:existing.id,active:body.active},200,cors);
+      return reply({updated:true,staff_id:existing.id,active:body.active,
+        expires_at_ms:expiresAt},200,cors);
     }
     return fail('staff_method_not_allowed',405,cors);
   }

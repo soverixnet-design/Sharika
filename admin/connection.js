@@ -2052,19 +2052,40 @@
         '<label style="display:inline-flex;gap:6px;align-items:center;margin:6px 12px 6px 0">'+
         '<input type="checkbox" data-staff-scope="'+esc(key)+'" data-staff-group="'+esc(id)+
         '"'+(selected.includes(key)?' checked':'')+'> '+esc(label)+'</label>').join('');
+      const localExpiry=ms=>{
+        if(!ms)return '';
+        const date=new Date(Number(ms));
+        if(Number.isNaN(+date))return '';
+        const local=new Date(+date-date.getTimezoneOffset()*60000);
+        return local.toISOString().slice(0,16);
+      };
+      const accessExpiry=field=>{
+        if(!field.value)return undefined; // Preserve legacy indefinite accounts.
+        const time=new Date(field.value).getTime();
+        if(!Number.isSafeInteger(time)||time<Date.now()+300000||
+           time>Date.now()+365*86400000)
+          throw new Error('Access expiry must be between 5 minutes and 365 days from now.');
+        return time;
+      };
       const staffList=(team.staff||[]).map(item=>
         '<div class="card" data-staff-card="'+item.id+'" style="margin:12px 0">'+
         '<h4>'+esc(item.name)+' · '+esc(item.email)+'</h4>'+
-        '<p class="n">Staff #'+fmt(item.id)+' · Created '+esc(item.created_at)+'</p>'+
+        '<p class="n">Staff #'+fmt(item.id)+' · Created '+esc(item.created_at)+
+        ' · '+(!item.active?'Access disabled':item.expires_at_ms&&item.expires_at_ms<=Date.now()?
+          'Access expired':item.expires_at_ms?'Access active until '+
+          esc(new Date(item.expires_at_ms).toLocaleString()):'No expiry (legacy)')+'</p>'+
         '<div>'+scopeFields('edit',item.id,item.permissions||[])+'</div>'+
         '<div class="row"><label>Max staff coins/day <input inputmode="numeric" data-staff-limit="'+item.id+
         '" value="'+esc(item.daily_coin_limit)+'"></label>'+
+        '<label>Access expires at <input type="datetime-local" data-staff-expiry="'+item.id+
+        '" value="'+esc(localExpiry(item.expires_at_ms))+'"></label>'+
         '<label><input type="checkbox" data-staff-active="'+item.id+'"'+(item.active?' checked':'')+
         '> Login enabled</label>'+
-        '<button class="btn s" type="button" data-staff-save="'+item.id+'">Save permissions</button></div>'+
+        '<button class="btn s" type="button" data-staff-save="'+item.id+'">Save access & expiry</button>'+
+        '<button class="btn" type="button" data-staff-revoke="'+item.id+'">Revoke Access</button></div>'+
         '</div>').join('');
       root.innerHTML='<div class="card"><h3>Protected application administrators</h3>'+
-        '<p class="n">Existing Super, Finance and Support accounts are protected; staff users cannot promote themselves.</p>'+
+        '<p class="n">Existing Super, Finance and Support accounts are protected; staff users cannot promote themselves. Manage staff permissions with a fixed expiry and immediate revocation below.</p>'+
         window.T(['User ID','Name','Role','Assigned'],(data.admins||[]).map(a=>[
           esc(a.public_id),esc(a.name),esc(a.role),esc(a.assigned_at)]))+'</div>'+
         '<div class="card"><h3>➕ Create staff login</h3>'+
@@ -2073,6 +2094,10 @@
         '<input id="staff-email" type="email" placeholder="Staff email" aria-label="Staff email">'+
         '<input id="staff-password" type="password" minlength="12" autocomplete="new-password" placeholder="Temporary password (12+ characters)" aria-label="Staff password"></div>'+
         '<div>'+scopeFields('new','new')+'</div>'+
+        '<div class="row"><label>Access duration <select id="staff-duration">'+
+        '<option value="1">1 day</option><option value="7">7 days</option>'+
+        '<option value="30" selected>30 days</option><option value="90">90 days</option>'+
+        '</select></label></div>'+
         '<div class="row"><label>Daily recharge limit <input id="staff-limit" inputmode="numeric" value="0"></label>'+
         '<button class="btn s" id="staff-create" type="button">Create account and invite</button></div>'+
         '<p class="n">Give each staff member a unique password privately. Revoke access at any time below.</p>'+
@@ -2098,14 +2123,17 @@
         const email=byId('staff-email').value.trim().toLowerCase();
         const password=byId('staff-password').value;
         const permissions=picked('new');
+        const duration=Number(byId('staff-duration').value);
+        const expiresAt=Date.now()+duration*86400000;
         let limit;
         try{limit=validateLimit(byId('staff-limit').value.trim(),permissions);}
         catch(error){note.textContent=error.message;return;}
         if(name.length<1||name.length>80||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
-           password.length<12||password.length>128){
+           password.length<12||password.length>128||![1,7,30,90].includes(duration)){
           note.textContent='Enter staff name, valid email and password of 12–128 characters.';return;
         }
-        if(!window.confirm('Create Firebase login '+email+' with ONLY the selected staff permissions?'))return;
+        if(!window.confirm('Create '+duration+'-day Firebase staff login '+email+
+          ' with ONLY the selected permissions?'))return;
         create.disabled=true;
         note.textContent='Creating Firebase account…';
         let created;
@@ -2116,7 +2144,7 @@
           note.textContent='Saving restricted staff permission…';
           await api('POST','staff',{
             name,email,new_staff_id_token:created.idToken,
-            permissions,daily_coin_limit:limit
+            permissions,daily_coin_limit:limit,expires_at_ms:expiresAt
           });
           let emailSent=true;
           try{await firebase('accounts:sendOobCode',{
@@ -2141,11 +2169,28 @@
           try{limit=validateLimit(raw,permissions);}
           catch(error){note.textContent=error.message;return;}
           const active=root.querySelector('[data-staff-active="'+id+'"]').checked;
-          if(!window.confirm((active?'Enable':'Suspend')+' staff #'+id+' with the selected permissions?'))return;
+          let expiresAt;
+          try{expiresAt=accessExpiry(root.querySelector('[data-staff-expiry="'+id+'"]'));}
+          catch(error){note.textContent=error.message;return;}
+          if(!window.confirm((active?'Enable':'Suspend')+' staff #'+id+
+            ' with the selected permissions and expiry?'))return;
           button.disabled=true;
-          try{await api('PATCH','staff/'+id,{permissions,daily_coin_limit:limit,active});
+          try{await api('PATCH','staff/'+id,{permissions,daily_coin_limit:limit,active,
+              ...(expiresAt===undefined?{}:{expires_at_ms:expiresAt})});
             await P.admins();
           }catch(error){note.textContent='Staff permissions not updated: '+error.message;}
+          finally{if(button.isConnected)button.disabled=false;}
+        };
+      });
+      root.querySelectorAll('[data-staff-revoke]').forEach(button=>{
+        button.onclick=async()=>{
+          const id=button.dataset.staffRevoke;
+          const entry=(team.staff||[]).find(item=>String(item.id)===id);
+          if(!window.confirm('Immediately revoke all Sharika staff access for '+
+            (entry?.email||'staff #'+id)+'? Existing audit history will be kept.'))return;
+          button.disabled=true;
+          try{await api('DELETE','staff/'+id);await P.admins();}
+          catch(error){note.textContent='Staff access not revoked: '+error.message;}
           finally{if(button.isConnected)button.disabled=false;}
         };
       });

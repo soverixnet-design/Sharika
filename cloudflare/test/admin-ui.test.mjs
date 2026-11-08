@@ -46,6 +46,11 @@ test('staff accounts use Firebase verification and exact permission-scoped UI co
   assert.match(source,/api\('POST','recharge-user',/);
   assert.match(source,/pendingAdminCredit\?\.fingerprint===fingerprint/);
   assert.match(source,/staff permissions/);
+  assert.match(source,/id="staff-duration"/);
+  assert.match(source,/data-staff-expiry/);
+  assert.match(source,/data-staff-revoke/);
+  assert.match(source,/api\('DELETE','staff\/'\+id\)/);
+  assert.match(source,/expires_at_ms:expiresAt/);
 });
 
 test('premium admin panel offers independent purchasing, grant and automatic gift/level policies',()=>{
