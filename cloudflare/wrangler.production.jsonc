@@ -57,6 +57,7 @@
   },
   "secrets": {
     "required": [
+      "FIREBASE_PROJECT_ID",
       "REALTIME_SFU_APP_ID",
       "REALTIME_SFU_APP_SECRET",
       "REALTIME_TURN_KEY_ID",
