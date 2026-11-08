@@ -23,6 +23,12 @@ export function missingProductionPrerequisites(env = {}) {
     missing.push('realtime_sfu_credentials');
   if (!env.REALTIME_TURN_KEY_ID || !env.REALTIME_TURN_API_TOKEN)
     missing.push('realtime_turn_credentials');
+  if (typeof env.INVITE_DEVICE_PEPPER !== 'string' ||
+      env.INVITE_DEVICE_PEPPER.length < 32)
+    missing.push('invite_device_pepper');
+  if (typeof env.INVITE_BANK_ENCRYPTION_KEY_B64 !== 'string' ||
+      !/^[A-Za-z0-9+/]{43}=$/.test(env.INVITE_BANK_ENCRYPTION_KEY_B64))
+    missing.push('invite_bank_encryption_key');
   if (env.SHARIKA_COINS_CASH_REDEEMABLE !== 'false') missing.push('cash_redemption_policy');
   if (env.SHARIKA_PLAY_BILLING_ENABLED !== 'false') missing.push('billing_policy');
   if (env.SHARIKA_AUTOMATIC_RANKING_REWARDS_ENABLED !== 'false')
