@@ -32,9 +32,9 @@ Family data. Product policy and endpoint removals need a separate review.
 3. Verify media references against the new, initially empty production R2.
 4. Validate schema plus approved defaults in fresh local SQLite and through
    the same D1 runtime API, including authenticated end-to-end tests.
-5. Create a new uniquely versioned, immutable baseline in
-   `migrations-production` only after review. Do not mark old staging
-   migrations as applied by hand.
+5. The reviewed, combined version is now
+   `../migrations-production/0001_production_baseline.sql`. Do not mark old
+   staging migrations as applied by hand.
 6. Before any remote apply, assert exact database ID
    `44425c0a-c691-4e39-a11a-a6e29089d1a3` and zero Sharika tables,
    and take a recoverable export/snapshot as appropriate.
