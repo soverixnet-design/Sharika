@@ -362,3 +362,39 @@ self-hosted QA application, test unauthorized denial **before** attaching any
 restricted route, and retain `RELEASE_REVIEW_APPROVED=false` until separate
 on-device functional QA is ready. Production API must remain closed in the
 interim.
+
+
+## Follow-up: Zero Trust owner-only QA access prepared (2026-11-09)
+
+- The owner activated **Cloudflare Zero Trust Free** on the same account.
+  Read-only Access API checks now succeed; organization/team:
+  `broken-dew-401f` (`broken-dew-401f.cloudflareaccess.com`).
+  The configured Cloudflare identity provider is present. The former
+  `access.api.error.not_enabled` prerequisite is resolved.
+- Created a **reusable**, single-email Access `allow` policy, named
+  **Sharika Production QA - Owner Only**, ID
+  `d4af9e02-cc48-4fcb-9819-2755d06a4af2`. The sole `include` selector
+  is the verified owner's `soverixnet@gmail.com` email; session duration
+  is one hour. No wildcard, everyone, or broad group selector was added.
+- Created a **self-hosted** Access application named
+  **Sharika Production QA - Owner Access**, ID
+  `f40580a8-1a45-4814-86fc-fb28921efd01`, with intended hostname
+  `qa-api.sharika.app`, hidden from the app launcher and linked to the
+  reusable owner-only allow policy at precedence 1. Read-only GET checks
+  confirmed the policy and application are present and linked as intended.
+- **Important: Access configuration does not make this hostname live.**
+  Read-only verification showed **zero** DNS records for
+  `qa-api.sharika.app` and **zero** Cloudflare zone Worker routes.
+  Production `workers.dev`/preview URLs remain disabled, and the deployed
+  Worker has compile-time `RELEASE_REVIEW_APPROVED=false` plus
+  `SHARIKA_PUBLIC_API_ENABLED=false`. No public API traffic was enabled.
+- No D1 SQL migrations, storage changes, user-data edits, or staging changes
+  were made by this Access setup. These settings are **configuration-only**;
+  they do not constitute browser-login verification or an end-to-end API test.
+
+**Next release gate:** validate Access-denied behavior for an unapproved
+identity and owner sign-in via a controlled temporary route, with a reviewed
+activation and rollback plan **before DNS/route exposure**. Then run the
+separate Production Firebase, wallet/agency/game, media, two-device voice,
+Android build/signing and Play Store release checks. Do not unlock the
+Production API merely because the Access policy now exists.
