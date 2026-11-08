@@ -16,8 +16,13 @@
     const input = doc?.getElementById('txt');
     const toggle = doc?.getElementById('sh-chat-toggle');
     const hasKeyboardApi = typeof win?.SharikaRoyalKeyboard?.setNativeIme === 'function';
-    if (!input || !toggle || !hasKeyboardApi) {
-      if (attempt < 80) return setTimeout(() => waitForOpenComposer(attempt + 1), 250);
+    if (attempt === 20) {
+      bridge.record(JSON.stringify({phase:'composer-probe',inputPresent:!!input,
+        togglePresent:!!toggle,hasKeyboardApi,documentReadyState:doc?.readyState,
+        composerPresent:!!doc?.querySelector('.sh-composer')}));
+    }
+    if (!input || !toggle) {
+      if (attempt < 40) return setTimeout(() => waitForOpenComposer(attempt + 1), 250);
       bridge.record(JSON.stringify({phase:'error',reason:'room_chat_keyboard_not_ready',
         inputPresent:!!input,togglePresent:!!toggle,hasKeyboardApi}));
       report('before');
@@ -28,8 +33,13 @@
       toggle.click();
     }
     const rect = input.getBoundingClientRect();
-    if ((rect.width < 20 || rect.height < 8) && attempt < 80)
+    if ((rect.width < 20 || rect.height < 8) && attempt < 40)
       return setTimeout(() => waitForOpenComposer(attempt + 1), 250);
+    if (!hasKeyboardApi) {
+      bridge.record(JSON.stringify({phase:'error',reason:'room_keyboard_api_missing',
+        inputPresent:true,togglePresent:true,documentReadyState:doc?.readyState,
+        scripts:[...doc.querySelectorAll('script[src]')].map(s=>s.getAttribute('src'))}));
+    }
     report('before');
   }
 

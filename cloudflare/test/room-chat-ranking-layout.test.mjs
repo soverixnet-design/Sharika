@@ -11,6 +11,11 @@ test('room chat opens public composer and private DM retains independent control
   assert.match(room,/addTool\(chatToggle,'chat','Room Chat'\)/);
   assert.match(room,/addTool\(inbox,'dm','Private DM'\)/);
   assert.match(room,/composer\.hidden=!opening/);
+  // The .inp is detached from document until dock.replaceChildren runs;
+  // a document-level lookup here silently disabled Android keyboard support.
+  assert.match(room,/composer\.append\(input\);[\s\S]*?const text = input\.querySelector\('#txt'\)/);
+  assert.doesNotMatch(room,/const text = byId\('txt'\)/);
+  assert.match(room,/window\.SharikaRoyalKeyboard = Object\.freeze\(/);
   assert.match(room,/const inbox = byId\('bMsg'\)/);
   assert.match(roomCss,/\.sh-icon-chat\s*\{[\s\S]*?room-chat-message\.svg/);
   assert.match(gradle,/from\(rootProject\.file\('\.\.\/app\/room-chat-message\.svg'\)\)/);

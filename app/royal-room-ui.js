@@ -75,7 +75,10 @@
   composer.className = 'sh-composer';
   composer.append(input);
   composer.hidden = true;
-  const text = byId('txt');
+  // The original .inp has just been moved into the detached composer.
+  // document.getElementById cannot find descendants until it is reattached;
+  // keeping the input reference here is required for Room Chat focus and IME.
+  const text = input.querySelector('#txt');
   if (text) text.setAttribute('placeholder', 'Message in room…');
   // The original room still listens for visualViewport.resize and sets an
   // inline app height. CSS now overrides that legacy resize. Independently
