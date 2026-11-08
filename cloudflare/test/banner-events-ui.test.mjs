@@ -7,6 +7,7 @@ const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 test('published event banners open separate detail and gift ranking, not main Rankings',()=>{
   const web=read('../../app/index.html');
   const android=read('../../android-staging/staging-connection.js');
+  const native=read('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java');
   assert.match(web,/a==="event"&&typeof window\.showSharikaEvent/);
   assert.match(android,/event&&event\.published&&\['live','scheduled'\]/);
   assert.match(android,/window\.showSharikaEvent=async function/);
@@ -14,6 +15,7 @@ test('published event banners open separate detail and gift ranking, not main Ra
   assert.match(android,/Event Rewards · Top 1–7/);
   assert.doesNotMatch(android,/sharika-room-events/);
   assert.doesNotMatch(android,/id="sh-event-launch"/);
+  assert.ok(native.includes('path.matches("^/api/v1/events/[1-9][0-9]*/ranking$")'));
 });
 
 test('admin chooses catalog gifts, banner, reward labels and hides drafts',()=>{

@@ -1127,6 +1127,10 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/celebrations")) return method.equals("GET");
         if (path.equals("/api/v1/opening/next")) return method.equals("POST");
         if (path.equals("/api/v1/events")) return method.equals("GET");
+        // Published event rankings are read-only and require an exact event ID.
+        // They do not grant rewards or authorize arbitrary event operations.
+        if (path.matches("^/api/v1/events/[1-9][0-9]*/ranking$"))
+            return method.equals("GET");
         // Notifications are authenticated and recipient-scoped by the Worker.
         if (path.equals("/api/v1/notifications")) return method.equals("GET");
         if (path.matches("^/api/v1/notifications/history/[1-9][0-9]*$"))
