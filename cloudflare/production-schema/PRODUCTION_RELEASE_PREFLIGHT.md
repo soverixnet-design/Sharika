@@ -189,3 +189,34 @@ Next blockers: reviewed real Worker deployment with isolated Durable Objects
 and throttles, verified Production login and app records using test identities,
 functional wallet/game/agency QA, two-device voice QA, media readiness,
 release AAB build/signing and Google Play validation.
+
+## Follow-up: isolated Production branch Android build preflight (2026-11-08)
+
+- The existing GitHub Actions `sharika-play-release-aab.yml` now also runs on
+  pushes to `feature/sharika-production-schema-safety-20261108`. For **this
+  branch only**, `SHARIKA_PLAY_API_ORIGIN` is forced to the existing Staging
+  origin and `SHARIKA_PLAY_STAGING_CANDIDATE=true`; this is a compile/packaging
+  test, **not** an installable Production-backend release. The GitHub-release
+  publication step is excluded by its unchanged branch condition.
+- GitHub Actions [run #77](https://github.com/soverixnet-design/Sharika/actions/runs/42515633118)
+  on source SHA `2d242d57d2c1afae2f8085a26019fe25c195cd63` completed
+  **successfully**. Source/Worker checks, cosmetic media checkout,
+  Android platform installation, Gradle `bundleRelease`, JAR signing
+  verification, packaged JavaScript/UI checks, and artifact upload passed.
+- Uploaded private workflow artifact: `Sharika-Play-Store-Candidate-AAB`
+  (GitHub artifact ID `13631775269`, about 89 MB; expires 2026-12-08).
+  The AAB SHA-256 from the workflow is
+  `ef234c5bf17a427a97078532fc3d854657af910a1d2563ae2e894ad278b65448`.
+- The signing path was **`existing-stable`**, not a separately provisioned
+  Play Upload signer. This proves the test candidate is signed but does **not**
+  prove its certificate matches the Google Play Console's upload certificate.
+- Cloudflare Production Worker remains on its fail-closed internal placeholder;
+  no Production Durable Object class was deployed, no financial route was
+  enabled, no DNS/Worker routing was created, and no user data was transferred.
+
+Remaining activation gates: obtain a validated Production code deployment
+path with correctly scoped Durable Object/rate-limit bindings; verify real
+Firebase sign-in and voice on devices using a restricted test origin; review
+wallet/recharge/game/agency settlement; verify Play upload signing certificate;
+then build a **separate** Production-origin AAB. Do not upload the successful
+Staging candidate to the Production Play track.
