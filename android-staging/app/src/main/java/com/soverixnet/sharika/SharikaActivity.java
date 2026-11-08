@@ -91,7 +91,7 @@ import java.util.concurrent.Executors;
  * The current feature branch is an isolated staging candidate, not production.
  */
 public final class SharikaActivity extends Activity {
-    private static final String STAGING_API = BuildConfig.SHARIKA_API_ORIGIN;
+    private static final String API_ORIGIN = BuildConfig.SHARIKA_API_ORIGIN;
     private static final int MIC_PERMISSION_REQUEST = 3412;
     private static final int IMAGE_PICKER_REQUEST = 3413;
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
@@ -361,7 +361,7 @@ public final class SharikaActivity extends Activity {
         boolean custom="sharika".equals(uri.getScheme()) && "invite".equals(uri.getHost()) &&
             uri.getPathSegments().size()==1;
         boolean web="https".equals(uri.getScheme()) &&
-            "sharika-api-staging.soverixnet.workers.dev".equals(uri.getHost()) &&
+            Uri.parse(API_ORIGIN).getHost().equals(uri.getHost()) &&
             uri.getPathSegments().size()==2 && "invite".equals(uri.getPathSegments().get(0));
         if(!custom&&!web)return;
         String code=uri.getLastPathSegment();
@@ -919,7 +919,7 @@ public final class SharikaActivity extends Activity {
                 android.content.ClipboardManager linkClipboard=
                     (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
                 linkClipboard.setPrimaryClip(android.content.ClipData.newPlainText(
-                    "Sharika invitation",STAGING_API+"/invite/"+linkCode));
+                    "Sharika invitation",API_ORIGIN+"/invite/"+linkCode));
                 sendResult(id,result(true,object(),null));
                 break;
             case "shareInvite":
@@ -1360,7 +1360,7 @@ public final class SharikaActivity extends Activity {
     private void stageHttp(String id, String method, String path, JSONObject body, String jwt) {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(STAGING_API + path).openConnection();
+            connection = (HttpURLConnection) new URL(API_ORIGIN + path).openConnection();
             connection.setRequestMethod(method);
             // Photo uploads carry an optimized JPEG across a mobile connection.
             // Keep normal requests short, but allow a slower gallery save to

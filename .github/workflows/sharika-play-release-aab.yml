@@ -46,7 +46,7 @@ jobs:
           # Keep test candidate source checks valid across signed staging updates.
           # A fixed v100 assertion incorrectly blocked a legitimate v102 build.
           grep -E 'versionCode [1-9][0-9]+' android-staging/app/build.gradle
-          grep -E "versionName '[^']+'" android-staging/app/build.gradle
+          grep -F 'versionName = productionApiOrigin' android-staging/app/build.gradle
           grep -F '>Sharika<' android-staging/app/src/main/res/values/strings.xml
           cd cloudflare
           npm run check

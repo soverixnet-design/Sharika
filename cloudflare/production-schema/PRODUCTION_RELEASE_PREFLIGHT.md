@@ -66,3 +66,32 @@ remain untouched.
 
 Never disable the compile-time gate or enable routing automatically. Require
 an explicit production release review when the above blockers are cleared.
+
+## Follow-up: Android routing and Voice prerequisites (2026-11-08)
+
+- Android `MainActivity`, the FCM registration service and `SharikaActivity`
+  now obtain the endpoint from the build-variant `SHARIKA_API_ORIGIN`; the
+  HTTPS invite intent-filter uses a variant-specific manifest placeholder.
+- A **release-only** generated `connection.js` overlays the unchanged staging
+  adapter when `SHARIKA_PLAY_API_ORIGIN` is supplied. Its staging origin and
+  escaped strict-host URL validators are rewritten to the selected production
+  hostname; the debug build and original staging source stay unchanged.
+- The production-invite landing will not offer the staging APK. The staging
+  landing still has its test download option.
+- The production Worker config requires *separately provisioned* SFU and TURN
+  secret bindings. The preflight gate rejects a missing TURN relay as well as
+  missing SFU credentials. No credentials have been copied or created.
+- Read-only Cloudflare binding inspection: staging has the four named SFU/TURN
+  secret bindings; production has **zero** secret bindings. Production Worker
+  remains undeployed, and no public route is available.
+- Offline Node tests: **638 passed**, none failed. This includes tests for
+  Android variant host references and staging/production URL replacement.
+- No Gradle/Android SDK build was available in this executor, so the new
+  manifest merging, release asset overlay, signing and on-device behavior
+  remain **unverified**. No new AAB was produced or submitted to Play.
+
+Next release gate: choose and verify the eventual HTTPS Production API origin,
+provision independent SFU/TURN credentials through the authorized secret
+workflow, run a real release-format build and inspect its merged Android
+manifest/packaged `connection.js`, then test audio on two devices. Retain the
+compile-time Worker gate until full app and economic QA passes.

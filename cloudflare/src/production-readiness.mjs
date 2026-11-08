@@ -21,6 +21,8 @@ export function missingProductionPrerequisites(env = {}) {
     missing.push('firebase_project');
   if (!env.REALTIME_SFU_APP_ID || !env.REALTIME_SFU_APP_SECRET)
     missing.push('realtime_sfu_credentials');
+  if (!env.REALTIME_TURN_KEY_ID || !env.REALTIME_TURN_API_TOKEN)
+    missing.push('realtime_turn_credentials');
   if (env.SHARIKA_COINS_CASH_REDEEMABLE !== 'false') missing.push('cash_redemption_policy');
   if (env.SHARIKA_PLAY_BILLING_ENABLED !== 'false') missing.push('billing_policy');
   if (env.SHARIKA_AUTOMATIC_RANKING_REWARDS_ENABLED !== 'false')

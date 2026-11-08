@@ -55,6 +55,14 @@
     "SHARIKA_PLAY_BILLING_ENABLED": "false",
     "SHARIKA_AUTOMATIC_RANKING_REWARDS_ENABLED": "false"
   },
+  "secrets": {
+    "required": [
+      "REALTIME_SFU_APP_ID",
+      "REALTIME_SFU_APP_SECRET",
+      "REALTIME_TURN_KEY_ID",
+      "REALTIME_TURN_API_TOKEN"
+    ]
+  },
   "observability": {
     "enabled": true,
     "traces": { "enabled": true }

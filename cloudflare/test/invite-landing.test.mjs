@@ -25,3 +25,11 @@ test('landing is read-only and refuses arbitrary codes or dangerous methods',asy
   assert.equal(head.status,200);
   assert.equal(await head.text(),'');
 });
+test('production invite landing never advertises staging test APK',async()=>{
+  const production=new Request('https://api.sharika.example/invite/10000001');
+  const r=handleInviteLanding(production,'/invite/10000001');
+  assert.equal(r.status,200);
+  const html=await r.text();
+  assert.match(html,/referrer=sharika_invite%3D10000001/);
+  assert.doesNotMatch(html,/Download Test APK|Sharika-Invite-Auto-Link-Staging\.apk|test APK directly/);
+});
