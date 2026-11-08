@@ -220,3 +220,36 @@ Firebase sign-in and voice on devices using a restricted test origin; review
 wallet/recharge/game/agency settlement; verify Play upload signing certificate;
 then build a **separate** Production-origin AAB. Do not upload the successful
 Staging candidate to the Production Play track.
+
+## Follow-up: Production Worker and Durable Object dry-run passes (2026-11-08)
+
+- Added a separate **read-only CI compilation workflow** at
+  `.github/workflows/sharika-production-worker-preflight.yml`, restricted to
+  the isolated Production preparation branch. It checks the fail-closed guard
+  and database schema, then runs `wrangler deploy --dry-run` with the Production
+  configuration. **The workflow has no Cloudflare API token and cannot deploy.**
+- [GitHub Actions Production Worker run](https://github.com/soverixnet-design/Sharika/actions/runs/42516166340)
+  for commit `925ca3ae59b1a8e62e0ee69d98dad8a403fa70fc` completed
+  **successfully**. Wrangler bundled the actual Production entrypoint and its
+  exported `SharikaVoiceRoom` Durable Object class. Output was approximately
+  737.82 KiB (148.51 KiB gzip). The generated bundle was saved to the private
+  `Sharika-Production-Worker-Dry-Run` artifact (ID `13631661377`).
+- The dry-run enumerated the intended `VOICE_ROOMS` Durable Object binding
+  and `SHARIKA_ACTION_RATE_LIMIT` binding. It proves packaging and config
+  parsing only; **no class migration, namespace or rate limiter was created**.
+- Read-only post-run Cloudflare inspection confirms the existing Production
+  Worker still has **no live DO or action-rate-limit binding**, no public
+  Worker URL, previews, zone routes or custom domains. Production D1 still
+  points to `44425c0a-c691-4e39-a11a-a6e29089d1a3` and R2 to
+  `sharika-production-media`. Migration journals remain **Staging 71** and
+  **Production 1**. No D1/R2 mutation or old migration replay occurred.
+- CI displayed low-priority Node/toolchain deprecation warnings (punycode,
+  legacy url.parse and Node 20-based GitHub Actions), but no Worker bundling
+  errors. These do not establish runtime audio, payment or auth behavior.
+
+Next required review: upload/deploy the guarded real Worker through a
+properly scoped Cloudflare deployment path that applies the new SQLite-backed
+Durable Object migration and rate-limit bindings while keeping all public
+routes and schedules disabled. Reconcile existing Production secret bindings
+before deployment. A successful dry-run does **not** authorize enabling live
+wallet, game, recharge, or Play Store traffic.
