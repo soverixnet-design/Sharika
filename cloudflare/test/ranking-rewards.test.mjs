@@ -18,6 +18,8 @@ function fixture(){
     "'entry_style:phoenix','entry_style','Phoenix Entry',1);");
   raw.exec(readFileSync(new URL(
     '../migrations/0074_royal_ranking_reward_display.sql',import.meta.url),'utf8'));
+  raw.exec(readFileSync(new URL(
+    '../migrations/0075_noble_games_ranking_reward_announcements.sql',import.meta.url),'utf8'));
   const db={
     prepare(sql){
       const make=args=>({sql,args,
@@ -57,8 +59,29 @@ test('weekly preview defaults off and never changes coins or wallet ledger',asyn
     assert.equal(result.policy.enabled,false);
     assert.equal(result.automatic_awards,false);
     assert.equal(result.preview_only,true);
+    for(const kind of ['noble','games']){
+      const addon=await readRankingRewardPreview(db,kind);
+      assert.equal(addon.rules.length,7);
+      assert.equal(addon.policy.enabled,false);
+    }
     assert.equal(await readRankingRewardPreview(db,'unsupported'),null);
     assert.equal(raw.prepare('SELECT count(*) AS n FROM sharika_wallet_ledger').get().n,0);
+  }finally{raw.close();}
+});
+
+test('Noble and Games reward previews use isolated add-on tables and Super Admin revision locks',async()=>{
+  const {raw,invoke}=fixture();
+  try{
+    for(const kind of ['noble','games']){
+      const payload={kind,enabled:true,revision:0,rules:rules()};
+      const saved=await invoke({method:'PATCH',body:payload});
+      assert.equal(saved.status,200);
+      assert.equal(saved.data.kind,kind);
+      assert.equal(saved.data.policy.revision,1);
+      assert.equal((await invoke({method:'PATCH',body:payload})).status,409);
+    }
+    assert.equal(raw.prepare('SELECT COUNT(*) AS n FROM sharika_rank_reward_rules_extra').get().n,14);
+    assert.equal(raw.prepare('SELECT COUNT(*) AS n FROM sharika_wallet_ledger').get().n,0);
   }finally{raw.close();}
 });
 

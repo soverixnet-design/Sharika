@@ -43,6 +43,7 @@ import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 import {searchVerifiedRooms} from './room-search.mjs';
 import {readRankingRewardPreview} from './ranking-rewards.mjs';
+import {readPublicShowcase} from './profile-showcase.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -209,11 +210,12 @@ export async function handleRequest(request, env, ctx) {
   const coverPath=/^\/api\/v1\/rooms\/([0-9]{8})\/cover$/.exec(path);
   const themeImagePath=/^\/api\/v1\/rooms\/([0-9]{8})\/theme-image$/.exec(path);
   const avatarPath=/^\/api\/v1\/users\/([0-9]{8})\/avatar$/.exec(path);
+  const profileCoverPath=/^\/api\/v1\/users\/([0-9]{8})\/cover-image$/.exec(path);
   const bannerImagePath=/^\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image$/.exec(path);
   const galleryImagePath=/^\/api\/v1\/room-themes\/([1-9][0-9]{0,8})\/image$/.exec(path);
   // Public image thumbnails support anonymous GET; edits remain authenticated.
   // all mutations continue through strict origin and Firebase checks.
-  const cors = (coverPath || themeImagePath || avatarPath || bannerImagePath || galleryImagePath) && request.method==='GET'
+  const cors = (coverPath || themeImagePath || avatarPath || profileCoverPath || bannerImagePath || galleryImagePath) && request.method==='GET'
     ? {'access-control-allow-origin':'*'} : corsFor(request, env);
   if (!cors) return fail('origin_forbidden', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -253,6 +255,19 @@ export async function handleRequest(request, env, ctx) {
       'JOIN sharika_users u ON u.auth_uid=a.auth_uid WHERE u.public_no=? AND u.status=?'
     ).bind(Number(avatarPath[1]),'active').first();
     if(!image)return fail('avatar_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  if(profileCoverPath && request.method==='GET') {
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    const image=await env.DB.prepare(
+      'SELECT c.image_base64 FROM sharika_user_cover_images c '+
+      'JOIN sharika_users u ON u.auth_uid=c.auth_uid WHERE u.public_no=? AND u.status=?'
+    ).bind(Number(profileCoverPath[1]),'active').first();
+    if(!image)return fail('profile_cover_not_found',404,cors);
     const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
     return new Response(bytes,{status:200,headers:{
       'content-type':'image/jpeg','cache-control':'public, max-age=3600',
@@ -448,6 +463,45 @@ export async function handleRequest(request, env, ctx) {
       if(!writes[1]?.meta?.changes)return fail('profile_unavailable',409,cors);
       return reply(showProfile(await me(env.DB,uid)),200,cors);
     }
+    if(path==='/api/v1/me/cover-image' && request.method==='PUT') {
+      const user=await assertActive(env.DB,uid);
+      if(Number(request.headers.get('content-length')||0)>125000)
+        return fail('cover_too_large',413,cors);
+      const raw=await request.text();
+      if(raw.length>125000)return fail('cover_too_large',413,cors);
+      let body;
+      try{body=JSON.parse(raw||'{}');}catch(_){return fail('invalid_cover',400,cors);}
+      if(!body||typeof body!=='object'||Array.isArray(body)||
+         typeof body.image_data!=='string'||!body.image_data.startsWith('data:image/jpeg;base64,'))
+        return fail('invalid_cover',400,cors);
+      const imageBase64=body.image_data.slice('data:image/jpeg;base64,'.length);
+      if(imageBase64.length<16||imageBase64.length>120000||
+         !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64))return fail('invalid_cover',400,cors);
+      let binary;
+      try{binary=atob(imageBase64);}catch(_){return fail('invalid_cover',400,cors);}
+      if(binary.length<32||binary.length>90000||binary.charCodeAt(0)!==255||
+         binary.charCodeAt(1)!==216||binary.charCodeAt(2)!==255||
+         binary.charCodeAt(binary.length-2)!==255||binary.charCodeAt(binary.length-1)!==217)
+        return fail('invalid_cover',400,cors);
+      const coverPrefix=url.origin+'/api/v1/users/'+publicId(user.public_no)+'/cover-image?v=';
+      const writes=await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO sharika_user_cover_images(auth_uid,mime,image_base64,image_bytes) "+
+          "VALUES(?,'image/jpeg',?,?) ON CONFLICT(auth_uid) DO UPDATE SET "+
+          'image_base64=excluded.image_base64,image_bytes=excluded.image_bytes,'+
+          "version=MIN(sharika_user_cover_images.version+1,1000000000),updated_at=datetime('now') "+
+          "WHERE sharika_user_cover_images.updated_at<=datetime('now','-20 seconds')"
+        ).bind(uid,imageBase64,binary.length),
+        env.DB.prepare(
+          "UPDATE sharika_users SET cover=? || "+
+          "(SELECT CAST(version AS TEXT) FROM sharika_user_cover_images WHERE auth_uid=?),"+
+          "updated_at=datetime('now') WHERE auth_uid=? AND status='active'"
+        ).bind(coverPrefix,uid,uid)
+      ]);
+      if(!writes[0]?.meta?.changes)return fail('cover_rate_limited',429,cors);
+      if(!writes[1]?.meta?.changes)return fail('profile_unavailable',409,cors);
+      return reply(showProfile(await me(env.DB,uid)),200,cors);
+    }
     if(path==='/api/v1/banners' && request.method==='GET') {
       await assertActive(env.DB,uid);
       return reply({banners:await listPublicBanners(env.DB,url.origin)},200,cors);
@@ -572,7 +626,7 @@ export async function handleRequest(request, env, ctx) {
         env.DB.prepare('SELECT 1 AS active FROM sharika_coin_sellers WHERE seller_uid=? AND active=1')
           .bind(user.auth_uid).first()
       ]):[null,null];
-      return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, country: user.country,
+      return user ? reply({ id: publicId(user.public_no), name: user.name, pic: user.pic, cover:user.cover,country: user.country,
         bd_active:!!activeBD,seller_active:!!activeSeller,
         family:family?{id:family.id,name:family.name,status:family.status,role:family.role}:null,
         special_id:special?.special_id||null,display_id:special?.special_id||publicId(user.public_no),
@@ -583,6 +637,22 @@ export async function handleRequest(request, env, ctx) {
         ...svipAppearance(user,await readEquipped(env.DB,user.auth_uid),
           await readSvipLevel(env.DB,user.auth_uid)) }, 200, cors)
         : fail('not_found', 404, cors);
+    }
+    if(parts.length===5 && parts[0]==='api' && parts[1]==='v1' &&
+       parts[2]==='users' && PUBLIC_OR_SPECIAL_ID.test(parts[3]) &&
+       parts[4]==='showcase' && request.method==='GET'){
+      await assertActive(env.DB,uid);
+      const section=url.searchParams.get('section')||'';
+      const rawOffset=url.searchParams.get('offset')||'0';
+      if(!/^(0|[1-9][0-9]{0,4})$/.test(rawOffset))return fail('invalid_offset',400,cors);
+      const target=await env.DB.prepare('SELECT u.auth_uid FROM sharika_users u '+
+        'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+        "WHERE u.status='active' AND (u.public_no=? OR (s.special_id=? AND "+
+        "(s.expires_at IS NULL OR s.expires_at>datetime('now')))) LIMIT 1"
+      ).bind(Number(parts[3]),parts[3]).first();
+      if(!target)return fail('user_not_found',404,cors);
+      const result=await readPublicShowcase(env.DB,target.auth_uid,section,Number(rawOffset));
+      return result?reply(result,200,cors):fail('invalid_showcase_section',400,cors);
     }
     // Real follow graph. Identity always comes from the verified Firebase token.
     if (path === '/api/v1/follows' && request.method === 'GET') {

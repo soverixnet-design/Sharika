@@ -21,6 +21,10 @@ on:
       - 'cloudflare/src/index.mjs'
       - 'cloudflare/src/ranking-rewards.mjs'
       - 'cloudflare/migrations/0074_royal_ranking_reward_display.sql'
+      - 'cloudflare/migrations/0075_noble_games_ranking_reward_announcements.sql'
+      - 'cloudflare/migrations/0076_public_profile_cover_images.sql'
+      - 'cloudflare/src/profile-showcase.mjs'
+      - 'cloudflare/test/profile-showcase.test.mjs'
       - 'cloudflare/test/ranking-rewards.test.mjs'
       - 'cloudflare/src/admin.mjs'
       - 'cloudflare/src/admin-media.mjs'
@@ -117,7 +121,10 @@ jobs:
       - name: Install additive ranking reward announcement schema in staging only
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0074_royal_ranking_reward_display.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0075_noble_games_ranking_reward_announcements.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0076_public_profile_cover_images.sql
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS categories FROM sharika_rank_reward_policy"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS extra_categories FROM sharika_rank_reward_policy_extra"
       - name: Verify staging D1 has exchange settings before publish
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT diamonds_per_unit,coins_per_unit,revision FROM sharika_exchange_rate WHERE id=1"
@@ -253,6 +260,8 @@ jobs:
           node --check ../admin/connection.js
           npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc --outdir /tmp/sharika-staging-admin-bundle
       - name: Publish separate staging admin Worker
-        if: github.ref != 'refs/heads/fix/sharika-live-voice-reliability-20261102' && github.ref != 'refs/heads/feature/sharika-full-integrated-staging-20261107'
+        # Explicitly approved by the owner for the integrated staging branch;
+        # destination verification above still forbids production publication.
+        if: github.ref != 'refs/heads/fix/sharika-live-voice-reliability-20261102'
         run: npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
 # Royal Family member reports: verified staging check and deploy trigger (2026-11-04).

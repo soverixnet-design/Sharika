@@ -1093,11 +1093,13 @@ public final class SharikaActivity extends Activity {
             return false;
         // A fixed-origin bridge, with explicit route/method allowlisting.
         // No /admin, arbitrary URLs, billing, redirects or platform credentials.
-        if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(lucky|rich|charm|room|recharge)$"))
+        if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(lucky|rich|charm|room|noble|games|recharge)$"))
             return method.equals("GET");
-        if (path.matches("^/api/v1/rankings/rewards\\?kind=(lucky|rich|charm|room|recharge)$"))
+        if (path.matches("^/api/v1/rankings/rewards\\?kind=(lucky|rich|charm|room|noble|games|recharge)$"))
             return method.equals("GET");
-        if (path.matches("^/api/v1/rankings\\?period=weekly&kind=(lucky|rich|charm|room|recharge)&week_offset=1$"))
+        if (path.matches("^/api/v1/rankings\\?period=weekly&kind=(lucky|rich|charm|room|noble|games|recharge)&week_offset=1$"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/users/[0-9]{1,10}/showcase\\?section=(friends|followers|following|supporters|medal|vehicle|headwear|gift|impression)&offset=(0|[1-9][0-9]{0,4})$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/bonds/rankings\\?type=(cp|friendship)&period=(daily|weekly|monthly)$"))
             return method.equals("GET");
@@ -1118,6 +1120,7 @@ public final class SharikaActivity extends Activity {
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/presence/heartbeat")) return method.equals("POST");
         if (path.equals("/api/v1/me/avatar")) return method.equals("PUT");
+        if (path.equals("/api/v1/me/cover-image")) return method.equals("PUT");
         if (path.equals("/api/v1/me"))
             return method.equals("GET") || method.equals("POST") || method.equals("PATCH");
         if (path.equals("/api/v1/banners")) return method.equals("GET");

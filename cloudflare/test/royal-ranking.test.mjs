@@ -92,6 +92,48 @@ test('Lucky leaderboard uses settled gift outcomes, never Recharge wallet totals
   }finally{sqlite.close();}
 });
 
+test('Games leaderboard totals only verified game-win ledger credits',async()=>{
+  const {sqlite,d1}=stagedRankDB();
+  try{
+    sqlite.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+      "VALUES('royal-user','coins',4300,4300,'game_win','rank-games-won-001')").run();
+    sqlite.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+      "VALUES('royal-user','coins',2000,6300,'fruit_royale_win','rank-games-won-002')").run();
+    sqlite.prepare("INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) "+
+      "VALUES('royal-user','coins',9000,15300,'seller_recharge','rank-games-not-win')").run();
+    const games=await readGiftRankings(d1,'daily','games');
+    assert.equal(games.leaders[0].total,6300);
+    assert.equal(games.source,'verified_game_win_ledger');
+  }finally{sqlite.close();}
+});
+
+test('Noble leaderboard excludes non-Noble gifts and expired Noble memberships',async()=>{
+  const {sqlite,d1}=stagedRankDB();
+  try{
+    sqlite.prepare("INSERT INTO sharika_rooms(id,owner_id,name) VALUES('10000008','royal-user','Royal room')").run();
+    sqlite.prepare("INSERT INTO sharika_room_members(room_id,user_id,role) VALUES('10000008','royal-user','owner')").run();
+    const gift=sqlite.prepare("INSERT INTO sharika_gifts(name,tab,price_coins,active) "+
+      "VALUES('Royal rose',0,120,1)").run();
+    const transaction=sqlite.prepare("INSERT INTO sharika_gift_transactions("+
+      "sender_uid,room_id,gift_id,quantity,recipient_ids_json,total_coins,request_id) "+
+      "VALUES(?,?,?,?,?,?,?)").run('royal-user','10000008',gift.lastInsertRowid,1,
+      '["10000008"]',120,'noble-ranking-transaction');
+    sqlite.prepare("INSERT INTO sharika_gift_events("+
+      "transaction_id,room_id,sender_uid,recipient_uid,gift_id,quantity,price_coins) "+
+      "VALUES(?,?,?,?,?,?,?)").run(transaction.lastInsertRowid,'10000008','royal-user',
+      'royal-user',gift.lastInsertRowid,1,120);
+    assert.equal((await readGiftRankings(d1,'daily','noble')).leaders.length,0);
+    const now=Date.now();
+    sqlite.prepare('INSERT INTO sharika_premium_memberships(auth_uid,tier,source,starts_at_ms,expires_at_ms) '+
+      "VALUES('royal-user','noble','admin',?,?)").run(now-1000,now+86400000);
+    const active=await readGiftRankings(d1,'daily','noble');
+    assert.equal(active.leaders[0].total,120);
+    assert.equal(active.source,'active_noble_settled_gifts');
+    sqlite.prepare("UPDATE sharika_premium_memberships SET expires_at_ms=? WHERE auth_uid='royal-user'").run(now-1);
+    assert.equal((await readGiftRankings(d1,'daily','noble')).leaders.length,0);
+  }finally{sqlite.close();}
+});
+
 test('previous UTC week champions are read-only verified ledger results',async()=>{
   const {sqlite,d1}=stagedRankDB();
   try{
@@ -151,7 +193,7 @@ test('original ranking UI uses a real 3-place podium and equipped profile media'
     '../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
   assert.match(source,/0:\{kind:'lucky'/);
   assert.match(source,/6:\{kind:'recharge'/);
-  assert.match(bridge,/kind=\(lucky\|rich\|charm\|room\|recharge\)/);
+  assert.match(bridge,/kind=\(lucky\|rich\|charm\|room\|noble\|games\|recharge\)/);
   assert.match(source,/leaders\.slice\(0,3\)/);
   assert.match(source,/leaders\.slice\(3\)/);
   assert.match(source,/sh-royal-podium-card/);

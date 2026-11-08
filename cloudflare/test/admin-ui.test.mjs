@@ -12,7 +12,7 @@ test('admin staging connector parses as JavaScript without changing original tem
 });
 
 test('ranking UI exposes verified recharge, room, rich and charm kinds',()=>{
-  assert.match(source,/const kinds=\{[^\n]*rich:[^\n]*charm:[^\n]*room:[^\n]*recharge:'Top Recharge'/);
+  assert.match(source,/const kinds=\{rich:'Rich · sent',charm:'Charm · received',room:'Rooms',[\s\S]*noble:'Active Noble',games:'Verified Game Wins',recharge:'Top Recharge'/);
   assert.match(source,/api\('GET','rankings\?kind='\+kind\+'&period='\+period\)/);
   assert.match(source,/kind==='recharge'\?'Approved recharge coins':'Gift coins'/);
   assert.match(source,/No approved recharges recorded for this period/);

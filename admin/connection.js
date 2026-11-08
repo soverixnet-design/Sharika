@@ -2158,7 +2158,7 @@
       '<p class="n">Configure which coins, frame, medal and entry effect the app announces '+
       'for each weekly place. Display only: saving does not pay winners or grant items.</p>'+
       '<div class="row"><label>Ranking category <select class="field" id="sh-ra-kind">'+
-      ['rich','charm','lucky','room','recharge'].map(k=>'<option value="'+k+'">'+
+      ['rich','charm','lucky','room','noble','games','recharge'].map(k=>'<option value="'+k+'">'+
         esc(k.toUpperCase())+'</option>').join('')+'</select></label></div>'+
       '<div id="sh-ra-content">Loading configured rules…</div>'+
       '<p class="n" id="sh-ra-status" role="status"></p>';
@@ -2233,7 +2233,8 @@
   P.rank=async function () {
     const root=byId('pg');
     let kind='rich',period='weekly',requestNo=0;
-    const kinds={rich:'Rich · sent',charm:'Charm · received',room:'Rooms',recharge:'Top Recharge'};
+    const kinds={rich:'Rich · sent',charm:'Charm · received',room:'Rooms',
+      noble:'Active Noble',games:'Verified Game Wins',recharge:'Top Recharge'};
     const periods={daily:'Daily',weekly:'Weekly',monthly:'Monthly'};
     root.innerHTML='<div class="card"><h3>Verified wallet rankings</h3>'+
       '<p>Gift ranks reflect settled transfers; Top Recharge counts only approved seller or finance recharge coins. No simulated players or payouts.</p>'+

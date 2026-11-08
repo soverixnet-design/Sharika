@@ -122,6 +122,7 @@
         action === 'pushToken' && payload?.promptPermission ? 60000 :
         action === 'api' && payload?.method === 'PUT' &&
           (payload?.path === '/api/v1/me/avatar' ||
+           payload?.path === '/api/v1/me/cover-image' ||
            /^\/api\/v1\/rooms\/[0-9]{8}\/cover$/.test(payload?.path || ''))
           ? 90000 : 25000;
       const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, timeoutMs);
@@ -1104,6 +1105,11 @@
   function verifiedAvatarUrl(value){
     return typeof value==='string' &&
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(value)
+      ?value:null;
+  }
+  function verifiedCoverUrl(value){
+    return typeof value==='string' &&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/cover-image\?v=[0-9]+$/.test(value)
       ?value:null;
   }
   function paintVerifiedAvatar(node,value,doc){
@@ -11012,7 +11018,8 @@
       root.querySelector('.pfh')?.appendChild(ornament);
     }
     root.querySelector('.sh-neon-public-id')?.remove();
-    const publicLabel=root.querySelector('.pfh .meta span:first-child');
+    const publicLabel=root.querySelector('.pfh .sh-royal-user-id')||
+      root.querySelector('.pfh .meta span:first-child');
     if(publicLabel){
       publicLabel.classList.toggle('sh-neon-single-id',!!person.special_id);
       publicLabel.textContent='ID '+String(person.display_id||person.special_id||person.id);
@@ -11439,6 +11446,210 @@
     root.querySelector('.pf')?.classList.add('sh-cp-linked');
     return true;
   }
+  const publicCollections=[
+    ['medal','Medals','🏅'],['vehicle','Vehicles','🏎️'],
+    ['headwear','Frames','👑'],['gift','Gifts','🎁'],
+    ['impression','Nameplates','✨']
+  ];
+  const publicSectionTitles={cp:'CP Partners',friends:'Friendship Palace',followers:'Followers',
+    following:'Following',supporters:'Top Supporters',medal:'Medals',
+    vehicle:'Vehicles & Entry Effects',headwear:'Frames & Headwear',
+    gift:'Received Gifts',impression:'Nameplates & Impressions'};
+  const publicEmpty={friends:'No accepted friendship gifts yet.',
+    followers:'No followers yet.',following:'No followed members yet.',
+    supporters:'No verified gifts received yet.',gift:'No received gifts yet.'};
+  const showcaseImage=value=>{
+    const src=String(value||'');
+    return /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-zA-Z0-9/_?=&.-]+$/.test(src)?src:null;
+  };
+  function royalShowcaseTile(item,section){
+    const personSection=['friends','followers','following','supporters'].includes(section);
+    const tile=document.createElement(personSection?'button':'div');
+    tile.className='sh-public-collection-tile'+(personSection?' sh-public-person':'');
+    if(personSection){
+      tile.type='button';
+      const circle=document.createElement('div');circle.className='sh-public-collection-avatar';
+      const image=verifiedAvatarUrl(item.pic);
+      if(image){const img=document.createElement('img');img.src=image;img.alt='';circle.appendChild(img);}
+      else circle.textContent='👤';
+      const info=document.createElement('span');info.className='sh-public-item-info';
+      const name=document.createElement('strong');name.textContent=item.name||'Sharika member';
+      const id=document.createElement('small');id.textContent='ID '+item.display_id;
+      info.append(name,id);
+      if(section==='supporters'){
+        const amt=document.createElement('small');
+        amt.textContent='🪙 '+bondFmt(item.coins)+' · '+bondFmt(item.quantity)+' gifts';
+        info.appendChild(amt);
+      }
+      tile.append(circle,info);
+      tile.onclick=()=>openVerifiedRankProfile(item.id);
+    }else{
+      const visual=document.createElement('div');visual.className='sh-public-item-image';
+      const source=showcaseImage(item.image_url);
+      if(source){const img=document.createElement('img');img.src=source;img.alt='';visual.appendChild(img);}
+      else{
+        const art=section==='medal'?medalArt(item.art_key):
+          section==='headwear'?frameArt(item.art_key):
+          section==='impression'?nameTagArt(item.art_key):null;
+        const fallback=art?cosmeticMedia(art):null;
+        if(fallback){const img=document.createElement('img');img.src=fallback;img.alt='';visual.appendChild(img);}
+        else visual.textContent=section==='gift'?(item.emoji||'🎁'):
+          section==='vehicle'?'🏎️':section==='medal'?'🏅':
+          section==='headwear'?'👑':'✨';
+      }
+      const name=document.createElement('strong');name.textContent=item.name||'Sharika collectible';
+      const state=document.createElement('small');
+      if(section==='gift')state.textContent='× '+bondFmt(item.quantity)+' · 🪙'+bondFmt(item.coins);
+      else state.textContent=item.expired?'Expired · '+(item.source||'owned'):
+        (item.source==='purchase'?'Purchased':item.source==='admin_grant'?'Granted / free':'Owned')+
+        (item.expires_at_ms?' · Until '+new Date(item.expires_at_ms).toLocaleDateString():'');
+      tile.append(visual,name,state);
+    }
+    return tile;
+  }
+  async function readRoyalShowcase(id,section,offset=0){
+    return api('GET','/users/'+id+'/showcase?section='+section+'&offset='+offset);
+  }
+  function openRoyalProfileMore(root,id,section,cpData){
+    const home=root.querySelector('.pf.sh-ranked-profile');
+    if(!home||!publicSectionTitles[section])return;
+    root.querySelector('.sh-public-more-view')?.remove();
+    home.hidden=true;
+    const view=document.createElement('section');view.className='sh-public-more-view';
+    const bar=document.createElement('div');bar.className='sh-public-more-header';
+    const back=document.createElement('button');back.type='button';back.textContent='‹ Back';
+    back.onclick=()=>{view.remove();home.hidden=false;document.getElementById('pfo').scrollTop=0;};
+    const title=document.createElement('strong');title.textContent=publicSectionTitles[section];
+    bar.append(back,title);
+    const list=document.createElement('div');
+    list.className=['friends','followers','following','supporters'].includes(section)?
+      'sh-public-list-people':'sh-public-collection-grid';
+    const status=document.createElement('p');status.className='sh-public-load-status';
+    status.textContent='Loading verified profile items…';
+    const more=document.createElement('button');more.className='sh-public-load-more';
+    more.type='button';more.textContent='Load more';more.hidden=true;
+    view.append(bar,list,status,more);root.appendChild(view);
+    document.getElementById('pfo').scrollTop=0;
+    if(section==='cp'){
+      status.remove();
+      const profilePerson=cpData?.person||{};
+      const cpCard=document.createElement('section');cpCard.className='sh-public-showcase-card cp';
+      const faces=document.createElement('div');faces.className='sh-public-cp-body';
+      faces.appendChild(bondPerson({id,name:profilePerson.name,pic:profilePerson.pic,
+        display_id:profilePerson.display_id,frame_style:profilePerson.frame_style},true));
+      if(cpData?.cp?.partner){
+        const heart=document.createElement('span');heart.className='sh-public-cp-heart';
+        heart.textContent='💗';faces.append(heart,bondPerson(cpData.cp.partner,true));
+        const date=document.createElement('p');date.className='sh-public-cp-date';
+        date.textContent='Connected since '+new Date(cpData.cp.created_at_ms).toLocaleDateString();
+        cpCard.append(faces,date);
+      }else{
+        faces.classList.add('single');cpCard.appendChild(faces);
+        const empty=document.createElement('p');empty.className='sh-public-card-empty';
+        empty.textContent='This member has no active CP partner.';cpCard.appendChild(empty);
+      }
+      list.replaceWith(cpCard);more.remove();return;
+    }
+    let offset=0,loading=false;
+    const load=async()=>{
+      if(loading)return;loading=true;more.disabled=true;
+      try{
+        const page=await readRoyalShowcase(id,section,offset);
+        if(!view.isConnected)return;
+        for(const item of page.items||[])list.appendChild(royalShowcaseTile(item,section));
+        offset+=(page.items||[]).length;
+        more.hidden=!page.has_more;
+        status.textContent=offset?'Showing '+offset+' verified items':
+          publicEmpty[section]||'No owned items in this collection yet.';
+      }catch(error){if(view.isConnected)status.textContent='Unable to load: '+errText(error);}
+      finally{loading=false;more.disabled=false;}
+    };
+    more.onclick=load;load();
+  }
+  async function mountRoyalProfileCollections(root,id,person,data,panel){
+    const card=(title,theme,section)=>{
+      const wrap=document.createElement('section');wrap.className='sh-public-showcase-card '+theme;
+      const head=document.createElement('header');
+      const heading=document.createElement('h3');heading.textContent=title;
+      const more=document.createElement('button');more.type='button';more.textContent='More ›';
+      more.onclick=()=>openRoyalProfileMore(root,id,section||'cp',
+        section?null:{cp:data.cp,person});
+      head.append(heading,more);wrap.appendChild(head);return wrap;
+    };
+    const cpCard=card('💗 CP Partners','cp');
+    const cpBody=document.createElement('div');cpBody.className='sh-public-cp-body';
+    const left=bondPerson({id,name:person.name,pic:person.pic,display_id:person.display_id,
+      frame_style:person.frame_style},true);
+    cpBody.appendChild(left);
+    if(data.cp?.partner){
+      const heart=document.createElement('span');heart.className='sh-public-cp-heart';
+      heart.textContent='💗';cpBody.append(heart,bondPerson(data.cp.partner,true));
+      const when=document.createElement('small');when.className='sh-public-cp-date';
+      when.textContent='Together since '+new Date(data.cp.created_at_ms).toLocaleDateString();
+      cpCard.append(cpBody,when);
+    }else{
+      cpBody.classList.add('single');cpCard.appendChild(cpBody);
+      const empty=document.createElement('p');empty.className='sh-public-card-empty';
+      empty.textContent='No CP linked · Your own picture stays visible.';
+      cpCard.appendChild(empty);
+    }
+    panel.appendChild(cpCard);
+    const friends=card('🤝 Friends','friends','friends');
+    const friendPreview=document.createElement('div');friendPreview.className='sh-public-preview-faces';
+    friends.appendChild(friendPreview);panel.appendChild(friends);
+    const supporters=card('🏆 Top Supporters','supporters','supporters');
+    const donors=document.createElement('div');donors.className='sh-public-preview-faces';
+    supporters.appendChild(donors);panel.appendChild(supporters);
+    for(const [section,container,max] of [['friends',friendPreview,4],['supporters',donors,5]]){
+      try{
+        const page=await readRoyalShowcase(id,section);
+        if(!panel.isConnected)return;
+        for(const [index,member] of (page.items||[]).slice(0,max).entries()){
+          const personTile=royalShowcaseTile(member,section);
+          personTile.classList.add('sh-public-preview-person');
+          if(section==='supporters'){
+            const badge=document.createElement('span');badge.className='sh-public-preview-rank';
+            badge.textContent='#'+(index+1);personTile.prepend(badge);
+          }
+          container.appendChild(personTile);
+        }
+        if(!container.childElementCount){
+          const empty=document.createElement('p');empty.className='sh-public-card-empty';
+          empty.textContent=section==='friends'?'Friendship slots will appear here.':
+            'People who send real gifts will appear here.';container.appendChild(empty);
+        }
+      }catch(error){if(container.isConnected)container.textContent='Unable to load verified '+section;}
+    }
+    const collection=document.createElement('section');collection.className='sh-public-collection';
+    const title=document.createElement('h3');title.textContent='✦ Public Royal Collection';
+    collection.appendChild(title);
+    const tabs=document.createElement('div');tabs.className='sh-public-collection-tabs';
+    const grid=document.createElement('div');grid.className='sh-public-collection-grid';
+    const all=document.createElement('button');all.type='button';all.className='sh-public-view-all';
+    all.textContent='View all ›';
+    const empty=document.createElement('p');empty.className='sh-public-card-empty';
+    let active='medal',serial=0;
+    const load=async(section)=>{
+      active=section;const ticket=++serial;
+      for(const button of tabs.querySelectorAll('button'))
+        button.classList.toggle('active',button.dataset.section===section);
+      grid.textContent='';empty.textContent='Loading '+publicSectionTitles[section]+'…';
+      all.onclick=()=>openRoyalProfileMore(root,id,section);
+      try{
+        const page=await readRoyalShowcase(id,section);
+        if(ticket!==serial||!collection.isConnected)return;
+        for(const item of (page.items||[]).slice(0,8))grid.appendChild(royalShowcaseTile(item,section));
+        empty.textContent=grid.childElementCount?'':
+          publicEmpty[section]||'No items earned or purchased in this category yet.';
+      }catch(error){if(ticket===serial)empty.textContent='Collection unavailable: '+errText(error);}
+    };
+    for(const [section,label,emoji] of publicCollections){
+      const tab=document.createElement('button');tab.type='button';tab.dataset.section=section;
+      tab.textContent=emoji+' '+label;tab.onclick=()=>load(section);tabs.appendChild(tab);
+    }
+    collection.append(tabs,grid,empty,all);panel.appendChild(collection);
+    load(active);
+  }
   async function mountBondDetails(root,id,person){
     if(!root||!root.isConnected)return;
     bondStyles();
@@ -11457,8 +11668,9 @@
       const data=await api('GET','/bonds/profile/'+id);
       if(!panel.isConnected||String(data.public_id)!==id)return;
       loading.remove();
+      intro.remove();
       paintRoyalPublicLevels(root,person,data);
-      const cpInHero=mountRoyalCpHero(root,id,person,data.cp);
+      mountRoyalCpHero(root,id,person,data.cp);
       const followerLine=root.querySelector('.pfh .sh-royal-idline');
       if(followerLine&&!followerLine.querySelector('.sh-royal-follower-count')){
         const followers=document.createElement('span');
@@ -11475,77 +11687,18 @@
         const count=document.createElement('strong');count.textContent=bondFmt(value);
         const text=document.createElement('span');text.textContent=label;
         stat.append(count,text);stats.appendChild(stat);
+        const section=label==='Friends'?'friends':label==='Followers'?'followers':
+          label==='Following'?'following':label==='Gifts received'?'gift':null;
+        if(section){stat.tabIndex=0;stat.setAttribute('role','button');
+          stat.onclick=()=>openRoyalProfileMore(root,id,section);
+          stat.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){
+            event.preventDefault();stat.click();}};}
       }panel.appendChild(stats);
       const giftTotals=document.createElement('p');giftTotals.className='sh-bond-muted';
       giftTotals.textContent='🎁 Received 🪙 '+bondFmt(data.gift_value_received)+
         '  ·  Sent 🪙 '+bondFmt(data.gift_value_sent);
       panel.appendChild(giftTotals);
-      for(const sectionInfo of [
-        {key:'recent_gifters',title:'🎁 Who sent gifts',type:'gifts'},
-        {key:'followers_preview',title:'💖 Followers',type:'followers'},
-        {key:'following_preview',title:'✨ Following',type:'following'}]){
-        const section=document.createElement('section');section.className='sh-bond-section '+
-          (sectionInfo.type==='followers'?'friends':'');
-        const heading=document.createElement('h3');heading.textContent=sectionInfo.title;
-        section.appendChild(heading);
-        const list=document.createElement('div');list.className='sh-bond-social-list';
-        for(const personEntry of data[sectionInfo.key]||[]){
-          const row=document.createElement('button');row.type='button';
-          row.className='sh-bond-social-user';
-          const avatar=bondPerson(personEntry,false).querySelector('.sh-bond-avatar');
-          const detail=document.createElement('span');
-          const name=document.createElement('strong');name.textContent=personEntry.name;
-          const sub=document.createElement('small');sub.textContent='ID '+
-            (personEntry.display_id||personEntry.id)+
-            (sectionInfo.type==='gifts'?' · '+personEntry.emoji+' '+personEntry.gift_name+
-              ' · 🪙 '+bondFmt(personEntry.coins):'');
-          detail.append(name,sub);row.append(avatar,detail);
-          row.onclick=()=>openVerifiedRankProfile(personEntry.id);
-          list.appendChild(row);
-        }
-        if(!list.children.length){const empty=document.createElement('p');
-          empty.className='sh-bond-muted';
-          empty.textContent=sectionInfo.type==='gifts'?'No verified gifts yet.':
-            'No verified members to show yet.';list.appendChild(empty);}
-        section.appendChild(list);panel.appendChild(section);
-      }
-      const cp=document.createElement('section');cp.className='sh-bond-section';
-      const cpTitle=document.createElement('h3');cpTitle.textContent='💗 CP · Rose Gold Promise';
-      const couple=document.createElement('div');couple.className='sh-bond-couple';
-      couple.appendChild(bondPerson({id,display_id:person?.display_id||
-        (id===profile?.public_id?(profile?.special_id||profile?.display_id):null),
-        name:person?.name,pic:person?.pic,
-        frame_style:person?.frame_style},false));
-      const heart=document.createElement('span');heart.className='sh-bond-heart';
-      heart.textContent='💞';couple.appendChild(heart);
-      couple.appendChild(bondPerson(data.cp?.partner||null));
-      cp.append(cpTitle,couple);
-      const cpHint=document.createElement('div');cpHint.className='sh-bond-muted';
-      cpHint.textContent=data.cp?'Together since '+new Date(data.cp.created_at_ms).toLocaleDateString():
-        'One CP partner at a time · Accept a Rose Promise gift to bind';
-      cp.appendChild(cpHint);if(!cpInHero)panel.appendChild(cp);
-      const friends=document.createElement('section');friends.className='sh-bond-section friends';
-      const friendTitle=document.createElement('h3');
-      friendTitle.textContent='🤝 Friendship Palace · '+(data.friendships?.length||0);
-      friends.appendChild(friendTitle);
-      const friendList=document.createElement('div');friendList.className='sh-bond-friendlist';
-      for(const friendship of data.friendships||[]){
-        const button=document.createElement('button');button.type='button';
-        button.className='sh-bond-friend';
-        button.textContent='💙 '+friendship.partner.name+' · '+
-          (friendship.partner.display_id||friendship.partner.id);
-        button.onclick=()=>openVerifiedRankProfile(friendship.partner.id);
-        friendList.appendChild(button);
-      }
-      if(!friendList.children.length){const empty=document.createElement('p');
-        empty.className='sh-bond-muted';empty.textContent='Friendship gifts connect multiple friends.';
-        friendList.appendChild(empty);}
-      friends.appendChild(friendList);panel.appendChild(friends);
-      // Keep the couple/friendship portrait immediately below the stats;
-      // longer gift/follower histories belong beneath those primary cards.
-      [...panel.querySelectorAll('.sh-bond-section')]
-        .filter(section=>section.querySelector('.sh-bond-social-list'))
-        .forEach(section=>panel.appendChild(section));
+      await mountRoyalProfileCollections(root,id,person,data,panel);
       const actions=document.createElement('div');actions.className='sh-bond-actions';
       const gift=document.createElement('button');gift.className='sh-bond-button';
       gift.textContent='🎁 CP / Friends Gifts';gift.onclick=()=>showBondGiftSheet(
@@ -11593,7 +11746,10 @@
       const wealth=Math.max(0,Number(person.wealth_level)||0);
       const charm=Math.max(0,Number(person.charm_level)||0);
       root.innerHTML='<div class="pf sh-ranked-profile">'+
-        '<div class="cov"></div><div class="pfh"><div class="pavw">'+
+        '<div class="cov" aria-label="User profile cover photo">'+
+        (canonicalId===profile?.public_id?'<button type="button" class="sh-public-cover-add" '+
+          'aria-label="Change my profile background photo" title="Change cover photo">＋</button>':'')+
+        '</div><div class="pfh"><div class="pavw">'+
         '<div class="pavr" style="--g1:#ffdc7b;--g2:#a06bff"></div>'+
         '<div class="pav3" id="sh-ranked-avatar" role="img" aria-label="Profile photo"></div>'+
         '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
@@ -11616,6 +11772,31 @@
       const avatar=root.querySelector('#sh-ranked-avatar');
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
+      const cover=root.querySelector('.cov');
+      const savedCover=verifiedCoverUrl(person.cover);
+      if(savedCover)cover.style.backgroundImage='linear-gradient(180deg,#07131c24,#04110dc9),url("'+savedCover+'")';
+      const addCover=cover.querySelector('.sh-public-cover-add');
+      if(addCover){
+        addCover.onclick=async()=>{
+          if(addCover.disabled)return;
+          addCover.disabled=true;
+          try{
+            toast('Choose your new Sharika cover from the gallery…');
+            const chosen=await native('pickProfilePhoto');
+            if(requestNo!==rankProfileRequest||canonicalId!==profile?.public_id||
+              !chosen?.image_data?.startsWith('data:image/jpeg;base64,'))
+              throw new Error('Profile changed or picture was not selected');
+            const saved=await api('PUT','/me/cover-image',{image_data:chosen.image_data});
+            const newCover=verifiedCoverUrl(saved.cover);
+            if(!newCover)throw new Error('Cover image could not be verified');
+            profile.cover=saved.cover;
+            if(requestNo===rankProfileRequest&&cover.isConnected)
+              cover.style.backgroundImage='linear-gradient(180deg,#07131c24,#04110dc9),url("'+newCover+'")';
+            toast('Profile background saved ✓');
+          }catch(error){toast('Cover upload: '+errText(error));}
+          finally{if(addCover.isConnected)addCover.disabled=false;}
+        };
+      }
       decorateVerifiedPublicProfile(root,person);
       paintRoyalPublicLevels(root,person,null);
       mountBondDetails(root,canonicalId,person).catch(error=>
@@ -11649,6 +11830,14 @@
         root.textContent='Unable to open verified profile: '+errText(error);
     }
   }
+
+  // Room seats, messages and member cards use the same verified D1 profile,
+  // instead of the legacy HTML's fabricated "otherModel" profile identities.
+  window.openProfile=function(member){
+    const target=String(member?.id||member?.public_id||'');
+    if(/^[0-9]{1,10}$/.test(target))return openVerifiedRankProfile(target);
+    toast('This member has no verified Sharika ID yet');
+  };
 
   function mountSharikaSearchAndCp(){
     const header=document.querySelector('#v-home .hd');
@@ -11808,7 +11997,7 @@
   let rankingRequest=0;
   function openRoyalRankingRewardCenter(){
     if(!session){window.showAuth('welcome');return;}
-    const kinds={0:'lucky',1:'rich',2:'charm',3:'room',6:'recharge'};
+    const kinds={0:'lucky',1:'rich',2:'charm',3:'room',4:'noble',5:'games',6:'recharge'};
     const kind=kinds[window.rtab];
     document.getElementById('sh-rank-reward-center')?.remove();
     const center=document.createElement('section');center.id='sh-rank-reward-center';
@@ -11946,6 +12135,8 @@
       1:{kind:'rich',icon:'💎',title:'Rich',description:'Verified gifts sent to other members'},
       2:{kind:'charm',icon:'💗',title:'Charm',description:'Verified gifts received'},
       3:{kind:'room',icon:'🎙️',title:'Room',description:'Gifts sent in each voice room'},
+      4:{kind:'noble',icon:'👑',title:'Noble',description:'Settled gifts sent by active Noble members'},
+      5:{kind:'games',icon:'🎮',title:'Games',description:'Verified coin payouts from settled game wins'},
       6:{kind:'recharge',icon:'🪙',title:'Recharge',description:'Approved coin recharge totals'}
     };
     const period=periods[window.rper]||'weekly';
@@ -11953,7 +12144,7 @@
     const kind=selected?.kind;
     view.innerHTML='<div class="sh-royal-empty">✦ Loading verified royal rankings…</div>';
     if(!selected){
-      const name={4:'Noble',5:'Play'}[window.rtab]||'This';
+      const name='This';
       view.innerHTML='<div class="sh-royal-empty"><span aria-hidden="true">👑</span>'+
         '<strong>'+name+' ranking</strong>'+
         'This category is awaiting its verified ranking service. No demo users or '+

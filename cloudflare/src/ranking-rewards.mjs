@@ -1,18 +1,24 @@
 // Weekly prize display rules: authenticated, Super Admin-configured, read only
 // for app users. No rewards are credited by this module.
-export const RANK_REWARD_KINDS=Object.freeze(['lucky','rich','charm','room','recharge']);
+export const RANK_REWARD_KINDS=Object.freeze(['lucky','rich','charm','room','noble','games','recharge']);
 const TYPES={frame_item_id:'frame_style',medal_item_id:'medal_style',
   entry_item_id:'entry_style'};
 const rows=result=>result.results||[];
+function policyTables(kind){
+  const extra=kind==='noble'||kind==='games';
+  return extra?['sharika_rank_reward_policy_extra','sharika_rank_reward_rules_extra']:
+    ['sharika_rank_reward_policy','sharika_rank_reward_rules'];
+}
 
 export async function readRankingRewardPreview(db,kind){
   if(!RANK_REWARD_KINDS.includes(kind))return null;
+  const [policyTable,ruleTable]=policyTables(kind);
   const [policy,results]=await Promise.all([
-    db.prepare('SELECT enabled,revision,updated_at FROM sharika_rank_reward_policy '+
+    db.prepare('SELECT enabled,revision,updated_at FROM '+policyTable+' '+
       'WHERE kind=?').bind(kind).first(),
     db.prepare('SELECT r.rank,r.coins,r.frame_item_id,r.medal_item_id,'+
       'r.entry_item_id,r.display_days,f.name AS frame_name,m.name AS medal_name,'+
-      'e.name AS entry_name FROM sharika_rank_reward_rules r '+
+      'e.name AS entry_name FROM '+ruleTable+' r '+
       'LEFT JOIN sharika_cosmetics_catalog f ON f.id=r.frame_item_id '+
       'LEFT JOIN sharika_cosmetics_catalog m ON m.id=r.medal_item_id '+
       'LEFT JOIN sharika_cosmetics_catalog e ON e.id=r.entry_item_id '+
@@ -56,7 +62,8 @@ export async function handleRankingRewardAdmin({request,db,uid,role,reply,fail,c
        Object.keys(TYPES).every(k=>x[k]===null||
          (typeof x[k]==='string'&&x[k].length>=3&&x[k].length<=70))))
     return fail('invalid_reward_rules',400,cors);
-  const previous=await db.prepare('SELECT revision FROM sharika_rank_reward_policy '+
+  const [policyTable,ruleTable]=policyTables(kind);
+  const previous=await db.prepare('SELECT revision FROM '+policyTable+' '+
     'WHERE kind=?').bind(kind).first();
   if(!previous||Number(previous.revision)!==body.revision)
     return fail('reward_revision_changed',409,cors);
@@ -70,12 +77,12 @@ export async function handleRankingRewardAdmin({request,db,uid,role,reply,fail,c
   }
   // Atomic, optimistic revision guard. A stale concurrent PATCH violates
   // revision>=0 and aborts the entire D1 batch, including its audit row.
-  const work=[db.prepare('UPDATE sharika_rank_reward_policy SET enabled=?, '+
+  const work=[db.prepare('UPDATE '+policyTable+' SET enabled=?, '+
     'revision=CASE WHEN revision=? THEN revision+1 ELSE -1 END,updated_by=?, '+
     "updated_at=datetime('now') WHERE kind=?")
     .bind(body.enabled?1:0,body.revision,uid,kind)];
   for(const r of rules){
-    work.push(db.prepare('UPDATE sharika_rank_reward_rules SET coins=?, '+
+    work.push(db.prepare('UPDATE '+ruleTable+' SET coins=?, '+
       'frame_item_id=?,medal_item_id=?,entry_item_id=?,display_days=? '+
       'WHERE kind=? AND rank=?').bind(r.coins,r.frame_item_id,r.medal_item_id,
       r.entry_item_id,r.display_days,kind,r.rank));

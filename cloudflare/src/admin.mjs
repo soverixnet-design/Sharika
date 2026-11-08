@@ -42,7 +42,7 @@ function allowed(role, roles, fail, cors) {
 // UTC boundaries are half-open so each transaction belongs to one period.
 export async function readGiftRankings(db, period, kind, weekOffset=0) {
   if (!['daily','weekly','monthly'].includes(period) ||
-      !['lucky','rich','charm','room','recharge'].includes(kind)) return null;
+      !['lucky','rich','charm','room','recharge','noble','games'].includes(kind)) return null;
   // Completed historical week only. This never changes awards or balances.
   if (![0,1].includes(weekOffset) || (weekOffset===1&&period!=='weekly'))return null;
   const now=new Date(), year=now.getUTCFullYear(), month=now.getUTCMonth();
@@ -81,6 +81,16 @@ export async function readGiftRankings(db, period, kind, weekOffset=0) {
       'JOIN sharika_users u ON u.auth_uid=o.sender_uid '+
       'WHERE o.created_at>=? AND o.created_at<? AND o.payout_coins>0 '+
       'GROUP BY o.sender_uid ORDER BY total DESC,u.public_no ASC LIMIT 50';
+  } else if(kind==='games') {
+    // Only server-settled game wins credited by immutable D1 ledger triggers.
+    // Never count placed bets, unconfirmed rounds or demo game counters.
+    sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+special+appearance+
+      'SUM(l.delta) AS total FROM sharika_wallet_ledger l '+
+      'JOIN sharika_users u ON u.auth_uid=l.auth_uid '+
+      "WHERE l.created_at>=? AND l.created_at<? AND l.currency='coins' "+
+      "AND l.delta>0 AND l.reason IN ('game_win','original_game_win',"+
+      "'greedy_wheel_win','gaddy_game_win','fruit_royale_win') "+
+      'GROUP BY l.auth_uid ORDER BY total DESC,u.public_no ASC LIMIT 50';
   } else if(kind==='recharge') {
     // Seller transfers and finance-approved receipts are the only recharge
     // sources. Do not count welcome coins, referral bonuses or game payouts.
@@ -91,11 +101,16 @@ export async function readGiftRankings(db, period, kind, weekOffset=0) {
       "AND l.delta>0 AND l.reason IN ('seller_recharge','manual_recharge') "+
       'GROUP BY l.auth_uid ORDER BY total DESC,u.public_no ASC LIMIT 50';
   } else {
-    const participant=kind==='rich'?'e.sender_uid':'e.recipient_uid';
+    const participant=kind==='rich'||kind==='noble'?'e.sender_uid':'e.recipient_uid';
+    // Noble is a real, currently active Noble membership leaderboard ranked
+    // by settled gifts sent. Never make every high-spending user a fake Noble.
+    const nobleFilter=kind==='noble'?" AND EXISTS(SELECT 1 FROM sharika_premium_memberships p "+
+      "WHERE p.auth_uid=u.auth_uid AND p.tier='noble' "+
+      "AND p.expires_at_ms>CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)) ":'';
     sql='SELECT u.public_no,u.name,u.pic,u.wealth_level,u.charm_level,'+special+
       appearance+value+' AS total '+
       'FROM sharika_gift_events e JOIN sharika_users u ON u.auth_uid='+participant+' '+
-      'WHERE e.created_at>=? AND e.created_at<? '+
+      'WHERE e.created_at>=? AND e.created_at<? '+nobleFilter+
       'GROUP BY '+participant+' ORDER BY total DESC,u.public_no ASC LIMIT 50';
   }
   const rows=(await db.prepare(sql).bind(startAt,endAt).all()).results||[];
@@ -111,7 +126,9 @@ export async function readGiftRankings(db, period, kind, weekOffset=0) {
        name_tag_style:row.equipped_name_tag_style??row.name_tag_style??''});
   return {period,kind,start_at:start.toISOString(),end_at:end.toISOString(),
     leaders,read_only:true,source:kind==='recharge'?'verified_recharge_ledger':
-      kind==='lucky'?'verified_lucky_gift_payouts':'settled_gift_events'};
+      kind==='lucky'?'verified_lucky_gift_payouts':
+      kind==='games'?'verified_game_win_ledger':
+      kind==='noble'?'active_noble_settled_gifts':'settled_gift_events'};
 }
 
 export async function handleAdminOperation({ request, env, uid, path, cors, reply, fail, ctx }) {
