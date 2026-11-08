@@ -6,6 +6,11 @@ on:
       - feature/sharika-play-release-aab-20261107
       - feature/sharika-play-billing-20261107
       - feature/sharika-full-integrated-staging-20261107
+      # Compile-check the isolated production preparation branch. This job
+      # creates a staging-backed test artifact; it never publishes to Play.
+      - feature/sharika-production-schema-safety-20261108
+      # A separate QA-only candidate with Play financial routes disabled.
+      - feature/sharika-safe-closed-test-20261109
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
@@ -29,6 +34,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Apply isolated Closed Testing UI safety patch
+        if: github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109'
+        run: |
+          set -euo pipefail
+          git apply --check .github/patches/sharika-safe-play-ui.patch
+          git apply .github/patches/sharika-safe-play-ui.patch
+          grep -F 'if(playStoreMode!==false)return;' android-staging/staging-connection.js
+
       - name: Complete safety, source and Cloudflare game/voice checks
         run: |
           set -euo pipefail
@@ -46,7 +59,7 @@ jobs:
           # Keep test candidate source checks valid across signed staging updates.
           # A fixed v100 assertion incorrectly blocked a legitimate v102 build.
           grep -E 'versionCode [1-9][0-9]+' android-staging/app/build.gradle
-          grep -E "versionName '[^']+'" android-staging/app/build.gradle
+          grep -F 'versionName = productionApiOrigin' android-staging/app/build.gradle
           grep -F '>Sharika<' android-staging/app/src/main/res/values/strings.xml
           cd cloudflare
           npm run check
@@ -118,9 +131,10 @@ jobs:
       - name: Build optimized release-format signed AAB
         working-directory: android-staging
         env:
-          SHARIKA_PLAY_API_ORIGIN: ${{ vars.SHARIKA_PLAY_API_ORIGIN }}
-          # No production Worker is configured yet. Such a signed AAB is a
-          # downloadable staging candidate, NOT a Play publication artifact.
+          # The gated production-preparation branch must not package the
+          # unrouted api.sharika.app endpoint as if it were a working release.
+          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' || github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109') && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN }}
+          # This remains a test candidate, NOT a Play publication artifact.
           SHARIKA_PLAY_STAGING_CANDIDATE: 'true'
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
           SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
