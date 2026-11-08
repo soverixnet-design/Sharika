@@ -2104,6 +2104,53 @@
         '<p id="staff-note" class="n" aria-live="polite"></p></div>'+
         '<div class="card"><h3>Staff accounts and per-action permissions</h3>'+
         (staffList||'<p class="n">No staff accounts yet.</p>')+'</div>';
+      // Recruitment inbox is read-only until the Super Admin explicitly
+      // shortlists/rejects. This is NOT the permission-granting staff screen.
+      const inbox=document.createElement('section');inbox.className='card';
+      inbox.id='sh-role-applications-inbox';
+      const inboxNote=document.createElement('p');inboxNote.className='n';
+      inboxNote.id='sh-role-applications-status';inboxNote.setAttribute('role','status');
+      inbox.innerHTML='<h3>📨 Official role applications</h3>'+
+        '<p class="n">Review Manager, BD, Admin, Super Admin and Coin Seller applications. '+
+        'Shortlisting does not grant admin access, seller status or any coins.</p>';
+      inbox.appendChild(inboxNote);root.prepend(inbox);
+      try{
+        const applications=await api('GET','role-applications');
+        const entries=applications.applications||[];
+        if(!entries.length)inboxNote.textContent='No applications received yet.';
+        for(const item of entries){
+          const card=document.createElement('div');card.className='card';
+          card.style.margin='10px 0';
+          const title=document.createElement('h4');
+          title.textContent=item.name+' · '+item.public_id+' · '+item.requested_role;
+          const detail=document.createElement('p');detail.className='n';
+          detail.textContent=item.country+' · '+item.created_at+' · '+item.status;
+          const contact=document.createElement('p');contact.className='n';
+          contact.textContent='Contact: '+item.contact;
+          const explanation=document.createElement('p');explanation.className='n';
+          explanation.textContent='Experience: '+item.experience;
+          card.append(title,detail,contact,explanation);
+          if(item.status==='pending'){
+            const note=document.createElement('input');note.className='field';
+            note.placeholder='Review note (optional)';note.maxLength=300;
+            card.appendChild(note);
+            for(const [status,label] of [['shortlisted','Shortlist'],['rejected','Reject']]){
+              const button=document.createElement('button');button.className='btn s';
+              button.type='button';button.textContent=label;button.style.margin='5px';
+              button.onclick=async()=>{
+                if(!window.confirm(label+' application #'+item.id+'? This never grants access.'))return;
+                button.disabled=true;
+                try{await api('PATCH','role-applications/'+item.id,{status,note:note.value.trim()});
+                  await P.admins();}
+                catch(error){inboxNote.textContent='Application review failed: '+error.message;
+                  button.disabled=false;}
+              };
+              card.appendChild(button);
+            }
+          }
+          inbox.appendChild(card);
+        }
+      }catch(error){inboxNote.textContent='Application inbox unavailable: '+error.message;}
       const note=byId('staff-note');
       function picked(group){
         return Array.from(root.querySelectorAll('[data-staff-group="'+group+'"]:checked'))
@@ -2241,10 +2288,27 @@
       content.innerHTML='<label><input type="checkbox" id="sh-ra-enabled" '+
         (setting.policy?.enabled?'checked ':'')+(editable?'':'disabled')+
         '> Publish this category’s weekly prize preview</label>'+rows+
-        (editable?'<button type="button" class="btn s" id="sh-ra-save">'+
-        'Save Top 1–7 Reward Preview</button>':'')+
+        (editable?'<div class="row" style="gap:9px;flex-wrap:wrap">'+
+        '<button type="button" class="btn" id="sh-ra-preset">'+
+        '🪙 Fill Testing Top 1–7 (20K → 1K)</button>'+
+        '<button type="button" class="btn" id="sh-ra-top3">'+
+        '🪙 Fill Testing Top 1–3 Only</button>'+
+        '<button type="button" class="btn s" id="sh-ra-save">'+
+        'Save Top 1–7 Reward Preview</button></div>':'')+
         '<p class="n">Revision '+Number(setting.policy?.revision||0)+
         ' · No automatic payout or entitlement changes</p>';
+      const fillTesting=(amounts,label)=>{
+        for(let index=0;index<amounts.length;index++)
+          panel.querySelector('#sh-ra-coins-'+(index+1)).value=String(amounts[index]);
+        note.textContent=label+' amounts filled for '+kind+
+          '. Preview is not published until saved. No wallet deposits.';
+      };
+      const preset=panel.querySelector('#sh-ra-preset');
+      if(preset)preset.onclick=()=>fillTesting([20000,15000,10000,7000,5000,3000,1000],
+        'Top 7 testing');
+      const top3=panel.querySelector('#sh-ra-top3');
+      if(top3)top3.onclick=()=>fillTesting([20000,15000,10000,0,0,0,0],
+        'Top 3 testing');
       const save=panel.querySelector('#sh-ra-save');
       if(save)save.onclick=async()=>{
         const rules=[];
@@ -2536,7 +2600,7 @@
     try{
       const data=await api('GET','banners');
       const rows=data.banners||[];
-      const actions=[['none','No action'],['daily','Daily check-in'],['recharge','Recharge'],['rank','Rankings'],['invite','Invite friends']];
+      const actions=[['none','No action'],['daily','Daily check-in'],['recharge','Recharge'],['rank','Rankings'],['invite','Invite friends'],['apply','Apply for a role']];
       const choices=selected=>actions.map(([key,label])=>
         '<option value="'+key+'"'+(selected===key?' selected':'')+'>'+label+'</option>').join('');
       const palette={

@@ -43,6 +43,7 @@ import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 import {searchVerifiedRooms} from './room-search.mjs';
 import {readRankingRewardPreview} from './ranking-rewards.mjs';
+import {handleRoleApplicationApp} from './role-applications.mjs';
 import {readPublicShowcase} from './profile-showcase.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
@@ -357,6 +358,9 @@ export async function handleRequest(request, env, ctx) {
       return reply({games:await readGameCatalog(env.DB)},200,cors);
     }
     if(path==='/api/v1/events'||/^\/api\/v1\/events\/[1-9]\d*\/ranking$/.test(path)) return await handleEventApp({
+      request,env,uid,path,cors,reply,fail
+    });
+    if(path==='/api/v1/role-applications')return await handleRoleApplicationApp({
       request,env,uid,path,cors,reply,fail
     });
     if(path.startsWith('/api/v1/play-billing/')){

@@ -21,6 +21,7 @@ import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs'
 import { handleFamilyAdmin } from './family.mjs';
 import {handleAgencyAdmin} from './agency.mjs';
 import {handleRankingRewardAdmin} from './ranking-rewards.mjs';
+import {handleRoleApplicationAdmin} from './role-applications.mjs';
 import {handleMusicAdmin} from './music-library.mjs';
 import {handleAdminMediaUpload,safeMediaUrl} from './admin-media.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
@@ -155,6 +156,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     if(!proxy)return fail('admin_permission_denied',403,cors);
     actor={...actor,role:proxy};
   }
+  if(operation==='role-applications'||/^role-applications\/[1-9][0-9]*$/.test(operation))
+    return await handleRoleApplicationAdmin({request,db:env.DB,uid,
+      role:actor.role,operation,cors,reply,fail});
 
   if(operation==='notifications')return await handleNotificationAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if(operation==='family'||operation.startsWith('family/'))return await handleFamilyAdmin({

@@ -13,15 +13,16 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   display:flex;
   gap:7px!important;
   padding:12px 10px 5px!important;
-  min-height:71px;
+  min-height:82px;
   background:rgba(2,10,8,.66);
 }
 .app.sh-royal-room .top .room {
   min-width:0;
-  flex:1 1 auto;
-  max-height:66px!important;
-  min-height:56px!important;
-  padding:4px 7px!important;
+  flex:1 1 0!important;
+  width:auto!important;
+  max-height:none!important;
+  min-height:70px!important;
+  padding:4px 9px!important;
   border:0!important;
   border-radius:10px!important;
   background:rgba(4,10,9,.66)!important;
@@ -29,22 +30,22 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   color:#fff!important;
 }
 .app.sh-royal-room .top .room .rav {
-  width:49px;
-  height:49px;
+  width:61px;
+  height:61px;
   flex:none;
   border-radius:8px;
   border:1px solid #d9aa4d;
   background:#12251f;
 }
 .app.sh-royal-room .top .room .rt b {
-  font-size:14px!important;
+  font-size:16px!important;
   color:#f3f3ed!important;
   font-weight:600!important;
   text-shadow:0 1px 2px #000;
 }
 .app.sh-royal-room .top .room .rt small {
   color:#e1e8df!important;
-  font-size:11px!important;
+  font-size:12px!important;
 }
 .app.sh-royal-room .sh-settings {
   width:38px!important;height:38px!important;
@@ -173,7 +174,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   margin:0 9px 0!important;
   border:0!important;
   border-radius:0!important;
-  background:rgba(0,8,6,.25)!important;
+  background:transparent!important;
   box-shadow:none!important;
 }
 .app.sh-royal-room .chat {
@@ -181,6 +182,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   padding:3px 4px 7px!important;
   color:#f3e8dc!important;
   font-size:12px!important;
+  background:transparent!important;
   -webkit-mask-image:none!important;
   mask-image:none!important;
 }
@@ -240,6 +242,14 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   background-repeat:no-repeat!important;
   filter:grayscale(1) brightness(1.8)!important;
 }
+/* Room chat and private messages must never share the same envelope icon.
+   Use the packaged Lucide message-circle icon for the public composer. */
+.app.sh-royal-room .sh-tool>button .sh-icon-chat {
+  background-image:url('./room-chat-message.svg')!important;
+  background-position:center!important;
+  background-size:70% 70%!important;
+  filter:none!important;
+}
 /* Games has one child span: the icon sprite. The old :last-child rule hid it. */
 .app.sh-royal-room .sh-tool #bGame.sh-games .sh-sprite {
   display:block!important;
@@ -289,7 +299,10 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 .app.sh-royal-room .sh-menu-panel {bottom:73px!important;background:#10251beF!important;border:1px solid #b99b57!important}
 .app.sh-royal-room .sh-menu-panel button {background:#254231!important;color:#fff!important}
 @media(max-width:350px) {
-  .app.sh-royal-room .top {min-height:61px;padding:8px 6px 4px!important}
+  .app.sh-royal-room .top {min-height:75px;padding:8px 6px 4px!important}
+  .app.sh-royal-room .top .room {min-height:62px!important;padding-inline:5px!important}
+  .app.sh-royal-room .top .room .rav {width:52px;height:52px}
+  .app.sh-royal-room .top .room .rt b {font-size:14px!important}
   .app.sh-royal-room .stage {padding-inline:3px!important}
   .app.sh-royal-room #grid .seat .av {width:40px!important;height:40px!important}
   .app.sh-royal-room .sh-tools {padding-right:52px!important}

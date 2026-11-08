@@ -139,6 +139,12 @@ jobs:
             npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0077_banner_only_gift_events.sql
           fi
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS event_campaigns FROM sharika_events"
+      - name: Install additive staff role application inbox in staging only
+        run: |
+          # CREATE TABLE/INDEX IF NOT EXISTS: safe to retry without modifying
+          # prior applications, staff privileges, balances or audit entries.
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0077_staff_role_applications.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS role_applications FROM sharika_role_applications"
       - name: Install staff access expiration and revocation guard in staging only
         run: |
           if npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT expires_at_ms FROM sharika_admin_staff_accounts LIMIT 0" >/dev/null 2>&1; then

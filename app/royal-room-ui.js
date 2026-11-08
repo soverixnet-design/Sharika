@@ -40,6 +40,10 @@
   const roomInfo = byId('roomBtn');
   const oldSettingsEmoji = roomInfo?.querySelector(':scope > span:last-child');
   if (oldSettingsEmoji) oldSettingsEmoji.remove();
+  // The room profile follows Exit, before the collapse control, giving its
+  // verified cover/name a wide left-aligned touch target even on small phones.
+  if (top && roomInfo && roomInfo.parentElement === top && top.children.length > 1)
+    top.insertBefore(roomInfo, top.children[1]);
   const settingsButton = document.createElement('button');
   settingsButton.type = 'button';
   settingsButton.className = 'sh-settings';
@@ -241,11 +245,11 @@
     chatToggle.setAttribute('aria-expanded',String(opening));
     if(opening)text?.focus();
   };
-  addTool(chatToggle,'dm','Chat');
+  addTool(chatToggle,'chat','Room Chat');
   mic.classList.remove('sh-mic-floating');
   addTool(mic,'mic','Mic');
   addTool(emoji,'emoji','Emoji');
-  addTool(inbox,'dm','DM');
+  addTool(inbox,'dm','Private DM');
 
   const box=document.createElement('button');
   box.type = 'button';

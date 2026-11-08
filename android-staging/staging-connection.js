@@ -9463,7 +9463,7 @@
       typeof row.title==='string'&&row.title.length<=80&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_a||'')&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_b||'')&&
-      ['none','daily','recharge','rank','invite'].includes(row.action)).slice(0,10):[];
+      ['none','daily','recharge','rank','invite','apply'].includes(row.action)).slice(0,10):[];
     const cards=approved.map(row=>({
       t:row.title,s:String(row.subtitle||'').slice(0,160),
       e:String(row.emoji||'🎉').slice(0,12),
@@ -9520,6 +9520,83 @@
     if(session&&document.getElementById('v-home')?.classList.contains('on'))
       refreshVerifiedBanners().catch(error=>console.warn('Event banner refresh:',errText(error)));
   },60000);
+
+  // SHARIKA_VERIFIED_RECRUITMENT_20261108: a banner application is a request
+  // for human review; it never creates a staff login or grants a role.
+  window.sharikaOpenRoleApplication=async function(initialRole='manager'){
+    if(!session){window.showAuth('welcome');return;}
+    document.getElementById('sh-recruit-overlay')?.remove();
+    const page=document.createElement('div');page.id='sh-recruit-overlay';
+    page.style.cssText='position:fixed;inset:0;z-index:2147483095;overflow:auto;'+
+      'background:#061a17;color:#f9e6b8;font-family:system-ui,sans-serif;'+
+      'padding:22px 15px 55px';
+    page.innerHTML='<div style="max-width:520px;margin:auto">'+
+      '<button id="sh-recruit-back" style="border:1px solid #f3d48c;border-radius:14px;'+
+      'background:#142e2a;color:#ffe6af;padding:12px 18px">‹ Back</button>'+
+      '<h1 style="font-size:26px;color:#ffdf94">👑 Sharika Global Recruitment</h1>'+
+      '<p style="font-size:13px;line-height:1.6">Apply for official Manager, BD, Admin, '+
+      'Super Admin or Coin Seller review. Applications do not provide access. '+
+      'Only a verified Super Admin can grant permissions separately.</p>'+
+      '<form id="sh-recruit-form" style="display:grid;gap:12px">'+
+      '<label>Position<select id="sh-recruit-role" required></select></label>'+
+      '<label>Country<input id="sh-recruit-country" required minlength="2" maxlength="60" '+
+      'placeholder="Your country"></label>'+
+      '<label>Contact email or messaging handle<input id="sh-recruit-contact" required '+
+      'minlength="5" maxlength="120" autocomplete="email" '+
+      'placeholder="How can the team contact you?"></label>'+
+      '<label>Your experience and reasons for applying<textarea id="sh-recruit-experience" '+
+      'required minlength="20" maxlength="500" rows="5" '+
+      'placeholder="Tell us about your experience"></textarea></label>'+
+      '<p style="font-size:11px;color:#b9d5d0">Never include passwords, OTPs, '+
+      'identity documents, payment details or API keys.</p>'+
+      '<button id="sh-recruit-submit" type="submit" style="padding:13px;'+
+      'border:2px solid #ffe3aa;border-radius:15px;background:#d5a747;color:#19352a;'+
+      'font-weight:900">Submit application</button></form>'+
+      '<p id="sh-recruit-message" role="status" style="min-height:25px;margin-top:13px"></p>'+
+      '<h2 style="font-size:16px">My applications</h2><div id="sh-recruit-history">Loading…</div></div>';
+    document.body.appendChild(page);
+    page.querySelectorAll('input,textarea,select').forEach(el=>{
+      el.style.cssText='display:block;box-sizing:border-box;width:100%;margin-top:5px;'+
+        'padding:11px;border:1px solid #c6a25f;border-radius:10px;'+
+        'background:#122f29;color:#fff;font:inherit';
+    });
+    page.querySelector('#sh-recruit-back').onclick=()=>page.remove();
+    const choice=page.querySelector('#sh-recruit-role');
+    const labels=[['manager','Global Manager'],['bd','BD'],['admin','Admin'],
+      ['super','Super Admin'],['coin_seller','Coin Seller']];
+    for(const [value,label] of labels){const option=document.createElement('option');
+      option.value=value;option.textContent=label;choice.appendChild(option);}
+    choice.value=labels.some(([id])=>id===initialRole)?initialRole:'manager';
+    const message=page.querySelector('#sh-recruit-message');
+    const history=page.querySelector('#sh-recruit-history');
+    const load=async()=>{
+      const response=await api('GET','/role-applications');
+      if(!page.isConnected)return;
+      history.replaceChildren();
+      if(!response.applications?.length){history.textContent='No applications submitted yet.';return;}
+      for(const item of response.applications){const line=document.createElement('p');
+        const label=labels.find(([id])=>id===item.requested_role)?.[1]||'Role';
+        line.textContent=label+' · '+item.status+' · '+item.created_at;
+        history.appendChild(line);}
+    };
+    load().catch(error=>{if(page.isConnected)history.textContent=errText(error);});
+    page.querySelector('#sh-recruit-form').onsubmit=async event=>{
+      event.preventDefault();const button=page.querySelector('#sh-recruit-submit');
+      if(button.disabled)return;
+      button.disabled=true;message.textContent='Submitting for official review…';
+      try{
+        const body={requested_role:choice.value,
+          country:page.querySelector('#sh-recruit-country').value.trim(),
+          contact:page.querySelector('#sh-recruit-contact').value.trim(),
+          experience:page.querySelector('#sh-recruit-experience').value.trim()};
+        await api('POST','/role-applications',body);
+        message.textContent='✓ Application submitted. No access is granted until reviewed.';
+        page.querySelector('#sh-recruit-form').reset();
+        await load();
+      }catch(error){message.textContent='Application not submitted: '+errText(error);}
+      finally{if(button.isConnected)button.disabled=false;}
+    };
+  };
 
   // Banner-only event destination: its ranking and rewards are independent
   // from Daily/Weekly/Monthly Sharika Rankings. No client-side score writes.
@@ -11274,7 +11351,9 @@
     const button=document.createElement('button');button.type='button';button.className='sh-bond-person';
     const avatar=document.createElement('span');avatar.className='sh-bond-avatar';
     const img=verifiedAvatarUrl(person?.pic);
-    if(img){const photo=document.createElement('img');photo.alt='';photo.src=img;avatar.appendChild(photo);}
+    if(img){const crop=document.createElement('span');crop.className='sh-bond-photo';
+      const photo=document.createElement('img');photo.alt='';photo.src=img;
+      crop.appendChild(photo);avatar.appendChild(crop);}
     else avatar.textContent='👤';
     const frame=frameArt(person?.frame_style);
     if(frame){const art=document.createElement('i');art.className='sh-sovera-frame';
@@ -11590,21 +11669,16 @@
     const pair=document.createElement('section');
     pair.className='sh-royal-cp-profile-pair';
     pair.setAttribute('aria-label','Verified CP couple');
-    const title=document.createElement('div');title.className='sh-royal-cp-kicker';
-    title.textContent='💞 VERIFIED CP PARTNERS';
     const faces=document.createElement('div');faces.className='sh-royal-cp-faces';
     const owner=document.createElement('div');owner.className='sh-royal-cp-owner';
     owner.appendChild(original); // retain real avatar, frame, SVIP/medal ornaments
-    const ownName=document.createElement('strong');ownName.textContent=person?.name||'Sharika member';
-    const ownId=document.createElement('small');
-    ownId.textContent='ID '+String(person?.special_id||person?.display_id||
-      (id===profile?.public_id?(profile?.special_id||profile?.display_id):null)||id);
-    owner.append(ownName,ownId);
     const heart=document.createElement('span');heart.className='sh-royal-cp-heart';
     heart.textContent='💗';heart.setAttribute('aria-label','CP partner connection');
     const other=bondPerson(partner,true);other.classList.add('sh-royal-cp-partner');
     faces.append(owner,heart,other);
-    pair.append(title,faces);
+    // The profile's h2 is the only visible name: CP photos sit together
+    // without repeating or exposing the other member's name in this header.
+    pair.append(faces);
     hero.insertBefore(pair,hero.firstElementChild);
     root.querySelector('.pf')?.classList.add('sh-cp-linked');
     return true;
@@ -11866,9 +11940,9 @@
       const gift=document.createElement('button');gift.className='sh-bond-button';
       gift.textContent='🎁 CP / Friends Gifts';gift.onclick=()=>showBondGiftSheet(
         id===profile?.public_id?null:{id,display_id:person?.display_id,name:person?.name});
-      const rank=document.createElement('button');rank.className='sh-bond-button blue';
-      rank.textContent='🏆 Pair Ranking';rank.onclick=()=>showBondRanking('cp','weekly');
-      actions.append(gift,rank);
+      // CP Ranking belongs in its dedicated ranking screen, not the public
+      // profile action list. Keep CP gifts accessible for pairing.
+      actions.append(gift);
       if(id===profile?.public_id){
         const inbox=document.createElement('button');inbox.className='sh-bond-button gold';
         inbox.textContent='💌 Invitations';inbox.onclick=showBondInbox;actions.appendChild(inbox);

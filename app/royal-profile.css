@@ -928,6 +928,45 @@
 }
 #pfc .sh-public-collection-tile strong {font-size:9px;line-height:1.2}
 #pfc .sh-public-collection-tile small {font-size:8px;line-height:1.2}
+
+/* SHARIKA_PROFILE_PHOTO_AND_CP_CLEANUP_20261108
+   Keep the default cover blank. A gallery-uploaded cover is supplied as an
+   explicit inline !important background image, so it remains fully visible. */
+#pfo #pfc .pf.sh-ranked-profile .cov {
+  height:148px!important;
+  background-image:none!important;
+  background-color:#06251e!important;
+  box-shadow:none!important;
+}
+#pfo #pfc .pf.sh-ranked-profile .cov[style*="cover-image"] {
+  background-position:center center!important;background-size:cover!important;
+}
+#pfc .sh-royal-cp-profile-pair {
+  width:min(100%,240px);padding:3px 0;margin:0 auto 3px;
+  border:0;border-radius:0;background:transparent;box-shadow:none;
+}
+#pfc .sh-royal-cp-faces {align-items:center;gap:0}
+#pfc .sh-royal-cp-partner strong,
+#pfc .sh-royal-cp-partner small {display:none}
+#pfc .sh-public-showcase-card.cp {
+  color:#fce0ec;background:transparent;border:0;box-shadow:none;
+}
+#pfc .sh-public-showcase-card.cp>header button {color:#71385e}
+#pfc .sh-public-cp-body .sh-bond-person:not(:first-child) strong,
+#pfc .sh-public-cp-body .sh-bond-person:not(:first-child) small {display:none}
+#pfc .sh-bond-avatar {box-sizing:border-box;flex-shrink:0;isolation:isolate}
+#pfc .sh-bond-avatar .sh-bond-photo {
+  position:absolute;inset:0;display:block;overflow:hidden;border-radius:50%;
+}
+#pfc .sh-bond-avatar .sh-bond-photo img {
+  position:absolute;inset:0;display:block;width:100%;height:100%;
+  object-fit:cover;object-position:50% 32%;border-radius:50%;
+}
+#pfc .sh-bond-avatar>.sh-sovera-frame {
+  top:50%!important;left:50%!important;right:auto!important;bottom:auto!important;
+  transform:translate(-50%,-50%)!important;
+  background-position:center center!important;background-size:contain!important;
+}
 #pfc .sh-public-more-view .sh-public-collection-grid {grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:370px){
   #pfc .sh-royal-cp-profile-pair {padding-inline:4px}
