@@ -36,8 +36,10 @@ route or URL. Existing staging resources and user data remain untouched.
 
 ## Unresolved release blockers
 
-1. **Production Firebase identity** remains unverified. Separate Production
-   SFU/TURN credentials have since been provisioned (see final follow-up).
+1. **Production Firebase live sign-in** remains unverified; the user selected
+   the existing Android Firebase project and the Production Worker has since
+   received its project ID. Separate Production SFU/TURN credentials have also
+   been provisioned (see follow-up sections).
 2. **Android app and invite URLs are hard-coded to Staging** in several places:
    `MainActivity.java`, `SharikaMessagingService.java`,
    `SharikaActivity.java`, `android-staging/staging-connection.js`,
@@ -129,7 +131,7 @@ Production-only Cloudflare Realtime resources were created:
   `api.sharika.app`. Do not point a Play release AAB
   or users to it before application QA and a separately reviewed activation.
 
-Still blocked: Production Firebase identity and auth validation; full Worker
+Still blocked: Production Firebase live sign-in and auth validation; full Worker
 app deployment with Durable Objects and isolated rate-limit bindings;
 production media population; server-side wallet/recharge/agency/game audit;
 two-device voice QA; Android release build/signing; Play Store review.
@@ -148,11 +150,11 @@ two-device voice QA; Android release build/signing; Play Store review.
   This addition is **source-only** until a separately reviewed application
   deployment; the live Worker continues to serve its isolated 503 placeholder.
 - The Android bundle's `google-services.json` points to Firebase project
-  `sharika-voice-chat-app`; the Staging Worker uses the same project.
-  The Production Worker has **no** `FIREBASE_PROJECT_ID` binding. The decision
-  to share that identity provider or separately configure a Production Firebase
-  project is pending; never assume a token from another Firebase project is
-  valid. Production D1 accounts and balances remain isolated either way.
+  `sharika-voice-chat-app`; the Staging Worker uses the same project. At this
+  audit checkpoint, Production had no `FIREBASE_PROJECT_ID` binding. The user
+  subsequently chose shared Firebase identity (see next follow-up). Never
+  assume a token from another Firebase project is valid. Production D1
+  accounts and balances remain isolated.
 - The staging Worker has additional bindings for the legacy Family Sheets
   integration; they were **not** copied to Production, since Family has been
   superseded by Agency. The Production DO and rate-limit bindings also remain
@@ -163,3 +165,27 @@ two-device voice QA; Android release build/signing; Play Store review.
 - The Production Worker has no public route, custom domain, `workers.dev`
   subdomain, or preview URL. `api.sharika.app` is only a proposed endpoint,
   with no DNS record; no Google Play publication was initiated.
+
+## Follow-up: shared Firebase identity chosen and bound (2026-11-08)
+
+- Owner selected **Option 1**: retain the Android app's existing Firebase
+  Authentication project (`sharika-voice-chat-app`) for both environments.
+  The Staging Worker already matched that exact project ID. The Production
+  Worker now has `FIREBASE_PROJECT_ID` as a protected `secret_text` binding,
+  and the future Wrangler config declares it as required.
+- A source regression test ensures the Android `google-services.json` project
+  matches the Staging Wrangler identity project; Production must use the same
+  ID. No Firebase user export, profile copy, wallet transfer, or D1 mutation
+  was performed. Signing in with the same Firebase identity will still access
+  separate app records in the distinct Production D1 database.
+- Read-only Cloudflare verification after binding: Production D1 and R2 remain
+  unchanged, the Staging Firebase binding is unchanged, and Production has zero
+  public Worker routes or custom domains; workers.dev and previews are off.
+- The full Worker check passes **638/638 tests**, including the guarded
+  Production entry. These are offline tests, **not** a verified end-to-end
+  Firebase sign-in against the not-yet-public Production API.
+
+Next blockers: reviewed real Worker deployment with isolated Durable Objects
+and throttles, verified Production login and app records using test identities,
+functional wallet/game/agency QA, two-device voice QA, media readiness,
+release AAB build/signing and Google Play validation.
