@@ -6,7 +6,12 @@ on:
       - feature/sharika-production-schema-safety-20261108
     paths:
       - '.github/workflows/sharika-production-worker-preflight.yml'
-      - 'cloudflare/**'
+      - 'cloudflare/src/**'
+      - 'cloudflare/test/production-entry.test.mjs'
+      - 'cloudflare/test/production-schema-candidate.test.py'
+      - 'cloudflare/wrangler.production.jsonc'
+      - 'cloudflare/migrations-production/**'
+      - 'cloudflare/production-schema/*.sql'
   workflow_dispatch:
 
 permissions:
