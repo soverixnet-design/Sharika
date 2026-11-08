@@ -60,7 +60,9 @@
       "REALTIME_SFU_APP_ID",
       "REALTIME_SFU_APP_SECRET",
       "REALTIME_TURN_KEY_ID",
-      "REALTIME_TURN_API_TOKEN"
+      "REALTIME_TURN_API_TOKEN",
+      "INVITE_DEVICE_PEPPER",
+      "INVITE_BANK_ENCRYPTION_KEY_B64"
     ]
   },
   "observability": {
