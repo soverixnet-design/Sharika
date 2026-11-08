@@ -11694,8 +11694,12 @@
       }
       const requestNo=++searchRequest;
       status.textContent='Searching verified records…';results.replaceChildren();
+      // RFC 3986-encode the full query so the native API allowlist can safely
+      // distinguish a search value from a new path or arbitrary parameter.
+      const encodedQuery=encodeURIComponent(query).replace(/[!'()*]/g,
+        char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
       const [roomsResult,userResult]=await Promise.allSettled([
-        query.length>=2?api('GET','/rooms/search?q='+encodeURIComponent(query)):
+        query.length>=2?api('GET','/rooms/search?q='+encodedQuery):
           Promise.resolve({rooms:[]}),
         isId?api('GET','/users/'+query):Promise.resolve(null)
       ]);

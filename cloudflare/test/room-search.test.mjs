@@ -49,6 +49,11 @@ test('Android explicitly allowlists read-only search, retaining verified identit
     'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',root),'utf8');
   const worker=readFileSync(new URL('cloudflare/src/index.mjs',root),'utf8');
   assert.match(java,/api\/v1\/rooms\/search/);
+  const searchRule=java.indexOf('path.matches("^/api/v1/rooms/search');
+  const denyRule=java.indexOf('if (path.contains("?")) return false;');
+  assert.ok(searchRule>=0&&denyRule>=0&&searchRule<denyRule,
+    'search exception must precede the general dynamic query deny rule');
+  assert.match(java,/%\[0-9A-Fa-f\]\{2\}/);
   assert.match(worker,/await assertActive\(env\.DB,uid\);\s*const result=await searchVerifiedRooms/);
 });
 
@@ -59,7 +64,7 @@ test('home search, CP Palace and Android Back keep their own dedicated pages',()
   const back=readFileSync(new URL('android-staging/back-navigation.js',root),'utf8');
   const rankCss=readFileSync(new URL('app/royal-ranking-v2.css',root),'utf8');
   assert.match(connection,/window\.sharikaOpenSearch=open/);
-  assert.match(connection,/api\('GET','\/rooms\/search\?q='\+encodeURIComponent\(query\)\)/);
+  assert.match(connection,/api\('GET','\/rooms\/search\?q='\+encodedQuery\)/);
   assert.match(connection,/api\('GET','\/users\/'\+query\)/);
   assert.match(connection,/cp\.id='sh-cp-home'/);
   assert.match(connection,/\['🏆 CP Ranking',\(\)=>showBondRanking\('cp','weekly'\)\]/);

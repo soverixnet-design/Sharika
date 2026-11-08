@@ -1079,6 +1079,13 @@ public final class SharikaActivity extends Activity {
     }
 
     private boolean allowedApi(String method, String path) {
+        // Authenticated, read-only room-name search legitimately carries a
+        // percent-encoded UTF-8 query. Handle this single route before the
+        // general deny-encoded/dynamic-query guard below; all other routes
+        // retain their existing strict allowlist.
+        if (method.equals("GET") && path != null &&
+            path.matches("^/api/v1/rooms/search\\?q=(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2}){1,540}$"))
+            return true;
         if (path == null || !path.startsWith("/api/v1/") ||
             path.contains("%") || path.contains("#") || path.contains("..") ||
             !(method.equals("GET") || method.equals("POST") ||
@@ -1230,8 +1237,6 @@ public final class SharikaActivity extends Activity {
         if (path.equals("/api/v1/sellers/transfer")) return method.equals("POST");
         if (path.equals("/api/v1/rooms"))
             return method.equals("GET") || method.equals("POST");
-        if (path.matches("^/api/v1/rooms/search\\?q=[A-Za-z0-9%._~!$&'()*+,;=:@-]{1,180}$"))
-            return method.equals("GET");
         if (path.equals("/api/v1/room-themes")) return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}$"))
             return method.equals("GET") || method.equals("PATCH");
