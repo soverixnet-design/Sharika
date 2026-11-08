@@ -8,7 +8,11 @@ CREATE TABLE IF NOT EXISTS sharika_rank_reward_policy (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 INSERT OR IGNORE INTO sharika_rank_reward_policy(kind)
-VALUES ('lucky'),('rich'),('charm'),('room'),('recharge');
+VALUES ('lucky');
+INSERT OR IGNORE INTO sharika_rank_reward_policy(kind) VALUES ('rich');
+INSERT OR IGNORE INTO sharika_rank_reward_policy(kind) VALUES ('charm');
+INSERT OR IGNORE INTO sharika_rank_reward_policy(kind) VALUES ('room');
+INSERT OR IGNORE INTO sharika_rank_reward_policy(kind) VALUES ('recharge');
 
 CREATE TABLE IF NOT EXISTS sharika_rank_reward_rules (
   kind TEXT NOT NULL REFERENCES sharika_rank_reward_policy(kind),
@@ -21,9 +25,41 @@ CREATE TABLE IF NOT EXISTS sharika_rank_reward_rules (
   PRIMARY KEY(kind,rank)
 );
 INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank)
-SELECT p.kind,n.rank FROM sharika_rank_reward_policy p
-CROSS JOIN (SELECT 1 AS rank UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
- UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7) n;
+VALUES ('lucky',1);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('lucky',2);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('lucky',3);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('lucky',4);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('lucky',5);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('lucky',6);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('lucky',7);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('rich',1);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('rich',2);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('rich',3);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('rich',4);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('rich',5);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('rich',6);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('rich',7);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('charm',1);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('charm',2);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('charm',3);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('charm',4);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('charm',5);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('charm',6);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('charm',7);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('room',1);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('room',2);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('room',3);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('room',4);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('room',5);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('room',6);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('room',7);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('recharge',1);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('recharge',2);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('recharge',3);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('recharge',4);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('recharge',5);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('recharge',6);
+INSERT OR IGNORE INTO sharika_rank_reward_rules(kind,rank) VALUES ('recharge',7);
 
 CREATE TABLE IF NOT EXISTS sharika_rank_reward_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
