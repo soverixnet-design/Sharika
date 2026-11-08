@@ -53,5 +53,16 @@ remain untouched.
 5. **Voice, permissions, support, age protection, Play Billing, and signed AAB**
    require live integration, two-device QA, and Google Play release checks.
 
+## Existing Play candidate inspection
+
+- `release_inspect/Sharika-Play-Store-Candidate.aab` exists locally (89,257,735
+  bytes). `unzip -t` passed and the bundle contains `META-INF/SHARIKA-.RSA`
+  and `.SF`, but no cryptographic signing-certificate verification was done.
+- Gradle currently declares `versionName '1.0.3-staging'`, `versionCode 103`,
+  and explicit staging-candidate build support. The Java `MainActivity`
+  still hard-codes the staging API origin. **This existing bundle is not a
+  verified production-release artifact** and must not be uploaded to the
+  public Production track as-is.
+
 Never disable the compile-time gate or enable routing automatically. Require
 an explicit production release review when the above blockers are cleared.
