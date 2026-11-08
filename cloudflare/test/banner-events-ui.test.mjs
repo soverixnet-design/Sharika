@@ -23,7 +23,8 @@ test('admin chooses catalog gifts, banner, reward labels and hides drafts',()=>{
   const worker=read('../src/events.mjs');
   assert.match(ui,/data-sh-ev-gift/);
   assert.match(ui,/id="sh-ev-banner"/);
-  assert.match(ui,/reward_labels:Array\.from/);
+  assert.match(ui,/const reward_labels=Array\.from/);
+  assert.match(ui,/p\.some\(n=>n>0\)\|\|reward_labels\.some\(Boolean\)/);
   assert.match(worker,/validateCampaignReferences/);
   assert.match(worker,/WHERE e\.status=\? AND e\.ends_at>=\?/);
   assert.match(worker,/settledEventRanking/);

@@ -2927,16 +2927,16 @@
         }
         if(byId('sh-ev-kind').value==='gift_race'&&byId('sh-ev-status').value==='published'&&
           !gift_rules.length){hint.textContent='Pick at least one gift before publishing a Gift Race.';return;}
+        const reward_labels=Array.from({length:7},(_,i)=>byId('sh-ev-label-'+(i+1)).value.trim());
         if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start||
           end-start>366*86400000||p.some(n=>!Number.isSafeInteger(n)||n<0||n>1000000)||
-          !p.some(n=>n>0)){
-          hint.textContent='Use valid dates (max 366 days) and prize coins from 0–1,000,000.';return;
+          !(p.some(n=>n>0)||reward_labels.some(Boolean))){
+          hint.textContent='Use valid dates and configure either coin prizes or reward descriptions.';return;
         }
         const payload={title:byId('sh-ev-title').value.trim(),kind:byId('sh-ev-kind').value,
           description:byId('sh-ev-desc').value.trim(),starts_at:new Date(start).toISOString(),
           ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p,
-          banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,
-          reward_labels:Array.from({length:7},(_,i)=>byId('sh-ev-label-'+(i+1)).value.trim())};
+          banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,reward_labels};
         if(payload.title.length<3){hint.textContent='Enter an event name of at least 3 characters.';return;}
         if(!window.confirm((editing?'Update event #'+editing:'Create this event')+
           ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;
