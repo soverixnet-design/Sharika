@@ -2959,34 +2959,8 @@
     '#sh-family-panel .sh-fam-create-dock span{display:block;font-size:10px;opacity:.8}',
     '#sh-family-panel #sh-fam-create-form[hidden]{display:none}',
     '#sh-family-panel #sh-fam-create-agree{display:inline-block;width:18px;vertical-align:middle}',
-    '#pfo .sh-ranked-profile{background:radial-gradient(ellipse at 50% 18%,#ffe19c,#f3ba38 50%,#ba6917 100%)!important;',
-    'border:2px solid #f3d175;box-shadow:inset 0 0 20px #fff1a6,0 10px 40px #000b}',
-    '#pfo .sh-ranked-profile .cov{height:115px;background:',
-    'radial-gradient(ellipse at 50% -100%,#fff7d0,transparent 70%),',
-    'repeating-conic-gradient(from 12deg at 50% 50%,#ffeca655 0deg 8deg,transparent 9deg 26deg),',
-    'linear-gradient(135deg,#9b440d,#efb239 55%,#8e420a)!important}',
-    '#pfo .sh-ranked-profile .pfh{position:relative;padding-top:2px}',
-    '#pfo .sh-ranked-profile .pfh:before{content:"♛";position:absolute;top:-77px;',
-    'left:50%;transform:translateX(-50%);font-size:47px;color:#ffe99e;',
-    'filter:drop-shadow(0 2px 3px #76370a)}',
-    '#pfo .sh-ranked-profile .pfh h2{color:#49220b!important;text-shadow:0 1px 0 #fff4c1}',
-    '#pfo .sh-ranked-profile .pavr{border-color:#ffd273!important;',
-    'box-shadow:0 0 0 3px #be771b,0 0 20px #fff1b8}',
-    '#pfo .sh-ranked-profile .sh-royal-idline{display:flex;align-items:center;',
-    'justify-content:center;flex-wrap:wrap;gap:5px;margin:9px auto;padding:5px;',
-    'max-width:100%;font-size:12px;color:#6c390a}',
-    '#pfo .sh-ranked-profile .sh-royal-user-id{font-weight:900;color:#723014;',
-    'padding:7px 8px;background:#fff0b2;border:1px solid #d29427;border-radius:9px}',
-    '#pfo .sh-ranked-profile .sh-royal-role-tag{font-weight:900;padding:7px 10px;',
-    'border-radius:999px;border:1px solid #ffdd92;box-shadow:inset 0 1px 2px #fff8;',
-    'color:#fff0cb;text-transform:uppercase;white-space:nowrap}',
-    '#pfo .sh-ranked-profile .sh-royal-bd{background:linear-gradient(125deg,#d43768,#74174d)}',
-    '#pfo .sh-ranked-profile .sh-royal-seller{background:linear-gradient(125deg,#269de4,#14559d)}',
-    '#pfo .sh-ranked-profile .meta{color:#623708!important}',
-    '#pfo .sh-ranked-profile .sh-profile-note{background:linear-gradient(150deg,#704017,#321e1b)!important;',
-    'border:1px solid #ffc869!important;color:#ffe6b7!important}',
-    '#pfo .sh-ranked-profile .pbtn button{background:linear-gradient(140deg,#ffeaa0,#d4992e)!important;',
-    'color:#4b2106!important;border:1px solid #ffdb74!important}',
+    // Public profile now has a dedicated compact cover layout in royal-profile.css.
+    // The former !important gold sunburst here hid the owner's uploaded cover.
     '@media(max-width:380px){#sh-family-panel .sh-fam-row-emblem{width:53px;height:53px}',
     '#sh-family-panel .sh-fam-row-data b{font-size:14px}',
     '#sh-family-panel .sh-fam-discover-row button{padding:8px}}',
@@ -10739,17 +10713,17 @@
     '#rb .rr[data-rank-user]:focus-visible{outline:3px solid #ffd875;outline-offset:3px}',
     // One fixed-size positioning context for the verified photo and every
     // cosmetic overlay. Flex profile layouts must not shift the photo alone.
-    '#pfo .sh-ranked-profile .pfh .pavw{position:relative!important;',
+    '#pfo .sh-ranked-profile .pfh>.pavw{position:relative!important;',
     'display:block!important;flex:0 0 118px!important;width:118px!important;',
     'height:118px!important;min-width:118px!important;min-height:118px!important;',
     'max-width:118px!important;max-height:118px!important;',
     'box-sizing:border-box!important;margin-left:auto!important;margin-right:auto!important;',
     'isolation:isolate!important;overflow:visible!important}',
-    '#pfo .sh-ranked-profile .pfh .pav3{position:absolute!important;',
+    '#pfo .sh-ranked-profile .pfh>.pavw .pav3{position:absolute!important;',
     'inset:0!important;width:100%!important;height:100%!important;',
     'margin:0!important;box-sizing:border-box!important;transform:none!important;',
     'z-index:2!important}',
-    '#pfo .sh-ranked-profile .pfh .pav3>.sh-verified-avatar-image{',
+    '#pfo .sh-ranked-profile .pfh>.pavw .pav3>.sh-verified-avatar-image{',
     'position:absolute!important;inset:0!important;width:100%!important;',
     'height:100%!important;max-width:100%!important;max-height:100%!important;',
     'display:block!important;object-fit:cover!important;',
@@ -11774,7 +11748,8 @@
       else avatar.textContent='👤';
       const cover=root.querySelector('.cov');
       const savedCover=verifiedCoverUrl(person.cover);
-      if(savedCover)cover.style.backgroundImage='linear-gradient(180deg,#07131c24,#04110dc9),url("'+savedCover+'")';
+      if(savedCover)cover.style.setProperty('background-image',
+        'linear-gradient(180deg,#07131c24,#04110d70),url("'+savedCover+'")','important');
       const addCover=cover.querySelector('.sh-public-cover-add');
       if(addCover){
         addCover.onclick=async()=>{
@@ -11791,7 +11766,8 @@
             if(!newCover)throw new Error('Cover image could not be verified');
             profile.cover=saved.cover;
             if(requestNo===rankProfileRequest&&cover.isConnected)
-              cover.style.backgroundImage='linear-gradient(180deg,#07131c24,#04110dc9),url("'+newCover+'")';
+              cover.style.setProperty('background-image',
+                'linear-gradient(180deg,#07131c24,#04110d70),url("'+newCover+'")','important');
             toast('Profile background saved ✓');
           }catch(error){toast('Cover upload: '+errText(error));}
           finally{if(addCover.isConnected)addCover.disabled=false;}

@@ -817,3 +817,121 @@
   #pfc .sh-public-preview-person .sh-public-collection-avatar {width:43px;height:43px}
   #pfc .sh-public-collection-tile {padding:8px 5px}
 }
+
+/* SHARIKA_COMPACT_PUBLIC_PROFILE_20261108
+   The compact profile is shared by room, ranking and search. Uploaded cover
+   images stay behind (not below) the identity; CP ornaments cannot reflow it. */
+#pfo #pfc .pf.sh-ranked-profile {
+  background:#041e19!important;border:0!important;
+  box-shadow:none!important;padding-bottom:12px;
+}
+#pfo #pfc .pf.sh-ranked-profile .cov {
+  height:176px!important;max-height:36vh;
+  margin-top:-10px;border-radius:0 0 17px 17px;
+  background-image:linear-gradient(180deg,#041d1720,#02181273),url('./royal-profile-background.jpg');
+  background-color:#193c34;background-repeat:no-repeat;
+  background-position:center center;background-size:cover;
+  box-shadow:inset 0 -20px 28px #041a196b;
+}
+#pfo #pfc .pf.sh-ranked-profile .cov::after {
+  background:linear-gradient(180deg,transparent 64%,#041e1975 100%);
+  pointer-events:none;
+}
+#pfo #pfc .pf.sh-ranked-profile .sh-public-cover-add {
+  top:12px;right:12px;width:39px;height:39px;font-size:27px;
+}
+#pfo #pfc .pf.sh-ranked-profile .pfh,
+#pfo #pfc .pf.sh-ranked-profile.sh-cp-linked .pfh {
+  margin-top:-39px;padding:0 6px 3px;gap:3px;
+}
+#pfo #pfc .pf.sh-ranked-profile .pfh::before {content:none!important}
+#pfo #pfc .pf.sh-ranked-profile .pfh>h2 {
+  font-size:19px;line-height:1.15;margin:3px 0 0;
+  color:#ffe4a3!important;text-shadow:0 2px 7px #031313;
+}
+#pfo #pfc .pf.sh-ranked-profile .sh-royal-idline {margin:2px auto;padding:2px;gap:4px}
+#pfo #pfc .pf.sh-ranked-profile .sh-royal-user-id {
+  padding:3px 7px;font-size:12px;color:#ffe9b1;
+  border:1px solid #d8c28566;border-radius:9px;background:#102f29;
+}
+#pfo #pfc .pf.sh-ranked-profile .meta {margin:3px 0;font-size:10px}
+#pfo #pfc .pf.sh-ranked-profile .lvs {margin:6px 0;gap:6px}
+#pfo #pfc .pf.sh-ranked-profile .lvc {min-height:75px;padding:7px 8px}
+#pfo #pfc .pf.sh-ranked-profile .lvc .big3 {font-size:19px}
+#pfo #pfc .pf.sh-ranked-profile .sh-profile-note {display:none}
+#pfc .sh-royal-cp-profile-pair {
+  width:min(100%,320px);padding:7px 7px 9px;margin:0 auto 4px;
+  border-radius:15px;background:#16263cdb;
+  box-shadow:0 5px 16px #04121078;
+}
+#pfc .sh-royal-cp-kicker {font-size:9px;letter-spacing:.5px;margin-bottom:2px}
+#pfc .sh-royal-cp-faces {grid-template-columns:minmax(0,1fr) 30px minmax(0,1fr);column-gap:3px}
+#pfo #pfc .pf.sh-ranked-profile .sh-royal-cp-owner .pavw {
+  width:70px!important;height:70px!important;
+  min-width:70px!important;min-height:70px!important;
+  max-width:70px!important;max-height:70px!important;
+  flex:0 0 70px!important;margin:5px auto 13px!important;
+}
+#pfc .sh-royal-cp-partner .sh-bond-avatar {
+  width:70px;height:70px;margin:5px auto 13px;
+}
+#pfc .sh-royal-cp-owner strong,#pfc .sh-royal-cp-partner strong {
+  font-size:11px;line-height:1.2;max-width:100%;
+}
+#pfc .sh-royal-cp-owner small,#pfc .sh-royal-cp-partner small {
+  font-size:9px;line-height:1.2;max-width:100%;
+}
+#pfc .sh-royal-cp-heart {margin-top:24px;width:30px;height:30px;font-size:20px}
+#pfc .sh-royal-cp-profile-pair .sh-sovera-frame,
+#pfc .sh-royal-cp-partner .sh-sovera-frame {
+  width:128%!important;height:128%!important;
+}
+#pfo #pfc .pf.sh-ranked-profile .sh-royal-cp-profile-pair .sh-royal-cp-owner .pavw>.sh-sovera-frame.fxr.sh-svip-frame {
+  width:128%!important;height:128%!important;
+}
+#pfc .sh-bond-panel {margin:2px 0 12px;padding:6px 5px 20px}
+#pfc .sh-bond-panel .sh-bond-stats {margin:6px 0 10px;gap:5px}
+#pfc .sh-bond-panel .sh-bond-stat {padding:6px 3px;border-radius:10px}
+#pfc .sh-bond-panel .sh-bond-stat strong {font-size:15px}
+#pfc .sh-public-showcase-card {margin:10px 0;padding:10px 8px;border-radius:15px}
+#pfc .sh-public-showcase-card>header {margin-bottom:6px}
+#pfc .sh-public-showcase-card h3 {font-size:14px}
+#pfc .sh-public-cp-body {min-height:83px;gap:3px}
+#pfc .sh-public-cp-body .sh-bond-avatar {width:61px;height:61px;margin:5px auto 12px}
+#pfc .sh-public-cp-body .sh-bond-avatar .sh-sovera-frame {
+  inset:-14%;width:128%!important;height:128%!important;
+}
+#pfc .sh-public-cp-heart {font-size:22px}
+#pfc .sh-public-cp-body .sh-bond-person {padding:2px 1px;gap:3px}
+#pfc .sh-public-cp-body .sh-bond-person strong {font-size:10px}
+#pfc .sh-public-cp-body .sh-bond-person small {font-size:9px}
+#pfc .sh-public-preview-faces {gap:4px;justify-content:space-between}
+#pfc .sh-public-preview-person {gap:3px;padding:3px 0}
+#pfc .sh-public-preview-person .sh-public-collection-avatar {
+  width:clamp(34px,10vw,48px);height:clamp(34px,10vw,48px);
+}
+#pfc .sh-public-preview-person .sh-public-item-info strong {font-size:9px}
+#pfc .sh-public-preview-person .sh-public-item-info small {font-size:8px}
+#pfc .sh-public-collection {margin-top:13px}
+#pfc .sh-public-collection-grid {grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:4px 0}
+#pfc .sh-public-collection-tile {
+  gap:3px;min-width:0;padding:5px 3px;border-radius:11px;overflow:hidden;
+}
+#pfc .sh-public-item-image {
+  width:100%;height:62px;min-width:0;min-height:0;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;font-size:34px;
+}
+#pfc .sh-public-item-image img {
+  display:block;width:100%;height:100%;max-width:100%;max-height:100%;
+  object-fit:contain;object-position:center;
+}
+#pfc .sh-public-collection-tile strong {font-size:9px;line-height:1.2}
+#pfc .sh-public-collection-tile small {font-size:8px;line-height:1.2}
+#pfc .sh-public-more-view .sh-public-collection-grid {grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:370px){
+  #pfc .sh-royal-cp-profile-pair {padding-inline:4px}
+  #pfc .sh-public-collection-grid {gap:4px}
+  #pfc .sh-public-item-image {height:55px}
+  #pfc .sh-public-collection-tile strong {font-size:8.5px}
+}

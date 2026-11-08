@@ -86,3 +86,20 @@ test('public cover storage is separate from avatar and profile background must b
   assert.match(ui,/native\('pickProfilePhoto'\)/);
   assert.match(ui,/openRoyalProfileMore\(root,id,section\)/);
 });
+
+test('compact public profile does not hide uploaded covers or overflow CP and collections',()=>{
+  const css=readFileSync(new URL('../../app/royal-profile.css',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.doesNotMatch(ui,/#pfo \.sh-ranked-profile \.cov\{height:115px;background:/,
+    'legacy gold background with !important masked uploaded cover photos');
+  assert.match(ui,/cover\.style\.setProperty\('background-image',/,
+    'a successfully saved cover must be visible even against older styles');
+  assert.match(css,/#pfo #pfc \.pf\.sh-ranked-profile \.cov\s*\{[^}]*height:176px!important/);
+  assert.match(ui,/#pfo \.sh-ranked-profile \.pfh>\.pavw\{/,
+    'large hero avatar rules must not inflate the nested CP couple avatars');
+  assert.match(css,/#pfo #pfc \.pf\.sh-ranked-profile \.sh-royal-cp-owner \.pavw\s*\{/);
+  assert.match(css,/\.sh-royal-cp-owner \.pavw>\.sh-sovera-frame\.fxr\.sh-svip-frame/);
+  assert.match(css,/#pfc \.sh-public-collection-grid \{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(css,/#pfc \.sh-public-collection-tile \{[^}]*overflow:hidden;/);
+  assert.match(css,/#pfc \.sh-public-item-image \{[^}]*overflow:hidden;/);
+});
