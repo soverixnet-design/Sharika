@@ -19,32 +19,23 @@
 #v-rank .sh-rank-brand-divider {height:25px;width:1px;background:#dfad7280;margin:0 3px}
 #v-rank .sh-rank-brand-sub {color:#fce5c2;font-size:12px;font-weight:800;white-space:nowrap}
 #v-rank .sh-rank-brand-crown {width:31px;height:23px;object-fit:contain}
-#v-rank .sh-rank-quick {
-  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;
-  margin:12px 12px 6px;padding:5px;border-radius:24px;
+#v-rank #rt.sh-rank-categories {
+  display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px!important;
+  flex:none!important;width:auto;overflow:visible!important;
+  margin:12px 12px 6px;padding:8px!important;border-radius:20px;
   background:#30204de3;border:1px solid #d2a16c77;
   box-shadow:inset 0 1px 2px #f7d5aa55,0 6px 15px #08031966;
 }
-#v-rank .sh-rank-quick button {
-  border:1px solid transparent;border-radius:18px;background:transparent;
-  color:#f7e5ce;padding:11px 1px;font-size:12px;font-weight:800;
+#v-rank #rt.sh-rank-categories button {
+  border:1px solid #ccaa8655!important;border-radius:15px!important;background:#38234c!important;
+  color:#f7e5ce!important;padding:10px 3px!important;font-size:11px!important;font-weight:800;
   display:flex;justify-content:center;gap:4px;align-items:center;
-  min-width:0;min-height:45px;cursor:pointer;
+  min-width:0;min-height:45px;cursor:pointer;white-space:normal;text-align:center;
 }
-#v-rank .sh-rank-quick button.active {
-  background:linear-gradient(165deg,#ffecb0,#efbb69 65%,#be7338);
-  color:#572c25;border-color:#ffedc5;
+#v-rank #rt.sh-rank-categories button.on {
+  background:linear-gradient(165deg,#ffecb0,#efbb69 65%,#be7338)!important;
+  color:#572c25!important;border-color:#ffedc5!important;
   box-shadow:inset 0 2px 1px #fff9,0 3px 7px #d08c5588;
-}
-#v-rank .sh-rank-more {margin:0 15px;color:#ddc4ec;font-size:11px}
-#v-rank .sh-rank-more summary {list-style:none;cursor:pointer;text-align:center;padding:6px}
-#v-rank .sh-rank-more summary::-webkit-details-marker {display:none}
-#v-rank .sh-rank-more #rt {
-  display:flex!important;flex-wrap:wrap;justify-content:center;gap:6px!important;
-  overflow:visible!important;padding:8px 2px!important;
-}
-#v-rank .sh-rank-more #rt button {
-  font-size:11px!important;padding:7px 9px!important;border-radius:14px!important;
 }
 #v-rank .seg {margin:8px auto 3px!important;width:min(320px,86%)!important}
 #v-rank .seg button {padding:8px 0!important;font-size:12px!important}
@@ -175,6 +166,8 @@
 .sh-rank-history-line strong {flex:1;font-size:13px;min-width:0}
 .sh-rank-history-line small {font-size:11px;color:#f4d08b}
 @media(max-width:365px) {
+  #v-rank #rt.sh-rank-categories {grid-template-columns:repeat(3,minmax(0,1fr));gap:5px!important}
+  #v-rank #rt.sh-rank-categories button {font-size:10px!important;padding:8px 2px!important}
   #rb .sh-royal-podium {min-height:260px;padding-bottom:33px}
   #rb .sh-royal-podium-card .sh-royal-avatar {width:58px;height:58px}
   #rb .sh-royal-podium-card.first .sh-royal-avatar {width:79px;height:79px}

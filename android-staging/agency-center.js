@@ -56,7 +56,15 @@
     if(typeof window.sharikaAgencyApi!=='function')throw Error('Secure Sharika connection unavailable');
     return window.sharikaAgencyApi(method,path,body);
   };
-  let panel=null,me=null,stack=[],generation=0,lastView=null;
+  let panel=null,me=null,stack=[],generation=0,lastView=null,lastPreferredView='overview';
+  const LOAD_LIMIT_MS=15000;
+  function withDeadline(promise){
+    let timer;
+    return Promise.race([promise,new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(Error('Agency connection timed out. Please retry.')),
+        LOAD_LIMIT_MS);
+    })]).finally(()=>clearTimeout(timer));
+  }
   function ensurePanel(){
     if(panel?.isConnected)return panel;
     panel=document.createElement('section');panel.id='sh-agency-panel';
@@ -114,12 +122,18 @@
   }
   function loading(){
     shell('Agency Center','<div class="ag-title"><span class="ag-crown">♛</span>'+
-      '<h1>Agency Center</h1></div><div class="ag-empty">Loading verified records…</div>');
+      '<h1>Agency Center</h1></div><div class="ag-empty" role="status">Loading verified records…</div>');
   }
   function fail(error){
     shell('Unavailable','<div class="ag-title"><h1>Agency Center</h1></div>'+
       '<p class="ag-error">Unable to load verified data: '+esc(error?.message||error)+
-      '</p><p class="ag-muted">The staging Worker and new database migration must be deployed together.</p>');
+      '</p><p class="ag-muted">Check your connection or account permissions. No salary or wallet data was changed.</p>'+
+      '<button type="button" class="ag-big-button" data-ag-retry>↻ Retry Agency Center</button>');
+    const failed=lastView;
+    panel.querySelector('[data-ag-retry]').onclick=()=>{
+      if(failed&&failed.type!=='overview')show(failed.type,failed.id,failed.period,false);
+      else open(lastPreferredView);
+    };
   }
   const title=(heading,code)=>'<header class="ag-title"><span class="ag-crown">♛</span>'+
     '<h1>'+esc(heading)+'</h1>'+(code?'<span class="ag-id">'+esc(code)+'</span>':'')+'</header>';
@@ -628,6 +642,9 @@
     if(type==='overview')return showOverview();
     if(type==='unassigned')return renderUnassigned();
     loading();const token=++generation;
+    const timer=setTimeout(()=>{
+      if(token===generation){generation++;fail(Error('Agency service did not respond in time.'));}
+    },LOAD_LIMIT_MS);
     try{
       if(type==='salary')await renderSalary(token);
       else if(type==='directory')await renderDirectory(token);
@@ -645,12 +662,14 @@
       }else if(type==='transactions')await renderTransactions(token);
       else if(type==='reports')await renderReports(token);
     }catch(error){if(token===generation)fail(error);}
+    finally{clearTimeout(timer);}
   }
   async function open(prefer){
+    lastPreferredView=prefer||'overview';
     ensurePanel();panel.hidden=false;stack=[];lastView=null;loading();
     const token=++generation;
     try{
-      me=await api('GET','/agency/me');
+      me=await withDeadline(api('GET','/agency/me'));
       if(token!==generation)return;
       // Host's own public ID can be obtained from the authenticated profile,
       // but we avoid guessing: the /agency/me API supplies it directly.

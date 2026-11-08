@@ -11650,8 +11650,114 @@
     }
   }
 
+  function mountSharikaSearchAndCp(){
+    const header=document.querySelector('#v-home .hd');
+    const shortcuts=document.querySelector('#v-home .qa');
+    if(!header||!shortcuts||document.getElementById('sh-search-button'))return;
+    const search=document.createElement('button');
+    search.id='sh-search-button';search.type='button';
+    search.textContent='🔍';search.title='Find members and voice rooms';
+    search.setAttribute('aria-label','Search members and rooms');
+    header.appendChild(search);
+    const cp=document.createElement('button');cp.id='sh-cp-home';cp.type='button';
+    cp.innerHTML='<span class="home-icon hi-cp" aria-hidden="true"></span>CP';
+    cp.onclick=()=>openSharikaCpCenter();shortcuts.appendChild(cp);
+    const panel=document.createElement('section');panel.id='sh-global-search';
+    panel.hidden=true;panel.setAttribute('aria-label','Search Sharika members and rooms');
+    panel.innerHTML='<div class="sh-search-head"><button type="button" id="sh-search-back" '+
+      'aria-label="Back to home">‹</button><strong>🔍 Search Sharika</strong></div>'+
+      '<label for="sh-search-query">Member ID, Special ID, room ID or room name</label>'+
+      '<div class="sh-search-form"><input id="sh-search-query" type="search" '+
+      'maxlength="60" autocomplete="off" placeholder="Enter an ID or room name">'+
+      '<button type="button" id="sh-search-submit">Find</button></div>'+
+      '<p id="sh-search-status" role="status" aria-live="polite"></p>'+
+      '<div id="sh-search-results"></div>';
+    document.body.appendChild(panel);
+    let searchRequest=0;
+    const input=panel.querySelector('#sh-search-query');
+    const status=panel.querySelector('#sh-search-status');
+    const results=panel.querySelector('#sh-search-results');
+    const close=()=>{searchRequest++;panel.hidden=true;};
+    panel.querySelector('#sh-search-back').onclick=close;
+    const open=()=>{
+      if(!session){window.showAuth('welcome');return;}
+      panel.hidden=false;status.textContent='Search verified Sharika accounts and rooms.';
+      results.replaceChildren();input.focus();
+    };
+    window.sharikaOpenSearch=open;
+    search.onclick=open;
+    async function find(){
+      const query=input.value.trim();
+      const isId=/^[0-9]{1,10}$/.test(query);
+      if((query.length<2&&!isId)||query.length>60){
+        status.textContent='Enter a member ID or at least 2 room-name characters.';return;
+      }
+      const requestNo=++searchRequest;
+      status.textContent='Searching verified records…';results.replaceChildren();
+      const [roomsResult,userResult]=await Promise.allSettled([
+        query.length>=2?api('GET','/rooms/search?q='+encodeURIComponent(query)):
+          Promise.resolve({rooms:[]}),
+        isId?api('GET','/users/'+query):Promise.resolve(null)
+      ]);
+      if(requestNo!==searchRequest||panel.hidden)return;
+      const user=userResult.status==='fulfilled'?userResult.value:null;
+      const rooms=roomsResult.status==='fulfilled'&&Array.isArray(roomsResult.value?.rooms)?
+        roomsResult.value.rooms:[];
+      if(user&&/^[0-9]{8}$/.test(String(user.id||''))){
+        const row=document.createElement('button');row.type='button';
+        row.className='sh-search-result';
+        row.textContent='👤 '+String(user.name||'Member')+' · ID '+
+          String(user.display_id||user.id)+'  ›';
+        row.onclick=()=>{close();openVerifiedRankProfile(user.id);};
+        results.appendChild(row);
+      }
+      for(const room of rooms){
+        const row=document.createElement('button');row.type='button';
+        row.className='sh-search-result';
+        row.textContent=String(room.emoji||'🎙️')+' '+String(room.name||'Voice room')+
+          ' · Room '+String(room.id)+'  ›';
+        row.onclick=()=>{
+          close();const saved=(window.CFG?.rooms||[]).find(r=>r.id===room.id);
+          window.openRoom(saved||{...room,th:room.theme||'mid',n:0,c:'#704220,#d5a460'});
+        };results.appendChild(row);
+      }
+      status.textContent=roomsResult.status==='rejected'?
+        'Room search unavailable: '+errText(roomsResult.reason):
+        results.children.length?results.children.length+' verified result(s)':'No matching member or room found.';
+    }
+    panel.querySelector('#sh-search-submit').onclick=find;
+    input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();find();}};
+    panel.addEventListener('keydown',event=>{
+      if(event.key==='Escape'){event.preventDefault();close();}
+    });
+  }
+  function openSharikaCpCenter(){
+    if(!session){window.showAuth('welcome');return;}
+    const center=document.createElement('section');center.id='sh-cp-center';
+    center.innerHTML='<div class="sh-cp-center-head"><button type="button" '+
+      'aria-label="Back to home" id="sh-cp-back">‹</button><strong>💗 CP Palace</strong></div>'+
+      '<p>Verified partners, gifts, invitations and weekly rankings</p>'+
+      '<div class="sh-cp-center-actions"></div>';
+    document.getElementById('sh-cp-center')?.remove();document.body.appendChild(center);
+    const close=()=>center.remove();
+    center.querySelector('#sh-cp-back').onclick=close;
+    for(const [label,action] of [
+      ['💞 My CP Profile',()=>window.go('me')],
+      ['🏆 CP Ranking',()=>showBondRanking('cp','weekly')],
+      ['🎁 CP Gifts',()=>showBondGiftSheet(null,'cp')],
+      ['💌 CP Invitations',showBondInbox],
+      ['🤝 Friendship Ranking',()=>showBondRanking('friendship','weekly')]
+    ]){
+      const button=document.createElement('button');button.type='button';
+      button.textContent=label;button.onclick=()=>{close();action();};
+      center.querySelector('.sh-cp-center-actions').appendChild(button);
+    }
+    center.addEventListener('keydown',event=>{if(event.key==='Escape')close();});
+  }
+  mountSharikaSearchAndCp();
+
   function ensureRoyalRankNavigation(rankView){
-    if(!rankView||document.getElementById('sh-rank-quick'))return;
+    if(!rankView||rankView.dataset.shRankReady==='true')return;
     const top=rankView.querySelector('.rtop');
     const originalTabs=rankView.querySelector('#rt');
     const periodTabs=rankView.querySelector('#rp');
@@ -11665,25 +11771,17 @@
     sub.className='sh-rank-brand-sub';sub.textContent='🏆 Rankings';
     brand.append(title,divider,sub);
     top.appendChild(brand);
-    const quick=document.createElement('nav');
-    quick.className='sh-rank-quick';quick.id='sh-rank-quick';
-    quick.setAttribute('aria-label','Top ranking categories');
-    for(const item of [{label:'🎁 Gift',index:1},{label:'🪙 Recharge',index:6},
-      {label:'🎮 Games',index:5},{label:'💗 CP',index:null}]){
-      const button=document.createElement('button');button.type='button';
-      button.textContent=item.label;
-      if(item.index!==null)button.dataset.rankTab=String(item.index);
-      button.onclick=()=>item.index===null?showBondRanking('cp','weekly'):
-        originalTabs.querySelectorAll('button')[item.index]?.click();
-      quick.appendChild(button);
-    }
-    const more=document.createElement('details');more.className='sh-rank-more';
-    more.id='sh-rank-more';
-    const summary=document.createElement('summary');
-    summary.textContent='More Rankings · Lucky, Charm, Room, Noble';
-    more.append(summary,originalTabs);
-    rankView.insertBefore(quick,periodTabs);
-    rankView.insertBefore(more,periodTabs);
+    // Restore all seven original category controls in one visible grid.
+    // Keep their original click handlers, indices and verified server data.
+    originalTabs.classList.add('sh-rank-categories');
+    originalTabs.setAttribute('aria-label','All ranking categories');
+    ['🎰 Lucky','🎁 Rich','💗 Charm','🎙️ Room','👑 Noble','🎮 Games',
+      '🪙 Recharge'].forEach((label,index)=>{
+      const button=originalTabs.querySelectorAll('button')[index];
+      if(button)button.textContent=label;
+    });
+    rankView.insertBefore(originalTabs,periodTabs);
+    rankView.dataset.shRankReady='true';
   }
   function formatRoyalWeek(startAt,endAt){
     const start=new Date(startAt),end=new Date(new Date(endAt).getTime()-86400000);
@@ -11696,48 +11794,7 @@
   }
   let rankingRequest=0;
   function appendRoyalRankingExtras(view,data,selected,period,requestNo){
-    const rewards=document.createElement('section');
-    rewards.className='sh-rank-rewards';
-    rewards.setAttribute('aria-label','Official weekly ranking rewards');
-    const title=document.createElement('h3');title.className='sh-rank-section-title';
-    title.textContent='🎁 CP Top 1–7 Rewards';
-    const note=document.createElement('p');note.className='sh-rank-section-note';
-    note.textContent='CP weekly reward rules · Checking administrator settings…';
-    const prizes=document.createElement('div');prizes.className='sh-rank-prizes';
-    const values=[];
-    for(const item of [{kind:'coins',label:'Coins'},
-      {kind:'frame',label:'Exclusive Frame'},{kind:'medal',label:'Champion Medal'}]){
-      const section=document.createElement('div');section.className='sh-rank-prize';
-      const picture=document.createElement('span');
-      picture.className='sh-rank-prize-asset '+item.kind;
-      picture.setAttribute('aria-hidden','true');
-      const heading=document.createElement('strong');heading.textContent=item.label;
-      const value=document.createElement('small');value.textContent='Admin configured';
-      values.push(value);section.append(picture,heading,value);prizes.appendChild(section);
-    }
-    const button=document.createElement('button');button.type='button';
-    button.className='sh-rank-rewards-button';
-    button.textContent='View Official CP Reward Rules  ›';
-    button.onclick=()=>showBondRanking('cp','weekly','reward');
-    rewards.append(title,note,prizes,button);view.appendChild(rewards);
-    // Do not present a configured prize as actually paid until an immutable
-    // server award receipt exists. This teaser contains no payout action.
-    api('GET','/bonds/rewards').then(board=>{
-      if(requestNo!==rankingRequest||!rewards.isConnected)return;
-      if(!board.policy?.enabled){
-        note.textContent='CP weekly rewards are currently disabled by Admin.';
-        values.forEach(v=>v.textContent='Not active');
-        return;
-      }
-      note.textContent='CP rewards enabled · Paid only after the weekly result is settled.';
-      const first=(board.rules||[]).find(r=>Number(r.rank)===1);
-      values[0].textContent=first?'Top 1: '+formatCompactCoins(first.coins_each):'See rules';
-      values[1].textContent=first?.frame_name||'See rules';
-      values[2].textContent=first?.medal_name||'See rules';
-    }).catch(()=>{
-      if(requestNo===rankingRequest&&rewards.isConnected)
-        note.textContent='Reward details unavailable. Try the official CP Reward page.';
-    });
+    // CP rewards belong to the separate CP Palace, not every other leaderboard.
     if(period!=='weekly')return;
     const history=document.createElement('button');history.type='button';
     history.className='sh-rank-history';history.disabled=true;
@@ -11802,31 +11859,6 @@
     if(!view)return;
     const rankView=document.getElementById('v-rank');
     ensureRoyalRankNavigation(rankView);
-    if(rankView){
-      for(const button of rankView.querySelectorAll('#sh-rank-quick button'))
-        button.classList.toggle('active',button.dataset.rankTab===String(window.rtab));
-      const more=rankView.querySelector('#sh-rank-more');
-      if(more&&!more.contains(document.activeElement))
-        more.open=![1,5,6].includes(window.rtab);
-    }
-    if(rankView&&!document.getElementById('sh-bond-rank-shortcuts')){
-      bondStyles();
-      const shortcuts=document.createElement('div');
-      shortcuts.id='sh-bond-rank-shortcuts';
-      shortcuts.style.cssText='display:flex;justify-content:center;gap:9px;padding:11px 13px;'+
-        'margin:5px auto;max-width:550px';
-      for(const item of [{type:'cp',label:'💗 CP Royal Ranking'},
-        {type:'friendship',label:'🤝 Friendship Ranking'}]){
-        const button=document.createElement('button');button.className='sh-bond-button '+
-          (item.type==='friendship'?'blue':'');button.type='button';
-        button.textContent=item.label;
-        button.onclick=()=>showBondRanking(item.type,'weekly');
-        shortcuts.appendChild(button);
-      }
-      const anchor=rankView.querySelector('#rb');
-      if(anchor)rankView.insertBefore(shortcuts,anchor);
-      else rankView.appendChild(shortcuts);
-    }
     if(rankView&&!document.getElementById('wgb')){
       const weeklyButton=document.createElement('button');
       weeklyButton.id='wgb';

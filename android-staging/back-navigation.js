@@ -56,6 +56,23 @@
       return 'exit';
     }
 
+    // The dedicated search and CP screens must close before the home page
+    // behind them can navigate or exit.
+    var search = get('sh-global-search');
+    if (search && !search.hidden) {
+      var searchBack = get('sh-search-back');
+      if (searchBack) searchBack.click();
+      else search.hidden = true;
+      return 'handled';
+    }
+    var cpCenter = get('sh-cp-center');
+    if (cpCenter) {
+      var cpBack = get('sh-cp-back');
+      if (cpBack) cpBack.click();
+      else cpCenter.remove();
+      return 'handled';
+    }
+
     // Agency screens have an internal BD -> Agency -> Host report stack.
     var agency = get('sh-agency-panel');
     if (agency && !agency.hidden && typeof window.sharikaAgencyBack === 'function') {

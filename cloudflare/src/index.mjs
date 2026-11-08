@@ -41,6 +41,7 @@ import {handlePublicPrivacyPolicy} from './privacy-policy.mjs';
 import {handlePlayBillingApp} from './play-billing.mjs';
 import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
+import {searchVerifiedRooms} from './room-search.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -1026,6 +1027,11 @@ export async function handleRequest(request, env, ctx) {
       return reply({room_id:roomId,
         theme_background_url:url.origin+path+'?v='+row.version,
         theme_version:row.version,image_bytes:row.image_bytes},200,cors);
+    }
+    if(path==='/api/v1/rooms/search'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      const result=await searchVerifiedRooms(env.DB,url.searchParams.get('q'));
+      return result?reply(result,200,cors):fail('invalid_room_search',400,cors);
     }
     if (path === '/api/v1/rooms') {
       const viewer=await assertActive(env.DB, uid);
