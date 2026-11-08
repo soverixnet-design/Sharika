@@ -4,8 +4,9 @@ Date: 2026-11-08 (UTC). The initial offline preflight did not deploy a
 Worker or mutate D1/R2. Follow-up infrastructure work deployed the full
 **compile-time-locked Production Worker internally**, with an isolated SQLite
 Durable Object class and separate action/finance rate-limit bindings. There
-is still **no public route or URL**. Existing staging and user data remain
-untouched. The chronological record below distinguishes earlier stages from
+is still **no public route or URL to the Production API Worker**. A later
+Access-protected, **data-free QA probe** has its own separate route; see the
+latest follow-up. Existing staging and user data remain untouched. The chronological record below distinguishes earlier stages from
 the latest guarded deployment.
 
 ## Prepared in the isolated GitHub production branch
@@ -398,3 +399,47 @@ activation and rollback plan **before DNS/route exposure**. Then run the
 separate Production Firebase, wallet/agency/game, media, two-device voice,
 Android build/signing and Play Store release checks. Do not unlock the
 Production API merely because the Access policy now exists.
+
+
+## Follow-up: live Access-gated QA probe published, Production API closed (2026-11-09)
+
+- Created a single **proxied A DNS record** at `qa-api.sharika.app` pointing
+  to Cloudflare's **originless documentation placeholder** `192.0.2.0`
+  (record ID `ba89cfe00b430da02fb12f5ea126299f`). This does not point to
+  Production D1, R2, the app's existing origin, or an external server.
+- Before connecting a Worker route, opened the QA hostname in a clean cloud
+  browser. It redirected to the correctly named **Cloudflare Access sign-in**
+  page. The Access application remained linked to the **single-email owner**
+  allow policy. This proves an unauthenticated browser is challenged, **not**
+  yet that a different authenticated identity is denied.
+- Deployed an isolated **`sharika-qa-access-probe`** Worker containing only a
+  static Royal-style QA confirmation page. Its source is committed in
+  `cloudflare/qa-probe/worker.mjs`. Local syntax and four handler smoke tests
+  passed. It has **zero bindings**, no storage/secret access, no external fetch
+  and no access to the Production Worker. Direct `workers.dev` and preview
+  subdomains were set to **disabled** and verified through the API.
+- Added exactly one scoped Worker route:
+  `qa-api.sharika.app/*` → `sharika-qa-access-probe`, route ID
+  `e2b715e8b64c4fc490b77dbe1cdcb851`. Browser verification **after**
+  adding the route again redirected the unauthenticated visit to Cloudflare
+  Access sign-in. There is **no route pointing to**
+  `sharika-api-production`. Its `SHARIKA_PUBLIC_API_ENABLED=false` binding,
+  internal compile-time `RELEASE_REVIEW_APPROVED=false`, and disabled
+  `workers.dev`/previews remain unchanged.
+- **Owner sign-in is pending:** the owner must open
+  `https://qa-api.sharika.app/` from their phone and authenticate using the
+  approved `soverixnet@gmail.com` Cloudflare identity. Successful sign-in
+  should reveal the standalone QA confirmation page; it does not expose
+  real app functions. A signed-in, **unapproved** identity still requires a
+  separate explicit deny test or Access authentication-log evidence.
+- No Production/Staging D1 SQL migration, R2 change, voice-room action,
+  financial operation or user-data mutation was performed. **This is not an
+  app functional QA pass or authorization to unlock the Production API.**
+
+**Rollback:** remove only the precisely scoped route
+`e2b715e8b64c4fc490b77dbe1cdcb851` and, if appropriate, the test-only
+DNS record `ba89cfe00b430da02fb12f5ea126299f`; preserve the Access
+policy/application and the original Production/Staging Workers and data.
+No rollback is currently indicated. Next: verify owner login and alternate
+identity denial, then plan guarded functional tests in a separate release
+review before any real Production API route or Play Store publication.
