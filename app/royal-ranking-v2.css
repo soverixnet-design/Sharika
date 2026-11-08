@@ -71,6 +71,13 @@
 #rb .sh-royal-podium-card.second,#rb .sh-royal-podium-card.third {transform:translateY(2px)}
 #rb .sh-royal-podium-card .sh-royal-avatar {width:70px;height:70px;margin:0 auto 5px}
 #rb .sh-royal-podium-card.first .sh-royal-avatar {width:97px;height:97px}
+/* A rank frame surrounds the face; it must never cover the adjacent ID. */
+#rb .sh-royal-podium-card .sh-royal-avatar>.sh-sovera-frame.fxr {
+  width:125%!important;height:125%!important;
+}
+#rb .rr.sh-royal-row .sh-royal-avatar>.sh-sovera-frame.fxr {
+  width:118%!important;height:118%!important;
+}
 #rb .sh-royal-podium-card .sh-royal-face {
   border:3px solid #e9dfed;box-shadow:0 0 0 3px #af87c0,0 0 15px #ffe8a088;
 }
@@ -233,8 +240,21 @@
   border:1px solid #f3c87c;font:800 10px Georgia,serif;color:#ffe6a1;
 }
 .sh-rw-winner.rank-1 .sh-rw-place {background:#e1a44e;color:#49220c}
-.sh-rw-winner .sh-royal-avatar {width:72px;height:72px;max-width:94%;margin:0 auto}
+.sh-rw-winner .sh-royal-avatar {
+  position:relative;display:grid;place-items:center;flex:none;isolation:isolate;
+  width:72px;height:72px;max-width:94%;margin:0 auto;
+}
 .sh-rw-winner.rank-1 .sh-royal-avatar {width:100px;height:100px}
+/* Outside #rb, the shared avatar CSS does not establish a positioned ancestor.
+   Without one, absolutely-positioned cosmetic frames fill the whole dialog. */
+#sh-rank-reward-center .sh-rw-winner .sh-royal-avatar>.sh-sovera-frame.fxr {
+  width:125%!important;height:125%!important;
+}
+#sh-rank-reward-center .sh-rw-winner .sh-royal-medal {
+  position:absolute;right:-9px;bottom:-8px;z-index:4;
+  width:23px;height:23px;max-width:none;object-fit:contain;
+  filter:drop-shadow(0 1px 2px #1c0734);
+}
 .sh-rw-winner .sh-royal-face {width:100%;height:100%;border:3px solid #f1c36f;
   border-radius:50%;overflow:hidden;display:grid;place-items:center}
 .sh-rw-winner .sh-royal-face img {width:100%;height:100%;object-fit:cover}
