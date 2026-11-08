@@ -20,7 +20,8 @@ room=room.replace('</head>',
   '<link rel="stylesheet" href="./royal-room-ui.css">'+
   '<script>document.documentElement.classList.add("royal-premium","royal-room")</script>'+
   '<link rel="stylesheet" href="file:///android_asset/royal-premium.css">'+
-  '<link rel="stylesheet" href="file:///android_asset/royal-winged-theme.css"></head>')
+  '<link rel="stylesheet" href="file:///android_asset/royal-winged-theme.css">'+
+  '<link rel="stylesheet" href="./reference-room.css"></head>')
   .replace('</body>','<script src="./royal-room-ui.js"></script></body>');
 
 // An HTML parser recognizes </script> even inside JavaScript string literals.
@@ -45,6 +46,7 @@ window.openRoom=function(r){
 const dest=resolve(dir,'../build/generated/room-qa-page/index.html');
 mkdirSync(dirname(dest),{recursive:true});
 writeFileSync(dest,page);
-if(!page.includes('royal-room-ui.js')||!page.includes('royal-winged-theme.css'))
+if(!page.includes('royal-room-ui.js')||!page.includes('reference-room.css')||
+   !page.includes('royal-winged-theme.css'))
   throw Error('Missing exact Royal room layers');
 process.stdout.write('SHARIKA_QA_REAL_ROOM_TEMPLATE_GENERATED\n');

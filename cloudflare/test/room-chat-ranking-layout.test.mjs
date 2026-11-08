@@ -41,3 +41,15 @@ test('full integrated staging runs real Android emulator keyboard and Back QA',(
   assert.match(emulator,/SHARIKA_REAL_ANDROID_IME_ROOM_HEADER_AND_SEATS_STABLE_OK/);
   assert.match(emulator,/SHARIKA_ANDROID_EMULATOR_LAUNCH_AND_BACK_NO_CRASH_OK/);
 });
+
+test('emulator harness opens public Room Chat before probing keyboard geometry',()=>{
+  const generator=readFileSync(new URL(
+    '../../android-staging/room-qa/scripts/generate-room-fixture.mjs',import.meta.url),'utf8');
+  const harness=readFileSync(new URL(
+    '../../android-staging/room-qa/src/main/qa-assets/room-qa.js',import.meta.url),'utf8');
+  assert.match(generator,/reference-room\.css/);
+  assert.match(harness,/getElementById\('sh-chat-toggle'\)/);
+  assert.match(harness,/toggle\.click\(\)/);
+  assert.match(harness,/room_chat_keyboard_not_ready/);
+  assert.match(harness,/if \(\(rect\.width < 20 \|\| rect\.height < 8\)/);
+});

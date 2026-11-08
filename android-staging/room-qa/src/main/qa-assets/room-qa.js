@@ -7,6 +7,32 @@
   const frame = document.getElementById('rf');
   if (!frame) { bridge.record('{"phase":"error","reason":"missing iframe"}'); return; }
 
+  // Room Chat is now a deliberate separate action from Private DM. The text
+  // composer begins hidden and has no tappable rectangle until Room Chat opens.
+  // A layout snapshot taken immediately after iframe load is not an IME test.
+  function waitForOpenComposer(attempt = 0) {
+    const win = frame.contentWindow;
+    const doc = frame.contentDocument;
+    const input = doc?.getElementById('txt');
+    const toggle = doc?.getElementById('sh-chat-toggle');
+    const hasKeyboardApi = typeof win?.SharikaRoyalKeyboard?.setNativeIme === 'function';
+    if (!input || !toggle || !hasKeyboardApi) {
+      if (attempt < 80) return setTimeout(() => waitForOpenComposer(attempt + 1), 250);
+      bridge.record(JSON.stringify({phase:'error',reason:'room_chat_keyboard_not_ready',
+        inputPresent:!!input,togglePresent:!!toggle,hasKeyboardApi}));
+      report('before');
+      return;
+    }
+    if (!doc.documentElement.dataset.qaComposerOpened) {
+      doc.documentElement.dataset.qaComposerOpened = '1';
+      toggle.click();
+    }
+    const rect = input.getBoundingClientRect();
+    if ((rect.width < 20 || rect.height < 8) && attempt < 80)
+      return setTimeout(() => waitForOpenComposer(attempt + 1), 250);
+    report('before');
+  }
+
   function report(phase) {
     const frameRect = frame.getBoundingClientRect();
     const w = frame.contentWindow;
@@ -50,7 +76,7 @@
   frame.addEventListener('load', function onRoomReady() {
     if (!frame.contentDocument?.getElementById('app')) return;
     frame.removeEventListener('load', onRoomReady);
-    setTimeout(() => report('before'), 1100);
+    waitForOpenComposer();
   });
   if (typeof window.openRoom !== 'function') {
     bridge.record('{"phase":"error","reason":"missing openRoom"}');
