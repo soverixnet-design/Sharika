@@ -473,3 +473,67 @@ separate existing test account if one is available; then review the remaining
 high-priority functional blockers and build/signing readiness. Keep the
 Production API fail-closed until those tests pass and a separate release
 approval is recorded.
+
+
+## Follow-up: staging functional preflight and Play publication gates (2026-11-09)
+
+- Ran the current **local staging worktree's** `cloudflare/npm run check`
+  without deploying: **638/638 Node tests passed**, along with SQL fixtures
+  covering Agency/BD/Host split, Salary -> Coin Seller settlement replay
+  protection, gifts and rooms. Separate Android banner test: **3/3 passed**.
+  The key staging UI/room/game JS syntax checks passed. These are code and
+  in-memory SQL checks, **not** two-device voice, live games, or app QA.
+- The local staging checkout contains **uncommitted existing changes**.
+  These local test results cannot be claimed as a retest of the exact remote
+  signed AAB artifact's commit without a separate source-match review.
+- **Read-only D1 checks**: `PRAGMA quick_check=ok` for both Staging and
+  Production. Staging has **two active adult Coin Sellers**, weekly Agency
+  settlement policy enabled at a 5,000,000-coin host target, and recorded
+  Agency earnings. An aggregate read-only calculation using the SQL guard's
+  maturity/target/consumed-Salary criteria returned **zero accounts with at
+  least 10,000 matured available Salary units**. The live Salary -> Seller
+  transfer acceptance test is therefore **not currently runnable** with
+  natural matured funds; no test wallets, credits, or user records were
+  fabricated or mutated. Staging migration journal remains at **71**.
+- Rechecked the existing successful **GitHub Actions AAB preflight run**
+  [#77](https://github.com/soverixnet-design/Sharika/actions/runs/42515633118):
+  all build, verification and artifact upload steps passed. Existing artifact
+  `Sharika-Play-Store-Candidate-AAB`, ID `13631775269`, is not expired
+  and was built at source SHA `2d242d57d2c1afae2f8085a26019fe25c195cd63`.
+  It packages **Staging** and uses an `existing-stable` signer; its Play
+  Console upload certificate match is **unverified**. It must **not** be
+  submitted as a Production-backend release.
+- Attempted to inspect the Android build workflow in the authenticated
+  GitHub browser; GitHub required an additional **2FA setup verification**.
+  This protected security checkpoint was **not skipped**. The current local
+  environment also has Java but **no Gradle CLI/Android SDK**, and the
+  connected GitHub tools do not expose workflow dispatch; **no new AAB was
+  built or submitted in this follow-up**.
+- Verified Google's current official Play requirements:
+  [target API 36 for new apps](https://developer.android.com/google/play/requirements/target-sdk)
+  is present in Gradle (`targetSdk 36`, `versionCode 103`). If the owner's
+  Personal developer account was created after 2023-11-13, Play requires at
+  least **12 testers continuously opted in for 14 days** before applying for
+  Production access:
+  https://support.google.com/googleplay/android-developer/answer/14151465 .
+  Supplying tester email addresses alone does not establish opt-in.
+- **Policy review needed before public release:** in-app Coin Seller/Official
+  Recharge flows could direct purchasers to payments outside Play Billing,
+  and paid-coin games with cash/redeemable prizes would require separate
+  real-money gaming scrutiny. Check the actual shipped behavior against
+  https://support.google.com/googleplay/android-developer/answer/9858738
+  and https://support.google.com/googleplay/android-developer/answer/9877032 .
+  Do **not** assume that an 18+ rating resolves payment/gambling restrictions.
+  No seller/payment/game behavior has been changed unilaterally.
+- The owner-only Cloudflare Access login was independently verified in the
+  preceding follow-up. A denied sign-in from an **authenticated, unapproved**
+  Cloudflare identity remains **untested**, because only the owner identity
+  appears in the current Access user registry/authentication log.
+
+**Next release decisions:** complete GitHub 2FA verification and a new
+signed *test* AAB build; obtain a second already-existing test identity for
+Access denial without granting it application permission; run two-device
+voice and wallet/agency/gaming QA using appropriately isolated test data;
+and settle the Play Billing/coin-recharge/payout policy design before a
+Production API unlock or worldwide Play Store distribution. No Production
+publishing, routing or financial feature flags were changed by this work.
