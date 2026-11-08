@@ -6,6 +6,9 @@ on:
       - feature/sharika-play-release-aab-20261107
       - feature/sharika-play-billing-20261107
       - feature/sharika-full-integrated-staging-20261107
+      # Compile-check the isolated production preparation branch. This job
+      # creates a staging-backed test artifact; it never publishes to Play.
+      - feature/sharika-production-schema-safety-20261108
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
@@ -118,9 +121,10 @@ jobs:
       - name: Build optimized release-format signed AAB
         working-directory: android-staging
         env:
-          SHARIKA_PLAY_API_ORIGIN: ${{ vars.SHARIKA_PLAY_API_ORIGIN }}
-          # No production Worker is configured yet. Such a signed AAB is a
-          # downloadable staging candidate, NOT a Play publication artifact.
+          # The gated production-preparation branch must not package the
+          # unrouted api.sharika.app endpoint as if it were a working release.
+          SHARIKA_PLAY_API_ORIGIN: ${{ github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN }}
+          # This remains a test candidate, NOT a Play publication artifact.
           SHARIKA_PLAY_STAGING_CANDIDATE: 'true'
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
           SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
