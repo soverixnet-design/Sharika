@@ -130,7 +130,7 @@ test('room polling keeps the newest seat count and ignores responses after leavi
   const state={cur:{id:room.id}};
   const iframe={contentWindow:frame};
   const sync=new Function('api','session','window','document','sfuState',
-    'voiceRoomId','voiceRoom','balance','verifiedAvatarUrl',
+    'voiceRoomId','voiceRoom','balance','verifiedAvatarUrl','verifiedCoverUrl',
     'decorateRoomPeople','decorateRoomChat','connectVoice','playSoveraEntry',
     syncSource+';return syncFrame;')(
       (method,path)=>{
@@ -139,7 +139,8 @@ test('room polling keeps the newest seat count and ignores responses after leavi
         return Promise.resolve({name:'Room owner'});
       },
       {user:{id:'owner-uid'}},state,{getElementById:()=>iframe},
-      null,null,null,{coins:1,xp:2},()=>null,()=>{},()=>{},async()=>{},()=>{}
+      null,null,null,{coins:1,xp:2},()=>null,()=>null,
+      ()=>{},()=>{},async()=>{},()=>{}
     );
   const older=sync(room,frame);
   const newer=sync(room,frame);

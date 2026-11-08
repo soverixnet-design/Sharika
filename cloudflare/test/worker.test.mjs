@@ -289,16 +289,24 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
     assert.equal((await patch(guestToken,'photo')).status,403);
     assert.equal((await patch(ownerToken,'photo')).status,409);
     assert.equal(theme,'mid');
+    const noCover=await (await read(guestToken)).json();
+    assert.equal(noCover.cover_url,null);
     coverVersion=9;
     // A card-cover upload must never silently become a full-room wallpaper.
     assert.equal((await patch(ownerToken,'photo')).status,409);
     assert.equal(theme,'mid');
+    const coveredPalette=await (await read(guestToken)).json();
+    assert.equal(coveredPalette.cover_url,
+      'https://example.test/api/v1/rooms/10000001/cover?v=9');
+    assert.equal(coveredPalette.theme_background_url,null);
     wallpaperVersion=3;
     assert.equal((await patch(ownerToken,'photo')).status,200);
     const shared=await read(guestToken);
     assert.equal(shared.status,200);
     const body=await shared.json();
     assert.equal(body.theme,'photo');
+    assert.equal(body.cover_url,
+      'https://example.test/api/v1/rooms/10000001/cover?v=9');
     assert.equal(body.theme_background_url,
       'https://example.test/api/v1/rooms/10000001/theme-image?v=3');
     // Old rooms without a separate wallpaper can still show their legacy
@@ -311,6 +319,11 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
     const palette=await (await read(guestToken)).json();
     assert.equal(palette.theme,'ocean');
     assert.equal(palette.theme_background_url,null);
+    coverVersion=10;
+    const refreshed=await (await read(guestToken)).json();
+    assert.equal(refreshed.cover_url,
+      'https://example.test/api/v1/rooms/10000001/cover?v=10');
+    assert.equal(refreshed.theme_background_url,null);
     assert.equal((await patch(ownerToken,'catalog:7')).status,200);
     const official=await (await read(guestToken)).json();
     assert.equal(official.theme,'catalog:7');

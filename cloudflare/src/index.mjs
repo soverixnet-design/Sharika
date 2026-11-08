@@ -1993,9 +1993,9 @@ export async function handleRequest(request, env, ctx) {
         const wallpaper=room.theme==='photo' ? await env.DB.prepare(
           'SELECT version FROM sharika_room_theme_images WHERE room_id=?'
         ).bind(roomId).first() : null;
-        const cover=room.theme==='photo' && !wallpaper?.version ? await env.DB.prepare(
+        const cover=await env.DB.prepare(
           'SELECT version FROM sharika_room_covers WHERE room_id=?'
-        ).bind(roomId).first() : null;
+        ).bind(roomId).first();
         const selectedCatalogId=roomThemeId(room.theme);
         const catalogBackground=selectedCatalogId!==null
           ?await catalogThemeImage(env.DB,selectedCatalogId,url.origin):null;
@@ -2003,9 +2003,13 @@ export async function handleRequest(request, env, ctx) {
           self_state:{role:ownMemberRole,seat_no:member.seat_no,muted:!!member.muted},
           access_locked:(await readRoomAccessLock(env.DB,roomId)).locked,
           theme:ROOM_THEMES.has(room.theme)||catalogBackground?room.theme:'mid',
+          // Cover photos are independent of wallpapers. Return the latest
+          // version on every authenticated room poll, even on a color theme.
+          cover_url:cover?.version
+            ?url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null,
           theme_background_url:catalogBackground || (wallpaper?.version
             ? url.origin+'/api/v1/rooms/'+roomId+'/theme-image?v='+wallpaper.version
-            :cover?.version
+            :room.theme==='photo'&&cover?.version
               ? url.origin+'/api/v1/rooms/'+roomId+'/cover?v='+cover.version:null),
           // Room capacity is authoritative in D1; all joined devices must
           // receive current capacity even when their room card is cached.

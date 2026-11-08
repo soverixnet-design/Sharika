@@ -376,13 +376,39 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   display:flex;
   flex-direction:column;
   align-items:center;
-  gap:6px;
+  gap:8px;
   text-align:center;
-  padding:20px 10px 18px;
+  padding:15px 12px 18px;
   margin:-4px 0 12px;
-  border-radius:22px;
-  border:1px solid #f2c98688;
-  background:#211032;
+  border-radius:28px;
+  border:1px solid #f2c986aa;
+  background:radial-gradient(ellipse at 50% 0%,#66406d 0%,#211531 44%,#0d1320 100%);
+  box-shadow:inset 0 1px 0 #fff3,0 10px 25px #05060f80;
+}
+.sh-royal-room .sh-member-cp-pair {
+  width:100%;min-height:123px;display:flex;align-items:center;
+  justify-content:center;gap:4px;
+}
+.sh-royal-room .sh-member-cp-pair.has-cp{gap:8px}
+.sh-royal-room .sh-member-cp-heart {
+  flex:none;font-size:28px;line-height:1;
+  filter:drop-shadow(0 2px 7px #ff68b9b0);
+  animation:sh-cp-soft-beat 2.5s ease-in-out infinite;
+}
+@keyframes sh-cp-soft-beat{50%{transform:scale(1.12)}}
+.sh-royal-room .sh-member-cp-partner {
+  display:grid;place-items:center;gap:5px;flex:none;
+  border:0;background:transparent;padding:3px 2px;
+  color:#ffe4f4;cursor:pointer;max-width:96px;
+}
+.sh-royal-room .sh-member-cp-partner .sh-sovera-preview {
+  width:67px!important;height:67px!important;
+  margin:0!important;border:2px solid #ff98d9;
+  box-shadow:0 0 14px #d53e9780;
+}
+.sh-royal-room .sh-member-cp-partner small {
+  font-size:10px;max-width:92px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .sh-royal-room .sh-member-portrait {
   display:grid;
@@ -392,7 +418,7 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   border:0;
   background:none;
   padding:0;
-  margin:12px auto 8px;
+  margin:5px 0 5px;
   cursor:pointer;
 }
 .sh-royal-room .sh-member-portrait .sh-sovera-preview {
@@ -409,7 +435,7 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   background:none;
   color:#fff3cf;
   font-weight:900;
-  font-size:20px;
+  font-size:21px;
   cursor:pointer;
 }
 .sh-royal-room .sh-member-meta {font-size:12px;color:#d8c4e1}
@@ -439,6 +465,9 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   color:#efcfff;
 }
 .sh-royal-room .sh-member-levels b {font-size:14px;color:#ffe9a0}
+@media(prefers-reduced-motion:reduce){
+  .sh-royal-room .sh-member-cp-heart{animation:none}
+}
 .sh-royal-room .seat .av > .badge {
   z-index:32!important;
   right:-8px!important;

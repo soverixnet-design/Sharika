@@ -36,6 +36,15 @@ test('reference room keeps all original verified controls and seat-count updates
   assert.match(assets,/reference-room\.css/);
 });
 
+test('room cover refreshes inside and outside without a black header panel',()=>{
+  assert.match(bridge,/const roomCover=verifiedCoverUrl\(data\.cover_url\)/);
+  assert.match(bridge,/frame\.S\.pic=roomCover/);
+  assert.match(bridge,/\(themeChanged\|\|coverChanged\).*frame\.applyTheme/);
+  assert.match(bridge,/\[slots,audience,palette,sharedImage,roomCover/);
+  assert.match(roomCss,/\.app\.sh-royal-room \.top \.room\s*\{[^}]*background:transparent!important/);
+  assert.match(roomCss,/backdrop-filter:none!important/);
+});
+
 test('reference profile matches the menu without losing verified account features',()=>{
   for(const label of ['My Profile','Wallet','Mall','Aristocracy','Level','Medal',
     'Backpack','Language','Feedback','Invite Reward','Settings'])

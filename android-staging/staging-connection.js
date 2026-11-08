@@ -5929,6 +5929,12 @@
     if(['grad','gold','neon','sq'].includes(data.seat_frame_style))
       room.seat_frame_style=data.seat_frame_style;
     const chosenSeatFrame=room.seat_frame_style||'grad';
+    // Room cards and the in-room header must use the same versioned, verified
+    // cover. A changed version refreshes guests who never leave the room.
+    const roomCover=verifiedCoverUrl(data.cover_url);
+    const coverChanged=frame.S.pic!==roomCover;
+    room.cover_url=roomCover;
+    frame.S.pic=roomCover;
     // Theme is authoritative in the shared room snapshot. Neither the
     // owner's phone nor a guest's stale localStorage may override it.
     const chosenTheme=['mid','gold','ocean','rose','forest','sunset','photo']
@@ -5956,7 +5962,8 @@
         roomApp.style.setProperty('--sharika-shared-wallpaper','url("'+sharedImage+'")');
       else roomApp.style.removeProperty('--sharika-shared-wallpaper');
     }
-    if(themeChanged&&typeof frame.applyTheme==='function')frame.applyTheme();
+    if((themeChanged||coverChanged)&&typeof frame.applyTheme==='function')
+      frame.applyTheme();
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
     const ownerSeat={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
@@ -6019,7 +6026,7 @@
     // A steady room used to rebuild every seat, avatar, overlay and touch
     // handler every 8 seconds even when the authoritative snapshot was equal.
     // Keep live speaking indicators responsive without repainting stable DOM.
-    const renderSignature=JSON.stringify([slots,audience,palette,sharedImage,
+    const renderSignature=JSON.stringify([slots,audience,palette,sharedImage,roomCover,
       chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[],
       frame.innerWidth,frame.innerHeight]);
     const snapshotChanged=frame.__sharikaRoomRenderSignature!==renderSignature;
@@ -6060,8 +6067,7 @@
             owner.public_id||room.id)
         },
         members:liveMembers,
-        openProfile:member=>openVerifiedRoomMemberProfile(
-          member.publicId,room.id,member.seatNo),
+        openProfile:member=>frame.__sharikaOpenQuickProfile?.(member),
         loadRewards:()=>api('GET','/rooms/'+room.id+'/rewards'),
         loadAnnouncement:()=>api('GET','/rooms/'+room.id+'/announcement'),
         saveAnnouncement:text=>api('PUT','/rooms/'+room.id+'/announcement',{text}),
@@ -7301,6 +7307,151 @@
       doc.body.appendChild(overlay);
       (buttons.querySelector?.('button')||cancel).focus?.();
     }
+    function renderMemberHalfProfile(hero,selected,index=null){
+      const doc=frame.document;
+      const publicId=String(selected.public_id||'');
+      hero.classList.add('sh-member-half');
+      hero.replaceChildren();
+      hero.setAttribute('role','group');
+      hero.setAttribute('aria-label','Member preview; tap to open full profile');
+      const portrait=doc.createElement('button');
+      portrait.type='button';portrait.className='sh-member-portrait';
+      portrait.setAttribute('aria-label','Open full member profile');
+      const avatar=doc.createElement('div');
+      avatar.className='sh-sovera-preview';
+      paintVerifiedAvatar(avatar,selected.pic,doc);
+      const art=frameArt(selected.frame_style);
+      if(art){
+        const decoration=doc.createElement('i');
+        decoration.className='fxr sh-sovera-frame';
+        decoration.style.backgroundImage='url('+cosmeticMedia(art)+')';
+        decoration.setAttribute('aria-hidden','true');avatar.append(decoration);
+      }
+      portrait.append(avatar);
+      const pair=doc.createElement('div');pair.className='sh-member-cp-pair';
+      pair.append(portrait);
+      const name=doc.createElement('button');
+      name.type='button';name.className='sh-member-title';
+      name.textContent=String(selected.n||'Member');
+      const meta=doc.createElement('span');
+      meta.className='sh-member-meta';
+      meta.textContent='ID '+String(selected.special_id||selected.display_id||publicId)+
+        ' · '+(Number.isInteger(index)?'Mic '+index:'In the room');
+      const tags=doc.createElement('div');tags.className='sh-member-labels';
+      for(const badgeName of [
+        selected.room_role==='owner'?'Room Owner':
+          selected.room_role==='admin'?'Room Admin':null,
+        Number(selected.svip_level)>0?'SVIP '+selected.svip_level:null,
+        selected.muted?'Mic muted':null
+      ]){
+        if(!badgeName)continue;
+        const badge=doc.createElement('span');badge.textContent=badgeName;
+        tags.append(badge);
+      }
+      const levels=doc.createElement('div');levels.className='sh-member-levels';
+      for(const kind of ['Wealth','Charm','SVIP']){
+        const cell=doc.createElement('span');
+        const value=doc.createElement('b');
+        value.textContent=kind==='SVIP'?String(Number(selected.svip_level)||0):'…';
+        cell.append(value,doc.createTextNode(kind));
+        cell.dataset.level=kind.toLowerCase();levels.append(cell);
+      }
+      const viewFull=()=>{
+        if(Number.isInteger(index)){frame.act('prof',index);return;}
+        frame.close();
+        openVerifiedRoomMemberProfile(publicId,room.id).catch(error=>frame.toast(errText(error)));
+      };
+      hero.onclick=viewFull;
+      hero.onkeydown=event=>{
+        if(event.target===hero&&(event.key==='Enter'||event.key===' ')){
+          event.preventDefault();viewFull();
+        }
+      };
+      hero.append(pair,name,meta,tags,levels);
+      if(!/^[0-9]{8}$/.test(publicId))return;
+      api('GET','/users/'+publicId).then(member=>{
+        if(!levels.isConnected||String(member.id)!==publicId)return;
+        const wealth=levels.querySelector('[data-level="wealth"] b');
+        const charm=levels.querySelector('[data-level="charm"] b');
+        if(wealth)wealth.textContent=String(Number(member.wealth_level)||0);
+        if(charm)charm.textContent=String(Number(member.charm_level)||0);
+      }).catch(()=>{
+        levels.querySelectorAll('[data-level="wealth"] b,[data-level="charm"] b')
+          .forEach(label=>{label.textContent='–';});
+      });
+      // The partner image is shown only for a verified, active CP link.
+      // Never infer a CP from local seats or render a previous member's link.
+      api('GET','/bonds/profile/'+publicId).then(bond=>{
+        const partner=bond?.cp?.partner;
+        if(String(bond?.public_id)!==publicId||!pair.isConnected||
+           !frame.$('sheet')?.contains(pair)||window.cur?.id!==room.id||
+           !/^[0-9]{8}$/.test(String(partner?.id||''))||
+           String(partner.id)===publicId)return;
+        const heart=doc.createElement('span');
+        heart.className='sh-member-cp-heart';heart.textContent='💞';
+        heart.setAttribute('aria-label','Active CP');
+        const partnerButton=doc.createElement('button');
+        partnerButton.type='button';partnerButton.className='sh-member-cp-partner';
+        partnerButton.setAttribute('aria-label','Open CP partner '+String(partner.name||''));
+        const partnerAvatar=doc.createElement('div');
+        partnerAvatar.className='sh-sovera-preview';
+        paintVerifiedAvatar(partnerAvatar,partner.pic,doc);
+        const partnerArt=frameArt(partner.frame_style);
+        if(partnerArt){
+          const decoration=doc.createElement('i');
+          decoration.className='fxr sh-sovera-frame';
+          decoration.style.backgroundImage='url('+cosmeticMedia(partnerArt)+')';
+          decoration.setAttribute('aria-hidden','true');partnerAvatar.append(decoration);
+        }
+        const partnerName=doc.createElement('small');
+        partnerName.textContent=String(partner.name||'CP partner');
+        partnerButton.append(partnerAvatar,partnerName);
+        partnerButton.onclick=event=>{
+          event.stopPropagation();frame.close();
+          openVerifiedRoomMemberProfile(String(partner.id),room.id)
+            .catch(error=>frame.toast(errText(error)));
+        };
+        pair.append(heart,partnerButton);
+        pair.classList.add('has-cp');
+      }).catch(error=>console.warn('Verified room CP unavailable:',errText(error)));
+    }
+    // Top-row portraits, online list and mic-seat avatars use the same
+    // first-tap mini profile. The second tap opens the full verified profile.
+    frame.__sharikaOpenQuickProfile=async member=>{
+      const publicId=String(member?.publicId||'');
+      if(!/^[0-9]{8}$/.test(publicId)||window.cur?.id!==room.id)
+        throw new Error('Verified member unavailable');
+      const seat=Number.isInteger(member.seatNo)?member.seatNo:null;
+      if(seat!==null && String(frame.seats?.[seat]?.public_id||'')===publicId){
+        frame.seatSheet(seat);return;
+      }
+      if(!frame.__sharikaMemberRoles?.has(publicId)){
+        await openVerifiedRoomMemberProfile(publicId,room.id);return;
+      }
+      const fresh=await api('GET','/users/'+publicId);
+      if(String(fresh.id)!==publicId||window.cur?.id!==room.id)
+        throw new Error('Room member identity changed');
+      frame.open('<div class="who"></div><div class="acts"></div>');
+      const hero=frame.$('sheet')?.querySelector('.who');
+      const actions=frame.$('sheet')?.querySelector('.acts');
+      if(!hero||!actions)return;
+      renderMemberHalfProfile(hero,{
+        public_id:publicId,n:fresh.name,pic:verifiedAvatarUrl(fresh.pic),
+        display_id:fresh.special_id||fresh.display_id||publicId,
+        special_id:fresh.special_id||null,room_role:frame.__sharikaMemberRoles.get(publicId),
+        svip_level:fresh.svip_level,frame_style:fresh.frame_style
+      });
+      for(const [label,icon,callback] of [
+        ['Profile','👤',()=>{frame.close();return openVerifiedRoomMemberProfile(publicId,room.id);}],
+        ['Gift','🎁',()=>openVerifiedGiftBox({id:publicId,name:String(fresh.name||'Member')})]
+      ]){
+        const button=frame.document.createElement('button');button.className='act';
+        const picture=frame.document.createElement('span');picture.textContent=icon;
+        button.append(picture,frame.document.createTextNode(label));
+        button.onclick=()=>Promise.resolve(callback()).catch(error=>frame.toast(errText(error)));
+        actions.append(button);
+      }
+    };
     frame.seatSheet=function(index){
       const selected=frame.seats?.[index];
       if(!selected)return;
@@ -7320,70 +7471,7 @@
       if(!actions)return result;
       actions.replaceChildren();
       const hero=frame.$('sheet')?.querySelector('.who');
-      if(hero){
-        hero.classList.add('sh-member-half');
-        hero.replaceChildren();
-        const portrait=frame.document.createElement('button');
-        portrait.type='button';portrait.className='sh-member-portrait';
-        portrait.setAttribute('aria-label','Open full member profile');
-        const avatar=frame.document.createElement('div');
-        avatar.className='sh-sovera-preview';
-        paintVerifiedAvatar(avatar,selected.pic,frame.document);
-        const art=frameArt(selected.frame_style);
-        if(art){
-          const decoration=frame.document.createElement('i');
-          decoration.className='fxr sh-sovera-frame';
-          decoration.style.backgroundImage='url('+cosmeticMedia(art)+')';
-          decoration.setAttribute('aria-hidden','true');avatar.append(decoration);
-        }
-        portrait.append(avatar);
-        const name=frame.document.createElement('button');
-        name.type='button';name.className='sh-member-title';
-        name.textContent=String(selected.n||'Member');
-        const meta=frame.document.createElement('span');
-        meta.className='sh-member-meta';
-        meta.textContent='ID '+String(selected.special_id||selected.display_id||
-          selected.public_id||'')+' · '+(index===0?'Room Owner':'Mic '+index);
-        const tags=frame.document.createElement('div');tags.className='sh-member-labels';
-        for(const badgeName of [
-          selected.room_role==='owner'?'Room Owner':
-            selected.room_role==='admin'?'Room Admin':null,
-          Number(selected.svip_level)>0?'SVIP '+selected.svip_level:null,
-          selected.muted?'Mic muted':null
-        ]){
-          if(!badgeName)continue;
-          const badge=frame.document.createElement('span');badge.textContent=badgeName;
-          tags.append(badge);
-        }
-        const levels=frame.document.createElement('div');
-        levels.className='sh-member-levels';
-        for(const kind of ['Wealth','Charm','SVIP']){
-          const cell=frame.document.createElement('span');
-          const value=frame.document.createElement('b');
-          value.textContent=kind==='SVIP'?String(Number(selected.svip_level)||0):'…';
-          cell.append(value,frame.document.createTextNode(kind));
-          cell.dataset.level=kind.toLowerCase();levels.append(cell);
-        }
-        const viewFull=()=>frame.act('prof',index);
-        // The half profile itself is the second tap target: tap its photo,
-        // name or details to open the verified full user profile. No extra
-        // English "View full profile" button is needed.
-        hero.onclick=viewFull;
-        hero.append(portrait,name,meta,tags,levels);
-        if(/^[0-9]{8}$/.test(String(selected.public_id||''))) {
-          api('GET','/users/'+selected.public_id).then(member=>{
-            if(!levels.isConnected||
-               String(member.id)!==String(selected.public_id))return;
-            const wealth=levels.querySelector('[data-level="wealth"] b');
-            const charm=levels.querySelector('[data-level="charm"] b');
-            if(wealth)wealth.textContent=String(Number(member.wealth_level)||0);
-            if(charm)charm.textContent=String(Number(member.charm_level)||0);
-          }).catch(()=>{
-            levels.querySelectorAll('[data-level="wealth"] b,[data-level="charm"] b')
-              .forEach(label=>{label.textContent='–';});
-          });
-        }
-      }
+      if(hero)renderMemberHalfProfile(hero,selected,index);
       const options=[['prof','👤','Profile'],['gift','🎁','Gift']];
       if(self)options.push(['mute',selected.muted?'🔊':'🔇',
         selected.muted?'Unmute':'Mute']);
@@ -7466,54 +7554,25 @@
       const roleLabel=sheet?.querySelector('.who small');
       if(roleLabel&&selectedRole==='admin')
         roleLabel.textContent='🛡 Room Admin';
+      if(verified){
+        const active=user?.seat!=null?frame.seats?.[user.seat]:frame.U?.[user?.k];
+        if(active&&sheet?.querySelector('.who'))renderMemberHalfProfile(sheet.querySelector('.who'),{
+          n:active.n,public_id:verifiedId,pic:active.pic,
+          special_id:active.special_id||null,
+          display_id:active.display_id||active.id||verifiedId,
+          room_role:selectedRole,frame_style:active.frame_style,
+          svip_level:active.svip_level,muted:active.muted
+        },Number.isInteger(user?.seat)?user.seat:null);
+      }
       const profileButton=sheet?.querySelector('button.act[data-a="pf"]');
       if(profileButton)profileButton.onclick=async()=>{
         if(!verified){frame.toast('Verified member ID unavailable');return;}
         if(profileButton.disabled)return;
         profileButton.disabled=true;
         try {
-          const member=await api('GET','/users/'+verifiedId);
-          frame.open('<h3>👤 Verified member profile</h3>'+
-            '<div id="sh-member-profile"></div>');
-          const panel=frame.$('sh-member-profile');
-          if(panel) {
-            cosmeticCss(frame.document);
-            const picture=frame.document.createElement('div');
-            picture.className='sh-sovera-preview';
-            picture.style.cssText='width:94px;height:94px;margin:16px auto;font-size:45px';
-            picture.textContent='👤';
-            paintVerifiedAvatar(picture,member.pic,frame.document);
-            const chosen=frameArt(member.frame_style);
-            if(chosen){
-              const art=frame.document.createElement('i');
-              art.className='fxr sh-sovera-frame';
-              art.style.backgroundImage='url('+cosmeticMedia(chosen)+')';
-              picture.appendChild(art);
-            }
-            const name=frame.document.createElement('div');
-            name.className='row';
-            name.textContent=String(member.name||'Member')+' · ID '+
-              String(member.special_id||member.display_id||member.id)+
-              (selectedRole==='admin'?' · 🛡 ROOM ADMIN':
-               selectedRole==='owner'?' · 👑 OWNER':'');
-            const details=frame.document.createElement('div');
-            details.className='lbl';
-            details.textContent='Country: '+String(member.country||'Not set')+
-              ' · Wealth Lv '+Number(member.wealth_level||0)+
-              ' · Charm Lv '+Number(member.charm_level||0)+
-              ' · Frame: '+String(chosen?.name||'None')+
-              ' · Entry: '+String(entryArt(member.entry_style)?.name||'None');
-            const strip=frame.document.createElement('div');
-            strip.className='sh-sovera-id-effects';
-            for(const item of [medalArt(member.medal_style),nameTagArt(member.name_tag_style)]){
-              if(!item)continue;
-              const img=frame.document.createElement('img');
-              img.src=cosmeticMedia(item);
-              img.alt=item.name+' (decorative)';
-              strip.appendChild(img);
-            }
-            panel.append(picture,name,details,strip);
-          }
+          frame.close();
+          await openVerifiedRoomMemberProfile(verifiedId,room.id,
+            Number.isInteger(user?.seat)?user.seat:null);
         }catch(error) {
           profileButton.disabled=false;
           frame.toast('Profile unavailable: '+errText(error));

@@ -64,7 +64,7 @@ test('room opens directly into the hydrated 3D screen without demo-seat flashes'
 
 test('half-profile is itself the full-profile tap target with no redundant label',()=>{
   assert.match(ui,/hero\.onclick=viewFull/);
-  assert.match(ui,/hero\.append\(portrait,name,meta,tags,levels\)/);
+  assert.match(ui,/hero\.append\(pair,name,meta,tags,levels\)/);
   assert.doesNotMatch(ui,/full\.textContent='View full profile/);
   assert.match(ui,/openVerifiedRoomMemberProfile\(target\.public_id,room\.id,seat\)/);
 });
@@ -175,7 +175,15 @@ test('seat invitation requires authenticated response with verified inviter pres
 
 test('seat half-profile opens fully verified profile and mute badge sits above frames',()=>{
   assert.match(ui,/sh-member-half/);
-  assert.match(ui,/const viewFull=\(\)=>frame\.act\('prof',index\)/);
+  assert.match(ui,/const viewFull=\(\)=>\{/);
+  assert.match(ui,/frame\.act\('prof',index\);return/);
+  assert.match(ui,/frame\.__sharikaOpenQuickProfile=async member=>/);
+  assert.match(ui,/renderMemberHalfProfile\(hero,selected,index\)/);
+  assert.match(ui,/api\('GET','\/bonds\/profile\/'\+publicId\)/);
+  assert.match(ui,/!\/\^\[0-9\]\{8\}\$\/\.test\(String\(partner\?\.id\|\|''\)\)/);
+  assert.match(ui,/openVerifiedRoomMemberProfile\(String\(partner\.id\),room\.id\)/);
+  assert.match(css,/\.sh-member-cp-pair/);
+  assert.match(css,/\.sh-member-cp-heart/);
   assert.match(ui,/openVerifiedRoomMemberProfile\(target\.public_id,room\.id,seat\)/);
   assert.match(css,/\.sh-royal-room \.seat \.av > \.badge/);
   assert.match(css,/z-index:32!important/);

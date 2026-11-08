@@ -14,7 +14,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   gap:4px!important;
   padding:9px 5px 5px!important;
   min-height:87px;
-  background:rgba(2,10,8,.33);
+  background:transparent;
 }
 .app.sh-royal-room .top .room {
   min-width:0;
@@ -25,7 +25,8 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   padding:4px 7px!important;
   border:0!important;
   border-radius:14px!important;
-  background:rgba(4,10,9,.66)!important;
+  background:transparent!important;
+  backdrop-filter:none!important;
   box-shadow:none!important;
   color:#fff!important;
 }
