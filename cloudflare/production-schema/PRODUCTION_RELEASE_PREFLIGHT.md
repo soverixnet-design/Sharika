@@ -1,17 +1,20 @@
 # Sharika Production Worker — release preflight (public release blocked)
 
 Date: 2026-11-08 (UTC). The initial offline preflight did not deploy a
-Worker or mutate D1/R2. A subsequent separate infrastructure setup deployed
-only the fail-closed 503 maintenance Worker internally, without any public
-route or URL. Existing staging resources and user data remain untouched.
+Worker or mutate D1/R2. Follow-up infrastructure work deployed the full
+**compile-time-locked Production Worker internally**, with an isolated SQLite
+Durable Object class and separate action/finance rate-limit bindings. There
+is still **no public route or URL**. Existing staging and user data remain
+untouched. The chronological record below distinguishes earlier stages from
+the latest guarded deployment.
 
 ## Prepared in the isolated GitHub production branch
 
 - `wrangler.production.jsonc` selects `src/production-entry.mjs` and binds
   **only** `sharika-production` D1 and `sharika-production-media` R2.
-- A dedicated `VOICE_ROOMS` Durable Object class and isolated Rate Limit
-  namespaces `410301` / `410302` are defined for a **future deployment**.
-  The production Durable Object namespace does not exist until that release.
+- A dedicated Production `VOICE_ROOMS` Durable Object class and isolated Rate
+  Limit namespaces `410301` / `410302` were prepared in the config and later
+  deployed independently of Staging (see the final follow-up section).
 - Production coordinator keys are `sharika:presence:production` and
   `sharika:music-library:production`; existing staging keys are unchanged.
 - Logs and traces are configured. Scheduled handlers and public Worker URLs
@@ -31,8 +34,9 @@ route or URL. Existing staging resources and user data remain untouched.
   fail-closed checks passed, included in the total above.
 - `python3 test/production-schema-candidate.test.py`: 154 tables, 112 indexes,
   140 triggers, 103 curated seed rows; integrity and FK checks passed locally.
-- None of these offline tests demonstrate live voice, Android device behavior,
-  billing validation, or Cloudflare Worker deployment success.
+- Offline tests alone do not demonstrate live voice, Android device behavior,
+  or billing validation. A later guarded Worker deployment was verified
+  through the Cloudflare API, but **end-to-end app QA remains pending**.
 
 ## Unresolved release blockers
 
@@ -282,3 +286,49 @@ Production rate-limit bindings through an explicitly guarded Worker
 deployment path (no old D1 migration replay); verify deployment/rollback,
 then run restricted Firebase, wallet/game/agency, media and two-device voice
 tests before approving any public URL or Production Play Store AAB.
+
+## Follow-up: isolated Production Voice DO and rate limits deployed (2026-11-08)
+
+- After inspecting Cloudflare's current Worker multipart-upload schema and
+  Durable Object class-migration guidance, deployed the **same checksum-verified**
+  755,531-byte bundle to **`sharika-api-production` only**, using the Worker
+  Upload API. Bundle SHA-256:
+  `dd430d3356b15947b0a372b8e77cb5bd3f02a693e44e470c433b02df3035425b`.
+  New deployed **version 8**: `d6d8d200-64e6-47f9-a798-9fe518347eee`;
+  deployment: `06c568ee-212e-47c5-ba7b-887cb71d3b73` at 100%.
+- Applied exactly **one new Worker-level class migration**, tagged
+  `v1_sharika_production_voice_rooms`, with
+  `new_sqlite_classes: ["SharikaVoiceRoom"]`. The resulting Production
+  namespace `0c6da952f7744ffc93d5e1cbee33ffe5` is separate from Staging's
+  `ccfdddd52ef74433ae04b11e437b991d`. This is **not a D1 SQL migration**;
+  no old SQL migration was run or replayed.
+- Added Production-only `VOICE_ROOMS` (`durable_object_namespace`) plus
+  `SHARIKA_ACTION_RATE_LIMIT` (`410301`, 120 actions/60 seconds) and
+  `SHARIKA_FINANCE_RATE_LIMIT` (`410302`, 20 actions/60 seconds). Cloudflare's
+  rate-limit binding enforces approximate per-location limits; it is not a
+  globally strict financial ledger lock.
+- Preserved all **12 existing D1/R2/secret/plain-text bindings**, then added
+  these three bindings and four explicit fail-closed `plain_text` policy flags.
+  Read-only inspection confirms **19 total bindings** and enabled Worker
+  logs/traces. No secret values were exposed in the report.
+- Read-only D1 migration journal queries **after deployment** show unchanged
+  counts: Production `1`, Staging `71`. Staging Worker still binds its own D1
+  `b2c62252-12a5-4740-90c7-01a536d9a39a`, R2
+  `sharika-staging-media` and original Voice DO namespace. Production D1 is
+  `44425c0a-c691-4e39-a11a-a6e29089d1a3` and Production R2 remains
+  `sharika-production-media`.
+- **Public rollout remains blocked:** Production `workers.dev` and preview
+  subdomains are disabled; there are zero zone Worker routes. The deployed
+  source contains `RELEASE_REVIEW_APPROVED=false`, and
+  `SHARIKA_PUBLIC_API_ENABLED=false` is bound. No cron/scheduled handler was
+  exported. Therefore **0% public app traffic** is routed to this Worker.
+- Rollback reference: former maintenance version 6
+  `f19395c0-ca4b-497c-a7f0-28ea35bafb2f` remains in version history.
+  A code rollback does **not** undo newly created Durable Object resources;
+  no rollback is currently needed.
+
+Next: perform a restricted API test path with explicit access controls, then
+verify Firebase identity against separate Production app records, two-device
+voice and media, coin ledger/recharge/agency invariants, app URL routing and
+Play upload certificate. Do **not** open public routes or upload a
+Production-origin AAB until these release checks pass.
