@@ -1,4 +1,5 @@
 // Read-only, verified admin operational pages. No demo data or state mutations.
+import {runtimeEnvironment} from './runtime-environment.mjs';
 const financeRoles=new Set(['super','finance']);
 const roomRoles=new Set(['super','support']);
 
@@ -7,7 +8,7 @@ export async function handleOperationalRead({request,env,actor,operation,cors,re
   if(request.method!=='GET')return fail('method_not_allowed',405,cors);
   if(operation==='feature-health'){
     return reply({
-      environment:'staging',server_time:new Date().toISOString(),
+      environment:runtimeEnvironment(env),server_time:new Date().toISOString(),
       d1_bound:!!env.DB,voice_rooms_bound:!!env.VOICE_ROOMS,
       lucky_gifts_enabled:String(env.SHARIKA_LUCKY_GIFTS_ENABLED)==='true',
       cash_redeemable_coins:String(env.SHARIKA_COINS_CASH_REDEEMABLE)==='true',

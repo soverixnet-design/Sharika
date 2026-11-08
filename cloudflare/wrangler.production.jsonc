@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sharika-api-production",
-  "main": "src/production-placeholder.mjs",
+  "main": "src/production-entry.mjs",
   "compatibility_date": "2026-11-08",
   "account_id": "d81cf7c48fb9b36d468cb0a08720cd74",
   "workers_dev": false,
@@ -23,14 +23,40 @@
       "bucket_name": "sharika-production-media"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "VOICE_ROOMS", "class_name": "SharikaVoiceRoom" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1_sharika_production_voice_rooms",
+      "new_sqlite_classes": ["SharikaVoiceRoom"]
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "SHARIKA_ACTION_RATE_LIMIT",
+      "namespace_id": "410301",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "SHARIKA_FINANCE_RATE_LIMIT",
+      "namespace_id": "410302",
+      "simple": { "limit": 20, "period": 60 }
+    }
+  ],
   "vars": {
     "SHARIKA_ENV": "production",
+    "SHARIKA_PUBLIC_API_ENABLED": "false",
+    "SHARIKA_PRODUCTION_CLIENT_LINKS_REVIEWED": "false",
     "SHARIKA_COINS_CASH_REDEEMABLE": "false",
     "SHARIKA_LUCKY_GIFTS_ENABLED": "false",
     "SHARIKA_PLAY_BILLING_ENABLED": "false",
     "SHARIKA_AUTOMATIC_RANKING_REWARDS_ENABLED": "false"
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "traces": { "enabled": true }
   }
 }

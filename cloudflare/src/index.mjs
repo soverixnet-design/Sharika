@@ -8,7 +8,8 @@ import {readRoomAccessLock,writeRoomAccessLock} from './room-access-lock.mjs';
 import { handleSellerApp } from './sellers.mjs';
 import { handleFamilyApp } from './family.mjs';
 import {handleAgencyApp,agencyGiftEarningStatements} from './agency.mjs';
-import {MUSIC_LIBRARY_OBJECT,musicTitle} from './music-library.mjs';
+import {musicTitle} from './music-library.mjs';
+import {runtimeEnvironment,presenceCoordinatorName,musicLibraryCoordinatorName} from './runtime-environment.mjs';
 import {recordAgencyRoomActivity} from './agency-room-time.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
@@ -310,7 +311,7 @@ export async function handleRequest(request, env, ctx) {
     if (!env.DB) return fail('database_unavailable', 503, cors);
     try {
       await env.DB.prepare('SELECT 1 AS ok').first();
-      return reply({ ok: true, service: 'sharika-cloudflare-staging', environment: 'staging',
+      return reply({ ok: true, service: 'sharika-cloudflare-'+runtimeEnvironment(env), environment: runtimeEnvironment(env),
         auth_configured: !!env.FIREBASE_PROJECT_ID }, 200, cors);
     } catch (_) { return fail('database_unavailable', 503, cors); }
   }
@@ -415,7 +416,7 @@ export async function handleRequest(request, env, ctx) {
         const {member}=await roomAndMember(env.DB,roomId,uid);
         if(!member)return fail('join_room_first',403,cors);
       }
-      const coordinator=env.VOICE_ROOMS.getByName('sharika:presence:staging');
+      const coordinator=env.VOICE_ROOMS.getByName(presenceCoordinatorName(env));
       await coordinator.presenceTouch(uid,roomId);
       // Activity accounting is best-effort: reporting must never prevent a
       // verified listener from keeping voice-room presence alive.
@@ -937,7 +938,7 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/music-library'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       if(!env.VOICE_ROOMS)return fail('music_library_unavailable',503,cors);
-      return reply(await env.VOICE_ROOMS.getByName(MUSIC_LIBRARY_OBJECT)
+      return reply(await env.VOICE_ROOMS.getByName(musicLibraryCoordinatorName(env))
         .musicLibraryList(false),200,cors);
     }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
@@ -1131,7 +1132,7 @@ export async function handleRequest(request, env, ctx) {
         let online={};
         if(env.VOICE_ROOMS) {
           try {
-            online=await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+            online=await env.VOICE_ROOMS.getByName(presenceCoordinatorName(env))
               .presenceRoomCounts();
           } catch(error) {console.warn('room_presence_unavailable',error?.message);}
         }
@@ -1263,7 +1264,7 @@ export async function handleRequest(request, env, ctx) {
         if(mode==='library'){
           if(!Number.isSafeInteger(body.track_id)||body.track_id<1)
             return fail('invalid_music_track',400,cors);
-          track=await env.VOICE_ROOMS.getByName(MUSIC_LIBRARY_OBJECT)
+          track=await env.VOICE_ROOMS.getByName(musicLibraryCoordinatorName(env))
             .musicLibraryTrack(body.track_id);
           if(!track)return fail('music_track_unavailable',404,cors);
         }
@@ -1476,7 +1477,7 @@ export async function handleRequest(request, env, ctx) {
           'UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?'
         ).bind(roomId,uid).run();
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
-        await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+        await env.VOICE_ROOMS.getByName(presenceCoordinatorName(env))
           .presenceJoin(uid,roomId);
         // The session boundary is established BEFORE the public arrival
         // event. Prior chat, gift receipts and entries stay in the audit
@@ -1507,7 +1508,7 @@ export async function handleRequest(request, env, ctx) {
         // Remove the visible room ID immediately, including for the owner
         // whose D1 membership remains for permission checks. The coordinator
         // also blocks any delayed heartbeats from this departed visit.
-        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName(presenceCoordinatorName(env))
           .presenceLeave(uid,roomId);
         if (room.owner_id === uid) {
           await env.DB.prepare('UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?')
@@ -1969,7 +1970,7 @@ export async function handleRequest(request, env, ctx) {
         // /join registers presence before returning, so no grace is needed.
         let visibleMembers=result.results||[];
         let presence=null;
-        try{presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');}
+        try{presence=env.VOICE_ROOMS.getByName(presenceCoordinatorName(env));}
         catch(error){console.warn('presence_coordinator_unavailable',error?.message);}
         if(typeof presence?.presenceRoomMembers==='function') {
           try{

@@ -1,5 +1,6 @@
 // Verified, rights-cleared music links curated by a Super Admin. Audio bytes
 // are never fetched or proxied by the Worker, and no user file is uploaded.
+import {musicLibraryCoordinatorName} from './runtime-environment.mjs';
 export const MUSIC_LIBRARY_OBJECT='sharika:music-library:staging';
 
 export function musicTitle(value){
@@ -25,7 +26,7 @@ export function musicAudioUrl(value){
 export async function handleMusicAdmin({request,env,actor,reply,fail,cors}){
   if(!env.VOICE_ROOMS)return fail('music_library_unavailable',503,cors);
   if(actor.role!=='super')return fail('admin_permission_denied',403,cors);
-  const library=env.VOICE_ROOMS.getByName(MUSIC_LIBRARY_OBJECT);
+  const library=env.VOICE_ROOMS.getByName(musicLibraryCoordinatorName(env));
   if(request.method==='GET')return reply(await library.musicLibraryList(true),200,cors);
   if(!['POST','PATCH'].includes(request.method))return fail('method_not_allowed',405,cors);
   const raw=await request.text();

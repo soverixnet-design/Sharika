@@ -27,6 +27,7 @@ import {handleAdminMediaUpload,safeMediaUrl} from './admin-media.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
 import { handleNotificationAdmin } from './notifications.mjs';
 import { handleOperationalRead } from './admin-operations.mjs';
+import {runtimeEnvironment,presenceCoordinatorName} from './runtime-environment.mjs';
 const ADMIN_PREFIX = '/api/v1/admin/';
 const PUBLIC_ID = /^[0-9]{8}$/;
 const FINANCE_ROLES = new Set(['super', 'finance']);
@@ -445,7 +446,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     const staff=actor.role==='staff';
     return reply({ role:actor.role,name:actor.name,
       public_id:staff?null:id(actor.public_no),
-      environment:'staging',
+      environment:runtimeEnvironment(env),
       permissions:staff?actor.permissions:null,
       daily_coin_limit:staff?actor.daily_coin_limit:null,
       read_only:staff?!actor.permissions.some(p=>['coin_recharge','support_reply'].includes(p)):actor.role!=='super',
@@ -475,7 +476,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     if(!env.VOICE_ROOMS)return null;
     try {
       const result=await env.VOICE_ROOMS
-        .getByName('sharika:presence:staging').presenceStats();
+        .getByName(presenceCoordinatorName(env)).presenceStats();
       if(!Number.isSafeInteger(result?.online_users) ||
          !Number.isSafeInteger(result?.live_rooms))return null;
       return result;
@@ -556,7 +557,7 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     if(env.VOICE_ROOMS){
       try{
         const result=await env.VOICE_ROOMS
-          .getByName('sharika:presence:staging').presenceRoomCounts();
+          .getByName(presenceCoordinatorName(env)).presenceRoomCounts();
         if(result&&typeof result==='object'&&!Array.isArray(result))onlineCounts=result;
       }catch(error){console.warn('sharika_room_presence_unavailable',error?.message);}
     }
