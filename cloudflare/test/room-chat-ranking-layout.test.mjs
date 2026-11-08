@@ -24,8 +24,11 @@ test('room chat opens public composer and private DM retains independent control
 test('room profile is a left-aligned large card, without covering the mic grid',()=>{
   assert.match(room,/top\.insertBefore\(roomInfo, top\.children\[1\]\)/);
   assert.match(roomCss,/\.top \.room\s*\{[\s\S]*?flex:1 1 0!important/);
-  assert.match(roomCss,/\.top \.room \.rav\s*\{[\s\S]*?width:61px/);
+  assert.match(roomCss,/\.top \.room \.rav\s*\{[\s\S]*?width:66px/);
   assert.match(roomCss,/\.chatw\s*\{[\s\S]*?background:transparent!important/);
+  assert.match(roomCss,/\.top \.room \.rt b\s*\{[\s\S]*?-webkit-line-clamp:2/);
+  assert.match(roomCss,/\.dock\s*\{[\s\S]*?background:transparent!important/);
+  assert.match(roomCss,/\.sh-keyboard-open \.dock\s*\{[\s\S]*?position:absolute!important/);
   assert.match(roomCss,/#grid\.grid\s*\{[\s\S]*?repeat\(4,minmax\(0,1fr\)\)/);
 });
 
@@ -34,7 +37,7 @@ test('weekly winner slots stay centered regardless of missing third winner',()=>
   assert.match(ranking,/\.sh-rw-winner\.rank-1\s*\{grid-column:2/);
   assert.match(ranking,/\.sh-rw-winner\.rank-2\s*\{grid-column:1/);
   assert.match(ranking,/\.sh-rw-winner\s*\{grid-column:3/);
-  assert.match(ranking,/\.sh-rw-winner small\s*\{[\s\S]*?text-overflow:ellipsis/);
+  assert.match(ranking,/\.sh-rw-winner small\s*\{[\s\S]*?overflow-wrap:anywhere/);
 });
 
 test('full integrated staging runs real Android emulator keyboard and Back QA',()=>{
@@ -55,6 +58,9 @@ test('emulator harness opens public Room Chat before probing keyboard geometry',
   assert.match(generator,/reference-room\.css/);
   assert.match(harness,/getElementById\('sh-chat-toggle'\)/);
   assert.match(harness,/toggle\.click\(\)/);
+  assert.match(harness,/toggle\.click\(\);[\s\S]*?input\.blur\(\)/);
   assert.match(harness,/room_chat_keyboard_not_ready/);
   assert.match(harness,/if \(\(rect\.width < 20 \|\| rect\.height < 8\)/);
+  assert.match(ranking,/\.sh-rw-winner small\s*\{[\s\S]*?overflow-wrap:anywhere/);
+  assert.match(ranking,/\.sh-royal-podium-card \.sh-royal-id\s*\{[\s\S]*?overflow:visible!important/);
 });

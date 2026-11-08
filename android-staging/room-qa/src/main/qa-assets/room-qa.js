@@ -31,6 +31,11 @@
     if (!doc.documentElement.dataset.qaComposerOpened) {
       doc.documentElement.dataset.qaComposerOpened = '1';
       toggle.click();
+      // toggle.click() is synthetic in this offline fixture. Its focus()
+      // makes #txt active without a trusted Android gesture or visible IME.
+      // Blur it so the later ADB tap tests a real focus transition instead
+      // of tapping an already-focused input that WebView may ignore.
+      input.blur();
     }
     const rect = input.getBoundingClientRect();
     if ((rect.width < 20 || rect.height < 8) && attempt < 40)
@@ -40,7 +45,9 @@
         inputPresent:true,togglePresent:true,documentReadyState:doc?.readyState,
         scripts:[...doc.querySelectorAll('script[src]')].map(s=>s.getAttribute('src'))}));
     }
-    report('before');
+    // Let the room's focusout handler restore its pre-keyboard geometry before
+    // recording the coordinates for the first physical tap.
+    setTimeout(() => report('before'), 260);
   }
 
   function report(phase) {

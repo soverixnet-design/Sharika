@@ -611,6 +611,9 @@ jobs:
             # Parse JSON records per line while ignoring that transport header.
             jq -Rce 'fromjson? | select(.phase=="before" and .ready and .hasKeyboardApi=="object" and (.fingerprint|contains("QA13")))' royal-qa/room-before.jsonl | tail -n 1 > royal-qa/room-baseline.json
             test -s royal-qa/room-baseline.json
+            # The fixture must not pre-focus the input with a synthetic click.
+            # Otherwise the real ADB tap does not establish keyboard behavior.
+            jq -e '(.keyboardClass == false) and (.focusTarget != "txt")' royal-qa/room-baseline.json
             adb exec-out screencap -p > royal-qa/room-keyboard-before.png
             # android-emulator-runner executes each script line in a separate
             # shell, so variables assigned on a preceding line do not survive.

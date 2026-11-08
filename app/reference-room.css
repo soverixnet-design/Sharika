@@ -11,27 +11,27 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 .app.sh-royal-room .top {
   flex:0 0 auto;
   display:flex;
-  gap:7px!important;
-  padding:12px 10px 5px!important;
-  min-height:82px;
-  background:rgba(2,10,8,.66);
+  gap:4px!important;
+  padding:9px 5px 5px!important;
+  min-height:87px;
+  background:rgba(2,10,8,.33);
 }
 .app.sh-royal-room .top .room {
   min-width:0;
   flex:1 1 0!important;
   width:auto!important;
   max-height:none!important;
-  min-height:70px!important;
-  padding:4px 9px!important;
+  min-height:76px!important;
+  padding:4px 7px!important;
   border:0!important;
-  border-radius:10px!important;
+  border-radius:14px!important;
   background:rgba(4,10,9,.66)!important;
   box-shadow:none!important;
   color:#fff!important;
 }
 .app.sh-royal-room .top .room .rav {
-  width:61px;
-  height:61px;
+  width:66px;
+  height:66px;
   flex:none;
   border-radius:8px;
   border:1px solid #d9aa4d;
@@ -42,16 +42,22 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   color:#f3f3ed!important;
   font-weight:600!important;
   text-shadow:0 1px 2px #000;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  white-space:normal!important;
+  overflow:hidden;
+  overflow-wrap:anywhere;
 }
 .app.sh-royal-room .top .room .rt small {
   color:#e1e8df!important;
   font-size:12px!important;
 }
 .app.sh-royal-room .sh-settings {
-  width:38px!important;height:38px!important;
+  width:34px!important;height:34px!important;
   filter:brightness(0) invert(1);
 }
-.app.sh-royal-room .top>.ib {width:34px!important;height:36px!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.app.sh-royal-room .top>.ib {width:30px!important;height:36px!important;background:transparent!important;border:0!important;box-shadow:none!important}
 .app.sh-royal-room .stats {
   display:flex!important;
   align-items:center;
@@ -191,9 +197,19 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   z-index:8!important;
   flex:0 0 auto!important;
   padding:6px 4px max(10px,env(safe-area-inset-bottom))!important;
-  background:linear-gradient(180deg,#020907ef,#010403fc)!important;
-  border-top:1px solid #3c5145;
+  background:transparent!important;
+  border-top:0!important;
   box-shadow:none!important;
+}
+/* This rule is deliberately more specific than the normal dock override.
+   Otherwise position:relative!important wins when Android opens Gboard. */
+.app.sh-royal-room.sh-keyboard-open .dock {
+  position:absolute!important;
+  left:0!important;
+  right:0!important;
+  bottom:var(--sh-ime-inset,0px)!important;
+  background:rgba(17,7,31,.86)!important;
+  border-top:1px solid rgba(248,210,145,.35)!important;
 }
 .app.sh-royal-room .sh-composer {
   display:flex;
@@ -203,8 +219,12 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 .app.sh-royal-room .sh-composer[hidden] {display:none!important}
 .app.sh-royal-room .sh-composer .inp {
   height:43px!important;
-  background:#142820!important;
-  border:1px solid #658674!important;
+  background:rgba(20,28,27,.43)!important;
+  border:1px solid rgba(196,210,185,.55)!important;
+  box-shadow:none!important;
+}
+.app.sh-royal-room .sh-composer #txt {
+  background:transparent!important;
   box-shadow:none!important;
 }
 .app.sh-royal-room .sh-tools {
@@ -301,7 +321,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 @media(max-width:350px) {
   .app.sh-royal-room .top {min-height:75px;padding:8px 6px 4px!important}
   .app.sh-royal-room .top .room {min-height:62px!important;padding-inline:5px!important}
-  .app.sh-royal-room .top .room .rav {width:52px;height:52px}
+  .app.sh-royal-room .top .room .rav {width:54px;height:54px}
   .app.sh-royal-room .top .room .rt b {font-size:14px!important}
   .app.sh-royal-room .stage {padding-inline:3px!important}
   .app.sh-royal-room #grid .seat .av {width:40px!important;height:40px!important}
