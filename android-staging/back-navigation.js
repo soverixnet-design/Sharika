@@ -58,6 +58,13 @@
 
     // The dedicated search and CP screens must close before the home page
     // behind them can navigate or exit.
+    var rankReward = get('sh-rank-reward-center');
+    if (rankReward) {
+      var rankBack = get('sh-rw-back');
+      if (rankBack) rankBack.click();
+      else rankReward.remove();
+      return 'handled';
+    }
     var search = get('sh-global-search');
     if (search && !search.hidden) {
       var searchBack = get('sh-search-back');

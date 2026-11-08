@@ -1095,6 +1095,8 @@ public final class SharikaActivity extends Activity {
         // No /admin, arbitrary URLs, billing, redirects or platform credentials.
         if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(lucky|rich|charm|room|recharge)$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/rankings/rewards\\?kind=(lucky|rich|charm|room|recharge)$"))
+            return method.equals("GET");
         if (path.matches("^/api/v1/rankings\\?period=weekly&kind=(lucky|rich|charm|room|recharge)&week_offset=1$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/bonds/rankings\\?type=(cp|friendship)&period=(daily|weekly|monthly)$"))

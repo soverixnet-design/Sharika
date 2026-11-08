@@ -174,6 +174,105 @@
   #rb .sh-royal-podium-card.first {min-height:210px}
   #v-rank .sh-rank-quick button {font-size:11px}
 }
+
+/* Royal Reward Palace: the small trophy sits beside Daily / Weekly / Monthly. */
+#v-rank .sh-rank-period-row {
+  display:flex;align-items:center;gap:8px;padding:3px 13px 10px;
+}
+#v-rank .sh-rank-period-row #rp {
+  margin:0!important;flex:1;min-width:0;width:auto!important;
+}
+#v-rank .sh-rank-reward-entry {
+  width:49px;height:49px;flex:none;border-radius:16px;
+  border:1.5px solid #ffdd89;color:#fff0b6;font-size:25px;
+  background:linear-gradient(155deg,#8d3c8e,#461858 58%,#b36d2d);
+  box-shadow:inset 0 1px 2px #fff9,0 4px 9px #13081d99;
+  cursor:pointer;
+}
+#v-rank #wgb {display:none!important}
+#sh-rank-reward-center {
+  position:fixed;inset:0;z-index:2147483200;box-sizing:border-box;
+  margin:0 auto;width:min(100%,540px);overflow-y:auto;
+  background:radial-gradient(ellipse at 50% 21%,#8b3caf 0%,#56217c 36%,#240b44 100%);
+  color:#fff0cb;padding:calc(19px + env(safe-area-inset-top,0px)) 12px 65px;
+  font-family:inherit;
+}
+#sh-rank-reward-center .sh-rw-header {
+  display:flex;align-items:center;gap:12px;margin:0 2px 18px;
+  border-bottom:1px solid #d5a1eb99;padding-bottom:13px;
+}
+#sh-rank-reward-center #sh-rw-back {
+  flex:none;width:43px;height:44px;border-radius:15px;border:1px solid #f9dfab;
+  color:#ffebc1;background:#401659;font-size:30px;
+}
+.sh-rw-header div {display:flex;flex-direction:column;gap:4px}
+.sh-rw-header strong {font:900 23px Georgia,serif;color:#ffe5a4}
+.sh-rw-header small {font-size:10px;letter-spacing:1.4px;color:#e8c3fa}
+.sh-rw-banner {
+  margin:12px auto 8px;max-width:425px;text-align:center;
+  padding:11px 10px;border-radius:18px;
+  border:2px solid #f6d786;color:#fff0c4;
+  background:linear-gradient(145deg,#8233de,#641ab1 49%,#bd74d8);
+  box-shadow:inset 0 2px 2px #fff7,0 5px 0 #39135c,0 8px 18px #12052a88;
+  font:800 clamp(14px,4.5vw,18px) Georgia,serif;letter-spacing:.5px;
+}
+.sh-rw-week,.sh-rw-note {text-align:center;color:#f6d5f7;font-size:12px;
+  line-height:1.55;margin:12px 10px 18px}
+.sh-rw-podium {
+  display:flex;justify-content:space-evenly;align-items:flex-end;gap:4px;
+  min-height:290px;padding:17px 2px 54px;box-sizing:border-box;
+  background:url('./royal-ranking-podium.webp') center bottom/100% auto no-repeat;
+  text-align:center;
+}
+.sh-rw-winner {order:3;display:flex;flex-direction:column;align-items:center;
+  width:30%;min-width:0;gap:5px;color:#ffedc7;cursor:pointer}
+.sh-rw-winner.rank-1 {order:2;width:36%;padding-bottom:34px}
+.sh-rw-winner.rank-2 {order:1}
+.sh-rw-winner .sh-rw-place {
+  padding:5px 7px;border-radius:25px;background:#4b1865;
+  border:1px solid #f3c87c;font:800 10px Georgia,serif;color:#ffe6a1;
+}
+.sh-rw-winner.rank-1 .sh-rw-place {background:#e1a44e;color:#49220c}
+.sh-rw-winner .sh-royal-avatar {width:72px;height:72px;max-width:94%;margin:0 auto}
+.sh-rw-winner.rank-1 .sh-royal-avatar {width:100px;height:100px}
+.sh-rw-winner .sh-royal-face {width:100%;height:100%;border:3px solid #f1c36f;
+  border-radius:50%;overflow:hidden;display:grid;place-items:center}
+.sh-rw-winner .sh-royal-face img {width:100%;height:100%;object-fit:cover}
+.sh-rw-winner strong {font-size:12px;line-height:1.25;max-width:100%;overflow-wrap:anywhere}
+.sh-rw-winner small {font-size:10px;color:#ffe9bd}
+.sh-rw-winner b {font-size:11px;color:#f9d48a}
+.sh-rw-banner-prizes {margin-top:27px}
+.sh-rw-reward-card {border:1px solid #d09de2;border-radius:22px;
+  background:linear-gradient(155deg,#450f80,#29084d);margin:14px 2px 20px;
+  padding:10px 9px 18px;box-shadow:0 9px 16px #15022677}
+.sh-rw-reward-card h3 {padding:10px 6px;margin:0 0 14px;border-radius:16px;
+  border:1px solid #f9d68e;color:#fff5cb;text-align:center;
+  background:linear-gradient(155deg,#7b24d7,#a344e5,#7532aa);
+  font:800 21px Georgia,serif}
+.sh-rw-reward-tiles {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.sh-rw-prize {min-width:0;text-align:center;padding:7px 2px 10px;border-radius:14px;
+  background:linear-gradient(180deg,#8e35d0,#6b22a6);border:1px solid #f2c47e;
+  display:flex;flex-direction:column;gap:4px;align-items:center}
+.sh-rw-prize-art {display:block;width:58px;height:58px;max-width:100%;
+  background-repeat:no-repeat;background-position:center;background-size:contain}
+.sh-rw-prize-art.frame {background-image:url('./profile-collection-atlas.webp');background-size:200% 200%;background-position:0% 100%}
+.sh-rw-prize-art.medal {background-image:url('./profile-collection-atlas.webp');background-size:200% 200%;background-position:100% 0%}
+.sh-rw-prize-art.entry {background-image:url('./profile-menu-atlas.webp');background-size:200% 300%;background-position:100% 0%}
+.sh-rw-prize-art.coins {background-image:url('./invite-royal-chest.webp')}
+.sh-rw-prize strong {font-size:10px;line-height:1.3;color:#fff3cd}
+.sh-rw-prize b {font-size:10px;line-height:1.2;overflow-wrap:anywhere}
+.sh-rw-prize small {font-size:10px;line-height:1.2;color:#ffd66f}
+.sh-rw-reward-card.not-active {opacity:.75}
+.sh-rw-disclaimer {margin:26px 10px 3px;text-align:center;font-size:11px;
+  line-height:1.5;color:#edd0ff}
+#sh-rank-reward-center button:focus-visible {outline:3px solid #ffe2ac;outline-offset:3px}
+@media(max-width:365px){
+  .sh-rw-reward-tiles {grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sh-rw-podium {min-height:265px;padding-bottom:46px}
+  .sh-rw-winner .sh-royal-avatar {width:61px;height:61px}
+  .sh-rw-winner.rank-1 .sh-royal-avatar {width:80px;height:80px}
+  .sh-rw-winner strong {font-size:10px}
+}
 @media(prefers-reduced-motion:reduce) {
   #v-rank .sh-rank-quick button,#rb .sh-rank-rewards-button {transition:none!important}
 }

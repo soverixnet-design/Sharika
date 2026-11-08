@@ -2151,6 +2151,85 @@
       });
     }catch(error){root.innerHTML=card('Admin staff management unavailable',error.message);}
   };
+  async function renderRankingRewardAdminPanel(root){
+    const panel=document.createElement('div');panel.className='card';
+    panel.id='sh-rank-reward-admin';
+    panel.innerHTML='<h3>🏆 Royal Weekly Top 1–7 Reward Display</h3>'+
+      '<p class="n">Configure which coins, frame, medal and entry effect the app announces '+
+      'for each weekly place. Display only: saving does not pay winners or grant items.</p>'+
+      '<div class="row"><label>Ranking category <select class="field" id="sh-ra-kind">'+
+      ['rich','charm','lucky','room','recharge'].map(k=>'<option value="'+k+'">'+
+        esc(k.toUpperCase())+'</option>').join('')+'</select></label></div>'+
+      '<div id="sh-ra-content">Loading configured rules…</div>'+
+      '<p class="n" id="sh-ra-status" role="status"></p>';
+    root.appendChild(panel);
+    let board;
+    try{board=await api('GET','ranking-rewards');}
+    catch(error){panel.querySelector('#sh-ra-content').textContent=
+      'Royal reward settings unavailable: '+error.message;return;}
+    if(!panel.isConnected)return;
+    const kindSelect=panel.querySelector('#sh-ra-kind');
+    const content=panel.querySelector('#sh-ra-content');
+    const note=panel.querySelector('#sh-ra-status');
+    const editable=role==='super';
+    const opts=(type,value)=>'<option value="">None</option>'+
+      (board.assets||[]).filter(x=>x.kind===type).map(x=>'<option value="'+esc(x.id)+
+        '" '+(x.id===value?'selected':'')+'>'+esc(x.name)+'</option>').join('');
+    function paint(){
+      const kind=kindSelect.value,setting=board.kinds?.[kind];
+      if(!setting){content.textContent='No verified settings for this category.';return;}
+      const rows=(setting.rules||[]).map(rule=>'<div class="row" style="align-items:end;'+
+        'flex-wrap:wrap;padding:11px 0;border-bottom:1px solid #ffffff30">'+
+        '<strong style="min-width:60px">Top '+rule.rank+'</strong>'+
+        '<label>Coins<input class="field" type="number" min="0" max="1000000" '+
+        'id="sh-ra-coins-'+rule.rank+'" value="'+rule.coins+'" '+
+        (editable?'':'disabled')+' style="width:110px"></label>'+
+        '<label>Frame<select class="field" id="sh-ra-frame-'+rule.rank+'" '+
+        (editable?'':'disabled')+'>'+opts('frame_style',rule.frame_item_id)+'</select></label>'+
+        '<label>Medal<select class="field" id="sh-ra-medal-'+rule.rank+'" '+
+        (editable?'':'disabled')+'>'+opts('medal_style',rule.medal_item_id)+'</select></label>'+
+        '<label>Entry<select class="field" id="sh-ra-entry-'+rule.rank+'" '+
+        (editable?'':'disabled')+'>'+opts('entry_style',rule.entry_item_id)+'</select></label>'+
+        '<label>Display days<input class="field" type="number" min="1" max="30" '+
+        'id="sh-ra-days-'+rule.rank+'" value="'+rule.display_days+'" '+
+        (editable?'':'disabled')+' style="width:74px"></label></div>').join('');
+      content.innerHTML='<label><input type="checkbox" id="sh-ra-enabled" '+
+        (setting.policy?.enabled?'checked ':'')+(editable?'':'disabled')+
+        '> Publish this category’s weekly prize preview</label>'+rows+
+        (editable?'<button type="button" class="btn s" id="sh-ra-save">'+
+        'Save Top 1–7 Reward Preview</button>':'')+
+        '<p class="n">Revision '+Number(setting.policy?.revision||0)+
+        ' · No automatic payout or entitlement changes</p>';
+      const save=panel.querySelector('#sh-ra-save');
+      if(save)save.onclick=async()=>{
+        const rules=[];
+        for(let rank=1;rank<=7;rank++){
+          const coins=Number(panel.querySelector('#sh-ra-coins-'+rank).value);
+          const display_days=Number(panel.querySelector('#sh-ra-days-'+rank).value);
+          if(!Number.isSafeInteger(coins)||coins<0||coins>1000000||
+            !Number.isInteger(display_days)||display_days<1||display_days>30){
+            note.textContent='Coins must be 0–1M; days must be 1–30.';return;
+          }
+          rules.push({rank,coins,display_days,
+            frame_item_id:panel.querySelector('#sh-ra-frame-'+rank).value||null,
+            medal_item_id:panel.querySelector('#sh-ra-medal-'+rank).value||null,
+            entry_item_id:panel.querySelector('#sh-ra-entry-'+rank).value||null});
+        }
+        if(!window.confirm('Publish '+kind+' weekly reward PREVIEW? This does not issue prizes.'))return;
+        save.disabled=true;note.textContent='Saving verified display rules…';
+        try{
+          const updated=await api('PATCH','ranking-rewards',{
+            kind,enabled:panel.querySelector('#sh-ra-enabled').checked,
+            revision:setting.policy.revision,rules
+          });
+          board.kinds[kind]=updated;note.textContent='Saved · App users can now see this prize preview.';
+          paint();
+        }catch(error){note.textContent='Not saved: '+error.message;save.disabled=false;}
+      };
+    }
+    kindSelect.onchange=()=>{note.textContent='';paint();};
+    paint();
+  }
   P.rank=async function () {
     const root=byId('pg');
     let kind='rich',period='weekly',requestNo=0;
@@ -2193,6 +2272,7 @@
       if(p){period=p.dataset.rperiod;reload();}
     };
     await reload();
+    await renderRankingRewardAdminPanel(root);
   };
   P.analytics=async function () {
     const root=byId('pg');root.innerHTML=card('Analytics','Loading verified statistics…');

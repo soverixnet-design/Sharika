@@ -20,6 +20,7 @@ import { handleOpeningAdmin } from './opening.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 import { handleFamilyAdmin } from './family.mjs';
 import {handleAgencyAdmin} from './agency.mjs';
+import {handleRankingRewardAdmin} from './ranking-rewards.mjs';
 import {handleMusicAdmin} from './music-library.mjs';
 import {handleAdminMediaUpload,safeMediaUrl} from './admin-media.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
@@ -441,6 +442,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     const result=await readGiftRankings(env.DB,period,kind);
     return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
   }
+  if(operation==='ranking-rewards')return await handleRankingRewardAdmin({
+    request,db:env.DB,uid,role:actor.role,reply,fail,cors
+  });
   if(operation==='opening')return await handleOpeningAdmin({
     request,env,uid,actor,operation,cors,reply,fail
   });

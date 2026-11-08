@@ -126,11 +126,13 @@ test('selected Royal Champions design has real assets, server prizes and histori
   assert.match(gradle,/royal-ranking-v2\.css/);
   assert.match(css,/royal-ranking-podium\.webp/);
   assert.match(ui,/ensureRoyalRankNavigation\(rankView\)/);
-  assert.match(ui,/appendRoyalRankingExtras\(view,data,selected,period,requestNo\)/);
+  assert.match(ui,/openRoyalRankingRewardCenter\(\)/);
+  assert.match(ui,/sh-rank-reward-box/);
+  assert.match(ui,/api\('GET','\/rankings\/rewards\?kind='/);
   assert.match(ui,/api\('GET','\/bonds\/rewards'\)/);
   assert.match(ui,/week_offset=1/);
-  assert.match(ui,/previous_week_endpoint_not_updated/);
-  assert.match(ui,/This does not imply that coin rewards were awarded/);
+  assert.match(ui,/Previous-week ranking period could not be verified/);
+  assert.match(ui,/Prize previews are not payout receipts/);
   assert.match(java,/week_offset=1/);
   // Only a completed CP award batch may create a paid-prize badge. A
   // verified previous-week position alone is not a payout receipt.

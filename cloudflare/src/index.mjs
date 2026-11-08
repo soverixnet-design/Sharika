@@ -42,6 +42,7 @@ import {handlePlayBillingApp} from './play-billing.mjs';
 import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
 import {searchVerifiedRooms} from './room-search.mjs';
+import {readRankingRewardPreview} from './ranking-rewards.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -831,6 +832,11 @@ export async function handleRequest(request, env, ctx) {
           action:parts[4],reply,fail,cors});
       }
       return fail('game_route_not_found',404,cors);
+    }
+    if(path==='/api/v1/rankings/rewards'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      const result=await readRankingRewardPreview(env.DB,url.searchParams.get('kind'));
+      return result?reply(result,200,cors):fail('invalid_ranking_kind',400,cors);
     }
     if (path === '/api/v1/rankings' && request.method === 'GET') {
       await assertActive(env.DB,uid);

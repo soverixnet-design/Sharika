@@ -19,6 +19,10 @@ on:
       - '.github/workflows/sharika-worker-staging-publish.yml'
       - 'cloudflare/src/sellers.mjs'
       - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/ranking-rewards.mjs'
+      - 'cloudflare/migrations/0074_royal_ranking_reward_display.sql'
+      - 'cloudflare/test/ranking-rewards.test.mjs'
+      - 'cloudflare/src/admin.mjs'
       - 'cloudflare/src/admin-media.mjs'
       - 'cloudflare/migrations/0062_admin_media_assets.sql'
       - 'cloudflare/test/admin-media.test.mjs'
@@ -110,6 +114,10 @@ jobs:
           fi
       - name: Run backend tests
         run: npm run check
+      - name: Install additive ranking reward announcement schema in staging only
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0074_royal_ranking_reward_display.sql
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT COUNT(*) AS categories FROM sharika_rank_reward_policy"
       - name: Verify staging D1 has exchange settings before publish
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT diamonds_per_unit,coins_per_unit,revision FROM sharika_exchange_rate WHERE id=1"
