@@ -133,3 +133,33 @@ Still blocked: Production Firebase identity and auth validation; full Worker
 app deployment with Durable Objects and isolated rate-limit bindings;
 production media population; server-side wallet/recharge/agency/game audit;
 two-device voice QA; Android release build/signing; Play Store review.
+
+## Follow-up: Production Invite secrets and Firebase/CI audit (2026-11-08)
+
+- Fresh cryptographically random, **Production-only** credentials were generated
+  and verified as Cloudflare Worker `secret_text` bindings:
+  `INVITE_DEVICE_PEPPER` (one-device invite digest) and
+  `INVITE_BANK_ENCRYPTION_KEY_B64` (32-byte AES-GCM bank-data key).
+  Neither secret value is present in GitHub or this report, and neither was
+  copied from staging. Retain the Worker secret binding across future releases;
+  encrypted bank records would become unreadable if its key is lost.
+- The guarded production entry now fails readiness if either key is missing
+  or malformed, and `wrangler.production.jsonc` declares them required.
+  This addition is **source-only** until a separately reviewed application
+  deployment; the live Worker continues to serve its isolated 503 placeholder.
+- The Android bundle's `google-services.json` points to Firebase project
+  `sharika-voice-chat-app`; the Staging Worker uses the same project.
+  The Production Worker has **no** `FIREBASE_PROJECT_ID` binding. The decision
+  to share that identity provider or separately configure a Production Firebase
+  project is pending; never assume a token from another Firebase project is
+  valid. Production D1 accounts and balances remain isolated either way.
+- The staging Worker has additional bindings for the legacy Family Sheets
+  integration; they were **not** copied to Production, since Family has been
+  superseded by Agency. The Production DO and rate-limit bindings also remain
+  absent until the real application is explicitly reviewed for deployment.
+- Full local `npm run check` completed again: **638 tests passed, 0 failed**.
+  The runner has Java but no Gradle, Android SDK manager, or bundletool, so
+  no new AAB or merged-manifest verification was possible here.
+- The Production Worker has no public route, custom domain, `workers.dev`
+  subdomain, or preview URL. `api.sharika.app` is only a proposed endpoint,
+  with no DNS record; no Google Play publication was initiated.
