@@ -22,3 +22,9 @@ test('reward display does not misrepresent disabled admin policies as live prize
   assert.match(ui,/const active=!!preview\.policy\?\.enabled;/);
   assert.match(ui,/detail\.textContent=active\?prize\.detail:'Not active';/);
 });
+
+test('ranking artwork updates trigger a fresh staging Android APK',()=>{
+  const workflow=readFileSync(new URL(
+    '../../.github/workflows/sharika-android-staging-apk.yml',import.meta.url),'utf8');
+  assert.match(workflow,/      - 'app\/royal-ranking-v2\.css'/);
+});

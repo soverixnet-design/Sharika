@@ -58,6 +58,7 @@ on:
     paths:
       - 'android-staging/**'
       - 'app/royal-profile.css'
+      - 'app/royal-ranking-v2.css'
       - 'app/reference-profile.css'
       - 'app/reference-room.css'
       - 'app/golden-home.css'
