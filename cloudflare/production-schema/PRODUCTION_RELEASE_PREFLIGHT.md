@@ -443,3 +443,33 @@ policy/application and the original Production/Staging Workers and data.
 No rollback is currently indicated. Next: verify owner login and alternate
 identity denial, then plan guarded functional tests in a separate release
 review before any real Production API route or Play Store publication.
+
+
+## Follow-up: owner mobile QA login independently verified (2026-11-09)
+
+- The owner provided a mobile screenshot showing the actual
+  `https://qa-api.sharika.app/` page with heading **Sharika QA Access** and
+  the expected data-free confirmation text (phone screenshot around 00:32
+  Asia/Muscat time). The screenshot alone cannot prove which identity signed
+  in, so a separate Cloudflare log verification was performed.
+- Read-only GET of the account's **Access authentication logs** returned an
+  `action: login`, `allowed: true` event at
+  **2026-11-08T20:31:56Z** for the QA Access application UUID
+  `f40580a8-1a45-4814-86fc-fb28921efd01`, authenticated as exactly
+  **`soverixnet@gmail.com`**. The Access user registry also shows this
+  exact owner's identity. This matches the mobile screenshot time and target.
+- **Owner identity and end-to-end Access sign-in are now verified.** The
+  previously demonstrated unauthenticated challenge remains confirmed.
+  An explicit signed-in **unapproved account denial test is still pending**;
+  do not infer that test passed merely from the single-email allow selector.
+- The test hostname still routes only to the isolated, no-binding
+  `sharika-qa-access-probe` Worker. It does **not** route to the guarded
+  `sharika-api-production` Worker. The successful QA page does **not**
+  verify Production Firebase, financial ledgers, room voice, games, media or
+  Android release readiness. No data migration or production rollout occurred.
+
+Next: run/record an authenticated unapproved-identity negative test using a
+separate existing test account if one is available; then review the remaining
+high-priority functional blockers and build/signing readiness. Keep the
+Production API fail-closed until those tests pass and a separate release
+approval is recorded.
