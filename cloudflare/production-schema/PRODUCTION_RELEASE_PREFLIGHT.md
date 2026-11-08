@@ -253,3 +253,32 @@ Durable Object migration and rate-limit bindings while keeping all public
 routes and schedules disabled. Reconcile existing Production secret bindings
 before deployment. A successful dry-run does **not** authorize enabling live
 wallet, game, recharge, or Play Store traffic.
+
+## Follow-up: actual Production Worker bundle staged, not deployed (2026-11-08)
+
+- Uploaded the CI-compiled `production-entry.js` full application bundle
+  (755,531 bytes) as a **new version only** of the distinct Cloudflare Worker
+  `sharika-api-production`. Cloudflare returned **version 7**,
+  `d0cc7612-fd69-4031-9ae9-7b3dade993f4`, annotated with source commit
+  `925ca3ae59b1a8e62e0ee69d98dad8a403fa70fc`.
+- Version-upload metadata kept the previous `d1`, `r2_bucket`, `secret_text`
+  and `plain_text` bindings. A read-only inspection of the new version's
+  resources confirmed all **12 intended existing bindings** were retained,
+  including the separate Production `DB` and `MEDIA_BUCKET`. Secret **values**
+  were neither read nor included in this report.
+- The latest **deployed** Worker remains the previous fail-closed maintenance
+  deployment `ba728d4d-7fec-4a4d-9567-c77d65be9d4d`, serving version 6
+  `f19395c0-ca4b-497c-a7f0-28ea35bafb2f` at 100%; the uploaded full
+  version 7 receives **0% traffic**. The Worker subdomain and previews remain
+  disabled, and the zone has **zero Worker routes**.
+- This version-only upload made **no D1 or R2 data changes**, applied **no
+  SQL or Durable Object migration**, and created **no live `VOICE_ROOMS`
+  Durable Object or action/finance rate-limit bindings**. It does not count
+  as a full Production Worker deployment or as end-to-end QA. The compiled
+  entry retains `RELEASE_REVIEW_APPROVED=false`, which forces HTTP 503.
+
+Next: review/apply the **new, isolated** SQLite Durable Object migration and
+Production rate-limit bindings through an explicitly guarded Worker
+deployment path (no old D1 migration replay); verify deployment/rollback,
+then run restricted Firebase, wallet/game/agency, media and two-device voice
+tests before approving any public URL or Production Play Store AAB.
