@@ -1,0 +1,60 @@
+name: Sharika Production Worker offline preflight
+
+on:
+  push:
+    branches:
+      - feature/sharika-production-schema-safety-20261108
+    paths:
+      - '.github/workflows/sharika-production-worker-preflight.yml'
+      - 'cloudflare/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-production-worker-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    name: Compile gated Production Worker without deploying
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reviewed production preparation branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node for Wrangler
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify fail-closed rules and safe schema locally
+        working-directory: cloudflare
+        run: |
+          set -euo pipefail
+          node --test test/production-entry.test.mjs
+          python3 test/production-schema-candidate.test.py
+          test "$(node -p "JSON.parse(require('fs').readFileSync('wrangler.production.jsonc','utf8')).vars.SHARIKA_PUBLIC_API_ENABLED")" = false
+
+      - name: Bundle Production entry and Durable Object without deployment
+        working-directory: cloudflare
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 --version
+          npx --yes wrangler@4 deploy --config wrangler.production.jsonc \
+            --dry-run --outdir ../production-worker-dry-run
+          test -d ../production-worker-dry-run
+          test "$(find ../production-worker-dry-run -maxdepth 1 -type f -name '*.js' | wc -l)" -ge 1
+          echo 'SHARIKA_PRODUCTION_WORKER_DRY_RUN_OK_NO_DEPLOYMENT'
+
+      - name: Save generated Worker bundle for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Production-Worker-Dry-Run
+          path: production-worker-dry-run/
+          if-no-files-found: error
+          retention-days: 14
