@@ -42,6 +42,7 @@ jobs:
           grep -F "row.action!=='recharge'" android-staging/staging-connection.js
           grep -F "event.kind!=='game_tournament'" android-staging/staging-connection.js
           node --test cloudflare/test/android-production-routing.test.mjs
+          node --test android-staging/play-virtual-ui.test.mjs
 
       - name: Complete safety, source and Cloudflare game/voice checks
         run: |
@@ -161,6 +162,8 @@ jobs:
           node --check "$RUNNER_TEMP/release-connection.js"
           if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' ]]; then
             grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"
+            unzip -Z1 "$bundle" | grep -Fx 'base/assets/play-virtual-ui.js'
+            unzip -p "$bundle" base/assets/index.html | grep -F 'id="sharika-play-virtual-ui"'
             if grep -Fq 'https://sharika-api-staging.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"; then
               echo 'Refusing Play candidate with a staging URL embedded in connection.js'
               exit 1

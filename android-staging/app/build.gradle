@@ -25,6 +25,10 @@ if (productionApiOrigin && !(productionApiOrigin ==~ /^https:\/\/[a-zA-Z0-9.-]+$
     throw new GradleException('SHARIKA_PLAY_API_ORIGIN must be an HTTPS origin without a path')
 }
 def chosenPlayOrigin = productionApiOrigin ?: 'https://sharika-api-staging.soverixnet.workers.dev'
+// Only the separately deployed, non-redeemable Play backend receives the
+// closed-loop presentation. Never alter staging or its financial test screens.
+def playVirtualPresentation = productionApiOrigin ==
+    'https://sharika-api-play-virtual.soverixnet.workers.dev'
 def chosenPlayHost = new java.net.URI(chosenPlayOrigin).getHost()
 if (!chosenPlayHost || !(chosenPlayHost ==~ /^[a-zA-Z0-9.-]+$/)) {
     throw new GradleException('SHARIKA_PLAY_API_ORIGIN must contain a valid HTTPS hostname')
@@ -84,8 +88,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 104
-        versionName = productionApiOrigin ? '1.0.4' : '1.0.4-staging'
+        versionCode 105
+        versionName = productionApiOrigin ? '1.0.5' : '1.0.5-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -135,7 +139,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
         filter { String line ->
             line.replaceFirst('^<head>$', '''<head>
 <script id="sharika-startup-safety" src="./startup-safety.js"></script>
-<meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''')
+<meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''' +
+                    (playVirtualPresentation ? '\n<script id="sharika-play-virtual-ui" src="./play-virtual-ui.js"></script>' : ''))
                 .replace('<html lang="en">',
                     '<html lang="en" class="royal-premium royal-root">')
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
@@ -200,6 +205,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('royal-market.css'))
     from(rootProject.file('agency-center.css'))
     from(rootProject.file('agency-center.js'))
+    if (playVirtualPresentation) from(rootProject.file('play-virtual-ui.js'))
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }

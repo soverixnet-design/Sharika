@@ -299,9 +299,9 @@
         window.POLD.terms=['Terms & Conditions',[
           ['Eligibility','Sharika is a social voice-room app for people aged 13 and older.'],
           ['Virtual items','Coins, diamonds, gifts and cosmetics are virtual items for use inside Sharika only. They have no cash value, cannot be withdrawn, sold, redeemed for money or transferred to external sellers.'],
-          ['Purchases','Any paid in-app coin packages available in this Google Play edition are purchased through Google Play Billing. Purchases do not create a financial account or entitlement to a cash payout.'],
-          ['Gifts and room rewards','Virtual gifts use virtual coins. Room owners may earn non-redeemable virtual coin rewards for gifts inside their rooms. No salary, Agency or BD cash commission is offered.'],
-          ['Unavailable features','This edition does not offer seller recharge, cash withdrawals, cash rewards, referral payouts, salary transfers, betting games or chance-based Lucky Gifts.'],
+          ['Coin packs','If digital coin packs become available, they can only be purchased through Google Play Billing. Virtual items have no real-world cash value.'],
+          ['Gifts and room rewards','Virtual gifts use virtual coins. Room owners may receive non-redeemable virtual coin rewards for gifts inside their rooms.'],
+          ['Closed-loop use','Coins, gifts and rewards are only for activities inside Sharika. They cannot be exchanged for money or sold to third parties.'],
           ['Conduct and account','Follow community rules, respect moderation, and contact Customer Service for support or account deletion. We may restrict abusive accounts.']]];
         const age=window.POLD.privacy?.[1]?.find(row=>row[0]==='Children and teens');
         if(age)age[1]='Sharika is for people aged 13 and older. This Google Play edition disables betting games and Lucky Gifts for everyone.';
@@ -734,6 +734,11 @@
     ...roleNumbers.map(number=>premiumItem('role-frame-'+String(number).padStart(2,'0'),
       'Royal Role Frame '+number,'role'))
   );
+  playModeReady.then(isPlay=>{
+    if(!isPlay)return;
+    const item=SOVERA_FRAMES.find(frame=>frame.id==='coin-seller-royal');
+    if(item)item.name='Royal Crown · Official';
+  });
   SOVERA_ENTRIES.push(...Array.from({length:8},(_,i)=>{
     const key=String(i+1).padStart(2,'0');
     return {id:'svip-entry-'+key,name:'SVIP '+(i+1)+' Royal Arrival',
@@ -9568,7 +9573,7 @@
       // Do not advertise it in the Play edition, even during startup.
       (playStoreMode===false ||
        (row.action!=='recharge' &&
-        !/\b(?:coin seller|external recharge|official recharge)\b/i.test(
+        !/\b(?:coin seller|recharge|salary|cash.?out|withdraw|commission|cash reward|money transfer|payout|earn money)\b/i.test(
           row.title+' '+String(row.subtitle||''))))).slice(0,10):[];
     const cards=approved.map(row=>({
       t:row.title,s:String(row.subtitle||'').slice(0,160),
@@ -12307,6 +12312,7 @@
   }
   let rankingRequest=0;
   function openRoyalRankingRewardCenter(){
+    if(playStoreMode!==false)return toast('Prize rankings are not available in this edition.');
     if(!session){window.showAuth('welcome');return;}
     const kinds={0:'lucky',1:'rich',2:'charm',3:'room',4:'noble',5:'games',6:'recharge'};
     const kind=kinds[window.rtab];
@@ -13027,8 +13033,11 @@
     const tabs=document.getElementById('sh-week-tabs');
     const list=document.getElementById('sh-week-list');
     if(!tabs||!list)return;
-    const options=[
+    const options=playStoreMode===false?[
       {kind:'recharge',title:'Top Recharge'},
+      {kind:'charm',title:'Top Gift'},
+      {kind:'room',title:'Top Room'}
+    ]:[
       {kind:'charm',title:'Top Gift'},
       {kind:'room',title:'Top Room'}
     ];
@@ -13077,7 +13086,7 @@
       tabs.appendChild(button);
       buttons.set(option.kind,button);
     }
-    select('recharge');
+    select(playStoreMode===false?'recharge':'charm');
   };
 
   // Real Notifications inbox. Official notices/rewards/gifts/events are not chats.
@@ -13147,7 +13156,9 @@
     notificationPanel.setAttribute('aria-label','Notifications');
     notificationPanel.innerHTML='<div class="sh-notify-head">'+
       '<button class="sh-notify-action" type="button" id="sh-notify-back">‹ Back</button>'+
-      '<div><h2>🔔 Notifications</h2><p>Receipts · recharge · shop · Family · BD · official notices</p></div>'+
+      '<div><h2>🔔 Notifications</h2><p>'+
+      (playStoreMode===false?'Receipts · recharge · shop · Family · BD · official notices':
+        'Gifts · friends · community updates · official notices')+'</p></div>'+
       '</div><div class="sh-notify-head">'+
       '<span id="sh-notify-unread"></span>'+
       '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
