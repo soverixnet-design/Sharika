@@ -188,6 +188,63 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Only after the signed Play candidate has passed source, build,
+      # signature and packaging checks, update the explicitly isolated
+      # non-redeemable closed-test Worker. This never publishes to Google Play,
+      # deploys the shared staging Worker, or migrates either D1 database.
+      - name: Verify isolated Play login backend target
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+        env:
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CF_TOKEN"
+          test "$CF_ACCOUNT" = 'd81cf7c48fb9b36d468cb0a08720cd74'
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const c=JSON.parse(readFileSync('cloudflare/wrangler.play.virtual.jsonc','utf8'));
+          const db=c.d1_databases?.[0];
+          const r2=c.r2_buckets?.[0];
+          if(c.name!=='sharika-api-play-virtual' ||
+             c.main!=='src/voice-worker.mjs' || c.workers_dev!==true ||
+             c.vars?.SHARIKA_ENV!=='play_virtual' ||
+             c.vars?.FIREBASE_PROJECT_ID!=='sharika-voice-chat-app' ||
+             c.vars?.SHARIKA_PLAY_VIRTUAL_ONLY!=='true' ||
+             c.vars?.SHARIKA_PLAY_ISOLATED_DATA!=='true' ||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             c.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false' ||
+             c.d1_databases?.length!==1 || db?.binding!=='DB' ||
+             db?.database_name!=='sharika-play-virtual' ||
+             db?.database_id!=='5b151101-1ac0-4b13-ab8e-e41cb06014fa' ||
+             c.r2_buckets?.length!==1 || r2?.binding!=='MEDIA_BUCKET' ||
+             r2?.bucket_name!=='sharika-play-virtual-media')
+            throw Error('Refusing to deploy an unverified Play-only Worker target');
+          console.log('Isolated virtual-only Worker, D1 and R2 target verified');
+          NODE
+
+      - name: Package isolated login backend without deploying
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.play.virtual.jsonc --outdir /tmp/sharika-play-virtual-auth
+
+      - name: Deploy isolated Play login backend
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.play.virtual.jsonc
+
+      - name: Check Play-only backend health after deployment
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 \
+            'https://sharika-api-play-virtual.soverixnet.workers.dev/health' \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const r=JSON.parse(s);if(!r.ok||r.environment!=='play_virtual'||r.auth_configured!==true)process.exit(1);console.log('Isolated Play backend healthy')})"
+
       - name: Publish direct AAB asset to GitHub
         # The integrated staging branch produces a private downloadable build
         # artifact only. A public prerelease is a separate release decision.
