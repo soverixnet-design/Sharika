@@ -6832,10 +6832,66 @@
         frame.gsel=Math.max(0,gifts.findIndex(g=>g.tab===frame.gtab));
         frame.G=gifts.map(g=>[htmlSafe(g.emoji||'🎁'),Number(g.price_coins),
           htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
-        if(typeof originalGiftOpen==='function') {
-          originalGiftOpen.call(giftButton);
+        // The bundled room giftSheet() refuses to open when no guest is on a
+        // microphone. A real catalog must remain browseable in an empty room;
+        // never invent a recipient just to make the old modal render.
+        const hasMicRecipients=(frame.seats||[]).some(seat=>
+          Number(seat?.i)>0&&!seat.empty&&!seat.lock&&seat.public_id);
+        function showGiftCatalogWithoutMic(){
+          frame.rec=[];
+          frame.qty=1;
+          const target=directGiftTarget
+            ?'🎁 Send to '+htmlSafe(directGiftTarget.name)+' · ID '+htmlSafe(directGiftTarget.id)
+            :'Select an occupied microphone seat to send a gift. You can browse the catalog now.';
+          const tabs=[{tab:0,label:'🎁 Gifts'},{tab:1,label:'👑 Luxury'},
+            {tab:2,label:'🍀 Lucky'}].filter(item=>gifts.some(g=>g.tab===item.tab));
+          frame.open('<h3>🎁 Virtual gifts</h3><div class="row">'+target+'</div>'+
+            '<div class="gtabs">'+tabs.map(item=>'<button type="button" data-gt="'+
+              item.tab+'" class="sh-verified-gift-category">'+item.label+'</button>').join('')+
+            '</div><div class="gifts"></div><div class="gbar">'+
+            '<div class="qty"><button type="button" class="sel" data-q="1">x1</button>'+
+            '<button type="button" data-q="5">x5</button>'+
+            '<button type="button" data-q="10">x10</button></div>'+
+            '<button type="button" class="send" id="snd"'+
+            (directGiftTarget?'':' disabled')+'>Send 🚀</button></div>');
+          const sheet=frame.$('sheet');
+          const grid=sheet?.querySelector('.gifts');
+          if(!sheet||!grid)return;
+          const renderGifts=()=>{
+            if(!gifts.some(g=>g.tab===frame.gtab))frame.gtab=tabs[0].tab;
+            if(gifts[frame.gsel]?.tab!==frame.gtab)
+              frame.gsel=gifts.findIndex(g=>g.tab===frame.gtab);
+            grid.className='gifts c'+frame.gtab;
+            grid.innerHTML=gifts.map((gift,index)=>gift.tab!==frame.gtab?'':
+              '<button type="button" class="gf'+(index===frame.gsel?' sel':'')+'" data-k="'+
+              index+'"><span>'+(imageSafe(gift.image_url)
+                ?'<img src="'+imageSafe(gift.image_url)+'" alt="" width="46" height="46">'
+                :htmlSafe(gift.emoji||'🎁'))+'</span><b>'+htmlSafe(gift.name)+'</b>🪙 '+
+              Number(gift.price_coins).toLocaleString('en-US')+'</button>').join('');
+            sheet.querySelectorAll('.sh-verified-gift-category').forEach(button=>
+              button.classList.toggle('sel',Number(button.dataset.gt)===frame.gtab));
+            grid.querySelectorAll('.gf').forEach(button=>{
+              button.onclick=()=>{frame.gsel=Number(button.dataset.k);renderGifts();};
+            });
+          };
+          sheet.querySelectorAll('.sh-verified-gift-category').forEach(button=>{
+            button.onclick=()=>{frame.gtab=Number(button.dataset.gt);renderGifts();};
+          });
+          sheet.querySelectorAll('.qty button').forEach(button=>{
+            button.onclick=()=>{
+              frame.qty=Number(button.dataset.q);
+              sheet.querySelectorAll('.qty button').forEach(other=>
+                other.classList.toggle('sel',other===button));
+            };
+          });
+          renderGifts();
+        }
+        if(typeof originalGiftOpen==='function'||!hasMicRecipients) {
+          if(hasMicRecipients&&typeof originalGiftOpen==='function')
+            originalGiftOpen.call(giftButton);
+          else showGiftCatalogWithoutMic();
           decorateGiftRecipients(frame);
-          if(directGiftTarget) {
+          if(directGiftTarget&&hasMicRecipients) {
             // Replace the old seat-only recipient chips with the verified
             // selected person. Sending always uses this exact public ID.
             const selected=frame.document.createElement('div');
