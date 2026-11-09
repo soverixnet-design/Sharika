@@ -2,9 +2,9 @@
 
 ## Release boundary
 
-This is a **code and CI candidate**, not a deployed or approved Google Play release. The existing staging Worker and D1 contain salary, BD/Agency, seller and referral ledgers. **Never enable the Play flag on that Worker or reuse its D1.** Do not migrate existing real-money balances into the Play database.
+This is an **isolated Play deployment in preparation**, not an approved Google Play release. The existing staging Worker and D1 contain salary, BD/Agency, seller and referral ledgers. **Never enable the Play flag on that Worker or reuse its D1.** Do not migrate existing real-money balances into the Play database.
 
-The Play API is a separate Worker, fresh D1 database, R2 bucket and Durable Object namespace. A starter configuration is in `cloudflare/wrangler.play.virtual.jsonc`. Replace `REPLACE_WITH_NEW_PLAY_D1_UUID` with an ID returned by creating a NEW D1 database, provision the named NEW R2 bucket, apply migrations to that NEW database, and bind new voice and purchase-verification secrets. Check all bindings and fresh data before deployment. Do not copy staging data or credentials that authorize cash payouts.
+The Play API is a separate Worker, fresh D1 database, R2 bucket and Durable Object namespace. Configuration is in `cloudflare/wrangler.play.virtual.jsonc`. On November 9, 2026, the dedicated APAC D1 `sharika-play-virtual` (`5b151101-1ac0-4b13-ab8e-e41cb06014fa`) was provisioned with all 81 migrations; it initially had zero users, wallet ledger entries, or purchases. Dedicated APAC bucket `sharika-play-virtual-media` and Worker `sharika-api-play-virtual` were also created, and a separate SFU app was configured with secret bindings. `https://sharika-api-play-virtual.soverixnet.workers.dev/health` returned 200; disabled finance/betting routes returned 403 and unauthenticated profile access returned 401. Do not copy staging data or credentials that authorize cash payouts.
 
 Required Play Worker variables (enforced before the Worker handles any request):
 
@@ -23,9 +23,9 @@ Android release `SHARIKA_PLAY_BUILD=true` blocks the same API families at the na
 ## Build and verification
 
 1. Run `cd cloudflare && npm run check`, plus `node --test test/play-virtual-only.test.mjs` and the SQLite migration tests.
-2. Provision the **new** Worker, DB and R2 bucket using the Play-specific config; verify no existing staging D1 ID is present. For production, set `SHARIKA_PLAY_API_ORIGIN=https://<new-play-worker-host>` and use the real upload key to create the AAB. Without the origin, CI makes a staging-backed **test-only candidate that must not be uploaded to Play**.
+2. Verify the new Worker, DB and R2 bucket using the Play-specific config; verify no existing staging D1 ID is present. This Personal Account branch builds with `SHARIKA_PLAY_API_ORIGIN=https://sharika-api-play-virtual.soverixnet.workers.dev` and the stored Play upload key. A signed AAB is not Play approval.
 3. In the new environment, verify HTTP 403 for `/api/v1/invites`, `/api/v1/agency/salary/transfer`, `/api/v1/sellers/transfer`, game bets, and game catalogs; verify account creation, virtual wallet/rooms/gifts, no salary/referral ledger entries, disabled Lucky Gifts, Play Billing verified purchase and idempotency.
-4. Run on a device with a new account, check no Seller, Salary, Invite Reward, withdrawal or bet UI is reachable, and the Terms show **no cash value**. Verify screenshots and Store listing likewise contain no payouts or money-making promises.
+4. Run on a device with a new account, check no Seller, Salary, Invite Reward, withdrawal or bet UI is reachable, and the Terms show **no cash value**. Check real microphone, room audio, and push configuration before distribution. Verify screenshots and Store listing likewise contain no payouts or money-making promises.
 5. Review the Google Play Console **Financial features declaration** based on the actual final build. Distinguish virtual coins and reward points from regulated cash services, and do **not** declare “no financial features” unless the final Play policy definitions and app functionality support it. Google makes the final determination.
 
 ## Play Console declaration review (not submitted)

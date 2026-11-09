@@ -318,7 +318,9 @@ export async function handleRequest(request, env, ctx) {
     if (!env.DB) return fail('database_unavailable', 503, cors);
     try {
       await env.DB.prepare('SELECT 1 AS ok').first();
-      return reply({ ok: true, service: 'sharika-cloudflare-staging', environment: 'staging',
+      return reply({ ok: true,
+        service: playVirtualOnly(env)?'sharika-cloudflare-play-virtual':'sharika-cloudflare-staging',
+        environment: playVirtualOnly(env)?'play_virtual':'staging',
         auth_configured: !!env.FIREBASE_PROJECT_ID }, 200, cors);
     } catch (_) { return fail('database_unavailable', 503, cors); }
   }
@@ -423,12 +425,15 @@ export async function handleRequest(request, env, ctx) {
         const {member}=await roomAndMember(env.DB,roomId,uid);
         if(!member)return fail('join_room_first',403,cors);
       }
-      const coordinator=env.VOICE_ROOMS.getByName('sharika:presence:staging');
+      const coordinator=env.VOICE_ROOMS.getByName(playVirtualOnly(env)
+        ?'sharika:presence:play-virtual':'sharika:presence:staging');
       await coordinator.presenceTouch(uid,roomId);
       // Activity accounting is best-effort: reporting must never prevent a
       // verified listener from keeping voice-room presence alive.
-      try{await recordAgencyRoomActivity(env.DB,uid,roomId);}
-      catch(error){console.warn('agency_activity_write_failed',String(error));}
+      if(!playVirtualOnly(env)){
+        try{await recordAgencyRoomActivity(env.DB,uid,roomId);}
+        catch(error){console.warn('agency_activity_write_failed',String(error));}
+      }
       return reply({ok:true,window_seconds:90},200,cors);
     }
     if(path === '/api/v1/me/avatar' && request.method==='PUT') {

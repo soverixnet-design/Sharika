@@ -9,7 +9,7 @@ on:
       # Compile-check the isolated production preparation branch. This job
       # creates a staging-backed test artifact; it never publishes to Play.
       - feature/sharika-production-schema-safety-20261108
-      # A separate QA-only candidate with Play financial routes disabled.
+      # Virtual-only Personal Account edition, isolated from staging finance.
       - feature/sharika-safe-closed-test-20261109
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
@@ -132,11 +132,9 @@ jobs:
       - name: Build optimized release-format signed AAB
         working-directory: android-staging
         env:
-          # The gated production-preparation branch must not package the
-          # unrouted api.sharika.app endpoint as if it were a working release.
-          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' || github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109') && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN }}
-          # This remains a test candidate, NOT a Play publication artifact.
-          SHARIKA_PLAY_STAGING_CANDIDATE: 'true'
+          # Personal Play branch uses the isolated Worker, never staging.
+          SHARIKA_PLAY_API_ORIGIN: ${{ github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' && 'https://sharika-api-play-virtual.soverixnet.workers.dev' || (github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN) }}
+          SHARIKA_PLAY_STAGING_CANDIDATE: ${{ github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' && 'false' || 'true' }}
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
           SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
           SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
@@ -161,6 +159,13 @@ jobs:
           unzip -p "$bundle" base/assets/connection.js > "$RUNNER_TEMP/release-connection.js"
           unzip -p "$bundle" base/assets/royal-profile.css > "$RUNNER_TEMP/release-profile.css"
           node --check "$RUNNER_TEMP/release-connection.js"
+          if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' ]]; then
+            grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"
+            if grep -Fq 'https://sharika-api-staging.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"; then
+              echo 'Refusing Play candidate with a staging URL embedded in connection.js'
+              exit 1
+            fi
+          fi
           grep -F 'SHARIKA_CP_HERO_20261107' "$RUNNER_TEMP/release-connection.js"
           grep -F 'SHARIKA_ROYAL_LEVEL_20261107' "$RUNNER_TEMP/release-connection.js"
           grep -F 'playBillingPurchase' "$RUNNER_TEMP/release-connection.js"
