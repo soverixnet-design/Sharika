@@ -228,6 +228,19 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
       play_recharge_enabled:false,updated_at:r.updated_at})),
       read_only:actor.role!=='super'},200,cors);
   }
+  if(operation==='sellers/play-recharge-permission-audit'&&request.method==='GET'){
+    const rows=resultRows(await env.DB.prepare(
+      'SELECT a.id,au.public_no AS admin_no,su.public_no AS seller_no,'+
+      'a.allowed,a.reason,a.created_at FROM sharika_seller_recharge_permission_audit a '+
+      'JOIN sharika_users au ON au.auth_uid=a.actor_uid '+
+      'JOIN sharika_users su ON su.auth_uid=a.seller_uid '+
+      'ORDER BY a.id DESC LIMIT 100'
+    ).all());
+    return reply({changes:rows.map(r=>({id:r.id,
+      admin_public_id:showId(r.admin_no),seller_public_id:showId(r.seller_no),
+      allowed:!!r.allowed,reason:r.reason,created_at:r.created_at})),
+      read_only:true},200,cors);
+  }
   if(operation==='sellers/transfers'&&request.method==='GET'){
     const rows=resultRows(await env.DB.prepare(
       'SELECT t.id,su.public_no AS seller_no,ru.public_no AS recipient_no,'+
