@@ -1204,8 +1204,12 @@ test('each verified join resets the chat/gift boundary and announces the real na
     const headers={Authorization:'Bearer '+await token()};
     const endpoint='https://example.test/api/v1/rooms/10000001';
     const env={DB:db,VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project};
-    const join=await handleRequest(new Request(endpoint+'/join',{method:'POST',headers}),env);
+    const deferred=[];
+    const ctx={waitUntil(task){deferred.push(task);}};
+    const join=await handleRequest(new Request(endpoint+'/join',{method:'POST',headers}),env,ctx);
     assert.equal(join.status,200);
+    assert.equal(deferred.length,1,'entry animation completes after the verified join');
+    await Promise.all(deferred);
     assert.deepEqual(records[0],['presenceJoin',principal,'10000001']);
     assert.deepEqual(records[1],['begin',principal,62]);
     assert.deepEqual(records[2],['entry',principal,'10000003','Verified Room Guest','standard']);
