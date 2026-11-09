@@ -5484,7 +5484,10 @@
     } catch (error) {
       if(attempt===authAttemptId && account?.signedIn && account.emailVerified)
         showConnectionRecovery(error);
-      return {ok:false,msg:errText(error)};
+      const message = errText(error);
+      if (/supplied auth credential|invalid.credential|wrong.password|invalid.login.credentials/i.test(message))
+        return {ok:false,msg:'Email or password did not match. If you signed up with Google, use Google sign-in. Otherwise tap Forgot password.'};
+      return {ok:false,msg:message};
     }
   };
   let googleLoginBusy = false;
@@ -5550,6 +5553,28 @@
     previousAuthRender();
     const google = document.getElementById('wg');
     if (google) google.onclick = googleLogin;
+    const reset = document.getElementById('af');
+    if (reset) reset.onclick = async function () {
+      if (reset.disabled) return;
+      const field = document.getElementById('aid');
+      const status = document.getElementById('ae');
+      const email = String(field?.value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (status) status.textContent = 'Enter your email address above to reset your password.';
+        return;
+      }
+      reset.disabled = true;
+      try {
+        await native('passwordReset', {email});
+        if (status) status.textContent =
+          'If this email has a password account, Firebase will send a reset link. Check your inbox and spam.';
+      } catch (error) {
+        if (status) status.textContent =
+          'Password reset is temporarily unavailable. Try again later.';
+      } finally {
+        reset.disabled = false;
+      }
+    };
     for (const id of ['wgs','ag']) {
       const guest = document.getElementById(id);
       if (guest) {
