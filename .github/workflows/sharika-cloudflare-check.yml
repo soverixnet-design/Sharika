@@ -10,6 +10,7 @@ on:
       - fix/sharika-two-way-mic-direct-seat-20261031
       - feature/sharika-family-fruit-royale-sync-20261104
       - feature/sharika-family-bd-crystal-ledger-20261103
+      - feature/sharika-full-integrated-staging-20261107
     paths:
       - 'cloudflare/**'
       - '.github/workflows/sharika-cloudflare-check.yml'
