@@ -88,7 +88,7 @@ test('Play Wallet opens the verified server balance and transactions without rec
   assert.deepEqual(calls.filter(c=>Array.isArray(c)&&c[0]!=='openSheet'),[['GET','/wallet']]);
 });
 
-test('Play Games shows three casual activities, never calls bet or wallet APIs',()=>{
+test('Play Games shows four casual activities including Gaddy, never calls bet or wallet APIs',()=>{
   const listeners=new Map();
   const elements=[];
   const element=tag=>{
@@ -109,9 +109,15 @@ test('Play Games shows three casual activities, never calls bet or wallet APIs',
   runInNewContext(script,{document:doc,window,setTimeout});
   window.sharikaOpenPlayCasualGames(doc,null);
   assert.equal(visible,true);
-  assert.deepEqual(sheet.children[2].children.slice(0,3).map(node=>node.textContent),
-    ['💎 Royal Memory Match','⚡ Quick Tap Challenge','🧠 Brain Quiz']);
-  sheet.children[2].children[1].onclick();
+  assert.deepEqual(sheet.children[2].children.slice(0,4).map(node=>node.textContent),
+    ['🍔 Sovera Gaddy Game','💎 Royal Memory Match','⚡ Quick Tap Challenge','🧠 Brain Quiz']);
+  sheet.children[2].children[0].onclick();
+  assert.match(sheet.children[2].children[0].textContent,/Gaddy Kitchen Rush/);
+  const gaddyChoices=sheet.children[2].children[3];
+  gaddyChoices.children[0].onclick();
+  assert.match(sheet.children[2].children[2].textContent,/Order 2\/10/);
+  sheet.children[2].children[4].onclick();
+  sheet.children[2].children[2].onclick();
   const crown=sheet.children[2].children[1];
   for(let i=0;i<15;i++)crown.onclick();
   assert.match(sheet.children[2].children[0].textContent,/Completed in/);

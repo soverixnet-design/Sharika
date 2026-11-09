@@ -170,12 +170,47 @@
     };
     function menu(){
       screen='menu';const content=container();
-      content.append(button('💎 Royal Memory Match',memory),
+      content.append(button('🍔 Sovera Gaddy Game',gaddy),
+        button('💎 Royal Memory Match',memory),
         button('⚡ Quick Tap Challenge',quickTap),
         button('🧠 Brain Quiz',quiz));
       if(!portal)content.append(button('Close Games',()=>overlay.classList.remove('on')));
     }
     function back(content){content.append(button('← All Games',menu));}
+    function gaddy(){
+      screen='gaddy';const content=container();
+      const intro=el('p','👨‍🍳 Gaddy Kitchen Rush · Match the food order!',
+        'font-size:14px;color:#ffe3ac');
+      const request=el('div','','padding:15px;text-align:center;font-size:45px;'+
+        'background:#472360;border:1px solid #d7b36e;border-radius:20px');
+      const status=el('p','','font-size:14px;font-weight:800');
+      const choices=el('div','','display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px');
+      const foods=['🍔','🍕','🍟','🍩','🍇','🍒'];
+      const orders=['🍔','🍟','🍕','🍇','🍩','🍒','🍔','🍕','🍟','🍩'];
+      let round=0,correct=0;
+      function advance(){
+        if(!active||screen!=='gaddy')return;
+        choices.replaceChildren();
+        if(round===orders.length){
+          request.textContent='🎉';
+          status.textContent='Gaddy challenge complete · '+correct+'/10 correct!';
+          choices.append(button('Play Gaddy again',gaddy));return;
+        }
+        const target=orders[round];
+        request.textContent=target;
+        status.textContent='Order '+(round+1)+'/10 · Correct: '+correct;
+        foods.forEach(food=>{
+          const item=button(food,()=>{
+            if(!active||screen!=='gaddy')return;
+            if(food===target)correct++;
+            round++;advance();
+          });
+          item.style.fontSize='27px';item.style.minHeight='64px';
+          choices.append(item);
+        });
+      }
+      content.append(intro,request,status,choices);back(content);advance();
+    }
     function memory(){
       screen='memory';const content=container();
       const status=el('p','Find four matching pairs.','font-size:14px');
