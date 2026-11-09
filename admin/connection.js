@@ -16,6 +16,11 @@
     support_reply:'Support inbox and reply',coin_recharge:'Credit user coins'
   };
   const NAV_ALL=(window.NAV||[]).slice();
+  if(!NAV_ALL.some(item=>item[0]==='playTesters')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='users');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['playTesters','🧪','Play Closed-Test Users']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='cosmetics')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='gifts');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -721,6 +726,40 @@
     };
     let timer;
     input.oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,250);};
+    await refresh();
+  };
+  P.playTesters=async function () {
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Play testers','Only verified Super Admin may see this view.');
+      return;
+    }
+    root.innerHTML='<div class="card"><h3>🧪 Google Play Closed-Test Users</h3>'+
+      '<p class="n">Read-only Play testing database. These new IDs are separate from staging IDs; '+
+      'the old ID is shown only when both records belong to the same verified Firebase account. '+
+      'No coins, gifts, staff privileges or profile data are moved.</p>'+
+      '<div class="row"><input class="field" id="play-user-search" '+
+      'placeholder="Search Play ID or name" autocomplete="off">'+
+      '<button type="button" class="btn s" id="play-user-refresh">Refresh</button></div>'+
+      '<div id="play-user-list" role="status">Loading closed-test users…</div></div>';
+    const input=byId('play-user-search'),list=byId('play-user-list');
+    async function refresh(){
+      list.textContent='Loading verified Play users…';
+      try {
+        const q=input.value.trim();
+        const data=await api('GET','play-testers'+(q?'?q='+encodeURIComponent(q):''));
+        list.innerHTML='<p class="n">Found '+fmt((data.users||[]).length)+
+          ' Play accounts (latest 100 maximum). The table has no edit controls.</p>'+
+          window.T(['Play ID','Old staging ID (same Google identity)','Name',
+            'Country','Status','Created'],(data.users||[]).map(u=>[
+            esc(u.public_id),esc(u.previous_staging_id||'Not found'),
+            esc(u.name),esc(u.country),esc(u.status),esc(u.created_at)
+          ]));
+      }catch(error){list.textContent='Play tester list unavailable: '+error.message;}
+    }
+    byId('play-user-refresh').onclick=refresh;
+    let timer;
+    input.oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,300);};
     await refresh();
   };
   P.rooms=async function () {
