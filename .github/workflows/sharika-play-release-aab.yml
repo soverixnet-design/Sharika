@@ -1,24 +1,12 @@
-name: Sharika Play Store AAB candidate
+name: Sharika 1.0.7 isolated Android AAB diagnostic
 
 on:
   push:
     branches:
-      - feature/sharika-play-release-aab-20261107
-      - feature/sharika-play-billing-20261107
-      - feature/sharika-full-integrated-staging-20261107
-      # Compile-check the isolated production preparation branch. This job
-      # creates a staging-backed test artifact; it never publishes to Play.
-      - feature/sharika-production-schema-safety-20261108
-      # Virtual-only Personal Account edition, isolated from staging finance.
-      - feature/sharika-safe-closed-test-20261109
-      - feature/sharika-play-tester-identity-admin-20261109
-      - feature/sharika-play-symbol-diagnostics-20261109
       - feature/sharika-107-datastore-symbol-experiment-20261109
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
-      - 'app/**'
-      - 'cloudflare/**'
   workflow_dispatch:
 
 permissions:
@@ -30,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Checkout current candidate
         uses: actions/checkout@v4
@@ -38,7 +26,6 @@ jobs:
           persist-credentials: false
 
       - name: Verify committed Closed Testing UI safety gates
-        if: (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || (github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || (github.ref == 'refs/heads/feature/sharika-play-symbol-diagnostics-20261109' || github.ref == 'refs/heads/feature/sharika-107-datastore-symbol-experiment-20261109')))
         run: |
           set -euo pipefail
           grep -F 'if(playStoreMode!==false)return;' android-staging/staging-connection.js
@@ -134,7 +121,6 @@ jobs:
           fi
 
       - name: Verify candidate DataStore dependency resolution
-        if: github.ref == 'refs/heads/feature/sharika-107-datastore-symbol-experiment-20261109'
         working-directory: android-staging
         run: |
           set -euo pipefail
@@ -146,8 +132,8 @@ jobs:
         working-directory: android-staging
         env:
           # Personal Play branch uses the isolated Worker, never staging.
-          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || (github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || (github.ref == 'refs/heads/feature/sharika-play-symbol-diagnostics-20261109' || github.ref == 'refs/heads/feature/sharika-107-datastore-symbol-experiment-20261109'))) && 'https://sharika-api-play-virtual.soverixnet.workers.dev' || (github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN) }}
-          SHARIKA_PLAY_STAGING_CANDIDATE: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || (github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || (github.ref == 'refs/heads/feature/sharika-play-symbol-diagnostics-20261109' || github.ref == 'refs/heads/feature/sharika-107-datastore-symbol-experiment-20261109'))) && 'false' || 'true' }}
+          SHARIKA_PLAY_API_ORIGIN: https://sharika-api-play-virtual.soverixnet.workers.dev
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'false'
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
           SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
           SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
@@ -190,7 +176,6 @@ jobs:
           echo 'SHARIKA_PLAY_STORE_AAB_PACKAGING_AND_SIGNATURE_OK'
 
       - name: Inspect native symbols in diagnostics candidate
-        if: (github.ref == 'refs/heads/feature/sharika-play-symbol-diagnostics-20261109' || github.ref == 'refs/heads/feature/sharika-107-datastore-symbol-experiment-20261109')
         working-directory: android-staging
         run: |
           set -euo pipefail
@@ -219,7 +204,6 @@ jobs:
           fi
 
       - name: Save native symbol diagnostics if generated
-        if: (github.ref == 'refs/heads/feature/sharika-play-symbol-diagnostics-20261109' || github.ref == 'refs/heads/feature/sharika-107-datastore-symbol-experiment-20261109')
         uses: actions/upload-artifact@v4
         with:
           name: Sharika-native-debug-symbols-diagnostics
@@ -235,21 +219,3 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish direct AAB asset to GitHub
-        # The integrated staging branch produces a private downloadable build
-        # artifact only. A public prerelease is a separate release decision.
-        if: github.ref == 'refs/heads/feature/sharika-play-release-aab-20261107' || github.ref == 'refs/heads/feature/sharika-play-billing-20261107'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TAG="sharika-play-aab-${GITHUB_SHA:0:8}"
-          if gh release view "$TAG" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
-            echo 'Release tag exists; refusing to overwrite signed AAB.'
-            exit 1
-          fi
-          gh release create "$TAG" Sharika-Play-Store-Candidate.aab \
-            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
-            --title 'Sharika — Android App Bundle candidate' \
-            --notes 'Signed AAB test candidate for current Sharika version defined by Gradle, target API 36 and package com.soverixnet.sharika. Includes Google Play Billing 9.1 integration and a server-verified once-only coin ledger. If SHARIKA_PLAY_API_ORIGIN is not configured the bundle points to STAGING, where Play purchases remain disabled: DO NOT SUBMIT this test candidate to Google Play. A dedicated Play signing key, production Worker, verified products and Play Console declarations are required for publication.' \
-            --prerelease
