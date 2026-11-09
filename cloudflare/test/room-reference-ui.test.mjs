@@ -138,15 +138,23 @@ test('one tap shows a room joining shell and forbids overlapping join requests',
   assert.match(premium,/\.roomwrap\.on\.sh-room-awaiting\.sh-room-joining/);
   assert.match(ui,/const joined=await joinRoomWithPassword\(room\)/);
   assert.match(ui,/if\(!joined\)return/);
+  const join=ui.slice(ui.indexOf('window.openRoom=async function(room) {'),
+    ui.indexOf('const originalLeaveRoom=window.leaveRoom'));
+  assert.match(join,/finally\s*\{[\s\S]*?roomEntryBusyToken===currentToken\)roomEntryBusyToken=null/,
+    'every settled join must free later room taps');
+  assert.match(join,/if\(!roomOpened&&currentToken===roomEntryToken\)\{/,
+    'cancelled or failed joins must remove the loading shell');
 });
 
-test('join starts each verified visit before its arrival event with parallel independent reads',()=>{
+test('join establishes a private visit boundary before a nonblocking arrival animation',()=>{
   const join=worker.slice(worker.indexOf("action === 'join' && request.method === 'POST'"),
     worker.indexOf("action === 'leave' && request.method === 'POST'"));
-  assert.match(join,/\[latestGift,entrant,equipped,svipLevel\]=await Promise\.all\(\[/);
+  assert.match(join,/const entryDetails=Promise\.all\(\[/);
   assert.match(join,/await coordinator\.beginRoomVisit\(uid,Number\(latestGift\?\.id\)\|\|0\)/);
   assert.ok(join.indexOf('await coordinator.beginRoomVisit')<
     join.indexOf('await coordinator.roomEntryAnnounce'));
+  assert.match(join,/ctx\.waitUntil\(announceEntry\.catch\(/,
+    'verified joins should not wait for cosmetic entry effects');
 });
 
 test('top room card is shorter in width but thicker without changing microphone seat sizes',()=>{
