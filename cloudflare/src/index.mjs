@@ -1498,24 +1498,34 @@ export async function handleRequest(request, env, ctx) {
         // event. Prior chat, gift receipts and entries stay in the audit
         // store, but this visitor cannot replay them even with after=0.
         if(env.VOICE_ROOMS){
-          // These reads are independent. Serial D1 round-trips delayed the
-          // first room entry on mobile networks even after authorization.
-          const [latestGift,entrant,equipped,svipLevel]=await Promise.all([
-            env.DB.prepare('SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?')
-              .bind(roomId).first(),
+          // The gift cursor is security-sensitive: finish it and establish
+          // the visitor's private message boundary BEFORE returning a join.
+          // Entry cosmetics are independent and must not add three more D1
+          // reads plus a second Durable Object round-trip to mobile latency.
+          const latestGift=await env.DB.prepare(
+            'SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?'
+          ).bind(roomId).first();
+          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+          await coordinator.beginRoomVisit(uid,Number(latestGift?.id)||0);
+          const entryDetails=Promise.all([
             assertActive(env.DB,uid),
             readEquipped(env.DB,uid),
             readSvipLevel(env.DB,uid)
           ]);
-          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
-          await coordinator.beginRoomVisit(uid,Number(latestGift?.id)||0);
-          const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
-            ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
-              ?'svip-entry-'+String(svipLevel).padStart(2,'0')
-              :(entrant.entry_style||'');
-          // Record every verified join, including users without a paid entry effect.
-          await coordinator.roomEntryAnnounce(
-            uid,publicId(entrant.public_no),txt(entrant.name,80)||'Member',entry||'standard');
+          const announceEntry=entryDetails.then(async ([entrant,equipped,svipLevel])=>{
+            const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
+              ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
+                ?'svip-entry-'+String(svipLevel).padStart(2,'0')
+                :(entrant.entry_style||'');
+            // Genuine join notices still reach every active attendee; the
+            // visual effect may load after the verified room has opened.
+            await coordinator.roomEntryAnnounce(
+              uid,publicId(entrant.public_no),txt(entrant.name,80)||'Member',entry||'standard');
+          });
+          if(typeof ctx?.waitUntil==='function'){
+            ctx.waitUntil(announceEntry.catch(error=>
+              console.warn('sharika_room_entry_announcement_delayed',error.message)));
+          }else await announceEntry;
         }
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
       }
