@@ -188,6 +188,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # AABs cannot be installed directly on a phone. Produce an additional
+      # signed APK from exactly the same source and isolated Play API origin
+      # so a tester can verify Google / email login before Play publication.
+      # This is a private Actions artifact, not a Google Play upload or release.
+      - name: Build signed isolated Play login APK for device QA
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+        working-directory: android-staging
+        env:
+          SHARIKA_PLAY_API_ORIGIN: https://sharika-api-play-virtual.soverixnet.workers.dev
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'false'
+          SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test "$SHARIKA_UPLOAD_SIGNER_KIND" = 'play-upload'
+          gradle :app:assembleRelease --no-daemon --stacktrace
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -E "^package: name='com.soverixnet.sharika' versionCode='107' versionName='1.0.7'"
+          unzip -tqq "$apk"
+          unzip -Z1 "$apk" | grep -Fx 'assets/play-virtual-ui.js'
+          unzip -p "$apk" assets/connection.js | grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' >/dev/null
+          cp "$apk" Sharika-Play-Login-1.0.7-Device-QA.apk
+          sha256sum Sharika-Play-Login-1.0.7-Device-QA.apk
+          echo 'SHARIKA_PLAY_107_SIGNED_DEVICE_APK_OK'
+
+      - name: Keep installable Play login APK private for testing
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Play-Login-1.0.7-Device-QA-APK
+          path: android-staging/Sharika-Play-Login-1.0.7-Device-QA.apk
+          if-no-files-found: error
+          retention-days: 30
+
       # Only after the signed Play candidate has passed source, build,
       # signature and packaging checks, update the explicitly isolated
       # non-redeemable closed-test Worker. This never publishes to Google Play,
