@@ -46,6 +46,7 @@ jobs:
           grep -F "event.kind!=='game_tournament'" android-staging/staging-connection.js
           node --test cloudflare/test/android-production-routing.test.mjs
           node --test android-staging/play-virtual-ui.test.mjs
+          node --test android-staging/google-oauth-signing.test.cjs
 
       - name: Complete safety, source and Cloudflare game/voice checks
         run: |
@@ -216,6 +217,18 @@ jobs:
           cp "$apk" Sharika-Play-Login-1.0.8-Device-QA.apk
           sha256sum Sharika-Play-Login-1.0.8-Device-QA.apk
           echo 'SHARIKA_PLAY_108_SIGNED_DEVICE_APK_OK'
+
+      # A private APK is signed with the Play upload key, not necessarily the
+      # Google Play app-signing key. Check the *actual APK certificate* against
+      # the Firebase Android OAuth clients before asking testers to use Google.
+      - name: Verify QA APK signing certificate is registered for Google sign-in
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+        run: |
+          set -euo pipefail
+          apk=android-staging/app/build/outputs/apk/release/app-release.apk
+          signer_sha1="$($ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p')"
+          test -n "$signer_sha1"
+          node android-staging/google-oauth-signing.cjs "$signer_sha1"
 
       - name: Keep installable Play login APK private for testing
         if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
