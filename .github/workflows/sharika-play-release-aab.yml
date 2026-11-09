@@ -12,6 +12,8 @@ on:
       # Virtual-only Personal Account edition, isolated from staging finance.
       - feature/sharika-safe-closed-test-20261109
       - feature/sharika-play-tester-identity-admin-20261109
+      # Login recovery candidate: artifact only, never a Play publication.
+      - fix/sharika-play-auth-20261109
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
@@ -36,7 +38,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify committed Closed Testing UI safety gates
-        if: (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109')
+        if: (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109')
         run: |
           set -euo pipefail
           grep -F 'if(playStoreMode!==false)return;' android-staging/staging-connection.js
@@ -135,8 +137,8 @@ jobs:
         working-directory: android-staging
         env:
           # Personal Play branch uses the isolated Worker, never staging.
-          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109') && 'https://sharika-api-play-virtual.soverixnet.workers.dev' || (github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN) }}
-          SHARIKA_PLAY_STAGING_CANDIDATE: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109') && 'false' || 'true' }}
+          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109') && 'https://sharika-api-play-virtual.soverixnet.workers.dev' || (github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN) }}
+          SHARIKA_PLAY_STAGING_CANDIDATE: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109') && 'false' || 'true' }}
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
           SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
           SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
@@ -161,7 +163,7 @@ jobs:
           unzip -p "$bundle" base/assets/connection.js > "$RUNNER_TEMP/release-connection.js"
           unzip -p "$bundle" base/assets/royal-profile.css > "$RUNNER_TEMP/release-profile.css"
           node --check "$RUNNER_TEMP/release-connection.js"
-          if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' || "$GITHUB_REF" == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' ]]; then
+          if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' || "$GITHUB_REF" == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-play-auth-20261109' ]]; then
             grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"
             unzip -Z1 "$bundle" | grep -Fx 'base/assets/play-virtual-ui.js'
             unzip -p "$bundle" base/assets/index.html | grep -F 'id="sharika-play-virtual-ui"'

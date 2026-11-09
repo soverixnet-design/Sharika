@@ -328,7 +328,12 @@ export async function handleRequest(request, env, ctx) {
   let actor;
   try { actor = await verifyFirebaseToken(request.headers.get('authorization'), env.FIREBASE_PROJECT_ID); }
   catch (_) { return fail('identity_provider_unavailable', 503, cors); }
-  if (!actor || !actor.verified) return fail('not_authenticated', 401, cors);
+  // The isolated Play closed-test Worker has a separate D1 and no cash
+  // redemption. It may create a virtual test profile from a valid Firebase
+  // email/password token before email verification. Other environments must
+  // continue to require a verified email identity.
+  if (!actor || (!actor.verified && !playVirtualConfigured(env)))
+    return fail('not_authenticated', 401, cors);
 
   const uid = actor.uid;
   // Per-user edge throttling for sensitive state changes; safe read-only

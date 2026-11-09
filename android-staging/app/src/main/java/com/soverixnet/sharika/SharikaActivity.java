@@ -998,6 +998,14 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false, null, safe(task.getException())));
                 return;
             }
+            // In the isolated Play virtual-only test edition, Firebase's
+            // password credential is enough to start a virtual profile.
+            // The standard staging build retains email verification.
+            if (BuildConfig.SHARIKA_PLAY_BUILD &&
+                "https://sharika-api-play-virtual.soverixnet.workers.dev".equals(BuildConfig.SHARIKA_API_ORIGIN)) {
+                sendResult(id, result(true, identity(user), null));
+                return;
+            }
             user.sendEmailVerification().addOnCompleteListener(this, sent -> {
                 JSONObject account = identity(user);
                 try { account.put("verificationSent", sent.isSuccessful()); }
