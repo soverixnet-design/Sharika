@@ -665,6 +665,10 @@
     finally{clearTimeout(timer);}
   }
   async function open(prefer){
+    if(window.sharikaFinancialFeaturesEnabled?.()!==true){
+      window.sharikaToast?.('Agency earnings and salary are unavailable in the Google Play edition.');
+      return;
+    }
     lastPreferredView=prefer||'overview';
     ensurePanel();panel.hidden=false;stack=[];lastView=null;loading();
     const token=++generation;

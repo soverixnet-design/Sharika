@@ -287,8 +287,27 @@
     if(playStoreMode){
       const style=document.createElement('style');
       style.id='sharika-play-store-mode';
-      style.textContent='#sharika-recharge-seller-wallet,#rcl2{display:none!important}';
+      style.textContent='#sharika-recharge-seller-wallet,#rcl2,#pc,#qg,#qi,'+
+        '[data-m="invite"],#sh-bd-entry,#sh-agency-entry,#sh-host-entry,'+
+        '#stage-invite-code{display:none!important}';
       document.head.append(style);
+      clearIncomingInvite();
+      // The original web app retains its older terms; replace the packaged
+      // Play presentation so no seller, cash, betting or withdrawal promise appears.
+      const applyVirtualTerms=()=>{
+        if(!window.POLD)return;
+        window.POLD.terms=['Terms & Conditions',[
+          ['Eligibility','Sharika is a social voice-room app for people aged 13 and older.'],
+          ['Virtual items','Coins, diamonds, gifts and cosmetics are virtual items for use inside Sharika only. They have no cash value, cannot be withdrawn, sold, redeemed for money or transferred to external sellers.'],
+          ['Purchases','Any paid in-app coin packages available in this Google Play edition are purchased through Google Play Billing. Purchases do not create a financial account or entitlement to a cash payout.'],
+          ['Gifts and room rewards','Virtual gifts use virtual coins. Room owners may earn non-redeemable virtual coin rewards for gifts inside their rooms. No salary, Agency or BD cash commission is offered.'],
+          ['Unavailable features','This edition does not offer seller recharge, cash withdrawals, cash rewards, referral payouts, salary transfers, betting games or chance-based Lucky Gifts.'],
+          ['Conduct and account','Follow community rules, respect moderation, and contact Customer Service for support or account deletion. We may restrict abusive accounts.']]];
+        const age=window.POLD.privacy?.[1]?.find(row=>row[0]==='Children and teens');
+        if(age)age[1]='Sharika is for people aged 13 and older. This Google Play edition disables betting games and Lucky Gifts for everyone.';
+      };
+      if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',applyVirtualTerms,{once:true});
+      else applyVirtualTerms();
     }
     return playStoreMode;
   // Unknown mode must fail closed for payment routes; the Play build must
@@ -296,7 +315,12 @@
   }).catch(()=>{playStoreMode=true;return true;});
   // The Agency Center is a separate first-party, packaged WebView module.
   // It reuses this authenticated native bridge; no demo login or wallet.
-  window.sharikaAgencyApi=api;
+  window.sharikaFinancialFeaturesEnabled=()=>playStoreMode===false;
+  window.sharikaAgencyApi=async(...args)=>{
+    await playModeReady;
+    if(playStoreMode!==false)throw Error('Agency and salary features are unavailable in the Google Play edition');
+    return api(...args);
+  };
 
   // Super Admin owns WHERE a cosmetic appears. The server-owned inventory and
   // user-selected cosmetic decide WHICH image/animation is displayed.
@@ -479,6 +503,8 @@
     native('inviteClear').catch(()=>{});
   }
   async function claimPendingInviteAfterLogin(){
+    await playModeReady;
+    if(playStoreMode!==false){clearIncomingInvite();return;}
     if(redeemingIncomingInvite||!session?.user?.id||!deferredInviteCode)return;
     const viewer=session.user.id,code=deferredInviteCode;
     redeemingIncomingInvite=true;
@@ -5224,7 +5250,11 @@
       };
       yearSelect.addEventListener('change',refreshDays);
       monthSelect.addEventListener('change',refreshDays);
-      layer.querySelector('[name="invite_code"]').value=cachedSignup(account.email)?.invite_code||deferredInviteCode;
+      const inviteField=layer.querySelector('[name="invite_code"]');
+      playModeReady.then(()=>{
+        if(playStoreMode!==false){inviteField.closest('label').hidden=true;inviteField.value='';}
+        else inviteField.value=cachedSignup(account.email)?.invite_code||deferredInviteCode;
+      });
       let finished = false;
       function close() { if (finished) return; finished = true; layer.remove(); }
       layer.querySelector('#stage-profile-cancel').onclick = () => {
@@ -5240,7 +5270,7 @@
             birthdate:birthdateFromUi(form.elements.birth_year.value,
               form.elements.birth_month.value,form.elements.birth_day.value),
             country:manualCountryCode(form.elements.country.value),
-            invite_code:form.elements.invite_code.value.trim()
+            invite_code:playStoreMode===false?form.elements.invite_code.value.trim():''
           };
           const saved = await api('POST','/me',data);
           if(saved.invite_bonused)clearIncomingInvite();
@@ -5305,12 +5335,13 @@
       if (errText(error) !== 'profile_not_found') throw error;
       // Wait for Play Install Referrer before first registration, not on normal login.
       await invitePendingReady;
+      await playModeReady;
       const cached = form || cachedSignup(account.email);
       if (cached && cached.name && cached.dob && manualCountryCode(cached.country)) {
         try{
           const saved = await api('POST','/me',{
             name:cached.name,birthdate:cached.dob,country:manualCountryCode(cached.country),
-            invite_code:deferredInviteCode||cached.invite_code
+            invite_code:playStoreMode===false?(deferredInviteCode||cached.invite_code):''
           });
           if(saved.invite_bonused)clearIncomingInvite();
           try{localStorage.removeItem(META_KEY);}catch(_){}
@@ -5365,6 +5396,12 @@
       '<input class="field" id="stage-invite-code" maxlength="8" inputmode="numeric" '+
       'placeholder="Inviter 8-digit Sharika ID" autocomplete="off">');
     if(deferredInviteCode)auth.querySelector('#stage-invite-code').value=deferredInviteCode;
+    playModeReady.then(()=>{
+      if(playStoreMode!==false){
+        const input=auth.querySelector('#stage-invite-code');
+        if(input){input.previousElementSibling?.remove();input.remove();}
+      }
+    });
   }
   const inviteAuthRoot=document.getElementById('au');
   if(inviteAuthRoot){
@@ -9154,6 +9191,8 @@
   }
   let verifiedRechargeFetch=null;
   async function refreshVerifiedRechargeRate(){
+    await playModeReady;
+    if(playStoreMode!==false)return;
     if(!session)return;
     if(verifiedRechargeFetch)return verifiedRechargeFetch;
     verifiedRechargeFetch=(async()=>{
@@ -9257,7 +9296,7 @@
     document.head.appendChild(style);
   }
   async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
-    if(playStoreMode===true){toast('Seller recharge is unavailable in the Google Play edition.');return;}
+    if(playStoreMode!==false){toast('Seller recharge is unavailable in the Google Play edition.');return;}
     if(walletOnly)ensureSellerWalletStyle();
     window.openSheet('<h3>🪙 '+(walletOnly?'Seller Wallet':'Coin sellers')+
       '</h3><div id="sharika-seller-content">Loading verified seller data…</div>');
@@ -10410,51 +10449,15 @@
     root.id='sh-invite-page';
     root.innerHTML='<div class="sh-invite-head">'+
       '<button class="sh-invite-back" type="button" aria-label="Close invites">‹</button>'+
-      '<div><div class="sh-invite-kicker">✦ SHARIKA ✦</div><h1>👑 Invite Friends</h1></div></div>'+
+      '<div><div class="sh-invite-kicker">✦ SHARIKA ✦</div><h1>👑 Virtual-only edition</h1></div></div>'+
       '<div class="sh-invite-panel">'+
-      '<h2 class="sh-invite-title">Your verified invite code</h2>'+
-      '<div id="sh-play-invite-code" style="font-size:32px;font-weight:900;color:#ffe09e">…</div>'+
-      '<p id="sh-play-invite-info" class="sh-invite-sub">Loading rewards…</p>'+
-      '<button id="sh-play-copy" class="sh-invite-gold" type="button">Copy Invite Link</button>'+
-      '<button id="sh-play-share" class="sh-invite-gold" type="button">Share Invite</button>'+
-      '<div id="sh-play-invite-claim" style="margin-top:24px">'+
-      '<label for="sh-play-friend-code">Enter a friend’s invite code</label>'+
-      '<input id="sh-play-friend-code" class="sh-invite-entry" inputmode="numeric" maxlength="8" />'+
-      '<button id="sh-play-claim" class="sh-invite-gold" type="button">Confirm Code</button></div>'+
-      '<p id="sh-play-invite-status" role="status" class="sh-invite-alert"></p></div>';
+      '<h2 class="sh-invite-title">No cash or referral rewards</h2>'+
+      '<p class="sh-invite-sub">This edition does not provide invite bonuses, cash commissions, withdrawals or seller transfers. You can still enjoy social rooms and virtual gifts.</p></div>';
     document.body.append(root);
     root.querySelector('.sh-invite-back').onclick=()=>root.remove();
-    const status=root.querySelector('#sh-play-invite-status');
-    try {
-      const info=await api('GET','/invites');
-      if(!root.isConnected)return;
-      const code=String(info.invite_code||'');
-      if(!/^[0-9]{8}$/.test(code))throw Error('Verified invite code unavailable');
-      root.querySelector('#sh-play-invite-code').textContent=code;
-      root.querySelector('#sh-play-invite-info').textContent=
-        'Both friends can receive '+Number(info.signup_inviter_reward||0).toLocaleString('en-US')+
-        ' and '+Number(info.signup_invitee_reward||0).toLocaleString('en-US')+
-        ' bonus coins through an eligible verified invitation.';
-      root.querySelector('#sh-play-copy').onclick=async()=>{
-        try{await native('copyInviteLink',{code});status.textContent='Invite link copied ✓';}
-        catch(error){status.textContent=errText(error);}
-      };
-      root.querySelector('#sh-play-share').onclick=async()=>{
-        try{await native('shareInvite',{text:'Join me on Sharika Voice Chat! '+PUBLIC_INVITE_URL+code});}
-        catch(error){status.textContent=errText(error);}
-      };
-      if(!info.claim_eligible)root.querySelector('#sh-play-invite-claim').remove();
-      else root.querySelector('#sh-play-claim').onclick=async()=>{
-        try {
-          const field=root.querySelector('#sh-play-friend-code');
-          const result=await redeemVerifiedInvite(field.value.trim());
-          status.textContent='Invite verified! +'+Number(result.invitee_extra_coins||0).toLocaleString('en-US')+' coins ✓';
-          root.querySelector('#sh-play-invite-claim')?.remove();
-        }catch(error){status.textContent=errText(error);}
-      };
-    }catch(error){if(root.isConnected)status.textContent='Invite unavailable: '+errText(error);}
   }
   async function showVerifiedInviteSheet(){
+    await playModeReady;
     if(playStoreMode===true)return showPlayInviteSheet();
     if(!session){window.showAuth('welcome');return;}
     verifiedInviteStyles();

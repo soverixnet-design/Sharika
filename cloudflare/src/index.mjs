@@ -45,6 +45,7 @@ import {searchVerifiedRooms} from './room-search.mjs';
 import {readRankingRewardPreview} from './ranking-rewards.mjs';
 import {handleRoleApplicationApp} from './role-applications.mjs';
 import {readPublicShowcase} from './profile-showcase.mjs';
+import {playVirtualOnly,playVirtualConfigured,playVirtualRouteBlocked} from './play-virtual-only.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -197,6 +198,13 @@ async function createVoiceToken(env, uid, room, publish, owner) {
 export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+  // This mode belongs to an independent Play Worker and D1, NEVER the shared
+  // staging/production economy. Reject before identity, database or writes.
+  if ((playVirtualOnly(env)||env.SHARIKA_PLAY_ISOLATED_DATA==='true') &&
+      !playVirtualConfigured(env))
+    return fail('play_virtual_only_not_configured',503);
+  if (playVirtualOnly(env) && playVirtualRouteBlocked(path,url.search))
+    return fail('play_virtual_only_feature_unavailable',403);
   // Public invitation landing must load without a Firebase session.
   // No wallet or invite database write is performed on GET.
   const inviteLanding=handleInviteLanding(request,path);
@@ -531,18 +539,19 @@ export async function handleRequest(request, env, ctx) {
         const country = txt(body.country, 16);
         const pic = txt(body.pic, 2048) || null;
         // A referral may only be attributed at initial account registration.
-        const referral=await resolveInviter({
+        const virtualOnly=playVirtualOnly(env);
+        const referral=virtualOnly?{inviter:null}:await resolveInviter({
           db:env.DB,uid,inviteCode:body.invite_code,fail,cors
         });
         if(referral.error)return referral.error;
-        const rules=await readInviteRules(env.DB);
-        const deviceDigest=await inviteDeviceDigest(request,env);
-        const device=await inviteDeviceBinding(env.DB,uid,deviceDigest);
+        const rules=virtualOnly?null:await readInviteRules(env.DB);
+        const deviceDigest=virtualOnly?null:await inviteDeviceDigest(request,env);
+        const device=virtualOnly?{eligible:false,statements:[]}:await inviteDeviceBinding(env.DB,uid,deviceDigest);
         const inviterDevice=referral.inviter?await env.DB.prepare('SELECT device_digest,invite_eligible '+
           'FROM sharika_invite_devices WHERE user_uid=?').bind(referral.inviter.auth_uid).first():null;
         const verifiedReferral=!!(referral.inviter&&device.eligible&&
           inviterDevice?.invite_eligible===1&&inviterDevice.device_digest!==deviceDigest);
-        const welcomeCoins=signupCoins(verifiedReferral,rules);
+        const welcomeCoins=signupCoins(verifiedReferral,...(virtualOnly?[]:[rules]));
         const registration=[
           env.DB.prepare(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,country,pic,coins)
             VALUES((WITH RECURSIVE candidate(n) AS (
@@ -923,7 +932,7 @@ export async function handleRequest(request, env, ctx) {
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {
       const viewer = await assertActive(env.DB, uid);
-      const luckyAllowed = env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
+      const luckyAllowed = !playVirtualOnly(env) && env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
         nonRedeemableLuckyEconomy(env) && !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
       const result = await env.DB.prepare(
         'SELECT id,name,emoji,tab,price_coins,image_url,animation_url,audio_url ' +
@@ -942,10 +951,12 @@ export async function handleRequest(request, env, ctx) {
     }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       await assertActive(env.DB, uid);
-      await settleDueBets(env.DB,uid);
-      await settleOriginalDueBets(env.DB);
-      await settleGreedyDueBets(env.DB);
-      await settleFruitDueBets(env.DB);
+      if(!playVirtualOnly(env)){
+        await settleDueBets(env.DB,uid);
+        await settleOriginalDueBets(env.DB);
+        await settleGreedyDueBets(env.DB);
+        await settleFruitDueBets(env.DB);
+      }
       const user = await me(env.DB,uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
@@ -1574,7 +1585,7 @@ export async function handleRequest(request, env, ctx) {
           'FROM sharika_regular_room_rewards WHERE room_id=?'
         ).bind(roomId).first();
         const regularPoints=Number(regular?.points)||0;
-        const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
+        const luckyEnabled=!playVirtualOnly(env)&&env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
           nonRedeemableLuckyEconomy(env);
         const lucky=luckyEnabled?await env.DB.prepare(
           'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
@@ -1623,7 +1634,7 @@ export async function handleRequest(request, env, ctx) {
           const giftAfter=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
             .roomGiftAfter(uid);
           if(giftAfter===null)return reply({events:[]},200,cors);
-          const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
+          const luckyEnabled=!playVirtualOnly(env)&&env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
             nonRedeemableLuckyEconomy(env);
           const rows=await env.DB.prepare(
             'SELECT e.id,e.transaction_id,e.quantity,e.price_coins,e.created_at,'+
@@ -1682,7 +1693,7 @@ export async function handleRequest(request, env, ctx) {
               "AND currency='coins' AND reason='room_gift_reward' "+
               "AND request_id=('roomgift:'||?)"
             ).bind(room.owner_id,existing.id).first();
-            const outcome=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true'
+            const outcome=!playVirtualOnly(env)&&env.SHARIKA_LUCKY_GIFTS_ENABLED==='true'
               ?await env.DB.prepare(
                 'SELECT payout_coins,max_multiplier FROM sharika_lucky_gift_outcomes WHERE transaction_id=?'
               ).bind(existing.id).first():null;
@@ -1700,6 +1711,8 @@ export async function handleRequest(request, env, ctx) {
             'WHERE id=? AND active=1 AND tab IN (0,1,2)'
           ).bind(giftId).first();
           if(!gift)return fail('gift_unavailable',404,cors);
+          if(playVirtualOnly(env)&&gift.tab===2)
+            return fail('play_virtual_only_feature_unavailable',403,cors);
           const recipients=await env.DB.prepare(
             'SELECT u.auth_uid,u.public_no,u.status,u.diamonds FROM sharika_users u '+
             'JOIN sharika_room_members m ON m.user_id=u.auth_uid '+
@@ -1836,7 +1849,8 @@ export async function handleRequest(request, env, ctx) {
           // overlapping Family commissions alongside Agency salaries.
           // Pending Host/Agency/BD earnings are recorded with the same gift
           // transaction. This never credits a spendable wallet automatically.
-          statements.push(...agencyGiftEarningStatements(env.DB,uid,requestId,gift.tab));
+          if(!playVirtualOnly(env))
+            statements.push(...agencyGiftEarningStatements(env.DB,uid,requestId,gift.tab));
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
@@ -2057,11 +2071,11 @@ export default {
   fetch:handleRequest,
   scheduled(_event,env,context){
     if(env.DB){
-      context.waitUntil(settleFruitDueBets(env.DB)
+      if(!playVirtualOnly(env))context.waitUntil(settleFruitDueBets(env.DB)
         .catch(error=>console.error('fruit_royale_settlement_cron_error',error.message)));
       context.waitUntil(expireBondInvites(env.DB,Date.now(),100,env,context)
         .catch(error=>console.error('bond_expiry_cron_error',error.message)));
-      context.waitUntil(syncFamilyGoogleSheetIfDue(env)
+      if(!playVirtualOnly(env))context.waitUntil(syncFamilyGoogleSheetIfDue(env)
         .catch(error=>console.error('family_sheets_cron_error',error.message)));
       context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true,env,context)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));

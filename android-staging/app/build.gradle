@@ -84,8 +84,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 103
-        versionName = productionApiOrigin ? '1.0.3' : '1.0.3-staging'
+        versionCode 104
+        versionName = productionApiOrigin ? '1.0.4' : '1.0.4-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
