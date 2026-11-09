@@ -55,6 +55,16 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}
   }
   // A seller can inspect only their own immutable stock movements.
   // Sender/recipient are verified public IDs, never client-supplied labels.
+  // Seller Play recharge is fail-closed until policy review, catalog and
+  // server-verified seller-specific billing claims are fully implemented.
+  // This endpoint never grants coins and does not expose private settings.
+  if(path==='/api/v1/sellers/recharge-status'&&request.method==='GET'){
+    const seller=await env.DB.prepare(
+      'SELECT active FROM sharika_coin_sellers WHERE seller_uid=?'
+    ).bind(uid).first();
+    return reply({approved:!!seller?.active,recharge_enabled:false,
+      reason:'seller_play_recharge_not_configured',read_only:true},200,cors);
+  }
   if(path==='/api/v1/sellers/transfers'&&request.method==='GET'){
     const rows=resultRows(await env.DB.prepare(
       'SELECT t.id,su.public_no AS sender_no,ru.public_no AS recipient_no,'+
