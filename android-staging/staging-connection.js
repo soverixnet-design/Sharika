@@ -9475,7 +9475,9 @@
   // button there only for authenticated, approved sellers.
   let sellerWalletButtonCheck=false;
   function mountRechargeSellerWallet(){
-    if(playStoreMode===true)return;
+    // Unknown bridge mode is treated as Play until positively identified as
+    // staging; never flash a Seller Wallet shortcut during startup.
+    if(playStoreMode!==false)return;
     const listButton=document.querySelector('#rcp #rcl2');
     if(!listButton||!session?.user?.id||sellerWalletButtonCheck||
        listButton.previousElementSibling?.id==='sharika-recharge-seller-wallet')return;
@@ -9522,7 +9524,13 @@
       typeof row.title==='string'&&row.title.length<=80&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_a||'')&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_b||'')&&
-      ['none','daily','recharge','rank','invite','apply'].includes(row.action)).slice(0,10):[];
+      ['none','daily','recharge','rank','invite','apply'].includes(row.action)&&
+      // Older seller/third-party recharge artwork is for private staging.
+      // Do not advertise it in the Play edition, even during startup.
+      (playStoreMode===false ||
+       (row.action!=='recharge' &&
+        !/\b(?:coin seller|external recharge|official recharge)\b/i.test(
+          row.title+' '+String(row.subtitle||''))))).slice(0,10):[];
     const cards=approved.map(row=>({
       t:row.title,s:String(row.subtitle||'').slice(0,160),
       e:String(row.emoji||'🎉').slice(0,12),
@@ -9533,6 +9541,7 @@
     // Draft, cancelled and expired campaigns are never advertised here.
     const campaigns=Array.isArray(eventList)?eventList.filter(event=>
       event&&event.published&&['live','scheduled'].includes(event.status)&&
+      (playStoreMode===false || event.kind!=='game_tournament')&&
       Number.isSafeInteger(event.id)&&event.id>0).slice(0,6):[];
     for(const event of campaigns){
       const imagePath=typeof event.banner_image_url==='string'?
@@ -9575,6 +9584,7 @@
       eventResult.status==='fulfilled'?eventResult.value.events:[]);
   }
   renderVerifiedBanners([]);
+  playModeReady.then(()=>refreshVerifiedBanners()).catch(()=>{});
   setInterval(()=>{
     if(session&&document.getElementById('v-home')?.classList.contains('on'))
       refreshVerifiedBanners().catch(error=>console.warn('Event banner refresh:',errText(error)));
@@ -12685,6 +12695,10 @@
   }
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
+    if(playStoreMode===null){
+      playModeReady.then(()=>showGameCard(doc,insideRoom,showToast));
+      return;
+    }
     if(playStoreMode===true){
       showToast('Coin betting games are not available in the Google Play edition.');
       return;

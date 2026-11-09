@@ -34,13 +34,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Apply isolated Closed Testing UI safety patch
+      - name: Verify committed Closed Testing UI safety gates
         if: github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109'
         run: |
           set -euo pipefail
-          git apply --check .github/patches/sharika-safe-play-ui.patch
-          git apply .github/patches/sharika-safe-play-ui.patch
           grep -F 'if(playStoreMode!==false)return;' android-staging/staging-connection.js
+          grep -F "row.action!=='recharge'" android-staging/staging-connection.js
+          grep -F "event.kind!=='game_tournament'" android-staging/staging-connection.js
+          node --test cloudflare/test/android-production-routing.test.mjs
 
       - name: Complete safety, source and Cloudflare game/voice checks
         run: |
