@@ -293,7 +293,7 @@
     if(playStoreMode){
       const style=document.createElement('style');
       style.id='sharika-play-store-mode';
-      style.textContent='#sharika-recharge-seller-wallet,#rcl2,#pc,#qg,#qi,'+
+      style.textContent='#sharika-recharge-seller-wallet,#rcl2,#pc,#qi,'+
         '[data-m="invite"],#sh-bd-entry,#sh-agency-entry,#sh-host-entry,'+
         '#stage-invite-code{display:none!important}';
       document.head.append(style);
@@ -12819,7 +12819,10 @@
       return;
     }
     if(playStoreMode===true){
-      showToast('Coin betting games are not available in the Google Play edition.');
+      const portal=insideRoom?ensureRoomGamePortal(doc):null;
+      if(typeof window.sharikaOpenPlayCasualGames==='function')
+        window.sharikaOpenPlayCasualGames(doc,portal);
+      else showToast('Games are temporarily unavailable. Please update Sharika.');
       return;
     }
     const portal=insideRoom?ensureRoomGamePortal(doc):null;
