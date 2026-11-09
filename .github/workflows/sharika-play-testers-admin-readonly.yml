@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/sharika-play-tester-identity-admin-20261109
+      - fix/sharika-play-auth-20261109
     paths:
       - '.github/workflows/sharika-play-testers-admin-readonly.yml'
   workflow_dispatch:
@@ -37,7 +38,8 @@ jobs:
           import { readFileSync } from 'node:fs';
           const c = JSON.parse(readFileSync('cloudflare/wrangler.admin.jsonc', 'utf8'));
           const binding = name => c.d1_databases?.find(x => x.binding === name);
-          if (process.env.GITHUB_REF !== 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' ||
+          if (!['refs/heads/feature/sharika-play-tester-identity-admin-20261109',
+                 'refs/heads/fix/sharika-play-auth-20261109'].includes(process.env.GITHUB_REF) ||
               !process.env.CLOUDFLARE_API_TOKEN ||
               c.name !== 'sharika-admin-staging' ||
               c.account_id !== process.env.CLOUDFLARE_ACCOUNT_ID ||
