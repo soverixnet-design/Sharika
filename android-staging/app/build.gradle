@@ -76,6 +76,9 @@ android {
             buildConfigField 'String', 'SHARIKA_API_ORIGIN', '"' + chosenPlayOrigin + '"'
             minifyEnabled false
             shrinkResources false
+            // Diagnostic candidate only: preserve native symbols when libraries provide them.
+            // This cannot restore symbols already stripped from third-party .so files.
+            ndk { debugSymbolLevel 'SYMBOL_TABLE' }
             if (stablePlayUploadSigner) {
                 signingConfig signingConfigs.sharikaPlayUpload
             } else if (stableStagingSigner) {
