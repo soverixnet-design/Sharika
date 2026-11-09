@@ -1751,34 +1751,37 @@
       transfers.textContent='Loading verified transfers…';
       allocations.textContent='Loading verified seller stock credits…';
       rechargeAudit.textContent='Loading permission changes…';
-      try{
-        const [list,history,credits,permissions]=await Promise.all([
-          api('GET','sellers'),api('GET','sellers/transfers'),api('GET','sellers/allocations'),
-          api('GET','sellers/play-recharge-permission-audit')
-        ]);
-        table.innerHTML=window.T(['ID','Name','Status','Play recharge permission','Available stock','Updated'],(list.sellers||[]).map(s=>
-          [esc(s.public_id),esc(s.name),s.active?'Approved':'Suspended',
-           s.admin_play_recharge_allowed?'Allowed · billing OFF':'Not allowed',
-           s.unlimited_stock?'∞ Unlimited · reserve '+fmt(s.available_coins):fmt(s.available_coins),
-           esc(s.updated_at||'')]));
-        transfers.innerHTML=window.T(['#','Sender ID','Recipient ID','Coins','Stock after','Time'],
-          (history.transfers||[]).map(t=>[
-            esc(t.id),esc(t.sender_public_id),esc(t.recipient_public_id),
-            fmt(t.coins),fmt(t.stock_after),esc(t.created_at||'')]));
-        allocations.innerHTML=window.T(['#','Admin sender ID','Seller ID','Stock coins added','Stock after','Time'],
-          (credits.allocations||[]).map(a=>[
-            esc(a.id),esc(a.sender_public_id),esc(a.seller_public_id),
-            fmt(a.coins),fmt(a.stock_after),esc(a.created_at||'')]));
-        rechargeAudit.innerHTML=window.T(['#','Admin ID','Seller ID','Allowed','Reason','Time'],
-          (permissions.changes||[]).map(x=>[esc(x.id),esc(x.admin_public_id),esc(x.seller_public_id),
-            x.allowed?'Yes':'No',esc(x.reason),esc(x.created_at||'')]));
-        if(!list.sellers?.length)table.insertAdjacentHTML('beforeend','<p class="n">No approved sellers yet.</p>');
-      }catch(error){
-        table.textContent=error.message;
-        transfers.textContent='Transfer history unavailable.';
-        allocations.textContent='Allocation history unavailable.';
-        rechargeAudit.textContent='Recharge permission history unavailable.';
+      async function loadPanel(element,endpoint,render){
+        try{render(await api('GET',endpoint));}
+        catch(error){element.textContent='Unavailable: '+(error.message||'Please try again.');}
       }
+      await Promise.all([
+        loadPanel(table,'sellers',list=>{
+          table.innerHTML=window.T(['ID','Name','Status','Play recharge permission','Available stock','Updated'],(list.sellers||[]).map(s=>
+            [esc(s.public_id),esc(s.name),s.active?'Approved':'Suspended',
+             s.admin_play_recharge_allowed?'Allowed · billing OFF':'Not allowed',
+             s.unlimited_stock?'∞ Unlimited · reserve '+fmt(s.available_coins):fmt(s.available_coins),
+             esc(s.updated_at||'')]));
+          if(!list.sellers?.length)table.insertAdjacentHTML('beforeend','<p class="n">No approved sellers yet.</p>');
+        }),
+        loadPanel(transfers,'sellers/transfers',history=>{
+          transfers.innerHTML=window.T(['#','Sender ID','Recipient ID','Coins','Stock after','Time'],
+            (history.transfers||[]).map(t=>[
+              esc(t.id),esc(t.sender_public_id),esc(t.recipient_public_id),
+              fmt(t.coins),fmt(t.stock_after),esc(t.created_at||'')]));
+        }),
+        loadPanel(allocations,'sellers/allocations',credits=>{
+          allocations.innerHTML=window.T(['#','Admin sender ID','Seller ID','Stock coins added','Stock after','Time'],
+            (credits.allocations||[]).map(a=>[
+              esc(a.id),esc(a.sender_public_id),esc(a.seller_public_id),
+              fmt(a.coins),fmt(a.stock_after),esc(a.created_at||'')]));
+        }),
+        loadPanel(rechargeAudit,'sellers/play-recharge-permission-audit',permissions=>{
+          rechargeAudit.innerHTML=window.T(['#','Admin ID','Seller ID','Allowed','Reason','Time'],
+            (permissions.changes||[]).map(x=>[esc(x.id),esc(x.admin_public_id),esc(x.seller_public_id),
+              x.allowed?'Yes':'No',esc(x.reason),esc(x.created_at||'')]));
+        })
+      ]);
     }
     await refresh();
     if(role!=='super')return;
