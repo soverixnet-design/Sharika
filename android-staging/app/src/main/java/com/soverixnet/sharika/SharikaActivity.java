@@ -810,6 +810,7 @@ public final class SharikaActivity extends Activity {
                 break;
             case "emailSignIn": emailSignIn(id, data); break;
             case "emailSignUp": emailSignUp(id, data); break;
+            case "passwordReset": passwordReset(id, data); break;
             case "googleSignIn": googleSignIn(id); break;
             case "signOut":
                 auth.signOut();
@@ -966,6 +967,21 @@ public final class SharikaActivity extends Activity {
                     else sendResult(id, result(true, identity(updated), null));
                 });
             }
+        });
+    }
+
+    private void passwordReset(String id, JSONObject data) {
+        // Firebase owns password recovery; never expose whether this email has an account.
+        String email = data.optString("email", "").trim();
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            sendResult(id, result(false, null, "valid_email_required"));
+            return;
+        }
+        auth.sendPasswordResetEmail(email).addOnCompleteListener(this, task -> {
+            if (task.isSuccessful())
+                sendResult(id, result(true, object(), null));
+            else
+                sendResult(id, result(false, null, "password_reset_unavailable_try_later"));
         });
     }
 
