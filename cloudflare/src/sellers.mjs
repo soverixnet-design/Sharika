@@ -218,11 +218,14 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
   if(!finance.has(actor.role))return fail('admin_permission_denied',403,cors);
   if(operation==='sellers'&&request.method==='GET'){
     const rows=resultRows(await env.DB.prepare(
-      'SELECT u.public_no,u.name,u.pic,s.active,s.available_coins,s.unlimited_stock,s.updated_at '+
+      'SELECT u.public_no,u.name,u.pic,s.active,s.available_coins,s.unlimited_stock,'+
+      's.play_recharge_allowed,s.updated_at '+
       'FROM sharika_coin_sellers s JOIN sharika_users u ON u.auth_uid=s.seller_uid '+
       'ORDER BY s.updated_at DESC LIMIT 100'
     ).all());
-    return reply({sellers:rows.map(r=>({...sellerView(r),updated_at:r.updated_at})),
+    return reply({sellers:rows.map(r=>({...sellerView(r),
+      admin_play_recharge_allowed:!!r.play_recharge_allowed,
+      play_recharge_enabled:false,updated_at:r.updated_at})),
       read_only:actor.role!=='super'},200,cors);
   }
   if(operation==='sellers/transfers'&&request.method==='GET'){
@@ -327,7 +330,9 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
     await env.DB.batch([
       env.DB.prepare(
         'INSERT INTO sharika_coin_sellers(seller_uid,active) VALUES(?,?) '+
-        "ON CONFLICT(seller_uid) DO UPDATE SET active=excluded.active,updated_at=datetime('now')"
+        "ON CONFLICT(seller_uid) DO UPDATE SET active=excluded.active,"+
+        "play_recharge_allowed=CASE WHEN excluded.active=0 THEN 0 ELSE sharika_coin_sellers.play_recharge_allowed END,"+
+        "updated_at=datetime('now')"
       ).bind(target.auth_uid,body.active?1:0),
       env.DB.prepare(
         'INSERT INTO sharika_coin_seller_admin_audit(actor_uid,seller_uid,action,amount) '+
