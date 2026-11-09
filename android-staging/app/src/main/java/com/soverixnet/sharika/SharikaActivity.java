@@ -1001,8 +1001,7 @@ public final class SharikaActivity extends Activity {
             // In the isolated Play virtual-only test edition, Firebase's
             // password credential is enough to start a virtual profile.
             // The standard staging build retains email verification.
-            if (BuildConfig.SHARIKA_PLAY_BUILD &&
-                "https://sharika-api-play-virtual.soverixnet.workers.dev".equals(BuildConfig.SHARIKA_API_ORIGIN)) {
+            if (isIsolatedPlayVirtualBuild()) {
                 sendResult(id, result(true, identity(user), null));
                 return;
             }
@@ -1013,6 +1012,15 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, account, null));
             });
         });
+    }
+
+    // Only the isolated non-redeemable Play testing app may send a valid
+    // Firebase ID token before email verification. Its separate Worker still
+    // verifies the token and independently enforces the isolated D1 gate.
+    // All staging and production endpoints retain their verification rule.
+    private static boolean isIsolatedPlayVirtualBuild() {
+        return BuildConfig.SHARIKA_PLAY_BUILD &&
+            "https://sharika-api-play-virtual.soverixnet.workers.dev".equals(BuildConfig.SHARIKA_API_ORIGIN);
     }
 
     // Credential Manager may never call back when an Android provider/picker
@@ -1339,7 +1347,7 @@ public final class SharikaActivity extends Activity {
         // A Firebase-issued ID token is validated by the Worker for every
         // API request. Do not also block all wallet/room requests on a
         // periodic network reload; that made a successful login appear lost.
-        if (user.isEmailVerified()) {
+        if (user.isEmailVerified() || isIsolatedPlayVirtualBuild()) {
             requestStagingToken(id, method, path, data, user);
             return;
         }

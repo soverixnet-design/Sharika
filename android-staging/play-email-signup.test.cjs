@@ -54,9 +54,20 @@ test('non-Play staging preserves email confirmation requirement', async () => {
 });
 
 test('Only the isolated Play backend bypasses verification email; normal staging does not', () => {
-  assert.match(nativeSource, /if \(BuildConfig\.SHARIKA_PLAY_BUILD &&\s*"https:\/\/sharika-api-play-virtual\.soverixnet\.workers\.dev"\.equals\(BuildConfig\.SHARIKA_API_ORIGIN\)\) \{\s*sendResult\(id, result\(true, identity\(user\), null\)\);/);
+  assert.match(nativeSource, /private static boolean isIsolatedPlayVirtualBuild\(\) \{\s*return BuildConfig\.SHARIKA_PLAY_BUILD &&\s*"https:\/\/sharika-api-play-virtual\.soverixnet\.workers\.dev"\.equals\(BuildConfig\.SHARIKA_API_ORIGIN\);/);
+  assert.match(nativeSource, /if \(isIsolatedPlayVirtualBuild\(\)\) \{\s*sendResult\(id, result\(true, identity\(user\), null\)\);/);
   assert.match(nativeSource, /user\.sendEmailVerification\(\)/);
   assert.match(script, /!account\.signedIn \|\| \(!account\.emailVerified && !playVirtualIdentityAllowed\)/);
   assert.match(script, /let playVirtualIdentityAllowed=false;/);
   assert.match(script, /playVirtualIdentityAllowed=playStoreMode && result\.api_origin===/);
+});
+
+test('Native API requests accept unverified Firebase identity only on isolated Play virtual origin', () => {
+  const start = nativeSource.indexOf('    private void callStagingApi(');
+  const end = nativeSource.indexOf('    private boolean isRealtimeVoiceRoute(', start);
+  assert.ok(start > 0 && end > start);
+  const callApi = nativeSource.slice(start, end);
+  assert.match(callApi, /if \(user\.isEmailVerified\(\) \|\| isIsolatedPlayVirtualBuild\(\)\) \{\s*requestStagingToken\(id, method, path, data, user\);/);
+  assert.match(callApi, /if \(!current\.isEmailVerified\(\)\) \{\s*sendResult\(id, result\(false,null,"email_verification_required"\)\);/);
+  assert.match(nativeSource, /private static boolean isIsolatedPlayVirtualBuild\(\)/);
 });
