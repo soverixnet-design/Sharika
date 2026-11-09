@@ -146,6 +146,18 @@ test('one tap shows a room joining shell and forbids overlapping join requests',
     'cancelled or failed joins must remove the loading shell');
 });
 
+test('verified gift catalog stays browsable when no guest is on a mic',()=>{
+  assert.match(ui,/const hasMicRecipients=\(frame\.seats\|\|\[\]\)\.some\(/);
+  assert.match(ui,/function showGiftCatalogWithoutMic\(\)\{/);
+  assert.match(ui,/frame\.open\('<h3>🎁 Virtual gifts<\/h3>/);
+  assert.match(ui,/if\(hasMicRecipients&&typeof originalGiftOpen==='function'\)/);
+  assert.match(ui,/else showGiftCatalogWithoutMic\(\)/);
+  assert.match(ui,/\(directGiftTarget\?'':' disabled'\)/,
+    'an empty room can show virtual gifts but cannot fabricate recipients');
+  assert.match(ui,/frame\.G=gifts\.map\(/,
+    'all prices and artwork must come from the verified server catalog');
+});
+
 test('join establishes a private visit boundary before a nonblocking arrival animation',()=>{
   const join=worker.slice(worker.indexOf("action === 'join' && request.method === 'POST'"),
     worker.indexOf("action === 'leave' && request.method === 'POST'"));
