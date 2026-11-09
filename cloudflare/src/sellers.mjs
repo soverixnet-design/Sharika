@@ -60,9 +60,13 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}
   // This endpoint never grants coins and does not expose private settings.
   if(path==='/api/v1/sellers/recharge-status'&&request.method==='GET'){
     const seller=await env.DB.prepare(
-      'SELECT active FROM sharika_coin_sellers WHERE seller_uid=?'
+      'SELECT active,play_recharge_allowed FROM sharika_coin_sellers WHERE seller_uid=?'
     ).bind(uid).first();
-    return reply({approved:!!seller?.active,recharge_enabled:false,
+    // A seller permission alone cannot activate a money-moving billing flow.
+    // No seller-specific purchase claim route is available yet.
+    return reply({approved:!!seller?.active,
+      admin_allowed:!!seller?.play_recharge_allowed,
+      recharge_enabled:false,
       reason:'seller_play_recharge_not_configured',read_only:true},200,cors);
   }
   if(path==='/api/v1/sellers/transfers'&&request.method==='GET'){
@@ -253,6 +257,33 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
   if(actor.role!=='super')return fail('admin_permission_denied',403,cors);
   // Only Super Admin may grant/revoke non-depleting seller inventory.
   // Each change is retained in a separate immutable audit table.
+  // Super Admin may preconfigure a seller's Play recharge permission.
+  // The purchase flow remains disabled until verified billing is implemented.
+  if(operation==='sellers/play-recharge-permission'&&request.method==='POST'){
+    let body;
+    try{body=await input(request);}catch(error){return jsonFailure(fail,cors,error.message);}
+    const id=body.seller_public_id;
+    const reason=typeof body.reason==='string'?body.reason.trim():'';
+    if(typeof id!=='string'||!PUBLIC_ID.test(id)||
+      typeof body.allowed!=='boolean'||reason.length<8||reason.length>200)
+      return fail('invalid_seller_recharge_permission',400,cors);
+    const seller=await env.DB.prepare(
+      'SELECT s.seller_uid FROM sharika_coin_sellers s '+
+      'JOIN sharika_users u ON u.auth_uid=s.seller_uid '+
+      "WHERE u.public_no=? AND u.status='active' AND s.active=1"
+    ).bind(Number(id)).first();
+    if(!seller)return fail('seller_not_approved',404,cors);
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE sharika_coin_sellers SET play_recharge_allowed=?,updated_at=datetime('now') WHERE seller_uid=? AND active=1"
+      ).bind(body.allowed?1:0,seller.seller_uid),
+      env.DB.prepare(
+        'INSERT INTO sharika_seller_recharge_permission_audit(actor_uid,seller_uid,allowed,reason) VALUES(?,?,?,?)'
+      ).bind(uid,seller.seller_uid,body.allowed?1:0,reason)
+    ]);
+    return reply({seller_public_id:id,admin_allowed:body.allowed,
+      recharge_enabled:false,reason:'seller_play_recharge_not_configured'},200,cors);
+  }
   if(operation==='sellers/stock-mode'&&request.method==='POST'){
     let body;
     try{body=await input(request);}catch(error){return jsonFailure(fail,cors,error.message);}
