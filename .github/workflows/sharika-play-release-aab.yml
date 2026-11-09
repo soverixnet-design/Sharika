@@ -195,7 +195,7 @@ jobs:
       - name: Verify isolated Play login backend target
         if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
         env:
-          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_ACCOUNT: d81cf7c48fb9b36d468cb0a08720cd74
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
@@ -227,14 +227,14 @@ jobs:
         if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
         run: npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.play.virtual.jsonc --outdir /tmp/sharika-play-virtual-auth
 
       - name: Deploy isolated Play login backend
         if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
         run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.play.virtual.jsonc
 
       - name: Check Play-only backend health after deployment
