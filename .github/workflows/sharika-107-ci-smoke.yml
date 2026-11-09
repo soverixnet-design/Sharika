@@ -1,0 +1,23 @@
+name: Sharika 1.0.7 CI runner diagnostic
+
+on:
+  push:
+    branches:
+      - feature/sharika-107-datastore-symbol-experiment-20261109
+    paths:
+      - '.github/workflows/sharika-107-ci-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-health:
+    name: Verify GitHub runner without any deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm isolated CI runner works
+        run: |
+          set -euo pipefail
+          echo 'SHARIKA_107_GITHUB_RUNNER_OK'
