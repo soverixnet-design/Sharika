@@ -8959,6 +8959,7 @@
         document.getElementById('mini')?.classList.remove('on');
         setRoomScreenAwake(true);
         resumeRoomAudio();
+        roomOpened=true;
         return;
       }
       showRoomJoining(room);
@@ -9032,10 +9033,22 @@
       const progress=roomWrap?.querySelector('#sh-room-joining-card small');
       if(progress)progress.textContent='Loading verified seats…';
       originalOpenRoom(room);
+      roomOpened=true;
     } catch(error) {
       toast(errText(error)==='room_locked'
         ?'🔒 This room is locked. Ask the Owner or Room Admin to unlock it.'
         :'Could not join: '+errText(error));
+    } finally {
+      // A verified join must not permanently block every later room tap.
+      // Leave/back invalidates the token, so an older request cannot clear
+      // the busy state of a newer navigation attempt.
+      if(roomEntryBusyToken===currentToken)roomEntryBusyToken=null;
+      if(!roomOpened&&currentToken===roomEntryToken){
+        hideRoomJoining();
+        const wrap=document.getElementById('rw');
+        wrap?.classList.remove('sh-room-awaiting');
+        if(!window.cur)wrap?.classList.remove('on');
+      }
     }
   };
   const originalLeaveRoom=window.leaveRoom;
