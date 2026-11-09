@@ -1728,6 +1728,7 @@
     root.innerHTML='<div class="card"><h3>🪙 Verified coin sellers</h3>'+
       '<p class="n">Seller stock is separate from personal wallets. Allocations and transfers are permanently audited.</p>'+
       '<div id="seller-list">Loading…</div></div>'+
+      '<div class="card"><h3>Seller Recharge Permission History</h3><p class="n">Permission does not enable purchases until Google Play Billing is verified.</p><div id="seller-recharge-audit">Loading…</div></div>'+
       '<div class="card"><h3>Coin transfer list · sender IDs</h3><div id="seller-transfers">Loading…</div></div>'+
       '<div class="card"><h3>Seller wallet allocations</h3><div id="seller-allocations">Loading…</div></div>'+
       (role==='super'?'<div class="card"><h3>Seller management</h3>'+
@@ -1739,19 +1740,25 @@
          '<div class="row"><button type="button" class="btn s" id="seller-unlimited-on">Enable ∞ stock</button>'+
          '<button type="button" class="btn s" id="seller-unlimited-off">Disable ∞ stock</button></div>'+
          '<p class="n">Unlimited mode is Super Admin-only. Every transfer is still logged. Maximum 1M coins per transfer.</p>'+
+         '<div class="row"><button type="button" class="btn s" id="seller-play-on">Allow Play recharge</button>'+
+         '<button type="button" class="btn s" id="seller-play-off">Revoke Play recharge</button></div>'+
+         '<p class="n">Billing remains disabled until server-side verification is configured.</p>'+
         '<p class="n" id="seller-note">Only Super Admin can approve sellers and allocate inventory.</p></div>':'');
     const table=byId('seller-list'),transfers=byId('seller-transfers'),
-      allocations=byId('seller-allocations');
+      allocations=byId('seller-allocations'),rechargeAudit=byId('seller-recharge-audit');
     async function refresh(){
       table.textContent='Loading approved seller records…';
       transfers.textContent='Loading verified transfers…';
       allocations.textContent='Loading verified seller stock credits…';
+      rechargeAudit.textContent='Loading permission changes…';
       try{
-        const [list,history,credits]=await Promise.all([
-          api('GET','sellers'),api('GET','sellers/transfers'),api('GET','sellers/allocations')
+        const [list,history,credits,permissions]=await Promise.all([
+          api('GET','sellers'),api('GET','sellers/transfers'),api('GET','sellers/allocations'),
+          api('GET','sellers/play-recharge-permission-audit')
         ]);
-        table.innerHTML=window.T(['ID','Name','Status','Available stock','Updated'],(list.sellers||[]).map(s=>
+        table.innerHTML=window.T(['ID','Name','Status','Play recharge permission','Available stock','Updated'],(list.sellers||[]).map(s=>
           [esc(s.public_id),esc(s.name),s.active?'Approved':'Suspended',
+           s.admin_play_recharge_allowed?'Allowed · billing OFF':'Not allowed',
            s.unlimited_stock?'∞ Unlimited · reserve '+fmt(s.available_coins):fmt(s.available_coins),
            esc(s.updated_at||'')]));
         transfers.innerHTML=window.T(['#','Sender ID','Recipient ID','Coins','Stock after','Time'],
@@ -1762,11 +1769,15 @@
           (credits.allocations||[]).map(a=>[
             esc(a.id),esc(a.sender_public_id),esc(a.seller_public_id),
             fmt(a.coins),fmt(a.stock_after),esc(a.created_at||'')]));
+        rechargeAudit.innerHTML=window.T(['#','Admin ID','Seller ID','Allowed','Reason','Time'],
+          (permissions.changes||[]).map(x=>[esc(x.id),esc(x.admin_public_id),esc(x.seller_public_id),
+            x.allowed?'Yes':'No',esc(x.reason),esc(x.created_at||'')]));
         if(!list.sellers?.length)table.insertAdjacentHTML('beforeend','<p class="n">No approved sellers yet.</p>');
       }catch(error){
         table.textContent=error.message;
         transfers.textContent='Transfer history unavailable.';
         allocations.textContent='Allocation history unavailable.';
+        rechargeAudit.textContent='Recharge permission history unavailable.';
       }
     }
     await refresh();
@@ -1785,13 +1796,16 @@
         note.textContent='Allocate 1–1,000,000,000 coins, or enable Unlimited Stock.';return;
       }
       const isStockMode=kind==='unlimited_on'||kind==='unlimited_off';
-      const reason=isStockMode?window.prompt('Reason for unlimited stock change (8–200 characters):',''):null;
-      if(isStockMode&&(!reason||reason.trim().length<8||reason.trim().length>200)){
+      const isPlayMode=kind==='play_on'||kind==='play_off';
+      const reason=(isStockMode||isPlayMode)?window.prompt('Reason for permission change (8–200 characters):',''):null;
+      if((isStockMode||isPlayMode)&&(!reason||reason.trim().length<8||reason.trim().length>200)){
         note.textContent='A reason of 8–200 characters is required.';return;
       }
       const message=kind==='allocate'
         ?'Add '+fmt(coins)+' coins to the SELLER STOCK of '+sellerId+'? This does not debit any user.'
-        :isStockMode
+        :isPlayMode
+          ?(kind==='play_on'?'ALLOW':'REVOKE')+' Play recharge permission for seller '+sellerId+'? Billing stays OFF.'
+          :isStockMode
           ?(kind==='unlimited_on'?'ENABLE':'DISABLE')+' unlimited stock for seller '+sellerId+
             '? The change is audited and requires Super Admin authority.'
           :(kind==='approve'?'Approve':'Suspend')+' coin seller '+sellerId+'?';
@@ -1800,12 +1814,15 @@
       try{
         const payload=kind==='allocate'
           ?{seller_public_id:sellerId,coins,request_id:'admin-seller:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2)}
-          :isStockMode
+          :isPlayMode
+            ?{seller_public_id:sellerId,allowed:kind==='play_on',reason:reason.trim()}
+            :isStockMode
             ?{seller_public_id:sellerId,unlimited_stock:kind==='unlimited_on',reason:reason.trim()}
             :{target_public_id:sellerId,active:kind==='approve'};
-        const endpoint=kind==='allocate'?'sellers/allocate':isStockMode?'sellers/stock-mode':'sellers';
+        const endpoint=kind==='allocate'?'sellers/allocate':isPlayMode?'sellers/play-recharge-permission':isStockMode?'sellers/stock-mode':'sellers';
         const result=await api('POST',endpoint,payload);
         note.textContent=kind==='allocate'?'Allocated '+fmt(coins)+' stock coins. New stock '+fmt(result.available_coins)+'.':
+          isPlayMode?'Seller '+sellerId+' Play recharge permission '+(result.admin_allowed?'allowed':'revoked')+'; billing remains OFF.':
           isStockMode?'Seller '+sellerId+' unlimited stock '+(result.unlimited_stock?'enabled':'disabled')+' and audited.':
           'Seller '+sellerId+' '+(kind==='approve'?'approved':'suspended')+'.';
         await refresh();
@@ -1817,6 +1834,8 @@
     byId('seller-allocate')?.addEventListener('click',e=>act(e.currentTarget,'allocate'));
     byId('seller-unlimited-on')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_on'));
     byId('seller-unlimited-off')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_off'));
+    byId('seller-play-on')?.addEventListener('click',e=>act(e.currentTarget,'play_on'));
+    byId('seller-play-off')?.addEventListener('click',e=>act(e.currentTarget,'play_off'));
   };
 
   P.ledger=async function () {
