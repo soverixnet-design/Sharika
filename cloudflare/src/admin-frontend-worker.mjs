@@ -3,6 +3,7 @@
 // existing API through a private service binding, without changing voice routes.
 import html from './admin-index.html';
 import connector from './admin-connection.txt';
+import { readPlayTesters } from './play-tester-admin.mjs';
 
 const SAFE_HEADERS = {
   'cache-control': 'no-store',
@@ -72,6 +73,10 @@ export default {
         api_service_configured: !!env.SHARIKA_API }), 'application/json; charset=utf-8');
     }
     if (path.startsWith('/api/v1/admin/')) {
+      // A separate verified, super-only, read-only view bridges the two
+      // isolated databases. All ordinary admin operations remain staging-only.
+      if (path === '/api/v1/admin/play-testers')
+        return readPlayTesters(request, env);
       // The user's Firebase bearer token is checked again by the API/D1 Worker.
       const authorization = request.headers.get('authorization') || '';
       if (!/^Bearer\s+\S+$/.test(authorization)) return fail('not_authenticated', 401);
