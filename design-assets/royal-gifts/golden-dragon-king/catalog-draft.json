@@ -1,0 +1,18 @@
+{
+  "kind": "gift",
+  "category": "Luxury",
+  "name": "Golden Dragon King",
+  "proposed_price_coins": 10000000,
+  "proposed_only": true,
+  "active": false,
+  "master": "master.png",
+  "poster": "poster.png",
+  "animation": "golden-dragon-king-transparent.webm",
+  "preview_only": "golden-dragon-king-preview.mp4",
+  "duration_seconds": 4,
+  "fps": 24,
+  "canvas": "720x1280",
+  "transparency": "VP9 alpha mode",
+  "sound": "Original synthetic sound embedded as Opus",
+  "android_playback_verified": false
+}
