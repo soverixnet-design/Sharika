@@ -11,6 +11,10 @@ export const PLAY_COIN_PRODUCTS = Object.freeze({
 const PRODUCT_IDS = Object.keys(PLAY_COIN_PRODUCTS);
 const TOKEN = /^[A-Za-z0-9._~-]{20,4096}$/;
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const STS_URL = 'https://sts.googleapis.com/v1/token';
+const WIF_IDENTITY_PATH = '/internal/google-wif/subject-token';
+const WIF_PROVIDER = /^\/\/iam\.googleapis\.com\/projects\/[0-9]+\/locations\/global\/workloadIdentityPools\/[A-Za-z0-9_-]+\/providers\/[A-Za-z0-9_-]+$/;
+const SERVICE_ACCOUNT_EMAIL = /^[^\s@]+@[^\s@]+\.iam\.gserviceaccount\.com$/;
 const PLAY_API = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/';
 
 function b64url(data) {
@@ -54,7 +58,100 @@ async function fetchWithTimeout(fetcher, url, options) {
   finally { clearTimeout(timer); }
 }
 
+function isWifConfigured(env) {
+  if (!WIF_PROVIDER.test(env.PLAY_BILLING_WIF_PROVIDER_AUDIENCE || '') ||
+      !SERVICE_ACCOUNT_EMAIL.test(env.PLAY_BILLING_WIF_SERVICE_ACCOUNT_EMAIL || '') ||
+      !env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID || !env.PLAY_BILLING_WIF_ACCESS_CLIENT_SECRET ||
+      !/^[a-z0-9]{20,}\.access$/.test(env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID) ||
+      !/^[a-f0-9]{64}$/.test(env.PLAY_BILLING_WIF_ACCESS_AUDIENCE || '') ||
+      !/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(env.PLAY_BILLING_WIF_ACCESS_ISSUER || ''))
+    return false;
+  try {
+    const url = new URL(env.PLAY_BILLING_WIF_IDENTITY_URL);
+    return url.protocol === 'https:' && url.hostname.endsWith('.sharika.app') &&
+      url.pathname === WIF_IDENTITY_PATH && !url.port && !url.username &&
+      !url.password && !url.search && !url.hash;
+  } catch (_) { return false; }
+}
+
+function isPlayBillingConfigured(env) {
+  return env.PLAY_BILLING_AUTH_MODE === 'wif_access' ? isWifConfigured(env) :
+    !env.PLAY_BILLING_AUTH_MODE && !!env.PLAY_BILLING_SERVICE_ACCOUNT_JSON;
+}
+
+function readAccessAssertion(jwt, env) {
+  if (typeof jwt !== 'string' || jwt.length > 8192 ||
+      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(jwt))
+    throw new Error('play_wif_invalid_assertion');
+  let claims;
+  try {
+    const payload = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    claims = JSON.parse(atob(payload));
+  } catch (_) { throw new Error('play_wif_invalid_assertion'); }
+  // This is a preflight check, not cryptographic verification: Google STS
+  // independently validates the Cloudflare Access signature and trust policy.
+  if (claims.iss !== env.PLAY_BILLING_WIF_ACCESS_ISSUER ||
+      !(claims.aud === env.PLAY_BILLING_WIF_ACCESS_AUDIENCE ||
+        (Array.isArray(claims.aud) &&
+          claims.aud.includes(env.PLAY_BILLING_WIF_ACCESS_AUDIENCE))) ||
+      claims.common_name !== env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID ||
+      claims.type !== 'app' || !Number.isFinite(claims.exp) ||
+      claims.exp <= Math.floor(Date.now() / 1000) + 60)
+    throw new Error('play_wif_invalid_assertion');
+  return jwt;
+}
+
+async function getWifAccessToken(env, fetcher) {
+  if (!isWifConfigured(env)) throw new Error('play_wif_not_configured');
+  // The separate identity endpoint MUST be behind Cloudflare Access with a
+  // Service Auth policy limited to this one token. It returns the Access JWT
+  // injected by Cloudflare to its origin, never a self-signed Google key.
+  const identityResponse = await fetchWithTimeout(fetcher, env.PLAY_BILLING_WIF_IDENTITY_URL, {
+    // Cloudflare Workers only supports "follow" or "manual"; manual responses
+    // remain fail-closed because any 3xx status is rejected below.
+    method: 'GET', redirect: 'manual',
+    headers: {
+      'CF-Access-Client-Id': env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID,
+      'CF-Access-Client-Secret': env.PLAY_BILLING_WIF_ACCESS_CLIENT_SECRET,
+      accept: 'application/json'
+    }
+  });
+  if (!identityResponse.ok) throw new Error('play_wif_identity_unavailable');
+  const identity = await identityResponse.json();
+  const subjectToken = readAccessAssertion(identity?.subject_token, env);
+  const stsResponse = await fetchWithTimeout(fetcher, STS_URL, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      audience: env.PLAY_BILLING_WIF_PROVIDER_AUDIENCE,
+      grantType: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      requestedTokenType: 'urn:ietf:params:oauth:token-type:access_token',
+      scope: 'https://www.googleapis.com/auth/cloud-platform',
+      subjectTokenType: 'urn:ietf:params:oauth:token-type:jwt', subjectToken
+    })
+  });
+  if (!stsResponse.ok) throw new Error('play_wif_sts_unavailable');
+  const sts = await stsResponse.json();
+  if (!sts.access_token || sts.token_type?.toLowerCase() !== 'bearer')
+    throw new Error('play_wif_sts_invalid_response');
+  const account = encodeURIComponent(env.PLAY_BILLING_WIF_SERVICE_ACCOUNT_EMAIL);
+  const impersonateResponse = await fetchWithTimeout(fetcher,
+    `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${account}:generateAccessToken`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${sts.access_token}` },
+      body: JSON.stringify({ scope: ['https://www.googleapis.com/auth/androidpublisher'],
+        lifetime: '3600s' })
+    });
+  if (!impersonateResponse.ok) throw new Error('play_wif_impersonation_unavailable');
+  const impersonated = await impersonateResponse.json();
+  if (typeof impersonated.accessToken !== 'string' || !impersonated.accessToken)
+    throw new Error('play_wif_impersonation_invalid_response');
+  return impersonated.accessToken;
+}
+
 async function getGoogleAccessToken(env, fetcher) {
+  if (env.PLAY_BILLING_AUTH_MODE === 'wif_access')
+    return getWifAccessToken(env, fetcher);
+  if (env.PLAY_BILLING_AUTH_MODE) throw new Error('play_auth_mode_invalid');
   if (!env.PLAY_BILLING_SERVICE_ACCOUNT_JSON)
     throw new Error('play_service_account_not_configured');
   let serviceAccount;
@@ -111,7 +208,7 @@ export async function handlePlayBillingApp({
   if (!path.startsWith('/api/v1/play-billing/')) return null;
   if (path === '/api/v1/play-billing/catalog' && request.method === 'GET') {
     return safeReply(reply, {
-      enabled: env.SHARIKA_PLAY_BILLING_ENABLED === 'true',
+      enabled: env.SHARIKA_PLAY_BILLING_ENABLED === 'true' && isPlayBillingConfigured(env),
       products: PRODUCT_IDS.map(id => ({ id, coins: PLAY_COIN_PRODUCTS[id] })),
       prices_from_google_play: true
     }, 200, cors);
@@ -120,7 +217,7 @@ export async function handlePlayBillingApp({
     return fail('play_billing_route_not_found', 404, cors);
   if (env.SHARIKA_PLAY_BILLING_ENABLED !== 'true')
     return fail('play_billing_not_configured', 503, cors);
-  if (!env.PLAY_BILLING_SERVICE_ACCOUNT_JSON)
+  if (!isPlayBillingConfigured(env))
     return fail('play_billing_not_configured', 503, cors);
 
   let body;
