@@ -25,7 +25,9 @@ async function getKeys(env, fetcher) {
   let response;
   try {
     response = await fetcher(`${env.PLAY_BILLING_WIF_ACCESS_ISSUER}/cdn-cgi/access/certs`,
-      { redirect: 'error', signal: controller.signal });
+      // The Workers runtime does not support redirect: 'error'. A redirect
+      // yields a non-2xx response in manual mode and is rejected below.
+      { redirect: 'manual', signal: controller.signal });
   } finally { clearTimeout(timeout); }
   if (!response.ok) throw new Error('access_jwks_unavailable');
   const data = await response.json();
@@ -49,8 +51,9 @@ export async function verifyAccessAssertion(jwt, env, fetcher = fetch) {
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' ||
       claims.iss !== env.PLAY_BILLING_WIF_ACCESS_ISSUER ||
       claims.type !== 'app' ||
-      !Array.isArray(claims.aud) ||
-      !claims.aud.includes(env.PLAY_BILLING_WIF_ACCESS_AUDIENCE) ||
+      !(claims.aud === env.PLAY_BILLING_WIF_ACCESS_AUDIENCE ||
+        (Array.isArray(claims.aud) &&
+          claims.aud.includes(env.PLAY_BILLING_WIF_ACCESS_AUDIENCE))) ||
       claims.common_name !== env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID ||
       !Number.isFinite(claims.exp) || claims.exp < now + 60 ||
       (claims.nbf != null && (!Number.isFinite(claims.nbf) || claims.nbf > now + 60)) ||
