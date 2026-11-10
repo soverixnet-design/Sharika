@@ -643,13 +643,10 @@ test('regular gift atomically debits sender, credits recipient diamonds and 10% 
     assert.equal(json.recipient_diamonds_per_user,50);
     assert.deepEqual(json.recipients,['10000001']);
     const stmts=db.calls.find(c=>c[0]==='batch')?.[1];
-    assert.equal(stmts.length,13);
-    assert.match(stmts[11].sql,/sharika_family_crystal_ledger/);
-    assert.match(stmts[11].sql,/family_owner/);
-    assert.deepEqual(stmts[11].values,[uid,'gift_atomic_12345678']);
-    assert.match(stmts[12].sql,/sharika_family_crystal_ledger/);
-    assert.match(stmts[12].sql,/\'bd\'/);
-    assert.deepEqual(stmts[12].values,[uid,'gift_atomic_12345678']);
+    // Legacy Family salary is retired. The 0057 D1 gift-event trigger creates
+    // Host/Agency/BD salary rows within this same transaction instead.
+    assert.equal(stmts.length,11);
+    assert.ok(stmts.every(item=>!item.sql.includes('sharika_family_crystal_ledger')));
     assert.equal(stmts[0].values[0],50);
     assert.equal(stmts[2].values[1],-50);
     assert.equal(stmts[5].values[0],50);
