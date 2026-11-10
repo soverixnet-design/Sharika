@@ -911,6 +911,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/reactions\\?after=(0|[1-9][0-9]{0,11})$"))
             return method.equals("GET");
+        if (path.matches("^/api/v1/agency/rankings\\?kind=(host|agency|bd)&period=(daily|weekly|monthly)$"))
+            return method.equals("GET");
         if (path.contains("?")) return false;
         if (path.equals("/api/v1/presence/heartbeat")) return method.equals("POST");
         if (path.equals("/api/v1/me/avatar")) return method.equals("PUT");
@@ -928,6 +930,15 @@ public final class SharikaActivity extends Activity {
             return method.equals("POST") || method.equals("DELETE");
         if (path.matches("^/api/v1/notifications/[1-9][0-9]*/read$"))
             return method.equals("PATCH");
+        // New BD -> Agency -> Host routes. No wildcard write access.
+        if (path.equals("/api/v1/agency/me") ||
+            path.equals("/api/v1/agency/discover") ||
+            path.equals("/api/v1/agency/rankings")) return method.equals("GET");
+        if (path.equals("/api/v1/agency/create") ||
+            path.equals("/api/v1/agency/hosts/request")) return method.equals("POST");
+        if (path.matches("^/api/v1/agency/hosts/[1-9][0-9]*/(approve|reject)$") ||
+            path.matches("^/api/v1/agency/hosts/[0-9]{1,10}/remove$"))
+            return method.equals("POST");
         // Family routes are authenticated and identity-scoped by the Worker.
         // Keep this explicit; allowing an arbitrary /family/* path could expose
         // the separate Admin API to a normal signed-in Android user.

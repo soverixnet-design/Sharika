@@ -81,7 +81,7 @@ test('a regular Family member can inspect only their own report',async()=>{
   const {response}=await report(f);
   assert.equal(response.status,200);
 });
-test('new royal Family UI preserves BD separation and verified API access',()=>{
+test('Agency tiles replace Family navigation while historical Family reports remain compatible',()=>{
   const code=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const bridge=readFileSync(new URL('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
   assert.match(code,/renderRoyalFamily=function\(data\)/);
@@ -89,7 +89,10 @@ test('new royal Family UI preserves BD separation and verified API access',()=>{
   assert.match(code,/sh-fam-v2-stats/);
   assert.match(code,/showFamilyMemberReport/);
   assert.match(code,/openRoyalBD/);
-  assert.match(code,/bd.onclick=openRoyalBD/);
+  assert.match(code,/bd.onclick=openAgencyCenter/);
+  assert.match(code,/family.onclick=openAgencyCenter/);
+  assert.match(code,/api\('GET','\/agency\/me'\)/);
+  assert.match(bridge,/\/api\/v1\/agency\/me/);
   assert.match(code,/showFamilySellerDirectory/);
   assert.match(code,/family\/members\/'\+encodeURIComponent\(id\)\+'\/report/);
   assert.match(bridge,/family\/members\/\[0-9\]\{8\}\/report/);

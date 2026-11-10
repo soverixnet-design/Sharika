@@ -1,5 +1,5 @@
 // Verified, non-financial home banners controlled only by Sharika Super Admin.
-const ACTIONS=new Set(['none','daily','recharge','rank','invite']);
+const ACTIONS=new Set(['none','daily','recharge','rank','invite','events']);
 const COLORS=/^#[0-9a-fA-F]{6}$/;
 const BANNER_FIELDS=new Set(['title','subtitle','emoji','color_a','color_b','action','sort_order','active']);
 async function readLimitedText(request,maximum){

@@ -8,6 +8,7 @@ import { handleDailyAdmin } from './daily.mjs';
 import { handlePremiumAdmin } from './premium.mjs';
 import { handleBondAdmin } from './bonds.mjs';
 import { handleCpRewardAdmin } from './cp-rewards.mjs';
+import {handleRankingRewardAdmin} from './ranking-rewards.mjs';
 import { handleEventAdmin } from './events.mjs';
 import {handleGameCatalogAdmin} from './game-catalog.mjs';
 import {handleProfileLayoutAdmin} from './profile-layout.mjs';
@@ -18,6 +19,7 @@ import { handleCosmeticAdmin,publicAppearanceSelect } from './cosmetics.mjs';
 import { handleOpeningAdmin } from './opening.mjs';
 import { lookupStaffActor, staffProxyRole, handleStaffAdmin } from './staff.mjs';
 import { handleFamilyAdmin } from './family.mjs';
+import {handleAgencyAdmin} from './agencies.mjs';
 import { handleSpecialAdmin } from './special-ids.mjs';
 import { handleNotificationAdmin } from './notifications.mjs';
 import { handleOperationalRead } from './admin-operations.mjs';
@@ -146,6 +148,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if(operation==='family'||operation.startsWith('family/'))return await handleFamilyAdmin({
     request,env,uid,actor,operation,cors,reply,fail,ctx
   });
+  if(operation==='agency'||operation.startsWith('agency/'))return await handleAgencyAdmin({
+    request,env,uid,actor,operation,cors,reply,fail
+  });
   const operational=await handleOperationalRead({request,env,actor,operation,cors,reply,fail});
   if(operational)return operational;
   if(operation.startsWith('special-ids'))
@@ -183,6 +188,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
     });
   if(operation==='bonds/rewards'||operation==='bonds/rewards/settle')
     return await handleCpRewardAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
+  if(operation==='ranking-rewards'||operation.startsWith('ranking-rewards/'))
+    return await handleRankingRewardAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='bonds'||/^bonds\/gifts\/[1-9][0-9]{0,9}$/.test(operation))
     return await handleBondAdmin({request,env,uid,actor,operation,cors,reply,fail});
   if (operation.startsWith('sellers')) return await handleSellerAdmin({

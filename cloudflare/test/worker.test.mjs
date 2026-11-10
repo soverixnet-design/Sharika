@@ -945,6 +945,61 @@ test('gift leaderboards require Firebase auth and use only settled gift events',
   }finally{globalThis.fetch=prior;}
 });
 
+test('verified rankings authenticate the user, reject writes, and degrade until the migration exists',async()=>{
+  const anonymousDb=fakeDb();
+  const anonymous=await handleRequest(new Request(
+    'https://example.test/api/v1/rankings/verified?kind=game'),
+    {DB:anonymousDb,FIREBASE_PROJECT_ID:project});
+  assert.equal(anonymous.status,401);
+  assert.equal(anonymousDb.calls.length,0);
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const db=fakeDb(),old=db.prepare.bind(db);
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.startsWith('SELECT * FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',public_no:10000001});
+      if(sql.includes('FROM sharika_verified_activity_events e'))
+        stmt.all=async()=>{db.calls.push(['all',sql,stmt.values]);return {results:[
+          {public_no:10000003,name:'Game Player',total:'4'}]};};
+      return stmt;
+    };
+    const headers={Authorization:'Bearer '+await token()};
+    const response=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings/verified?kind=game&metric=wins&period=daily',
+      {headers}),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(response.status,200);
+    const payload=await response.json();
+    assert.equal(payload.leaders[0].total,'4');
+    assert.equal(payload.leaders[0].display_id,'10000003');
+    assert.equal(payload.source,'verified_activity_events');
+    assert.equal(db.calls.filter(x=>x[0]==='all'&&x[1].includes(
+      'FROM sharika_verified_activity_events e')).length,1);
+    const invalid=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings/verified?kind=game&metric=client_score',
+      {headers}),{DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(invalid.status,400);
+    const denied=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings/verified',{method:'POST',headers}),
+      {DB:db,FIREBASE_PROJECT_ID:project});
+    assert.equal(denied.status,405);
+    const unavailable=fakeDb(),prepare=unavailable.prepare.bind(unavailable);
+    unavailable.prepare=sql=>{
+      const stmt=prepare(sql);
+      if(sql.startsWith('SELECT * FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active'});
+      if(sql.includes('FROM sharika_verified_activity_events e'))
+        stmt.all=async()=>{throw Error('D1_ERROR: no such table: sharika_verified_activity_events');};
+      return stmt;
+    };
+    const missing=await handleRequest(new Request(
+      'https://example.test/api/v1/rankings/verified',{headers}),
+      {DB:unavailable,FIREBASE_PROJECT_ID:project});
+    assert.equal(missing.status,503);
+    assert.equal((await missing.json()).error,'verified_rankings_not_ready');
+  }finally{globalThis.fetch=prior;}
+});
+
 
 test('room text chat requires verified membership and uses server identity',async()=>{
   const originalFetch=globalThis.fetch;
