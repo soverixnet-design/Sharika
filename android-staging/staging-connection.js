@@ -5512,8 +5512,10 @@
       return 'Google account picker did not respond. Close any Google popup and tap Continue with Google again.';
     if(message==='google_sign_in_in_progress')
       return 'Google sign-in is already opening. Please wait for the account picker or retry shortly.';
+    if(message==='google_sign_in_picker_retry')
+      return 'Google sign-in could not finish. Tap Continue with Google again to try another account picker.';
     if(message==='google_sign_in_cancelled'||/GetCredentialCancellationException/i.test(message))
-      return 'Google sign-in was cancelled. Tap Continue with Google to retry.';
+      return 'Google account selection closed without signing in. Tap Continue with Google to retry.';
     if(message==='google_account_not_available'||/NoCredentialException/i.test(message))
       return 'No Google account available. Add an account in Android settings and try again.';
     if(/Request timed out/i.test(message))
