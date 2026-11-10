@@ -2371,8 +2371,31 @@
     'text-shadow:0 2px 3px #25105699;transition:transform .12s,box-shadow .12s}',
     '#v-me .edp:active,#v-me .pick:active{transform:translateY(4px);',
     'box-shadow:inset 0 2px 3px #2b1265,0 2px 0 #3c207e!important}',
+    '#v-me .profile-name-edit{display:inline-flex!important;align-items:center;gap:5px;',
+    'vertical-align:middle;min-height:36px;padding:5px 12px!important;margin-left:5px;',
+    'border:1px solid #e8c26e!important;border-radius:19px!important;',
+    'background:#6c4b24!important;color:#fff2ba!important;font-size:15px!important;',
+    'font-family:system-ui,sans-serif;font-weight:800;white-space:nowrap}',
+    '#v-me .profile-name-edit span{font-size:12px;font-weight:800}',
+    '#v-me .edp{display:inline-flex!important;align-items:center;justify-content:center;',
+    'min-height:44px;min-width:155px;color:#fff1be!important;',
+    'border:2px solid #f0c76a!important;background:#69411d!important;',
+    'box-shadow:0 5px 14px #0007!important;font-size:14px!important}',
+    '#shb.sharika-edit-page{display:flex;align-items:stretch;background:#100c1e!important;',
+    'backdrop-filter:none}',
+    '#shb.sharika-edit-page #sh{width:100%;max-height:none;height:100%;overflow-y:auto;',
+    'border-radius:0;animation:none;padding:12px 18px calc(25px + env(safe-area-inset-bottom,0px));',
+    'background:linear-gradient(165deg,#41275d,#1b1535 60%,#100c20)}',
+    '#shb.sharika-edit-page .grab{display:none}',
     '#sh.sharika-profile-editor{background:linear-gradient(155deg,#413078,#241548 72%,#170c30);',
     'border-top:2px solid #a78bfa;box-shadow:0 -15px 40px #130b30b3;padding-top:17px}',
+    '#sh.sharika-profile-editor .sh-edit-header{display:flex;align-items:center;gap:14px;',
+    'padding:10px 0 17px;margin-bottom:15px;border-bottom:1px solid #ffffff35}',
+    '#sh.sharika-profile-editor .sh-edit-back{width:42px;height:42px;border:1px solid #eacb86;',
+    'border-radius:15px;color:#fff1bb;background:#4f336c;font-size:23px}',
+    '#sh.sharika-profile-editor .sh-edit-header h2{margin:0;color:#ffe5a8;',
+    'font-size:21px;line-height:1.3}',
+    '#sh.sharika-profile-editor>h3{display:none}',
     '#sh.sharika-profile-editor h3{font-size:20px;color:#fff;margin:0 0 14px;',
     'text-shadow:0 2px 8px #1c0a4f}',
     '#sh.sharika-profile-editor .lbl{font-size:13px;color:#dfd2ff;font-weight:700}',
@@ -2426,6 +2449,15 @@
     const editName=sheet?.querySelector('#en'),editBio=sheet?.querySelector('#eb');
     if(!editName||!editBio||sheet.querySelector('#sharika-photo-editor'))return;
     sheet.classList.add('sharika-profile-editor');
+    document.getElementById('shb')?.classList.add('sharika-edit-page');
+    const header=document.createElement('header');
+    header.className='sh-edit-header';
+    const back=document.createElement('button');
+    back.type='button';back.className='sh-edit-back';
+    back.setAttribute('aria-label','Back to profile');back.textContent='‹';
+    back.onclick=()=>window.closeSheet();
+    const title=document.createElement('h2');title.textContent='Edit Profile';
+    header.append(back,title);sheet.prepend(header);
     editName.maxLength=80;
     editBio.maxLength=500;
     const block=document.createElement('div');
@@ -2465,6 +2497,7 @@
   const originalOpenSheetForProfile=window.openSheet;
   if(typeof originalOpenSheetForProfile==='function')window.openSheet=function(){
     document.getElementById('sh')?.classList.remove('sharika-profile-editor');
+    document.getElementById('shb')?.classList.remove('sharika-edit-page');
     return originalOpenSheetForProfile.apply(this,arguments);
   };
   const originalEditSheetForProfile=window.editSheet;
@@ -9287,6 +9320,71 @@
     finally{exchangeRateFetch=null;}
   }
   const originalRechargeSheet=window.rechargeSheet;
+  // The staging recharge/exchange route keeps its verified seller and exchange
+  // handlers while adopting the gold-and-ivory reference layout. The Play
+  // edition has a separate, Google-Play-only purchase screen below.
+  const royalRechargeStyle=document.createElement('style');
+  royalRechargeStyle.id='sharika-royal-recharge-style';
+  royalRechargeStyle.textContent=[
+    '#rcp.sh-recharge-reference{background:#f7f7f7!important;color:#333!important}',
+    '#rcp.sh-recharge-reference .rcw{background:linear-gradient(140deg,#ffe79c,#ffae24)!important;',
+    'padding-bottom:4px}',
+    '#rcp.sh-recharge-reference .rcw button{background:#fff8e7;border:1px solid #f1b449;',
+    'color:#8a5300;box-shadow:0 3px 12px #a86d1e25}',
+    '#rcp.sh-recharge-reference .rch{min-height:171px;border-radius:0!important;',
+    'background:radial-gradient(circle at 85% 35%,#fff1aa 0,#fff1aa00 35%),',
+    'linear-gradient(155deg,#ffe59b,#ffc04c 54%,#ff9c07)!important;',
+    'padding:10px 17px 58px;box-shadow:none!important}',
+    '#rcp.sh-recharge-reference .rch .bk{background:#ffffff36;border-color:#fff8c3;',
+    'color:#6b4004;font-weight:800}',
+    '#rcp.sh-recharge-reference .rct{margin-top:8px}',
+    '#rcp.sh-recharge-reference .rct button{color:#825817;font-size:19px}',
+    '#rcp.sh-recharge-reference .rct button.on{color:#49300e}',
+    '#rcp.sh-recharge-reference .rct button.on::after{background:#f58b00}',
+    '#rcp.sh-recharge-reference .rcb{padding:0 16px 36px}',
+    '#rcp.sh-recharge-reference .gc{position:relative;margin:-58px 4px 22px;',
+    'border-radius:25px;padding:20px 12px;background:linear-gradient(#fffaf0,#fff5df)!important;',
+    'border:1px solid #fff;box-shadow:0 6px 22px #bb7c1833!important;color:#a85b00!important}',
+    '#rcp.sh-recharge-reference .gc small{font-size:14px;font-weight:700;color:#9b6a29}',
+    '#rcp.sh-recharge-reference .gc b{font-size:33px;margin:8px 0;text-shadow:none}',
+    '#rcp.sh-recharge-reference .gc i{color:#8c754e}',
+    '#rcp.sh-recharge-reference .dm{padding:12px 15px;margin:0 0 20px;',
+    'background:#fff4da;color:#8c5b12;border:1px solid #f1dcac;font-size:16px}',
+    '#rcp.sh-recharge-reference .rh{gap:10px;margin:8px 0 14px}',
+    '#rcp.sh-recharge-reference .rh h3{color:#3a352c!important;font-size:22px;margin:0}',
+    '#rcp.sh-recharge-reference .rh span{background:#fff;border:1px solid #e7c795;',
+    'color:#936521;border-radius:30px;padding:9px 12px;font-size:13px}',
+    '#rcp.sh-recharge-reference .rcb>.pk:not([style]){display:grid;',
+    'grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;',
+    'background:#fff!important;border-radius:25px;padding:17px 13px;',
+    'box-shadow:none!important;border:1px solid #eee}',
+    '#rcp.sh-recharge-reference .rcb>.pk:not([style]) p{grid-column:1/-1;',
+    'margin:0 0 4px;color:#746d62;font-size:14px}',
+    '#rcp.sh-recharge-reference .rcb>.pk:not([style]) button{display:flex;',
+    'flex-direction:column;justify-content:space-between;align-items:center;',
+    'min-height:146px;min-width:0;margin:0;padding:22px 8px 0;',
+    'border-radius:19px;border:2px solid #e7e2da;',
+    'background:linear-gradient(#fff 72%,#efede8 72%)!important;',
+    'color:#f18b00;font-size:17px;text-align:center;box-shadow:none!important}',
+    '#rcp.sh-recharge-reference .rcb>.pk:not([style]) button span{overflow-wrap:anywhere}',
+    '#rcp.sh-recharge-reference .rcb>.pk:not([style]) button em{display:block;',
+    'width:calc(100% + 16px);padding:10px 0;color:#b46a00;font-size:20px;',
+    'font-weight:900;font-style:normal}',
+    '#rcp.sh-recharge-reference .rcb>.pk[style]{background:#fff9ee!important;',
+    'border:1px solid #f1cf8a!important;box-shadow:none!important}',
+    '#rcp.sh-recharge-reference .rcb>.pk[style] p{color:#806b4a!important}',
+    '#rcp.sh-recharge-reference .rate{color:#796c58!important;font-weight:700}',
+    '#rcp.sh-recharge-reference .cta{border-radius:40px;padding:17px;',
+    'font-size:17px;box-shadow:none!important}',
+    '#rcp.sh-recharge-reference .cta.or{background:#ff5c1c!important}',
+    '#rcp.sh-recharge-reference .cta.bl{background:linear-gradient(#efa91f,#c88004)!important}',
+    '#rcp.sh-recharge-reference .rk{background:#fff;border-color:#eee0c6}',
+    '#rcp.sh-recharge-reference .rk summary{color:#6e4a13}',
+    '@media(max-width:350px){#rcp.sh-recharge-reference .rcb>.pk:not([style]){gap:8px;',
+    'padding:13px 9px}#rcp.sh-recharge-reference .rcb>.pk:not([style]) button{',
+    'font-size:15px;padding:17px 5px 0}}'
+  ].join('');
+  document.head.appendChild(royalRechargeStyle);
   const playCoinsByProduct=Object.freeze({
     sharika_coins_500k:500000,sharika_coins_2500k:2500000,
     sharika_coins_5000k:5000000
@@ -9315,24 +9413,54 @@
     root.setAttribute('role','dialog');
     root.setAttribute('aria-modal','true');
     root.setAttribute('aria-label','Buy Sharika Coins with Google Play');
-    root.style.cssText='position:fixed;inset:0;z-index:2147483400;'+
-      'display:grid;place-items:center;padding:16px;background:#070315e8;color:#fff';
-    root.innerHTML='<div style="width:min(100%,420px);max-height:85vh;overflow:auto;'+
-      'border:2px solid #deb366;border-radius:24px;padding:18px;'+
-      'background:linear-gradient(150deg,#351246,#120e24);'+
-      'box-shadow:0 14px 60px #000a">'+
-      '<button type="button" id="sh-play-close" aria-label="Close" '+
-      'style="float:right;font-size:23px;background:transparent;border:0;color:#f9dfa8">×</button>'+
-      '<h2 style="color:#ffe0a5;margin:5px 0 9px">👑 Sharika Coins</h2>'+
-      '<p style="font-size:13px;opacity:.8;margin:0 0 14px">Secure payment with Google Play</p>'+
-      '<div id="sh-play-coin-products" aria-live="polite">Checking available packages…</div>'+
-      '<p id="sh-play-coin-status" role="status" style="font-size:12px;min-height:20px;'+
-      'color:#ffe5ae;margin:14px 0 0"></p></div>';
+    root.className='sh-play-recharge-screen';
+    root.innerHTML='<div class="sh-play-recharge-content">'+
+      '<header class="sh-play-recharge-hero">'+
+      '<div class="sh-play-recharge-nav">'+
+      '<button type="button" id="sh-play-close" aria-label="Back to profile">‹</button>'+
+      '<h2>Recharge</h2><span>Google Play</span></div>'+
+      '<div class="sh-play-recharge-balance"><small>My coins</small>'+
+      '<strong id="sh-play-coin-balance">Loading…</strong>'+
+      '<p>Verified Sharika virtual balance</p></div></header>'+
+      '<section class="sh-play-recharge-body">'+
+      '<div class="sh-play-payment-heading"><h3>Payment Method</h3>'+
+      '<span>Secure checkout</span></div>'+
+      '<div class="sh-play-payment-card">'+
+      '<div class="sh-play-payment-tabs"><strong>Google Play</strong>'+
+      '<span>Available packages</span></div>'+
+      '<div class="sh-play-coin-packages" id="sh-play-coin-products" '+
+      'aria-live="polite">Checking available packages…</div></div>'+
+      '<p id="sh-play-coin-status" role="status" aria-live="polite"></p>'+
+      '<div class="sh-play-recharge-actions">'+
+      '<button type="button" id="sh-play-exchange">Diamond Exchange</button>'+
+      '<button type="button" id="sh-play-wallet-open">My Wallet &amp; History</button>'+
+      '</div><p class="sh-play-billing-note">Only Google Play handles payments. '+
+      'Coins have no cash value and cannot be withdrawn or sold.</p>'+
+      '</section></div>';
     document.body.append(root);
     root.querySelector('#sh-play-close').onclick=()=>{if(!playCoinCheckoutBusy)root.remove();};
+    root.querySelector('#sh-play-exchange').onclick=()=>{
+      if(playCoinCheckoutBusy)return;root.remove();window.rechargeSheet(1);
+    };
+    root.querySelector('#sh-play-wallet-open').onclick=()=>{
+      if(playCoinCheckoutBusy)return;root.remove();
+      if(typeof window.sharikaOpenPlayWallet==='function')window.sharikaOpenPlayWallet();
+      else document.querySelector('#v-me #wr')?.click();
+    };
     const list=root.querySelector('#sh-play-coin-products');
     const status=root.querySelector('#sh-play-coin-status');
+    const refreshDisplayedBalance=async()=>{
+      try {
+        const wallet=await api('GET','/wallet');
+        const amount=root.querySelector('#sh-play-coin-balance');
+        if(amount?.isConnected)amount.textContent=formatCompactCoins(wallet.coins||0);
+      } catch(error) {
+        const amount=root.querySelector('#sh-play-coin-balance');
+        if(amount?.isConnected)amount.textContent='Balance unavailable';
+      }
+    };
     try {
+      refreshDisplayedBalance();
       const server=await api('GET','/play-billing/catalog');
       if(!server.enabled){
         list.textContent='Google Play coin purchases are temporarily unavailable.';return;
@@ -9341,7 +9469,10 @@
       if(!root.isConnected)return;
       try {
         const credited=await claimOwnedPlayPurchases(store.purchases||[]);
-        if(credited)status.textContent='Restored '+formatCompactCoins(credited)+' coins ✓';
+        if(credited){
+          status.textContent='Restored '+formatCompactCoins(credited)+' coins ✓';
+          await refreshDisplayedBalance();
+        }
       }catch(error){status.textContent='Previous payment check: '+errText(error);}
       list.replaceChildren();
       const available=new Set((server.products||[]).filter(p=>
@@ -9350,13 +9481,12 @@
         if(!available.has(product.id)||typeof product.price!=='string')continue;
         const row=document.createElement('button');
         row.type='button';
-        row.style.cssText='display:flex;width:100%;align-items:center;justify-content:space-between;'+
-          'gap:10px;margin:10px 0;padding:16px;border-radius:16px;'+
-          'border:1px solid #e5b568;background:#382254;color:#fff;font-weight:800';
+        row.className='sh-play-ticket';
         const label=document.createElement('span');
+        label.className='sh-play-ticket-coins';
         label.textContent='🪙 '+formatCompactCoins(playCoinsByProduct[product.id])+' coins';
         const price=document.createElement('span');
-        price.style.color='#ffe0a0';
+        price.className='sh-play-ticket-price';
         price.textContent=product.price;
         row.append(label,price);list.append(row);
         row.onclick=async()=>{
@@ -9368,8 +9498,14 @@
             const purchased=await native('playBillingPurchase',{product_id:product.id});
             status.textContent='Verifying payment with Google…';
             const total=await claimOwnedPlayPurchases(purchased.purchases);
-            status.textContent='Payment verified. Your wallet is updated ✓';
-            toast('Coins received: '+formatCompactCoins(total));
+            await refreshDisplayedBalance();
+            if(total>0){
+              status.textContent='Payment verified. Your wallet is updated ✓';
+              toast('Coins received: '+formatCompactCoins(total));
+            }else{
+              status.textContent='No new coins credited. Check Wallet & History '+
+                'for existing payments before trying again.';
+            }
           }catch(error){
             status.textContent=errText(error)==='play_purchase_cancelled'
               ?'Payment cancelled; no coins deducted.'
@@ -9410,6 +9546,7 @@
       if(playStoreMode===null){playModeReady.then(()=>window.rechargeSheet(...args));return;}
     }
     const value=originalRechargeSheet.apply(this,args);
+    document.getElementById('rcp')?.classList.add('sh-recharge-reference');
     if(args[0]===1)refreshVerifiedExchangeRate().catch(error=>toast(errText(error)));
     else refreshVerifiedRechargeRate().catch(error=>toast('Recharge rates unavailable: '+errText(error)));
     return value;

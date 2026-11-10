@@ -16,6 +16,74 @@
     '#rt button:nth-child(7){display:none!important}'
   ].join('');
   document.head.appendChild(style);
+  // Royal recharge page: match the supplied gold/white reference while
+  // keeping package prices and purchase verification owned by Google Play.
+  const rechargeStyle=document.createElement('style');
+  rechargeStyle.id='sh-play-royal-recharge-style';
+  rechargeStyle.textContent=[
+    '#sh-play-coin-shop{position:fixed;inset:0;z-index:2147483400;',
+    'background:#f5f5f5;color:#2c2c2c;overflow:auto}',
+    '#sh-play-coin-shop .sh-play-recharge-content{max-width:540px;min-height:100%;',
+    'margin:auto;background:#f5f5f5}',
+    '#sh-play-coin-shop .sh-play-recharge-hero{min-height:255px;padding:',
+    'calc(12px + env(safe-area-inset-top,0px)) 18px 32px;',
+    'background:linear-gradient(175deg,#ffe398,#ffba39 70%,#ff9800)}',
+    '#sh-play-coin-shop .sh-play-recharge-nav{display:flex;align-items:center;',
+    'justify-content:space-between;gap:8px;color:#fff}',
+    '#sh-play-coin-shop .sh-play-recharge-nav button{width:42px;height:42px;',
+    'border:0;background:transparent;color:#fff;font-size:34px}',
+    '#sh-play-coin-shop .sh-play-recharge-nav h2{font-size:22px;margin:0;color:#fff}',
+    '#sh-play-coin-shop .sh-play-recharge-nav span{font-size:13px;font-weight:700}',
+    '#sh-play-coin-shop .sh-play-recharge-balance{min-height:130px;margin:27px 8px 0;',
+    'padding:22px;border-radius:24px 24px 0 0;text-align:center;',
+    'background:#fff8e9;box-shadow:0 -3px 0 #ffffff70}',
+    '#sh-play-coin-shop .sh-play-recharge-balance small{display:block;',
+    'font-size:14px;color:#ad771d;font-weight:700}',
+    '#sh-play-coin-shop .sh-play-recharge-balance strong{display:block;',
+    'font-size:32px;color:#ed8b00;margin:8px 0}',
+    '#sh-play-coin-shop .sh-play-recharge-balance p{font-size:12px;',
+    'color:#826e55;margin:0}',
+    '#sh-play-coin-shop .sh-play-recharge-body{padding:22px 16px 38px}',
+    '#sh-play-coin-shop .sh-play-payment-heading{display:flex;',
+    'align-items:center;justify-content:space-between;gap:8px;margin-bottom:19px}',
+    '#sh-play-coin-shop .sh-play-payment-heading h3{font-size:23px;',
+    'font-weight:700;color:#343434;margin:0}',
+    '#sh-play-coin-shop .sh-play-payment-heading span{border:1px solid #d3d3d3;',
+    'border-radius:22px;padding:8px 11px;background:#fff;color:#454545;font-size:12px}',
+    '#sh-play-coin-shop .sh-play-payment-card{padding:18px 12px 34px;',
+    'border-radius:25px;background:white;min-height:285px}',
+    '#sh-play-coin-shop .sh-play-payment-tabs{display:flex;align-items:center;',
+    'justify-content:space-between;border-bottom:2px solid #ededed;',
+    'padding:2px 8px 16px;margin-bottom:14px}',
+    '#sh-play-coin-shop .sh-play-payment-tabs strong{font-size:22px;',
+    'color:#a66800;border-bottom:5px solid #ffad00;padding-bottom:12px}',
+    '#sh-play-coin-shop .sh-play-payment-tabs span{font-size:12px;color:#666}',
+    '#sh-play-coin-shop .sh-play-coin-packages{display:grid;',
+    'grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}',
+    '#sh-play-coin-shop .sh-play-ticket{min-width:0;min-height:145px;',
+    'border:2px solid #e3e3e3;border-radius:18px;overflow:hidden;',
+    'background:#fff;color:#ed8900;display:flex;flex-direction:column;',
+    'justify-content:space-between;padding:0;text-align:center;font-weight:800}',
+    '#sh-play-coin-shop .sh-play-ticket-coins{display:grid;place-items:center;',
+    'flex:1;padding:20px 9px;font-size:19px;overflow-wrap:anywhere}',
+    '#sh-play-coin-shop .sh-play-ticket-price{display:block;width:100%;',
+    'background:#e3e3e3;color:#df8500;padding:11px 5px;font-size:20px}',
+    '#sh-play-coin-shop .sh-play-ticket:focus-visible{outline:3px solid #ffa900}',
+    '#sh-play-coin-shop .sh-play-ticket:disabled{opacity:.65}',
+    '#sh-play-coin-shop #sh-play-coin-status{min-height:24px;',
+    'margin:13px 3px;color:#744a08;font-size:13px;line-height:1.5}',
+    '#sh-play-coin-shop .sh-play-recharge-actions{display:grid;gap:10px;margin-top:20px}',
+    '#sh-play-coin-shop .sh-play-recharge-actions button{width:100%;min-height:51px;',
+    'border:0;border-radius:30px;background:#ff5b24;color:#fff;',
+    'font-size:16px;font-weight:800}',
+    '#sh-play-coin-shop .sh-play-recharge-actions button:first-child{',
+    'background:#b87918}',
+    '#sh-play-coin-shop .sh-play-billing-note{color:#6d6d6d;',
+    'font-size:12px;line-height:1.6;text-align:center;margin:19px 7px}',
+    '@media(max-width:345px){#sh-play-coin-shop .sh-play-ticket-coins{font-size:15px}',
+    '#sh-play-coin-shop .sh-play-ticket-price{font-size:17px}}'
+  ].join('');
+  document.head.appendChild(rechargeStyle);
 
   // Restrict text changes to first-party navigation and headings. Never
   // alter user names, chat, gift messages, or server-generated notices.
@@ -116,7 +184,19 @@
           'border-radius:13px;border:1px solid #f5d58b;'+
           'background:#5a3272;color:white;font-weight:800';
         refresh.onclick=load;
-        panel.append(balances,note,title,history,refresh);
+        const purchase=document.createElement('button');
+        purchase.type='button';purchase.textContent='＋ Recharge with Google Play';
+        purchase.style.cssText='width:100%;padding:14px;margin:9px 0;'+
+          'border-radius:18px;border:1px solid #f6d38d;'+
+          'background:#ed941e;color:#25142c;font-weight:900';
+        purchase.onclick=()=>{window.closeSheet();window.rechargeSheet();};
+        const exchange=document.createElement('button');
+        exchange.type='button';exchange.textContent='◆ Diamond to Coin Exchange';
+        exchange.style.cssText='width:100%;padding:12px;margin-bottom:5px;'+
+          'border-radius:16px;border:1px solid #9879bf;'+
+          'background:#5a3272;color:white;font-weight:800';
+        exchange.onclick=()=>{window.closeSheet();window.rechargeSheet(1);};
+        panel.append(balances,purchase,exchange,note,title,history,refresh);
       }catch(error){
         if(!panel.isConnected)return;
         panel.textContent='Wallet could not load: '+String(error?.message||error);
@@ -127,6 +207,7 @@
     }
     load();
   }
+  window.sharikaOpenPlayWallet=showPlayWallet;
   // Registered before the normal profile's capture listener, so Wallet and
   // its coin/diamond balance shortcuts cannot accidentally open Recharge.
   document.addEventListener('click',event=>{

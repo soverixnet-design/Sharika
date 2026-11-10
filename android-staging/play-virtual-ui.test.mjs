@@ -41,11 +41,13 @@ test('Play presentation hides incompatible UI and relabels navigation without to
     NodeFilter:{SHOW_TEXT:4},MutationObserver:class{observe(){}},queueMicrotask:fn=>fn()
   };
   runInNewContext(script,context);
-  assert.equal(styles.length,1);
+  assert.equal(styles.length,2);
   assert.match(styles[0].textContent,/#sharika-recharge-seller-wallet/);
   assert.match(styles[0].textContent,/#sh-bd-entry/);
   assert.match(styles[0].textContent,/#rt button:nth-child\(7\)/);
   assert.doesNotMatch(styles[0].textContent,/#qg/);
+  assert.match(styles[1].textContent,/#sh-play-coin-shop \.sh-play-ticket/);
+  assert.match(styles[1].textContent,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   onReady();
   assert.equal(title.nodeValue,'Coins');
   assert.equal(menu.nodeValue,'Coins');
@@ -84,7 +86,9 @@ test('Play Wallet opens the verified server balance and transactions without rec
   assert.ok(calls.includes('stopImmediatePropagation'));
   assert.equal(panel.children[0].children[0].children[1].textContent,'12,345');
   assert.equal(panel.children[0].children[1].children[1].textContent,'67');
-  assert.equal(panel.children[3].children[0].children[0].textContent,'daily_check_in');
+  assert.equal(panel.children[5].children[0].children[0].textContent,'daily_check_in');
+  assert.equal(panel.children[1].textContent,'＋ Recharge with Google Play');
+  assert.equal(panel.children[2].textContent,'◆ Diamond to Coin Exchange');
   assert.deepEqual(calls.filter(c=>Array.isArray(c)&&c[0]!=='openSheet'),[['GET','/wallet']]);
 });
 

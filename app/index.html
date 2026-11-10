@@ -533,7 +533,7 @@ function renderRcp(){
   h='<div class="rcw"><button id="rcl">🌐 English ⌄</button></div><div class="rch"><button class="bk" id="rcb">‹ Back</button><div class="rct"><button data-x="0" class="'+(RCT?"":"on")+'">Recharge</button><button data-x="1" class="'+(RCT?"on":"")+'">Exchange</button></div></div><div class="rcb">';
   h+='<div class="gc"><small>My gold coins</small><b>🪙 '+N(coins())+'</b><i>ID '+A.id+'</i></div><div class="dm"><span>💎 Your diamonds</span><span>'+N(RS().dia)+'</span></div>';
   if(!RCT){
-    h+='<div class="rh"><h3>Recharge packages</h3><span>🇧🇩 Bangladesh</span></div><div class="pk"><p>Choose a package and send a recharge request for approval.</p>'+P.map(function(p,i){return'<button data-p="'+i+'"><span>🪙 '+N(p[0])+' Coins</span><em>'+p[1]+' ›</em></button>'}).join("")+'</div>'+
+    h+='<div class="rh"><h3>Recharge packages</h3><span>'+esc(A.country||'Global')+'</span></div><div class="pk"><p>Choose a package and send a recharge request for approval.</p>'+P.map(function(p,i){return'<button data-p="'+i+'"><span>🪙 '+N(p[0])+' Coins</span><em>'+p[1]+' ›</em></button>'}).join("")+'</div>'+
     '<div class="pk" style="margin-top:10px;border:2px solid #ffd97b;border-radius:18px;padding:12px;background:#37124e"><b style="color:#ffe18a">🎁 First Recharge Chest</b><p style="margin:7px 0;color:#f5e1ff">$1 equivalent = 🪙 '+N(U)+' recharge coins + 🪙 '+N(Math.floor(U*B/100))+' first-recharge bonus. Your first verified recharge receives '+B+'% extra coins once. No coins are granted until payment is approved.</p></div>'+
     '<button class="cta bl" id="rcs">Contact recharge support</button><button class="cta or" id="rcl2">Coin seller list</button>'+
     '<details class="rk"><summary>🏆 Recharge, sending and receiving rankings</summary>'+CFG.people.slice(0,5).map(function(p,i){return'<div><span>'+(i+1)+'. '+p[1]+' '+esc(p[0])+'</span><b>🪙 '+rf(CFG.wealth[i])+'</b></div>'}).join("")+'</details>';
@@ -677,11 +677,11 @@ function meHTML(m){
   return'<div class="profile-royal-page">'+
   '<header class="profile-topbar"><button class="profile-top-icon" id="mback" aria-label="Back to rooms">‹</button><h1>Me</h1><button class="profile-top-icon" id="mtopedit" aria-label="Edit profile">✎</button><button class="profile-top-icon" id="mtopset" aria-label="Settings">⚙</button></header>'+
   '<section class="profile-hero"><button class="mav" id="pavb" aria-label="Change profile photo"><div '+av+'>'+(m.pic?'':'👤')+'</div><img class="profile-avatar-crown" src="./profile-crown.webp" alt=""></button>'+
-  '<div class="mnm">'+esc(m.n)+' <button class="profile-name-edit" id="mnameedit" aria-label="Edit profile name">✎</button></div>'+
+  '<div class="mnm">'+esc(m.n)+' <button type="button" class="profile-name-edit" id="mnameedit" aria-label="Edit your name and profile">✎ <span>Edit</span></button></div>'+
   '<div class="profile-id-row"><span class="mid" id="pid">ID: '+esc(m.id)+'</span></div>'+
   '<div class="lps"><span class="lp s">✦ <b data-profile-level="wealth">'+bn(m.wl)+'</b></span><span class="lp r">✦ <b data-profile-level="charm">'+bn(m.cl)+'</b></span></div>'+
   '<button class="profile-svip-badge" data-m="svip">VIP</button><p class="profile-bio">'+esc(m.bio||'')+'</p>'+
-  '<button class="edp" id="pe">Edit Profile</button></section>'+
+  '<button type="button" class="edp" id="pe" aria-label="Open Edit Profile page">✎ Edit Profile</button></section>'+
   '<div class="mst"><button type="button" class="profile-balance-link" data-sh-profile-action="wallet" aria-label="Open my Gold wallet"><span class="profile-coin-mark">✪</span> Gold<small>'+fmt(coins())+'</small></button>'+
   '<button type="button" class="profile-balance-link" data-sh-profile-action="wallet" aria-label="Open my diamonds wallet"><span class="profile-diamond-mark">◆</span> DMD<small>'+(RS().dia||0).toLocaleString('en-US')+'</small></button>'+
   '<button type="button" class="profile-stat-link" data-profile-follow="following" aria-label="View people I follow"><b data-profile-stat="following">'+fmt(m.fg)+'</b><small>follow</small></button>'+
