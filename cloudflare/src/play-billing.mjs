@@ -91,8 +91,9 @@ function readAccessAssertion(jwt, env) {
   // This is a preflight check, not cryptographic verification: Google STS
   // independently validates the Cloudflare Access signature and trust policy.
   if (claims.iss !== env.PLAY_BILLING_WIF_ACCESS_ISSUER ||
-      !Array.isArray(claims.aud) ||
-      !claims.aud.includes(env.PLAY_BILLING_WIF_ACCESS_AUDIENCE) ||
+      !(claims.aud === env.PLAY_BILLING_WIF_ACCESS_AUDIENCE ||
+        (Array.isArray(claims.aud) &&
+          claims.aud.includes(env.PLAY_BILLING_WIF_ACCESS_AUDIENCE))) ||
       claims.common_name !== env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID ||
       claims.type !== 'app' || !Number.isFinite(claims.exp) ||
       claims.exp <= Math.floor(Date.now() / 1000) + 60)
@@ -106,7 +107,9 @@ async function getWifAccessToken(env, fetcher) {
   // Service Auth policy limited to this one token. It returns the Access JWT
   // injected by Cloudflare to its origin, never a self-signed Google key.
   const identityResponse = await fetchWithTimeout(fetcher, env.PLAY_BILLING_WIF_IDENTITY_URL, {
-    method: 'GET', redirect: 'error',
+    // Cloudflare Workers only supports "follow" or "manual"; manual responses
+    // remain fail-closed because any 3xx status is rejected below.
+    method: 'GET', redirect: 'manual',
     headers: {
       'CF-Access-Client-Id': env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID,
       'CF-Access-Client-Secret': env.PLAY_BILLING_WIF_ACCESS_CLIENT_SECRET,
