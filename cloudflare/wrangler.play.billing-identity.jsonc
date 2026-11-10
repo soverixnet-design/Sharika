@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sharika-play-billing-identity",
+  "main": "src/play-billing-identity.mjs",
+  "compatibility_date": "2026-11-09",
+  "workers_dev": false,
+  "routes": [{
+    "pattern": "billing-identity.sharika.app",
+    "custom_domain": true
+  }],
+  "vars": {
+    "PLAY_BILLING_WIF_IDENTITY_HOST": "billing-identity.sharika.app",
+    "PLAY_BILLING_WIF_ACCESS_ISSUER": "https://broken-dew-401f.cloudflareaccess.com",
+    "PLAY_BILLING_WIF_ACCESS_AUDIENCE": "REPLACE_WITH_NEW_ACCESS_APP_AUD",
+    "PLAY_BILLING_WIF_ACCESS_CLIENT_ID": "REPLACE_WITH_DEDICATED_SERVICE_TOKEN_ID"
+  }
+}
