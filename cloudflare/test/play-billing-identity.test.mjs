@@ -22,8 +22,9 @@ async function keyFixture() {
     modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
   true, ['sign', 'verify']);
   const jwk = await crypto.subtle.exportKey('jwk', keys.publicKey);
-  const getJwks = async url => {
+  const getJwks = async (url, options) => {
     assert.equal(url, `${issuer}/cdn-cgi/access/certs`);
+    assert.equal(options.redirect, 'manual');
     return Response.json({ keys: [{ kid: 'fixture-key', ...jwk }] });
   };
   const sign = async (extra = {}) => {
@@ -47,6 +48,10 @@ test('Identity endpoint returns only a verified Cloudflare Access JWT with no-st
   assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.equal(response.headers.get('access-control-allow-origin'), null);
   assert.deepEqual(await response.json(), { subject_token: jwt });
+  const stringAudienceJwt = await fixture.sign({ aud: audience });
+  const stringAudienceResponse = await handlePlayBillingIdentity(new Request(endpoint,
+    { headers: { 'Cf-Access-Jwt-Assertion': stringAudienceJwt } }), env, fixture.getJwks);
+  assert.equal(stringAudienceResponse.status, 200);
 });
 
 test('Identity endpoint rejects public workers.dev bypasses and unauthenticated callers', async () => {
