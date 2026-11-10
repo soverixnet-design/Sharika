@@ -1,11 +1,14 @@
 # Sharika Google Play billing: keyless Google WIF (staging)
 
-**Status (2026-11-10):** Identity Worker deployed on Cloudflare and protected
-by a dedicated Access Service Auth policy. The staging billing Worker has WIF
-bindings saved, but its WIF adapter is **not deployed** and Google's WIF
-configuration is **not yet complete**. An unauthenticated request to the identity
-host returned HTTP 401. `SHARIKA_PLAY_BILLING_ENABLED` remains `false`; user
-purchases must remain disabled until an end-to-end Google Play test passes.
+**Status (2026-11-10):** Google Workload Identity Federation is **working in
+isolated staging**: a real Cloudflare service assertion reached Google STS
+and successfully impersonated the Play service account. Identity Worker v5
+and Play-virtual Worker v25 are deployed without temporary diagnostics.
+An unauthenticated identity request returned HTTP 401. Focused billing tests
+passed 11/11; read-only Play D1 inspection found the purchase/ledger tables,
+but **zero purchase receipts and zero Play recharge entries**. The Android
+Google Play sandbox purchase and coin credit remain **untested**.
+`SHARIKA_PLAY_BILLING_ENABLED` is still `false` and must not be enabled broadly.
 
 ## Why this design
 
@@ -44,7 +47,7 @@ The **Client Secret is stored only in Worker Secrets** and must never be copied
 into documentation, GitHub, screenshots or Google WIF audience fields. The
 existing `Sharika Production QA - Owner Access` application was not modified.
 
-## Remaining Google Cloud setup and verification
+## Google Cloud setup and verification
 
 1. In Google Cloud project `project-dcd1acf2-621e-4aea-94b`, confirm billing
    is enabled (the account previously displayed a free-trial prepayment banner).
@@ -53,18 +56,18 @@ existing `Sharika Production QA - Owner Access` application was not modified.
    Service Account Credentials and Security Token Service APIs as required.
 2. **Completed.** The Access application, dedicated service token and
    restrictive reusable policy have been created as listed above.
-3. **Partially completed in Google Cloud.** The existing WIF pool is
+3. **Completed in Google Cloud.** The existing WIF pool is
    `sharika-play-billing` (not `sharika-billing`) with OIDC provider
    `cloudflare-access`, issuer `https://broken-dew-401f.cloudflareaccess.com`.
-   **Replace the incorrect current Allowed audience `cloudflare-access` with**
+   The allowed audience is
    `eaf8f3b63b314bf4c22ca54fcad7b05f330ca90d0ec4b33da254e1141302853b`.
    This is the dedicated Access application's AUD, not the Google WIF
    resource name. Cloudflare Access service JWTs may have empty `sub`;
    map `google.subject=assertion.common_name` (the service-token Client ID).
-   Set the provider attribute condition to:
+   The provider attribute condition must compare `aud` as a **string**:
 
    ```cel
-   assertion.type == 'app' && assertion.common_name == '3950c7810ccab2a6c516fcc34a95b893.access' && 'eaf8f3b63b314bf4c22ca54fcad7b05f330ca90d0ec4b33da254e1141302853b' in assertion.aud
+   assertion.type == 'app' && assertion.common_name == '3950c7810ccab2a6c516fcc34a95b893.access' && assertion.aud == 'eaf8f3b63b314bf4c22ca54fcad7b05f330ca90d0ec4b33da254e1141302853b'
    ```
 
    The SDK-free
@@ -101,14 +104,17 @@ existing `Sharika Production QA - Owner Access` application was not modified.
    No `PLAY_BILLING_SERVICE_ACCOUNT_JSON` is needed in WIF mode. It does not
    silently fall back to the private-key mode if federation fails.
 
-8. Deploy the reviewed WIF adapter to the **isolated** billing Worker after
-   the Google side is configured. First verify a successful service-token
-   request, Google STS exchange and service-account impersonation while the
-   purchase flag is still off.
-9. Activate purchase options on Google Play's products, and do an official
-   sandbox purchase with proper receipt verification, coin credit, consume
-   and idempotent retry on the isolated Play database. Only after all checks
-   succeed can `SHARIKA_PLAY_BILLING_ENABLED` be changed to `true`.
+8. **Completed.** The reviewed WIF adapter is deployed only to isolated
+   `sharika-api-play-virtual` as safe Worker v25; the dedicated identity Worker
+   is v5. One-time sanitized staging verification returned
+   `{"ok":true,"steps":["access_identity","google_sts","iam_impersonation"]}`.
+   The temporary diagnostic route was then removed, 25 bindings were preserved,
+   and the purchase flag remained off.
+9. **Not completed.** Verify official Google Play license testers and active
+   one-time coin products, then carry out the full Android Play sandbox test,
+   including verified receipt, atomic coin grant, consume and replay handling.
+   Follow [PLAY_BILLING_SANDBOX_QA.md](PLAY_BILLING_SANDBOX_QA.md). Do not
+   enable public billing merely because STS token exchange succeeded.
 
 ## Tests and safeguards
 
