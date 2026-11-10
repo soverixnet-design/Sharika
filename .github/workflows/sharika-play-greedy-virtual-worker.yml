@@ -1,0 +1,106 @@
+name: Sharika isolated Play Greedy Wheel server rollout
+
+on:
+  push:
+    branches:
+      - fix/sharika-play-auth-20261109
+    paths:
+      - '.github/workflows/sharika-play-greedy-virtual-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-play-virtual-api-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-play-virtual-only:
+    name: Verify canonical IDs and deploy only the isolated Play Worker
+    if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: sharika-staging
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact Play-only Worker and nonredeemable coin bindings
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('cloudflare/wrangler.play.virtual.jsonc','utf8'));
+          const db=name=>c.d1_databases?.find(x=>x.binding===name);
+          if(!process.env.CLOUDFLARE_API_TOKEN ||
+             c.name!=='sharika-api-play-virtual' ||
+             c.main!=='src/voice-worker.mjs' ||
+             c.vars?.SHARIKA_ENV!=='play_virtual' ||
+             c.vars?.SHARIKA_PLAY_VIRTUAL_ONLY!=='true' ||
+             c.vars?.SHARIKA_PLAY_ISOLATED_DATA!=='true' ||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             c.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false' ||
+             db('DB')?.database_id!=='5b151101-1ac0-4b13-ab8e-e41cb06014fa' ||
+             db('SHARIKA_ID_DB')?.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a')
+            throw Error('Play-only safeguards or DB bindings changed; refusing deployment');
+          NODE
+      - name: Verify both remote D1 databases have reconciled permanent account IDs
+        run: |
+          node --input-type=module - <<'NODE'
+          const base=`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/d1/database/`;
+          async function query(db,sql){
+            const r=await fetch(base+db+'/query',{method:'POST',headers:{
+              authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+              'content-type':'application/json'
+            },body:JSON.stringify({sql})});
+            const data=await r.json();
+            if(!r.ok||!data.success||!data.result?.[0]?.success)
+              throw Error('Cannot verify remote D1 before deployment');
+            return data.result[0].results;
+          }
+          const stage='b2c62252-12a5-4740-90c7-01a536d9a39a';
+          const play='5b151101-1ac0-4b13-ab8e-e41cb06014fa';
+          const registry=await query(stage,'SELECT auth_uid,public_no FROM sharika_public_id_registry');
+          const users=await query(play,'SELECT auth_uid,public_no FROM sharika_users');
+          const staged=await query(stage,'SELECT auth_uid,public_no FROM sharika_users');
+          if(users.length<4||staged.length<9||registry.length<11)
+            throw Error('Required reconciled users or global registry missing');
+          const map=new Map(registry.map(x=>[x.auth_uid,x.public_no]));
+          if(new Set(registry.map(x=>x.public_no)).size!==registry.length)
+            throw Error('Duplicate global number');
+          for(const user of [...users,...staged])
+            if(map.get(user.auth_uid)!==user.public_no)
+              throw Error('Play/staging account ID mismatch; refusing deployment');
+          const games=await query(play,"SELECT enabled FROM sharika_game_catalog WHERE id='greedy-wheel'");
+          if(games.length!==1||games[0].enabled!==1)
+            throw Error('Original Greedy Wheel catalog is not enabled in isolated Play');
+          const needed=['sharika_greedy_rounds','sharika_greedy_bets','sharika_wallet_ledger'];
+          const existing=await query(play,"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_greedy_rounds','sharika_greedy_bets','sharika_wallet_ledger')");
+          if(needed.some(n=>!existing.some(x=>x.name===n)))
+            throw Error('Greedy Wallet D1 schema incomplete');
+          console.log('All user IDs globally reconciled; isolated Greedy Wallet schema is ready');
+          NODE
+      - name: Run Worker behavior regressions
+        run: npm --prefix cloudflare run check
+      - name: Inspect compiled Play Worker (no database migration)
+        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.play.virtual.jsonc --outdir /tmp/sharika-play-greedy-worker
+      - name: Publish only nonredeemable isolated Play API
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.play.virtual.jsonc
+      - name: Check live Play health and server-side finance isolation
+        run: |
+          node --input-type=module - <<'NODE'
+          const root='https://sharika-api-play-virtual.soverixnet.workers.dev';
+          const health=await fetch(root+'/health');
+          if(!health.ok)throw Error('Play Worker health failed');
+          const bet=await fetch(root+'/api/v1/greedy-wheel/state');
+          if(bet.status!==401)throw Error('Greedy state must require authentication');
+          const finance=await fetch(root+'/api/v1/agency');
+          if(finance.status!==403)throw Error('Cash-related agency endpoint must remain blocked');
+          console.log('Play virtual-only health, authentication, and finance isolation verified');
+          NODE
