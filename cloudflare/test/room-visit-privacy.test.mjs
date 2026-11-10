@@ -124,6 +124,35 @@ test('two distinct clients see live joins and new messages, not each other\'s pa
   }finally{db.close();}
 });
 
+test('a duplicate mobile join does not duplicate arrival banners but a real re-entry does',async()=>{
+  const {room,db}=coordinator();
+  try{
+    await room.beginRoomVisit('shakil',0);
+    assert.deepEqual(await room.roomEntryAnnounce('shakil','10000014','Shakil','standard'),
+      {announced:true});
+    assert.deepEqual(await room.roomEntryAnnounce('shakil','10000014','Shakil','standard'),
+      {announced:false,duplicate:true});
+    assert.equal((await room.roomEntryRead('shakil',0)).events.length,1);
+    await room.endRoomVisit('shakil');
+    await room.beginRoomVisit('shakil',0);
+    assert.deepEqual(await room.roomEntryAnnounce('shakil','10000014','Shakil','standard'),
+      {announced:true});
+    assert.equal((await room.roomEntryRead('shakil',0)).events.length,1,
+      'new visitor sees only their latest arrival');
+  }finally{db.close();}
+});
+
+test('occupied room ID stays under the name without a second permanent ID',()=>{
+  const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../../app/reference-room.css',import.meta.url),'utf8');
+  assert.match(adapter,/const visibleSeatId=frame\.sid\?\.\(seat\)/);
+  assert.match(adapter,/id\.textContent='ID '\+visibleSeatId/);
+  assert.match(adapter,/recentJoinNames\.has\(memberId\)/);
+  assert.match(css,/#grid\.grid:has\(>\.seat:nth-child\(17\)\) \.seat \.av > \.sh-sovera-frame\.fxr/);
+  assert.match(css,/\.sh-verified-seat-id/);
+  assert.doesNotMatch(adapter,/frame\.innerWidth,frame\.innerHeight\]\)/);
+});
+
 test('client stops restoring historic gifts and clears offline demo messages',()=>{
   const adapter=readFileSync(
     new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');

@@ -102,6 +102,10 @@ test('room gestures retry blocked incoming audio in both the app and room iframe
   assert.match(ui,/bindRoomAudioGesture\(roomAudioFrame\.contentDocument\)/);
   assert.match(ui,/audio\.play\(\)\.catch\(error=>/);
   assert.match(ui,/event\.track\.addEventListener\('unmute',startPlayback\)/);
+  assert.match(ui,/document\.addEventListener\('visibilitychange',/);
+  assert.match(ui,/window\.addEventListener\('pageshow',resumeRoomAudio\)/);
+  assert.match(ui,/const changed=localSeats\.some\(seat=>seat\.muted===!!enabled\)/);
+  assert.match(ui,/if\(changed&&typeof frame\.render==='function'\)/);
   assert.match(ui,/voiceRoom\.startAudio\(\)\.catch/);
 });
 
@@ -141,8 +145,9 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
     return remoteAudio;
   };
   outerDoc.body={appendChild(element){element.isConnected=true;}};
+  const browserWindow=listeners();
   const context=createContext({
-    document:outerDoc,voiceRoom:null,voiceRoomId:null,
+    document:outerDoc,window:browserWindow,voiceRoom:null,voiceRoomId:null,
     MediaStream:class{constructor(tracks){this.tracks=tracks;}}
   });
   runInContext(ui.slice(start,end)+ui.slice(trackStart,trackEnd),context);
@@ -156,6 +161,7 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
   assert.ok(state.audioElements.has(remoteAudio));
   assert.ok(innerDoc.handlers.has('pointerdown'));
   assert.ok(outerDoc.handlers.has('pointerdown'));
+  assert.ok(browserWindow.handlers.has('pageshow'));
 
   innerDoc.handlers.get('pointerdown')();
   assert.equal(playCount,2);
@@ -171,6 +177,9 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
   remoteAudio.paused=true;
   newRoomDoc.handlers.get('pointerdown')();
   assert.equal(playCount,3);
+  remoteAudio.paused=true;
+  browserWindow.handlers.get('pageshow')();
+  assert.equal(playCount,4,'returning from background should resume remote audio');
 
   // The LiveKit fallback gets its own audio-unlock retry on the same gesture.
   let startAudioCalls=0;
@@ -184,7 +193,7 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
   context.voiceRoom=null;
   remoteAudio.paused=true;
   outerDoc.handlers.get('pointerdown')();
-  assert.equal(playCount,3);
+  assert.equal(playCount,4);
 });
 
 test('two-way audio recovers an ended microphone and a failed remote receiver',()=>{

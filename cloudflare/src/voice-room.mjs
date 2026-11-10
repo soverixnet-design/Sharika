@@ -516,6 +516,7 @@ export class SharikaVoiceRoom extends DurableObject {
 
   async endRoomVisit(uid) {
     this.ctx.storage.sql.exec('DELETE FROM room_visits WHERE uid=?',uid);
+    this.recentRoomAnnounces?.delete(uid);
     return {left:true};
   }
 
@@ -677,6 +678,13 @@ export class SharikaVoiceRoom extends DurableObject {
   async roomEntryAnnounce(uid,publicId,displayName,style) {
     // No decorative entry effect is required for a genuine join notification.
     const now=Date.now();
+    // Retried /join requests (or a short mobile reconnect) must not flood the
+    // room with two identical arrival messages and full-screen animations.
+    this.recentRoomAnnounces??=new Map();
+    const last=this.recentRoomAnnounces.get(uid)||0;
+    if(now-last<5000)
+      return {announced:false,duplicate:true};
+    this.recentRoomAnnounces.set(uid,now);
     this.ctx.storage.sql.exec(
       'INSERT INTO room_entry_events(uid,public_id,display_name,entry_style,created_at_ms) VALUES(?,?,?,?,?)',
       uid,publicId,displayName,style||'standard',now
