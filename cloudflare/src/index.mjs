@@ -46,6 +46,7 @@ import {readRankingRewardPreview} from './ranking-rewards.mjs';
 import {handleRoleApplicationApp} from './role-applications.mjs';
 import {readPublicShowcase} from './profile-showcase.mjs';
 import {playVirtualOnly,playVirtualConfigured,playVirtualRouteBlocked} from './play-virtual-only.mjs';
+import {reserveGlobalPublicNo} from './global-public-ids.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -328,7 +329,12 @@ export async function handleRequest(request, env, ctx) {
   let actor;
   try { actor = await verifyFirebaseToken(request.headers.get('authorization'), env.FIREBASE_PROJECT_ID); }
   catch (_) { return fail('identity_provider_unavailable', 503, cors); }
-  if (!actor || !actor.verified) return fail('not_authenticated', 401, cors);
+  // The isolated Play closed-test Worker has a separate D1 and no cash
+  // redemption. It may create a virtual test profile from a valid Firebase
+  // email/password token before email verification. Other environments must
+  // continue to require a verified email identity.
+  if (!actor || (!actor.verified && !playVirtualConfigured(env)))
+    return fail('not_authenticated', 401, cors);
 
   const uid = actor.uid;
   // Per-user edge throttling for sensitive state changes; safe read-only
@@ -557,16 +563,22 @@ export async function handleRequest(request, env, ctx) {
         const verifiedReferral=!!(referral.inviter&&device.eligible&&
           inviterDevice?.invite_eligible===1&&inviterDevice.device_digest!==deviceDigest);
         const welcomeCoins=signupCoins(verifiedReferral,...(virtualOnly?[]:[rules]));
+        // Both Workers reserve through the same staging-backed identity
+        // registry. Never fall back to isolated MAX(public_no)+1 allocation:
+        // that gave two distinct Firebase identities the same displayed ID.
+        let globalPublicNo;
+        try {
+          globalPublicNo = await reserveGlobalPublicNo(env.SHARIKA_ID_DB,uid,
+            virtualOnly?'play_virtual':'staging');
+        } catch (error) {
+          console.error(JSON.stringify({event:'public_id_reservation_failed',
+            reason:error instanceof Error?error.message:'unknown'}));
+          return fail('public_id_registry_unavailable',503,cors);
+        }
         const registration=[
           env.DB.prepare(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,country,pic,coins)
-            VALUES((WITH RECURSIVE candidate(n) AS (
-              SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users
-              UNION ALL
-              SELECT n+1 FROM candidate
-              WHERE EXISTS (SELECT 1 FROM sharika_special_ids
-                WHERE special_id=CAST(candidate.n AS TEXT))
-            ) SELECT n FROM candidate ORDER BY n DESC LIMIT 1),?,?,?,?,?,?,?)`)
-            .bind(uid,name,body.birthdate,age<18?1:0,country,pic,welcomeCoins),
+            VALUES(?,?,?,?,?,?,?,?)`)
+            .bind(globalPublicNo,uid,name,body.birthdate,age<18?1:0,country,pic,welcomeCoins),
           env.DB.prepare(`INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id)
             VALUES(?,'coins',?,?,?,?)`)
             .bind(uid,welcomeCoins,welcomeCoins,verifiedReferral?'signup_invited':'signup_welcome','signup:'+uid)
@@ -1166,7 +1178,22 @@ export async function handleRequest(request, env, ctx) {
         const name = txt(data.name, 100);
         if (!name) return fail('invalid_room_name', 400, cors);
         const seatCount = Number.isInteger(data.seat_count) && data.seat_count >= 1 && data.seat_count <= 20 ? data.seat_count : 12;
-        const roomId = publicId(user.public_no);
+        // Legacy Play room IDs are deliberately NOT rewritten during the UID
+        // migration: their messages, gift history, and membership reference
+        // the old room ID. A different user may later receive the matching
+        // canonical public number, so the room namespace must be independent.
+        let roomId = publicId(user.public_no);
+        const takenRoom=await env.DB.prepare('SELECT id FROM sharika_rooms WHERE id=?')
+          .bind(roomId).first();
+        if(takenRoom){
+          const nextRoom=await env.DB.prepare(
+            'SELECT COALESCE(MAX(CAST(id AS INTEGER)),10000000)+1 AS next_no FROM sharika_rooms'
+          ).first();
+          const available=Number(nextRoom?.next_no);
+          if(!Number.isSafeInteger(available)||available>99999999||available<10000001)
+            return fail('room_id_unavailable',409,cors);
+          roomId=publicId(available);
+        }
         await env.DB.batch([
           env.DB.prepare('INSERT INTO sharika_rooms(id,owner_id,name,emoji,theme,seat_count) VALUES(?,?,?,?,?,?)')
             .bind(roomId, uid, name, txt(data.emoji, 16) || '🎙️', txt(data.theme, 32) || 'mid', seatCount),

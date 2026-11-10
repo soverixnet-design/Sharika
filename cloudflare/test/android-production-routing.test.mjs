@@ -40,13 +40,16 @@ test('release assets target only the approved host, with debug URLs preserved',(
   assert.match(transformed,/api\\\.sharika\\\.example/);
 });
 
-test('Play Android route gate blocks seller directories, cash withdrawals and paid bets',()=>{
+test('Play Android blocks cash paths and other games but permits only Greedy Wheel',()=>{
   const source=read('app/src/main/java/com/soverixnet/sharika/SharikaActivity.java');
-  const section=source.slice(source.indexOf('if (BuildConfig.SHARIKA_PLAY_BUILD) {',
-    source.indexOf('private boolean allowedApi(')));
+  const gateStart=source.indexOf('if (BuildConfig.SHARIKA_PLAY_BUILD) {',
+    source.indexOf('private boolean allowedApi('));
+  const section=source.slice(gateStart,source.indexOf('// A fixed-origin bridge',gateStart));
   for(const route of ['/api/v1/sellers','/api/v1/invites/withdrawals',
-    '/api/v1/family/crystal/transfer','/api/v1/agency/salary/transfer',
-    '/api/v1/greedy-wheel/bet'])assert.ok(section.includes(route),route);
+    '/api/v1/family/crystal/transfer','/api/v1/agency/salary/transfer'])
+    assert.ok(section.includes(route),route);
+  assert.doesNotMatch(section,/greedy-wheel/);
+  assert.match(source,/path\.equals\("\/api\/v1\/greedy-wheel\/bet"\)\)\s*return method\.equals\("POST"\)/);
   assert.match(section,/\(games\|original-games\)\/\[\^\/\]\+\/bet/);
   // Reject before any route-specific return, including the earlier Family
   // transfer route. A late gate would silently allow it in Play builds.
@@ -60,6 +63,9 @@ test('Play UI fails closed while selecting native mode and omits old recharge ba
   assert.match(source,/playStoreMode=null/);
   assert.match(source,/if\(playStoreMode!==false\)return;[\s\S]*?const listButton=/);
   assert.match(source,/if\(playStoreMode===null\)\{\s*playModeReady\.then\(\(\)=>showGameCard/);
+  assert.match(source,/if\(playStoreMode===true\)\{[\s\S]*?preview\(greedyGame\);\s*return;/);
+  assert.match(source,/visibleGameCards=\[greedyGame\]\.filter\(game=>enabled\.has\(game\.id\)\)/);
+  assert.doesNotMatch(source,/window\.sharikaOpenPlayCasualGames\(doc,portal\)/);
   assert.match(source,/row\.action!=='recharge'/);
   assert.match(source,/event\.kind!=='game_tournament'/);
   assert.match(source,/playModeReady\.then\(\(\)=>refreshVerifiedBanners\(\)\)/);

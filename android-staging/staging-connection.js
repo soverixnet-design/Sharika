@@ -280,14 +280,20 @@
   // The actual Android build type decides whether Play policy restrictions
   // apply. Never trust a query string, localStorage, or a user-editable toggle.
   let playStoreMode=null;
+  // Only the separately isolated virtual Play backend may accept an email
+  // password identity without inbox verification. If the native bridge fails,
+  // Play restrictions stay closed but authentication cannot be relaxed.
+  let playVirtualIdentityAllowed=false;
   const playModeReady=native('clientMode',{}).then(result=>{
     playStoreMode=result.play_store===true;
+    playVirtualIdentityAllowed=playStoreMode && result.api_origin===
+      'https://sharika-api-play-virtual.soverixnet.workers.dev';
     if(typeof result.api_origin==='string' && /^https:\/\/[A-Za-z0-9.-]+$/.test(result.api_origin))
       PUBLIC_INVITE_URL=result.api_origin+'/invite/';
     if(playStoreMode){
       const style=document.createElement('style');
       style.id='sharika-play-store-mode';
-      style.textContent='#sharika-recharge-seller-wallet,#rcl2,#pc,#qg,#qi,'+
+      style.textContent='#sharika-recharge-seller-wallet,#rcl2,#pc,#qi,'+
         '[data-m="invite"],#sh-bd-entry,#sh-agency-entry,#sh-host-entry,'+
         '#stage-invite-code{display:none!important}';
       document.head.append(style);
@@ -5361,7 +5367,8 @@
     }
   }
   async function authenticated(account, form, expectedAttempt=authAttemptId) {
-    if (!account.signedIn || !account.emailVerified)
+    await playModeReady;
+    if (!account.signedIn || (!account.emailVerified && !playVirtualIdentityAllowed))
       throw new Error('Check your email verification link, then sign in again');
     const current = await ensureProfile(account, form);
     if (expectedAttempt!==authAttemptId) throw new Error('sign_in_superseded');
@@ -5420,7 +5427,9 @@
       return { ok:false, msg:'Use an email address. Phone OTP is not enabled yet.' };
     if (String(form.pw || '').length < 12)
       return { ok:false, msg:'Use at least 12 characters for your password.' };
+    const attempt=++authAttemptId;
     try {
+      await playModeReady;
       const result = await native('emailSignUp', {email:form.key.trim(), password:form.pw});
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
@@ -5429,6 +5438,11 @@
           invite_code:document.getElementById('stage-invite-code')?.value.trim()||deferredInviteCode
         }));
       } catch (_) {}
+      if(playVirtualIdentityAllowed){
+        const local=await authenticated(result,form,attempt);
+        if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
+        return {ok:true,acct:local};
+      }
       return { ok:false, msg:result.verificationSent ?
         'Account created. Verify your email, then log in.' :
         'Account created. Verification email could not be sent; try again later.' };
@@ -5482,7 +5496,8 @@
       document.getElementById('sh-login-recovery')?.remove();
       return {ok:true,acct:local};
     } catch (error) {
-      if(attempt===authAttemptId && account?.signedIn && account.emailVerified)
+      if(attempt===authAttemptId && account?.signedIn &&
+         (account.emailVerified || playVirtualIdentityAllowed))
         showConnectionRecovery(error);
       const message = errText(error);
       if (/supplied auth credential|invalid.credential|wrong.password|invalid.login.credentials/i.test(message))
@@ -5526,7 +5541,8 @@
       finishVerifiedStartup();
     } catch (error) {
       if(attempt!==authAttemptId)return;
-      if(account?.signedIn && account.emailVerified)showConnectionRecovery(error);
+      if(account?.signedIn && (account.emailVerified || playVirtualIdentityAllowed))
+        showConnectionRecovery(error);
       else {
         const message=googleLoginError(error);
         toast(message);
@@ -12802,18 +12818,16 @@
       playModeReady.then(()=>showGameCard(doc,insideRoom,showToast));
       return;
     }
-    if(playStoreMode===true){
-      showToast('Coin betting games are not available in the Google Play edition.');
-      return;
-    }
     const portal=insideRoom?ensureRoomGamePortal(doc):null;
     const sheet=portal?.sheet||doc.getElementById('sh');
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
-    // The server catalog is authoritative. Never hide a newly enabled original
-    // game behind a second, stale client-side allowlist.
-    let visibleGameCards=originalGameCards.slice();
+    // Reuse the existing verified Greedy Wheel asset and server bridge.
+    // Keep the other legacy game assets and ledgers intact; they are no longer
+    // selectable in the only Games entry point.
+    const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel');
+    let visibleGameCards=[greedyGame];
     function catalog(){
       if(portal)sheet.style.height='';
       overlay.classList.remove('sh-original-fullscreen');
@@ -13006,7 +13020,8 @@
       if(!data||typeof data!=='object')return;
       if(current.item.id==='greedy-wheel'){
         if(data.source==='greedy-game'&&data.type==='close'){
-          currentGameFrame=null;clearWinnerBanner();catalog();return;
+          view.__sharikaOriginalGameCleanup?.();
+          overlay.classList.remove('on');return;
         }
         if(data.source==='greedy-game'&&data.type==='topup'){
           showToast('Open Wallet from your profile to recharge');return;
@@ -13086,13 +13101,20 @@
       sheet.classList.remove('sh-game-catalog-sheet');
     };
     overlay.classList.add('on');
+    if(playStoreMode===true){
+      // The Play Worker and Android bridge independently allow only this one
+      // non-cash-redeemable, server-settled game. The game is opened directly,
+      // so the blocked Play catalog route is never requested.
+      preview(greedyGame);
+      return;
+    }
     sheet.innerHTML='<div class="grab"></div><p style="padding:20px;text-align:center">Loading available games…</p>';
     const catalogRequestNo=++gameCatalogRequestSequence;
     api('GET','/game-catalog').then(result=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));
+      visibleGameCards=[greedyGame].filter(game=>enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
@@ -13407,7 +13429,8 @@
     try{
       account=await native('session');
       if(attempt!==authAttemptId)return;
-      if(!account.signedIn || !account.emailVerified) {
+      await playModeReady;
+      if(!account.signedIn || (!account.emailVerified && !playVirtualIdentityAllowed)) {
         document.getElementById('sh-login-recovery')?.remove();
         window.showAuth('welcome');
         if(account.signedIn)toast('Verify your email, then sign in');

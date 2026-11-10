@@ -102,6 +102,47 @@ test('private wallet rejects anonymous requests before D1 reads', async () => {
   assert.equal(response.status, 401);
   assert.equal(db.calls.length, 0);
 });
+test('unverified Firebase passwords stay blocked outside the isolated Play Worker', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = certFetch;
+  try {
+    const db = fakeDb();
+    const response = await handleRequest(new Request('https://example.test/api/v1/me', {
+      headers: { Authorization: 'Bearer ' + await token({ email_verified: false }) }
+    }), { DB: db, FIREBASE_PROJECT_ID: project });
+    assert.equal(response.status, 401);
+    assert.equal(db.calls.length, 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
+test('isolated virtual Play profile can start with a signed unverified Firebase identity', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = certFetch;
+  try {
+    const db = fakeDb();
+    const response = await handleRequest(new Request('https://example.test/api/v1/me', {
+      headers: { Authorization: 'Bearer ' + await token({ email_verified: false }) }
+    }), {
+      DB: db, FIREBASE_PROJECT_ID: project,
+      SHARIKA_PLAY_VIRTUAL_ONLY: 'true',
+      SHARIKA_PLAY_ISOLATED_DATA: 'true',
+      SHARIKA_COINS_CASH_REDEEMABLE: 'false'
+    });
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).error, 'profile_not_found');
+    assert.ok(db.calls.length > 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
+test('incomplete Play isolation never enables unverified sign-in', async () => {
+  const db = fakeDb();
+  const response = await handleRequest(new Request('https://example.test/api/v1/me'), {
+    DB: db, FIREBASE_PROJECT_ID: project,
+    SHARIKA_PLAY_VIRTUAL_ONLY: 'true',
+    SHARIKA_PLAY_ISOLATED_DATA: 'false',
+    SHARIKA_COINS_CASH_REDEEMABLE: 'false'
+  });
+  assert.equal(response.status, 503);
+  assert.equal(db.calls.length, 0);
+});
 test('verified but unregistered users cannot read someone else wallet', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = certFetch;

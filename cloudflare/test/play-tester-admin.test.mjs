@@ -108,3 +108,18 @@ test('Admin frontend exposes a separate Play tester page without Play wallet edi
   assert.match(config, /"binding": "PLAY_DB"/);
   assert.match(config, /"binding": "STAGING_DB"/);
 });
+
+test('main Admin Users view shows both environments and never sends Play IDs to staging block controls',()=>{
+  const ui=readFileSync(new URL('../../admin/connection.js',import.meta.url),'utf8');
+  const start=ui.indexOf('  P.users=async function');
+  const end=ui.indexOf('  P.playTesters=async function',start);
+  assert.ok(start>=0 && end>start);
+  const users=ui.slice(start,end);
+  assert.match(users,/Verified users · Staging/);
+  assert.match(users,/Verified users · Play closed test/);
+  assert.match(users,/api\('GET','play-testers'\+suffix\)/);
+  assert.match(users,/Promise\.allSettled/);
+  assert.match(users,/view only until ID reconciliation/);
+  assert.match(users,/data-status-id/);
+  assert.match(users,/Play balances and roles are never combined/);
+});

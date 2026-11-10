@@ -26,9 +26,12 @@ test('Games picker and Cloudflare Worker agree on the exact catalog path', () =>
   assert.ok(worker.includes("path==='/api/v1/game-catalog'&&request.method==='GET'"));
   assert.ok(client.includes('Games could not load:'));
   assert.ok(client.includes('Retry loading games'));
-  // All packaged, server-enabled games appear; a single-game client filter
-  // previously hid Food Wheels and Greedy Wheel even when enabled in D1.
-  assert.ok(client.includes('visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));'));
+  // Latest user requirement is exactly one selectable game. The staging
+  // catalog still controls whether Greedy Wheel is enabled; Play's isolated
+  // server does not expose any other game or the catalog route.
+  assert.ok(client.includes("const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel')"));
+  assert.ok(client.includes('visibleGameCards=[greedyGame].filter(game=>enabled.has(game.id));'));
+  assert.ok(client.includes('preview(greedyGame);'));
   assert.ok(!client.includes("originalGameCards.filter(game=>game.id==='fruit-royale'"));
   assert.match(client,/Sharika Royal Games/);
   assert.match(client,/All games are currently disabled by Admin/);

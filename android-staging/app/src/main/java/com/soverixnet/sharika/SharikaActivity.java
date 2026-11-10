@@ -998,6 +998,13 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false, null, safe(task.getException())));
                 return;
             }
+            // In the isolated Play virtual-only test edition, Firebase's
+            // password credential is enough to start a virtual profile.
+            // The standard staging build retains email verification.
+            if (isIsolatedPlayVirtualBuild()) {
+                sendResult(id, result(true, identity(user), null));
+                return;
+            }
             user.sendEmailVerification().addOnCompleteListener(this, sent -> {
                 JSONObject account = identity(user);
                 try { account.put("verificationSent", sent.isSuccessful()); }
@@ -1005,6 +1012,15 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, account, null));
             });
         });
+    }
+
+    // Only the isolated non-redeemable Play testing app may send a valid
+    // Firebase ID token before email verification. Its separate Worker still
+    // verifies the token and independently enforces the isolated D1 gate.
+    // All staging and production endpoints retain their verification rule.
+    private static boolean isIsolatedPlayVirtualBuild() {
+        return BuildConfig.SHARIKA_PLAY_BUILD &&
+            "https://sharika-api-play-virtual.soverixnet.workers.dev".equals(BuildConfig.SHARIKA_API_ORIGIN);
     }
 
     // Credential Manager may never call back when an Android provider/picker
@@ -1111,11 +1127,10 @@ public final class SharikaActivity extends Activity {
         // the family Crystal transfer is whitelisted further below and must
         // never return early before this test-only finance gate executes.
         if (BuildConfig.SHARIKA_PLAY_BUILD) {
-            if (path.matches("^/api/v1/(admin|agency|family|invites|sellers|games|original-games|greedy-wheel|fruit-royale|game-catalog|lucky-box|events|role-applications)(/.*|\\?.*)?$") ||
+            if (path.matches("^/api/v1/(admin|agency|family|invites|sellers|games|original-games|fruit-royale|game-catalog|lucky-box|events|role-applications)(/.*|\\?.*)?$") ||
                 path.matches("^/api/v1/rankings(?:/rewards)?\\?.*kind=(games|recharge|lucky)(?:&.*)?$") ||
                 path.equals("/api/v1/celebrations") ||
                 path.matches("^/api/v1/(games|original-games)/[^/]+/bet$") ||
-                path.equals("/api/v1/greedy-wheel/bet") ||
                 path.equals("/api/v1/sellers") ||
                 path.startsWith("/api/v1/sellers/") ||
                 path.equals("/api/v1/invites/withdrawals") ||
@@ -1331,7 +1346,7 @@ public final class SharikaActivity extends Activity {
         // A Firebase-issued ID token is validated by the Worker for every
         // API request. Do not also block all wallet/room requests on a
         // periodic network reload; that made a successful login appear lost.
-        if (user.isEmailVerified()) {
+        if (user.isEmailVerified() || isIsolatedPlayVirtualBuild()) {
             requestStagingToken(id, method, path, data, user);
             return;
         }

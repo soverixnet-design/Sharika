@@ -14,13 +14,14 @@ test('virtual-only deployment requires explicit isolated and nonredeemable data'
   assert.equal(playVirtualConfigured({}),false);
 });
 
-test('cash, salary, seller, referral, admin, games and prizes are all denied',()=>{
+test('cash, salary, seller, referral, other games and prizes are denied',()=>{
   for(const path of ['/api/v1/admin/operations','/api/v1/agency/me',
     '/api/v1/agency/salary/exchange','/api/v1/agency/salary/transfer',
     '/api/v1/family/crystal/transfer','/api/v1/invites','/api/v1/invites/redeem',
     '/api/v1/invites/withdrawals','/api/v1/sellers/me','/api/v1/sellers/transfer',
     '/api/v1/games/food-wheel/bet','/api/v1/original-games/sovera-food/state',
-    '/api/v1/greedy-wheel/bet','/api/v1/game-catalog',
+    '/api/v1/greedy-wheel/reset','/api/v1/greedy-wheel',
+    '/api/v1/game-catalog',
     '/api/v1/lucky-box/open','/api/v1/events','/api/v1/role-applications',
     '/api/v1/celebrations','/invite/10000001'])
     assert.equal(playVirtualRouteBlocked(path),true,path);
@@ -28,11 +29,13 @@ test('cash, salary, seller, referral, admin, games and prizes are all denied',()
     assert.equal(playVirtualRouteBlocked('/api/v1/rankings','?period=daily&kind='+kind),true);
 });
 
-test('virtual social rooms, gifts, wallet exchange, support and Play purchases remain',()=>{
+test('virtual rooms, gifts, verified main wallet and only Greedy Wheel remain',()=>{
   for(const path of ['/api/v1/me','/api/v1/rooms','/api/v1/rooms/10000001/chat',
     '/api/v1/rooms/10000001/gifts','/api/v1/gifts','/api/v1/wallet/exchange',
     '/api/v1/play-billing/catalog','/api/v1/play-billing/claim',
-    '/api/v1/support/messages','/api/v1/account-deletion'])
+    '/api/v1/support/messages','/api/v1/account-deletion',
+    '/api/v1/greedy-wheel/state','/api/v1/greedy-wheel/records',
+    '/api/v1/greedy-wheel/bet'])
     assert.equal(playVirtualRouteBlocked(path),false,path);
   assert.equal(playVirtualRouteBlocked('/api/v1/rankings','?kind=rich'),false);
 });

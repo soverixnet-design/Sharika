@@ -688,14 +688,27 @@
 
   P.users=async function () {
     const root=byId('pg');
-    root.innerHTML='<div class="card"><h3>Verified users</h3><div class="row">'+
+    root.innerHTML='<div class="card"><h3>Verified users · Staging</h3><div class="row">'+
       '<input id="q" placeholder="Search by ID or name" aria-label="Search users"></div>'+
-      '<div id="ul">Loading…</div></div>';
-    const list=byId('ul'),input=byId('q');
+      '<div id="ul">Loading…</div></div>'+
+      (role==='super'?'<div class="card"><h3>Verified users · Play closed test</h3>'+
+      '<p class="n">These are persistent Firebase accounts in a separate Play database. '+
+      'Old and Play numbers may overlap until the verified UID-based migration is complete. '+
+      'Play balances and roles are never combined with staging.</p>'+
+      '<div id="playul">Loading Play accounts…</div></div>':'');
+    const list=byId('ul'),input=byId('q'),playList=byId('playul');
     async function refresh() {
       list.textContent='Loading verified users…';
-      try {
-        const data=await api('GET','users'+(input.value.trim()?'?q='+encodeURIComponent(input.value.trim()):''));
+      if(playList)playList.textContent='Loading verified Play accounts…';
+      const q=input.value.trim(),suffix=q?'?q='+encodeURIComponent(q):'';
+      // Run both reads in parallel. Admin actions below remain scoped ONLY to
+      // the staging API to avoid acting on an unrelated overlapping Play ID.
+      const [stagingResult,playResult]=await Promise.allSettled([
+        api('GET','users'+suffix),
+        playList?api('GET','play-testers'+suffix):Promise.resolve({users:[]})
+      ]);
+      if(stagingResult.status==='fulfilled'){
+        const data=stagingResult.value;
         const users=data.users||[];
         list.innerHTML=window.T(['User ID','Name','Country','Sent Lv.','Coins','Diamonds','Status','Admin action'],
           users.map(u=>{
@@ -706,7 +719,18 @@
             return [esc(u.public_id),esc(u.name),esc(u.country),fmt(u.wealth_level),
               fmt(u.coins),fmt(u.diamonds),esc(u.status),action];
           }));
-      }catch(error){list.textContent=error.message;}
+      }else list.textContent=stagingResult.reason?.message||'Staging user list unavailable';
+      if(playList){
+        if(playResult.status==='fulfilled'){
+          const users=playResult.value.users||[];
+          playList.innerHTML='<p class="n">'+fmt(users.length)+
+            ' Play accounts · view only until ID reconciliation</p>'+
+            window.T(['Play ID','Staging ID (same Firebase UID)','Name','Country','Status'],
+              users.map(u=>[esc(u.public_id),esc(u.previous_staging_id||'New UID'),
+                esc(u.name),esc(u.country),esc(u.status)]));
+        }else playList.textContent='Play user list unavailable: '+
+          (playResult.reason?.message||'Unknown error');
+      }
     }
     list.onclick=async e=>{
       const button=e.target.closest('button[data-status-id]');
