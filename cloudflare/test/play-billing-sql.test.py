@@ -55,4 +55,21 @@ try:
 except sqlite3.IntegrityError:
     pass
 assert db.execute("SELECT COUNT(*) FROM sharika_google_play_purchases").fetchone()[0] == 1
-print("Play Billing SQL: once-only credit, order uniqueness, ledger and blocked-user rollback verified")
+
+# A concurrent balance change after the handler's initial read must still
+# fail atomically at the database constraint, rather than recording a
+# successful receipt/ledger row with a negative sentinel balance.
+maximum = 1_000_000_000_000
+near_limit = maximum - 500_000 + 1
+db.execute("UPDATE sharika_users SET status='active',coins=? WHERE auth_uid='buyer'",
+           (near_limit,))
+db.commit()
+try:
+    grant("d" * 64, "GPA.2222-3333-4444-55555", 500_000)
+    raise AssertionError("Over-limit credit was accepted")
+except sqlite3.IntegrityError:
+    pass
+assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='buyer'").fetchone()[0] == near_limit
+assert db.execute("SELECT COUNT(*) FROM sharika_google_play_purchases").fetchone()[0] == 1
+assert db.execute("SELECT COUNT(*) FROM sharika_wallet_ledger").fetchone()[0] == 1
+print("Play Billing SQL: once-only credit, order uniqueness, blocked-user and over-limit atomic rollback verified")
