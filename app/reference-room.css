@@ -152,6 +152,20 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   border-radius:50%!important;
   font-size:clamp(20px,5.5vw,26px)!important;
 }
+/* Imported premium frames used to be 142–177% of the avatar. In a five-column
+   room they covered the next member and the name below the circle. Keep the
+   full face visible while reserving a stable row for its frame and nickname. */
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
+  margin-bottom:12px!important;
+}
+.app.sh-royal-room #grid .seat .av > .sh-sovera-frame.fxr {
+  width:130%!important;
+  height:130%!important;
+}
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av > .sh-sovera-frame.fxr {
+  width:116%!important;
+  height:116%!important;
+}
 .app.sh-royal-room #grid .seat .face {border-radius:50%!important;overflow:hidden}
 .app.sh-royal-room #grid .seat .ring {
   background:conic-gradient(#d9b960,#82572c,#f8eabd,#b77b33,#d9b960)!important;
@@ -160,7 +174,9 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 .app.sh-royal-room #grid .seat.empty .ring,
 .app.sh-royal-room #grid .seat.lock .ring {filter:none;opacity:.65}
 .app.sh-royal-room #grid .seat .nm {
+  position:relative;z-index:20;
   width:100%;max-width:100%!important;
+  min-height:1.2em;
   margin:0!important;padding:0 1px!important;
   border:0!important;
   border-radius:0!important;
@@ -170,6 +186,12 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   font:500 clamp(9px,2.8vw,12px)/1.2 system-ui,sans-serif!important;
   text-shadow:0 2px 3px #000!important;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.app.sh-royal-room #grid .seat .sh-verified-seat-id {
+  display:block;width:100%;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+  color:#f6dfa5;font:600 9px/1.1 system-ui,sans-serif;
+  white-space:nowrap;text-align:center;letter-spacing:.01em;
+  position:relative;z-index:21;pointer-events:none;
 }
 .app.sh-royal-room #grid .seat .tag {font-size:9px!important;color:#ffda88!important}
 .app.sh-royal-room #grid .seat .sh-sovera-seat-tag,

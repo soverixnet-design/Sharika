@@ -1457,8 +1457,17 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge')
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge,.sh-verified-seat-id')
         .forEach(decoration=>decoration.remove());
+      // Always show the currently visible member ID beneath its name.
+      // A special ID replaces (never accompanies) the permanent account ID.
+      const visibleSeatId=frame.sid?.(seat);
+      if(visibleSeatId){
+        const id=doc.createElement('small');
+        id.className='sh-verified-seat-id';
+        id.textContent='ID '+visibleSeatId;
+        el.appendChild(id);
+      }
       // Room Admin power is shown in the management menu, never as a
       // shield drawn across a user's purchased or animated avatar frame.
       if(seat.room_role==='owner'){
@@ -4313,6 +4322,12 @@
     doc.addEventListener('keydown',resumeRoomAudio,true);
   }
   bindRoomAudioGesture(document);
+  // Android background/foreground transitions may pause remote WebRTC audio
+  // while leaving the receiving peer connection itself connected.
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden)resumeRoomAudio();
+  });
+  window.addEventListener('pageshow',resumeRoomAudio);
   const roomAudioFrame=document.getElementById('rf');
   if(roomAudioFrame) {
     roomAudioFrame.addEventListener('load',()=>{
@@ -5058,8 +5073,11 @@
     if(!frame||!Array.isArray(frame.seats))return;
     const localSeats=frame.seats.filter(slot=>slot?.user_id===session?.user?.id);
     if(localSeats.length) {
+      // Rebuilding every avatar on repeated ICE/heartbeat status callbacks
+      // makes the 20-seat grid visibly jump, even when mute state is the same.
+      const changed=localSeats.some(seat=>seat.muted===!!enabled);
       for(const seat of localSeats)seat.muted=!enabled;
-      if(typeof frame.render==='function'){
+      if(changed&&typeof frame.render==='function'){
         frame.render();
         decorateRoomSeats(frame);
         paintVerifiedMicCount(frame);
@@ -6111,9 +6129,10 @@
     // A steady room used to rebuild every seat, avatar, overlay and touch
     // handler every 8 seconds even when the authoritative snapshot was equal.
     // Keep live speaking indicators responsive without repainting stable DOM.
+    // CSS handles viewport changes; the Android keyboard must not tear down
+    // all seat DOM nodes just because WebView reports a new innerHeight.
     const renderSignature=JSON.stringify([slots,audience,palette,sharedImage,roomCover,
-      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[],
-      frame.innerWidth,frame.innerHeight]);
+      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[]]);
     const snapshotChanged=frame.__sharikaRoomRenderSignature!==renderSignature;
     frame.seats=slots;
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
@@ -6796,6 +6815,7 @@
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     let pendingChatMessage=null;
     let lastEntryEventId=0,entryPollInFlight=null;
+    const recentJoinNames=new Map();
     let lastReactionId=0,reactionPollInFlight=null;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
@@ -8795,6 +8815,15 @@
           if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
           lastEntryEventId=id;
           if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          // A transient mobile reconnect can produce two genuine coordinator
+          // events for one member in a few seconds. Preserve the event cursor,
+          // but show only one arrival banner and animation for that burst.
+          const memberId=String(event.user_id||'');
+          const now=Date.now();
+          for(const [key,seenAt] of recentJoinNames)
+            if(now-seenAt>10000)recentJoinNames.delete(key);
+          if(memberId&&recentJoinNames.has(memberId))continue;
+          if(memberId)recentJoinNames.set(memberId,now);
           // Arrival comes from the room coordinator and verified Firebase identity.
           // Show the name in the existing chat feed, not a fabricated local user.
           const verifiedName=String(event.name||'Member').trim().slice(0,80);

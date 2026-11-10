@@ -16,6 +16,8 @@ on:
       - fix/sharika-play-auth-20261109
       # Explicit second-picker recovery: isolated installable QA APK only.
       - fix/sharika-google-picker-recovery-20261110
+      # Integrated room/admin QA uses only the isolated Play-test Worker.
+      - fix/sharika-room-voice-admin-unified-20261110
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
@@ -40,7 +42,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify committed Closed Testing UI safety gates
-        if: (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110')
+        if: (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110')
         run: |
           set -euo pipefail
           grep -F 'if(playStoreMode!==false)return;' android-staging/staging-connection.js
@@ -140,8 +142,8 @@ jobs:
         working-directory: android-staging
         env:
           # Personal Play branch uses the isolated Worker, never staging.
-          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110') && 'https://sharika-api-play-virtual.soverixnet.workers.dev' || (github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN) }}
-          SHARIKA_PLAY_STAGING_CANDIDATE: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110') && 'false' || 'true' }}
+          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110') && 'https://sharika-api-play-virtual.soverixnet.workers.dev' || (github.ref == 'refs/heads/feature/sharika-production-schema-safety-20261108' && 'https://sharika-api-staging.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN) }}
+          SHARIKA_PLAY_STAGING_CANDIDATE: ${{ (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110') && 'false' || 'true' }}
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
           SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
           SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
@@ -166,7 +168,7 @@ jobs:
           unzip -p "$bundle" base/assets/connection.js > "$RUNNER_TEMP/release-connection.js"
           unzip -p "$bundle" base/assets/royal-profile.css > "$RUNNER_TEMP/release-profile.css"
           node --check "$RUNNER_TEMP/release-connection.js"
-          if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' || "$GITHUB_REF" == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-play-auth-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-google-picker-recovery-20261110' ]]; then
+          if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' || "$GITHUB_REF" == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-play-auth-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || "$GITHUB_REF" == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110' ]]; then
             grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"
             unzip -Z1 "$bundle" | grep -Fx 'base/assets/play-virtual-ui.js'
             unzip -Z1 "$bundle" | grep -Fx 'base/assets/greedy-wheel/index.html'
@@ -200,7 +202,7 @@ jobs:
       # so a tester can verify Google / email login before Play publication.
       # This is a private Actions artifact, not a Google Play upload or release.
       - name: Build signed isolated Play login APK for device QA
-        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110'
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110'
         working-directory: android-staging
         env:
           SHARIKA_PLAY_API_ORIGIN: https://sharika-api-play-virtual.soverixnet.workers.dev
@@ -228,7 +230,7 @@ jobs:
       # Google Play app-signing key. Check the *actual APK certificate* against
       # the Firebase Android OAuth clients before asking testers to use Google.
       - name: Verify QA APK signing certificate is registered for Google sign-in
-        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110'
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110'
         run: |
           set -euo pipefail
           apk=android-staging/app/build/outputs/apk/release/app-release.apk
@@ -237,7 +239,7 @@ jobs:
           node android-staging/google-oauth-signing.cjs "$signer_sha1"
 
       - name: Keep installable Play login APK private for testing
-        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110'
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110'
         uses: actions/upload-artifact@v4
         with:
           name: Sharika-Play-Login-1.0.8-Device-QA-APK
@@ -250,7 +252,7 @@ jobs:
       # UID-to-public-number migration; that would block new Play signups.
       # Build a private APK/AAB and check the EXISTING backend read-only.
       - name: Check current isolated Play backend without changing live data
-        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110'
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110'
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 3 \

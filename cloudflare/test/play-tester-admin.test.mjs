@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { readPlayTesters } from '../src/play-tester-admin.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { readPlayTesters, handlePlayTestAdmin } from '../src/play-tester-admin.mjs';
 
 function harness(role = 'super') {
   const calls = [];
@@ -19,7 +20,7 @@ function harness(role = 'super') {
     SHARIKA_API: {
       async fetch(request) {
         calls.push(['role_check', request.url, request.headers.get('authorization')]);
-        return Response.json({ role }, { status: role === null ? 403 : 200 });
+        return Response.json({ role, public_id: '10000009' }, { status: role === null ? 403 : 200 });
       }
     },
     PLAY_DB: {
@@ -96,17 +97,155 @@ test('Play testers list is read-only, bounded and requires all private services'
   assert.equal((await get(env)).status, 503);
 });
 
-test('Admin frontend exposes a separate Play tester page without Play wallet edits', () => {
+test('Admin frontend routes Play grants only to the isolated test handler', () => {
   const root = new URL('../../', import.meta.url);
   const frontend = readFileSync(new URL('cloudflare/src/admin-frontend-worker.mjs', root), 'utf8');
   const ui = readFileSync(new URL('admin/connection.js', root), 'utf8');
   const config = readFileSync(new URL('cloudflare/wrangler.admin.jsonc', root), 'utf8');
   assert.match(frontend, /path === '\/api\/v1\/admin\/play-testers'/);
+  assert.match(frontend, /handlePlayTestAdmin\(request, env\)/);
   assert.match(ui, /P\.playTesters=async function/);
   assert.match(ui, /previous_staging_id/);
   assert.match(ui, /role!=='super'/);
+  assert.match(ui, /api\('POST','play-testers\/coins'/);
+  assert.match(ui, /api\('POST','play-testers\/cosmetics\/grant'/);
+  assert.match(ui, /NON-REDEEMABLE TEST coins/);
+  assert.match(frontend, /path\.startsWith\('\/api\/v1\/admin\/play-testers\/'\)/);
   assert.match(config, /"binding": "PLAY_DB"/);
   assert.match(config, /"binding": "STAGING_DB"/);
+});
+
+function isolatedPlayDatabase() {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys=ON');
+  db.exec('CREATE TABLE sharika_users(public_no INTEGER PRIMARY KEY,auth_uid TEXT UNIQUE NOT NULL,'+
+    "name TEXT,country TEXT,status TEXT DEFAULT 'active',coins INTEGER DEFAULT 0 CHECK(coins>=0),"+
+    "diamonds INTEGER DEFAULT 0,created_at TEXT,updated_at TEXT)");
+  db.exec("INSERT INTO sharika_users VALUES (10000001,'play-uid-1','Tester','BD','active',245,5,'2026-11-10',NULL)");
+  db.exec("INSERT INTO sharika_users VALUES (10000002,'play-uid-2','Blocked','BD','blocked',0,0,'2026-11-10',NULL)");
+  db.exec('CREATE TABLE sharika_wallet_ledger(id INTEGER PRIMARY KEY,auth_uid TEXT REFERENCES sharika_users(auth_uid),'+
+    'currency TEXT,delta INTEGER,balance_after INTEGER,reason TEXT,request_id TEXT,UNIQUE(auth_uid,currency,request_id))');
+  db.exec('CREATE TABLE sharika_admin_direct_recharges(id INTEGER PRIMARY KEY,actor_uid TEXT,'+
+    'recipient_uid TEXT REFERENCES sharika_users(auth_uid),coins INTEGER,reason TEXT,'+
+    'request_id TEXT,balance_after INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(actor_uid,request_id))');
+  db.exec('CREATE TABLE sharika_cosmetics_catalog(id TEXT PRIMARY KEY,kind TEXT,name TEXT,active INTEGER DEFAULT 1)');
+  db.exec("INSERT INTO sharika_cosmetics_catalog VALUES ('frame_style:royal-gold','frame_style','Royal Gold',1)");
+  db.exec('CREATE TABLE sharika_cosmetic_inventory(auth_uid TEXT REFERENCES sharika_users(auth_uid),'+
+    'item_id TEXT REFERENCES sharika_cosmetics_catalog(id),source TEXT,request_id TEXT,'+
+    'PRIMARY KEY(auth_uid,item_id),UNIQUE(auth_uid,request_id))');
+  db.exec('CREATE TABLE sharika_cosmetic_equipped(auth_uid TEXT REFERENCES sharika_users(auth_uid),'+
+    'kind TEXT,item_id TEXT, equipped_at TEXT,PRIMARY KEY(auth_uid,kind))');
+  db.exec(readFileSync(new URL('../migrations/0080_play_closed_test_admin_item_grants.sql',
+    import.meta.url),'utf8'));
+  db.exec('CREATE TABLE sharika_notifications(id INTEGER PRIMARY KEY,recipient_uid TEXT,kind TEXT,'+
+    "title TEXT,body TEXT,dedupe_key TEXT,created_by TEXT,read_at TEXT,push_status TEXT DEFAULT 'pending',"+
+    'created_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(recipient_uid,dedupe_key))');
+  const play = {
+    prepare(query) {
+      const statement = db.prepare(query);
+      const prepared = {
+        params: [],
+        bind(...params) { this.params = params; return this; },
+        async first() { return statement.get(...this.params) || null; },
+        async all() { return { results: statement.all(...this.params) }; },
+        async run() {
+          const result = statement.run(...this.params);
+          return { meta: { changes: result.changes, last_row_id: result.lastInsertRowid } };
+        }
+      };
+      return prepared;
+    },
+    async batch(statements) {
+      db.exec('BEGIN');
+      try {
+        const result = [];
+        for (const statement of statements) result.push(await statement.run());
+        db.exec('COMMIT');
+        return result;
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    }
+  };
+  const env = {
+    PLAY_DB: play, STAGING_DB: { prepare() { throw Error('staging write forbidden'); } },
+    SHARIKA_API: { async fetch() { return Response.json({ role: 'super', public_id: '10000009' }); } }
+  };
+  return { env, db };
+}
+
+async function virtual(env, method, path, body, token = 'Bearer verified') {
+  const result = await handlePlayTestAdmin(new Request('https://admin.test/api/v1/admin/'+path,{
+    method, headers: { authorization: token, ...(body ? { 'content-type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined
+  }),env);
+  return { status: result.status, data: await result.json() };
+}
+
+test('Play coins are isolated, idempotent, audited and visible in Play wallet', async () => {
+  const { env, db } = isolatedPlayDatabase();
+  try {
+    const payload = { target_public_id:'10000001', coins:500, reason:'QA test allocation',
+      request_id:'play-credit:abc12345' };
+    const first=await virtual(env,'POST','play-testers/coins',payload);
+    assert.equal(first.status,201);
+    assert.equal(first.data.balance_after,745);
+    assert.equal(first.data.environment,'play_virtual');
+    const again=await virtual(env,'POST','play-testers/coins',payload);
+    assert.equal(again.status,200);
+    assert.equal(again.data.duplicate,true);
+    assert.equal(db.prepare('SELECT coins FROM sharika_users WHERE public_no=10000001').get().coins,745);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sharika_wallet_ledger').get().n,1);
+    assert.equal(db.prepare('SELECT reason FROM sharika_wallet_ledger').get().reason,
+      'play_virtual_admin_credit');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sharika_notifications').get().n,1);
+    assert.equal((await virtual(env,'POST','play-testers/coins',{...payload,coins:501})).status,409);
+    assert.equal((await virtual(env,'POST','play-testers/coins',{
+      ...payload,target_public_id:'10000002',request_id:'play-credit:blocked-123'
+    })).status,409);
+    assert.equal((await virtual(env,'POST','play-testers/coins',{
+      ...payload,coins:1000001,request_id:'play-credit:overcap-123'
+    })).status,400);
+  } finally { db.close(); }
+});
+
+test('Play cosmetic grant equips only the selected test UID and has immutable receipt', async () => {
+  const { env, db } = isolatedPlayDatabase();
+  try {
+    const payload = {target_public_id:'10000001',item_id:'frame_style:royal-gold',
+      request_id:'play-item:unique-12345'};
+    const first=await virtual(env,'POST','play-testers/cosmetics/grant',payload);
+    assert.equal(first.status,201);
+    assert.equal(first.data.equipped,true);
+    assert.equal((await virtual(env,'POST','play-testers/cosmetics/grant',payload)).data.duplicate,true);
+    const equipped=db.prepare('SELECT auth_uid,item_id FROM sharika_cosmetic_equipped').get();
+    assert.equal(equipped.auth_uid,'play-uid-1');
+    assert.equal(equipped.item_id,'frame_style:royal-gold');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sharika_play_admin_item_grants').get().n,1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sharika_notifications').get().n,1);
+    assert.throws(()=>db.exec('DELETE FROM sharika_play_admin_item_grants'),/play_grant_immutable/);
+    assert.equal((await virtual(env,'POST','play-testers/cosmetics/grant',{
+      ...payload,target_public_id:'10000002'
+    })).status,404);
+  } finally { db.close(); }
+});
+
+test('Play test writes fail closed for non-Super and malformed recipients', async()=>{
+  const { env, db }=isolatedPlayDatabase();
+  try {
+    env.SHARIKA_API.fetch=async()=>Response.json({role:'finance',public_id:'10000009'});
+    assert.equal((await virtual(env,'POST','play-testers/coins',{
+      target_public_id:'10000001',coins:10,reason:'QA test only',request_id:'play-credit:denied-123'
+    })).status,403);
+    env.SHARIKA_API.fetch=async()=>Response.json({role:'super',public_id:'10000009'});
+    assert.equal((await virtual(env,'POST','play-testers/coins',{
+      target_public_id:'10000003',coins:10,reason:'QA test only',request_id:'play-credit:missing-123'
+    })).status,404);
+    assert.equal((await virtual(env,'POST','play-testers/coins',{
+      target_public_id:'10000001',coins:10,reason:'QA test only',request_id:'play-credit:denied-123'
+    },'')).status,401);
+    assert.equal(db.prepare('SELECT coins FROM sharika_users WHERE public_no=10000001').get().coins,245);
+    assert.equal((await virtual(env,'GET','play-testers/catalog')).status,200);
+    assert.equal((await virtual(env,'GET','play-testers/credits')).status,200);
+  } finally { db.close(); }
 });
 
 test('main Admin Users view shows both environments and never sends Play IDs to staging block controls',()=>{
@@ -122,4 +261,16 @@ test('main Admin Users view shows both environments and never sends Play IDs to 
   assert.match(users,/view only until ID reconciliation/);
   assert.match(users,/data-status-id/);
   assert.match(users,/Play balances and roles are never combined/);
+});
+
+test('admin user search takes direct credit to the correct isolated wallet screen',()=>{
+  const ui=readFileSync(new URL('../../admin/connection.js',import.meta.url),'utf8');
+  assert.match(ui,/data-credit-staging=/);
+  assert.match(ui,/pendingStagingCreditTarget=credit\.dataset\.creditStaging/);
+  assert.match(ui,/window\.V='rech';window\.shell\(\)/);
+  assert.match(ui,/data-credit-play=/);
+  assert.match(ui,/pendingPlayCreditTarget=credit\.dataset\.creditPlay/);
+  assert.match(ui,/window\.V='playTesters';window\.shell\(\)/);
+  assert.match(ui,/byId\('direct-user'\)\.value=pendingStagingCreditTarget/);
+  assert.match(ui,/byId\('play-credit-id'\)\.value=pendingPlayCreditTarget/);
 });
