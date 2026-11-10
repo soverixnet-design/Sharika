@@ -57,6 +57,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException;
 import androidx.credentials.exceptions.NoCredentialException;
 
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.GoogleAuthProvider;
@@ -119,6 +120,9 @@ public final class SharikaActivity extends Activity {
     private static final long GOOGLE_SIGN_IN_TIMEOUT_MS = 45000L;
     private final Handler googleHandler = new Handler(Looper.getMainLooper());
     private boolean googlePending;
+    // A cancellation can also mean the explicit Google provider UI could not
+    // complete. Only the NEXT user tap may try the alternative account picker.
+    private boolean googleTryAccountChooserNext;
     private int googleAttempt;
     private long googleStartedAtMs;
     private String googleRequestId;
@@ -1058,6 +1062,8 @@ public final class SharikaActivity extends Activity {
             return;
         }
         googlePending = true;
+        final boolean useAccountChooser = googleTryAccountChooserNext;
+        googleTryAccountChooserNext = false;
         googleStartedAtMs = SystemClock.elapsedRealtime();
         googleRequestId = id;
         final int attempt = ++googleAttempt;
@@ -1066,10 +1072,20 @@ public final class SharikaActivity extends Activity {
         googleTimeout = () -> expireGoogleSignIn(attempt);
         googleHandler.postDelayed(googleTimeout, GOOGLE_SIGN_IN_TIMEOUT_MS);
         try {
-            GetSignInWithGoogleOption option = new GetSignInWithGoogleOption.Builder(
-                getString(R.string.default_web_client_id)).build();
-            GetCredentialRequest request = new GetCredentialRequest.Builder()
-                .addCredentialOption(option).build();
+            GetCredentialRequest.Builder builder = new GetCredentialRequest.Builder();
+            if (useAccountChooser) {
+                // This Firebase-supported picker can show all device accounts.
+                // Never auto-select or retry after consent is not obtained.
+                builder.addCredentialOption(new GetGoogleIdOption.Builder()
+                    .setServerClientId(getString(R.string.default_web_client_id))
+                    .setFilterByAuthorizedAccounts(false)
+                    .setAutoSelectEnabled(false)
+                    .build());
+            } else {
+                builder.addCredentialOption(new GetSignInWithGoogleOption.Builder(
+                    getString(R.string.default_web_client_id)).build());
+            }
+            GetCredentialRequest request = builder.build();
             credentials.getCredentialAsync(
                 this, request, cancellation, this::runOnUiThread,
                 new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
@@ -1098,8 +1114,14 @@ public final class SharikaActivity extends Activity {
                         }
                     }
                     @Override public void onError(GetCredentialException error) {
+                        // Android documents that "cancellation" can be a
+                        // provider/configuration failure, not a user dismissal.
+                        // A second attempt requires a fresh user tap.
+                        if (error instanceof GetCredentialCancellationException &&
+                            !useAccountChooser) googleTryAccountChooserNext = true;
                         final String message = error instanceof GetCredentialCancellationException
-                            ? "google_sign_in_cancelled" :
+                            ? (useAccountChooser ? "google_sign_in_cancelled" :
+                                "google_sign_in_picker_retry") :
                             error instanceof NoCredentialException
                             ? "google_account_not_available" : safe(error);
                         finishGoogleSignIn(attempt, result(false,null,message));
