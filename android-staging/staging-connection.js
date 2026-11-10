@@ -12818,21 +12818,16 @@
       playModeReady.then(()=>showGameCard(doc,insideRoom,showToast));
       return;
     }
-    if(playStoreMode===true){
-      const portal=insideRoom?ensureRoomGamePortal(doc):null;
-      if(typeof window.sharikaOpenPlayCasualGames==='function')
-        window.sharikaOpenPlayCasualGames(doc,portal);
-      else showToast('Games are temporarily unavailable. Please update Sharika.');
-      return;
-    }
     const portal=insideRoom?ensureRoomGamePortal(doc):null;
     const sheet=portal?.sheet||doc.getElementById('sh');
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
-    // The server catalog is authoritative. Never hide a newly enabled original
-    // game behind a second, stale client-side allowlist.
-    let visibleGameCards=originalGameCards.slice();
+    // Reuse the existing verified Greedy Wheel asset and server bridge.
+    // Keep the other legacy game assets and ledgers intact; they are no longer
+    // selectable in the only Games entry point.
+    const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel');
+    let visibleGameCards=[greedyGame];
     function catalog(){
       if(portal)sheet.style.height='';
       overlay.classList.remove('sh-original-fullscreen');
@@ -13025,7 +13020,8 @@
       if(!data||typeof data!=='object')return;
       if(current.item.id==='greedy-wheel'){
         if(data.source==='greedy-game'&&data.type==='close'){
-          currentGameFrame=null;clearWinnerBanner();catalog();return;
+          view.__sharikaOriginalGameCleanup?.();
+          overlay.classList.remove('on');return;
         }
         if(data.source==='greedy-game'&&data.type==='topup'){
           showToast('Open Wallet from your profile to recharge');return;
@@ -13105,13 +13101,20 @@
       sheet.classList.remove('sh-game-catalog-sheet');
     };
     overlay.classList.add('on');
+    if(playStoreMode===true){
+      // The Play Worker and Android bridge independently allow only this one
+      // non-cash-redeemable, server-settled game. The game is opened directly,
+      // so the blocked Play catalog route is never requested.
+      preview(greedyGame);
+      return;
+    }
     sheet.innerHTML='<div class="grab"></div><p style="padding:20px;text-align:center">Loading available games…</p>';
     const catalogRequestNo=++gameCatalogRequestSequence;
     api('GET','/game-catalog').then(result=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));
+      visibleGameCards=[greedyGame].filter(game=>enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||

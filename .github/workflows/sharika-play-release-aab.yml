@@ -167,8 +167,9 @@ jobs:
           if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' || "$GITHUB_REF" == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-play-auth-20261109' ]]; then
             grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"
             unzip -Z1 "$bundle" | grep -Fx 'base/assets/play-virtual-ui.js'
-            unzip -p "$bundle" base/assets/play-virtual-ui.js | grep -F 'Royal Memory Match'
-            unzip -p "$bundle" base/assets/play-virtual-ui.js | grep -F 'Sovera Gaddy Game'
+            unzip -Z1 "$bundle" | grep -Fx 'base/assets/greedy-wheel/index.html'
+            unzip -p "$bundle" base/assets/connection.js | grep -F 'preview(greedyGame)'
+            unzip -p "$bundle" base/assets/connection.js | grep -F "id:'greedy-wheel'"
             unzip -p "$bundle" base/assets/play-virtual-ui.js | grep -F 'showPlayWallet'
             unzip -p "$bundle" base/assets/index.html | grep -F 'id="sharika-play-virtual-ui"'
             if grep -Fq 'https://sharika-api-staging.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"; then
