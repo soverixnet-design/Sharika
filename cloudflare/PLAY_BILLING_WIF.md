@@ -35,6 +35,10 @@ their values out-of-band. Never copy their secret values into Git, logs or chat.
 | `PLAY_BILLING_WIF_PROVIDER_AUDIENCE` | `//iam.googleapis.com/projects/NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER` |
 | `PLAY_BILLING_WIF_SERVICE_ACCOUNT_EMAIL` | Google Play API service-account email |
 
+The Access service token has an expiration date. Monitor and rotate its secret
+before expiry; a valid WIF provider alone cannot recover from an expired
+Cloudflare Access service token. Do not log token responses or bearer tokens.
+
 The Google WIF provider must accept the Access application's `aud` and issuer,
 and the mapped federated principal must be granted service-account
 impersonation (typically `roles/iam.workloadIdentityUser`) on that service
