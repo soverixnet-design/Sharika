@@ -759,32 +759,121 @@
       return;
     }
     root.innerHTML='<div class="card"><h3>🧪 Google Play Closed-Test Users</h3>'+
-      '<p class="n">Read-only Play testing database. These new IDs are separate from staging IDs; '+
-      'the old ID is shown only when both records belong to the same verified Firebase account. '+
-      'No coins, gifts, staff privileges or profile data are moved.</p>'+
+      '<p class="n">These IDs and balances belong ONLY to the isolated, non-redeemable Play test environment. '+
+      'Staging IDs may overlap and must never be used for Play grants. No accounts, cash, roles '+
+      'or wallets are transferred between databases.</p>'+
       '<div class="row"><input class="field" id="play-user-search" '+
       'placeholder="Search Play ID or name" autocomplete="off">'+
       '<button type="button" class="btn s" id="play-user-refresh">Refresh</button></div>'+
-      '<div id="play-user-list" role="status">Loading closed-test users…</div></div>';
+      '<div id="play-user-list" role="status">Loading closed-test users…</div></div>'+
+      '<div class="card"><h3>🪙 Credit non-redeemable Play-test coins</h3>'+
+      '<p class="n">Super Admin only · maximum 1,000,000 virtual coins per grant. '+
+      'This never affects the live or staging economy. Each grant is recorded in the '+
+      'Play wallet ledger and can be safely retried with the same receipt ID.</p>'+
+      '<div class="row"><input class="field" id="play-credit-id" inputmode="numeric" maxlength="8" '+
+      'placeholder="8-digit Play ID"><input class="field" id="play-credit-coins" inputmode="numeric" '+
+      'placeholder="Virtual coins (1–1,000,000)"></div>'+
+      '<div class="row"><input class="field" id="play-credit-reason" maxlength="200" '+
+      'placeholder="Reason (8–200 characters)"><button class="btn s" type="button" '+
+      'id="play-credit-submit">Credit Play-test coins</button></div>'+
+      '<p class="n" id="play-credit-note" role="status"></p><div id="play-credit-history"></div></div>'+
+      '<div class="card"><h3>🎁 Give a Play-test frame, medal or entry</h3>'+
+      '<p class="n">Choose an item from the Play database catalogue. The item is granted '+
+      'and equipped only on that Play account; the user can refresh Backpack/Profile.</p>'+
+      '<div class="row"><input class="field" id="play-item-id" maxlength="8" inputmode="numeric" '+
+      'placeholder="8-digit Play ID"><select class="field" id="play-item-catalog"></select></div>'+
+      '<button class="btn s" type="button" id="play-item-submit">Give and equip in Play test</button>'+
+      '<p class="n" id="play-item-note" role="status"></p></div>';
     const input=byId('play-user-search'),list=byId('play-user-list');
+    let pendingCredit=null,pendingItem=null;
+    const newReceipt=prefix=>prefix+':'+window.crypto.randomUUID();
+    async function refreshCredits(){
+      const history=byId('play-credit-history');
+      try{
+        const data=await api('GET','play-testers/credits');
+        history.innerHTML=window.T(['Play ID','Virtual coins','New balance','Reason','Time'],
+          (data.grants||[]).map(x=>[esc(x.recipient_id),fmt(x.coins),
+            fmt(x.balance_after),esc(x.reason),esc(x.created_at)]));
+      }catch(error){history.textContent='Play credit history unavailable: '+error.message;}
+    }
     async function refresh(){
       list.textContent='Loading verified Play users…';
       try {
         const q=input.value.trim();
         const data=await api('GET','play-testers'+(q?'?q='+encodeURIComponent(q):''));
         list.innerHTML='<p class="n">Found '+fmt((data.users||[]).length)+
-          ' Play accounts (latest 100 maximum). The table has no edit controls.</p>'+
+          ' Play accounts (latest 100 maximum). Select an ID for an isolated test grant.</p>'+
           window.T(['Play ID','Old staging ID (same Google identity)','Name',
-            'Country','Status','Created'],(data.users||[]).map(u=>[
+            'Country','Virtual coins','Diamonds','Status','Select'],(data.users||[]).map(u=>[
             esc(u.public_id),esc(u.previous_staging_id||'Not found'),
-            esc(u.name),esc(u.country),esc(u.status),esc(u.created_at)
+            esc(u.name),esc(u.country),fmt(u.coins),fmt(u.diamonds),esc(u.status),
+            u.status==='active'?'<button type="button" class="btn s" data-play-select="'+
+              esc(u.public_id)+'">Select Play ID</button>':'—'
           ]));
       }catch(error){list.textContent='Play tester list unavailable: '+error.message;}
     }
+    list.onclick=event=>{
+      const target=event.target.closest('button[data-play-select]');
+      if(!target)return;
+      byId('play-credit-id').value=target.dataset.playSelect;
+      byId('play-item-id').value=target.dataset.playSelect;
+      byId('play-credit-note').textContent='Selected isolated Play account '+target.dataset.playSelect;
+    };
+    try{
+      const catalog=await api('GET','play-testers/catalog');
+      const select=byId('play-item-catalog');
+      select.innerHTML=(catalog.items||[]).map(item=>'<option value="'+esc(item.id)+'">'+
+        esc(item.name+' · '+item.kind+' · '+item.id)+'</option>').join('')||
+        '<option value="">No seeded Play cosmetic items</option>';
+    }catch(error){byId('play-item-note').textContent='Play catalogue unavailable: '+error.message;}
+    byId('play-credit-submit').onclick=async()=>{
+      const button=byId('play-credit-submit'),id=byId('play-credit-id').value.trim();
+      const raw=byId('play-credit-coins').value.trim();
+      const coins=Number(raw),reason=byId('play-credit-reason').value.trim();
+      const note=byId('play-credit-note');
+      if(!/^[0-9]{8}$/.test(id)||!/^[0-9]+$/.test(raw)||
+         !Number.isSafeInteger(coins)||coins<1||coins>1000000||
+         reason.length<8||reason.length>200){
+        note.textContent='Enter an 8-digit Play ID, 1–1,000,000 coins and an 8–200 character reason.';return;
+      }
+      if(!window.confirm('Give '+fmt(coins)+' NON-REDEEMABLE TEST coins to Play ID '+id+
+        '? Staging and real wallets will remain unchanged.'))return;
+      const fingerprint=id+':'+coins+':'+reason;
+      if(pendingCredit?.fingerprint!==fingerprint)pendingCredit={fingerprint,request_id:newReceipt('play-credit')};
+      button.disabled=true;
+      try{
+        const result=await api('POST','play-testers/coins',{
+          target_public_id:id,coins,reason,request_id:pendingCredit.request_id
+        });
+        pendingCredit=null;
+        note.textContent=(result.duplicate?'Already granted. ':'Credit confirmed. ')+
+          'New Play balance: '+fmt(result.balance_after)+' virtual coins.';
+        await Promise.all([refresh(),refreshCredits()]);
+      }catch(error){note.textContent='Not confirmed; retry with the same ID, amount and reason. '+error.message;}
+      finally{button.disabled=false;}
+    };
+    byId('play-item-submit').onclick=async()=>{
+      const button=byId('play-item-submit'),id=byId('play-item-id').value.trim();
+      const item_id=byId('play-item-catalog').value,note=byId('play-item-note');
+      if(!/^[0-9]{8}$/.test(id)||!item_id){note.textContent='Select an 8-digit Play ID and item.';return;}
+      if(!window.confirm('Give '+item_id+' to Play ID '+id+' ONLY in the virtual test?'))return;
+      const fingerprint=id+':'+item_id;
+      if(pendingItem?.fingerprint!==fingerprint)pendingItem={fingerprint,request_id:newReceipt('play-item')};
+      button.disabled=true;
+      try{
+        const result=await api('POST','play-testers/cosmetics/grant',{
+          target_public_id:id,item_id,request_id:pendingItem.request_id
+        });
+        pendingItem=null;
+        note.textContent=(result.duplicate?'Already granted. ':'Granted and equipped. ')+
+          'Ask the Play tester to refresh their Backpack/Profile.';
+      }catch(error){note.textContent='Not confirmed; retry the same ID and item. '+error.message;}
+      finally{button.disabled=false;}
+    };
     byId('play-user-refresh').onclick=refresh;
     let timer;
     input.oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,300);};
-    await refresh();
+    await Promise.all([refresh(),refreshCredits()]);
   };
   P.rooms=async function () {
     const root=byId('pg');root.innerHTML=card('Rooms','Loading verified room and live presence…');
