@@ -115,7 +115,7 @@ test('Play WIF exchanges a Cloudflare Access JWT via Google STS then impersonate
   const fetcher = async (url, options) => {
     calls.push({ url, options });
     if (url === env.PLAY_BILLING_WIF_IDENTITY_URL)
-      return Response.json({ subject_token: accessAssertion() });
+      return Response.json({ subject_token: accessAssertion({ aud: wifAccessAudience }) });
     if (url === 'https://sts.googleapis.com/v1/token')
       return Response.json({ access_token: 'federated-google-token', token_type: 'Bearer' });
     if (url.includes(':generateAccessToken'))
@@ -129,7 +129,7 @@ test('Play WIF exchanges a Cloudflare Access JWT via Google STS then impersonate
   assert.equal(result.accessToken, 'impersonated-play-token');
   assert.equal(calls.length, 4);
   assert.equal(calls[0].options.headers['CF-Access-Client-Id'], wifClientId);
-  assert.equal(calls[0].options.redirect, 'error');
+  assert.equal(calls[0].options.redirect, 'manual');
   assert.equal(calls[1].url, 'https://sts.googleapis.com/v1/token');
   const sts = JSON.parse(calls[1].options.body);
   assert.equal(sts.audience, env.PLAY_BILLING_WIF_PROVIDER_AUDIENCE);
@@ -166,6 +166,7 @@ test('WIF never exchanges a wrong-issuer, wrong-audience, wrong-client or expiri
   for (const wrongClaims of [
     { iss: 'https://attacker.cloudflareaccess.com' },
     { aud: ['b'.repeat(64)] },
+    { aud: 'b'.repeat(64) },
     { common_name: 'attacker.access' },
     { exp: Math.floor(Date.now() / 1000) + 15 },
     { type: 'org' }
