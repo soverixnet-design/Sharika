@@ -55,7 +55,6 @@ on:
       - feature/sharika-level-room-greedy-20261107
       - feature/sharika-global-celebrations-qa-20261107
       - feature/sharika-full-integrated-staging-20261107
-      - fix/sharika-room-voice-admin-unified-20261110
     paths:
       - 'android-staging/**'
       - 'app/royal-profile.css'
