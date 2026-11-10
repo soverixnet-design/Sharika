@@ -4796,6 +4796,20 @@
       local.enabled=microphoneWanted(roomId);
       watchSfuSpeaking(state,local,session?.user?.id,true);
       const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
+      // Voice is audio-only. Cap the outgoing Opus stream to a speech-friendly
+      // bitrate so a weak cellular uplink is less likely to stall every other
+      // room request. Older Android WebViews may lack writable RTP encodings;
+      // a failed optimization must never prevent the microphone from joining.
+      try{
+        const sender=transceiver.sender;
+        const parameters=sender?.getParameters?.();
+        if(parameters?.encodings?.length){
+          parameters.encodings[0].maxBitrate=32000;
+          await sender.setParameters(parameters);
+        }
+      }catch(error){
+        console.warn('Voice bandwidth preference unavailable:',errText(error));
+      }
       const offer=await state.publishPC.createOffer();
       await state.publishPC.setLocalDescription(offer);
       await waitIce(state.publishPC,'publish');
@@ -5964,7 +5978,35 @@
     }
     doc.body.appendChild(svg);
   }
-  async function syncFrame(room,frame) {
+  // Weak mobile connections can take longer than the eight-second member poll.
+  // A second poll must never invalidate an unfinished, otherwise valid first
+  // snapshot: doing so left the loading overlay visible indefinitely. Coalesce
+  // passive polls and allow a single fresh fetch after explicit seat/admin edits.
+  function syncFrame(room,frame,passive=false) {
+    if(!frame?.seats || window.cur?.id!==room.id || frame.__sharikaSeatMovePending)
+      return Promise.resolve();
+    const active=frame.__sharikaSeatSyncInFlight;
+    if(active){
+      if(passive)return active;
+      if(!frame.__sharikaSeatSyncRefresh){
+        const refresh=active.catch(()=>{}).then(()=>syncFrame(room,frame,true));
+        frame.__sharikaSeatSyncRefresh=refresh;
+        refresh.finally(()=>{
+          if(frame.__sharikaSeatSyncRefresh===refresh)
+            frame.__sharikaSeatSyncRefresh=null;
+        }).catch(()=>{});
+      }
+      return frame.__sharikaSeatSyncRefresh;
+    }
+    const work=syncFrameOnce(room,frame);
+    const tracked=work.finally(()=>{
+      if(frame.__sharikaSeatSyncInFlight===tracked)
+        frame.__sharikaSeatSyncInFlight=null;
+    });
+    frame.__sharikaSeatSyncInFlight=tracked;
+    return tracked;
+  }
+  async function syncFrameOnce(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
     // Out-of-order room polls cannot restore stale seats or old cosmetics.
     if(frame.__sharikaSeatMovePending)return;
@@ -8788,7 +8830,14 @@
       }
     };
     wireSoveraRoomFrames(frame);
-    await loadVerifiedCosmetics().catch(error=>console.warn('Cosmetic art:',errText(error)));
+    // Catalogue artwork is optional. Do not hold verified seats, mic controls,
+    // or the room's first paint behind a slow /cosmetics request.
+    loadVerifiedCosmetics().then(()=>{
+      if(window.cur?.id!==room.id ||
+         document.getElementById('rf')?.contentWindow!==frame)return;
+      decorateRoomSeats(frame);
+      decorateRoomPeople(frame);
+    }).catch(error=>console.warn('Cosmetic art:',errText(error)));
     try {
       await syncFrame(room,frame);
     } catch(error) {
@@ -8870,7 +8919,7 @@
     if(framePoll) clearInterval(framePoll);
     framePoll=setInterval(()=>{
       if(window.cur?.id!==room.id)return;
-      syncFrame(room,frame).catch(error=>{
+      syncFrame(room,frame,true).catch(error=>{
         if(errText(error)==='join_room_first') {
           window.leaveRoom();
           toast('The room owner removed you from the room');
