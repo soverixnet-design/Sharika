@@ -684,7 +684,7 @@
   P.users=async function () {
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>Verified users</h3><div class="row">'+
-      '<input id="q" placeholder="Search by ID or name" aria-label="Search users"></div>'+
+      '<input id="q" placeholder="Search by Member ID, Special ID or name" aria-label="Search users"></div>'+
       '<div id="ul">Loading…</div></div>';
     const list=byId('ul'),input=byId('q');
     async function refresh() {
@@ -692,13 +692,13 @@
       try {
         const data=await api('GET','users'+(input.value.trim()?'?q='+encodeURIComponent(input.value.trim()):''));
         const users=data.users||[];
-        list.innerHTML=window.T(['User ID','Name','Country','Sent Lv.','Coins','Diamonds','Status','Admin action'],
+        list.innerHTML=window.T(['Account ID','Display / Special ID','Name','Country','Sent Lv.','Coins','Diamonds','Status','Admin action'],
           users.map(u=>{
             const action=role==='super'&&u.public_id!==identity?.public_id&&u.status!=='deleted'?
               '<button type="button" class="btn s" data-status-id="'+esc(u.public_id)+
               '" data-current-status="'+esc(u.status)+'">'+
               (u.status==='active'?'Block':'Unblock')+'</button>':'—';
-            return [esc(u.public_id),esc(u.name),esc(u.country),fmt(u.wealth_level),
+            return [esc(u.public_id),esc(u.display_id||u.public_id),esc(u.name),esc(u.country),fmt(u.wealth_level),
               fmt(u.coins),fmt(u.diamonds),esc(u.status),action];
           }));
       }catch(error){list.textContent=error.message;}
@@ -2428,9 +2428,11 @@
     section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
       '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
       '<div class="row"><input id="direct-user" maxlength="10" inputmode="numeric" placeholder="Recipient 1–10 digit Member or Special ID" aria-label="User ID">'+
-      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
+      '<button id="direct-find" class="btn s" type="button">Find user</button></div>'+
+      '<p id="direct-recipient-preview" class="n" role="status">Find and verify the recipient before adding coins.</p>'+
+      '<div class="row"><input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
       '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
-      '<button id="direct-submit" class="btn s" type="button">Credit user wallet</button></div>'+
+      '<button id="direct-submit" class="btn s" type="button" disabled>Credit user wallet</button></div>'+
       '<p id="direct-note" class="n" aria-live="polite"></p>'+
       '<h4>Verified direct credit history</h4><div id="direct-history">Loading…</div>';
     root.insertBefore(section,root.firstChild);
@@ -2446,21 +2448,52 @@
           fmt(response.daily_coin_limit)+' coins.';
       }catch(error){history.textContent='Credit history unavailable: '+error.message;}
     }
-    const button=byId('direct-submit');
+    const button=byId('direct-submit'),recipientInput=byId('direct-user');
+    const recipientPreview=byId('direct-recipient-preview');
+    let checkedRecipient=null,lookupSequence=0;
+    recipientInput.oninput=()=>{
+      lookupSequence++;checkedRecipient=null;button.disabled=true;
+      recipientPreview.textContent='Find and verify the recipient before adding coins.';
+    };
+    async function findRecipient(){
+      const target=recipientInput.value.trim(),sequence=++lookupSequence;
+      checkedRecipient=null;button.disabled=true;
+      if(!/^[0-9]{1,10}$/.test(target)){
+        recipientPreview.textContent='Enter a valid 1–10 digit Member or Special ID.';return;
+      }
+      recipientPreview.textContent='Looking up the real wallet…';
+      try{
+        const result=await api('GET','recharge-user/recipient?id='+encodeURIComponent(target));
+        if(sequence!==lookupSequence||target!==recipientInput.value.trim())return;
+        const person=result.recipient;
+        checkedRecipient={...person,lookupId:target};
+        recipientPreview.textContent='Verified: '+person.name+' · Display ID '+person.display_id+
+          ' · Account '+person.public_id+' · '+person.country+' · Current wallet '+
+          fmt(person.coins)+' coins';
+        button.disabled=false;
+      }catch(error){
+        if(sequence===lookupSequence)recipientPreview.textContent='User not verified: '+error.message;
+      }
+    }
+    byId('direct-find').onclick=findRecipient;
     button.onclick=async()=>{
       if(button.disabled)return;
       const target=byId('direct-user').value.trim();
       const raw=byId('direct-coins').value.trim();
       const amount=Number(raw);
       const reason=byId('direct-reason').value.trim();
+      if(!checkedRecipient||checkedRecipient.lookupId!==target){
+        note.textContent='Find and verify the recipient first.';return;
+      }
       if(!/^[0-9]{1,10}$/.test(target)||!/^[0-9]+$/.test(raw)||
          !Number.isSafeInteger(amount)||amount<1||amount>(role==='super'?1000000000000:1000000)||
          reason.length<8||reason.length>200){
         note.textContent='Enter 1–10 digit Member or Special ID, positive coins within the wallet cap and an 8–200 character reason.';return;
       }
-      if(!window.confirm('Credit '+fmt(amount)+' real coins to user '+target+
+      if(!window.confirm('Credit '+fmt(amount)+' real coins to '+checkedRecipient.name+
+        ' (Account '+checkedRecipient.public_id+', entered ID '+target+')'+
         '? Reason: '+reason+'\nThis grant is permanently audited.'))return;
-      const fingerprint=target+':'+amount+':'+reason;
+      const fingerprint=checkedRecipient.public_id+':'+target+':'+amount+':'+reason;
       const requestId=pendingAdminCredit?.fingerprint===fingerprint?
         pendingAdminCredit.requestId:
         'admin-credit:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
@@ -2468,16 +2501,22 @@
       button.disabled=true;note.textContent='Submitting one auditable coin credit…';
       try{
         const result=await api('POST','recharge-user',{
-          target_public_id:target,coins:amount,reason,request_id:requestId
+          target_public_id:target,expected_recipient_id:checkedRecipient.public_id,
+          coins:amount,reason,request_id:requestId
         });
         pendingAdminCredit=null;
         note.textContent=(result.duplicate?'Already credited (safe retry). ':'Credit confirmed. ')+
           'Transaction #'+result.transaction_id+' · New wallet '+fmt(result.balance_after)+' coins.';
         byId('direct-coins').value='';
         await refreshHistory();
+        await findRecipient();
       }catch(error){
         note.textContent='Not confirmed; check credit history, then retry the SAME amount and reason. '+error.message;
-      }finally{button.disabled=false;}
+        if(error.message.includes('recipient_changed')){
+          checkedRecipient=null;
+          recipientPreview.textContent='Special ID or account changed. Find the recipient again.';
+        }
+      }finally{button.disabled=!checkedRecipient;}
     };
     await refreshHistory();
   }
