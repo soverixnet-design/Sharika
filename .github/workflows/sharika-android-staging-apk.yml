@@ -500,7 +500,7 @@ jobs:
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           CERTS="$("$SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk)"
           echo "$CERTS"
-          if [[ "${SHARIKA_STAGING_SIGNING_CONFIGURED:-}" == "true" ]]; then
+          if [[ "${SHARIKA_STAGING_SIGNER_KIND:-}" == "original" ]]; then
             printf '%s\n' "$CERTS" | grep -qi 'Signer #1 certificate SHA-1 digest: ab491a1a905a42bf42417d7b62c658b379f32bb0'
             echo 'SHARIKA_STABLE_STAGING_CERTIFICATE_VERIFIED'
           else
