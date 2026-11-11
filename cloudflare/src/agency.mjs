@@ -39,7 +39,7 @@ const salaryMaturity=mode=>mode==='daily'?"datetime('now','start of day')":
   "datetime('now','start of month')";
 async function salarySummary(db,uid,mode){
   // Host and Agency Crystal is immediately available; BD Crystal settles monthly.
-  const condition="(a.kind IN ('host_salary','agency') OR (a.kind='bd' AND a.created_at<datetime('now','start of month')))";
+  const condition="(a.kind IN ('host_salary','agency') OR (a.kind='bd' AND a.created_at<datetime('now','+6 hours','start of month','-6 hours')))";
   const [earned,matured,exchanged,sellerTransferred,config]=await Promise.all([
     db.prepare('SELECT COALESCE(SUM(amount_units),0) AS units FROM sharika_agency_earnings '+
       'WHERE beneficiary_uid=?').bind(uid).first(),
