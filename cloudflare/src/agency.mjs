@@ -55,8 +55,11 @@ async function salarySummary(db,uid,mode){
     salaryConfig(db)
   ]);
   const paid=Number(exchanged?.units)||0,transferred=Number(sellerTransferred?.units)||0;
-  return {earned_units:Number(earned?.units)||0,exchanged_units:paid,
+  return {earned_crystal:(Number(earned?.units)||0)/10000,
+    exchanged_crystal:paid/10000,seller_transferred_crystal:transferred/10000,
+    crystal_to_coin_rate:1,earned_units:Number(earned?.units)||0,exchanged_units:paid,
     seller_transferred_units:transferred,
+    available_crystal:Math.max(0,(Number(matured?.units)||0)-paid-transferred)/10000,
     matured_available_units:Math.max(0,(Number(matured?.units)||0)-paid-transferred),
     exchange_enabled:!!config.exchange_enabled,
     seller_transfer_enabled:!!config.exchange_enabled,settlement_mode:mode,
