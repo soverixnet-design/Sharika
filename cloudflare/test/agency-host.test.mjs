@@ -120,7 +120,7 @@ test('packaged Agency UI has all three real-data screens and Android back naviga
   const gradle=readFileSync(new URL('app/build.gradle',root),'utf8');
   for(const required of ['BD Center','Host Roster','Host Earnings','Estimated Host Salary',
     '/agency/bd/center','/agency/hosts/assign','/agency/host/','Coin Transactions',
-    'Salary Wallet','/agency/salary/exchange'])
+    'Crystal Wallet','Crystal Transfer','Crystal Coin Exchange','/agency/salary/exchange'])
     assert.ok(js.includes(required),required);
   assert.match(native,/sharikaOpenAgencyCenter/);
   assert.match(back,/sharikaAgencyBack/);
