@@ -50,7 +50,9 @@ jobs:
              throw new Error('Crystal staging safety check failed');
           NODE
       - name: Validate Worker and regression tests
-        run: npm run check
+        run: |
+          npm run check
+          node --check ../android-staging/agency-center.js
       - name: Check already-installed staging D1 guards
         run: |
           set -euo pipefail
