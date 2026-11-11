@@ -283,7 +283,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Build signed Sharika 1.0.10 profile and recharge QA APK
+      - name: Build signed Sharika 1.0.11 login and room recovery QA APK
         if: github.ref == 'refs/heads/feature/sharika-profile-recharge-royal-20261111'
         working-directory: android-staging
         env:
@@ -299,19 +299,19 @@ jobs:
           apk=app/build/outputs/apk/release/app-release.apk
           test -s "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -E "^package: name='com.soverixnet.sharika' versionCode='110' versionName='1.0.10'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -E "^package: name='com.soverixnet.sharika' versionCode='111' versionName='1.0.11'"
           node google-oauth-signing.cjs \
             "$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p')"
           unzip -tqq "$apk"
           unzip -p "$apk" assets/connection.js | grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' >/dev/null
-          cp "$apk" Sharika-Play-Profile-Recharge-1.0.10-QA.apk
+          cp "$apk" Sharika-Play-Login-Room-1.0.11-QA.apk
 
-      - name: Save signed 1.0.10 profile recharge QA APK artifact
+      - name: Save signed 1.0.11 login and room QA APK artifact
         if: github.ref == 'refs/heads/feature/sharika-profile-recharge-royal-20261111'
         uses: actions/upload-artifact@v4
         with:
-          name: Sharika-Play-Profile-Recharge-1.0.10-APK
-          path: android-staging/Sharika-Play-Profile-Recharge-1.0.10-QA.apk
+          name: Sharika-Play-Login-Room-1.0.11-APK
+          path: android-staging/Sharika-Play-Login-Room-1.0.11-QA.apk
           if-no-files-found: error
           retention-days: 30
 
