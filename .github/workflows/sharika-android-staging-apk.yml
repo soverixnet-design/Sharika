@@ -348,9 +348,11 @@ jobs:
           fi
           if [[ -s "$path" ]] && printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$path" | sha256sum --check --status; then
             echo 'Using verified original staging signer.'
+            echo 'SHARIKA_STAGING_SIGNER_KIND=original' >> "$GITHUB_ENV"
           else
             rm -f "$path"
             keytool -genkeypair -storetype PKCS12 -keystore "$path" -alias sharika-staging -keyalg RSA -keysize 3072 -validity 3650 -storepass "$KEY_PASSWORD" -keypass "$KEY_PASSWORD" -dname "CN=Sharika Isolated Staging, O=Soverixnet, C=BD" -noprompt
+            echo "SHARIKA_STAGING_SIGNER_KIND=temporary" >> "$GITHUB_ENV"
             echo "::warning::NEW EPHEMERAL STAGING SIGNER: APK cannot update old installs; Google OAuth will fail until its SHA-1 is registered in Firebase. Key is NOT persisted across runs."
           fi
           chmod 600 "$path"
@@ -501,6 +503,8 @@ jobs:
           if [[ "${SHARIKA_STAGING_SIGNING_CONFIGURED:-}" == "true" ]]; then
             printf '%s\n' "$CERTS" | grep -qi 'Signer #1 certificate SHA-1 digest: ab491a1a905a42bf42417d7b62c658b379f32bb0'
             echo 'SHARIKA_STABLE_STAGING_CERTIFICATE_VERIFIED'
+          else
+            echo "::warning::Temporary staging signing certificate verified cryptographically, but Google OAuth SHA-1 is not registered and this APK cannot update previously signed installs."
           fi
 
       - name: Verify Agency 3D icons and active BD dashboard in compiled profile
