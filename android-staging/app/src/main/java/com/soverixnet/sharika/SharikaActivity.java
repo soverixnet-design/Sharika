@@ -101,6 +101,9 @@ public final class SharikaActivity extends Activity {
 // chat or presence requests on congested mobile networks.
     private final ExecutorService io = Executors.newFixedThreadPool(4);
     private final ExecutorService voiceIo = Executors.newFixedThreadPool(3);
+    // Seat snapshots and room joins must not sit behind chat, gifts, cosmetics
+    // and other optional polling queued on the general four-worker pool.
+    private final ExecutorService roomEntryIo = Executors.newFixedThreadPool(2);
     private FirebaseAuth auth;
     private SharikaPlayBilling playBilling;
     private CredentialManager credentials;
@@ -799,7 +802,7 @@ public final class SharikaActivity extends Activity {
                 // A verified Firebase session is already durable. Calling
                 // reload() on every app launch can hang or throw during a
                 // temporary network outage and incorrectly show login again.
-                if (signedIn.isEmailVerified()) {
+                if (signedIn.isEmailVerified() || isIsolatedPlayVirtualBuild()) {
                     sendResult(id, result(true, identity(signedIn), null));
                     return;
                 }
@@ -960,16 +963,13 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false, null, safe(task.getException())));
             else {
                 FirebaseUser current = auth.getCurrentUser();
-                if (current == null) {
+                // signInWithEmailAndPassword has already fetched a fresh
+                // Firebase account. Reloading it here adds another mobile
+                // round trip and can time out after valid credentials succeed.
+                // The Worker still verifies the signed Firebase ID token.
+                if (current == null)
                     sendResult(id, result(false,null,"firebase_session_missing"));
-                    return;
-                }
-                current.reload().addOnCompleteListener(this, refreshed -> {
-                    FirebaseUser updated = auth.getCurrentUser();
-                    if (!refreshed.isSuccessful() || updated == null)
-                        sendResult(id, result(false,null,"firebase_session_refresh_failed"));
-                    else sendResult(id, result(true, identity(updated), null));
-                });
+                else sendResult(id, result(true, identity(current), null));
             }
         });
     }
@@ -1389,6 +1389,11 @@ public final class SharikaActivity extends Activity {
         return path.matches("^/api/v1/rooms/[0-9]{8}/(seat|voice/(config|session|publish|ready|subscribe|renegotiate|publications|heartbeat|leave))$");
     }
 
+    private boolean isRoomEntryRoute(String path) {
+        return path.matches("^/api/v1/rooms/[0-9]{8}/(join|members)$") ||
+            path.matches("^/api/v1/users/[0-9]{8}$");
+    }
+
     private void sendPushToken(String id) {
         // An FCM device token is never an authentication credential.
         FirebaseMessaging.getInstance().getToken().addOnCompleteListener(this, task -> {
@@ -1412,7 +1417,8 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false,null,"firebase_token_unavailable")); return;
             }
             JSONObject body = data.optJSONObject("body");
-            ExecutorService queue = isRealtimeVoiceRoute(path) ? voiceIo : io;
+            ExecutorService queue = isRealtimeVoiceRoute(path) ? voiceIo :
+                isRoomEntryRoute(path) ? roomEntryIo : io;
             queue.execute(() -> stageHttp(id, method, path, body, token.getResult().getToken()));
         });
     }
@@ -1497,6 +1503,7 @@ public final class SharikaActivity extends Activity {
         }
         io.shutdownNow();
         voiceIo.shutdownNow();
+        roomEntryIo.shutdownNow();
         super.onDestroy();
     }
 }

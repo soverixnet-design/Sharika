@@ -178,7 +178,7 @@ test('weekly opening reuses the first splash and never flashes a second design',
 test('verified Google session opens home without redundant Firebase reload or false logout',()=>{
   const source=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const native=readFileSync(new URL('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
-  assert.match(native,/if \(signedIn\.isEmailVerified\(\)\) \{\s*sendResult\(id, result\(true, identity\(signedIn\), null\)\)/);
+  assert.match(native,/if \(signedIn\.isEmailVerified\(\) \|\| isIsolatedPlayVirtualBuild\(\)\) \{\s*sendResult\(id, result\(true, identity\(signedIn\), null\)\)/);
   assert.match(native,/if \(user\.isEmailVerified\(\) \|\| isIsolatedPlayVirtualBuild\(\)\) \{\s*requestStagingToken/);
   assert.match(native,/if \(!current\.isEmailVerified\(\)\) \{\s*sendResult\(id, result\(false,null,"email_verification_required"\)\)/);
   assert.match(source,/function showConnectionRecovery\(error\)/);

@@ -119,6 +119,8 @@
       const timeoutMs = action === 'pickProfilePhoto' ? 180000 :
         action === 'playBillingPurchase' ? 180000 :
         action === 'googleSignIn' ? 70000 :
+        action === 'emailSignIn' ? 45000 :
+        action === 'session' ? 12000 :
         action === 'pushToken' && payload?.promptPermission ? 60000 :
         action === 'api' && payload?.method === 'PUT' &&
           (payload?.path === '/api/v1/me/avatar' ||
@@ -5554,7 +5556,19 @@
     const attempt=++authAttemptId;
     let account=null;
     try {
-      account = await native('emailSignIn',{email:identity.trim(),password});
+      try {
+        account = await native('emailSignIn',{email:identity.trim(),password});
+      } catch (error) {
+        // A slow Firebase callback may arrive after the bridge timer while
+        // Android has already committed a valid session. Recover that session
+        // without asking the member to enter their password again.
+        if (!/Request timed out/i.test(errText(error))) throw error;
+        const restored=await native('session',{}).catch(()=>null);
+        if (!restored?.signedIn ||
+            String(restored.email||'').toLowerCase()!==identity.trim().toLowerCase())
+          throw new Error('Sign-in connection timed out. Check your internet and try again.');
+        account=restored;
+      }
       if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
       const local = await authenticated(account,undefined,attempt);
       if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
@@ -6046,10 +6060,38 @@
     const requestNo=(frame.__sharikaSeatSyncNo||0)+1;
     frame.__sharikaSeatSyncNo=requestNo;
     const userId=session?.user?.id;
-    const [data,owner] = await Promise.all([
-      api('GET','/rooms/'+room.id+'/members'),
-      api('GET','/users/'+room.id)
-    ]);
+    // An optional owner profile/medal lookup must never hold the entire voice
+    // room behind a second HTTP request. The member snapshot is authoritative
+    // for seats and contains the active owner's verified display information.
+    // Refresh the extra owner artwork in the background at most once/minute.
+    if(!room.__sharikaOwnerFetch &&
+       (!room.__sharikaOwnerFetchedAt ||
+        Date.now()-room.__sharikaOwnerFetchedAt>60000)) {
+      room.__sharikaOwnerFetchedAt=Date.now();
+      const ownerFetch=api('GET','/users/'+room.id).then(owner=>{
+        if(String(owner?.id||owner?.public_id||'')===String(room.id))
+          room.__sharikaVerifiedOwner=owner;
+      }).catch(error=>console.warn('Room owner artwork delayed:',errText(error)));
+      room.__sharikaOwnerFetch=ownerFetch;
+      ownerFetch.finally(()=>{
+        if(room.__sharikaOwnerFetch===ownerFetch)room.__sharikaOwnerFetch=null;
+      }).catch(()=>{});
+    }
+    const data = await api('GET','/rooms/'+room.id+'/members');
+    const ownerMember=(data.members||[]).find(member=>member.user_id===room.owner_id);
+    const verifiedMemberOwner=ownerMember?.sharika_users||{};
+    const owner=room.__sharikaVerifiedOwner||{
+      public_id:verifiedMemberOwner.public_id||room.id,
+      name:verifiedMemberOwner.name||'Room Owner',
+      pic:verifiedMemberOwner.pic||null,
+      special_id:verifiedMemberOwner.special_id||null,
+      display_id:verifiedMemberOwner.display_id||room.id,
+      svip_level:verifiedMemberOwner.svip_level||0,
+      frame_style:verifiedMemberOwner.frame_style||'',
+      entry_style:verifiedMemberOwner.entry_style||'',
+      medal_style:verifiedMemberOwner.medal_style||'',
+      name_tag_style:verifiedMemberOwner.name_tag_style||''
+    };
     if(frame.__sharikaSeatSyncNo!==requestNo ||
        !session || session.user.id!==userId || window.cur?.id!==room.id ||
        document.getElementById('rf')?.contentWindow!==frame)return;
@@ -8881,6 +8923,7 @@
       }
       // First-load network errors must not prevent the 8-second sync loop
       // from starting. The room design and member faces recover on retry.
+      showRoomJoinIssue(room,'Seat connection failed: '+errText(error));
       frame.toast('Room details reconnecting automatically…');
     }
     // Each phone consumes the same verified room-entry event stream.
@@ -9127,9 +9170,19 @@
   // network round-trip and repeated taps launched overlapping join requests.
   let roomEntryBusyToken=null;
   let roomEntryToken=0;
+  let roomJoiningWatchdog=null;
+  function showRoomJoinIssue(room,message){
+    const card=document.getElementById('sh-room-joining-card');
+    if(!card || (window.cur?.id!==room.id && roomEntryBusyToken===null))return;
+    const status=card.querySelector('small');
+    if(status)status.textContent=message;
+    const retry=card.querySelector('[data-sh-room-retry]');
+    if(retry)retry.hidden=window.cur?.id!==room.id;
+  }
   function showRoomJoining(room){
     const wrap=document.getElementById('rw');
     if(!wrap)return;
+    if(roomJoiningWatchdog)clearTimeout(roomJoiningWatchdog);
     wrap.classList.add('on','sh-room-awaiting','sh-room-joining');
     wrap.querySelector('#sh-room-joining-card')?.remove();
     const card=document.createElement('section');
@@ -9146,10 +9199,39 @@
     const leave=document.createElement('button');
     leave.type='button';leave.textContent='Back to rooms';
     leave.onclick=()=>window.leaveRoom?.();
-    card.append(spinner,title,progress,leave);
+    const retry=document.createElement('button');
+    retry.type='button';retry.textContent='Retry room connection';
+    retry.dataset.shRoomRetry='';
+    retry.hidden=true;
+    retry.onclick=async()=>{
+      if(retry.disabled||window.cur?.id!==room.id)return;
+      retry.disabled=true;
+      progress.textContent='Retrying verified seats…';
+      const iframe=document.getElementById('rf');
+      const frame=iframe?.contentWindow;
+      try{
+        if(!frame?.seats){
+          // The embedded room itself has not initialized. Reload its local
+          // artwork only; membership stays server-authoritative.
+          if(iframe?.src)iframe.src=iframe.src;
+          progress.textContent='Reloading room view…';
+        }else{
+          await syncFrame(room,frame);
+          if(!frame.__sharikaRoomRenderSignature)
+            throw new Error('No verified seat snapshot yet');
+        }
+      }catch(error){showRoomJoinIssue(room,'Retry failed: '+errText(error));}
+      finally{retry.disabled=false;}
+    };
+    card.append(spinner,title,progress,retry,leave);
     wrap.append(card);
+    roomJoiningWatchdog=setTimeout(()=>{
+      roomJoiningWatchdog=null;
+      showRoomJoinIssue(room,'Connection is slow. You can retry or return to rooms.');
+    },12000);
   }
   function hideRoomJoining(){
+    if(roomJoiningWatchdog){clearTimeout(roomJoiningWatchdog);roomJoiningWatchdog=null;}
     const wrap=document.getElementById('rw');
     wrap?.classList.remove('sh-room-joining');
     wrap?.querySelector('#sh-room-joining-card')?.remove();

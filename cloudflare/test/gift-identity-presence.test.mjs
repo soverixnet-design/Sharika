@@ -144,7 +144,7 @@ test('room roster uses expiring verified presence without deleting D1 members',(
   const end=worker.indexOf("if (parts.length === 5 && action === 'voice-token'",start);
   const section=worker.slice(start,end);
   assert.match(section,/new Set\(await presence\.presenceRoomMembers\(roomId\)\)/);
-  assert.match(section,/visibleMembers=visibleMembers\.filter/);
+  assert.match(section,/const visibleMembers=live\s*\?\(result\.results\|\|\[\]\)\.filter/);
   assert.match(section,/visibleMembers\.map\(x =>/);
   assert.doesNotMatch(section,/DELETE FROM sharika_room_members|UPDATE sharika_room_members/);
   assert.match(adapter,/\},8000\);/);

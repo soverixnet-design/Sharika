@@ -2023,41 +2023,44 @@ export async function handleRequest(request, env, ctx) {
         // Show only actively joined users. A persistent owner permission row
         // is never proof that the owner is still physically in the room.
         // /join registers presence before returning, so no grace is needed.
-        let visibleMembers=result.results||[];
-        let presence=null;
-        try{presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');}
-        catch(error){console.warn('presence_coordinator_unavailable',error?.message);}
-        if(typeof presence?.presenceRoomMembers==='function') {
+        // Independent D1 reads and Durable Object calls were previously
+        // serialized on every 8-second member poll. Fetch them together so a
+        // slow background/cover lookup cannot delay verified microphone seats.
+        const selectedCatalogId=roomThemeId(room.theme);
+        const presenceRead=(async()=>{
           try{
-            const live=new Set(await presence.presenceRoomMembers(roomId));
-            visibleMembers=visibleMembers.filter(m=>live.has(m.user_id));
+            const presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');
+            if(typeof presence?.presenceRoomMembers==='function')
+              return new Set(await presence.presenceRoomMembers(roomId));
           }catch(error){
             console.warn('presence_room_members_unavailable',error?.message);
-            visibleMembers=[];
           }
-        }else{
-          // Never display offline IDs when the presence coordinator is down.
-          visibleMembers=[];
-        }
-        const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
-          .lockedSeats();
-        const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();
-        const equipped=await readRoomEquipped(env.DB,roomId);
+          return null;
+        })();
         // Room color and owner-selected photo are shared room state. Return
         // them with every member poll, so guests already inside and late
         // joiners see the same background without trusting localStorage.
-        const wallpaper=room.theme==='photo' ? await env.DB.prepare(
-          'SELECT version FROM sharika_room_theme_images WHERE room_id=?'
-        ).bind(roomId).first() : null;
-        const cover=await env.DB.prepare(
-          'SELECT version FROM sharika_room_covers WHERE room_id=?'
-        ).bind(roomId).first();
-        const selectedCatalogId=roomThemeId(room.theme);
-        const catalogBackground=selectedCatalogId!==null
-          ?await catalogThemeImage(env.DB,selectedCatalogId,url.origin):null;
+        const [live,lockedSeats,equipped,wallpaper,cover,catalogBackground,
+          accessLock,bondPairs]=await Promise.all([
+          presenceRead,
+          env.VOICE_ROOMS.getByName('sharika:'+roomId).lockedSeats(),
+          readRoomEquipped(env.DB,roomId),
+          room.theme==='photo' ? env.DB.prepare(
+            'SELECT version FROM sharika_room_theme_images WHERE room_id=?'
+          ).bind(roomId).first() : Promise.resolve(null),
+          env.DB.prepare('SELECT version FROM sharika_room_covers WHERE room_id=?')
+            .bind(roomId).first(),
+          selectedCatalogId!==null
+            ?catalogThemeImage(env.DB,selectedCatalogId,url.origin):Promise.resolve(null),
+          readRoomAccessLock(env.DB,roomId),
+          roomBondPairs(env.DB,roomId)
+        ]);
+        // Never display offline IDs when the presence coordinator is down.
+        const visibleMembers=live
+          ?(result.results||[]).filter(m=>live.has(m.user_id)):[];
         return reply({ room: roomId,
           self_state:{role:ownMemberRole,seat_no:member.seat_no,muted:!!member.muted},
-          access_locked:(await readRoomAccessLock(env.DB,roomId)).locked,
+          access_locked:accessLock.locked,
           theme:ROOM_THEMES.has(room.theme)||catalogBackground?room.theme:'mid',
           // Cover photos are independent of wallpapers. Return the latest
           // version on every authenticated room poll, even on a color theme.
@@ -2072,7 +2075,7 @@ export async function handleRequest(request, env, ctx) {
           seat_count:room.seat_count,
           seat_frame_style:room.seat_frame_style||'grad',
           locked_seats:lockedSeats.filter(seat=>seat>=1&&seat<=room.seat_count),
-          bond_pairs:await roomBondPairs(env.DB,roomId),
+          bond_pairs:bondPairs,
           members: visibleMembers.map(x => ({
           room_id: x.room_id, user_id: x.user_id, role: x.role, seat_no: x.seat_no, muted: !!x.muted,
           sharika_users: { public_id: publicId(x.public_no), name: x.name, pic: x.pic, wealth_level: x.wealth_level,
