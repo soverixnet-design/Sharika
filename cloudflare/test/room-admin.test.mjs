@@ -116,7 +116,7 @@ test('owner and admin self-state survives transient presence roster gaps',()=>{
   const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
   const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const ownRole=worker.indexOf('const ownMemberRole=');
-  const visibleRoster=worker.indexOf('const visibleMembers=live',ownRole);
+  const visibleRoster=worker.indexOf('const visibleMembers=',ownRole);
   assert.ok(ownRole>0&&visibleRoster>ownRole,
     'verified own role must be resolved before filtering the public roster');
   assert.match(worker,/self_state:\{role:ownMemberRole,seat_no:member\.seat_no,muted:!!member\.muted\}/);

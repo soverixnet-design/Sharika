@@ -289,7 +289,7 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
   try{
     const owner='firebase:'+project+':secure-user';
     const db=fakeDb(),originalPrepare=db.prepare.bind(db);
-    let theme='mid',coverVersion=0,wallpaperVersion=0;
+    let theme='mid',coverVersion=0,wallpaperVersion=0,presenceFailure=false;
     db.prepare=sql=>{
       const stmt=originalPrepare(sql);
       if(sql.includes('FROM sharika_users WHERE auth_uid'))
@@ -315,6 +315,10 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
     };
     const env={DB:db,FIREBASE_PROJECT_ID:project,
       VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{},
+        presenceRoomMembers:async()=>{
+          if(presenceFailure)throw new Error('simulated temporary coordinator outage');
+          return [];
+        },
         roomPolicyRead:async()=>({chat_mode:'anyone',mic_mode:'anyone',super_mic:true})})}};
     const ownerToken=await token();
     const guestToken=await token({sub:'room-guest'});
@@ -330,6 +334,13 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
     assert.equal((await patch(guestToken,'photo')).status,403);
     assert.equal((await patch(ownerToken,'photo')).status,409);
     assert.equal(theme,'mid');
+    // A transient coordinator failure must not masquerade as a successful
+    // empty room (which would visibly erase every member's avatar and ID).
+    presenceFailure=true;
+    const unavailable=await read(guestToken);
+    assert.equal(unavailable.status,503);
+    assert.equal((await unavailable.json()).error,'room_presence_temporarily_unavailable');
+    presenceFailure=false;
     const noCover=await (await read(guestToken)).json();
     assert.equal(noCover.cover_url,null);
     coverVersion=9;

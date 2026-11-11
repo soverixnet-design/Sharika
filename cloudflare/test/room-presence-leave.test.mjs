@@ -76,7 +76,8 @@ test('join and leave boundaries clear seats and enforce live-only roster',()=>{
   assert.match(leave,/\.presenceLeave\(uid,roomId\)/);
   assert.match(leave,/UPDATE sharika_room_members SET seat_no=NULL/);
   assert.match(leave,/DELETE FROM sharika_room_members/);
-  assert.match(roster,/const visibleMembers=live\s*\?\(result\.results\|\|\[\]\)\.filter\(m=>live\.has\(m\.user_id\)\):\[\]/);
+  assert.match(roster,/if\(live===null\)return fail\('room_presence_temporarily_unavailable',503,cors\)/);
+  assert.match(roster,/const visibleMembers=\(result\.results\|\|\[\]\)\.filter\(m=>live\.has\(m\.user_id\)\)/);
   assert.doesNotMatch(roster,/m\.user_id===room\.owner_id\|\|/);
 });
 

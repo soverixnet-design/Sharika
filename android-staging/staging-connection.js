@@ -127,7 +127,21 @@
            payload?.path === '/api/v1/me/cover-image' ||
            /^\/api\/v1\/rooms\/[0-9]{8}\/cover$/.test(payload?.path || ''))
           ? 90000 : 25000;
-      const timer = setTimeout(() => { calls.delete(id); reject(new Error('Request timed out')); }, timeoutMs);
+      // A generic "Request timed out" left testers unable to distinguish
+      // Firebase sign-in from a slow Cloudflare /me or room-members call.
+      // Keep this as a client-side diagnostic only: never log credentials,
+      // tokens, request bodies, or internal account identifiers.
+      const timeoutArea=action==='emailSignIn'?'Firebase email sign-in':
+        action==='googleSignIn'?'Google account selection':
+        action==='session'?'Firebase session restore':
+        action==='api'&&payload?.path==='/api/v1/me'?'Cloudflare profile':
+        action==='api'&&/\/rooms\/[0-9]{8}\/members$/.test(payload?.path||'')
+          ?'Cloudflare verified seats':
+        action==='api'?'Cloudflare request':'Android connection';
+      const timer=setTimeout(()=>{
+        calls.delete(id);
+        reject(new Error('Request timed out ('+timeoutArea+')'));
+      },timeoutMs);
       calls.set(id, { resolve, reject, timer });
       try { window.SharikaNative.call(id, action, JSON.stringify(payload || {})); }
       catch (error) { clearTimeout(timer); calls.delete(id); reject(error); }
@@ -5545,8 +5559,8 @@
       layer.appendChild(panel);document.body.appendChild(layer);
     }
     layer.querySelector('[data-sh-login-status]').textContent=
-      'Your Google account is still signed in. The server did not finish loading: '+
-      errText(error)+'. Please retry when your connection is available.';
+      'Your saved Firebase session was not erased. The connection did not finish: '+
+      errText(error)+'. You can retry without creating a new account.';
     document.getElementById('sp')?.classList.remove('sharika-opening-pending');
     window.hideAuth();
   }

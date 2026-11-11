@@ -657,20 +657,33 @@
       top.after(bar);
     }
     const faces=document.getElementById('sh-room-faces');
-    faces.replaceChildren();
-    for(const member of v.members.slice(0,4)){
-      const button=document.createElement('button');
-      button.type='button';button.className='sh-room-face-button';
-      button.title=member.name||'Room member';button.appendChild(vipAvatar(member));
-      button.onclick=()=>Promise.resolve(v.openProfile(member)).catch(error=>
-        window.toast?.('Profile: '+String(error?.message||error)));
-      faces.appendChild(button);
+    // A room poll happens every eight seconds. Replacing all avatar/image
+    // nodes even for an unchanged roster made the premium header flicker.
+    // Preserve the same DOM nodes while the authoritative view refreshes.
+    const faceSignature=JSON.stringify([v.roomId,v.members.map(member=>[
+      member.publicId,member.displayId,member.pic,member.name,member.role])]);
+    if(faces.dataset.verifiedRoster!==faceSignature){
+      faces.replaceChildren();
+      for(const member of v.members.slice(0,4)){
+        const button=document.createElement('button');
+        button.type='button';button.className='sh-room-face-button';
+        button.title=member.name||'Room member';button.appendChild(vipAvatar(member));
+        const memberId=member.publicId;
+        button.onclick=()=>{
+          const current=premiumState.room;
+          const selected=current?.members.find(m=>m.publicId===memberId);
+          if(selected)Promise.resolve(current.openProfile(selected)).catch(error=>
+            window.toast?.('Profile: '+String(error?.message||error)));
+        };
+        faces.appendChild(button);
+      }
+      const count=document.createElement('button');
+      count.className='sh-room-face-count';count.type='button';
+      count.textContent=String(v.members.length);
+      count.setAttribute('aria-label','Online users: '+v.members.length);
+      count.onclick=showMembers;faces.appendChild(count);
+      faces.dataset.verifiedRoster=faceSignature;
     }
-    const count=document.createElement('button');
-    count.className='sh-room-face-count';count.type='button';
-    count.textContent=String(v.members.length);
-    count.setAttribute('aria-label','Online users: '+v.members.length);
-    count.onclick=showMembers;faces.appendChild(count);
     const old=document.getElementById('ustat');
     if(old){old.textContent='👥 '+v.members.length+' ›';old.onclick=showMembers;}
     const stats=app.querySelector('.stats');

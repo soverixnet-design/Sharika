@@ -34,6 +34,29 @@ test('email login recovers a valid Firebase session after a delayed native reply
   assert.deepEqual(calls,['emailSignIn','session']);
 });
 
+test('native timeout reports Firebase sign-in separately from Cloudflare profile loading',async()=>{
+  const start=ui.indexOf('  function native(action, payload) {');
+  const end=ui.indexOf('  window.SharikaNativeReply =',start);
+  assert.ok(start>0&&end>start);
+  const pending=[];
+  const context=createContext({
+    seq:0,calls:new Map(),
+    window:{SharikaNative:{call:()=>{}}},
+    setTimeout:callback=>{pending.push(callback);return pending.length;},
+    clearTimeout:()=>{},Promise,JSON,Error
+  });
+  runInContext(ui.slice(start,end),context);
+  const signIn=context.native('emailSignIn',{email:'member@example.com',password:'hidden'});
+  pending.shift()();
+  await assert.rejects(signIn,/Request timed out \(Firebase email sign-in\)/);
+  const profile=context.native('api',{method:'GET',path:'/api/v1/me'});
+  pending.shift()();
+  await assert.rejects(profile,/Request timed out \(Cloudflare profile\)/);
+  const seats=context.native('api',{method:'GET',path:'/api/v1/rooms/10000001/members'});
+  pending.shift()();
+  await assert.rejects(seats,/Request timed out \(Cloudflare verified seats\)/);
+});
+
 test('expired login response cannot resume another email account',async()=>{
   const start=ui.indexOf('  window.API.login = async function (identity, password) {');
   const end=ui.indexOf('  let googleLoginBusy = false;',start);
@@ -74,5 +97,6 @@ test('verified room has a bounded loading warning and explicit retry',()=>{
     worker.indexOf("action === 'voice-token' && request.method === 'POST'"));
   assert.match(members,/=await Promise\.all\(\[/);
   assert.doesNotMatch(members,/\.roomPolicyRead\(\)/);
-  assert.match(members,/const visibleMembers=live/);
+  assert.match(members,/if\(live===null\)return fail\('room_presence_temporarily_unavailable',503,cors\)/);
+  assert.match(members,/const visibleMembers=\(result\.results\|\|\[\]\)\.filter/);
 });

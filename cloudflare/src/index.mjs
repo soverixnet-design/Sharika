@@ -2055,9 +2055,13 @@ export async function handleRequest(request, env, ctx) {
           readRoomAccessLock(env.DB,roomId),
           roomBondPairs(env.DB,roomId)
         ]);
-        // Never display offline IDs when the presence coordinator is down.
-        const visibleMembers=live
-          ?(result.results||[]).filter(m=>live.has(m.user_id)):[];
+        // A coordinator outage is NOT proof that everyone left. Returning a
+        // successful, empty roster caused every occupied seat and public ID
+        // to disappear until the next poll, then pop back into place. Keep
+        // the last VERIFIED snapshot in the client by signalling a retryable
+        // failure. We must not fall back to stale D1 membership either.
+        if(live===null)return fail('room_presence_temporarily_unavailable',503,cors);
+        const visibleMembers=(result.results||[]).filter(m=>live.has(m.user_id));
         return reply({ room: roomId,
           self_state:{role:ownMemberRole,seat_no:member.seat_no,muted:!!member.muted},
           access_locked:accessLock.locked,
