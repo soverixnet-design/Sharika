@@ -105,7 +105,7 @@ test('last loaded Royal CSS honors new room card and IME layout on Android',()=>
   assert.match(correction,/\.sh-keyboard-open \.sh-tools/);
   assert.match(correction,/content:'QA13'/);
   assert.match(gradle,/versionCode [1-9][0-9]+/);
-  assert.match(gradle,/versionName '[1-9][0-9]*\.[0-9]+\.[0-9]+(?:-staging)?'/);
+  assert.match(gradle,/versionName = productionApiOrigin \? '[1-9][0-9]*\.[0-9]+\.[0-9]+' : '[1-9][0-9]*\.[0-9]+\.[0-9]+-staging'/);
 });
 
 test('CI can reproduce real Gboard and measure stable seats in an isolated WebView',()=>{
@@ -138,15 +138,35 @@ test('one tap shows a room joining shell and forbids overlapping join requests',
   assert.match(premium,/\.roomwrap\.on\.sh-room-awaiting\.sh-room-joining/);
   assert.match(ui,/const joined=await joinRoomWithPassword\(room\)/);
   assert.match(ui,/if\(!joined\)return/);
+  const join=ui.slice(ui.indexOf('window.openRoom=async function(room) {'),
+    ui.indexOf('const originalLeaveRoom=window.leaveRoom'));
+  assert.match(join,/finally\s*\{[\s\S]*?roomEntryBusyToken===currentToken\)roomEntryBusyToken=null/,
+    'every settled join must free later room taps');
+  assert.match(join,/if\(!roomOpened&&currentToken===roomEntryToken\)\{/,
+    'cancelled or failed joins must remove the loading shell');
 });
 
-test('join starts each verified visit before its arrival event with parallel independent reads',()=>{
+test('verified gift catalog stays browsable when no guest is on a mic',()=>{
+  assert.match(ui,/const hasMicRecipients=\(frame\.seats\|\|\[\]\)\.some\(/);
+  assert.match(ui,/function showGiftCatalogWithoutMic\(\)\{/);
+  assert.match(ui,/frame\.open\('<h3>🎁 Virtual gifts<\/h3>/);
+  assert.match(ui,/if\(hasMicRecipients&&typeof originalGiftOpen==='function'\)/);
+  assert.match(ui,/else showGiftCatalogWithoutMic\(\)/);
+  assert.match(ui,/\(directGiftTarget\?'':' disabled'\)/,
+    'an empty room can show virtual gifts but cannot fabricate recipients');
+  assert.match(ui,/frame\.G=gifts\.map\(/,
+    'all prices and artwork must come from the verified server catalog');
+});
+
+test('join establishes a private visit boundary before a nonblocking arrival animation',()=>{
   const join=worker.slice(worker.indexOf("action === 'join' && request.method === 'POST'"),
     worker.indexOf("action === 'leave' && request.method === 'POST'"));
-  assert.match(join,/\[latestGift,entrant,equipped,svipLevel\]=await Promise\.all\(\[/);
+  assert.match(join,/const entryDetails=Promise\.all\(\[/);
   assert.match(join,/await coordinator\.beginRoomVisit\(uid,Number\(latestGift\?\.id\)\|\|0\)/);
   assert.ok(join.indexOf('await coordinator.beginRoomVisit')<
     join.indexOf('await coordinator.roomEntryAnnounce'));
+  assert.match(join,/ctx\.waitUntil\(announceEntry\.catch\(/,
+    'verified joins should not wait for cosmetic entry effects');
 });
 
 test('top room card is shorter in width but thicker without changing microphone seat sizes',()=>{

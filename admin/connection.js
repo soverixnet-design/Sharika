@@ -16,6 +16,11 @@
     support_reply:'Support inbox and reply',coin_recharge:'Credit user coins'
   };
   const NAV_ALL=(window.NAV||[]).slice();
+  if(!NAV_ALL.some(item=>item[0]==='playTesters')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='users');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['playTesters','🧪','Play Closed-Test Users']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='cosmetics')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='gifts');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -681,29 +686,64 @@
     preview();await search();
   };
 
+  let pendingStagingCreditTarget='',pendingPlayCreditTarget='';
   P.users=async function () {
     const root=byId('pg');
-    root.innerHTML='<div class="card"><h3>Verified users</h3><div class="row">'+
-      '<input id="q" placeholder="Search by ID or name" aria-label="Search users"></div>'+
-      '<div id="ul">Loading…</div></div>';
-    const list=byId('ul'),input=byId('q');
+    root.innerHTML='<div class="card"><h3>Verified users · Staging</h3><div class="row">'+
+      '<input id="q" placeholder="Search by Member ID, Special ID or name" aria-label="Search users"></div>'+
+      '<div id="ul">Loading…</div></div>'+
+      (role==='super'?'<div class="card"><h3>Verified users · Play closed test</h3>'+
+      '<p class="n">These are persistent Firebase accounts in a separate Play database. '+
+      'Old and Play numbers may overlap until the verified UID-based migration is complete. '+
+      'Play balances and roles are never combined with staging.</p>'+
+      '<div id="playul">Loading Play accounts…</div></div>':'');
+    const list=byId('ul'),input=byId('q'),playList=byId('playul');
     async function refresh() {
       list.textContent='Loading verified users…';
-      try {
-        const data=await api('GET','users'+(input.value.trim()?'?q='+encodeURIComponent(input.value.trim()):''));
+      if(playList)playList.textContent='Loading verified Play accounts…';
+      const q=input.value.trim(),suffix=q?'?q='+encodeURIComponent(q):'';
+      // Run both reads in parallel. Admin actions below remain scoped ONLY to
+      // the staging API to avoid acting on an unrelated overlapping Play ID.
+      const [stagingResult,playResult]=await Promise.allSettled([
+        api('GET','users'+suffix),
+        playList?api('GET','play-testers'+suffix):Promise.resolve({users:[]})
+      ]);
+      if(stagingResult.status==='fulfilled'){
+        const data=stagingResult.value;
         const users=data.users||[];
-        list.innerHTML=window.T(['User ID','Name','Country','Sent Lv.','Coins','Diamonds','Status','Admin action'],
+        list.innerHTML=window.T(['Account ID','Display / Special ID','Name','Country','Sent Lv.','Coins','Diamonds','Status','Admin action'],
           users.map(u=>{
             const action=role==='super'&&u.public_id!==identity?.public_id&&u.status!=='deleted'?
               '<button type="button" class="btn s" data-status-id="'+esc(u.public_id)+
               '" data-current-status="'+esc(u.status)+'">'+
               (u.status==='active'?'Block':'Unblock')+'</button>':'—';
-            return [esc(u.public_id),esc(u.name),esc(u.country),fmt(u.wealth_level),
-              fmt(u.coins),fmt(u.diamonds),esc(u.status),action];
+            const credit=role==='super'&&u.status==='active'?
+              ' <button type="button" class="btn s" data-credit-staging="'+
+                esc(u.public_id)+'">🪙 Credit staging</button>':'';
+            return [esc(u.public_id),esc(u.display_id||u.public_id),esc(u.name),esc(u.country),fmt(u.wealth_level),
+              fmt(u.coins),fmt(u.diamonds),esc(u.status),action+credit];
           }));
-      }catch(error){list.textContent=error.message;}
+      }else list.textContent=stagingResult.reason?.message||'Staging user list unavailable';
+      if(playList){
+        if(playResult.status==='fulfilled'){
+          const users=playResult.value.users||[];
+          playList.innerHTML='<p class="n">'+fmt(users.length)+
+            ' Play accounts · view only until ID reconciliation</p>'+
+            window.T(['Play ID','Staging ID (same Firebase UID)','Name','Country','Status','Test credit'],
+              users.map(u=>[esc(u.public_id),esc(u.previous_staging_id||'New UID'),
+                esc(u.name),esc(u.country),esc(u.status),u.status==='active'?
+                  '<button type="button" class="btn s" data-credit-play="'+
+                  esc(u.public_id)+'">🧪 Credit test coins</button>':'—']));
+        }else playList.textContent='Play user list unavailable: '+
+          (playResult.reason?.message||'Unknown error');
+      }
     }
     list.onclick=async e=>{
+      const credit=e.target.closest('button[data-credit-staging]');
+      if(credit){
+        pendingStagingCreditTarget=credit.dataset.creditStaging;
+        window.V='rech';window.shell();return;
+      }
       const button=e.target.closest('button[data-status-id]');
       if(!button||button.disabled)return;
       const publicId=button.dataset.statusId;
@@ -719,9 +759,143 @@
         await refresh();
       }catch(error){note('Could not update: '+error.message);button.disabled=false;}
     };
+    if(playList)playList.onclick=e=>{
+      const credit=e.target.closest('button[data-credit-play]');
+      if(!credit)return;
+      pendingPlayCreditTarget=credit.dataset.creditPlay;
+      window.V='playTesters';window.shell();
+    };
     let timer;
     input.oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,250);};
     await refresh();
+  };
+  P.playTesters=async function () {
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Play testers','Only verified Super Admin may see this view.');
+      return;
+    }
+    root.innerHTML='<div class="card"><h3>🧪 Google Play Closed-Test Users</h3>'+
+      '<p class="n">These IDs and balances belong ONLY to the isolated, non-redeemable Play test environment. '+
+      'Staging IDs may overlap and must never be used for Play grants. No accounts, cash, roles '+
+      'or wallets are transferred between databases.</p>'+
+      '<div class="row"><input class="field" id="play-user-search" '+
+      'placeholder="Search Play ID or name" autocomplete="off">'+
+      '<button type="button" class="btn s" id="play-user-refresh">Refresh</button></div>'+
+      '<div id="play-user-list" role="status">Loading closed-test users…</div></div>'+
+      '<div class="card"><h3>🪙 Credit non-redeemable Play-test coins</h3>'+
+      '<p class="n">Super Admin only · maximum 1,000,000 virtual coins per grant. '+
+      'This never affects the live or staging economy. Each grant is recorded in the '+
+      'Play wallet ledger and can be safely retried with the same receipt ID.</p>'+
+      '<div class="row"><input class="field" id="play-credit-id" inputmode="numeric" maxlength="8" '+
+      'placeholder="8-digit Play ID"><input class="field" id="play-credit-coins" inputmode="numeric" '+
+      'placeholder="Virtual coins (1–1,000,000)"></div>'+
+      '<div class="row"><input class="field" id="play-credit-reason" maxlength="200" '+
+      'placeholder="Reason (8–200 characters)"><button class="btn s" type="button" '+
+      'id="play-credit-submit">Credit Play-test coins</button></div>'+
+      '<p class="n" id="play-credit-note" role="status"></p><div id="play-credit-history"></div></div>'+
+      '<div class="card"><h3>🎁 Give a Play-test frame, medal or entry</h3>'+
+      '<p class="n">Choose an item from the Play database catalogue. The item is granted '+
+      'and equipped only on that Play account; the user can refresh Backpack/Profile.</p>'+
+      '<div class="row"><input class="field" id="play-item-id" maxlength="8" inputmode="numeric" '+
+      'placeholder="8-digit Play ID"><select class="field" id="play-item-catalog"></select></div>'+
+      '<button class="btn s" type="button" id="play-item-submit">Give and equip in Play test</button>'+
+      '<p class="n" id="play-item-note" role="status"></p></div>';
+    const input=byId('play-user-search'),list=byId('play-user-list');
+    if(pendingPlayCreditTarget){
+      byId('play-credit-id').value=pendingPlayCreditTarget;
+      byId('play-item-id').value=pendingPlayCreditTarget;
+      pendingPlayCreditTarget='';
+    }
+    let pendingCredit=null,pendingItem=null;
+    const newReceipt=prefix=>prefix+':'+window.crypto.randomUUID();
+    async function refreshCredits(){
+      const history=byId('play-credit-history');
+      try{
+        const data=await api('GET','play-testers/credits');
+        history.innerHTML=window.T(['Play ID','Virtual coins','New balance','Reason','Time'],
+          (data.grants||[]).map(x=>[esc(x.recipient_id),fmt(x.coins),
+            fmt(x.balance_after),esc(x.reason),esc(x.created_at)]));
+      }catch(error){history.textContent='Play credit history unavailable: '+error.message;}
+    }
+    async function refresh(){
+      list.textContent='Loading verified Play users…';
+      try {
+        const q=input.value.trim();
+        const data=await api('GET','play-testers'+(q?'?q='+encodeURIComponent(q):''));
+        list.innerHTML='<p class="n">Found '+fmt((data.users||[]).length)+
+          ' Play accounts (latest 100 maximum). Select an ID for an isolated test grant.</p>'+
+          window.T(['Play ID','Old staging ID (same Google identity)','Name',
+            'Country','Virtual coins','Diamonds','Status','Select'],(data.users||[]).map(u=>[
+            esc(u.public_id),esc(u.previous_staging_id||'Not found'),
+            esc(u.name),esc(u.country),fmt(u.coins),fmt(u.diamonds),esc(u.status),
+            u.status==='active'?'<button type="button" class="btn s" data-play-select="'+
+              esc(u.public_id)+'">Select Play ID</button>':'—'
+          ]));
+      }catch(error){list.textContent='Play tester list unavailable: '+error.message;}
+    }
+    list.onclick=event=>{
+      const target=event.target.closest('button[data-play-select]');
+      if(!target)return;
+      byId('play-credit-id').value=target.dataset.playSelect;
+      byId('play-item-id').value=target.dataset.playSelect;
+      byId('play-credit-note').textContent='Selected isolated Play account '+target.dataset.playSelect;
+    };
+    try{
+      const catalog=await api('GET','play-testers/catalog');
+      const select=byId('play-item-catalog');
+      select.innerHTML=(catalog.items||[]).map(item=>'<option value="'+esc(item.id)+'">'+
+        esc(item.name+' · '+item.kind+' · '+item.id)+'</option>').join('')||
+        '<option value="">No seeded Play cosmetic items</option>';
+    }catch(error){byId('play-item-note').textContent='Play catalogue unavailable: '+error.message;}
+    byId('play-credit-submit').onclick=async()=>{
+      const button=byId('play-credit-submit'),id=byId('play-credit-id').value.trim();
+      const raw=byId('play-credit-coins').value.trim();
+      const coins=Number(raw),reason=byId('play-credit-reason').value.trim();
+      const note=byId('play-credit-note');
+      if(!/^[0-9]{8}$/.test(id)||!/^[0-9]+$/.test(raw)||
+         !Number.isSafeInteger(coins)||coins<1||coins>1000000||
+         reason.length<8||reason.length>200){
+        note.textContent='Enter an 8-digit Play ID, 1–1,000,000 coins and an 8–200 character reason.';return;
+      }
+      if(!window.confirm('Give '+fmt(coins)+' NON-REDEEMABLE TEST coins to Play ID '+id+
+        '? Staging and real wallets will remain unchanged.'))return;
+      const fingerprint=id+':'+coins+':'+reason;
+      if(pendingCredit?.fingerprint!==fingerprint)pendingCredit={fingerprint,request_id:newReceipt('play-credit')};
+      button.disabled=true;
+      try{
+        const result=await api('POST','play-testers/coins',{
+          target_public_id:id,coins,reason,request_id:pendingCredit.request_id
+        });
+        pendingCredit=null;
+        note.textContent=(result.duplicate?'Already granted. ':'Credit confirmed. ')+
+          'New Play balance: '+fmt(result.balance_after)+' virtual coins.';
+        await Promise.all([refresh(),refreshCredits()]);
+      }catch(error){note.textContent='Not confirmed; retry with the same ID, amount and reason. '+error.message;}
+      finally{button.disabled=false;}
+    };
+    byId('play-item-submit').onclick=async()=>{
+      const button=byId('play-item-submit'),id=byId('play-item-id').value.trim();
+      const item_id=byId('play-item-catalog').value,note=byId('play-item-note');
+      if(!/^[0-9]{8}$/.test(id)||!item_id){note.textContent='Select an 8-digit Play ID and item.';return;}
+      if(!window.confirm('Give '+item_id+' to Play ID '+id+' ONLY in the virtual test?'))return;
+      const fingerprint=id+':'+item_id;
+      if(pendingItem?.fingerprint!==fingerprint)pendingItem={fingerprint,request_id:newReceipt('play-item')};
+      button.disabled=true;
+      try{
+        const result=await api('POST','play-testers/cosmetics/grant',{
+          target_public_id:id,item_id,request_id:pendingItem.request_id
+        });
+        pendingItem=null;
+        note.textContent=(result.duplicate?'Already granted. ':'Granted and equipped. ')+
+          'Ask the Play tester to refresh their Backpack/Profile.';
+      }catch(error){note.textContent='Not confirmed; retry the same ID and item. '+error.message;}
+      finally{button.disabled=false;}
+    };
+    byId('play-user-refresh').onclick=refresh;
+    let timer;
+    input.oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,300);};
+    await Promise.all([refresh(),refreshCredits()]);
   };
   P.rooms=async function () {
     const root=byId('pg');root.innerHTML=card('Rooms','Loading verified room and live presence…');
@@ -2428,12 +2602,18 @@
     section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
       '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
       '<div class="row"><input id="direct-user" maxlength="10" inputmode="numeric" placeholder="Recipient 1–10 digit Member or Special ID" aria-label="User ID">'+
-      '<input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
+      '<button id="direct-find" class="btn s" type="button">Find user</button></div>'+
+      '<p id="direct-recipient-preview" class="n" role="status">Find and verify the recipient before adding coins.</p>'+
+      '<div class="row"><input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
       '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
-      '<button id="direct-submit" class="btn s" type="button">Credit user wallet</button></div>'+
+      '<button id="direct-submit" class="btn s" type="button" disabled>Credit user wallet</button></div>'+
       '<p id="direct-note" class="n" aria-live="polite"></p>'+
       '<h4>Verified direct credit history</h4><div id="direct-history">Loading…</div>';
     root.insertBefore(section,root.firstChild);
+    if(pendingStagingCreditTarget){
+      byId('direct-user').value=pendingStagingCreditTarget;
+      pendingStagingCreditTarget='';
+    }
     const note=byId('direct-note'),history=byId('direct-history');
     async function refreshHistory(){
       try{
@@ -2446,21 +2626,52 @@
           fmt(response.daily_coin_limit)+' coins.';
       }catch(error){history.textContent='Credit history unavailable: '+error.message;}
     }
-    const button=byId('direct-submit');
+    const button=byId('direct-submit'),recipientInput=byId('direct-user');
+    const recipientPreview=byId('direct-recipient-preview');
+    let checkedRecipient=null,lookupSequence=0;
+    recipientInput.oninput=()=>{
+      lookupSequence++;checkedRecipient=null;button.disabled=true;
+      recipientPreview.textContent='Find and verify the recipient before adding coins.';
+    };
+    async function findRecipient(){
+      const target=recipientInput.value.trim(),sequence=++lookupSequence;
+      checkedRecipient=null;button.disabled=true;
+      if(!/^[0-9]{1,10}$/.test(target)){
+        recipientPreview.textContent='Enter a valid 1–10 digit Member or Special ID.';return;
+      }
+      recipientPreview.textContent='Looking up the real wallet…';
+      try{
+        const result=await api('GET','recharge-user/recipient?id='+encodeURIComponent(target));
+        if(sequence!==lookupSequence||target!==recipientInput.value.trim())return;
+        const person=result.recipient;
+        checkedRecipient={...person,lookupId:target};
+        recipientPreview.textContent='Verified: '+person.name+' · Display ID '+person.display_id+
+          ' · Account '+person.public_id+' · '+person.country+' · Current wallet '+
+          fmt(person.coins)+' coins';
+        button.disabled=false;
+      }catch(error){
+        if(sequence===lookupSequence)recipientPreview.textContent='User not verified: '+error.message;
+      }
+    }
+    byId('direct-find').onclick=findRecipient;
     button.onclick=async()=>{
       if(button.disabled)return;
       const target=byId('direct-user').value.trim();
       const raw=byId('direct-coins').value.trim();
       const amount=Number(raw);
       const reason=byId('direct-reason').value.trim();
+      if(!checkedRecipient||checkedRecipient.lookupId!==target){
+        note.textContent='Find and verify the recipient first.';return;
+      }
       if(!/^[0-9]{1,10}$/.test(target)||!/^[0-9]+$/.test(raw)||
          !Number.isSafeInteger(amount)||amount<1||amount>(role==='super'?1000000000000:1000000)||
          reason.length<8||reason.length>200){
         note.textContent='Enter 1–10 digit Member or Special ID, positive coins within the wallet cap and an 8–200 character reason.';return;
       }
-      if(!window.confirm('Credit '+fmt(amount)+' real coins to user '+target+
+      if(!window.confirm('Credit '+fmt(amount)+' real coins to '+checkedRecipient.name+
+        ' (Account '+checkedRecipient.public_id+', entered ID '+target+')'+
         '? Reason: '+reason+'\nThis grant is permanently audited.'))return;
-      const fingerprint=target+':'+amount+':'+reason;
+      const fingerprint=checkedRecipient.public_id+':'+target+':'+amount+':'+reason;
       const requestId=pendingAdminCredit?.fingerprint===fingerprint?
         pendingAdminCredit.requestId:
         'admin-credit:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2);
@@ -2468,16 +2679,22 @@
       button.disabled=true;note.textContent='Submitting one auditable coin credit…';
       try{
         const result=await api('POST','recharge-user',{
-          target_public_id:target,coins:amount,reason,request_id:requestId
+          target_public_id:target,expected_recipient_id:checkedRecipient.public_id,
+          coins:amount,reason,request_id:requestId
         });
         pendingAdminCredit=null;
         note.textContent=(result.duplicate?'Already credited (safe retry). ':'Credit confirmed. ')+
           'Transaction #'+result.transaction_id+' · New wallet '+fmt(result.balance_after)+' coins.';
         byId('direct-coins').value='';
         await refreshHistory();
+        await findRecipient();
       }catch(error){
         note.textContent='Not confirmed; check credit history, then retry the SAME amount and reason. '+error.message;
-      }finally{button.disabled=false;}
+        if(error.message.includes('recipient_changed')){
+          checkedRecipient=null;
+          recipientPreview.textContent='Special ID or account changed. Find the recipient again.';
+        }
+      }finally{button.disabled=!checkedRecipient;}
     };
     await refreshHistory();
   }

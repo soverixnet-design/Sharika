@@ -25,6 +25,14 @@ if (productionApiOrigin && !(productionApiOrigin ==~ /^https:\/\/[a-zA-Z0-9.-]+$
     throw new GradleException('SHARIKA_PLAY_API_ORIGIN must be an HTTPS origin without a path')
 }
 def chosenPlayOrigin = productionApiOrigin ?: 'https://sharika-api-staging.soverixnet.workers.dev'
+// Only the separately deployed, non-redeemable Play backend receives the
+// closed-loop presentation. Never alter staging or its financial test screens.
+def playVirtualPresentation = productionApiOrigin ==
+    'https://sharika-api-play-virtual.soverixnet.workers.dev'
+def chosenPlayHost = new java.net.URI(chosenPlayOrigin).getHost()
+if (!chosenPlayHost || !(chosenPlayHost ==~ /^[a-zA-Z0-9.-]+$/)) {
+    throw new GradleException('SHARIKA_PLAY_API_ORIGIN must contain a valid HTTPS hostname')
+}
 
 android {
     namespace 'com.soverixnet.sharika'
@@ -52,6 +60,7 @@ android {
 
     buildTypes {
         debug {
+            manifestPlaceholders = [sharikaInviteHost: 'sharika-api-staging.soverixnet.workers.dev']
             buildConfigField 'boolean', 'SHARIKA_PLAY_BUILD', 'false'
             buildConfigField 'String', 'SHARIKA_API_ORIGIN', '"https://sharika-api-staging.soverixnet.workers.dev"'
             if (stableStagingSigner) {
@@ -62,6 +71,7 @@ android {
         // upload certificate when present. The fallback lets CI produce a
         // verifiable signed candidate without exposing a new private key.
         release {
+            manifestPlaceholders = [sharikaInviteHost: chosenPlayHost]
             buildConfigField 'boolean', 'SHARIKA_PLAY_BUILD', 'true'
             buildConfigField 'String', 'SHARIKA_API_ORIGIN', '"' + chosenPlayOrigin + '"'
             minifyEnabled false
@@ -78,8 +88,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 110
-        versionName '1.0.10'
+        versionCode 111
+        versionName = productionApiOrigin ? '1.0.11' : '1.0.11-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -106,7 +116,7 @@ dependencies {
 tasks.configureEach { task ->
     if (task.name == 'bundleRelease' || task.name == 'assembleRelease') {
         task.doFirst {
-            if (!productionApiOrigin && !allowStagingCandidate)
+            if (chosenPlayOrigin == 'https://sharika-api-staging.soverixnet.workers.dev' && !allowStagingCandidate)
                 throw new GradleException('Production API missing: set SHARIKA_PLAY_API_ORIGIN before Play release')
         }
     }
@@ -129,7 +139,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
         filter { String line ->
             line.replaceFirst('^<head>$', '''<head>
 <script id="sharika-startup-safety" src="./startup-safety.js"></script>
-<meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''')
+<meta http-equiv="Content-Security-Policy" content="frame-src 'self' about:; object-src 'none'; base-uri 'none';">''' +
+                    (playVirtualPresentation ? '\n<script id="sharika-play-virtual-ui" src="./play-virtual-ui.js"></script>' : ''))
                 .replace('<html lang="en">',
                     '<html lang="en" class="royal-premium royal-root">')
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
@@ -194,6 +205,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('royal-market.css'))
     from(rootProject.file('agency-center.css'))
     from(rootProject.file('agency-center.js'))
+    if (playVirtualPresentation) from(rootProject.file('play-virtual-ui.js'))
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }
@@ -202,4 +214,28 @@ tasks.register('prepareSharikaUiAssets', Copy) {
 android.sourceSets.main.assets.srcDir(sharikaUiAssets)
 tasks.named('preBuild').configure {
     dependsOn(tasks.named('prepareSharikaUiAssets'))
+}
+
+// The source adapter and debug APK deliberately remain staging-specific.
+// Only a release built with an explicitly configured production API receives
+// an overlaid connection.js whose URL and strict media-host validators match
+// that production origin. Do not weaken validators to accept both hosts.
+if (productionApiOrigin) {
+    def playConnectionAssets = layout.buildDirectory.dir('generated/sharika-play-connection-assets')
+    tasks.register('prepareSharikaPlayConnection', Copy) {
+        inputs.property('playApiOrigin', chosenPlayOrigin)
+        from(rootProject.file('staging-connection.js')) {
+            rename { 'connection.js' }
+            filter { String line ->
+                line.replace('https://sharika-api-staging.soverixnet.workers.dev', chosenPlayOrigin)
+                    .replace('sharika-api-staging\\.soverixnet\\.workers\\.dev',
+                        chosenPlayHost.replace('.', '\\.'))
+            }
+        }
+        into(playConnectionAssets)
+    }
+    android.sourceSets.release.assets.srcDir(playConnectionAssets)
+    tasks.matching { it.name == 'preReleaseBuild' }.configureEach {
+        dependsOn(tasks.named('prepareSharikaPlayConnection'))
+    }
 }

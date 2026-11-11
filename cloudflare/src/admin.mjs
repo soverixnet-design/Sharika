@@ -533,14 +533,18 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   }
   if (operation === 'users') {
     const search = (url.searchParams.get('q') || '').trim().slice(0, 80);
-    const columns = 'SELECT public_no,name,country,coins,diamonds,wealth_level,charm_level,status,created_at FROM sharika_users';
+    const columns = 'SELECT u.public_no,u.name,u.country,u.coins,u.diamonds,'+
+      'u.wealth_level,u.charm_level,u.status,u.created_at,s.special_id '+
+      'FROM sharika_users u LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
+      "AND (s.expires_at IS NULL OR s.expires_at>datetime('now'))";
     let stmt = env.DB.prepare(columns + (search ?
-      ' WHERE lower(name) LIKE ? OR CAST(public_no AS TEXT) LIKE ?' : '') +
-      ' ORDER BY created_at DESC, public_no DESC LIMIT 100');
-    if (search) stmt = stmt.bind('%' + search.toLowerCase() + '%', '%' + search + '%');
+      ' WHERE lower(u.name) LIKE ? OR CAST(u.public_no AS TEXT) LIKE ? OR s.special_id=?' : '') +
+      ' ORDER BY u.created_at DESC, u.public_no DESC LIMIT 100');
+    if (search) stmt = stmt.bind('%' + search.toLowerCase() + '%', '%' + search + '%', search);
     const rows = values(await stmt.all());
     return reply({ users:rows.map(u => ({ ...u, public_id:id(u.public_no),
-      public_no:undefined })), limited_to:100, read_only:true }, 200, cors);
+      display_id:u.special_id||id(u.public_no),public_no:undefined })),
+      limited_to:100, read_only:true }, 200, cors);
   }
   if (operation === 'rooms') {
     const blocked = allowed(actor.role, ROOM_ROLES, fail, cors);

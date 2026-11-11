@@ -29,7 +29,7 @@ import java.util.Map;
  */
 public final class SharikaMessagingService extends FirebaseMessagingService {
     private static final String API =
-        "https://sharika-api-staging.soverixnet.workers.dev/api/v1/notifications/devices";
+        BuildConfig.SHARIKA_API_ORIGIN + "/api/v1/notifications/devices";
     private static final String OFFICIAL_CHANNEL = "sharika_official";
     private static final String MESSAGES_CHANNEL = "sharika_messages";
 

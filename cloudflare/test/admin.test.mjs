@@ -28,7 +28,8 @@ function mock(role) {
           }]};
           if (sql.includes('FROM sharika_users')) return {results:[{
             public_no:10000001,name:'Owner',country:'BD',coins:2000,diamonds:0,
-            wealth_level:1,charm_level:1,status:'active',created_at:'2026-10-30'
+            wealth_level:1,charm_level:1,status:'active',created_at:'2026-10-30',
+            special_id:'777'
           }]};
           return {results:[]};
         }
@@ -81,6 +82,11 @@ test('admin search stays parameterized and public IDs stay eight digits',async()
   assert.equal(response.data.users[0].public_id,'10000001');
   assert.equal(response.data.users[0].public_no,undefined);
   assert.equal(response.calls[1].args[0],'%owner%');
+  assert.equal(response.data.users[0].display_id,'777');
+  const bySpecial=await handle('super','/api/v1/admin/users?q=777');
+  assert.equal(bySpecial.status,200);
+  assert.equal(bySpecial.calls[1].args[2],'777');
+  assert.match(bySpecial.calls[1].sql,/s\.special_id=\?/);
 });
 test('unknown admin module does not silently succeed',async()=>{
   const response=await handle('super','/api/v1/admin/recharge-requests');

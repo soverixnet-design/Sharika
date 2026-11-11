@@ -36,7 +36,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https"
-                    android:host="sharika-api-staging.soverixnet.workers.dev"
+                    android:host="${sharikaInviteHost}"
                     android:pathPrefix="/invite/" />
             </intent-filter>
         </activity>

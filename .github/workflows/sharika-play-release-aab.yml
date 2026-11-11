@@ -3,10 +3,25 @@ name: Sharika Play Store AAB candidate
 on:
   push:
     branches:
+      - feature/sharika-unified-release-qa-20261111
       - feature/sharika-play-release-aab-20261107
       - feature/sharika-play-billing-20261107
       - feature/sharika-full-integrated-staging-20261107
       - feature/sharika-crystal-bd-monthly-20261111
+      # Compile-check the isolated production preparation branch. This job
+      # creates a staging-backed test artifact; it never publishes to Play.
+      - feature/sharika-production-schema-safety-20261108
+      # Virtual-only Personal Account edition, isolated from staging finance.
+      - feature/sharika-safe-closed-test-20261109
+      - feature/sharika-play-tester-identity-admin-20261109
+      # Login recovery candidate: artifact only, never a Play publication.
+      - fix/sharika-play-auth-20261109
+      # Explicit second-picker recovery: isolated installable QA APK only.
+      - fix/sharika-google-picker-recovery-20261110
+      # Integrated room/admin QA uses only the isolated Play-test Worker.
+      - fix/sharika-room-voice-admin-unified-20261110
+      # Integrated low-bandwidth room fixes on top of the latest WIF branch.
+      - feature/sharika-play-room-qa-20261111
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
@@ -30,6 +45,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify committed Closed Testing UI safety gates
+        if: (github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110' || github.ref == 'refs/heads/feature/sharika-play-room-qa-20261111')
+        run: |
+          set -euo pipefail
+          grep -F 'if(playStoreMode!==false)return;' android-staging/staging-connection.js
+          grep -F "row.action!=='recharge'" android-staging/staging-connection.js
+          grep -F "event.kind!=='game_tournament'" android-staging/staging-connection.js
+          node --test cloudflare/test/android-production-routing.test.mjs
+          node --test android-staging/play-virtual-ui.test.mjs
+          node --test android-staging/google-oauth-signing.test.cjs
+
       - name: Complete safety, source and Cloudflare game/voice checks
         run: |
           set -euo pipefail
@@ -47,7 +73,7 @@ jobs:
           # Keep test candidate source checks valid across signed staging updates.
           # A fixed v100 assertion incorrectly blocked a legitimate v102 build.
           grep -E 'versionCode [1-9][0-9]+' android-staging/app/build.gradle
-          grep -E "versionName '[^']+'" android-staging/app/build.gradle
+          grep -F 'versionName = productionApiOrigin' android-staging/app/build.gradle
           grep -F '>Sharika<' android-staging/app/src/main/res/values/strings.xml
           cd cloudflare
           npm run check
@@ -143,6 +169,19 @@ jobs:
           unzip -p "$bundle" base/assets/connection.js > "$RUNNER_TEMP/release-connection.js"
           unzip -p "$bundle" base/assets/royal-profile.css > "$RUNNER_TEMP/release-profile.css"
           node --check "$RUNNER_TEMP/release-connection.js"
+          if [[ "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' || "$GITHUB_REF" == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-play-auth-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || "$GITHUB_REF" == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110' ]]; then
+            grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"
+            unzip -Z1 "$bundle" | grep -Fx 'base/assets/play-virtual-ui.js'
+            unzip -Z1 "$bundle" | grep -Fx 'base/assets/greedy-wheel/index.html'
+            unzip -p "$bundle" base/assets/connection.js | grep -F 'preview(greedyGame)'
+            unzip -p "$bundle" base/assets/connection.js | grep -F "id:'greedy-wheel'"
+            unzip -p "$bundle" base/assets/play-virtual-ui.js | grep -F 'showPlayWallet'
+            unzip -p "$bundle" base/assets/index.html | grep -F 'id="sharika-play-virtual-ui"'
+            if grep -Fq 'https://sharika-api-staging.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"; then
+              echo 'Refusing Play candidate with a staging URL embedded in connection.js'
+              exit 1
+            fi
+          fi
           grep -F 'SHARIKA_CP_HERO_20261107' "$RUNNER_TEMP/release-connection.js"
           grep -F 'SHARIKA_ROYAL_LEVEL_20261107' "$RUNNER_TEMP/release-connection.js"
           grep -F 'playBillingPurchase' "$RUNNER_TEMP/release-connection.js"
@@ -158,6 +197,100 @@ jobs:
           path: Sharika-Play-Store-Candidate.aab
           if-no-files-found: error
           retention-days: 30
+
+      # AABs cannot be installed directly on a phone. Produce an additional
+      # signed APK from exactly the same source and isolated Play API origin
+      # so a tester can verify Google / email login before Play publication.
+      # This is a private Actions artifact, not a Google Play upload or release.
+      - name: Build signed isolated Play login APK for device QA
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110'
+        working-directory: android-staging
+        env:
+          SHARIKA_PLAY_API_ORIGIN: https://sharika-api-play-virtual.soverixnet.workers.dev
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'false'
+          SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test "$SHARIKA_UPLOAD_SIGNER_KIND" = 'play-upload'
+          gradle :app:assembleRelease --no-daemon --stacktrace
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -E "^package: name='com.soverixnet.sharika' versionCode='108' versionName='1.0.8'"
+          unzip -tqq "$apk"
+          unzip -Z1 "$apk" | grep -Fx 'assets/play-virtual-ui.js'
+          unzip -p "$apk" assets/connection.js | grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' >/dev/null
+          cp "$apk" Sharika-Play-Login-1.0.8-Device-QA.apk
+          sha256sum Sharika-Play-Login-1.0.8-Device-QA.apk
+          echo 'SHARIKA_PLAY_108_SIGNED_DEVICE_APK_OK'
+
+      # A private APK is signed with the Play upload key, not necessarily the
+      # Google Play app-signing key. Check the *actual APK certificate* against
+      # the Firebase Android OAuth clients before asking testers to use Google.
+      - name: Verify QA APK signing certificate is registered for Google sign-in
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110'
+        run: |
+          set -euo pipefail
+          apk=android-staging/app/build/outputs/apk/release/app-release.apk
+          signer_sha1="$($ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p')"
+          test -n "$signer_sha1"
+          node android-staging/google-oauth-signing.cjs "$signer_sha1"
+
+      - name: Keep installable Play login APK private for testing
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Play-Login-1.0.8-Device-QA-APK
+          path: android-staging/Sharika-Play-Login-1.0.8-Device-QA.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Build signed Sharika 1.0.9 room QA APK
+        if: github.ref == 'refs/heads/feature/sharika-play-room-qa-20261111'
+        working-directory: android-staging
+        env:
+          SHARIKA_PLAY_API_ORIGIN: https://sharika-api-play-virtual.soverixnet.workers.dev
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'false'
+          SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test "$SHARIKA_UPLOAD_SIGNER_KIND" = 'play-upload'
+          gradle :app:assembleRelease --no-daemon --stacktrace
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -E "^package: name='com.soverixnet.sharika' versionCode='109' versionName='1.0.9'"
+          node google-oauth-signing.cjs \
+            "$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p')"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js | grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' >/dev/null
+          cp "$apk" Sharika-Play-Room-QA-1.0.9.apk
+
+      - name: Save signed 1.0.9 room QA APK artifact
+        if: github.ref == 'refs/heads/feature/sharika-play-room-qa-20261111'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Play-Room-QA-1.0.9-APK
+          path: android-staging/Sharika-Play-Room-QA-1.0.9.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # The shared permanent-ID registry is not migrated in live D1 yet.
+      # This branch MUST NOT deploy the new API Worker before the verified
+      # UID-to-public-number migration; that would block new Play signups.
+      # Build a private APK/AAB and check the EXISTING backend read-only.
+      - name: Check current isolated Play backend without changing live data
+        if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110' || github.ref == 'refs/heads/feature/sharika-play-room-qa-20261111'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 \
+            'https://sharika-api-play-virtual.soverixnet.workers.dev/health' \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const r=JSON.parse(s);if(!r.ok||r.environment!=='play_virtual'||r.auth_configured!==true)process.exit(1);console.log('Current Play backend healthy; no deploy performed')})"
 
       - name: Publish direct AAB asset to GitHub
         # The integrated staging branch produces a private downloadable build

@@ -1,0 +1,109 @@
+name: Sharika Play tester identities read-only staging admin
+
+on:
+  push:
+    branches:
+      - feature/sharika-play-tester-identity-admin-20261109
+      - fix/sharika-play-auth-20261109
+    paths:
+      - '.github/workflows/sharika-play-testers-admin-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  publish-play-tester-admin:
+    name: Verify D1 and deploy only the isolated read-only admin frontend
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require exact isolated staging and Play D1 bindings
+        run: |
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const c = JSON.parse(readFileSync('cloudflare/wrangler.admin.jsonc', 'utf8'));
+          const binding = name => c.d1_databases?.find(x => x.binding === name);
+          if (!['refs/heads/feature/sharika-play-tester-identity-admin-20261109',
+                 'refs/heads/fix/sharika-play-auth-20261109'].includes(process.env.GITHUB_REF) ||
+              !process.env.CLOUDFLARE_API_TOKEN ||
+              c.name !== 'sharika-admin-staging' ||
+              c.account_id !== process.env.CLOUDFLARE_ACCOUNT_ID ||
+              c.vars?.SHARIKA_ENV !== 'staging' ||
+              c.main !== 'src/admin-frontend-worker.mjs' ||
+              c.services?.length !== 1 ||
+              c.services[0]?.binding !== 'SHARIKA_API' ||
+              c.services[0]?.service !== 'sharika-api-staging' ||
+              c.d1_databases?.length !== 2 ||
+              binding('STAGING_DB')?.database_id !== 'b2c62252-12a5-4740-90c7-01a536d9a39a' ||
+              binding('PLAY_DB')?.database_id !== '5b151101-1ac0-4b13-ab8e-e41cb06014fa')
+            throw Error('Unsafe environment or database binding; refusing publish');
+          console.log('Exact isolated admin deployment and both read-only D1 sources verified');
+          NODE
+      - name: Read-only remote D1 schema preflight
+        run: |
+          node --input-type=module - <<'NODE'
+          const ids = [
+            'b2c62252-12a5-4740-90c7-01a536d9a39a',
+            '5b151101-1ac0-4b13-ab8e-e41cb06014fa'
+          ];
+          const needed = ['auth_uid','public_no','name','country','status','created_at'];
+          for (const database of ids) {
+            const result = await fetch(
+              `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/d1/database/${database}/query`,
+              { method: 'POST', headers: {
+                authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+                'content-type': 'application/json'
+              }, body: JSON.stringify({ sql: 'PRAGMA table_info(sharika_users)' }) }
+            );
+            const data = await result.json();
+            const columns = (data.result?.[0]?.results || []).map(x => x.name);
+            if (!result.ok || !data.success || needed.some(name => !columns.includes(name)))
+              throw Error('Missing user identity column: refusing admin publish');
+          }
+          console.log('Both D1 user identity schemas verified without changes');
+          NODE
+      - name: Run all Worker and admin regressions
+        run: npm --prefix cloudflare run check
+      - name: Verify and dry-run frontend bundle
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --check admin/connection.js
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sharika-play-tester-admin
+      - name: Publish only sharika-admin-staging
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Verify deployed bindings and unauthenticated access protection
+        run: |
+          node --input-type=module - <<'NODE'
+          const root = 'https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID;
+          const result = await fetch(root+'/workers/scripts/sharika-admin-staging/settings', {
+            headers: { authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` }
+          });
+          const data = await result.json();
+          const bindings = data.result?.bindings || [];
+          for (const name of ['PLAY_DB','STAGING_DB','SHARIKA_API'])
+            if (!result.ok || !data.success || !bindings.some(x => x.name === name))
+              throw Error('New admin binding missing: '+name);
+          const origin='https://sharika-admin-staging.soverixnet.workers.dev';
+          const health=await fetch(origin+'/health');
+          if (!health.ok) throw Error('Admin health check failed');
+          const unauthorized=await fetch(origin+'/api/v1/admin/play-testers');
+          if (unauthorized.status !== 401)
+            throw Error('Play tester list must reject missing authentication');
+          console.log('Read-only Play tester route deployed; super-admin access required');
+          NODE

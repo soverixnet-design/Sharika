@@ -43,18 +43,19 @@ except sqlite3.IntegrityError:
 else:
     raise AssertionError("a new canonical ID shadowed an existing alias")
 
-# The signup allocation query must skip the occupied alias to avoid conflicts.
-signup_sql = (root / "src/index.mjs").read_text()
-assert "WITH RECURSIVE candidate(n)" in signup_sql
+# Shared global allocation must skip the occupied alias to avoid conflicts.
+signup_sql = (root / "src/global-public-ids.mjs").read_text()
+assert "WITH RECURSIVE next_no(n)" in signup_sql
+db.executescript((root / "migrations/0079_global_public_identity_registry.sql").read_text())
 next_id = db.execute("""
-WITH RECURSIVE candidate(n) AS (
- SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users
+WITH RECURSIVE next_no(n) AS (
+ SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_public_id_registry
  UNION ALL
- SELECT n+1 FROM candidate WHERE EXISTS (
-  SELECT 1 FROM sharika_special_ids WHERE special_id=CAST(candidate.n AS TEXT)
+ SELECT n+1 FROM next_no WHERE EXISTS (
+  SELECT 1 FROM sharika_special_ids WHERE special_id=CAST(next_no.n AS TEXT)
  )
 )
-SELECT n FROM candidate ORDER BY n DESC LIMIT 1
+SELECT n FROM next_no ORDER BY n DESC LIMIT 1
 """).fetchone()[0]
 assert next_id == 10000004, "new user ID allocation did not skip the reserved alias"
 

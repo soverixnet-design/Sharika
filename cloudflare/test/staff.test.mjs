@@ -8,7 +8,8 @@ const fail=(error,status)=>Response.json({error},{status});
 function mock({
   staff={active:1,login_email:'helper@example.test',display_name:'Helper',
     permissions_json:'["view_users","coin_recharge"]',daily_coin_limit:5000},
-  target={auth_uid:'recipient-uid',public_no:10000017,coins:100,status:'active'},
+  target={auth_uid:'recipient-uid',public_no:10000017,coins:100,status:'active',
+    name:'Verified Recipient',country:'BD',special_id:'1010'},
   existing=null,account=null
 }={}) {
   const state={queries:[],batches:[]};
@@ -24,7 +25,7 @@ function mock({
             return staff;
           if(sql.includes('FROM sharika_admin_direct_recharges g ')&&
              sql.includes('WHERE g.actor_uid=?'))return existing;
-          if(sql.includes('FROM sharika_users WHERE public_no=?'))return target;
+          if(sql.includes('FROM sharika_users u LEFT JOIN sharika_special_ids'))return target;
           if(sql.includes('FROM sharika_admin_roles WHERE auth_uid=?'))return account;
           if(sql.includes('FROM sharika_admin_staff_accounts WHERE id=?'))
             return {id:7,login_email:'helper@example.test'};
@@ -51,13 +52,35 @@ async function run(DB,actor,operation,method='GET',body,extra={}) {
   const response=await handleStaffAdmin({
     request,env:{DB,FIREBASE_PROJECT_ID:'sharika-voice-chat-app'},
     uid:actor.role==='staff'?'firebase:sharika-voice-chat-app:staff-id':'firebase:sharika-voice-chat-app:super-id',
-    actor,operation,cors:{},reply,fail,...extra
+    actor,operation:operation.split('?')[0],cors:{},reply,fail,...extra
   });
   return {status:response.status,data:await response.json()};
 }
 const staffActor={role:'staff',active:true,permissions:['view_users','coin_recharge'],daily_coin_limit:5000};
-const grant={target_public_id:'10000017',coins:200,reason:'Promotional trial reward',
+const grant={target_public_id:'10000017',expected_recipient_id:'10000017',
+  coins:200,reason:'Promotional trial reward',
   request_id:'staff-manual-grant-0001'};
+
+test('direct credit requires recipient preview; lookup returns canonical and Special ID',async()=>{
+  const {DB,state}=mock();
+  const found=await run(DB,staffActor,'recharge-user/recipient?id=1010');
+  assert.equal(found.status,200);
+  assert.equal(found.data.recipient.public_id,'10000017');
+  assert.equal(found.data.recipient.display_id,'1010');
+  assert.equal(found.data.recipient.name,'Verified Recipient');
+  assert.equal(found.data.recipient.coins,100);
+  assert.equal(state.batches.length,0);
+  const missing=await run(DB,staffActor,'recharge-user','POST',
+    {...grant,expected_recipient_id:undefined});
+  assert.equal(missing.status,400);
+  const changed=await run(DB,staffActor,'recharge-user','POST',
+    {...grant,expected_recipient_id:'10000018'});
+  assert.equal(changed.status,409);
+  assert.equal(changed.data.error,'recipient_changed');
+  assert.equal(state.batches.length,0);
+  const denied=await run(DB,{role:'support'},'recharge-user/recipient?id=1010');
+  assert.equal(denied.status,403);
+});
 
 test('scoped staff can only access exact permitted routes and methods',()=>{
   assert.ok(STAFF_SCOPES.includes('coin_recharge'));

@@ -102,6 +102,47 @@ test('private wallet rejects anonymous requests before D1 reads', async () => {
   assert.equal(response.status, 401);
   assert.equal(db.calls.length, 0);
 });
+test('unverified Firebase passwords stay blocked outside the isolated Play Worker', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = certFetch;
+  try {
+    const db = fakeDb();
+    const response = await handleRequest(new Request('https://example.test/api/v1/me', {
+      headers: { Authorization: 'Bearer ' + await token({ email_verified: false }) }
+    }), { DB: db, FIREBASE_PROJECT_ID: project });
+    assert.equal(response.status, 401);
+    assert.equal(db.calls.length, 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
+test('isolated virtual Play profile can start with a signed unverified Firebase identity', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = certFetch;
+  try {
+    const db = fakeDb();
+    const response = await handleRequest(new Request('https://example.test/api/v1/me', {
+      headers: { Authorization: 'Bearer ' + await token({ email_verified: false }) }
+    }), {
+      DB: db, FIREBASE_PROJECT_ID: project,
+      SHARIKA_PLAY_VIRTUAL_ONLY: 'true',
+      SHARIKA_PLAY_ISOLATED_DATA: 'true',
+      SHARIKA_COINS_CASH_REDEEMABLE: 'false'
+    });
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).error, 'profile_not_found');
+    assert.ok(db.calls.length > 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
+test('incomplete Play isolation never enables unverified sign-in', async () => {
+  const db = fakeDb();
+  const response = await handleRequest(new Request('https://example.test/api/v1/me'), {
+    DB: db, FIREBASE_PROJECT_ID: project,
+    SHARIKA_PLAY_VIRTUAL_ONLY: 'true',
+    SHARIKA_PLAY_ISOLATED_DATA: 'false',
+    SHARIKA_COINS_CASH_REDEEMABLE: 'false'
+  });
+  assert.equal(response.status, 503);
+  assert.equal(db.calls.length, 0);
+});
 test('verified but unregistered users cannot read someone else wallet', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = certFetch;
@@ -1204,8 +1245,12 @@ test('each verified join resets the chat/gift boundary and announces the real na
     const headers={Authorization:'Bearer '+await token()};
     const endpoint='https://example.test/api/v1/rooms/10000001';
     const env={DB:db,VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project};
-    const join=await handleRequest(new Request(endpoint+'/join',{method:'POST',headers}),env);
+    const deferred=[];
+    const ctx={waitUntil(task){deferred.push(task);}};
+    const join=await handleRequest(new Request(endpoint+'/join',{method:'POST',headers}),env,ctx);
     assert.equal(join.status,200);
+    assert.equal(deferred.length,1,'entry animation completes after the verified join');
+    await Promise.all(deferred);
     assert.deepEqual(records[0],['presenceJoin',principal,'10000001']);
     assert.deepEqual(records[1],['begin',principal,62]);
     assert.deepEqual(records[2],['entry',principal,'10000003','Verified Room Guest','standard']);

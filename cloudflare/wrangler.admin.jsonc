@@ -8,6 +8,18 @@
   "vars": {
     "SHARIKA_ENV": "staging"
   },
+  "d1_databases": [
+    {
+      "binding": "STAGING_DB",
+      "database_name": "sharika-staging",
+      "database_id": "b2c62252-12a5-4740-90c7-01a536d9a39a"
+    },
+    {
+      "binding": "PLAY_DB",
+      "database_name": "sharika-play-virtual",
+      "database_id": "5b151101-1ac0-4b13-ab8e-e41cb06014fa"
+    }
+  ],
   "services": [
     {
       "binding": "SHARIKA_API",

@@ -1,6 +1,6 @@
 // Verified Google Play one-time consumable coin purchases.
-// This module deliberately refuses all grants until a production service
-// account and the Play Console product catalog have been configured.
+// This module refuses all grants until Google verification has either a
+// configured service-account key or a short-lived federated identity.
 const PACKAGE = 'com.soverixnet.sharika';
 const MAX_BALANCE = 1_000_000_000_000;
 export const PLAY_COIN_PRODUCTS = Object.freeze({
@@ -12,6 +12,12 @@ const PRODUCT_IDS = Object.keys(PLAY_COIN_PRODUCTS);
 const TOKEN = /^[A-Za-z0-9._~-]{20,4096}$/;
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const PLAY_API = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/';
+const WIF_STS_URL = 'https://sts.googleapis.com/v1/token';
+const IAM_CREDENTIALS_URL = 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/';
+const ANDROID_PUBLISHER_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
+const WIF_TOKEN_PATH = '/internal/google-wif/subject-token';
+const WIF_PROVIDER = /^\/\/iam\.googleapis\.com\/projects\/[0-9]+\/locations\/global\/workloadIdentityPools\/[a-z][a-z0-9-]+\/providers\/[a-z][a-z0-9-]+$/;
+const GOOGLE_SERVICE_ACCOUNT = /^[^\s@]+@[^\s@]+\.iam\.gserviceaccount\.com$/;
 
 function b64url(data) {
   const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(data);
@@ -37,7 +43,7 @@ async function signServiceAccountToken(serviceAccount, now) {
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const payload = b64url(JSON.stringify({
     iss: serviceAccount.client_email,
-    scope: 'https://www.googleapis.com/auth/androidpublisher',
+    scope: ANDROID_PUBLISHER_SCOPE,
     aud: TOKEN_URL,
     iat: now,
     exp: now + 3300
@@ -54,7 +60,102 @@ async function fetchWithTimeout(fetcher, url, options) {
   finally { clearTimeout(timer); }
 }
 
+function useWif(env) {
+  return ['wif', 'wif_access', 'cloudflare_access_wif', 'workload_identity_federation']
+    .includes(String(env.PLAY_BILLING_AUTH_MODE || '').toLowerCase());
+}
+
+function wifConfigured(env) {
+  if (!useWif(env)) return false;
+  try {
+    const endpoint = new URL(env.PLAY_BILLING_WIF_IDENTITY_URL);
+    return endpoint.protocol === 'https:' &&
+      endpoint.hostname === 'billing-identity.sharika.app' &&
+      endpoint.pathname === WIF_TOKEN_PATH && !endpoint.search && !endpoint.hash &&
+      /^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(env.PLAY_BILLING_WIF_ACCESS_ISSUER || '') &&
+      /^[a-f0-9]{64}$/.test(env.PLAY_BILLING_WIF_ACCESS_AUDIENCE || '') &&
+      /^[a-z0-9]{20,}\.access$/.test(env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID || '') &&
+      typeof env.PLAY_BILLING_WIF_ACCESS_CLIENT_SECRET === 'string' &&
+      env.PLAY_BILLING_WIF_ACCESS_CLIENT_SECRET.length >= 20 &&
+      WIF_PROVIDER.test(env.PLAY_BILLING_WIF_PROVIDER_AUDIENCE || '') &&
+      GOOGLE_SERVICE_ACCOUNT.test(env.PLAY_BILLING_WIF_SERVICE_ACCOUNT_EMAIL || '');
+  } catch (_) { return false; }
+}
+
+function billingAuthConfigured(env) {
+  if (useWif(env)) return wifConfigured(env);
+  if (env.PLAY_BILLING_AUTH_MODE && env.PLAY_BILLING_AUTH_MODE !== 'service_account_json')
+    return false;
+  return Boolean(env.PLAY_BILLING_SERVICE_ACCOUNT_JSON);
+}
+
+function validAccessAssertion(subjectToken, env) {
+  if (typeof subjectToken !== 'string' || subjectToken.length > 8192 ||
+      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(subjectToken)) return false;
+  try {
+    const claims = JSON.parse(new TextDecoder().decode(Uint8Array.from(
+      atob(subjectToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')),
+      character => character.charCodeAt(0))));
+    const now = Math.floor(Date.now() / 1000);
+    return claims.iss === env.PLAY_BILLING_WIF_ACCESS_ISSUER && claims.type === 'app' &&
+      (claims.aud === env.PLAY_BILLING_WIF_ACCESS_AUDIENCE ||
+        (Array.isArray(claims.aud) && claims.aud.includes(env.PLAY_BILLING_WIF_ACCESS_AUDIENCE))) &&
+      claims.common_name === env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID &&
+      Number.isFinite(claims.exp) && claims.exp > now + 60;
+  } catch (_) { return false; }
+}
+
+async function getWifAccessToken(env, fetcher) {
+  if (!wifConfigured(env)) throw new Error('play_wif_not_configured');
+  // This separate Worker verifies Access's signature, issuer, audience and
+  // service-token identity before returning its short-lived assertion.
+  const identityResponse = await fetchWithTimeout(fetcher, env.PLAY_BILLING_WIF_IDENTITY_URL, {
+    method: 'GET', redirect: 'manual', headers: {
+      accept: 'application/json',
+      'CF-Access-Client-Id': env.PLAY_BILLING_WIF_ACCESS_CLIENT_ID,
+      'CF-Access-Client-Secret': env.PLAY_BILLING_WIF_ACCESS_CLIENT_SECRET
+    }
+  });
+  if (!identityResponse.ok) throw new Error('play_wif_identity_unavailable');
+  const identity = await identityResponse.json();
+  if (!validAccessAssertion(identity?.subject_token, env))
+    throw new Error('play_wif_invalid_subject_token');
+
+  const stsResponse = await fetchWithTimeout(fetcher, WIF_STS_URL, {
+    method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      grantType: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      audience: env.PLAY_BILLING_WIF_PROVIDER_AUDIENCE,
+      scope: 'https://www.googleapis.com/auth/cloud-platform',
+      requestedTokenType: 'urn:ietf:params:oauth:token-type:access_token',
+      subjectTokenType: 'urn:ietf:params:oauth:token-type:jwt',
+      subjectToken: identity.subject_token
+    })
+  });
+  if (!stsResponse.ok) throw new Error('play_wif_sts_unavailable');
+  const exchanged = await stsResponse.json();
+  if (typeof exchanged.access_token !== 'string' || !exchanged.access_token ||
+      exchanged.token_type?.toLowerCase() !== 'bearer')
+    throw new Error('play_wif_sts_invalid_response');
+
+  const serviceAccount = encodeURIComponent(env.PLAY_BILLING_WIF_SERVICE_ACCOUNT_EMAIL);
+  const impersonation = await fetchWithTimeout(fetcher,
+    `${IAM_CREDENTIALS_URL}${serviceAccount}:generateAccessToken`, {
+      method: 'POST', redirect: 'manual', headers: {
+        'content-type': 'application/json', authorization: `Bearer ${exchanged.access_token}`
+      },
+      body: JSON.stringify({ scope: [ANDROID_PUBLISHER_SCOPE], lifetime: '900s' })
+    });
+  if (!impersonation.ok) throw new Error('play_wif_impersonation_unavailable');
+  const credentials = await impersonation.json();
+  if (typeof credentials.accessToken !== 'string' || !credentials.accessToken)
+    throw new Error('play_wif_impersonation_invalid_response');
+  return credentials.accessToken;
+}
+
 async function getGoogleAccessToken(env, fetcher) {
+  if (useWif(env)) return getWifAccessToken(env, fetcher);
+  if (!billingAuthConfigured(env)) throw new Error('play_service_account_not_configured');
   if (!env.PLAY_BILLING_SERVICE_ACCOUNT_JSON)
     throw new Error('play_service_account_not_configured');
   let serviceAccount;
@@ -111,7 +212,7 @@ export async function handlePlayBillingApp({
   if (!path.startsWith('/api/v1/play-billing/')) return null;
   if (path === '/api/v1/play-billing/catalog' && request.method === 'GET') {
     return safeReply(reply, {
-      enabled: env.SHARIKA_PLAY_BILLING_ENABLED === 'true',
+      enabled: env.SHARIKA_PLAY_BILLING_ENABLED === 'true' && billingAuthConfigured(env),
       products: PRODUCT_IDS.map(id => ({ id, coins: PLAY_COIN_PRODUCTS[id] })),
       prices_from_google_play: true
     }, 200, cors);
@@ -120,7 +221,7 @@ export async function handlePlayBillingApp({
     return fail('play_billing_route_not_found', 404, cors);
   if (env.SHARIKA_PLAY_BILLING_ENABLED !== 'true')
     return fail('play_billing_not_configured', 503, cors);
-  if (!env.PLAY_BILLING_SERVICE_ACCOUNT_JSON)
+  if (!billingAuthConfigured(env))
     return fail('play_billing_not_configured', 503, cors);
 
   let body;

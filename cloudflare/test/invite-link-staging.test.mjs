@@ -12,7 +12,8 @@ const server=readFileSync(new URL('cloudflare/src/index.mjs',root),'utf8');
 test('installed-app HTTPS and scheme links persist the inviter without privileged API exposure',()=>{
   assert.match(manifest,/android:scheme="sharika" android:host="invite"/);
   assert.match(manifest,/android:scheme="https"/);
-  assert.match(manifest,/android:host="sharika-api-staging.soverixnet.workers.dev"/);
+  assert.match(manifest,/android:host="\$\{sharikaInviteHost\}"/);
+  assert.match(gradle,/manifestPlaceholders = \[sharikaInviteHost: 'sharika-api-staging.soverixnet.workers.dev'\]/);
   assert.match(manifest,/android:launchMode="singleTop"/);
   assert.match(activity,/"sharika".equals\(uri.getScheme\(\)\)/);
   assert.match(activity,/"https".equals\(uri.getScheme\(\)\)/);
@@ -35,14 +36,15 @@ test('Google Play Install Referrer is read before the first profile is created',
 });
 test('signup and existing-account retry use one server-verified inviter without manual code',()=>{
   assert.match(adapter,/window.SharikaIncomingInvite=rememberIncomingInvite/);
-  assert.match(adapter,/invite_code:deferredInviteCode\|\|cached.invite_code/);
+  // Referral attribution remains on staging; Play signups omit it entirely.
+  assert.match(adapter,/invite_code:playStoreMode===false\?\(deferredInviteCode\|\|cached.invite_code\):''/);
   assert.match(adapter,/if\(saved.invite_bonused\)clearIncomingInvite\(\)/);
   assert.match(adapter,/claimPendingInviteAfterLogin/);
   assert.match(adapter,/api\('POST','\/invites\/redeem',\{invite_code:code\}\)/);
   assert.match(adapter,/copyInviteLink/);
   assert.match(adapter,/let PUBLIC_INVITE_URL='https:\/\/sharika-api-staging.soverixnet.workers.dev\/invite\/'/);
   assert.match(adapter,/PUBLIC_INVITE_URL=result.api_origin\+'\/invite\/'/);
-  assert.match(activity,/STAGING_API\+"\/invite\/"\+linkCode/);
+  assert.match(activity,/API_ORIGIN\+"\/invite\/"\+linkCode/);
   assert.match(adapter,/Share your personal HTTPS invitation link/);
   assert.match(server,/const inviteLanding=handleInviteLanding\(request,path\)/);
   assert.doesNotMatch(activity,/creditWallet|mintCoins|awardReferralCoins/);
