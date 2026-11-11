@@ -1,0 +1,66 @@
+name: Sharika Crystal Bangladesh-time staging rollout
+on:
+  push:
+    branches:
+      - feature/sharika-crystal-bd-monthly-20261111
+    paths:
+      - '.github/workflows/sharika-crystal-dhaka-staging.yml'
+permissions:
+  contents: read
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+jobs:
+  staging-crystal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Guard staging target and Crystal logic
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-crystal-bd-monthly-20261111'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+          const db=c.d1_databases?.[0];
+          const src=readFileSync('src/agency.mjs','utf8');
+          const migration=readFileSync('migrations/0081_crystal_bd_dhaka_monthly_and_spend_guard.sql','utf8');
+          if(c.name!=='sharika-api-staging' || c.vars?.SHARIKA_ENV!=='staging' ||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74' ||
+             db?.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a' ||
+             c.r2_buckets?.[0]?.bucket_name!=='sharika-staging-media' ||
+             c.durable_objects?.bindings?.[0]?.class_name!=='SharikaVoiceRoom' ||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             c.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false' ||
+             !src.includes("datetime('now','+6 hours','start of month','-6 hours')") ||
+             !migration.includes("datetime('now','+6 hours','start of month','-6 hours')") ||
+             !migration.includes(' - (SELECT COALESCE(SUM(t.salary_units)'))
+             throw new Error('Crystal staging safety check failed');
+          NODE
+      - name: Validate Worker and regression tests
+        run: npm run check
+      - name: Check already-installed staging D1 guards
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN ('sharika_agency_salary_exchange_guard','sharika_agency_salary_seller_guard') AND instr(sql,'start of month')>0 AND instr(sql,'+6 hours')>0 AND instr(sql,' - (SELECT COALESCE(SUM(t.salary_units)')>0" | tee /tmp/crystal-guards.txt
+          grep -q sharika_agency_salary_exchange_guard /tmp/crystal-guards.txt
+          grep -q sharika_agency_salary_seller_guard /tmp/crystal-guards.txt
+      - name: Build staging Worker dry run
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/sharika-crystal-dry-run
+      - name: Deploy staging Worker only
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify staging health
+        run: |
+          curl --fail --silent --show-error --retry 4 --retry-delay 2 https://sharika-api-staging.soverixnet.workers.dev/health | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const r=JSON.parse(s);if(r.ok!==true||r.environment!=="staging")process.exit(1);console.log("CRYSTAL_STAGING_HEALTH_OK")})'
