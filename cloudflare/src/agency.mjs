@@ -265,8 +265,25 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
       'SELECT COALESCE(SUM(active_seconds),0) AS seconds FROM sharika_agency_room_activity '+
       "WHERE user_uid=? AND utc_day=date('now')"
     ).bind(uid).first(),roomActivityDays(db,uid)]);
+    // Monthly BD Crystal is a read-only projection: existing amount_units use
+    // basis points (10,000 units per Crystal). Do not reset or mutate earnings.
+    const monthlyBd=results(await db.prepare(
+      "SELECT f.id AS agency_id,f.name AS agency_name,"+
+      "COALESCE(SUM(a.amount_units),0) AS crystal_scaled_units,"+
+      "COUNT(DISTINCT a.gift_event_id) AS gift_events "+
+      "FROM sharika_families f LEFT JOIN sharika_agency_earnings a "+
+      "ON a.family_id=f.id AND a.beneficiary_uid=? AND a.kind='bd' "+
+      "AND a.created_at>=datetime('now','start of month') "+
+      "WHERE f.bd_uid=? GROUP BY f.id ORDER BY crystal_scaled_units DESC,f.id DESC LIMIT 100"
+    ).bind(uid,uid).all());
+    const monthlyAgencies=monthlyBd.map(a=>({agency_id:a.agency_id,
+      agency_name:a.agency_name,crystal:Number(a.crystal_scaled_units)/10000,
+      gift_events:Number(a.gift_events)||0}));
+    const monthlyCrystal=monthlyAgencies.reduce((sum,a)=>sum+a.crystal,0);
     return reply({families:families.map(f=>({...f,owner_id:publicId(f.owner_no),
-      owner_no:undefined})),pending_bd_units:Number(total?.units)||0,
+      owner_no:undefined})),monthly_bd:{period:new Date().toISOString().slice(0,7),
+      pending_crystal:monthlyCrystal,agencies:monthlyAgencies,
+      settlement:'monthly',read_only:true},pending_bd_units:Number(total?.units)||0,
       bd_profile:{public_id:publicId(currentUser.public_no),name:currentUser.name,
         pic:currentUser.pic},today_active_seconds:Number(activity?.seconds)||0,
       bd_activity_by_day:history,
