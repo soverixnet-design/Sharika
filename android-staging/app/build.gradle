@@ -173,6 +173,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/room-chat-message.svg'))
     from(rootProject.file('../app/royal-profile.css'))
     from(rootProject.file('../app/reference-profile.css'))
+    from(rootProject.file('../app/royal-motion-system.css'))
     from(rootProject.file('../app/royal-profile-background.jpg'))
     from(rootProject.file('../app/profile-collection-atlas.webp'))
     from(rootProject.file('../app/profile-menu-atlas.webp'))

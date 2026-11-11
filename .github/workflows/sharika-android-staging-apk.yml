@@ -55,6 +55,7 @@ on:
       - feature/sharika-level-room-greedy-20261107
       - feature/sharika-global-celebrations-qa-20261107
       - feature/sharika-full-integrated-staging-20261107
+      - feature/sharika-royal-motion-all-screens-20261111
     paths:
       - 'android-staging/**'
       - 'app/royal-profile.css'
@@ -62,6 +63,7 @@ on:
       - 'app/reference-profile.css'
       - 'app/reference-room.css'
       - 'app/golden-home.css'
+      - 'app/royal-motion-system.css'
       - 'app/royal-room-ui.js'
       - 'app/royal-room-ui.css'
       - '.github/workflows/sharika-android-staging-apk.yml'

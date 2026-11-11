@@ -1,0 +1,272 @@
+/*
+ * Sharika Royal Motion — visual-only shared polish, November 2026.
+ * Keep room identity, seat geometry, owner wallpapers, wallets, and controls
+ * owned by the existing app. Avoid perpetual animation of large surfaces.
+ */
+html.royal-root,
+html.royal-room {
+  --sh-motion-fast: 160ms;
+  --sh-motion-normal: 320ms;
+  --sh-motion-ease: cubic-bezier(.22, 1, .36, 1);
+  --sh-motion-gold: #ffe0a0;
+  --sh-motion-outline: #ffdc8a;
+  --sh-motion-relief: 0 2px 0 #fff3, 0 5px 0 #815026, 0 10px 18px #0007;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Unified touch feedback: animate only the pressed control, never its parent
+ * grid or seat position. The existing handler receives every click unchanged. */
+html.royal-root :is(.qa button, .tabs button, .pbtn button, .mp-tile,
+  .mp-feature, .mp-hero-edit, .mp-wallet-open, .mp-top-btn, .shw-chip,
+  .shw-submit, .sh-day-tile, .sh-rank-rewards-button, .sh-rank-reward-entry,
+  .sh-bond-button, .sh-notify-action, .sh-rm-btn, .sh-rm-cat) {
+  transition: transform var(--sh-motion-fast) ease-out,
+    filter var(--sh-motion-fast) ease-out,
+    border-color var(--sh-motion-fast) ease-out,
+    box-shadow var(--sh-motion-fast) ease-out;
+  transform-origin: center center;
+}
+html.royal-root :is(.qa button, .tabs button, .pbtn button, .mp-tile,
+  .mp-feature, .mp-hero-edit, .mp-wallet-open, .shw-chip, .shw-submit,
+  .sh-day-tile, .sh-rank-rewards-button, .sh-rank-reward-entry,
+  .sh-bond-button, .sh-notify-action, .sh-rm-btn, .sh-rm-cat):active {
+  transform: scale(.975);
+  filter: brightness(1.1);
+}
+html.royal-root :is(button, [role="button"], a):focus-visible,
+html.royal-room :is(button, [role="button"], a):focus-visible {
+  outline: 3px solid var(--sh-motion-outline) !important;
+  outline-offset: 3px;
+}
+
+/* Login and account recovery retain all original providers and form rules. */
+html.royal-root .auth .wl2 .wimg,
+html.royal-root .auth .aw .a3i {
+  animation: sh-satin-enter 380ms var(--sh-motion-ease) both;
+}
+html.royal-root .auth :is(.wb, .atabs button, .acard .big) {
+  transition: transform var(--sh-motion-fast) ease-out,
+    filter var(--sh-motion-fast) ease-out,
+    box-shadow var(--sh-motion-fast) ease-out;
+}
+html.royal-root .auth :is(.wb, .atabs button, .acard .big):active {
+  transform: scale(.98);
+  filter: brightness(1.06);
+}
+html.royal-root .auth .wbtns .wb:nth-child(1) {
+  animation: sh-satin-enter 350ms 40ms var(--sh-motion-ease) both;
+}
+html.royal-root .auth .wbtns .wb:nth-child(2) {
+  animation: sh-satin-enter 350ms 90ms var(--sh-motion-ease) both;
+}
+html.royal-root .auth .wbtns .wb:nth-child(3) {
+  animation: sh-satin-enter 350ms 140ms var(--sh-motion-ease) both;
+}
+
+/* Home: artwork and country-room information remain unobstructed. */
+html.royal-root .app.golden-home #v-home .hd,
+html.royal-root .app.golden-home #v-home .country-room-filter {
+  animation: sh-satin-enter 360ms var(--sh-motion-ease) both;
+}
+html.royal-root .app.golden-home #v-home .slide {
+  box-shadow: 0 12px 28px #090504a8, inset 0 1px 0 #fff8,
+    0 0 0 1px #e6b96555 !important;
+}
+html.royal-root .app.golden-home #v-home .qa button {
+  isolation: isolate;
+  box-shadow: var(--sh-motion-relief);
+}
+html.royal-root .app.golden-home #v-home .qa button:nth-child(1) {
+  animation: sh-satin-enter 370ms 35ms var(--sh-motion-ease) both;
+}
+html.royal-root .app.golden-home #v-home .qa button:nth-child(2) {
+  animation: sh-satin-enter 370ms 75ms var(--sh-motion-ease) both;
+}
+html.royal-root .app.golden-home #v-home .qa button:nth-child(3) {
+  animation: sh-satin-enter 370ms 115ms var(--sh-motion-ease) both;
+}
+html.royal-root .app.golden-home #v-home .qa button:nth-child(4) {
+  animation: sh-satin-enter 370ms 155ms var(--sh-motion-ease) both;
+}
+html.royal-root .app.golden-home #v-home .card {
+  transition: filter var(--sh-motion-fast),
+    transform var(--sh-motion-fast) var(--sh-motion-ease);
+}
+html.royal-root .app.golden-home #v-home .card:active {
+  transform: scale(.985);
+  filter: brightness(1.09);
+}
+html.royal-root .app.golden-home #v-home .nav .ni.on {
+  text-shadow: 0 0 10px #ffd4868a;
+}
+
+/* Main profile: the original photo, frame atlas, VIP tag, and profile edit
+ * action are untouched. Only the surrounding lighting and feedback change. */
+html.royal-root #v-me .mp-hero {
+  animation: sh-satin-enter 420ms var(--sh-motion-ease) both;
+}
+html.royal-root #v-me .mp-portrait {
+  filter: drop-shadow(0 7px 15px #0b0216b0);
+}
+html.royal-root #v-me .mp-face {
+  box-shadow: 0 0 0 2px #ffe3a260,
+    0 0 18px #f5b76c52, inset 0 0 12px #3b193a66;
+}
+html.royal-root #v-me .mp-hero-edit,
+html.royal-root #v-me .mp-wallet-open {
+  box-shadow: inset 0 2px 0 #fff7, 0 5px 0 #93501c,
+    0 10px 20px #10050588;
+}
+html.royal-root #v-me :is(.mp-stats, .mp-wallet, .mp-collection) {
+  animation: sh-satin-enter 400ms 75ms var(--sh-motion-ease) both;
+}
+html.royal-root #v-me .mp-wallet {
+  border-color: #ffdf9a;
+  box-shadow: inset 0 2px 0 #fff4, 0 8px 20px #09030a95,
+    0 0 17px #edbb7255;
+}
+html.royal-root #v-me .mp-feature:active,
+html.royal-root #v-me .mp-tile:active {
+  border-color: #ffe7a5;
+}
+
+/* Wallet, coin seller and salary pages: one gold visual vocabulary; never
+ * restyle amounts or alter disabled/locked state. */
+html.royal-root :is(.wallet, .wl, #sharika-seller-content .shw-hero,
+  #sharika-seller-content .shw-section, .sh-agency-salary-card,
+  .sh-agency-salary-panel) {
+  border-color: #e8c07a;
+  box-shadow: 0 8px 24px #09050880, inset 0 1px 0 #fff2;
+}
+html.royal-root #sharika-seller-content .shw-hero,
+html.royal-root .sharika-seller-wallet .shw-hero {
+  animation: sh-satin-enter 380ms var(--sh-motion-ease) both;
+}
+html.royal-root #sharika-seller-content :is(.shw-submit, .shw-chip):not(:disabled):active {
+  border-color: #fff1b5;
+}
+html.royal-root :is(.shw-input, .field, input, select, textarea):focus-visible {
+  outline: 2px solid #ffda87 !important;
+  outline-offset: 2px;
+}
+
+/* Ranking: reveal the top-three cards once, but keep names, IDs, prizes,
+ * existing taps and server-supplied amounts stable. */
+html.royal-root #v-rank .sh-royal-hero,
+html.royal-root #v-rank .sh-rank-rewards {
+  animation: sh-satin-enter 420ms var(--sh-motion-ease) both;
+}
+html.royal-root #v-rank .sh-royal-podium-card {
+  backface-visibility: hidden;
+  animation: sh-rank-reveal 390ms var(--sh-motion-ease) both;
+}
+html.royal-root #v-rank .sh-royal-podium-card.second {
+  animation-delay: 35ms;
+}
+html.royal-root #v-rank .sh-royal-podium-card.first {
+  animation-delay: 95ms;
+}
+html.royal-root #v-rank .sh-royal-podium-card.third {
+  animation-delay: 155ms;
+}
+html.royal-root #v-rank .rr,
+html.royal-root #sh-rank-reward-center .sh-rw-reward-card {
+  transition: border-color var(--sh-motion-fast),
+    box-shadow var(--sh-motion-fast), filter var(--sh-motion-fast);
+}
+html.royal-root #v-rank .rr:active {
+  border-color: #ffdc91;
+  filter: brightness(1.07);
+}
+html.royal-root #v-rank .sh-royal-podium-card.first {
+  box-shadow: 0 10px 25px #050203a3, 0 0 18px #ffc76545,
+    inset 0 1px 0 #fff5;
+}
+
+/* Voice room: deliberately no entrance movement on the seating grid. The
+ * speaking halo only pulses when the real room engine marks a seat talking. */
+html.royal-room .sh-royal-room .seat .av {
+  transition: filter var(--sh-motion-fast),
+    border-color var(--sh-motion-fast);
+}
+html.royal-room .sh-royal-room .seat:active .av {
+  filter: brightness(1.12);
+}
+html.royal-room .sh-royal-room .seat.talk .ring {
+  animation: sh-speaking-halo 1.35s ease-in-out infinite;
+}
+html.royal-room .sh-royal-room .seat.talk .av {
+  filter: drop-shadow(0 0 7px #ffd78e9e);
+}
+html.royal-room .sh-royal-room .sh-mic-floating:not(.off) {
+  box-shadow: 0 5px 16px #09020aaa, 0 0 14px #f6c76b66,
+    inset 0 1px 0 #fff5;
+}
+html.royal-room .sh-royal-room .sh-tool>button:active,
+html.royal-room .sh-royal-room .sh-mic-floating:active {
+  filter: brightness(1.12);
+}
+html.royal-room .sh-royal-room .chat .msg:last-child,
+html.royal-room .sh-royal-room .chat .sys:last-child {
+  animation: sh-chat-appear 220ms ease-out both;
+}
+html.royal-room .sh-royal-room .sh-menu-panel.on {
+  animation: sh-satin-enter 220ms var(--sh-motion-ease) both;
+}
+/* Never modify full-screen video dimensions, sound, or native playback. */
+html.royal-room .sh-gift-parade:not(.sh-gift-parade-video) {
+  border-color: #ffda90;
+  box-shadow: 0 14px 36px #0009, 0 0 18px #f6c66e44;
+}
+
+/* Supporting surfaces (messages, daily tasks, store, agency and membership). */
+html.royal-root :is(#v-msg .chatrow, .sh-notify-card, .sh-rm-card,
+  .sh-bond-section, .sh-day-tile, .sh-fam-kpi) {
+  transition: filter var(--sh-motion-fast),
+    border-color var(--sh-motion-fast);
+}
+html.royal-root :is(#v-msg .chatrow, .sh-rm-card, .sh-notify-card):active {
+  filter: brightness(1.08);
+  border-color: #ffe2a2;
+}
+
+@keyframes sh-satin-enter {
+  from { opacity: .7; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sh-rank-reveal {
+  from { opacity: .6; filter: brightness(.75); }
+  to { opacity: 1; filter: brightness(1); }
+}
+@keyframes sh-speaking-halo {
+  0%, 100% { box-shadow: 0 0 0 1px #ffd47d88, 0 0 5px #ffdf8b55; }
+  50% { box-shadow: 0 0 0 4px #ffd47d44, 0 0 12px #ffdf8bb3; }
+}
+@keyframes sh-chat-appear {
+  from { opacity: .4; }
+  to { opacity: 1; }
+}
+
+/* Accessibility + battery: users who request less motion get a fully static
+ * look. Disabling animations must never hide content. */
+@media (prefers-reduced-motion: reduce) {
+  html.royal-root .app.golden-home #v-home *,
+  html.royal-root #v-me *,
+  html.royal-root #v-rank *,
+  html.royal-root .auth *,
+  html.royal-root .sharika-seller-wallet *,
+  html.royal-room .sh-royal-room * {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    animation-delay: 0ms !important;
+  }
+}
+@media (max-width: 360px) {
+  html.royal-root #v-me .mp-wallet {
+    gap: 4px;
+  }
+  html.royal-root #v-rank .sh-royal-podium-card {
+    box-shadow: 0 5px 14px #0007;
+  }
+}
