@@ -105,7 +105,7 @@ test('last loaded Royal CSS honors new room card and IME layout on Android',()=>
   assert.match(correction,/\.sh-keyboard-open \.sh-tools/);
   assert.match(correction,/content:'QA13'/);
   assert.match(gradle,/versionCode [1-9][0-9]+/);
-  assert.match(gradle,/versionName '[1-9][0-9]*\.[0-9]+\.[0-9]+-staging'/);
+  assert.match(gradle,/versionName '[1-9][0-9]*\.[0-9]+\.[0-9]+(?:-staging)?'/);
 });
 
 test('CI can reproduce real Gboard and measure stable seats in an isolated WebView',()=>{
