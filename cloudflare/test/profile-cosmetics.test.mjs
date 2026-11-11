@@ -123,6 +123,8 @@ test('room polling keeps the newest seat count and ignores responses after leavi
   const syncSource=adapter.slice(start,end);
   const pending=[];
   const room={id:'10000001',owner_id:'owner-uid',seat_count:12};
+  const verifiedOwner=[{user_id:'owner-uid',role:'owner',seat_no:null,muted:true,
+    sharika_users:{public_id:'10000001',name:'Room owner'}}];
   const frame={
     seats:[{empty:1}],S:{frame:'grad'},U:[],renders:[],
     render(){this.renders.push(this.seats.length);}
@@ -145,17 +147,17 @@ test('room polling keeps the newest seat count and ignores responses after leavi
   const older=sync(room,frame);
   const newer=sync(room,frame);
   assert.equal(pending.length,1,'do not overlap native API calls on weak links');
-  pending[0]({seat_count:12,members:[],locked_seats:[]});
+  pending[0]({seat_count:12,members:verifiedOwner,locked_seats:[]});
   await older;
   await new Promise(setImmediate);
   assert.equal(pending.length,2,'a change requested during the poll gets a fresh snapshot');
-  pending[1]({seat_count:4,members:[],locked_seats:[]});
+  pending[1]({seat_count:4,members:verifiedOwner,locked_seats:[]});
   await newer;
   assert.equal(room.seat_count,4,'the queued newer snapshot wins');
   assert.deepEqual(frame.renders,[13,5]);
   const leaving=sync(room,frame);
   state.cur={id:'10000002'};
-  pending[2]({seat_count:17,members:[],locked_seats:[]});
+  pending[2]({seat_count:17,members:verifiedOwner,locked_seats:[]});
   await leaving;
   assert.equal(room.seat_count,4,'completed request cannot edit an exited room');
   assert.deepEqual(frame.renders,[13,5]);

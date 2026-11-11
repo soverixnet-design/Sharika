@@ -6092,6 +6092,20 @@
       }).catch(()=>{});
     }
     const data = await api('GET','/rooms/'+room.id+'/members');
+    // Older deployed Workers can incorrectly answer 200 + [] when their
+    // presence coordinator is temporarily unavailable. After a verified
+    // /join, this device itself must appear in the roster; an empty snapshot
+    // is therefore inconsistent, not proof that every seat became vacant.
+    // Preserve only the LAST verified UI, never render unverified D1 rows.
+    if(!Array.isArray(data.members)||data.members.length===0){
+      if(!frame.__sharikaPresenceRetryAt ||
+         Date.now()-frame.__sharikaPresenceRetryAt>20000){
+        frame.__sharikaPresenceRetryAt=Date.now();
+        heartbeatPresence(room.id);
+      }
+      throw new Error('room_presence_temporarily_unavailable');
+    }
+    frame.__sharikaPresenceRetryAt=0;
     const ownerMember=(data.members||[]).find(member=>member.user_id===room.owner_id);
     const verifiedMemberOwner=ownerMember?.sharika_users||{};
     const owner=room.__sharikaVerifiedOwner||{

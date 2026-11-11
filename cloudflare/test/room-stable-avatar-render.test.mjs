@@ -53,3 +53,24 @@ test('visible member IDs have a stable seat label, separate from the name',()=>{
   assert.match(css,/\.seat \.sh-verified-seat-id\s*\{[^}]*min-height:13px/);
   assert.match(ui,/id\.textContent='ID '\+visibleSeatId/);
 });
+
+test('old Worker empty roster cannot erase a verified seat during a coordinator outage',async()=>{
+  const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=ui.indexOf('  async function syncFrameOnce(room,frame) {');
+  const end=ui.indexOf('    const ownerMember=',start);
+  assert.ok(start>=0&&end>start);
+  const originalSeat={public_id:'10000001',i:1};
+  const frame={seats:[originalSeat],__sharikaRoomRenderSignature:'verified',
+    __sharikaOwnerFetchedAt:Date.now(),render:()=>assert.fail('must not repaint')};
+  const room={id:'10000009',owner_id:'owner'};
+  let heartbeats=0;
+  const sync=runInNewContext(ui.slice(start,end)+
+    '\n}\nthis.syncFrameOnce=syncFrameOnce;',{
+    window:{cur:room},session:{user:{id:'firebase-user'}},
+    api:async()=>({members:[]}),heartbeatPresence:()=>{heartbeats++;},
+    Date,Error,Array
+  });
+  await assert.rejects(sync(room,frame),/room_presence_temporarily_unavailable/);
+  assert.equal(frame.seats[0],originalSeat);
+  assert.equal(heartbeats,1,'refresh verified presence before the next poll');
+});
