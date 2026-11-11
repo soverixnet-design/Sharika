@@ -38,16 +38,13 @@ const salaryMaturity=mode=>mode==='daily'?"datetime('now','start of day')":
   mode==='weekly'?"datetime('now','weekday 0','-6 days','start of day')":
   "datetime('now','start of month')";
 async function salarySummary(db,uid,mode){
-  const condition=salaryMaturity(mode);
+  // Host and Agency Crystal is immediately available; BD Crystal settles monthly.
+  const condition="(a.kind IN ('host_salary','agency') OR (a.kind='bd' AND a.created_at<datetime('now','start of month')))";
   const [earned,matured,exchanged,sellerTransferred,config]=await Promise.all([
     db.prepare('SELECT COALESCE(SUM(amount_units),0) AS units FROM sharika_agency_earnings '+
       'WHERE beneficiary_uid=?').bind(uid).first(),
     db.prepare('SELECT COALESCE(SUM(a.amount_units),0) AS units FROM sharika_agency_earnings a '+
-      'JOIN sharika_agency_salary_config c ON c.key=\'standard\' '+
-      `WHERE a.beneficiary_uid=? AND a.created_at<${condition} AND (`+
-      'SELECT COALESCE(SUM(e.quantity*e.price_coins),0) FROM sharika_agency_earnings h '+
-      "JOIN sharika_gift_events e ON e.id=h.gift_event_id WHERE h.kind='host_salary' "+
-      'AND h.host_uid=a.host_uid)>=c.min_host_target_coins').bind(uid).first(),
+      'WHERE a.beneficiary_uid=? AND '+condition).bind(uid).first(),
     db.prepare('SELECT COALESCE(SUM(salary_units),0) AS units FROM sharika_agency_salary_exchanges '+
       'WHERE auth_uid=?').bind(uid).first(),
     db.prepare('SELECT COALESCE(SUM(salary_units),0) AS units FROM sharika_agency_salary_seller_transfers '+
