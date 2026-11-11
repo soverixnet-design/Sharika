@@ -6,6 +6,7 @@ on:
       - feature/sharika-play-release-aab-20261107
       - feature/sharika-play-billing-20261107
       - feature/sharika-full-integrated-staging-20261107
+      - feature/sharika-crystal-bd-monthly-20261111
     paths:
       - '.github/workflows/sharika-play-release-aab.yml'
       - 'android-staging/**'
@@ -89,7 +90,7 @@ jobs:
           test -n "$SDKMANAGER"
           "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
 
-      - name: Select secure Play upload signing or existing stable signer
+      - name: Require dedicated secure Play upload signing
         env:
           PLAY_B64: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEYSTORE_B64 }}
           PLAY_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
@@ -104,12 +105,6 @@ jobs:
             chmod 600 "$RUNNER_TEMP/sharika-play-upload.p12"
             echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$RUNNER_TEMP/sharika-play-upload.p12" >> "$GITHUB_ENV"
             echo 'SHARIKA_UPLOAD_SIGNER_KIND=play-upload' >> "$GITHUB_ENV"
-          elif [[ -n "$STAGING_B64" && -n "$STAGING_PASSWORD" ]]; then
-            printf '%s' "$STAGING_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-existing-stable.p12"
-            printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-existing-stable.p12" | sha256sum --check --status
-            chmod 600 "$RUNNER_TEMP/sharika-existing-stable.p12"
-            echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-existing-stable.p12" >> "$GITHUB_ENV"
-            echo 'SHARIKA_UPLOAD_SIGNER_KIND=existing-stable' >> "$GITHUB_ENV"
           else
             echo 'Missing encrypted upload key and stable fallback key.'
             exit 1
@@ -119,15 +114,17 @@ jobs:
         working-directory: android-staging
         env:
           SHARIKA_PLAY_API_ORIGIN: ${{ vars.SHARIKA_PLAY_API_ORIGIN }}
-          # No production Worker is configured yet. Such a signed AAB is a
-          # downloadable staging candidate, NOT a Play publication artifact.
-          SHARIKA_PLAY_STAGING_CANDIDATE: 'true'
+          # Never allow staging-backed or staging-signed Play release artifacts.
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'false'
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
           SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
           SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
           SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
+          test "$SHARIKA_UPLOAD_SIGNER_KIND" = 'play-upload' || { echo 'Play upload signing key required'; exit 1; }
+          test -n "${SHARIKA_PLAY_API_ORIGIN:-}" || { echo 'Production API origin required'; exit 1; }
+          [[ "$SHARIKA_PLAY_API_ORIGIN" != *staging* ]] || { echo 'Refusing staging API in Play AAB'; exit 1; }
           gradle :app:bundleRelease --no-daemon --stacktrace
           test -s app/build/outputs/bundle/release/app-release.aab
           jarsigner -verify app/build/outputs/bundle/release/app-release.aab
