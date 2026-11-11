@@ -145,6 +145,11 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
       policy:{enabled:!!terms.active,host_percent:terms.host_bps/100,
         agency_percent:terms.agency_bps/100,bd_percent:terms.bd_bps/100,
         settlement_mode:terms.settlement_mode},
+      crystal_wallet:salary,crystal_coin_exchanges:results(exchanges),
+      crystal_transfers:results(sellerTransfers).map(t=>({...t,
+        seller_public_id:publicId(t.seller_no),seller_no:undefined})),
+      crystal_actions:[{id:'crystal_transfer',label:'Crystal Transfer'},
+        {id:'crystal_coin_exchange',label:'Crystal Coin Exchange'}],
       salary,targets,salary_exchanges:results(exchanges),
       salary_seller_transfers:results(sellerTransfers).map(t=>({...t,
         seller_public_id:publicId(t.seller_no),seller_no:undefined})),
@@ -185,7 +190,8 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
         return fail('salary_exchange_not_available',409,cors);
       throw error;
     }
-    return reply({ok:true,duplicate:false,credited_coins:body.coins},200,cors);
+    return reply({ok:true,duplicate:false,credited_coins:body.coins,
+      crystal_exchanged:body.coins,action:'crystal_coin_exchange'},200,cors);
   }
   // Salary is settled by EITHER main-wallet exchange OR a direct Seller-stock
   // transfer. This path never reads or changes the sender's Main Coin Wallet.
@@ -241,6 +247,7 @@ export async function handleAgencyApp({request,env,uid,path,cors,reply,fail}){
     const saved=await db.prepare('SELECT id FROM sharika_agency_salary_seller_transfers '+
       'WHERE auth_uid=? AND request_id=?').bind(uid,requestId).first();
     return reply({transferred:true,duplicate:false,transfer_id:saved.id,
+      crystal_transferred:body.coins,action:'crystal_transfer',
       seller_public_id:body.seller_public_id,credited_coins:body.coins,
       main_wallet_unchanged:true},201,cors);
   }
