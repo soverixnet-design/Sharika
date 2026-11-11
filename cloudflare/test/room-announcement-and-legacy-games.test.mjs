@@ -4,9 +4,9 @@ import {readFileSync} from 'node:fs';
 
 const src = relative => readFileSync(new URL(relative,import.meta.url),'utf8');
 
-test('original game picker follows the server catalogue with no stale client allowlist',()=>{
+test('only existing Greedy Wheel is visible while legacy games stay preserved',()=>{
   const bridge=src('../../android-staging/staging-connection.js');
-  assert.ok(bridge.includes('visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id))'));
+  assert.ok(bridge.includes('visibleGameCards=[greedyGame].filter(game=>enabled.has(game.id))'));
   assert.ok(!bridge.includes('requestedOriginalGames.has(game.id)'));
   assert.ok(bridge.includes('const catalogRequestNo=++gameCatalogRequestSequence'));
   assert.ok(!bridge.includes("visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale'"));

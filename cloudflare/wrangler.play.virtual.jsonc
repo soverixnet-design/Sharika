@@ -1,0 +1,52 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sharika-api-play-virtual",
+  "main": "src/voice-worker.mjs",
+  "compatibility_date": "2026-11-09",
+  "workers_dev": true,
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "sharika-play-virtual",
+    "database_id": "5b151101-1ac0-4b13-ab8e-e41cb06014fa",
+    "migrations_dir": "migrations"
+  }, {
+    "binding": "SHARIKA_ID_DB",
+    "database_name": "sharika-staging",
+    "database_id": "b2c62252-12a5-4740-90c7-01a536d9a39a"
+  }],
+  "r2_buckets": [{
+    "binding": "MEDIA_BUCKET",
+    "bucket_name": "sharika-play-virtual-media"
+  }],
+  "vars": {
+    "SHARIKA_ENV": "play_virtual",
+    "FIREBASE_PROJECT_ID": "sharika-voice-chat-app",
+    "ALLOWED_ORIGINS": "",
+    "SHARIKA_PLAY_VIRTUAL_ONLY": "true",
+    "SHARIKA_PLAY_ISOLATED_DATA": "true",
+    "SHARIKA_COINS_CASH_REDEEMABLE": "false",
+    "SHARIKA_LUCKY_GIFTS_ENABLED": "false",
+    "SHARIKA_PLAY_BILLING_ENABLED": "false",
+    "SHARIKA_AUTOMATIC_RANKING_REWARDS_ENABLED": "false"
+  },
+  "durable_objects": {
+    "bindings": [{"name":"VOICE_ROOMS","class_name":"SharikaVoiceRoom"}]
+  },
+  "migrations": [{
+    "tag": "v1_sharika_sfu_voice_rooms",
+    "new_sqlite_classes": ["SharikaVoiceRoom"]
+  }],
+  "secrets": {
+    "required": ["REALTIME_SFU_APP_ID", "REALTIME_SFU_APP_SECRET"]
+  },
+  "ratelimits": [
+    {"name":"SHARIKA_ACTION_RATE_LIMIT","namespace_id":"410301","simple":{"limit":120,"period":60}},
+    {"name":"SHARIKA_FINANCE_RATE_LIMIT","namespace_id":"410302","simple":{"limit":20,"period":60}}
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {"enabled":true,"head_sampling_rate":1},
+    "traces": {"enabled":true,"head_sampling_rate":0.01}
+  }
+}

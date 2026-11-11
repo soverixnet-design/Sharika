@@ -2,6 +2,7 @@ name: Sharika Cloudflare D1 staging checks
 on:
   push:
     branches:
+      - feature/sharika-unified-release-qa-20261111
       - feature/sharika-cloudflare-d1-foundation-20261029
       - feature/sharika-android-staging-20261030
       - feature/sharika-notifications-20261101

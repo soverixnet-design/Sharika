@@ -280,15 +280,40 @@
   // The actual Android build type decides whether Play policy restrictions
   // apply. Never trust a query string, localStorage, or a user-editable toggle.
   let playStoreMode=null;
+  // Only the separately isolated virtual Play backend may accept an email
+  // password identity without inbox verification. If the native bridge fails,
+  // Play restrictions stay closed but authentication cannot be relaxed.
+  let playVirtualIdentityAllowed=false;
   const playModeReady=native('clientMode',{}).then(result=>{
     playStoreMode=result.play_store===true;
+    playVirtualIdentityAllowed=playStoreMode && result.api_origin===
+      'https://sharika-api-play-virtual.soverixnet.workers.dev';
     if(typeof result.api_origin==='string' && /^https:\/\/[A-Za-z0-9.-]+$/.test(result.api_origin))
       PUBLIC_INVITE_URL=result.api_origin+'/invite/';
     if(playStoreMode){
       const style=document.createElement('style');
       style.id='sharika-play-store-mode';
-      style.textContent='#sharika-recharge-seller-wallet,#rcl2{display:none!important}';
+      style.textContent='#sharika-recharge-seller-wallet,#rcl2,#pc,#qi,'+
+        '[data-m="invite"],#sh-bd-entry,#sh-agency-entry,#sh-host-entry,'+
+        '#stage-invite-code{display:none!important}';
       document.head.append(style);
+      clearIncomingInvite();
+      // The original web app retains its older terms; replace the packaged
+      // Play presentation so no seller, cash, betting or withdrawal promise appears.
+      const applyVirtualTerms=()=>{
+        if(!window.POLD)return;
+        window.POLD.terms=['Terms & Conditions',[
+          ['Eligibility','Sharika is a social voice-room app for people aged 13 and older.'],
+          ['Virtual items','Coins, diamonds, gifts and cosmetics are virtual items for use inside Sharika only. They have no cash value, cannot be withdrawn, sold, redeemed for money or transferred to external sellers.'],
+          ['Coin packs','If digital coin packs become available, they can only be purchased through Google Play Billing. Virtual items have no real-world cash value.'],
+          ['Gifts and room rewards','Virtual gifts use virtual coins. Room owners may receive non-redeemable virtual coin rewards for gifts inside their rooms.'],
+          ['Closed-loop use','Coins, gifts and rewards are only for activities inside Sharika. They cannot be exchanged for money or sold to third parties.'],
+          ['Conduct and account','Follow community rules, respect moderation, and contact Customer Service for support or account deletion. We may restrict abusive accounts.']]];
+        const age=window.POLD.privacy?.[1]?.find(row=>row[0]==='Children and teens');
+        if(age)age[1]='Sharika is for people aged 13 and older. This Google Play edition disables betting games and Lucky Gifts for everyone.';
+      };
+      if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',applyVirtualTerms,{once:true});
+      else applyVirtualTerms();
     }
     return playStoreMode;
   // Unknown mode must fail closed for payment routes; the Play build must
@@ -296,7 +321,12 @@
   }).catch(()=>{playStoreMode=true;return true;});
   // The Agency Center is a separate first-party, packaged WebView module.
   // It reuses this authenticated native bridge; no demo login or wallet.
-  window.sharikaAgencyApi=api;
+  window.sharikaFinancialFeaturesEnabled=()=>playStoreMode===false;
+  window.sharikaAgencyApi=async(...args)=>{
+    await playModeReady;
+    if(playStoreMode!==false)throw Error('Agency and salary features are unavailable in the Google Play edition');
+    return api(...args);
+  };
 
   // Super Admin owns WHERE a cosmetic appears. The server-owned inventory and
   // user-selected cosmetic decide WHICH image/animation is displayed.
@@ -479,6 +509,8 @@
     native('inviteClear').catch(()=>{});
   }
   async function claimPendingInviteAfterLogin(){
+    await playModeReady;
+    if(playStoreMode!==false){clearIncomingInvite();return;}
     if(redeemingIncomingInvite||!session?.user?.id||!deferredInviteCode)return;
     const viewer=session.user.id,code=deferredInviteCode;
     redeemingIncomingInvite=true;
@@ -708,6 +740,11 @@
     ...roleNumbers.map(number=>premiumItem('role-frame-'+String(number).padStart(2,'0'),
       'Royal Role Frame '+number,'role'))
   );
+  playModeReady.then(isPlay=>{
+    if(!isPlay)return;
+    const item=SOVERA_FRAMES.find(frame=>frame.id==='coin-seller-royal');
+    if(item)item.name='Royal Crown · Official';
+  });
   SOVERA_ENTRIES.push(...Array.from({length:8},(_,i)=>{
     const key=String(i+1).padStart(2,'0');
     return {id:'svip-entry-'+key,name:'SVIP '+(i+1)+' Royal Arrival',
@@ -1420,8 +1457,17 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge')
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge,.sh-verified-seat-id')
         .forEach(decoration=>decoration.remove());
+      // Always show the currently visible member ID beneath its name.
+      // A special ID replaces (never accompanies) the permanent account ID.
+      const visibleSeatId=frame.sid?.(seat);
+      if(visibleSeatId){
+        const id=doc.createElement('small');
+        id.className='sh-verified-seat-id';
+        id.textContent='ID '+visibleSeatId;
+        el.appendChild(id);
+      }
       // Room Admin power is shown in the management menu, never as a
       // shield drawn across a user's purchased or animated avatar frame.
       if(seat.room_role==='owner'){
@@ -4276,6 +4322,12 @@
     doc.addEventListener('keydown',resumeRoomAudio,true);
   }
   bindRoomAudioGesture(document);
+  // Android background/foreground transitions may pause remote WebRTC audio
+  // while leaving the receiving peer connection itself connected.
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden)resumeRoomAudio();
+  });
+  window.addEventListener('pageshow',resumeRoomAudio);
   const roomAudioFrame=document.getElementById('rf');
   if(roomAudioFrame) {
     roomAudioFrame.addEventListener('load',()=>{
@@ -4744,6 +4796,20 @@
       local.enabled=microphoneWanted(roomId);
       watchSfuSpeaking(state,local,session?.user?.id,true);
       const transceiver=state.publishPC.addTransceiver(local,{direction:'sendonly'});
+      // Voice is audio-only. Cap the outgoing Opus stream to a speech-friendly
+      // bitrate so a weak cellular uplink is less likely to stall every other
+      // room request. Older Android WebViews may lack writable RTP encodings;
+      // a failed optimization must never prevent the microphone from joining.
+      try{
+        const sender=transceiver.sender;
+        const parameters=sender?.getParameters?.();
+        if(parameters?.encodings?.length){
+          parameters.encodings[0].maxBitrate=32000;
+          await sender.setParameters(parameters);
+        }
+      }catch(error){
+        console.warn('Voice bandwidth preference unavailable:',errText(error));
+      }
       const offer=await state.publishPC.createOffer();
       await state.publishPC.setLocalDescription(offer);
       await waitIce(state.publishPC,'publish');
@@ -5021,8 +5087,11 @@
     if(!frame||!Array.isArray(frame.seats))return;
     const localSeats=frame.seats.filter(slot=>slot?.user_id===session?.user?.id);
     if(localSeats.length) {
+      // Rebuilding every avatar on repeated ICE/heartbeat status callbacks
+      // makes the 20-seat grid visibly jump, even when mute state is the same.
+      const changed=localSeats.some(seat=>seat.muted===!!enabled);
       for(const seat of localSeats)seat.muted=!enabled;
-      if(typeof frame.render==='function'){
+      if(changed&&typeof frame.render==='function'){
         frame.render();
         decorateRoomSeats(frame);
         paintVerifiedMicCount(frame);
@@ -5224,7 +5293,11 @@
       };
       yearSelect.addEventListener('change',refreshDays);
       monthSelect.addEventListener('change',refreshDays);
-      layer.querySelector('[name="invite_code"]').value=cachedSignup(account.email)?.invite_code||deferredInviteCode;
+      const inviteField=layer.querySelector('[name="invite_code"]');
+      playModeReady.then(()=>{
+        if(playStoreMode!==false){inviteField.closest('label').hidden=true;inviteField.value='';}
+        else inviteField.value=cachedSignup(account.email)?.invite_code||deferredInviteCode;
+      });
       let finished = false;
       function close() { if (finished) return; finished = true; layer.remove(); }
       layer.querySelector('#stage-profile-cancel').onclick = () => {
@@ -5240,7 +5313,7 @@
             birthdate:birthdateFromUi(form.elements.birth_year.value,
               form.elements.birth_month.value,form.elements.birth_day.value),
             country:manualCountryCode(form.elements.country.value),
-            invite_code:form.elements.invite_code.value.trim()
+            invite_code:playStoreMode===false?form.elements.invite_code.value.trim():''
           };
           const saved = await api('POST','/me',data);
           if(saved.invite_bonused)clearIncomingInvite();
@@ -5305,12 +5378,13 @@
       if (errText(error) !== 'profile_not_found') throw error;
       // Wait for Play Install Referrer before first registration, not on normal login.
       await invitePendingReady;
+      await playModeReady;
       const cached = form || cachedSignup(account.email);
       if (cached && cached.name && cached.dob && manualCountryCode(cached.country)) {
         try{
           const saved = await api('POST','/me',{
             name:cached.name,birthdate:cached.dob,country:manualCountryCode(cached.country),
-            invite_code:deferredInviteCode||cached.invite_code
+            invite_code:playStoreMode===false?(deferredInviteCode||cached.invite_code):''
           });
           if(saved.invite_bonused)clearIncomingInvite();
           try{localStorage.removeItem(META_KEY);}catch(_){}
@@ -5325,7 +5399,8 @@
     }
   }
   async function authenticated(account, form, expectedAttempt=authAttemptId) {
-    if (!account.signedIn || !account.emailVerified)
+    await playModeReady;
+    if (!account.signedIn || (!account.emailVerified && !playVirtualIdentityAllowed))
       throw new Error('Check your email verification link, then sign in again');
     const current = await ensureProfile(account, form);
     if (expectedAttempt!==authAttemptId) throw new Error('sign_in_superseded');
@@ -5365,6 +5440,12 @@
       '<input class="field" id="stage-invite-code" maxlength="8" inputmode="numeric" '+
       'placeholder="Inviter 8-digit Sharika ID" autocomplete="off">');
     if(deferredInviteCode)auth.querySelector('#stage-invite-code').value=deferredInviteCode;
+    playModeReady.then(()=>{
+      if(playStoreMode!==false){
+        const input=auth.querySelector('#stage-invite-code');
+        if(input){input.previousElementSibling?.remove();input.remove();}
+      }
+    });
   }
   const inviteAuthRoot=document.getElementById('au');
   if(inviteAuthRoot){
@@ -5378,7 +5459,9 @@
       return { ok:false, msg:'Use an email address. Phone OTP is not enabled yet.' };
     if (String(form.pw || '').length < 12)
       return { ok:false, msg:'Use at least 12 characters for your password.' };
+    const attempt=++authAttemptId;
     try {
+      await playModeReady;
       const result = await native('emailSignUp', {email:form.key.trim(), password:form.pw});
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
@@ -5387,6 +5470,11 @@
           invite_code:document.getElementById('stage-invite-code')?.value.trim()||deferredInviteCode
         }));
       } catch (_) {}
+      if(playVirtualIdentityAllowed){
+        const local=await authenticated(result,form,attempt);
+        if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
+        return {ok:true,acct:local};
+      }
       return { ok:false, msg:result.verificationSent ?
         'Account created. Verify your email, then log in.' :
         'Account created. Verification email could not be sent; try again later.' };
@@ -5440,9 +5528,13 @@
       document.getElementById('sh-login-recovery')?.remove();
       return {ok:true,acct:local};
     } catch (error) {
-      if(attempt===authAttemptId && account?.signedIn && account.emailVerified)
+      if(attempt===authAttemptId && account?.signedIn &&
+         (account.emailVerified || playVirtualIdentityAllowed))
         showConnectionRecovery(error);
-      return {ok:false,msg:errText(error)};
+      const message = errText(error);
+      if (/supplied auth credential|invalid.credential|wrong.password|invalid.login.credentials/i.test(message))
+        return {ok:false,msg:'Email or password did not match. If you signed up with Google, use Google sign-in. Otherwise tap Forgot password.'};
+      return {ok:false,msg:message};
     }
   };
   let googleLoginBusy = false;
@@ -5452,8 +5544,10 @@
       return 'Google account picker did not respond. Close any Google popup and tap Continue with Google again.';
     if(message==='google_sign_in_in_progress')
       return 'Google sign-in is already opening. Please wait for the account picker or retry shortly.';
+    if(message==='google_sign_in_picker_retry')
+      return 'Google sign-in could not finish. Tap Continue with Google again to try another account picker.';
     if(message==='google_sign_in_cancelled'||/GetCredentialCancellationException/i.test(message))
-      return 'Google sign-in was cancelled. Tap Continue with Google to retry.';
+      return 'Google account selection closed without signing in. Tap Continue with Google to retry.';
     if(message==='google_account_not_available'||/NoCredentialException/i.test(message))
       return 'No Google account available. Add an account in Android settings and try again.';
     if(/Request timed out/i.test(message))
@@ -5481,7 +5575,8 @@
       finishVerifiedStartup();
     } catch (error) {
       if(attempt!==authAttemptId)return;
-      if(account?.signedIn && account.emailVerified)showConnectionRecovery(error);
+      if(account?.signedIn && (account.emailVerified || playVirtualIdentityAllowed))
+        showConnectionRecovery(error);
       else {
         const message=googleLoginError(error);
         toast(message);
@@ -5508,6 +5603,28 @@
     previousAuthRender();
     const google = document.getElementById('wg');
     if (google) google.onclick = googleLogin;
+    const reset = document.getElementById('af');
+    if (reset) reset.onclick = async function () {
+      if (reset.disabled) return;
+      const field = document.getElementById('aid');
+      const status = document.getElementById('ae');
+      const email = String(field?.value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (status) status.textContent = 'Enter your email address above to reset your password.';
+        return;
+      }
+      reset.disabled = true;
+      try {
+        await native('passwordReset', {email});
+        if (status) status.textContent =
+          'If this email has a password account, Firebase will send a reset link. Check your inbox and spam.';
+      } catch (error) {
+        if (status) status.textContent =
+          'Password reset is temporarily unavailable. Try again later.';
+      } finally {
+        reset.disabled = false;
+      }
+    };
     for (const id of ['wgs','ag']) {
       const guest = document.getElementById(id);
       if (guest) {
@@ -5861,7 +5978,35 @@
     }
     doc.body.appendChild(svg);
   }
-  async function syncFrame(room,frame) {
+  // Weak mobile connections can take longer than the eight-second member poll.
+  // A second poll must never invalidate an unfinished, otherwise valid first
+  // snapshot: doing so left the loading overlay visible indefinitely. Coalesce
+  // passive polls and allow a single fresh fetch after explicit seat/admin edits.
+  function syncFrame(room,frame,passive=false) {
+    if(!frame?.seats || window.cur?.id!==room.id || frame.__sharikaSeatMovePending)
+      return Promise.resolve();
+    const active=frame.__sharikaSeatSyncInFlight;
+    if(active){
+      if(passive)return active;
+      if(!frame.__sharikaSeatSyncRefresh){
+        const refresh=active.catch(()=>{}).then(()=>syncFrame(room,frame,true));
+        frame.__sharikaSeatSyncRefresh=refresh;
+        refresh.finally(()=>{
+          if(frame.__sharikaSeatSyncRefresh===refresh)
+            frame.__sharikaSeatSyncRefresh=null;
+        }).catch(()=>{});
+      }
+      return frame.__sharikaSeatSyncRefresh;
+    }
+    const work=syncFrameOnce(room,frame);
+    const tracked=work.finally(()=>{
+      if(frame.__sharikaSeatSyncInFlight===tracked)
+        frame.__sharikaSeatSyncInFlight=null;
+    });
+    frame.__sharikaSeatSyncInFlight=tracked;
+    return tracked;
+  }
+  async function syncFrameOnce(room,frame) {
     if (!frame || !frame.seats || !window.cur || window.cur.id !== room.id) return;
     // Out-of-order room polls cannot restore stale seats or old cosmetics.
     if(frame.__sharikaSeatMovePending)return;
@@ -6026,9 +6171,10 @@
     // A steady room used to rebuild every seat, avatar, overlay and touch
     // handler every 8 seconds even when the authoritative snapshot was equal.
     // Keep live speaking indicators responsive without repainting stable DOM.
+    // CSS handles viewport changes; the Android keyboard must not tear down
+    // all seat DOM nodes just because WebView reports a new innerHeight.
     const renderSignature=JSON.stringify([slots,audience,palette,sharedImage,roomCover,
-      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[],
-      frame.innerWidth,frame.innerHeight]);
+      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[]]);
     const snapshotChanged=frame.__sharikaRoomRenderSignature!==renderSignature;
     frame.seats=slots;
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
@@ -6711,6 +6857,7 @@
     let lastChatId=0,chatPollInFlight=null,chatSendBusy=false;
     let pendingChatMessage=null;
     let lastEntryEventId=0,entryPollInFlight=null;
+    const recentJoinNames=new Map();
     let lastReactionId=0,reactionPollInFlight=null;
     // Load only the real gift catalog approved in D1 by the admin panel.
     // Keep the existing original Sharika gift box and its original artwork.
@@ -6790,10 +6937,66 @@
         frame.gsel=Math.max(0,gifts.findIndex(g=>g.tab===frame.gtab));
         frame.G=gifts.map(g=>[htmlSafe(g.emoji||'🎁'),Number(g.price_coins),
           htmlSafe(g.name),Number(g.tab),imageSafe(g.image_url)]);
-        if(typeof originalGiftOpen==='function') {
-          originalGiftOpen.call(giftButton);
+        // The bundled room giftSheet() refuses to open when no guest is on a
+        // microphone. A real catalog must remain browseable in an empty room;
+        // never invent a recipient just to make the old modal render.
+        const hasMicRecipients=(frame.seats||[]).some(seat=>
+          Number(seat?.i)>0&&!seat.empty&&!seat.lock&&seat.public_id);
+        function showGiftCatalogWithoutMic(){
+          frame.rec=[];
+          frame.qty=1;
+          const target=directGiftTarget
+            ?'🎁 Send to '+htmlSafe(directGiftTarget.name)+' · ID '+htmlSafe(directGiftTarget.id)
+            :'Select an occupied microphone seat to send a gift. You can browse the catalog now.';
+          const tabs=[{tab:0,label:'🎁 Gifts'},{tab:1,label:'👑 Luxury'},
+            {tab:2,label:'🍀 Lucky'}].filter(item=>gifts.some(g=>g.tab===item.tab));
+          frame.open('<h3>🎁 Virtual gifts</h3><div class="row">'+target+'</div>'+
+            '<div class="gtabs">'+tabs.map(item=>'<button type="button" data-gt="'+
+              item.tab+'" class="sh-verified-gift-category">'+item.label+'</button>').join('')+
+            '</div><div class="gifts"></div><div class="gbar">'+
+            '<div class="qty"><button type="button" class="sel" data-q="1">x1</button>'+
+            '<button type="button" data-q="5">x5</button>'+
+            '<button type="button" data-q="10">x10</button></div>'+
+            '<button type="button" class="send" id="snd"'+
+            (directGiftTarget?'':' disabled')+'>Send 🚀</button></div>');
+          const sheet=frame.$('sheet');
+          const grid=sheet?.querySelector('.gifts');
+          if(!sheet||!grid)return;
+          const renderGifts=()=>{
+            if(!gifts.some(g=>g.tab===frame.gtab))frame.gtab=tabs[0].tab;
+            if(gifts[frame.gsel]?.tab!==frame.gtab)
+              frame.gsel=gifts.findIndex(g=>g.tab===frame.gtab);
+            grid.className='gifts c'+frame.gtab;
+            grid.innerHTML=gifts.map((gift,index)=>gift.tab!==frame.gtab?'':
+              '<button type="button" class="gf'+(index===frame.gsel?' sel':'')+'" data-k="'+
+              index+'"><span>'+(imageSafe(gift.image_url)
+                ?'<img src="'+imageSafe(gift.image_url)+'" alt="" width="46" height="46">'
+                :htmlSafe(gift.emoji||'🎁'))+'</span><b>'+htmlSafe(gift.name)+'</b>🪙 '+
+              Number(gift.price_coins).toLocaleString('en-US')+'</button>').join('');
+            sheet.querySelectorAll('.sh-verified-gift-category').forEach(button=>
+              button.classList.toggle('sel',Number(button.dataset.gt)===frame.gtab));
+            grid.querySelectorAll('.gf').forEach(button=>{
+              button.onclick=()=>{frame.gsel=Number(button.dataset.k);renderGifts();};
+            });
+          };
+          sheet.querySelectorAll('.sh-verified-gift-category').forEach(button=>{
+            button.onclick=()=>{frame.gtab=Number(button.dataset.gt);renderGifts();};
+          });
+          sheet.querySelectorAll('.qty button').forEach(button=>{
+            button.onclick=()=>{
+              frame.qty=Number(button.dataset.q);
+              sheet.querySelectorAll('.qty button').forEach(other=>
+                other.classList.toggle('sel',other===button));
+            };
+          });
+          renderGifts();
+        }
+        if(typeof originalGiftOpen==='function'||!hasMicRecipients) {
+          if(hasMicRecipients&&typeof originalGiftOpen==='function')
+            originalGiftOpen.call(giftButton);
+          else showGiftCatalogWithoutMic();
           decorateGiftRecipients(frame);
-          if(directGiftTarget) {
+          if(directGiftTarget&&hasMicRecipients) {
             // Replace the old seat-only recipient chips with the verified
             // selected person. Sending always uses this exact public ID.
             const selected=frame.document.createElement('div');
@@ -8627,7 +8830,14 @@
       }
     };
     wireSoveraRoomFrames(frame);
-    await loadVerifiedCosmetics().catch(error=>console.warn('Cosmetic art:',errText(error)));
+    // Catalogue artwork is optional. Do not hold verified seats, mic controls,
+    // or the room's first paint behind a slow /cosmetics request.
+    loadVerifiedCosmetics().then(()=>{
+      if(window.cur?.id!==room.id ||
+         document.getElementById('rf')?.contentWindow!==frame)return;
+      decorateRoomSeats(frame);
+      decorateRoomPeople(frame);
+    }).catch(error=>console.warn('Cosmetic art:',errText(error)));
     try {
       await syncFrame(room,frame);
     } catch(error) {
@@ -8654,6 +8864,15 @@
           if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
           lastEntryEventId=id;
           if(Date.now()-Number(event.created_at_ms)>20000)continue;
+          // A transient mobile reconnect can produce two genuine coordinator
+          // events for one member in a few seconds. Preserve the event cursor,
+          // but show only one arrival banner and animation for that burst.
+          const memberId=String(event.user_id||'');
+          const now=Date.now();
+          for(const [key,seenAt] of recentJoinNames)
+            if(now-seenAt>10000)recentJoinNames.delete(key);
+          if(memberId&&recentJoinNames.has(memberId))continue;
+          if(memberId)recentJoinNames.set(memberId,now);
           // Arrival comes from the room coordinator and verified Firebase identity.
           // Show the name in the existing chat feed, not a fabricated local user.
           const verifiedName=String(event.name||'Member').trim().slice(0,80);
@@ -8700,7 +8919,7 @@
     if(framePoll) clearInterval(framePoll);
     framePoll=setInterval(()=>{
       if(window.cur?.id!==room.id)return;
-      syncFrame(room,frame).catch(error=>{
+      syncFrame(room,frame,true).catch(error=>{
         if(errText(error)==='join_room_first') {
           window.leaveRoom();
           toast('The room owner removed you from the room');
@@ -8917,6 +9136,7 @@
         document.getElementById('mini')?.classList.remove('on');
         setRoomScreenAwake(true);
         resumeRoomAudio();
+        roomOpened=true;
         return;
       }
       showRoomJoining(room);
@@ -8990,10 +9210,22 @@
       const progress=roomWrap?.querySelector('#sh-room-joining-card small');
       if(progress)progress.textContent='Loading verified seats…';
       originalOpenRoom(room);
+      roomOpened=true;
     } catch(error) {
       toast(errText(error)==='room_locked'
         ?'🔒 This room is locked. Ask the Owner or Room Admin to unlock it.'
         :'Could not join: '+errText(error));
+    } finally {
+      // A verified join must not permanently block every later room tap.
+      // Leave/back invalidates the token, so an older request cannot clear
+      // the busy state of a newer navigation attempt.
+      if(roomEntryBusyToken===currentToken)roomEntryBusyToken=null;
+      if(!roomOpened&&currentToken===roomEntryToken){
+        hideRoomJoining();
+        const wrap=document.getElementById('rw');
+        wrap?.classList.remove('sh-room-awaiting');
+        if(!window.cur)wrap?.classList.remove('on');
+      }
     }
   };
   const originalLeaveRoom=window.leaveRoom;
@@ -9154,6 +9386,8 @@
   }
   let verifiedRechargeFetch=null;
   async function refreshVerifiedRechargeRate(){
+    await playModeReady;
+    if(playStoreMode!==false)return;
     if(!session)return;
     if(verifiedRechargeFetch)return verifiedRechargeFetch;
     verifiedRechargeFetch=(async()=>{
@@ -9257,7 +9491,7 @@
     document.head.appendChild(style);
   }
   async function showVerifiedCoinSellers({walletOnly=false,targetId=''}={}){
-    if(playStoreMode===true){toast('Seller recharge is unavailable in the Google Play edition.');return;}
+    if(playStoreMode!==false){toast('Seller recharge is unavailable in the Google Play edition.');return;}
     if(walletOnly)ensureSellerWalletStyle();
     window.openSheet('<h3>🪙 '+(walletOnly?'Seller Wallet':'Coin sellers')+
       '</h3><div id="sharika-seller-content">Loading verified seller data…</div>');
@@ -9475,7 +9709,9 @@
   // button there only for authenticated, approved sellers.
   let sellerWalletButtonCheck=false;
   function mountRechargeSellerWallet(){
-    if(playStoreMode===true)return;
+    // Unknown bridge mode is treated as Play until positively identified as
+    // staging; never flash a Seller Wallet shortcut during startup.
+    if(playStoreMode!==false)return;
     const listButton=document.querySelector('#rcp #rcl2');
     if(!listButton||!session?.user?.id||sellerWalletButtonCheck||
        listButton.previousElementSibling?.id==='sharika-recharge-seller-wallet')return;
@@ -9522,7 +9758,13 @@
       typeof row.title==='string'&&row.title.length<=80&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_a||'')&&
       /^#[0-9a-fA-F]{6}$/.test(row.color_b||'')&&
-      ['none','daily','recharge','rank','invite','apply'].includes(row.action)).slice(0,10):[];
+      ['none','daily','recharge','rank','invite','apply'].includes(row.action)&&
+      // Older seller/third-party recharge artwork is for private staging.
+      // Do not advertise it in the Play edition, even during startup.
+      (playStoreMode===false ||
+       (row.action!=='recharge' &&
+        !/\b(?:coin seller|recharge|salary|cash.?out|withdraw|commission|cash reward|money transfer|payout|earn money)\b/i.test(
+          row.title+' '+String(row.subtitle||''))))).slice(0,10):[];
     const cards=approved.map(row=>({
       t:row.title,s:String(row.subtitle||'').slice(0,160),
       e:String(row.emoji||'🎉').slice(0,12),
@@ -9533,6 +9775,7 @@
     // Draft, cancelled and expired campaigns are never advertised here.
     const campaigns=Array.isArray(eventList)?eventList.filter(event=>
       event&&event.published&&['live','scheduled'].includes(event.status)&&
+      (playStoreMode===false || event.kind!=='game_tournament')&&
       Number.isSafeInteger(event.id)&&event.id>0).slice(0,6):[];
     for(const event of campaigns){
       const imagePath=typeof event.banner_image_url==='string'?
@@ -9575,6 +9818,7 @@
       eventResult.status==='fulfilled'?eventResult.value.events:[]);
   }
   renderVerifiedBanners([]);
+  playModeReady.then(()=>refreshVerifiedBanners()).catch(()=>{});
   setInterval(()=>{
     if(session&&document.getElementById('v-home')?.classList.contains('on'))
       refreshVerifiedBanners().catch(error=>console.warn('Event banner refresh:',errText(error)));
@@ -10400,51 +10644,15 @@
     root.id='sh-invite-page';
     root.innerHTML='<div class="sh-invite-head">'+
       '<button class="sh-invite-back" type="button" aria-label="Close invites">‹</button>'+
-      '<div><div class="sh-invite-kicker">✦ SHARIKA ✦</div><h1>👑 Invite Friends</h1></div></div>'+
+      '<div><div class="sh-invite-kicker">✦ SHARIKA ✦</div><h1>👑 Virtual-only edition</h1></div></div>'+
       '<div class="sh-invite-panel">'+
-      '<h2 class="sh-invite-title">Your verified invite code</h2>'+
-      '<div id="sh-play-invite-code" style="font-size:32px;font-weight:900;color:#ffe09e">…</div>'+
-      '<p id="sh-play-invite-info" class="sh-invite-sub">Loading rewards…</p>'+
-      '<button id="sh-play-copy" class="sh-invite-gold" type="button">Copy Invite Link</button>'+
-      '<button id="sh-play-share" class="sh-invite-gold" type="button">Share Invite</button>'+
-      '<div id="sh-play-invite-claim" style="margin-top:24px">'+
-      '<label for="sh-play-friend-code">Enter a friend’s invite code</label>'+
-      '<input id="sh-play-friend-code" class="sh-invite-entry" inputmode="numeric" maxlength="8" />'+
-      '<button id="sh-play-claim" class="sh-invite-gold" type="button">Confirm Code</button></div>'+
-      '<p id="sh-play-invite-status" role="status" class="sh-invite-alert"></p></div>';
+      '<h2 class="sh-invite-title">No cash or referral rewards</h2>'+
+      '<p class="sh-invite-sub">This edition does not provide invite bonuses, cash commissions, withdrawals or seller transfers. You can still enjoy social rooms and virtual gifts.</p></div>';
     document.body.append(root);
     root.querySelector('.sh-invite-back').onclick=()=>root.remove();
-    const status=root.querySelector('#sh-play-invite-status');
-    try {
-      const info=await api('GET','/invites');
-      if(!root.isConnected)return;
-      const code=String(info.invite_code||'');
-      if(!/^[0-9]{8}$/.test(code))throw Error('Verified invite code unavailable');
-      root.querySelector('#sh-play-invite-code').textContent=code;
-      root.querySelector('#sh-play-invite-info').textContent=
-        'Both friends can receive '+Number(info.signup_inviter_reward||0).toLocaleString('en-US')+
-        ' and '+Number(info.signup_invitee_reward||0).toLocaleString('en-US')+
-        ' bonus coins through an eligible verified invitation.';
-      root.querySelector('#sh-play-copy').onclick=async()=>{
-        try{await native('copyInviteLink',{code});status.textContent='Invite link copied ✓';}
-        catch(error){status.textContent=errText(error);}
-      };
-      root.querySelector('#sh-play-share').onclick=async()=>{
-        try{await native('shareInvite',{text:'Join me on Sharika Voice Chat! '+PUBLIC_INVITE_URL+code});}
-        catch(error){status.textContent=errText(error);}
-      };
-      if(!info.claim_eligible)root.querySelector('#sh-play-invite-claim').remove();
-      else root.querySelector('#sh-play-claim').onclick=async()=>{
-        try {
-          const field=root.querySelector('#sh-play-friend-code');
-          const result=await redeemVerifiedInvite(field.value.trim());
-          status.textContent='Invite verified! +'+Number(result.invitee_extra_coins||0).toLocaleString('en-US')+' coins ✓';
-          root.querySelector('#sh-play-invite-claim')?.remove();
-        }catch(error){status.textContent=errText(error);}
-      };
-    }catch(error){if(root.isConnected)status.textContent='Invite unavailable: '+errText(error);}
   }
   async function showVerifiedInviteSheet(){
+    await playModeReady;
     if(playStoreMode===true)return showPlayInviteSheet();
     if(!session){window.showAuth('welcome');return;}
     verifiedInviteStyles();
@@ -12294,6 +12502,7 @@
   }
   let rankingRequest=0;
   function openRoyalRankingRewardCenter(){
+    if(playStoreMode!==false)return toast('Prize rankings are not available in this edition.');
     if(!session){window.showAuth('welcome');return;}
     const kinds={0:'lucky',1:'rich',2:'charm',3:'room',4:'noble',5:'games',6:'recharge'};
     const kind=kinds[window.rtab];
@@ -12685,8 +12894,8 @@
   }
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
-    if(playStoreMode===true){
-      showToast('Coin betting games are not available in the Google Play edition.');
+    if(playStoreMode===null){
+      playModeReady.then(()=>showGameCard(doc,insideRoom,showToast));
       return;
     }
     const portal=insideRoom?ensureRoomGamePortal(doc):null;
@@ -12694,9 +12903,11 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
-    // The server catalog is authoritative. Never hide a newly enabled original
-    // game behind a second, stale client-side allowlist.
-    let visibleGameCards=originalGameCards.slice();
+    // Reuse the existing verified Greedy Wheel asset and server bridge.
+    // Keep the other legacy game assets and ledgers intact; they are no longer
+    // selectable in the only Games entry point.
+    const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel');
+    let visibleGameCards=[greedyGame];
     function catalog(){
       if(portal)sheet.style.height='';
       overlay.classList.remove('sh-original-fullscreen');
@@ -12889,7 +13100,8 @@
       if(!data||typeof data!=='object')return;
       if(current.item.id==='greedy-wheel'){
         if(data.source==='greedy-game'&&data.type==='close'){
-          currentGameFrame=null;clearWinnerBanner();catalog();return;
+          view.__sharikaOriginalGameCleanup?.();
+          overlay.classList.remove('on');return;
         }
         if(data.source==='greedy-game'&&data.type==='topup'){
           showToast('Open Wallet from your profile to recharge');return;
@@ -12969,13 +13181,20 @@
       sheet.classList.remove('sh-game-catalog-sheet');
     };
     overlay.classList.add('on');
+    if(playStoreMode===true){
+      // The Play Worker and Android bridge independently allow only this one
+      // non-cash-redeemable, server-settled game. The game is opened directly,
+      // so the blocked Play catalog route is never requested.
+      preview(greedyGame);
+      return;
+    }
     sheet.innerHTML='<div class="grab"></div><p style="padding:20px;text-align:center">Loading available games…</p>';
     const catalogRequestNo=++gameCatalogRequestSequence;
     api('GET','/game-catalog').then(result=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=originalGameCards.filter(game=>enabled.has(game.id));
+      visibleGameCards=[greedyGame].filter(game=>enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
@@ -13010,8 +13229,11 @@
     const tabs=document.getElementById('sh-week-tabs');
     const list=document.getElementById('sh-week-list');
     if(!tabs||!list)return;
-    const options=[
+    const options=playStoreMode===false?[
       {kind:'recharge',title:'Top Recharge'},
+      {kind:'charm',title:'Top Gift'},
+      {kind:'room',title:'Top Room'}
+    ]:[
       {kind:'charm',title:'Top Gift'},
       {kind:'room',title:'Top Room'}
     ];
@@ -13060,7 +13282,7 @@
       tabs.appendChild(button);
       buttons.set(option.kind,button);
     }
-    select('recharge');
+    select(playStoreMode===false?'recharge':'charm');
   };
 
   // Real Notifications inbox. Official notices/rewards/gifts/events are not chats.
@@ -13130,7 +13352,9 @@
     notificationPanel.setAttribute('aria-label','Notifications');
     notificationPanel.innerHTML='<div class="sh-notify-head">'+
       '<button class="sh-notify-action" type="button" id="sh-notify-back">‹ Back</button>'+
-      '<div><h2>🔔 Notifications</h2><p>Receipts · recharge · shop · Family · BD · official notices</p></div>'+
+      '<div><h2>🔔 Notifications</h2><p>'+
+      (playStoreMode===false?'Receipts · recharge · shop · Family · BD · official notices':
+        'Gifts · friends · community updates · official notices')+'</p></div>'+
       '</div><div class="sh-notify-head">'+
       '<span id="sh-notify-unread"></span>'+
       '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
@@ -13285,7 +13509,8 @@
     try{
       account=await native('session');
       if(attempt!==authAttemptId)return;
-      if(!account.signedIn || !account.emailVerified) {
+      await playModeReady;
+      if(!account.signedIn || (!account.emailVerified && !playVirtualIdentityAllowed)) {
         document.getElementById('sh-login-recovery')?.remove();
         window.showAuth('welcome');
         if(account.signedIn)toast('Verify your email, then sign in');

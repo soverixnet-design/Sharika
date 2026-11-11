@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "847262470616-6vfccbhp47ob127gsrhht5hitec23253.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.soverixnet.sharika",
+            "certificate_hash": "92319cca8047ae763b5977aac4a0621ec7221e57"
+          }
+        },
+        {
           "client_id": "847262470616-hsc314ms3rrld9v07u4peblne1tadddh.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

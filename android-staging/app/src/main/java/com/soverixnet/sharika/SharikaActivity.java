@@ -57,6 +57,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException;
 import androidx.credentials.exceptions.NoCredentialException;
 
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.GoogleAuthProvider;
@@ -91,7 +92,7 @@ import java.util.concurrent.Executors;
  * The current feature branch is an isolated staging candidate, not production.
  */
 public final class SharikaActivity extends Activity {
-    private static final String STAGING_API = BuildConfig.SHARIKA_API_ORIGIN;
+    private static final String API_ORIGIN = BuildConfig.SHARIKA_API_ORIGIN;
     private static final int MIC_PERMISSION_REQUEST = 3412;
     private static final int IMAGE_PICKER_REQUEST = 3413;
     private static final int PROFILE_PHOTO_PICKER_REQUEST = 3414;
@@ -119,6 +120,9 @@ public final class SharikaActivity extends Activity {
     private static final long GOOGLE_SIGN_IN_TIMEOUT_MS = 45000L;
     private final Handler googleHandler = new Handler(Looper.getMainLooper());
     private boolean googlePending;
+    // A cancellation can also mean the explicit Google provider UI could not
+    // complete. Only the NEXT user tap may try the alternative account picker.
+    private boolean googleTryAccountChooserNext;
     private int googleAttempt;
     private long googleStartedAtMs;
     private String googleRequestId;
@@ -361,7 +365,7 @@ public final class SharikaActivity extends Activity {
         boolean custom="sharika".equals(uri.getScheme()) && "invite".equals(uri.getHost()) &&
             uri.getPathSegments().size()==1;
         boolean web="https".equals(uri.getScheme()) &&
-            "sharika-api-staging.soverixnet.workers.dev".equals(uri.getHost()) &&
+            Uri.parse(API_ORIGIN).getHost().equals(uri.getHost()) &&
             uri.getPathSegments().size()==2 && "invite".equals(uri.getPathSegments().get(0));
         if(!custom&&!web)return;
         String code=uri.getLastPathSegment();
@@ -810,6 +814,7 @@ public final class SharikaActivity extends Activity {
                 break;
             case "emailSignIn": emailSignIn(id, data); break;
             case "emailSignUp": emailSignUp(id, data); break;
+            case "passwordReset": passwordReset(id, data); break;
             case "googleSignIn": googleSignIn(id); break;
             case "signOut":
                 auth.signOut();
@@ -919,7 +924,7 @@ public final class SharikaActivity extends Activity {
                 android.content.ClipboardManager linkClipboard=
                     (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
                 linkClipboard.setPrimaryClip(android.content.ClipData.newPlainText(
-                    "Sharika invitation",STAGING_API+"/invite/"+linkCode));
+                    "Sharika invitation",API_ORIGIN+"/invite/"+linkCode));
                 sendResult(id,result(true,object(),null));
                 break;
             case "shareInvite":
@@ -969,6 +974,21 @@ public final class SharikaActivity extends Activity {
         });
     }
 
+    private void passwordReset(String id, JSONObject data) {
+        // Firebase owns password recovery; never expose whether this email has an account.
+        String email = data.optString("email", "").trim();
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            sendResult(id, result(false, null, "valid_email_required"));
+            return;
+        }
+        auth.sendPasswordResetEmail(email).addOnCompleteListener(this, task -> {
+            if (task.isSuccessful())
+                sendResult(id, result(true, object(), null));
+            else
+                sendResult(id, result(false, null, "password_reset_unavailable_try_later"));
+        });
+    }
+
     private void emailSignUp(String id, JSONObject data) {
         String email = data.optString("email", "").trim();
         String password = data.optString("password", "");
@@ -982,6 +1002,13 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(false, null, safe(task.getException())));
                 return;
             }
+            // In the isolated Play virtual-only test edition, Firebase's
+            // password credential is enough to start a virtual profile.
+            // The standard staging build retains email verification.
+            if (isIsolatedPlayVirtualBuild()) {
+                sendResult(id, result(true, identity(user), null));
+                return;
+            }
             user.sendEmailVerification().addOnCompleteListener(this, sent -> {
                 JSONObject account = identity(user);
                 try { account.put("verificationSent", sent.isSuccessful()); }
@@ -989,6 +1016,15 @@ public final class SharikaActivity extends Activity {
                 sendResult(id, result(true, account, null));
             });
         });
+    }
+
+    // Only the isolated non-redeemable Play testing app may send a valid
+    // Firebase ID token before email verification. Its separate Worker still
+    // verifies the token and independently enforces the isolated D1 gate.
+    // All staging and production endpoints retain their verification rule.
+    private static boolean isIsolatedPlayVirtualBuild() {
+        return BuildConfig.SHARIKA_PLAY_BUILD &&
+            "https://sharika-api-play-virtual.soverixnet.workers.dev".equals(BuildConfig.SHARIKA_API_ORIGIN);
     }
 
     // Credential Manager may never call back when an Android provider/picker
@@ -1026,6 +1062,8 @@ public final class SharikaActivity extends Activity {
             return;
         }
         googlePending = true;
+        final boolean useAccountChooser = googleTryAccountChooserNext;
+        googleTryAccountChooserNext = false;
         googleStartedAtMs = SystemClock.elapsedRealtime();
         googleRequestId = id;
         final int attempt = ++googleAttempt;
@@ -1034,10 +1072,20 @@ public final class SharikaActivity extends Activity {
         googleTimeout = () -> expireGoogleSignIn(attempt);
         googleHandler.postDelayed(googleTimeout, GOOGLE_SIGN_IN_TIMEOUT_MS);
         try {
-            GetSignInWithGoogleOption option = new GetSignInWithGoogleOption.Builder(
-                getString(R.string.default_web_client_id)).build();
-            GetCredentialRequest request = new GetCredentialRequest.Builder()
-                .addCredentialOption(option).build();
+            GetCredentialRequest.Builder builder = new GetCredentialRequest.Builder();
+            if (useAccountChooser) {
+                // This Firebase-supported picker can show all device accounts.
+                // Never auto-select or retry after consent is not obtained.
+                builder.addCredentialOption(new GetGoogleIdOption.Builder()
+                    .setServerClientId(getString(R.string.default_web_client_id))
+                    .setFilterByAuthorizedAccounts(false)
+                    .setAutoSelectEnabled(false)
+                    .build());
+            } else {
+                builder.addCredentialOption(new GetSignInWithGoogleOption.Builder(
+                    getString(R.string.default_web_client_id)).build());
+            }
+            GetCredentialRequest request = builder.build();
             credentials.getCredentialAsync(
                 this, request, cancellation, this::runOnUiThread,
                 new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
@@ -1066,8 +1114,14 @@ public final class SharikaActivity extends Activity {
                         }
                     }
                     @Override public void onError(GetCredentialException error) {
+                        // Android documents that "cancellation" can be a
+                        // provider/configuration failure, not a user dismissal.
+                        // A second attempt requires a fresh user tap.
+                        if (error instanceof GetCredentialCancellationException &&
+                            !useAccountChooser) googleTryAccountChooserNext = true;
                         final String message = error instanceof GetCredentialCancellationException
-                            ? "google_sign_in_cancelled" :
+                            ? (useAccountChooser ? "google_sign_in_cancelled" :
+                                "google_sign_in_picker_retry") :
                             error instanceof NoCredentialException
                             ? "google_account_not_available" : safe(error);
                         finishGoogleSignIn(attempt, result(false,null,message));
@@ -1091,6 +1145,20 @@ public final class SharikaActivity extends Activity {
             !(method.equals("GET") || method.equals("POST") ||
               method.equals("PATCH") || method.equals("PUT") || method.equals("DELETE")))
             return false;
+        // Apply Play restrictions before every allowed route. In particular,
+        // the family Crystal transfer is whitelisted further below and must
+        // never return early before this test-only finance gate executes.
+        if (BuildConfig.SHARIKA_PLAY_BUILD) {
+            if (path.matches("^/api/v1/(admin|agency|family|invites|sellers|games|original-games|fruit-royale|game-catalog|lucky-box|events|role-applications)(/.*|\\?.*)?$") ||
+                path.matches("^/api/v1/rankings(?:/rewards)?\\?.*kind=(games|recharge|lucky)(?:&.*)?$") ||
+                path.equals("/api/v1/celebrations") ||
+                path.matches("^/api/v1/(games|original-games)/[^/]+/bet$") ||
+                path.equals("/api/v1/sellers") ||
+                path.startsWith("/api/v1/sellers/") ||
+                path.equals("/api/v1/invites/withdrawals") ||
+                path.equals("/api/v1/family/crystal/transfer") ||
+                path.equals("/api/v1/agency/salary/transfer")) return false;
+        }
         // A fixed-origin bridge, with explicit route/method allowlisting.
         // No /admin, arbitrary URLs, billing, redirects or platform credentials.
         if (path.matches("^/api/v1/rankings\\?period=(daily|weekly|monthly)&kind=(lucky|rich|charm|room|noble|games|recharge)$"))
@@ -1172,14 +1240,6 @@ public final class SharikaActivity extends Activity {
             path.equals("/api/v1/cosmetics/equip")) return method.equals("POST");
         if (path.equals("/api/v1/music-library")) return method.equals("GET");
         if (path.equals("/api/v1/wallet")) return method.equals("GET");
-        if (BuildConfig.SHARIKA_PLAY_BUILD) {
-            // The Play build does not expose seller recharge, cash withdrawals,
-            // or real-coin betting. Staging remains unchanged.
-            if (path.matches("^/api/v1/(games|original-games)/[^/]+/bet$") ||
-                path.equals("/api/v1/greedy-wheel/bet") ||
-                path.equals("/api/v1/sellers/transfer") ||
-                path.equals("/api/v1/invites/withdrawals")) return false;
-        }
         if (path.equals("/api/v1/play-billing/catalog")) return method.equals("GET");
         if (path.equals("/api/v1/play-billing/claim"))
             return BuildConfig.SHARIKA_PLAY_BUILD && method.equals("POST");
@@ -1308,7 +1368,7 @@ public final class SharikaActivity extends Activity {
         // A Firebase-issued ID token is validated by the Worker for every
         // API request. Do not also block all wallet/room requests on a
         // periodic network reload; that made a successful login appear lost.
-        if (user.isEmailVerified()) {
+        if (user.isEmailVerified() || isIsolatedPlayVirtualBuild()) {
             requestStagingToken(id, method, path, data, user);
             return;
         }
@@ -1360,7 +1420,7 @@ public final class SharikaActivity extends Activity {
     private void stageHttp(String id, String method, String path, JSONObject body, String jwt) {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(STAGING_API + path).openConnection();
+            connection = (HttpURLConnection) new URL(API_ORIGIN + path).openConnection();
             connection.setRequestMethod(method);
             // Photo uploads carry an optimized JPEG across a mobile connection.
             // Keep normal requests short, but allow a slower gallery save to

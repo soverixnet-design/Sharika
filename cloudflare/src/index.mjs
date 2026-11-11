@@ -45,6 +45,8 @@ import {searchVerifiedRooms} from './room-search.mjs';
 import {readRankingRewardPreview} from './ranking-rewards.mjs';
 import {handleRoleApplicationApp} from './role-applications.mjs';
 import {readPublicShowcase} from './profile-showcase.mjs';
+import {playVirtualOnly,playVirtualConfigured,playVirtualRouteBlocked} from './play-virtual-only.mjs';
+import {reserveGlobalPublicNo} from './global-public-ids.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -197,6 +199,13 @@ async function createVoiceToken(env, uid, room, publish, owner) {
 export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+  // This mode belongs to an independent Play Worker and D1, NEVER the shared
+  // staging/production economy. Reject before identity, database or writes.
+  if ((playVirtualOnly(env)||env.SHARIKA_PLAY_ISOLATED_DATA==='true') &&
+      !playVirtualConfigured(env))
+    return fail('play_virtual_only_not_configured',503);
+  if (playVirtualOnly(env) && playVirtualRouteBlocked(path,url.search))
+    return fail('play_virtual_only_feature_unavailable',403);
   // Public invitation landing must load without a Firebase session.
   // No wallet or invite database write is performed on GET.
   const inviteLanding=handleInviteLanding(request,path);
@@ -310,7 +319,9 @@ export async function handleRequest(request, env, ctx) {
     if (!env.DB) return fail('database_unavailable', 503, cors);
     try {
       await env.DB.prepare('SELECT 1 AS ok').first();
-      return reply({ ok: true, service: 'sharika-cloudflare-staging', environment: 'staging',
+      return reply({ ok: true,
+        service: playVirtualOnly(env)?'sharika-cloudflare-play-virtual':'sharika-cloudflare-staging',
+        environment: playVirtualOnly(env)?'play_virtual':'staging',
         auth_configured: !!env.FIREBASE_PROJECT_ID }, 200, cors);
     } catch (_) { return fail('database_unavailable', 503, cors); }
   }
@@ -318,7 +329,12 @@ export async function handleRequest(request, env, ctx) {
   let actor;
   try { actor = await verifyFirebaseToken(request.headers.get('authorization'), env.FIREBASE_PROJECT_ID); }
   catch (_) { return fail('identity_provider_unavailable', 503, cors); }
-  if (!actor || !actor.verified) return fail('not_authenticated', 401, cors);
+  // The isolated Play closed-test Worker has a separate D1 and no cash
+  // redemption. It may create a virtual test profile from a valid Firebase
+  // email/password token before email verification. Other environments must
+  // continue to require a verified email identity.
+  if (!actor || (!actor.verified && !playVirtualConfigured(env)))
+    return fail('not_authenticated', 401, cors);
 
   const uid = actor.uid;
   // Per-user edge throttling for sensitive state changes; safe read-only
@@ -415,12 +431,15 @@ export async function handleRequest(request, env, ctx) {
         const {member}=await roomAndMember(env.DB,roomId,uid);
         if(!member)return fail('join_room_first',403,cors);
       }
-      const coordinator=env.VOICE_ROOMS.getByName('sharika:presence:staging');
+      const coordinator=env.VOICE_ROOMS.getByName(playVirtualOnly(env)
+        ?'sharika:presence:play-virtual':'sharika:presence:staging');
       await coordinator.presenceTouch(uid,roomId);
       // Activity accounting is best-effort: reporting must never prevent a
       // verified listener from keeping voice-room presence alive.
-      try{await recordAgencyRoomActivity(env.DB,uid,roomId);}
-      catch(error){console.warn('agency_activity_write_failed',String(error));}
+      if(!playVirtualOnly(env)){
+        try{await recordAgencyRoomActivity(env.DB,uid,roomId);}
+        catch(error){console.warn('agency_activity_write_failed',String(error));}
+      }
       return reply({ok:true,window_seconds:90},200,cors);
     }
     if(path === '/api/v1/me/avatar' && request.method==='PUT') {
@@ -531,28 +550,35 @@ export async function handleRequest(request, env, ctx) {
         const country = txt(body.country, 16);
         const pic = txt(body.pic, 2048) || null;
         // A referral may only be attributed at initial account registration.
-        const referral=await resolveInviter({
+        const virtualOnly=playVirtualOnly(env);
+        const referral=virtualOnly?{inviter:null}:await resolveInviter({
           db:env.DB,uid,inviteCode:body.invite_code,fail,cors
         });
         if(referral.error)return referral.error;
-        const rules=await readInviteRules(env.DB);
-        const deviceDigest=await inviteDeviceDigest(request,env);
-        const device=await inviteDeviceBinding(env.DB,uid,deviceDigest);
+        const rules=virtualOnly?null:await readInviteRules(env.DB);
+        const deviceDigest=virtualOnly?null:await inviteDeviceDigest(request,env);
+        const device=virtualOnly?{eligible:false,statements:[]}:await inviteDeviceBinding(env.DB,uid,deviceDigest);
         const inviterDevice=referral.inviter?await env.DB.prepare('SELECT device_digest,invite_eligible '+
           'FROM sharika_invite_devices WHERE user_uid=?').bind(referral.inviter.auth_uid).first():null;
         const verifiedReferral=!!(referral.inviter&&device.eligible&&
           inviterDevice?.invite_eligible===1&&inviterDevice.device_digest!==deviceDigest);
-        const welcomeCoins=signupCoins(verifiedReferral,rules);
+        const welcomeCoins=signupCoins(verifiedReferral,...(virtualOnly?[]:[rules]));
+        // Both Workers reserve through the same staging-backed identity
+        // registry. Never fall back to isolated MAX(public_no)+1 allocation:
+        // that gave two distinct Firebase identities the same displayed ID.
+        let globalPublicNo;
+        try {
+          globalPublicNo = await reserveGlobalPublicNo(env.SHARIKA_ID_DB,uid,
+            virtualOnly?'play_virtual':'staging');
+        } catch (error) {
+          console.error(JSON.stringify({event:'public_id_reservation_failed',
+            reason:error instanceof Error?error.message:'unknown'}));
+          return fail('public_id_registry_unavailable',503,cors);
+        }
         const registration=[
           env.DB.prepare(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,country,pic,coins)
-            VALUES((WITH RECURSIVE candidate(n) AS (
-              SELECT COALESCE(MAX(public_no),10000000)+1 FROM sharika_users
-              UNION ALL
-              SELECT n+1 FROM candidate
-              WHERE EXISTS (SELECT 1 FROM sharika_special_ids
-                WHERE special_id=CAST(candidate.n AS TEXT))
-            ) SELECT n FROM candidate ORDER BY n DESC LIMIT 1),?,?,?,?,?,?,?)`)
-            .bind(uid,name,body.birthdate,age<18?1:0,country,pic,welcomeCoins),
+            VALUES(?,?,?,?,?,?,?,?)`)
+            .bind(globalPublicNo,uid,name,body.birthdate,age<18?1:0,country,pic,welcomeCoins),
           env.DB.prepare(`INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id)
             VALUES(?,'coins',?,?,?,?)`)
             .bind(uid,welcomeCoins,welcomeCoins,verifiedReferral?'signup_invited':'signup_welcome','signup:'+uid)
@@ -923,7 +949,7 @@ export async function handleRequest(request, env, ctx) {
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {
       const viewer = await assertActive(env.DB, uid);
-      const luckyAllowed = env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
+      const luckyAllowed = !playVirtualOnly(env) && env.SHARIKA_LUCKY_GIFTS_ENABLED === 'true' &&
         nonRedeemableLuckyEconomy(env) && !viewer.minor && ageFromDate(viewer.birthdate) >= 18;
       const result = await env.DB.prepare(
         'SELECT id,name,emoji,tab,price_coins,image_url,animation_url,audio_url ' +
@@ -942,10 +968,12 @@ export async function handleRequest(request, env, ctx) {
     }
     if (path === '/api/v1/wallet' && request.method === 'GET') {
       await assertActive(env.DB, uid);
-      await settleDueBets(env.DB,uid);
-      await settleOriginalDueBets(env.DB);
-      await settleGreedyDueBets(env.DB);
-      await settleFruitDueBets(env.DB);
+      if(!playVirtualOnly(env)){
+        await settleDueBets(env.DB,uid);
+        await settleOriginalDueBets(env.DB);
+        await settleGreedyDueBets(env.DB);
+        await settleFruitDueBets(env.DB);
+      }
       const user = await me(env.DB,uid);
       const rows = await env.DB.prepare(`SELECT id,currency,delta,balance_after,reason,created_at
         FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 40`).bind(uid).all();
@@ -1150,7 +1178,22 @@ export async function handleRequest(request, env, ctx) {
         const name = txt(data.name, 100);
         if (!name) return fail('invalid_room_name', 400, cors);
         const seatCount = Number.isInteger(data.seat_count) && data.seat_count >= 1 && data.seat_count <= 20 ? data.seat_count : 12;
-        const roomId = publicId(user.public_no);
+        // Legacy Play room IDs are deliberately NOT rewritten during the UID
+        // migration: their messages, gift history, and membership reference
+        // the old room ID. A different user may later receive the matching
+        // canonical public number, so the room namespace must be independent.
+        let roomId = publicId(user.public_no);
+        const takenRoom=await env.DB.prepare('SELECT id FROM sharika_rooms WHERE id=?')
+          .bind(roomId).first();
+        if(takenRoom){
+          const nextRoom=await env.DB.prepare(
+            'SELECT COALESCE(MAX(CAST(id AS INTEGER)),10000000)+1 AS next_no FROM sharika_rooms'
+          ).first();
+          const available=Number(nextRoom?.next_no);
+          if(!Number.isSafeInteger(available)||available>99999999||available<10000001)
+            return fail('room_id_unavailable',409,cors);
+          roomId=publicId(available);
+        }
         await env.DB.batch([
           env.DB.prepare('INSERT INTO sharika_rooms(id,owner_id,name,emoji,theme,seat_count) VALUES(?,?,?,?,?,?)')
             .bind(roomId, uid, name, txt(data.emoji, 16) || '🎙️', txt(data.theme, 32) || 'mid', seatCount),
@@ -1482,24 +1525,34 @@ export async function handleRequest(request, env, ctx) {
         // event. Prior chat, gift receipts and entries stay in the audit
         // store, but this visitor cannot replay them even with after=0.
         if(env.VOICE_ROOMS){
-          // These reads are independent. Serial D1 round-trips delayed the
-          // first room entry on mobile networks even after authorization.
-          const [latestGift,entrant,equipped,svipLevel]=await Promise.all([
-            env.DB.prepare('SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?')
-              .bind(roomId).first(),
+          // The gift cursor is security-sensitive: finish it and establish
+          // the visitor's private message boundary BEFORE returning a join.
+          // Entry cosmetics are independent and must not add three more D1
+          // reads plus a second Durable Object round-trip to mobile latency.
+          const latestGift=await env.DB.prepare(
+            'SELECT COALESCE(MAX(id),0) AS id FROM sharika_gift_events WHERE room_id=?'
+          ).bind(roomId).first();
+          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
+          await coordinator.beginRoomVisit(uid,Number(latestGift?.id)||0);
+          const entryDetails=Promise.all([
             assertActive(env.DB,uid),
             readEquipped(env.DB,uid),
             readSvipLevel(env.DB,uid)
           ]);
-          const coordinator=env.VOICE_ROOMS.getByName('sharika:'+roomId);
-          await coordinator.beginRoomVisit(uid,Number(latestGift?.id)||0);
-          const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
-            ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
-              ?'svip-entry-'+String(svipLevel).padStart(2,'0')
-              :(entrant.entry_style||'');
-          // Record every verified join, including users without a paid entry effect.
-          await coordinator.roomEntryAnnounce(
-            uid,publicId(entrant.public_no),txt(entrant.name,80)||'Member',entry||'standard');
+          const announceEntry=entryDetails.then(async ([entrant,equipped,svipLevel])=>{
+            const entry=Object.prototype.hasOwnProperty.call(equipped,'entry_style')
+              ?equipped.entry_style:svipLevel>=1&&svipLevel<=8
+                ?'svip-entry-'+String(svipLevel).padStart(2,'0')
+                :(entrant.entry_style||'');
+            // Genuine join notices still reach every active attendee; the
+            // visual effect may load after the verified room has opened.
+            await coordinator.roomEntryAnnounce(
+              uid,publicId(entrant.public_no),txt(entrant.name,80)||'Member',entry||'standard');
+          });
+          if(typeof ctx?.waitUntil==='function'){
+            ctx.waitUntil(announceEntry.catch(error=>
+              console.warn('sharika_room_entry_announcement_delayed',error.message)));
+          }else await announceEntry;
         }
         return reply({ member: saved, owner: room.owner_id === uid }, 200, cors);
       }
@@ -1574,7 +1627,7 @@ export async function handleRequest(request, env, ctx) {
           'FROM sharika_regular_room_rewards WHERE room_id=?'
         ).bind(roomId).first();
         const regularPoints=Number(regular?.points)||0;
-        const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
+        const luckyEnabled=!playVirtualOnly(env)&&env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
           nonRedeemableLuckyEconomy(env);
         const lucky=luckyEnabled?await env.DB.prepare(
           'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
@@ -1623,7 +1676,7 @@ export async function handleRequest(request, env, ctx) {
           const giftAfter=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
             .roomGiftAfter(uid);
           if(giftAfter===null)return reply({events:[]},200,cors);
-          const luckyEnabled=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
+          const luckyEnabled=!playVirtualOnly(env)&&env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
             nonRedeemableLuckyEconomy(env);
           const rows=await env.DB.prepare(
             'SELECT e.id,e.transaction_id,e.quantity,e.price_coins,e.created_at,'+
@@ -1682,7 +1735,7 @@ export async function handleRequest(request, env, ctx) {
               "AND currency='coins' AND reason='room_gift_reward' "+
               "AND request_id=('roomgift:'||?)"
             ).bind(room.owner_id,existing.id).first();
-            const outcome=env.SHARIKA_LUCKY_GIFTS_ENABLED==='true'
+            const outcome=!playVirtualOnly(env)&&env.SHARIKA_LUCKY_GIFTS_ENABLED==='true'
               ?await env.DB.prepare(
                 'SELECT payout_coins,max_multiplier FROM sharika_lucky_gift_outcomes WHERE transaction_id=?'
               ).bind(existing.id).first():null;
@@ -1700,6 +1753,8 @@ export async function handleRequest(request, env, ctx) {
             'WHERE id=? AND active=1 AND tab IN (0,1,2)'
           ).bind(giftId).first();
           if(!gift)return fail('gift_unavailable',404,cors);
+          if(playVirtualOnly(env)&&gift.tab===2)
+            return fail('play_virtual_only_feature_unavailable',403,cors);
           const recipients=await env.DB.prepare(
             'SELECT u.auth_uid,u.public_no,u.status,u.diamonds FROM sharika_users u '+
             'JOIN sharika_room_members m ON m.user_id=u.auth_uid '+
@@ -1836,7 +1891,8 @@ export async function handleRequest(request, env, ctx) {
           // overlapping Family commissions alongside Agency salaries.
           // Pending Host/Agency/BD earnings are recorded with the same gift
           // transaction. This never credits a spendable wallet automatically.
-          statements.push(...agencyGiftEarningStatements(env.DB,uid,requestId,gift.tab));
+          if(!playVirtualOnly(env))
+            statements.push(...agencyGiftEarningStatements(env.DB,uid,requestId,gift.tab));
           await env.DB.batch(statements);
           const saved=await env.DB.prepare(
             'SELECT id,total_coins FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?'
@@ -2057,11 +2113,11 @@ export default {
   fetch:handleRequest,
   scheduled(_event,env,context){
     if(env.DB){
-      context.waitUntil(settleFruitDueBets(env.DB)
+      if(!playVirtualOnly(env))context.waitUntil(settleFruitDueBets(env.DB)
         .catch(error=>console.error('fruit_royale_settlement_cron_error',error.message)));
       context.waitUntil(expireBondInvites(env.DB,Date.now(),100,env,context)
         .catch(error=>console.error('bond_expiry_cron_error',error.message)));
-      context.waitUntil(syncFamilyGoogleSheetIfDue(env)
+      if(!playVirtualOnly(env))context.waitUntil(syncFamilyGoogleSheetIfDue(env)
         .catch(error=>console.error('family_sheets_cron_error',error.message)));
       context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true,env,context)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));

@@ -18,6 +18,7 @@ function renderStagingBanner(rows) {
   assert.ok(start > 0 && end > start, 'verified banner renderer must exist');
   const elements = {ban: {innerHTML: ''}, dots: {innerHTML: ''}};
   const context = {
+    playStoreMode: false,
     window: {CFG: {}},
     document: {getElementById(id) {return elements[id]}},
     sellerEscape(v) {return String(v).replace(/[&<>"']/g, c => ({

@@ -1,0 +1,35 @@
+# Sharika — virtual-only Personal Account Play edition
+
+## Release boundary
+
+This is an **isolated Play deployment in preparation**, not an approved Google Play release. The existing staging Worker and D1 contain salary, BD/Agency, seller and referral ledgers. **Never enable the Play flag on that Worker or reuse its D1.** Do not migrate existing real-money balances into the Play database.
+
+The Play API is a separate Worker, fresh D1 database, R2 bucket and Durable Object namespace. Configuration is in `cloudflare/wrangler.play.virtual.jsonc`. On November 9, 2026, the dedicated APAC D1 `sharika-play-virtual` (`5b151101-1ac0-4b13-ab8e-e41cb06014fa`) was provisioned with all 81 migrations; it initially had zero users, wallet ledger entries, or purchases. Dedicated APAC bucket `sharika-play-virtual-media` and Worker `sharika-api-play-virtual` were also created, and a separate SFU app was configured with secret bindings. `https://sharika-api-play-virtual.soverixnet.workers.dev/health` returned 200; disabled finance/betting routes returned 403 and unauthenticated profile access returned 401. Do not copy staging data or credentials that authorize cash payouts.
+
+Required Play Worker variables (enforced before the Worker handles any request):
+
+| Variable | Mandatory value |
+| --- | --- |
+| `SHARIKA_PLAY_VIRTUAL_ONLY` | `true` |
+| `SHARIKA_PLAY_ISOLATED_DATA` | `true` |
+| `SHARIKA_COINS_CASH_REDEEMABLE` | `false` |
+| `SHARIKA_LUCKY_GIFTS_ENABLED` | `false` |
+| `SHARIKA_PLAY_BILLING_ENABLED` | `false` until Play products and server receipt verification are live |
+
+If `SHARIKA_PLAY_VIRTUAL_ONLY` or isolated data is enabled without all three safeguards, API requests return HTTP 503. Blocked finance/game APIs return HTTP 403 even if a modified APK calls the Worker directly. Invites, cash earnings, salary exchange/transfer, seller management, admin wallet tools, betting games, Lucky Box and game prizes are unavailable. New accounts cannot generate referral cash commission; normal room gifts do **not** generate Host/Agency/BD earning statements. Random Lucky Gifts cannot be listed or sent. Virtual room-owner coin rewards remain available and have **no cash withdrawal** pathway in this D1.
+
+Android release `SHARIKA_PLAY_BUILD=true` blocks the same API families at the native bridge, hides finance/reward menus, and presents virtual-only terms. It uses **Google Play Billing only** for paid in-app virtual coins. No payment flow may link to external sellers. Signup does not submit a referral invite code.
+
+The separate `play-virtual-ui.js` is inserted by Gradle **only** when `SHARIKA_PLAY_API_ORIGIN` equals the dedicated virtual Worker. It relabels the original `Recharge` / `Wallet` navigation to virtual `Coins`, removes unavailable finance/invite/game/recharge-ranking controls and replaces obsolete notification language without modifying user-generated messages. `staging-connection.js` also excludes finance-themed banners and keeps the weekly leaders sheet on the gift/room rankings. Neither this UI script nor its CSS is a financial security boundary: the native bridge and the Worker both enforce disabled routes.
+
+## Build and verification
+
+1. Run `cd cloudflare && npm run check`, plus `node --test test/play-virtual-only.test.mjs` and the SQLite migration tests.
+2. Verify the new Worker, DB and R2 bucket using the Play-specific config; verify no existing staging D1 ID is present. This Personal Account branch builds with `SHARIKA_PLAY_API_ORIGIN=https://sharika-api-play-virtual.soverixnet.workers.dev` and the stored Play upload key. A signed AAB is not Play approval.
+3. In the new environment, verify HTTP 403 for `/api/v1/invites`, `/api/v1/agency/salary/transfer`, `/api/v1/sellers/transfer`, game bets, and game catalogs; verify account creation, virtual wallet/rooms/gifts, no salary/referral ledger entries, disabled Lucky Gifts, Play Billing verified purchase and idempotency.
+4. Run on a device with a new account, check no Seller, Salary, Invite Reward, withdrawal or bet UI is reachable, and the Terms show **no cash value**. Check real microphone, room audio, and push configuration before distribution. Verify screenshots and Store listing likewise contain no payouts or money-making promises.
+5. Review the Google Play Console **Financial features declaration** based on the actual final build. The developer's November 9 support email states that standard closed-loop virtual items without a real-world cash value can be declared as **no financial features** provided every money movement, salary and seller function and financial UI/store claim is actually removed. Capture that email as the support rationale. Revalidate at review time; Google makes the final determination.
+
+## Play Console declaration review (not submitted)
+
+Last observed Personal account: Social app `com.soverixnet.sharika`; financial features declaration still includes “Rewards, points, frequent flier miles, and other incentives”. The November 9 Google Play Developer Support answer instructs the developer to select **“My app doesn't provide any financial features”** if the submitted version contains only closed-loop virtual items, has no money transfer/salary/seller functionality, and purges finance terminology from the store and app presentation. This is a new explicit support instruction, but is **not yet a saved Console change**. Closed-testing and the earlier rejection still require review. The current Store Listing is a Social/voice-room description and already avoids payout language; its last sentence refers to optional purchases even though the Play Worker currently has Billing disabled. Remove that mismatch before submission. Console currently shows 0/1 app icon, 0/1 feature graphic and 0/8 screenshots, which require separate assets or verification of what was removed from the rejected draft.

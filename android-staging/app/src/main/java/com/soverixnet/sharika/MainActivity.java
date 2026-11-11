@@ -52,7 +52,7 @@ import java.util.concurrent.Executors;
  * It is not a production voice-room release.
  */
 public final class MainActivity extends Activity {
-    private static final String BACKEND = "https://sharika-api-staging.soverixnet.workers.dev";
+    private static final String BACKEND = BuildConfig.SHARIKA_API_ORIGIN;
     private static final int BACKGROUND = Color.rgb(15, 19, 40);
     private static final int WHITE = Color.WHITE;
     private static final int MUTED = Color.rgb(190, 197, 217);
