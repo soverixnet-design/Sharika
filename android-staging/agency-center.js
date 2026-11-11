@@ -85,7 +85,7 @@
   }
   function footer(current){
     const tabs=[['home','Overview'],['agency','Agencies'],['reports','Reports'],
-      ['salary','Salary'],['host','Profile']];
+      ['salary','Crystal Wallet'],['host','Profile']];
     return '<nav class="ag-bottom" aria-label="Agency navigation">'+
       tabs.map(([key,title])=>'<button type="button" data-ag-tab="'+key+'" '+
         (current===key?'aria-current="page"':'')+'>'+image(icon(key==='home'?'agency':
@@ -267,7 +267,7 @@
       '<h2>Assigned Agencies ('+agencies.length+')</h2>'+
       (rows||'<div class="ag-empty">No agencies have been assigned to this BD account.</div>')+
       '<button type="button" class="ag-big-button" data-ag-salary-wallet>'+image(icon('salary'))+
-      'Salary Wallet & Exchange</button>'+
+      'Crystal Wallet</button>'+
       '<button type="button" class="ag-big-button" data-ag-reports>'+image(icon('reports'))+
       'View Agency Reports</button>','agency');
     panel.querySelectorAll('[data-ag-agency]').forEach(button=>button.onclick=()=>
@@ -311,7 +311,7 @@
       '<button type="button" class="ag-big-button" data-ag-add>'+image(icon('host'))+
       'Assign an Approved Host</button>':'')+
       '<button type="button" class="ag-big-button" data-ag-salary-wallet>'+image(icon('salary'))+
-      'Salary Wallet & Exchange</button><p class="ag-muted" data-ag-notice></p>','agency');
+      'Crystal Wallet</button><p class="ag-muted" data-ag-notice></p>','agency');
     let filter='all',query='';
     const draw=()=>{
       const matches=hosts.filter(h=>(filter==='all'||(filter==='active'?!!h.active:!h.active))&&
@@ -476,7 +476,7 @@
       '<div class="ag-panel"><h3>Gift Activity</h3><small>'+esc(period)+' • Gift values in coins</small>'+
       (gifts.map(item).join('')||'<div class="ag-empty">No qualifying gifts for this period.</div>')+'</div>'+
       '<button type="button" class="ag-big-button" data-ag-salary>'+image(icon('salary'))+
-      'Salary Wallet & Exchange</button>'+
+      'Crystal Wallet</button>'+
       '<button type="button" class="ag-big-button" data-ag-transactions>'+image(icon('commission'))+
       'Coin Transactions</button><p class="ag-muted" data-ag-notice></p>','host');
     panel.querySelectorAll('[data-ag-period]').forEach(button=>button.onclick=()=>
@@ -502,69 +502,69 @@
       latest.bd?.active?'BD':'Not assigned';
     const targets=(latest.targets||[]).map(target=>
       '<span class="ag-chip">'+fmt(target.target_coins)+' coins</span>').join(' ');
-    shell('Salary Wallet',title('Salary Wallet',role)+
-      '<div class="ag-hero"><small>Verified Salary Earnings</small>'+
+    shell('Crystal Wallet',title('Crystal Wallet',role)+
+      '<div class="ag-hero"><small>Verified Crystal Earnings</small>'+
       '<div class="ag-hero-row">'+image(icon('salary'),'Salary','ag-icon')+
       '<strong>'+coinUnits(salary.earned_units)+'</strong></div>'+
-      '<p>Salary units • 10,000 units = 1 coin</p></div>'+
+      '<p>1 Crystal = 1 Coin</p></div>'+
       '<div class="ag-stat-grid"><div class="ag-stat"><small>Exchangeable Now</small>'+
       '<strong>'+fmt(maximum)+'</strong><small>coins</small></div>'+
       '<div class="ag-stat"><small>Already Exchanged</small><strong>'+
       coinUnits(salary.exchanged_units)+'</strong><small>coins</small></div>'+
       '<div class="ag-stat"><small>Sent to Coin Sellers</small><strong>'+
       coinUnits(salary.seller_transferred_units)+'</strong><small>coins</small></div></div>'+
-      '<div class="ag-panel"><h3>Salary Rules</h3><p>Settlement: <b>'+
+      '<div class="ag-panel"><h3>Crystal Rules</h3><p>Settlement: <b>'+
       esc(salary.settlement_mode||'weekly')+'</b> • Host minimum target: <b>'+
       fmt(salary.min_host_target_coins)+'</b> received gift coins</p>'+
       '<p>USD reference: $1 = '+fmt(salary.coins_per_usd)+' coins</p>'+
       '<p>Targets: '+targets+'</p>'+
-      '<p class="ag-muted">Only completed-period, target-qualified gift salary can be exchanged. '+
+      '<p class="ag-muted">Host and Agency Crystal is available immediately; BD Crystal becomes available after month end. '+
       'Main Wallet Diamond Exchange is separate and available to all users.</p></div>'+
-      '<div class="ag-panel"><h3>Exchange Salary to Coins</h3><p class="ag-muted">'+
-      (salary.exchange_enabled?'Admin has enabled salary exchange.':
+      '<div class="ag-panel"><h3>Crystal Coin Exchange</h3><p class="ag-muted">'+
+      (salary.exchange_enabled?'Crystal Coin Exchange is enabled.':
         'Admin permission is currently disabled.')+'</p>'+
       '<input type="number" min="1" step="1" max="'+esc(maximum)+'" '+
-      'class="ag-search" placeholder="Coins to exchange" data-ag-salary-coins '+
+      'class="ag-search" placeholder="Crystal to exchange" data-ag-salary-coins '+
       (eligible?'':'disabled')+' aria-label="Salary exchange coins">'+
       '<button type="button" class="ag-big-button" data-ag-exchange '+
       (eligible?'':'disabled')+'>'+image(icon('commission'))+
-      'Exchange to Main Coin Wallet</button><p class="ag-muted" data-ag-notice></p></div>'+
-      '<div class="ag-panel"><h3>Transfer Salary Directly to Coin Seller</h3>'+
-      '<p class="ag-muted">Salary Wallet is debited; the selected Seller stock is credited. '+
-      'Your Main Coin Wallet is not touched. This is separate from Salary Exchange.</p>'+
+      'Crystal Coin Exchange</button><p class="ag-muted" data-ag-notice></p></div>'+
+      '<div class="ag-panel"><h3>Crystal Transfer</h3>'+
+      '<p class="ag-muted">Crystal Wallet is debited; the selected Seller stock is credited. '+
+      'Your Main Coin Wallet is not touched. This is separate from Crystal Coin Exchange.</p>'+
       '<p class="ag-muted">'+(salary.seller_transfer_enabled?
-        'Super Admin has enabled Salary Seller Transfer.':
-        'Salary Seller Transfer needs Super Admin permission.')+'</p>'+
+        'Crystal Transfer is enabled.':
+        'Crystal Transfer needs Admin permission.')+'</p>'+
       '<select class="ag-search" aria-label="Choose approved Coin Seller" data-ag-seller '+
         (transferEligible?'':'disabled')+'><option value="">Choose approved Coin Seller</option>'+
       sellers.map(s=>'<option value="'+esc(s.public_id)+'">'+esc(s.name)+' · ID '+
         esc(s.public_id)+'</option>').join('')+'</select>'+
       '<input class="ag-search" type="number" min="1" step="1" max="'+esc(maxTransfer)+'" '+
-      'placeholder="Salary coins to send" data-ag-transfer-coins '+
+      'placeholder="Crystal to transfer" data-ag-transfer-coins '+
         (transferEligible?'':'disabled')+' aria-label="Salary coins to transfer">'+
       '<button type="button" class="ag-big-button" data-ag-transfer '+
         (transferEligible?'':'disabled')+'>'+image(icon('commission'))+
-      'Transfer Salary to Seller Wallet</button>'+ 
+      'Crystal Transfer</button>'+ 
       '<p class="ag-muted">Seller receives stock coins. No Main Wallet coins are deducted.</p>'+ 
-      '<div class="ag-panel"><h3>Salary Seller Transfer History</h3>'+
+      '<div class="ag-panel"><h3>Crystal Transfer History</h3>'+
       (sellerHistory.map(t=>'<div class="ag-activity"><span class="ag-grow"><b>'+
         fmt(t.credited_coins)+' coins → '+esc(t.seller_name||'Coin Seller')+'</b><small>Seller ID '+
         esc(t.seller_public_id)+' · '+readableDate(t.created_at)+'</small></span>'+ 
         '<span class="ag-value">✓</span></div>').join('')||
-        '<div class="ag-empty">No Seller Salary transfers yet.</div>')+'</div></div>'+ 
-      '<div class="ag-panel"><h3>Salary Exchange Records</h3>'+
+        '<div class="ag-empty">No Crystal transfers yet.</div>')+'</div></div>'+ 
+      '<div class="ag-panel"><h3>Crystal Coin Exchange History</h3>'+
       (history.map(item=>'<div class="ag-activity"><span class="ag-grow"><b>'+
         fmt(item.credited_coins)+' coins</b><small>'+esc(item.settlement_mode)+' • '+
         readableDate(item.created_at)+'</small></span><span class="ag-value">✓</span></div>')
-        .join('')||'<div class="ag-empty">No salary exchanges recorded.</div>')+'</div>','salary');
+        .join('')||'<div class="ag-empty">No Crystal exchanges recorded.</div>')+'</div>','salary');
     panel.querySelector('[data-ag-transfer]').onclick=async()=>{
       const sellerId=panel.querySelector('[data-ag-seller]')?.value||'';
       const coins=Number(panel.querySelector('[data-ag-transfer-coins]')?.value);
       if(!/^[0-9]{8}$/.test(sellerId)||!Number.isSafeInteger(coins)||
         coins<1||coins>maxTransfer)
-        return notice('Choose an approved Seller and enter available whole Salary coins.');
+        return notice('Choose an approved Seller and enter available whole Crystal.');
       const seller=sellers.find(s=>s.public_id===sellerId);
-      if(!seller||!window.confirm('Transfer '+fmt(coins)+' coins from Salary Wallet to '+
+      if(!seller||!window.confirm('Transfer '+fmt(coins)+' coins from Crystal Wallet to '+
         seller.name+' (Seller ID '+sellerId+')? Main Wallet coins will not be used.'))return;
       const button=panel.querySelector('[data-ag-transfer]');button.disabled=true;
       const fingerprint=sellerId+':'+coins;
@@ -579,7 +579,7 @@
         await show('salary',undefined,undefined,false);
       }catch(error){
         button.disabled=false;
-        notice('Salary Seller Transfer not confirmed. Check history before retrying: '+
+        notice('Crystal Transfer not confirmed. Check history before retrying: '+
           String(error?.message||error));
       }
     };
@@ -587,7 +587,7 @@
       const field=panel.querySelector('[data-ag-salary-coins]');
       const coins=Number(field?.value);
       if(!Number.isSafeInteger(coins)||coins<1||coins>maximum)
-        return notice('Enter a whole coin amount within your verified available salary.');
+        return notice('Enter a whole coin amount within your verified available Crystal.');
       const button=panel.querySelector('[data-ag-exchange]');
       button.disabled=true;
       try{
