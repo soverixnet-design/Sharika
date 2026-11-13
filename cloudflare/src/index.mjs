@@ -2023,22 +2023,16 @@ export async function handleRequest(request, env, ctx) {
         // Show only actively joined users. A persistent owner permission row
         // is never proof that the owner is still physically in the room.
         // /join registers presence before returning, so no grace is needed.
-        let visibleMembers=result.results||[];
-        let presence=null;
-        try{presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');}
-        catch(error){console.warn('presence_coordinator_unavailable',error?.message);}
-        if(typeof presence?.presenceRoomMembers==='function') {
-          try{
-            const live=new Set(await presence.presenceRoomMembers(roomId));
-            visibleMembers=visibleMembers.filter(m=>live.has(m.user_id));
-          }catch(error){
-            console.warn('presence_room_members_unavailable',error?.message);
-            visibleMembers=[];
-          }
-        }else{
-          // Never display offline IDs when the presence coordinator is down.
-          visibleMembers=[];
+        let live;
+        try {
+          const presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');
+          live=new Set(await presence.presenceRoomMembers(roomId));
+        } catch(error) {
+          console.warn('presence_room_members_unavailable',error?.message);
+          // A failed presence lookup is not an empty room.
+          return fail('room_presence_unavailable',503,cors);
         }
+        const visibleMembers=(result.results||[]).filter(member=>live.has(member.user_id));
         const lockedSeats=await env.VOICE_ROOMS.getByName('sharika:'+roomId)
           .lockedSeats();
         const policy=await env.VOICE_ROOMS.getByName('sharika:'+roomId).roomPolicyRead();

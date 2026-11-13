@@ -314,7 +314,7 @@ test('room themes and gallery backgrounds reach guests through shared room snaps
       return stmt;
     };
     const env={DB:db,FIREBASE_PROJECT_ID:project,
-      VOICE_ROOMS:{getByName:()=>({lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{},
+      VOICE_ROOMS:{getByName:()=>({presenceRoomMembers:async()=>[],lockedSeats:async()=>[],dropSeatLocksAbove:async()=>{},
         roomPolicyRead:async()=>({chat_mode:'anyone',mic_mode:'anyone',super_mic:true})})}};
     const ownerToken=await token();
     const guestToken=await token({sub:'room-guest'});
@@ -1430,6 +1430,16 @@ test('room seat locks are owner-only and stop seat claims on the server',async()
       'room seat count is returned for other members to refresh their view');
     assert.equal(memberSnapshot.seat_frame_style,'grad');
     assert.deepEqual(memberSnapshot.locked_seats,[3]);
+    const unavailable=await handleRequest(new Request(
+      'https://example.test/api/v1/rooms/10000001/members',{headers}),
+      {DB:makeDb(uid),FIREBASE_PROJECT_ID:project,VOICE_ROOMS:{
+        getByName(name){
+          if(name!=='sharika:presence:staging')return rooms.getByName(name);
+          return {async presenceRoomMembers(){throw new Error('Temporary RPC failure');}};
+        }
+      }});
+    assert.equal(unavailable.status,503);
+    assert.deepEqual(await unavailable.json(),{error:'room_presence_unavailable'});
     const notJoined=await handleRequest(new Request(
       'https://example.test/api/v1/rooms/10000001/members',{headers}),
       {DB:makeDb(uid,false),VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project});
