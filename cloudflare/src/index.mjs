@@ -74,6 +74,11 @@ function reply(payload, status = 200, cors = {}) {
 function fail(code, status, cors) { return reply({ error: code }, status, cors); }
 function txt(value, limit) { return typeof value === 'string' ? value.trim().slice(0, limit) : ''; }
 function publicId(n) { return String(n).padStart(8, '0'); }
+function roomPresence(env) {
+  // Each Worker has its own Durable Object namespace. Keep the existing
+  // room-presence object so joins, heartbeats, departures and reads agree.
+  return env.VOICE_ROOMS.getByName('sharika:presence:staging');
+}
 function svipAppearance(user,equipped={},level=Number(user?.svip_level)||0) {
   const n=Number(level);
   const appearance={
@@ -431,8 +436,7 @@ export async function handleRequest(request, env, ctx) {
         const {member}=await roomAndMember(env.DB,roomId,uid);
         if(!member)return fail('join_room_first',403,cors);
       }
-      const coordinator=env.VOICE_ROOMS.getByName(playVirtualOnly(env)
-        ?'sharika:presence:play-virtual':'sharika:presence:staging');
+      const coordinator=roomPresence(env);
       await coordinator.presenceTouch(uid,roomId);
       // Activity accounting is best-effort: reporting must never prevent a
       // verified listener from keeping voice-room presence alive.
@@ -1159,7 +1163,7 @@ export async function handleRequest(request, env, ctx) {
         let online={};
         if(env.VOICE_ROOMS) {
           try {
-            online=await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+            online=await roomPresence(env)
               .presenceRoomCounts();
           } catch(error) {console.warn('room_presence_unavailable',error?.message);}
         }
@@ -1519,7 +1523,7 @@ export async function handleRequest(request, env, ctx) {
           'UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?'
         ).bind(roomId,uid).run();
         const saved = await env.DB.prepare('SELECT * FROM sharika_room_members WHERE room_id=? AND user_id=?').bind(roomId,uid).first();
-        await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+        await roomPresence(env)
           .presenceJoin(uid,roomId);
         // The session boundary is established BEFORE the public arrival
         // event. Prior chat, gift receipts and entries stay in the audit
@@ -1560,7 +1564,7 @@ export async function handleRequest(request, env, ctx) {
         // Remove the visible room ID immediately, including for the owner
         // whose D1 membership remains for permission checks. The coordinator
         // also blocks any delayed heartbeats from this departed visit.
-        if(env.VOICE_ROOMS)await env.VOICE_ROOMS.getByName('sharika:presence:staging')
+        if(env.VOICE_ROOMS)await roomPresence(env)
           .presenceLeave(uid,roomId);
         if (room.owner_id === uid) {
           await env.DB.prepare('UPDATE sharika_room_members SET seat_no=NULL WHERE room_id=? AND user_id=?')
@@ -2025,7 +2029,7 @@ export async function handleRequest(request, env, ctx) {
         // /join registers presence before returning, so no grace is needed.
         let live;
         try {
-          const presence=env.VOICE_ROOMS.getByName('sharika:presence:staging');
+          const presence=roomPresence(env);
           live=new Set(await presence.presenceRoomMembers(roomId));
         } catch(error) {
           console.warn('presence_room_members_unavailable',error?.message);

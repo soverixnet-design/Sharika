@@ -139,3 +139,60 @@ test('voice publishing prefers low-bandwidth audio without making unsupported We
   assert.ok(publish.indexOf('await sender.setParameters(parameters)')<
     publish.indexOf('state.publishPC.createOffer()'));
 });
+
+test('Android Back leaves the active room after dismissing any room overlay',()=>{
+  const script=readFileSync(new URL('../../android-staging/back-navigation.js',import.meta.url),'utf8');
+  const events=[];
+  let trayOpen=true;
+  const on={contains:value=>value==='on'};
+  const tray={classList:{contains:()=>trayOpen,remove(){trayOpen=false;events.push('close tray');}}};
+  const roomDocument={getElementById:id=>({
+    tray,min:{disabled:false,click(){events.push('minimize');}}
+  })[id]};
+  const window={leaveRoom(){events.push('leave');}};
+  const document={
+    getElementById:id=>({rw:{classList:on},rf:{contentDocument:roomDocument}})[id],
+    querySelector:()=>null
+  };
+  runInContext(script,createContext({window,document}));
+  assert.equal(window.sharikaHandleAndroidBack(),'handled');
+  assert.deepEqual(events,['close tray']);
+  assert.equal(window.sharikaHandleAndroidBack(),'handled');
+  assert.deepEqual(events,['close tray','leave']);
+});
+
+test('a delayed voice config cannot reconnect an earlier visit to the same room',async()=>{
+  const start=ui.indexOf('  let voiceOperation=Promise.resolve()');
+  const end=ui.indexOf("  window.addEventListener('online'",start);
+  const roomId='10000001';
+  const firstConfig=deferred(),secondConfig=deferred();
+  const configs=[firstConfig,secondConfig];
+  const connected=[];
+  const context=createContext({
+    joinedRoom:{id:roomId},sfuState:null,voiceRoomId:null,
+    voiceRetryTimer:null,voiceRecoveryAttempts:0,voiceRecoveryRoom:null,
+    voiceRelayWarningRoom:null,voiceRetryNoticeAt:0,
+    clearVoiceSpeakers(){},async disconnectVoice(){},
+    api(){return configs.shift().promise;},
+    verifiedIceConfig(){return {iceServers:[]};},
+    connectSfu(id,publishing){connected.push([id,publishing]);return {publishing};},
+    markLocalMicrophone(){},
+    scheduleVoiceRetry(){assert.fail('stale visit should not retry');}
+  });
+  runInContext(ui.slice(start,end),context);
+  const first=context.connectVoice(roomId);
+  await new Promise(setImmediate);
+  assert.equal(configs.length,1);
+  context.joinedRoom=null;
+  const cleanup=context.releaseVoice();
+  context.joinedRoom={id:roomId};
+  const second=context.connectVoice(roomId);
+  firstConfig.resolve({provider:'cloudflare_sfu',publish:true,relayAvailable:true});
+  assert.equal((await first).stale,true);
+  await cleanup;
+  await new Promise(setImmediate);
+  assert.equal(configs.length,0);
+  secondConfig.resolve({provider:'cloudflare_sfu',publish:false,relayAvailable:true});
+  assert.equal((await second).publishing,false);
+  assert.deepEqual(connected,[[roomId,false]]);
+});

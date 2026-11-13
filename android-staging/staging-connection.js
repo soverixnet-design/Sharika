@@ -4981,6 +4981,7 @@
   let voiceOperation=Promise.resolve(),pendingVoice=null,wantedVoiceRoom=null;
   function releaseVoice() {
     wantedVoiceRoom=null;
+    pendingVoice=null;
     // Mute the departing room immediately, even if its network cleanup is
     // queued behind an in-flight SFU request.
     for(const audio of sfuState?.audioElements||[])audio.muted=true;
@@ -4998,11 +4999,13 @@
   }
   async function connectVoice(roomId) {
     if(pendingVoice?.roomId===roomId&&wantedVoiceRoom===roomId)return pendingVoice.promise;
+    const visit=joinedRoom;
+    const isCurrent=()=>wantedVoiceRoom===roomId&&joinedRoom===visit;
     wantedVoiceRoom=roomId;
     const task=voiceOperation.catch(()=>{}).then(async()=>{
-      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      if(!isCurrent())return {publishing:false,stale:true};
       const config=await api('GET','/rooms/'+roomId+'/voice/config');
-      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      if(!isCurrent())return {publishing:false,stale:true};
       const iceConfig=verifiedIceConfig(config);
       if(config.provider==='cloudflare_sfu'&&!config.relayAvailable&&
          voiceRelayWarningRoom!==roomId){
@@ -5027,7 +5030,7 @@
         return {publishing:!!current.readyPublication};
       }
       await disconnectVoice();
-      if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
+      if(!isCurrent())return {publishing:false,stale:true};
       if(config.provider==='cloudflare_sfu') {
         voiceBackend='cloudflare_sfu';
         return connectSfu(roomId,!!config.publish,iceConfig);
@@ -5038,7 +5041,7 @@
     pendingVoice={roomId,promise:task};
     try {
       const result=await task;
-      if(!result.stale && wantedVoiceRoom===roomId) {
+      if(!result.stale && isCurrent()) {
         const track=sfuState?.roomId===roomId?sfuState.media?.getAudioTracks()[0]:null;
         const enabled=!!result.publishing && (track?
           track.readyState==='live'&&track.enabled &&
@@ -5048,7 +5051,7 @@
       }
       return result;
     } catch(error) {
-      if(wantedVoiceRoom===roomId)
+      if(isCurrent())
         scheduleVoiceRetry(roomId,'voice negotiation failed',true);
       throw error;
     } finally {
@@ -7257,7 +7260,7 @@
     // A seat assignment does not require rebuilding an existing voice call.
     let directSeatBusy=false;
     async function moveSelfToSeat(seat) {
-      if(directSeatBusy)return;
+      if(directSeatBusy||!visitIsActive())return;
       const uid=session?.user?.id;
       const owner=room.owner_id===uid;
       const target=frame.seats?.[seat];
@@ -7288,31 +7291,34 @@
       frame.toast('Moving to seat '+seat+'…');
       try {
         await api('PUT','/rooms/'+room.id+'/seat',{seat_no:seat});
-        frame.toast('Seat '+seat+' selected');
+        if(visitIsActive())frame.toast('Seat '+seat+' selected');
       }catch(error) {
-        if(window.cur?.id===room.id){
+        if(visitIsActive()){
           frame.seats=before;
           frame.render();
           decorateRoomSeats(frame);
           paintVerifiedMicCount(frame);
           paintVoiceSpeakers(room.id,frame);
         }
-        throw error;
+        if(visitIsActive())throw error;
       }finally{
         frame.__sharikaSeatMovePending=false;
         directSeatBusy=false;
       }
-      if(window.cur?.id!==room.id)return;
+      if(!visitIsActive())return;
       const publishingAlready=
         (sfuState?.roomId===room.id&&sfuState.canPublish)||
         (voiceRoomId===room.id&&!!voiceRoom?.sharikaPublishAllowed);
       const voice=publishingAlready?ensureVoiceConnected(room.id):connectVoice(room.id);
       voice.then(result=>{
-        if(window.cur?.id===room.id&&!result.stale)
+        if(visitIsActive()&&!result.stale)
           frame.toast(result.publishing?'Microphone ready':'Listening to room');
-      }).catch(error=>frame.toast('Voice reconnect: '+errText(error)));
-      syncFrame(room,frame).catch(error=>
-        frame.toast('Seat refresh: '+errText(error)));
+      }).catch(error=>{
+        if(visitIsActive())frame.toast('Voice reconnect: '+errText(error));
+      });
+      syncFrame(room,frame).catch(error=>{
+        if(visitIsActive())frame.toast('Seat refresh: '+errText(error));
+      });
     }
     frame.roomLockSheet=async function(){
       if(!['owner','admin'].includes(frame.__sharikaRoomRole)){

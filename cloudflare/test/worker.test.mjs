@@ -1235,16 +1235,23 @@ test('each verified join resets the chat/gift boundary and announces the real na
     };
     const records=[];
     const coordinator={
+      async presenceTouch(){return true;},
       async presenceJoin(...args){records.push(['presenceJoin',...args]);return true;},
       async beginRoomVisit(...args){records.push(['begin',...args]);return {joined:true};},
       async roomEntryAnnounce(...args){records.push(['entry',...args]);return {announced:true};},
       async roomGiftAfter(uid){records.push(['giftAfter',uid]);return 62;},
       async roomEntryRead(...args){records.push(['entries',...args]);return {events:[]};}
     };
-    const rooms={getByName(){return coordinator;}};
+    const presenceNames=[];
+    const rooms={getByName(name){
+      if(name.startsWith('sharika:presence:'))presenceNames.push(name);
+      return coordinator;
+    }};
     const headers={Authorization:'Bearer '+await token()};
     const endpoint='https://example.test/api/v1/rooms/10000001';
-    const env={DB:db,VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project};
+    const env={DB:db,VOICE_ROOMS:rooms,FIREBASE_PROJECT_ID:project,
+      SHARIKA_PLAY_VIRTUAL_ONLY:'true',SHARIKA_PLAY_ISOLATED_DATA:'true',
+      SHARIKA_COINS_CASH_REDEEMABLE:'false'};
     const deferred=[];
     const ctx={waitUntil(task){deferred.push(task);}};
     const join=await handleRequest(new Request(endpoint+'/join',{method:'POST',headers}),env,ctx);
@@ -1254,6 +1261,14 @@ test('each verified join resets the chat/gift boundary and announces the real na
     assert.deepEqual(records[0],['presenceJoin',principal,'10000001']);
     assert.deepEqual(records[1],['begin',principal,62]);
     assert.deepEqual(records[2],['entry',principal,'10000003','Verified Room Guest','standard']);
+
+    const heartbeat=await handleRequest(new Request(
+      'https://example.test/api/v1/presence/heartbeat',{
+        method:'POST',headers,body:JSON.stringify({room_id:'10000001'})
+      }),env);
+    assert.equal(heartbeat.status,200);
+    assert.deepEqual(presenceNames,Array(2).fill('sharika:presence:staging'),
+      'Play room join and heartbeat must update the same Durable Object');
 
     const gifts=await handleRequest(new Request(endpoint+'/gifts',{headers}),env);
     assert.equal(gifts.status,200);

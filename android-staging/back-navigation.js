@@ -148,17 +148,12 @@
             tray.classList.remove('on');
             return 'handled';
           }
-          // Reuse the room's minimize action; do not leave the voice channel.
-          var minimize = inside.getElementById('min');
-          if (minimize && !minimize.disabled) {
-            minimize.click();
-            return 'handled';
-          }
         }
       } catch (_) {
         // A frame can be briefly unavailable while a room loads.
       }
-      // Before membership is confirmed, Back cancels the pending visit.
+      // Back leaves the room or cancels entry. The explicit Minimize button
+      // is available when the user wants to keep listening.
       if (typeof window.leaveRoom === 'function') window.leaveRoom();
       return 'handled';
     }

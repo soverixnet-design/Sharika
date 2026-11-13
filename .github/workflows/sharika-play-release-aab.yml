@@ -292,7 +292,7 @@ jobs:
       # Separate installable, non-published QA artifact for the current
       # room-entry candidate. Uses the existing Play upload certificate and
       # isolated virtual-only API; never creates or replaces any signer.
-      - name: Build signed Sharika 1.0.15 room-entry QA APK
+      - name: Build signed Sharika 1.0.16 room-entry QA APK
         if: github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113'
         working-directory: android-staging
         env:
@@ -308,20 +308,20 @@ jobs:
           apk=app/build/outputs/apk/release/app-release.apk
           test -s "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -E "^package: name='com.soverixnet.sharika' versionCode='115' versionName='1.0.15'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -E "^package: name='com.soverixnet.sharika' versionCode='116' versionName='1.0.16'"
           unzip -tqq "$apk"
           unzip -Z1 "$apk" | grep -Fx 'assets/play-virtual-ui.js'
           unzip -p "$apk" assets/connection.js | grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' >/dev/null
-          cp "$apk" Sharika-Play-Room-Entry-QA-1.0.15.apk
-          sha256sum Sharika-Play-Room-Entry-QA-1.0.15.apk
-          echo 'SHARIKA_PLAY_ROOM_ENTRY_115_SIGNED_QA_APK_OK'
+          cp "$apk" Sharika-Play-Room-Entry-QA-1.0.16.apk
+          sha256sum Sharika-Play-Room-Entry-QA-1.0.16.apk
+          echo 'SHARIKA_PLAY_ROOM_ENTRY_116_SIGNED_QA_APK_OK'
 
       - name: Save current room-entry APK as private CI artifact
         if: github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113'
         uses: actions/upload-artifact@v4
         with:
-          name: Sharika-Play-Room-Entry-QA-1.0.15-APK
-          path: android-staging/Sharika-Play-Room-Entry-QA-1.0.15.apk
+          name: Sharika-Play-Room-Entry-QA-1.0.16-APK
+          path: android-staging/Sharika-Play-Room-Entry-QA-1.0.16.apk
           if-no-files-found: error
           retention-days: 30
 
