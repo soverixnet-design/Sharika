@@ -674,9 +674,9 @@ function pfWire(root,m,mine){
 function meHTML(m){
   var av=m.pic?'style="background-image:url('+m.pic+')"':'';
   return'<div class="profile-royal-page">'+
-  '<header class="profile-topbar"><button class="profile-top-icon" id="mback" aria-label="Back to rooms">‹</button><h1>Me</h1><button class="profile-top-icon" id="mtopedit" aria-label="Edit profile">✎</button><button class="profile-top-icon" id="mtopset" aria-label="Settings">⚙</button></header>'+
+  '<header class="profile-topbar"><button class="profile-top-icon" id="mback" aria-label="Back to rooms">‹</button><h1>Me</h1><button class="profile-top-icon" id="mtopedit" aria-label="Edit profile name and photo">✎</button><button class="profile-top-icon" id="mtopset" aria-label="Settings">⚙</button></header>'+
   '<section class="profile-hero"><button class="mav" id="pavb" aria-label="Change profile photo"><div '+av+'>'+(m.pic?'':'👤')+'</div><img class="profile-avatar-crown" src="./profile-crown.webp" alt=""></button>'+
-  '<div class="mnm">'+esc(m.n)+' <button class="profile-name-edit" id="mnameedit" aria-label="Edit profile name">✎</button></div>'+
+  '<div class="mnm">'+esc(m.n)+'</div>'+
   '<div class="profile-id-row"><span class="mid" id="pid">ID: '+esc(m.id)+'</span></div>'+
   '<div class="lps"><span class="lp s">✦ <b data-profile-level="wealth">'+bn(m.wl)+'</b></span><span class="lp r">✦ <b data-profile-level="charm">'+bn(m.cl)+'</b></span></div>'+
   '<button class="profile-svip-badge" data-m="svip">VIP</button><p class="profile-bio">'+esc(m.bio||'')+'</p>'+
@@ -704,7 +704,7 @@ function meHTML(m){
   '<button class="mr" data-m="home">My Room</button><button data-m="frame">Frames</button><button class="mr" data-m="entry">Entry Effects</button><button data-m="daily">Daily Tasks</button><button class="mr" data-m="svip">SVIP Club</button><button class="mr" data-m="invite">Invite Friends</button><button class="mr" data-m="cp">CP &amp; Friendship</button><button class="mr" data-m="set">Settings</button></div></details></div></section></div>';
 }
 function renderMe(){var m=myModel(),r=$("v-me"),at=r.scrollTop;r.innerHTML=meHTML(m);pfWire(r,m,true);r.scrollTop=at;
-  $("mback").onclick=function(){go("home")};$("mtopedit").onclick=editSheet;$("mnameedit").onclick=editSheet;$("mtopset").onclick=settingsSheet;
+  $("mback").onclick=function(){go("home")};$("mtopedit").onclick=editSheet;$("mtopset").onclick=settingsSheet;
   $("mbd").onclick=function(){openSheet('<h3>🏅 Badges</h3><div class="bdg">'+badgesOf(m).map(function(b){return'<div class="'+(b[2]?"":"off")+'"><span>'+b[0]+'</span>'+b[1]+'</div>'}).join("")+'</div>')};
 }
 function openProfile(u){ptab=0;gsub=0;var m=otherModel(u);$("pfc").innerHTML=pfHTML(m,false);pfWire($("pfc"),m,false);$("pfo").classList.add("on");$("pfo").scrollTop=0}

@@ -152,19 +152,23 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   border-radius:50%!important;
   font-size:clamp(20px,5.5vw,26px)!important;
 }
-/* Imported premium frames used to be 142–177% of the avatar. In a five-column
-   room they covered the next member and the name below the circle. Keep the
-   full face visible while reserving a stable row for its frame and nickname. */
+/* Keep the ornament outside the photo, including artwork with opaque
+   pixels in the middle. Only the face clips to the seat circle. */
 .app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
+  overflow:visible!important;
   margin-bottom:12px!important;
 }
 .app.sh-royal-room #grid .seat .av > .sh-sovera-frame.fxr {
-  width:130%!important;
-  height:130%!important;
+  width:148%!important;
+  height:148%!important;
+  -webkit-mask:radial-gradient(circle closest-side,transparent 66%,#000 68%)!important;
+  mask:radial-gradient(circle closest-side,transparent 66%,#000 68%)!important;
 }
 .app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av > .sh-sovera-frame.fxr {
-  width:116%!important;
-  height:116%!important;
+  width:136%!important;
+  height:136%!important;
+  -webkit-mask:radial-gradient(circle closest-side,transparent 72%,#000 74%)!important;
+  mask:radial-gradient(circle closest-side,transparent 72%,#000 74%)!important;
 }
 .app.sh-royal-room #grid .seat .face {border-radius:50%!important;overflow:hidden}
 .app.sh-royal-room #grid .seat .ring {
@@ -186,12 +190,6 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   font:500 clamp(9px,2.8vw,12px)/1.2 system-ui,sans-serif!important;
   text-shadow:0 2px 3px #000!important;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-.app.sh-royal-room #grid .seat .sh-verified-seat-id {
-  display:block;width:100%;max-width:100%;overflow:hidden;text-overflow:ellipsis;
-  color:#f6dfa5;font:600 9px/1.1 system-ui,sans-serif;
-  white-space:nowrap;text-align:center;letter-spacing:.01em;
-  position:relative;z-index:21;pointer-events:none;
 }
 .app.sh-royal-room #grid .seat .tag {font-size:9px!important;color:#ffda88!important}
 .app.sh-royal-room #grid .seat .sh-sovera-seat-tag,
@@ -353,21 +351,3 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   .app.sh-royal-room .sh-room-side-gift {width:48px!important;height:48px!important}
 }
 @media(prefers-reduced-motion:reduce){.app.sh-royal-room .seat .ring{animation:none!important}}
-
-/* Ensure purchased mic-seat frames stay outside the user's photo. */
-/* Keep the picture over the center of cosmetic artwork; only the ornamental
-   edge should sit outside each mic-seat portrait. Empty seats are unaffected. */
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
-  overflow:visible!important;
-  isolation:isolate;
-}
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame > .face {
-  position:absolute!important;
-  inset:0!important;
-  z-index:10!important;
-  border-radius:50%!important;
-  overflow:hidden!important;
-}
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame > .sh-sovera-frame.fxr {
-  z-index:9!important;
-}

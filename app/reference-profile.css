@@ -15,7 +15,20 @@
 }
 #v-me.profile-royal .profile-royal-page::before,
 #v-me.profile-royal .profile-royal-page::after {content:none!important}
-#v-me.profile-royal .profile-topbar {display:none!important}
+#v-me.profile-royal .profile-topbar {
+  margin:0 0 6px!important;
+  padding-inline:0!important;
+  grid-template-columns:44px minmax(0,1fr) 44px 44px;
+  background:transparent;
+}
+#v-me.profile-royal .profile-topbar #mtopedit {
+  width:44px;
+  height:44px;
+  border:1px solid #ba9a57;
+  border-radius:50%;
+  background:#18392d;
+  font-size:24px;
+}
 #v-me.profile-royal .profile-hero {
   display:grid!important;
   grid-template-columns:minmax(102px,30%) minmax(0,1fr);
@@ -100,11 +113,6 @@
   text-align:left!important;
   text-shadow:none!important;
   overflow-wrap:anywhere;
-}
-#v-me.profile-royal .profile-name-edit {
-  color:#c5f1db!important;
-  font-size:15px!important;
-  opacity:.75;
 }
 #v-me.profile-royal .profile-id-row {
   grid-area:identity!important;

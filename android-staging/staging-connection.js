@@ -1459,17 +1459,8 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge,.sh-verified-seat-id')
+      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge')
         .forEach(decoration=>decoration.remove());
-      // Always show the currently visible member ID beneath its name.
-      // A special ID replaces (never accompanies) the permanent account ID.
-      const visibleSeatId=frame.sid?.(seat);
-      if(visibleSeatId){
-        const id=doc.createElement('small');
-        id.className='sh-verified-seat-id';
-        id.textContent='ID '+visibleSeatId;
-        el.appendChild(id);
-      }
       // Room Admin power is shown in the management menu, never as a
       // shield drawn across a user's purchased or animated avatar frame.
       if(seat.room_role==='owner'){
