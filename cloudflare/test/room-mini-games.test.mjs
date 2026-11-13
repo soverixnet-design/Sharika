@@ -121,7 +121,8 @@ test('room first-load data and voice delays cannot block member/header refresh',
   const end=adapter.indexOf('  // Block simulated gift/chat bots',start);
   assert.ok(start>=0&&end>start,'room adapter section exists');
   const attach=adapter.slice(start,end);
-  assert.match(attach,/try\s*\{\s*await syncFrame\(room,frame\);\s*\}\s*catch\(error\)/);
+  assert.match(attach,/try\s*\{\s*await initialSeats;\s*\}\s*catch\(error\)/);
+  assert.match(attach,/const initialSeats=syncFrame\(room,frame,true\)/);
   assert.match(attach,/if\(errText\(error\)==='join_room_first'\)/);
   assert.match(attach,/ensureVoiceConnected\(room\.id\)\.then/);
   assert.doesNotMatch(attach,/const voice=await ensureVoiceConnected/);
