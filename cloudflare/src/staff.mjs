@@ -17,6 +17,15 @@ const DAY_MS=86_400_000;
 const MAX_ACCESS_MS=365*DAY_MS;
 const uidId=n=>String(n).padStart(8,'0');
 
+async function rechargeRecipient(db,publicId){
+  return db.prepare(
+    'SELECT u.auth_uid,u.coins,u.status,u.public_no,u.name,u.country,'+
+    's.special_id FROM sharika_users u LEFT JOIN sharika_special_ids s '+
+    'ON s.auth_uid=u.auth_uid AND (s.expires_at IS NULL OR s.expires_at>datetime(\'now\')) '+
+    'WHERE u.public_no=? OR s.special_id=? LIMIT 1'
+  ).bind(Number(publicId),publicId).first();
+}
+
 function validAccessExpiry(value,now=Date.now()){
   return Number.isSafeInteger(value)&&value>now+300_000&&
     value<=now+MAX_ACCESS_MS;
@@ -202,9 +211,22 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
     return fail('staff_method_not_allowed',405,cors);
   }
 
-  if(operation==='recharge-user'){
+  if(operation==='recharge-user'||operation==='recharge-user/recipient'){
     const canRecharge=actor.role==='super'||hasStaffScope(actor,'coin_recharge');
     if(!canRecharge)return fail('admin_permission_denied',403,cors);
+    if(operation==='recharge-user/recipient'){
+      if(request.method!=='GET')return fail('admin_method_not_allowed',405,cors);
+      const lookupId=(new URL(request.url)).searchParams.get('id')||'';
+      if(!RECHARGE_ID.test(lookupId))return fail('invalid_recipient_id',400,cors);
+      const target=await rechargeRecipient(env.DB,lookupId);
+      if(!target||target.status!=='active')return fail('recipient_unavailable',404,cors);
+      if(actor.role==='staff'&&target.auth_uid===uid)
+        return fail('staff_cannot_recharge_self',403,cors);
+      return reply({recipient:{public_id:uidId(target.public_no),
+        display_id:target.special_id||uidId(target.public_no),
+        name:target.name,country:target.country||'',coins:target.coins,
+        status:target.status},read_only:true},200,cors);
+    }
     if(request.method==='GET'){
       const staff=actor.role==='staff';
       const stmt=env.DB.prepare(
@@ -230,21 +252,22 @@ export async function handleStaffAdmin({request,env,uid,actor,operation,cors,rep
     try{body=await bodyJson(request);}
     catch(error){return fail(error.message==='admin_body_too_large'?error.message:'invalid_staff_json',400,cors);}
     const amount=body.coins,publicId=body.target_public_id;
+    const expectedId=body.expected_recipient_id;
     const requestId=body.request_id,reason=typeof body.reason==='string'?body.reason.trim():'';
     if(typeof publicId!=='string'||!RECHARGE_ID.test(publicId)||
        !Number.isSafeInteger(amount)||amount<1||amount>(actor.role==='super'?MAX_SUPER_GRANT:MAX_STAFF_GRANT)||
+       typeof expectedId!=='string'||!PUBLIC_ID.test(expectedId)||
        typeof requestId!=='string'||!REQUEST_ID.test(requestId)||
        reason.length<8||reason.length>200)
       return fail('invalid_direct_recharge',400,cors);
     // Resolve the visible Special ID to the canonical recipient before
     // comparing immutable request receipts. Only active Special IDs resolve.
-    const target=await env.DB.prepare(
-      'SELECT auth_uid,coins,status,public_no FROM sharika_users WHERE public_no=? '+
-      'OR auth_uid=(SELECT auth_uid FROM sharika_special_ids WHERE special_id=? '+
-      "AND (expires_at IS NULL OR expires_at>datetime('now'))) LIMIT 1"
-    ).bind(Number(publicId),publicId).first();
+    const target=await rechargeRecipient(env.DB,publicId);
     if(!target)return fail('recipient_unavailable',404,cors);
     const canonicalId=uidId(target.public_no);
+    // Bind the credit to the account shown in the preview. Reassigned Special
+    // IDs must never silently credit a different recipient.
+    if(expectedId!==canonicalId)return fail('recipient_changed',409,cors);
     const existing=await env.DB.prepare(
       'SELECT g.id,g.coins,g.reason,u.public_no,g.balance_after '+
       'FROM sharika_admin_direct_recharges g '+
