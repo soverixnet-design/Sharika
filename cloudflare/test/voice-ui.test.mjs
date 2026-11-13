@@ -148,10 +148,11 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
   const browserWindow=listeners();
   const context=createContext({
     document:outerDoc,window:browserWindow,voiceRoom:null,voiceRoomId:null,
+    joinedRoom:{id:'10000001'},
     MediaStream:class{constructor(tracks){this.tracks=tracks;}}
   });
   runInContext(ui.slice(start,end)+ui.slice(trackStart,trackEnd),context);
-  const state={closed:false,audioElements:new Set()};
+  const state={roomId:'10000001',closed:false,audioElements:new Set()};
   context.remoteState=state;
   context.remoteTrack={addEventListener(){}};
   runInContext('sfuState=remoteState; addAudioTrack(remoteState,{track:remoteTrack});',context);
@@ -184,7 +185,7 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
   // The LiveKit fallback gets its own audio-unlock retry on the same gesture.
   let startAudioCalls=0;
   context.voiceRoom={startAudio(){startAudioCalls++;return Promise.resolve();}};
-  context.voiceRoomId='test-room';
+  context.voiceRoomId='10000001';
   outerDoc.handlers.get('pointerdown')();
   assert.equal(startAudioCalls,1);
 
@@ -283,17 +284,15 @@ test('incoming voice and server permission changes are checked independently',()
   assert.match(ui,/local\.enabled=microphoneWanted\(roomId\)/);
 });
 
-test('voice begins at verified join before the room art and iframe are ready',()=>{
+test('voice begins after verified join without delaying the first room paint',()=>{
   const enter=ui.indexOf('  window.openRoom=async function(room) {');
-  const end=ui.indexOf('  const originalLeaveRoom=',enter);
+  const end=ui.indexOf('  window.leaveRoom=function()',enter);
   assert.ok(enter>=0&&end>enter);
   const entry=ui.slice(enter,end);
-  assert.ok(entry.indexOf('await joinRoomWithPassword(room)')>=0);
-  assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')>
-    entry.indexOf('await joinRoomWithPassword(room)'));
-  assert.ok(entry.indexOf('ensureVoiceConnected(room.id)')<
-    entry.indexOf('originalOpenRoom(room)'));
-  // Voice still starts immediately after verified join, while the room UI can recover independently.
+  const open=entry.indexOf('originalOpenRoom(room,true)');
+  const join=entry.indexOf('await joinRoomWithPassword(room,isCurrent)');
+  const voice=entry.indexOf('ensureVoiceConnected(room.id)');
+  assert.ok(open>=0&&open<join&&join<voice);
   assert.match(ui,/ensureVoiceConnected\(room\.id\)\.then\(voice=>/);
   assert.doesNotMatch(ui,/const voice=await ensureVoiceConnected\(room\.id\)/);
 });
@@ -316,7 +315,7 @@ test('Android keeps the screen awake for an active room, including its mini-play
   assert.match(java,/getWindow\(\)\.clearFlags\(WindowManager\.LayoutParams\.FLAG_KEEP_SCREEN_ON\)/);
   assert.match(ui,/setRoomScreenAwake\(true\)/);
   assert.match(ui,/setRoomScreenAwake\(false\)/);
-  assert.match(ui,/if\(prior\?\.id===room\.id\)/);
+  assert.match(ui,/if\(window\.cur\?\.id===room\.id\)/);
   assert.match(ui,/resumeRoomAudio\(\)/);
 });
 

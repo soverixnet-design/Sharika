@@ -118,10 +118,11 @@ test('verified profile photos follow the same public ID into room avatars and me
 test('room polling keeps the newest seat count and ignores responses after leaving',async()=>{
   const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const start=adapter.indexOf('  function syncFrame(room,frame,passive=false) {');
-  const end=adapter.indexOf('  async function attachFrame(room) {');
+  const end=adapter.indexOf('  function attachFrame(room) {');
   assert.ok(start>=0&&end>start,'room synchronization must be available');
   const syncSource=adapter.slice(start,end);
   const pending=[];
+  let ownerLookups=0;
   const room={id:'10000001',owner_id:'owner-uid',seat_count:12};
   const frame={
     seats:[{empty:1}],S:{frame:'grad'},U:[],renders:[],
@@ -136,7 +137,8 @@ test('room polling keeps the newest seat count and ignores responses after leavi
       (method,path)=>{
         if(path.endsWith('/members'))
           return new Promise(resolve=>pending.push(resolve));
-        return Promise.resolve({name:'Room owner'});
+        ownerLookups++;
+        return new Promise(()=>{});
       },
       {user:{id:'owner-uid'}},state,{getElementById:()=>iframe},
       null,null,null,{coins:1,xp:2},()=>null,()=>null,
@@ -147,12 +149,14 @@ test('room polling keeps the newest seat count and ignores responses after leavi
   assert.equal(pending.length,1,'do not overlap native API calls on weak links');
   pending[0]({seat_count:12,members:[],locked_seats:[]});
   await older;
+  assert.equal(ownerLookups,1);
   await new Promise(setImmediate);
   assert.equal(pending.length,2,'a change requested during the poll gets a fresh snapshot');
   pending[1]({seat_count:4,members:[],locked_seats:[]});
   await newer;
   assert.equal(room.seat_count,4,'the queued newer snapshot wins');
   assert.deepEqual(frame.renders,[13,5]);
+  assert.equal(ownerLookups,1,'a slow owner profile does not delay or duplicate seat updates');
   const leaving=sync(room,frame);
   state.cur={id:'10000002'};
   pending[2]({seat_count:17,members:[],locked_seats:[]});

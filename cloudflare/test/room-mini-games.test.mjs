@@ -61,8 +61,8 @@ test('room mini-game portal is reusable, compact, closable, and preserves room D
 
 test('room games use the verified top-level game bridge and do not replace voice room',()=>{
   assert.match(adapter,/roomGameButton\.onclick=\(\)=>showGameCard\(document,true,toast\)/);
-  assert.match(adapter,/let games=inside\?\.getElementById\('bGame'\)/);
-  assert.match(adapter,/if\(!games&&dock&&!inside\.getElementById\('sharika-room-games'\)\)/,
+  assert.match(adapter,/let games=doc\.getElementById\('bGame'\)/);
+  assert.match(adapter,/if\(!games&&dock&&!doc\.getElementById\('sharika-room-games'\)\)/,
     'a verified Games shortcut must appear when an older room template omits bGame');
   assert.match(adapter,/shortcut\.setAttribute\('aria-label','Open room games'\)/);
   assert.match(adapter,/games\.onclick=\(\)=>showGameCard\(document,true,toast\)/);
@@ -117,16 +117,16 @@ test('remaining original games and Fruit Royale have compact room UI and authent
 });
 
 test('room first-load data and voice delays cannot block member/header refresh',()=>{
-  const start=adapter.indexOf('  async function attachFrame(room) {');
+  const start=adapter.indexOf('  function attachFrame(room) {');
   const end=adapter.indexOf('  // Block simulated gift/chat bots',start);
   assert.ok(start>=0&&end>start,'room adapter section exists');
   const attach=adapter.slice(start,end);
-  assert.match(attach,/try\s*\{\s*await initialSeats;\s*\}\s*catch\(error\)/);
-  assert.match(attach,/const initialSeats=syncFrame\(room,frame,true\)/);
+  assert.match(attach,/syncFrame\(room,frame,true\)\.catch\(error=>\{/);
+  assert.ok(attach.indexOf('refreshRoomSeats();')<attach.indexOf('pollRoomChat().catch'));
   assert.match(attach,/if\(errText\(error\)==='join_room_first'\)/);
   assert.match(attach,/ensureVoiceConnected\(room\.id\)\.then/);
   assert.doesNotMatch(attach,/const voice=await ensureVoiceConnected/);
-  assert.ok(attach.indexOf('framePoll=setInterval')>
+  assert.ok(attach.indexOf('framePoll=setInterval(refreshRoomSeats,8000)')>
     attach.indexOf('ensureVoiceConnected(room.id).then'),
     'polling is scheduled without waiting for voice ICE/TURN');
 });

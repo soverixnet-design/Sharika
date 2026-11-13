@@ -93,7 +93,6 @@ button{font:inherit;color:inherit;cursor:pointer}
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.g4 button{border:1px solid var(--line);background:var(--glass);border-radius:16px;padding:10px 2px;font-size:11px;color:var(--gold);display:flex;flex-direction:column;align-items:center;gap:3px}.g4 button span{font-size:28px}.g4 button.sel{border-color:var(--gold);background:rgba(246,196,83,.12)}
 .row{display:flex;align-items:center;justify-content:space-between;padding:13px 2px;border-bottom:1px solid var(--line);font-size:14px}
 .roomwrap{position:absolute;inset:0;z-index:50;display:none;background:#05030f}.roomwrap.on{display:block}.roomwrap iframe{width:100%;height:100%;border:0;display:block}
-.roomwrap.on.sh-room-awaiting{background:transparent;pointer-events:none}.roomwrap.sh-room-awaiting iframe{opacity:0;pointer-events:none}
 .mini{position:absolute;right:14px;bottom:92px;z-index:30;display:none;align-items:center;gap:6px}.mini.on{display:flex}
 .mini button{width:54px;height:54px;border-radius:50%;border:2px solid var(--gold);background:linear-gradient(135deg,var(--a),var(--b));font-size:26px;box-shadow:0 8px 20px rgba(0,0,0,.5),0 0 0 0 rgba(246,196,83,.6);animation:pu 2s infinite}
 @keyframes pu{70%{box-shadow:0 8px 20px rgba(0,0,0,.5),0 0 0 14px rgba(246,196,83,0)}}
@@ -1016,9 +1015,10 @@ $("fdel").onclick=function(){A.frameImg=null;saveA();frameSheet();renderMe()}}
 document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest('[data-m="frame"]');if(b){e.stopImmediatePropagation();e.preventDefault();frameSheet()}},true);
 function ROOMFN(){
 var W={};try{W=JSON.parse(window.name||"{}")}catch(e){}
+var st=document.createElement("style");st.textContent=window.__FRCSS||"";document.head.appendChild(st);
+if(W.preview)return;
 var own=W.own!==false,you=own?0:1;
 if(!own){seats[0]={n:W.host||"Host",e:W.emoji||"🎙️",i:0,muted:false,talk:false};seats[1]={n:"You",e:"😎",i:1,muted:false,talk:false,you:1}}
-var st=document.createElement("style");st.textContent=window.__FRCSS||"";document.head.appendChild(st);
 others=function(){return seats.filter(function(s){return !s.empty&&!s.lock&&(own?s.i>0:!s.you)})};
 if(!own){rewardAdd=function(){};["bOwn","rrpill"].forEach(function(k){var x=$(k);if(x)x.style.display="none"});$("roomBtn").onclick=function(){toast("Room owner: "+seats[0].n)};
 var oS=seatSheet;seatSheet=function(i){var s=seats[i];if(s.empty||s.lock){toast("Only the room owner can manage seats");return}oS(i);document.querySelectorAll("#sheet .act").forEach(function(b){var a=b.dataset.a;if(a!=="gift"&&a!=="prof")b.style.display="none"})};
@@ -1028,8 +1028,8 @@ var oM=msg;msg=function(n,e,t,o){if(!own&&o&&o.gf&&!o.me&&typeof t==="string")t=
 var oR=render;render=function(){oR();var se=seatEl(you);if(!se)return;var f=se.querySelector(".face"),av=se.querySelector(".av");if(W.pic&&f){f.style.background="url("+W.pic+") center/cover";f.textContent=""}
 var o=av.querySelector(".fxr");if(o)o.remove();if(W.fimg)av.insertAdjacentHTML("beforeend",'<i class="fxr fxi" style="background-image:url('+W.fimg+')"></i>');else if(W.frame)av.insertAdjacentHTML("beforeend",'<i class="fxr fx-'+W.frame+'"></i>')};
 render()}
-openRoom=function(r){var rf=$("rf"),own=!!A.myRoom&&String(r.id)===String(A.id);
-var w=JSON.stringify(JSON.stringify({name:r.name,emoji:r.emoji,theme:r.th,id:r.id,minor:!!A.minor,own:own,host:r.host||r.name,pic:A.pic||null,frame:A.frame||"",fimg:A.frameImg||""})).replace(/</g,"\\u003c");
+openRoom=function(r,preview){var rf=$("rf"),own=!!A.myRoom&&String(r.id)===String(A.id);
+var w=JSON.stringify(JSON.stringify({name:r.name,emoji:r.emoji,theme:r.th,id:r.id,minor:!!A.minor,own:own,host:r.host||r.name,pic:A.pic||null,frame:A.frame||"",fimg:A.frameImg||"",preview:preview,seatCount:r.seat_count,displayId:r.owner_display_id})).replace(/</g,"\\u003c");
 rf.srcdoc=ROOM_HTML.replace("<head>","<head><script>window.name="+w+"<\/script>")+"<script>window.__FRCSS="+JSON.stringify(FRCSS)+";("+ROOMFN.toString()+")()<\/script>";
 $("rw").classList.add("on");$("mini").classList.remove("on");cur=r};
 (function(){var c='';try{c=FRCSS}catch(e){}var st=document.createElement('style');st.textContent=c;document.head.appendChild(st)})()</script><style id="shx4">

@@ -104,6 +104,8 @@
   // Ignore an older restore/login response after a newer sign-in or logout.
   let authAttemptId = 0;
   let balance = { coins: 0, dia: 0, xp: 0 };
+  let joinedRoom = null;
+  let roomFrameDocument = null;
   let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null,
     reactionPoll = null, musicPoll = null;
   let voiceRoom = null, voiceRoomId = null;
@@ -4300,10 +4302,11 @@
   // Android WebView may block a remote track's first autoplay attempt.
   // A later genuine room tap must retry playback synchronously in that gesture.
   function resumeRoomAudio() {
+    if(!joinedRoom)return;
     if(typeof musicPlayer!=='undefined'&&typeof musicState!=='undefined'&&
        musicPlayer?.src&&musicPlayer.paused&&musicState?.mode==='library')
       musicPlayer.play().catch(()=>{});
-    if(sfuState && !sfuState.closed) {
+    if(sfuState?.roomId===joinedRoom.id && !sfuState.closed) {
       if(sfuState.speakingContext?.state==='suspended')
         sfuState.speakingContext.resume().catch(()=>{});
       for(const audio of sfuState.audioElements) {
@@ -4311,7 +4314,7 @@
           audio.play().catch(()=>{});
       }
     }
-    if(voiceRoom && voiceRoomId && typeof voiceRoom.startAudio==='function')
+    if(voiceRoom && voiceRoomId===joinedRoom.id && typeof voiceRoom.startAudio==='function')
       voiceRoom.startAudio().catch(()=>{});
   }
   const roomAudioGestureDocs=new WeakSet();
@@ -4653,7 +4656,7 @@
     }finally{state.statsInFlight=false;}
   }
   function addAudioTrack(state,event) {
-    if(state.closed)return;
+    if(state.closed||joinedRoom?.id!==state.roomId)return;
     const remoteId=state.remoteMids?.get(String(event.transceiver?.mid||''));
     if(remoteId&&typeof watchSfuSpeaking==='function')
       watchSfuSpeaking(state,event.track,remoteId);
@@ -4987,6 +4990,10 @@
   let voiceOperation=Promise.resolve(),pendingVoice=null,wantedVoiceRoom=null;
   function releaseVoice() {
     wantedVoiceRoom=null;
+    // Mute the departing room immediately, even if its network cleanup is
+    // queued behind an in-flight SFU request.
+    for(const audio of sfuState?.audioElements||[])audio.muted=true;
+    for(const track of sfuState?.media?.getAudioTracks()||[])track.enabled=false;
     if(voiceRetryTimer){clearTimeout(voiceRetryTimer);voiceRetryTimer=null;}
     // A new room entry, including returning to the same room, is a fresh
     // attempt. Do not carry an exhausted retry budget across visits.
@@ -4999,7 +5006,7 @@
     return task;
   }
   async function connectVoice(roomId) {
-    if(pendingVoice?.roomId===roomId)return pendingVoice.promise;
+    if(pendingVoice?.roomId===roomId&&wantedVoiceRoom===roomId)return pendingVoice.promise;
     wantedVoiceRoom=roomId;
     const task=voiceOperation.catch(()=>{}).then(async()=>{
       if(wantedVoiceRoom!==roomId)return {publishing:false,stale:true};
@@ -5066,12 +5073,12 @@
   });
   // Frame cosmetics cannot restart a voice transport already in progress.
   function ensureVoiceConnected(roomId) {
-    if(pendingVoice?.roomId===roomId)return pendingVoice.promise;
-    if(sfuState?.roomId===roomId&&!sfuState.closed&&sfuState.receivePC&&
+    if(pendingVoice?.roomId===roomId&&wantedVoiceRoom===roomId)return pendingVoice.promise;
+    if(wantedVoiceRoom===roomId&&sfuState?.roomId===roomId&&!sfuState.closed&&sfuState.receivePC&&
        !sfuState.recoveryExhausted&&
        sfuState.receivePC.connectionState!=='failed')
       return Promise.resolve({publishing:!!sfuState.readyPublication});
-    if(voiceRoom&&voiceRoomId===roomId)
+    if(wantedVoiceRoom===roomId&&voiceRoom&&voiceRoomId===roomId)
       return Promise.resolve({publishing:!!voiceRoom.sharikaPublishAllowed});
     return connectVoice(roomId);
   }
@@ -5651,10 +5658,10 @@
   // Authenticated users only: a backgrounded app disappears after 90 seconds.
   let presenceTimer=null;
   async function heartbeatPresence(roomId) {
-    if(!session)return;
+    if(!session||window.cur&&!joinedRoom)return;
     try {
       await api('POST','/presence/heartbeat',{
-        room_id:roomId===undefined?(window.cur?.id||null):roomId
+        room_id:roomId===undefined?(joinedRoom?.id||null):roomId
       });
     }catch(error){console.warn('Sharika presence:',errText(error));}
   }
@@ -5671,8 +5678,9 @@
     if(document.visibilityState!=='visible'||!session)return;
     heartbeatPresence();
     const frame=document.getElementById('rf')?.contentWindow;
-    if(window.cur?.id && frame?.seats)
-      syncFrame(window.cur,frame).catch(()=>{});
+    if(joinedRoom && joinedRoom===window.cur && roomFrameDocument &&
+       frame?.document===roomFrameDocument)
+      syncFrame(joinedRoom,frame,true).catch(()=>{});
   });
   async function reloadWallet() {
     const accountId=session?.user?.id;
@@ -6013,6 +6021,8 @@
     const requestNo=(frame.__sharikaSeatSyncNo||0)+1;
     frame.__sharikaSeatSyncNo=requestNo;
     const userId=session?.user?.id;
+    const frameDoc=frame.document;
+    const visit=window.cur;
     const membersRequest=api('GET','/rooms/'+room.id+'/members');
     if(!frame.__sharikaRoomOwnerRequest){
       const ownerRequest=api('GET','/users/'+room.id).then(owner=>{
@@ -6026,7 +6036,8 @@
     }
     const data=await membersRequest;
     if(frame.__sharikaSeatSyncNo!==requestNo ||
-       !session || session.user.id!==userId || window.cur?.id!==room.id ||
+       !session || session.user.id!==userId || window.cur!==visit ||
+       frame.document!==frameDoc ||
        document.getElementById('rf')?.contentWindow!==frame)return;
     // The room header displays the owner's active Special ID while all
     // calls, membership actions and room navigation keep the canonical ID.
@@ -6237,12 +6248,12 @@
           }))
       });
     }
-    if(!snapshotChanged){
-      revealVerifiedRoom(room,frame);
-      return;
-    }
-    frame.__sharikaRoomRenderSignature=renderSignature;
+    if(!snapshotChanged)return;
     frame.render();
+    frame.__sharikaRoomRenderSignature=renderSignature;
+    const seatGrid=frame.$?.('grid');
+    if(seatGrid)seatGrid.inert=false;
+    frame.document?.documentElement?.classList?.remove('sh-room-no-snapshot');
     if(typeof paintVerifiedMicCount==='function')paintVerifiedMicCount(frame);
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     decorateRoomPeople(frame);
@@ -6252,16 +6263,6 @@
     // Arrival effects come from the coordinator's short, verified event
     // history, not the 15-second seat/member snapshot that misses guests.
     frame.__soveraSeenMembers=new Set((data.members||[]).map(m=>m.user_id));
-    // Never expose the bundled demo seats while the authenticated room
-    // snapshot is still loading. Reveal the complete real room in one frame.
-    revealVerifiedRoom(room,frame);
-  }
-  function revealVerifiedRoom(room,frame){
-    const iframe=document.getElementById('rf');
-    if(window.cur?.id!==room.id || iframe?.contentWindow!==frame ||
-       !frame.__sharikaRoomRenderSignature)return;
-    document.getElementById('rw')?.classList?.remove('sh-room-awaiting');
-    if(typeof hideRoomJoining==='function')hideRoomJoining();
   }
   // Profile identity always follows the authenticated room member ID. The
   // original HTML treated seat zero as "my profile" even in another's room.
@@ -6801,18 +6802,19 @@
       }
     }
   }
-  async function attachFrame(room) {
+  function attachFrame(room) {
     const frame=document.getElementById('rf')?.contentWindow;
     if (frame && frame.document) fitAndroidViewport(frame.document, true);
-    if(!frame || !frame.seats || !window.cur || window.cur.id!==room.id) return;
+    if(!frame?.seats || joinedRoom!==room || window.cur!==room)return;
+    const roomDoc=frame.document;
+    const visitIsActive=()=>joinedRoom===room&&window.cur===room&&frame.document===roomDoc;
     // The bundled offline room artwork contains demo greetings. A new room
     // visit starts with an empty verified transcript, including after reentry.
     frame.$?.('chat')?.replaceChildren();
     frame.__sharikaRoomOwner=null;
     frame.__sharikaRoomOwnerRequest=null;
-    // Start the verified seat request while wiring the room controls.
-    const initialSeats=syncFrame(room,frame,true);
-    initialSeats.catch(()=>{});
+    // Queue the first snapshot before the optional chat and effects polls.
+    refreshRoomSeats();
     // Add depth to the existing Sharika seat artwork without replacing its
     // markup, member avatars, frame effects, click controls or room layout.
     if(!frame.document.getElementById('sharika-seat-depth')){
@@ -8701,6 +8703,7 @@
     }
     if(mic) mic.onclick=async ()=>{
       try {
+        if(window.cur!==room||joinedRoom!==room||wantedVoiceRoom!==room.id)return;
         const enabled=await toggleVoice();
         if(!mic.closest('.sh-tool'))mic.textContent=enabled?'🎤':'🔇';
         mic.classList.toggle('off',!enabled);
@@ -8850,23 +8853,10 @@
     // Catalogue artwork is optional. Do not hold verified seats, mic controls,
     // or the room's first paint behind a slow /cosmetics request.
     loadVerifiedCosmetics().then(()=>{
-      if(window.cur?.id!==room.id ||
-         document.getElementById('rf')?.contentWindow!==frame)return;
+      if(!visitIsActive())return;
       decorateRoomSeats(frame);
       decorateRoomPeople(frame);
     }).catch(error=>console.warn('Cosmetic art:',errText(error)));
-    try {
-      await initialSeats;
-    } catch(error) {
-      if(errText(error)==='join_room_first'){
-        window.leaveRoom();
-        toast('Room membership expired. Please join again.');
-        return;
-      }
-      // First-load network errors must not prevent the 8-second sync loop
-      // from starting. The room design and member faces recover on retry.
-      frame.toast('Room details reconnecting automatically…');
-    }
     // Each phone consumes the same verified room-entry event stream.
     // Display recent joins once, including this user's own arrival.
     async function pollRoomEntries(){
@@ -8928,21 +8918,25 @@
     // Voice and visual room refresh are independent. A slow ICE/TURN join
     // must never block member faces, the header, announcement or room polling.
     ensureVoiceConnected(room.id).then(voice=>{
-      if(window.cur?.id===room.id)
+      if(visitIsActive()&&!voice.stale)
         frame.toast(voice.publishing?'Voice connected, microphone on':'Listening to room');
     }).catch(error=>{
-      if(window.cur?.id===room.id)frame.toast('Voice pending: '+errText(error));
+      if(visitIsActive())frame.toast('Voice pending: '+errText(error));
     });
-    if(framePoll) clearInterval(framePoll);
-    framePoll=setInterval(()=>{
-      if(window.cur?.id!==room.id)return;
+    function refreshRoomSeats(){
+      if(!visitIsActive())return;
       syncFrame(room,frame,true).catch(error=>{
+        if(!visitIsActive())return;
         if(errText(error)==='join_room_first') {
           window.leaveRoom();
           toast('The room owner removed you from the room');
+        }else if(!frame.__sharikaRoomRenderSignature){
+          frame.toast('Room details are unavailable. Retrying…');
         }
       });
-    },8000);
+    }
+    if(framePoll) clearInterval(framePoll);
+    framePoll=setInterval(refreshRoomSeats,8000);
     if(giftPoll)clearInterval(giftPoll);
     pollGiftEvents().catch(()=>{});
     giftPoll=setInterval(()=>{if(window.cur?.id===room.id)pollGiftEvents().catch(()=>{});},5000);
@@ -8950,6 +8944,18 @@
   // Block simulated gift/chat bots in the original room HTML only in this
   // packaged staging APK. Do not edit the user's original layout or art.
   if(typeof window.ROOM_HTML === 'string') {
+    // Disable the legacy demo controls before the first paint. The room
+    // layout and exit button are available while the server verifies entry.
+    window.ROOM_HTML=window.ROOM_HTML.replace('<div class="app" id="app" data-frame="grad">',
+      '<div class="app" id="app" data-frame="grad" inert>')
+      .replace('</head>','<style>'+
+        'html.sh-room-preview .top>button:not(#exit),html.sh-room-preview .dock,'+
+        'html.sh-room-preview .stats,html.sh-room-preview .stage{pointer-events:none}'+
+        'html.sh-room-no-snapshot .seat .nm,html.sh-room-no-snapshot .seat .face,'+
+        'html.sh-room-preview .stats,html.sh-room-no-snapshot .stats{visibility:hidden}'+
+        'html.sh-room-preview #min,html.sh-room-preview #bOwn,'+
+        'html.sh-room-preview #bMsg em{visibility:hidden}'+
+        '</style></head>');
     window.ROOM_HTML=window.ROOM_HTML.replace('coins:12450,xp:7200','coins:0,xp:0');
     window.ROOM_HTML=window.ROOM_HTML.replace(
       /var base=\[\{n:"You",e:"😎"\}[\s\S]*?\];\nfor\(var q=0;/,
@@ -8970,6 +8976,23 @@
     window.ROOM_HTML=window.ROOM_HTML.replace(
       'msg("Rafi","🧑‍🎤","Greetings to everyone 👋",{ci:1,lv:16});'+
       'msg("Nusrat","👩‍🦰","Will sing tonight 🎶",{ci:2,lv:19});','');
+    window.ROOM_HTML=window.ROOM_HTML.replace('applyTheme();render();setChat(true);updBtn();',
+      'if(W?.preview){'+
+        'document.documentElement.classList.add("sh-room-preview","sh-room-no-snapshot");'+
+        'S.n=Number.isInteger(W.seatCount)&&W.seatCount>=1&&W.seatCount<=20?W.seatCount+1:13;'+
+        'seats=Array.from({length:S.n},(_,i)=>({empty:1,i}));'+
+        'if(W.displayId)$("rid").textContent=W.displayId;'+
+        '$("min").disabled=true;'+
+        '$("grid").inert=true;'+
+        '$("exit").onclick=()=>parent.postMessage({t:"exit"},"*");'+
+        'document.addEventListener("click",event=>{'+
+          'if(document.documentElement.classList.contains("sh-room-preview")&&'+
+             '!event.target.closest?.("#exit")){'+
+            'event.preventDefault();event.stopImmediatePropagation();'+
+          '}'+
+        '},true);'+
+        '$("app").inert=false;'+
+      '}applyTheme();render();setChat(!W?.preview);updBtn();');
   }
   // A FREE reward box, never the paid Lucky Gift betting tab.
   let freeBoxTimer=null,freeBoxOpening=false;
@@ -9042,7 +9065,7 @@
 
   function askRoomPassword(room,reason){
     return new Promise(resolve=>{
-      document.getElementById('sh-room-password-prompt')?.remove();
+      cancelRoomPassword?.();
       const overlay=document.createElement('div');overlay.id='sh-room-password-prompt';
       overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');
       overlay.setAttribute('aria-label','Room password required');
@@ -9075,7 +9098,13 @@
         button.style.cssText='flex:1;padding:12px 6px;border:0;border-radius:14px;'+
           'font-weight:700;font-size:15px';
       cancel.style.background='#f9ecdf';submit.style.background='#e1b65e';
-      const finish=value=>{overlay.remove();document.removeEventListener('keydown',onKey);resolve(value);};
+      const finish=value=>{
+        cancelRoomPassword=null;
+        overlay.remove();
+        document.removeEventListener('keydown',onKey);
+        resolve(value);
+      };
+      cancelRoomPassword=()=>finish(null);
       const onKey=event=>{if(event.key==='Escape'){event.preventDefault();finish(null);}};
       document.addEventListener('keydown',onKey);
       cancel.onclick=()=>finish(null);
@@ -9091,219 +9120,156 @@
     });
   }
 
-  async function joinRoomWithPassword(room){
+  async function joinRoomWithPassword(room,isCurrent){
     let password=null;
-    for(;;){
+    while(isCurrent()){
       try{
         await api('POST','/rooms/'+room.id+'/join',password===null?{}:{password});
         return true;
       }catch(error){
+        if(!isCurrent())return false;
         const reason=errText(error);
         if(reason!=='room_password_required'&&reason!=='room_password_incorrect')throw error;
         password=await askRoomPassword(room,reason);
         if(password===null)return false;
       }
     }
+    return false;
   }
 
-  // The first tap must give visible feedback immediately. Joining requires a
-  // genuine server authorization, but previously no UI appeared during that
-  // network round-trip and repeated taps launched overlapping join requests.
-  let roomEntryBusyToken=null;
-  let roomEntryToken=0;
-  let roomSeatLoadingTimer=null;
-  function showRoomJoining(room){
-    const wrap=document.getElementById('rw');
-    if(!wrap)return;
-    wrap.classList.add('on','sh-room-awaiting','sh-room-joining');
-    wrap.querySelector('#sh-room-joining-card')?.remove();
-    const card=document.createElement('section');
-    card.id='sh-room-joining-card';
-    card.setAttribute('role','status');
-    card.setAttribute('aria-live','polite');
-    const spinner=document.createElement('span');
-    spinner.className='sh-room-join-spinner';
-    spinner.setAttribute('aria-hidden','true');
-    const title=document.createElement('strong');
-    title.textContent=String(room.name||'Voice room');
-    const progress=document.createElement('small');
-    progress.textContent='Connecting to the room…';
-    const leave=document.createElement('button');
-    leave.type='button';leave.textContent='Back to rooms';
-    leave.onclick=()=>window.leaveRoom?.();
-    card.append(spinner,title,progress,leave);
-    wrap.append(card);
-  }
-  function hideRoomJoining(){
-    clearTimeout(roomSeatLoadingTimer);
-    roomSeatLoadingTimer=null;
-    const wrap=document.getElementById('rw');
-    wrap?.classList.remove('sh-room-joining');
-    wrap?.querySelector('#sh-room-joining-card')?.remove();
-  }
+  // Show the local room layout immediately. Serialize membership changes
+  // so that a delayed leave cannot undo a new visit to the same room.
+  let roomMembership=Promise.resolve();
+  let cancelRoomPassword=null;
   const originalOpenRoom=window.openRoom;
+  const originalLeaveRoom=window.leaveRoom;
+
+  function stopRoomServices(){
+    window.__sharikaRoomGameClose?.();
+    resetRoomMusic();
+    clearInterval(framePoll);framePoll=null;
+    clearInterval(giftPoll);giftPoll=null;
+    clearInterval(chatPoll);chatPoll=null;
+    clearInterval(entryPoll);entryPoll=null;
+    clearInterval(reactionPoll);reactionPoll=null;
+    clearInterval(invitePoll);invitePoll=null;
+    releaseVoice().catch(()=>{});
+  }
+
+  function leaveRoomMembership(room){
+    // Only a confirmed visit reaches this path. Submit the leave before
+    // signing out, and settle it before any later join uses the same room.
+    const leaving=api('POST','/rooms/'+room.id+'/leave',{})
+      .catch(error=>console.warn('Sharika room leave:',errText(error)));
+    roomMembership=roomMembership.then(()=>leaving);
+    return roomMembership;
+  }
+
+  function activateRoomFrame(room,doc){
+    if(joinedRoom!==room || window.cur!==room || !doc || roomFrameDocument===doc)return;
+    const frame=doc.defaultView;
+    if(!frame?.seats || !doc.documentElement.classList.contains('sh-room-preview'))return;
+    const dock=doc.querySelector('.dock');
+    let games=doc.getElementById('bGame');
+    if(!games&&dock&&!doc.getElementById('sharika-room-games')){
+      const shortcut=doc.createElement('button');
+      shortcut.id='sharika-room-games';
+      shortcut.type='button';
+      shortcut.className='rb';
+      shortcut.setAttribute('aria-label','Open room games');
+      shortcut.textContent='🎮 Games';
+      dock.appendChild(shortcut);
+      games=shortcut;
+    }
+    if(games)games.onclick=()=>showGameCard(document,true,toast);
+    attachFrame(room);
+    roomFrameDocument=doc;
+    frame.$('min').disabled=false;
+    frame.setChat(true);
+    doc.documentElement.classList.remove('sh-room-preview');
+  }
+
   window.openRoom=async function(room) {
-    if(!session){ window.showAuth('welcome'); return; }
-    if(roomEntryBusyToken!==null)return;
-    const currentToken=++roomEntryToken;
-    roomEntryBusyToken=currentToken;
-    let roomOpened=false;
-    let oldRoomLeft=false;
-    try {
-      const prior=window.cur;
-      if(prior?.id===room.id) {
-        document.getElementById('rw')?.classList.add('on');
-        document.getElementById('mini')?.classList.remove('on');
+    if(!session){window.showAuth('welcome');return;}
+    if(window.cur?.id===room.id){
+      document.getElementById('rw')?.classList.add('on');
+      document.getElementById('mini')?.classList.remove('on');
+      if(joinedRoom===window.cur){
         setRoomScreenAwake(true);
         resumeRoomAudio();
-        roomOpened=true;
+      }
+      return;
+    }
+    if(window.cur)window.leaveRoom();
+    // A distinct object identifies this visit, including a quick exit/reentry
+    // into the same room. Late responses must never open a cancelled visit.
+    room={...room};
+    const accountId=session.user.id;
+    const iframe=document.getElementById('rf');
+    const isCurrent=()=>window.cur===room&&session?.user?.id===accountId;
+    iframe.onload=()=>{
+      try{activateRoomFrame(room,iframe.contentDocument);}
+      catch(error){
+        if(!isCurrent())return;
+        window.leaveRoom();
+        toast('Could not open the room: '+errText(error));
+      }
+    };
+    originalOpenRoom(room,true);
+
+    const join=roomMembership.then(async()=>{
+      if(!isCurrent())return;
+      const joined=await joinRoomWithPassword(room,isCurrent);
+      if(!isCurrent()){
+        // A server join can finish after Back. Clean it up before the next
+        // queued join, so the next visit's presence and chat stay intact.
+        if(joined&&session?.user?.id===accountId)
+          await api('POST','/rooms/'+room.id+'/leave',{});
         return;
       }
-      showRoomJoining(room);
-      // Room-to-room navigation must release old seats, membership and audio.
-      if(prior && prior.id!==room.id) {
-        window.__sharikaRoomGameClose?.();
-        resetRoomMusic();
-        if(framePoll){clearInterval(framePoll);framePoll=null;}
-        if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
-        if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
-        if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
-        if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
-        if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
-        await releaseVoice();
-        await api('POST','/rooms/'+prior.id+'/leave',{});
-        oldRoomLeft=true;
-      }
-      const joined=await joinRoomWithPassword(room);
-      if(currentToken!==roomEntryToken){
-        if(joined)api('POST','/rooms/'+room.id+'/leave',{}).catch(()=>{});
+      if(!joined){
+        window.leaveRoom();
         return;
       }
-      if(!joined)return;
-      // Start media immediately after verified join, while the room iframe
-      // and decorative assets continue loading independently.
-      ensureVoiceConnected(room.id).catch(error=>{
-        if(window.cur?.id===room.id)
-          toast('Voice connecting: '+errText(error));
-      });
+      joinedRoom=room;
       setRoomScreenAwake(true);
-      // Record only confirmed joins; keep History private to this verified
-      // account on this device (a failed join must not appear in History).
       if(window.SharikaDiscovery){
         window.CFG.roomHistoryIds=window.SharikaDiscovery.recordVisit(
-          window.localStorage,session.user.id,room.id);
+          window.localStorage,accountId,room.id);
         window.renderRooms();
       }
       heartbeatPresence(room.id);
-      const iframe=document.getElementById('rf');
-      // Bind Games independently of the optional room/voice data sync.
-      iframe.onload=()=>{
-        const inside=iframe.contentWindow?.document;
-        const dock=inside?.querySelector('.dock');
-        let games=inside?.getElementById('bGame');
-        // Some older room templates omit bGame entirely. Keep the verified
-        // original-games entry reachable without rebuilding the room or
-        // replacing its existing microphone, gift and moderator controls.
-        if(!games&&dock&&!inside.getElementById('sharika-room-games')){
-          const shortcut=inside.createElement('button');
-          shortcut.id='sharika-room-games';
-          shortcut.type='button';
-          shortcut.setAttribute('aria-label','Open room games');
-          shortcut.textContent='🎮 Games';
-          shortcut.style.cssText='position:absolute;left:13px;bottom:calc(100% + 9px);'+
-            'z-index:30;border:1.5px solid #ffdf80;border-radius:18px;padding:7px 11px;'+
-            'min-height:37px;background:linear-gradient(145deg,#6c318d,#271043);'+
-            'color:#fff1ba;font-size:12px;font-weight:900;'+
-            'box-shadow:inset 0 2px 2px #fff7,inset 0 -3px 5px #130423,'+
-            '0 5px 0 #916323,0 8px 16px #11051c99';
-          dock.appendChild(shortcut);
-          games=shortcut;
-        }
-        if(games)games.onclick=()=>showGameCard(document,true,toast);
-        attachFrame(room).catch(error=>toast(errText(error)));
-      };
-      // Keep the room list visible while the new iframe loads. Otherwise
-      // WebView shows a black frame, followed by unverified demo seats,
-      // before the real room snapshot and premium UI arrive.
-      const roomWrap=document.getElementById('rw');
-      roomWrap?.classList.add('sh-room-awaiting');
-      const progress=roomWrap?.querySelector('#sh-room-joining-card small');
-      if(progress)progress.textContent='Loading verified seats…';
-      roomSeatLoadingTimer=setTimeout(()=>{
-        if(currentToken!==roomEntryToken||!progress?.isConnected)return;
-        progress.textContent='Seat connection is taking longer than expected.';
-        const card=progress.closest('#sh-room-joining-card');
-        card?.querySelector('.sh-room-join-spinner')?.remove();
-        const retry=document.createElement('button');
-        retry.type='button';
-        retry.textContent='Retry';
-        retry.onclick=async()=>{
-          retry.disabled=true;
-          const frame=document.getElementById('rf')?.contentWindow;
-          if(frame?.seats){
-            try{await syncFrame(room,frame);}
-            catch(error){
-              if(errText(error)==='join_room_first'){
-                window.leaveRoom();
-                toast('Room membership expired. Please join again.');
-              }
-            }
-          }else{
-            await window.leaveRoom();
-            if(!window.cur&&roomEntryToken===currentToken+1)window.openRoom(room);
-          }
-          retry.disabled=false;
-        };
-        card?.append(retry);
-      },6500);
-      originalOpenRoom(room);
-      roomOpened=true;
-    } catch(error) {
-      toast(errText(error)==='room_locked'
+      // Start listening even when the local frame is still being parsed.
+      ensureVoiceConnected(room.id).catch(error=>{
+        if(isCurrent())console.warn('Room voice:',errText(error));
+      });
+      if(iframe.contentDocument?.readyState==='complete')
+        activateRoomFrame(room,iframe.contentDocument);
+    });
+    roomMembership=join.catch(error=>{
+      if(!isCurrent())return;
+      window.leaveRoom();
+      const message=errText(error);
+      toast(message==='room_locked'
         ?'🔒 This room is locked. Ask the Owner or Room Admin to unlock it.'
-        :'Could not join: '+errText(error));
-    } finally {
-      // A verified join must not permanently block every later room tap.
-      // Leave/back invalidates the token, so an older request cannot clear
-      // the busy state of a newer navigation attempt.
-      if(roomEntryBusyToken===currentToken)roomEntryBusyToken=null;
-      if(!roomOpened&&currentToken===roomEntryToken){
-        hideRoomJoining();
-        const wrap=document.getElementById('rw');
-        wrap?.classList.remove('sh-room-awaiting');
-        if(!window.cur)wrap?.classList.remove('on');
-      }
-    }
+        :message==='room_temporarily_blocked'
+          ?'You are temporarily blocked from this room.'
+          :'Could not join: '+message);
+    });
+    return roomMembership;
   };
-  const originalLeaveRoom=window.leaveRoom;
+
   window.leaveRoom=function() {
-    roomEntryToken++;
-    roomEntryBusyToken=null;
-    hideRoomJoining();
-    window.__sharikaRoomGameClose?.();
-    const current=window.cur;
-    resetRoomMusic();
-    if(framePoll){clearInterval(framePoll);framePoll=null;}
-    if(giftPoll){clearInterval(giftPoll);giftPoll=null;}
-    if(chatPoll){clearInterval(chatPoll);chatPoll=null;}
-        if(entryPoll){clearInterval(entryPoll);entryPoll=null;}
-    if(reactionPoll){clearInterval(reactionPoll);reactionPoll=null;}
-        if(invitePoll){clearInterval(invitePoll);invitePoll=null;}
-    releaseVoice().catch(()=>{});
+    cancelRoomPassword?.();
+    const current=joinedRoom;
+    joinedRoom=null;
+    roomFrameDocument=null;
+    stopRoomServices();
     setRoomScreenAwake(false);
-    let leaving;
-    if(current && session){
-      // The Worker clears room presence and the mic seat atomically with the
-      // exit flow. Do not race an app-level heartbeat against a new room join.
-      leaving=api('POST','/rooms/'+current.id+'/leave',{}).then(()=>{
-        if(!window.cur&&session)heartbeatPresence(null);
-      }).catch(error=>console.warn('Sharika room leave:',errText(error)));
-    }else if(session)heartbeatPresence(null);
     const iframe=document.getElementById('rf');
-    if(iframe) iframe.onload=null;
-    document.getElementById('rw')?.classList.remove('sh-room-awaiting');
+    if(iframe)iframe.onload=null;
     originalLeaveRoom();
-    return leaving;
+    if(current)return leaveRoomMembership(current);
   };
   // Preserve original recharge/exchange artwork and read the exact
   // Super-Admin controlled exchange quote from the verified Worker.

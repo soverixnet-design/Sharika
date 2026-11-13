@@ -52,14 +52,13 @@ test('retired golden JPG is neither layered under the new WebP nor packaged',()=
   assert.doesNotMatch(gradle,/from\(rootProject\.file\('\.\.\/app\/golden-home-background\.jpg'\)\)/);
 });
 
-test('room opens directly into the hydrated 3D screen without demo-seat flashes',()=>{
-  assert.match(ui,/roomWrap\?\.classList\.add\('sh-room-awaiting'\)/);
-  assert.match(host,/\.roomwrap\.sh-room-awaiting iframe\{opacity:0/);
-  assert.match(ui,/function revealVerifiedRoom\(room,frame\)/);
-  assert.match(ui,/if\(window\.cur\?\.id!==room\.id \|\| iframe\?\.contentWindow!==frame/);
-  assert.match(ui,/frame\.__sharikaRoomRenderSignature=renderSignature/);
-  assert.match(ui,/revealVerifiedRoom\(room,frame\)/);
-  assert.match(ui,/document\.getElementById\('rw'\)\?\.classList\?\.remove\('sh-room-awaiting'\)/);
+test('the room layout opens without a spinner or demo members',()=>{
+  assert.match(ui,/originalOpenRoom\(room,true\)/);
+  assert.match(host,/if\(W\.preview\)return/);
+  assert.match(ui,/seats=Array\.from\(\{length:S\.n\},\(_,i\)=>\(\{empty:1,i\}\)\)/);
+  assert.doesNotMatch(ui,/sh-room-joining-card|Loading verified seats/);
+  assert.doesNotMatch(host,/sh-room-awaiting/);
+  assert.doesNotMatch(premium,/sh-room-join-spinner/);
 });
 
 test('half-profile is itself the full-profile tap target with no redundant label',()=>{
@@ -128,22 +127,14 @@ test('CI can reproduce real Gboard and measure stable seats in an isolated WebVi
   assert.match(workflow,/room-keyboard-after\.png/);
 });
 
-test('one tap shows a room joining shell and forbids overlapping join requests',()=>{
-  assert.match(ui,/let roomEntryBusyToken=null/);
-  assert.match(ui,/if\(roomEntryBusyToken!==null\)return/);
-  assert.match(ui,/showRoomJoining\(room\)/);
-  assert.match(ui,/wrap\.classList\.add\('on','sh-room-awaiting','sh-room-joining'\)/);
-  assert.match(ui,/currentToken!==roomEntryToken/);
-  assert.match(ui,/hideRoomJoining\(\)/);
-  assert.match(premium,/\.roomwrap\.on\.sh-room-awaiting\.sh-room-joining/);
-  assert.match(ui,/const joined=await joinRoomWithPassword\(room\)/);
-  assert.match(ui,/if\(!joined\)return/);
-  const join=ui.slice(ui.indexOf('window.openRoom=async function(room) {'),
-    ui.indexOf('const originalLeaveRoom=window.leaveRoom'));
-  assert.match(join,/finally\s*\{[\s\S]*?roomEntryBusyToken===currentToken\)roomEntryBusyToken=null/,
-    'every settled join must free later room taps');
-  assert.match(join,/if\(!roomOpened&&currentToken===roomEntryToken\)\{/,
-    'cancelled or failed joins must remove the loading shell');
+test('the pending room frame enables its controls only after verified membership',()=>{
+  const activation=ui.slice(ui.indexOf('  function activateRoomFrame('),
+    ui.indexOf('  window.openRoom=async function(room) {'));
+  assert.match(activation,/if\(joinedRoom!==room \|\| window\.cur!==room/);
+  assert.ok(activation.indexOf('attachFrame(room)')<
+    activation.indexOf("classList.remove('sh-room-preview')"));
+  assert.match(ui,/if\(window\.cur\?\.id===room\.id\)/,
+    'repeated taps on a visible room do not issue another join');
 });
 
 test('verified gift catalog stays browsable when no guest is on a mic',()=>{

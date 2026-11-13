@@ -129,6 +129,11 @@
     var room = get('rw');
     if (isOpen(room)) {
       var iframe = get('rf');
+      var cancelPin = get('sh-room-password-prompt')?.querySelector('button[type="button"]');
+      if (cancelPin) {
+        cancelPin.click();
+        return 'handled';
+      }
       try {
         var inside = iframe && iframe.contentDocument;
         if (inside) {
@@ -145,7 +150,7 @@
           }
           // Reuse the room's minimize action; do not leave the voice channel.
           var minimize = inside.getElementById('min');
-          if (minimize) {
+          if (minimize && !minimize.disabled) {
             minimize.click();
             return 'handled';
           }
@@ -153,10 +158,8 @@
       } catch (_) {
         // A frame can be briefly unavailable while a room loads.
       }
-      room.classList.remove('on');
-      var mini = get('mini');
-      if (mini) mini.classList.add('on');
-      if (get('minib') && window.cur) get('minib').textContent = window.cur.emoji || '🎙️';
+      // Before membership is confirmed, Back cancels the pending visit.
+      if (typeof window.leaveRoom === 'function') window.leaveRoom();
       return 'handled';
     }
 
