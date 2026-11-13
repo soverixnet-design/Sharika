@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true">
+<defs>
+<linearGradient id="gold" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#fff3c0"/><stop offset=".24" stop-color="#ffc86c"/><stop offset=".5" stop-color="#b4792f"/><stop offset=".73" stop-color="#fff0aa"/><stop offset="1" stop-color="#824120"/></linearGradient>
+<radialGradient id="ruby"><stop stop-color="#fc8cad"/><stop offset=".55" stop-color="#ca123f"/><stop offset="1" stop-color="#610c30"/></radialGradient>
+<filter id="shimmer" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.1" result="blur"/><feOffset dx="0" dy="1.5" result="shadow"/><feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<g filter="url(#shimmer)" fill="url(#gold)" stroke="#f5ce85" stroke-width="1">
+<path d="M60 107 38 83 47 115 20 95 38 132 15 129 40 155 26 168 55 177 46 194 73 186 79 170 65 159 60 147Z"/>
+<path d="M196 107 218 83 209 115 236 95 218 132 241 129 216 155 230 168 201 177 210 194 183 186 177 170 191 159 196 147Z"/>
+<circle cx="128" cy="134" r="88" fill="none" stroke="url(#gold)" stroke-width="11"/>
+<circle cx="128" cy="134" r="79" fill="none" stroke="#fff2cb" stroke-width="2.5" stroke-dasharray="4 11"/>
+<path d="M93 60 82 34 105 42 128 23 151 42 174 34 163 60Z"/>
+<path d="M92 59 164 59 160 67 96 67Z"/>
+<path d="M88 216 105 207 128 218 151 207 168 216 158 229 98 229Z"/>
+</g><path d="M128 24 133 37 128 47 123 37Z" fill="url(#ruby)" stroke="#fff8d8" stroke-width="1.5"/>
+<path d="m128 212 10 12-10 12-10-12z" fill="url(#ruby)" stroke="#ffeac1" stroke-width="2"/>
+<circle cx="42" cy="144" r="5" fill="#fff1bf"/><circle cx="214" cy="144" r="5" fill="#fff1bf"/>
+</svg>

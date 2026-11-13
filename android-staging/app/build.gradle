@@ -188,6 +188,10 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/profile-collection-atlas.webp'))
     from(rootProject.file('../app/profile-menu-atlas.webp'))
     from(rootProject.file('../app/profile-crown.webp'))
+    // Staging-only user 10000003 visual fit preview; no default paid items granted.
+    from(rootProject.file('../app/royal-style03-test.js'))
+    from(rootProject.file('../app/royal-style03-test.css'))
+    from(rootProject.file('../app/royal-style03-frame.svg'))
     from(rootProject.file('../app/royal-ranking-v2.css'))
     from(rootProject.file('../app/royal-ranking-podium.webp'))
     from(rootProject.file('startup-safety.js'))
