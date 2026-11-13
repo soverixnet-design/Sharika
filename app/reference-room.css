@@ -331,3 +331,23 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   .app.sh-royal-room .sh-room-side-gift {width:48px!important;height:48px!important}
 }
 @media(prefers-reduced-motion:reduce){.app.sh-royal-room .seat .ring{animation:none!important}}
+
+/* Ensure purchased mic-seat frames stay outside the user's photo. */
+/* Server cosmetic frames render as siblings of .face in the seat avatar.
+   Their artwork used to cover the portrait because it had z-index:9 while
+   .face had no explicit stacking level. Keep the portrait in front and leave
+   the ornamental outer frame visible outside the circle. */
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
+  overflow:visible!important;
+  isolation:isolate;
+}
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame > .face {
+  position:absolute!important;
+  inset:0!important;
+  z-index:10!important;
+  border-radius:50%!important;
+  overflow:hidden!important;
+}
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame > .sh-sovera-frame.fxr {
+  z-index:9!important;
+}
