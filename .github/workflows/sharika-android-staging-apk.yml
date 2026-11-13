@@ -499,7 +499,9 @@ jobs:
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-premium.css | grep -F "content:'QA13'"
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-room-ui.js | grep -F 'SharikaRoyalKeyboard'
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-room-ui.js | grep -F 'nativeImeInset'
-          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/connection.js | grep -F 'sh-room-joining-card'
+          # The Nov 13 room-join fix intentionally removed the obsolete joining-card UI.
+          # Test the current password-gated room join flow instead.
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/connection.js | grep -F 'async function joinRoomWithPassword'
           node - <<'NODE'
           const fs=require('fs');
           const bridge=fs.readFileSync('staging-connection.js','utf8');
@@ -510,6 +512,19 @@ jobs:
             throw Error('Room identity and ordinary entry adapters missing');
           console.log('SHARIKA_ROYAL_ROOM_ASSETS_AND_ENTRY_VERIFIED');
           NODE
+
+      - name: Verify actual Style 03 user-only preview is bundled in APK
+        if: github.ref == 'refs/heads/feature/sharika-style03-user10000003-preview-20261113'
+        run: |
+          set -euo pipefail
+          for asset in royal-style03-test.js royal-style03-test.css royal-style03-frame.svg; do
+            unzip -Z1 app/build/outputs/apk/debug/app-debug.apk | grep -Fx "assets/$asset"
+          done
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-style03-test.js > "$RUNNER_TEMP/style03-installed.js"
+          node --check "$RUNNER_TEMP/style03-installed.js"
+          grep -F "var TARGET='10000003';" "$RUNNER_TEMP/style03-installed.js"
+          grep -F 'Royal Style 03' "$RUNNER_TEMP/style03-installed.js"
+          echo 'STYLE03_TEST_AVATAR_AND_PREVIEW_VERIFIED_IN_APK'
 
       - name: Print signing fingerprint for this exact APK
         run: |
