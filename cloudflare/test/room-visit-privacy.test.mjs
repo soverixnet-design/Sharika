@@ -142,14 +142,16 @@ test('a duplicate mobile join does not duplicate arrival banners but a real re-e
   }finally{db.close();}
 });
 
-test('occupied room ID stays under the name without a second permanent ID',()=>{
+test('occupied seats show names and reveal the visible ID in the member profile',()=>{
   const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const css=readFileSync(new URL('../../app/reference-room.css',import.meta.url),'utf8');
-  assert.match(adapter,/const visibleSeatId=frame\.sid\?\.\(seat\)/);
-  assert.match(adapter,/id\.textContent='ID '\+visibleSeatId/);
+  const seatDecorator=adapter.slice(adapter.indexOf('function decorateRoomSeats('),
+    adapter.indexOf('function wireSoveraRoomFrames('));
+  assert.doesNotMatch(seatDecorator,/frame\.sid|sh-verified-seat-id/);
+  assert.match(adapter,/meta\.textContent='ID '\+String\(selected\.special_id\|\|selected\.display_id\|\|publicId\)/);
   assert.match(adapter,/recentJoinNames\.has\(memberId\)/);
   assert.match(css,/#grid\.grid:has\(>\.seat:nth-child\(17\)\) \.seat \.av > \.sh-sovera-frame\.fxr/);
-  assert.match(css,/\.sh-verified-seat-id/);
+  assert.doesNotMatch(css,/\.sh-verified-seat-id/);
   assert.doesNotMatch(adapter,/frame\.innerWidth,frame\.innerHeight\]\)/);
 });
 
