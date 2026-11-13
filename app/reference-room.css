@@ -353,3 +353,21 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   .app.sh-royal-room .sh-room-side-gift {width:48px!important;height:48px!important}
 }
 @media(prefers-reduced-motion:reduce){.app.sh-royal-room .seat .ring{animation:none!important}}
+
+/* Ensure purchased mic-seat frames stay outside the user's photo. */
+/* Keep the picture over the center of cosmetic artwork; only the ornamental
+   edge should sit outside each mic-seat portrait. Empty seats are unaffected. */
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
+  overflow:visible!important;
+  isolation:isolate;
+}
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame > .face {
+  position:absolute!important;
+  inset:0!important;
+  z-index:10!important;
+  border-radius:50%!important;
+  overflow:hidden!important;
+}
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame > .sh-sovera-frame.fxr {
+  z-index:9!important;
+}
