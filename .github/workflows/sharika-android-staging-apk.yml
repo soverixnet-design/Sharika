@@ -69,6 +69,7 @@ on:
       - 'app/royal-room-ui.js'
       - 'app/royal-room-ui.css'
       - 'app/royal-style03-test.js'
+      - 'app/royal-style03-test.test.cjs'
       - 'app/royal-style03-test.css'
       - 'app/royal-style03-frame.svg'
       - 'app/index.html'
