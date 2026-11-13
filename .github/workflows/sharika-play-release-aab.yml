@@ -289,6 +289,52 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Separate installable, non-published QA artifact for the current
+      # room-entry candidate. Uses the existing Play upload certificate and
+      # isolated virtual-only API; never creates or replaces any signer.
+      - name: Build signed Sharika 1.0.14 room-entry QA APK
+        if: github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113'
+        working-directory: android-staging
+        env:
+          SHARIKA_PLAY_API_ORIGIN: https://sharika-api-play-virtual.soverixnet.workers.dev
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'false'
+          SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test "$SHARIKA_UPLOAD_SIGNER_KIND" = 'play-upload'
+          gradle :app:assembleRelease --no-daemon --stacktrace
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -E "^package: name='com.soverixnet.sharika' versionCode='114' versionName='1.0.14'"
+          unzip -tqq "$apk"
+          unzip -Z1 "$apk" | grep -Fx 'assets/play-virtual-ui.js'
+          unzip -p "$apk" assets/connection.js | grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' >/dev/null
+          cp "$apk" Sharika-Play-Room-Entry-QA-1.0.14.apk
+          sha256sum Sharika-Play-Room-Entry-QA-1.0.14.apk
+          echo 'SHARIKA_PLAY_ROOM_ENTRY_114_SIGNED_QA_APK_OK'
+
+      - name: Save current room-entry APK as private CI artifact
+        if: github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Play-Room-Entry-QA-1.0.14-APK
+          path: android-staging/Sharika-Play-Room-Entry-QA-1.0.14.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # A valid APK signature does not prove Firebase Google OAuth is ready.
+      # Fail the QA workflow if the actual upload signer is not registered.
+      - name: Verify current QA APK signer is authorized for Google login
+        if: github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113'
+        run: |
+          set -euo pipefail
+          apk=android-staging/app/build/outputs/apk/release/app-release.apk
+          signer_sha1="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p')"
+          test -n "$signer_sha1"
+          node android-staging/google-oauth-signing.cjs "$signer_sha1"
       # The shared permanent-ID registry is not migrated in live D1 yet.
       # This branch MUST NOT deploy the new API Worker before the verified
       # UID-to-public-number migration; that would block new Play signups.
