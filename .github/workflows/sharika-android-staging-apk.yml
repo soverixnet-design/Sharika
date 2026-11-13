@@ -1163,3 +1163,51 @@ jobs:
             --title 'Sharika Full Integrated — Friends Staging APK' \
             --notes 'Direct Android APK for invited friends to test Sharika. Includes visible room Games icon, load-aware full-screen video gifts with fallback, Royal Room themes, moderator seat locking and invitations, shared music, Agency/BD/Host views and premium visuals. Staging test build only: no Play Store publication, no production data changes, and real-device login, voice and games QA is still required.' \
             --prerelease --latest=false
+
+
+  style03-mobile-qa-release:
+    name: Share public-ID-10000003 Style03 fitting APK as staging prerelease
+    if: github.ref == 'refs/heads/feature/sharika-style03-user10000003-preview-20261113'
+    needs: debug-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Fetch only this run's verified staging APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          path: verified-apk
+      - name: Refuse to share if the test-only media-fit UI is missing
+        run: |
+          set -euo pipefail
+          apk=verified-apk/app-debug.apk
+          test -s "$apk"
+          unzip -tqq "$apk"
+          for asset in royal-style03-test.js royal-style03-test.css royal-style03-frame.svg; do
+            unzip -Z1 "$apk" | grep -Fx "assets/$asset"
+          done
+          unzip -p "$apk" assets/index.html | grep -F '<script src="./royal-style03-test.js"></script>' >/dev/null
+          unzip -p "$apk" assets/royal-style03-test.js | grep -F "var TARGET='10000003'" >/dev/null
+          unzip -p "$apk" assets/royal-style03-test.js | grep -F "var MEDIA=Object.freeze({vip:'',entry:'',gift:'',medal:''})" >/dev/null
+          unzip -p "$apk" assets/connection.js | grep -F 'https://sharika-api-staging.soverixnet.workers.dev' >/dev/null
+          cp "$apk" verified-apk/Sharika-Style03-10000003-Preview.apk
+          sha256sum verified-apk/Sharika-Style03-10000003-Preview.apk
+          echo 'STYLE03_STAGING_ONLY_PREVIEW_VALIDATED'
+      - name: Create separate download link; never publish to Play Store
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sharika-style03-10000003-qa-${GITHUB_SHA:0:8}"
+          if gh release view "$tag" --repo soverixnet-design/Sharika >/dev/null 2>&1; then
+            echo 'Refusing to overwrite an existing APK prerelease'
+            exit 1
+          fi
+          gh release create "$tag" verified-apk/Sharika-Style03-10000003-Preview.apk \
+            --repo soverixnet-design/Sharika --target "$GITHUB_SHA" \
+            --title 'Sharika Style03 Royal Frame Fit — ID 10000003 TEST ONLY' \
+            --notes 'ISOLATED STAGING PREVIEW ONLY. Only signed-in public ID 10000003 receives an extra draft Royal Gold transparent avatar border and placement preview for VIP, Entry, Gift, Medal. Original four sound-enabled MP4 clips have NOT been uploaded into Sharika R2 or included in this APK. Do not mistake placeholders for production videos. No staging DB cosmetics are assigned, no wallet changes and no Play Store deployment. The CI staging keystore may be ephemeral: this test APK may not update earlier installs; Google OAuth may not recognize its signing SHA-1. Use a separate test device, confirm package signer before overwriting anything, and use a permitted staging login. QA interactions still require a real Android phone.' \
+            --prerelease --latest=false
