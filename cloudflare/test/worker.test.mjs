@@ -1627,7 +1627,7 @@ test('room owner can upload a bounded photo and non-owners cannot change it',asy
   try{
     const actor='firebase:'+project+':secure-user';
     const room='10000001';
-    const jpeg=Buffer.from([255,216,255,...Array(36).fill(3),255,217]);
+    const jpeg=Buffer.from([255,216,255,...Array(140000).fill(3),255,217]);
     const image_data='data:image/jpeg;base64,'+jpeg.toString('base64');
     function makeDb(owner,changes=1){
       const db=fakeDb(),prev=db.prepare.bind(db);
