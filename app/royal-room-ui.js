@@ -61,7 +61,7 @@
     ranking.id='sh-room-rank-pill';
     ranking.className='sh-room-rank-button';
     ranking.type='button';
-    ranking.textContent='🏆';
+    ranking.textContent='🏆 Ranking';
     ranking.setAttribute('aria-label','Monthly room gift ranking');
     ranking.disabled=true;
     ranking.onclick=()=>showRankings();
