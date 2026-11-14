@@ -1,0 +1,92 @@
+name: Sharika Golden Dragon gift media — isolated staging R2 upload
+on:
+  push:
+    branches:
+      - feature/sharika-golden-dragon-media-staging-20261114
+    paths:
+      - .github/workflows/sharika-golden-dragon-media-staging.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-golden-dragon-media-upload-staging-20261114
+  cancel-in-progress: false
+
+jobs:
+  stage-inactive-media-only:
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      SOURCE: design-assets/royal-gifts/golden-dragon-king/golden-dragon-king-transparent.webm
+      POSTER: design-assets/royal-gifts/golden-dragon-king/poster.png
+      VIDEO_KEY: studio/942e51e4-81cd-4131-87f8-7e4593171667.webm
+      POSTER_KEY: studio/c049203b-e273-47da-9ef7-4458b20163d5.png
+    steps:
+      - name: Checkout original staging media, not production
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Refuse an unexpected branch, token, object or source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'soverixnet-design/Sharika'
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-golden-dragon-media-staging-20261114'
+          test "$CLOUDFLARE_ACCOUNT_ID" = 'd81cf7c48fb9b36d468cb0a08720cd74'
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test "$VIDEO_KEY" = 'studio/942e51e4-81cd-4131-87f8-7e4593171667.webm'
+          test "$POSTER_KEY" = 'studio/c049203b-e273-47da-9ef7-4458b20163d5.png'
+          test "$(git hash-object "$SOURCE")" = 'a8ab561ab634b43e95135178ed6c0bf65e42683f'
+          test "$(git hash-object "$POSTER")" = '9e121dabec8b16db51b81f7fb91ee783cd97cdf8'
+          test "$(stat -c%s "$SOURCE")" -eq 6806185
+          test "$(stat -c%s "$POSTER")" -eq 1156285
+          file "$SOURCE" "$POSTER"
+      - name: Validate VP9 video, alpha tag, Opus audio and decodability
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffprobe
+          command -v ffmpeg
+          ffprobe -v error -show_streams -of json "$SOURCE" > "$RUNNER_TEMP/golden-dragon-probe.json"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const probe=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/golden-dragon-probe.json','utf8'));
+          const v=probe.streams?.find(s=>s.codec_type==='video');
+          const a=probe.streams?.find(s=>s.codec_type==='audio');
+          if(v?.codec_name!=='vp9'||v.tags?.alpha_mode!=='1'||
+              v.width!==720||v.height!==1280||a?.codec_name!=='opus')
+            throw Error('Unexpected source media codecs, alpha tag, dimensions, or audio');
+          console.log(JSON.stringify({video:v.codec_name,alpha_mode:v.tags.alpha_mode,
+            width:v.width,height:v.height,audio:a.codec_name}));
+          NODE
+          ffmpeg -hide_banner -loglevel error -c:v libvpx-vp9 -i "$SOURCE" -frames:v 1 -f null -
+      - name: Upload ORIGINAL transparent video to staging R2 only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 r2 object put "sharika-staging-media/$VIDEO_KEY" \
+            --file "$SOURCE" --content-type 'video/webm' \
+            --cache-control 'public, max-age=31536000, immutable' --remote
+      - name: Upload preview poster to staging R2 only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 r2 object put "sharika-staging-media/$POSTER_KEY" \
+            --file "$POSTER" --content-type 'image/png' \
+            --cache-control 'public, max-age=31536000, immutable' --remote
+      - name: Read back and byte-compare both staging objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 r2 object get "sharika-staging-media/$VIDEO_KEY" \
+            --file "$RUNNER_TEMP/golden-dragon-check.webm" --remote
+          npx --yes wrangler@4 r2 object get "sharika-staging-media/$POSTER_KEY" \
+            --file "$RUNNER_TEMP/golden-dragon-poster-check.png" --remote
+          cmp "$SOURCE" "$RUNNER_TEMP/golden-dragon-check.webm"
+          cmp "$POSTER" "$RUNNER_TEMP/golden-dragon-poster-check.png"
+          echo 'GOLDEN_DRAGON_STAGING_R2_MEDIA_VERIFIED'
+          echo 'No gift catalog activation, no D1 write, no Worker deploy, no production access.'
