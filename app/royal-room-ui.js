@@ -45,10 +45,18 @@
   if (top && roomInfo && roomInfo.parentElement === top && top.children.length > 1)
     top.insertBefore(roomInfo, top.children[1]);
   if(roomInfo?.parentElement===top){
+    // The room ranking is a separate control beneath the profile card,
+    // never over the room cover image or inside the profile touch target.
+    const stack=document.createElement('div');
+    stack.className='sh-room-profile-stack';
+    roomInfo.before(stack);
     const profile=document.createElement('div');
     profile.className='sh-room-profile-header';
-    roomInfo.before(profile);
+    stack.append(profile);
     profile.append(roomInfo);
+    const rankRow=document.createElement('div');
+    rankRow.className='sh-room-rank-row';
+    stack.append(rankRow);
     const ranking=document.createElement('button');
     ranking.id='sh-room-rank-pill';
     ranking.className='sh-room-rank-button';
@@ -57,7 +65,7 @@
     ranking.setAttribute('aria-label','Monthly room gift ranking');
     ranking.disabled=true;
     ranking.onclick=()=>showRankings();
-    profile.append(ranking);
+    rankRow.append(ranking);
   }
   const settingsButton = document.createElement('button');
   settingsButton.type = 'button';
