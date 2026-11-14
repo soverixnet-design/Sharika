@@ -9,7 +9,7 @@
   const style=document.createElement('style');
   style.id='sharika-play-virtual-closed-loop-ui';
   style.textContent=[
-    '#qi,#pc,#rcl2,#sharika-recharge-seller-wallet,',
+    '#qi,#pc,#rcl2,#sharika-recharge-seller-wallet,#rcp [data-x="0"],',
     '[data-m="invite"],#sh-bd-entry,#sh-agency-entry,#sh-host-entry,',
     '#sh-open-host-statement,#sh-rank-reward-box,',
     '#rt button:nth-child(1),#rt button:nth-child(6),',
@@ -116,7 +116,15 @@
           'border-radius:13px;border:1px solid #f5d58b;'+
           'background:#5a3272;color:white;font-weight:800';
         refresh.onclick=load;
-        panel.append(balances,note,title,history,refresh);
+        const exchange=document.createElement('button');
+        exchange.type='button';
+        exchange.className='big';
+        exchange.textContent='Diamond Exchange';
+        exchange.onclick=()=>{
+          window.closeSheet();
+          window.rechargeSheet(1);
+        };
+        panel.append(balances,exchange,note,title,history,refresh);
       }catch(error){
         if(!panel.isConnected)return;
         panel.textContent='Wallet could not load: '+String(error?.message||error);
@@ -137,5 +145,5 @@
   },true);
 
   // The sole Play game is the original Greedy Wheel, opened and authenticated
-  // by staging-connection.js. Wallet is still read-only on this screen.
+  // by staging-connection.js. Wallet exchange uses the existing verified exchange flow.
 })();

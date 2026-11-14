@@ -64,7 +64,8 @@ test('Play Wallet opens the verified server balance and transactions without rec
     append(...nodes){this.children.push(...nodes);},
     replaceChildren(...nodes){this.children=[...nodes];}});
   const calls=[];
-  const window={SharikaServer:{connected:()=>true,api:async(method,path)=>{
+  const window={closeSheet:()=>calls.push('closeSheet'),
+    rechargeSheet:tab=>calls.push(['rechargeSheet',tab]),SharikaServer:{connected:()=>true,api:async(method,path)=>{
     calls.push([method,path]);
     return {coins:12345,diamonds:67,ledger:[{currency:'coins',delta:100,
       reason:'daily_check_in',created_at:'2026-11-10'}]};
@@ -84,8 +85,11 @@ test('Play Wallet opens the verified server balance and transactions without rec
   assert.ok(calls.includes('stopImmediatePropagation'));
   assert.equal(panel.children[0].children[0].children[1].textContent,'12,345');
   assert.equal(panel.children[0].children[1].children[1].textContent,'67');
-  assert.equal(panel.children[3].children[0].children[0].textContent,'daily_check_in');
+  assert.equal(panel.children[4].children[0].children[0].textContent,'daily_check_in');
   assert.deepEqual(calls.filter(c=>Array.isArray(c)&&c[0]!=='openSheet'),[['GET','/wallet']]);
+  assert.equal(panel.children[1].textContent,'Diamond Exchange');
+  panel.children[1].onclick();
+  assert.deepEqual(calls.slice(-2),['closeSheet',['rechargeSheet',1]]);
 });
 
 test('Play presentation has no extra games or client-side wallet betting',()=>{

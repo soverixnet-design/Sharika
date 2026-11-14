@@ -1479,19 +1479,12 @@
       const svip=svipLevel(seat.svip_level);
       // VIP/SVIP status belongs beside the avatar frame; IDs are profile-only.
       if(svip)avatar.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
-      const item=frameArt(seat.frame_style);
+      const ornament=frameTag(seat.frame_style);
       const medal=medalArt(seat.medal_style);
       const nameTag=nameTagArt(seat.name_tag_style);
-      avatar.classList.toggle('sh-has-sovera-frame',!!item);
-      if(!item&&!medal&&!nameTag)continue;
-      avatar.style.position='relative';
-      if(item){
-        const decoration=doc.createElement('i');
-        decoration.className='fxr sh-sovera-frame'+(item.group==='svip'?' sh-svip-frame':'');
-        decoration.setAttribute('aria-hidden','true');
-        decoration.style.backgroundImage='url('+cosmeticMedia(item)+')';
-        avatar.appendChild(decoration);
-      }
+      avatar.classList.toggle('sh-has-sovera-frame',!!ornament);
+      if(!ornament&&!medal&&!nameTag)continue;
+      if(ornament)avatar.insertAdjacentHTML('beforeend',ornament);
       if(medal){
         const badge=doc.createElement('img');
         badge.className='sh-sovera-seat-medal';
@@ -5856,7 +5849,10 @@
           standardQualityOnly=true;
         }
         room.cover_url=verifiedCoverUrl(saved.cover_url);
-        if(frame?.S)frame.S.pic=room.cover_url;
+        if(frame?.S&&window.cur?.id===room.id){
+          frame.S.pic=room.cover_url;
+          frame.applyTheme?.();
+        }
         const preview=frame?.$?.('pbig');
         if(preview&&room.cover_url){
           preview.style.backgroundImage='url("'+room.cover_url+'")';
@@ -5866,7 +5862,7 @@
         await reloadRooms().catch(error=>
           console.warn('Room photo saved; card refresh delayed:',errText(error)));
         toast(standardQualityOnly?'Room saved at standard quality · HD server update pending':
-          'Room photo saved · visible on room cards ✓');
+          'Room photo saved ✓');
       }catch(error){toast((useAsTheme?'Room background':'Room photo')+
         ' not fully saved: '+errText(error));}
       finally{coverUploadBusy=false;}
@@ -6093,7 +6089,7 @@
     const chosenSeatFrame=room.seat_frame_style||'grad';
     // Room cards and the in-room header must use the same versioned, verified
     // cover. A changed version refreshes guests who never leave the room.
-    const roomCover=verifiedCoverUrl(data.cover_url);
+    const roomCover=verifiedCoverUrl(data.cover_url)||verifiedCoverUrl(room.cover_url);
     const coverChanged=frame.S.pic!==roomCover;
     room.cover_url=roomCover;
     frame.S.pic=roomCover;
@@ -9179,6 +9175,8 @@
       games=shortcut;
     }
     if(games)games.onclick=()=>showGameCard(document,true,toast);
+    frame.S.pic=verifiedCoverUrl(room.cover_url);
+    frame.applyTheme?.();
     attachFrame(room);
     roomFrameDocument=doc;
     frame.$('min').disabled=false;

@@ -168,7 +168,8 @@ test('room polling keeps the newest seat count and ignores responses after leavi
 test('cosmetics and profile uploads do not accumulate effects or cross accounts',()=>{
   const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   assert.match(adapter,/querySelectorAll\('\.sh-sovera-frame,\.sh-sovera-seat-medal'\)/);
-  assert.match(adapter,/avatar\.classList\.toggle\('sh-has-sovera-frame',!!item\)/);
+  assert.match(adapter,/avatar\.classList\.toggle\('sh-has-sovera-frame',!!ornament\)/);
+  assert.match(adapter,/const ornament=frameTag\(seat\.frame_style\)/);
   assert.match(adapter,/const accountId=session\.user\.id/);
   assert.match(adapter,/saved\?\.public_id!==publicId/);
   assert.match(adapter,/const previousPic=verifiedAvatarUrl\(profile\.pic\)/);
