@@ -64,3 +64,52 @@ test('paid SVIP displays its cosmetics alongside existing premium rules',()=>{
   assert.equal(result.svip_level,7);
   assert.equal(result.expires_at_ms,5000);
 });
+
+test('seller and approved manual recharges join the existing Play cycle exactly once',()=>{
+  const db=new DatabaseSync(':memory:');
+  const path=new URL('../migrations/',import.meta.url);
+  const migration='0086_svip_add_recharge_channels.sql';
+  for(const file of readdirSync(path).filter(file=>file.endsWith('.sql')&&file!==migration).sort())
+    db.exec(readFileSync(new URL(file,path),'utf8'));
+  const now=Date.now();
+  db.exec(
+    "INSERT INTO sharika_users(auth_uid,public_no,name,birthdate,minor) VALUES"+
+    "('buyer',10000001,'Buyer','1990-01-01',0),('seller',10000002,'Seller','1990-01-01',0);"+
+    "INSERT INTO sharika_coin_sellers(seller_uid,active,available_coins) VALUES('seller',1,20000000);"+
+    "UPDATE sharika_premium_policy SET svip_recharge_enabled=1;"
+  );
+  const playHash='a'.repeat(64);
+  db.prepare("INSERT INTO sharika_google_play_purchases(token_hash,user_uid,product_id,coins,order_id) VALUES(?,'buyer','sku',2500000,'play-order')")
+    .run(playHash);
+  db.prepare("INSERT INTO sharika_svip_recharge_orders(token_hash,auth_uid,credited_at_ms,base_coins) VALUES(?,'buyer',?,2500000)")
+    .run(playHash,now-10000);
+  const sellerRecharge=db.prepare(
+    "INSERT INTO sharika_coin_seller_transfers(seller_uid,target_uid,amount,stock_after,request_id) VALUES('seller',?,?,0,?)"
+  );
+  sellerRecharge.run('buyer',5000000,'before-migration');
+  db.exec(readFileSync(new URL(migration,path),'utf8'));
+  const progress=()=>db.prepare("SELECT base_coins,expires_at_ms FROM sharika_svip_recharge_status WHERE auth_uid='buyer'").get();
+  const level=()=>db.prepare("SELECT "+publicSvipSelect('u')+" FROM sharika_users u WHERE auth_uid='buyer'").get().svip_level;
+  assert.equal(progress().base_coins,2500000);
+  sellerRecharge.run('seller',9000000,'self-credit');
+  assert.equal(db.prepare("SELECT count(*) AS n FROM sharika_svip_recharge_orders WHERE auth_uid='seller'").get().n,0);
+  sellerRecharge.run('buyer',4000000,'seller-credit');
+  assert.equal(level(),1);
+  const expiry=progress().expires_at_ms;
+  assert.ok(expiry>now);
+  assert.throws(()=>sellerRecharge.run('buyer',4000000,'seller-credit'),/UNIQUE constraint failed/);
+  assert.equal(progress().base_coins,6500000);
+  for(let id=1;id<=2;id++){
+    db.prepare("INSERT INTO sharika_support_messages(id,user_id,sender_uid,sender_role,body,request_id) VALUES(?,'buyer','buyer','user','Recharge request · approved proof',?)").run(id,'support-recharge-'+id);
+  }
+  db.exec("INSERT INTO sharika_manual_recharge_reviews(support_message_id,user_uid,admin_uid,status,note) VALUES(1,'buyer','seller','rejected','Missing proof')");
+  assert.equal(progress().base_coins,6500000);
+  db.exec("INSERT INTO sharika_manual_recharge_reviews(support_message_id,user_uid,admin_uid,status,coins,payment_method,payment_reference) VALUES(2,'buyer','seller','approved',6000000,'bank','reference-2')");
+  assert.equal(level(),2);
+  assert.equal(progress().expires_at_ms,expiry);
+  db.prepare('INSERT INTO sharika_svip_voided_orders VALUES(?)').run(playHash);
+  assert.equal(progress().base_coins,10000000);
+  assert.equal(level(),1);
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
+  db.close();
+});
