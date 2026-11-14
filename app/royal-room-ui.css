@@ -806,3 +806,24 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   border:2px solid #f3c777;border-radius:15px;
 }
 .sh-royal-room .top .room>.rav{width:36px;height:36px;flex:none}
+
+.sh-royal-room #sh-voice-effect-options {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  padding:5px 0 12px;
+}
+.sh-royal-room #sh-voice-effect-options [role="status"] {
+  grid-column:1/-1;
+  min-height:2.5em;
+  color:#f1dece;
+  font-size:13px;
+}
+.sh-royal-room #sh-voice-effect-options [aria-pressed="true"] {
+  border-color:#f2c977;
+  background:#553943;
+  color:#fff0bf;
+}
+.sh-royal-room #sh-voice-effect-options button:disabled {
+  opacity:.58;
+}
