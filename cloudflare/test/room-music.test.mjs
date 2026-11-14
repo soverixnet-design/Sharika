@@ -87,5 +87,7 @@ test('only authenticated Room Owner/Admin can change music; native bridge limits
   assert.match(java,/\/api\/v1\/music-library/);
   assert.match(java,/\/music\$"\)/);
   assert.match(adapter,/sender\.replaceTrack\(mixed\)/);
+  assert.match(adapter,/songSource\.connect\(mix\.destination\)/);
+  assert.match(adapter,/local\.songSource\.disconnect\(\)/);
   assert.match(adapter,/if\(musicPoll\)\{clearInterval\(musicPoll\)/);
 });
