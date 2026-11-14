@@ -774,6 +774,7 @@
     const uploaded=verifiedMediaUrl(item?.remote_image_url)||
       (isVideoMedia(item?.remote_animation_url)?'':verifiedMediaUrl(item?.remote_animation_url));
     if(uploaded)return uploaded;
+    if(!item?.art)return '';
     return item?.source==='sharika'?
     './sharika-premium/'+item.art:item?.group==='medals'?
     './sovera-medals/'+item.art:effectPath(item.art);}
@@ -790,10 +791,9 @@
       'width:142%!important;height:142%!important;transform:translate(-50%,-50%)!important;',
       'z-index:9!important;border:0!important;border-radius:0!important;',
       'background-size:contain!important;background-position:center!important;',
-      'background-repeat:no-repeat!important;-webkit-mask:none!important;mask:none!important;',
+      'background-repeat:no-repeat!important;object-fit:contain;-webkit-mask:none!important;mask:none!important;',
       'pointer-events:none!important;animation:none!important}',
       '.sh-sovera-frame::after{content:none!important}',
-      '.seat .av.sh-has-sovera-frame{margin-bottom:9px}',
       '.host .av.sh-has-sovera-frame{margin-bottom:17px}',
       '#v-me .mav{position:relative;overflow:visible!important;animation:none!important;',
       'transform:none!important;margin-bottom:25px!important}',
@@ -824,8 +824,6 @@
       'background-size:contain!important;background-position:center!important}',
       '.sh-sovera-id-effects{display:flex;justify-content:center;align-items:center;gap:8px;margin:6px auto 12px}',
       '.sh-sovera-id-effects img{max-width:45%;height:48px;object-fit:contain}',
-      '.sh-sovera-seat-medal{position:absolute;z-index:15;right:-18%;bottom:-25%;width:29px;height:29px;object-fit:contain;pointer-events:none}',
-      '.sh-sovera-seat-tag{position:absolute;z-index:18;left:50%;top:100%;width:104px;height:29px;transform:translateX(-50%);object-fit:contain;pointer-events:none}',
       '.sh-neon-profile-id{display:block;width:max-content;max-width:94%;margin:7px auto 12px;padding:7px 18px;',
       'color:#ff4055;font-size:20px;font-weight:1000;letter-spacing:.12em;border:2px solid #ff8871;',
       'border-radius:14px;background:linear-gradient(110deg,#3b0818,#7c1231,#470b26);',
@@ -851,9 +849,6 @@
       'box-shadow:inset 0 1px 1px #ffeca777,0 0 13px #b572f399;text-shadow:0 1px 3px #12041e}',
       '.sh-svip-badge[data-svip-level="1"],.sh-svip-badge[data-svip-level="2"]{border-color:#aab7ff;color:#e9e8ff!important}',
       '.sh-svip-badge[data-svip-level="3"],.sh-svip-badge[data-svip-level="4"]{border-color:#ebc577}',
-      '.seat .av>.sh-svip-seat-badge{position:absolute;z-index:24;left:calc(100% - 3px);top:18%;',
-      'transform:translate(-20%,-50%);font-size:9px!important;padding:2px 6px;',
-      'pointer-events:none;line-height:1.25;max-width:68px;box-sizing:border-box}',
       '.sh-svip-public-badge{display:table;margin:4px auto 12px;font-size:12px;padding:6px 17px}',
       '#v-me .profile-svip-badge.sh-svip-badge{margin:8px auto 6px;padding:7px 18px;font-size:12px;',
       'background:linear-gradient(145deg,#2a164d,#632bb0,#3d1b68)}',
@@ -916,7 +911,6 @@
       '.sh-sovera-frame.fxr.sh-svip-frame{width:176%!important;height:176%!important}',
       '#v-me .mav>.sh-sovera-frame.sh-svip-frame{width:178%!important;height:178%!important}',
       '#pfc .pfh .pavw>.sh-sovera-frame.fxr.sh-svip-frame{width:178%!important;height:178%!important}',
-      '.seat .av>.sh-sovera-frame.fxr.sh-svip-frame{width:177%!important;height:177%!important}',
       '.host .av.sh-has-sovera-frame{margin-bottom:28px!important}',
       '#v-me .mav.sh-has-sovera-frame{margin-bottom:37px!important}',
       '#pfc .pfh .pavw:has(>.sh-svip-frame){margin-top:20px!important;margin-bottom:33px!important}',
@@ -989,16 +983,19 @@
     ].join('');
     doc.head.appendChild(style);
   }
-  function frameTag(key){
+  function frameTag(key,seatImage=false){
     const item=frameArt(key);
     if(!item)return '';
     const remote=verifiedMediaUrl(item.remote_animation_url);
-    if(isVideoMedia(remote))return '<video class="fxr sh-sovera-frame" aria-hidden="true" '+
+    const classes='fxr sh-sovera-frame'+(item.group==='svip'?' sh-svip-frame':'');
+    if(isVideoMedia(remote))return '<video class="'+classes+'" aria-hidden="true" '+
       'autoplay muted loop playsinline preload="metadata" src="'+remote+'"></video>';
-    // Only pinned package filenames are used; never interpolate user URLs.
-    return '<i class="fxr sh-sovera-frame'+(item.group==='svip'?' sh-svip-frame':'')+
-      '" aria-hidden="true" '+
-      'style="background-image:url('+cosmeticMedia(item)+')"></i>';
+    const image=cosmeticMedia(item);
+    if(!image)return '';
+    const url=sellerEscape(image);
+    if(seatImage)return '<img class="'+classes+'" alt="" aria-hidden="true" src="'+url+'">';
+    return '<i class="'+classes+'" aria-hidden="true" style="background-image:url(&quot;'+url+'&quot;)"></i>';
+
   }
   function playSoveraEntry(doc,key){
     const choice=entryArt(key);
@@ -1457,48 +1454,65 @@
       // Repeated server refreshes must not stack medals over one another.
       avatar.querySelectorAll('.sh-sovera-frame,.sh-sovera-seat-medal')
         .forEach(decoration=>decoration.remove());
-      el.querySelectorAll('.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge')
+      el.querySelectorAll('.sh-seat-ornaments,.sh-sovera-seat-tag,.sh-neon-seat-id,.sh-svip-seat-badge,.sh-room-admin-badge')
         .forEach(decoration=>decoration.remove());
-      // Room Admin power is shown in the management menu, never as a
-      // shield drawn across a user's purchased or animated avatar frame.
-      if(seat.room_role==='owner'){
-        const roomBadge=doc.createElement('span');
-        roomBadge.className='sh-room-admin-badge';
-        roomBadge.textContent='👑';
-        roomBadge.title='Room Owner';
-        roomBadge.setAttribute('aria-label',roomBadge.title);
-        roomBadge.style.cssText='position:absolute;right:-6px;top:-8px;z-index:18;'+
-          'display:grid;place-items:center;width:23px;height:23px;border-radius:50%;'+
-          'background:linear-gradient(140deg,#ffe4a1,#c78c27);border:1px solid #fff1c7;'+
-          'box-shadow:0 2px 10px #3d160b;color:#2d1932;font-size:12px';
-        avatar.style.position='relative';
-        avatar.appendChild(roomBadge);
-      }
       const svip=svipLevel(seat.svip_level);
-      // VIP/SVIP status belongs beside the avatar frame; IDs are profile-only.
-      if(svip)avatar.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
-      const ornament=frameTag(seat.frame_style);
+      const ornament=frameTag(seat.frame_style,true);
       const medal=medalArt(seat.medal_style);
       const nameTag=nameTagArt(seat.name_tag_style);
-      avatar.classList.toggle('sh-has-sovera-frame',!!ornament);
-      if(!ornament&&!medal&&!nameTag)continue;
-      if(ornament)avatar.insertAdjacentHTML('beforeend',ornament);
-      if(medal){
+      function setFramed(framed){
+        avatar.classList.toggle('sh-has-sovera-frame',framed);
+        el.classList.toggle('sh-seat-framed',framed);
+      }
+      setFramed(!!ornament);
+      if(ornament){
+        avatar.insertAdjacentHTML('beforeend',ornament);
+        const media=avatar.querySelector('.sh-sovera-frame');
+        media.addEventListener('error',()=>{
+          if(!media.isConnected)return;
+          const item=frameArt(seat.frame_style);
+          const fallbackSrc=item?.art&&cosmeticMedia({...item,remote_image_url:null,remote_animation_url:null});
+          if(fallbackSrc&&media.getAttribute('src')!==fallbackSrc){
+            const fallback=doc.createElement('img');
+            fallback.className=media.className;
+            fallback.alt='';
+            fallback.addEventListener('error',()=>{
+              if(!fallback.isConnected)return;
+              fallback.remove();
+              setFramed(false);
+            },{once:true});
+            fallback.src=fallbackSrc;
+            media.replaceWith(fallback);
+            return;
+          }
+          media.remove();
+          setFramed(false);
+        },{once:true});
+      }
+      const isOwner=seat.room_role==='owner';
+      if(!isOwner&&!svip&&!medal&&!nameTag)continue;
+      const ornaments=doc.createElement('div');
+      ornaments.className='sh-seat-ornaments';
+      if(isOwner){
+        const crown=doc.createElement('span');
+        crown.className='sh-room-admin-badge';
+        crown.textContent='👑';
+        crown.title='Room Owner';
+        crown.setAttribute('aria-label','Room Owner');
+        ornaments.appendChild(crown);
+      }
+      if(svip)ornaments.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
+      for(const [item,style,label] of [[medal,'sh-sovera-seat-medal','Medal'],
+        [nameTag,'sh-sovera-seat-tag','Name tag']]){
+        if(!item)continue;
         const badge=doc.createElement('img');
-        badge.className='sh-sovera-seat-medal';
-        badge.alt='';
-        badge.src=cosmeticMedia(medal);
-        badge.setAttribute('aria-hidden','true');
-        avatar.appendChild(badge);
+        badge.className=style;
+        badge.alt=item.name||label;
+        badge.addEventListener('error',()=>badge.remove(),{once:true});
+        badge.src=cosmeticMedia(item);
+        ornaments.appendChild(badge);
       }
-      if(nameTag){
-        const plaque=doc.createElement('img');
-        plaque.className='sh-sovera-seat-tag';
-        plaque.alt='Verified nameplate';
-        plaque.src=cosmeticMedia(nameTag);
-        el.style.position='relative';
-        el.appendChild(plaque);
-      }
+      el.appendChild(ornaments);
     }
   }
   function wireSoveraRoomFrames(frame){
@@ -1537,12 +1551,12 @@
         const alias=item.id.slice(item.kind.length+1);
         const existing=list.find(x=>x.id===alias);
         const art=existing||list.find(x=>x.id===item.art_key);
-        if(!art)continue;
         const media={remote_image_url:verifiedMediaUrl(item.image_url),
           remote_animation_url:verifiedMediaUrl(item.animation_url),
           remote_audio_url:verifiedMediaUrl(item.audio_url)};
         if(existing)Object.assign(existing,media);
-        else list.push({...art,id:alias,name:item.name,...media});
+        else if(art||(item.kind==='frame_style'&&(media.remote_image_url||media.remote_animation_url)))
+          list.push({...art,id:alias,name:item.name,...media});
       }
       return items;
     })();
@@ -7268,9 +7282,9 @@
         muted:false,talk:false
       };
       if(previous)frame.seats[previous.i]={empty:1,i:previous.i};
-      frame.seats[seat]={...source,i:seat,owner_mic_seat:owner};
+      frame.seats[seat]={...source,i:seat,owner_mic_seat:owner,
+        room_role:owner?'owner':frame.__sharikaRoomRole||'member'};
       frame.render();
-      decorateRoomSeats(frame);
       paintVerifiedMicCount(frame);
       paintVoiceSpeakers(room.id,frame);
       frame.seatEl?.(seat)?.classList.add('sh-seat-pending');

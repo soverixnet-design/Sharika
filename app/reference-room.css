@@ -136,31 +136,62 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 }
 .app.sh-royal-room #grid .seat .av {
   position:relative;
-  width:clamp(42px,12.8vw,65px)!important;
-  height:clamp(42px,12.8vw,65px)!important;
+  width:clamp(36px,11vw,59px)!important;
+  height:auto!important;
+  aspect-ratio:1;
   flex:none;
   margin:0 auto!important;
   border-radius:50%!important;
   font-size:clamp(20px,5.5vw,26px)!important;
-}
-/* The frame uses the same complete artwork as the member profile.
-   Only the photo circle clips, leaving the ornament free to extend. */
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
   overflow:visible!important;
-  margin-bottom:11px!important;
-  isolation:isolate;
 }
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame .face {
-  inset:6%;
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av {
+  width:clamp(33px,9.4vw,53px)!important;
+}
+/* Keep the whole frame inside its seat cell. The photo and outer artwork
+   have separate boxes, so decorations can extend above and below the photo. */
+.app.sh-royal-room #grid .seat.sh-seat-framed {
+  padding-top:calc(clamp(36px,11vw,59px) * .29)!important;
+}
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat.sh-seat-framed {
+  padding-top:calc(clamp(33px,9.4vw,53px) * .29)!important;
+}
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
+  margin-bottom:calc(clamp(36px,11vw,59px) * .29)!important;
+}
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av.sh-has-sovera-frame {
+  margin-bottom:calc(clamp(33px,9.4vw,53px) * .29)!important;
 }
 .app.sh-royal-room #grid .seat .av > .sh-sovera-frame.fxr {
-  width:138%!important;
-  height:138%!important;
+  width:158%!important;
+  height:158%!important;
   object-fit:contain;
 }
-.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av > .sh-sovera-frame.fxr {
-  width:126%!important;
-  height:126%!important;
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame .face {inset:7%}
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame .ring {opacity:0}
+.app.sh-royal-room #grid .seat .sh-seat-ornaments {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  max-width:100%;
+  gap:2px;
+}
+.app.sh-royal-room #grid .seat .sh-svip-seat-badge {
+  font-size:8px!important;
+  padding:1px 4px;
+  line-height:1.25;
+  max-width:100%;
+}
+.app.sh-royal-room #grid .seat .sh-sovera-seat-medal {
+  width:20px;
+  height:20px;
+  object-fit:contain;
+}
+.app.sh-royal-room #grid .seat .sh-sovera-seat-tag {
+  width:min(56px,100%);
+  height:17px;
+  object-fit:contain;
 }
 .app.sh-royal-room #grid .seat .face {border-radius:50%!important;overflow:hidden}
 .app.sh-royal-room #grid .seat .ring {
@@ -337,7 +368,6 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   .app.sh-royal-room .top .room .rav {width:54px;height:54px}
   .app.sh-royal-room .top .room .rt b {font-size:14px!important}
   .app.sh-royal-room .stage {padding-inline:3px!important}
-  .app.sh-royal-room #grid .seat .av {width:40px!important;height:40px!important}
   .app.sh-royal-room .sh-tools {padding-right:52px!important}
   .app.sh-royal-room .sh-tool>button {width:36px!important;height:36px!important}
   .app.sh-royal-room .sh-room-side-gift {width:48px!important;height:48px!important}
