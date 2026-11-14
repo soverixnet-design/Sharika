@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/sharika-play-auth-20261109
+      - fix/sharika-room-monthly-ranking-20261114
     paths:
       - '.github/workflows/sharika-play-greedy-virtual-worker.yml'
   workflow_dispatch:
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   deploy-play-virtual-only:
     name: Verify canonical IDs and deploy only the isolated Play Worker
-    if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109'
+    if: github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-room-monthly-ranking-20261114'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: sharika-staging
@@ -90,6 +91,18 @@ jobs:
         run: npm --prefix cloudflare run check
       - name: Inspect compiled Play Worker (no database migration)
         run: npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.play.virtual.jsonc --outdir /tmp/sharika-play-greedy-worker
+      - name: Install room reward claims schema and configure device verification
+        if: github.ref == 'refs/heads/fix/sharika-room-monthly-ranking-20261114'
+        working-directory: cloudflare
+        run: |
+          set -euo pipefail
+          db=sharika-play-virtual
+          cfg=wrangler.play.virtual.jsonc
+          npx --yes wrangler@4 d1 execute "$db" --remote --config "$cfg" --file migrations/0083_room_reward_claims.sql
+          secrets="$(npx --yes wrangler@4 secret list --config "$cfg")"
+          if ! jq -e 'any(.[]; .name == "INVITE_DEVICE_PEPPER")' <<<"$secrets" >/dev/null; then
+            openssl rand -hex 32 | npx --yes wrangler@4 secret put INVITE_DEVICE_PEPPER --config "$cfg"
+          fi
       - name: Publish only nonredeemable isolated Play API
         run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.play.virtual.jsonc
       - name: Check live Play health and server-side finance isolation
@@ -102,5 +115,15 @@ jobs:
           if(bet.status!==401)throw Error('Greedy state must require authentication');
           const finance=await fetch(root+'/api/v1/agency');
           if(finance.status!==403)throw Error('Cash-related agency endpoint must remain blocked');
+          if(process.env.GITHUB_REF==='refs/heads/fix/sharika-room-monthly-ranking-20261114'){
+            const invite=await fetch(root+'/invite/10000003');
+            const landing=await invite.text();
+            if(!invite.ok||!landing.includes('referrer=sharika_invite%3D10000003'))
+              throw Error('Play referral link is unavailable');
+            const protect=await fetch(root+'/api/v1/invites/redeem',{method:'POST'});
+            const withdrawals=await fetch(root+'/api/v1/invites/withdrawals');
+            if(protect.status!==401||withdrawals.status!==403)
+              throw Error('Play invite route protections failed');
+          }
           console.log('Play virtual-only health, authentication, and finance isolation verified');
           NODE
