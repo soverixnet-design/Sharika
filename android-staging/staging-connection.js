@@ -9347,6 +9347,7 @@
   window.SHARIKA_EXCHANGE_FROM=100;
   window.SHARIKA_EXCHANGE_TO=70;
   let exchangeRateRevision=1,exchangeRateFetch=null;
+  window.SHARIKA_EXCHANGE_MAX=1_000_000;
   async function refreshVerifiedExchangeRate(){
     if(!session)return;
     if(exchangeRateFetch)return exchangeRateFetch;
@@ -9358,8 +9359,10 @@
       if(!Number.isSafeInteger(from)||from<1||!Number.isSafeInteger(to)||to<1||
          !Number.isSafeInteger(quote.revision)||quote.revision<1)
         throw new Error('Invalid verified exchange rate');
-      const changed=window.SHARIKA_EXCHANGE_FROM!==from||
+      const max=Number(quote.max_diamonds_per_exchange)||1_000_000;
+      const changed=max!==window.SHARIKA_EXCHANGE_MAX||window.SHARIKA_EXCHANGE_FROM!==from||
         window.SHARIKA_EXCHANGE_TO!==to;
+      window.SHARIKA_EXCHANGE_MAX=max;
       window.SHARIKA_EXCHANGE_FROM=from;
       window.SHARIKA_EXCHANGE_TO=to;
       window.RATE=to/from;
@@ -9513,14 +9516,40 @@
     if(event.target.closest?.('#rcp [data-x="1"]'))
       refreshVerifiedExchangeRate().catch(error=>toast('Exchange rate: '+errText(error)));
   },true);
-  let selectedRecharge='';let selectedDiamonds=null;let walletOperationBusy=false;
+  let selectedRecharge='';let selectedDiamonds=null;let selectedExchangeRevision=1;let walletOperationBusy=false;
   let pendingExchangeRequest=null;
+  document.addEventListener('click',async event=>{
+    const button=event.target.closest?.('#sh-exchange-max,#sh-exchange-custom');
+    if(!button)return;
+    const screen=button.closest('#rcp');
+    const entered=Number(screen.querySelector('#sh-exchange-amount')?.value);
+    button.disabled=true;
+    try{
+      if(!session){window.showAuth('welcome');return;}
+      await refreshVerifiedExchangeRate();
+      if(!screen.classList.contains('on')||window.RCT!==1)return;
+      const unit=window.SHARIKA_EXCHANGE_FROM;
+      const balance=Number(window.RS().dia)||0;
+      const cap=Math.floor(Math.min(balance,window.SHARIKA_EXCHANGE_MAX)/unit)*unit;
+      const amount=button.id==='sh-exchange-max'?cap:entered;
+      if(!Number.isSafeInteger(amount)||amount<unit||amount>cap||amount%unit!==0)
+        throw new Error('Enter a multiple of '+unit.toLocaleString('en-US')+
+          ' diamonds. You can exchange up to '+cap.toLocaleString('en-US')+'.');
+      selectedDiamonds=amount;
+      selectedExchangeRevision=exchangeRateRevision;
+      const credit=amount/unit*window.SHARIKA_EXCHANGE_TO;
+      window.openSheet('<h3>Diamond Exchange</h3><p>💎 '+amount.toLocaleString('en-US')+
+        ' → 🪙 '+credit.toLocaleString('en-US')+'</p><button class="big" id="ec">Confirm exchange</button>');
+    }catch(error){toast(errText(error));}
+    finally{button.disabled=false;}
+  },true);
   document.addEventListener('click',e=>{
     const exchange=e.target.closest?.('#rcp [data-e]');
     if(exchange){
       const unit=Number(window.SHARIKA_EXCHANGE_FROM)||100;
       const presets=[100,500,1000,5000].map(n=>Math.max(unit,Math.ceil(n/unit)*unit));
       selectedDiamonds=presets[Number(exchange.dataset.e)]||null;
+      selectedExchangeRevision=exchangeRateRevision;
     }
     const recharge=e.target.closest?.('#rcp [data-p]');
     if(recharge)selectedRecharge=recharge.textContent.trim().replace(/\s+/g,' ').slice(0,150);
@@ -11042,7 +11071,7 @@
           pendingExchangeRequest={diamonds:selectedDiamonds,requestId};
           const result=await api('POST','/wallet/exchange',{
             diamonds:selectedDiamonds,request_id:requestId,
-            exchange_rate_revision:exchangeRateRevision
+            exchange_rate_revision:selectedExchangeRevision
           });
           actionConfirmed=true;pendingExchangeRequest=null;
           await refreshWalletAfterConfirmedTransaction({
