@@ -2,6 +2,7 @@
 """Extract transparent looping ornaments from the supplied Sharika videos.
 
 Usage: python scripts/build_premium_assets.py VIP5.mp4 SVIP_SHEET.mp4 ROLE_SHEET.mp4
+       python scripts/build_premium_assets.py --roles 17838.mp4
 Pass --repair to regenerate only missing or empty outputs.
 Re-running this script regenerates only its explicitly named animation assets.
 """
@@ -47,9 +48,34 @@ def add(items, source, slug, kind, group, crop, *, white=False, offset=1, name=N
                   "name": name or slug.replace("-", " ").title(), "art": filename})
 
 
+# Separators measured from the 714 × 1344 role showcase. The packaged IDs
+# predate this correction. Preserve the source row visible in their old crops.
+ROLE_ROW_EDGES = (0, 133, 267, 402, 536, 671, 805, 941, 1075, 1208, 1344)
+ROLE_IDS = (*range(1, 52), *range(54, 65))
+ROLE_SOURCE_ROWS = (0, 1, 2, 3, 4, 4, 5, 6, 7, 8, 9)
+
+
+def add_roles(items, source):
+    for number in ROLE_IDS:
+        old_row, column = divmod(number - 1, 6)
+        row = ROLE_SOURCE_ROWS[old_row]
+        top, bottom = ROLE_ROW_EDGES[row:row + 2]
+        add(items, source, f"role-frame-{number:02d}", "frame_style", "role",
+            (column * 119, top, 119, bottom - top), name=f"Royal Role Frame {number:02d}")
+
+    # The last ornament on the eighth row is also the Noble microphone.
+    top, bottom = ROLE_ROW_EDGES[7:9]
+    add(items, source, "noble-gold-microphone", "frame_style", "noble",
+        (595, top, 119, bottom - top), name="Noble Gold Microphone")
+
+
+
 def main():
     if REPAIR_ONLY:
         sys.argv.remove("--repair")
+    if len(sys.argv) == 3 and sys.argv[1] == "--roles":
+        add_roles([], Path(sys.argv[2]))
+        return
     if len(sys.argv) != 4:
         raise SystemExit("Usage: build_premium_assets.py VIP5.mp4 SVIP.mp4 ROLES.mp4")
     vip, svip, roles = map(Path, sys.argv[1:])
@@ -89,19 +115,7 @@ def main():
         add(items, svip, f"svip-tag-{number:02d}", "name_tag_style", "svip",
             crop, name=f"SVIP Nameplate {number}")
 
-    # Role-themed ornaments are strictly cosmetic. They grant zero privileges.
-    # The final rows contain intentional blank cells in the reference sheet.
-    for row in range(11):
-        present = range(6) if row < 8 or row == 9 else ([0, 1, 2, 5] if row == 8 else range(4))
-        for col in present:
-            number = row * 6 + col + 1
-            height = 106 if (row,col)==(8,5) else min(115,1344-row*122-3)
-            add(items, roles, f"role-frame-{number:02d}", "frame_style", "role",
-                (col * 119, row * 122 + 3, 119, height),
-                name=f"Royal Role Frame {number:02d}")
-    # This unlabelled gold-microphone animation is available for Noble styling.
-    add(items, roles, "noble-gold-microphone", "frame_style", "noble",
-        (595, 979, 119, 106), name="Noble Gold Microphone")
+    add_roles(items, roles)
     # A later supplied video provides distinct VIP/SVIP badges and frames.
     # Rebuilding this original trio must not silently drop those ornaments.
     manifest = DEST / "manifest.json"
