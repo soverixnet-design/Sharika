@@ -1661,7 +1661,7 @@
     const controls=[
       ['purchase_enabled','Coin purchases'],['admin_grant_enabled','Admin grants'],
       ['auto_enabled','Automatic qualification'],['auto_by_level','Qualify by wealth level'],
-      ['auto_by_gifts','Qualify by gifts sent']
+      ['auto_by_gifts','Qualify by gifts sent'],['svip_recharge_enabled','Qualify for SVIP by verified Play recharge']
     ];
     settingsRoot.innerHTML='<div class="row" style="display:flex;flex-wrap:wrap;gap:15px">'+
       controls.map(([key,label])=>'<label><input type="checkbox" data-pr-policy="'+key+'" '+
@@ -1679,13 +1679,15 @@
       '</tbody></table></div>'+
       '<p class="n">SVIP uses the prices below, not the legacy SVIP tier price above. '+
       'Every user purchase lasts 30 days; daily bonuses reset each UTC day.</p>'+
-      '<h3>♛ SVIP 1–8 · Pass prices & Daily Rewards</h3>'+
+      '<h3>♛ SVIP 1–8 · Prices, Recharge Targets & Daily Rewards</h3>'+
       '<div style="overflow-x:auto"><table style="width:100%;min-width:490px;text-align:left">'+
-      '<thead><tr><th>Level</th><th>30-day price</th><th>Daily reward</th><th>Sell</th></tr></thead><tbody>'+
+      '<thead><tr><th>Level</th><th>30-day coin price</th><th>Recharge USD</th><th>Daily reward</th><th>Enabled</th></tr></thead><tbody>'+
       (data.config.svip_levels||[]).map(level=>'<tr data-svip-level="'+level.level+'">'+
         '<td><b>SVIP '+level.level+'</b></td>'+
         '<td><input type="number" inputmode="numeric" min="1" max="1000000000" class="field" '+
         'data-svip-field="price_coins" value="'+esc(level.price_coins)+'" '+(role==='super'?'':'disabled')+'></td>'+
+        '<td><input type="number" inputmode="numeric" min="1" max="1000000" class="field" '+
+        'data-svip-field="recharge_usd" value="'+esc(level.recharge_usd)+'" '+(role==='super'?'':'disabled')+'></td>'+
         '<td><input type="number" inputmode="numeric" min="0" max="1000000" class="field" '+
         'data-svip-field="daily_bonus_coins" value="'+esc(level.daily_bonus_coins)+'" '+(role==='super'?'':'disabled')+'></td>'+
         '<td><input type="checkbox" data-svip-enabled '+(level.enabled?'checked':'')+
@@ -1707,6 +1709,7 @@
       const svip_levels=[...settingsRoot.querySelectorAll('[data-svip-level]')].map(row=>({
         level:Number(row.dataset.svipLevel),
         price_coins:Number(row.querySelector('[data-svip-field="price_coins"]')?.value),
+        recharge_usd:Number(row.querySelector('[data-svip-field="recharge_usd"]')?.value),
         daily_bonus_coins:Number(row.querySelector('[data-svip-field="daily_bonus_coins"]')?.value),
         enabled:!!row.querySelector('[data-svip-enabled]')?.checked
       }));
