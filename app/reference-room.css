@@ -380,10 +380,12 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   row-gap:clamp(8px,1.4vh,14px)!important;
   padding-bottom:4px!important;
 }
-.app.sh-royal-room #grid .seat.sh-seat-framed {
+.app.sh-royal-room #grid .seat.sh-seat-framed,
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat.sh-seat-framed {
   padding-top:0!important;
 }
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame,
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av.sh-has-sovera-frame {
   margin-bottom:0!important;
 }
 .app.sh-royal-room #grid .seat .av > .sh-sovera-frame.fxr {
