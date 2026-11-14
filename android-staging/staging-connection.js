@@ -1553,7 +1553,10 @@
         badge.src=cosmeticMedia(item);
         ornaments.appendChild(badge);
       }
-      el.appendChild(ornaments);
+      // Nobel/SVIP/role artwork belongs to the seat's framed avatar,
+      // not a new row after the name. This keeps every seat the same height.
+      ornaments.classList.add('sh-seat-frame-badges');
+      avatar.appendChild(ornaments);
     }
   }
   function wireSoveraRoomFrames(frame){

@@ -373,3 +373,104 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   .app.sh-royal-room .sh-room-side-gift {width:48px!important;height:48px!important}
 }
 @media(prefers-reduced-motion:reduce){.app.sh-royal-room .seat .ring{animation:none!important}}
+
+/* Nobel and other assigned seat artwork attach to the avatar/frame rather
+   than adding a second ornament row beneath the user's name. */
+.app.sh-royal-room #grid.grid {
+  row-gap:clamp(8px,1.4vh,14px)!important;
+  padding-bottom:4px!important;
+}
+.app.sh-royal-room #grid .seat.sh-seat-framed {
+  padding-top:0!important;
+}
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
+  margin-bottom:0!important;
+}
+.app.sh-royal-room #grid .seat .av > .sh-sovera-frame.fxr {
+  width:135%!important;
+  height:135%!important;
+}
+.app.sh-royal-room .stage {padding-top:15px!important}
+.app.sh-royal-room #grid .seat .av > .sh-seat-ornaments.sh-seat-frame-badges {
+  position:absolute!important;
+  inset:0!important;
+  z-index:35!important;
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  max-width:none!important;
+  pointer-events:none!important;
+  overflow:visible!important;
+}
+.app.sh-royal-room #grid .seat .av .sh-seat-frame-badges .sh-sovera-seat-medal {
+  position:absolute!important;
+  right:-7px!important;
+  bottom:-5px!important;
+  width:clamp(16px,4.8vw,22px)!important;
+  height:clamp(16px,4.8vw,22px)!important;
+  object-fit:contain!important;
+  z-index:2!important;
+}
+.app.sh-royal-room #grid .seat .av .sh-seat-frame-badges .sh-sovera-seat-tag {
+  position:absolute!important;
+  top:-13px!important;
+  left:50%!important;
+  transform:translateX(-50%)!important;
+  width:auto!important;
+  max-width:50px!important;
+  height:15px!important;
+  object-fit:contain!important;
+}
+.app.sh-royal-room #grid .seat .av .sh-seat-frame-badges .sh-svip-seat-badge {
+  position:absolute!important;
+  top:-9px!important;
+  right:-14px!important;
+  max-width:48px!important;
+}
+.app.sh-royal-room #grid .seat .av .sh-seat-frame-badges .sh-room-admin-badge {
+  position:absolute!important;
+  top:-9px!important;
+  left:-12px!important;
+}
+/* Profile header is one touch target. Monthly ranking sits immediately
+   below it in a separate, small row without covering the room artwork. */
+.app.sh-royal-room .top {align-items:flex-start!important;min-height:0!important}
+.app.sh-royal-room .sh-room-profile-stack {
+  display:flex;
+  flex:1 1 0;
+  flex-direction:column;
+  align-items:stretch;
+  min-width:0;
+}
+.app.sh-royal-room .sh-room-profile-stack .sh-room-profile-header {
+  width:100%;
+  flex:0 0 auto!important;
+  min-width:0;
+}
+.app.sh-royal-room .sh-room-profile-stack .room {
+  min-height:59px!important;
+  max-height:none!important;
+  padding:2px 6px!important;
+}
+.app.sh-royal-room .sh-room-profile-stack .room .rav {
+  width:55px!important;
+  height:55px!important;
+}
+.app.sh-royal-room .sh-room-rank-row {
+  display:flex;
+  justify-content:flex-start;
+  align-items:center;
+  min-height:24px;
+  padding-left:12px;
+  margin:0;
+}
+.app.sh-royal-room .sh-room-rank-row > .sh-room-rank-button {
+  position:static!important;
+  left:auto!important;
+  bottom:auto!important;
+  width:24px!important;
+  height:24px!important;
+  border-radius:50%!important;
+  font-size:14px!important;
+  line-height:22px!important;
+}
