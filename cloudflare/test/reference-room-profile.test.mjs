@@ -47,7 +47,7 @@ test('room cover refreshes inside and outside without a black header panel',()=>
 
 test('reference profile matches the menu without losing verified account features',()=>{
   for(const label of ['My Profile','Wallet','Mall','Aristocracy','Level','Medal',
-    'Backpack','Language','Feedback','Invite Reward','Settings'])
+    'Backpack','Language','Feedback','Invite &amp; Earn','Settings'])
     assert.ok(html.includes(label),label);
   assert.match(profileCss,/grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
   assert.match(profileCss,/#001b12/);

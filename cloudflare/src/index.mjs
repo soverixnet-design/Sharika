@@ -40,7 +40,7 @@ import {handlePublicAccountDeletion,handleAdminAccountDeletion} from './account-
 import {handlePublicPrivacyPolicy} from './privacy-policy.mjs';
 import {handlePlayBillingApp} from './play-billing.mjs';
 import {servePublicMedia} from './admin-media.mjs';
-import {roomWeekStartUTC,settleDueRoomWeeks} from './room-weekly-rewards.mjs';
+import {roomWeekStartUTC} from './room-weekly-rewards.mjs';
 import {searchVerifiedRooms} from './room-search.mjs';
 import {readRankingRewardPreview} from './ranking-rewards.mjs';
 import {handleRoleApplicationApp} from './role-applications.mjs';
@@ -213,7 +213,7 @@ export async function handleRequest(request, env, ctx) {
     return fail('play_virtual_only_feature_unavailable',403);
   // Public invitation landing must load without a Firebase session.
   // No wallet or invite database write is performed on GET.
-  const inviteLanding=handleInviteLanding(request,path);
+  const inviteLanding=handleInviteLanding(request,path,playVirtualOnly(env));
   if(inviteLanding)return inviteLanding;
   // Public deletion requests must remain usable after the app is uninstalled.
   const deletionLanding=await handlePublicAccountDeletion(request,env,path);
@@ -1584,7 +1584,7 @@ export async function handleRequest(request, env, ctx) {
       // room only. This read-only leaderboard never awards or moves coins.
       if (parts.length===5 && action==='contributors' && request.method==='GET') {
         if(!member)return fail('join_room_first',403,cors);
-        const period=url.searchParams.get('period')||'daily';
+        const period=url.searchParams.get('period')||'monthly';
         if(!['daily','weekly','monthly'].includes(period))
           return fail('invalid_ranking_period',400,cors);
         const now=new Date();
@@ -1593,6 +1593,8 @@ export async function handleRequest(request, env, ctx) {
         if(period==='weekly')
           since.setUTCDate(since.getUTCDate()-(since.getUTCDay()+6)%7);
         const after=since.toISOString().slice(0,19).replace('T',' ');
+        const offset=Number(url.searchParams.get('offset')||0);
+        if(!Number.isSafeInteger(offset)||offset<0)return fail('invalid_ranking_offset',400,cors);
         const [group,summary]=await Promise.all([
           env.DB.prepare(
             'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
@@ -1602,8 +1604,8 @@ export async function handleRequest(request, env, ctx) {
             'JOIN sharika_users u ON u.auth_uid=t.sender_uid '+
             'WHERE t.room_id=? AND t.created_at>=? '+
             'GROUP BY t.sender_uid '+
-            'ORDER BY total DESC,u.public_no ASC LIMIT 30'
-          ).bind(roomId,after).all(),
+            'ORDER BY total DESC,u.public_no ASC LIMIT 31 OFFSET ?'
+          ).bind(roomId,after,offset).all(),
           env.DB.prepare(
             'SELECT COALESCE(SUM(total_coins),0) AS total '+
             'FROM sharika_gift_transactions WHERE room_id=? AND created_at>=?'
@@ -1612,64 +1614,51 @@ export async function handleRequest(request, env, ctx) {
         return reply({room_id:roomId,period,timezone:'UTC',
           since_utc:since.toISOString(),
           total_contribution_coins:Number(summary?.total)||0,
-          leaders:(group.results||[]).map((row,i)=>({
-            rank:i+1,name:row.sender_name||'Member',
+          next_offset:(group.results||[]).length>30?offset+30:null,
+          leaders:(group.results||[]).slice(0,30).map((row,i)=>({
+            rank:offset+i+1,name:row.sender_name||'Member',
             pic:row.sender_pic||null,
             public_id:publicId(row.sender_no),
             display_id:row.sender_special_id||publicId(row.sender_no),
             total:Number(row.total)||0
           }))},200,cors);
       }
-      // Ordinary gifts earn a 10% room share. Newly settled gifts also credit
-      // whole coins once to the owner's audited personal wallet; the room
-      // ledger remains a report, not another claimable balance.
-      // Lucky Gifts retain their separate 1% rule.
-      if (parts.length===5 && action==='rewards' && request.method==='GET') {
+      // Claim against verified accruals, net of prior weekly payouts and claims.
+      // A single SQL statement and its trigger serialize concurrent wallet credits.
+      if(parts.length===5&&action==='rewards'&&['GET','POST'].includes(request.method)){
         if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
-        const regular=await env.DB.prepare(
+        const balances=`
+          SELECT
+            (SELECT COALESCE(SUM(reward_hundredths),0) FROM sharika_room_weekly_accruals
+              WHERE room_id=?1 AND owner_uid=?2) AS earned,
+            (SELECT COALESCE(SUM(coins_paid),0) FROM sharika_room_weekly_payouts
+              WHERE room_id=?1 AND owner_uid=?2) AS weekly,
+            (SELECT COALESCE(SUM(coins),0) FROM sharika_room_reward_claims
+              WHERE room_id=?1 AND owner_uid=?2) AS claimed
+        `;
+        if(request.method==='POST'){
+          const claim=await env.DB.prepare(`
+            INSERT INTO sharika_room_reward_claims(room_id,owner_uid,coins)
+            SELECT ?1,?2,(earned/100)-weekly-claimed FROM (${balances})
+            WHERE (earned/100)>weekly+claimed
+              AND EXISTS(SELECT 1 FROM sharika_rooms WHERE id=?1 AND owner_id=?2)
+            RETURNING coins
+          `).bind(roomId,uid).first();
+          return reply({claimed_coins:Number(claim?.coins)||0},200,cors);
+        }
+        const balance=await env.DB.prepare(balances).bind(roomId,uid).first();
+        const paid=Number(balance.weekly)+Number(balance.claimed);
+        const pending=Math.max(0,Number(balance.earned)-paid*100);
+        const recorded=await env.DB.prepare(
           'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
           'FROM sharika_regular_room_rewards WHERE room_id=?'
         ).bind(roomId).first();
-        const regularPoints=Number(regular?.points)||0;
-        const luckyEnabled=!playVirtualOnly(env)&&env.SHARIKA_LUCKY_GIFTS_ENABLED==='true' &&
-          nonRedeemableLuckyEconomy(env);
-        const lucky=luckyEnabled?await env.DB.prepare(
-          'SELECT COALESCE(SUM(reward_hundredths),0) AS points '+
-          'FROM sharika_lucky_room_rewards WHERE room_id=?'
-        ).bind(roomId).first():null;
-        const luckyPoints=Number(lucky?.points)||0;
-        const points=regularPoints+luckyPoints;
-        const credited=await env.DB.prepare(
-          "SELECT COALESCE(SUM(l.delta),0) AS coins FROM sharika_gift_transactions t "+
-          "JOIN sharika_wallet_ledger l ON l.auth_uid=? AND l.currency='coins' "+
-          "AND l.reason='room_gift_reward' AND l.request_id=('roomgift:'||t.id) "+
-          "WHERE t.room_id=?"
-        ).bind(room.owner_id,roomId).first();
-        const weekly=await env.DB.prepare(
-          'SELECT COALESCE(SUM(coins_paid),0) AS coins '+
-          'FROM sharika_room_weekly_payouts WHERE room_id=? AND owner_uid=?'
-        ).bind(roomId,room.owner_id).first();
-        const pending=await env.DB.prepare(
-          'SELECT COALESCE(SUM(a.reward_hundredths),0) AS points '+
-          'FROM sharika_room_weekly_accruals a WHERE a.room_id=? AND a.owner_uid=? '+
-          'AND NOT EXISTS(SELECT 1 FROM sharika_room_weekly_payouts p '+
-          'WHERE p.room_id=a.room_id AND p.owner_uid=a.owner_uid '+
-          'AND p.week_start_utc=a.week_start_utc)'
-        ).bind(roomId,room.owner_id).first();
-        const ownerWalletCreditedCoins=(Number(credited?.coins)||0)+
-          (Number(weekly?.coins)||0);
-        const nextWeek=new Date(Date.parse(roomWeekStartUTC(Date.now())+
-          'T00:00:00Z')+7*86400000).toISOString();
-        return reply({room_id:roomId,reward_coins:Math.floor(points/100),
-          reward_fraction_hundredths:points%100,reward_hundredths:points,
-          regular_reward_hundredths:regularPoints,lucky_reward_hundredths:luckyPoints,
-          regular_gift_percent:10,lucky_gift_percent:1,
-          owner_wallet_credited:ownerWalletCreditedCoins>0,
-          owner_wallet_credited_coins:ownerWalletCreditedCoins,
-          weekly_pending_hundredths:Number(pending?.points)||0,
-          weekly_pending_coins:(Number(pending?.points)||0)/100,
-          weekly_next_settlement_utc:nextWeek,
-          owner_wallet_credit_enabled:true,withdrawal_enabled:false},200,cors);
+        return reply({room_id:roomId,regular_gift_percent:10,
+          reward_hundredths:Number(recorded?.points)||0,
+          regular_reward_hundredths:Number(recorded?.points)||0,
+          owner_wallet_credited_coins:paid,
+          claimable_coins:Math.floor(pending/100),
+          pending_hundredths:pending,withdrawal_enabled:false},200,cors);
       }
       // Gift sending uses the real D1 catalog and an all-or-nothing ledger.
       // Lucky/random-payout items remain blocked pending cashout compliance.
@@ -1877,9 +1866,7 @@ export async function handleRequest(request, env, ctx) {
             'INSERT INTO sharika_regular_room_rewards(transaction_id,room_id,reward_hundredths) '+
             'VALUES((SELECT id FROM sharika_gift_transactions WHERE sender_uid=? AND request_id=?),?,?)'
           ).bind(uid,requestId,roomId,regularRewardHundredths));
-          // Reward is earned now but transferred at the end of this UTC week.
-          // Only post-upgrade transactions are in this table: older immediate
-          // credits can never be paid a second time by the weekly cron.
+          // Record owner-specific accruals alongside the settled gift.
           const ownerRewardCoins=gift.tab===2?0:Math.floor(spend/10);
           if(regularRewardHundredths>0){
             statements.push(env.DB.prepare(
@@ -1914,8 +1901,6 @@ export async function handleRequest(request, env, ctx) {
                 ctx?.waitUntil(deliverNotification(env,notice.notification));
             }catch(error){console.error('gift_notice_failed',String(error.message||error));}
           }
-          // Weekly payout will notify the room owner when due; gifts do not
-          // make immediate owner-wallet credits after this upgrade.
           return reply({duplicate:false,transaction_id:saved.id,
             gift:{id:gift.id,name:gift.name,emoji:gift.emoji},
             coins:wallet.coins,spent_coins:spend,recipients:ids,
@@ -2119,11 +2104,7 @@ export default {
         .catch(error=>console.error('family_sheets_cron_error',error.message)));
       context.waitUntil(settleLastCpWeek(env.DB,Date.now(),'system',true,env,context)
         .catch(error=>console.error('cp_weekly_reward_cron_error',error.message)));
-      context.waitUntil(settleDueRoomWeeks(env.DB,Date.now(),40)
-        .then(result=>{
-          if(result.errors.length)
-            console.error('room_weekly_reward_settlement_errors',result.errors.length);
-        }).catch(error=>console.error('room_weekly_reward_cron_error',error.message)));
+
     }
   }
 };

@@ -13,7 +13,7 @@ db.executescript("""
 CREATE TABLE sharika_rooms(id TEXT PRIMARY KEY, owner_id TEXT NOT NULL);
 CREATE TABLE sharika_users(
  auth_uid TEXT PRIMARY KEY, coins INTEGER NOT NULL CHECK(coins>=0),
- status TEXT NOT NULL DEFAULT 'active'
+ status TEXT NOT NULL DEFAULT 'active', updated_at TEXT
 );
 CREATE TABLE sharika_gift_transactions(
  id INTEGER PRIMARY KEY, sender_uid TEXT NOT NULL, room_id TEXT NOT NULL
@@ -58,5 +58,23 @@ try:
 except sqlite3.IntegrityError:
     pass
 assert "'room_gift_reward','roomgift:'" not in app, "old immediate credit still active"
-assert "sharika_room_weekly_accruals" in app and "settleDueRoomWeeks" in app
+assert "sharika_room_weekly_accruals" in app
+db.executescript((ROOT / "migrations/0083_room_reward_claims.sql").read_text())
+balances = app.split("const balances=`", 1)[1].split("`", 1)[0]
+claim = app.split("const claim=await env.DB.prepare(`", 1)[1].split("`", 1)[0]
+claim = claim.replace("${balances}", balances)
+assert db.execute(claim, ("r1", "owner")).fetchone() is None
+db.execute("INSERT INTO sharika_gift_transactions VALUES(4,'sender','r1')")
+db.execute("INSERT INTO sharika_room_weekly_accruals(transaction_id,room_id,owner_uid,week_start_utc,reward_hundredths) VALUES(4,'r1','owner','2026-11-09',285)")
+assert db.execute(claim, ("r1", "sender")).fetchone() is None
+assert db.execute(claim, ("r1", "owner")).fetchone() == (3,)
+assert db.execute(claim, ("r1", "owner")).fetchone() is None
+assert db.execute("SELECT coins FROM sharika_users WHERE auth_uid='owner'").fetchone() == (1004,)
+assert db.execute("SELECT delta,balance_after FROM sharika_wallet_ledger WHERE reason='room_reward_claim'").fetchall() == [(3, 1004)]
+try:
+    db.execute("INSERT INTO sharika_room_weekly_payouts(room_id,owner_uid,week_start_utc,earned_hundredths,coins_paid,carry_hundredths) VALUES('r1','owner','2026-11-09',285,3,5)")
+    raise AssertionError("legacy cron overlapped a manual claim")
+except sqlite3.IntegrityError as error:
+    assert 'room_reward_manual_claim_active' in str(error)
+
 print("room weekly payout schema, historic-coin preservation and carry: OK")

@@ -175,12 +175,12 @@ test('no commission without an active referrer or at less than 20 coin recharge'
   })).bonus,0);
 });
 
-const redemption=(fixture,inviteCode='10000002')=>handleInviteApp({
+const redemption=(fixture,inviteCode='10000002',virtualOnly=false)=>handleInviteApp({
   request:new Request('https://example.test/api/v1/invites/redeem',{
     method:'POST',headers:{'content-type':'application/json',
       'x-sharika-device-proof':'a'.repeat(64)},
     body:JSON.stringify({invite_code:inviteCode})
-  }),env:{DB:fixture.DB,INVITE_DEVICE_PEPPER:'test-secret-device-pepper-at-least-32-characters'},
+  }),env:{DB:fixture.DB,SHARIKA_PLAY_VIRTUAL_ONLY:String(virtualOnly),INVITE_DEVICE_PEPPER:'test-secret-device-pepper-at-least-32-characters'},
   uid:'alice',path:'/api/v1/invites/redeem',
   cors:{},reply,fail
 });
@@ -205,6 +205,19 @@ test('newly created account redeems one verified inviter and both coins are in o
   assert.equal(statements[5].args[1],98000);
   assert.equal(statements[6].args[3],'referral-claim:alice');
   assert.equal(JSON.stringify(result).includes('bob'),false);
+});
+
+test('Play invite grants 100,000 virtual coins to each account and creates no cash earning',async()=>{
+  const fixture=mock();
+  const response=await redemption(fixture,'10000002',true);
+  assert.equal(response.status,201);
+  const result=await response.json();
+  assert.equal(result.inviter_reward,100000);
+  assert.equal(result.invitee_extra_coins,100000);
+  const statements=fixture.state.batches[0];
+  assert.equal(statements.filter(v=>v.sql.includes('UPDATE sharika_users'))
+    .every(v=>v.args[1]===100000),true);
+  assert.equal(statements.some(v=>v.sql.includes('sharika_invite_usd_earnings')),false);
 });
 
 test('redemption cannot happen after expiry or for an already-linked account',async()=>{

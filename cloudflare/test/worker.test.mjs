@@ -777,6 +777,45 @@ test('one million coin Luxury gift settles once at catalogue price without touch
   }finally{globalThis.fetch=prior;}
 });
 
+test('monthly room ranking uses the UTC calendar boundary and permits ordinary joined members',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  try{
+    const uid='firebase:'+project+':secure-user';
+    const db=fakeDb(),old=db.prepare.bind(db);
+    let joined=true;
+    db.prepare=sql=>{
+      const stmt=old(sql);
+      if(sql.includes('FROM sharika_users WHERE auth_uid'))
+        stmt.first=async()=>({status:'active',coins:2000});
+      if(sql.startsWith('SELECT * FROM sharika_rooms WHERE id='))
+        stmt.first=async()=>({id:'10000001',owner_id:'other-owner'});
+      if(sql.startsWith('SELECT * FROM sharika_room_members WHERE room_id='))
+        stmt.first=async()=>joined?{room_id:'10000001',user_id:uid,role:'member'}:null;
+      if(sql.includes('SUM(t.total_coins)'))
+        stmt.all=async()=>{
+          assert.match(sql,/WHERE t.room_id=\? AND t.created_at>=\?/);
+          assert.match(sql,/GROUP BY t.sender_uid/);
+          assert.deepEqual(stmt.values,['10000001',new Date().toISOString().slice(0,7)+'-01 00:00:00',0]);
+          return {results:[{sender_no:10000005,sender_name:'Gift sender',total:123000}]};
+        };
+      return stmt;
+    };
+    const headers={Authorization:'Bearer '+await token()};
+    const env={DB:db,FIREBASE_PROJECT_ID:project};
+    const root='https://example.test/api/v1/rooms/10000001';
+    const response=await handleRequest(new Request(root+'/contributors',{headers}),env);
+    assert.equal(response.status,200);
+    const data=await response.json();
+    assert.equal(data.period,'monthly');
+    assert.equal(data.leaders[0].total,123000);
+    const denied=await handleRequest(new Request(root+'/rewards',{method:'POST',headers}),env);
+    assert.equal(denied.status,403);
+    joined=false;
+    const outsider=await handleRequest(new Request(root+'/contributors',{headers}),env);
+    assert.equal(outsider.status,403);
+  }finally{globalThis.fetch=prior;}
+});
+
 test('room rewards show audited ordinary-gift shares and actual owner wallet credits',async()=>{
   const prior=globalThis.fetch;globalThis.fetch=certFetch;
   try{
@@ -792,8 +831,8 @@ test('room rewards show audited ordinary-gift shares and actual owner wallet cre
         stmt.first=async()=>({room_id:'10000001',user_id:uid,role:'owner'});
       if(sql.includes('FROM sharika_regular_room_rewards WHERE room_id='))
         stmt.first=async()=>({points:1234});
-      if(sql.includes('SUM(l.delta)'))
-        stmt.first=async()=>({coins:10});
+      if(sql.includes('AS earned'))
+        stmt.first=async()=>({earned:1234,weekly:10,claimed:0});
       return stmt;
     };
     const res=await handleRequest(new Request('https://example.test/api/v1/rooms/10000001/rewards',{
@@ -803,11 +842,9 @@ test('room rewards show audited ordinary-gift shares and actual owner wallet cre
     const data=await res.json();
     assert.equal(data.reward_hundredths,1234);
     assert.equal(data.regular_reward_hundredths,1234);
-    assert.equal(data.reward_coins,12);
-    assert.equal(data.reward_fraction_hundredths,34);
-    assert.equal(data.owner_wallet_credited,true);
+    assert.equal(data.claimable_coins,2);
+    assert.equal(data.pending_hundredths,234);
     assert.equal(data.owner_wallet_credited_coins,10);
-    assert.equal(data.owner_wallet_credit_enabled,true);
     assert.equal(data.withdrawal_enabled,false);
     assert.equal(db.calls.some(x=>x[1]?.includes?.('sharika_lucky_room_rewards')),false);
   }finally{globalThis.fetch=prior;}

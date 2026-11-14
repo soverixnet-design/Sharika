@@ -11,7 +11,7 @@ export function sensitiveActionClass(method, path) {
     path === '/api/v1/invites/withdrawals' ||
     /^\/api\/v1\/admin\/events\/[1-9]\d*\/award$/.test(path) ||
     /^\/api\/v1\/admin\/(?:sellers|recharge|wallet|coin|exchange-rate|family|invites|cosmetics\/grant)(?:\/|$)/.test(path) ||
-    /^\/api\/v1\/rooms\/[0-9]{8}\/(?:gift|gifts|lucky-gift)(?:\/|$)/.test(path) ||
+    /^\/api\/v1\/rooms\/[0-9]{8}\/(?:gift|gifts|lucky-gift|rewards)(?:\/|$)/.test(path) ||
     /^\/api\/v1\/(?:games|original-games|greedy-wheel|greedy)\//.test(path) && /\/bets?(?:\/|$)/.test(path) ||
     /^\/api\/v1\/(?:exchange|diamonds)(?:\/|$)/.test(path) ||
     /^\/api\/v1\/family\/.*(?:gift|transfer|withdraw)/.test(path)

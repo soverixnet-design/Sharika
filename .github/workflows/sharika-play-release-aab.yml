@@ -3,6 +3,7 @@ name: Sharika Play Store AAB candidate
 on:
   push:
     branches:
+      - fix/sharika-room-monthly-ranking-20261114
       - fix/sharika-room-entry-loading-20261113
       - fix/sharika-room-cover-seat-wallet-20261114
       - feature/sharika-daily-task-admob-20261114
@@ -49,7 +50,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify committed Closed Testing UI safety gates
-        if: (github.ref == 'refs/heads/fix/sharika-room-cover-seat-wallet-20261114' || github.ref == 'refs/heads/feature/sharika-daily-task-admob-20261114' || github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113' || github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110' || github.ref == 'refs/heads/feature/sharika-play-room-qa-20261111')
+        if: (github.ref == 'refs/heads/fix/sharika-room-cover-seat-wallet-20261114' || github.ref == 'refs/heads/feature/sharika-daily-task-admob-20261114' || github.ref == 'refs/heads/fix/sharika-room-monthly-ranking-20261114' || github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113' || github.ref == 'refs/heads/feature/sharika-safe-closed-test-20261109' || github.ref == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || github.ref == 'refs/heads/fix/sharika-play-auth-20261109' || github.ref == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || github.ref == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110' || github.ref == 'refs/heads/feature/sharika-play-room-qa-20261111')
         run: |
           set -euo pipefail
           grep -F 'if(playStoreMode!==false)return;' android-staging/staging-connection.js
@@ -140,7 +141,7 @@ jobs:
           fi
 
       - name: Verify existing closed-test backend before building
-        if: github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113' || github.ref == 'refs/heads/fix/sharika-room-cover-seat-wallet-20261114' || github.ref == 'refs/heads/feature/sharika-daily-task-admob-20261114'
+        if: github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113' || github.ref == 'refs/heads/fix/sharika-room-cover-seat-wallet-20261114' || github.ref == 'refs/heads/feature/sharika-daily-task-admob-20261114' || github.ref == 'refs/heads/fix/sharika-room-monthly-ranking-20261114'
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --max-time 25 \
@@ -150,7 +151,7 @@ jobs:
       - name: Build optimized release-format signed AAB
         working-directory: android-staging
         env:
-          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113' || github.ref == 'refs/heads/fix/sharika-room-cover-seat-wallet-20261114' || github.ref == 'refs/heads/feature/sharika-daily-task-admob-20261114') && 'https://sharika-api-play-virtual.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN }}
+          SHARIKA_PLAY_API_ORIGIN: ${{ (github.ref == 'refs/heads/fix/sharika-room-entry-loading-20261113' || github.ref == 'refs/heads/fix/sharika-room-cover-seat-wallet-20261114' || github.ref == 'refs/heads/feature/sharika-daily-task-admob-20261114' || github.ref == 'refs/heads/fix/sharika-room-monthly-ranking-20261114') && 'https://sharika-api-play-virtual.soverixnet.workers.dev' || vars.SHARIKA_PLAY_API_ORIGIN }}
           # Never allow staging-backed or staging-signed Play release artifacts.
           SHARIKA_PLAY_STAGING_CANDIDATE: 'false'
           SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
@@ -180,7 +181,7 @@ jobs:
           unzip -p "$bundle" base/assets/connection.js > "$RUNNER_TEMP/release-connection.js"
           unzip -p "$bundle" base/assets/royal-profile.css > "$RUNNER_TEMP/release-profile.css"
           node --check "$RUNNER_TEMP/release-connection.js"
-          if [[ "$GITHUB_REF" == "refs/heads/fix/sharika-room-cover-seat-wallet-20261114" || "$GITHUB_REF" == "refs/heads/feature/sharika-daily-task-admob-20261114" || "$GITHUB_REF" == "refs/heads/fix/sharika-room-entry-loading-20261113" || "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' || "$GITHUB_REF" == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-play-auth-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || "$GITHUB_REF" == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110' ]]; then
+          if [[ "$GITHUB_REF" == "refs/heads/fix/sharika-room-cover-seat-wallet-20261114" || "$GITHUB_REF" == "refs/heads/feature/sharika-daily-task-admob-20261114" || "$GITHUB_REF" == "refs/heads/fix/sharika-room-monthly-ranking-20261114" || "$GITHUB_REF" == "refs/heads/fix/sharika-room-entry-loading-20261113" || "$GITHUB_REF" == 'refs/heads/feature/sharika-safe-closed-test-20261109' || "$GITHUB_REF" == 'refs/heads/feature/sharika-play-tester-identity-admin-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-play-auth-20261109' || "$GITHUB_REF" == 'refs/heads/fix/sharika-google-picker-recovery-20261110' || "$GITHUB_REF" == 'refs/heads/fix/sharika-room-voice-admin-unified-20261110' ]]; then
             grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' "$RUNNER_TEMP/release-connection.js"
             unzip -Z1 "$bundle" | grep -Fx 'base/assets/play-virtual-ui.js'
             unzip -Z1 "$bundle" | grep -Fx 'base/assets/greedy-wheel/index.html'

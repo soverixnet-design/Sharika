@@ -10,7 +10,7 @@
   style.id='sharika-play-virtual-closed-loop-ui';
   style.textContent=[
     '#qi,#pc,#rcl2,#sharika-recharge-seller-wallet,#rcp [data-x="0"],',
-    '[data-m="invite"],#sh-bd-entry,#sh-agency-entry,#sh-host-entry,',
+    '#sh-bd-entry,#sh-agency-entry,#sh-host-entry,',
     '#sh-open-host-statement,#sh-rank-reward-box,',
     '#rt button:nth-child(1),#rt button:nth-child(6),',
     '#rt button:nth-child(7){display:none!important}'

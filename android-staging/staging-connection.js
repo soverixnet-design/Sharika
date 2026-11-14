@@ -296,10 +296,9 @@
       const style=document.createElement('style');
       style.id='sharika-play-store-mode';
       style.textContent='#sharika-recharge-seller-wallet,#rcl2,#pc,#qi,'+
-        '[data-m="invite"],#sh-bd-entry,#sh-agency-entry,#sh-host-entry,'+
+        '#sh-bd-entry,#sh-agency-entry,#sh-host-entry,'+
         '#stage-invite-code{display:none!important}';
       document.head.append(style);
-      clearIncomingInvite();
       // The original web app retains its older terms; replace the packaged
       // Play presentation so no seller, cash, betting or withdrawal promise appears.
       const applyVirtualTerms=()=>{
@@ -512,7 +511,6 @@
   }
   async function claimPendingInviteAfterLogin(){
     await playModeReady;
-    if(playStoreMode!==false){clearIncomingInvite();return;}
     if(redeemingIncomingInvite||!session?.user?.id||!deferredInviteCode)return;
     const viewer=session.user.id,code=deferredInviteCode;
     redeemingIncomingInvite=true;
@@ -5400,8 +5398,7 @@
     if (expectedAttempt!==authAttemptId) throw new Error('sign_in_superseded');
     const local = remember(account, current);
     // A link reopened after profile creation is redeemed without blocking home.
-    if(deferredInviteCode)
-      Promise.resolve().then(claimPendingInviteAfterLogin).catch(()=>{});
+    invitePendingReady.then(claimPendingInviteAfterLogin).catch(()=>{});
     // Ask for the featured person as soon as Firebase identity and profile
     // are verified. Waiting for wallet + room lists used to leave the first
     // splash on screen and then show a second opening much later.
@@ -6217,21 +6214,15 @@
           seatNo:Number.isInteger(m.seat_no)?m.seat_no:null,
           role:String(m.role||'member')
         }));
+      frame.__sharikaOnlineMemberCount=liveMembers.length;
       frame.SharikaRoomPremium.sync({
         roomId:room.id,isOwner:room.owner_id===session?.user?.id,
-        owner:{
-          name:String(owner.name||'Room Owner'),
-          pic:verifiedAvatarUrl(owner.pic),
-          displayId:String(owner.special_id||owner.display_id||
-            owner.public_id||room.id)
-        },
         members:liveMembers,
         openProfile:member=>frame.__sharikaOpenQuickProfile?.(member),
-        loadRewards:()=>api('GET','/rooms/'+room.id+'/rewards'),
         loadAnnouncement:()=>api('GET','/rooms/'+room.id+'/announcement'),
         saveAnnouncement:text=>api('PUT','/rooms/'+room.id+'/announcement',{text}),
-        loadRankings:period=>api('GET','/rooms/'+room.id+
-          '/contributors?period='+encodeURIComponent(period)).then(result=>({
+        loadRankings:(period,offset=0)=>api('GET','/rooms/'+room.id+
+          '/contributors?period='+encodeURIComponent(period)+'&offset='+offset).then(result=>({
             ...result,leaders:(result.leaders||[]).map(item=>({
               ...item,pic:verifiedAvatarUrl(item.pic)
             }))
@@ -8292,6 +8283,54 @@
           item.append(name,meta);panel.append(item);
         }
       }
+      const details=section('Room Activity');
+      row(details,'Online Members',String(frame.__sharikaOnlineMemberCount??'—'),()=>{
+        page.remove();
+        frame.SharikaRoomPremium?.showMembers();
+      });
+      for(const [label,id] of [['Microphones in use','mstat'],['Your Coins','cstat'],['Your Level','lstat']]){
+        const value=frame.$(id)?.textContent?.replace(/^\S+\s*/, '').trim();
+        row(details,label,value);
+      }
+      if(owner){
+        const rewardsPath='/rooms/'+room.id+'/rewards';
+        const reward=row(details,'Room Reward · 10%','Loading…',async()=>{
+          const panel=subpage('Room Reward');
+          const state=status(panel);
+          const total=doc.createElement('p');
+          const claim=doc.createElement('button');
+          claim.type='button';claim.className='sh-room-settings-primary';
+          claim.textContent='Claim to Main Wallet';claim.disabled=true;
+          panel.append(total,claim);
+          async function refresh(){
+            const data=await api('GET',rewardsPath);
+            const coins=Number(data.claimable_coins)||0;
+            total.textContent=(Number(data.pending_hundredths||0)/100).toLocaleString('en-US')+
+              ' coins accrued · '+coins.toLocaleString('en-US')+' available to claim.';
+            claim.disabled=coins<1;
+          }
+          state.textContent='10% of ordinary gift coins sent in this room.';
+          claim.onclick=async()=>{
+            claim.disabled=true;
+            try{
+              const result=await api('POST',rewardsPath,{});
+              const coins=Number(result.claimed_coins)||0;
+              state.textContent=coins?coins.toLocaleString('en-US')+' coins added to your Main Wallet.':
+                'No coins available to claim.';
+              reloadWallet().catch(()=>{});
+              await refresh();
+            }catch(error){
+              state.textContent='Room reward: '+errText(error);
+              await refresh().catch(()=>{claim.disabled=false;});
+            }
+          };
+          await refresh();
+        });
+        api('GET',rewardsPath).then(data=>{
+          if(reward.trail.isConnected)reward.trail.textContent=
+            (Number(data.claimable_coins)||0).toLocaleString('en-US')+' coins';
+        }).catch(()=>{if(reward.trail.isConnected)reward.trail.textContent='Unavailable';});
+      }
       const roomGroup=section('Room');
       row(roomGroup,'Profile photo','Edit cover',owner?()=>pickRoomCover(room,frame):null);
       row(roomGroup,'Room Name',room.name,owner?()=>editText('Room Name',room.name,100,
@@ -8810,38 +8849,6 @@
     }
     const roomGameButton=frame.$ && frame.$('bGame');
     if(roomGameButton)roomGameButton.onclick=()=>showGameCard(document,true,toast);
-    const rewards=frame.$ && frame.$('rrpill');
-    if(rewards) rewards.onclick=async()=>{
-      frame.open('<h3>🏆 Weekly Top Rooms</h3>'+
-        '<div id="sh-room-week" class="empty">Loading verified room results…</div>'+
-        '<p style="font-size:12px;opacity:.7;text-align:center">'+
-        'This ranking is read-only. Automatic room-reward coins are not enabled yet.</p>');
-      const target=frame.$('sh-room-week');
-      if(!target)return;
-      try{
-        const data=await api('GET','/rankings?period=weekly&kind=room');
-        if(!target.isConnected||!session)return;
-        target.textContent='';
-        const rooms=Array.isArray(data.leaders)?data.leaders.slice(0,10):[];
-        if(!rooms.length){
-          target.textContent='No verified room gifts recorded this week.';
-          return;
-        }
-        for(const item of rooms){
-          const row=frame.document.createElement('div');
-          row.className='row';
-          const label=frame.document.createElement('b');
-          label.textContent='#'+item.rank+' '+(item.emoji||'🎙️')+' '+
-            (item.name||'Room')+' · ID '+item.room_id;
-          const amount=frame.document.createElement('span');
-          amount.textContent='🪙 '+formatCompactCoins(item.total);
-          row.append(label,amount);
-          target.appendChild(row);
-        }
-      }catch(error){
-        if(target.isConnected)target.textContent='Room ranking unavailable: '+errText(error);
-      }
-    };
     wireSoveraRoomFrames(frame);
     // Catalogue artwork is optional. Do not hold verified seats, mic controls,
     // or the room's first paint behind a slow /cosmetics request.
@@ -10672,12 +10679,53 @@
     root.id='sh-invite-page';
     root.innerHTML='<div class="sh-invite-head">'+
       '<button class="sh-invite-back" type="button" aria-label="Close invites">‹</button>'+
-      '<div><div class="sh-invite-kicker">✦ SHARIKA ✦</div><h1>👑 Virtual-only edition</h1></div></div>'+
-      '<div class="sh-invite-panel">'+
-      '<h2 class="sh-invite-title">No cash or referral rewards</h2>'+
-      '<p class="sh-invite-sub">This edition does not provide invite bonuses, cash commissions, withdrawals or seller transfers. You can still enjoy social rooms and virtual gifts.</p></div>';
+      '<h1>Invite &amp; Earn</h1></div>'+
+      '<div class="sh-invite-panel" aria-live="polite">Loading invite details…</div>';
     document.body.append(root);
     root.querySelector('.sh-invite-back').onclick=()=>root.remove();
+    const panel=root.querySelector('.sh-invite-panel');
+    try{
+      const [info,device]=await Promise.all([
+        api('GET','/invites'),api('POST','/invites/device',{})
+      ]);
+      if(!root.isConnected)return;
+      const code=String(info.invite_code||'');
+      if(!/^[0-9]{8}$/.test(code))throw Error('Invite code unavailable');
+      const fmt=n=>Number(n||0).toLocaleString('en-US');
+      const history=(info.referrals||[]).map(person=>
+        '<div class="sh-invite-rankrow"><span>✓</span><b>'+
+        sellerEscape(person.name||'Member')+'</b><em>Verified</em></div>').join('');
+      panel.innerHTML='<div class="sh-invite-royal-banner">'+
+        '<div class="sh-invite-chest"><img src="invite-royal-chest.webp" alt=""></div>'+
+        '<h2>Invite a friend. Earn coins together.</h2>'+
+        '<p>You get '+fmt(info.signup_inviter_reward)+' coins and your friend gets '+
+        fmt(info.signup_invitee_reward)+' coins in Main Wallet after verification.</p></div>'+
+        '<button type="button" class="sh-invite-gold sh-invite-share" id="sh-invite-share-link">Share Invite Link</button>'+
+        '<div class="sh-invite-code"><div><small>YOUR INVITE CODE</small><strong>'+code+
+        '</strong></div><button type="button" class="sh-invite-gold" id="sh-invite-copy-code">Copy Code</button></div>'+
+        '<p class="sh-invite-sub">Friends who install through your Google Play link can link the code automatically.</p>'+
+        (!device.invite_eligible?'<p class="sh-invite-alert">This device could not be verified for invite rewards.</p>':'')+
+        (info.invited_by?'<p class="sh-invite-alert">Invite code linked ✓</p>':
+          info.claim_eligible?'<h2 class="sh-invite-title">Enter Invite Code</h2>'+
+          '<p class="sh-invite-sub">Installed directly? Enter your friend’s code within '+
+          fmt(info.claim_window_hours)+' hours of sign-up.</p>'+
+          '<input id="sh-invite-redeem-code" class="sh-invite-entry" aria-label="Invite code" maxlength="8" inputmode="numeric" placeholder="8-digit invite code">'+
+          '<button type="button" id="sh-invite-redeem" class="sh-invite-gold">Link Code</button>'+
+          '<p id="sh-invite-redeem-status" role="status"></p>':'')+
+        '<h2 class="sh-invite-title">My Invites</h2>'+
+        '<div class="sh-invite-stats"><div class="sh-invite-stat"><strong>'+fmt(info.total_invites)+
+        '</strong><small>Verified friends</small></div><div class="sh-invite-stat"><strong>'+
+        fmt(info.signup_bonus_coins)+'</strong><small>Coins earned</small></div></div>'+
+        (history||'<p class="sh-invite-sub">No verified invites yet.</p>');
+      root.querySelector('#sh-invite-share-link').onclick=()=>native('shareInvite',{
+        text:'Join me on Sharika! Use my invite code '+code+' to earn virtual coins. '+PUBLIC_INVITE_URL+code
+      }).catch(error=>toast(errText(error)));
+      root.querySelector('#sh-invite-copy-code').onclick=()=>native('copyInviteCode',{code})
+        .then(()=>toast('Invite code copied')).catch(error=>toast(errText(error)));
+      bindInviteRedeem(root);
+    }catch(error){
+      if(panel.isConnected)panel.textContent='Invite details unavailable: '+errText(error);
+    }
   }
   async function showVerifiedInviteSheet(){
     await playModeReady;

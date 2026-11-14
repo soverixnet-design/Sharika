@@ -44,6 +44,21 @@
   // verified cover/name a wide left-aligned touch target even on small phones.
   if (top && roomInfo && roomInfo.parentElement === top && top.children.length > 1)
     top.insertBefore(roomInfo, top.children[1]);
+  if(roomInfo?.parentElement===top){
+    const profile=document.createElement('div');
+    profile.className='sh-room-profile-header';
+    roomInfo.before(profile);
+    profile.append(roomInfo);
+    const ranking=document.createElement('button');
+    ranking.id='sh-room-rank-pill';
+    ranking.className='sh-room-rank-button';
+    ranking.type='button';
+    ranking.textContent='🏆';
+    ranking.setAttribute('aria-label','Monthly room gift ranking');
+    ranking.disabled=true;
+    ranking.onclick=()=>showRankings();
+    profile.append(ranking);
+  }
   const settingsButton = document.createElement('button');
   settingsButton.type = 'button';
   settingsButton.className = 'sh-settings';
@@ -347,19 +362,7 @@
   // grid now shows five seats per row without an owner-only slot.
   // CP/Friendship links are rendered only for verified D1 bond pairs.
 
-  // Real-time top strip and server-backed room detail panels.
-  // No mocked members, coin claims or duplicate wallet transfers.
-  const premiumState={room:null,rewards:null,rewardsAt:0,rewardPromise:null,
-    announcement:null,announcementAt:0,announcementPromise:null,
-    rankAt:0,rankPromise:null};
-  const fmtCoins=value=>{
-    const n=Number(value);
-    if(!Number.isFinite(n)||n<0)return '0';
-    if(n>=1e9)return (n/1e9).toFixed(n%1e9<1e8?1:2).replace(/\.0+$/,'')+'B';
-    if(n>=1e6)return (n/1e6).toFixed(n%1e6<1e5?1:2).replace(/\.0+$/,'')+'M';
-    if(n>=1e3)return (n/1e3).toFixed(n%1e3<1e2?1:2).replace(/\.0+$/,'')+'K';
-    return Math.floor(n).toLocaleString('en-US');
-  };
+  const premiumState={room:null,announcement:null,announcementAt:0,announcementPromise:null};
   function vipAvatar(member,cls){
     const el=document.createElement('span');
     el.className='sh-vip-avatar'+(cls?' '+cls:'');
@@ -374,24 +377,6 @@
   function canShow(){
     const v=premiumState.room;
     return !!(v&&document.getElementById('app')&&window.parent?.cur?.id===v.roomId);
-  }
-  async function rewardInfo(force){
-    const v=premiumState.room;
-    if(!v||!canShow()||!v.isOwner)return null;
-    if(!force&&premiumState.rewards&&Date.now()-premiumState.rewardsAt<60000)
-      return premiumState.rewards;
-    if(premiumState.rewardPromise)return premiumState.rewardPromise;
-    const roomId=v.roomId;
-    premiumState.rewardPromise=Promise.resolve().then(()=>v.loadRewards()).then(data=>{
-      if(premiumState.room?.roomId!==roomId)return null;
-      premiumState.rewards=data;premiumState.rewardsAt=Date.now();
-      const count=document.getElementById('sh-room-value-total');
-      if(count)count.textContent=fmtCoins(
-        Number(data.regular_reward_hundredths||0)/
-          Math.max(1,Number(data.regular_gift_percent||10)));
-      return data;
-    }).finally(()=>{premiumState.rewardPromise=null;});
-    return premiumState.rewardPromise;
   }
   function showMembers(){
     const v=premiumState.room;
@@ -421,140 +406,67 @@
       list.appendChild(row);
     }
   }
-  function showOverview(){
+  async function showRankings(){
     const v=premiumState.room;
     if(!v||!canShow())return;
     window.open('<div class="sh-premium-sheet">'+
-      '<div class="sh-overview-hero"><span id="sh-overview-avatar"></span>'+
-      '<div><h3 id="sh-overview-name"></h3><small id="sh-overview-id"></small></div></div>'+
-      '<div class="sh-segments"><button class="on" id="sh-tab-profile">Profile</button>'+
-      '<button id="sh-tab-members">Members</button></div>'+
-      '<div class="sh-overview-cards"><div class="sh-overview-card"><small>Room Value</small>'+
-      '<strong id="sh-overview-value">—</strong><span>Verified gift contribution</span></div>'+
-      '<div class="sh-overview-card"><small>Online Members</small>'+
-      '<strong id="sh-overview-members">0</strong><span>Currently in room</span></div></div>'+
-      '<button class="sh-wide-action" id="sh-overview-rewards">💎 Room Rewards <span>›</span></button>'+
-      '<button class="sh-wide-action alt" id="sh-overview-ranking">🏆 Room Ranking <span>›</span></button>'+
-      '<button class="sh-wide-action alt" id="sh-overview-manage" hidden>🎨 Room Theme & Settings <span>›</span></button>'+
-      '<p class="sh-footnote">Room statistics come from verified server data.</p></div>');
-    document.getElementById('sh-overview-avatar').appendChild(vipAvatar(v.owner,'large'));
-    document.getElementById('sh-overview-name').textContent=v.owner.name||'Room Owner';
-    document.getElementById('sh-overview-id').textContent='ID: '+(v.owner.displayId||v.roomId);
-    document.getElementById('sh-overview-members').textContent=String(v.members.length);
-    const valueNode=document.getElementById('sh-overview-value');
-    // Public gift contribution is distinct from the owner's private payout.
-    v.loadRankings('weekly').then(data=>{
-      if(data&&valueNode.isConnected)valueNode.textContent=fmtCoins(data.total_contribution_coins||0);
-    }).catch(()=>{if(valueNode.isConnected)valueNode.textContent='Unavailable';});
-    document.getElementById('sh-overview-rewards').hidden=!v.isOwner;
-    document.getElementById('sh-tab-members').onclick=showMembers;
-    document.getElementById('sh-overview-rewards').onclick=showRewards;
-    document.getElementById('sh-overview-ranking').onclick=()=>showRankings('daily');
-    const manage=document.getElementById('sh-overview-manage');
-    manage.hidden=!v.isOwner;
-    manage.onclick=()=>window.settings?.();
-  }
-  async function showRewards(){
-    const v=premiumState.room;
-    if(!v||!canShow()||!v.isOwner)return;
-    window.open('<div class="sh-premium-sheet">'+
-      '<h3>💎 Room Reward Event</h3>'+
-      '<div class="sh-reward-cards">'+
-      '<div><small>Total earned</small><strong id="sh-reward-total">—</strong></div>'+
-      '<div><small>Already credited</small><strong id="sh-reward-paid">—</strong></div>'+
-      '<div><small>Pending weekly payout</small><strong id="sh-reward-pending">—</strong></div></div>'+
-      '<div class="sh-reward-week">🎁 Ordinary gifts: <b id="sh-reward-pct">10%</b>'+
-      '<small>Lucky Gift share: <span id="sh-reward-lucky">1%</span></small>'+
-      '<small>Weekly room contribution (UTC): <b id="sh-week-contribution">Loading…</b></small>'+
-      '<small>Next automatic payout (UTC): <b id="sh-week-payout">Loading…</b></small></div>'+
-      '<h3>Contribution → owner reward</h3>'+
-      '<div id="sh-reward-tiers" class="sh-tier-list"></div>'+
-      '<p class="sh-footnote">The existing 10% room share is credited to the owner as eligible gifts settle. This is not a second weekly payout. A separate weekly member reward still needs an approved payout rule.</p></div>');
-    const total=document.getElementById('sh-reward-total');
-    const paid=document.getElementById('sh-reward-paid');
-    try{
-      const data=await rewardInfo(true);
-      if(!data||!total.isConnected)return;
-      const ordinaryPct=Number(data.regular_gift_percent||10);
-      total.textContent=fmtCoins(Number(data.reward_hundredths||0)/100)+' 🪙';
-      paid.textContent=fmtCoins(data.owner_wallet_credited_coins||0)+' 🪙';
-      const pending=document.getElementById('sh-reward-pending');
-      if(pending)pending.textContent=fmtCoins(data.weekly_pending_coins||0)+' 🪙';
-      const payout=document.getElementById('sh-week-payout');
-      if(payout)payout.textContent=data.weekly_next_settlement_utc||'—';
-      v.loadRankings('weekly').then(result=>{
-        const week=document.getElementById('sh-week-contribution');
-        if(week?.isConnected)
-          week.textContent=fmtCoins(result.total_contribution_coins)+' 🪙';
-      }).catch(()=>{
-        const week=document.getElementById('sh-week-contribution');
-        if(week?.isConnected)week.textContent='Unavailable';
-      });
-      document.getElementById('sh-reward-pct').textContent=ordinaryPct+'%';
-      document.getElementById('sh-reward-lucky').textContent=
-        Number(data.lucky_gift_percent||1)+'%';
-      const tiers=document.getElementById('sh-reward-tiers');
-      [3000000,6000000,10000000,14000000,20000000,30000000,40000000,
-        50000000,60000000,70000000,80000000].forEach((threshold,i)=>{
-        const row=document.createElement('div');row.className='sh-tier';
-        const left=document.createElement('span');
-        left.textContent=String(i+1).padStart(2,'0')+'   '+fmtCoins(threshold);
-        const right=document.createElement('strong');
-        right.textContent=fmtCoins(threshold*ordinaryPct/100)+' 🪙';
-        row.append(left,right);tiers.appendChild(row);
-      });
-    }catch(error){
-      if(total.isConnected)total.textContent='Unavailable';
-      if(paid.isConnected)paid.textContent=String(error?.message||error);
-    }
-  }
-  async function showRankings(period){
-    const v=premiumState.room;
-    if(!v||!canShow())return;
-    const periods=[['daily','Day'],['weekly','Week'],['monthly','Monthly']];
-    window.open('<div class="sh-premium-sheet">'+
-      '<h3>🏆 Room Ranking</h3><div class="sh-segments sh-rank-tabs" id="sh-ranking-tabs"></div>'+
-      '<div id="sh-ranking-list" class="sh-rank-list">Loading verified results…</div>'+
-      '<p class="sh-footnote">Ranked by verified coins gifted in this room (UTC). Ranking does not issue an extra reward.</p></div>');
-    const tabs=document.getElementById('sh-ranking-tabs');
-    for(const entry of periods){
-      const b=document.createElement('button');
-      b.textContent=entry[1];b.className=entry[0]===period?'on':'';
-      b.onclick=()=>showRankings(entry[0]);
-      tabs.appendChild(b);
-    }
+      '<h3>🏆 Monthly Room Gift Ranking</h3>'+
+      '<p class="sh-footnote">Ranked by coins spent on gifts in this room. Resets on the first day of each month (UTC).</p>'+
+      '<div id="sh-ranking-list" class="sh-rank-list">Loading room gifts…</div>'+
+      '<button type="button" id="sh-ranking-more" class="sh-wide-action" hidden>Show more</button>'+
+      '<p id="sh-ranking-status" role="status"></p></div>');
     const list=document.getElementById('sh-ranking-list');
-    try{
-      const result=await v.loadRankings(period);
-      if(!list.isConnected||!canShow())return;
-      list.replaceChildren();
-      const leaders=Array.isArray(result.leaders)?result.leaders:[];
-      if(!leaders.length){list.textContent='No verified room gifts recorded for this period.';return;}
-      for(const member of leaders.slice(0,20)){
-        const row=document.createElement('button');
-        row.type='button';row.className='sh-rank-row';
-        const rank=document.createElement('span');rank.className='sh-rank-medal';
-        rank.textContent=Number(member.rank)<=3?
-          ['🥇','🥈','🥉'][Number(member.rank)-1]:'#'+String(member.rank||'—');
-        const profile={
-          publicId:String(member.public_id||''),
-          name:String(member.name||'Member'),
-          pic:member.pic||null,
-          displayId:String(member.display_id||member.public_id||''),
-          seatNo:null
-        };
-        const name=document.createElement('span');name.className='sh-rank-name';
-        name.textContent=profile.name;
-        const sum=document.createElement('b');
-        sum.textContent=fmtCoins(member.total)+' 🪙';
-        row.append(rank,vipAvatar(profile),name,sum);
-        row.onclick=()=>Promise.resolve(v.openProfile(profile)).catch(error=>
-          window.toast?.('Profile: '+String(error?.message||error)));
-        list.appendChild(row);
-      }
-    }catch(error){
-      if(list.isConnected)list.textContent='Ranking unavailable: '+String(error?.message||error);
+    const more=document.getElementById('sh-ranking-more');
+    const status=document.getElementById('sh-ranking-status');
+    let offset=0;
+    let month=null;
+    async function load(){
+      more.disabled=true;
+      more.textContent='Show more';
+      status.textContent='';
+      try{
+        const result=await v.loadRankings('monthly',offset);
+        if(!list.isConnected||!canShow())return;
+        if(month&&month!==result.since_utc){
+          offset=0;month=null;
+          return await load();
+        }
+        month=result.since_utc;
+        if(!offset)list.replaceChildren();
+        const leaders=Array.isArray(result.leaders)?result.leaders:[];
+        if(!leaders.length&&!offset)list.textContent='No gifts sent in this room this month.';
+        for(const member of leaders){
+          const row=document.createElement('button');
+          row.type='button';row.className='sh-rank-row';
+          const rank=document.createElement('span');rank.className='sh-rank-medal';
+          rank.textContent=Number(member.rank)<=3?
+            ['🥇','🥈','🥉'][Number(member.rank)-1]:'#'+String(member.rank||'—');
+          const profile={
+            publicId:String(member.public_id||''),
+            name:String(member.name||'Member'),
+            pic:member.pic||null,
+            displayId:String(member.display_id||member.public_id||''),
+            seatNo:null
+          };
+          const name=document.createElement('span');name.className='sh-rank-name';
+          name.textContent=profile.name;
+          const sum=document.createElement('b');
+          sum.textContent=Number(member.total||0).toLocaleString('en-US')+' 🪙';
+          row.append(rank,vipAvatar(profile),name,sum);
+          row.onclick=()=>Promise.resolve(v.openProfile(profile)).catch(error=>
+            window.toast?.('Profile: '+String(error?.message||error)));
+          list.appendChild(row);
+        }
+        more.hidden=result.next_offset==null;
+        offset=result.next_offset;
+      }catch(error){
+        if(list.isConnected)status.textContent='Ranking unavailable: '+String(error?.message||error);
+        more.hidden=false;
+        more.textContent='Retry';
+      }finally{more.disabled=false;}
     }
+    more.onclick=load;
+    await load();
   }
   function displayAnnouncement(text){
     let strip=document.getElementById('sh-room-announcement');
@@ -627,88 +539,18 @@
       }finally{save.disabled=false;}
     };
   }
-  async function refreshSmallRanking(force=false){
-    const v=premiumState.room;
-    const chip=document.getElementById('sh-room-rank-pill');
-    if(!v||!chip||!canShow())return;
-    if(!force&&Date.now()-premiumState.rankAt<60000)return;
-    if(premiumState.rankPromise)return premiumState.rankPromise;
-    const roomId=v.roomId;
-    premiumState.rankPromise=Promise.resolve(v.loadRankings('daily')).then(result=>{
-      if(premiumState.room?.roomId!==roomId||!chip.isConnected)return;
-      chip.textContent='🏆 '+fmtCoins(result?.total_contribution_coins||0)+' ›';
-      premiumState.rankAt=Date.now();
-    }).catch(()=>{if(chip.isConnected)chip.textContent='🏆 Ranking ›';})
-      .finally(()=>{premiumState.rankPromise=null;});
-    return premiumState.rankPromise;
-  }
-  function renderPremiumHeader(){
-    const v=premiumState.room;
-    if(!v||!canShow())return;
-    const top=app.querySelector('.top');
-    if(!top)return;
-    let bar=document.getElementById('sh-room-masthead');
-    if(!bar){
-      bar=document.createElement('div');
-      bar.id='sh-room-masthead';bar.className='sh-room-masthead';
-      const people=document.createElement('div');
-      people.id='sh-room-faces';people.className='sh-room-faces';
-      bar.append(people);
-      top.after(bar);
-    }
-    const faces=document.getElementById('sh-room-faces');
-    faces.replaceChildren();
-    for(const member of v.members.slice(0,4)){
-      const button=document.createElement('button');
-      button.type='button';button.className='sh-room-face-button';
-      button.title=member.name||'Room member';button.appendChild(vipAvatar(member));
-      button.onclick=()=>Promise.resolve(v.openProfile(member)).catch(error=>
-        window.toast?.('Profile: '+String(error?.message||error)));
-      faces.appendChild(button);
-    }
-    const count=document.createElement('button');
-    count.className='sh-room-face-count';count.type='button';
-    count.textContent=String(v.members.length);
-    count.setAttribute('aria-label','Online users: '+v.members.length);
-    count.onclick=showMembers;faces.appendChild(count);
-    const old=document.getElementById('ustat');
-    if(old){old.textContent='👥 '+v.members.length+' ›';old.onclick=showMembers;}
-    const stats=app.querySelector('.stats');
-    const smallRank=stats?.querySelector('.pill:not([id])');
-    if(smallRank){
-      smallRank.id='sh-room-rank-pill';
-      smallRank.style.cursor='pointer';
-      smallRank.setAttribute('role','button');
-      smallRank.tabIndex=0;
-      smallRank.setAttribute('aria-label','Show verified room contribution ranking');
-      smallRank.onclick=()=>showRankings('daily');
-      smallRank.onkeydown=event=>{
-        if(event.key==='Enter'||event.key===' '){event.preventDefault();showRankings('daily');}
-      };
-    }
-    const rewardChip=byId('rrpill');
-    if(rewardChip){
-      rewardChip.style.setProperty('display','inline-flex','important');
-      rewardChip.style.cursor='pointer';
-      rewardChip.textContent='💰 Reward ›';
-      rewardChip.onclick=showRewards;
-    }
-    refreshSmallRanking().catch(()=>{});
-    loadAnnouncement().catch(()=>{});
-  }
   window.SharikaRoomPremium={
     sync(view){
       if(premiumState.room?.roomId!==view.roomId){
-        premiumState.rewards=null;premiumState.rewardsAt=0;
         premiumState.announcement=null;premiumState.announcementAt=0;
-        premiumState.rankAt=0;
       }
       premiumState.room=view;
-      renderPremiumHeader();
+      const ranking=byId('sh-room-rank-pill');
+      if(ranking)ranking.disabled=false;
+      loadAnnouncement().catch(()=>{});
     },
-    showOverview,showMembers,showRewards,showRankings,
+    showMembers,showRankings,
     refreshAnnouncement:()=>renderAnnouncement(true)
   };
-  if(roomInfo)roomInfo.onclick=showOverview;
 
 })();

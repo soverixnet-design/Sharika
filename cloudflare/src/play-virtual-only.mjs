@@ -12,9 +12,11 @@ export function playVirtualRouteBlocked(path, search = '') {
   // exception. The Worker still requires explicit nonredeemable Play config.
   if(path.startsWith('/api/v1/greedy-wheel'))
     return !/^\/api\/v1\/greedy-wheel\/(?:state|records|bet)$/.test(path);
+  if (['/api/v1/invites','/api/v1/invites/device','/api/v1/invites/redeem'].includes(path))
+    return false;
   if (restricted.test(path)) return true;
   if (path === '/api/v1/celebrations') return true;
-  if (path === '/invite' || path.startsWith('/invite/')) return true;
+  if (path === '/invite' || path.startsWith('/invite/')) return !/^\/invite\/[0-9]{8}$/.test(path);
   if (path === '/api/v1/rankings' || path === '/api/v1/rankings/rewards') {
     const params = new URLSearchParams(search);
     return restrictedRankings.has(params.get('kind'));

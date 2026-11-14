@@ -2,6 +2,7 @@
 // A referral is created once, atomically with the new registered user's profile.
 // All signup/referral bonuses use the existing verified D1 wallet ledger.
 import {readInviteRules,validateInviteRules,RULE_FIELDS,DEFAULT_INVITE_RULES} from './invite-rules.mjs';
+import {playVirtualOnly} from './play-virtual-only.mjs';
 import {inviteDeviceDigest,inviteDeviceBinding} from './invite-device.mjs';
 import {validateBankForm,encryptBankDetails,decryptBankDetails} from './invite-bank.mjs';
 const PUBLIC_ID=/^[0-9]{8}$/;
@@ -111,7 +112,9 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
   if(!['/api/v1/invites','/api/v1/invites/redeem',
     '/api/v1/invites/rankings','/api/v1/invites/withdrawals',
     '/api/v1/invites/device'].includes(path))return null;
-  const rules=await readInviteRules(env.DB);
+  const virtualOnly=playVirtualOnly(env);
+  const rules=virtualOnly?{...DEFAULT_INVITE_RULES,invite_usd_cents:0,
+    inviter_recharge_percent:0}:await readInviteRules(env.DB);
   if(path==='/api/v1/invites/device'&&request.method==='POST'){
     const active=await env.DB.prepare("SELECT 1 FROM sharika_users WHERE auth_uid=? AND status='active'")
       .bind(uid).first();
@@ -208,7 +211,8 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
     if(!inviteRedeemEligible({created_at:member.created_at,invited_by:null},
       Date.now(),rules.claim_window_hours))
       return fail('invite_window_expired',409,cors);
-    const binding=await inviteDeviceBinding(env.DB,uid,await inviteDeviceDigest(request,env));
+    const digest=await inviteDeviceDigest(request,env);
+    const binding=await inviteDeviceBinding(env.DB,uid,digest);
     if(!binding.eligible)return fail(binding.reason||'invite_device_ineligible',403,cors);
     let input;
     try{
@@ -223,14 +227,13 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
     const inviterDevice=await env.DB.prepare('SELECT invite_eligible,device_digest FROM '+
       'sharika_invite_devices WHERE user_uid=?').bind(verified.inviter.auth_uid).first();
     if(!inviterDevice||inviterDevice.invite_eligible!==1||
-      (await env.DB.prepare('SELECT device_digest FROM sharika_invite_devices WHERE user_uid=?')
-        .bind(uid).first())?.device_digest===inviterDevice.device_digest)
+      digest===inviterDevice.device_digest)
       return fail('inviter_device_not_verified',403,cors);
     // Registration already credited the standard 2,000 welcome coins.
     // Complete only the difference to the 100,000 invitee signup
     // total, plus the 100,000 inviter reward. One unique referral row
     // guards the entire atomic D1 batch against duplicate / concurrent claims.
-    const extra=rules.invitee_coins-STANDARD_SIGNUP_COINS;
+    const extra=virtualOnly?rules.invitee_coins:rules.invitee_coins-STANDARD_SIGNUP_COINS;
     if(extra<0||Number(member.coins)>MAX_USER_COINS-extra)
       return fail('invitee_balance_limit',409,cors);
     const statements=[...signupReferralStatements({
@@ -253,7 +256,7 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
     }
     return reply({claimed:true,invited_by:showId(verified.inviter.public_no),
       inviter_reward:rules.inviter_coins,invitee_extra_coins:extra,
-      invitee_total_signup_coins:rules.invitee_coins},201,cors);
+      invitee_total_signup_coins:extra+STANDARD_SIGNUP_COINS},201,cors);
   }
   if(path==='/api/v1/invites/rankings'&&request.method==='GET'){
     const member=await env.DB.prepare(
@@ -293,8 +296,8 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
       "COALESCE(SUM(CASE WHEN reason='referral_signup' THEN delta ELSE 0 END),0) AS signup_bonus_coins,"+
       "COALESCE(SUM(CASE WHEN reason='referral_recharge' THEN delta ELSE 0 END),0) AS recharge_bonus_coins "+
       "FROM sharika_wallet_ledger WHERE auth_uid=? AND currency='coins'").bind(uid).first(),
-    inviteCashBalance(env.DB,uid),
-    env.DB.prepare('SELECT id,amount_cents,status,created_at FROM '+
+    virtualOnly?null:inviteCashBalance(env.DB,uid),
+    virtualOnly?null:env.DB.prepare('SELECT id,amount_cents,status,created_at FROM '+
       'sharika_invite_withdrawals WHERE inviter_uid=? ORDER BY id DESC LIMIT 10')
       .bind(uid).all()
   ]);
@@ -313,14 +316,16 @@ export async function handleInviteApp({request,env,uid,path,cors,reply,fail}){
     recharge_bonus_coins:Number(rewards?.recharge_bonus_coins)||0,
     signup_inviter_reward:rules.inviter_coins,
     signup_invitee_reward:rules.invitee_coins,recharge_bonus_percent:rules.inviter_recharge_percent,
-    invite_usd_cents_per_verified_user:rules.invite_usd_cents,
-    cash_balance:cash,withdrawal_options_cents:[rules.withdrawal_option_1_cents,
-      rules.withdrawal_option_2_cents],
-    withdrawals:withdrawals.results||[],
-    recharge_coins_per_usd:rules.recharge_coins_per_usd,
-    first_recharge_bonus_percent:rules.first_recharge_percent,
-    bonus_enabled:true,
-    note:'Reward rates are admin-managed. USD earnings require device verification and finance approval. Cash withdrawals are manual.'
+    ...(virtualOnly?{}:{
+      invite_usd_cents_per_verified_user:rules.invite_usd_cents,
+      cash_balance:cash,withdrawal_options_cents:[rules.withdrawal_option_1_cents,
+        rules.withdrawal_option_2_cents],
+      withdrawals:withdrawals?.results||[],
+      recharge_coins_per_usd:rules.recharge_coins_per_usd,
+      first_recharge_bonus_percent:rules.first_recharge_percent,
+      note:'Reward rates are admin-managed. USD earnings require device verification and finance approval. Cash withdrawals are manual.'
+    }),
+    bonus_enabled:true
   },200,cors);
 }
 export async function handleInviteAdmin({request,env,uid,actor,operation,cors,reply,fail}){

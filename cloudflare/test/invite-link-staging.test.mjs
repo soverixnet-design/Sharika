@@ -46,6 +46,6 @@ test('signup and existing-account retry use one server-verified inviter without 
   assert.match(adapter,/PUBLIC_INVITE_URL=result.api_origin\+'\/invite\/'/);
   assert.match(activity,/API_ORIGIN\+"\/invite\/"\+linkCode/);
   assert.match(adapter,/Share your personal HTTPS invitation link/);
-  assert.match(server,/const inviteLanding=handleInviteLanding\(request,path\)/);
+  assert.match(server,/const inviteLanding=handleInviteLanding\(request,path,playVirtualOnly\(env\)\)/);
   assert.doesNotMatch(activity,/creditWallet|mintCoins|awardReferralCoins/);
 });

@@ -1159,13 +1159,14 @@ public final class SharikaActivity extends Activity {
         // the family Crystal transfer is whitelisted further below and must
         // never return early before this test-only finance gate executes.
         if (BuildConfig.SHARIKA_PLAY_BUILD) {
-            if (path.matches("^/api/v1/(admin|agency|family|invites|sellers|games|original-games|fruit-royale|game-catalog|lucky-box|events|role-applications)(/.*|\\?.*)?$") ||
+            if (path.matches("^/api/v1/(admin|agency|family|sellers|games|original-games|fruit-royale|game-catalog|lucky-box|events|role-applications)(/.*|\\?.*)?$") ||
                 path.matches("^/api/v1/rankings(?:/rewards)?\\?.*kind=(games|recharge|lucky)(?:&.*)?$") ||
                 path.equals("/api/v1/celebrations") ||
                 path.matches("^/api/v1/(games|original-games)/[^/]+/bet$") ||
                 path.equals("/api/v1/sellers") ||
                 path.startsWith("/api/v1/sellers/") ||
                 path.equals("/api/v1/invites/withdrawals") ||
+                path.equals("/api/v1/invites/rankings") ||
                 path.equals("/api/v1/family/crystal/transfer") ||
                 path.equals("/api/v1/agency/salary/transfer")) return false;
         }
@@ -1326,6 +1327,8 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/rooms/[0-9]{8}/policy$"))
             return method.equals("GET") || method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
+            return method.equals("GET") || method.equals("POST");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/contributors\\?period=(daily|weekly|monthly)(?:&offset=[0-9]{1,9})?$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/announcement$"))
             return method.equals("GET") || method.equals("PUT");
