@@ -148,7 +148,7 @@ test('occupied seats show names and reveal the visible ID in the member profile'
   const seatDecorator=adapter.slice(adapter.indexOf('function decorateRoomSeats('),
     adapter.indexOf('function wireSoveraRoomFrames('));
   assert.doesNotMatch(seatDecorator,/frame\.sid|sh-verified-seat-id/);
-  assert.match(adapter,/meta\.textContent='ID '\+String\(selected\.special_id\|\|selected\.display_id\|\|publicId\)/);
+  assert.match(adapter,/paintProfileId\(meta,selected\)/);
   assert.match(adapter,/recentJoinNames\.has\(memberId\)/);
   assert.match(css,/#grid\.grid:has\(>\.seat:nth-child\(17\)\) \.seat \.av\s*\{[^}]*width:clamp\(33px,9\.4vw,53px\)/);
   assert.doesNotMatch(css,/\.sh-verified-seat-id/);

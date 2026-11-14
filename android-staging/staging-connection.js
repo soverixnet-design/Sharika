@@ -843,6 +843,13 @@
       'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
       'background:#25134a;font-size:22px;width:40px;height:40px}',
 
+      '.sh-svip-id{display:inline-flex!important;align-items:center;justify-content:center;',
+      'gap:5px;white-space:nowrap!important;vertical-align:middle;max-width:100%}',
+      '.sh-svip-id>.sh-svip-id-emblem{display:block;width:22px;height:22px;object-fit:contain;flex:none}',
+      '.sh-svip-id>.sh-svip-id-tag{display:block;width:auto;max-width:68px;height:20px;',
+      'object-fit:contain;flex:none}',
+      '.sh-svip-id>.sh-svip-id-number{white-space:nowrap;font-variant-numeric:tabular-nums}',
+      '.sh-svip-id>.sh-svip-id-text-tag{font-size:9px;padding:1px 5px;flex:none}',
       '.sh-svip-badge{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;',
       'padding:4px 11px;color:#ffe8a3!important;font-size:11px;font-weight:900;letter-spacing:.05em;',
       'border:1px solid #f2d18c;border-radius:100px;background:linear-gradient(135deg,#331e5c,#8840bf 54%,#433069);',
@@ -1081,6 +1088,40 @@
   function svipArt(level,kind){
     if(!svipLevel(level)||!['frame','medal','tag'].includes(kind))return '';
     return './sharika-premium/svip-'+kind+'-'+String(level).padStart(2,'0')+'.webp';
+  }
+  // These nameplate files are arranged by source-sheet position.
+  const svipIdTagArt=[16,null,11,17,12,13,14,15];
+  function paintProfileId(element,person){
+    const id=String(person?.special_id||person?.display_id||person?.public_id||person?.id||'');
+    if(!element||!/^\d{1,10}$/.test(id))return;
+    const level=svipLevel(person.svip_level);
+    element.classList.toggle('sh-svip-id',!!level);
+    element.classList.toggle('sh-neon-single-id',!!person.special_id);
+    if(!level){
+      element.textContent='ID '+id;
+      return;
+    }
+    const doc=element.ownerDocument;
+    cosmeticCss(doc);
+    const emblem=doc.createElement('img');
+    emblem.className='sh-svip-id-emblem';
+    emblem.src='./sharika-premium/svip-id-emblem.webp';
+    emblem.alt='ID';
+    const number=doc.createElement('span');
+    number.className='sh-svip-id-number';
+    number.textContent=id;
+    const fallback=makeSvipBadge(doc,level,'sh-svip-id-text-tag');
+    const art=svipIdTagArt[level-1];
+    if(!art){
+      element.replaceChildren(emblem,number,fallback);
+      return;
+    }
+    const tag=doc.createElement('img');
+    tag.className='sh-svip-id-tag';
+    tag.alt='SVIP '+level;
+    tag.addEventListener('error',()=>tag.replaceWith(fallback),{once:true});
+    tag.src='./sharika-premium/svip-tag-'+art+'.webp';
+    element.replaceChildren(emblem,number,tag);
   }
   function makeSvipBadge(doc,level,extraClass=''){
     const badge=doc.createElement('span');
@@ -1986,7 +2027,7 @@
     const anchor=document.querySelector('#v-me .mid');
     if(!anchor)return;
     const displayId=String(profile?.special_id||profile?.display_id||profile?.public_id||'');
-    if(/^[0-9]{1,10}$/.test(displayId))anchor.textContent='ID '+displayId;
+    paintProfileId(anchor,profile);
     // Tapping the public ID opens the separate rich ID detail profile,
     // never redirects back to the wallet/settings Main Profile.
     anchor.setAttribute('role','button');anchor.tabIndex=0;
@@ -2017,7 +2058,7 @@
     const medal=medalArt(profile?.medal_style);
     const tag=nameTagArt(profile?.name_tag_style);
     for(const [kind,item] of [['medal',medal],['tag',tag]]){
-      if(!item)continue;
+      if(!item||(kind==='tag'&&svipLevel(profile?.svip_level)&&/^svip-tag-/.test(item.id)))continue;
       const holder=document.createElement('div');
       holder.className='sh-layout-ornament';
       holder.dataset.shLayoutOrnament=kind;
@@ -6287,7 +6328,7 @@
       idLine.className='sh-royal-idline';
       const idLabel=document.createElement('span');
       idLabel.className='sh-royal-user-id';
-      idLabel.textContent='ID: '+String(member.special_id||member.display_id||member.id);
+      paintProfileId(idLabel,member);
       idLine.appendChild(idLabel);
       const roomRole=frame?.__sharikaMemberRoles?.get(String(member.id));
       if(roomRole==='owner'||roomRole==='admin'){
@@ -7555,13 +7596,14 @@
       name.textContent=String(selected.n||'Member');
       const meta=doc.createElement('span');
       meta.className='sh-member-meta';
-      meta.textContent='ID '+String(selected.special_id||selected.display_id||publicId)+
-        ' · '+(Number.isInteger(index)?'Mic '+index:'In the room');
+      paintProfileId(meta,selected);
+      const micLocation=doc.createElement('span');
+      micLocation.className='sh-member-meta';
+      micLocation.textContent=Number.isInteger(index)?'Mic '+index:'In the room';
       const tags=doc.createElement('div');tags.className='sh-member-labels';
       for(const badgeName of [
         selected.room_role==='owner'?'Room Owner':
           selected.room_role==='admin'?'Room Admin':null,
-        Number(selected.svip_level)>0?'SVIP '+selected.svip_level:null,
         selected.muted?'Mic muted':null
       ]){
         if(!badgeName)continue;
@@ -7587,7 +7629,7 @@
           event.preventDefault();viewFull();
         }
       };
-      hero.append(pair,name,meta,tags,levels);
+      hero.append(pair,name,meta,micLocation,tags,levels);
       if(!/^[0-9]{8}$/.test(publicId))return;
       api('GET','/users/'+publicId).then(member=>{
         if(!levels.isConnected||String(member.id)!==publicId)return;
@@ -11596,16 +11638,13 @@
       if(frame)wrapper.insertAdjacentHTML('beforeend',frame);
     }
     root.querySelector('.sh-svip-public-badge')?.remove();
-    const level=svipLevel(person.svip_level);
-    if(level){const badge=makeSvipBadge(document,level,'sh-svip-public-badge');
-      root.querySelector('.pfh h2')?.insertAdjacentElement('afterend',badge);}
     root.querySelector('.sh-royal-profile-effects')?.remove();
     root.querySelectorAll('.sh-layout-ornament').forEach(node=>node.remove());
     for(const [kind,item] of [
       ['medal',medalArt(person.medal_style)],
       ['tag',nameTagArt(person.name_tag_style)]
     ]){
-      if(!item)continue;
+      if(!item||(kind==='tag'&&svipLevel(person.svip_level)&&/^svip-tag-/.test(item.id)))continue;
       const ornament=document.createElement('div');
       ornament.className='sh-layout-ornament';
       ornament.dataset.shLayoutOrnament=kind;
@@ -11617,10 +11656,7 @@
     root.querySelector('.sh-neon-public-id')?.remove();
     const publicLabel=root.querySelector('.pfh .sh-royal-user-id')||
       root.querySelector('.pfh .meta span:first-child');
-    if(publicLabel){
-      publicLabel.classList.toggle('sh-neon-single-id',!!person.special_id);
-      publicLabel.textContent='ID '+String(person.display_id||person.special_id||person.id);
-    }
+    paintProfileId(publicLabel,person);
     applyProfileLayout('public',root);
     refreshGlobalProfileLayouts().catch(()=>{});
   }

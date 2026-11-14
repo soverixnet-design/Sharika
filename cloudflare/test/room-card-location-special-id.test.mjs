@@ -20,7 +20,7 @@ test('room header, mic seats, listeners and user profiles prefer active Special 
   assert.match(ui,/display_id:user\.special_id\|\|user\.display_id\|\|user\.public_id/);
   assert.match(ui,/id:user\.special_id\|\|user\.display_id\|\|user\.public_id/);
   assert.match(ui,/seat\?\.special_id\|\|seat\?\.display_id\|\|canonical/);
-  assert.match(ui,/member\.special_id\|\|member\.display_id\|\|member\.id/);
+  assert.match(ui,/person\?\.special_id\|\|person\?\.display_id\|\|person\?\.public_id/);
   assert.match(ui,/target_public_id:verifiedId/);
 });
 

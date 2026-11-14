@@ -63,7 +63,7 @@ test('the room layout opens without a spinner or demo members',()=>{
 
 test('half-profile is itself the full-profile tap target with no redundant label',()=>{
   assert.match(ui,/hero\.onclick=viewFull/);
-  assert.match(ui,/hero\.append\(pair,name,meta,tags,levels\)/);
+  assert.match(ui,/hero\.append\(pair,name,meta,micLocation,tags,levels\)/);
   assert.doesNotMatch(ui,/full\.textContent='View full profile/);
   assert.match(ui,/openVerifiedRoomMemberProfile\(target\.public_id,room\.id,seat\)/);
 });
