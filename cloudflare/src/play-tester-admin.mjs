@@ -1,3 +1,4 @@
+import {handleAdminExchangeRate} from './exchange-rate.mjs';
 import {handlePlayDailyConfig} from './daily.mjs';
 // Isolated Play closed-test administration. Public IDs are database-local;
 // no write ever crosses from a Play tester into the staging wallet or profile.
@@ -189,7 +190,7 @@ export async function handlePlayTestAdmin(request, env) {
   const route = path === root ? '' : path.startsWith(root + '/') ? path.slice(root.length + 1) : null;
   if (route === null) return response({ error: 'not_found' }, 404);
   const method = request.method;
-  const permissions = route === 'daily' ? ['GET','PATCH'] : route === '' || route === 'catalog' || route === 'credits' ? ['GET'] :
+  const permissions = ['daily','exchange-rate'].includes(route) ? ['GET','PATCH'] : route === '' || route === 'catalog' || route === 'credits' ? ['GET'] :
     route === 'coins' || route === 'cosmetics/grant' ? ['POST'] : [];
   if (!permissions.length) return response({ error: 'not_found' }, 404);
   if (!permissions.includes(method)) return response({ error: 'method_not_allowed' }, 405);
@@ -197,6 +198,9 @@ export async function handlePlayTestAdmin(request, env) {
     return response({ error: 'invalid_query' }, 400);
   const verified = await superActor(request, env);
   if (verified.error) return verified.error;
+  if (route === 'exchange-rate')
+    return handleAdminExchangeRate({request,db:env.PLAY_DB,uid:verified.actorId,role:'super',
+      reply:response,fail:(error,status)=>response({error},status),playAudit:true});
   if (route === 'daily') return handlePlayDailyConfig(request,env.PLAY_DB,verified.actorId,response);
   if (route === 'coins') return playCredit(request, env, verified.actorId);
   if (route === 'cosmetics/grant') return playCosmetic(request, env, verified.actorId);
