@@ -2329,7 +2329,9 @@
       const currentLabel=current?'ACTIVE · SVIP '+current+(activeUntil?' · Until '+activeUntil:''):
         'ROYAL MEMBERSHIP · Choose your level';
       const benefit=['Royal profile theme and frame','Royal ID emblem and Noble tag',
-        'Voice room arrival effect','SVIP medal and daily rewards'];
+        'Voice room arrival effect','SVIP medal and daily rewards',
+        'Voice Effects · '+roomVoiceEffects.filter(effect=>effect.level>0&&effect.level<=preview)
+          .map(effect=>effect.label).join(', ')];
       const price=choice?format(choice.price_coins):'—';
       const reward=choice?format(choice.daily_bonus_coins):'—';
       const activeReward=Number(status.daily_bonus_coins)||0;
@@ -4372,6 +4374,8 @@
        musicPlayer?.src&&musicPlayer.paused&&musicState?.mode==='library')
       musicPlayer.play().catch(()=>{});
     if(sfuState?.roomId===joinedRoom.id && !sfuState.closed) {
+      const mixContext=sfuState.micMix?.context;
+      if(mixContext&&mixContext.state!=='running')mixContext.resume().catch(()=>{});
       if(sfuState.speakingContext?.state==='suspended')
         sfuState.speakingContext.resume().catch(()=>{});
       for(const audio of sfuState.audioElements) {
@@ -4558,6 +4562,7 @@
     }
     sfuState=null;
     state.closed=true;
+    if(state.micMix)closeMicMix(state.micMix);
     if(state.timer)clearInterval(state.timer);
     if(state.publicationTimer)clearInterval(state.publicationTimer);
     if(state.speakingTimer)clearInterval(state.speakingTimer);
@@ -5060,6 +5065,7 @@
     // queued behind an in-flight SFU request.
     for(const audio of sfuState?.audioElements||[])audio.muted=true;
     for(const track of sfuState?.media?.getAudioTracks()||[])track.enabled=false;
+    for(const track of sfuState?.micMix?.destination.stream.getAudioTracks()||[])track.enabled=false;
     if(voiceRetryTimer){clearTimeout(voiceRetryTimer);voiceRetryTimer=null;}
     // A new room entry, including returning to the same room, is a fresh
     // attempt. Do not carry an exhausted retry budget across visits.
@@ -5193,6 +5199,7 @@
       const track=sfuState.media?.getAudioTracks()[0];
       if(!track||track.readyState!=='live')throw new Error('Microphone capture unavailable');
       track.enabled=true;
+      if(sfuState.micMix)sfuState.micMix.micGain.gain.value=1;
     } else if(voiceRoomId===roomId&&voiceRoom){
       await voiceRoom.localParticipant.setMicrophoneEnabled(true);
     } else throw new Error('Microphone transport not available');
@@ -5209,6 +5216,7 @@
       if(failed||!track||track.readyState!=='live')
         return restartMicrophone(sfuState.roomId);
       track.enabled=!track.enabled;
+      if(sfuState.micMix)sfuState.micMix.micGain.gain.value=track.enabled?1:0;
       micPreferenceRoom=sfuState.roomId;micPreferenceEnabled=track.enabled;
       markLocalMicrophone(track.enabled&&sfuState.readyPublication);
       return track.enabled;
@@ -6402,6 +6410,222 @@
     openVerifiedRoomMemberProfile(id,roomId,seat).catch(error=>
       toast('Profile unavailable: '+errText(error)));
   },true);
+  const roomVoiceEffects=[
+    {id:'normal',label:'Normal',level:0},
+    {id:'studio',label:'Studio',level:1},
+    {id:'bass',label:'Bass Boost',level:2},
+    {id:'radio',label:'Radio',level:3},
+    {id:'robot',label:'Robot',level:4},
+    {id:'echo',label:'Echo',level:5},
+    {id:'double',label:'Double Voice',level:6}
+  ];
+
+  // Keep the raw track as the mute/permission control. The mix destination
+  // feeds only the existing SFU sender, with no local microphone playback.
+  function setRoomVoiceEffect(mix,id){
+    const {context,source,micGain}=mix;
+    const nodes=[];
+    let oscillator=null;
+    function filter(type,frequency,gain=0){
+      const node=context.createBiquadFilter();
+      node.type=type;node.frequency.value=frequency;node.gain.value=gain;
+      nodes.push(node);
+      return node;
+    }
+    if(id==='studio'){
+      filter('highpass',115);
+      filter('peaking',2400,3);
+      const compressor=context.createDynamicsCompressor();
+      compressor.threshold.value=-21;compressor.ratio.value=2.5;
+      nodes.push(compressor);
+    }else if(id==='bass'){
+      filter('lowshelf',225,7);
+      filter('highshelf',3500,-3);
+    }else if(id==='radio'){
+      filter('highpass',420);
+      filter('lowpass',2400);
+    }else if(id==='robot'){
+      filter('highpass',160);
+      const modulation=context.createGain();
+      modulation.gain.value=0.35;
+      oscillator=context.createOscillator();
+      oscillator.type='sine';oscillator.frequency.value=62;
+      const depth=context.createGain();
+      depth.gain.value=0.65;
+      oscillator.connect(depth).connect(modulation.gain);
+      nodes.push(modulation);
+      oscillator.start();
+    }else if(id==='echo'||id==='double'){
+      const delay=context.createDelay(0.5);
+      delay.delayTime.value=id==='echo'?0.16:0.027;
+      const gain=context.createGain();
+      gain.gain.value=id==='echo'?0.3:0.38;
+      nodes.push(delay,gain);
+    }
+    mix.oscillator?.stop();
+    mix.oscillator?.disconnect();
+    source.disconnect();
+    for(const node of mix.effectNodes)node.disconnect();
+    if(!nodes.length||id==='echo'||id==='double')source.connect(micGain);
+    if(nodes.length){
+      source.connect(nodes[0]);
+      for(let i=1;i<nodes.length;i++)nodes[i-1].connect(nodes[i]);
+      nodes.at(-1).connect(micGain);
+    }
+    mix.effect=id;
+    mix.effectNodes=nodes;
+    mix.oscillator=oscillator;
+  }
+  function closeMicMix(mix){
+    clearTimeout(mix.expiryTimer);
+    clearInterval(mix.accessPoll);
+    mix.oscillator?.stop();
+    mix.oscillator?.disconnect();
+    for(const track of mix.destination.stream.getTracks())track.stop();
+    mix.context.close().catch(()=>{});
+  }
+  function ensureMicMix(state){
+    if(state.micMixSetup)return state.micMixSetup;
+    const mic=state.media?.getAudioTracks()[0];
+    const publisher=state.publishPC;
+    const sender=publisher?.getSenders().find(item=>item.track===mic);
+    if(!mic||mic.readyState!=='live'||!sender)
+      throw new Error('Take a mic seat and wait for voice to connect');
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    if(!Audio)throw new Error('Audio processing is unavailable on this device');
+    const context=new Audio();
+    let mix;
+    const setup=(async()=>{
+      const source=context.createMediaStreamSource(state.media);
+      const destination=context.createMediaStreamDestination();
+      const micGain=context.createGain();
+      micGain.gain.value=mic.enabled?1:0;
+      mix={context,source,destination,micGain,effect:'normal',effectNodes:[]};
+      source.connect(micGain).connect(destination);
+      await context.resume();
+      if(context.state!=='running')throw new Error('Audio processing could not start');
+      if(sfuState!==state||state.closed||state.publishPC!==publisher||wantedVoiceRoom!==state.roomId)
+        throw new Error('Voice room changed');
+      const mixed=destination.stream.getAudioTracks()[0];
+      await sender.replaceTrack(mixed);
+      if(sfuState!==state||state.closed||state.publishPC!==publisher||wantedVoiceRoom!==state.roomId)
+        throw new Error('Voice room changed');
+      state.micMix=mix;
+      micGain.gain.value=mic.enabled?1:0;
+      // If Android suspends Web Audio in the background, keep the raw mic
+      // available until the context resumes. Reuse the same SFU sender.
+      let routing=Promise.resolve();
+      context.addEventListener('statechange',()=>{
+        routing=routing.then(()=>{
+          if(sfuState!==state||state.closed||wantedVoiceRoom!==state.roomId)return;
+          const next=context.state==='running'?mixed:mic;
+          if(sender.track!==next)return sender.replaceTrack(next);
+        }).catch(error=>console.warn('Microphone mix routing:',errText(error)));
+      });
+      return mix;
+    })().catch(error=>{
+      state.micMixSetup=null;
+      if(mix)closeMicMix(mix);
+      else context.close().catch(()=>{});
+      throw error;
+    });
+    state.micMixSetup=setup;
+    return setup;
+  }
+  function svipVoiceAccess(status){
+    const expiry=Number(status?.expires_at_ms)||0;
+    return {level:status?.tier==='svip'&&(!expiry||expiry>Date.now())?
+      svipLevel(status.svip_level):0,expiry};
+  }
+  function watchRoomVoiceEffect(state,level,access){
+    const mix=state.micMix;
+    clearTimeout(mix.expiryTimer);
+    clearInterval(mix.accessPoll);
+    mix.accessPoll=null;
+    if(!level)return;
+    const check=async()=>{
+      try{
+        const status=svipVoiceAccess((await api('GET','/premium')).status);
+        if(sfuState!==state||state.micMix!==mix||mix.accessPoll!==poll)return;
+        if(status.level<level){
+          setRoomVoiceEffect(mix,'normal');
+          watchRoomVoiceEffect(state,0,status);
+        }else if(status.expiry!==access.expiry)watchRoomVoiceEffect(state,level,status);
+      }catch(error){console.warn('SVIP voice status refresh:',errText(error));}
+    };
+    const expire=()=>{
+      const remaining=access.expiry-Date.now();
+      if(remaining>0){
+        mix.expiryTimer=setTimeout(expire,Math.min(remaining,2147483647));
+        return;
+      }
+      setRoomVoiceEffect(mix,'normal');
+      watchRoomVoiceEffect(state,0,access);
+    };
+    const poll=setInterval(check,60000);
+    mix.accessPoll=poll;
+    if(access.expiry)expire();
+  }
+  async function openRoomVoiceEffects(frame,room){
+    const active=()=>joinedRoom===room&&window.cur===room&&
+      document.getElementById('rf')?.contentWindow===frame;
+    if(!active())return;
+    frame.open('<h3>Voice Effects</h3><div id="sh-voice-effect-options" role="group" '+
+      'aria-label="Voice Effects"><p role="status">Checking SVIP access…</p></div>');
+    const options=frame.$('sh-voice-effect-options');
+    const status=options?.querySelector('[role="status"]');
+    if(!status)return;
+    let access;
+    try{access=svipVoiceAccess((await api('GET','/premium')).status);}
+    catch(error){status.textContent='Could not check SVIP access. Reopen Voice Effects to retry.';return;}
+    if(!active()||!options.isConnected)return;
+    status.textContent='Changes the microphone audio heard by other members.';
+    const buttons=[];
+    for(const effect of roomVoiceEffects){
+      const button=frame.document.createElement('button');
+      button.type='button';button.className='act';button.dataset.effect=effect.id;
+      button.textContent=effect.label+(access.level<effect.level?' · SVIP '+effect.level:'');
+      button.disabled=access.level<effect.level;
+      buttons.push(button);
+      options.appendChild(button);
+      button.onclick=async()=>{
+        const state=sfuState;
+        if(!active()||state?.roomId!==room.id||!state.readyPublication||!state.canPublish){
+          status.textContent='Take a mic seat and wait for voice to connect.';
+          return;
+        }
+        if(effect.level&&access.expiry&&access.expiry<=Date.now()){
+          status.textContent='Your SVIP has expired. Reopen Voice Effects to check access.';
+          return;
+        }
+        buttons.forEach(item=>{item.disabled=true;});
+        try{
+          const mix=effect.level?await ensureMicMix(state):state.micMix;
+          if(!active()||sfuState!==state||state.closed||!options.isConnected)return;
+          if(mix){
+            setRoomVoiceEffect(mix,effect.id);
+            watchRoomVoiceEffect(state,effect.level,access);
+          }
+          updateSelection();
+          status.textContent=effect.label+' selected.';
+        }catch(error){status.textContent=errText(error);}
+        finally{buttons.forEach((item,i)=>{item.disabled=access.level<roomVoiceEffects[i].level;});}
+      };
+    }
+    function updateSelection(){
+      const current=sfuState?.roomId===room.id?sfuState.micMix?.effect:'normal';
+      for(const item of buttons)
+        item.setAttribute('aria-pressed',String(item.dataset.effect===(current||'normal')));
+    }
+    updateSelection();
+  }
+  window.SharikaRoomVoiceEffects=Object.freeze({
+    open(frame){
+      const room=joinedRoom;
+      if(room)openRoomVoiceEffects(frame,room).catch(error=>frame.toast(errText(error)));
+    }
+  });
+
   // Room music is separate from chat and gift history. A licensed HTTPS file
   // from the Admin catalogue is rendered by each listener; a phone MP3 stays
   // on its owner's device and enters the existing room SFU microphone uplink.
@@ -6437,15 +6661,8 @@
     if(!local)return;
     musicLocal=null;
     if(musicHeartbeat){clearInterval(musicHeartbeat);musicHeartbeat=null;}
-    // Undo replaceTrack before stopping its MediaStreamTrack. During a room
-    // disconnect the sender may already be closed; no track is leaked.
-    if(local.sender&&local.state===sfuState&&
-       local.original?.readyState==='live')
-      local.sender.replaceTrack(local.original).catch(()=>{});
     try{local.audio.pause();local.audio.src='';local.audio.load();}catch(_){}
-    try{local.micSource.disconnect();local.songSource.disconnect();}catch(_){}
-    try{for(const track of local.destination.stream.getTracks())track.stop();}catch(_){}
-    local.context.close().catch(()=>{});
+    local.songSource.disconnect();
     URL.revokeObjectURL(local.blobUrl);
   }
   function resetRoomMusic(){
@@ -6518,29 +6735,20 @@
     if(!state||state.roomId!==roomId||!state.canPublish||
        !state.readyPublication||!mic||mic.readyState!=='live')
       throw new Error('Take an unlocked mic seat and connect voice before sharing phone MP3');
-    if(typeof AudioContext==='undefined'&&typeof webkitAudioContext==='undefined')
-      throw new Error('This device does not support phone MP3 broadcast');
-    const sender=state.publishPC?.getSenders()?.find(item=>item.track===mic);
-    if(!sender)throw new Error('Room microphone uplink unavailable; please reconnect');
-    const context=new (window.AudioContext||window.webkitAudioContext)();
+    const mix=await ensureMicMix(state);
     let blobUrl=null;
     try{
       blobUrl=URL.createObjectURL(file);
       const audio=new Audio(blobUrl);audio.loop=false;
-      const micSource=context.createMediaStreamSource(state.media);
-      const songSource=context.createMediaElementSource(audio);
-      const destination=context.createMediaStreamDestination();
-      micSource.connect(destination);songSource.connect(destination);
-      await context.resume();
+      const songSource=mix.context.createMediaElementSource(audio);
       // Reserve the room controller first; no file is uploaded to Cloudflare.
       const current=await api('PUT','/rooms/'+roomId+'/music',{
         action:'local',title:file.name.slice(0,100)
       });
-      if(window.cur?.id!==roomId)throw new Error('Room changed');
-      const mixed=destination.stream.getAudioTracks()[0];
-      await sender.replaceTrack(mixed);
-      musicLocal={roomId,revision:current.revision,original:mic,state,sender,context,audio,micSource,
-        songSource,destination,blobUrl};
+      if(window.cur?.id!==roomId||sfuState!==state||state.closed)
+        throw new Error('Room changed');
+      songSource.connect(mix.destination);
+      musicLocal={roomId,revision:current.revision,state,audio,songSource,blobUrl};
       await audio.play();
       musicState=current;musicStateRoom=roomId;
       closeRoomMusicAudio();
@@ -6557,10 +6765,7 @@
       toast('📱 Phone MP3 is broadcasting over the room voice connection');
     }catch(error){
       if(musicLocal?.blobUrl===blobUrl)releasePhoneMusic();
-      else {
-        if(blobUrl)URL.revokeObjectURL(blobUrl);
-        context.close().catch(()=>{});
-      }
+      else if(blobUrl)URL.revokeObjectURL(blobUrl);
       api('PUT','/rooms/'+roomId+'/music',{action:'stop_self'}).catch(()=>{});
       throw error;
     }
