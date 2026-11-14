@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
-import { handlePlayBillingApp, PLAY_COIN_PRODUCTS, sha256Hex, verifyGooglePurchase } from '../src/play-billing.mjs';
+import { handlePlayBillingApp, PLAY_COIN_PRODUCTS, sha256Hex, syncSvipVoidedPurchases, verifyGooglePurchase } from '../src/play-billing.mjs';
 
 globalThis.crypto ||= webcrypto;
 const validToken = 'play_purchase_token_12345678901234567890';
@@ -64,6 +64,7 @@ test('Google verification requires purchased, unconsumed product and matched Fir
   const verified = await verifyGooglePurchase({env, uid, productId: 'sharika_coins_500k',
     purchaseToken: validToken, fetcher });
   assert.equal(verified.orderId, 'GPA.0123-4567-8901-23456');
+  assert.equal(verified.paid,true);
   assert.equal(urls.length, 2);
   assert.match(urls[1].url, /^https:\/\/androidpublisher\.googleapis\.com\//);
   assert.equal(urls[1].authorization, 'Bearer server-token');
@@ -173,4 +174,48 @@ test('WIF rejects mismatched identity JWT and STS or impersonation failures', as
       purchaseToken: validToken, fetcher }), /play_wif_/);
     assert.equal(visited.length, failureAt === 'identity' ? 1 : failureAt === 'sts' ? 2 : 3);
   }
+});
+
+
+test('test or promotional purchases do not qualify as paid SVIP recharges',async()=>{
+  for(const purchaseType of [0,1,2]){
+    const {env,fetcher}=await fixture({purchaseType});
+    const receipt=await verifyGooglePurchase({env,uid,productId:'sharika_coins_500k',
+      purchaseToken:validToken,fetcher});
+    assert.equal(receipt.paid,false);
+  }
+});
+
+test('SVIP refund sync hashes tokens, handles pagination and advances only after success',async()=>{
+  const {env,fetcher}=await fixture();
+  env.SHARIKA_PLAY_BILLING_ENABLED='true';
+  const now=Date.now(),tokens=[validToken,validToken+'2'],voids=new Set();
+  let checkpoint=0,failSecond=true;
+  const useGoogle=async(url,options)=>{
+    if(url.endsWith('/token'))return fetcher(url,options);
+    const query=new URL(url).searchParams;
+    if(query.get('token')==='page-2'){
+      if(failSecond)return new Response(null,{status:503});
+      return Response.json({voidedPurchases:[{purchaseToken:tokens[1]}]});
+    }
+    return Response.json({voidedPurchases:[{purchaseToken:tokens[0]}],
+      tokenPagination:{nextPageToken:'page-2'}});
+  };
+  env.DB={
+    prepare(sql){
+      return {first:async()=>sql.includes('svip_recharge_enabled')?
+        {svip_recharge_enabled:1}:null,bind(value){
+          return {sql,value,run:async()=>{checkpoint=value;}};
+        }};
+    },
+    async batch(stmts){
+      stmts.forEach(stmt=>voids.add(stmt.value));
+    }
+  };
+  await assert.rejects(syncSvipVoidedPurchases(env,useGoogle,now),/unavailable/);
+  assert.equal(checkpoint,0);
+  failSecond=false;
+  await syncSvipVoidedPurchases(env,useGoogle,now);
+  assert.equal(checkpoint,now);
+  assert.deepEqual([...voids],await Promise.all(tokens.map(sha256Hex)));
 });
