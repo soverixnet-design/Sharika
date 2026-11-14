@@ -32,14 +32,14 @@ CREATE TRIGGER IF NOT EXISTS sharika_daily_claim_no_update
 BEFORE UPDATE ON sharika_daily_checkins BEGIN SELECT RAISE(ABORT,'immutable daily claim'); END;
 CREATE TRIGGER IF NOT EXISTS sharika_daily_claim_no_delete
 BEFORE DELETE ON sharika_daily_checkins BEGIN SELECT RAISE(ABORT,'immutable daily claim'); END;
-CREATE TABLE sharika_play_daily_config_audit (
+CREATE TABLE IF NOT EXISTS sharika_play_daily_config_audit (
   id INTEGER PRIMARY KEY,
   actor_id TEXT NOT NULL,
   old_rewards TEXT NOT NULL,
   new_rewards TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE TRIGGER sharika_play_daily_audit_no_update
+CREATE TRIGGER IF NOT EXISTS sharika_play_daily_audit_no_update
 BEFORE UPDATE ON sharika_play_daily_config_audit BEGIN SELECT RAISE(ABORT,'immutable config audit'); END;
-CREATE TRIGGER sharika_play_daily_audit_no_delete
+CREATE TRIGGER IF NOT EXISTS sharika_play_daily_audit_no_delete
 BEFORE DELETE ON sharika_play_daily_config_audit BEGIN SELECT RAISE(ABORT,'immutable config audit'); END;

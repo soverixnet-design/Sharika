@@ -12,6 +12,9 @@
         android:allowBackup="false"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false">
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-6081763778059200~5536390876" />
         <activity
             android:name=".SharikaActivity"
             android:enableOnBackInvokedCallback="true"

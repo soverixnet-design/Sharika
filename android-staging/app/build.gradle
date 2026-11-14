@@ -88,8 +88,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 117
-        versionName = productionApiOrigin ? '1.0.17' : '1.0.17-staging'
+        versionCode 118
+        versionName = productionApiOrigin ? '1.0.18' : '1.0.18-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -98,6 +98,8 @@ android {
 }
 
 dependencies {
+    implementation 'com.google.android.gms:play-services-ads:25.5.0'
+    implementation 'com.google.android.ump:user-messaging-platform:4.0.0'
     // Google Play one-time consumable coins; receipts are verified on our Worker.
     implementation 'com.android.billingclient:billing:9.1.0'
     implementation platform('com.google.firebase:firebase-bom:35.1.0')
