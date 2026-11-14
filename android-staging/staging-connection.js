@@ -2376,7 +2376,8 @@
         '<div class="svip-reward-card"><span>🎁 DAILY SVIP REWARD</span>'+
         '<strong>🪙 '+reward+' coins</strong><small>Claim once per UTC day while active</small></div>'+
         '<div class="svip-perks">'+benefit.map(x=>'<span>✦ '+x+'</span>').join('')+'</div>'+
-        (recharge?'<button class="svip-main-btn" id="sh-svip-recharge" type="button">Recharge with Google Play</button>':
+        (recharge?'<button class="svip-main-btn" id="sh-svip-recharge" type="button">'+
+          (playStoreMode===true?'Recharge with Google Play':'Recharge Coins')+'</button>':
          canBuy?'<button class="svip-main-btn" id="sh-svip-buy" type="button">'+
           (current===preview?'Renew SVIP '+preview:'Unlock SVIP '+preview)+
           ' · '+price+' Coins / 30 Days</button>':
@@ -2389,7 +2390,7 @@
             'Claim today’s '+format(activeReward)+' coins')+'</button>':'')+
         '<details class="svip-rules"><summary>SVIP policy & expiry</summary>'+
         (recharge?
-          '<p class="svip-note">The 30-day period starts at the first target. Verified paid Play recharges in the same period add up. '+
+          '<p class="svip-note">The 30-day period starts at the first target. Verified recharges received in the same period add up. '+
           'Qualification uses base coins at 500,000 per policy dollar. Bonuses and refunded orders do not count.</p>':
           '<p class="svip-note">Buying or receiving a pass adds its frame, entry effect, medal and tag to My Backpack. '+
           'Coin purchases last 30 days. Buying the same level again extends the pass.</p>')+'</details>'+
@@ -2412,7 +2413,7 @@
         finally{busy=false;}
       };
       const rechargeButton=panel.querySelector('#sh-svip-recharge');
-      if(rechargeButton)rechargeButton.onclick=()=>{close();showPlayCoinShop();};
+      if(rechargeButton)rechargeButton.onclick=()=>{close();window.rechargeSheet();};
       const buy=panel.querySelector('#sh-svip-buy');
       if(buy)buy.onclick=async()=>{
         if(busy||!choice||!canBuy||!window.confirm(
