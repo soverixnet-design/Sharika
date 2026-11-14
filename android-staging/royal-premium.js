@@ -8,6 +8,7 @@
   document.documentElement.dataset.sharikaRoyalMounted = '1';
 
   var SHEET_URL = 'file:///android_asset/royal-premium.css';
+  var MOTION_URL = 'file:///android_asset/royal-motion-system.css';
   var FRAME_ID = 'rf';
   var frameObserver = null;
 
@@ -29,7 +30,8 @@
         'file:///android_asset/royal-winged-theme.css'),
       ensureSheet(doc,role==='royal-room'?'sharika-reference-room-style':'sharika-reference-profile-style',
         role==='royal-room'?'file:///android_asset/reference-room.css':
-          'file:///android_asset/reference-profile.css')
+          'file:///android_asset/reference-profile.css'),
+      ensureSheet(doc,'sharika-royal-motion-style',MOTION_URL)
     ];
   }
 
@@ -41,7 +43,8 @@
     var head='<script>document.documentElement.classList.add("royal-premium","royal-room")<\/script>'+
       '<link id="sharika-royal-premium-style" rel="stylesheet" href="'+SHEET_URL+'">'+
       '<link id="sharika-winged-theme-style" rel="stylesheet" href="file:///android_asset/royal-winged-theme.css">'+
-      '<link id="sharika-reference-room-style" rel="stylesheet" href="file:///android_asset/reference-room.css">';
+      '<link id="sharika-reference-room-style" rel="stylesheet" href="file:///android_asset/reference-room.css">'+
+      '<link id="sharika-royal-motion-style" rel="stylesheet" href="'+MOTION_URL+'">';
     window.ROOM_HTML=window.ROOM_HTML.replace('</head>',head+'</head>');
   }
 
