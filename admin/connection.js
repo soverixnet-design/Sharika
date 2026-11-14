@@ -2844,16 +2844,21 @@
         if(!picture.naturalWidth||!picture.naturalHeight)
           throw new Error('The photo has no usable dimensions.');
         const canvas=document.createElement('canvas');
-        const scale=Math.min(1,1100/picture.naturalWidth,480/picture.naturalHeight);
-        canvas.width=Math.max(1,Math.round(picture.naturalWidth*scale));
-        canvas.height=Math.max(1,Math.round(picture.naturalHeight*scale));
         const context=canvas.getContext('2d');
         if(!context)throw new Error('Banner image conversion unavailable.');
-        context.drawImage(picture,0,0,canvas.width,canvas.height);
-        for(const quality of [.79,.66,.53,.42]){
-          const data=canvas.toDataURL('image/jpeg',quality);
-          if(data.startsWith('data:image/jpeg;base64,')&&data.length<480000)
-            return data;
+        for(const width of [1600,1440,1280,1100,960,800]){
+          const scale=Math.min(1,width/picture.naturalWidth,(width*9/16)/picture.naturalHeight);
+          canvas.width=Math.max(1,Math.round(picture.naturalWidth*scale));
+          canvas.height=Math.max(1,Math.round(picture.naturalHeight*scale));
+          context.imageSmoothingQuality='high';
+          context.fillStyle='#161029';
+          context.fillRect(0,0,canvas.width,canvas.height);
+          context.drawImage(picture,0,0,canvas.width,canvas.height);
+          for(const quality of [.95,.90,.83,.75]){
+            const data=canvas.toDataURL('image/jpeg',quality);
+            if(data.startsWith('data:image/jpeg;base64,')&&data.length<=480023)
+              return data;
+          }
         }
         throw new Error('The image is too detailed; choose a smaller photo.');
       }finally{URL.revokeObjectURL(objectUrl);}
