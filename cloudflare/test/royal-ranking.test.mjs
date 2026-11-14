@@ -200,7 +200,7 @@ test('original ranking UI uses a real 3-place podium and equipped profile media'
   assert.match(source,/const frame=frameArt\(leader\.frame_style\)/);
   assert.match(source,/const medal=medalArt\(leader\.medal_style\)/);
   assert.match(source,/function decorateVerifiedPublicProfile\(root,person\)/);
-  assert.match(source,/decorateVerifiedPublicProfile\(root,member\)/);
+  assert.match(source,/paintVerifiedProfileFrame\(root\.querySelector\('\.pfh \.pavw'\),person\)/);
   assert.match(source,/decorateVerifiedPublicProfile\(root,person\)/);
   assert.match(source,/inboxPeople=new Map/);
   assert.match(source,/No demo users or/);
