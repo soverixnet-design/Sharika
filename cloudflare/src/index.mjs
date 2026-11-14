@@ -30,7 +30,7 @@ import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.
 import {handleSoveraGaddy} from './sovera-gaddy.mjs';
 import {handleFruitRoyaleRequest,settleFruitDueBets} from './fruit-royale.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
-import {readExchangeRate,respondRate,exchangeCredit} from './exchange-rate.mjs';
+import {readExchangeRate,respondRate,exchangeCredit,MAX_DIAMONDS} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
 import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
 import { drawLuckyGift, luckyGiftBenefits, nonRedeemableLuckyEconomy, LUCKY_ODDS } from './lucky-gifts.mjs';
@@ -997,7 +997,7 @@ export async function handleRequest(request, env, ctx) {
       const body=await readBody(request);
       const diamonds=body.diamonds;
       const requestId=typeof body.request_id==='string'?body.request_id.trim():'';
-      if(!Number.isSafeInteger(diamonds)||diamonds<1||diamonds>1000000||
+      if(!Number.isSafeInteger(diamonds)||diamonds<1||diamonds>MAX_DIAMONDS||
         !/^[a-zA-Z0-9:_-]{12,80}$/.test(requestId))
         return fail('invalid_exchange',400,cors);
       const txid='exchange:'+requestId;
