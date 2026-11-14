@@ -36,7 +36,8 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   flex:none;
   border-radius:8px;
   border:1px solid #d9aa4d;
-  background:#12251f center / cover no-repeat;
+  background:#12251f center / contain no-repeat;
+  background-size:contain!important;
 }
 .app.sh-royal-room .top .room .rt b {
   font-size:16px!important;
@@ -67,18 +68,14 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 }
 .app.sh-royal-room .sh-room-profile-header .room {width:100%!important}
 .app.sh-royal-room .sh-room-rank-button {
-  position:absolute;
-  bottom:0;
-  left:0;
-  z-index:2;
-  width:36px;
-  height:36px;
-  padding:0;
+  position:static;
+  min-height:28px;
+  padding:1px 8px;
   border:1px solid #e9bc61;
-  border-radius:50%;
+  border-radius:999px;
   background:#231438;
   color:#fff;
-  font-size:17px;
+  font-size:11px;
   cursor:pointer;
 }
 .app.sh-royal-room .sh-room-rank-button:disabled {visibility:hidden}
@@ -404,8 +401,8 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 }
 .app.sh-royal-room #grid .seat .av .sh-seat-frame-badges .sh-sovera-seat-medal {
   position:absolute!important;
-  right:-7px!important;
-  bottom:-5px!important;
+  right:-9px!important;
+  bottom:0!important;
   width:clamp(16px,4.8vw,22px)!important;
   height:clamp(16px,4.8vw,22px)!important;
   object-fit:contain!important;
@@ -465,14 +462,17 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   margin:0;
 }
 .app.sh-royal-room .sh-room-rank-row > .sh-room-rank-button {
-  position:static!important;
-  left:auto!important;
-  bottom:auto!important;
-  width:24px!important;
-  height:24px!important;
-  border-radius:50%!important;
-  font-size:14px!important;
-  line-height:22px!important;
+  flex:none;
+  line-height:1;
+  white-space:nowrap;
+}
+.sh-room-settings-cover {
+  width:64px;
+  height:54px;
+  object-fit:contain;
+  border:1px solid #cba762;
+  border-radius:8px;
+  background:#140e20;
 }
 
 /* These effects decorate an active mic seat without changing its hit area. */
