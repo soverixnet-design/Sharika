@@ -326,25 +326,47 @@ test('real speaker rings follow multiple authenticated microphones and never ran
   assert.ok(begin>=0&&end>begin);
   const classes=[];
   const seats=[
-    {i:0,user_id:'owner',muted:false},
+    {i:0,user_id:'owner',muted:false,svip_level:1},
     {i:1,user_id:'one',muted:false},
-    {i:2,user_id:'two',muted:true},
+    {i:2,user_id:'two',muted:true,svip_level:2},
     {i:3,empty:1}
   ];
-  const frame={seats,seatEl(i){return {classList:{toggle(key,yes){
+  function node(){
+    return {children:[],dataset:{},setAttribute(){},
+      appendChild(child){child.parent=this;this.children.push(child);},
+      querySelector(selector){return this.children.find(child=>'.'+child.className===selector);},
+      remove(){this.parent.children.splice(this.parent.children.indexOf(this),1);}
+    };
+  }
+  const avatars=seats.map(()=>({...node(),ownerDocument:{createElement:node}}));
+  const frame={seats,seatEl(i){return {querySelector:()=>avatars[i],classList:{toggle(key,yes){
     classes.push([i,key,yes]);
   }}}}};
   const context=createContext({
+    svipLevel:value=>Number(value)||0,
     window:{cur:{id:'roomA'}},
     document:{getElementById:()=>({contentWindow:frame})}
   });
   runInContext("let wantedVoiceRoom='roomA';"+ui.slice(begin,end),context);
-  context.speakerIds=new Set(['owner','one','two']);
+  context.speakerIds=new Map([['owner',1],['one',2],['two',3]]);
   runInContext("setVoiceSpeakers('roomA',speakerIds)",context);
   assert.deepEqual(seats.map(s=>!!s.talk),[true,true,false,false]);
   assert.ok(classes.some(x=>x[0]===0&&x[1]==='talk'&&x[2]===true));
   assert.ok(classes.some(x=>x[0]===1&&x[1]==='talk'&&x[2]===true));
   assert.ok(classes.some(x=>x[0]===2&&x[1]==='talk'&&x[2]===false));
+  const rose=avatars[0].children[0];
+  assert.equal(rose.dataset.style,'1');
+  assert.equal(rose.dataset.strength,'1');
+  assert.equal(rose.children.length,4);
+  assert.equal(avatars[1].children.length,0,'non-SVIP only gets the regular speaking ring');
+  assert.equal(avatars[2].children.length,0,'muted speaker has no effect');
+  // Feed immutable snapshots as the microphone analyser does.
+  runInContext("setVoiceSpeakers('roomA',new Map(speakerIds).set('owner',2))",context);
+  assert.equal(avatars[0].children[0],rose,'audio changes reuse the decoration');
+  assert.equal(rose.dataset.strength,'2');
+  seats[0].muted=true;
+  runInContext("paintVoiceSpeakers('roomA',document.getElementById('rf').contentWindow)",context);
+  assert.equal(avatars[0].children.length,0,'mute immediately removes the decoration');
   runInContext('clearVoiceSpeakers()',context);
   assert.deepEqual(seats.map(s=>!!s.talk),[false,false,false,false]);
   assert.doesNotMatch(ui.slice(begin,end),/Math\.random/);
@@ -359,12 +381,15 @@ test('SFU voice activity measures live audio and clears the light on mute',()=>{
   const updates=[];
   const context=createContext({
     Date,Math,Set,Uint8Array,
-    setVoiceSpeakers(room,ids){updates.push([room,[...ids].sort()]);},
+    setVoiceSpeakers(room,levels){
+      updates.push([room,Array.from(levels,([id,strength])=>[id,strength]).sort()]);
+    },
     window:{}
   });
   runInContext('let sfuState=null;'+ui.slice(begin,end),context);
   const loud={getByteTimeDomainData(bytes){bytes.fill(158);}};
   const quiet={getByteTimeDomainData(bytes){bytes.fill(128);}};
+  const soft={getByteTimeDomainData(bytes){bytes.fill(132);}};
   const trackOne={readyState:'live',enabled:true,muted:false};
   const trackTwo={readyState:'live',enabled:true,muted:false};
   const state={roomId:'roomA',closed:false,speakingMeters:new Map(),publishPC:null};
@@ -372,11 +397,11 @@ test('SFU voice activity measures live audio and clears the light on mute',()=>{
     userId:'one',local:false,analyser:loud,samples:new Uint8Array(64),lastActiveAt:0
   });
   state.speakingMeters.set(trackTwo,{
-    userId:'two',local:false,analyser:loud,samples:new Uint8Array(64),lastActiveAt:0
+    userId:'two',local:false,analyser:soft,samples:new Uint8Array(64),lastActiveAt:0
   });
   context.state=state;
   runInContext('sfuState=state;sampleSfuSpeaking(state)',context);
-  assert.deepEqual(updates.at(-1),['roomA',['one','two']]);
+  assert.deepEqual(updates.at(-1),['roomA',[['one',3],['two',1]]]);
   trackOne.enabled=false;
   state.speakingMeters.get(trackTwo).analyser=quiet;
   state.speakingMeters.get(trackTwo).lastActiveAt=0;
