@@ -38,7 +38,7 @@ import {handleLuckyBoxApp} from './lucky-box.mjs';
 import {handleInviteLanding} from './invite-link.mjs';
 import {handlePublicAccountDeletion,handleAdminAccountDeletion} from './account-deletion.mjs';
 import {handlePublicPrivacyPolicy} from './privacy-policy.mjs';
-import {handlePlayBillingApp} from './play-billing.mjs';
+import {handlePlayBillingApp,syncSvipVoidedPurchases} from './play-billing.mjs';
 import {servePublicMedia} from './admin-media.mjs';
 import {roomWeekStartUTC} from './room-weekly-rewards.mjs';
 import {searchVerifiedRooms} from './room-search.mjs';
@@ -2096,6 +2096,8 @@ export default {
   fetch:handleRequest,
   scheduled(_event,env,context){
     if(env.DB){
+      context.waitUntil(syncSvipVoidedPurchases(env)
+        .catch(error=>console.error('svip_refund_sync_error',error.message)));
       if(!playVirtualOnly(env))context.waitUntil(settleFruitDueBets(env.DB)
         .catch(error=>console.error('fruit_royale_settlement_cron_error',error.message)));
       context.waitUntil(expireBondInvites(env.DB,Date.now(),100,env,context)
