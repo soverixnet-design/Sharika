@@ -31,7 +31,11 @@ test('outside room cards show account country, but photo management remains insi
   assert.match(ui,/location\.textContent=title/);
   assert.match(ui,/summary\.textContent='ID '\+displayId/);
   assert.doesNotMatch(ui,/textContent='📷 Edit photo'/);
-  assert.match(ui,/row\(roomGroup,'Profile photo','Edit cover'/);
+  assert.match(ui,/row\(roomGroup,'Profile photo',owner\?'Edit cover':''/);
+  assert.match(ui,/background\.prepend\(cover\)/);
+  assert.match(ui,/paintRoomCoverPreview\(preview,verifiedCoverUrl\(room\.cover_url\)\)/);
+  const css=readFileSync(new URL('../../app/golden-home.css',import.meta.url),'utf8');
+  assert.match(css,/\.sh-room-card-photo \{[^}]*object-fit:contain/);
   assert.match(ui,/owner\?\(\)=>pickRoomCover\(room,frame\):null/);
 });
 
