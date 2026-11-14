@@ -537,7 +537,7 @@ function renderRcp(){
     '<button class="cta bl" id="rcs">Contact recharge support</button><button class="cta or" id="rcl2">Coin seller list</button>'+
     '<details class="rk"><summary>🏆 Recharge, sending and receiving rankings</summary>'+CFG.people.slice(0,5).map(function(p,i){return'<div><span>'+(i+1)+'. '+p[1]+' '+esc(p[0])+'</span><b>🪙 '+rf(CFG.wealth[i])+'</b></div>'}).join("")+'</details>';
   }else{
-    h+='<div class="rh"><h3>Diamond exchange</h3></div><div class="rate">Rate: '+(window.SHARIKA_EXCHANGE_FROM||100)+' 💎 = '+(window.SHARIKA_EXCHANGE_TO||70)+' 🪙</div><div class="pk"><p>Buy gold coins with diamonds.</p>'+X.map(function(d,i){return'<button data-e="'+i+'"><span>💎 '+N(d)+'</span><em>🪙 '+N(d*RATE)+' ›</em></button>'}).join("")+'</div>';
+    h+='<div class="rh"><h3>Diamond exchange</h3></div><div class="rate">Rate: '+(window.SHARIKA_EXCHANGE_FROM||100)+' 💎 = '+(window.SHARIKA_EXCHANGE_TO||70)+' 🪙</div><div class="pk"><p>Choose diamonds to exchange for coins.</p><label for="sh-exchange-amount">Custom amount</label><input id="sh-exchange-amount" class="field" type="number" min="1" inputmode="numeric" placeholder="Enter diamonds"><button id="sh-exchange-custom" type="button">Review custom amount</button><button id="sh-exchange-max" type="button">Use maximum available</button>'+X.map(function(d,i){return'<button data-e="'+i+'"><span>💎 '+N(d)+'</span><em>🪙 '+N(d*RATE)+' ›</em></button>'}).join("")+'</div>';
   }
   $("rcp").innerHTML=h+'</div>';
   $("rcb").onclick=function(){$("rcp").classList.remove("on")};
