@@ -1221,16 +1221,21 @@
 
   // Packages stay under the existing Finance workflow. The exchange rate
   // is a real D1 setting: only Super Admin may change it, with a server audit.
-  P.money=async function(){
+  P.money=async function(environment="play"){
+    const endpoint=environment==="play"?"play-testers/exchange-rate":"exchange-rate";
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>💎 Diamond Exchange Percentage</h3>'+
-      '<p class="n">Set one percentage. For example, 70% gives 70 coins for every 100 diamonds. '+
-      'Changes apply only to new exchanges; completed receipts and balances are unchanged.</p>'+
+      '<p class="n">Set the coins per 100 diamonds and the maximum diamonds in one exchange.</p>'+
+      '<label>Environment <select id="sh-exchange-environment"><option value="play">Google Play</option>'+
+      '<option value="staging">Staging</option></select></label>'+
       '<div id="sharika-exchange-admin">Loading verified exchange percentage…</div></div>'+
       card('Recharge packages','Verified payment packages are managed separately. No demo credits.');
+    const picker=byId('sh-exchange-environment');
+    picker.value=environment;
+    picker.onchange=()=>P.money(picker.value);
     const panel=byId('sharika-exchange-admin');
     try{
-      const current=await api('GET','exchange-rate');
+      const current=await api('GET',endpoint);
       if(!panel?.isConnected)return;
       const currentPercent=Number((100*Number(current.coins_per_unit)/
         Number(current.diamonds_per_unit)).toFixed(2));
@@ -1244,7 +1249,10 @@
           '<span>%</span>'+
           '<button class="btn s" type="button" id="sharika-percent-plus" aria-label="Increase percentage">+</button></div>'+
           '<p class="n" id="sharika-percent-preview" aria-live="polite"></p>'+
-          '<button class="btn" id="sharika-rate-save" type="button">Save percentage</button>':
+          (current.limit_editable?'<label for="sharika-exchange-limit">Maximum diamonds per exchange</label>'+
+            '<input id="sharika-exchange-limit" class="field" type="number" inputmode="numeric" min="100" max="100000000" step="1" value="'+
+            Number(current.configured_max_diamonds)+'">':'')+
+          '<button class="btn" id="sharika-rate-save" type="button">Save exchange settings</button>':
           '<p class="n">'+(current.editable?
           'Only Super Admin can change this percentage.':
           'Exchange settings migration is pending. The existing rate remains active.')+'</p>')+
@@ -1278,22 +1286,26 @@
         if(input.value===''||!validPercent(percent)){
           status.textContent='Enter a whole percentage between 1 and 10,000.';return;
         }
-        if(percent===currentPercent){
-          status.textContent='This percentage is already active.';return;
+        const limit=byId('sharika-exchange-limit');
+        const maximum=Number(limit?.value);
+        if(limit&&(!Number.isSafeInteger(maximum)||maximum<100||maximum>100000000)){
+          status.textContent='Enter a maximum between 100 and 100,000,000 diamonds.';return;
         }
-        if(!window.confirm('Set diamond exchange to '+percent+
-           '%? 100 Diamonds will give '+percent+
-           ' Coins on future exchanges. This is audited.'))return;
+        if(percent===currentPercent&&(!limit||maximum===current.configured_max_diamonds)){
+          status.textContent='These exchange settings are already active.';return;
+        }
+        if(!window.confirm('Save '+percent+'% on '+environment+(limit?' with a maximum of '+maximum+' diamonds':'')+'?'))return;
         button.disabled=true;
         try{
           // Keep the existing audited D1 exchange API. The admin edits only
           // the percentage; the server uses an exact 100-diamond denominator.
-          await api('PATCH','exchange-rate',{
+          await api('PATCH',endpoint,{
             diamonds_per_unit:100,coins_per_unit:percent,
+            ...(limit?{max_diamonds_per_exchange:maximum}:{}),
             expected_revision:current.revision
           });
-          note('Exchange percentage saved ✓');
-          await P.money();
+          note('Exchange settings saved ✓');
+          await P.money(environment);
         }catch(error){
           status.textContent='Percentage not changed: '+error.message;
           button.disabled=false;
