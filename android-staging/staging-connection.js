@@ -2203,6 +2203,7 @@
         const active=status.tier===item.tier;
         const svipBase=item.tier==='svip'?(cfg.svip_levels||[])[0]:null;
         const shownPrice=svipBase?.price_coins??item.price_coins;
+        const rechargeTier=!!svipBase&&cfg.policy?.svip_recharge_enabled;
         const shownBonus=item.tier==='svip'&&active?status.daily_bonus_coins:
           svipBase?.daily_bonus_coins??item.daily_bonus_coins;
         return '<div style="border:1px solid '+(active?'#f6d678':'#896cad')+';border-radius:18px;'+
@@ -2210,9 +2211,10 @@
           '<b>'+labels[item.tier]+'</b>'+(active?' <small>✓ Current</small>':'')+
           '<div class="lbl">Level '+format(item.min_wealth_level)+' or sent gifts '+
           format(item.min_gift_coins)+' · Daily '+format(shownBonus)+' coins</div>'+
-          '<div class="lbl">'+format(shownPrice)+' coins / '+(svipBase?30:item.duration_days)+' days'+
-          (svipBase?' (SVIP 1 starting price)':'')+'</div>'+
-          (cfg.policy?.purchase_enabled&&Number(status.rank||0)<=item.rank?
+          (rechargeTier?'<div class="lbl">Starts at $'+Number(svipBase.recharge_usd)+' in verified recharges</div>':
+            '<div class="lbl">'+format(shownPrice)+' coins / '+(svipBase?30:item.duration_days)+' days'+
+              (svipBase?' (SVIP 1 starting price)':'')+'</div>')+
+          (rechargeTier||(cfg.policy?.purchase_enabled&&Number(status.rank||0)<=item.rank)?
             '<button class="send" type="button" data-sh-premium-buy="'+item.tier+'">'+
               (item.tier==='svip'?'Explore SVIP 1–8':(active?'Extend ':'Buy ')+item.tier.toUpperCase())+
               '</button>':'')+'</div>';
@@ -2319,7 +2321,8 @@
       const current=realLevel(),preview=svipLevel(svipRoyalSelection)||1;
       const choice=(cfg.svip_levels||[]).find(x=>x.level===preview);
       const svipTier=(cfg.tiers||[]).find(x=>x.tier==='svip');
-      const canBuy=!!cfg.policy?.purchase_enabled&&!!choice?.enabled&&
+      const recharge=status.svip_recharge;
+      const canBuy=!recharge&&!!cfg.policy?.purchase_enabled&&!!choice?.enabled&&
         !!svipTier&&Number(status.rank||0)<=Number(svipTier.rank);
       const avatar=verifiedAvatarUrl(profile?.pic);
       const avatarMarkup=avatar?'<img class="photo" alt="" src="'+avatar+'">':
@@ -2333,6 +2336,10 @@
         'Voice room arrival effect','SVIP medal and daily rewards',
         'Speaking effect · '+svipSpeakingStyles[preview-1]];
       const price=choice?format(choice.price_coins):'—';
+      const usd=coins=>'$'+(Number(coins||0)/Number(recharge?.coins_per_usd||500000))
+        .toLocaleString('en-US',{maximumFractionDigits:2});
+      const rechargeProgress=recharge?usd(recharge.eligible_coins)+' eligible'+
+        (recharge.next_level?' · '+usd(recharge.remaining_coins)+' to SVIP '+recharge.next_level:''):'';
       const reward=choice?format(choice.daily_bonus_coins):'—';
       const activeReward=Number(status.daily_bonus_coins)||0;
       panel.innerHTML='<div class="svip-wrap">'+
@@ -2351,7 +2358,9 @@
         '<div class="svip-view">'+
         '<div class="svip-price-head"><div><small>ROYAL LEVEL '+preview+'</small>'+
         '<strong>SVIP '+preview+'</strong><span>30-day membership</span></div>'+
-        '<div class="svip-price"><small>PASS PRICE</small><strong>🪙 '+price+'</strong></div></div>'+
+        '<div class="svip-price"><small>'+(recharge?'RECHARGE TARGET':'PASS PRICE')+'</small><strong>'+
+        (recharge?'$'+Number(choice?.recharge_usd||0):'🪙 '+price)+'</strong></div></div>'+
+        (recharge?'<p class="svip-note">'+sellerEscape(rechargeProgress)+'</p>':'')+
         '<div class="svip-preview">'+
         '<div class="svip-preview-card" data-svip-profile="'+preview+'"><small>PROFILE PREVIEW</small>'+
         '<div class="svip-mini-avatar">'+avatarMarkup+
@@ -2367,7 +2376,8 @@
         '<div class="svip-reward-card"><span>🎁 DAILY SVIP REWARD</span>'+
         '<strong>🪙 '+reward+' coins</strong><small>Claim once per UTC day while active</small></div>'+
         '<div class="svip-perks">'+benefit.map(x=>'<span>✦ '+x+'</span>').join('')+'</div>'+
-        (canBuy?'<button class="svip-main-btn" id="sh-svip-buy" type="button">'+
+        (recharge?'<button class="svip-main-btn" id="sh-svip-recharge" type="button">Recharge with Google Play</button>':
+         canBuy?'<button class="svip-main-btn" id="sh-svip-buy" type="button">'+
           (current===preview?'Renew SVIP '+preview:'Unlock SVIP '+preview)+
           ' · '+price+' Coins / 30 Days</button>':
           '<p class="svip-note">'+(choice&&!choice.enabled?
@@ -2377,12 +2387,12 @@
           (status.claimed_today?'disabled':'')+'>'+
           (status.claimed_today?'Today’s coins claimed ✓':
             'Claim today’s '+format(activeReward)+' coins')+'</button>':'')+
-        '<p class="svip-note">✓ Buying or receiving an SVIP pass adds its frame, entry effect, medal and tag '+
-        'to My Backpack automatically. You can equip another owned frame whenever you like.</p>'+
         '<details class="svip-rules"><summary>SVIP policy & expiry</summary>'+
-        '<p class="svip-note">SVIP coin purchases last 30 days. Buying the same level again extends its pass; '+
-        'choosing a different level activates that level. Active assets and rewards are verified by the server. '+
-        'All eight prices and daily bonuses are controlled by Super Admin.</p></details>'+
+        (recharge?
+          '<p class="svip-note">The 30-day period starts at the first target. Verified paid Play recharges in the same period add up. '+
+          'Qualification uses base coins at 500,000 per policy dollar. Bonuses and refunded orders do not count.</p>':
+          '<p class="svip-note">Buying or receiving a pass adds its frame, entry effect, medal and tag to My Backpack. '+
+          'Coin purchases last 30 days. Buying the same level again extends the pass.</p>')+'</details>'+
         '<p id="sh-svip-notice" role="status"></p></div></div>';
       paintProfileId(panel.querySelector('.sh-svip-preview-id'),{...profile,svip_level:preview});
       panel.querySelector('.svip-back').onclick=close;
@@ -2401,6 +2411,8 @@
         }catch(error){note.textContent='Reward not confirmed: '+errText(error);claim.disabled=false;}
         finally{busy=false;}
       };
+      const rechargeButton=panel.querySelector('#sh-svip-recharge');
+      if(rechargeButton)rechargeButton.onclick=()=>{close();showPlayCoinShop();};
       const buy=panel.querySelector('#sh-svip-buy');
       if(buy)buy.onclick=async()=>{
         if(busy||!choice||!canBuy||!window.confirm(
@@ -9441,6 +9453,8 @@
             status.textContent='Verifying payment with Google…';
             const total=await claimOwnedPlayPurchases(purchased.purchases);
             status.textContent='Payment verified. Your wallet is updated ✓';
+            lastAppearanceRefresh=0;
+            refreshVerifiedAppearance().catch(()=>{});
             toast('Coins received: '+formatCompactCoins(total));
           }catch(error){
             status.textContent=errText(error)==='play_purchase_cancelled'
