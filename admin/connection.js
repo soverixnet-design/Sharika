@@ -783,6 +783,10 @@
       'placeholder="Search Play ID or name" autocomplete="off">'+
       '<button type="button" class="btn s" id="play-user-refresh">Refresh</button></div>'+
       '<div id="play-user-list" role="status">Loading closed-test users…</div></div>'+
+      '<div class="card"><h3>7-day Play check-in rewards</h3>'+
+      '<form id="play-daily-rewards"><div class="row" id="play-daily-fields">Loading…</div>'+
+      '<button class="btn s" id="play-daily-save" disabled>Save Play rewards</button></form>'+
+      '<p class="n" id="play-daily-status" role="status"></p></div>'+
       '<div class="card"><h3>🪙 Credit non-redeemable Play-test coins</h3>'+
       '<p class="n">Super Admin only · maximum 1,000,000 virtual coins per grant. '+
       'This never affects the live or staging economy. Each grant is recorded in the '+
@@ -801,6 +805,24 @@
       'placeholder="8-digit Play ID"><select class="field" id="play-item-catalog"></select></div>'+
       '<button class="btn s" type="button" id="play-item-submit">Give and equip in Play test</button>'+
       '<p class="n" id="play-item-note" role="status"></p></div>';
+    const dailyForm=byId('play-daily-rewards'), dailySave=byId('play-daily-save');
+    const dailyFields=byId('play-daily-fields'), dailyStatus=byId('play-daily-status');
+    api('GET','play-testers/daily').then(({rewards})=>{
+      dailyFields.innerHTML=rewards.map((amount,index)=>
+        '<label>Day '+(index+1)+' <input class="field" type="number" required min="1" max="1000000" value="'+
+        esc(amount)+'"></label>').join('');
+      dailySave.disabled=false;
+    }).catch(error=>{dailyFields.textContent='Play rewards unavailable: '+error.message;});
+    dailyForm.onsubmit=async event=>{
+      event.preventDefault();
+      const rewards=Array.from(dailyFields.querySelectorAll('input'),field=>field.valueAsNumber);
+      dailySave.disabled=true;
+      try{
+        await api('PATCH','play-testers/daily',{rewards});
+        dailyStatus.textContent='Saved. Future Play check-ins use these rewards.';
+      }catch(error){dailyStatus.textContent='Save failed: '+error.message;}
+      finally{dailySave.disabled=false;}
+    };
     const input=byId('play-user-search'),list=byId('play-user-list');
     if(pendingPlayCreditTarget){
       byId('play-credit-id').value=pendingPlayCreditTarget;
@@ -990,7 +1012,7 @@
       '<div class="card"><h3>7-day coin rewards</h3>'+
       '<div class="row" id="daily-config-fields">Loading…</div>'+
       (role==='super'?'<button class="btn s" id="daily-save" type="button">Save reward amounts</button>':'')+
-      '<p class="n" id="daily-note">Only Super Admin may edit future rewards (1–1,000 coins per day). Previous claims never change.</p></div>'+
+      '<p class="n" id="daily-note">Only Super Admin may edit future rewards (1–1,000,000 coins per day). Previous claims never change.</p></div>'+
       '<div class="card"><h3>✨ Daily Task Coins</h3>'+
       '<p class="n">Each verified activity can be claimed once per UTC day. Tasks reset every UTC midnight; coin receipts never reset.</p>'+
       '<div class="row" id="daily-task-admin-fields">Loading…</div>'+
@@ -1015,7 +1037,7 @@
       ]);
       fields.innerHTML=(result.rewards||[]).map((reward,i)=>
         '<label style="display:inline-grid;gap:5px"><span>Day '+(i+1)+'</span>'+
-        '<input type="number" class="field" min="1" max="1000" id="daily-day-'+(i+1)+
+        '<input type="number" class="field" min="1" max="1000000" id="daily-day-'+(i+1)+
         '" value="'+esc(reward)+'" '+(role==='super'?'':'disabled')+'></label>').join('');
       const taskPanel=byId('daily-task-admin-fields');
       const rewards=result.task_rewards||{};
@@ -1167,8 +1189,8 @@
         const raw=byId('daily-day-'+(i+1))?.value.trim()||'';
         return /^\d+$/.test(raw)?Number(raw):NaN;
       });
-      if(rewards.some(n=>!Number.isSafeInteger(n)||n<1||n>1000)){
-        note.textContent='Every reward must be a whole number from 1 to 1,000 coins.';return;
+      if(rewards.some(n=>!Number.isSafeInteger(n)||n<1||n>1000000)){
+        note.textContent='Every reward must be a whole number from 1 to 1,000,000 coins.';return;
       }
       if(!window.confirm('Save these 7 daily reward values? Existing claims will stay unchanged.'))return;
       const button=event.currentTarget;button.disabled=true;

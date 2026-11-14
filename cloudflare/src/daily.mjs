@@ -3,14 +3,19 @@ import {dailyTaskStatus,claimDailyTask,dailyTaskAdminStatus,saveDailyTaskConfig,
 // Verified Sharika daily check-in and independently claimable UTC-day tasks.
 // D1 unique UTC day, immutable receipt, wallet credit and ledger commit as one batch.
 const MAX_BALANCE=1_000_000_000_000;
+const MAX_CHECKIN_REWARD=1_000_000;
 const CONFIG_FIELDS=['day1','day2','day3','day4','day5','day6','day7'];
 function dayText(now){return now.toISOString().slice(0,10);}
 function previousDay(now){return dayText(new Date(Date.UTC(
   now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()-1)));}
 function rewardsOf(row){return CONFIG_FIELDS.map(k=>Number(row[k]));}
+function validRewards(rewards){
+  return Array.isArray(rewards)&&rewards.length===7&&
+    rewards.every(n=>Number.isSafeInteger(n)&&n>=1&&n<=MAX_CHECKIN_REWARD);
+}
 function safeConfig(row){
   const rewards=rewardsOf(row||{});
-  if(rewards.length!==7||rewards.some(n=>!Number.isSafeInteger(n)||n<1||n>1000))
+  if(!validRewards(rewards))
     throw new Error('daily_rewards_not_configured');
   return rewards;
 }
@@ -126,20 +131,37 @@ export async function handleDailyAdmin({request,env,uid,actor,operation,cors,rep
       return reply({updated:true,task_rewards:values},200,cors);
     }
     const rewards=payload?.rewards;
-    if(!Array.isArray(rewards)||rewards.length!==7||
-      rewards.some(n=>!Number.isSafeInteger(n)||n<1||n>1000))
-      return fail('invalid_daily_rewards',400,cors);
-    const old=safeConfig(settings);
-    await env.DB.batch([
-      env.DB.prepare(
-        'UPDATE sharika_daily_reward_config SET day1=?,day2=?,day3=?,day4=?,day5=?,'+
-        "day6=?,day7=?,updated_by=?,updated_at=datetime('now') WHERE key='standard'"
-      ).bind(...rewards,uid),
-      env.DB.prepare(
-        'INSERT INTO sharika_daily_config_audit(actor_uid,old_rewards,new_rewards) VALUES(?,?,?)'
-      ).bind(uid,JSON.stringify(old),JSON.stringify(rewards))
-    ]);
+    if(!validRewards(rewards))return fail('invalid_daily_rewards',400,cors);
+    safeConfig(settings);
+    await saveRewards(env.DB,uid,rewards,false);
     return reply({updated:true,rewards},200,cors);
   }
   return fail('admin_permission_denied',403,cors);
+}
+
+async function saveRewards(db,actorId,rewards,play){
+  const audit=play?'sharika_play_daily_config_audit(actor_id':'sharika_daily_config_audit(actor_uid';
+  await db.batch([
+    db.prepare('INSERT INTO '+audit+',old_rewards,new_rewards) SELECT ?, '+
+      'json_array(day1,day2,day3,day4,day5,day6,day7),? '+
+      "FROM sharika_daily_reward_config WHERE key='standard'").bind(actorId,JSON.stringify(rewards)),
+    db.prepare('UPDATE sharika_daily_reward_config SET day1=?,day2=?,day3=?,day4=?,day5=?,'+
+      "day6=?,day7=?,updated_by=?,updated_at=datetime('now') WHERE key='standard'")
+      .bind(...rewards,play?null:actorId)
+  ]);
+}
+
+export async function handlePlayDailyConfig(request,db,actorId,reply){
+  if(request.method==='GET')return reply({rewards:safeConfig(await config(db))},200);
+  let payload;
+  try{
+    const body=await request.text();
+    if(body.length>4096)return reply({error:'daily_body_too_large'},413);
+    payload=JSON.parse(body);
+  }catch(_){return reply({error:'invalid_daily_json'},400);}
+  const rewards=payload?.rewards;
+  if(!validRewards(rewards))return reply({error:'invalid_daily_rewards'},400);
+  safeConfig(await config(db));
+  await saveRewards(db,actorId,rewards,true);
+  return reply({updated:true,rewards},200);
 }

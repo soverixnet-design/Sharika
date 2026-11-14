@@ -67,11 +67,11 @@ test('daily status shows verified UTC day, real wallet, and actual task counters
   assert.equal(f.state.batch.length,0);
 });
 test('first daily claim atomically inserts unique receipt, credits wallet and immutable ledger',async()=>{
-  const f=fixture();
+  const f=fixture({config:[100000,150000,200000,250000,300000,350000,400000]});
   const x=await app(f,'POST','/api/v1/daily/check-in');
   assert.equal(x.status,201);
   assert.equal(x.data.claimed.streak,1);
-  assert.equal(x.data.claimed.reward_coins,100);
+  assert.equal(x.data.claimed.reward_coins,100000);
   assert.equal(f.state.batch[0].length,3);
   assert.match(f.state.batch[0][0].sql,/sharika_daily_checkins/);
   assert.match(f.state.batch[0][1].sql,/UPDATE sharika_users SET coins/);
@@ -111,11 +111,11 @@ test('only super admin may update 7 bounded rewards with an audit record',async(
   const f=fixture();
   assert.equal((await admin(f,'super','PATCH',{rewards:[150,200,250,300,350,400,450]})).status,200);
   assert.equal(f.state.batch[0].length,2);
-  assert.match(f.state.batch[0][1].sql,/sharika_daily_config_audit/);
+  assert.match(f.state.batch[0][0].sql,/sharika_daily_config_audit/);
 });
 test('daily config rejects invalid reward amounts without writes',async()=>{
   const f=fixture();
-  const x=await admin(f,'super','PATCH',{rewards:[100,150,200,300,400,600,100000]});
+  const x=await admin(f,'super','PATCH',{rewards:[100,150,200,300,400,600,1000001]});
   assert.equal(x.status,400);
   assert.equal(f.state.batch.length,0);
 });
