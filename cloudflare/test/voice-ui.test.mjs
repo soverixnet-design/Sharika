@@ -81,9 +81,10 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/Seat occupant has changed/);
   assert.match(ui,/detail\.textContent=index===0\?'Room owner':'Mic seat '\+index/);
   assert.match(ui,/frame\.act\(action,index\)/);
-  assert.match(ui,/fakeStats\.style\.display='none'/);
-  assert.match(ui,/paintVerifiedAvatar\(root\.querySelector\('\.pfh \.pav3'\),member\.pic,document\)/);
-  assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+publicId\+'\/follow'\)/);
+  assert.match(ui,/await openVerifiedRankProfile\(String\(member\.id\),member\)/);
+  assert.match(ui,/if\(!card\?\.isConnected\|\|window\.cur\?\.id!==roomId\)return/);
+  assert.match(ui,/decorateVerifiedPublicProfile\(root,person\)/);
+  assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+canonicalId\+'\/follow'\)/);
 });
 
 test('room seats keep SVIP below the avatar frame and IDs only inside profiles',()=>{
