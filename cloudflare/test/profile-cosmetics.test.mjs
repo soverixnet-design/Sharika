@@ -120,7 +120,9 @@ test('room polling keeps the newest seat count and ignores responses after leavi
   const start=adapter.indexOf('  function syncFrame(room,frame,passive=false) {');
   const end=adapter.indexOf('  function attachFrame(room) {');
   assert.ok(start>=0&&end>start,'room synchronization must be available');
-  const syncSource=adapter.slice(start,end);
+  const previewStart=adapter.indexOf('  function paintRoomCoverPreview(');
+  const previewEnd=adapter.indexOf('  let coverUploadBusy=',previewStart);
+  const syncSource=adapter.slice(previewStart,previewEnd)+adapter.slice(start,end);
   const pending=[];
   let ownerLookups=0;
   const room={id:'10000001',owner_id:'owner-uid',seat_count:12};
