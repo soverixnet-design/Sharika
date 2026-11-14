@@ -110,11 +110,12 @@ test('Exchange screen and admin panel use the same verified rate, never demo bal
   const html=readFileSync(new URL('../../app/index.html',import.meta.url),'utf8');
   const panel=readFileSync(new URL('../../admin/connection.js',import.meta.url),'utf8');
   assert.match(app,/GET','\/wallet\/exchange-rate'/);
-  assert.match(app,/exchange_rate_revision:exchangeRateRevision/);
+  assert.match(app,/exchange_rate_revision:selectedExchangeRevision/);
   assert.match(html,/window\.SHARIKA_EXCHANGE_FROM/);
   assert.match(html,/window\.SHARIKA_EXCHANGE_TO/);
   assert.match(panel,/P\.money=async function/);
-  assert.match(panel,/PATCH','exchange-rate'/);
+  assert.match(panel,/play-testers\/exchange-rate/);
+  assert.match(panel,/PATCH',endpoint/);
   assert.match(panel,/sharika-exchange-percent/);
   assert.match(panel,/sharika-percent-minus/);
   assert.match(panel,/sharika-percent-plus/);
@@ -123,4 +124,16 @@ test('Exchange screen and admin panel use the same verified rate, never demo bal
   assert.doesNotMatch(panel,/id="sharika-rate-coins"/);
   assert.doesNotThrow(()=>new Function(panel));
 
+});
+
+test('editable transaction limits can exceed the old million-diamond cap',async()=>{
+  const rate={diamonds_per_unit:100,coins_per_unit:70,revision:1,max_diamonds_per_exchange:10_000_000};
+  const {db,state}=fakeConfig({rate});
+  assert.equal(exchangeCredit(10_000_000,rate),7_000_000);
+  assert.equal(exchangeCredit(10_000_100,rate),null);
+  const updated=await admin(db,'super','PATCH',{diamonds_per_unit:100,coins_per_unit:70,
+    max_diamonds_per_exchange:50_000_000,expected_revision:1});
+  assert.equal(updated.status,200);
+  assert.equal(updated.data.max_diamonds_per_exchange,50_000_000);
+  assert.equal(JSON.parse(state.batch[0][1].values[2]).limit_after,50_000_000);
 });
