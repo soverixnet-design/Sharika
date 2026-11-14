@@ -1661,7 +1661,7 @@
     const controls=[
       ['purchase_enabled','Coin purchases'],['admin_grant_enabled','Admin grants'],
       ['auto_enabled','Automatic qualification'],['auto_by_level','Qualify by wealth level'],
-      ['auto_by_gifts','Qualify by gifts sent'],['svip_recharge_enabled','Qualify for SVIP by verified Play recharge']
+      ['auto_by_gifts','Qualify by gifts sent'],['svip_recharge_enabled','Qualify for SVIP by verified recharge']
     ];
     settingsRoot.innerHTML='<div class="row" style="display:flex;flex-wrap:wrap;gap:15px">'+
       controls.map(([key,label])=>'<label><input type="checkbox" data-pr-policy="'+key+'" '+
