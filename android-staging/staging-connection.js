@@ -1203,7 +1203,7 @@
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/avatar\?v=[0-9]+$/.test(value)
       ?value:null;
   }
-  function verifiedCoverUrl(value){
+  function verifiedUserCoverUrl(value){
     return typeof value==='string' &&
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/users\/[0-9]{8}\/cover-image\?v=[0-9]+$/.test(value)
       ?value:null;
@@ -1563,7 +1563,8 @@
         crown.setAttribute('aria-label','Room Owner');
         ornaments.appendChild(crown);
       }
-      if(svip)ornaments.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
+      if(svip&&!/^svip-(?:medal|royal-badge)-/.test(medal?.id||''))
+        ornaments.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
       for(const [item,style,label] of [[medal,'sh-sovera-seat-medal','Medal'],
         [nameTag,'sh-sovera-seat-tag','Name tag']]){
         if(!item)continue;
@@ -5853,7 +5854,6 @@
   }
   // Android's system picker grants selected-image access; no blanket
   // gallery/storage permission or native device file path is exposed to JS.
-  const COVER_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
   function verifiedCoverUrl(value){
     return typeof value==='string' &&
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/[0-9]{8}\/cover\?v=[0-9]+$/.test(value)
@@ -5878,15 +5878,15 @@
       });
       const sourceWidth=photo.naturalWidth,sourceHeight=photo.naturalHeight;
       if(!sourceWidth||!sourceHeight)throw new Error('Invalid image dimensions');
-    if(highDefinition&&Math.min(sourceWidth,sourceHeight)<720)
+      if(highDefinition&&Math.min(sourceWidth,sourceHeight)<720)
         throw new Error('For a clear room theme, choose a photo at least 720 px on its shorter side');
       const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
       if(!ctx)throw new Error('Image editor is unavailable');
       const sides=legacy?[900,720,600,480,360,280]:
         highDefinition?[1920,1600,1440,1280,1080,900]:
-        [1800,1600,1440,1280,1080,900,720,600];
+        [1440,1280,1080,900,720,600];
       const qualities=legacy?[.76,.60,.45]:
-        highDefinition?[.90,.82,.74,.64]:[.86,.78,.70,.62];
+        highDefinition?[.90,.82,.74,.64]:[.94,.87,.80];
       const maxLength=legacy?120023:highDefinition?600023:320023;
       for(const side of sides){
         const scale=Math.min(1,side/Math.max(sourceWidth,sourceHeight));
@@ -5904,6 +5904,12 @@
       }
       throw new Error('Photo too large after resizing');
     }finally{URL.revokeObjectURL(blobUrl);}
+  }
+  function paintRoomCoverPreview(preview,image){
+    if(!preview)return;
+    preview.hidden=!image;
+    if(image)preview.src=image;
+    else preview.removeAttribute('src');
   }
   let coverUploadBusy=false;
   function pickRoomCover(room,frame=null,useAsTheme=false){
@@ -5946,24 +5952,24 @@
         try{
           saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data});
         }catch(error){
-          if(errText(error)!=='room_cover_too_large')throw error;
-          // An older staging Worker still only accepts 90 KB JPEGs.
-          // Do not break room-photo editing while its HD rollout is pending.
+          const errorCode=errText(error);
+          // Older Workers reject larger bodies, while older D1 schemas
+          // reject the larger row after the request passed validation.
+          if(errorCode!=='room_cover_too_large'&&
+             !(errorCode==='conflict'&&image_data.length>120023))throw error;
           const compatible=await jpegRoomPreview(file,false,true);
           saved=await api('PUT','/rooms/'+room.id+'/cover',{image_data:compatible});
           standardQualityOnly=true;
         }
-        room.cover_url=verifiedCoverUrl(saved.cover_url);
+        const cover=verifiedCoverUrl(saved.cover_url);
+        if(!cover)throw new Error('Room photo URL could not be verified');
+        room.cover_url=cover;
         if(frame?.S&&window.cur?.id===room.id){
           frame.S.pic=room.cover_url;
           frame.applyTheme?.();
         }
-        const preview=frame?.$?.('pbig');
-        if(preview&&room.cover_url){
-          preview.style.backgroundImage='url("'+room.cover_url+'")';
-          preview.style.backgroundSize='cover';
-          preview.textContent='';
-        }
+        if(frame?.document&&window.cur?.id===room.id)
+          paintRoomCoverPreview(frame.document.getElementById('sh-room-cover-preview'),room.cover_url);
         await reloadRooms().catch(error=>
           console.warn('Room photo saved; card refresh delayed:',errText(error)));
         toast(standardQualityOnly?'Room saved at standard quality · HD server update pending':
@@ -5980,17 +5986,20 @@
       const room=rooms.find(r=>r.id===card.dataset.id);
       if(!room)continue;
       const image=verifiedCoverUrl(room.cover_url);
-      if(image){
-        const background=card.querySelector('.bg');
-        if(background){
-          background.style.backgroundImage='linear-gradient(180deg,transparent 35%,rgba(7,4,26,.55)),url("'+image+'")';
-          background.style.backgroundSize='cover';
-          background.style.backgroundPosition='center';
-          const pattern=background.querySelector('.pat');
-          if(pattern)pattern.style.opacity='0';
+      card.classList.toggle('sh-room-card-with-photo',!!image);
+      const background=card.querySelector('.bg');
+      if(image&&background){
+        let cover=background.querySelector('.sh-room-card-photo');
+        if(!cover){
+          cover=document.createElement('img');
+          cover.className='sh-room-card-photo';
+          cover.alt='';
+          cover.decoding='async';
+          cover.loading='lazy';
+          background.prepend(cover);
         }
-        const emoji=card.querySelector('.emo');if(emoji)emoji.style.display='none';
-      }
+        if(cover.getAttribute('src')!==image)cover.src=image;
+      }else background?.querySelector('.sh-room-card-photo')?.remove();
       // The canonical room/user ID stays in API routing. Public room cards
       // display the owner's active Special ID, if one exists.
       const displayId=String(room.owner_display_id||room.id);
@@ -6198,6 +6207,7 @@
     const coverChanged=frame.S.pic!==roomCover;
     room.cover_url=roomCover;
     frame.S.pic=roomCover;
+    paintRoomCoverPreview(frame.$?.('sh-room-cover-preview'),roomCover);
     // Theme is authoritative in the shared room snapshot. Neither the
     // owner's phone nor a guest's stale localStorage may override it.
     const chosenTheme=['mid','gold','ocean','rose','forest','sunset','photo']
@@ -8371,7 +8381,13 @@
         }).catch(()=>{if(reward.trail.isConnected)reward.trail.textContent='Unavailable';});
       }
       const roomGroup=section('Room');
-      row(roomGroup,'Profile photo','Edit cover',owner?()=>pickRoomCover(room,frame):null);
+      const photo=row(roomGroup,'Profile photo',owner?'Edit cover':'',owner?()=>pickRoomCover(room,frame):null);
+      const preview=doc.createElement('img');
+      preview.className='sh-room-settings-cover';
+      preview.id='sh-room-cover-preview';
+      preview.alt='';
+      paintRoomCoverPreview(preview,verifiedCoverUrl(room.cover_url));
+      photo.trail.before(preview);
       row(roomGroup,'Room Name',room.name,owner?()=>editText('Room Name',room.name,100,
         async value=>{if(!value)throw new Error('Room name required');
           const result=await api('PATCH','/rooms/'+room.id,{name:value});
@@ -9870,7 +9886,7 @@
     if(!session)return;
     const [bannerResult,eventResult]=await Promise.allSettled([
       api('GET','/banners'),api('GET','/events')]);
-    if(session)renderVerifiedBanners(bannerResult.status==='fulfilled'?bannerResult.value.banners:[],
+    if(session&&bannerResult.status==='fulfilled')renderVerifiedBanners(bannerResult.value.banners,
       eventResult.status==='fulfilled'?eventResult.value.events:[]);
   }
   renderVerifiedBanners([]);
@@ -12382,7 +12398,7 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       const cover=root.querySelector('.cov');
-      const savedCover=verifiedCoverUrl(person.cover);
+      const savedCover=verifiedUserCoverUrl(person.cover);
       if(savedCover)cover.style.setProperty('background-image',
         'linear-gradient(180deg,#07131c24,#04110d70),url("'+savedCover+'")','important');
       const addCover=cover.querySelector('.sh-public-cover-add');
@@ -12397,7 +12413,7 @@
               !chosen?.image_data?.startsWith('data:image/jpeg;base64,'))
               throw new Error('Profile changed or picture was not selected');
             const saved=await api('PUT','/me/cover-image',{image_data:chosen.image_data});
-            const newCover=verifiedCoverUrl(saved.cover);
+            const newCover=verifiedUserCoverUrl(saved.cover);
             if(!newCover)throw new Error('Cover image could not be verified');
             profile.cover=saved.cover;
             if(requestNo===rankProfileRequest&&cover.isConnected)
