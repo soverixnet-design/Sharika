@@ -191,7 +191,7 @@ export async function verifyGooglePurchase({ env, uid, productId, purchaseToken,
       (receipt.quantity != null && receipt.quantity !== 1) ||
       receipt.consumptionState !== 0 || !receipt.orderId)
     throw new Error('play_purchase_not_verified');
-  return { accessToken, orderId: receipt.orderId };
+  return { accessToken, orderId: receipt.orderId, paid: receipt.purchaseType == null };
 }
 
 async function consumeGooglePurchase(fetcher, accessToken, productId, purchaseToken) {
@@ -282,7 +282,12 @@ export async function handlePlayBillingApp({
       ).bind(MAX_BALANCE - coins, coins, uid),
       env.DB.prepare(
         "INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,balance_after,reason,request_id) VALUES(?,'coins',?,(SELECT coins FROM sharika_users WHERE auth_uid=?),'google_play_recharge',?)"
-      ).bind(uid, coins, uid, 'google-play:' + tokenHash)
+      ).bind(uid, coins, uid, 'google-play:' + tokenHash),
+      ...(receipt.paid ? [env.DB.prepare(
+        'INSERT INTO sharika_svip_recharge_orders(token_hash,auth_uid,credited_at_ms,base_coins) '+
+        "SELECT ?,?,CAST(unixepoch('now') AS INTEGER)*1000,? FROM sharika_premium_policy "+
+        "WHERE key='standard' AND svip_recharge_enabled=1"
+      ).bind(tokenHash,uid,coins)] : [])
     ]);
   } catch (error) {
     const repeated = await env.DB.prepare(
@@ -306,4 +311,45 @@ export async function handlePlayBillingApp({
   }
   return safeReply(reply, { credited: true, duplicate: false, coins,
     consumption_pending: !consumed }, 201, cors);
+}
+
+// Reconcile the SVIP entitlement only. Its qualifying receipt can be voided
+// independently of the virtual-wallet accounting for that order.
+export async function syncSvipVoidedPurchases(env,fetcher=fetch,now=Date.now()) {
+  if(env.SHARIKA_PLAY_BILLING_ENABLED!=='true'||!billingAuthConfigured(env))return;
+  const policy=await env.DB.prepare(
+    "SELECT svip_recharge_enabled FROM sharika_premium_policy WHERE key='standard'"
+  ).first();
+  if(!policy?.svip_recharge_enabled)return;
+  const previous=await env.DB.prepare(
+    'SELECT checked_at_ms FROM sharika_svip_refund_sync WHERE id=1'
+  ).first();
+  if(Number(previous?.checked_at_ms)>now-240000)return;
+  const start=Math.max(now-30*86400000,Number(previous?.checked_at_ms||0)-600000);
+  const accessToken=await getGoogleAccessToken(env,fetcher);
+  const params=new URLSearchParams({startTime:String(start),endTime:String(now),maxResults:'100'});
+  const seen=new Set();
+  for(;;){
+    const response=await fetchWithTimeout(fetcher,
+      `${PLAY_API}${PACKAGE}/purchases/voidedpurchases?${params}`,{
+        headers:{authorization:'Bearer '+accessToken}
+      });
+    if(!response.ok)throw Error('play_voided_purchases_unavailable');
+    const page=await response.json();
+    const hashes=await Promise.all((page.voidedPurchases||[])
+      .filter(order=>TOKEN.test(order.purchaseToken||'')).map(order=>sha256Hex(order.purchaseToken)));
+    for(let offset=0;offset<hashes.length;offset+=40){
+      await env.DB.batch(hashes.slice(offset,offset+40).map(hash=>env.DB.prepare(
+        'INSERT OR IGNORE INTO sharika_svip_voided_orders(token_hash) VALUES(?)'
+      ).bind(hash)));
+    }
+    const next=page.tokenPagination?.nextPageToken;
+    if(!next)break;
+    if(seen.has(next))throw Error('play_voided_purchases_invalid_pagination');
+    seen.add(next);
+    params.set('token',next);
+  }
+  await env.DB.prepare('INSERT INTO sharika_svip_refund_sync(id,checked_at_ms) VALUES(1,?) '+
+    'ON CONFLICT(id) DO UPDATE SET checked_at_ms=MAX(checked_at_ms,excluded.checked_at_ms)'
+  ).bind(now).run();
 }
