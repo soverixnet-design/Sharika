@@ -2329,7 +2329,8 @@
       const currentLabel=current?'ACTIVE · SVIP '+current+(activeUntil?' · Until '+activeUntil:''):
         'ROYAL MEMBERSHIP · Choose your level';
       const benefit=['Royal profile theme and frame','Royal ID emblem and Noble tag',
-        'Voice room arrival effect','SVIP medal and daily rewards'];
+        'Voice room arrival effect','SVIP medal and daily rewards',
+        'Speaking effect · '+svipSpeakingStyles[preview-1]];
       const price=choice?format(choice.price_coins):'—';
       const reward=choice?format(choice.daily_bonus_coins):'—';
       const activeReward=Number(status.daily_bonus_coins)||0;
@@ -4326,18 +4327,41 @@
   let sfuState = null;
   // Animate the actual occupied mic seats, never a timer-driven fake speaker.
   // One room can have several simultaneous talkers.
-  const activeVoiceSpeakers={roomId:null,ids:new Set()};
+  const svipSpeakingStyles=['Rose Bloom','Petal Drift','Golden Stars','Amethyst Crystals',
+    'Jade Waves','Frost Flakes','Phoenix Embers','Royal Crown'];
+  const activeVoiceSpeakers={roomId:null,levels:new Map()};
+  function paintSeatSpeakingEffect(el,level,strength){
+    const avatar=el.querySelector('.av');
+    if(!avatar)return;
+    let effect=avatar.querySelector('.sh-speaking-effect');
+    if(!level||!strength){
+      effect?.remove();
+      return;
+    }
+    if(!effect){
+      const doc=avatar.ownerDocument;
+      effect=doc.createElement('span');
+      effect.className='sh-speaking-effect';
+      effect.setAttribute('aria-hidden','true');
+      for(let i=0;i<4;i++)effect.appendChild(doc.createElement('i'));
+      avatar.appendChild(effect);
+    }
+    effect.dataset.style=String(level);
+    effect.dataset.strength=String(strength);
+  }
   function paintVoiceSpeakers(roomId,frame) {
     if(!frame?.seats)return;
-    const ids=activeVoiceSpeakers.roomId===roomId?activeVoiceSpeakers.ids:new Set();
+    const levels=activeVoiceSpeakers.roomId===roomId?activeVoiceSpeakers.levels:null;
     const ownerOnMic=frame.seats.some(seat=>seat?.owner_mic_seat);
     for(const seat of frame.seats){
-      if(!seat||seat.empty||seat.lock)continue;
-      const speaking=!!seat.user_id&&!seat.muted&&ids.has(seat.user_id)&&
-        !(ownerOnMic&&seat.i===0);
-      seat.talk=speaking;
+      if(!seat)continue;
+      const strength=seat.user_id&&!seat.empty&&!seat.lock&&!seat.muted&&
+        !(ownerOnMic&&seat.i===0)?levels?.get(seat.user_id)||0:0;
+      seat.talk=!!strength;
       const el=frame.seatEl?.(seat.i);
-      if(el)el.classList.toggle('talk',speaking);
+      if(!el)continue;
+      el.classList.toggle('talk',seat.talk);
+      paintSeatSpeakingEffect(el,svipLevel(seat.svip_level),strength);
     }
   }
   function paintVerifiedMicCount(frame) {
@@ -4347,20 +4371,20 @@
     const count=frame.$?.('mstat');
     if(count)count.innerHTML='🎤 <i>'+people.size+'</i>/'+frame.seats.length;
   }
-  function setVoiceSpeakers(roomId,userIds) {
+  function setVoiceSpeakers(roomId,levels) {
     if(wantedVoiceRoom!==roomId)return;
-    const ids=new Set([...userIds].filter(id=>typeof id==='string'&&id.length>0));
-    if(activeVoiceSpeakers.roomId===roomId&&ids.size===activeVoiceSpeakers.ids.size&&
-       [...ids].every(id=>activeVoiceSpeakers.ids.has(id)))return;
+    const previous=activeVoiceSpeakers.levels;
+    if(activeVoiceSpeakers.roomId===roomId&&levels.size===previous.size&&
+       [...levels].every(([id,strength])=>previous.get(id)===strength))return;
     activeVoiceSpeakers.roomId=roomId;
-    activeVoiceSpeakers.ids=ids;
+    activeVoiceSpeakers.levels=levels;
     if(window.cur?.id===roomId)
       paintVoiceSpeakers(roomId,document.getElementById('rf')?.contentWindow);
   }
   function clearVoiceSpeakers() {
     const roomId=activeVoiceSpeakers.roomId;
     activeVoiceSpeakers.roomId=null;
-    activeVoiceSpeakers.ids=new Set();
+    activeVoiceSpeakers.levels=new Map();
     if(roomId&&window.cur?.id===roomId)
       paintVoiceSpeakers(roomId,document.getElementById('rf')?.contentWindow);
   }
@@ -4582,7 +4606,7 @@
   function sampleSfuSpeaking(state) {
     if(state.closed||sfuState!==state||
       (typeof document!=='undefined'&&document.hidden))return;
-    const now=Date.now(),speaking=new Set();
+    const now=Date.now(),speaking=new Map();
     for(const [track,meter] of state.speakingMeters){
       if(track.readyState!=='live'||!track.enabled||track.muted){
         meter.lastActiveAt=0;
@@ -4600,7 +4624,8 @@
         const rms=Math.sqrt(power/meter.samples.length);
         if(rms>.018||(rms>.008&&peak>.05))meter.lastActiveAt=now;
         if(now-meter.lastActiveAt<480){
-          speaking.add(meter.userId);
+          const strength=rms>=.1?3:rms>=.04?2:1;
+          speaking.set(meter.userId,Math.max(speaking.get(meter.userId)||0,strength));
           if(meter.local)state.lastLocalSpeechAt=now;
         }
       }catch(_){/* Individual tracks can end during audio renegotiation. */}
