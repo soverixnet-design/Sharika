@@ -105,6 +105,7 @@ public final class SharikaActivity extends Activity {
     private SharikaPlayBilling playBilling;
     private CredentialManager credentials;
     private WebView browser;
+    private DailyTaskBanner dailyTaskBanner;
     private View openingOverlay;
     private boolean backInProgress;
     private Runnable unregisterModernBack;
@@ -295,7 +296,11 @@ public final class SharikaActivity extends Activity {
                     .build();
             });
         }
-        root.addView(browser, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.addView(browser, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        if (BuildConfig.SHARIKA_PLAY_BUILD) dailyTaskBanner = new DailyTaskBanner(this, content);
         FrameLayout opening = new FrameLayout(this);
         opening.setBackground(new GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
@@ -859,6 +864,11 @@ public final class SharikaActivity extends Activity {
                 }
                 catch (JSONException ignored) {}
                 sendResult(id, result(true,mode,null));
+                break;
+            case "dailyTaskBanner":
+                if (dailyTaskBanner != null) dailyTaskBanner.setVisible(
+                    auth.getCurrentUser() != null && data.optBoolean("visible", false));
+                sendResult(id, result(true, object(), null));
                 break;
             case "playBillingProducts":
                 if (!BuildConfig.SHARIKA_PLAY_BUILD || playBilling == null ||
@@ -1480,6 +1490,7 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (dailyTaskBanner != null) dailyTaskBanner.destroy();
         if (playBilling != null) { playBilling.close(); playBilling = null; }
         if (googlePending) expireGoogleSignIn(googleAttempt);
         setRoomAudioRoute(false);

@@ -10193,6 +10193,24 @@
     tick();dailyResetTimer=setInterval(tick,30000);
   }
 
+  // The native banner occupies its own space below the WebView only while
+  // the authenticated Daily Task Center sheet is open.
+  const dailySheetOverlay=document.getElementById('shb');
+  const dailySheetBody=document.getElementById('sh');
+  if(dailySheetOverlay&&dailySheetBody){
+    let dailyBannerVisible=false;
+    const syncDailyBanner=()=>{
+      const visible=dailySheetOverlay.classList.contains('on')&&
+        !!dailySheetBody.querySelector('#sharika-daily-content');
+      if(visible===dailyBannerVisible)return;
+      dailyBannerVisible=visible;
+      native('dailyTaskBanner',{visible}).catch(()=>{});
+    };
+    const dailyBannerObserver=new MutationObserver(syncDailyBanner);
+    dailyBannerObserver.observe(dailySheetOverlay,{attributes:true,attributeFilter:['class']});
+    dailyBannerObserver.observe(dailySheetBody,{childList:true});
+  }
+
   let dailyClaimBusy=false;
   async function showVerifiedDailySheet(){
     if(!session){window.showAuth('welcome');return;}
