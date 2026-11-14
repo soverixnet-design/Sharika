@@ -374,7 +374,7 @@
     const name=isMain?root.querySelector('.profile-hero .mnm'):
       root.querySelector('.pfh h2');
     const id=isMain?root.querySelector('.profile-hero .profile-id-row'):
-      root.querySelector('.pfh .meta');
+      root.querySelector('.pfh .sh-royal-idline');
     const avatar=isMain?root.querySelector('.profile-hero .mav'):
       root.querySelector('.pfh .pavw');
     for(const kind of ['medal','tag']){
@@ -431,7 +431,7 @@
       const keys=isMain?{
         avatar:'.mav',svip:'.profile-svip-badge',
         name:'.mnm',id:'.profile-id-row'
-      }:{avatar:'.pavw',name:'h2',id:'.meta'};
+      }:{avatar:'.pavw',name:'h2',id:'.sh-royal-idline'};
       for(const [i,key] of l.identity.entries()){
         const el=identity.querySelector(':scope > '+keys[key]);
         if(el)el.style.order=String(i);
@@ -1089,6 +1089,21 @@
     if(!svipLevel(level)||!['frame','medal','tag'].includes(kind))return '';
     return './sharika-premium/svip-'+kind+'-'+String(level).padStart(2,'0')+'.webp';
   }
+  function paintSvipProfile(surface,person){
+    if(!surface)return;
+    const level=svipLevel(person?.svip_level);
+    if(level)surface.dataset.svipProfile=String(level);
+    else delete surface.dataset.svipProfile;
+  }
+  function paintVerifiedProfileFrame(avatar,person){
+    if(!avatar)return;
+    avatar.querySelector(':scope > .sh-sovera-frame')?.remove();
+    const level=svipLevel(person?.svip_level);
+    const frame=frameTag(person?.frame_style)||
+      (level?frameTag('svip-frame-'+String(level).padStart(2,'0')):'');
+    if(frame)avatar.insertAdjacentHTML('beforeend',frame);
+    avatar.classList.toggle('sh-has-sovera-frame',!!frame);
+  }
   // These nameplate files are arranged by source-sheet position.
   const svipIdTagArt=[16,null,11,17,12,13,14,15];
   function paintProfileId(element,person){
@@ -1107,10 +1122,16 @@
     emblem.className='sh-svip-id-emblem';
     emblem.src='./sharika-premium/svip-id-emblem.webp';
     emblem.alt='ID';
+    emblem.addEventListener('error',()=>{
+      const label=doc.createElement('span');
+      label.textContent='ID';
+      emblem.replaceWith(label);
+    },{once:true});
     const number=doc.createElement('span');
     number.className='sh-svip-id-number';
     number.textContent=id;
     const fallback=makeSvipBadge(doc,level,'sh-svip-id-text-tag');
+    fallback.setAttribute('aria-label','SVIP '+level+' Noble');
     const art=svipIdTagArt[level-1];
     if(!art){
       element.replaceChildren(emblem,number,fallback);
@@ -1118,7 +1139,7 @@
     }
     const tag=doc.createElement('img');
     tag.className='sh-svip-id-tag';
-    tag.alt='SVIP '+level;
+    tag.alt='SVIP '+level+' Noble';
     tag.addEventListener('error',()=>tag.replaceWith(fallback),{once:true});
     tag.src='./sharika-premium/svip-tag-'+art+'.webp';
     element.replaceChildren(emblem,number,tag);
@@ -2031,6 +2052,9 @@
     if(!anchor)return;
     const displayId=String(profile?.special_id||profile?.display_id||profile?.public_id||'');
     paintProfileId(anchor,profile);
+    const hero=anchor.closest('.profile-hero');
+    paintSvipProfile(hero,profile);
+    paintVerifiedProfileFrame(hero?.querySelector('.mav'),profile);
     // Tapping the public ID opens the separate rich ID detail profile,
     // never redirects back to the wallet/settings Main Profile.
     anchor.setAttribute('role','button');anchor.tabIndex=0;
@@ -2070,7 +2094,7 @@
       image.alt=item.name+' (decoration only)';
       image.title=item.name+' · decorative';
       holder.appendChild(image);
-      anchor.closest('.profile-hero')?.appendChild(holder);
+      hero?.appendChild(holder);
     }
     applyProfileLayout('main',document.getElementById('v-me'));
   }
@@ -2142,7 +2166,7 @@
       button.classList.toggle('sh-svip-badge',!!level);
       if(level)button.dataset.svipLevel=String(level);
       else delete button.dataset.svipLevel;
-      button.textContent=level?'SVIP '+level:tier==='NONE'?'SVIP Royal':tier+' Member';
+      button.textContent=level?'SVIP Club':tier==='NONE'?'SVIP Royal':tier+' Member';
     }catch(error){
       console.warn('Premium status pending staging deployment:',errText(error));
     }
@@ -2304,8 +2328,8 @@
         new Date(status.expires_at_ms).toLocaleDateString('en-GB'):'';
       const currentLabel=current?'ACTIVE · SVIP '+current+(activeUntil?' · Until '+activeUntil:''):
         'ROYAL MEMBERSHIP · Choose your level';
-      const benefit=['Animated royal profile frame','SVIP medal & exclusive nameplate',
-        'Royal voice room seat badge','Room entrance effect · about 4 seconds'];
+      const benefit=['Royal profile theme and frame','Royal ID emblem and Noble tag',
+        'Voice room arrival effect','SVIP medal and daily rewards'];
       const price=choice?format(choice.price_coins):'—';
       const reward=choice?format(choice.daily_bonus_coins):'—';
       const activeReward=Number(status.daily_bonus_coins)||0;
@@ -2327,11 +2351,11 @@
         '<strong>SVIP '+preview+'</strong><span>30-day membership</span></div>'+
         '<div class="svip-price"><small>PASS PRICE</small><strong>🪙 '+price+'</strong></div></div>'+
         '<div class="svip-preview">'+
-        '<div class="svip-preview-card"><small>PROFILE PREVIEW</small>'+
+        '<div class="svip-preview-card" data-svip-profile="'+preview+'"><small>PROFILE PREVIEW</small>'+
         '<div class="svip-mini-avatar">'+avatarMarkup+
         '<img class="ring" src="'+frame+'" alt=""><img class="medal" src="'+medal+'" alt=""></div>'+
         '<strong>'+sellerEscape(profile?.name||'Sharika User')+'</strong>'+
-        '<span class="sh-svip-badge" data-svip-level="'+preview+'">SVIP '+preview+'</span></div>'+
+        '<span class="sh-svip-preview-id"></span></div>'+
         '<div class="svip-preview-card"><small>VOICE ROOM PREVIEW</small>'+
         '<div class="svip-mini-avatar">'+avatarMarkup+
         '<img class="ring" src="'+frame+'" alt=""><img class="medal" src="'+medal+'" alt=""></div>'+
@@ -2358,6 +2382,7 @@
         'choosing a different level activates that level. Active assets and rewards are verified by the server. '+
         'All eight prices and daily bonuses are controlled by Super Admin.</p></details>'+
         '<p id="sh-svip-notice" role="status"></p></div></div>';
+      paintProfileId(panel.querySelector('.sh-svip-preview-id'),{...profile,svip_level:preview});
       panel.querySelector('.svip-back').onclick=close;
       panel.querySelectorAll('[data-svip-preview]').forEach(button=>{
         button.onclick=()=>{if(busy)return;svipRoyalSelection=Number(button.dataset.svipPreview);render();};
@@ -6315,90 +6340,22 @@
     if(Number.isInteger(seatNo) && seatNo>=0 &&
        String(frame?.seats?.[seatNo]?.public_id||'')!==String(publicId))
       throw new Error('Seat occupant has changed');
-    window.openProfile({id:String(member.id),n:String(member.name||'Member'),
-      e:'👤',lv:Number(member.wealth_level)||1});
-    const root=document.getElementById('pfc');
-    if(!root)return;
-    // The original non-owner profile model invents age, gifts, followers and
-    // badges. Do not present those demo numbers as verified public records.
-    paintVerifiedAvatar(root.querySelector('.pfh .pav3'),member.pic,document);
-    decorateVerifiedPublicProfile(root,member);
-    root.querySelector('.pf')?.classList.add('sh-ranked-profile','sh-room-royal');
-    const meta=root.querySelector('.pfh .meta');
-    if(meta){
-      meta.replaceChildren();
-      const idLine=document.createElement('div');
-      idLine.className='sh-royal-idline';
-      const idLabel=document.createElement('span');
-      idLabel.className='sh-royal-user-id';
-      paintProfileId(idLabel,member);
-      idLine.appendChild(idLabel);
-      const roomRole=frame?.__sharikaMemberRoles?.get(String(member.id));
-      if(roomRole==='owner'||roomRole==='admin'){
-        const roomTag=document.createElement('span');
-        roomTag.className='sh-royal-role-tag sh-royal-room-admin';
-        roomTag.textContent=roomRole==='owner'?'👑 ROOM OWNER':'🛡 ROOM ADMIN';
-        idLine.appendChild(roomTag);
-      }
-      for(const [yes,label,kind] of [
-        [member.bd_active,'✦ BD','sh-royal-bd'],
-        [member.seller_active,'✦ Seller','sh-royal-seller']
-      ]){
-        if(!yes)continue;
-        const badge=document.createElement('span');
-        badge.className='sh-royal-role-tag '+kind;
-        badge.textContent=label;idLine.appendChild(badge);
-      }
-      meta.appendChild(idLine);
-      if(member.country){
-        const country=document.createElement('span');
-        country.textContent='🌍 '+String(member.country);
-        meta.appendChild(country);
-      }
-      if(member.family?.status==='active'){
-        const tag=document.createElement('span');
-        tag.className='sh-royal-room-family-link';
-        tag.textContent='👑 Agency · '+String(member.family.name);
-        meta.appendChild(tag);
-      }
+    const card=await openVerifiedRankProfile(String(member.id),member);
+    if(!card?.isConnected||window.cur?.id!==roomId)return;
+    card.classList.add('sh-room-royal');
+    const roomRole=frame?.__sharikaMemberRoles?.get(String(member.id));
+    if(roomRole==='owner'||roomRole==='admin'){
+      const roomTag=document.createElement('span');
+      roomTag.className='sh-royal-role-tag sh-royal-room-admin';
+      roomTag.textContent=roomRole==='owner'?'👑 ROOM OWNER':'🛡 ROOM ADMIN';
+      card.querySelector('.sh-royal-idline')?.appendChild(roomTag);
     }
-    const bio=root.querySelector('.pfh .bio');
-    if(bio)bio.textContent='Verified Sharika member';
-    paintRoyalPublicLevels(root,member,null);
-    const fakeStats=root.querySelector('.st4');
-    if(fakeStats)fakeStats.style.display='none';
-    const fakeTabs=root.querySelector('.tabs');
-    if(fakeTabs) {
-      fakeTabs.style.display='none';
-      let next=fakeTabs.nextElementSibling;
-      while(next){next.style.display='none';next=next.nextElementSibling;}
-    }
-    const follow=root.querySelector('#pfol');
-    if(follow){
-      if(publicId===profile?.public_id)follow.style.display='none';
-      else {
-        follow.disabled=true;follow.textContent='Checking follow…';
-        async function refreshFollow(){
-          const status=await api('GET','/users/'+publicId+'/follow');
-          if(!follow.isConnected)return;
-          const following=!!status.following;
-          follow.textContent=following?'✓ Following':'+ Follow';
-          follow.disabled=false;
-          follow.onclick=async()=>{
-            follow.disabled=true;
-            try{await api(following?'DELETE':'PUT','/users/'+publicId+'/follow');
-              await refreshFollow();}
-            catch(error){toast('Follow unavailable: '+errText(error));
-              if(follow.isConnected)follow.disabled=false;}
-          };
-        }
-        refreshFollow().catch(error=>{
-          if(follow.isConnected)follow.textContent='Follow unavailable';
-          console.warn('Member follow unavailable:',errText(error));
-        });
-      }
-    }
-    const message=root.querySelector('#pmsg');
+    if(publicId===profile?.public_id)return;
+    card.querySelector('.pbtn')?.insertAdjacentHTML('beforeend',
+      '<button id="pmsg" type="button">Message</button>'+
+      '<button id="pgift" type="button">Gift</button>'+
+      '<button id="pmore" type="button">Report</button>');
+    const message=card.querySelector('#pmsg');
     if(message)message.onclick=async()=>{
       if(publicId===profile?.public_id){toast('Choose another member');return;}
       message.disabled=true;
@@ -6411,7 +6368,7 @@
       }catch(error){toast('Message unavailable: '+errText(error));}
       finally{if(message.isConnected)message.disabled=false;}
     };
-    const gift=root.querySelector('#pgift');
+    const gift=card.querySelector('#pgift');
     if(gift)gift.onclick=async()=>{
       const currentFrame=document.getElementById('rf')?.contentWindow;
       if(window.cur?.id!==roomId||!currentFrame?.__sharikaOpenVerifiedGiftBox){
@@ -6422,14 +6379,12 @@
         id:publicId,name:String(member.name||'Member')
       });
     };
-    const more=root.querySelector('#pmore');
+    const more=card.querySelector('#pmore');
     if(more)more.onclick=()=>{
       const currentFrame=document.getElementById('rf')?.contentWindow;
       document.getElementById('pfo')?.classList.remove('on');
       currentFrame?.__sharikaReportMember?.(publicId,String(member.name||'Member'));
     };
-    mountBondDetails(root,String(publicId),member).catch(error=>
-      console.warn('Bond ID profile:',errText(error)));
   }
   if(typeof window.addEventListener==='function')window.addEventListener('message',event=>{
     const frame=document.getElementById('rf')?.contentWindow;
@@ -11634,12 +11589,8 @@
   function decorateVerifiedPublicProfile(root,person){
     if(!root||!person)return;
     cosmeticCss(document);
-    const wrapper=root.querySelector('.pfh .pavw');
-    if(wrapper){
-      wrapper.querySelectorAll('.sh-sovera-frame').forEach(x=>x.remove());
-      const frame=frameTag(person.frame_style);
-      if(frame)wrapper.insertAdjacentHTML('beforeend',frame);
-    }
+    paintSvipProfile(root.querySelector('.pf'),person);
+    paintVerifiedProfileFrame(root.querySelector('.pfh .pavw'),person);
     root.querySelector('.sh-svip-public-badge')?.remove();
     root.querySelector('.sh-royal-profile-effects')?.remove();
     root.querySelectorAll('.sh-layout-ornament').forEach(node=>node.remove());
@@ -12359,7 +12310,7 @@
   }
 
   let rankProfileRequest=0;
-  async function openVerifiedRankProfile(publicId){
+  async function openVerifiedRankProfile(publicId,verifiedPerson=null){
     const id=String(publicId||'');
     if(!/^[0-9]{1,10}$/.test(id)||!session){toast('Verified user ID unavailable');return;}
     const panel=document.getElementById('pfo'),root=document.getElementById('pfc');
@@ -12370,7 +12321,7 @@
     try{
       // A verified profile must come from D1. The original demo model
       // fabricates age, followers and pictures and must not be used here.
-      const person=await api('GET','/users/'+id);
+      const person=verifiedPerson||await api('GET','/users/'+id);
       if(requestNo!==rankProfileRequest||!panel.classList.contains('on'))return;
       if(String(person.id)!==id && String(person.special_id)!==id)
          throw new Error('Profile ID does not match');
@@ -12454,12 +12405,13 @@
           }
         };
       }
-      if(id===profile?.public_id){
+      if(canonicalId===profile?.public_id){
         follow.style.display='none';
       }else loadFollowing().catch(error=>{
         if(follow.isConnected)follow.textContent='Follow unavailable';
         console.warn('Verified follow status unavailable:',errText(error));
       });
+      return root.firstElementChild;
     }catch(error){
       if(requestNo===rankProfileRequest&&panel.classList.contains('on'))
         root.textContent='Unable to open verified profile: '+errText(error);
