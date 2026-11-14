@@ -346,8 +346,10 @@
   menuItem('🎵 Music', musicSheet);
   menuItem('🎮 Games', () => games?.click());
   menuItem('🔊 Audio', musicSheet);
-  menuItem('✨ Effects', () => {
-    window.toast?.('Voice effects need an enabled audio processing service');
+  menuItem('✨ Voice Effects', () => {
+    const effects=window.parent?.SharikaRoomVoiceEffects;
+    if(effects)effects.open(window);
+    else window.toast?.('Voice Effects are available in the Android app');
   });
   menuItem('🎨 Theme', () => window.themeSheet?.());
   menuItem('🪑 Seats', () => window.seatSet?.());
