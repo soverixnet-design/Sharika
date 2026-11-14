@@ -304,3 +304,24 @@
     backdrop-filter: none !important;
   }
 }
+
+/* Render uploaded room artwork as one full image with its own aspect ratio. */
+.app #v-home .sh-room-card-with-photo .bg {
+  background:#160f22!important;
+  overflow:hidden;
+}
+.app #v-home .sh-room-card-photo {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  pointer-events:none;
+}
+.app #v-home .sh-room-card-with-photo :is(.emo,.pat,.shine),
+.app #v-home .sh-room-card-with-photo .tilt::after {
+  display:none!important;
+}
+.app.golden-home #v-home .sh-room-card-with-photo .info {
+  background:linear-gradient(180deg,transparent,#120b179e 55%,#120b17df);
+}
