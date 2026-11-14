@@ -8,6 +8,8 @@ const PUBLIC_ID=/^[0-9]{8}$/;
 const validSvipLevel=value=>Number.isInteger(value)&&value>=1&&value<=8;
 const MS_DAY=86_400_000;
 const SVIP_DURATION_DAYS=30;
+const RECHARGE_COINS_PER_USD=500_000;
+const DEFAULT_RECHARGE_USD=[10,25,50,100,300,500,1000,3000];
 const defaultSvipLevels=()=>Array.from({length:8},(_,i)=>({
   level:i+1,price_coins:(i+1)*1_000_000,daily_bonus_coins:(i+1)*1_000,enabled:true
 }));
@@ -54,6 +56,14 @@ function validConfig(config){
         !Number.isSafeInteger(x.price_coins)||x.price_coins<1||x.price_coins>1_000_000_000||
         !Number.isSafeInteger(x.daily_bonus_coins)||x.daily_bonus_coins<0||
         x.daily_bonus_coins>1_000_000||typeof x.enabled!=='boolean')))return false;
+  if(config?.policy?.svip_recharge_enabled!==undefined&&
+     typeof config.policy.svip_recharge_enabled!=='boolean')return false;
+  if(config?.svip_levels?.some((level,i)=>level.recharge_usd!==undefined&&
+    (!Number.isSafeInteger(level.recharge_usd)||level.recharge_usd<1||
+     level.recharge_usd>1_000_000||level.recharge_usd<=
+       (i?(config.svip_levels[i-1].recharge_usd??DEFAULT_RECHARGE_USD[i-1]):0))))return false;
+  if(config?.svip_levels?.some(level=>level.recharge_usd!==undefined)&&
+     config.svip_levels.some(level=>level.recharge_usd===undefined))return false;
   if(!config||typeof config!=='object'||!config.policy||!Array.isArray(config.tiers)||
      config.tiers.length!==3||policyKeys.some(k=>typeof config.policy[k]!=='boolean'))return false;
   const sorted=[...config.tiers].sort((a,b)=>RANK[a.tier]-RANK[b.tier]);
@@ -76,23 +86,25 @@ async function settings(db){
   const [row,list,levels]=await Promise.all([
     db.prepare("SELECT * FROM sharika_premium_policy WHERE key='standard'").first(),
     db.prepare('SELECT * FROM sharika_premium_tiers ORDER BY rank').all(),
-    db.prepare('SELECT level,price_coins,daily_bonus_coins,enabled '+
+    db.prepare('SELECT level,price_coins,daily_bonus_coins,enabled,recharge_usd '+
       'FROM sharika_svip_levels ORDER BY level').all()
   ]);
   if(!row||rows(list).length!==3||rows(levels).length!==8)
     throw Error('premium_not_configured');
-  return {policy:policyView(row),tiers:rows(list).map(tierView),
+  return {policy:{...policyView(row),svip_recharge_enabled:bool(row.svip_recharge_enabled)},
+    tiers:rows(list).map(tierView),
     svip_levels:rows(levels).map(x=>({level:Number(x.level),
       price_coins:Number(x.price_coins),daily_bonus_coins:Number(x.daily_bonus_coins),
-      enabled:bool(x.enabled)}))};
+      enabled:bool(x.enabled),recharge_usd:Number(x.recharge_usd)||DEFAULT_RECHARGE_USD[x.level-1]}))};
 }
-export function selectPremiumTier({policy,tiers,svipLevels,wealthLevel,giftCoins,manual,nowMs}){
+export function selectPremiumTier({policy,tiers,svipLevels,wealthLevel,giftCoins,manual,recharge,nowMs}){
   let tier='none',source='none',expires_at_ms=null;
   if(manual?.tier&&RANK[manual.tier]&&Number(manual.expires_at_ms)>nowMs){
     tier=manual.tier;source=manual.source;expires_at_ms=Number(manual.expires_at_ms);
   }
   if(policy.auto_enabled){
     for(const item of tiers){
+      if(item.tier==='svip'&&policy.svip_recharge_enabled)continue;
       const level=policy.auto_by_level&&wealthLevel>=item.min_wealth_level;
       const gifts=policy.auto_by_gifts&&giftCoins>=item.min_gift_coins;
       if((level||gifts)&&RANK[item.tier]>RANK[tier]){
@@ -101,10 +113,20 @@ export function selectPremiumTier({policy,tiers,svipLevels,wealthLevel,giftCoins
       }
     }
   }
+  const activeManual=Number(manual?.expires_at_ms)>nowMs;
+  const manualSvip=activeManual&&manual.tier==='svip'&&validSvipLevel(Number(manual.svip_level))
+    ?Number(manual.svip_level):0;
+  const rechargeLevel=Number(recharge?.level)||0;
+  if(rechargeLevel&&!(activeManual&&manual.tier==='noble')){
+    tier='svip';
+    if(manualSvip>=rechargeLevel){
+      source=manual.source;expires_at_ms=Number(manual.expires_at_ms);
+    }else{
+      source='verified_recharge';expires_at_ms=recharge.expires_at_ms;
+    }
+  }
   const selected=tiers.find(t=>t.tier===tier);
-  const svip_level=tier==='svip'?
-    (manual?.tier==='svip'&&Number(manual.expires_at_ms)>nowMs&&
-      validSvipLevel(Number(manual.svip_level))?Number(manual.svip_level):1):0;
+  const svip_level=tier==='svip'?Math.max(manualSvip,rechargeLevel,1):0;
   const svipReward=tier==='svip'?
     (svipLevels||defaultSvipLevels()).find(item=>item.level===svip_level)?.daily_bonus_coins:undefined;
   return {tier,rank:RANK[tier],source,expires_at_ms,svip_level,
@@ -119,9 +141,21 @@ export function selectPremiumTier({policy,tiers,svipLevels,wealthLevel,giftCoins
       ['profile_badge','entry_effect','chat_style','daily_coins','premium_frame',
         'support_priority','premium_background','bonus_xp','noble_presence']};
 }
+async function rechargeStatus(db,uid,now,levels){
+  const cycle=await db.prepare('SELECT base_coins,expires_at_ms FROM sharika_svip_recharge_status '+
+    'WHERE auth_uid=? AND (expires_at_ms IS NULL OR expires_at_ms>?) ORDER BY id DESC LIMIT 1'
+  ).bind(uid,now).first();
+  const eligibleCoins=Number(cycle?.base_coins)||0;
+  const level=cycle?.expires_at_ms?
+    (levels.findLast(item=>item.enabled&&eligibleCoins>=item.recharge_usd*RECHARGE_COINS_PER_USD)?.level||0):0;
+  const next=levels.find(item=>item.enabled&&item.level>level);
+  return {level,eligible_coins:eligibleCoins,coins_per_usd:RECHARGE_COINS_PER_USD,
+    expires_at_ms:cycle?.expires_at_ms??null,next_level:next?.level??null,
+    remaining_coins:next?Math.max(0,next.recharge_usd*RECHARGE_COINS_PER_USD-eligibleCoins):0};
+}
 async function profileStatus(db,uid,nowMs,configuration=null){
   const cfg=configuration||await settings(db);
-  const [user,manual,volume,claim]=await Promise.all([
+  const [user,manual,volume,claim,recharge]=await Promise.all([
     db.prepare('SELECT auth_uid,public_no,coins,wealth_level,status FROM sharika_users WHERE auth_uid=?')
       .bind(uid).first(),
     db.prepare('SELECT tier,source,starts_at_ms,expires_at_ms,svip_level FROM sharika_premium_memberships WHERE auth_uid=?')
@@ -129,13 +163,14 @@ async function profileStatus(db,uid,nowMs,configuration=null){
     db.prepare('SELECT COALESCE(SUM(CAST(quantity AS INTEGER)*CAST(price_coins AS INTEGER)),0) AS gift_coins '+
       'FROM sharika_gift_events WHERE sender_uid=? AND recipient_uid<>sender_uid').bind(uid).first(),
     db.prepare('SELECT tier,reward_coins FROM sharika_premium_daily_claims WHERE auth_uid=? AND utc_day=?')
-      .bind(uid,day(nowMs)).first()
+      .bind(uid,day(nowMs)).first(),
+    cfg.policy.svip_recharge_enabled?rechargeStatus(db,uid,nowMs,cfg.svip_levels):null
   ]);
   if(!user||user.status!=='active')return null;
   const wealthLevel=Number(user.wealth_level)||1,giftCoins=Number(volume?.gift_coins)||0;
   const selected=selectPremiumTier({policy:cfg.policy,tiers:cfg.tiers,
-    svipLevels:cfg.svip_levels,wealthLevel,giftCoins,manual,nowMs});
-  return {...selected,wealth_level:wealthLevel,gift_coins:giftCoins,
+    svipLevels:cfg.svip_levels,wealthLevel,giftCoins,manual,recharge,nowMs});
+  return {...selected,svip_recharge:recharge,wealth_level:wealthLevel,gift_coins:giftCoins,
     public_id:asId(user.public_no),wallet_coins:Number(user.coins)||0,
     utc_day:day(nowMs),claimed_today:!!claim,
     claimed_reward_coins:Number(claim?.reward_coins)||0};
@@ -176,6 +211,8 @@ export async function handlePremiumApp({request,env,uid,path,cors,reply,fail,ctx
     if(!chosen||typeof requestId!=='string'||!REQUEST_ID.test(requestId))
       return fail('invalid_premium_purchase',400,cors);
     const level=chosen.tier==='svip'?Number(body.svip_level??1):1;
+    if(chosen.tier==='svip'&&cfg.policy.svip_recharge_enabled)
+      return fail('svip_requires_verified_recharge',403,cors);
     if(!validSvipLevel(level))return fail('invalid_svip_level',400,cors);
     const svipConfig=chosen.tier==='svip'?cfg.svip_levels.find(x=>x.level===level):null;
     if(chosen.tier==='svip'&&(!svipConfig||!svipConfig.enabled))
@@ -295,15 +332,16 @@ export async function handlePremiumAdmin({request,env,uid,actor,operation,cors,r
     const current=JSON.stringify(cfg);
     await env.DB.batch([
       env.DB.prepare('UPDATE sharika_premium_policy SET purchase_enabled=?,admin_grant_enabled=?,auto_enabled=?,'+
-        'auto_by_level=?,auto_by_gifts=?,updated_by=?,updated_at=datetime(\'now\') WHERE key=\'standard\'')
-        .bind(...policyKeys.map(k=>Number(body.policy[k])),uid),
+        'auto_by_level=?,auto_by_gifts=?,svip_recharge_enabled=COALESCE(?,svip_recharge_enabled),updated_by=?,updated_at=datetime(\'now\') WHERE key=\'standard\'')
+        .bind(...policyKeys.map(k=>Number(body.policy[k])),
+          body.policy.svip_recharge_enabled===undefined?null:Number(body.policy.svip_recharge_enabled),uid),
       ...body.tiers.map(t=>env.DB.prepare(
         'UPDATE sharika_premium_tiers SET min_wealth_level=?,min_gift_coins=?,price_coins=?,'+
         'duration_days=?,daily_bonus_coins=? WHERE tier=?'
       ).bind(...tierKeys.map(k=>t[k]),t.tier)),
       ...(body.svip_levels||[]).map(level=>env.DB.prepare(
-        "UPDATE sharika_svip_levels SET price_coins=?,daily_bonus_coins=?,enabled=?,updated_at=datetime('now') WHERE level=?"
-      ).bind(level.price_coins,level.daily_bonus_coins,Number(level.enabled),level.level)),
+        "UPDATE sharika_svip_levels SET price_coins=?,daily_bonus_coins=?,enabled=?,recharge_usd=COALESCE(?,recharge_usd),updated_at=datetime('now') WHERE level=?"
+      ).bind(level.price_coins,level.daily_bonus_coins,Number(level.enabled),level.recharge_usd??null,level.level)),
       env.DB.prepare('INSERT INTO sharika_premium_audit(actor_uid,target_uid,action,details_json) '+
         "VALUES(?,NULL,'policy_update',?)").bind(uid,JSON.stringify({before:current,after:body}))
     ]);
@@ -383,9 +421,13 @@ export function publicSvipSelect(alias='u'){
     'WHERE p.auth_uid='+alias+'.auth_uid AND p.tier=\'svip\' AND '+active+' LIMIT 1)';
   const noble='EXISTS(SELECT 1 FROM sharika_premium_memberships p '+
     'WHERE p.auth_uid='+alias+'.auth_uid AND p.tier=\'noble\' AND '+active+')';
-  return 'CASE WHEN '+noble+' OR '+automatic('noble')+' THEN 0 '+
-    'WHEN '+automatic('svip')+' THEN COALESCE('+member+',1) '+
-    'ELSE COALESCE('+member+',0) END AS svip_level';
+  const rechargeMode="EXISTS(SELECT 1 FROM sharika_premium_policy WHERE key='standard' AND svip_recharge_enabled=1)";
+  const recharge='COALESCE((SELECT MAX(l.level) FROM sharika_svip_recharge_status c '+
+    'JOIN sharika_svip_levels l ON l.enabled=1 AND c.base_coins>=l.recharge_usd*'+RECHARGE_COINS_PER_USD+
+    ' WHERE c.auth_uid='+alias+".auth_uid AND c.expires_at_ms>unixepoch('now')*1000 AND "+rechargeMode+'),0)';
+  return 'CASE WHEN '+noble+' THEN 0 WHEN '+recharge+'>0 THEN MAX('+recharge+',COALESCE('+member+',0)) '+
+    'WHEN '+automatic('noble')+' THEN 0 WHEN NOT '+rechargeMode+' AND '+automatic('svip')+
+    ' THEN COALESCE('+member+',1) ELSE COALESCE('+member+',0) END AS svip_level';
 }
 export async function readSvipLevel(db,uid){
   const row=await db.prepare('SELECT '+publicSvipSelect('u')+
