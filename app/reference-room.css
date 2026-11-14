@@ -474,3 +474,85 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   font-size:14px!important;
   line-height:22px!important;
 }
+
+/* These effects decorate an active mic seat without changing its hit area. */
+.sh-speaking-effect {
+  position:absolute;
+  inset:0;
+  z-index:5;
+  pointer-events:none;
+  --speech-distance:-9px;
+  --speech-size:16px;
+  --speech-opacity:.76;
+  --speech-speed:1.35s;
+}
+.sh-speaking-effect[data-strength="2"] {
+  --speech-distance:-15px;
+  --speech-size:18px;
+  --speech-opacity:.9;
+}
+.sh-speaking-effect[data-strength="3"] {
+  --speech-distance:-22px;
+  --speech-size:21px;
+  --speech-opacity:1;
+}
+.sh-speaking-effect > i {
+  position:absolute;
+  inset:0;
+  transform:rotate(var(--speech-angle));
+}
+.sh-speaking-effect > i:nth-child(1) {--speech-angle:32deg;--speech-delay:0s}
+.sh-speaking-effect > i:nth-child(2) {--speech-angle:133deg;--speech-delay:-.34s}
+.sh-speaking-effect > i:nth-child(3) {--speech-angle:222deg;--speech-delay:-.68s}
+.sh-speaking-effect > i:nth-child(4) {--speech-angle:310deg;--speech-delay:-1.02s}
+.sh-speaking-effect > i::before {
+  content:var(--speech-symbol);
+  display:block;
+  position:absolute;
+  left:50%;
+  bottom:100%;
+  width:1.25em;
+  color:var(--speech-color);
+  font:700 var(--speech-size)/1.25 system-ui,sans-serif;
+  text-align:center;
+  text-shadow:0 0 7px var(--speech-glow),0 1px 3px #241126;
+  animation:sh-speech-particles var(--speech-speed) ease-out var(--speech-delay) infinite;
+}
+.sh-speaking-effect[data-style="1"] {--speech-symbol:"✿";--speech-color:#ffb1d3;--speech-glow:#f4489a}
+.sh-speaking-effect[data-style="2"] {--speech-symbol:"❧";--speech-color:#ffcfdd;--speech-glow:#ff666f;--speech-speed:1.7s}
+.sh-speaking-effect[data-style="3"] {--speech-symbol:"✦";--speech-color:#fff1a2;--speech-glow:#ffb52f;--speech-speed:1s}
+.sh-speaking-effect[data-style="4"] {--speech-symbol:"◈";--speech-color:#e0bcff;--speech-glow:#9b52fc;--speech-speed:1.15s}
+.sh-speaking-effect[data-style="5"] {--speech-symbol:"≈";--speech-color:#b9ffec;--speech-glow:#21d5be;--speech-speed:1.05s}
+.sh-speaking-effect[data-style="6"] {--speech-symbol:"❄";--speech-color:#ddf7ff;--speech-glow:#4fb4ff;--speech-speed:1.65s}
+.sh-speaking-effect[data-style="7"] {--speech-symbol:"♨";--speech-color:#ffce82;--speech-glow:#ff522e;--speech-speed:.93s}
+.sh-speaking-effect[data-style="8"] {--speech-symbol:"♛";--speech-color:#fff0b0;--speech-glow:#f6bc49;--speech-speed:1.55s}
+.sh-speaking-effect[data-style="8"] > i:nth-child(even) {--speech-symbol:"✧"}
+.sh-speaking-effect:is([data-style="4"],[data-style="5"],[data-style="8"])::before {
+  content:"";
+  position:absolute;
+  inset:-4%;
+  border:2px solid var(--speech-color);
+  border-radius:50%;
+  box-shadow:0 0 8px var(--speech-glow);
+  animation:sh-speech-ring var(--speech-speed) ease-out infinite;
+}
+@keyframes sh-speech-particles {
+  0% {opacity:0;transform:translate(-50%,75%) rotate(0deg) scale(.5)}
+  28% {opacity:var(--speech-opacity)}
+  100% {opacity:0;transform:translate(-50%,var(--speech-distance)) rotate(44deg) scale(1.12)}
+}
+@keyframes sh-speech-ring {
+  from {transform:scale(.88);opacity:calc(.55 * var(--speech-opacity))}
+  to {transform:scale(1.52);opacity:0}
+}
+@media(prefers-reduced-motion:reduce) {
+  .sh-speaking-effect > i {display:none}
+  .sh-speaking-effect:is([data-style])::before {
+    content:"";
+    position:absolute;
+    inset:-4%;
+    border:2px solid var(--speech-color);
+    border-radius:50%;
+    animation:none;
+  }
+}
