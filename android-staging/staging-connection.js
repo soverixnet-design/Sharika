@@ -6157,6 +6157,9 @@
        !session || session.user.id!==userId || window.cur!==visit ||
        frame.document!==frameDoc ||
        document.getElementById('rf')?.contentWindow!==frame)return;
+    // The room ID is a separate namespace: an old card or cached room role
+    // cannot override the owner verified by the current D1 members snapshot.
+    if(data.owner_user_id)room.owner_id=String(data.owner_user_id);
     // The room header displays the owner's active Special ID while all
     // calls, membership actions and room navigation keep the canonical ID.
     const owner=data.members?.find(member=>member.user_id===room.owner_id)
@@ -6192,8 +6195,16 @@
     const safetyButton=frame.$?.('bOwn');
     if(safetyButton)safetyButton.style.display=
       ['owner','admin'].includes(frame.__sharikaRoomRole)?'':'none';
-    frame.__sharikaMemberRoles=new Map((data.members||[]).map(m=>
-      [String(m.sharika_users?.public_id||''),String(m.role||'member')]));
+    // Server-sourced roles are scoped to this room and this roster only.
+    // A prior room's owner label must never carry onto a guest's new mic.
+    frame.__sharikaRoleRoomId=room.id;
+    const verifiedOwnerMember=(data.members||[]).find(m=>m.user_id===room.owner_id);
+    frame.__sharikaVerifiedOwnerPublicId=String(
+      verifiedOwnerMember?.sharika_users?.public_id||'');
+    frame.__sharikaMemberRoles=new Map((data.members||[])
+      .filter(m=>m.sharika_users?.public_id)
+      .map(m=>[String(m.sharika_users.public_id),
+        m.user_id===room.owner_id?'owner':m.role==='admin'?'admin':'member']));
     // No reserved Owner mic: listening starts on entry, publishing only
     // after that Owner/guest deliberately takes an unlocked microphone seat.
     const eligible=selfState
@@ -6391,7 +6402,11 @@
     const card=await openVerifiedRankProfile(String(member.id),member);
     if(!card?.isConnected||window.cur?.id!==roomId)return;
     card.classList.add('sh-room-royal');
-    const roomRole=frame?.__sharikaMemberRoles?.get(String(member.id));
+    const reportedRole=frame?.__sharikaRoleRoomId===roomId
+      ?frame?.__sharikaMemberRoles?.get(String(member.id)):null;
+    const roomRole=reportedRole==='owner'&&
+      frame?.__sharikaVerifiedOwnerPublicId===String(member.id)?'owner':
+      reportedRole==='admin'?'admin':'member';
     if(roomRole==='owner'||roomRole==='admin'){
       const roomTag=document.createElement('span');
       roomTag.className='sh-royal-role-tag sh-royal-room-admin';
@@ -6911,6 +6926,18 @@
     if(!frame?.seats || joinedRoom!==room || window.cur!==room)return;
     const roomDoc=frame.document;
     const visitIsActive=()=>joinedRoom===room&&window.cur===room&&frame.document===roomDoc;
+    // Forget roles from every prior room before the first verified snapshot.
+    frame.__sharikaRoleRoomId=null;
+    frame.__sharikaMemberRoles=new Map();
+    frame.__sharikaVerifiedOwnerPublicId=null;
+    frame.__sharikaRoomRole='member';
+    const verifiedMemberRole=publicId=>{
+      const id=String(publicId||'');
+      if(!id||frame.__sharikaRoleRoomId!==room.id)return 'member';
+      const role=frame.__sharikaMemberRoles?.get(id);
+      if(role==='owner'&&id===frame.__sharikaVerifiedOwnerPublicId)return 'owner';
+      return role==='admin'?'admin':'member';
+    };
     // The bundled offline room artwork contains demo greetings. A new room
     // visit starts with an empty verified transcript, including after reentry.
     frame.$?.('chat')?.replaceChildren();
@@ -7387,7 +7414,7 @@
       };
       if(previous)frame.seats[previous.i]={empty:1,i:previous.i};
       frame.seats[seat]={...source,i:seat,owner_mic_seat:owner,
-        room_role:owner?'owner':frame.__sharikaRoomRole||'member'};
+        room_role:owner?'owner':verifiedMemberRole(profile?.public_id)};
       frame.render();
       paintVerifiedMicCount(frame);
       paintVoiceSpeakers(room.id,frame);
@@ -7664,9 +7691,10 @@
       micLocation.className='sh-member-meta';
       micLocation.textContent=Number.isInteger(index)?'Mic '+index:'In the room';
       const tags=doc.createElement('div');tags.className='sh-member-labels';
+      const verifiedRole=verifiedMemberRole(publicId);
       for(const badgeName of [
-        selected.room_role==='owner'?'Room Owner':
-          selected.room_role==='admin'?'Room Admin':null,
+        verifiedRole==='owner'?'Room Owner':
+          verifiedRole==='admin'?'Room Admin':null,
         selected.muted?'Mic muted':null
       ]){
         if(!badgeName)continue;
@@ -7763,7 +7791,7 @@
       renderMemberHalfProfile(hero,{
         public_id:publicId,n:fresh.name,pic:verifiedAvatarUrl(fresh.pic),
         display_id:fresh.special_id||fresh.display_id||publicId,
-        special_id:fresh.special_id||null,room_role:frame.__sharikaMemberRoles.get(publicId),
+        special_id:fresh.special_id||null,room_role:verifiedMemberRole(publicId),
         svip_level:fresh.svip_level,frame_style:fresh.frame_style
       });
       for(const [label,icon,callback] of [
@@ -7790,8 +7818,9 @@
       const self=selected.user_id===session?.user?.id;
       const actions=frame.$('sheet')?.querySelector('.acts');
       const detail=frame.$('sheet')?.querySelector('.who small');
-      if(detail)detail.textContent=selected.room_role==='owner'?'Room Owner':'Mic seat '+index;
-      if(detail&&selected.room_role==='admin')
+      const verifiedRole=verifiedMemberRole(selected.public_id);
+      if(detail)detail.textContent=verifiedRole==='owner'?'Room Owner':'Mic seat '+index;
+      if(detail&&verifiedRole==='admin')
         detail.textContent='Room Admin · Mic seat '+index;
       if(!actions)return result;
       actions.replaceChildren();
@@ -7875,7 +7904,7 @@
       const verifiedId=String(user?.seat!=null?
         frame.seats?.[user.seat]?.public_id:frame.U?.[user?.k]?.canonical_id||'');
       const verified=/^[0-9]{8}$/.test(verifiedId);
-      const selectedRole=frame.__sharikaMemberRoles?.get(verifiedId)||'member';
+      const selectedRole=verifiedMemberRole(verifiedId);
       const roleLabel=sheet?.querySelector('.who small');
       if(roleLabel&&selectedRole==='admin')
         roleLabel.textContent='🛡 Room Admin';
