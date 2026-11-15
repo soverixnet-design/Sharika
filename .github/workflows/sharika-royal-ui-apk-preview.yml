@@ -1,0 +1,102 @@
+name: Sharika Royal UI preview APK (not Play release)
+
+on:
+  push:
+    branches:
+      - fix/sharika-royal-ranking-profile-cleanup-20261115
+    paths:
+      - '.github/workflows/sharika-royal-ui-apk-preview.yml'
+      - 'app/royal-ranking-v2.css'
+      - 'app/royal-profile.css'
+      - 'app/royal-profile-rank-qa.test.cjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  royal-ui-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source CSS and adapter checks
+        run: |
+          node --test app/royal-profile-rank-qa.test.cjs
+          node --check android-staging/staging-connection.js
+      - name: Checkout authorized Sovera cosmetics pinned to known revision
+        uses: actions/checkout@v4
+        with:
+          repository: soverixnet-design/sovera-voice-app
+          ref: 0e30b48962272b8a687509aef4dee9bc4a047767
+          path: _sovera_cosmetics
+          persist-credentials: false
+      - name: Stage existing premium frames, medals, and entry effects
+        run: |
+          set -euo pipefail
+          mkdir -p android-staging/app/src/main/assets/sovera-effects
+          mkdir -p android-staging/app/src/main/assets/sovera-medals
+          mkdir -p android-staging/app/src/main/assets/sovera-sounds
+          cp -a _sovera_cosmetics/assets/effects/. android-staging/app/src/main/assets/sovera-effects/
+          cp -a _sovera_cosmetics/assets/medals/. android-staging/app/src/main/assets/sovera-medals/
+          cp -a _sovera_cosmetics/assets/sounds/. android-staging/app/src/main/assets/sovera-sounds/
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android API 36
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Use known original staging signer if the secure copy matches
+        env:
+          KEY_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$KEY_B64" ]]; then
+            printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-staging.p12"
+            if printf '%s  %s\n' '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e' "$RUNNER_TEMP/sharika-staging.p12" | sha256sum --check --status; then
+              echo "SHARIKA_STAGING_KEYSTORE_PATH=$RUNNER_TEMP/sharika-staging.p12" >> "$GITHUB_ENV"
+              echo 'SHARIKA_PREVIEW_SIGNER=original-staging' >> "$GITHUB_ENV"
+            else
+              rm -f "$RUNNER_TEMP/sharika-staging.p12"
+              echo 'SHARIKA_PREVIEW_SIGNER=ephemeral-debug' >> "$GITHUB_ENV"
+              echo '::warning::The original staging key is unavailable; preview APK will not update old installs or support registered Google OAuth.'
+            fi
+          else
+            echo 'SHARIKA_PREVIEW_SIGNER=ephemeral-debug' >> "$GITHUB_ENV"
+            echo '::warning::The original staging key is unavailable; preview APK will not update old installs or support registered Google OAuth.'
+          fi
+      - name: Build only a debug APK (never publish to Play)
+        working-directory: android-staging
+        env:
+          SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Inspect APK files for requested Royal design fixes
+        run: |
+          set -euo pipefail
+          APK=android-staging/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -tqq "$APK"
+          unzip -p "$APK" assets/royal-ranking-v2.css | grep -Fq SHARIKA_ROYAL_RANKING_CLEANUP_20261115
+          unzip -p "$APK" assets/royal-profile.css | grep -Fq SHARIKA_ROYAL_PUBLIC_PROFILE_CLEANUP_20261115
+          unzip -p "$APK" assets/royal-profile.css | grep -Fq 'background-color:#2c164b!important'
+          unzip -Z1 "$APK" | grep -Fxq 'assets/royal-ranking-podium.webp'
+          unzip -Z1 "$APK" | grep -Fxq 'assets/royal-profile-background.jpg'
+          echo "SHARIKA_ROYAL_PREVIEW_APK_OK signer=$SHARIKA_PREVIEW_SIGNER"
+          sha256sum "$APK"
+      - name: Save preview APK for manual device review
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Royal-Ranking-Profile-Preview-APK
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
