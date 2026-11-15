@@ -61,12 +61,6 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 }
 .app.sh-royal-room .top>.ib {width:30px!important;height:36px!important;background:transparent!important;border:0!important;box-shadow:none!important}
 .app.sh-royal-room .stats {display:none!important}
-.app.sh-royal-room .sh-room-profile-header {
-  position:relative;
-  flex:1 1 0;
-  min-width:0;
-}
-.app.sh-royal-room .sh-room-profile-header .room {width:100%!important}
 .app.sh-royal-room .sh-room-rank-button {
   position:static;
   min-height:28px;
@@ -78,7 +72,6 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   font-size:11px;
   cursor:pointer;
 }
-.app.sh-royal-room .sh-room-rank-button:disabled {visibility:hidden}
 .app.sh-royal-room .sh-room-announcement {
   margin:3px 9px 6px!important;
   padding:5px 9px!important;
@@ -438,40 +431,59 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 /* Profile header is one touch target. Monthly ranking sits immediately
    below it in a separate, small row without covering the room artwork. */
 .app.sh-royal-room .top {align-items:flex-start!important;min-height:0!important}
-.app.sh-royal-room .sh-room-profile-stack {
-  display:flex;
-  flex:1 1 0;
-  flex-direction:column;
-  align-items:stretch;
-  min-width:0;
-}
-.app.sh-royal-room .sh-room-profile-stack .sh-room-profile-header {
-  width:100%;
-  flex:0 0 auto!important;
-  min-width:0;
-}
-.app.sh-royal-room .sh-room-profile-stack .room {
+.app.sh-royal-room .top .room {
   min-height:59px!important;
   max-height:none!important;
   padding:2px 6px!important;
 }
-.app.sh-royal-room .sh-room-profile-stack .room .rav {
+.app.sh-royal-room .top .room .rav {
   width:55px!important;
   height:55px!important;
+}
+.app.sh-royal-room .sh-room-live-controls {flex:none}
+.app.sh-royal-room .sh-room-live-controls[hidden] {display:none}
+.app.sh-royal-room .sh-room-masthead {
+  height:auto;
+  min-height:42px;
+  gap:7px;
+  background:#0807109c;
+}
+.app.sh-royal-room .sh-room-faces {gap:4px;padding:0}
+.app.sh-royal-room .sh-room-member-chip {
+  display:grid;
+  justify-items:center;
+  gap:1px;
+  min-width:0;
+  flex:0 1 54px;
+  padding:1px 0;
+  border:0;
+  background:none;
+  color:#fff0db;
+  cursor:pointer;
+}
+.app.sh-royal-room .sh-room-member-chip > .sh-vip-avatar {width:27px;height:27px}
+.app.sh-royal-room .sh-room-member-chip > small {
+  font-size:9px;
+  line-height:1.1;
+  font-variant-numeric:tabular-nums;
 }
 .app.sh-royal-room .sh-room-rank-row {
   display:flex;
   justify-content:flex-start;
-  align-items:center;
-  min-height:24px;
-  padding-left:12px;
-  margin:0;
+  padding:3px 9px 4px;
 }
 .app.sh-royal-room .sh-room-rank-row > .sh-room-rank-button {
   flex:none;
   line-height:1;
   white-space:nowrap;
 }
+.app.sh-royal-room .sh-rank-name > strong,
+.app.sh-royal-room .sh-rank-name > small {
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.app.sh-royal-room .sh-rank-name > small {color:#e4cce9;font-size:10px}
 .sh-room-settings-cover {
   width:64px;
   height:54px;

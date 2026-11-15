@@ -18,7 +18,11 @@ test('compact verified ranking and owner-only room announcement endpoints',()=>{
   const worker=src('../src/index.mjs');
   const native=src('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java');
   const sql=src('../migrations/0056_room_announcements.sql');
-  assert.match(ui,/stack\.append\(profile\);\s*profile\.append\(roomInfo\);[\s\S]*?stack\.append\(rankRow\);[\s\S]*?rankRow\.append\(ranking\)/);
+  assert.match(ui,/rankRow\.append\(ranking\);[\s\S]*?roomControls\.append\(masthead,rankRow\);\s*top\?\.after\(roomControls\)/);
+  assert.match(ui,/view\.members\.slice\(0,4\)/);
+  assert.match(ui,/id\.textContent=member\.displayId/);
+  assert.match(ui,/count\.onclick=showMembers/);
+  assert.match(ui,/renderLiveMembers\(view\);\s*roomControls\.hidden=false/);
   const css=src('../../app/reference-room.css');
   assert.match(css,/\.sh-room-rank-button \{\s*position:static;/);
   assert.ok(ui.includes("v.loadRankings('monthly',offset)"));

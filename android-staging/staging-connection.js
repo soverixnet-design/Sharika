@@ -6365,13 +6365,9 @@
     if(typeof frame.SharikaRoomPremium?.sync==='function'){
       const liveMembers=(data.members||[])
         .filter(m=>m.user_id&&m.sharika_users?.public_id)
-        .sort((a,b)=>{
-          if(a.user_id===room.owner_id)return -1;
-          if(b.user_id===room.owner_id)return 1;
-          const sa=Number.isInteger(a.seat_no)?a.seat_no:999;
-          const sb=Number.isInteger(b.seat_no)?b.seat_no:999;
-          return sa-sb;
-        })
+        // The verified roster is returned in join order. Put the latest
+        // arrivals first so the header's four visible profiles update.
+        .reverse()
         .map(m=>({
           name:String(m.sharika_users.name||'Member'),
           pic:verifiedAvatarUrl(m.sharika_users.pic),
@@ -9043,7 +9039,11 @@
         const data=await api('GET','/rooms/'+room.id+'/entries?after='+lastEntryEventId);
         if(window.cur?.id!==room.id ||
            document.getElementById('rf')?.contentWindow!==frame)return;
-        for(const event of data.events||[]){
+        const events=data.events||[];
+        if(events.some(event=>Number(event.id)>lastEntryEventId&&
+           Date.now()-Number(event.created_at_ms)<=20000))
+          refreshRoomSeats();
+        for(const event of events){
           const id=Number(event.id);
           if(!Number.isSafeInteger(id)||id<=lastEntryEventId)continue;
           lastEntryEventId=id;

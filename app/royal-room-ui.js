@@ -44,29 +44,31 @@
   // verified cover/name a wide left-aligned touch target even on small phones.
   if (top && roomInfo && roomInfo.parentElement === top && top.children.length > 1)
     top.insertBefore(roomInfo, top.children[1]);
-  if(roomInfo?.parentElement===top){
-    // The room ranking is a separate control beneath the profile card,
-    // never over the room cover image or inside the profile touch target.
-    const stack=document.createElement('div');
-    stack.className='sh-room-profile-stack';
-    roomInfo.before(stack);
-    const profile=document.createElement('div');
-    profile.className='sh-room-profile-header';
-    stack.append(profile);
-    profile.append(roomInfo);
-    const rankRow=document.createElement('div');
-    rankRow.className='sh-room-rank-row';
-    stack.append(rankRow);
-    const ranking=document.createElement('button');
-    ranking.id='sh-room-rank-pill';
-    ranking.className='sh-room-rank-button';
-    ranking.type='button';
-    ranking.textContent='🏆 Ranking';
-    ranking.setAttribute('aria-label','Monthly room gift ranking');
-    ranking.disabled=true;
-    ranking.onclick=()=>showRankings();
-    rankRow.append(ranking);
-  }
+  const roomControls=document.createElement('div');
+  roomControls.className='sh-room-live-controls';
+  roomControls.hidden=true;
+  const masthead=document.createElement('div');
+  masthead.className='sh-room-masthead';
+  const faces=document.createElement('div');
+  faces.className='sh-room-faces';
+  faces.setAttribute('aria-label','Members in this room');
+  const count=document.createElement('button');
+  count.className='sh-room-face-count';
+  count.type='button';
+  count.onclick=showMembers;
+  masthead.append(faces,count);
+  const rankRow=document.createElement('div');
+  rankRow.className='sh-room-rank-row';
+  const ranking=document.createElement('button');
+  ranking.id='sh-room-rank-pill';
+  ranking.className='sh-room-rank-button';
+  ranking.type='button';
+  ranking.textContent='🏆 Ranking ›';
+  ranking.setAttribute('aria-label','Monthly room gift ranking');
+  ranking.onclick=showRankings;
+  rankRow.append(ranking);
+  roomControls.append(masthead,rankRow);
+  top?.after(roomControls);
   const settingsButton = document.createElement('button');
   settingsButton.type = 'button';
   settingsButton.className = 'sh-settings';
@@ -414,6 +416,33 @@
       list.appendChild(row);
     }
   }
+  let rosterSignature=null;
+  function renderLiveMembers(view){
+    const visible=view.members.slice(0,4);
+    const signature=JSON.stringify([view.roomId,view.members.length,visible]);
+    if(signature===rosterSignature)return;
+    rosterSignature=signature;
+    const items=visible.map(member=>{
+      const button=document.createElement('button');
+      button.type='button';
+      button.className='sh-room-member-chip';
+      button.setAttribute('aria-label',member.name+' · ID '+member.displayId);
+      const id=document.createElement('small');
+      id.textContent=member.displayId;
+      button.append(vipAvatar(member),id);
+      button.onclick=()=>{
+        const current=premiumState.room;
+        if(!canShow())return;
+        const person=current.members.find(item=>item.publicId===member.publicId);
+        if(person)Promise.resolve(current.openProfile(person)).catch(error=>
+          window.toast?.('Profile: '+String(error?.message||error)));
+      };
+      return button;
+    });
+    faces.replaceChildren(...items);
+    count.textContent=String(view.members.length);
+    count.setAttribute('aria-label','Online users: '+view.members.length);
+  }
   async function showRankings(){
     const v=premiumState.room;
     if(!v||!canShow())return;
@@ -457,7 +486,11 @@
             seatNo:null
           };
           const name=document.createElement('span');name.className='sh-rank-name';
-          name.textContent=profile.name;
+          const title=document.createElement('strong');
+          title.textContent=profile.name;
+          const id=document.createElement('small');
+          id.textContent='ID '+profile.displayId;
+          name.append(title,id);
           const sum=document.createElement('b');
           sum.textContent=Number(member.total||0).toLocaleString('en-US')+' 🪙';
           row.append(rank,vipAvatar(profile),name,sum);
@@ -553,8 +586,8 @@
         premiumState.announcement=null;premiumState.announcementAt=0;
       }
       premiumState.room=view;
-      const ranking=byId('sh-room-rank-pill');
-      if(ranking)ranking.disabled=false;
+      renderLiveMembers(view);
+      roomControls.hidden=false;
       loadAnnouncement().catch(()=>{});
     },
     showMembers,showRankings,
