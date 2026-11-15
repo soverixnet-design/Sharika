@@ -1,0 +1,64 @@
+name: Sharika v135 Public Friends QA APK
+
+on:
+  push:
+    branches:
+      - fix/sharika-room-card-games-voice-20261115
+    paths:
+      - '.github/workflows/sharika-direct-apk-v135-20261116.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-verified-staging-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify exact successful source build and artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          run_id='43762003413'
+          test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.head_sha')" = '4a8c715403ee2080c460f86ae19e12d3ff98eff3'
+          test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.conclusion')" = success
+          gh api "repos/$repo/actions/artifacts/14180422232" --jq '.name + " " + (.expired|tostring)' | grep -Fx 'Sharika-Android-Staging-Debug false'
+      - name: Download exact APK from successful run
+        uses: actions/download-artifact@v4
+        with:
+          repository: soverixnet-design/Sharika
+          run-id: 43762003413
+          name: Sharika-Android-Staging-Debug
+          github-token: ${{ github.token }}
+          path: apk
+      - name: Verify APK integrity and Android package signature
+        run: |
+          set -euo pipefail
+          test -s apk/app-debug.apk
+          echo 'c1fcb92f0a09701b6539970967fc9d825745f9b8fc4f88f767417e1c04c4dfee  apk/app-debug.apk' | sha256sum -c -
+          unzip -tqq apk/app-debug.apk
+          unzip -Z1 apk/app-debug.apk | grep -Fx 'AndroidManifest.xml'
+          signer="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$signer"
+          "$signer" verify --verbose apk/app-debug.apk
+          install -m 0644 apk/app-debug.apk Sharika-v1.0.35-v135-Friends-Staging.apk
+      - name: Publish direct-link public prerelease for friends
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-v135-friends-qa-20261116'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing overwrite'
+            exit 1
+          fi
+          gh release create "$tag" Sharika-v1.0.35-v135-Friends-Staging.apk \
+            --repo "$repo" \
+            --target 4a8c715403ee2080c460f86ae19e12d3ff98eff3 \
+            --title 'Sharika v1.0.35 (135) — Friends QA APK, 15 Nov 2026' \
+            --notes 'Direct downloadable staging/debug Android APK, built by successful GitHub Actions run 43762003413. SHA-256 c1fcb92f0a09701b6539970967fc9d825745f9b8fc4f88f767417e1c04c4dfee, signature verified by CI. For invited friends to test only; NOT a production/Play Store release. Existing-install signing compatibility, Google sign-in, two-way voice, games, and music require real-device testing. No backend or production modifications.' \
+            --prerelease
