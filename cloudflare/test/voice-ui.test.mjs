@@ -79,7 +79,7 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/event\.stopImmediatePropagation\(\)/);
   assert.match(ui,/api\('GET','\/users\/'\+publicId\)/);
   assert.match(ui,/Seat occupant has changed/);
-  assert.match(ui,/detail\.textContent=index===0\?'Room owner':'Mic seat '\+index/);
+  assert.match(ui,/detail\.textContent=selected\.room_role==='owner'\?'Room Owner':'Mic seat '\+index/);
   assert.match(ui,/frame\.act\(action,index\)/);
   assert.match(ui,/await openVerifiedRankProfile\(String\(member\.id\),member\)/);
   assert.match(ui,/if\(!card\?\.isConnected\|\|window\.cur\?\.id!==roomId\)return/);
@@ -87,12 +87,14 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+canonicalId\+'\/follow'\)/);
 });
 
-test('room seats keep SVIP below the avatar frame and IDs only inside profiles',()=>{
+test('room seats keep personal ornaments on the frame and show identities in profiles',()=>{
   assert.match(ui,/ornaments\.appendChild\(makeSvipBadge\(doc,svip,'sh-svip-seat-badge'\)\)/);
   assert.match(ui,/ornaments\.className='sh-seat-ornaments'/);
   assert.doesNotMatch(ui,/badge\.textContent=seat\.special_id/);
   assert.match(ui,/openVerifiedRoomMemberProfile\(target\.public_id,room\.id,seat\)/);
-  assert.match(ui,/paintVerifiedMicCount\(frame\);\s*if\(window\.cur\?\.id===sfuState\?\.roomId\)/);
+  const seatDecoration=ui.slice(ui.indexOf('  function decorateRoomSeats'),ui.indexOf('  function wireSoveraRoomFrames'));
+  assert.doesNotMatch(seatDecoration,/crown\.textContent|seat\.room_role/);
+  assert.match(ui,/roomTag\.textContent=roomRole==='owner'\?'👑 ROOM OWNER':'🛡 ROOM ADMIN'/);
 });
 
 test('room gestures retry blocked incoming audio in both the app and room iframe',()=>{
@@ -105,8 +107,9 @@ test('room gestures retry blocked incoming audio in both the app and room iframe
   assert.match(ui,/event\.track\.addEventListener\('unmute',startPlayback\)/);
   assert.match(ui,/document\.addEventListener\('visibilitychange',/);
   assert.match(ui,/window\.addEventListener\('pageshow',resumeRoomAudio\)/);
-  assert.match(ui,/const changed=localSeats\.some\(seat=>seat\.muted===!!enabled\)/);
-  assert.match(ui,/if\(changed&&typeof frame\.render==='function'\)/);
+  const micUpdate=ui.slice(ui.indexOf('  function markLocalMicrophone'),ui.indexOf('  async function restartMicrophone'));
+  assert.doesNotMatch(micUpdate,/frame\.render/);
+  assert.match(micUpdate,/avatar\.appendChild\(muted\)/);
   assert.match(ui,/voiceRoom\.startAudio\(\)\.catch/);
 });
 
@@ -351,9 +354,9 @@ test('real speaker rings follow multiple authenticated microphones and never ran
   context.speakerIds=new Map([['owner',1],['one',2],['two',3]]);
   runInContext("setVoiceSpeakers('roomA',speakerIds)",context);
   assert.deepEqual(seats.map(s=>!!s.talk),[true,true,false,false]);
-  assert.ok(classes.some(x=>x[0]===0&&x[1]==='talk'&&x[2]===true));
-  assert.ok(classes.some(x=>x[0]===1&&x[1]==='talk'&&x[2]===true));
-  assert.ok(classes.some(x=>x[0]===2&&x[1]==='talk'&&x[2]===false));
+  assert.ok(classes.some(x=>x[0]===0&&x[1]==='sh-voice-active'&&x[2]===true));
+  assert.ok(classes.some(x=>x[0]===1&&x[1]==='sh-voice-active'&&x[2]===true));
+  assert.ok(classes.some(x=>x[0]===2&&x[1]==='sh-voice-active'&&x[2]===false));
   const rose=avatars[0].children[0];
   assert.equal(rose.dataset.style,'1');
   assert.equal(rose.dataset.strength,'1');
@@ -366,7 +369,8 @@ test('real speaker rings follow multiple authenticated microphones and never ran
   assert.equal(rose.dataset.strength,'2');
   seats[0].muted=true;
   runInContext("paintVoiceSpeakers('roomA',document.getElementById('rf').contentWindow)",context);
-  assert.equal(avatars[0].children.length,0,'mute immediately removes the decoration');
+  assert.equal(avatars[0].children[0],rose,'muting preserves the mounted decoration');
+  assert.equal(rose.dataset.strength,undefined,'mute immediately hides the effect');
   runInContext('clearVoiceSpeakers()',context);
   assert.deepEqual(seats.map(s=>!!s.talk),[false,false,false,false]);
   assert.doesNotMatch(ui.slice(begin,end),/Math\.random/);
