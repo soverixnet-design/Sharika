@@ -111,11 +111,15 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   column-gap:3px!important;
   row-gap:clamp(13px,2.2vh,24px)!important;
   padding:0 0 10px!important;
+  --seat-size:clamp(36px,11vw,59px);
+  --seat-photo-size:clamp(43px,13.2vw,70px);
   margin:0!important;
 }
 /* Large rooms retain the compact five-column layout seen in the reference. */
 .app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) {
   grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  --seat-size:clamp(33px,9.4vw,53px);
+  --seat-photo-size:clamp(37px,11.3vw,61px);
 }
 .app.sh-royal-room #grid .seat {
   display:flex!important;
@@ -133,7 +137,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 }
 .app.sh-royal-room #grid .seat .av {
   position:relative;
-  width:clamp(36px,11vw,59px)!important;
+  width:var(--seat-size)!important;
   height:auto!important;
   aspect-ratio:1;
   flex:none;
@@ -142,30 +146,47 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   font-size:clamp(20px,5.5vw,26px)!important;
   overflow:visible!important;
 }
-.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av {
-  width:clamp(33px,9.4vw,53px)!important;
+/* Reserve the same avatar area in occupied, empty and locked seats. */
+.app.sh-royal-room #grid .seat .av {
+  margin-block:calc((var(--seat-photo-size) - var(--seat-size)) / 2)!important;
+  animation:none!important;
+  transform:none!important;
+  transition:none!important;
 }
-/* Keep the whole frame inside its seat cell. The photo and outer artwork
-   have separate boxes, so decorations can extend above and below the photo. */
-.app.sh-royal-room #grid .seat.sh-seat-framed {
-  padding-top:calc(clamp(36px,11vw,59px) * .29)!important;
-}
-.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat.sh-seat-framed {
-  padding-top:calc(clamp(33px,9.4vw,53px) * .29)!important;
-}
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
-  margin-bottom:calc(clamp(36px,11vw,59px) * .29)!important;
-}
-.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av.sh-has-sovera-frame {
-  margin-bottom:calc(clamp(33px,9.4vw,53px) * .29)!important;
+.app.sh-royal-room #grid .seat.sh-seat-framed .av {
+  width:var(--seat-photo-size)!important;
+  margin-block:0!important;
 }
 .app.sh-royal-room #grid .seat .av > .sh-sovera-frame.fxr {
-  width:158%!important;
-  height:158%!important;
+  width:154%!important;
+  height:154%!important;
   object-fit:contain;
 }
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame .face {inset:7%}
+.app.sh-royal-room #grid.grid:has(>.seat:nth-child(17)) .seat .av > .sh-sovera-frame.fxr {
+  width:145%!important;
+  height:145%!important;
+}
+.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame .face {inset:0;border:0}
 .app.sh-royal-room #grid .seat .av.sh-has-sovera-frame .ring {opacity:0}
+.app.sh-royal-room #grid .seat .av>.badge {
+  right:auto;
+  left:-4px;
+  bottom:-3px;
+  width:17px;
+  height:17px;
+  font-size:9px;
+  z-index:36;
+}
+.app.sh-royal-room #grid .seat .av>.wave.b {display:none}
+.app.sh-royal-room #grid .seat .av>.wave {
+  animation:none!important;
+  transform:none!important;
+  transition:opacity .18s linear;
+  border-color:#ffe18f;
+}
+.app.sh-royal-room #grid .seat.sh-voice-active .av>.wave {opacity:.85}
+.app.sh-royal-room #grid .seat.sh-seat-framed .av>.wave {inset:-15%}
+
 .app.sh-royal-room #grid .seat .sh-seat-ornaments {
   display:flex;
   align-items:center;
@@ -377,17 +398,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   row-gap:clamp(8px,1.4vh,14px)!important;
   padding-bottom:4px!important;
 }
-.app.sh-royal-room #grid .seat.sh-seat-framed {
-  padding-top:0!important;
-}
-.app.sh-royal-room #grid .seat .av.sh-has-sovera-frame {
-  margin-bottom:0!important;
-}
-.app.sh-royal-room #grid .seat .av > .sh-sovera-frame.fxr {
-  width:135%!important;
-  height:135%!important;
-}
-.app.sh-royal-room .stage {padding-top:15px!important}
+.app.sh-royal-room .stage {padding-top:19px!important}
 .app.sh-royal-room #grid .seat .av > .sh-seat-ornaments.sh-seat-frame-badges {
   position:absolute!important;
   inset:0!important;
@@ -401,10 +412,10 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 }
 .app.sh-royal-room #grid .seat .av .sh-seat-frame-badges .sh-sovera-seat-medal {
   position:absolute!important;
-  right:-9px!important;
-  bottom:0!important;
-  width:clamp(16px,4.8vw,22px)!important;
-  height:clamp(16px,4.8vw,22px)!important;
+  right:-14px!important;
+  bottom:-1px!important;
+  width:clamp(20px,6.3vw,27px)!important;
+  height:clamp(20px,6.3vw,27px)!important;
   object-fit:contain!important;
   z-index:2!important;
 }
@@ -423,11 +434,6 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   top:-9px!important;
   right:-14px!important;
   max-width:48px!important;
-}
-.app.sh-royal-room #grid .seat .av .sh-seat-frame-badges .sh-room-admin-badge {
-  position:absolute!important;
-  top:-9px!important;
-  left:-12px!important;
 }
 /* Profile header is one touch target. Monthly ranking sits immediately
    below it in a separate, small row without covering the room artwork. */
@@ -480,12 +486,15 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   position:absolute;
   inset:0;
   z-index:5;
+  opacity:0;
+  transition:opacity .18s linear;
   pointer-events:none;
   --speech-distance:-9px;
   --speech-size:16px;
   --speech-opacity:.76;
   --speech-speed:1.35s;
 }
+.sh-speaking-effect[data-strength] {opacity:1}
 .sh-speaking-effect[data-strength="2"] {
   --speech-distance:-15px;
   --speech-size:18px;
@@ -517,6 +526,7 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   text-align:center;
   text-shadow:0 0 7px var(--speech-glow),0 1px 3px #241126;
   animation:sh-speech-particles var(--speech-speed) ease-out var(--speech-delay) infinite;
+  animation-play-state:paused;
 }
 .sh-speaking-effect[data-style="1"] {--speech-symbol:"✿";--speech-color:#ffb1d3;--speech-glow:#f4489a}
 .sh-speaking-effect[data-style="2"] {--speech-symbol:"❧";--speech-color:#ffcfdd;--speech-glow:#ff666f;--speech-speed:1.7s}
@@ -536,6 +546,9 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   box-shadow:0 0 8px var(--speech-glow);
   animation:sh-speech-ring var(--speech-speed) ease-out infinite;
 }
+.sh-speaking-effect::before {animation-play-state:paused}
+.sh-speaking-effect[data-strength]::before,
+.sh-speaking-effect[data-strength] > i::before {animation-play-state:running}
 @keyframes sh-speech-particles {
   0% {opacity:0;transform:translate(-50%,75%) rotate(0deg) scale(.5)}
   28% {opacity:var(--speech-opacity)}
