@@ -319,3 +319,74 @@
 @media(prefers-reduced-motion:reduce) {
   #v-rank .sh-rank-quick button,#rb .sh-rank-rewards-button {transition:none!important}
 }
+
+
+/* SHARIKA_ROYAL_RANKING_CLEANUP_20261115
+ * Screenshot QA: IDs are labels, not dark rectangles. Keep dynamic rank,
+ * identity, cosmetic frames and verified gift values unchanged. */
+#v-rank #rb .sh-royal-podium-card,
+#v-rank #rb .sh-royal-podium-card.first,
+#v-rank #rb .sh-royal-podium-card.second,
+#v-rank #rb .sh-royal-podium-card.third {
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+}
+#v-rank #rb .sh-royal-podium-card .sh-royal-id {
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  color:#ffeac2!important;
+  font-weight:800;
+  line-height:1.35;
+  padding:2px 1px!important;
+  text-shadow:0 2px 5px #140825,0 0 7px #311139;
+}
+#v-rank #rb .sh-royal-podium-card .sh-royal-name {
+  max-width:100%;
+  overflow-wrap:anywhere;
+  text-overflow:ellipsis;
+}
+#v-rank #rb .sh-royal-podium-card .sh-royal-amount {
+  color:#ffe7a2;
+  text-shadow:0 2px 4px #260c34;
+}
+#v-rank #rb .rr.sh-royal-row .idl {
+  background:transparent!important;
+  box-shadow:none!important;
+  border:0!important;
+  color:#e8d0f5;
+}
+@media(max-width:365px) {
+  #v-rank #rb .sh-royal-podium-card .sh-royal-id {
+    font-size:clamp(9px,2.75vw,11px);
+    overflow-wrap:anywhere;
+  }
+}
+
+
+/* Royal winner/reward detail: keep IDs readable without opaque plates. */
+#sh-rank-reward-center .sh-rw-winner strong,
+#sh-rank-reward-center .sh-rw-winner small,
+#sh-rank-reward-center .sh-rw-winner b {
+  background:transparent!important;
+  box-shadow:none!important;
+  border-radius:0!important;
+  text-shadow:0 2px 5px #160725,0 0 9px #2b104d;
+}
+#sh-rank-reward-center .sh-rw-winner small {
+  color:#ffe8b8!important;
+  min-height:25px;
+  overflow-wrap:anywhere;
+  padding:4px 1px;
+}
+#v-rank #rb .sh-royal-podium-card .sh-royal-member-tag {
+  max-width:min(92px,95%);
+  max-height:24px;
+  object-fit:contain;
+}
+#v-rank #rb .sh-royal-podium-card .sh-royal-avatar {
+  position:relative;
+  isolation:isolate;
+}

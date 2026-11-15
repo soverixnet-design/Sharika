@@ -1,0 +1,29 @@
+name: Sharika Royal Profile and Ranking CSS QA
+
+on:
+  push:
+    branches:
+      - fix/sharika-royal-ranking-profile-cleanup-20261115
+    paths:
+      - 'app/royal-ranking-v2.css'
+      - 'app/royal-profile.css'
+      - 'app/royal-profile-rank-qa.test.cjs'
+      - '.github/workflows/sharika-royal-profile-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui-static-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout candidate without credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify Android JavaScript syntax
+        run: node --check android-staging/staging-connection.js
+      - name: Verify Royal profile and ranking CSS contract
+        run: node --test app/royal-profile-rank-qa.test.cjs
