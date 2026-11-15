@@ -1,3 +1,4 @@
+import {handleCosmeticAdmin} from './cosmetics.mjs';
 import {handleAdminExchangeRate} from './exchange-rate.mjs';
 import {handlePlayDailyConfig} from './daily.mjs';
 // Isolated Play closed-test administration. Public IDs are database-local;
@@ -15,6 +16,7 @@ const response = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: HEADERS });
 const publicId = number => String(number).padStart(8, '0');
 const PLAY_ID = /^[0-9]{8}$/;
+const ITEM_ID = /^[a-z_]+:[a-z0-9-]{3,55}$/;
 const RECEIPT = /^[a-zA-Z0-9:_-]{12,80}$/;
 const MAX_CREDIT = 1_000_000;
 const MAX_BALANCE = 1_000_000_000_000;
@@ -130,7 +132,7 @@ async function playCosmetic(request, env, actorId) {
   catch (_) { return response({ error: 'invalid_play_grant_body' }, 400); }
   const { target_public_id: targetId, item_id: itemId, request_id: requestId } = body;
   if (typeof targetId !== 'string' || !PLAY_ID.test(targetId) ||
-      typeof itemId !== 'string' || !/^[a-z_]+:[a-z0-9-]{3,55}$/.test(itemId) ||
+      typeof itemId !== 'string' || !ITEM_ID.test(itemId) ||
       typeof requestId !== 'string' || !RECEIPT.test(requestId))
     return response({ error: 'invalid_play_cosmetic_grant' }, 400);
   const db = env.PLAY_DB;
@@ -183,6 +185,67 @@ async function playCosmetic(request, env, actorId) {
     recipient_id: targetId, transaction_id: saved.id, environment: 'play_virtual' }, 201);
 }
 
+function cosmeticAudit(db, actorId, action, details) {
+  return db.prepare('INSERT INTO sharika_admin_cosmetic_actions '+
+    '(actor_id,action,details_json) VALUES(?,?,?)').bind(actorId,action,JSON.stringify(details));
+}
+
+async function revokeCosmetic(request, db, actorId, environment) {
+  let body;
+  try { body = await inputJson(request); }
+  catch (_) { return response({ error: 'invalid_cosmetic_revoke' },400); }
+  const { target_public_id: targetId,item_id: itemId,request_id: requestId } = body;
+  if (typeof targetId !== 'string' || !PLAY_ID.test(targetId) ||
+      typeof itemId !== 'string' || !ITEM_ID.test(itemId) ||
+      typeof requestId !== 'string' || !RECEIPT.test(requestId))
+    return response({ error: 'invalid_cosmetic_revoke' },400);
+  const details = JSON.stringify({public_id:targetId,item_id:itemId});
+  const action = 'cosmetic_grant_revoke';
+  const previous = () => db.prepare('SELECT action,details_json FROM sharika_admin_cosmetic_actions '+
+    'WHERE actor_id=? AND request_id=?').bind(actorId,requestId).first();
+  const repeated = saved => saved.action === action && saved.details_json === details
+    ? response({revoked:true,duplicate:true,environment})
+    : response({error:'idempotency_conflict'},409);
+  const existing = await previous();
+  if (existing) return repeated(existing);
+  const target = await playUser(db,targetId);
+  if (!target) return response({error:'target_user_not_found'},404);
+  const prefix = environment === 'play_virtual' ? 'play-admin:*' : 'grant:*';
+  const eligible = "source='admin_grant' AND request_id GLOB ?";
+  // Only direct grants are removable here. Purchased and tier items have separate receipts.
+  try {
+    const results = await db.batch([
+      db.prepare('INSERT INTO sharika_admin_cosmetic_actions (actor_id,action,details_json,request_id) '+
+        'SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM sharika_cosmetic_inventory '+
+        'WHERE auth_uid=? AND item_id=? AND '+eligible+')')
+        .bind(actorId,action,details,requestId,target.auth_uid,itemId,prefix),
+      db.prepare("UPDATE sharika_cosmetic_equipped SET item_id=NULL,equipped_at=datetime('now') "+
+        'WHERE auth_uid=? AND item_id=? AND EXISTS(SELECT 1 FROM sharika_cosmetic_inventory '+
+        'WHERE auth_uid=? AND item_id=? AND '+eligible+')')
+        .bind(target.auth_uid,itemId,target.auth_uid,itemId,prefix),
+      db.prepare('DELETE FROM sharika_cosmetic_inventory WHERE auth_uid=? AND item_id=? AND '+eligible)
+        .bind(target.auth_uid,itemId,prefix)
+    ]);
+    if (!results[0].meta.changes) {
+      const saved = await previous();
+      return saved ? repeated(saved) : response({error:'direct_admin_grant_not_found'},409);
+    }
+  } catch (error) {
+    const saved = await previous();
+    if (saved) return repeated(saved);
+    throw error;
+  }
+  return response({revoked:true,duplicate:false,environment});
+}
+
+export async function handleStagingCosmeticRevoke(request,env) {
+  if (request.method !== 'POST') return response({error:'method_not_allowed'},405);
+  if (new URL(request.url).search) return response({error:'invalid_query'},400);
+  const verified = await superActor(request,env);
+  if (verified.error) return verified.error;
+  return revokeCosmetic(request,env.STAGING_DB,verified.actorId,'staging');
+}
+
 export async function handlePlayTestAdmin(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -190,8 +253,9 @@ export async function handlePlayTestAdmin(request, env) {
   const route = path === root ? '' : path.startsWith(root + '/') ? path.slice(root.length + 1) : null;
   if (route === null) return response({ error: 'not_found' }, 404);
   const method = request.method;
-  const permissions = ['daily','exchange-rate'].includes(route) ? ['GET','PATCH'] : route === '' || route === 'catalog' || route === 'credits' ? ['GET'] :
-    route === 'coins' || route === 'cosmetics/grant' ? ['POST'] : [];
+  const permissions = route === 'cosmetics' ? ['GET','POST','PATCH'] :
+    ['daily','exchange-rate'].includes(route) ? ['GET','PATCH'] : route === '' || route === 'catalog' || route === 'credits' ? ['GET'] :
+    ['coins','cosmetics/grant','cosmetics/revoke'].includes(route) ? ['POST'] : [];
   if (!permissions.length) return response({ error: 'not_found' }, 404);
   if (!permissions.includes(method)) return response({ error: 'method_not_allowed' }, 405);
   if ((route !== '' && url.search) || (route === '' && [...url.searchParams.keys()].some(k => k !== 'q')))
@@ -204,6 +268,15 @@ export async function handlePlayTestAdmin(request, env) {
   if (route === 'daily') return handlePlayDailyConfig(request,env.PLAY_DB,verified.actorId,response);
   if (route === 'coins') return playCredit(request, env, verified.actorId);
   if (route === 'cosmetics/grant') return playCosmetic(request, env, verified.actorId);
+  if (route === 'cosmetics/revoke')
+    return revokeCosmetic(request,env.PLAY_DB,verified.actorId,'play_virtual');
+  if (route === 'cosmetics') {
+    const db = env.PLAY_DB;
+    return handleCosmeticAdmin({request,db,uid:verified.actorId,role:'super',
+      path:'/api/v1/admin/cosmetics',readBody:inputJson,reply:response,
+      fail:(error,status)=>response({error},status),
+      catalogAudit:(action,details)=>cosmeticAudit(db,verified.actorId,action,details)});
+  }
   if (route === 'catalog') {
     const items = (await env.PLAY_DB.prepare('SELECT id,kind,name,active '+
       'FROM sharika_cosmetics_catalog ORDER BY kind,name LIMIT 200').all()).results || [];
