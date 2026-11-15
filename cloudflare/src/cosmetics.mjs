@@ -175,7 +175,7 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
  }
  return null;
 }
-export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,reply,fail,cors,env,ctx}){
+export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,reply,fail,cors,env,ctx,catalogAudit}){
  if(path!=='/api/v1/admin/cosmetics'&&path!=='/api/v1/admin/cosmetics/grant')return null;
  if(role!=='super')return fail('admin_permission_denied',403,cors);
  if(path.endsWith('/grant')&&request.method==='POST'){
@@ -216,7 +216,12 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
  if(path.endsWith('/grant'))return fail('admin_method_not_allowed',405,cors);
  if(request.method==='GET')return reply({items:await stock(db,uid,true)},200,cors);
  if(!['POST','PATCH'].includes(request.method))return fail('admin_method_not_allowed',405,cors);
- const body=await readBody(request);
+ let body;
+ try{body=await readBody(request);}catch{return invalid(fail,cors);}
+ if(!body||typeof body!=='object'||Array.isArray(body))return invalid(fail,cors);
+ const audit=catalogAudit||((action,details)=>db.prepare(
+  'INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)'
+ ).bind(uid,action,JSON.stringify(details)));
  const kind=body.kind,art=body.art_key,name=body.name,price=body.price_coins;
  const media={};
  for(const field of ['image_url','animation_url','audio_url']){
@@ -235,8 +240,7 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
    await db.batch([
     db.prepare("INSERT INTO sharika_cosmetics_catalog(id,kind,name,art_key,price_coins,active,image_url,animation_url,audio_url) VALUES(?,?,?,?,?,1,?,?,?)")
      .bind(itemId,kind,name.trim(),art,price,media.image_url,media.animation_url,media.audio_url),
-    db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
-     .bind(uid,'cosmetic_catalog_add',JSON.stringify({item_id:itemId,price_coins:price,art_key:art}))
+    audit('cosmetic_catalog_add',{item_id:itemId,price_coins:price,art_key:art})
    ]);
   }catch(error){if(/CONSTRAINT|constraint/i.test(String(error?.message||error)))
     return fail('cosmetic_id_exists',409,cors);throw error;}
@@ -252,10 +256,9 @@ export async function handleCosmeticAdmin({request,db,uid,role,path,readBody,rep
    .bind(name.trim(),art,price,body.active?1:0,
      media.image_url??old.image_url??'',media.animation_url??old.animation_url??'',
      media.audio_url??old.audio_url??'',old.id),
-  db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
-   .bind(uid,'cosmetic_catalog_update',JSON.stringify({
+  audit('cosmetic_catalog_update',{
     item_id:old.id,old_price:old.price_coins,new_price:price,active:body.active,art_key:art
-   }))
+   })
  ]);
  return reply({item_id:old.id,updated:true},200,cors);
 }
