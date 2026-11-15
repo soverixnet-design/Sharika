@@ -79,7 +79,8 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/event\.stopImmediatePropagation\(\)/);
   assert.match(ui,/api\('GET','\/users\/'\+publicId\)/);
   assert.match(ui,/Seat occupant has changed/);
-  assert.match(ui,/detail\.textContent=selected\.room_role==='owner'\?'Room Owner':'Mic seat '\+index/);
+  assert.match(ui,/detail\.textContent=verifiedRole==='owner'\?'Room Owner':'Mic seat '\+index/);
+  assert.match(ui,/const verifiedRole=verifiedMemberRole\(selected\.public_id\)/);
   assert.match(ui,/frame\.act\(action,index\)/);
   assert.match(ui,/await openVerifiedRankProfile\(String\(member\.id\),member\)/);
   assert.match(ui,/if\(!card\?\.isConnected\|\|window\.cur\?\.id!==roomId\)return/);
