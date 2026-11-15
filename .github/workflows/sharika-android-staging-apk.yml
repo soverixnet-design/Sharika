@@ -401,10 +401,11 @@ jobs:
           unzip -p "$apk" assets/reference-profile.css | grep -F 'Compact Rich / Received badges'
           echo 'SHARIKA_APK_INLINE_PROFILE_CSS_AND_5_NAV_BUTTONS_VERIFIED'
 
-      - name: Verify playable gift video and visible Games sprite are packaged
+      - name: Verify playable gift video and room game controller are packaged
         run: |
           apk='app/build/outputs/apk/debug/app-debug.apk'
-          unzip -p "$apk" assets/reference-room.css | grep -F 'visibility:visible!important'
+          unzip -p "$apk" assets/reference-room.css | grep -F "url('./room-gamepad.svg')"
+          test -n "$(unzip -p "$apk" assets/room-gamepad.svg)"
           unzip -p "$apk" assets/connection.js | grep -F "video.addEventListener('playing',started"
           unzip -p "$apk" assets/connection.js | grep -F "box.classList.add('sh-gift-video-playing')"
           echo 'SHARIKA_ROOM_GAME_SPRITE_AND_GIFT_VIDEO_PRESENT_IN_APK'
