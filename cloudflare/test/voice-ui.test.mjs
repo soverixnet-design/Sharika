@@ -284,7 +284,8 @@ test('incoming voice and server permission changes are checked independently',()
   assert.match(ui,/incoming audio path unavailable/);
   assert.match(ui,/state\.subscriptionFailures>=2/);
   assert.match(ui,/voice session heartbeat lost/);
-  assert.match(ui,/sfuState\.canPublish!==!!eligible/);
+  assert.match(ui,/!eligible\s*&&\s*\(sfuState\.canPublish\|\|sfuState\.media\)/);
+  assert.match(ui,/eligible && !sfuState\.canPublish &&\s*!sfuState\.captureError/);
   assert.doesNotMatch(ui,/!!sfuState\.media!==!!eligible/);
   assert.match(ui,/local\.enabled=microphoneWanted\(roomId\)/);
 });

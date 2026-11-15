@@ -179,8 +179,8 @@
   }
   function fitWheel() {
     const st = $('stage');
-    const w = Math.min(st.clientWidth - 8, st.clientHeight - 6, 460);
-    document.documentElement.style.setProperty('--W', Math.max(220, w) + 'px');
+    const w = Math.min(st.clientWidth - 16, st.clientHeight - 16, 460);
+    if (w > 0) document.documentElement.style.setProperty('--W', w + 'px');
   }
 
   function buildChips() {
@@ -823,7 +823,8 @@
     S.auto = !S.auto; renderAuto();
     if (S.auto && S.phase === 'betting' && sumMy() === 0) repeatBets(true);
   });
-  window.addEventListener('resize', fitWheel);
+  const stageSize = new ResizeObserver(fitWheel);
+  stageSize.observe($('stage'));
 
   /* ---------------- BOOT ---------------- */
   buildWheel(); buildChips(); applyLang(); renderUser(); renderSound(); renderBalance();

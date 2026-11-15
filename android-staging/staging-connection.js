@@ -4483,7 +4483,7 @@
       if(wantedVoiceRoom!==roomId)return;
       if(!force&&sfuState?.roomId===roomId&&!sfuState.closed&&
          sfuTransportHealthy(sfuState))return;
-      connectVoice(roomId).catch(error=>{
+      connectVoice(roomId,true).catch(error=>{
         console.warn('Sharika voice reconnect:',errText(error));
         // connectVoice itself requeues on signaling/setup failures.
       });
@@ -4588,11 +4588,6 @@
   async function disconnectSfu() {
     const state=sfuState;
     if(!state)return;
-    if(musicLocal?.state===state){
-      const broadcastingRoom=musicLocal.roomId;
-      releasePhoneMusic();
-      api('PUT','/rooms/'+broadcastingRoom+'/music',{action:'stop_self'}).catch(()=>{});
-    }
     sfuState=null;
     state.closed=true;
     if(state.timer)clearInterval(state.timer);
@@ -4605,8 +4600,8 @@
     clearVoiceSpeakers();
     if(state.recoveryTimer)clearTimeout(state.recoveryTimer);
     for(const element of state.audioElements){element.pause();element.srcObject=null;element.remove();}
-    if(state.media)for(const track of state.media.getTracks())track.stop();
-    for(const pc of [state.publishPC,state.receivePC])if(pc)pc.close();
+    stopSfuPublishing(state);
+    state.receivePC?.close();
     if(state.sessionIds.length) {
       try {await api('POST','/rooms/'+state.roomId+'/voice/leave',{sessionIds:state.sessionIds});}
       catch (_) { /* stale sessions expire in the coordinator */ }
@@ -4883,18 +4878,45 @@
       if(!state.closed)subscribeSfu(state).catch(()=>{});
     },1500);
   }
+  function stopSfuPublishing(state) {
+    if(musicLocal?.state===state){
+      releasePhoneMusic();
+      api('PUT','/rooms/'+state.roomId+'/music',{action:'stop_self'}).catch(()=>{});
+    }
+    const publisherId=state.publisherId;
+    const publisher=state.publishPC;
+    const media=state.media;
+    state.publisherId=null;
+    state.publishPC=null;
+    state.media=null;
+    state.canPublish=false;
+    state.readyPublication=false;
+    state.disconnectedAt=0;
+    state.lastLocalSpeechAt=0;
+    state.outgoingStalls=0;
+    for(const track of media?.getTracks()||[]){
+      unwatchSfuSpeaking(state,track);
+      track.stop();
+    }
+    publisher?.close();
+    if(!publisherId||state.closed)return;
+    state.sessionIds=state.sessionIds.filter(id=>id!==publisherId);
+    api('POST','/rooms/'+state.roomId+'/voice/leave',{sessionIds:[publisherId]}).catch(()=>{});
+  }
   // Promoting a listener onto a mic seat must retain the existing receiver.
   // Rebuilding both PeerConnections here interrupts every incoming speaker.
   async function startSfuPublishing(state) {
     if(state.closed||sfuState!==state)throw new Error('Voice room changed');
-    const roomId=state.roomId,priorSessions=new Set(state.sessionIds);
+    const roomId=state.roomId,visit=joinedRoom;
+    const currentVisit=()=>!state.closed&&sfuState===state&&
+      wantedVoiceRoom===roomId&&joinedRoom===visit;
     state.startedAt=Date.now();
+    state.captureError=null;
     try {
       state.media=await navigator.mediaDevices.getUserMedia({
         audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
       });
-      if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)
-        throw new Error('Voice room changed');
+      if(!currentVisit())throw new Error('Voice room changed');
       state.publishPC=new RTCPeerConnection(state.iceConfig||SHARIKA_ICE_CONFIG);
       const local=state.media.getAudioTracks()[0];
       local.enabled=microphoneWanted(roomId);
@@ -4920,6 +4942,7 @@
       const published=await api('POST','/rooms/'+roomId+'/voice/session',{
         mode:'publish',readiness:'connected-v1'
       });
+      state.publisherId=published.sessionId;
       state.sessionIds.push(published.sessionId);
       const negotiation=await api('POST','/rooms/'+roomId+'/voice/publish',{
         sessionId:published.sessionId,
@@ -4952,50 +4975,39 @@
       state.publishPC.addEventListener('connectionstatechange',checkPublisher);
       state.publishPC.addEventListener('iceconnectionstatechange',checkPublisher);
       local.addEventListener('ended',()=>{
-        if(!state.closed&&state.canPublish)
+        if(currentVisit()&&state.canPublish&&state.publishPC===publisher)
           recoverSfuPublication(state,'microphone track ended');
       },{once:true});
-      if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)
-        throw new Error('Voice room changed');
+      if(!currentVisit())throw new Error('Voice room changed');
       state.canPublish=true;
       // Do not hold room navigation while ICE connects. SFU publication
       // discovery is activated only after this peer REALLY connects.
+      const currentPublisher=()=>currentVisit()&&state.publishPC===publisher;
       waitVoiceConnected(publisher).then(async()=>{
-        if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)return;
+        if(!currentPublisher())return;
         await api('POST','/rooms/'+roomId+'/voice/ready',{
           sessionId:published.sessionId
         });
-        if(state.closed||sfuState!==state||wantedVoiceRoom!==roomId)return;
+        if(!currentPublisher())return;
         state.readyPublication=true;
         markLocalMicrophone(local.readyState==='live'&&local.enabled);
         document.getElementById('rf')?.contentWindow?.toast?.('🎙️ Voice connected');
       }).catch(error=>{
-        if(!state.closed&&sfuState===state){
+        if(currentPublisher()){
           console.warn('Sharika microphone connection:',errText(error));
           recoverSfuPublication(state,'microphone did not connect',true);
         }
       });
       checkPublisher();
     }catch(error){
-      const newlyRegistered=state.sessionIds.filter(id=>!priorSessions.has(id));
-      state.sessionIds=state.sessionIds.filter(id=>priorSessions.has(id));
-      for(const id of newlyRegistered)
-        api('POST','/rooms/'+roomId+'/voice/leave',{sessionIds:[id]}).catch(()=>{});
-      // Preserve the healthy listener even if microphone setup fails.
-      state.canPublish=false;
-      const failedMedia=state.media,failedPublisher=state.publishPC;
-      state.media=null;state.publishPC=null;
-      if(failedMedia)for(const track of failedMedia.getTracks()){
-        unwatchSfuSpeaking(state,track);
-        track.stop();
-      }
-      if(failedPublisher)failedPublisher.close();
+      if(!state.media)state.captureError=error;
+      stopSfuPublishing(state);
       throw error;
     }
   }
   async function connectSfu(roomId,canPublish,iceConfig=SHARIKA_ICE_CONFIG) {
     const state={
-      roomId,closed:false,iceConfig,sessionIds:[],publishPC:null,receivePC:null,
+      roomId,closed:false,iceConfig,sessionIds:[],publisherId:null,publishPC:null,receivePC:null,
       media:null,audioElements:new Set(),remoteMids:new Map(),
       speakingContext:null,speakingMeters:new Map(),speakingTimer:null,
       subscribed:new Set(),failedPublications:new Map(),subscribeId:null,timer:null,publicationTimer:null,
@@ -5102,7 +5114,7 @@
     voiceOperation=task;
     return task;
   }
-  async function connectVoice(roomId) {
+  async function connectVoice(roomId,rebuild=false) {
     if(pendingVoice?.roomId===roomId&&wantedVoiceRoom===roomId)return pendingVoice.promise;
     const visit=joinedRoom;
     const isCurrent=()=>wantedVoiceRoom===roomId&&joinedRoom===visit;
@@ -5124,14 +5136,21 @@
       if(voiceRecoveryAttempts%2===1 &&
          iceConfig.iceServers.some(server=>server.username))
         iceConfig.iceTransportPolicy='relay';
-      // A listener's receiver remains connected when they take their first mic
-      // seat. Upgrade only the outbound microphone instead of dropping all audio.
       const current=sfuState;
-      if(config.provider==='cloudflare_sfu'&&config.publish&&current&&
-         current.roomId===roomId&&!current.closed&&current.receivePC&&
-         current.receivePC.connectionState!=='failed'&&!current.canPublish){
-        current.iceConfig=iceConfig;
-        await startSfuPublishing(current);
+      if(!rebuild&&config.provider==='cloudflare_sfu'&&current?.roomId===roomId&&
+         !current.closed&&current.receivePC&&
+         !['failed','closed'].includes(current.receivePC.connectionState)){
+        if(config.publish){
+          const track=current.media?.getAudioTracks()[0];
+          if(!current.canPublish||track?.readyState!=='live'||
+             ['failed','disconnected','closed'].includes(current.publishPC?.connectionState)){
+            stopSfuPublishing(current);
+            current.iceConfig=iceConfig;
+            await startSfuPublishing(current);
+          }
+        }else if(current.canPublish){
+          stopSfuPublishing(current);
+        }
         return {publishing:!!current.readyPublication};
       }
       await disconnectVoice();
@@ -5156,7 +5175,7 @@
       }
       return result;
     } catch(error) {
-      if(isCurrent())
+      if(isCurrent()&&!['NotAllowedError','NotFoundError','NotReadableError','SecurityError'].includes(error?.name))
         scheduleVoiceRetry(roomId,'voice negotiation failed',true);
       throw error;
     } finally {
@@ -5219,11 +5238,15 @@
   }
   async function restartMicrophone(roomId) {
     if(!roomId)throw new Error('Join a voice room first');
+    const visit=joinedRoom;
+    if(visit?.id!==roomId)throw new Error('Join a voice room first');
     const config=await api('GET','/rooms/'+roomId+'/voice/config');
+    if(joinedRoom!==visit)throw new Error('Voice room changed');
     if(!config.publish)throw new Error('Take an unlocked mic seat first');
     voiceRecoveryAttempts=0;
     micPreferenceRoom=roomId;micPreferenceEnabled=true;
     const result=await connectVoice(roomId);
+    if(result.stale||joinedRoom!==visit)throw new Error('Voice room changed');
     if(!result.publishing && !sfuState?.canPublish)
       throw new Error('Microphone connection not ready; tap again');
     if(sfuState?.roomId===roomId){
@@ -6173,8 +6196,16 @@
     const eligible=selfState
       ?Number.isInteger(selfState.seat_no)&&selfState.seat_no>0&&!selfState.muted
       :!!self && self.seat_no!==null && !self.muted;
-    if(sfuState?.roomId===room.id && sfuState.canPublish!==!!eligible)
+    if(sfuState?.roomId===room.id && !eligible &&
+       (sfuState.canPublish||sfuState.media)) {
+      // Stop sending immediately on a verified server mute or seat removal.
+      // A queued renegotiation may still be waiting on the network.
+      for(const track of sfuState.media?.getAudioTracks()||[])track.enabled=false;
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
+    }else if(sfuState?.roomId===room.id && eligible && !sfuState.canPublish &&
+      !sfuState.captureError) {
+      connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
+    }
     if(voiceRoomId===room.id && voiceRoom &&
        voiceRoom.sharikaPublishAllowed!==!!eligible)
       connectVoice(room.id).catch(error=>frame.toast('Voice update: '+errText(error)));
@@ -13054,7 +13085,7 @@
         'display:none;align-items:flex-end;justify-content:center;',
         'padding:calc(3vh + env(safe-area-inset-top,0px)) 8px ',
         'calc(2vh + env(safe-area-inset-bottom,0px));',
-        'box-sizing:border-box;background:#070216ae;backdrop-filter:blur(3px)}',
+        'box-sizing:border-box;background:#07021670}',
         '#sh-room-game-overlay.on{display:flex}',
         '#sh-room-game-sheet{position:relative;display:flex;flex-direction:column;',
         'box-sizing:border-box;width:min(96vw,480px);height:min(84dvh,720px);',
@@ -13105,9 +13136,13 @@
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
     if(playStoreMode===null){
-      playModeReady.then(()=>showGameCard(doc,insideRoom,showToast));
+      const visit=joinedRoom;
+      playModeReady.then(()=>{
+        if(!insideRoom||joinedRoom===visit)showGameCard(doc,insideRoom,showToast);
+      });
       return;
     }
+    if(insideRoom&&!joinedRoom)return;
     const portal=insideRoom?ensureRoomGamePortal(doc):null;
     const sheet=portal?.sheet||doc.getElementById('sh');
     const overlay=portal?.overlay||doc.getElementById('shb');
@@ -13281,7 +13316,9 @@
         '<div id="sh-original-host" style="width:100%;'+
         'min-height:0;border:1px solid #a56dff;border-radius:12px;'+
         'overflow:hidden;background:#100424"></div>';
-      sheet.querySelector('h3').textContent=item.name;
+      const title=sheet.querySelector('h3');
+      title.textContent=item.name;
+      title.hidden=item.id==='greedy-wheel';
       const returnToCatalog=sheet.querySelector('#sh-original-back');
       if(returnToCatalog)returnToCatalog.onclick=()=>{
         currentGameFrame=null;clearWinnerBanner();catalog();

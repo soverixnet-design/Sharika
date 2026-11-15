@@ -15,7 +15,7 @@ body.sheet-mode{background:transparent}
 button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
 img{-webkit-user-drag:none;user-select:none}
 #app{
-  position:relative;max-width:480px;height:100%;min-height:520px;margin:0 auto;overflow:hidden;
+  position:relative;max-width:480px;height:100%;margin:0 auto;overflow:hidden;
   display:flex;flex-direction:column;isolation:isolate;
   background:
     linear-gradient(180deg,rgba(3,19,14,.72),rgba(3,19,14,.14) 27%,
@@ -226,6 +226,11 @@ body.sheet-mode #app{border-radius:22px 22px 0 0;box-shadow:0 -8px 30px rgba(0,0
 .coin-rain{position:absolute;z-index:44;width:18px;height:18px;pointer-events:none;animation:fall 1.2s ease-in forwards}
 @keyframes fall{to{transform:translateY(var(--dy)) rotate(540deg);opacity:0}}
 
+@media (max-height:540px){
+  .topbar{padding-top:5px}
+  .bottom{padding:6px 8px}
+  .history{margin-top:2px}
+}
 @media (max-height:640px){
   .logo-main{font-size:24px}
   .chips{margin-bottom:6px}

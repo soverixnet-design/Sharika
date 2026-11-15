@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../../android-staging/staging-connection.js', import.meta.url), 'utf8');
-const start = source.indexOf('  async function startSfuPublishing(state) {');
+const start = source.indexOf('  function stopSfuPublishing(state) {');
 const end = source.indexOf('  async function connectSfu(roomId,canPublish', start);
 assert.ok(start > 0 && end > start, 'publisher helper must remain available');
 const helper = source.slice(start, end);
@@ -26,7 +26,8 @@ function simulatedSeatPromotion(failPublish = false) {
     close() { this.connectionState = 'closed'; }
   }
   const dependencies = {
-    sfuState: state, wantedVoiceRoom: state.roomId, session: { user: { id: 'user-1' } },
+    sfuState: state, wantedVoiceRoom: state.roomId, joinedRoom: { id: state.roomId },
+    musicLocal: null, session: { user: { id: 'user-1' } },
     navigator: { mediaDevices: { getUserMedia: async () => ({
       getAudioTracks: () => [audioTrack], getTracks: () => [audioTrack] }) } },
     RTCPeerConnection: FakePeer,
@@ -51,8 +52,8 @@ function simulatedSeatPromotion(failPublish = false) {
   };
   const factory = new Function('deps',
     'const {' + Object.keys(dependencies).join(',') + '}=deps;' +
-      helper + 'return startSfuPublishing;');
-  return { state, receiver, promote: factory(dependencies),
+      helper + 'return { promote: startSfuPublishing, demote: stopSfuPublishing };');
+  return { state, receiver, ...factory(dependencies),
     get stopped() { return stopped; },
     get closedReceiver() { return closedReceiver; },
     get cleaned() { return cleaned; } };
@@ -75,5 +76,18 @@ test('failed microphone publishing leaves incoming audio connected', async () =>
   assert.equal(sim.closedReceiver, false);
   assert.deepEqual(sim.state.sessionIds, ['subscriber-1']);
   assert.equal(sim.stopped, true);
+  assert.equal(sim.cleaned, 1);
+});
+
+test('leaving a mic seat stops capture and removes only the publishing session', async () => {
+  const sim = simulatedSeatPromotion();
+  await sim.promote(sim.state);
+  sim.demote(sim.state);
+  assert.equal(sim.stopped, true);
+  assert.equal(sim.state.canPublish, false);
+  assert.equal(sim.state.readyPublication, false);
+  assert.equal(sim.state.receivePC, sim.receiver);
+  assert.equal(sim.closedReceiver, false);
+  assert.deepEqual(sim.state.sessionIds, ['subscriber-1']);
   assert.equal(sim.cleaned, 1);
 });
