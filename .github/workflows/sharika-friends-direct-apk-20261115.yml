@@ -1,0 +1,68 @@
+name: Sharika Friends Direct APK 2026-11-15
+
+on:
+  push:
+    branches:
+      - fix/sharika-room-seat-music-20261115
+    paths:
+      - '.github/workflows/sharika-friends-direct-apk-20261115.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-friends-qa-apk:
+    name: Publish verified APK artifact as a public prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify pinned successful Android build run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          run_id='43661321128'
+          sha="$(gh api "repos/$repo/actions/runs/$run_id" --jq '.head_sha')"
+          test "$sha" = '002bca39de4eaddd4574987207dec203cb1ac117'
+          conclusion="$(gh api "repos/$repo/actions/runs/$run_id" --jq '.conclusion')"
+          test "$conclusion" = 'success'
+          gh api "repos/$repo/actions/artifacts/14140392062" --jq '.name + " " + (.expired|tostring)' | grep -Fx 'Sharika-Room-QA-APK false'
+      - name: Download exact archived APK
+        uses: actions/download-artifact@v4
+        with:
+          repository: soverixnet-design/Sharika
+          run-id: 43661321128
+          name: Sharika-Room-QA-APK
+          github-token: ${{ github.token }}
+          path: apk
+      - name: Verify exact downloaded APK, integrity and Android signature
+        run: |
+          set -euo pipefail
+          test -s apk/Sharika-Room-QA.apk
+          echo '8537df4ba8a1bc26832819e068cdbfba3b0ead09b80a16a86f64e8c00addf4ec  apk/Sharika-Room-QA.apk' | sha256sum --check
+          unzip -tqq apk/Sharika-Room-QA.apk
+          unzip -Z1 apk/Sharika-Room-QA.apk | grep -Fx 'AndroidManifest.xml'
+          signer="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$signer"
+          "$signer" verify --verbose apk/Sharika-Room-QA.apk
+          install -m 0644 apk/Sharika-Room-QA.apk Sharika-2026-11-15-Room-QA.apk
+      - name: Publish public direct-download prerelease for invited friends
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-room-qa-20261115-002bca39'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "Release already exists; refusing overwrite"
+            exit 1
+          fi
+          gh release create "$tag" Sharika-2026-11-15-Room-QA.apk \
+            --repo "$repo" \
+            --target 002bca39de4eaddd4574987207dec203cb1ac117 \
+            --title "Sharika 15 Nov 2026 Room/Seat/Music QA APK (TEST ONLY)" \
+            --notes "Public, directly downloadable Android QA APK for invited friends. Built from the exact successful 15 Nov 2026 workflow run 43661321128; SHA-256 verified before publishing. Room/seat/frame/music change candidate. This is a testing build, not a Play Store release, not fully real-device tested. Google sign-in, two-way voice, music and existing-install signature compatibility are not guaranteed. No production backend changes are made." \
+            --prerelease
