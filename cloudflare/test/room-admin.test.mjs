@@ -102,7 +102,10 @@ test('room-admin icon stays off purchased frames while safety actions remain usa
     '../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',
     import.meta.url),'utf8');
   const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
-  assert.match(ui,/const isOwner=seat\.room_role==='owner'/);
+  const seatDecoration=ui.slice(ui.indexOf('  function decorateRoomSeats'),
+    ui.indexOf('  function wireSoveraRoomFrames'));
+  assert.doesNotMatch(seatDecoration,/seat\.room_role|crown\.textContent/);
+  assert.match(ui,/roomRole==='owner'\?'👑 ROOM OWNER':'🛡 ROOM ADMIN'/);
   assert.doesNotMatch(ui,/seat\.room_role==='owner'\?'👑':'🛡'/);
   assert.match(ui,/showRoomSafetyPanel/);
   assert.match(ui,/Kick 10m/);
