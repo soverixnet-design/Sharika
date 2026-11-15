@@ -48,6 +48,8 @@
           gamesIcon:win.getComputedStyle(doc.querySelector('#bGame .sh-sprite')).backgroundImage
         }));
       }
+      doc.getElementById('sendTxt')?.addEventListener('click',()=>
+        bridge.record(JSON.stringify({phase:'send-tap',body:input.value})),true);
       toggle.click();
       // toggle.click() is synthetic in this offline fixture. Its focus()
       // makes #txt active without a trusted Android gesture or visible IME.
@@ -83,6 +85,8 @@
         height:Math.round(r.height),width:Math.round(r.width)} : null;
     };
     const input = get('#txt');
+    const send = get('#sendTxt');
+    const inputStyle = w.getComputedStyle(doc.getElementById('txt'));
     const ratio = window.devicePixelRatio || 1;
     const nativeOffset = window.__roomQaOriginPx || [0, 0];
     const tapX = input ? Math.round(nativeOffset[0] +
@@ -96,7 +100,11 @@
       iframeFocused:!!doc?.hasFocus(),
       owner:get('.host'),firstSeat:get('.grid .seat'),
       header:get('.top'),stage:get('.stage'),composer:get('.sh-composer'),
-      dock:get('.dock'),input,tapX,tapY,
+      dock:get('.dock'),input,send,tapX,tapY,
+      gift:get('#bGift'),luckyBox:get('#sh-lucky-box'),
+      inputBorder:inputStyle.borderTopWidth,inputOutline:inputStyle.outlineWidth,
+      sendX:send?Math.round(nativeOffset[0]+(frameRect.left+send.left+send.width/2)*ratio):0,
+      sendY:send?Math.round(nativeOffset[1]+(frameRect.top+send.top+send.height/2)*ratio):0,
       imeInset:app.style.getPropertyValue('--sh-ime-inset'),
       viewportHeight:Math.round(w?.visualViewport?.height || 0),
       frameHeight:Math.round(frameRect.height),

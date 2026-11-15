@@ -28,7 +28,10 @@ test('room profile is a left-aligned large card, without covering the mic grid',
   assert.match(roomCss,/\.chatw\s*\{[\s\S]*?background:transparent!important/);
   assert.match(roomCss,/\.top \.room \.rt b\s*\{[\s\S]*?-webkit-line-clamp:2/);
   assert.match(roomCss,/\.dock\s*\{[\s\S]*?background:transparent!important/);
-  assert.match(roomCss,/\.sh-keyboard-open \.dock\s*\{[\s\S]*?position:absolute!important/);
+  assert.match(room,/app\.append\(composer, gifts, box\)/);
+  assert.doesNotMatch(roomCss,/\.sh-keyboard-open \.dock/);
+  assert.match(roomCss,/\.sh-composer #txt\s*\{[^}]*border:0!important;\s*outline:0!important/);
+  assert.match(roomCss,/\.sh-composer #sendTxt\s*\{[^}]*min-width:58px/);
   assert.match(roomCss,/#grid\.grid\s*\{[\s\S]*?repeat\(4,minmax\(0,1fr\)\)/);
 });
 

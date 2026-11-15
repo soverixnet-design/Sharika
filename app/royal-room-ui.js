@@ -105,6 +105,8 @@
   // keeping the input reference here is required for Room Chat focus and IME.
   const text = input.querySelector('#txt');
   if (text) text.setAttribute('placeholder', 'Message in room…');
+  const send = input.querySelector('#sendTxt');
+  if (send) send.textContent = 'Send';
   // The original room still listens for visualViewport.resize and sets an
   // inline app height. CSS now overrides that legacy resize. Independently
   // keep the existing seat geometry and move ONLY the composer above Gboard.
@@ -272,6 +274,7 @@
     composer.hidden=!opening;
     chatToggle.setAttribute('aria-expanded',String(opening));
     if(opening)text?.focus();
+    else text?.blur();
   };
   addTool(chatToggle,'chat','Room Chat');
   mic.classList.remove('sh-mic-floating');
@@ -367,7 +370,10 @@
     photo.style.width = '1px';
     photo.style.height = '1px';
   }
-  dock.replaceChildren(byId('tray'), composer, toolRow, gifts, box, menuPanel);
+  dock.replaceChildren(byId('tray'), toolRow, menuPanel);
+  // These overlays are anchored to the room. IME insets affect only the
+  // composer, so neither gift control moves with the keyboard.
+  app.append(composer, gifts, box);
 
   // Keep the original seat IDs/click targets and verified state. The visual
   // grid now shows five seats per row without an owner-only slot.

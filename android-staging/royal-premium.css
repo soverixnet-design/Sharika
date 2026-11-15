@@ -607,14 +607,6 @@ html.royal-room .app.sh-royal-room.sh-keyboard-open .stage {
   height:var(--sh-seat-height,auto);
   max-height:none;
 }
-html.royal-room .app.sh-royal-room.sh-keyboard-open .dock {
-  position:absolute;
-  bottom:var(--sh-ime-inset,0px);
-  left:0;
-  right:0;
-  padding:8px 10px 6px;
-  background:#19092eea;
-}
 html.royal-room .app.sh-royal-room.sh-keyboard-open .sh-tools,
 html.royal-room .app.sh-royal-room.sh-keyboard-open .chatw,
 html.royal-room .app.sh-royal-room.sh-keyboard-open .sh-mic-floating {

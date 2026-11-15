@@ -640,7 +640,12 @@ jobs:
             adb logcat -d -v raw -s SharikaRoomQa:I > royal-qa/room-after.jsonl
             jq -Rce 'fromjson? | select(.phase=="ime" and .ready and .keyboardClass and (.imeInset|sub("px$";"")|tonumber)>100)' royal-qa/room-after.jsonl | tail -n 1 > royal-qa/room-ime.json
             test -s royal-qa/room-ime.json
-            jq -n --slurpfile before royal-qa/room-baseline.json --slurpfile after royal-qa/room-ime.json 'def abs: if . < 0 then -. else . end; ($before[0]) as $b | ($after[0]) as $a | {headerDelta:(($a.header.top-$b.header.top)|abs),ownerDelta:(($a.owner.top-$b.owner.top)|abs),firstSeatDelta:(($a.firstSeat.top-$b.firstSeat.top)|abs),imeInset:$a.imeInset} | if .headerDelta > 9 or .ownerDelta > 9 or .firstSeatDelta > 9 then error("Room seats or header shifted on real IME: " + tostring) else . end' > royal-qa/keyboard-stability-result.json
+            jq -n --slurpfile before royal-qa/room-baseline.json --slurpfile after royal-qa/room-ime.json 'def abs: if . < 0 then -. else . end; ($before[0]) as $b | ($after[0]) as $a | {headerDelta:(($a.header.top-$b.header.top)|abs),ownerDelta:(($a.owner.top-$b.owner.top)|abs),firstSeatDelta:(($a.firstSeat.top-$b.firstSeat.top)|abs),giftDelta:(($a.gift.top-$b.gift.top)|abs),luckyBoxDelta:(($a.luckyBox.top-$b.luckyBox.top)|abs),imeInset:$a.imeInset} | if .headerDelta > 9 or .ownerDelta > 9 or .firstSeatDelta > 9 or .giftDelta > 1 or .luckyBoxDelta > 1 then error("Room controls shifted on real IME: " + tostring) else . end' > royal-qa/keyboard-stability-result.json
+            jq -e '.inputBorder=="0px" and .inputOutline=="0px" and .send.width>=44 and .send.height>=40 and .send.left>=.input.left+.input.width and .send.top+.send.height<=.frameHeight-(.imeInset|sub("px$";"")|tonumber)' royal-qa/room-ime.json
+            adb shell input text qa
+            adb shell input tap "$(jq -r '.sendX' royal-qa/room-ime.json)" "$(jq -r '.sendY' royal-qa/room-ime.json)"
+            sleep 1
+            adb logcat -d -v raw -s SharikaRoomQa:I | jq -Rce 'fromjson? | select(.phase=="send-tap" and .body=="qa")' > royal-qa/room-send-tap.json
             adb shell dumpsys input_method > royal-qa/ime-state.txt
             echo 'SHARIKA_REAL_ANDROID_IME_ROOM_HEADER_AND_SEATS_STABLE_OK'
 

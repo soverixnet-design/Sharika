@@ -187,22 +187,15 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 .sh-royal-room.sh-keyboard-open .sh-tools,
 .sh-royal-room.sh-keyboard-open .sh-mic-floating,
 .sh-royal-room.sh-keyboard-open .sh-menu-panel {display:none!important}
-.sh-royal-room.sh-keyboard-open .dock {
+.sh-royal-room > .sh-composer {
   position:absolute;
-  bottom:var(--sh-ime-inset,0px);
-  left:0;
-  right:0;
-  padding:8px 10px 6px;
-  background:#19092eea;
-  box-shadow:0 -6px 24px #0a0313ad;
-}
-.sh-royal-room.sh-keyboard-open .sh-composer {padding-right:0;margin:0}
-.sh-royal-room .sh-composer {
+  inset-inline:10px;
+  bottom:max(calc(72px + env(safe-area-inset-bottom,0px)),calc(var(--sh-ime-inset,0px) + 6px));
+  z-index:12;
   display:flex;
-  padding-right:68px;
-  margin:1px 0 11px;
   min-width:0;
 }
+.sh-royal-room > .sh-composer[hidden] {display:none!important}
 .sh-royal-room .inp {
   width:100%;
   height:48px;

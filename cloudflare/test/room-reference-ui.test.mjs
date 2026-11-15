@@ -85,8 +85,8 @@ test('Android keyboard focuses the composer without compressing the mic-seat gri
   assert.match(css,/\.app\.sh-royal-room\s*\{[\s\S]*?height:100%!important/);
   assert.match(css,/html:has\(\.sh-royal-room\),body:has\(\.sh-royal-room\)/);
   assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.stage/);
-  assert.match(css,/\.sh-royal-room\.sh-keyboard-open \.dock/);
-  assert.match(css,/bottom:var\(--sh-ime-inset,0px\)/);
+  assert.match(css,/\.sh-royal-room > \.sh-composer/);
+  assert.match(css,/bottom:max\([^\n]*var\(--sh-ime-inset,0px\)/);
   assert.match(room,/window\.SharikaRoyalKeyboard = Object\.freeze/);
   assert.match(java,/WindowInsets\.Type\.ime\(\)/);
   assert.match(java,/SharikaRoyalKeyboard\?\.setNativeIme/);
@@ -100,7 +100,7 @@ test('last loaded Royal CSS honors new room card and IME layout on Android',()=>
   assert.match(correction,/\.top \.room\s*\{[\s\S]*?left:-8px/);
   assert.match(correction,/\.top \.room\s*\{[\s\S]*?height:50px/);
   assert.match(correction,/\.sh-keyboard-open \.stage/);
-  assert.match(correction,/\.sh-keyboard-open \.dock/);
+  assert.doesNotMatch(correction,/\.sh-keyboard-open \.dock/);
   assert.match(correction,/\.sh-keyboard-open \.sh-tools/);
   assert.match(correction,/content:'QA13'/);
   assert.match(gradle,/versionCode [1-9][0-9]+/);

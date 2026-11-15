@@ -27,7 +27,7 @@ test('reference room adapts 4/5-column microphone rows without an owner throne',
 test('reference room keeps all original verified controls and seat-count updates',()=>{
   for(const id of ['bMsg','bGift','mic','emo','bGame'])
     assert.ok(roomJs.includes(`byId('${id}')`),`original #${id} control`);
-  assert.match(roomJs,/dock\.replaceChildren\(byId\('tray'\), composer, toolRow, gifts, box, menuPanel\)/);
+  assert.match(roomJs,/dock\.replaceChildren\(byId\('tray'\), toolRow, menuPanel\)/);
   assert.match(bridge,/seat_count:requested/);
   assert.match(bridge,/Choose between 4 and 20 mic seats/);
   assert.match(roomCss,/\.stage \{\s*\/\* Seat rows take their natural height/);
