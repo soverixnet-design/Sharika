@@ -489,7 +489,7 @@ jobs:
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-premium.css | grep -F "content:'QA13'"
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-room-ui.js | grep -F 'SharikaRoyalKeyboard'
           unzip -p app/build/outputs/apk/debug/app-debug.apk assets/royal-room-ui.js | grep -F 'nativeImeInset'
-          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/connection.js | grep -F 'sh-room-joining-card'
+          unzip -p app/build/outputs/apk/debug/app-debug.apk assets/connection.js | grep -F 'sh-room-preview'
           node - <<'NODE'
           const fs=require('fs');
           const bridge=fs.readFileSync('staging-connection.js','utf8');

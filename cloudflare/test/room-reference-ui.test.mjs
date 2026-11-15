@@ -116,7 +116,7 @@ test('CI can reproduce real Gboard and measure stable seats in an isolated WebVi
     import.meta.url),'utf8');
   const workflow=readFileSync(new URL('../../.github/workflows/sharika-android-staging-apk.yml',
     import.meta.url),'utf8');
-  assert.match(qa,/window\.openRoom\(\{id:'10000006'/);
+  assert.match(qa,/const room=\{id:'10000006'[^\n]*\n\s*window\.cur=room;\n\s*window\.openRoom\(room\)/);
   assert.match(qa,/firstSeat:get\('\.grid \.seat'\)/);
   assert.match(qa,/fingerprint:/);
   assert.doesNotMatch(manifest,/android\.permission\.INTERNET/);
