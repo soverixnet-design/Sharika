@@ -150,7 +150,7 @@ test('occupied seats show names and reveal the visible ID in the member profile'
   assert.doesNotMatch(seatDecorator,/frame\.sid|sh-verified-seat-id/);
   assert.match(adapter,/paintProfileId\(meta,selected\)/);
   assert.match(adapter,/recentJoinNames\.has\(memberId\)/);
-  assert.match(css,/#grid\.grid:has\(>\.seat:nth-child\(17\)\) \.seat \.av\s*\{[^}]*width:clamp\(33px,9\.4vw,53px\)/);
+  assert.match(css,/#grid\.grid:has\(>\.seat:nth-child\(17\)\)\s*\{[^}]*--seat-size:clamp\(33px,9\.4vw,53px\)/);
   assert.doesNotMatch(css,/\.sh-verified-seat-id/);
   assert.doesNotMatch(adapter,/frame\.innerWidth,frame\.innerHeight\]\)/);
 });
