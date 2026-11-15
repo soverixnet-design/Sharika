@@ -983,7 +983,7 @@
 #pfo.pfo,
 #pfc,
 #pfo #pfc .pf.sh-ranked-profile {
-  background:linear-gradient(180deg,#160c2c 0%,#32144b 44%,#26133e 100%)!important;
+  background:linear-gradient(180deg,#1b0b35 0%,#461954 42%,#281137 100%)!important;
   color:#fff4df!important;
 }
 #pfo #pfc .pf.sh-ranked-profile .cov {
@@ -1006,7 +1006,7 @@
   font-weight:900;
 }
 #pfo #pfc .pf.sh-ranked-profile .pfh>.pavw {
-  filter:drop-shadow(0 5px 12px #0c051fbd) drop-shadow(0 0 9px #ffd98b55);
+  filter:drop-shadow(0 6px 10px #0c051f9b);
 }
 #pfo #pfc .pf.sh-ranked-profile .sh-royal-idline {
   gap:6px;
@@ -1021,9 +1021,20 @@
   text-shadow:0 2px 4px #160721;
   font-size:clamp(11px,3.2vw,14px)!important;
 }
-#pfo #pfc .pf.sh-ranked-profile .sh-royal-follower-count {
-  color:#e5c9f3;
-  border-color:#e0b67e80;
+#pfo #pfc .pf.sh-ranked-profile .sh-public-copy-id {
+  display:grid;
+  place-items:center;
+  width:36px;
+  height:36px;
+  border:1px solid #dbb77b85;
+  border-radius:10px;
+  background:#2a1544;
+  color:#ffe6ae;
+  font-size:16px;
+  cursor:pointer;
+}
+#pfo #pfc .pf.sh-ranked-profile .pfh>.pavw>.pavr {
+  border-radius:50%;
 }
 #pfo #pfc .pf.sh-ranked-profile .sh-royal-profile-effects,
 #pfo #pfc .pf.sh-ranked-profile .sh-layout-ornament {
@@ -1066,11 +1077,11 @@
 #pfo #pfc .sh-public-showcase-card.cp {
   border:1px solid #e6bc829c;
   border-radius:20px;
-  background:linear-gradient(145deg,#583361dd,#2e1b4cdd);
+  background:linear-gradient(145deg,#38436b,#262145);
   box-shadow:inset 0 1px #ffffff33,0 6px 15px #1508267a;
   color:#ffe8d4;
 }
-#pfo #pfc .sh-public-showcase-card.cp h3 {color:#ffe3aa}
+#pfo #pfc .sh-public-showcase-card.cp h3 {color:#e1eaff}
 #pfo #pfc .sh-public-card-empty {color:inherit}
 #pfo #pfc .sh-public-collection h3 {color:#ffe4a7}
 #pfo #pfc .sh-public-collection-tabs button {

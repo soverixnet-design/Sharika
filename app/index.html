@@ -43,22 +43,6 @@ button{font:inherit;color:inherit;cursor:pointer}
 .tabs{display:flex;gap:8px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none}
 .tabs button{flex:none;padding:7px 16px;border-radius:18px;border:1px solid var(--line);background:var(--glass);font-size:13px;color:var(--mu)}.tabs button.on{background:linear-gradient(135deg,var(--a),var(--b));color:#fff;border-color:transparent;font-weight:700}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 12px}
-.card{perspective:800px;cursor:pointer;height:178px;touch-action:pan-y;animation:fi .4s both}
-.sway{height:100%;animation:sw 5s ease-in-out infinite}
-@keyframes sw{50%{transform:translateY(-5px)}}
-.tilt{position:relative;height:100%;transform-style:preserve-3d;transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .18s ease-out}
-.edge{position:absolute;inset:3px -2px -6px;border-radius:24px;background:rgba(0,0,0,.55);transform:translateZ(-14px);filter:blur(5px)}
-.bg{position:absolute;inset:0;border-radius:24px;overflow:hidden;border:1px solid rgba(255,255,255,.28);box-shadow:inset 0 2px 0 rgba(255,255,255,.35),inset 0 -14px 24px rgba(0,0,0,.28)}
-.pat{position:absolute;inset:-20px;font-size:30px;letter-spacing:14px;line-height:46px;opacity:.1;transform:rotate(-14deg);word-break:break-all}
-.shine{position:absolute;inset:0;background:radial-gradient(circle at var(--mx,30%) var(--my,15%),rgba(255,255,255,.42),transparent 58%);mix-blend-mode:soft-light}
-.emo{position:absolute;right:8px;top:6px;font-size:58px;transform:translateZ(70px);filter:drop-shadow(0 12px 10px rgba(0,0,0,.45))}
-.live{position:absolute;left:10px;top:10px;transform:translateZ(40px);display:flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;background:rgba(0,0,0,.4);font-size:10px;font-weight:700}
-.live u{width:3px;background:var(--grn);border-radius:2px;animation:eq 1s ease-in-out infinite}.live u:nth-child(1){height:8px}.live u:nth-child(2){height:12px;animation-delay:-.3s}.live u:nth-child(3){height:6px;animation-delay:-.6s}
-@keyframes eq{50%{transform:scaleY(.4)}}
-.info{position:absolute;left:12px;right:10px;bottom:10px;transform:translateZ(44px);text-shadow:0 2px 6px rgba(0,0,0,.5)}
-.info b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.info small{display:block;font-size:10.5px;opacity:.9;margin:2px 0 6px}
-.mics{display:flex}.mics i{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.22);border:1.5px solid rgba(255,255,255,.6);display:grid;place-items:center;font-size:13px;font-style:normal;margin-right:-6px;backdrop-filter:blur(4px)}
-.mics em{font-style:normal;font-size:10px;margin-left:12px;align-self:center;background:rgba(0,0,0,.35);padding:1px 7px;border-radius:9px}
 .empty{grid-column:1/-1;text-align:center;padding:30px 10px;color:var(--mu);font-size:13.5px}
 .big{width:100%;padding:13px;border-radius:24px;border:0;font-weight:700;background:linear-gradient(135deg,var(--a),var(--b));margin-top:12px}
 .nav{position:absolute;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));height:64px;border-radius:26px;background:rgba(20,12,50,.85);backdrop-filter:blur(18px);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-around;z-index:20;box-shadow:0 10px 30px rgba(0,0,0,.45)}
@@ -473,15 +457,32 @@ function roomList(){
   if(tab!==2&&roomCountryFilter&&window.SharikaDiscovery)L=SharikaDiscovery.filterRooms(L,roomCountryFilter);
   if(q)L=L.filter(function(r){return String(r.name||'').toLowerCase().indexOf(q)>-1||String(r.id).indexOf(q)>-1});return L;
 }
-function cardHTML(r,i){
-  var pat=new Array(14).join((r.emoji||'🎙️')+" ");
-  var flag=window.SharikaDiscovery?SharikaDiscovery.flagForCountry(r.owner_country||r.country):'';
-  var country=esc(r.owner_country||r.country||'');
-  var countryBadge=flag?'<span class="room-country" title="Owner country: '+country+'" aria-label="Owner country: '+country+'">'+flag+'</span>':'';
-  var roomLocked=Number(r.access_locked)===1;
-  var lockBadge=roomLocked?'<span class="room-access-lock" title="New guests cannot join" aria-label="Room locked" style="position:absolute;top:9px;left:9px;z-index:4;padding:3px 8px;border:1px solid #e4bf70;border-radius:12px;background:#17211de6;color:#ffe7ad;font-size:11px;font-weight:700">🔒 Locked</span>':'';
-  var cover=typeof r.cover_url==='string'&&/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/rooms\/\d{8}\/cover\?v=\d+$/.test(r.cover_url)?';background-image:url('+r.cover_url+');background-size:cover;background-position:center':'';
-  return'<div class="card" role="button" tabindex="0" aria-label="'+(roomLocked?'Locked room ':'Join ')+esc(r.name)+'" data-id="'+esc(r.id)+'" style="animation-delay:'+i*.06+'s"><div class="sway" style="animation-delay:-'+(i*.7)%5+'s"><div class="tilt"><i class="edge"></i><div class="bg" style="background:linear-gradient(150deg,'+r.c+')'+cover+'"><span class="pat">'+pat+'</span><i class="shine"></i></div><div class="emo">'+esc(r.emoji||'🎙️')+'</div><div class="live"><u></u><u></u><u></u>LIVE</div>'+lockBadge+countryBadge+'<div class="info"><b>'+esc(r.name)+'</b><small>ID '+esc(r.id)+' · 🔥 '+bn(Number(r.n)||0)+'</small><div class="mics">'+(r.mics||[]).map(function(m){return"<i>"+esc(m)+"</i>"}).join("")+'<em>'+esc(r.tag||'Voice Room')+'</em></div></div></div></div></div>';
+function cardHTML(room){
+  const country=room.owner_country||room.country||'';
+  const discovery=window.SharikaDiscovery;
+  const flag=discovery?.flagForCountry(country)||'';
+  const code=discovery?.countryCode(country)||'';
+  let countryName=code;
+  if(code&&typeof Intl.DisplayNames==='function'){
+    try{countryName=new Intl.DisplayNames(['en'],{type:'region'}).of(code)||code;}
+    catch(_error){}
+  }
+  const roomLocked=Number(room.access_locked)===1;
+  const displayId=room.room_display_id||room.id;
+  const online=Math.max(0,Number(room.n)||0);
+  const cover=window.sharikaVerifiedRoomCover?.(room.cover_url,room.id);
+  return '<div class="card room-card" role="button" tabindex="0" aria-label="'+
+    esc((roomLocked?'Locked room ':'Join ')+room.name)+'" data-id="'+esc(room.id)+'">'+
+    '<div class="room-card-cover"><span aria-hidden="true">'+esc(room.emoji||'🎙️')+'</span>'+
+    (cover?'<img class="sh-room-card-photo" src="'+esc(cover)+'" alt="" decoding="async" loading="lazy">':'')+
+    '</div><div class="room-card-details"><div class="room-card-title">'+
+    '<b title="'+esc(room.name)+'">'+esc(room.name)+'</b>'+
+    (flag?'<span class="room-card-flag" role="img" title="'+esc(countryName)+
+      '" aria-label="'+esc(countryName)+'">'+esc(flag)+'</span>':'')+
+    '</div><div class="room-card-meta"><span>ID '+esc(displayId)+'</span>'+
+    (roomLocked?'<span class="room-access-lock" role="img" aria-label="Locked" title="Locked">🔒</span>':'')+
+    '<span class="room-card-online" aria-label="'+online+' online">'+
+    '<span aria-hidden="true">👥</span> '+bn(online)+'</span></div></div></div>';
 }
 function renderRooms(){
   updateRoomCountryFilter();
@@ -493,9 +494,9 @@ $("q").oninput=renderRooms;
 $("room-country").onchange=function(){roomCountryFilter=this.value;renderRooms()};
 $("tabs").querySelectorAll("button").forEach(function(b,i){b.onclick=function(){tab=i;$("tabs").querySelectorAll("button").forEach(function(x,k){x.classList.toggle("on",k===i)});renderRooms()}});
 var G=$("grid");
-function tl(e){var c=e.target.closest&&e.target.closest(".card");if(!c)return;var t=c.querySelector(".tilt"),b=c.getBoundingClientRect(),x=(e.clientX-b.left)/b.width,y=(e.clientY-b.top)/b.height;t.style.setProperty("--ry",((x-.5)*24)+"deg");t.style.setProperty("--rx",(-(y-.5)*24)+"deg");t.style.setProperty("--mx",x*100+"%");t.style.setProperty("--my",y*100+"%")}
-function tr(e){var c=e.target.closest&&e.target.closest(".card");if(!c)return;var t=c.querySelector(".tilt");t.style.setProperty("--ry","0deg");t.style.setProperty("--rx","0deg")}
-G.addEventListener("pointermove",tl);G.addEventListener("pointerdown",tl);G.addEventListener("pointerup",tr);G.addEventListener("pointercancel",tr);G.addEventListener("pointerleave",tr,true);
+G.addEventListener('error',function(event){
+  if(event.target.matches?.('.sh-room-card-photo'))event.target.hidden=true;
+},true);
 G.addEventListener("click",function(e){var c=e.target.closest(".card");if(!c)return;var r=roomList().filter(function(x){return x.id===c.dataset.id})[0];if(r)openRoom(r)});
 G.addEventListener("keydown",function(e){if(e.key!=='Enter'&&e.key!==' ')return;var c=e.target.closest('.card');if(c){e.preventDefault();c.click()}});
 /* ===== Entering the room ===== */
@@ -900,9 +901,6 @@ setTimeout(function(){$("sp").classList.add("off");showWeekly(function(){})},130
 .ni span,.act span,.rb .e3{display:grid;place-items:center;width:38px;height:38px;border-radius:14px;filter:none!important;font-size:21px;background:radial-gradient(circle at 30% 20%,rgba(255,255,255,.55),rgba(255,255,255,0) 55%),linear-gradient(145deg,#ff9a8b,#c026d3 60%,#6366f1);box-shadow:0 4px 0 rgba(0,0,0,.4),0 8px 12px rgba(0,0,0,.35),inset 0 -4px 7px rgba(0,0,0,.3);text-shadow:0 3px 3px rgba(0,0,0,.45);transform:perspective(220px) rotateX(10deg);transition:transform .25s}
 .ni.on span{transform:perspective(220px) rotateX(0) translateY(-6px) scale(1.12);background:radial-gradient(circle at 30% 20%,#fff9,#fff0 55%),linear-gradient(145deg,#ffd34d,#f97316 60%,#e11d48);animation:shf 2.6s ease-in-out infinite}
 @keyframes shf{50%{transform:perspective(220px) translateY(-9px) scale(1.14)}}
-.card .tilt{border-radius:26px;border:1.5px solid rgba(255,255,255,.3);box-shadow:0 14px 28px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.45),inset 0 -14px 24px rgba(0,0,0,.25);overflow:hidden}
-.card .tilt::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.28) 50%,transparent 65%);background-size:250% 100%;animation:shn 4.5s ease-in-out infinite;pointer-events:none}
-@keyframes shn{0%{background-position:150% 0}60%,100%{background-position:-60% 0}}
 .rr,.rrow{background:linear-gradient(135deg,rgba(255,255,255,.2),rgba(255,255,255,.05));border:1px solid rgba(255,255,255,.28);border-radius:22px;box-shadow:0 6px 0 rgba(0,0,0,.25),0 12px 18px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.4);backdrop-filter:blur(12px);animation:fi .45s both}
 .rr.me{background:linear-gradient(135deg,rgba(255,211,77,.35),rgba(255,122,184,.18));border-color:#ffd34d}
 .rr .ra,.pp .gr{box-shadow:0 0 0 3px rgba(255,255,255,.35),0 0 16px rgba(255,154,139,.7),0 6px 8px rgba(0,0,0,.4)}

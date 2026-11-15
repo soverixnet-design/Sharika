@@ -57,7 +57,6 @@
       'box-shadow:inset 0 2px 2px #fff5,inset 0 -4px 7px #05011399,0 5px 10px #03010b80;',
       'transition:filter .15s ease,box-shadow .15s ease}',
       '.qa button:active,.nav button:active,.tabs button:active{filter:brightness(1.12)}',
-      '#grid .card .bg{box-shadow:inset 0 2px 3px #fff4,inset 0 -8px 15px #05021199}',
       '#sh-original-grid>button:active{transform:translateY(2px) scale(.98)}',
       '@media(prefers-reduced-motion:reduce){.qa button,.nav button,.tabs button{transition:none!important}}'
     ].join('');
@@ -6035,74 +6034,11 @@
     };
     picker.click();
   }
-  function drawVerifiedRoomCards(){
-    const rooms=[...(window.CFG.rooms||[]),window.A?.myRoom].filter(Boolean);
-    for(const card of document.querySelectorAll('#grid .card[data-id]')){
-      const room=rooms.find(r=>r.id===card.dataset.id);
-      if(!room)continue;
-      const image=verifiedCoverUrl(room.cover_url);
-      card.classList.toggle('sh-room-card-with-photo',!!image);
-      const background=card.querySelector('.bg');
-      if(image&&background){
-        let cover=background.querySelector('.sh-room-card-photo');
-        if(!cover){
-          cover=document.createElement('img');
-          cover.className='sh-room-card-photo';
-          cover.alt='';
-          cover.decoding='async';
-          cover.loading='lazy';
-          background.prepend(cover);
-        }
-        if(cover.getAttribute('src')!==image)cover.src=image;
-      }else background?.querySelector('.sh-room-card-photo')?.remove();
-      // The canonical room/user ID stays in API routing. Public room cards
-      // display the owner's active Special ID, if one exists.
-      const displayId=String(room.room_display_id||room.id);
-      const summary=card.querySelector('.info small');
-      if(summary&&/^[0-9]{1,10}$/.test(displayId))
-        summary.textContent='ID '+displayId+' · 🔥 '+(Number(room.n)||0);
-      // Show only broad, user-supplied account country, not GPS or street data.
-      // The old top-right Edit photo button belongs inside owner settings.
-      card.querySelector('.sh-room-cover-edit')?.remove();
-      card.querySelector('.room-country')?.remove();
-      const storedCountry=String(room.owner_country||'').trim();
-      const code=window.SharikaDiscovery?.countryCode(storedCountry)||'';
-      const flag=window.SharikaDiscovery?.flagForCountry(storedCountry)||'';
-      let countryName=storedCountry;
-      if(code&&typeof Intl.DisplayNames==='function'){
-        try{countryName=new Intl.DisplayNames(['en'],{type:'region'}).of(code)||storedCountry;}
-        catch(_error){countryName=storedCountry||code;}
-      }
-      const title=code&&countryName?flag+' '+countryName:'🌍 Location not set';
-      let location=card.querySelector('.sh-room-country-label');
-      if(!location){
-        location=document.createElement('span');
-        location.className='sh-room-country-label';
-        location.style.cssText='position:absolute;z-index:22;top:8px;right:8px;'+
-          'max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+
-          'border:1px solid #f3d68e;border-radius:13px;'+
-          'background:linear-gradient(125deg,#372018ed,#150e2ce8);'+
-          'box-shadow:0 4px 12px #13082288;color:#ffe8a3;'+
-          'padding:5px 9px;font-size:11px;font-weight:800;pointer-events:none';
-        card.style.position='relative';
-        card.appendChild(location);
-      }
-      location.textContent=title;
-      location.title=code?'Account country: '+countryName:'Account country not set';
-      location.setAttribute('aria-label',location.title);
-    }
-  }
-  // Original tab/search handlers call their lexical renderRooms binding rather
-  // than window.renderRooms; observe only direct grid child changes too.
-  const coverGrid=document.getElementById('grid');
-  if(coverGrid)new MutationObserver(()=>drawVerifiedRoomCards())
-    .observe(coverGrid,{childList:true});
-  const originalRenderRoomsWithCards=window.renderRooms;
-  window.renderRooms=function(...args){
-    const result=originalRenderRoomsWithCards.apply(this,args);
-    drawVerifiedRoomCards();
-    return result;
+  window.sharikaVerifiedRoomCover=(value,roomId)=>{
+    const url=verifiedCoverUrl(value);
+    return url?.includes('/rooms/'+roomId+'/cover?')?url:null;
   };
+
   function decorateBondSeatOverlay(frame,pairs){
     const doc=frame?.document;
     if(!doc?.body)return;
@@ -12449,13 +12385,6 @@
       intro.remove();
       paintRoyalPublicLevels(root,person,data);
       mountRoyalCpHero(root,id,person,data.cp);
-      const followerLine=root.querySelector('.pfh .sh-royal-idline');
-      if(followerLine&&!followerLine.querySelector('.sh-royal-follower-count')){
-        const followers=document.createElement('span');
-        followers.className='sh-royal-follower-count';
-        followers.textContent=Number(data.followers||0).toLocaleString('en-US')+' Followers';
-        followerLine.appendChild(followers);
-      }
       const stats=document.createElement('div');stats.className='sh-bond-stats';
       for(const [value,label] of [
         [data.followers,'Followers'],[data.following,'Following'],[data.visitors,'Visitors'],
@@ -12519,7 +12448,7 @@
       if(requestNo!==rankProfileRequest||!panel.classList.contains('on'))return;
       if(String(person.id)!==id && String(person.special_id)!==id)
          throw new Error('Profile ID does not match');
-       const canonicalId=String(person.id),displayId=String(person.display_id||person.id);
+       const canonicalId=String(person.id),displayId=String(person.special_id||person.display_id||person.id);
       const face=verifiedAvatarUrl(person.pic);
       const wealth=Math.max(0,Number(person.wealth_level)||0);
       const charm=Math.max(0,Number(person.charm_level)||0);
@@ -12531,7 +12460,9 @@
         '<div class="pavr" style="--g1:#ffdc7b;--g2:#a06bff"></div>'+
         '<div class="pav3" id="sh-ranked-avatar" role="img" aria-label="Profile photo"></div>'+
         '</div><h2>'+sellerEscape(person.name||'User')+'</h2>'+
-        '<div class="sh-royal-idline"><span class="sh-royal-user-id">ID: '+sellerEscape(displayId)+'</span>'+        (person.bd_active?'<span class="sh-royal-role-tag sh-royal-bd">✦ BD</span>':'')+        (person.seller_active?'<span class="sh-royal-role-tag sh-royal-seller">✦ Seller</span>':'')+        '</div><div class="meta">'+
+        '<div class="sh-royal-idline"><span class="sh-royal-user-id">ID: '+sellerEscape(displayId)+'</span>'+
+        '<button type="button" class="sh-public-copy-id" aria-label="Copy visible ID" title="Copy ID">▢</button>'+
+        (person.bd_active?'<span class="sh-royal-role-tag sh-royal-bd">✦ BD</span>':'')+        (person.seller_active?'<span class="sh-royal-role-tag sh-royal-seller">✦ Seller</span>':'')+        '</div><div class="meta">'+
         (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
         (person.family?.status==='active'?'<span style="color:#f9d48b">👑 Agency · '+sellerEscape(person.family.name)+'</span>':'')+
         '</div></div><div class="lvs">'+
@@ -12578,6 +12509,10 @@
         };
       }
       decorateVerifiedPublicProfile(root,person);
+      root.querySelector('.sh-public-copy-id').onclick=async()=>{
+        try{await navigator.clipboard.writeText(displayId);toast('ID copied ✓');}
+        catch(_error){toast('ID '+displayId);}
+      };
       paintRoyalPublicLevels(root,person,null);
       mountBondDetails(root,canonicalId,person).catch(error=>
         console.warn('Ranked ID bond details:',errText(error)));

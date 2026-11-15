@@ -126,7 +126,7 @@ test('room theme references are bounded and separate from room-card cover URLs',
     assert.equal(roomThemeId(raw),null,raw);
   const bridge=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const start=bridge.indexOf('  function pickRoomCover(');
-  const end=bridge.indexOf('  function drawVerifiedRoomCards',start);
+  const end=bridge.indexOf('  window.sharikaVerifiedRoomCover=',start);
   const method=bridge.slice(start,end);
   assert.ok(start>0&&end>start);
   assert.match(method,/if\(useAsTheme\)\{/);
