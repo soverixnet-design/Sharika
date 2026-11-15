@@ -569,7 +569,7 @@
   P.specialIds=async function(){
     const root=byId('pg');
     if(role!=='super'){root.innerHTML=card('Special IDs','Super Admin permission required.');return;}
-    root.innerHTML='<div class="card"><h3>Find verified member</h3><div class="row">'+
+    root.innerHTML='<div class="card"><h3>Find verified member</h3><div class="row"><label for="sid-environment">App environment</label><select id="sid-environment"><option value="play">Play closed test</option><option value="staging">Staging</option></select>'+
       '<input id="sid-search" placeholder="Account ID, Special ID or name" autocomplete="off">'+
       '<button class="btn s" id="sid-find">Search</button></div>'+
       '<div class="sid-hint" id="sid-list-note">Loading verified members…</div>'+
@@ -598,7 +598,9 @@
       '<p class="sid-status" id="sid-status" role="status"></p>'+
       '<button type="button" class="sid-ghost" id="sid-revoke" disabled>Revoke Special ID</button>'+
       '</section></div>';
-    let people=[],selected=null;
+    let selected=null,searchRequest=0,working=false;
+    const environment=byId('sid-environment');
+    const endpoint=()=>environment.value==='play'?'play-testers/special-ids':'special-ids';
     const input=byId('sid-search'),list=byId('sid-list'),status=byId('sid-status');
     const value=byId('sid-value'),save=byId('sid-save'),revoke=byId('sid-revoke');
     const faceHtml=user=>{
@@ -613,15 +615,17 @@
       byId('sid-seat-face').innerHTML=faceHtml(selected);
       byId('sid-plate').textContent=display;
       byId('sid-seat-id').textContent=display;
-      save.disabled=!selected||selected.status!=='active'||!/^[0-9]{1,10}$/.test(value.value.trim());
-      revoke.disabled=!selected||!selected.special_id;
+      save.disabled=working||!selected||selected.status!=='active'||!/^[0-9]{1,10}$/.test(value.value.trim());
+      revoke.disabled=working||!selected||!selected.special_id;
     }
     async function search(){
+      if(!list.isConnected)return;
+      const requestNo=++searchRequest;
       list.replaceChildren();byId('sid-list-note').textContent='Loading verified members…';
       try{
-        const data=await api('GET','special-ids?q='+encodeURIComponent(input.value.trim()));
-        if(!list.isConnected)return;
-        people=Array.isArray(data.users)?data.users:[];
+        const data=await api('GET',endpoint()+'?q='+encodeURIComponent(input.value.trim()));
+        if(!list.isConnected||requestNo!==searchRequest)return;
+        const people=Array.isArray(data.users)?data.users:[];
         byId('sid-list-note').textContent=people.length?
           'Select the account that will own this Special ID.':'No verified members found.';
         for(const person of people){
@@ -631,6 +635,7 @@
           button.textContent=person.name+' · '+person.public_id+
             (person.special_id?' · ★ '+person.special_id:'');
           button.onclick=()=>{
+            if(working)return;
             selected=person;value.value=person.special_id||'';
             status.textContent='';
             for(const b of list.children)b.setAttribute('aria-pressed',
@@ -639,8 +644,15 @@
           };
           list.appendChild(button);
         }
-      }catch(error){byId('sid-list-note').textContent='Search unavailable: '+error.message;}
+      }catch(error){
+        if(list.isConnected&&requestNo===searchRequest)
+          byId('sid-list-note').textContent='Search unavailable: '+error.message;
+      }
     }
+    environment.onchange=()=>{
+      selected=null;value.value='';input.value='';status.textContent='';
+      preview();search();
+    };
     byId('sid-find').onclick=search;
     let timer;input.oninput=()=>{clearTimeout(timer);timer=setTimeout(search,300);};
     value.oninput=()=>{status.textContent='';preview();};
@@ -648,7 +660,9 @@
       const proposed=value.value.trim();
       if(!/^[0-9]{1,10}$/.test(proposed)){status.textContent='Use 1–10 numeric digits.';return;}
       try{
-        const response=await api('GET','special-ids/availability?value='+encodeURIComponent(proposed));
+        const path=endpoint();
+        const response=await api('GET',path+'/availability?value='+encodeURIComponent(proposed));
+        if(path!==endpoint()||value.value.trim()!==proposed)return;
         status.textContent=response.available?'Available ✓':
           selected?.special_id===proposed?'Assigned to this member.':'This ID is reserved.';
       }catch(error){status.textContent='Availability check failed: '+error.message;}
@@ -656,11 +670,12 @@
     save.onclick=async()=>{
       if(save.disabled||!selected)return;
       const specialId=value.value.trim(),accountId=selected.public_id;
-      if(!window.confirm('Assign Special ID '+specialId+' to '+accountId+'?'))return;
-      save.disabled=true;status.textContent='Saving on Sharika server…';
+      if(!window.confirm('Assign Special ID '+specialId+' to '+accountId+
+        ' in '+environment.selectedOptions[0].text+'?'))return;
+      working=true;environment.disabled=true;preview();status.textContent='Saving on Sharika server…';
       try{
         const days=byId('sid-days').value;
-        const result=await api('POST','special-ids',{
+        const result=await api('POST',endpoint(),{
           public_id:accountId,special_id:specialId,
           duration_days:days===''?null:Number(days),frame:'neon'
         });
@@ -668,20 +683,23 @@
         selected.expires_at=result.expires_at;
         status.textContent='Saved ✓ The public profile will show '+result.special_id;
         note('Special ID assigned successfully');
-        await search();preview();
-      }catch(error){status.textContent='Not saved: '+error.message;preview();}
+        await search();
+      }catch(error){status.textContent='Not saved: '+error.message;}
+      finally{working=false;environment.disabled=false;if(list.isConnected)preview();}
     };
     revoke.onclick=async()=>{
-      if(!selected?.special_id)return;
+      if(working||!selected?.special_id)return;
       const accountId=selected.public_id;
-      if(!window.confirm('Revoke Special ID from account '+accountId+'?'))return;
-      revoke.disabled=true;
+      if(!window.confirm('Revoke Special ID from '+accountId+
+        ' in '+environment.selectedOptions[0].text+'?'))return;
+      working=true;environment.disabled=true;preview();
       try{
-        await api('PATCH','special-ids/'+accountId+'/revoke',{});
+        await api('PATCH',endpoint()+'/'+accountId+'/revoke',{});
         selected.special_id=null;selected.expires_at=null;value.value='';
         status.textContent='Revoked. Permanent Account ID is unchanged.';
-        await search();preview();
-      }catch(error){status.textContent='Revoke failed: '+error.message;preview();}
+        await search();
+      }catch(error){status.textContent='Revoke failed: '+error.message;}
+      finally{working=false;environment.disabled=false;if(list.isConnected)preview();}
     };
     preview();await search();
   };

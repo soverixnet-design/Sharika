@@ -6,12 +6,15 @@ export async function searchVerifiedRooms(db,rawQuery){
   // Literal matches only: user input cannot become a SQL LIKE wildcard.
   const escaped=query.replace(/[\\%_]/g,match=>'\\'+match);
   const exact=/^[0-9]{1,10}$/.test(query)?query:'';
+  const ownerSerial="printf('%08d',u.public_no)";
   const result=await db.prepare(
-    'SELECT r.id,r.name,r.emoji,r.theme,r.seat_count,u.country AS owner_country '+
+    'SELECT r.id,r.name,r.emoji,r.theme,r.seat_count,u.country AS owner_country,'+
+    ownerSerial+' AS room_display_id '+
     'FROM sharika_rooms r JOIN sharika_users u ON u.auth_uid=r.owner_id '+
-    "WHERE u.status='active' AND (r.id=? OR r.id LIKE ? ESCAPE '\\' "+
+    "WHERE u.status='active' AND ("+ownerSerial+"=? OR r.id=? OR r.id LIKE ? ESCAPE '\\' "+
     "OR r.name LIKE ? ESCAPE '\\') "+
-    'ORDER BY CASE WHEN r.id=? THEN 0 ELSE 1 END,r.created_at DESC LIMIT 30'
-  ).bind(exact,'%'+escaped+'%','%'+escaped+'%',exact).all();
+    'ORDER BY CASE WHEN '+ownerSerial+'=? THEN 0 WHEN r.id=? THEN 1 ELSE 2 END,'+
+    'r.created_at DESC LIMIT 30'
+  ).bind(exact,exact,'%'+escaped+'%','%'+escaped+'%',exact,exact).all();
   return {query,rooms:result.results||[],read_only:true};
 }

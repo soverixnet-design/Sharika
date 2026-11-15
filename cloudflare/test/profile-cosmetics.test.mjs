@@ -102,7 +102,6 @@ test('verified profile photos follow the same public ID into room avatars and me
   assert.match(worker,/u\.public_no,u\.name,u\.pic,u\.wealth_level/);
   assert.match(worker,/pic: x\.pic/);
   assert.match(adapter,/function verifiedAvatarUrl\(value\)/);
-  assert.match(adapter,/pic:verifiedAvatarUrl\(owner\.pic\)/);
   assert.match(adapter,/pic:verifiedAvatarUrl\(user\.pic\)/);
   assert.match(adapter,/paintVerifiedAvatar\(el\.querySelector\('\.face'\),seat\.pic,doc\)/);
   assert.match(adapter,/decorateRoomPeople\(frame\)/);
@@ -125,9 +124,11 @@ test('room polling keeps the newest seat count and ignores responses after leavi
   const syncSource=adapter.slice(previewStart,previewEnd)+adapter.slice(start,end);
   const pending=[];
   let ownerLookups=0;
-  const room={id:'10000001',owner_id:'owner-uid',seat_count:12};
+  const room={id:'10000018',owner_id:'owner-uid',seat_count:12};
+  const header={rid:{},rname:{}};
   const frame={
     seats:[{empty:1}],S:{frame:'grad'},U:[],renders:[],
+    $(id){return header[id];},
     render(){this.renders.push(this.seats.length);}
   };
   const state={cur:{id:room.id}};
@@ -149,16 +150,19 @@ test('room polling keeps the newest seat count and ignores responses after leavi
   const older=sync(room,frame);
   const newer=sync(room,frame);
   assert.equal(pending.length,1,'do not overlap native API calls on weak links');
-  pending[0]({seat_count:12,members:[],locked_seats:[]});
+  pending[0]({seat_count:12,members:[],locked_seats:[],room_name:'Actual room',
+    room_display_id:'10000001'});
   await older;
-  assert.equal(ownerLookups,1);
+  assert.equal(ownerLookups,0);
+  assert.equal(header.rid.textContent,'10000001');
+  assert.equal(header.rname.textContent,'Actual room');
   await new Promise(setImmediate);
   assert.equal(pending.length,2,'a change requested during the poll gets a fresh snapshot');
   pending[1]({seat_count:4,members:[],locked_seats:[]});
   await newer;
   assert.equal(room.seat_count,4,'the queued newer snapshot wins');
   assert.deepEqual(frame.renders,[13,5]);
-  assert.equal(ownerLookups,1,'a slow owner profile does not delay or duplicate seat updates');
+  assert.equal(ownerLookups,0,'the in-room header never looks up a user by room key');
   const leaving=sync(room,frame);
   state.cur={id:'10000002'};
   pending[2]({seat_count:17,members:[],locked_seats:[]});

@@ -32,6 +32,18 @@ test('room search finds exact room outside first 100 with no wallet or user data
   }finally{db.close();}
 });
 
+test('room search prefers the owner serial if it collides with a legacy room key',async()=>{
+  const {db,d1}=fixture();
+  try{
+    db.prepare('UPDATE sharika_rooms SET id=? WHERE id=?').run('10000118','10000001');
+    db.prepare('UPDATE sharika_rooms SET id=? WHERE id=?').run('10000001','10000010');
+    const {rooms}=await searchVerifiedRooms(d1,'10000001');
+    assert.deepEqual(rooms.map(({id,room_display_id})=>[id,room_display_id]),[
+      ['10000118','10000001'],['10000001','10000010']
+    ]);
+  }finally{db.close();}
+});
+
 test('room search supports names, excludes blocked owners and escapes wildcards',async()=>{
   const {db,d1}=fixture();
   try{

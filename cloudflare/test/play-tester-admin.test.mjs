@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { activeSpecial } from '../src/special-ids.mjs';
 import { readPlayTesters, handlePlayTestAdmin } from '../src/play-tester-admin.mjs';
 
 function harness(role = 'super') {
@@ -319,4 +320,66 @@ test('Cosmetic revoke clears only direct admin grants and is safe to retry after
     assert.equal(db.prepare('SELECT source FROM sharika_cosmetic_inventory').get().source,'purchase');
     assert.throws(()=>db.exec('DELETE FROM sharika_admin_cosmetic_actions'),/admin_cosmetic_action_immutable/);
   } finally { db.close(); }
+});
+
+test('Play Special ID assignment, lookup and revoke stay with the selected Play account', async () => {
+  function dbFixture(rows) {
+    const db=new DatabaseSync(':memory:');
+    db.exec('PRAGMA foreign_keys=ON');
+    for(const migration of ['0001_initial.sql','0032_special_ids.sql','0042_special_id_one_to_ten.sql']){
+      db.exec(readFileSync(new URL('../migrations/'+migration,import.meta.url),'utf8'));
+    }
+    for(const [uid,no] of rows)db.prepare(
+      "INSERT INTO sharika_users(auth_uid,public_no,name,birthdate,minor,status) "+
+      "VALUES(?,?,?,'2000-01-01',0,'active')"
+    ).run(uid,no,uid);
+    db.exec('CREATE TABLE sharika_notifications(id INTEGER PRIMARY KEY,recipient_uid TEXT,kind TEXT,'+
+      "title TEXT,body TEXT,dedupe_key TEXT,created_by TEXT,read_at TEXT,push_status TEXT DEFAULT 'pending',"+
+      'created_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(recipient_uid,dedupe_key))');
+    const wrap=statement=>({
+      bind:(...args)=>({
+        first:async()=>statement.get(...args),
+        all:async()=>({results:statement.all(...args)}),
+        run:()=>statement.run(...args)
+      })
+    });
+    return {db,binding:{
+      prepare:sql=>wrap(db.prepare(sql)),
+      async batch(statements){
+        db.exec('BEGIN');
+        try{const results=statements.map(statement=>statement.run());db.exec('COMMIT');return results;}
+        catch(error){db.exec('ROLLBACK');throw error;}
+      }
+    }};
+  }
+  const play=dbFixture([['actor',10000003],['play-member',10000002],['other',10000001]]);
+  const staging=dbFixture([['actor',10000001],['staging-member',10000002]]);
+  const env={
+    PLAY_DB:play.binding,STAGING_DB:staging.binding,
+    SHARIKA_API:{fetch:async()=>Response.json({role:'super',public_id:'10000001'})}
+  };
+  const endpoint='/api/v1/admin/play-testers/special-ids';
+  const send=(suffix,method='GET',body)=>handlePlayTestAdmin(new Request('https://admin.test'+endpoint+suffix,{
+    method,headers:{authorization:'Bearer token'},body:body&&JSON.stringify(body)
+  }),env);
+  try{
+    let available=await (await send('/availability?value=777')).json();
+    assert.equal(available.available,true);
+    const assigned=await send('','POST',{
+      public_id:'10000002',special_id:'777',duration_days:null,frame:'neon'
+    });
+    assert.equal(assigned.status,200);
+    assert.equal((await assigned.json()).display_id,'777');
+    assert.equal((await activeSpecial(play.binding,'play-member')).special_id,'777');
+    assert.equal(await activeSpecial(staging.binding,'staging-member'),undefined);
+    assert.equal(play.db.prepare('SELECT actor_id FROM sharika_admin_audit').get().actor_id,'actor');
+    const list=await (await send('?q=777')).json();
+    assert.equal(list.users[0].public_id,'10000002');
+    available=await (await send('/availability?value=777')).json();
+    assert.equal(available.available,false);
+    assert.equal((await send('/10000002/revoke','PATCH')).status,200);
+    assert.equal(await activeSpecial(play.binding,'play-member'),undefined);
+    env.SHARIKA_API.fetch=async()=>Response.json({role:'support',public_id:'10000001'});
+    assert.equal((await send('','POST',{})).status,403);
+  }finally{play.db.close();staging.db.close();}
 });

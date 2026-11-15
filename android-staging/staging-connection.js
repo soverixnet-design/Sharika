@@ -5881,7 +5881,7 @@
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
         seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
         access_locked:Number(r.access_locked)===1?1:0,
-        owner_country:r.owner_country||'',owner_display_id:r.owner_display_id||r.id,
+        owner_country:r.owner_country||'',room_display_id:r.room_display_id,
         created_at:r.created_at||''
       }));
       window.A.myRoom = own ? {
@@ -5891,7 +5891,7 @@
         n:Number(own.online_count)||0,cover_url:own.cover_url||null,
         access_locked:Number(own.access_locked)===1?1:0,
         owner_country:own.owner_country||window.CFG.viewerCountry||'',
-        owner_display_id:own.owner_display_id||own.id,
+        room_display_id:own.room_display_id,
         created_at:own.created_at||''
       } : null;
       // Quiet background refresh: changing identical room cards restarts every
@@ -6057,7 +6057,7 @@
       }else background?.querySelector('.sh-room-card-photo')?.remove();
       // The canonical room/user ID stays in API routing. Public room cards
       // display the owner's active Special ID, if one exists.
-      const displayId=String(room.owner_display_id||room.id);
+      const displayId=String(room.room_display_id||room.id);
       const summary=card.querySelector('.info small');
       if(summary&&/^[0-9]{1,10}$/.test(displayId))
         summary.textContent='ID '+displayId+' · 🔥 '+(Number(room.n)||0);
@@ -6182,18 +6182,7 @@
     const userId=session?.user?.id;
     const frameDoc=frame.document;
     const visit=window.cur;
-    const membersRequest=api('GET','/rooms/'+room.id+'/members');
-    if(!frame.__sharikaRoomOwnerRequest){
-      const ownerRequest=api('GET','/users/'+room.id).then(owner=>{
-        if(frame.__sharikaRoomOwnerRequest===ownerRequest)
-          frame.__sharikaRoomOwner=owner;
-      }).catch(error=>console.warn('Room owner profile:',errText(error))).finally(()=>{
-        if(frame.__sharikaRoomOwnerRequest===ownerRequest)
-          frame.__sharikaRoomOwnerRequest=null;
-      });
-      frame.__sharikaRoomOwnerRequest=ownerRequest;
-    }
-    const data=await membersRequest;
+    const data=await api('GET','/rooms/'+room.id+'/members');
     if(frame.__sharikaSeatSyncNo!==requestNo ||
        !session || session.user.id!==userId || window.cur!==visit ||
        frame.document!==frameDoc ||
@@ -6201,16 +6190,14 @@
     // The room ID is a separate namespace: an old card or cached room role
     // cannot override the owner verified by the current D1 members snapshot.
     if(data.owner_user_id)room.owner_id=String(data.owner_user_id);
-    // The room header displays the owner's active Special ID while all
-    // calls, membership actions and room navigation keep the canonical ID.
-    const owner=data.members?.find(member=>member.user_id===room.owner_id)
-      ?.sharika_users||frame.__sharikaRoomOwner||{
-        name:room.name||'Room Owner',display_id:room.owner_display_id||room.id
-      };
-    const visibleOwnerId=String(owner.special_id||owner.display_id||room.id);
+    if(data.room_display_id)room.room_display_id=data.room_display_id;
+    if(data.room_name)room.name=data.room_name;
+    const ownerMember=(data.members||[]).find(member=>member.user_id===room.owner_id);
     const roomHeaderId=frame.$?.('rid');
-    if(roomHeaderId&&/^[0-9]{1,10}$/.test(visibleOwnerId))
-      roomHeaderId.textContent=visibleOwnerId;
+    if(roomHeaderId)roomHeaderId.textContent=String(
+      room.room_display_id||ownerMember?.sharika_users?.public_id||room.id);
+    const roomHeaderName=frame.$?.('rname');
+    if(roomHeaderName)roomHeaderName.textContent=room.name;
     const self=(data.members||[]).find(m=>m.user_id===session?.user?.id);
     // The verified self-state is separate from the public presence roster.
     // A lost heartbeat must not revoke Room Admin controls or auto-mute mic.
@@ -6239,9 +6226,8 @@
     // Server-sourced roles are scoped to this room and this roster only.
     // A prior room's owner label must never carry onto a guest's new mic.
     frame.__sharikaRoleRoomId=room.id;
-    const verifiedOwnerMember=(data.members||[]).find(m=>m.user_id===room.owner_id);
     frame.__sharikaVerifiedOwnerPublicId=String(
-      verifiedOwnerMember?.sharika_users?.public_id||'');
+      ownerMember?.sharika_users?.public_id||'');
     frame.__sharikaMemberRoles=new Map((data.members||[])
       .filter(m=>m.sharika_users?.public_id)
       .map(m=>[String(m.sharika_users.public_id),
@@ -6305,15 +6291,6 @@
       frame.applyTheme();
     const slots = Array.from({length: Math.max(2,Number(room.seat_count||12)+1)},
       (_,i)=>({empty:1,i}));
-    const ownerSeat={n:owner.name,e:'👑',pic:verifiedAvatarUrl(owner.pic),i:0,
-      user_id:room.owner_id,public_id:owner.public_id||room.id,
-      room_role:'owner',
-      special_id:owner.special_id||null,
-      display_id:owner.special_id||owner.display_id||owner.public_id||room.id,
-      muted:room.owner_id===session?.user?.id&&localMic===false,talk:false,
-      svip_level:Number(owner.svip_level)||0,
-      frame_style:owner.frame_style||'',entry_style:owner.entry_style||'',
-      medal_style:owner.medal_style||'',name_tag_style:owner.name_tag_style||''};
     // The owner has a permanent room, NOT a permanent occupied seat. Keep
     // the crown-only throne empty until they deliberately select a mic seat.
     slots[0]={empty:1,i:0,owner_throne:true};
@@ -6325,8 +6302,15 @@
         // An owner only occupies a numbered mic seat after a real seat tap.
         if(Number.isInteger(member.seat_no)&&member.seat_no>0&&
            member.seat_no<slots.length){
-          slots[member.seat_no]={...ownerSeat,i:member.seat_no,
-            owner_mic_seat:true,muted:!!member.muted||
+          const ownerSeat={
+            n:user.name,e:'👑',pic:verifiedAvatarUrl(user.pic),i:member.seat_no,
+            user_id:member.user_id,public_id:user.public_id,room_role:'owner',
+            special_id:user.special_id||null,
+            display_id:user.special_id||user.display_id||user.public_id,
+            svip_level:Number(user.svip_level)||0,frame_style:user.frame_style||'',
+            entry_style:user.entry_style||'',medal_style:user.medal_style||'',
+            name_tag_style:user.name_tag_style||'',talk:false};
+          slots[member.seat_no]={...ownerSeat,owner_mic_seat:true,muted:!!member.muted||
               (member.user_id===session?.user?.id&&localMic===false)};
           slots[0].owner_mic_seat_no=member.seat_no;
         }else{
@@ -6982,8 +6966,6 @@
     // The bundled offline room artwork contains demo greetings. A new room
     // visit starts with an empty verified transcript, including after reentry.
     frame.$?.('chat')?.replaceChildren();
-    frame.__sharikaRoomOwner=null;
-    frame.__sharikaRoomOwnerRequest=null;
     // Queue the first snapshot before the optional chat and effects polls.
     refreshRoomSeats();
     // Add depth to the existing Sharika seat artwork without replacing its
@@ -8619,7 +8601,7 @@
           if(info){
             const label=frame.document.createElement('div');
             label.className='row';
-            label.textContent=String(room.name||'Room')+' · ID '+String(room.id);
+            label.textContent=String(room.name||'Room')+' · ID '+String(room.room_display_id||room.id);
             const report=frame.document.createElement('button');
             report.type='button';report.className='send';
             report.textContent='🚩 Report this room';
@@ -12707,7 +12689,7 @@
         const row=document.createElement('button');row.type='button';
         row.className='sh-search-result';
         row.textContent=String(room.emoji||'🎙️')+' '+String(room.name||'Voice room')+
-          ' · Room '+String(room.id)+'  ›';
+          ' · Room '+String(room.room_display_id||room.id)+'  ›';
         row.onclick=()=>{
           close();const saved=(window.CFG?.rooms||[]).find(r=>r.id===room.id);
           window.openRoom(saved||{...room,th:room.theme||'mid',n:0,c:'#704220,#d5a460'});

@@ -2,6 +2,7 @@ import {handleAdminLocation} from './profile-location.mjs';
 import {handleCosmeticAdmin} from './cosmetics.mjs';
 import {handleAdminExchangeRate} from './exchange-rate.mjs';
 import {handlePlayDailyConfig} from './daily.mjs';
+import {handleSpecialAdmin} from './special-ids.mjs';
 // Isolated Play closed-test administration. Public IDs are database-local;
 // no write ever crosses from a Play tester into the staging wallet or profile.
 // Staging's Firebase-verified Super Admin role gates every operation.
@@ -39,7 +40,7 @@ async function superActor(request, env) {
     const actor = await checked.json();
     if (actor.role !== 'super' || !PLAY_ID.test(actor.public_id || ''))
       return { error: response({ error: 'super_admin_required' }, 403) };
-    return { actorId: 'staging-super:' + actor.public_id };
+    return { actorId: 'staging-super:' + actor.public_id, publicId: actor.public_id };
   } catch (_) {
     return { error: response({ error: 'admin_verification_unavailable' }, 503) };
   }
@@ -254,6 +255,30 @@ export async function handlePlayTestAdmin(request, env) {
   const route = path === root ? '' : path.startsWith(root + '/') ? path.slice(root.length + 1) : null;
   if (route === null) return response({ error: 'not_found' }, 404);
   const method = request.method;
+  const specialRoute=/^special-ids(?:\/availability|\/[0-9]{8}\/revoke)?$/.test(route);
+  if(specialRoute){
+    const allowedParam=route==='special-ids'?'q':
+      route==='special-ids/availability'?'value':null;
+    if([...url.searchParams.keys()].some(key=>method!=='GET'||key!==allowedParam))
+      return response({error:'invalid_query'},400);
+    const verified=await superActor(request,env);
+    if(verified.error)return verified.error;
+    let uid;
+    if(method==='POST'||method==='PATCH'){
+      // Resolve the staging-authenticated actor by Firebase UID in Play.
+      // Public serials can name different people in the two databases.
+      const actor=await env.STAGING_DB.prepare(
+        'SELECT auth_uid FROM sharika_users WHERE public_no=?'
+      ).bind(Number(verified.publicId)).first();
+      const playActor=actor&&await env.PLAY_DB.prepare(
+        "SELECT auth_uid FROM sharika_users WHERE auth_uid=? AND status='active'"
+      ).bind(actor.auth_uid).first();
+      if(!playActor)return response({error:'play_admin_profile_required'},403);
+      uid=playActor.auth_uid;
+    }
+    return handleSpecialAdmin({request,env:{DB:env.PLAY_DB},uid,actor:{role:'super'},
+      operation:route,reply:response,fail:(error,status)=>response({error},status)});
+  }
   const permissions = route === 'location' ? ['GET','PATCH','POST'] : route === 'cosmetics' ? ['GET','POST','PATCH'] :
     ['daily','exchange-rate'].includes(route) ? ['GET','PATCH'] : route === '' || route === 'catalog' || route === 'credits' ? ['GET'] :
     ['coins','cosmetics/grant','cosmetics/revoke'].includes(route) ? ['POST'] : [];

@@ -1162,7 +1162,7 @@ export async function handleRequest(request, env, ctx) {
         // The client still shows foreign rooms in its Global list.
         const viewerCountry=String(viewer.country||'').trim().toUpperCase()||'ZZ';
         const rows=await env.DB.prepare(
-          'SELECT r.*,COALESCE(al.locked,0) AS access_locked,c.version AS cover_version,u.country AS owner_country,'+activeSpecialSelect('u')+' FROM sharika_rooms r '+
+          'SELECT r.*,COALESCE(al.locked,0) AS access_locked,c.version AS cover_version,u.country AS owner_country,u.public_no AS owner_public_no,'+activeSpecialSelect('u')+' FROM sharika_rooms r '+
           'LEFT JOIN sharika_room_access_locks al ON al.room_id=r.id '+
           'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
           'LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id '+
@@ -1177,8 +1177,9 @@ export async function handleRequest(request, env, ctx) {
               .presenceRoomCounts();
           } catch(error) {console.warn('room_presence_unavailable',error?.message);}
         }
-        return reply({rooms:(rows.results||[]).map(r=>({
-          ...r,owner_display_id:r.special_id||r.id,
+        return reply({rooms:(rows.results||[]).map(({owner_public_no,...r})=>({
+          ...r,room_display_id:owner_public_no?publicId(owner_public_no):null,
+          owner_display_id:owner_public_no?publicId(owner_public_no):r.id,
           cover_url:r.cover_version?url.origin+'/api/v1/rooms/'+r.id+
             '/cover?v='+r.cover_version:null,
           online_count:Number(online?.[r.id])||0
@@ -1186,8 +1187,7 @@ export async function handleRequest(request, env, ctx) {
       }
       if (request.method === 'POST') {
         const prior = await env.DB.prepare('SELECT * FROM sharika_rooms WHERE owner_id=?').bind(uid).first();
-        if (prior) return reply(prior, 200, cors);
-        const user = await assertActive(env.DB, uid);
+        if (prior) return reply({...prior,room_display_id:publicId(viewer.public_no)}, 200, cors);
         const data = await readBody(request);
         const name = txt(data.name, 100);
         if (!name) return fail('invalid_room_name', 400, cors);
@@ -1196,7 +1196,7 @@ export async function handleRequest(request, env, ctx) {
         // migration: their messages, gift history, and membership reference
         // the old room ID. A different user may later receive the matching
         // canonical public number, so the room namespace must be independent.
-        let roomId = publicId(user.public_no);
+        let roomId = publicId(viewer.public_no);
         const takenRoom=await env.DB.prepare('SELECT id FROM sharika_rooms WHERE id=?')
           .bind(roomId).first();
         if(takenRoom){
@@ -1214,7 +1214,8 @@ export async function handleRequest(request, env, ctx) {
           env.DB.prepare(`INSERT INTO sharika_room_members(room_id,user_id,role) VALUES(?,?,'owner')`)
             .bind(roomId, uid),
         ]);
-        return reply(await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?').bind(roomId).first(), 201, cors);
+        return reply({...await env.DB.prepare('SELECT * FROM sharika_rooms WHERE id=?').bind(roomId).first(),
+          room_display_id:publicId(viewer.public_no)},201,cors);
       }
     }
     // Room settings are owned by the verified room owner, never the browser's
@@ -2048,7 +2049,10 @@ export async function handleRequest(request, env, ctx) {
         const selectedCatalogId=roomThemeId(room.theme);
         const catalogBackground=selectedCatalogId!==null
           ?await catalogThemeImage(env.DB,selectedCatalogId,url.origin):null;
-        return reply({ room: roomId,
+        const ownerPublicNo=(result.results||[]).find(row=>row.user_id===room.owner_id)?.public_no??
+          (await env.DB.prepare('SELECT public_no FROM sharika_users WHERE auth_uid=?')
+            .bind(room.owner_id).first())?.public_no;
+        return reply({ room: roomId,room_name:room.name,room_display_id:ownerPublicNo?publicId(ownerPublicNo):null,
           // Canonical owner UID is independent of the public room number.
           // Clients must not infer ownership from room ID or cached roles.
           owner_user_id:room.owner_id,

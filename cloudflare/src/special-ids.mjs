@@ -1,6 +1,5 @@
 import {recordUserEvent} from './transaction-notices.mjs';
 // Verified, admin-managed public alias. Permanent public_no/auth_uid never change.
-const PREFIX='/api/v1/admin/special-ids';
 const PUBLIC_ID=/^[0-9]{8}$/;
 const SPECIAL_ID=/^[0-9]{1,10}$/;
 const validDays=new Set([7,30,90]);
@@ -115,7 +114,7 @@ export async function handleSpecialAdmin({request,env,uid,actor,operation,cors,r
           }))
       ]);
     }catch(error){
-      if(/UNIQUE|constraint/i.test(String(error?.message||'')))
+      if(/UNIQUE constraint failed/i.test(String(error?.message||'')))
         return fail('special_id_already_reserved',409,cors);
       throw error;
     }
