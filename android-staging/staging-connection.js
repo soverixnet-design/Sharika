@@ -1551,18 +1551,9 @@
           setFramed(false);
         },{once:true});
       }
-      const isOwner=seat.room_role==='owner';
-      if(!isOwner&&!svip&&!medal&&!nameTag)continue;
+      if(!svip&&!medal&&!nameTag)continue;
       const ornaments=doc.createElement('div');
       ornaments.className='sh-seat-ornaments';
-      if(isOwner){
-        const crown=doc.createElement('span');
-        crown.className='sh-room-admin-badge';
-        crown.textContent='👑';
-        crown.title='Room Owner';
-        crown.setAttribute('aria-label','Room Owner');
-        ornaments.appendChild(crown);
-      }
       if(svip&&!/^svip-(?:medal|royal-badge)-/.test(medal?.id||''))
         ornaments.appendChild(makeSvipBadge(doc,svip,'sh-svip-seat-badge'));
       for(const [item,style,label] of [[medal,'sh-sovera-seat-medal','Medal'],
@@ -4348,8 +4339,12 @@
     const avatar=el.querySelector('.av');
     if(!avatar)return;
     let effect=avatar.querySelector('.sh-speaking-effect');
-    if(!level||!strength){
+    if(!level){
       effect?.remove();
+      return;
+    }
+    if(!strength){
+      if(effect?.dataset.strength)delete effect.dataset.strength;
       return;
     }
     if(!effect){
@@ -4360,8 +4355,8 @@
       for(let i=0;i<4;i++)effect.appendChild(doc.createElement('i'));
       avatar.appendChild(effect);
     }
-    effect.dataset.style=String(level);
-    effect.dataset.strength=String(strength);
+    if(effect.dataset.style!==String(level))effect.dataset.style=String(level);
+    if(effect.dataset.strength!==String(strength))effect.dataset.strength=String(strength);
   }
   function paintVoiceSpeakers(roomId,frame) {
     if(!frame?.seats)return;
@@ -4374,7 +4369,7 @@
       seat.talk=!!strength;
       const el=frame.seatEl?.(seat.i);
       if(!el)continue;
-      el.classList.toggle('talk',seat.talk);
+      el.classList.toggle('sh-voice-active',seat.talk);
       paintSeatSpeakingEffect(el,svipLevel(seat.svip_level),strength);
     }
   }
@@ -5203,14 +5198,20 @@
     if(localSeats.length) {
       // Rebuilding every avatar on repeated ICE/heartbeat status callbacks
       // makes the 20-seat grid visibly jump, even when mute state is the same.
-      const changed=localSeats.some(seat=>seat.muted===!!enabled);
-      for(const seat of localSeats)seat.muted=!enabled;
-      if(changed&&typeof frame.render==='function'){
-        frame.render();
-        decorateRoomSeats(frame);
-        paintVerifiedMicCount(frame);
-        if(window.cur?.id===sfuState?.roomId)paintVoiceSpeakers(sfuState.roomId,frame);
+      for(const seat of localSeats){
+        seat.muted=!enabled;
+        const avatar=frame.seatEl?.(seat.i)?.querySelector('.av');
+        const badge=avatar?.querySelector(':scope > .badge');
+        if(enabled){badge?.remove();continue;}
+        if(avatar&&!badge){
+          const muted=frame.document.createElement('span');
+          muted.className='badge';
+          muted.textContent='🔇';
+          muted.setAttribute('aria-label','Microphone muted');
+          avatar.appendChild(muted);
+        }
       }
+      if(window.cur?.id)paintVoiceSpeakers(window.cur.id,frame);
     }
     const mic=frame.$?.('mic');
     if(mic) {
@@ -6318,7 +6319,6 @@
       chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[]]);
     const snapshotChanged=frame.__sharikaRoomRenderSignature!==renderSignature;
     frame.seats=slots;
-    if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
     frame.U=audience;
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
@@ -6360,7 +6360,7 @@
           }))
       });
     }
-    if(!snapshotChanged)return;
+    if(!snapshotChanged){paintVoiceSpeakers(room.id,frame);return;}
     frame.render();
     frame.__sharikaRoomRenderSignature=renderSignature;
     const seatGrid=frame.$?.('grid');
@@ -6454,10 +6454,16 @@
   // from the Admin catalogue is rendered by each listener; a phone MP3 stays
   // on its owner's device and enters the existing room SFU microphone uplink.
   let musicState=null,musicStateRoom=null,musicPlaybackKey='',musicLocal=null;
-  let musicPlayer=null,musicVolume=.6,musicHeartbeat=null,musicSyncPending=false;
+  let musicPlayer=null,musicVolume=.6,musicHeartbeat=null,musicSyncPending=null;
+  let unlockingMusic=null;
+  function musicStatus(message){
+    const status=document.getElementById('sharika-room-music-status');
+    if(status)status.textContent=message;
+  }
   function moderatorCanPlayMusic(){
+    const room=window.cur;
     const role=document.getElementById('rf')?.contentWindow?.__sharikaRoomRole;
-    return role==='owner'||role==='admin';
+    return !!room&&(room.owner_id===session?.user?.id||role==='owner'||role==='admin');
   }
   function validRoomMusicUrl(url){
     try{
@@ -6501,98 +6507,133 @@
     if(musicHeartbeat){clearInterval(musicHeartbeat);musicHeartbeat=null;}
     document.getElementById('sharika-room-music-panel')?.remove();
     releasePhoneMusic();closeRoomMusicAudio();
-    musicStateRoom=null;musicState=null;musicPlaybackKey='';
+    musicStateRoom=null;musicState=null;musicPlaybackKey='';musicSyncPending=null;unlockingMusic=null;
   }
   function playbackForMusicState(roomId,state){
-    if(window.cur?.id!==roomId)return;
-    const nextKey=String(state?.revision||0)+':'+String(state?.mode||'off');
+    const nextKey=String(state.revision)+':'+state.mode;
     if(musicPlaybackKey===nextKey)return;
     musicPlaybackKey=nextKey;
-    if(musicLocal&&(state?.mode!=='local'||
+    if(musicLocal&&(state.mode!=='local'||
        Number(state.revision)!==Number(musicLocal.revision)))releasePhoneMusic();
-    if(state?.mode==='library'&&validRoomMusicUrl(state.url)){
-      const player=roomMusicPlayer();
-      player.pause();player.src=state.url;player.volume=musicVolume;
-      const seek=()=>{
-        if(window.cur?.id!==roomId||musicPlaybackKey!==nextKey)return;
-        const seconds=Math.max(0,(Date.now()-Number(state.started_at_ms||Date.now()))/1000);
-        if(Number.isFinite(player.duration)&&player.duration>0)
-          player.currentTime=Math.min(seconds,Math.max(0,player.duration-.1));
-        else if(seconds<3600)try{player.currentTime=seconds;}catch(_){}
-        player.play().catch(error=>console.warn('Room library playback:',errText(error)));
-      };
-      if(player.readyState>=1)seek();
-      else player.addEventListener('loadedmetadata',seek,{once:true});
-    }else closeRoomMusicAudio();
+    if(state.mode!=='library'||!validRoomMusicUrl(state.url)){
+      closeRoomMusicAudio();
+      return;
+    }
+    const player=roomMusicPlayer();
+    const stillCurrent=()=>musicStateRoom===roomId&&musicPlaybackKey===nextKey;
+    player.onloadedmetadata=()=>{
+      if(!stillCurrent())return;
+      const seconds=Math.max(0,(Date.now()-Number(state.started_at_ms||Date.now()))/1000);
+      if(Number.isFinite(player.duration)&&player.duration>0)
+        player.currentTime=seconds%player.duration;
+    };
+    // Start decoding immediately. Waiting for loadedmetadata before play()
+    // could leave the media element idle after a user had already tapped Play.
+    player.onplaying=()=>{if(stillCurrent())musicStatus('Now playing: '+state.title);};
+    player.onerror=()=>{if(stillCurrent())musicStatus('Cannot load this song. Choose another track.');};
+    player.pause();
+    player.loop=true;
+    player.src=state.url;
+    player.play().catch(error=>{
+      if(!stillCurrent()||error?.name==='AbortError')return;
+      musicStatus(error?.name==='NotAllowedError'?
+        'Tap Listen to start music on this phone.':'Cannot play this song. Choose another track.');
+    });
   }
-  async function pollRoomMusic(roomId){
-    if(musicSyncPending||!session||window.cur?.id!==roomId)return;
-    musicSyncPending=true;
-    try{
-      const next=await api('GET','/rooms/'+roomId+'/music');
-      if(window.cur?.id!==roomId)return;
-      musicStateRoom=roomId;musicState=next;
-      playbackForMusicState(roomId,next);
-      const label=document.getElementById('sharika-music-now-playing');
-      if(label)label.textContent=next.mode==='off'?'No song playing':
-        (next.mode==='local'?'📱 Phone MP3':'🎼 Music Library')+' · '+next.title;
-    }catch(error){console.warn('Room music state:',errText(error));}
-    finally{musicSyncPending=false;}
+  function applyRoomMusic(roomId,next,visit){
+    if(!next||window.cur!==visit||joinedRoom!==visit||musicStateRoom!==roomId||
+       Number(next.revision)<Number(musicState?.revision??-1))return false;
+    musicState=next;
+    playbackForMusicState(roomId,next);
+    const label=document.getElementById('sharika-music-now-playing');
+    if(label)label.textContent=next.mode==='off'?'No song playing':
+      (next.mode==='local'?'📱 Phone audio':'🎼 Music Library')+' · '+next.title;
+    return true;
+  }
+  function pollRoomMusic(roomId){
+    const visit=window.cur;
+    if(!session||visit?.id!==roomId||musicStateRoom!==roomId)return;
+    if(musicSyncPending)return musicSyncPending;
+    const pending=api('GET','/rooms/'+roomId+'/music').then(next=>applyRoomMusic(roomId,next,visit))
+      .catch(error=>console.warn('Room music state:',errText(error))).finally(()=>{
+        if(musicSyncPending===pending)musicSyncPending=null;
+      });
+    musicSyncPending=pending;
+    return pending;
   }
   function startRoomMusicPoll(roomId){
     if(musicPoll)clearInterval(musicPoll);
-    musicStateRoom=roomId;musicState=null;musicPlaybackKey='';
-    pollRoomMusic(roomId).catch(()=>{});
+    musicStateRoom=roomId;musicState=null;musicPlaybackKey='';musicSyncPending=null;
+    pollRoomMusic(roomId);
     musicPoll=setInterval(()=>{if(window.cur?.id===roomId)pollRoomMusic(roomId);},3500);
   }
   async function selectLibrarySong(roomId,trackId){
-    await api('PUT','/rooms/'+roomId+'/music',{action:'library',track_id:trackId});
-    await pollRoomMusic(roomId);
-    toast('🎼 Playing Music Library song in this room');
+    const visit=window.cur;
+    const next=await api('PUT','/rooms/'+roomId+'/music',{action:'library',track_id:trackId});
+    return applyRoomMusic(roomId,next,visit);
   }
   async function stopRoomMusic(roomId){
-    await api('PUT','/rooms/'+roomId+'/music',{action:'stop'});
-    releasePhoneMusic();closeRoomMusicAudio();
-    await pollRoomMusic(roomId);
+    const visit=window.cur;
+    const next=await api('PUT','/rooms/'+roomId+'/music',{action:'stop'});
+    return applyRoomMusic(roomId,next,visit);
+  }
+  async function waitForPhoneMusicPublisher(roomId,visit){
+    const frame=document.getElementById('rf')?.contentWindow;
+    if(!frame?.seats?.some(seat=>seat?.i>0&&!seat.empty&&!seat.lock&&seat.user_id===session?.user?.id))
+      throw new Error('Take an unlocked mic seat first, then choose the song again.');
+    const usable=()=>sfuState?.roomId===roomId&&sfuState.readyPublication&&
+      sfuState.publishPC?.connectionState==='connected';
+    if(!usable()&&!sfuState?.publishPC)await connectVoice(roomId);
+    for(let count=0;!usable()&&count<24;count++){
+      if(joinedRoom!==visit||window.cur!==visit)throw new Error('Room changed');
+      await new Promise(resolve=>setTimeout(resolve,250));
+    }
+    if(!usable())throw new Error('Room voice has not connected. Check the mic permission and choose the song again.');
+    return sfuState;
   }
   async function streamPhoneMusic(roomId,file){
     if(!moderatorCanPlayMusic())throw new Error('Only Room Owner or Room Admin can play music');
     if(!file||!(/^(audio\/)/i.test(file.type)||/\.(mp3|m4a|aac|ogg|wav)$/i.test(file.name)))
       throw new Error('Choose an MP3 or another supported audio file');
     if(file.size>50*1024*1024)throw new Error('Please choose a file smaller than 50 MB');
-    if(musicLocal)await stopRoomMusic(roomId);
-    const state=sfuState;
-    const mic=state?.media?.getAudioTracks()[0];
-    if(!state||state.roomId!==roomId||!state.canPublish||
-       !state.readyPublication||!mic||mic.readyState!=='live')
-      throw new Error('Take an unlocked mic seat and connect voice before sharing phone MP3');
+    const visit=joinedRoom;
+    if(visit?.id!==roomId||window.cur!==visit)throw new Error('Room changed');
     if(typeof AudioContext==='undefined'&&typeof webkitAudioContext==='undefined')
       throw new Error('This device does not support phone MP3 broadcast');
-    const sender=state.publishPC?.getSenders()?.find(item=>item.track===mic);
-    if(!sender)throw new Error('Room microphone uplink unavailable; please reconnect');
     const context=new (window.AudioContext||window.webkitAudioContext)();
-    let blobUrl=null;
+    let blobUrl=null,audio=null,reserved=false,mixed=null;
     try{
+      const resumed=context.resume();
+      resumed.catch(()=>{});
+      if(musicLocal)await stopRoomMusic(roomId);
+      const state=await waitForPhoneMusicPublisher(roomId,visit);
+      const mic=state.media?.getAudioTracks()[0];
+      const sender=state.publishPC?.getSenders()?.find(item=>item.track===mic);
+      if(!sender||mic?.readyState!=='live')throw new Error('Room microphone uplink unavailable; please reconnect');
       blobUrl=URL.createObjectURL(file);
-      const audio=new Audio(blobUrl);audio.loop=false;
+      audio=new Audio(blobUrl);audio.loop=false;
       const micSource=context.createMediaStreamSource(state.media);
       const songSource=context.createMediaElementSource(audio);
       const destination=context.createMediaStreamDestination();
       micSource.connect(destination);songSource.connect(destination);
-      await context.resume();
+      await resumed;
+      // Confirm the file decodes before announcing a shared song.
+      await audio.play();
+      audio.pause();
+      audio.currentTime=0;
+      if(joinedRoom!==visit||window.cur!==visit||sfuState!==state)throw new Error('Room changed');
       // Reserve the room controller first; no file is uploaded to Cloudflare.
       const current=await api('PUT','/rooms/'+roomId+'/music',{
         action:'local',title:file.name.slice(0,100)
       });
-      if(window.cur?.id!==roomId)throw new Error('Room changed');
-      const mixed=destination.stream.getAudioTracks()[0];
+      reserved=true;
+      if(joinedRoom!==visit||window.cur!==visit||sfuState!==state)throw new Error('Room changed');
+      mixed=destination.stream.getAudioTracks()[0];
       await sender.replaceTrack(mixed);
       musicLocal={roomId,revision:current.revision,original:mic,state,sender,context,audio,micSource,
         songSource,destination,blobUrl};
+      if(!applyRoomMusic(roomId,current,visit))throw new Error('Room music changed');
       await audio.play();
-      musicState=current;musicStateRoom=roomId;
-      closeRoomMusicAudio();
-      musicPlaybackKey=String(current.revision)+':local';
       if(musicHeartbeat)clearInterval(musicHeartbeat);
       musicHeartbeat=setInterval(()=>{
         if(musicLocal?.roomId===roomId&&window.cur?.id===roomId)
@@ -6606,10 +6647,12 @@
     }catch(error){
       if(musicLocal?.blobUrl===blobUrl)releasePhoneMusic();
       else {
+        if(audio){audio.pause();audio.removeAttribute('src');audio.load();}
+        mixed?.stop();
         if(blobUrl)URL.revokeObjectURL(blobUrl);
         context.close().catch(()=>{});
       }
-      api('PUT','/rooms/'+roomId+'/music',{action:'stop_self'}).catch(()=>{});
+      if(reserved)api('PUT','/rooms/'+roomId+'/music',{action:'stop_self'}).catch(()=>{});
       throw error;
     }
   }
@@ -6649,8 +6692,20 @@
     volume.oninput=()=>{musicVolume=Number(volume.value)/100;if(musicPlayer)musicPlayer.volume=musicVolume;};
     panel.append(volumeLabel,volume);
     const status=document.createElement('p');
+    status.id='sharika-room-music-status';
+    status.setAttribute('role','status');
     status.style.cssText='font-size:13px;min-height:18px;color:#ffe29b';
-    panel.appendChild(status);
+    const listen=document.createElement('button');
+    listen.type='button';listen.textContent='▶ Listen on this phone';
+    listen.style.cssText='padding:9px;border:1px solid #d7a653;border-radius:12px;background:#281337;color:#ffe4af';
+    listen.onclick=()=>{
+      if(musicState?.mode!=='library'||!musicPlayer?.getAttribute('src')){
+        status.textContent='Shared phone audio plays through the room voice connection.';
+        resumeRoomAudio();return;
+      }
+      musicPlayer.play().catch(error=>musicStatus('Could not play: '+errText(error)));
+    };
+    panel.append(listen,status);
     if(moderatorCanPlayMusic()){
       const stop=document.createElement('button');
       stop.textContent='■ Stop music for everyone';
@@ -6669,11 +6724,17 @@
       const input=document.createElement('input');input.type='file';input.accept='audio/*,.mp3,.m4a,.aac,.ogg,.wav';
       input.style.cssText='display:block;width:100%;max-width:100%;padding:9px;border:1px solid #d2a45a;border-radius:12px;box-sizing:border-box';
       input.onchange=async()=>{
-        if(!input.files?.[0])return;
+        const file=input.files?.[0];
+        if(!file||unlockingMusic)return;
         input.disabled=true;status.textContent='Connecting phone music to room voice…';
-        try{await streamPhoneMusic(roomId,input.files[0]);status.textContent='Phone MP3 broadcasting ✓';}
-        catch(e){status.textContent='MP3 unavailable: '+errText(e);}
-        finally{input.disabled=false;input.value='';}
+        const sharing=streamPhoneMusic(roomId,file);
+        unlockingMusic=sharing;
+        try{await sharing;status.textContent='Phone audio is playing for the room.';}
+        catch(e){status.textContent='Audio unavailable: '+errText(e);}
+        finally{
+          if(unlockingMusic===sharing)unlockingMusic=null;
+          input.disabled=false;input.value='';
+        }
       };
       panel.append(uploadLabel,input);
     }else{
@@ -6701,7 +6762,7 @@
             'background:linear-gradient(#ffdf91,#a66f23);color:#241128;font-weight:900;padding:9px 13px';
           play.onclick=async()=>{
             play.disabled=true;status.textContent='Starting shared song…';
-            try{await selectLibrarySong(roomId,Number(track.id));status.textContent='Now playing: '+track.title;}
+            try{await selectLibrarySong(roomId,Number(track.id));}
             catch(e){status.textContent='Song unavailable: '+errText(e);}
             finally{play.disabled=false;}
           };
@@ -6710,7 +6771,7 @@
         list.appendChild(item);
       }
     }catch(error){list.textContent='Library unavailable: '+errText(error);}
-    pollRoomMusic(roomId).catch(()=>{});
+    pollRoomMusic(roomId);
   }
   window.SharikaRoomMusic=Object.freeze({open:openRoomMusic});
   // A dedicated, scrollable theme gallery is separate from Room Settings
@@ -6873,10 +6934,6 @@
         '.seat .ring{filter:drop-shadow(0 0 5px rgba(255,220,146,.45))}',
         '.seat.empty .face{background:linear-gradient(150deg,rgba(255,255,255,.19),rgba(32,17,75,.66))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.13),inset 0 -7px 12px rgba(8,4,34,.48),0 4px 0 rgba(8,4,27,.4)}',
         '.seat.lock .face{background:linear-gradient(145deg,rgba(63,49,114,.8),rgba(17,11,47,.9))!important;box-shadow:inset 0 3px 5px rgba(255,255,255,.12),0 5px 0 rgba(8,4,27,.48)}',
-        '.seat.talk .av{filter:drop-shadow(0 0 14px rgba(255,207,92,.9))}',
-        '.seat.talk .wave{border-color:#ffe18f;box-shadow:0 0 10px rgba(255,196,64,.58)}',
-        '.seat.talk .face{border-color:#fff0b9;box-shadow:0 0 0 3px rgba(255,195,71,.5),0 0 22px rgba(255,202,78,.72)}',
-        '.seat:active .av{transform:translateY(2px) scale(.96)}',
         '.seat:focus-visible .av{outline:2px solid #ffe08b;outline-offset:6px}',
         '.step button{background:linear-gradient(145deg,rgba(255,255,255,.27),rgba(75,44,152,.85));box-shadow:inset 0 2px 0 rgba(255,255,255,.32),0 4px 0 rgba(20,9,63,.6)}',
         '.fr button{background:linear-gradient(160deg,rgba(255,255,255,.19),rgba(51,31,109,.82));box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 3px 0 rgba(17,9,57,.5)}',
@@ -7733,7 +7790,7 @@
       const self=selected.user_id===session?.user?.id;
       const actions=frame.$('sheet')?.querySelector('.acts');
       const detail=frame.$('sheet')?.querySelector('.who small');
-      if(detail)detail.textContent=index===0?'Room owner':'Mic seat '+index;
+      if(detail)detail.textContent=selected.room_role==='owner'?'Room Owner':'Mic seat '+index;
       if(detail&&selected.room_role==='admin')
         detail.textContent='Room Admin · Mic seat '+index;
       if(!actions)return result;
