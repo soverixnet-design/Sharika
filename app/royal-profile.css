@@ -974,3 +974,116 @@
   #pfc .sh-public-item-image {height:55px}
   #pfc .sh-public-collection-tile strong {font-size:8.5px}
 }
+
+
+/* SHARIKA_ROYAL_PUBLIC_PROFILE_CLEANUP_20261115
+ * Restore the premium purple/gold public-profile hierarchy. A user-uploaded
+ * cover continues to take priority through its inline background image.
+ * Never fabricate/duplicate SVIP, Noble, medals, roles or CP entitlements. */
+#pfo.pfo,
+#pfc,
+#pfo #pfc .pf.sh-ranked-profile {
+  background:linear-gradient(180deg,#160c2c 0%,#32144b 44%,#26133e 100%)!important;
+  color:#fff4df!important;
+}
+#pfo #pfc .pf.sh-ranked-profile .cov {
+  background-color:#2c164b!important;
+  border-bottom:2px solid #f4c879!important;
+  box-shadow:inset 0 -32px 40px #17092788,0 5px 24px #100727b0!important;
+}
+/* Default art only: do not cover custom uploaded covers. */
+#pfo #pfc .pf.sh-ranked-profile .cov:not([style*="background-image"]):not([style*="background:"]) {
+  background-image:
+    linear-gradient(180deg,#18092b25 0%,#1e0b37ac 85%),
+    url('./royal-profile-background.jpg')!important;
+  background-repeat:no-repeat!important;
+  background-position:center center!important;
+  background-size:cover!important;
+}
+#pfo #pfc .pf.sh-ranked-profile .pfh>h2 {
+  color:#fff0c7!important;
+  text-shadow:0 2px 7px #15041e,0 0 15px #a14e8e70!important;
+  font-weight:900;
+}
+#pfo #pfc .pf.sh-ranked-profile .pfh>.pavw {
+  filter:drop-shadow(0 5px 12px #0c051fbd) drop-shadow(0 0 9px #ffd98b55);
+}
+#pfo #pfc .pf.sh-ranked-profile .sh-royal-idline {
+  gap:6px;
+  margin:4px auto 5px;
+}
+#pfo #pfc .pf.sh-ranked-profile .sh-royal-user-id {
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+  padding:2px 3px!important;
+  color:#ffe8a9!important;
+  text-shadow:0 2px 4px #160721;
+  font-size:clamp(11px,3.2vw,14px)!important;
+}
+#pfo #pfc .pf.sh-ranked-profile .sh-royal-follower-count {
+  color:#e5c9f3;
+  border-color:#e0b67e80;
+}
+#pfo #pfc .pf.sh-ranked-profile .sh-royal-profile-effects,
+#pfo #pfc .pf.sh-ranked-profile .sh-layout-ornament {
+  max-width:100%;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:4px 7px;
+}
+#pfo #pfc .pf.sh-ranked-profile .sh-layout-ornament img {
+  width:auto!important;
+  height:auto!important;
+  max-height:30px!important;
+  object-fit:contain;
+}
+#pfo #pfc .pf.sh-ranked-profile .lvs {
+  gap:8px;
+  margin:8px 0 10px;
+}
+#pfo #pfc .pf.sh-ranked-profile .lvc,
+#pfo #pfc .pf.sh-ranked-profile .lvc.c {
+  min-height:71px;
+  border:1px solid #e9bf7aa8;
+  border-radius:15px;
+  background:linear-gradient(145deg,#553166e8,#271840ee)!important;
+  box-shadow:inset 0 1px 1px #fff6,0 5px 12px #14061a66;
+}
+#pfo #pfc .pf.sh-ranked-profile .lvc.c {
+  border-color:#a6b9fa9c;
+  background:linear-gradient(145deg,#3f3873ee,#202e5dee)!important;
+}
+#pfo #pfc .pf.sh-ranked-profile .lvc .big3 {color:#ffe3a1!important}
+#pfo #pfc .pf.sh-ranked-profile .lvc.c .big3 {color:#cce4ff!important}
+#pfo #pfc .pf.sh-ranked-profile .lvc small {color:#eddff1}
+#pfo #pfc .sh-bond-panel .sh-bond-stat {
+  background:linear-gradient(145deg,#4a2a52,#261733);
+  border-color:#d7a66f90;
+  color:#ffe3ad;
+}
+#pfo #pfc .sh-bond-panel .sh-bond-stat span {color:#eee0e4}
+#pfo #pfc .sh-public-showcase-card.cp {
+  border:1px solid #e6bc829c;
+  border-radius:20px;
+  background:linear-gradient(145deg,#583361dd,#2e1b4cdd);
+  box-shadow:inset 0 1px #ffffff33,0 6px 15px #1508267a;
+  color:#ffe8d4;
+}
+#pfo #pfc .sh-public-showcase-card.cp h3 {color:#ffe3aa}
+#pfo #pfc .sh-public-card-empty {color:inherit}
+#pfo #pfc .sh-public-collection h3 {color:#ffe4a7}
+#pfo #pfc .sh-public-collection-tabs button {
+  border-color:#d4ad7c78;
+  background:#3c2458;
+  color:#f1e1eb;
+}
+#pfo #pfc .sh-public-collection-tabs button.active {
+  background:linear-gradient(140deg,#fff0ba,#d99d50);
+  color:#462440;
+  border-color:#ffe5ae;
+}
+@media(max-width:370px) {
+  #pfo #pfc .pf.sh-ranked-profile .sh-royal-idline {gap:4px}
+  #pfo #pfc .pf.sh-ranked-profile .sh-layout-ornament img {max-height:25px!important}
+}
