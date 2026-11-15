@@ -1486,12 +1486,15 @@
     paint();
   };
 
-  P.cosmetics=async function(){
+  P.cosmetics=async function(environment="play"){
     const root=byId('pg');
     if(role!=='super'){
       root.innerHTML=card('Frames, entry and name tags','Only Super Admin can manage prices or grant free styles to an ID.');
       return;
     }
+    const play=environment!=='staging';
+    const catalogPath=play?'play-testers/cosmetics':'cosmetics';
+    const environmentName=play?'Google Play':'Staging';
     const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
       prefix+'-'+String(i+1).padStart(2,'0'));
     const roleFrames=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,63,64]
@@ -1513,10 +1516,12 @@
     const options=(list,selected)=>list.map(v=>'<option value="'+esc(v)+'"'+
       (v===selected?' selected':'')+'>'+esc(v.replaceAll('_',' '))+'</option>').join('');
     root.innerHTML=mediaStudio('cos-media')+card('Verified cosmetic inventory',
-      'Users must buy with wallet coins. Admin grants are free and attached to exact verified eight-digit IDs. Changes and grants are audited.')+
-      '<div class="card"><h3>🎁 Give a frame or medal to a user</h3>'+
-      '<p class="n">Super Admin: enter the real Sharika ID, find the frame or medal, and give it free. '+
-      'Admin-only items can be granted even when Store sales are disabled. The granted item is equipped immediately and appears on verified profiles and room seats after refresh.</p>'+
+      'Manage frames, entry effects, Noble / medals and name tags for the selected environment.')+
+      '<div class="card"><label>Environment <select class="field" id="sh-cos-environment">'+
+      '<option value="play">Google Play</option><option value="staging">Staging</option></select></label></div>'+
+      '<div class="card"><h3>Give or revoke a cosmetic</h3>'+
+      '<p class="n">Enter the user ID from '+environmentName+'. Giving an item also equips it. '+
+      'Revoke removes a direct admin grant from Backpack and unequips it if selected.</p>'+
       '<input class="field" id="sh-cos-user" maxlength="8" inputmode="numeric" '+
       'placeholder="Recipient Sharika ID (8 digits)" aria-label="Recipient Sharika ID">'+
       '<div class="row"><select class="field" id="sh-cos-grant-kind" aria-label="Cosmetic category">'+
@@ -1525,7 +1530,8 @@
       '<input class="field" id="sh-cos-grant-filter" type="search" '+
       'placeholder="Search e.g. Role Frame 28" aria-label="Search cosmetics"></div>'+
       '<select class="field" id="sh-cos-grant-item" aria-label="Choose a frame or medal"></select>'+
-      '<button class="btn s" type="button" id="sh-cos-grant">Give selected item to ID · Free</button>'+
+      '<div class="row"><button class="btn s" type="button" id="sh-cos-grant">Give selected item to ID · Free</button>'+
+      '<button class="btn s" type="button" id="sh-cos-revoke">Revoke admin grant</button></div>'+
       '<p class="n" role="status" id="sh-cos-note"></p></div>'+
       '<div id="sh-cosmetic-list">Loading server catalogue…</div>'+
       '<div class="card"><h3>Add new catalog item</h3>'+
@@ -1539,6 +1545,14 @@
       '<input class="field" id="sh-cos-animation" maxlength="500" type="url" placeholder="Animated frame / entry video URL"></div>'+
       '<input class="field" id="sh-cos-audio" maxlength="500" type="url" placeholder="Optional separate entry sound URL">'+
       '<p class="n">Uploaded media overrides bundled artwork. Keep bundled artwork as a fallback for older app builds.</p></div>';
+    const picker=byId('sh-cos-environment');
+    picker.value=play?'play':'staging';
+    picker.onchange=()=>P.cosmetics(picker.value);
+    let pendingGrant,pendingRevoke;
+    const receipt=(action,id,itemId,previous)=>{
+      const key=id+':'+itemId;
+      return previous?.key===key?previous:{key,id:action+':'+window.crypto.randomUUID()};
+    };
     wireMediaStudio('cos-media',[
       ['sh-cos-image','New item · image'],['sh-cos-animation','New item · video / animation'],
       ['sh-cos-audio','New item · entry sound']]);
@@ -1546,8 +1560,8 @@
     function fillArt(){artSelect.innerHTML=options(art[kind.value]||[],'');}
     kind.onchange=fillArt;fillArt();
     try{
-      const data=await api('GET','cosmetics');
-      if(!root.isConnected)return;
+      const data=await api('GET',catalogPath);
+      if(!picker.isConnected)return;
       const items=Array.isArray(data.items)?data.items:[];
       const grantKind=byId('sh-cos-grant-kind'),grantFilter=byId('sh-cos-grant-filter');
       const grantItem=byId('sh-cos-grant-item');
@@ -1569,37 +1583,47 @@
         '<div class="row"><label>Name <input class="field" data-cos-field="name" data-id="'+esc(item.id)+'" value="'+esc(item.name)+'"></label>'+
         '<label>Price coins <input class="field" type="number" min="1" max="1000000" data-cos-field="price" data-id="'+esc(item.id)+'" value="'+Number(item.price_coins)+'"></label></div>'+
         '<div class="row"><label>Artwork <select class="field" data-cos-field="art" data-id="'+esc(item.id)+'">'+
-        options(art[item.kind]||[],item.art_key)+'</select></label>'+
+        options([...new Set([...(art[item.kind]||[]),item.art_key])],item.art_key)+'</select></label>'+
         '<div class="row"><label>Image URL<input class="field" type="url" maxlength="500" data-cos-field="image" data-id="'+esc(item.id)+'" value="'+esc(item.image_url||'')+'"></label>'+
         '<label>Animation / video URL<input class="field" type="url" maxlength="500" data-cos-field="animation" data-id="'+esc(item.id)+'" value="'+esc(item.animation_url||'')+'"></label>'+
         '<label>Sound URL<input class="field" type="url" maxlength="500" data-cos-field="audio" data-id="'+esc(item.id)+'" value="'+esc(item.audio_url||'')+'"></label></div>'+
         '<label><input type="checkbox" data-cos-field="active" data-id="'+esc(item.id)+'"'+
-        (item.active?' checked':'')+'> Available to buy</label>'+
-        '<button class="btn s" type="button" data-cos-save="'+esc(item.id)+'">Save</button></div></div>').join('')||
+        (item.active?' checked':'')+'> Show in shop</label>'+
+        '<button class="btn s" type="button" data-cos-save="'+esc(item.id)+'">Save</button>'+
+        '<button class="btn s" type="button" data-cos-shop="'+esc(item.id)+'">'+
+        (item.active?'Remove from shop':'Restore to shop')+'</button></div></div>').join('')||
         card('No catalogue','No cosmetic items have been seeded yet.');
       const field=(id,name)=>Array.from(list.querySelectorAll('[data-cos-field]'))
         .find(x=>x.dataset.id===id&&x.dataset.cosField===name);
-      list.querySelectorAll('[data-cos-save]').forEach(button=>{
+      list.querySelectorAll('[data-cos-save],[data-cos-shop]').forEach(button=>{
         button.onclick=async()=>{
-          const id=button.dataset.cosSave;
+          const id=button.dataset.cosSave||button.dataset.cosShop;
           const item=items.find(x=>x.id===id);
           const price=Number(field(id,'price')?.value);
           if(!item||!Number.isSafeInteger(price)||price<1||price>1000000){
             status.textContent='Enter a coin price from 1 to 1,000,000.';return;
           }
-          button.disabled=true;
+          const row=button.closest('.card');
+          const buttons=Array.from(row.querySelectorAll('button'));
+          const active=button.dataset.cosShop?!item.active:field(id,'active').checked;
+          if(!active&&item.active&&!window.confirm('Remove '+item.name+' from the '+environmentName+' shop?'))return;
+          buttons.forEach(control=>{control.disabled=true;});
           try{
-            await api('PATCH','cosmetics',{
+            await api('PATCH',catalogPath,{
               item_id:id,kind:item.kind,name:field(id,'name').value.trim(),
               price_coins:price,art_key:field(id,'art').value,
               image_url:field(id,'image').value.trim(),
               animation_url:field(id,'animation').value.trim(),
               audio_url:field(id,'audio').value.trim(),
-              active:field(id,'active').checked
+              active
             });
-            status.textContent='Saved and audited: '+id;
+            item.active=active;
+            field(id,'active').checked=active;
+            buttons.find(control=>control.dataset.cosShop).textContent=active?'Remove from shop':'Restore to shop';
+            fillGrantItems();
+            status.textContent='Saved: '+id;
           }catch(error){status.textContent='Not saved: '+error.message;}
-          finally{button.disabled=false;}
+          finally{buttons.forEach(control=>{control.disabled=false;});}
         };
       });
       byId('sh-cos-create').onclick=async event=>{
@@ -1614,7 +1638,7 @@
         if(!/^[a-z0-9][a-z0-9-]{2,39}$/.test(payload.slug)||!Number.isSafeInteger(price)||
            price<1||price>1000000){status.textContent='Enter a valid slug and positive coin price.';return;}
         button.disabled=true;
-        try{await api('POST','cosmetics',payload);await P.cosmetics();note('Cosmetic added');}
+        try{await api('POST',catalogPath,payload);await P.cosmetics(environment);note('Cosmetic added');}
         catch(error){status.textContent='Not added: '+error.message;button.disabled=false;}
       };
       byId('sh-cos-grant').onclick=async event=>{
@@ -1625,12 +1649,34 @@
         }
         const selected=items.find(item=>item.id===itemId);
         if(!selected||!window.confirm('Give '+selected.name+' to user ID '+id+
-          ' for FREE and EQUIP it immediately? This replaces the currently selected item of that type. The grant is audited.'))return;
+          ' in '+environmentName+' and equip it now?'))return;
         button.disabled=true;
         try{
-          const given=await api('POST','cosmetics/grant',{public_id:id,item_id:itemId});
+          pendingGrant=receipt('cosmetic-grant',id,itemId,pendingGrant);
+          const given=await api('POST',catalogPath+'/grant',play?
+            {target_public_id:id,item_id:itemId,request_id:pendingGrant.id}:{public_id:id,item_id:itemId});
+          pendingGrant=null;
           status.textContent=(given.duplicate?'Already owned; re-equipped: ':'Granted and equipped: ')+id+' · '+itemId;
         }catch(error){status.textContent='Grant failed: '+error.message;}
+        finally{button.disabled=false;}
+      };
+      byId('sh-cos-revoke').onclick=async event=>{
+        const button=event.currentTarget;
+        const id=byId('sh-cos-user').value.trim(),itemId=grantItem.value;
+        if(!/^[0-9]{8}$/.test(id)||!itemId){status.textContent='Enter an 8-digit ID and select an item.';return;}
+        const item=items.find(row=>row.id===itemId);
+        if(!item||!window.confirm('Revoke the direct grant for '+item.name+' from '+environmentName+' user '+id+'?'))return;
+        pendingRevoke=receipt('cosmetic-revoke',id,itemId,pendingRevoke);
+        button.disabled=true;
+        try{
+          await api('POST',catalogPath+'/revoke',{
+            target_public_id:id,item_id:itemId,request_id:pendingRevoke.id
+          });
+          pendingRevoke=null;
+          status.textContent='Grant revoked: '+id+' · '+itemId;
+        }catch(error){status.textContent=error.message==='direct_admin_grant_not_found'?
+          'This account does not have a removable direct grant for the selected item.':
+          'Revoke failed: '+error.message;}
         finally{button.disabled=false;}
       };
     }catch(error){status.textContent='Cosmetics unavailable: '+error.message;}
