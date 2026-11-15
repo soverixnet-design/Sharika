@@ -243,15 +243,17 @@ jobs:
           const css=fs.readFileSync('../app/royal-room-ui.css','utf8');
           const adapter=fs.readFileSync('staging-connection.js','utf8');
           const backend=fs.readFileSync('../cloudflare/src/index.mjs','utf8');
+          const roomStyles=fs.readFileSync('../app/reference-room.css','utf8');
           for(const value of [
             'window.SharikaRoomPremium={',
-            'renderPremiumHeader()',
-            'showMembers,showRewards,showRankings',
+            'renderLiveMembers(view)',
+            'showMembers,showRankings',
             'sh-room-masthead',
             'sh-room-face-count'
           ])if(!ui.includes(value))throw Error('Room UI missing: '+value);
           if(!css.includes('.sh-room-masthead')||
              !css.includes('.sh-rank-row .sh-vip-avatar')||
+             !roomStyles.includes('room-gamepad.svg')||
              !adapter.includes('frame.SharikaRoomPremium.sync({')||
              !adapter.includes('/contributors?period=')||
              !backend.includes("action==='contributors'"))
