@@ -1264,6 +1264,8 @@ public final class SharikaActivity extends Activity {
         if (path.matches("^/api/v1/users/[0-9]{1,10}$")) return method.equals("GET");
         if (path.matches("^/api/v1/users/[0-9]{1,10}/follow$"))
             return method.equals("GET") || method.equals("PUT") || method.equals("DELETE");
+        if (path.matches("^/api/v1/messages/[0-9]{8}/block$"))
+            return method.equals("PUT") || method.equals("DELETE");
         if (path.matches("^/api/v1/messages/[0-9]{8}$"))
             return method.equals("GET") || method.equals("POST");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/(state|history|rounds|stats|rankings)$"))

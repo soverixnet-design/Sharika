@@ -11191,6 +11191,7 @@
   let supportPoll=null;
   let supportBusy=false;
   let activePrivateId=null;
+  const privateBlockUpdates=new Set();
   let canSendPrivate=false;
   // A late poll for a previous conversation must never repaint a newer one.
   let messageThreadEpoch=0, messageFetchSeq=0;
@@ -11232,6 +11233,8 @@
     if(!session){window.showAuth('welcome');return;}
     const epoch=++messageThreadEpoch;
     activePrivateId=null;canSendPrivate=false;
+    const blockButton=document.getElementById('th-block');
+    if(blockButton)blockButton.hidden=true;
     clearMessageDraft();
     const restoredSend=document.getElementById('ts');if(restoredSend)restoredSend.disabled=false;
     document.getElementById('th')?.classList.add('on');
@@ -11261,7 +11264,32 @@
     if(!messageThreadCurrent(epoch,id,fetchSeq))return;
     const container=document.getElementById('tb');
     if(!container)return;
-    canSendPrivate=!!status.mutual;
+    canSendPrivate=(data.can_message??status.mutual)===true;
+    const blockButton=document.getElementById('th-block');
+    if(blockButton){
+      blockButton.hidden=typeof data.blocked_by_me!=='boolean';
+      blockButton.disabled=privateBlockUpdates.has(id);
+      blockButton.textContent=data.blocked_by_me?'Unblock':'Block';
+      blockButton.onclick=async()=>{
+        if(!messageThreadCurrent(epoch,id)||privateBlockUpdates.has(id))return;
+        if(!data.blocked_by_me&&!window.confirm('Block private messages with this member?'))return;
+        blockButton.disabled=true;
+        privateBlockUpdates.add(id);
+        try{
+          await api(data.blocked_by_me?'DELETE':'PUT','/messages/'+encodeURIComponent(id)+'/block');
+          if(messageThreadCurrent(epoch,id)){
+            canSendPrivate=false;
+            const send=document.getElementById('ts');
+            if(send)send.disabled=true;
+            await loadPrivateMessages(id);
+          }
+        }catch(error){toast('Block setting could not be confirmed: '+errText(error));}
+        finally{
+          privateBlockUpdates.delete(id);
+          if(messageThreadCurrent(epoch,id))blockButton.disabled=false;
+        }
+      };
+    }
     preserveMessageScroll(container,()=>{
       container.textContent='';
       refreshMessagesBadge();
@@ -11273,7 +11301,9 @@
       }
       const hint=document.createElement('div');
       hint.className='bub th';
-      hint.textContent=canSendPrivate?'Both users follow each other. Chat enabled.':
+      hint.textContent=data.blocked_by_me?'You blocked private messages with this member.':
+        data.can_message===false&&status.mutual?'Private messages are unavailable in this conversation.':
+        canSendPrivate?'Both users follow each other. Chat enabled.':
         status.following?'You follow this user. Waiting for them to follow back.':
         'Follow this user to request a private conversation.';
       container.appendChild(hint);
@@ -11366,6 +11396,8 @@
     if(!/^[0-9]{8}$/.test(String(publicId))){toast('Invalid 8-digit user ID');return;}
     const epoch=++messageThreadEpoch;
     activePrivateId=String(publicId);canSendPrivate=false;
+    const blockButton=document.getElementById('th-block');
+    if(blockButton)blockButton.hidden=true;
     clearMessageDraft();
     const guardedSend=document.getElementById('ts');if(guardedSend)guardedSend.disabled=true;
     document.getElementById('th')?.classList.add('on');
@@ -11510,7 +11542,13 @@
           await loadSupportMessages();
         }
       }
-    }catch(error){toast('Message not sent: '+errText(error));}
+    }catch(error){
+      if(targetId&&messageThreadCurrent(epoch,targetId)&&errText(error)==='private_message_unavailable'){
+        canSendPrivate=false;
+        loadPrivateMessages(targetId).catch(()=>{});
+        toast('Private messages are unavailable in this conversation');
+      }else toast('Message not sent: '+errText(error));
+    }
     finally{supportBusy=false;if(supportSendButton)supportSendButton.disabled=!!activePrivateId&&!canSendPrivate;}
   }
   if(supportSendButton)supportSendButton.onclick=sendSupportMessage;

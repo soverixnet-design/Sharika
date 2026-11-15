@@ -791,7 +791,7 @@ export async function handleRequest(request, env, ctx) {
       }
       return reply({conversations,unread_total:unreadTotal},200,cors);
     }
-    const messagePath=/^\/api\/v1\/messages\/([0-9]{4,8})$/.exec(path);
+    const messagePath=/^\/api\/v1\/messages\/([0-9]{4,8})(\/block)?$/.exec(path);
     if(messagePath) {
       await assertActive(env.DB,uid);
       const target=await env.DB.prepare(
@@ -801,12 +801,30 @@ export async function handleRequest(request, env, ctx) {
       ).bind(Number(messagePath[1]),messagePath[1]).first();
       if(!target||target.status!=='active')return fail('user_not_found',404,cors);
       if(target.auth_uid===uid)return fail('cannot_message_self',400,cors);
+      if(messagePath[2]){
+        if(request.method==='PUT'){
+          await env.DB.prepare(
+            'INSERT OR IGNORE INTO sharika_private_message_blocks(blocker_uid,blocked_uid) VALUES(?,?)'
+          ).bind(uid,target.auth_uid).run();
+        }else if(request.method==='DELETE'){
+          await env.DB.prepare(
+            'DELETE FROM sharika_private_message_blocks WHERE blocker_uid=? AND blocked_uid=?'
+          ).bind(uid,target.auth_uid).run();
+        }else return fail('method_not_allowed',405,cors);
+        return reply({blocked_by_me:request.method==='PUT'},200,cors);
+      }
+      const pairBlocks='(blocker_uid=? AND blocked_uid=?) OR (blocker_uid=? AND blocked_uid=?)';
+      const pair=[uid,target.auth_uid,target.auth_uid,uid];
+      const readBlocks=()=>env.DB.prepare(
+        'SELECT blocker_uid FROM sharika_private_message_blocks WHERE '+pairBlocks
+      ).bind(...pair).all();
       const relations=await env.DB.prepare(
         'SELECT follower_uid FROM sharika_follows '+
         'WHERE (follower_uid=? AND followed_uid=?) OR (follower_uid=? AND followed_uid=?)'
       ).bind(uid,target.auth_uid,target.auth_uid,uid).all();
       const mutual=(relations.results||[]).length===2;
       if(request.method==='GET'){
+        const blocks=(await readBlocks()).results||[];
         const result=await env.DB.prepare(
           'SELECT id,sender_uid,body,created_at FROM sharika_private_messages '+
           'WHERE (sender_uid=? AND recipient_uid=?) OR (sender_uid=? AND recipient_uid=?) '+
@@ -821,11 +839,14 @@ export async function handleRequest(request, env, ctx) {
         ).bind(uid,target.auth_uid,mostRecent).run();
         return reply({user:{public_id:publicId(target.public_no),
           display_id:target.special_id||publicId(target.public_no),name:target.name},
-          mutual,messages:(result.results||[]).reverse().map(m=>({
+          mutual,can_message:mutual&&blocks.length===0,
+          blocked_by_me:blocks.some(row=>row.blocker_uid===uid),
+          messages:(result.results||[]).reverse().map(m=>({
             id:m.id,from_me:m.sender_uid===uid,body:m.body,created_at:m.created_at
           }))},200,cors);
       }
       if(request.method==='POST') {
+        if((await readBlocks()).results?.length)return fail('private_message_unavailable',403,cors);
         if(!mutual)return fail('mutual_follow_required',403,cors);
         const payload=await readBody(request);
         const message=typeof payload.body==='string'?payload.body.trim():'';
@@ -843,15 +864,22 @@ export async function handleRequest(request, env, ctx) {
           "AND created_at>=datetime('now','-1 minute')"
         ).bind(uid).first();
         if(Number(rate?.n||0)>=15)return fail('message_rate_limited',429,cors);
-        await env.DB.prepare(
+        // Evaluate both directions in the write so a concurrent block wins
+        // even if the sender's earlier permission read already completed.
+        const inserted=await env.DB.prepare(
           'INSERT OR IGNORE INTO sharika_private_messages(sender_uid,recipient_uid,body,request_id) '+
-          'VALUES(?,?,?,?)'
-        ).bind(uid,target.auth_uid,message,requestId).run();
+          'SELECT ?,?,?,? WHERE NOT EXISTS ('+
+          'SELECT 1 FROM sharika_private_message_blocks WHERE '+pairBlocks+')'
+        ).bind(uid,target.auth_uid,message,requestId,...pair).run();
         const saved=await env.DB.prepare(
           'SELECT id,body,created_at FROM sharika_private_messages '+
           'WHERE request_id=? AND sender_uid=? AND recipient_uid=?'
         ).bind(requestId,uid,target.auth_uid).first();
-        if(!saved)return fail('message_request_conflict',409,cors);
+        if(!saved){
+          if((await readBlocks()).results?.length)return fail('private_message_unavailable',403,cors);
+          return fail('message_request_conflict',409,cors);
+        }
+        if(inserted.meta?.changes===0)return reply({message:saved,duplicate:true},200,cors);
         // New messages remain in Messages; background alerts use type=message.
         // An unavailable push credential must never prevent the verified message.
         await pushMessage(env,{recipientUid:target.auth_uid,senderUid:uid,

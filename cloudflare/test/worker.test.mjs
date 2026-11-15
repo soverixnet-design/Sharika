@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { verifyFirebaseToken } from '../src/auth.mjs';
 import { handleRequest, publicId, ageFromDate } from '../src/index.mjs';
 
@@ -503,6 +505,78 @@ test('direct messages reject unilateral follows before storing anything',async()
     assert.equal((await res.json()).error,'mutual_follow_required');
     assert.equal(db.calls.filter(c=>c[0]==='run' && c[1].includes('sharika_private_messages')).length,0);
   }finally{globalThis.fetch=prior;}
+});
+
+test('private chat blocks both senders, preserves history and handles a concurrent block',async()=>{
+  const prior=globalThis.fetch;globalThis.fetch=certFetch;
+  const sqlite=new DatabaseSync(':memory:');
+  try{
+    for(const file of ['0001_initial.sql','0003_private_messages.sql','0032_special_ids.sql',
+      '0033_notifications.sql','0091_private_message_blocks.sql']){
+      sqlite.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+    }
+    const alice='firebase:'+project+':secure-user';
+    const bob='firebase:'+project+':recipient';
+    const addUser=sqlite.prepare("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor) VALUES(?,?,?,'1990-01-01',0)");
+    addUser.run(10000001,alice,'Alice');
+    addUser.run(10000002,bob,'Bob');
+    const follow=sqlite.prepare('INSERT INTO sharika_follows(follower_uid,followed_uid) VALUES(?,?)');
+    follow.run(alice,bob);follow.run(bob,alice);
+    const block=sqlite.prepare('INSERT INTO sharika_private_message_blocks(blocker_uid,blocked_uid) VALUES(?,?)');
+    let race=false;
+    const DB={prepare(sql){
+      return {bind(...args){
+        const stmt=sqlite.prepare(sql);
+        return {
+          first:async()=>stmt.get(...args),
+          all:async()=>({results:stmt.all(...args)}),
+          run:async()=>{
+            if(race&&sql.startsWith('INSERT OR IGNORE INTO sharika_private_messages')){
+              race=false;
+              block.run(bob,alice);
+            }
+            return {meta:{changes:stmt.run(...args).changes}};
+          }
+        };
+      }};
+    }};
+    const auth=await Promise.all([token(),token({sub:'recipient'})]);
+    const request=(actor,target,method='GET',action='',body)=>handleRequest(
+      new Request('https://example.test/api/v1/messages/'+target+action,{
+        method,headers:{Authorization:'Bearer '+auth[actor]},
+        body:body?JSON.stringify(body):undefined
+      }),{DB,FIREBASE_PROJECT_ID:project});
+    const send=(actor,id)=>request(actor,actor===0?'10000002':'10000001','POST','',
+      {body:'QA message',request_id:'qa_private_message_'+id});
+    assert.equal((await send(0,'first')).status,201);
+    assert.equal((await send(0,'first')).status,200);
+    for(let retry=0;retry<2;retry++)
+      assert.deepEqual(await (await request(0,'10000002','PUT','/block')).json(),{blocked_by_me:true});
+    const mine=await (await request(0,'10000002')).json();
+    assert.equal(mine.blocked_by_me,true);
+    assert.equal(mine.can_message,false);
+    assert.equal(mine.messages.length,1);
+    const other=await (await request(1,'10000001')).json();
+    assert.equal(other.blocked_by_me,false);
+    assert.equal(other.can_message,false);
+    for(const [actor,id] of [[0,'outbound'],[1,'inbound']]){
+      const result=await send(actor,id);
+      assert.equal(result.status,403);
+      assert.equal((await result.json()).error,'private_message_unavailable');
+    }
+    await request(1,'10000001','PUT','/block');
+    await request(0,'10000002','DELETE','/block');
+    assert.equal((await send(0,'both')).status,403);
+    await request(1,'10000001','DELETE','/block');
+    assert.equal((await send(1,'unblocked')).status,201);
+    race=true;
+    assert.equal((await send(0,'concurrent')).status,403);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_private_messages').get().n,2);
+    assert.equal((await request(0,'10000001','PUT','/block')).status,400);
+  }finally{
+    sqlite.close();
+    globalThis.fetch=prior;
+  }
 });
 
 test('diamond exchange is authenticated and rejects invalid or unaffordable amounts',async()=>{
