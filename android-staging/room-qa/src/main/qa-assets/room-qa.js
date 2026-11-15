@@ -117,6 +117,7 @@
     bridge.record('{"phase":"error","reason":"missing openRoom"}');
     return;
   }
-  window.openRoom({id:'10000006', name:'Sharika WebView Layout QA',
-    emoji:'💎', th:'mid'});
+  const room={id:'10000006',name:'Sharika WebView Layout QA',emoji:'💎',th:'mid'};
+  window.cur=room;
+  window.openRoom(room);
 })();
