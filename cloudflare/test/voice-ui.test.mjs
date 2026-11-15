@@ -120,7 +120,7 @@ test('blocked SFU audio actually resumes on a room tap, without restarting conne
   const start=ui.indexOf('  let sfuState = null;');
   const end=ui.indexOf('  let voiceRecoveryRoom=',start);
   const trackStart=ui.indexOf('  function addAudioTrack(state,event) {',end);
-  const trackEnd=ui.indexOf('  async function subscribeSfu(state) {',trackStart);
+  const trackEnd=ui.indexOf('  async function subscribeSfu(',trackStart);
   assert.ok(start>=0 && end>start && trackStart>end && trackEnd>trackStart);
   const listeners=()=>({
     handlers:new Map(),
@@ -306,9 +306,11 @@ test('SFU starts listening independently of microphone capture',()=>{
   assert.match(ui,/async function startSfuReceiving\(state\)/);
   assert.match(ui,/const receiving=startSfuReceiving\(state\)\.then/);
   assert.match(ui,/const receiveError=await receiving/);
-  assert.match(ui,/bootstrapTimers:\[\]/);
-  assert.match(ui,/\[1200,3000,5500\]/);
-  assert.match(ui,/for\(const timer of state\.bootstrapTimers\|\|\[\]\)clearTimeout\(timer\)/);
+  assert.match(ui,/includePublications:true/);
+  assert.match(ui,/subscribeSfu\(state,Array\.isArray\(joined\.publications\)/);
+  const receiving=ui.slice(ui.indexOf('  async function startSfuReceiving('),
+    ui.indexOf('  async function startSfuPublishing('));
+  assert.match(receiving,/state\.publicationTimer=setInterval/);
 });
 
 test('Android keeps the screen awake for an active room, including its mini-player',()=>{
@@ -483,7 +485,7 @@ test('high voice packet loss warns early without dropping any of the active micr
 });
 
 test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>{
-  const begin=ui.indexOf('  async function subscribeSfu(state) {');
+  const begin=ui.indexOf('  async function subscribeSfu(');
   const end=ui.indexOf('  // The receiving SFU session',begin);
   assert.ok(begin>=0&&end>begin);
   const calls=[];
@@ -524,7 +526,7 @@ test('SFU associates audio MIDs with coordinator-verified speaker IDs',async()=>
 });
 
 test('a dead microphone publication cannot block a healthy room speaker',async()=>{
-  const begin=ui.indexOf('  async function subscribeSfu(state) {');
+  const begin=ui.indexOf('  async function subscribeSfu(');
   const end=ui.indexOf('  // The receiving SFU session',begin);
   const subscribed=[];
   const context=createContext({Date,console:{warn(){}},waitIce:async()=>{},

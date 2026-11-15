@@ -115,7 +115,7 @@ test('a delayed join cannot hold the room layout or survive Back and reentry',as
   assert.equal(joins,2);
   secondJoin.resolve(true);
   await second;
-  assert.deepEqual(events,['paint','join','back','paint','leave','join','presence','voice']);
+  assert.deepEqual(events,['paint','join','back','paint','leave','join','voice','presence']);
 });
 
 test('room cosmetics never block the first verified member render',()=>{

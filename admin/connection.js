@@ -1219,6 +1219,50 @@
     });
   };
 
+  async function loadLocationSettings(panel,environment){
+    if(!panel)return;
+    const endpoint=environment==='play'?'play-testers/location':'location';
+    let current;
+    try{current=await api('GET',endpoint);}
+    catch(error){panel.textContent='Location settings unavailable: '+error.message;return;}
+    if(!panel.isConnected)return;
+    panel.innerHTML='<form id="sh-location-price-form">'+
+      '<label>Location change price (coins)<input name="coins" class="field" type="number" min="0" max="1000000000" step="1" required></label>'+
+      '<p class="n">Use 0 to make location changes free for everyone.</p>'+
+      '<button class="btn" type="submit">Save price</button></form>'+
+      '<form id="sh-location-user-form">'+
+      '<label>Sharika user ID<input name="user" class="field" inputmode="numeric" pattern="[0-9]{8}" required></label>'+
+      '<label>Two-letter country code<input name="country" class="field" placeholder="BD" pattern="[A-Za-z]{2}" maxlength="2" required></label>'+
+      '<button class="btn" type="submit">Set location free for this user</button></form>'+
+      '<p class="n" role="status"></p>';
+    const priceForm=panel.querySelector('#sh-location-price-form');
+    const userForm=panel.querySelector('#sh-location-user-form');
+    const status=panel.querySelector('[role="status"]');
+    priceForm.elements.coins.value=current.coins;
+    async function save(form,method,body,message){
+      const button=form.querySelector('button');
+      button.disabled=true;
+      try{
+        const saved=await api(method,endpoint,body);
+        if(method==='PATCH')current=saved;
+        status.textContent=message;
+      }catch(error){status.textContent='Location update failed: '+error.message;}
+      finally{button.disabled=false;}
+    }
+    priceForm.onsubmit=event=>{
+      event.preventDefault();
+      const coins=Number(priceForm.elements.coins.value);
+      save(priceForm,'PATCH',{coins,expected_coins:current.coins},'Location price saved.');
+    };
+    userForm.onsubmit=event=>{
+      event.preventDefault();
+      const target_public_id=userForm.elements.user.value;
+      const country=userForm.elements.country.value.toUpperCase();
+      if(!window.confirm('Set location to '+country+' for ID '+target_public_id+' at no coin cost?'))return;
+      save(userForm,'POST',{target_public_id,country},'User location saved at no coin cost.');
+    };
+  }
+
   // Packages stay under the existing Finance workflow. The exchange rate
   // is a real D1 setting: only Super Admin may change it, with a server audit.
   P.money=async function(environment="play"){
@@ -1229,10 +1273,13 @@
       '<label>Environment <select id="sh-exchange-environment"><option value="play">Google Play</option>'+
       '<option value="staging">Staging</option></select></label>'+
       '<div id="sharika-exchange-admin">Loading verified exchange percentage…</div></div>'+
+      (role==='super'?'<div class="card"><h3>Country / Location</h3>'+
+        '<div id="sh-location-admin">Loading location settings…</div></div>':'')+
       card('Recharge packages','Verified payment packages are managed separately. No demo credits.');
     const picker=byId('sh-exchange-environment');
     picker.value=environment;
     picker.onchange=()=>P.money(picker.value);
+    loadLocationSettings(byId('sh-location-admin'),environment);
     const panel=byId('sharika-exchange-admin');
     try{
       const current=await api('GET',endpoint);
@@ -1987,13 +2034,14 @@
       '<div id="seller-list">Loading…</div></div>'+
       '<div class="card"><h3>Seller Recharge Permission History</h3><p class="n">Permission does not enable purchases until Google Play Billing is verified.</p><div id="seller-recharge-audit">Loading…</div></div>'+
       '<div class="card"><h3>Coin transfer list · sender IDs</h3><div id="seller-transfers">Loading…</div></div>'+
-      '<div class="card"><h3>Seller wallet allocations</h3><div id="seller-allocations">Loading…</div></div>'+
+      '<div class="card"><h3>Seller stock history</h3><div id="seller-allocations">Loading…</div></div>'+
       (role==='super'?'<div class="card"><h3>Seller management</h3>'+
         '<div class="row"><input id="seller-id" maxlength="8" inputmode="numeric" placeholder="Seller 8-digit user ID">'+
         '<button type="button" class="btn s" id="seller-approve">Approve</button>'+
         '<button type="button" class="btn s" id="seller-suspend">Suspend</button></div>'+
-        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin stock to allocate (max 1,000,000,000)">'+
-        '<button type="button" class="btn s" id="seller-allocate">Allocate stock</button></div>'+
+        '<div class="row"><input id="seller-coins" inputmode="numeric" placeholder="Coin amount (max 1,000,000,000)">'+
+        '<button type="button" class="btn s" id="seller-allocate">Allocate stock</button>'+
+        '<button type="button" class="btn s" id="seller-deduct">Deduct stock</button></div>'+
          '<div class="row"><button type="button" class="btn s" id="seller-unlimited-on">Enable ∞ stock</button>'+
          '<button type="button" class="btn s" id="seller-unlimited-off">Disable ∞ stock</button></div>'+
          '<p class="n">Unlimited mode is Super Admin-only. Every transfer is still logged. Maximum 1M coins per transfer.</p>'+
@@ -2028,7 +2076,7 @@
               fmt(t.coins),fmt(t.stock_after),esc(t.created_at||'')]));
         }),
         loadPanel(allocations,'sellers/allocations',credits=>{
-          allocations.innerHTML=window.T(['#','Admin sender ID','Seller ID','Stock coins added','Stock after','Time'],
+          allocations.innerHTML=window.T(['#','Admin sender ID','Seller ID','Stock change','Stock after','Time'],
             (credits.allocations||[]).map(a=>[
               esc(a.id),esc(a.sender_public_id),esc(a.seller_public_id),
               fmt(a.coins),fmt(a.stock_after),esc(a.created_at||'')]));
@@ -2043,7 +2091,7 @@
     await refresh();
     if(role!=='super')return;
     const note=byId('seller-note'),idInput=byId('seller-id'),coinsInput=byId('seller-coins');
-    let busy=false;
+    let busy=false,pendingStock=null;
     async function act(button,kind){
       if(busy)return;
       const sellerId=idInput.value.trim();
@@ -2052,8 +2100,9 @@
       if(!/^[0-9]{8}$/.test(sellerId)){
         note.textContent='Enter an existing eight-digit user ID.';return;
       }
-      if(kind==='allocate'&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000000)){
-        note.textContent='Allocate 1–1,000,000,000 coins, or enable Unlimited Stock.';return;
+      const isStockChange=kind==='allocate'||kind==='deduct';
+      if(isStockChange&&(!/^\d+$/.test(raw)||!Number.isSafeInteger(coins)||coins<1||coins>1000000000)){
+        note.textContent='Enter 1–1,000,000,000 coins.';return;
       }
       const isStockMode=kind==='unlimited_on'||kind==='unlimited_off';
       const isPlayMode=kind==='play_on'||kind==='play_off';
@@ -2061,8 +2110,8 @@
       if((isStockMode||isPlayMode)&&(!reason||reason.trim().length<8||reason.trim().length>200)){
         note.textContent='A reason of 8–200 characters is required.';return;
       }
-      const message=kind==='allocate'
-        ?'Add '+fmt(coins)+' coins to the SELLER STOCK of '+sellerId+'? This does not debit any user.'
+      const message=isStockChange
+        ?(kind==='allocate'?'Add ':'Deduct ')+fmt(coins)+' stock coins for seller '+sellerId+'?'
         :isPlayMode
           ?(kind==='play_on'?'ALLOW':'REVOKE')+' Play recharge permission for seller '+sellerId+'? Billing stays OFF.'
           :isStockMode
@@ -2072,16 +2121,20 @@
       if(!window.confirm(message))return;
       busy=true;button.disabled=true;note.textContent='Submitting verified request…';
       try{
-        const payload=kind==='allocate'
-          ?{seller_public_id:sellerId,coins,request_id:'admin-seller:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2)}
+        const fingerprint=JSON.stringify([kind,sellerId,coins]);
+        if(isStockChange&&pendingStock?.fingerprint!==fingerprint)
+          pendingStock={fingerprint,id:'admin-seller:'+crypto.randomUUID()};
+        const payload=isStockChange
+          ?{seller_public_id:sellerId,coins,request_id:pendingStock.id}
           :isPlayMode
             ?{seller_public_id:sellerId,allowed:kind==='play_on',reason:reason.trim()}
             :isStockMode
             ?{seller_public_id:sellerId,unlimited_stock:kind==='unlimited_on',reason:reason.trim()}
             :{target_public_id:sellerId,active:kind==='approve'};
-        const endpoint=kind==='allocate'?'sellers/allocate':isPlayMode?'sellers/play-recharge-permission':isStockMode?'sellers/stock-mode':'sellers';
+        const endpoint=isStockChange?'sellers/'+kind:isPlayMode?'sellers/play-recharge-permission':isStockMode?'sellers/stock-mode':'sellers';
         const result=await api('POST',endpoint,payload);
-        note.textContent=kind==='allocate'?'Allocated '+fmt(coins)+' stock coins. New stock '+fmt(result.available_coins)+'.':
+        if(isStockChange)pendingStock=null;
+        note.textContent=isStockChange?(kind==='allocate'?'Allocated ':'Deducted ')+fmt(coins)+' stock coins. New stock '+fmt(result.available_coins)+'.':
           isPlayMode?'Seller '+sellerId+' Play recharge permission '+(result.admin_allowed?'allowed':'revoked')+'; billing remains OFF.':
           isStockMode?'Seller '+sellerId+' unlimited stock '+(result.unlimited_stock?'enabled':'disabled')+' and audited.':
           'Seller '+sellerId+' '+(kind==='approve'?'approved':'suspended')+'.';
@@ -2092,6 +2145,7 @@
     byId('seller-approve')?.addEventListener('click',e=>act(e.currentTarget,'approve'));
     byId('seller-suspend')?.addEventListener('click',e=>act(e.currentTarget,'suspend'));
     byId('seller-allocate')?.addEventListener('click',e=>act(e.currentTarget,'allocate'));
+    byId('seller-deduct')?.addEventListener('click',e=>act(e.currentTarget,'deduct'));
     byId('seller-unlimited-on')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_on'));
     byId('seller-unlimited-off')?.addEventListener('click',e=>act(e.currentTarget,'unlimited_off'));
     byId('seller-play-on')?.addEventListener('click',e=>act(e.currentTarget,'play_on'));

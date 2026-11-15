@@ -141,7 +141,11 @@ export async function handleVoiceOperation({
     if (body.mode !== 'publish' && body.mode !== 'subscribe')
       return fail('invalid_voice_mode', 400, cors);
     if (body.mode === 'publish' && !canPublish) return fail('voice_publish_forbidden',403,cors);
-    const made = await sfu(env, 'POST', '/sessions/new');
+    const wantsPublications = body.mode === 'subscribe' && body.includePublications === true;
+    const [made,publications] = await Promise.all([
+      sfu(env, 'POST', '/sessions/new'),
+      wantsPublications ? doRoom.publications(uid).catch(()=>null) : null
+    ]);
     const sessionId = cleanSid(made.sessionId);
     if (!sessionId) return fail('sfu_invalid_session', 502, cors);
     // New clients explicitly opt into the safer connected-only readiness
@@ -149,7 +153,8 @@ export async function handleVoiceOperation({
     // negotiated publications discoverable during the app rollout.
     await doRoom.register(uid, sessionId, body.mode === 'publish',
       body.mode==='publish'&&body.readiness==='connected-v1');
-    return reply({sessionId, publish:body.mode === 'publish'},201,cors);
+    return reply({sessionId, publish:body.mode === 'publish',
+      ...(publications ? {publications} : {})},201,cors);
   }
   if (operation === 'publications' && request.method === 'GET') {
     return reply({publications:await doRoom.publications(uid)},200,cors);

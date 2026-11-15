@@ -1,3 +1,4 @@
+import {handleLocation} from './profile-location.mjs';
 import {handleNotificationApp,pushMessage,notifyUser,deliverNotification} from './notifications.mjs';
 // Transaction receipts are recorded by the corresponding verified business handlers.
 import { verifyFirebaseToken } from './auth.mjs';
@@ -533,6 +534,10 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB,uid);
       return reply({banners:await listPublicBanners(env.DB,url.origin)},200,cors);
     }
+    if (path === '/api/v1/me/location') {
+      await assertActive(env.DB,uid);
+      return handleLocation({request,db:env.DB,uid,readBody,reply,fail,cors});
+    }
     if (path === '/api/v1/me') {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
@@ -606,8 +611,13 @@ export async function handleRequest(request, env, ctx) {
         // style by patching the public profile fields directly.
         if(['frame_style','entry_style','medal_style','name_tag_style'].some(k=>body[k]!==undefined))
           return fail('cosmetic_purchase_or_grant_required',403,cors);
+        if (body.country !== undefined) {
+          const current = await me(env.DB,uid);
+          if (txt(body.country,16).toUpperCase() !== String(current?.country||'').trim().toUpperCase())
+            return fail('use_location_settings',409,cors);
+        }
         const changes = {};
-        for (const [key, limit] of Object.entries({ name: 80, country: 16, pic: 2048, cover: 2048, bio: 500 })) {
+        for (const [key, limit] of Object.entries({ name: 80, pic: 2048, cover: 2048, bio: 500 })) {
           if (body[key] !== undefined) changes[key] = txt(body[key], limit) || (key === 'name' ? null : '');
         }
         if (body.frame_style !== undefined) {

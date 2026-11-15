@@ -1,3 +1,4 @@
+import {handleAdminLocation} from './profile-location.mjs';
 import {handleCosmeticAdmin} from './cosmetics.mjs';
 import {handleAdminExchangeRate} from './exchange-rate.mjs';
 import {handlePlayDailyConfig} from './daily.mjs';
@@ -253,7 +254,7 @@ export async function handlePlayTestAdmin(request, env) {
   const route = path === root ? '' : path.startsWith(root + '/') ? path.slice(root.length + 1) : null;
   if (route === null) return response({ error: 'not_found' }, 404);
   const method = request.method;
-  const permissions = route === 'cosmetics' ? ['GET','POST','PATCH'] :
+  const permissions = route === 'location' ? ['GET','PATCH','POST'] : route === 'cosmetics' ? ['GET','POST','PATCH'] :
     ['daily','exchange-rate'].includes(route) ? ['GET','PATCH'] : route === '' || route === 'catalog' || route === 'credits' ? ['GET'] :
     ['coins','cosmetics/grant','cosmetics/revoke'].includes(route) ? ['POST'] : [];
   if (!permissions.length) return response({ error: 'not_found' }, 404);
@@ -262,6 +263,9 @@ export async function handlePlayTestAdmin(request, env) {
     return response({ error: 'invalid_query' }, 400);
   const verified = await superActor(request, env);
   if (verified.error) return verified.error;
+  if (route === 'location')
+    return handleAdminLocation({request,db:env.PLAY_DB,uid:verified.actorId,role:'super',
+      reply:response,fail:(error,status)=>response({error},status)});
   if (route === 'exchange-rate')
     return handleAdminExchangeRate({request,db:env.PLAY_DB,uid:verified.actorId,role:'super',
       reply:response,fail:(error,status)=>response({error},status),playAudit:true});

@@ -831,13 +831,13 @@
       'animation:sh-special-id-fire 2.8s ease-in-out infinite}',
       // Profile keeps the actual special ID number; avoid a duplicate seat label.
       '.sh-sovera-user-tag{display:inline-block;width:74px;height:25px;object-fit:contain;margin-left:4px;vertical-align:middle}',
-      '.sh-sovera-entry-cover{position:fixed;inset:0;z-index:2147483600;',
+      '.sh-sovera-entry-cover{position:fixed;inset:0 0 auto;height:50vh;height:50dvh;z-index:2147483600;',
       'pointer-events:none;display:block;overflow:hidden;background:#16082f}',
       '.sh-sovera-entry-cover img{position:absolute;inset:0;width:100%;height:100%;',
       'max-width:none;max-height:none;object-fit:cover;object-position:center top;',
       'opacity:0;filter:drop-shadow(0 0 12px #e6c6ff80)}',
       '.sh-sovera-entry-cover.ready img{opacity:1}',
-      '.sh-sovera-entry-cover.sh-uploaded-entry{height:58vh;bottom:auto;background:linear-gradient(180deg,#16082fba,#16082f00)}',
+      '.sh-sovera-entry-cover.sh-uploaded-entry{background:linear-gradient(180deg,#16082fba,#16082f00)}',
       '.sh-sovera-entry-cover.sh-uploaded-entry video{width:100%;height:100%;object-fit:contain;object-position:center top}',
       '.sh-sovera-entry-cover button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:18px;',
       'pointer-events:auto;border:1px solid #fff7;color:white;border-radius:50%;',
@@ -1011,36 +1011,36 @@
       playSvipRoomEntry(doc,Number(key.slice(-2)),'Royal member');return;
     }
     cosmeticCss(doc);
-    doc.querySelector('.sh-sovera-entry-cover')?.remove();
+    const previous=doc.querySelector('.sh-sovera-entry-cover');
+    previous?.querySelectorAll('video,audio').forEach(media=>media.pause());
+    previous?.remove();
     const cover=doc.createElement('div');
     cover.className='sh-sovera-entry-cover';
     const uploaded=verifiedMediaUrl(choice.remote_animation_url);
     if(isVideoMedia(uploaded)){
       cover.classList.add('sh-uploaded-entry');
       const video=doc.createElement('video');
-      video.src=uploaded;video.autoplay=true;video.playsInline=true;
+      video.src=uploaded;video.autoplay=true;video.playsInline=true;video.muted=true;
       video.preload='auto';video.controls=false;
       const close=doc.createElement('button');
       close.type='button';close.textContent='×';close.setAttribute('aria-label','Close entry animation');
-      close.onclick=()=>{video.pause();cover.remove();};
-      video.addEventListener('ended',()=>cover.remove(),{once:true});
-      cover.append(video,close);doc.body.appendChild(cover);
-      // Browser auto-play policy may require a tap for audio on receiving phones.
-      video.play().catch(()=>{
-        video.muted=true;video.play().catch(()=>{});
-        const sound=doc.createElement('button');sound.type='button';
-        sound.textContent='🔊';sound.setAttribute('aria-label','Play entry audio');
-        sound.style.right='66px';
-        sound.onclick=()=>{video.muted=false;video.play().catch(()=>{});sound.remove();};
-        cover.appendChild(sound);
-      });
       const separate=verifiedMediaUrl(choice.remote_audio_url);
-      if(separate){
-        const music=doc.createElement('audio');music.src=separate;
-        cover.appendChild(music);music.play().catch(()=>{});
-        close.onclick=()=>{music.pause();video.pause();cover.remove();};
+      const music=separate?doc.createElement('audio'):null;
+      const finish=()=>{
+        video.pause();music?.pause();cover.remove();
+      };
+      close.onclick=finish;
+      video.addEventListener('ended',finish,{once:true});
+      video.addEventListener('error',finish,{once:true});
+      cover.append(video,close);
+      if(music){
+        music.src=separate;
+        cover.appendChild(music);
+        video.addEventListener('playing',()=>music.play().catch(()=>{}),{once:true});
       }
-      doc.defaultView?.setTimeout(()=>{video.pause();cover.remove();},10000);
+      doc.body.appendChild(cover);
+      video.play().catch(finish);
+      doc.defaultView?.setTimeout(finish,10000);
       return;
     }
     const img=doc.createElement('img');
@@ -1382,7 +1382,7 @@
           video.src=animation;video.autoplay=true;video.playsInline=true;
           video.setAttribute('playsinline','');
           video.setAttribute('webkit-playsinline','true');
-          video.preload='auto';video.loop=true;
+          video.preload='auto';
           // The signed staging WebView permits media playback without a gesture.
           // Play a gift's own AAC track when no separate soundtrack is supplied.
           // If this device denies audible autoplay, retry muted and leave the
@@ -1414,10 +1414,14 @@
       // silently fails on several Android WebView versions.
       doc.body.appendChild(box);
       const video=box.querySelector('video');
-      const finishAfter=ms=>frame.setTimeout(()=>{
+      let finishTimer=null;
+      const finish=()=>{
+        if(!box.isConnected)return;
+        frame.clearTimeout(finishTimer);
         box.querySelectorAll('video,audio').forEach(media=>media.pause());
         box.remove();next();
-      },ms);
+      };
+      const finishAfter=ms=>{finishTimer=frame.setTimeout(finish,ms);};
       if(video){
         let began=false,loadTimer=null;
         const fallback=()=>{
@@ -1445,6 +1449,7 @@
           finishAfter(10000);
         };
         video.addEventListener('playing',started,{once:true});
+        video.addEventListener('ended',finish,{once:true});
         video.addEventListener('error',fallback,{once:true});
         loadTimer=frame.setTimeout(fallback,12000);
         video.play().catch(()=>{
@@ -4600,7 +4605,6 @@
     if(state.speakingContext)state.speakingContext.close().catch(()=>{});
     clearVoiceSpeakers();
     if(state.recoveryTimer)clearTimeout(state.recoveryTimer);
-    for(const timer of state.bootstrapTimers||[])clearTimeout(timer);
     for(const element of state.audioElements){element.pause();element.srcObject=null;element.remove();}
     if(state.media)for(const track of state.media.getTracks())track.stop();
     for(const pc of [state.publishPC,state.receivePC])if(pc)pc.close();
@@ -4787,15 +4791,16 @@
       state.audioElements.delete(audio);audio.pause();audio.remove();
     },{once:true});
   }
-  async function subscribeSfu(state) {
+  async function subscribeSfu(state,initialPublications) {
     if(state.closed || state.syncing)return;
     state.syncing=true;
     try {
-      const data=await api('GET','/rooms/'+state.roomId+'/voice/publications');
-      const live=new Set((data.publications||[]).map(x=>x.sessionId+':'+x.trackName));
+      const publications=initialPublications??
+        (await api('GET','/rooms/'+state.roomId+'/voice/publications')).publications??[];
+      const live=new Set(publications.map(x=>x.sessionId+':'+x.trackName));
       for(const key of state.failedPublications.keys())
         if(!live.has(key))state.failedPublications.delete(key);
-      const upcoming=(data.publications||[]).filter(x=>x &&
+      const upcoming=publications.filter(x=>x &&
         !state.subscribed.has(x.sessionId+':'+x.trackName) &&
         (state.failedPublications.get(x.sessionId+':'+x.trackName)||0)<Date.now());
       if(!upcoming.length)return;
@@ -4861,7 +4866,7 @@
   // completed publishing handshake. Start it immediately for fast listening.
   async function startSfuReceiving(state) {
     const roomId=state.roomId;
-    const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe'});
+    const joined=await api('POST','/rooms/'+roomId+'/voice/session',{mode:'subscribe',includePublications:true});
     if(state.closed||wantedVoiceRoom!==roomId)
       throw new Error('Voice room changed');
     state.subscribeId=joined.sessionId;
@@ -4872,14 +4877,12 @@
       if(!state.closed&&sfuState===state&&state.receivePC.connectionState==='failed')
         recoverSfuPublication(state,'remote receiver failed');
     });
-    await subscribeSfu(state);
-    // Rapidly discover nearby joins, then fall back to the regular 8s poll.
-    for(const delay of [1200,3000,5500]) {
-      state.bootstrapTimers.push(setTimeout(()=>{
-        if(!state.closed&&sfuState===state)
-          subscribeSfu(state).catch(()=>{});
-      },delay));
-    }
+    await subscribeSfu(state,Array.isArray(joined.publications)?joined.publications:undefined);
+    if(state.closed||sfuState!==state)return;
+    // Continue discovery even if this user is still negotiating a microphone.
+    state.publicationTimer=setInterval(()=>{
+      if(!state.closed)subscribeSfu(state).catch(()=>{});
+    },1500);
   }
   // Promoting a listener onto a mic seat must retain the existing receiver.
   // Rebuilding both PeerConnections here interrupts every incoming speaker.
@@ -4998,7 +5001,7 @@
       speakingContext:null,speakingMeters:new Map(),speakingTimer:null,
       subscribed:new Set(),failedPublications:new Map(),subscribeId:null,timer:null,publicationTimer:null,
       syncing:false,
-      canPublish,readyPublication:false,subscriptionFailures:0,heartbeatFailures:0,bootstrapTimers:[],
+      canPublish,readyPublication:false,subscriptionFailures:0,heartbeatFailures:0,
       firstSubscriptionAt:0,receiveDisconnectedAt:0,
       startedAt:Date.now(),disconnectedAt:0,recoveryTimer:null,recoveryExhausted:false
     };
@@ -5021,11 +5024,6 @@
       if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
       const receiveError=await receiving;
       if(receiveError)throw receiveError;
-      // New microphones must become audible promptly after a seat change.
-      // Publication discovery runs independently of the 8s heartbeat.
-      state.publicationTimer=setInterval(()=>{
-        if(!state.closed)subscribeSfu(state).catch(()=>{});
-      },1500);
       state.timer=setInterval(()=>{
         if(state.closed)return;
         inspectSfuAudio(state).catch(()=>{});
@@ -5457,34 +5455,77 @@
       '<p style="font-size:13px;line-height:1.5">Select your country yourself. It appears on your profile and room card. No GPS permission is used.</p>'+
       '<select name="country" required style="width:100%;margin:14px 0;padding:13px;'+
       'border-radius:12px;background:#fff;color:#161121">'+manualCountryOptions()+'</select>'+
+      '<p id="sh-country-price" aria-live="polite">Checking the location price…</p>'+
       '<div id="sh-country-error" style="min-height:18px;color:#ffb7b7;font-size:12px"></div>'+
-      '<button type="submit" style="width:100%;padding:13px;border-radius:12px;'+
+      '<button type="submit" disabled style="width:100%;padding:13px;border-radius:12px;'+
       'background:linear-gradient(130deg,#f9d77c,#bf7d16);color:#24112d;font-weight:900">Save Country</button>'+
       '<button type="button" id="sh-country-cancel" style="width:100%;padding:12px;'+
       'background:transparent;color:#ffde9a;border:0">Cancel</button></form>';
     document.body.appendChild(layer);
     const select=layer.querySelector('[name="country"]');
+    const form=layer.querySelector('form');
+    const button=form.querySelector('[type="submit"]');
+    const price=layer.querySelector('#sh-country-price');
+    const notice=layer.querySelector('#sh-country-error');
+    let quote=null,pending=null;
     select.value=manualCountryCode(profile?.country);
     layer.querySelector('#sh-country-cancel').onclick=()=>layer.remove();
-    layer.querySelector('form').onsubmit=async event=>{
+    function renderQuote(){
+      const code=manualCountryCode(select.value);
+      const changed=quote&&code&&code!==manualCountryCode(quote.country);
+      button.disabled=!changed;
+      price.textContent=!quote?'Location price unavailable.':
+        !changed&&quote.country?'Choose a different country to change your location.':
+        quote.change_price===0?'Changing your location is free.':
+        'Location change: '+Number(quote.change_price).toLocaleString('en-US')+' coins';
+    }
+    select.onchange=renderQuote;
+    try{
+      quote=await api('GET','/me/location');
+      select.value=manualCountryCode(quote.country);
+      renderQuote();
+    }catch(error){
+      renderQuote();
+      notice.textContent=errText(error);
+    }
+    form.onsubmit=async event=>{
       event.preventDefault();
       const code=manualCountryCode(select.value);
-      if(!code)return;
-      const button=layer.querySelector('[type="submit"]');
-      button.disabled=true;
-      try{
-        const saved=await api('PATCH','/me',{country:code});
-        profile={...profile,...saved};
-        if(window.A)window.A.country=manualCountryLabel(code);
-        if(typeof window.saveA==='function')window.saveA();
-        layer.remove();
-        if(typeof window.renderMe==='function')window.renderMe();
-        await reloadRooms();
-        toast('Country saved to your profile and room card');
-      }catch(error){
-        button.disabled=false;
-        layer.querySelector('#sh-country-error').textContent=errText(error);
+      if(button.disabled||!quote||!code)return;
+      const cost=quote.change_price;
+      const fingerprint=JSON.stringify([quote.country,code,cost]);
+      if(pending?.fingerprint!==fingerprint){
+        if(!window.confirm('Change your location to '+manualCountryLabel(code)+
+          (cost?' for '+Number(cost).toLocaleString('en-US')+' coins?':' for free?')))return;
+        pending={fingerprint,id:nextWalletRequestId('location')};
       }
+      button.disabled=true;
+      select.disabled=true;
+      notice.textContent='';
+      let saved;
+      try{
+        saved=await api('PUT','/me/location',{
+          country:code,expected_country:quote.country,expected_coins:cost,request_id:pending.id
+        });
+      }catch(error){
+        const message=errText(error);
+        if(message==='location_quote_changed'||message==='insufficient_coins'){
+          quote=await api('GET','/me/location').catch(()=>null);
+          pending=null;
+        }
+        select.disabled=false;
+        renderQuote();
+        notice.textContent=message==='location_quote_changed'
+          ?'The location or price changed. Review the new price and try again.':message;
+        return;
+      }
+      profile={...profile,country:saved.country,coins:saved.coins};
+      if(window.A)window.A.country=manualCountryLabel(saved.country);
+      if(typeof window.saveA==='function')window.saveA();
+      layer.remove();
+      if(typeof window.renderMe==='function')window.renderMe();
+      toast('Country saved to your profile and room card');
+      Promise.allSettled([reloadRooms(),reloadWallet()]);
     };
   }
   async function ensureProfile(account, form) {
@@ -7320,7 +7361,7 @@
       appendGiftChatReceipt(event);
       if(shownGiftEvents.has(id))return;
       shownGiftEvents.add(id);
-      if(shownGiftEvents.size>100)shownGiftEvents.clear();
+      if(shownGiftEvents.size>200)shownGiftEvents.delete(shownGiftEvents.values().next().value);
       queueGiftPresentation(frame,event);
       if(Number(event.tab)===FEATURED_GIFT_TAB||isVideoMedia(verifiedMediaUrl(event.animation_url)))
         queueGiftPresentation(frame,event,true);
@@ -9055,6 +9096,7 @@
           }
           if(!entryArt(event.entry_style))
             await loadVerifiedCosmetics().catch(()=>{});
+          if(!visitIsActive())return;
           if(entryArt(event.entry_style))
             playSoveraEntry(frame.document,event.entry_style);
           else playStandardRoomEntry(frame.document,event);
@@ -9388,6 +9430,9 @@
         return;
       }
       joinedRoom=room;
+      ensureVoiceConnected(room.id).catch(error=>{
+        if(isCurrent())console.warn('Room voice:',errText(error));
+      });
       setRoomScreenAwake(true);
       if(window.SharikaDiscovery){
         window.CFG.roomHistoryIds=window.SharikaDiscovery.recordVisit(
@@ -9395,10 +9440,6 @@
         window.renderRooms();
       }
       heartbeatPresence(room.id);
-      // Start listening even when the local frame is still being parsed.
-      ensureVoiceConnected(room.id).catch(error=>{
-        if(isCurrent())console.warn('Room voice:',errText(error));
-      });
       if(iframe.contentDocument?.readyState==='complete')
         activateRoomFrame(room,iframe.contentDocument);
     });
@@ -9761,7 +9802,7 @@
       }).join('')||'<div class="shw-empty">No transfers yet.</div>';
       const allocationEntries=(allocations.allocations||[]).slice(0,30).map(a=>
         '<div class="shw-entry"><strong>✨ +'+coinsText(a.coins)+' stock coins</strong>'+
-        'Allocation #'+sellerEscape(a.id)+' · Admin '+sellerEscape(visibleSellerId(a.sender_public_id))+
+        'Stock change #'+sellerEscape(a.id)+' · Admin '+sellerEscape(visibleSellerId(a.sender_public_id))+
         ' → Seller '+sellerEscape(visibleSellerId(a.seller_public_id))+
         (a.created_at?' · '+sellerEscape(a.created_at):'')+'</div>'
       ).join('')||'<div class="shw-empty">No stock allocations yet.</div>';

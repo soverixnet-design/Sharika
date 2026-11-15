@@ -91,7 +91,7 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}
       'JOIN sharika_users su ON su.auth_uid=a.seller_uid '+
       'WHERE a.seller_uid=? ORDER BY a.id DESC LIMIT 100'
     ).bind(uid).all());
-    return reply({allocations:rows.map(a=>({
+    return reply({allocations:stockHistory(rows,await sellerStockDeductions(env.DB,uid)).map(a=>({
       id:a.id,sender_public_id:showId(a.sender_no),
       seller_public_id:showId(a.seller_no),coins:a.amount,
       stock_after:a.stock_after,created_at:a.created_at
@@ -213,6 +213,26 @@ export async function handleSellerApp({request,env,uid,path,cors,reply,fail,ctx}
   return fail('seller_method_not_allowed',405,cors);
 }
 
+async function sellerStockDeductions(db,sellerUid=null) {
+  const query='SELECT d.id,au.public_no AS sender_no,su.public_no AS seller_no,'+
+    '-d.amount AS amount,d.stock_after,d.created_at FROM sharika_seller_stock_deductions d '+
+    'JOIN sharika_users au ON au.auth_uid=d.actor_uid '+
+    'JOIN sharika_users su ON su.auth_uid=d.seller_uid '+
+    (sellerUid?'WHERE d.seller_uid=? ':'')+'ORDER BY d.id DESC LIMIT 100';
+  try{
+    const statement=db.prepare(query);
+    const result=await (sellerUid?statement.bind(sellerUid):statement).all();
+    return resultRows(result).map(row=>({...row,id:'deduction-'+row.id}));
+  }catch(error){
+    if(/no such table:\s*sharika_seller_stock_deductions/i.test(String(error?.message||error)))return [];
+    throw error;
+  }
+}
+function stockHistory(rows,deductions) {
+  if(!deductions.length)return rows;
+  return [...rows,...deductions].sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,100);
+}
+
 export async function handleSellerAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx}){
   if(!operation.startsWith('sellers'))return null;
   if(!finance.has(actor.role))return fail('admin_permission_denied',403,cors);
@@ -264,7 +284,7 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
       'JOIN sharika_users su ON su.auth_uid=a.seller_uid '+
       'ORDER BY a.id DESC LIMIT 100'
     ).all());
-    return reply({allocations:rows.map(a=>({
+    return reply({allocations:stockHistory(rows,await sellerStockDeductions(env.DB)).map(a=>({
       id:a.id,sender_public_id:showId(a.sender_no),
       seller_public_id:showId(a.seller_no),coins:a.amount,
       stock_after:a.stock_after,created_at:a.created_at
@@ -356,6 +376,31 @@ export async function handleSellerAdmin({request,env,uid,actor,operation,cors,re
       body:body.active?'Your coin seller role is now active.':'Your coin seller role has been suspended.',
       dedupeKey:'seller_role:'+body.target_public_id+':'+crypto.randomUUID(),createdBy:uid});
     return reply({public_id:body.target_public_id,active:body.active},200,cors);
+  }
+  if(operation==='sellers/deduct'&&request.method==='POST'){
+    let body;
+    try{body=await input(request);}catch(error){return jsonFailure(fail,cors,error.message);}
+    const {seller_public_id:id,coins:amount,request_id:requestId}=body;
+    if(typeof id!=='string'||!PUBLIC_ID.test(id)||
+      !Number.isSafeInteger(amount)||amount<1||amount>MAX_STOCK||
+      typeof requestId!=='string'||!REQUEST_ID.test(requestId))
+      return fail('invalid_seller_deduction',400,cors);
+    const result=await env.DB.prepare(
+      'INSERT INTO sharika_seller_stock_deductions(actor_uid,seller_uid,amount,stock_after,request_id) '+
+      'SELECT ?,s.seller_uid,?,s.available_coins-?,? FROM sharika_coin_sellers s '+
+      'JOIN sharika_users u ON u.auth_uid=s.seller_uid '+
+      "WHERE u.public_no=? AND u.status='active' AND s.active=1 AND s.available_coins>=? "+
+      'ON CONFLICT(actor_uid,request_id) DO NOTHING'
+    ).bind(uid,amount,amount,requestId,Number(id),amount).run();
+    const receipt=await env.DB.prepare(
+      'SELECT d.id,d.amount,d.stock_after,u.public_no FROM sharika_seller_stock_deductions d '+
+      'JOIN sharika_users u ON u.auth_uid=d.seller_uid WHERE d.actor_uid=? AND d.request_id=?'
+    ).bind(uid,requestId).first();
+    if(!receipt)return fail('seller_stock_insufficient_or_inactive',409,cors);
+    if(receipt.amount!==amount||showId(receipt.public_no)!==id)
+      return fail('idempotency_conflict',409,cors);
+    return reply({duplicate:!result.meta.changes,deduction_id:receipt.id,coins:amount,
+      available_coins:receipt.stock_after,seller_public_id:id},result.meta.changes?201:200,cors);
   }
   if(operation==='sellers/allocate'&&request.method==='POST'){
     let body;

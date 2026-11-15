@@ -223,3 +223,20 @@ test('owner moderation force-closes verified local microphone MIDs, not remote t
     assert.equal(calls.length,2);
   }finally{globalThis.fetch=old;}
 });
+
+test('listener session returns the verified speaker snapshot without requesting microphone publishing',async()=>{
+  const old=globalThis.fetch;
+  globalThis.fetch=async()=>Response.json({sessionId:'subscriber-fast'});
+  const speakers=[{userId:'speaker',sessionId:'publishing-session',trackName:'microphone'}];
+  const coordinator={...room,
+    async register(uid,id,publish){assert.equal(publish,false);},
+    async publications(uid){assert.equal(uid,'u1');return speakers;}
+  };
+  try{
+    const response=await handleVoiceOperation({...base,member:{seat_no:null,muted:1},
+      env:{...env,VOICE_ROOMS:{getByName:()=>coordinator}},operation:'session',
+      request:req('POST','session',{mode:'subscribe',includePublications:true})});
+    assert.equal(response.status,201);
+    assert.deepEqual(await response.json(),{sessionId:'subscriber-fast',publish:false,publications:speakers});
+  }finally{globalThis.fetch=old;}
+});

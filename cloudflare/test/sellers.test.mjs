@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleSellerApp, handleSellerAdmin } from '../src/sellers.mjs';
 import {readFileSync} from 'node:fs';
+import {DatabaseSync} from 'node:sqlite';
 
 function mockDB({seller=true,actor=true,minor=0,stock=3000,recipient=true,duplicate=false,selfRecipient=false,unlimited=false}={}){
   const state={batch:[],queries:[]};
@@ -279,4 +280,31 @@ test('super admin can allocate ten million and allocation respects stock ceiling
   assert.equal((await admin(DB,'super','POST','sellers/allocate',{...validAllocation,coins:10000000})).status,201);
   assert.equal((await admin(DB,'super','POST','sellers/allocate',{...validAllocation,coins:1000000001})).status,400);
   assert.equal(state.batch.length,1);
+});
+
+test('seller stock deductions are audited and safe to retry without debiting the user wallet',async()=>{
+  const sql=new DatabaseSync(':memory:');
+  for(const migration of ['0001_initial.sql','0009_coin_sellers.sql','0090_seller_stock_deductions.sql'])
+    sql.exec(readFileSync(new URL('../migrations/'+migration,import.meta.url),'utf8'));
+  sql.exec(`INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins)
+    VALUES (10000001,'owner','Admin','1990-01-01',0,0),
+           (10000002,'seller2','Seller','1990-01-01',0,300);
+    INSERT INTO sharika_coin_sellers(seller_uid,active,available_coins) VALUES('seller2',1,500)`);
+  const db={prepare(query){
+    const statement=sql.prepare(query);
+    return {bind(...args){return {
+      async first(){return statement.get(...args);},
+      async run(){return {meta:statement.run(...args)};}
+    };}};
+  }};
+  const request={seller_public_id:'10000002',coins:400,request_id:'seller-deduct-1'};
+  const deduct=(body,role='super')=>admin(db,role,'POST','sellers/deduct',body);
+  assert.equal((await deduct(request,'finance')).status,403);
+  assert.equal((await deduct(request)).status,201);
+  assert.equal((await deduct(request)).data.duplicate,true);
+  assert.equal((await deduct({...request,coins:401})).data.error,'idempotency_conflict');
+  assert.equal((await deduct({...request,request_id:'seller-deduct-2'})).status,409);
+  assert.equal(sql.prepare('SELECT available_coins FROM sharika_coin_sellers').get().available_coins,100);
+  assert.equal(sql.prepare("SELECT coins FROM sharika_users WHERE auth_uid='seller2'").get().coins,300);
+  assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM sharika_seller_stock_deductions').get().n,1);
 });

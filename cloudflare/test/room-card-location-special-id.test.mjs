@@ -46,7 +46,7 @@ test('signup requires manual ISO country; existing users can choose a country wi
   assert.match(ui,/manualCountryOptions\(\)/);
   assert.match(ui,/Country \/ Location/);
   assert.match(ui,/openManualCountryPicker/);
-  assert.match(ui,/api\('PATCH','\/me',\{country:code\}\)/);
+  assert.match(ui,/api\('PUT','\/me\/location',\{/);
   assert.match(ui,/country:manualCountryCode\(form\.country\)/);
   assert.match(ui,/if \(cached && cached\.name && cached\.dob && manualCountryCode\(cached\.country\)\)/);
 });
