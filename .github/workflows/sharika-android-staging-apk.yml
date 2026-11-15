@@ -245,12 +245,12 @@ jobs:
           const backend=fs.readFileSync('../cloudflare/src/index.mjs','utf8');
           for(const value of [
             'window.SharikaRoomPremium={',
-            'renderPremiumHeader()',
-            'showMembers,showRewards,showRankings',
-            'sh-room-masthead',
-            'sh-room-face-count'
+            'sh-room-profile-header',
+            'showMembers,showRankings',
+            'sh-room-rank-pill',
+            'ranking.onclick=()=>showRankings()'
           ])if(!ui.includes(value))throw Error('Room UI missing: '+value);
-          if(!css.includes('.sh-room-masthead')||
+          if(!fs.readFileSync('../app/reference-room.css','utf8').includes('.sh-room-rank-button')||
              !css.includes('.sh-rank-row .sh-vip-avatar')||
              !adapter.includes('frame.SharikaRoomPremium.sync({')||
              !adapter.includes('/contributors?period=')||
