@@ -1,0 +1,64 @@
+name: Sharika Verified Room Owner Role QA Direct APK
+
+on:
+  push:
+    branches:
+      - fix/sharika-room-seat-music-20261115
+    paths:
+      - '.github/workflows/sharika-owner-role-direct-apk-20261115.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify exact successful regression-tested Android build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          run_id='43667319633'
+          test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.head_sha')" = '1bb3ef17f8f67ef3bfd07fa8183bc58c397ee027'
+          test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.conclusion')" = success
+          gh api "repos/$repo/actions/artifacts/14142398393" --jq '.name + " " + (.expired|tostring)' | grep -Fx 'Sharika-Room-QA-APK false'
+      - name: Download verified artifact
+        uses: actions/download-artifact@v4
+        with:
+          repository: soverixnet-design/Sharika
+          run-id: 43667319633
+          name: Sharika-Room-QA-APK
+          github-token: ${{ github.token }}
+          path: qa-apk
+      - name: Verify content, checksum and Android signature
+        run: |
+          set -euo pipefail
+          test -s qa-apk/Sharika-Room-QA.apk
+          echo '445102b11385a6a5e46bfa7990ecd44f19717feb9ad3211b6271a78181357974  qa-apk/Sharika-Room-QA.apk' | sha256sum -c -
+          unzip -tqq qa-apk/Sharika-Room-QA.apk
+          signer="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$signer"
+          "$signer" verify --verbose qa-apk/Sharika-Room-QA.apk
+          install -m 0644 qa-apk/Sharika-Room-QA.apk Sharika-2026-11-15-Owner-Role-QA.apk
+      - name: Publish direct installable test APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-room-owner-role-qa-20261115-1bb3ef17'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo 'Release exists; refusing overwrite'
+            exit 1
+          fi
+          gh release create "$tag" Sharika-2026-11-15-Owner-Role-QA.apk \
+            --repo "$repo" \
+            --target 1bb3ef17f8f67ef3bfd07fa8183bc58c397ee027 \
+            --title "Sharika Verified Room Roles / Owner ID QA — 15 Nov 2026" \
+            --notes "Direct Android APK for consenting invited friends to test. Source commit 1bb3ef17; CI build 43667319633 passed. Guards Room Owner/Admin labels using the current room roster and canonical authenticated owner UID rather than stale roles. IMPORTANT: In the connected Play virtual D1 database, room 10000018 is legitimately owned by public user 10000001; this build DOES NOT change server ownership or role of that room. Still requires physical-device verification of correct room selection, login, voice and music. QA prerelease only, not Google Play Store publication. No database mutations." \
+            --prerelease
