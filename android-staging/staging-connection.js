@@ -4356,7 +4356,6 @@
       effect=doc.createElement('span');
       effect.className='sh-speaking-effect';
       effect.setAttribute('aria-hidden','true');
-      for(let i=0;i<4;i++)effect.appendChild(doc.createElement('i'));
       avatar.appendChild(effect);
     }
     if(effect.dataset.style!==String(level))effect.dataset.style=String(level);
@@ -4405,6 +4404,10 @@
   // A later genuine room tap must retry playback synchronously in that gesture.
   function resumeRoomAudio() {
     if(!joinedRoom)return;
+    if(typeof musicLocal!=='undefined'&&musicLocal?.roomId===joinedRoom.id){
+      if(musicLocal.context.state==='suspended')musicLocal.context.resume().catch(()=>{});
+      if(musicLocal.audio.paused&&!musicLocal.audio.ended)musicLocal.audio.play().catch(()=>{});
+    }
     if(typeof musicPlayer!=='undefined'&&typeof musicState!=='undefined'&&
        musicPlayer?.src&&musicPlayer.paused&&musicState?.mode==='library')
       musicPlayer.play().catch(()=>{});
@@ -6318,14 +6321,18 @@
     // Keep live speaking indicators responsive without repainting stable DOM.
     // CSS handles viewport changes; the Android keyboard must not tear down
     // all seat DOM nodes just because WebView reports a new innerHeight.
-    const renderSignature=JSON.stringify([slots,audience,palette,sharedImage,roomCover,
-      chosenSeatFrame,balance.coins,balance.xp,data.bond_pairs||[]]);
+    const renderSignature=JSON.stringify([slots,chosenSeatFrame,data.bond_pairs||[]]);
     const snapshotChanged=frame.__sharikaRoomRenderSignature!==renderSignature;
     frame.seats=slots;
     frame.U=audience;
     frame.S.coins=balance.coins;
     frame.S.xp=balance.xp;
     frame.S.n=slots.length;
+    const walletLabel=frame.$?.('cstat')?.querySelector('i');
+    if(walletLabel&&typeof frame.cfmt==='function'){
+      const value=frame.cfmt(balance.coins);
+      if(walletLabel.textContent!==value)walletLabel.textContent=value;
+    }
     // Server-verified members, owner and room rewards drive the premium
     // header. The iframe is the visual layer; all authoritative state stays
     // with this authenticated D1/LiveKit adapter.
@@ -6486,7 +6493,7 @@
        local.original?.readyState==='live')
       local.sender.replaceTrack(local.original).catch(()=>{});
     try{local.audio.pause();local.audio.src='';local.audio.load();}catch(_){}
-    try{local.micSource.disconnect();local.songSource.disconnect();}catch(_){}
+    try{local.micSource.disconnect();local.songSource.disconnect();local.monitor.disconnect();}catch(_){}
     try{for(const track of local.destination.stream.getTracks())track.stop();}catch(_){}
     local.context.close().catch(()=>{});
     URL.revokeObjectURL(local.blobUrl);
@@ -6604,7 +6611,16 @@
       const micSource=context.createMediaStreamSource(state.media);
       const songSource=context.createMediaElementSource(audio);
       const destination=context.createMediaStreamDestination();
-      micSource.connect(destination);songSource.connect(destination);
+      destination.channelCount=1;
+      const voiceGain=context.createGain(),songGain=context.createGain(),monitor=context.createGain();
+      voiceGain.gain.value=.75;
+      songGain.gain.value=.48;
+      monitor.gain.value=0;
+      micSource.connect(voiceGain).connect(destination);
+      songSource.connect(songGain).connect(destination);
+      // Let the broadcaster hear the song without feeding their mic back
+      // to the local speaker. Listeners still receive the mixed uplink.
+      songSource.connect(monitor).connect(context.destination);
       await resumed;
       // Confirm the file decodes before announcing a shared song.
       await audio.play();
@@ -6620,7 +6636,8 @@
       mixed=destination.stream.getAudioTracks()[0];
       await sender.replaceTrack(mixed);
       musicLocal={roomId,revision:current.revision,original:mic,state,sender,context,audio,micSource,
-        songSource,destination,blobUrl};
+        songSource,destination,monitor,blobUrl};
+      monitor.gain.value=musicVolume;
       if(!applyRoomMusic(roomId,current,visit))throw new Error('Room music changed');
       await audio.play();
       if(musicHeartbeat)clearInterval(musicHeartbeat);
@@ -6671,14 +6688,18 @@
     const now=document.createElement('p');now.id='sharika-music-now-playing';
     now.textContent=musicState?.mode&&musicState.mode!=='off'?
       '🎼 '+musicState.title:'No song playing';
-    now.style.cssText='font-weight:700;padding:12px;border:1px solid #c59152;border-radius:15px;background:#1a1028';
+    now.style.cssText='font-weight:700;padding:12px;border:1px solid #c59152;border-radius:15px;background:#1a1028;overflow-wrap:anywhere';
     panel.appendChild(now);
     const volumeLabel=document.createElement('label');
     volumeLabel.textContent='🔊 Music volume (this phone)';
     volumeLabel.style.cssText='display:block;font-size:13px;margin:12px 0 6px';
     const volume=document.createElement('input');volume.type='range';volume.min='0';volume.max='100';
     volume.value=String(Math.round(musicVolume*100));volume.style.width='100%';
-    volume.oninput=()=>{musicVolume=Number(volume.value)/100;if(musicPlayer)musicPlayer.volume=musicVolume;};
+    volume.oninput=()=>{
+      musicVolume=Number(volume.value)/100;
+      if(musicPlayer)musicPlayer.volume=musicVolume;
+      if(musicLocal?.roomId===roomId)musicLocal.monitor.gain.value=musicVolume;
+    };
     panel.append(volumeLabel,volume);
     const status=document.createElement('p');
     status.id='sharika-room-music-status';
@@ -6687,12 +6708,20 @@
     const listen=document.createElement('button');
     listen.type='button';listen.textContent='▶ Listen on this phone';
     listen.style.cssText='padding:9px;border:1px solid #d7a653;border-radius:12px;background:#281337;color:#ffe4af';
-    listen.onclick=()=>{
-      if(musicState?.mode!=='library'||!musicPlayer?.getAttribute('src')){
-        status.textContent='Shared phone audio plays through the room voice connection.';
-        resumeRoomAudio();return;
-      }
-      musicPlayer.play().catch(error=>musicStatus('Could not play: '+errText(error)));
+    listen.onclick=async()=>{
+      try{
+        const local=musicLocal;
+        if(local?.roomId===roomId){
+          local.monitor.gain.value=musicVolume;
+          await Promise.all([local.context.resume(),local.audio.play()]);
+          if(musicLocal===local)musicStatus('Playing on this phone');
+        }else if(musicState?.mode==='library'&&musicPlayer?.getAttribute('src')){
+          await musicPlayer.play();
+        }else{
+          resumeRoomAudio();
+          musicStatus(musicState?.mode==='local'?'Phone audio is received with room voice.':'Choose a song first.');
+        }
+      }catch(error){musicStatus('Could not play: '+errText(error));}
     };
     panel.append(listen,status);
     if(moderatorCanPlayMusic()){
@@ -6712,10 +6741,17 @@
       uploadLabel.style.cssText='display:block;font-weight:700;margin:15px 0 6px';
       const input=document.createElement('input');input.type='file';input.accept='audio/*,.mp3,.m4a,.aac,.ogg,.wav';
       input.style.cssText='display:block;width:100%;max-width:100%;padding:9px;border:1px solid #d2a45a;border-radius:12px;box-sizing:border-box';
-      input.onchange=async()=>{
+      const broadcast=document.createElement('button');
+      broadcast.type='button';
+      broadcast.textContent='▶ Play selected audio';
+      broadcast.disabled=true;
+      broadcast.style.cssText=listen.style.cssText+';margin-top:8px';
+      input.onchange=()=>{broadcast.disabled=!input.files?.length||!!unlockingMusic;};
+      broadcast.onclick=async()=>{
         const file=input.files?.[0];
         if(!file||unlockingMusic)return;
-        input.disabled=true;status.textContent='Connecting phone music to room voice…';
+        input.disabled=true;broadcast.disabled=true;
+        status.textContent='Connecting phone music to room voice…';
         const sharing=streamPhoneMusic(roomId,file);
         unlockingMusic=sharing;
         try{await sharing;status.textContent='Phone audio is playing for the room.';}
@@ -6725,7 +6761,7 @@
           input.disabled=false;input.value='';
         }
       };
-      panel.append(uploadLabel,input);
+      panel.append(uploadLabel,input,broadcast);
     }else{
       const label=document.createElement('p');
       label.textContent='Only Room Owner / Room Admin can choose or stop songs. Everyone can listen.';
@@ -12608,9 +12644,12 @@
       if(face)avatar.style.backgroundImage='url("'+face+'")';
       else avatar.textContent='👤';
       const cover=root.querySelector('.cov');
+      function paintPublicCover(url){
+        cover.classList.add('sh-cover-photo');
+        cover.style.setProperty('background-image','url("'+url+'")','important');
+      }
       const savedCover=verifiedUserCoverUrl(person.cover);
-      if(savedCover)cover.style.setProperty('background-image',
-        'linear-gradient(180deg,#07131c24,#04110d70),url("'+savedCover+'")','important');
+      if(savedCover)paintPublicCover(savedCover);
       const addCover=cover.querySelector('.sh-public-cover-add');
       if(addCover){
         addCover.onclick=async()=>{
@@ -12627,8 +12666,7 @@
             if(!newCover)throw new Error('Cover image could not be verified');
             profile.cover=saved.cover;
             if(requestNo===rankProfileRequest&&cover.isConnected)
-              cover.style.setProperty('background-image',
-                'linear-gradient(180deg,#07131c24,#04110d70),url("'+newCover+'")','important');
+              paintPublicCover(newCover);
             toast('Profile background saved ✓');
           }catch(error){toast('Cover upload: '+errText(error));}
           finally{if(addCover.isConnected)addCover.disabled=false;}

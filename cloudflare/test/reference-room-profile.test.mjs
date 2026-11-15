@@ -40,7 +40,7 @@ test('room cover refreshes inside and outside without a black header panel',()=>
   assert.match(bridge,/const roomCover=verifiedCoverUrl\(data\.cover_url\)/);
   assert.match(bridge,/frame\.S\.pic=roomCover/);
   assert.match(bridge,/\(themeChanged\|\|coverChanged\).*frame\.applyTheme/);
-  assert.match(bridge,/\[slots,audience,palette,sharedImage,roomCover/);
+  assert.match(bridge,/JSON\.stringify\(\[slots,chosenSeatFrame,data\.bond_pairs\|\|\[\]\]\)/);
   assert.match(roomCss,/\.app\.sh-royal-room \.top \.room\s*\{[^}]*background:transparent!important/);
   assert.match(roomCss,/backdrop-filter:none!important/);
 });

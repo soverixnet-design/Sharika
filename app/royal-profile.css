@@ -1158,3 +1158,15 @@
     max-height:25px!important;
   }
 }
+
+
+#pfo #pfc .pf.sh-ranked-profile .cov.sh-cover-photo {
+  height:clamp(168px,35vh,280px)!important;
+  background-position:center!important;
+  background-size:contain!important;
+  background-repeat:no-repeat!important;
+  background-color:transparent!important;
+  box-shadow:none!important;
+}
+#pfo #pfc .pf.sh-ranked-profile .cov.sh-cover-photo::after {display:none!important}
+#pfo #pfc .pf.sh-ranked-profile:has(.cov.sh-cover-photo) .pfh {margin-top:0}

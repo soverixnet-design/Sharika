@@ -365,7 +365,7 @@ test('real speaker rings follow multiple authenticated microphones and never ran
   const rose=avatars[0].children[0];
   assert.equal(rose.dataset.style,'1');
   assert.equal(rose.dataset.strength,'1');
-  assert.equal(rose.children.length,4);
+  assert.equal(rose.children.length,0,'speech paints one fixed halo');
   assert.equal(avatars[1].children.length,0,'non-SVIP only gets the regular speaking ring');
   assert.equal(avatars[2].children.length,0,'muted speaker has no effect');
   // Feed immutable snapshots as the microphone analyser does.

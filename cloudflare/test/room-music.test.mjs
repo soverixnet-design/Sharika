@@ -121,3 +121,49 @@ test('library audio starts on the Play response and an older poll cannot restart
   assert.equal(player.element.src,'');
   assert.equal(player.element.playCalls,1);
 });
+
+test('phone playback monitors the song without routing the microphone to the local speaker',async()=>{
+  const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=ui.indexOf('  async function streamPhoneMusic(');
+  const end=ui.indexOf('  async function openRoomMusic(',start);
+  const room={id:'10000001'},edges=[],order=[];
+  const mic={readyState:'live'},mixed={readyState:'live'};
+  const sender={track:mic,async replaceTrack(track){
+    assert.equal(track,mixed);order.push('publish');
+  }};
+  const link=name=>({name,gain:{value:1},connect(node){edges.push([name,node.name]);return node;}});
+  class AudioContext {
+    destination=link('phone speaker');
+    gains=0;
+    async resume(){order.push('resume');}
+    createMediaStreamSource(){return link('mic');}
+    createMediaElementSource(){return link('song');}
+    createMediaStreamDestination(){return Object.assign(link('room'),{
+      stream:{getAudioTracks:()=>[mixed]}
+    });}
+    createGain(){return link(['voice gain','song gain','speaker volume'][this.gains++]);}
+  }
+  class Audio {
+    async play(){order.push('play');}
+    pause(){}
+    addEventListener(){}
+  }
+  const sfuState={media:{getAudioTracks:()=>[mic]},publishPC:{getSenders:()=>[sender]}};
+  const deps={window:{cur:room,AudioContext},AudioContext,Audio,
+    joinedRoom:room,sfuState,musicVolume:.65,moderatorCanPlayMusic:()=>true,
+    waitForPhoneMusicPublisher:async()=>sfuState,
+    URL:{createObjectURL:()=>'blob:song'},
+    api:async()=>({revision:1}),applyRoomMusic:()=>true,
+    setInterval:()=>1,toast(){}};
+  const run=new Function('deps',
+    'const {'+Object.keys(deps).join(',')+'}=deps;'+
+    'let musicLocal=null,musicHeartbeat=null;'+ui.slice(start,end)+
+    'return async file=>{await streamPhoneMusic(joinedRoom.id,file); return musicLocal;};')(deps);
+  const local=await run({type:'audio/mpeg',size:1234,name:'song.mp3'});
+  assert.equal(local.destination.channelCount,1);
+  assert.equal(local.monitor.gain.value,.65);
+  assert.deepEqual(edges,[['mic','voice gain'],['voice gain','room'],
+    ['song','song gain'],['song gain','room'],['song','speaker volume'],
+    ['speaker volume','phone speaker']]);
+  assert.deepEqual(order,['resume','play','publish','play']);
+});

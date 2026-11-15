@@ -474,7 +474,7 @@ function cardHTML(room){
   const displayId=room.room_display_id||room.id;
   const online=Math.max(0,Number(room.n)||0);
   const cover=window.sharikaVerifiedRoomCover?.(room.cover_url,room.id);
-  return '<div class="card room-card" role="button" tabindex="0" aria-label="'+
+  return '<div class="room-card" role="button" tabindex="0" aria-label="'+
     esc((roomLocked?'Locked room ':'Join ')+room.name)+'" data-id="'+esc(room.id)+'">'+
     '<div class="room-card-cover"><span aria-hidden="true">'+esc(room.emoji||'🎙️')+'</span>'+
     (cover?'<img class="sh-room-card-photo" src="'+esc(cover)+'" alt="" decoding="async" loading="lazy">':'')+
@@ -500,8 +500,8 @@ var G=$("grid");
 G.addEventListener('error',function(event){
   if(event.target.matches?.('.sh-room-card-photo'))event.target.hidden=true;
 },true);
-G.addEventListener("click",function(e){var c=e.target.closest(".card");if(!c)return;var r=roomList().filter(function(x){return x.id===c.dataset.id})[0];if(r)openRoom(r)});
-G.addEventListener("keydown",function(e){if(e.key!=='Enter'&&e.key!==' ')return;var c=e.target.closest('.card');if(c){e.preventDefault();c.click()}});
+G.addEventListener("click",function(e){var c=e.target.closest(".room-card");if(!c)return;var r=roomList().filter(function(x){return x.id===c.dataset.id})[0];if(r)openRoom(r)});
+G.addEventListener("keydown",function(e){if(e.key!=='Enter'&&e.key!==' ')return;var c=e.target.closest('.room-card');if(c){e.preventDefault();c.click()}});
 /* ===== Entering the room ===== */
 var cur=null;
 function openRoom(r){var rf=$("rf");var w=JSON.stringify(JSON.stringify({name:r.name,emoji:r.emoji,theme:r.th,id:r.id,minor:!!A.minor})).replace(/</g,"\\u003c");rf.srcdoc=ROOM_HTML.replace("<head>","<head><script>window.name="+w+"<\/script>");$("rw").classList.add("on");$("mini").classList.remove("on");cur=r}
