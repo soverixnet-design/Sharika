@@ -128,15 +128,18 @@ function isolatedPlayDatabase() {
   db.exec('CREATE TABLE sharika_admin_direct_recharges(id INTEGER PRIMARY KEY,actor_uid TEXT,'+
     'recipient_uid TEXT REFERENCES sharika_users(auth_uid),coins INTEGER,reason TEXT,'+
     'request_id TEXT,balance_after INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(actor_uid,request_id))');
-  db.exec('CREATE TABLE sharika_cosmetics_catalog(id TEXT PRIMARY KEY,kind TEXT,name TEXT,active INTEGER DEFAULT 1)');
-  db.exec("INSERT INTO sharika_cosmetics_catalog VALUES ('frame_style:royal-gold','frame_style','Royal Gold',1)");
+  db.exec('CREATE TABLE sharika_cosmetics_catalog(id TEXT PRIMARY KEY,kind TEXT,name TEXT,active INTEGER DEFAULT 1,'+
+    'art_key TEXT DEFAULT \'royal-gold\',price_coins INTEGER DEFAULT 1000,image_url TEXT,animation_url TEXT,'+
+    'audio_url TEXT,updated_at TEXT)');
+  db.exec("INSERT INTO sharika_cosmetics_catalog(id,kind,name,active) VALUES ('frame_style:royal-gold','frame_style','Royal Gold',1)");
   db.exec('CREATE TABLE sharika_cosmetic_inventory(auth_uid TEXT REFERENCES sharika_users(auth_uid),'+
-    'item_id TEXT REFERENCES sharika_cosmetics_catalog(id),source TEXT,request_id TEXT,'+
+    'item_id TEXT REFERENCES sharika_cosmetics_catalog(id),source TEXT,request_id TEXT,expires_at_ms INTEGER,'+
     'PRIMARY KEY(auth_uid,item_id),UNIQUE(auth_uid,request_id))');
   db.exec('CREATE TABLE sharika_cosmetic_equipped(auth_uid TEXT REFERENCES sharika_users(auth_uid),'+
     'kind TEXT,item_id TEXT, equipped_at TEXT,PRIMARY KEY(auth_uid,kind))');
   db.exec(readFileSync(new URL('../migrations/0080_play_closed_test_admin_item_grants.sql',
     import.meta.url),'utf8'));
+  db.exec(readFileSync(new URL('../migrations/0088_admin_cosmetic_actions.sql',import.meta.url),'utf8'));
   db.exec('CREATE TABLE sharika_notifications(id INTEGER PRIMARY KEY,recipient_uid TEXT,kind TEXT,'+
     "title TEXT,body TEXT,dedupe_key TEXT,created_by TEXT,read_at TEXT,push_status TEXT DEFAULT 'pending',"+
     'created_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(recipient_uid,dedupe_key))');
@@ -273,4 +276,47 @@ test('admin user search takes direct credit to the correct isolated wallet scree
   assert.match(ui,/window\.V='playTesters';window\.shell\(\)/);
   assert.match(ui,/byId\('direct-user'\)\.value=pendingStagingCreditTarget/);
   assert.match(ui,/byId\('play-credit-id'\)\.value=pendingPlayCreditTarget/);
+});
+
+
+test('Play Super Admin creates, edits and hides a cosmetic without touching staging', async () => {
+  const { env, db } = isolatedPlayDatabase();
+  const item = {kind:'frame_style',slug:'qa-royal',name:'QA Royal',
+    art_key:'royal-gold',price_coins:550,image_url:'https://example.com/royal.png'};
+  try {
+    const path='play-testers/cosmetics';
+    env.SHARIKA_API.fetch=async()=>Response.json({role:'finance',public_id:'10000009'});
+    assert.equal((await virtual(env,'POST',path,item)).status,403);
+    env.SHARIKA_API.fetch=async()=>Response.json({role:'super',public_id:'10000009'});
+    assert.equal((await virtual(env,'POST',path,item)).status,201);
+    const item_id='frame_style:qa-royal';
+    assert.equal((await virtual(env,'PATCH',path,{...item,item_id,price_coins:650,active:false})).status,200);
+    const saved=(await virtual(env,'GET',path)).data.items.find(row=>row.id===item_id);
+    assert.equal(saved.active,false);
+    assert.equal(saved.price_coins,650);
+    assert.equal(saved.image_url,item.image_url);
+    assert.equal(db.prepare('SELECT count(*) AS n FROM sharika_admin_cosmetic_actions').get().n,2);
+  } finally { db.close(); }
+});
+
+test('Cosmetic revoke clears only direct admin grants and is safe to retry after regrant', async () => {
+  const { env,db } = isolatedPlayDatabase();
+  try {
+    const grant = {target_public_id:'10000001',item_id:'frame_style:royal-gold',
+      request_id:'play-item:unique-65432'};
+    const revoke = {...grant,request_id:'play-revoke:unique-65432'};
+    const base='play-testers/cosmetics/';
+    assert.equal((await virtual(env,'POST',base+'grant',grant)).status,201);
+    assert.equal((await virtual(env,'POST',base+'revoke',revoke)).data.revoked,true);
+    assert.equal(db.prepare('SELECT item_id FROM sharika_cosmetic_equipped').get().item_id,null);
+    assert.equal(db.prepare('SELECT item_id FROM sharika_cosmetic_inventory').get(),undefined);
+    assert.equal((await virtual(env,'POST',base+'grant',{...grant,request_id:'play-item:regiven-65432'})).status,201);
+    assert.equal((await virtual(env,'POST',base+'revoke',revoke)).data.duplicate,true);
+    assert.equal(db.prepare('SELECT item_id FROM sharika_cosmetic_equipped').get().item_id,grant.item_id);
+    db.exec("UPDATE sharika_cosmetic_inventory SET source='purchase',request_id='purchase:65432'");
+    assert.equal((await virtual(env,'POST',base+'revoke',{...revoke,request_id:'play-revoke:another-65432'})).data.error,
+      'direct_admin_grant_not_found');
+    assert.equal(db.prepare('SELECT source FROM sharika_cosmetic_inventory').get().source,'purchase');
+    assert.throws(()=>db.exec('DELETE FROM sharika_admin_cosmetic_actions'),/admin_cosmetic_action_immutable/);
+  } finally { db.close(); }
 });
