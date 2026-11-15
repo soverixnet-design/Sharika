@@ -89,3 +89,35 @@ test('only authenticated Room Owner/Admin can change music; native bridge limits
   assert.match(adapter,/sender\.replaceTrack\(mixed\)/);
   assert.match(adapter,/if\(musicPoll\)\{clearInterval\(musicPoll\)/);
 });
+
+test('library audio starts on the Play response and an older poll cannot restart it after Stop',async()=>{
+  const ui=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const start=ui.indexOf('  let musicState=null');
+  const end=ui.indexOf('  async function waitForPhoneMusicPublisher',start);
+  assert.ok(start>=0&&end>start);
+  const room={id:'10000001'};
+  const player={paused:true,src:'',playCalls:0,
+    pause(){this.paused=true;},removeAttribute(){this.src='';},load(){},
+    play(){this.playCalls++;this.paused=false;return Promise.resolve();}};
+  const track={revision:1,mode:'library',title:'Sample',url:'https://cdn.example.com/sample.mp3'};
+  let finishPoll;
+  const api=async(method,path,body)=>method==='GET'?
+    new Promise(resolve=>{finishPoll=resolve;}):body.action==='stop'?
+      {revision:2,mode:'off'}:track;
+  const harness=new Function('window','document','session','api','joinedRoom',
+    ui.slice(start,end)+'\n musicStateRoom=joinedRoom.id; return {pollRoomMusic,selectLibrarySong,stopRoomMusic};');
+  const {pollRoomMusic,selectLibrarySong,stopRoomMusic}=harness({cur:room},
+    {createElement:()=>({style:{},...player,play:player.play,pause:player.pause,
+      removeAttribute:player.removeAttribute,load:player.load}),
+     getElementById:()=>null,body:{appendChild(element){Object.assign(player,{element});}}},
+    {user:{id:'owner'}},api,room);
+  const older=pollRoomMusic(room.id);
+  await selectLibrarySong(room.id,1);
+  assert.equal(player.element.playCalls,1);
+  assert.equal(player.element.src,track.url);
+  await stopRoomMusic(room.id);
+  finishPoll(track);
+  await older;
+  assert.equal(player.element.src,'');
+  assert.equal(player.element.playCalls,1);
+});
