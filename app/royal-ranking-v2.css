@@ -364,3 +364,29 @@
     overflow-wrap:anywhere;
   }
 }
+
+
+/* Royal winner/reward detail: keep IDs readable without opaque plates. */
+#sh-rank-reward-center .sh-rw-winner strong,
+#sh-rank-reward-center .sh-rw-winner small,
+#sh-rank-reward-center .sh-rw-winner b {
+  background:transparent!important;
+  box-shadow:none!important;
+  border-radius:0!important;
+  text-shadow:0 2px 5px #160725,0 0 9px #2b104d;
+}
+#sh-rank-reward-center .sh-rw-winner small {
+  color:#ffe8b8!important;
+  min-height:25px;
+  overflow-wrap:anywhere;
+  padding:4px 1px;
+}
+#v-rank #rb .sh-royal-podium-card .sh-royal-member-tag {
+  max-width:min(92px,95%);
+  max-height:24px;
+  object-fit:contain;
+}
+#v-rank #rb .sh-royal-podium-card .sh-royal-avatar {
+  position:relative;
+  isolation:isolate;
+}
