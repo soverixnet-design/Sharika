@@ -101,3 +101,45 @@ test('message sends and closing a thread guard drafts against late completions',
   assert.match(ui,/\+\+messageThreadEpoch;\s*document\.getElementById\('th'\)\?\.classList\.remove\('on'\)/);
   assert.match(ui,/clearMessageDraft\(\)/);
 });
+
+test('profile actions follow and open the same verified member by canonical ID',async()=>{
+  const start=ui.indexOf('  function bindProfileFollow(');
+  const end=ui.indexOf('  async function openPrivateThread(',start);
+  const calls=[];
+  const profile={public_id:'10000001'};
+  const room={id:'10000006'};
+  const context=createContext({
+    session:{user:{id:'test'}},profile,joinedRoom:room,room,
+    window:{go(name){calls.push(name);}},
+    document:{getElementById(){return null;}},
+    api:async(method,path)=>{
+      calls.push([method,path]);
+      if(method==='GET'&&calls.length===1)throw Error('connection lost');
+      return {following:method==='PUT'};
+    },
+    openPrivateThread:async(...args)=>calls.push(args),
+    toast(){},errText:String
+  });
+  runInContext(ui.slice(start,end)+`
+    const follow={isConnected:true,setAttribute(){}};
+    const message={isConnected:true};
+    const member={public_id:'10000002',special_id:'1000000123',n:'Member'};
+    bindProfileFollow(follow,member.public_id);
+    bindProfileMessage(message,member,null,room);
+  `,context);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(runInContext('follow.textContent',context),'Retry follow');
+  await runInContext('follow.onclick()',context);
+  await runInContext('follow.onclick()',context);
+  assert.equal(runInContext('follow.textContent',context),'✓ Following');
+  await runInContext('follow.onclick()',context);
+  assert.equal(runInContext('follow.textContent',context),'Follow');
+  await runInContext('message.onclick()',context);
+  assert.deepEqual(calls,[
+    ['GET','/users/10000002/follow'],['GET','/users/10000002/follow'],
+    ['PUT','/users/10000002/follow'],['DELETE','/users/10000002/follow'],
+    'msg',['10000002','Member','1000000123']
+  ]);
+  await runInContext('joinedRoom={id:room.id}; message.onclick()',context);
+  assert.equal(calls.length,6,'the old room profile cannot navigate after rejoin');
+});

@@ -6332,8 +6332,8 @@
     if(typeof frame.SharikaRoomPremium?.sync==='function'){
       const liveMembers=(data.members||[])
         .filter(m=>m.user_id&&m.sharika_users?.public_id)
-        // The verified roster is returned in join order. Put the latest
-        // arrivals first so the header's four visible profiles update.
+        // The verified roster is returned in join order. Show the latest
+        // arrivals first, with the rest reachable in the same scrollable row.
         .reverse()
         .map(m=>({
           name:String(m.sharika_users.name||'Member'),
@@ -6403,22 +6403,8 @@
     }
     if(publicId===profile?.public_id)return;
     card.querySelector('.pbtn')?.insertAdjacentHTML('beforeend',
-      '<button id="pmsg" type="button">Message</button>'+
       '<button id="pgift" type="button">Gift</button>'+
       '<button id="pmore" type="button">Report</button>');
-    const message=card.querySelector('#pmsg');
-    if(message)message.onclick=async()=>{
-      if(publicId===profile?.public_id){toast('Choose another member');return;}
-      message.disabled=true;
-      try{
-        document.getElementById('pfo')?.classList.remove('on');
-        document.getElementById('rw')?.classList.remove('on');
-        document.getElementById('mini')?.classList.add('on');
-        window.go('msg');await window.renderMsg();
-        await openPrivateThread(publicId,String(member.name||'Member'));
-      }catch(error){toast('Message unavailable: '+errText(error));}
-      finally{if(message.isConnected)message.disabled=false;}
-    };
     const gift=card.querySelector('#pgift');
     if(gift)gift.onclick=async()=>{
       const currentFrame=document.getElementById('rf')?.contentWindow;
@@ -7768,18 +7754,20 @@
         await openVerifiedRoomMemberProfile(publicId,room.id);return;
       }
       const fresh=await api('GET','/users/'+publicId);
-      if(String(fresh.id)!==publicId||window.cur?.id!==room.id)
+      if(String(fresh.id)!==publicId||!visitIsActive())
         throw new Error('Room member identity changed');
       frame.open('<div class="who"></div><div class="acts"></div>');
       const hero=frame.$('sheet')?.querySelector('.who');
       const actions=frame.$('sheet')?.querySelector('.acts');
       if(!hero||!actions)return;
-      renderMemberHalfProfile(hero,{
+      const publicMember={
         public_id:publicId,n:fresh.name,pic:verifiedAvatarUrl(fresh.pic),
         display_id:fresh.special_id||fresh.display_id||publicId,
         special_id:fresh.special_id||null,room_role:verifiedMemberRole(publicId),
         svip_level:fresh.svip_level,frame_style:fresh.frame_style
-      });
+      };
+      renderMemberHalfProfile(hero,publicMember);
+      addRoomProfileContactActions(actions,publicMember,frame,room);
       for(const [label,icon,callback] of [
         ['Profile','👤',()=>{frame.close();return openVerifiedRoomMemberProfile(publicId,room.id);}],
         ['Gift','🎁',()=>openVerifiedGiftBox({id:publicId,name:String(fresh.name||'Member')})]
@@ -7812,6 +7800,7 @@
       actions.replaceChildren();
       const hero=frame.$('sheet')?.querySelector('.who');
       if(hero)renderMemberHalfProfile(hero,selected,index);
+      addRoomProfileContactActions(actions,selected,frame,room);
       const options=[['prof','👤','Profile'],['gift','🎁','Gift']];
       if(self)options.push(['mute',selected.muted?'🔊':'🔇',
         selected.muted?'Unmute':'Mute']);
@@ -11305,6 +11294,73 @@
     const sendButton=document.getElementById('ts');
     if(sendButton)sendButton.disabled=!canSendPrivate;
   }
+  function bindProfileFollow(button,publicId) {
+    const path='/users/'+publicId+'/follow';
+    function show(status){
+      if(!button.isConnected)return;
+      const following=!!status.following;
+      button.textContent=following?'✓ Following':'Follow';
+      button.setAttribute('aria-pressed',String(following));
+      button.onclick=async()=>{
+        button.disabled=true;
+        try{show(await api(following?'DELETE':'PUT',path));}
+        catch(error){toast('Follow update failed: '+errText(error));}
+        finally{if(button.isConnected)button.disabled=false;}
+      };
+      button.disabled=false;
+    }
+    async function load(){
+      button.disabled=true;
+      button.textContent='Checking follow…';
+      try{show(await api('GET',path));}
+      catch(error){
+        if(!button.isConnected)return;
+        button.textContent='Retry follow';
+        button.title=errText(error);
+        button.onclick=load;
+        button.disabled=false;
+      }
+    }
+    void load();
+  }
+  function bindProfileMessage(button,member,frame=null,room=null) {
+    const publicId=String(member.public_id);
+    button.onclick=async()=>{
+      if(!session||!button.isConnected||(room&&joinedRoom!==room)||
+         !/^[0-9]{8}$/.test(publicId)||publicId===profile?.public_id)return;
+      button.disabled=true;
+      try{
+        frame?.close();
+        document.getElementById('pfo')?.classList.remove('on');
+        if(joinedRoom){
+          document.getElementById('rw')?.classList.remove('on');
+          const bubble=document.getElementById('minib');
+          if(bubble)bubble.textContent=joinedRoom.emoji||'🎙️';
+          document.getElementById('mini')?.classList.add('on');
+        }
+        window.go('msg');
+        await openPrivateThread(publicId,String(member.n||'Member'),
+          String(member.special_id||member.display_id||publicId));
+      }catch(error){toast('Message unavailable: '+errText(error));}
+      finally{
+        if(button.isConnected)button.disabled=false;
+      }
+    };
+  }
+  function addRoomProfileContactActions(actions,member,frame,room) {
+    const publicId=String(member.public_id||'');
+    if(!/^[0-9]{8}$/.test(publicId)||publicId===profile?.public_id)return;
+    const message=frame.document.createElement('button');
+    message.type='button';
+    message.className='act';
+    message.textContent='💬 Message';
+    const follow=frame.document.createElement('button');
+    follow.type='button';
+    follow.className='act';
+    actions.append(message,follow);
+    bindProfileMessage(message,member,frame,room);
+    bindProfileFollow(follow,publicId);
+  }
   async function openPrivateThread(publicId,name,displayId=publicId){
     if(!session){window.showAuth('welcome');return;}
     if(!/^[0-9]{8}$/.test(String(publicId))){toast('Invalid 8-digit user ID');return;}
@@ -12496,7 +12552,10 @@
         (person.bd_active?'<span class="sh-royal-role-tag sh-royal-bd">✦ BD</span>':'')+        (person.seller_active?'<span class="sh-royal-role-tag sh-royal-seller">✦ Seller</span>':'')+        '</div><div class="meta">'+
         (person.country?'<span>🌍 '+sellerEscape(person.country)+'</span>':'')+
         (person.family?.status==='active'?'<span style="color:#f9d48b">👑 Agency · '+sellerEscape(person.family.name)+'</span>':'')+
-        '</div></div><div class="lvs">'+
+        '</div></div><div class="pbtn">'+
+        '<button id="pmsg" type="button" class="p">Message</button>'+
+        '<button id="sh-ranked-follow" type="button" disabled>Checking follow…</button>'+
+        '</div><div class="lvs">'+
         '<div class="lvc w"><b>💰 Wealth level</b><div class="big3">'+
         wealth+'</div><small>Verified profile level</small></div>'+
         '<div class="lvc c"><b>💗 Charm level</b><div class="big3">'+
@@ -12506,8 +12565,6 @@
         (person.family?.status==='active'?'<div class="sh-profile-note" style="border:1px solid #cc9d4b;border-radius:14px;padding:12px">'+
           '👑 Agency · '+sellerEscape(person.family.name)+' · #'+sellerEscape(person.family.id)+
           '</div>':'')+
-        '<div class="pbtn"><button id="sh-ranked-follow" type="button" disabled>'+
-        'Loading follow status…</button></div>'+
         '</div>';
       const avatar=root.querySelector('#sh-ranked-avatar');
       if(face)avatar.style.backgroundImage='url("'+face+'")';
@@ -12547,30 +12604,15 @@
       paintRoyalPublicLevels(root,person,null);
       mountBondDetails(root,canonicalId,person).catch(error=>
         console.warn('Ranked ID bond details:',errText(error)));
-      const follow=root.querySelector('#sh-ranked-follow');
-      async function loadFollowing(){
-        const data=await api('GET','/users/'+canonicalId+'/follow');
-        if(requestNo!==rankProfileRequest||!follow.isConnected)return;
-        const following=!!data.following;
-        follow.disabled=false;
-        follow.textContent=following?'✓ Following':'＋ Follow';
-        follow.onclick=async()=>{
-          follow.disabled=true;
-          try{
-            await api(following?'DELETE':'PUT','/users/'+canonicalId+'/follow');
-            await loadFollowing();
-          }catch(error){
-            toast('Follow action failed: '+errText(error));
-            if(follow.isConnected)follow.disabled=false;
-          }
-        };
-      }
+      const actions=root.querySelector('.pbtn');
       if(canonicalId===profile?.public_id){
-        follow.style.display='none';
-      }else loadFollowing().catch(error=>{
-        if(follow.isConnected)follow.textContent='Follow unavailable';
-        console.warn('Verified follow status unavailable:',errText(error));
-      });
+        actions.hidden=true;
+      }else{
+        bindProfileFollow(actions.querySelector('#sh-ranked-follow'),canonicalId);
+        bindProfileMessage(actions.querySelector('#pmsg'),{
+          public_id:canonicalId,display_id:displayId,n:person.name
+        });
+      }
       return root.firstElementChild;
     }catch(error){
       if(requestNo===rankProfileRequest&&panel.classList.contains('on'))

@@ -325,12 +325,6 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   background-size:70% 70%!important;
   filter:none!important;
 }
-/* Games has one child span: the icon sprite. The old :last-child rule hid it. */
-.app.sh-royal-room .sh-tool #bGame.sh-games .sh-sprite {
-  display:block!important;
-  visibility:visible!important;
-  opacity:1!important;
-}
 /* The old games control was absolute-positioned before it was moved into
    the new six-button toolbar. Reset that position so no empty cell remains. */
 .app.sh-royal-room .sh-tool #bGame.sh-games {
@@ -343,9 +337,12 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   cursor:pointer;
 }
 .app.sh-royal-room .sh-tool #bGame.sh-games .sh-sprite {
+  display:block!important;
   width:90%!important;
   height:90%!important;
   margin:0!important;
+  background:url('./room-gamepad.svg') center / 82% no-repeat!important;
+  filter:none!important;
 }
 .app.sh-royal-room .sh-tool #mic.off {opacity:.55!important;border-color:#db668c!important}
 .app.sh-royal-room .sh-tool #emo {background-image:none!important}
@@ -444,28 +441,40 @@ html.royal-room .app.sh-royal-room.royal-default-room {
 .app.sh-royal-room .sh-room-live-controls[hidden] {display:none}
 .app.sh-royal-room .sh-room-masthead {
   height:auto;
-  min-height:42px;
-  gap:7px;
-  background:#0807109c;
+  min-height:49px;
+  gap:5px;
+  padding:2px 9px;
+  background:linear-gradient(90deg,#100922cc,#10092255);
 }
-.app.sh-royal-room .sh-room-faces {gap:4px;padding:0}
+.app.sh-royal-room .sh-room-faces {
+  justify-content:flex-start;
+  gap:3px;
+  padding:0;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.app.sh-royal-room .sh-room-face-count {margin-inline-start:auto}
 .app.sh-royal-room .sh-room-member-chip {
   display:grid;
   justify-items:center;
   gap:1px;
   min-width:0;
-  flex:0 1 54px;
+  min-height:44px;
+  flex:0 0 clamp(59px,18vw,70px);
   padding:1px 0;
   border:0;
   background:none;
   color:#fff0db;
   cursor:pointer;
 }
-.app.sh-royal-room .sh-room-member-chip > .sh-vip-avatar {width:27px;height:27px}
+.app.sh-royal-room .sh-room-member-chip > .sh-vip-avatar {width:29px;height:29px}
 .app.sh-royal-room .sh-room-member-chip > small {
-  font-size:9px;
-  line-height:1.1;
+  font-size:11px;
+  line-height:1.12;
+  font-weight:650;
   font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  text-shadow:0 1px 3px #050309;
 }
 .app.sh-royal-room .sh-room-rank-row {
   display:flex;

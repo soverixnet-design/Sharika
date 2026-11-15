@@ -30,6 +30,24 @@
     }
     if (!doc.documentElement.dataset.qaComposerOpened) {
       doc.documentElement.dataset.qaComposerOpened = '1';
+      const members = Array.from({length:6},(_,index)=>({
+        name:'QA member '+(index+1),publicId:String(10000010+index),
+        displayId:index===0?'1234567890':String(10000010+index)
+      }));
+      win.SharikaRoomPremium?.sync({roomId:'10000006',members,
+        loadAnnouncement:async()=>({}),openProfile:member=>bridge.record(JSON.stringify({
+          phase:'member-open',publicId:member.publicId
+        }))});
+      const memberRow=doc.querySelector('.sh-room-faces');
+      if(memberRow){
+        memberRow.querySelector('button')?.click();
+        bridge.record(JSON.stringify({
+          phase:'roster',
+          ids:[...memberRow.querySelectorAll('button small')].map(id=>id.textContent),
+          scrollable:memberRow.scrollWidth>memberRow.clientWidth,
+          gamesIcon:win.getComputedStyle(doc.querySelector('#bGame .sh-sprite')).backgroundImage
+        }));
+      }
       toggle.click();
       // toggle.click() is synthetic in this offline fixture. Its focus()
       // makes #txt active without a trusted Android gesture or visible IME.

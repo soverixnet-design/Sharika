@@ -19,7 +19,7 @@ test('compact verified ranking and owner-only room announcement endpoints',()=>{
   const native=src('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java');
   const sql=src('../migrations/0056_room_announcements.sql');
   assert.match(ui,/rankRow\.append\(ranking\);[\s\S]*?roomControls\.append\(masthead,rankRow\);\s*top\?\.after\(roomControls\)/);
-  assert.match(ui,/view\.members\.slice\(0,4\)/);
+  assert.match(ui,/const items=view\.members\.map\(member=>/);
   assert.match(ui,/id\.textContent=member\.displayId/);
   assert.match(ui,/count\.onclick=showMembers/);
   assert.match(ui,/renderLiveMembers\(view\);\s*roomControls\.hidden=false/);

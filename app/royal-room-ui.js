@@ -301,6 +301,7 @@
   menuButton.setAttribute('aria-expanded', 'false');
   menuButton.setAttribute('aria-controls', 'sh-room-menu-panel');
   addTool(games,'games','Games');
+  games.title='Games';
 
   // The microphone stays the original, externally managed mic button.
   mic.setAttribute('aria-label', 'Mute or unmute microphone');
@@ -418,11 +419,10 @@
   }
   let rosterSignature=null;
   function renderLiveMembers(view){
-    const visible=view.members.slice(0,4);
-    const signature=JSON.stringify([view.roomId,view.members.length,visible]);
+    const signature=JSON.stringify([view.roomId,view.members]);
     if(signature===rosterSignature)return;
     rosterSignature=signature;
-    const items=visible.map(member=>{
+    const items=view.members.map(member=>{
       const button=document.createElement('button');
       button.type='button';
       button.className='sh-room-member-chip';

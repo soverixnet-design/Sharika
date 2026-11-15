@@ -85,7 +85,8 @@ test('clicked seat profile resolves server ID, not the old seat-zero self shortc
   assert.match(ui,/await openVerifiedRankProfile\(String\(member\.id\),member\)/);
   assert.match(ui,/if\(!card\?\.isConnected\|\|window\.cur\?\.id!==roomId\)return/);
   assert.match(ui,/decorateVerifiedPublicProfile\(root,person\)/);
-  assert.match(ui,/api\(following\?'DELETE':'PUT','\/users\/'\+canonicalId\+'\/follow'\)/);
+  assert.match(ui,/bindProfileFollow\(actions\.querySelector\('#sh-ranked-follow'\),canonicalId\)/);
+  assert.match(ui,/addRoomProfileContactActions\(actions,selected,frame,room\)/);
 });
 
 test('room seats keep personal ornaments on the frame and show identities in profiles',()=>{
