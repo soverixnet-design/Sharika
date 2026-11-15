@@ -2039,6 +2039,9 @@ export async function handleRequest(request, env, ctx) {
         const catalogBackground=selectedCatalogId!==null
           ?await catalogThemeImage(env.DB,selectedCatalogId,url.origin):null;
         return reply({ room: roomId,
+          // Canonical owner UID is independent of the public room number.
+          // Clients must not infer ownership from room ID or cached roles.
+          owner_user_id:room.owner_id,
           self_state:{role:ownMemberRole,seat_no:member.seat_no,muted:!!member.muted},
           access_locked:(await readRoomAccessLock(env.DB,roomId)).locked,
           theme:ROOM_THEMES.has(room.theme)||catalogBackground?room.theme:'mid',
