@@ -14068,68 +14068,185 @@
 
     const style=document.createElement('style');
     style.id='sh-assistant-styles';
-    style.textContent=[
-      '#sh-assistant-trigger{position:fixed;right:15px;bottom:calc(89px + env(safe-area-inset-bottom,0px));',
-      'z-index:22;display:flex;flex-direction:column;align-items:center;justify-content:center;',
-      'width:70px;height:62px;border-radius:20px;border:1px solid #ffe3a0;',
-      'background:linear-gradient(150deg,#7d4476,#392045 58%,#21102a);color:#ffe8a9;',
-      'box-shadow:inset 0 2px 2px #ffffff48,inset 0 -6px 9px #14091b8c,0 6px 17px #0009;',
-      'font:700 11px system-ui,sans-serif;cursor:pointer}',
-      '#sh-assistant-trigger span{font-size:25px;line-height:1.05;color:#ffe09b}',
-      '#sh-assistant-trigger small{font-size:10px;letter-spacing:.1px}',
-      '#sh-assistant-trigger:focus-visible,#sh-assistant-panel button:focus-visible,',
-      '#sh-assistant-panel input:focus-visible{outline:3px solid #fff2b5;outline-offset:2px}',
-      '#sh-assistant-overlay[hidden]{display:none!important}',
-      '#sh-assistant-overlay{position:absolute;inset:0;z-index:85;display:flex;',
-      'align-items:stretch;justify-content:center;padding:calc(10px + env(safe-area-inset-top,0px)) 10px',
-      ' calc(10px + env(safe-area-inset-bottom,0px));background:#090513e8;backdrop-filter:blur(8px)}',
-      '#sh-assistant-panel{box-sizing:border-box;display:flex;flex-direction:column;width:100%;',
-      'max-width:520px;min-height:0;border-radius:23px;overflow:hidden;',
-      'border:1px solid #e3b56d;background:linear-gradient(165deg,#392046,#140b23 52%,#10081b);',
-      'box-shadow:0 16px 45px #000b;color:#fcefdc}',
-      '#sh-assistant-panel *{box-sizing:border-box}',
-      '#sh-assistant-head{display:flex;align-items:center;gap:10px;padding:15px 14px 12px;',
-      'border-bottom:1px solid #f0cc8355}',
-      '#sh-assistant-head .sh-as-star{display:grid;place-items:center;flex:none;width:38px;',
-      'height:38px;border-radius:13px;color:#6c3243;background:linear-gradient(140deg,#fff1c3,#bb8b42);',
-      'font-size:23px}',
-      '#sh-assistant-head .sh-as-titles{flex:1;min-width:0}',
-      '#sh-assistant-head strong{font-size:16px;color:#ffe9ac}',
-      '#sh-assistant-head small{display:block;margin-top:3px;font-size:10.5px;color:#ddc7c7}',
-      '#sh-assistant-close{border:1px solid #e6bc7b88;border-radius:50%;',
-      'width:36px;height:36px;background:#4c2945;color:#fff;font-size:21px}',
-      '#sh-assistant-log{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;',
-      'gap:11px;padding:15px 13px;overscroll-behavior:contain}',
-      '.sh-as-bubble{align-self:flex-start;max-width:92%;padding:11px 13px;',
-      'border:1px solid #ad8b757a;border-radius:17px 17px 17px 5px;',
-      'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55;font-size:13px;',
-      'background:#33243a;color:#fff4df}',
-      '.sh-as-bubble.sh-as-user{align-self:flex-end;border-color:#ecc88491;',
-      'border-radius:17px 17px 5px 17px;background:#704369;color:#fff}',
-      '#sh-assistant-chips{display:flex;gap:7px;overflow-x:auto;padding:9px 12px;',
-      'border-top:1px solid #f0cc8338;scrollbar-width:none}',
-      '#sh-assistant-chips button{flex:none;border:1px solid #f2cc8c83;border-radius:18px;',
-      'background:#492c4b;color:#ffe9ac;padding:8px 11px;font-size:11px}',
-      '#sh-assistant-form{display:flex;gap:7px;padding:9px 10px 12px}',
-      '#sh-assistant-input{flex:1;min-width:0;max-width:100%;border:1px solid #e2b775;',
-      'border-radius:13px;background:#20132f;color:#fff;padding:11px 10px;font-size:13px}',
-      '#sh-assistant-input::placeholder{color:#d8c6d9}',
-      '#sh-assistant-send{border:0;border-radius:13px;padding:0 15px;',
-      'background:linear-gradient(130deg,#fff0b7,#c58a3c);color:#31192e;font-weight:800}',
-      '#sh-assistant-footer{padding:0 11px 12px;display:flex;align-items:center;',
-      'justify-content:space-between;gap:7px}',
-      '#sh-assistant-footer span{font-size:10px;line-height:1.3;color:#dbc4ca}',
-      '#sh-assistant-support{flex:none;border:1px solid #e4ba70;border-radius:12px;',
-      'background:#653e59;color:#fff4d6;font-size:11px;padding:9px 10px}',
-      '@media(prefers-reduced-motion:reduce){#sh-assistant-trigger{transition:none!important}}'
-    ].join('');
+    // The complete skin is scoped under sh-assistant-* so it does not change
+    // Sharika room/seat visuals. Portrait and landscape share one adaptive UI.
+    style.textContent=String.raw`
+      #sh-assistant-trigger{
+        position:fixed;right:13px;bottom:calc(86px + env(safe-area-inset-bottom,0px));
+        z-index:22;width:74px;height:72px;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:3px;
+        border:1px solid #f8db9a;border-radius:23px;color:#ffe8a9;
+        background:linear-gradient(145deg,#fff3c8 0%,#aa7634 2%,#503065 11%,#211331 55%,#120b22 100%);
+        box-shadow:inset 0 2px 1px #fff9d78a,inset 0 -7px 14px #0a0318a8,
+          0 9px 23px #0008,0 0 0 3px #d5ad6333;cursor:pointer;
+        font:700 10px system-ui,sans-serif;letter-spacing:.35px;
+        -webkit-tap-highlight-color:transparent;
+      }
+      #sh-assistant-trigger .sh-as-trigger-icon{
+        width:36px;height:36px;display:grid;place-items:center;border-radius:13px;
+        color:#26152d;background:linear-gradient(140deg,#fff1ae,#e6b85f 55%,#946224);
+        box-shadow:0 3px 8px #0008,inset 0 2px 2px #fff9;
+      }
+      #sh-assistant-trigger svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7}
+      #sh-assistant-trigger small{font:800 10px system-ui,sans-serif;color:#fff4cd;
+        letter-spacing:.1px;text-shadow:0 1px 4px #090312}
+      #sh-assistant-trigger:active{transform:translateY(2px);box-shadow:inset 0 4px 9px #090214,0 3px 10px #0008}
+      #sh-assistant-overlay[hidden]{display:none!important}
+      #sh-assistant-overlay{position:absolute;inset:0;z-index:85;display:flex;
+        align-items:stretch;justify-content:center;box-sizing:border-box;
+        padding:calc(8px + env(safe-area-inset-top,0px)) 9px
+          calc(9px + env(safe-area-inset-bottom,0px));
+        background:radial-gradient(ellipse at 50% 10%,#774c9870,transparent 72%),#090513ed;
+        backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+      #sh-assistant-panel{
+        position:relative;isolation:isolate;box-sizing:border-box;
+        width:100%;max-width:540px;height:100%;min-height:0;display:flex;flex-direction:column;
+        border-radius:25px;overflow:hidden;
+        color:#f9e9e1;border:1px solid #e5bc7380;
+        background:radial-gradient(circle at 90% -5%,#6f40744d,transparent 48%),
+          radial-gradient(circle at -20% 65%,#67326945,transparent 52%),
+          linear-gradient(180deg,#281637 0%,#1e112d 44%,#100b1c 100%);
+        box-shadow:inset 0 1px 0 #fff1c244,0 16px 60px #000c,0 0 0 3px #d2a9601c;
+        font-family:system-ui,-apple-system,'Noto Sans Bengali',sans-serif}
+      #sh-assistant-panel::before{content:'';position:absolute;z-index:-1;top:2px;left:14%;right:14%;
+        height:1px;background:linear-gradient(90deg,transparent,#ffefcabb,transparent)}
+      #sh-assistant-panel *{box-sizing:border-box}
+      #sh-assistant-head{position:relative;display:flex;align-items:center;gap:11px;flex:none;
+        min-height:77px;padding:12px 14px;border-bottom:1px solid #f8d58f30;
+        background:linear-gradient(165deg,#593753a8,#28163470 65%,#150e2400)}
+      #sh-assistant-head .sh-as-avatar{position:relative;flex:none;display:grid;place-items:center;
+        width:49px;height:49px;border-radius:17px;
+        border:1px solid #fff1be;background:linear-gradient(145deg,#fff3c1,#e0a852 58%,#80551f);
+        box-shadow:0 5px 13px #0007,inset 0 2px 3px #fff9;transform:rotate(-5deg)}
+      #sh-assistant-head .sh-as-avatar svg{width:31px;height:31px;
+        stroke:#422239;stroke-width:1.65;fill:none;transform:rotate(5deg)}
+      .sh-as-avatar-spark{position:absolute;right:-5px;top:-6px;color:#fff7cb;
+        font-size:17px;text-shadow:0 0 9px #f5cb64}
+      #sh-assistant-head .sh-as-titles{min-width:0;flex:1;line-height:1.17}
+      #sh-assistant-head .sh-as-eyebrow{font:800 9px system-ui,sans-serif;letter-spacing:1.3px;
+        color:#e8b96e;text-transform:uppercase;margin-bottom:4px}
+      #sh-assistant-title{display:block;font-size:17px;color:#fff1cb;letter-spacing:.1px;
+        text-shadow:0 2px 10px #e6bb5633}
+      #sh-assistant-head small{display:block;font-size:10px;line-height:1.3;
+        margin-top:4px;color:#d9c6d7}
+      #sh-assistant-close{flex:none;width:37px;height:37px;display:grid;place-items:center;
+        border-radius:13px;border:1px solid #eed5aa55;background:#f6deaf0e;color:#fff0cb;
+        font:25px/1 system-ui,sans-serif;cursor:pointer}
+      #sh-assistant-close:active{background:#ebc17940}
+      #sh-assistant-hero{flex:none;text-align:center;padding:15px 14px 10px;overflow:hidden}
+      .sh-as-hero-medallion{display:grid;place-items:center;margin:0 auto 8px;
+        width:62px;height:62px;border:1px solid #edca85;border-radius:21px;
+        background:linear-gradient(147deg,#ffeec3,#bc873d 39%,#3b2141 45%,#20122e 85%);
+        box-shadow:0 9px 20px #0008,inset 0 2px 4px #fff8;transform:rotate(-4deg)}
+      .sh-as-hero-medallion svg{width:37px;height:37px;color:#f4d89f;stroke:currentColor;
+        stroke-width:1.6;fill:none;transform:rotate(4deg)}
+      #sh-assistant-hero h3{margin:0;color:#fff1c7;font-size:18px;line-height:1.5;font-weight:800}
+      #sh-assistant-hero p{max-width:310px;margin:3px auto 0;color:#d9c3d7;
+        font-size:11px;line-height:1.6}
+      #sh-assistant-hero .sh-as-mark{display:inline-flex;align-items:center;gap:6px;
+        margin-top:8px;border:1px solid #e8c58544;border-radius:99px;
+        padding:5px 10px;background:#f2d19b12;color:#f4dba9;font-size:9px}
+      #sh-assistant-hero .sh-as-mark::before{content:'';width:6px;height:6px;border-radius:50%;
+        background:#7ee0aa;box-shadow:0 0 7px #7ee0aa}
+      #sh-assistant-chips{flex:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:8px;padding:8px 13px 12px;max-height:29vh;overflow-y:auto;scrollbar-width:none}
+      #sh-assistant-chips button{min-width:0;min-height:62px;text-align:left;
+        display:flex;align-items:center;gap:10px;
+        padding:10px;border:1px solid #d4a96756;border-radius:15px;
+        background:linear-gradient(146deg,#593a5bbf,#342340bd 58%,#201529);
+        box-shadow:inset 0 1px 1px #ffedd03b,0 5px 10px #0005;
+        color:#f8e8db;font:700 11px system-ui,'Noto Sans Bengali',sans-serif;
+        cursor:pointer;-webkit-tap-highlight-color:transparent}
+      #sh-assistant-chips button:active{transform:translateY(1px);background:#674663}
+      #sh-assistant-chips button .sh-as-chip-icon{
+        flex:none;width:35px;height:35px;display:grid;place-items:center;
+        border:1px solid #f2d49888;border-radius:12px;
+        background:linear-gradient(140deg,#fbe0a7,#cc9448 68%,#815322);
+        box-shadow:inset 0 1px 1px #fffbde,0 2px 5px #0006}
+      #sh-assistant-chips button .sh-as-chip-icon svg{width:20px;height:20px;stroke:#512d40;
+        stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;fill:none}
+      #sh-assistant-chips button .sh-as-chip-label{flex:1;min-width:0}
+      #sh-assistant-chips button .sh-as-chip-sub{display:block;margin-top:3px;
+        font-size:9px;font-weight:500;color:#c8b1ca;line-height:1.2}
+      #sh-assistant-log{flex:1;min-height:0;display:flex;flex-direction:column;
+        gap:12px;padding:12px 14px 16px;overflow-y:auto;overscroll-behavior:contain;
+        scrollbar-width:thin;scrollbar-color:#b48a6f40 transparent}
+      .sh-as-bubble{align-self:flex-start;max-width:92%;padding:12px 13px;
+        border:1px solid #b9957363;border-radius:17px 17px 17px 6px;
+        background:linear-gradient(130deg,#41304c,#30233b);color:#fff1e5;
+        box-shadow:0 5px 12px #0004;white-space:pre-wrap;overflow-wrap:anywhere;
+        line-height:1.6;font-size:12px}
+      .sh-as-bubble.sh-as-user{align-self:flex-end;border-color:#efc98080;
+        border-radius:17px 17px 6px 17px;background:linear-gradient(125deg,#8d5f76,#603958);
+        color:white}
+      #sh-assistant-panel:not(.sh-as-chatting) #sh-assistant-log{padding:0 13px;min-height:0}
+      #sh-assistant-panel:not(.sh-as-chatting) #sh-assistant-log .sh-as-bubble{display:none}
+      #sh-assistant-panel.sh-as-chatting #sh-assistant-hero{display:none}
+      #sh-assistant-panel.sh-as-chatting #sh-assistant-chips{display:flex;gap:7px;
+        padding:10px 12px;max-height:none;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+        border-bottom:1px solid #e4bf7a24}
+      #sh-assistant-panel.sh-as-chatting #sh-assistant-chips button{
+        flex:none;width:auto;min-height:35px;padding:6px 9px;border-radius:99px;
+        font-size:10px;gap:5px;box-shadow:none}
+      #sh-assistant-panel.sh-as-chatting #sh-assistant-chips .sh-as-chip-icon{width:23px;
+        height:23px;border-radius:8px}
+      #sh-assistant-panel.sh-as-chatting #sh-assistant-chips .sh-as-chip-icon svg{width:14px;height:14px}
+      #sh-assistant-panel.sh-as-chatting #sh-assistant-chips .sh-as-chip-sub{display:none}
+      #sh-assistant-form{flex:none;display:flex;align-items:center;gap:8px;
+        padding:10px 12px 5px;border-top:1px solid #f3cf8b32;
+        background:linear-gradient(180deg,#30203cb8,#1c102b)}
+      #sh-assistant-input{flex:1;min-width:0;width:100%;min-height:42px;
+        padding:10px 13px;border:1px solid #d1a46670;border-radius:14px;
+        background:#0e0b1d;color:#fff7eb;outline:0;
+        box-shadow:inset 0 2px 6px #0008;font:12px system-ui,'Noto Sans Bengali',sans-serif}
+      #sh-assistant-input::placeholder{color:#baaabd}
+      #sh-assistant-input:focus{border-color:#f8d596;box-shadow:0 0 0 2px #f0c57a38}
+      #sh-assistant-send{flex:none;min-height:42px;padding:0 15px;
+        border:1px solid #ffe7b9;border-radius:14px;
+        background:linear-gradient(145deg,#fff0c1,#e5b761 48%,#ab7730);
+        box-shadow:inset 0 2px 2px #fffce4b8,0 4px 9px #0007;
+        color:#3c2430;font:800 12px system-ui,sans-serif;cursor:pointer}
+      #sh-assistant-send:disabled{opacity:.5;cursor:default}
+      #sh-assistant-footer{flex:none;display:flex;align-items:center;gap:9px;
+        justify-content:space-between;padding:5px 12px 10px;background:#1c102b}
+      #sh-assistant-footer span{font-size:9px;line-height:1.4;color:#cbb2c5}
+      #sh-assistant-support{flex:none;min-height:30px;padding:6px 9px;
+        border:1px solid #b9935e9a;border-radius:10px;
+        background:#f0ce9720;color:#ffe6b0;font:700 10px system-ui,sans-serif;
+        cursor:pointer}
+      #sh-assistant-trigger:focus-visible,#sh-assistant-panel button:focus-visible,
+      #sh-assistant-panel input:focus-visible{outline:2px solid #ffecab;outline-offset:2px}
+      @media(max-height:610px){
+        #sh-assistant-head{min-height:61px;padding:7px 11px}
+        #sh-assistant-head .sh-as-avatar{width:41px;height:41px;border-radius:13px}
+        #sh-assistant-hero{padding:6px 10px 4px}
+        #sh-assistant-hero .sh-as-hero-medallion{display:none}
+        #sh-assistant-hero h3{font-size:14px}
+        #sh-assistant-hero p{margin-top:1px;font-size:10px}
+        #sh-assistant-hero .sh-as-mark{margin-top:4px;padding:3px 8px}
+        #sh-assistant-chips{gap:6px;padding:5px 11px 7px;max-height:34vh}
+        #sh-assistant-chips button{min-height:44px;padding:5px 7px}
+        #sh-assistant-chips button .sh-as-chip-icon{width:29px;height:29px}
+        #sh-assistant-chips button .sh-as-chip-sub{display:none}
+        #sh-assistant-form{padding-top:6px}
+        #sh-assistant-footer{padding-bottom:6px}
+      }
+      @media(max-width:360px){
+        #sh-assistant-head .sh-as-eyebrow{letter-spacing:.55px;font-size:8px}
+        #sh-assistant-title{font-size:15px}
+        #sh-assistant-chips button{gap:7px;padding:7px}
+        #sh-assistant-chips button .sh-as-chip-icon{width:30px;height:30px}
+        #sh-assistant-chips button .sh-as-chip-label{font-size:10px}
+      }
+      @media(prefers-reduced-motion:reduce){#sh-assistant-trigger{transition:none!important}}
+    `;
     document.head.appendChild(style);
 
     const trigger=document.createElement('button');
     trigger.id='sh-assistant-trigger';
     trigger.type='button';
     trigger.setAttribute('aria-label','Open Sharika Assistant');
-    trigger.innerHTML='<span aria-hidden="true">✦</span><small>Assistant</small>';
+    trigger.innerHTML='<span class="sh-as-trigger-icon" aria-hidden="true"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v4M13 4h6M7 13l2-4h14l2 4v12H7z"/><rect x="10" y="14" width="12" height="8" rx="3"/><path d="M13 18h1m4 0h1M13 25h6M4 17h3m18 0h3"/></svg></span><small>Assistant</small>';
     home.appendChild(trigger);
 
     const overlay=document.createElement('div');
@@ -14137,16 +14254,23 @@
     overlay.hidden=true;
     overlay.innerHTML=
       '<section id="sh-assistant-panel" role="dialog" aria-modal="true" aria-labelledby="sh-assistant-title">'+
-      '<header id="sh-assistant-head"><span class="sh-as-star" aria-hidden="true">✦</span>'+
-      '<div class="sh-as-titles"><strong id="sh-assistant-title">Sharika Assistant</strong>'+
-      '<small>অ্যাপ তথ্য • নিজের verified account • FAQ</small></div>'+
+      '<header id="sh-assistant-head">'+
+      '<span class="sh-as-avatar" aria-hidden="true"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v4M13 4h6M7 13l2-4h14l2 4v12H7z"/><rect x="10" y="14" width="12" height="8" rx="3"/><path d="M13 18h1m4 0h1M13 25h6M4 17h3m18 0h3"/></svg><span class="sh-as-avatar-spark">✦</span></span>'+
+      '<div class="sh-as-titles"><div class="sh-as-eyebrow">SHARIKA • ROYAL HELP</div>'+
+      '<strong id="sh-assistant-title">Sharika Assistant</strong>'+
+      '<small>আপনার অ্যাপ সহকারী</small></div>'+
       '<button id="sh-assistant-close" type="button" aria-label="Close Assistant">×</button></header>'+
+      '<section id="sh-assistant-hero" aria-label="Assistant welcome">'+
+      '<div class="sh-as-hero-medallion" aria-hidden="true"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v4M13 4h6M7 13l2-4h14l2 4v12H7z"/><rect x="10" y="14" width="12" height="8" rx="3"/><path d="M13 18h1m4 0h1M13 25h6M4 17h3m18 0h3"/></svg></div>'+
+      '<h3>কী জানতে চান?</h3>'+
+      '<p>আপনার কয়েন, লেভেল, রুম এবং Sharika ব্যবহারের সহায়তা এক জায়গায়।</p>'+
+      '<span class="sh-as-mark">Verified Account Help • বাংলা</span></section>'+
+      '<div id="sh-assistant-chips" role="group" aria-label="দ্রুত সাহায্য"></div>'+
       '<div id="sh-assistant-log" role="log" aria-live="polite" aria-relevant="additions"></div>'+
-      '<div id="sh-assistant-chips" aria-label="সাধারণ প্রশ্ন"></div>'+
       '<form id="sh-assistant-form"><input id="sh-assistant-input" autocomplete="off" maxlength="250"'+
-      ' aria-label="প্রশ্ন লিখুন" placeholder="Sharika সম্পর্কে প্রশ্ন লিখুন…">'+
+      ' aria-label="প্রশ্ন লিখুন" placeholder="আপনার প্রশ্ন লিখুন…">'+
       '<button id="sh-assistant-send" type="submit">পাঠান</button></form>'+
-      '<footer id="sh-assistant-footer"><span>নিজের তথ্য Firebase Login দিয়ে যাচাই করা হয়।</span>'+
+      '<footer id="sh-assistant-footer"><span>নিজের তথ্য শুধুমাত্র নিরাপদ লগইনের মাধ্যমে</span>'+
       '<button id="sh-assistant-support" type="button">Customer Service</button></footer></section>';
     app.appendChild(overlay);
 
@@ -14202,6 +14326,7 @@
       sendButton.disabled=false;
       overlay.hidden=true;
       log.textContent='';
+      overlay.querySelector('#sh-assistant-panel')?.classList.remove('sh-as-chatting');
       input.value='';
       assistantAccountId=null;
       assistantAuthVersion=-1;
@@ -14212,6 +14337,7 @@
       if(nowId!==assistantAccountId || assistantAuthVersion!==authAttemptId){
         ++assistantRequest;
         log.textContent='';
+        overlay.querySelector('#sh-assistant-panel')?.classList.remove('sh-as-chatting');
         assistantAccountId=nowId;
         assistantAuthVersion=authAttemptId;
         sendButton.disabled=false;
@@ -14287,6 +14413,7 @@
     async function respond(question){
       const value=String(question||'').trim().slice(0,250);
       if(!value)return;
+      overlay.querySelector('#sh-assistant-panel')?.classList.add('sh-as-chatting');
       const accountId=syncOwnAccount();
       addMessage(value,true);
       input.value='';
@@ -14334,7 +14461,7 @@
       syncOwnAccount();
       overlay.hidden=false;
       if(!log.children.length)addMessage('স্বাগতম! আমি Sharika Assistant। নিজের ব্যালেন্স, লেভেল, প্রোফাইল ও রুম সম্পর্কে সার্ভারে যাচাই করা তথ্য জানতে পারেন। সাধারণ প্রশ্নের জন্য FAQ আছে; এটি এখনো জেনারেটিভ AI নয়।',false);
-      input.focus();
+      overlay.querySelector('#sh-assistant-close').focus();
     });
     overlay.querySelector('#sh-assistant-close').addEventListener('click',closeAssistant);
     overlay.addEventListener('click',event=>{if(event.target===overlay)closeAssistant()});
@@ -14342,9 +14469,18 @@
     overlay.querySelector('#sh-assistant-form').addEventListener('submit',event=>{
       event.preventDefault();respond(input.value);
     });
+    const quickCardMeta={"আমার ব্যালেন্স":{"svg":"<svg viewBox=\"0 0 32 32\" aria-hidden=\"true\"><rect x=\"4\" y=\"7\" width=\"24\" height=\"18\" rx=\"4\"/><path d=\"M22 12h6v8h-6a4 4 0 0 1 0-8zM8 12h10\"/></svg>","sub":"Wallet"},"আমার লেভেল":{"svg":"<svg viewBox=\"0 0 32 32\" aria-hidden=\"true\"><path d=\"M6 25h20M9 22V12l7-6 7 6v10M13 22v-7h6v7M13 6l3-3 3 3\"/></svg>","sub":"Level"},"আমার রুম":{"svg":"<svg viewBox=\"0 0 32 32\" aria-hidden=\"true\"><path d=\"M5 15 16 5l11 10v11H5V15zM12 26V16h8v10M10 15h2m9 0h1\"/></svg>","sub":"Room"},"আমার প্রোফাইল":{"svg":"<svg viewBox=\"0 0 32 32\" aria-hidden=\"true\"><circle cx=\"16\" cy=\"11\" r=\"5\"/><path d=\"M6 27v-3a10 10 0 0 1 20 0v3H6z\"/></svg>","sub":"Profile"},"মাইক/ভয়েস":{"svg":"<svg viewBox=\"0 0 32 32\" aria-hidden=\"true\"><rect x=\"12\" y=\"4\" width=\"8\" height=\"15\" rx=\"4\"/><path d=\"M8 15a8 8 0 0 0 16 0M16 23v5m-6 0h12\"/></svg>","sub":"Mic"},"রুম":{"svg":"<svg viewBox=\"0 0 32 32\" aria-hidden=\"true\"><circle cx=\"16\" cy=\"16\" r=\"11\"/><path d=\"m20 11-3 8-5 2 3-8z\"/></svg>","sub":"Explore"},"গিফট/SVIP":{"svg":"<svg viewBox=\"0 0 32 32\" aria-hidden=\"true\"><rect x=\"5\" y=\"14\" width=\"22\" height=\"14\" rx=\"2\"/><path d=\"M3 10h26v5H3zM16 10v18M16 10c-7 0-9-6-5-8s6 6 5 8zm0 0c7 0 9-6 5-8s-6 6-5 8z\"/></svg>","sub":"Gifts"},"সাপোর্ট":{"svg":"<svg viewBox=\"0 0 32 32\" aria-hidden=\"true\"><path d=\"M5 18v-4a11 11 0 0 1 22 0v4M5 17h5v8H7a2 2 0 0 1-2-2v-6zm22 0h-5v8h3a2 2 0 0 0 2-2v-6zM20 28h-4\"/></svg>","sub":"Support"}};
     common.forEach(label=>{
       const button=document.createElement('button');
-      button.type='button';button.textContent=label;
+      button.type='button';
+      const graphic=document.createElement('span');
+      graphic.className='sh-as-chip-icon';graphic.setAttribute('aria-hidden','true');
+      graphic.innerHTML=quickCardMeta[label]?.svg||'';
+      const wrap=document.createElement('span');
+      wrap.className='sh-as-chip-label';wrap.textContent=label;
+      const sub=document.createElement('span');
+      sub.className='sh-as-chip-sub';sub.textContent=quickCardMeta[label]?.sub||'';
+      wrap.appendChild(sub);button.append(graphic,wrap);
       button.addEventListener('click',()=>respond(label));
       chips.appendChild(button);
     });
