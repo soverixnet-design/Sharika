@@ -14056,5 +14056,161 @@
       }
     }
   }
+  // SHARIKA_ASSISTANT_HELP_20261117
+  // Local, no-cost app help. Deliberately does not call AWS Bedrock or access
+  // private wallet data. The existing verified Customer Service is the escalation.
+  function mountSharikaAssistant() {
+    const home=document.getElementById('v-home');
+    const app=document.getElementById('app');
+    if(!home||!app||document.getElementById('sh-assistant-trigger'))return;
+
+    const style=document.createElement('style');
+    style.id='sh-assistant-styles';
+    style.textContent=[
+      '#sh-assistant-trigger{position:fixed;right:15px;bottom:calc(89px + env(safe-area-inset-bottom,0px));',
+      'z-index:22;display:flex;flex-direction:column;align-items:center;justify-content:center;',
+      'width:70px;height:62px;border-radius:20px;border:1px solid #ffe3a0;',
+      'background:linear-gradient(150deg,#7d4476,#392045 58%,#21102a);color:#ffe8a9;',
+      'box-shadow:inset 0 2px 2px #ffffff48,inset 0 -6px 9px #14091b8c,0 6px 17px #0009;',
+      'font:700 11px system-ui,sans-serif;cursor:pointer}',
+      '#sh-assistant-trigger span{font-size:25px;line-height:1.05;color:#ffe09b}',
+      '#sh-assistant-trigger small{font-size:10px;letter-spacing:.1px}',
+      '#sh-assistant-trigger:focus-visible,#sh-assistant-panel button:focus-visible,',
+      '#sh-assistant-panel input:focus-visible{outline:3px solid #fff2b5;outline-offset:2px}',
+      '#sh-assistant-overlay[hidden]{display:none!important}',
+      '#sh-assistant-overlay{position:absolute;inset:0;z-index:85;display:flex;',
+      'align-items:stretch;justify-content:center;padding:calc(10px + env(safe-area-inset-top,0px)) 10px',
+      ' calc(10px + env(safe-area-inset-bottom,0px));background:#090513e8;backdrop-filter:blur(8px)}',
+      '#sh-assistant-panel{box-sizing:border-box;display:flex;flex-direction:column;width:100%;',
+      'max-width:520px;min-height:0;border-radius:23px;overflow:hidden;',
+      'border:1px solid #e3b56d;background:linear-gradient(165deg,#392046,#140b23 52%,#10081b);',
+      'box-shadow:0 16px 45px #000b;color:#fcefdc}',
+      '#sh-assistant-panel *{box-sizing:border-box}',
+      '#sh-assistant-head{display:flex;align-items:center;gap:10px;padding:15px 14px 12px;',
+      'border-bottom:1px solid #f0cc8355}',
+      '#sh-assistant-head .sh-as-star{display:grid;place-items:center;flex:none;width:38px;',
+      'height:38px;border-radius:13px;color:#6c3243;background:linear-gradient(140deg,#fff1c3,#bb8b42);',
+      'font-size:23px}',
+      '#sh-assistant-head .sh-as-titles{flex:1;min-width:0}',
+      '#sh-assistant-head strong{font-size:16px;color:#ffe9ac}',
+      '#sh-assistant-head small{display:block;margin-top:3px;font-size:10.5px;color:#ddc7c7}',
+      '#sh-assistant-close{border:1px solid #e6bc7b88;border-radius:50%;',
+      'width:36px;height:36px;background:#4c2945;color:#fff;font-size:21px}',
+      '#sh-assistant-log{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;',
+      'gap:11px;padding:15px 13px;overscroll-behavior:contain}',
+      '.sh-as-bubble{align-self:flex-start;max-width:92%;padding:11px 13px;',
+      'border:1px solid #ad8b757a;border-radius:17px 17px 17px 5px;',
+      'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55;font-size:13px;',
+      'background:#33243a;color:#fff4df}',
+      '.sh-as-bubble.sh-as-user{align-self:flex-end;border-color:#ecc88491;',
+      'border-radius:17px 17px 5px 17px;background:#704369;color:#fff}',
+      '#sh-assistant-chips{display:flex;gap:7px;overflow-x:auto;padding:9px 12px;',
+      'border-top:1px solid #f0cc8338;scrollbar-width:none}',
+      '#sh-assistant-chips button{flex:none;border:1px solid #f2cc8c83;border-radius:18px;',
+      'background:#492c4b;color:#ffe9ac;padding:8px 11px;font-size:11px}',
+      '#sh-assistant-form{display:flex;gap:7px;padding:9px 10px 12px}',
+      '#sh-assistant-input{flex:1;min-width:0;max-width:100%;border:1px solid #e2b775;',
+      'border-radius:13px;background:#20132f;color:#fff;padding:11px 10px;font-size:13px}',
+      '#sh-assistant-input::placeholder{color:#d8c6d9}',
+      '#sh-assistant-send{border:0;border-radius:13px;padding:0 15px;',
+      'background:linear-gradient(130deg,#fff0b7,#c58a3c);color:#31192e;font-weight:800}',
+      '#sh-assistant-footer{padding:0 11px 12px;display:flex;align-items:center;',
+      'justify-content:space-between;gap:7px}',
+      '#sh-assistant-footer span{font-size:10px;line-height:1.3;color:#dbc4ca}',
+      '#sh-assistant-support{flex:none;border:1px solid #e4ba70;border-radius:12px;',
+      'background:#653e59;color:#fff4d6;font-size:11px;padding:9px 10px}',
+      '@media(prefers-reduced-motion:reduce){#sh-assistant-trigger{transition:none!important}}'
+    ].join('');
+    document.head.appendChild(style);
+
+    const trigger=document.createElement('button');
+    trigger.id='sh-assistant-trigger';
+    trigger.type='button';
+    trigger.setAttribute('aria-label','Open Sharika Assistant');
+    trigger.innerHTML='<span aria-hidden="true">✦</span><small>Assistant</small>';
+    home.appendChild(trigger);
+
+    const overlay=document.createElement('div');
+    overlay.id='sh-assistant-overlay';
+    overlay.hidden=true;
+    overlay.innerHTML=
+      '<section id="sh-assistant-panel" role="dialog" aria-modal="true" aria-labelledby="sh-assistant-title">'+
+      '<header id="sh-assistant-head"><span class="sh-as-star" aria-hidden="true">✦</span>'+
+      '<div class="sh-as-titles"><strong id="sh-assistant-title">Sharika Assistant</strong>'+
+      '<small>অ্যাপের তথ্য ও সহায়তা • Offline FAQ</small></div>'+
+      '<button id="sh-assistant-close" type="button" aria-label="Close Assistant">×</button></header>'+
+      '<div id="sh-assistant-log" role="log" aria-live="polite" aria-relevant="additions"></div>'+
+      '<div id="sh-assistant-chips" aria-label="সাধারণ প্রশ্ন"></div>'+
+      '<form id="sh-assistant-form"><input id="sh-assistant-input" autocomplete="off" maxlength="250"'+
+      ' aria-label="প্রশ্ন লিখুন" placeholder="Sharika সম্পর্কে প্রশ্ন লিখুন…">'+
+      '<button id="sh-assistant-send" type="submit">পাঠান</button></form>'+
+      '<footer id="sh-assistant-footer"><span>এই সহায়তা লাইভ ব্যালেন্স বা ব্যক্তিগত তথ্য পড়ে না।</span>'+
+      '<button id="sh-assistant-support" type="button">Customer Service</button></footer></section>';
+    app.appendChild(overlay);
+
+    const log=overlay.querySelector('#sh-assistant-log');
+    const input=overlay.querySelector('#sh-assistant-input');
+    const chips=overlay.querySelector('#sh-assistant-chips');
+    const topics=[
+      {label:'মাইক/ভয়েস',keys:['মাইক','মাইক্রোফোন','ভয়েস','ভয়েস','voice','audio','শুনতে','শোনা','কথা'],answer:'রুমে কথা বলতে প্রথমে একটি খালি সিট নির্বাচন করুন, তারপর Mic চালু করুন। Android-এর Microphone permission দিন এবং ইন্টারনেট সংযোগ পরীক্ষা করুন। অন্যরা শুনতে না পেলে রুমে পুনরায় প্রবেশ করুন; সমস্যা থাকলে Customer Service-এ জানান।'},
+      {label:'রুম',keys:['রুম','room','সিট','seat','create room','country','দেশ','গ্যালারি'],answer:'Home থেকে Room তৈরি করার অপশন ব্যবহার করুন। রুমের নাম লিখুন এবং Gallery থেকে কভার ছবি নির্বাচন করুন। Room list-এর দেশ নির্বাচন অপশন দিয়ে নির্দিষ্ট দেশের রুম খুঁজতে পারবেন। সিট ও রুম পরিচালনার ক্ষমতা আপনার ভূমিকার ওপর নির্ভর করে।'},
+      {label:'কয়েন/ওয়ালেট',keys:['কয়েন','কয়েন','coin','wallet','ওয়ালেট','ওয়ালেট','ব্যালেন্স','balance','রিচার্জ','recharge','withdraw','টাকা','ডলার'],answer:'Sharika-র Coins অ্যাপের ভেতরের ভার্চুয়াল ব্যবহারযোগ্য মুদ্রা। এগুলো নগদ অর্থে উত্তোলনযোগ্য নয়। নিজের ব্যালেন্স ও অনুমোদিত Recharge অপশন Wallet-এ দেখুন। Assistant আপনার ব্যক্তিগত ব্যালেন্স বা লেনদেন সরাসরি পড়ে না।'},
+      {label:'গিফট/SVIP',keys:['গিফট','gift','svip','vip','ফ্রেম','frame','নোবেল','noble','medal','এন্ট্রি','entry'],answer:'রুমে Gift ব্যবহার ও প্রোফাইলে Frame, Entry এবং SVIP আইটেম দেখার সুবিধা রয়েছে। প্রতিটি আইটেমের মূল্য, মেয়াদ ও উপলব্ধতা অ্যাপের Shop বা সংশ্লিষ্ট পেজ থেকে দেখুন।'},
+      {label:'লগইন',keys:['লগইন','login','google','জিমেইল','gmail','password','পাসওয়ার্ড','সাইন','account','অ্যাকাউন্ট'],answer:'অ্যাপে দেখানো সমর্থিত Login অপশন ব্যবহার করুন। Google বা Email Login-এ সমস্যা হলে ইন্টারনেট, অ্যাপের সংস্করণ ও অ্যাকাউন্টের তথ্য যাচাই করুন। পাসওয়ার্ড বা OTP কখনও চ্যাটে শেয়ার করবেন না। সমস্যা থাকলে Customer Service-এ জানান।'},
+      {label:'ডেইলি রিওয়ার্ড',keys:['ডেইলি','daily','reward','রিওয়ার্ড','task','টাস্ক','ইনভাইট','invite','referral','রেফার'],answer:'Daily Task/Reward পেজে আপনার প্রাপ্য পুরস্কার ও শর্ত দেখুন। Invite পেজে রেফারেলের নিয়ম ও অ্যাপের বর্তমান অফার যাচাই করুন। পুরস্কারের পরিমাণ অ্যাডমিন পরিবর্তন করতে পারেন।'},
+      {label:'এজেন্সি/হোস্ট',keys:['agency','এজেন্সি','host','হোস্ট','bd','বিডি','salary','সেলার','seller'],answer:'Host, Agency এবং BD-র ভূমিকা ও অনুমতি ভিন্ন। আপনার অ্যাকাউন্টে অনুমোদিত অপশন এবং Wallet/Role পেজে প্রদর্শিত তথ্যই অনুসরণ করুন। আয় বা কমিশনের নির্দিষ্ট পরিমাণের জন্য বর্তমান অ্যাপ নিয়ম দেখুন।'},
+      {label:'গেম',keys:['গেম','game','greedy','wheel','খেলা'],answer:'গেমের উপলব্ধতা আপনার অ্যাপের সংস্করণের ওপর নির্ভর করে। Google Play সংস্করণে গেম ও ভার্চুয়াল কয়েনের নিয়ম অনুসরণ করুন; নগদ অর্থে জুয়া বা উত্তোলনের সুবিধা নেই।'},
+      {label:'সাপোর্ট',keys:['সাপোর্ট','support','সমস্যা','problem','report','রিপোর্ট','abuse','ব্লক','block','delete','ডিলিট'],answer:'নিরাপত্তা, রিপোর্ট, অ্যাকাউন্ট সমস্যা বা আনুষ্ঠানিক সহায়তার জন্য নিচে Customer Service চাপুন। Assistant সরাসরি আপনার অ্যাকাউন্ট পরিবর্তন বা অন্য ব্যবহারকারীর তথ্য প্রকাশ করতে পারে না।'}
+    ];
+    const common=['মাইক/ভয়েস','রুম','কয়েন/ওয়ালেট','গিফট/SVIP','লগইন','সাপোর্ট'];
+    function addMessage(text,fromUser){
+      const message=document.createElement('div');
+      message.className='sh-as-bubble'+(fromUser?' sh-as-user':'');
+      message.textContent=String(text);
+      log.appendChild(message);
+      while(log.children.length>24)log.firstElementChild.remove();
+      log.scrollTop=log.scrollHeight;
+    }
+    function respond(question){
+      const value=String(question||'').trim().slice(0,250);
+      if(!value)return;
+      addMessage(value,true);
+      const normalized=value.toLowerCase();
+      const topic=topics.find(entry=>entry.label===value)||
+        topics.find(entry=>entry.keys.some(key=>normalized.includes(key)));
+      addMessage(topic?topic.answer:
+        'আমি এখন Sharika-র সাধারণ ফিচার সম্পর্কে তথ্য দিতে পারি। রুম, মাইক, কয়েন, গিফট, লগইন বা সাপোর্ট সম্পর্কে জিজ্ঞেস করুন। নির্দিষ্ট অ্যাকাউন্ট সমস্যা হলে Customer Service ব্যবহার করুন।',false);
+      input.value='';
+    }
+    function closeAssistant(){
+      overlay.hidden=true;
+      trigger.focus();
+    }
+    trigger.addEventListener('click',()=>{
+      overlay.hidden=false;
+      if(!log.children.length)addMessage('স্বাগতম! আমি Sharika Assistant। রুম, মাইক, কয়েন, গিফট ও লগইন সম্পর্কে প্রশ্ন করতে পারেন। এটি তথ্যভিত্তিক সহায়তা, লাইভ AI বা অ্যাকাউন্ট অ্যাক্সেস নয়।',false);
+      input.focus();
+    });
+    overlay.querySelector('#sh-assistant-close').addEventListener('click',closeAssistant);
+    overlay.addEventListener('click',event=>{if(event.target===overlay)closeAssistant()});
+    overlay.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeAssistant()}});
+    overlay.querySelector('#sh-assistant-form').addEventListener('submit',event=>{
+      event.preventDefault();respond(input.value);
+    });
+    common.forEach(label=>{
+      const button=document.createElement('button');
+      button.type='button';button.textContent=label;
+      button.addEventListener('click',()=>respond(label));
+      chips.appendChild(button);
+    });
+    overlay.querySelector('#sh-assistant-support').addEventListener('click',()=>{
+      closeAssistant();
+      openSupportThread();
+    });
+  }
+  if(document.readyState==='loading')
+    document.addEventListener('DOMContentLoaded',mountSharikaAssistant,{once:true});
+  else mountSharikaAssistant();
+
   restore();
 })();
