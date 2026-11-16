@@ -1,0 +1,76 @@
+name: Sharika Play voice relay repair and live check
+
+on:
+  push:
+    branches: [feature/sharika-royal-home-gallery-20261116]
+    paths: ['.github/workflows/sharika-play-turn-relay-check.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-play-virtual-api-deploy
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    name: Verify and repair the Play-test TURN bindings
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 7
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Configure only missing Play voice relay secrets
+        run: |
+          node --input-type=module - <<'NODE'
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token)throw Error('Existing Cloudflare CI authorization is unavailable');
+          const account='d81cf7c48fb9b36d468cb0a08720da74';
+          const worker='sharika-api-play-virtual';
+          const cloud='https://api.cloudflare.com/client/v4/accounts/'+account;
+          const workerPath='/workers/scripts/'+worker;
+          const names=['REALTIME_TURN_KEY_ID','REALTIME_TURN_API_TOKEN'];
+          async function call(method,path,body) {
+            const response=await fetch(cloud+path,{method,headers:{
+              authorization:'Bearer '+token,'content-type':'application/json'
+            },body:body===undefined?undefined:JSON.stringify(body),
+              signal:AbortSignal.timeout(30000)});
+            const payload=await response.json();
+            if(!response.ok||!payload.success)throw Error(method+' '+path+
+              ' failed with HTTP '+response.status+
+              ' (Cloudflare code '+(payload.errors?.[0]?.code??'unknown')+')');
+            return payload.result;
+          }
+          const health=await fetch('https://sharika-api-play-virtual.soverixnet.workers.dev/health',
+            {signal:AbortSignal.timeout(15000)}).then(r=>r.json());
+          if(health?.environment!=='play_virtual'||health.ok!==true)
+            throw Error('Unexpected live Worker');
+          const existing=new Set((await call('GET',workerPath+'/secrets')).map(s=>s.name));
+          if(names.some(name=>existing.has(name))){
+            console.log('Existing Play TURN secret names: '+names.filter(name=>existing.has(name)).join(', '));
+            throw Error('Existing relay settings require credential diagnosis before replacement');
+          }
+          if(!['REALTIME_SFU_APP_ID','REALTIME_SFU_APP_SECRET'].every(name=>existing.has(name)))
+            throw Error('Existing Play SFU bindings are missing');
+          const key=await call('POST','/calls/turn_keys',{name:'Sharika Play voice room relay'});
+          if(!/^[a-f0-9]{32}$/i.test(key?.uid)||!/^[A-Za-z0-9_-]{64}$/.test(key?.key))
+            throw Error('Cloudflare returned an unexpected new TURN key');
+          const verify=await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/'+
+            key.uid+'/credentials/generate-ice-servers',{method:'POST',headers:{
+              authorization:'Bearer '+key.key,'content-type':'application/json'
+            },body:JSON.stringify({ttl:600}),signal:AbortSignal.timeout(15000)});
+          const ice=await verify.json();
+          if(!verify.ok||!ice.iceServers?.some(s=>s.username&&s.credential))
+            throw Error('New TURN key did not mint relay ICE credentials');
+          await call('PATCH',workerPath+'/secrets-bulk',{secrets:{
+            [names[0]]:{name:names[0],type:'secret_text',text:key.uid},
+            [names[1]]:{name:names[1],type:'secret_text',text:key.key}
+          }});
+          const live=new Set((await call('GET',workerPath+'/secrets')).map(s=>s.name));
+          if(names.some(name=>!live.has(name)))throw Error('Play relay bindings require verification');
+          console.log('PLAY_VOICE_TURN_BINDINGS_VERIFIED');
+          NODE
