@@ -36,7 +36,8 @@ test('Assistant reads verified account state and guards against switched session
   assert.match(assistant,/requestId!==assistantRequest/);
   assert.match(assistant,/message\.textContent=String\(text\)/);
   assert.match(ui,/window\.sharikaAssistantClear\?\.\(\)/);
-  assert.doesNotMatch(assistant,/api\('GET','\/users\/'|api\('GET','\/rooms'\)/);
+  assert.doesNotMatch(assistant,/api\('GET','\/users\/'/);
+  assert.match(assistant,/\.find\(item=>String\(item\.owner_id\)===String\(accountId\)\)/);
   assert.doesNotMatch(assistant,/fetch\(|localStorage\.getItem|sessionStorage/);
 });
 
@@ -94,4 +95,34 @@ test('room endpoint returns only the authenticated account room in a mocked D1 c
     assert.deepEqual(result.room?.name,owners.get(id)?.name);
     if(id==='account-C')assert.equal(result.room,null);
   }
+});
+
+
+test('older staging API fallback cannot expose a different user room or invent missing rooms',async()=>{
+  const responseSource=block(ui,'async function ownAccountResponse(','async function respond(question){');
+  async function simulate(meRoom,listRooms){
+    const requests=[];
+    const api=async(method,path)=>{
+      requests.push(path);
+      if(path==='/me/room'){
+        if(meRoom instanceof Error)throw meRoom;
+        return {room:meRoom};
+      }
+      if(path==='/rooms')return {rooms:listRooms};
+      throw new Error('Unexpected API call: '+path);
+    };
+    const reply=Function('api','ownCoinCount','ownLevel',
+      responseSource+'return ownAccountResponse;')(api,()=>null,()=>null);
+    return {reply,requests};
+  }
+  const other={id:'10000002',owner_id:'other-user',name:'Other Room',seat_count:8};
+  const mine={id:'10000003',owner_id:'my-user',name:'My Verified Room',seat_count:12};
+  const active=await simulate(new Error('404'),[other,mine]);
+  assert.match(await active.reply('room','my-user',1),/My Verified Room/);
+  assert.deepEqual(active.requests,['/me/room','/rooms']);
+  const missing=await simulate(new Error('404'),[other]);
+  await assert.rejects(missing.reply('room','my-user',1),/temporarily unavailable/);
+  const authoritative=await simulate(null,[other]);
+  assert.match(await authoritative.reply('room','my-user',1),/কোনো রুম নেই/);
+  assert.deepEqual(authoritative.requests,['/me/room']);
 });
