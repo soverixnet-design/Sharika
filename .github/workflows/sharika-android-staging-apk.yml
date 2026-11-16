@@ -5,6 +5,7 @@ on:
     branches:
       - fix/sharika-room-card-games-voice-20261115
       - feature/sharika-royal-home-gallery-20261116
+      - feature/sharika-assistant-help-staging-20261117
       - feature/sharika-unified-release-qa-20261111
       - feature/sharika-android-staging-20261030
       - feature/sharika-original-games-cards-20261030
@@ -142,6 +143,12 @@ jobs:
           }
           console.log('SHARIKA_ANDROID_FIREBASE_IDENTITY_AND_GOOGLE_OAUTH_OK');
           NODE
+
+      - name: Test authenticated Sharika Assistant account access
+        run: |
+          node --check staging-connection.js
+          node --check ../cloudflare/src/index.mjs
+          node --test ../cloudflare/test/assistant-private-account.test.mjs
 
       - name: Check exact original Sharika UI and isolated Android adapter
         run: |
