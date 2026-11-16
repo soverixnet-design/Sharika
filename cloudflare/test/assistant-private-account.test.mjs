@@ -126,3 +126,32 @@ test('older staging API fallback cannot expose a different user room or invent m
   assert.match(await authoritative.reply('room','my-user',1),/কোনো রুম নেই/);
   assert.deepEqual(authoritative.requests,['/me/room']);
 });
+
+
+test('Royal Assistant redesign has branded 3D controls and adaptive mobile layout',()=>{
+  const assistant=ui.slice(ui.indexOf('// SHARIKA_ASSISTANT_HELP_20261117'));
+  assert.match(assistant,/#sh-assistant-trigger\{/);
+  assert.match(assistant,/linear-gradient\(145deg,#fff3c8/);
+  assert.match(assistant,/#sh-assistant-hero\{/);
+  assert.match(assistant,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(assistant,/@media\(max-height:610px\)/);
+  assert.match(assistant,/#sh-assistant-panel\.sh-as-chatting #sh-assistant-hero\{display:none\}/);
+  assert.match(assistant,/id="sh-assistant-title"/);
+  assert.match(assistant,/id="sh-assistant-log" role="log"/);
+  assert.match(assistant,/aria-label="দ্রুত সাহায্য"/);
+  assert.match(assistant,/overlay\.querySelector\('#sh-assistant-panel'\)\?\.classList\.add\('sh-as-chatting'\)/);
+  assert.match(assistant,/overlay\.querySelector\('#sh-assistant-panel'\)\?\.classList\.remove\('sh-as-chatting'\)/);
+  assert.match(assistant,/graphic\.innerHTML=quickCardMeta\[label\]\?\.svg\|\|''/);
+  assert.match(assistant,/wrap\.textContent=label/);
+  assert.match(assistant,/sub\.textContent=quickCardMeta\[label\]\?\.sub\|\|''/);
+  assert.doesNotMatch(assistant,/input\.focus\(\)/);
+});
+
+test('Assistant quick prompts do not silently change the verified-account API contract',()=>{
+  const assistant=ui.slice(ui.indexOf('// SHARIKA_ASSISTANT_HELP_20261117'));
+  for(const endpoint of ["/wallet","/me","/me/room"]){
+    assert.ok(assistant.includes("api('GET','"+endpoint+"')"));
+  }
+  assert.match(assistant,/message\.textContent=String\(text\)/);
+  assert.match(assistant,/window\.sharikaAssistantClear=clearAssistant/);
+});
