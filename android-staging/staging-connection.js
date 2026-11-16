@@ -11241,16 +11241,47 @@
     }
     button.disabled=true;
     try {
-      const name=document.getElementById('cn')?.value?.trim() || 'My Sharika room';
+      const name=document.getElementById('cn')?.value?.trim()||'';
+      if(!name){toast('Please enter a room name');document.getElementById('cn')?.focus();return;}
       const chosen=document.querySelector('#ce button.sel');
+      const selectedPhoto=document.getElementById('sh-new-room-cover')?.files?.[0]||null;
+      // Prepare the Android gallery selection before creating the D1 room:
+      // an invalid image cannot leave behind a partially created room.
+      const imageData=selectedPhoto?await jpegRoomPreview(selectedPhoto):null;
       // New rooms use the reference screenshot's 5 × 4 seat arrangement.
       // Existing rooms keep their server-stored owner-adjustable capacity.
-      await api('POST','/rooms',{name,emoji:chosen?.textContent?.trim() || '🎙️',theme:'mid',seat_count:20});
-      window.closeSheet();
+      const created=await api('POST','/rooms',{
+        name,emoji:chosen?.textContent?.trim()||'🎙️',theme:'mid',seat_count:20
+      });
+      // Room creation is committed by D1 at this point. Photo upload is a
+      // separate owner-authorized write; do not create a duplicate on failure.
+      const createdRoomId=String(created?.id||created?.room?.id||'');
+      let photoError='';
+      if(imageData&&/^[0-9]{8}$/.test(createdRoomId)){
+        try{
+          let saved;
+          try{
+            saved=await api('PUT','/rooms/'+createdRoomId+'/cover',{image_data:imageData});
+          }catch(error){
+            const reason=errText(error);
+            if(reason!=='room_cover_too_large'&&
+                !(reason==='conflict'&&imageData.length>120023))throw error;
+            const smaller=await jpegRoomPreview(selectedPhoto,false,true);
+            saved=await api('PUT','/rooms/'+createdRoomId+'/cover',{image_data:smaller});
+          }
+          if(!verifiedCoverUrl(saved?.cover_url))
+            throw new Error('Photo upload was not confirmed');
+        }catch(error){photoError=errText(error);}
+      }else if(imageData){
+        photoError='Room ID was not returned; update photo in Room Settings';
+      }
       await reloadRooms();
+      window.closeSheet();
       const room=window.myR();
-      if(room) window.openRoom(room);
-      toast('Your staging room has been created');
+      if(room&&String(room.id)===createdRoomId)window.openRoom(room);
+      toast(photoError
+        ?'Room created; photo could not be saved. Open Room Settings to retry: '+photoError
+        :'Room created'+(imageData?' with gallery photo ✓':' ✓'));
     } catch(error) {toast(errText(error));}
     finally {button.disabled=false;}
   },true);
