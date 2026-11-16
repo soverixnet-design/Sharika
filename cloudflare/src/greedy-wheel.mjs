@@ -8,6 +8,7 @@ const OUTCOMES=[...ITEMS,'salad','pizza'];
 // Source game's supplied relative weights, scaled to integer units.
 const WEIGHTS=[9694,6396,3758,1999,19388,19388,19388,19388,400,200];
 const ROUND_MS=41000,BET_MS=30000,SPIN_MS=6000;
+const WINNER_BANNER_MIN=500000;
 const CHIPS=[1000,10000,100000,1000000,10000000];
 const MAX_ROUND_STAKE=1000000000,MAX_BET=100000000;
 const REQUEST_ID=/^[A-Za-z0-9:_-]{12,80}$/;
@@ -81,13 +82,32 @@ async function recentHistory(db,now){
   for(const row of rows)history.push({round:row.round_no,itemId:await greedyOutcome(row)});
   return history;
 }
+const winnerDetails=row=>({
+  userId:String(row.public_no).padStart(8,'0'),name:row.name,avatar:row.pic||'',win:row.win
+});
 async function topWinners(db,roundId){
-  const rows=(await db.prepare('SELECT u.auth_uid,u.public_no,u.name,u.pic,SUM(b.payout) AS win '+
+  const rows=(await db.prepare('SELECT u.public_no,u.name,u.pic,SUM(b.payout) AS win '+
     'FROM sharika_greedy_bets b JOIN sharika_users u ON u.auth_uid=b.user_uid '+
     "WHERE b.round_id=? AND b.status='settled' AND b.payout>0 "+
-    'GROUP BY b.user_uid ORDER BY win DESC,u.public_no LIMIT 3').bind(roundId).all()).results||[];
-  return rows.map(row=>({userId:String(row.public_no).padStart(8,'0'),name:row.name,
-    avatar:row.pic||'',win:row.win}));
+    'GROUP BY b.user_uid HAVING SUM(b.payout)>? ORDER BY win DESC,u.public_no LIMIT 3')
+    .bind(roundId,WINNER_BANNER_MIN).all()).results||[];
+  return rows.map(winnerDetails);
+}
+async function recentWinners(db,now=Date.now()){
+  const latest=roundNumber(now);
+  // Another player can be settling the round in batches. Publish only after
+  // every accepted bet for that round has been credited or settled.
+  const rows=(await db.prepare(
+    'SELECT MAX(b.id) AS id,r.round_no,u.public_no,u.name,u.pic,SUM(b.payout) AS win '+
+    'FROM sharika_greedy_rounds r JOIN sharika_greedy_bets b ON b.round_id=r.id '+
+    'JOIN sharika_users u ON u.auth_uid=b.user_uid '+
+    "WHERE r.round_no BETWEEN ? AND ? AND r.settles_ms<=? AND b.status='settled' "+
+    "AND b.payout>0 AND u.status='active' AND u.minor=0 AND NOT EXISTS "+
+    "(SELECT 1 FROM sharika_greedy_bets pending WHERE pending.round_id=r.id AND pending.status='accepted') "+
+    'GROUP BY r.round_no,b.user_uid HAVING SUM(b.payout)>? '+
+    'ORDER BY r.round_no,win DESC,u.public_no')
+    .bind(Math.max(0,latest-2),latest,now,WINNER_BANNER_MIN).all()).results||[];
+  return {winners:rows.map(row=>({id:row.id,...winnerDetails(row)}))};
 }
 async function records(db,uid){
   const rows=(await db.prepare('SELECT b.round_no AS round,b.result_id AS itemId, '+
@@ -129,10 +149,11 @@ async function currentState(db,uid){
 }
 
 export async function handleGreedyRequest({request,db,uid,action,reply,fail,cors}){
-  if(!['state','bet','records'].includes(action))return fail('greedy_route_not_found',404,cors);
+  if(!['state','bet','records','winners'].includes(action))return fail('greedy_route_not_found',404,cors);
   const user=await wallet(db,uid);
   if(!user||user.status!=='active')return fail('profile_unavailable',403,cors);
   if(user.minor)return fail('games_adult_only',403,cors);
+  if(action==='winners'&&request.method==='GET')return reply(await recentWinners(db),200,cors);
   if(action==='state'&&request.method==='GET')return reply(await currentState(db,uid),200,cors);
   if(action==='records'&&request.method==='GET'){
     await settleGreedyDueBets(db);

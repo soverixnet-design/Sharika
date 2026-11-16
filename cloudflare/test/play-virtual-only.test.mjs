@@ -36,7 +36,7 @@ test('virtual rooms, gifts, verified main wallet and only Greedy Wheel remain',(
     '/api/v1/invites','/api/v1/invites/redeem','/api/v1/invites/device','/invite/10000001',
     '/api/v1/support/messages','/api/v1/account-deletion',
     '/api/v1/greedy-wheel/state','/api/v1/greedy-wheel/records',
-    '/api/v1/greedy-wheel/bet'])
+    '/api/v1/greedy-wheel/bet','/api/v1/greedy-wheel/winners'])
     assert.equal(playVirtualRouteBlocked(path),false,path);
   assert.equal(playVirtualRouteBlocked('/api/v1/rankings','?kind=rich'),false);
 });

@@ -11,7 +11,7 @@ export function playVirtualRouteBlocked(path, search = '') {
   // No payout or seller/salary/withdrawal route is made available by this
   // exception. The Worker still requires explicit nonredeemable Play config.
   if(path.startsWith('/api/v1/greedy-wheel'))
-    return !/^\/api\/v1\/greedy-wheel\/(?:state|records|bet)$/.test(path);
+    return !/^\/api\/v1\/greedy-wheel\/(?:state|records|bet|winners)$/.test(path);
   if (['/api/v1/invites','/api/v1/invites/device','/api/v1/invites/redeem'].includes(path))
     return false;
   if (restricted.test(path)) return true;

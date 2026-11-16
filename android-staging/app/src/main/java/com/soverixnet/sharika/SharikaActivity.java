@@ -1427,7 +1427,7 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit)/bet$"))
             return method.equals("POST");
-        if (path.matches("^/api/v1/greedy-wheel/(state|records)$"))
+        if (path.matches("^/api/v1/greedy-wheel/(state|records|winners)$"))
             return method.equals("GET");
         if (path.equals("/api/v1/greedy-wheel/bet"))
             return method.equals("POST");

@@ -35,6 +35,47 @@ function round(sqlite,number,now){
     now+25000,now+30000,seed,createHash('sha256').update(seed).digest('hex'));
 }
 
+test('app-wide winner feed includes only credited wins strictly above 500000',async()=>{
+  const {sqlite,db}=database();
+  const now=Date.now(),roundNo=Math.floor(now/41000)-1;
+  round(sqlite,roundNo,now);
+  round(sqlite,roundNo-1,now);
+  const addUser=sqlite.prepare('INSERT INTO sharika_users '+
+    '(public_no,auth_uid,name,birthdate,minor,coins) VALUES(?,?,?,?,?,?)');
+  addUser.run(10000002,'adult-2','At threshold','1990-01-01',0,100000);
+  addUser.run(10000003,'adult-3','Below threshold','1990-01-01',0,100000);
+  const addBet=sqlite.prepare('INSERT INTO sharika_greedy_bets '+
+    '(round_id,round_no,user_uid,item_id,amount,request_id) VALUES(?,?,?,?,?,?)');
+  const settle=sqlite.prepare("UPDATE sharika_greedy_bets SET status='settled',"+
+    "payout=?,result_id='pizza',settled_at=datetime('now') WHERE request_id=?");
+  for(const [suffix,number,user,item,win] of [
+    [1,roundNo,'adult-1','shrimp',350000],
+    [2,roundNo,'adult-1','fish',150001],
+    [3,roundNo,'adult-2','shrimp',500000],
+    [4,roundNo,'adult-3','shrimp',499999],
+    [5,roundNo-1,'adult-1','shrimp',900000],
+    [6,roundNo-1,'adult-2','fish',null]
+  ]){
+    const requestId='greedy-global-feed-'+suffix;
+    addBet.run('greedy:'+number,number,user,item,1000,requestId);
+    if(win!==null)settle.run(win,requestId);
+  }
+  sqlite.prepare('UPDATE sharika_greedy_rounds SET starts_ms=?,bet_closes_ms=?,settles_ms=?,ends_ms=?')
+    .run(now-41000,now-11000,now-5000,now);
+  const get=(method='GET',uid='adult-1')=>handleGreedyRequest({
+    request:new Request('https://sharika.test/api/v1/greedy-wheel/winners',{method}),
+    db,uid,action:'winners',reply:(data,status)=>Response.json(data,{status}),
+    fail:(error,status)=>Response.json({error},{status}),cors:{}
+  });
+  const first=await get();
+  assert.equal(first.status,200);
+  assert.deepEqual((await first.json()).winners.map(({userId,win})=>[userId,win]),[['10000001',500001]]);
+  assert.equal((await get('POST')).status,405);
+  assert.equal((await get('GET','unknown')).status,403);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_greedy_bets WHERE status='accepted'").get().n,1);
+  sqlite.close();
+});
+
 test('Greedy outcomes are deterministic and specials pay the source multipliers',async()=>{
   const example={seed_hex:seed,round_no:1234};
   const a=await greedyOutcome(example),b=await greedyOutcome(example);

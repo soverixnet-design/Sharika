@@ -152,6 +152,7 @@
   const celebrationQueues={ticker:[],winner:[]};
   const celebrationBusy={ticker:false,winner:false};
   let lastCelebrationId=0,celebrationFirstPoll=true,celebrationFetching=false;
+  let greedyWinnersFetching=false,greedyWinnersRetryAt=0,seenGreedyWinners=new Set();
   function ensureCelebrationStyle(){
     if(document.getElementById('sh-global-celebration-style'))return;
     const style=document.createElement('style');
@@ -222,7 +223,8 @@
     const from=String(item.sender_name||'Member');
     if(kind==='ticker'){
       const title=document.createElement('strong');
-      title.textContent=item.kind==='gift'?'👑 ROYAL GIFT':'🏆 GLOBAL JACKPOT';
+      title.textContent=item.kind==='gift'?'👑 ROYAL GIFT':
+        item.kind==='greedy_win'?'🏆 GREEDY WHEEL WINNER':'🏆 GLOBAL JACKPOT';
       const detail=document.createElement('span');
       detail.textContent=item.kind==='gift'?from+' sent '+
         String(item.gift_name||'Luxury Gift')+' ×'+item.quantity+' to '+
@@ -274,9 +276,37 @@
     }catch(error){console.info('Celebration feed unavailable',errText(error));}
     finally{celebrationFetching=false;}
   }
-  const celebrationTimer=window.setInterval(pollGlobalCelebrations,6500);
+  async function pollGreedyWinners(){
+    if(!session||profile?.minor||greedyWinnersFetching||Date.now()<greedyWinnersRetryAt||
+       document.visibilityState==='hidden')return;
+    const viewer=session;
+    greedyWinnersFetching=true;
+    try{
+      const {winners}=await api('GET','/greedy-wheel/winners');
+      if(session!==viewer||!Array.isArray(winners))return;
+      const recent=new Set();
+      for(const winner of winners){
+        if(!Number.isSafeInteger(winner?.id)||winner.id<=0||recent.has(winner.id)||
+           !Number.isSafeInteger(winner.win)||winner.win<=500000)continue;
+        recent.add(winner.id);
+        if(seenGreedyWinners.has(winner.id))continue;
+        celebrationQueues.ticker.push({kind:'greedy_win',game:'Greedy Wheel',
+          sender_name:winner.name,sender_pic:winner.avatar,amount_coins:winner.win});
+      }
+      seenGreedyWinners=recent;
+      playCelebrations('ticker');
+    }catch(error){
+      greedyWinnersRetryAt=Date.now()+60000;
+      console.info('Greedy Wheel winner feed unavailable',errText(error));
+    }finally{greedyWinnersFetching=false;}
+  }
+  function pollCelebrations(){
+    if(playStoreMode===false)pollGlobalCelebrations();
+    pollGreedyWinners();
+  }
+  const celebrationTimer=window.setInterval(pollCelebrations,6500);
   document.addEventListener('visibilitychange',()=>{
-    if(document.visibilityState==='visible')pollGlobalCelebrations();
+    if(document.visibilityState==='visible')pollCelebrations();
   });
   // The actual Android build type decides whether Play policy restrictions
   // apply. Never trust a query string, localStorage, or a user-editable toggle.
@@ -5329,7 +5359,7 @@
     };
     balance = { ...local.state };
     session = { email: account.email, user: { id:current.user_id, email:account.email } };
-    pollGlobalCelebrations().catch(()=>{});
+    pollCelebrations();
     // A restored session can finish while Recharge is already visible.
     mountRechargeSellerWallet();
     startPresence();
@@ -13973,7 +14003,7 @@
     document.getElementById('sh-invite-newbie')?.remove();
     document.getElementById('sh-invite-page')?.remove();
     session=null;profile=null;balance={coins:0,dia:0,xp:0};
-    lastCelebrationId=0;celebrationFirstPoll=true;
+    lastCelebrationId=0;celebrationFirstPoll=true;seenGreedyWinners.clear();
     celebrationQueues.ticker.length=0;celebrationQueues.winner.length=0;
     document.getElementById('sh-global-marquee')?.remove();
     document.getElementById('sh-global-winner')?.remove();
