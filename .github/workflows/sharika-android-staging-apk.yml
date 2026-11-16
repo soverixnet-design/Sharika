@@ -63,6 +63,7 @@ on:
       - feature/sharika-room-weak-network-20261111
     paths:
       - 'android-staging/**'
+      - 'cloudflare/test/assistant-private-account.test.mjs'
       - 'app/royal-profile.css'
       - 'app/royal-ranking-v2.css'
       - 'app/reference-profile.css'
