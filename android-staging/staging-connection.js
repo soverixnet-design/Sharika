@@ -4852,10 +4852,8 @@
       if(!state.closed) {
         state.subscriptionFailures++;
         console.warn('Sharika voice subscriptions:',errText(error));
-        // After failed SDP negotiation, SFU may retain a track allocation.
-        // New sessions are safer than repeating tracks/new forever.
-        if(state.subscriptionFailures>=2)
-          recoverSfuPublication(state,'incoming voice negotiation failed',true);
+        // Publication-list failures can occur while incoming audio is healthy.
+        // The next poll retries discovery. SDP failures recover in the loop above.
       }
     }finally {state.syncing=false;}
   }
@@ -4874,7 +4872,8 @@
       if(!state.closed&&sfuState===state&&state.receivePC.connectionState==='failed')
         recoverSfuPublication(state,'remote receiver failed');
     });
-    await subscribeSfu(state,Array.isArray(joined.publications)?joined.publications:undefined);
+    subscribeSfu(state,Array.isArray(joined.publications)?joined.publications:undefined)
+      .catch(error=>console.warn('Initial voice subscriptions:',errText(error)));
     if(state.closed||sfuState!==state)return;
     // Continue discovery even if this user is still negotiating a microphone.
     state.publicationTimer=setInterval(()=>{
@@ -5024,17 +5023,6 @@
     // cannot become an unhandled rejection while mic capture is pending.
     const receiving=startSfuReceiving(state).then(()=>null,error=>error);
     try {
-      if(canPublish){
-        try{await startSfuPublishing(state);}
-        catch(error){
-          // Mic permission/device failure must never tear down the receiving
-          // connection. The listener can still hear other room members and
-          // retry capture from the mic control.
-          console.warn('Sharika microphone not ready:',errText(error));
-          document.getElementById('rf')?.contentWindow?.toast?.(
-            'Mic unavailable. Tap the microphone to retry.');
-        }
-      }
       if(wantedVoiceRoom!==roomId)throw new Error('Voice room changed');
       const receiveError=await receiving;
       if(receiveError)throw receiveError;
@@ -5076,6 +5064,17 @@
         if(sfuTransportHealthy(state)&&!state.subscriptionFailures&&
            Date.now()-state.startedAt>30000)voiceRecoveryAttempts=0;
       },8000);
+      if(canPublish){
+        try{await startSfuPublishing(state);}
+        catch(error){
+          // Mic permission/device failure must never tear down the receiving
+          // connection. The listener can still hear other room members and
+          // retry capture from the mic control.
+          console.warn('Sharika microphone not ready:',errText(error));
+          document.getElementById('rf')?.contentWindow?.toast?.(
+            'Mic unavailable. Tap the microphone to retry.');
+        }
+      }
       return {publishing:!!state.readyPublication};
     }catch(error){
       await receiving; // Ensure any in-flight receiver has finished before cleanup.
@@ -6374,8 +6373,6 @@
     frame.document?.documentElement?.classList?.remove('sh-room-no-snapshot');
     if(typeof paintVerifiedMicCount==='function')paintVerifiedMicCount(frame);
     if(typeof paintVoiceSpeakers==='function')paintVoiceSpeakers(room.id,frame);
-    decorateRoomPeople(frame);
-    decorateRoomChat(frame);
     if(typeof decorateBondSeatOverlay==='function')
       decorateBondSeatOverlay(frame,data.bond_pairs);
     // Arrival effects come from the coordinator's short, verified event
@@ -10014,7 +10011,9 @@
       t:row.title,s:String(row.subtitle||'').slice(0,160),
       e:String(row.emoji||'🎉').slice(0,12),
       c:row.color_a+','+row.color_b,a:isRecruitmentBanner(row)?'apply':row.action,
-      img:verifiedBannerImageUrl(row.image_url,row.id)
+      img:verifiedBannerImageUrl(row.image_url,row.id)||
+        ((row.action==='apply'||isRecruitmentBanner(row))&&
+          /manager|ম্যানেজার/i.test(row.title)?'./royal-manager-banner.webp':null)
     }));
     // An event is discoverable only from a currently published home banner.
     // Draft, cancelled and expired campaigns are never advertised here.
@@ -12779,6 +12778,24 @@
     const cp=document.createElement('button');cp.id='sh-cp-home';cp.type='button';
     cp.innerHTML='<span class="home-icon hi-cp" aria-hidden="true"></span>CP';
     cp.onclick=()=>openSharikaCpCenter();shortcuts.appendChild(cp);
+    const more=document.createElement('button');more.type='button';more.id='sh-home-more';
+    more.innerHTML='<span class="home-icon hi-more" aria-hidden="true"></span>More';
+    more.onclick=()=>{
+      window.openSheet('<h3>More</h3><div class="sh-home-more-actions">'+
+        '<button type="button" id="sh-home-more-coins">Coins</button>'+
+        '<button type="button" id="sh-home-more-shop">Shop</button>'+
+        '<button type="button" id="sh-home-more-settings">Settings</button></div>');
+      document.getElementById('sh-home-more-coins').onclick=()=>{
+        window.closeSheet();window.rechargeSheet();
+      };
+      document.getElementById('sh-home-more-shop').onclick=()=>{
+        window.closeSheet();openRoyalMarket('shop');
+      };
+      document.getElementById('sh-home-more-settings').onclick=()=>{
+        window.closeSheet();sharikaOpenSettings();
+      };
+    };
+    shortcuts.appendChild(more);
     const panel=document.createElement('section');panel.id='sh-global-search';
     panel.hidden=true;panel.setAttribute('aria-label','Search Sharika members and rooms');
     panel.innerHTML='<div class="sh-search-head"><button type="button" id="sh-search-back" '+

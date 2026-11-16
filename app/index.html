@@ -323,12 +323,13 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
 <i class="blob b1"></i><i class="blob b2"></i>
 <div class="views">
  <section class="view on" id="v-home">
-  <div class="hd"><img class="logo" data-logo alt="Sharika"><h1>Sharika Voice Chat App<small>Voice rooms for chat, songs and games</small></h1><span class="pill" id="hc"></span><button class="top-recharge" id="qr" type="button" title="Recharge your coins">＋<small>Recharge</small></button></div>
+  <div class="hd"><span class="home-brand-mark" aria-hidden="true"></span><h1>Sharika<small>Voice Chat App</small></h1><button class="home-vip" id="sh-home-vip" data-m="svip" type="button" aria-label="VIP and SVIP"><span aria-hidden="true">👑</span>VIP</button></div>
   <div class="srch">🔍<input id="q" placeholder="Search room name or ID" autocomplete="off"></div>
   <div class="ban" id="ban"></div><div class="dots" id="dots"></div>
-  <div class="qa"><button id="qd"><span class="home-icon hi-reward" aria-hidden="true"></span>Daily reward</button><button id="qg"><span class="home-icon hi-games" aria-hidden="true"></span>Games</button><button id="qi"><span class="home-icon hi-invite" aria-hidden="true"></span>Invite</button></div>
-  <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My room</button><button>🕘 History</button><div class="country-room-filter" title="Choose country"><span aria-hidden="true">🌐</span><select id="room-country" aria-label="Show all countries or choose a country"><option value="">🌍 Global · All Rooms</option></select><small id="room-country-hint" aria-live="polite">All countries visible</small></div></div>
+  <div class="qa"><button id="qd"><span class="home-icon hi-reward" aria-hidden="true"></span>Daily Reward</button><button id="qg"><span class="home-icon hi-games" aria-hidden="true"></span>Games</button><button id="qi"><span class="home-icon hi-invite" aria-hidden="true"></span>Invite</button></div>
+  <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My Room</button><button>🕘 History</button><div class="country-room-filter" title="Choose country"><span id="room-country-icon" aria-hidden="true">🌍</span><select id="room-country" aria-label="Show all countries or choose a country"><option value="">🌍 Global · All Rooms</option></select><small id="room-country-hint" aria-live="polite">All countries visible</small></div></div>
   <div class="grid" id="grid"></div>
+  <span id="hc" hidden></span><button id="qr" type="button" hidden><small>Recharge</small></button>
  </section>
  <section class="view" id="v-rank"><div class="rtop"><button class="rbk" id="rbk">‹</button><div id="rt"><button>Lucky</button><button class="on">Rich</button><button>Charm</button><button>Room</button><button>Noble</button><button>Play</button><button>Recharge</button></div></div><div class="seg" id="rp"><button>Daily</button><button class="on">Weekly</button><button>Monthly</button></div><div id="rb"></div></section>
  <section class="view" id="v-msg"><div class="hd"><div class="logo">💬</div><h1>Messages<small>Your conversations</small></h1></div><div id="ml"></div></section>
@@ -450,6 +451,7 @@ function updateRoomCountryFilter(){
   select.value=roomCountryFilter;
   var selected=roomCountryFilter||viewer;
   var info=CTRY.find(function(c){return c[2]===selected});
+  $("room-country-icon").textContent=selected?discovery.flagForCountry(selected):"🌍";
   $("room-country-hint").textContent=roomCountryFilter?
     (discovery.flagForCountry(selected)+' '+(info?info[1]:selected)+' rooms only'):
     (viewer?discovery.flagForCountry(viewer)+' '+(info?info[1]:viewer)+' rooms first · All countries visible':'All countries visible');
@@ -479,14 +481,16 @@ function cardHTML(room){
     esc((roomLocked?'Locked room ':'Join ')+room.name)+'" data-id="'+esc(room.id)+'">'+
     '<div class="room-card-cover"><span aria-hidden="true">'+esc(room.emoji||'🎙️')+'</span>'+
     (cover?'<img class="sh-room-card-photo" src="'+esc(cover)+'" alt="" decoding="async" loading="lazy">':'')+
+    '<div class="room-card-status">'+
+    (online>0?'<span class="room-card-live">◉ LIVE</span>':'')+
+    '<span class="room-card-online" aria-label="'+online+' online">'+
+    '<span aria-hidden="true">👥</span> '+bn(online)+'</span></div>'+
+    (roomLocked?'<span class="room-access-lock" role="img" aria-label="Locked" title="Locked">🔒</span>':'')+
     '</div><div class="room-card-details"><div class="room-card-title">'+
     '<b title="'+esc(room.name)+'">'+esc(room.name)+'</b>'+
     (flag?'<span class="room-card-flag" role="img" title="'+esc(countryName)+
       '" aria-label="'+esc(countryName)+'">'+esc(flag)+'</span>':'')+
-    '</div><div class="room-card-meta"><span>ID '+esc(displayId)+'</span>'+
-    (roomLocked?'<span class="room-access-lock" role="img" aria-label="Locked" title="Locked">🔒</span>':'')+
-    '<span class="room-card-online" aria-label="'+online+' online">'+
-    '<span aria-hidden="true">👥</span> '+bn(online)+'</span></div></div></div>';
+    '</div><div class="room-card-meta"><span>ID '+esc(displayId)+'</span></div></div></div>';
 }
 function renderRooms(){
   updateRoomCountryFilter();
@@ -592,7 +596,7 @@ function inviteSheet(){
   openSheet('<h3>🤝 Invite a friend</h3><div style="font-size:13.5px;line-height:1.7">When someone recharges through your invite, you earn a <b style="color:var(--gold)">5% Reward</b>.</div><div class="idp" style="margin-top:12px">Invite code: <b>'+A.id+'</b></div><button class="big" id="sv">📤 Share</button>');
   $("sv").onclick=function(){var t="Join me on Sharika Voice Chat App! Code: "+A.id;if(navigator.share){navigator.share({text:t,url:url}).catch(function(){})}else{try{navigator.clipboard.writeText(t+" "+url);toast("Link copied ✓")}catch(e){toast("Code: "+A.id)}}};
 }
-$("qd").onclick=dailySheet;$("qr").onclick=rechargeSheet;$("qi").onclick=inviteSheet;$("qg").onclick=function(){toast("Enter a room and play games 🎮")};
+$("qd").onclick=dailySheet;$("qr").onclick=function(){rechargeSheet()};$("qi").onclick=inviteSheet;$("qg").onclick=function(){toast("Enter a room and play games 🎮")};
 /* ===== Ranking ===== */
 var rtab=1,rper=1;
 function rf(n){var x=n>=1e6?(n/1e6).toFixed(2).replace(/\.?0+$/,"")+"m":n>=1e3?(n/1e3).toFixed(2).replace(/\.?0+$/,"")+"k":String(n);return x}

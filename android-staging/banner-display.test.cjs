@@ -20,7 +20,8 @@ function renderStagingBanner(rows) {
   const context = {
     playStoreMode: false,
     window: {CFG: {}},
-    document: {getElementById(id) {return elements[id]}},
+    document: {getElementById(id) {return elements[id]}, createElement() {return {}},
+      head: {appendChild() {}}},
     sellerEscape(v) {return String(v).replace(/[&<>"']/g, c => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[c])}

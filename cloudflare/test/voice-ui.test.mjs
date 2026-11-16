@@ -283,7 +283,14 @@ test('a simultaneous 300-device outage spreads bounded reconnect attempts withou
 
 test('incoming voice and server permission changes are checked independently',()=>{
   assert.match(ui,/incoming audio path unavailable/);
-  assert.match(ui,/state\.subscriptionFailures>=2/);
+  const discovery=ui.slice(ui.indexOf('  async function subscribeSfu('),
+    ui.indexOf('  async function startSfuReceiving('));
+  assert.match(discovery,/if\(negotiationStarted\)\{[^]*?recoverSfuPublication/);
+  assert.doesNotMatch(discovery.slice(discovery.indexOf('state.subscriptionFailures++')),
+    /recoverSfuPublication/);
+  const connect=ui.slice(ui.indexOf('  async function connectSfu('),ui.indexOf('  async function disconnectVoice('));
+  assert.ok(connect.indexOf("'/voice/heartbeat'")<connect.indexOf('await startSfuPublishing(state)'),
+    'voice heartbeat must start while microphone permission is pending');
   assert.match(ui,/voice session heartbeat lost/);
   assert.match(ui,/!eligible\s*&&\s*\(sfuState\.canPublish\|\|sfuState\.media\)/);
   assert.match(ui,/eligible && !sfuState\.canPublish &&\s*!sfuState\.captureError/);

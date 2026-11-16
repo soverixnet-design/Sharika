@@ -42,11 +42,12 @@ test('room cards put verified identity below the unfiltered photo',()=>{
   const card=render(room);
   assert.match(card,/data-id="10000002"/);
   assert.match(card,/class="room-card-cover">[^]*?class="sh-room-card-photo"[^]*?<\/div><div class="room-card-details">/);
-  assert.match(card,/&lt;A Room>[^]*?aria-label="Bangladesh">🇧🇩[^]*?ID 10000018[^]*?Locked[^]*?aria-label="3 online"/);
+  assert.match(card,/aria-label="3 online"[^]*?aria-label="Locked"/);
+  assert.match(card,/class="room-card-details">[^]*?&lt;A Room>[^]*?aria-label="Bangladesh">🇧🇩[^]*?ID 10000018/);
   assert.doesNotMatch(card,/class="(?:pat|shine|tilt|live)"/);
   assert.doesNotMatch(render({...room,cover_url:photo.replace('10000002','10000003')}),/sh-room-card-photo/);
   assert.doesNotMatch(render({...room,cover_url:'https://example.test/cover.jpg'}),/sh-room-card-photo/);
-  assert.match(css,/\.sh-room-card-photo \{[^}]*object-fit:contain/);
+  assert.match(css,/\.sh-room-card-photo \{[^}]*object-fit:cover/);
   assert.match(ui,/row\(roomGroup,'Profile photo',owner\?'Edit cover':''/);
   assert.match(ui,/paintRoomCoverPreview\(preview,verifiedCoverUrl\(room\.cover_url\)\)/);
   assert.match(ui,/owner\?\(\)=>pickRoomCover\(room,frame\):null/);

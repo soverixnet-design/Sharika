@@ -127,6 +127,9 @@ html.royal-room .app.sh-royal-room.royal-default-room {
   border:0!important;
   background:transparent!important;
   box-shadow:none!important;
+  animation:none!important;
+  transform:none!important;
+  transition:none!important;
 }
 .app.sh-royal-room #grid .seat .av {
   position:relative;

@@ -1,354 +1,133 @@
-/* Sharika Home — selected champagne-gold / espresso design (option 2).
-   Keep the existing Royal Profile, room interiors and other screens intact. */
+/* Sharika Royal lobby. Use the reference artwork with live room content. */
 .app.golden-home {
-  background-color: #28150f;
-  background-image: url('./champagne-home-background.webp');
-  background-position: center center;
-  background-size: cover;
-  background-repeat: no-repeat;
+  background:#1b0a20 radial-gradient(ellipse at 72% 0%,#42134c,transparent 46%);
 }
-
+.app.golden-home::before,.app.golden-home .blob {display:none}
 .app.golden-home #v-home {
-  background: transparent !important;
-  background-image: none !important;
-  animation: fi .3s ease both;
+  background:none;
+  animation:none;
+  padding-inline:10px;
 }
-
-.app.golden-home .blob { opacity: .045; }
-
 .app.golden-home #v-home .hd {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 36px minmax(50px, 62px) 42px;
-  grid-template-rows: 26px 36px;
-  column-gap: 6px;
-  row-gap: 2px;
-  align-items: center;
-  margin: -2px 0 8px;
-  padding: 8px;
-  min-height: 80px;
-  border-radius: 19px;
-  border: 1.5px solid #d7ad72;
-  background: rgba(39, 24, 21, .84);
-  box-shadow: 0 6px 28px rgba(4, 2, 2, .48), inset 0 1px 0 #ffe0a04d;
-  backdrop-filter: blur(14px);
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr) repeat(3,clamp(37px,10.7vw,46px));
+  gap:6px;
+  min-height:51px;
+  margin:0 0 8px;
+  padding:0 2px;
+  align-items:center;
+  background:none;
+  border:0;
+  box-shadow:none;
 }
-.app.golden-home #v-home .hd .logo {
-  grid-column: 1; grid-row: 1 / span 2;
-  width: 40px; height: 40px; border-radius: 50%; flex: none;
-  border: 2px solid #ffe1a2;
-  box-shadow: 0 0 0 3px #725028,0 4px 9px #0008;
+#v-home .home-brand-mark,
+#v-home .home-icon,
+#v-home #sh-search-button::before,
+#v-home .sh-notify-bell::before,
+#v-home .home-vip span,
+.app.golden-home .nav .ni span,
+.app.golden-home .nav .plus::before {
+  display:block;
+  background-image:url('./royal-home-icons.webp');
+  background-size:500% 300%;
+  background-repeat:no-repeat;
+  font-size:0;
 }
+#v-home .home-brand-mark {width:34px;height:34px;background-position:0 0}
 .app.golden-home #v-home .hd h1 {
-  grid-column: 2; grid-row: 1 / span 2;
-  min-width: 0; max-width: 100%; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
-  color: #ffe8bd; font-size: 13px; line-height: 1.2;
-  background: none; -webkit-text-fill-color: #ffe8bd;
+  margin:0;
+  color:#ffdd87;
+  font-size:clamp(19px,6vw,27px);
+  font-style:italic;
+  line-height:1;
+  background:none;
+  -webkit-text-fill-color:currentColor;
 }
 .app.golden-home #v-home .hd h1 small {
-  color: #e5c9ae; -webkit-text-fill-color: #e5c9ae;
-  font-size: 8px; margin-top: 3px; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
+  margin-top:4px;
+  color:#ffe8c6;
+  font-size:clamp(8px,2.6vw,11px);
+  font-style:normal;
 }
-.app.golden-home #v-home .pill {
-  grid-column: 4; grid-row: 1; justify-self: stretch; text-align: center;
-  min-width: 0; box-sizing: border-box;
-  padding: 5px 6px; max-width: 66px; overflow: hidden;
-  color: #ffe3a3; font-size: 10px;
-  background: #4c372dcf;
-  border-color: #d6ac79;
-}
-.app.golden-home #v-home .top-recharge {
-  grid-column: 4; grid-row: 2; justify-self: center;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 34px; height: 36px; padding: 0; flex: none; border-radius: 11px;
-  color: #583315; font-size: 20px; font-weight: 900; line-height: 1;
-  border: 1.5px solid #fff1c8;
-  background: linear-gradient(160deg, #fff3c5 0%, #e7bd71 50%, #ab6c36 100%);
-  box-shadow: inset 0 1px 2px #fff9,0 4px 11px #0008;
-}
-.app.golden-home #v-home .top-recharge small {
-  font-size: 6px; line-height: 1.25; font-weight: 800;
-}
-.app.golden-home #v-home .hd .sh-notify-bell {
-  grid-column: 5; grid-row: 1 / span 2;
-  justify-self: center; align-self: center;
-  width: 40px; min-width: 0; height: 42px; min-height: 0;
-}
-
-.app.golden-home #v-home .srch {
-  display: none !important;
-}
-.app.golden-home #v-home #sh-search-button {
-  grid-column:3;grid-row:1 / span 2;align-self:center;justify-self:center;
-  width:36px;height:42px;border:1.5px solid #f9da96;border-radius:13px;
-  background:linear-gradient(160deg,#ffedb6,#d69a4c 65%,#8e5428);
-  color:#422111;font-size:21px;box-shadow:inset 0 2px 1px #fff9,0 4px 10px #0007;
-  cursor:pointer;
-}
-
-.app.golden-home #v-home .country-room-filter {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 4px 10px;
-  margin: 7px 0 9px;
-  padding: 9px 12px;
-  color: #ffe5b4;
-  background: rgba(36, 23, 20, .88);
-  border: 1px solid #c59a62;
-  border-radius: 15px;
-  box-shadow: inset 0 1px 0 #ffe0a030, 0 5px 14px #10050255;
-}
-.app.golden-home #v-home .country-room-filter label {
-  font-weight: 700;
-  font-size: 12px;
-  white-space: nowrap;
-}
-.app.golden-home #v-home .country-room-filter select {
-  width: 100%;
-  min-width: 0;
-  min-height: 36px;
-  padding: 7px;
-  border-radius: 10px;
-  border: 1px solid #d6ad71;
-  color: #ffe9c6;
-  background: #4b3027;
-  font: inherit;
-  font-size: 12px;
-}
-.app.golden-home #v-home .country-room-filter small {
-  grid-column: 1 / -1;
-  font-size: 10px;
-  color: #e4c399;
-}
-
-.app.golden-home #v-home .slide {
-  height: 208px;
-  padding: 20px;
-  border: 1.5px solid #e9c68e;
-  box-shadow: 0 7px 22px #0e0506a6,inset 0 1px 0 #ffffff70;
-}
-.app.golden-home #v-home .slide.slide--image {
-  padding: 0;
-  background: transparent;
-  border: 2.5px solid #fce3a5;
-  border-radius: 24px;
-  box-shadow: 0 13px 27px #0c0308c2,0 0 0 2px #865525,
-              0 3px 0 #d39b55,inset 0 0 0 1px #fff0c8;
-}
-.app.golden-home #v-home .slide.slide--image::after { content: none; }
-.app.golden-home #v-home .slide b {color: #fff1d6;}
-.app.golden-home #v-home .slide b {font-size: 21px;}
-.app.golden-home #v-home .slide small {font-size: 13px;}
-.app.golden-home #v-home .dots u.on { background: #fbdba2; }
-
-.app.golden-home #v-home .qa {grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px;}
-
-.app.golden-home #v-home .qa button {
-  min-height: 91px; color: #ffeaca; font-weight: 650; font-size: 12px;
-  background: rgba(48, 29, 27, .88);
-  border: 1.5px solid #ba8d66;
-  border-radius: 19px;
-  box-shadow: 0 8px 21px #0d0607a8,inset 0 1px 0 #f0d6aa42;
-  backdrop-filter: blur(12px);
-}
-.app.golden-home #v-home .qa .home-icon {
-  width: 46px; height: 46px; display: block; background-image: url('./champagne-home-icons.webp');
-  background-size: 200% 200%; background-repeat: no-repeat;
-  font-size: 0; filter: drop-shadow(0 5px 5px #0006);
-}
-.app.golden-home #v-home .qa .hi-reward {background-position: 0% 0%;}
-.app.golden-home #v-home .qa .hi-games {background-position: 100% 0%;}
-.app.golden-home #v-home .qa .hi-invite {background-position: 0% 100%;}
-.app.golden-home #v-home .qa .hi-cp {
-  background-image:url('./profile-menu-atlas.webp');background-size:200% 300%;
-  background-position:0% 100%;
-}
-.app.golden-home #v-home .qa button:focus-visible,
-.app.golden-home #v-home .room-card:focus-visible,
-.app.golden-home #v-home .top-recharge:focus-visible {
-  outline: 3px solid #ffefc4; outline-offset: 3px;
-}
-.app.golden-home #v-home #sh-search-button:focus-visible,
-.app.golden-home #v-home #sh-cp-home:focus-visible {
-  outline:3px solid #ffefc4;outline-offset:3px;
-}
-@media(max-width:365px){
-  .app.golden-home #v-home .hd {grid-template-columns:34px minmax(0,1fr) 32px 48px 38px;column-gap:4px}
-  .app.golden-home #v-home .hd .logo {width:34px;height:34px}
-  .app.golden-home #v-home .hd h1 {font-size:11px}
-  .app.golden-home #v-home #sh-search-button {width:32px;height:38px}
-  .app.golden-home #v-home .qa button {font-size:10px;min-height:80px}
-  .app.golden-home #v-home .qa .home-icon {width:38px;height:38px}
-  .app.golden-home #v-home .slide {height:194px}
-}
-
-#sh-global-search,#sh-cp-center{
-  position:fixed;z-index:2147483200;inset:0;margin:0 auto;width:min(100%,520px);
-  box-sizing:border-box;overflow-y:auto;padding:calc(24px + env(safe-area-inset-top,0px)) 17px 35px;
-  color:#ffe9c0;background:#1e1025 url('./champagne-home-background.webp') center/cover;
-  font:inherit;
-}
-#sh-global-search[hidden]{display:none!important}
-.sh-search-head,.sh-cp-center-head{display:flex;align-items:center;gap:15px;margin-bottom:30px;
-  border-bottom:1px solid #d5ab70;padding-bottom:15px;font-size:23px}
-.sh-search-head button,.sh-cp-center-head button{
-  width:44px;height:44px;border:1.5px solid #ffe5a0;border-radius:13px;
-  background:#402331;color:#ffeab6;font-size:30px;
-}
-#sh-global-search label{font-size:13px;color:#f1d1a5;display:block;margin-bottom:10px}
-.sh-search-form{display:flex;gap:8px;align-items:stretch}
-.sh-search-form input{min-width:0;flex:1;padding:13px 12px;border-radius:15px;
-  border:1.5px solid #caa06e;background:#301c2e;color:#fff;font:inherit;font-size:16px}
-.sh-search-form button,.sh-cp-center-actions button{border:1.5px solid #fff0b4;
-  background:linear-gradient(160deg,#ffe6a3,#e3ad58 60%,#b3783f);color:#502916;
-  font:inherit;font-weight:850;border-radius:15px;padding:12px;min-height:45px}
-#sh-search-status{font-size:12px;color:#ebd3b1;line-height:1.5;margin:18px 0}
-.sh-search-result{display:block;width:100%;min-height:61px;margin:10px 0;
-  text-align:left;border:1px solid #b98a59;border-radius:16px;padding:12px;
-  color:#fff0d0;background:#392337e8;font:inherit;font-size:13px;overflow-wrap:anywhere}
-#sh-cp-center p{color:#e8cba8;font-size:13px;line-height:1.6}
-.sh-cp-center-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:24px}
-.sh-cp-center-actions button{min-height:88px;box-shadow:0 5px 12px #12081688}
-#sh-cp-center button:focus-visible,#sh-global-search button:focus-visible,
-#sh-global-search input:focus-visible{outline:3px solid #fff1c4;outline-offset:3px}
-.app.golden-home #v-home .tabs button {
-  color: #ffeaca;
-  padding: 8px 10px;
-  font-size: 11.5px;
-  background: rgba(43, 27, 24, .88);
-  border-color: #a57b56;
-  backdrop-filter: blur(12px);
-}
-.app.golden-home #v-home .tabs button.on {
-  color: #48250a;
-  background: linear-gradient(180deg, #fff1c4, #dfac54 72%, #9d6331);
-  border-color: #fff1bd;
-  box-shadow: 0 3px 12px #e8af4680;
-}
-.app.golden-home #v-home .grid {gap:16px 11px}
-#v-home .room-card {
-  min-width:0;
-  align-self:start;
-  overflow:hidden;
-  border:1px solid #bc925b;
-  border-radius:16px;
-  background:transparent;
-  cursor:pointer;
-  touch-action:pan-y;
-}
-#v-home .room-card:focus-visible {
-  outline:2px solid #fff0b6;
-  outline-offset:3px;
-}
-#v-home .room-card-cover {
+.app.golden-home #v-home :is(.home-vip,#sh-search-button,.sh-notify-bell) {
+  position:relative;
   display:grid;
-  place-items:center;
-  aspect-ratio:1;
-  background:#231a29;
-  color:#e8c387;
-}
-#v-home .room-card-cover:has(> img:not([hidden])) {
-  display:block;
-  aspect-ratio:1;
-  background:#211021;
-}
-#v-home .room-card-cover:has(> img:not([hidden])) > span {display:none}
-#v-home .room-card-cover>span {font-size:33px;line-height:1}
-#v-home .sh-room-card-photo {
-  display:block;
+  place-content:center;
+  justify-items:center;
+  min-width:0;
+  min-height:0;
   width:100%;
-  height:100%;
-  max-height:none;
-  aspect-ratio:1 / 1;
-  object-fit:cover;
-  object-position:center;
-  opacity:1;
-  filter:none;
+  height:auto;
+  aspect-ratio:1;
+  padding:0;
+  border-radius:50%;
+  border:1px solid #f1be74;
+  background:radial-gradient(ellipse at 30% 0%,#763a68,#251224 64%);
+  box-shadow:inset 0 -3px 8px #c578344a,0 4px 9px #0c030f;
 }
-#v-home .sh-room-card-photo[hidden] {display:none}
-#v-home .room-card-details {
-  display:grid;
-  gap:4px;
-  padding:8px 9px 10px;
-  border-top:1px solid #d4a76e80;
-  background:#24191c;
+#v-home #sh-search-button {grid-column:3;grid-row:1;font-size:0;text-shadow:none}
+#v-home .sh-notify-bell {grid-column:4;grid-row:1;font-size:0}
+.app.golden-home #v-home .hd .sh-notify-bell {font-size:0}
+#v-home .home-vip {grid-column:5;grid-row:1;color:#ffd777;font-size:10px;font-weight:900;line-height:1}
+#v-home #sh-search-button::before,#v-home .sh-notify-bell::before {content:"";width:28px;height:28px}
+#v-home #sh-search-button::before {background-position:25% 0}
+#v-home .sh-notify-bell::before {background-position:50% 0}
+#v-home .home-vip span {width:24px;height:22px;background-position:75% 0}
+.app.golden-home #v-home .srch {display: none !important;}
+.app.golden-home #v-home .ban {margin-inline:-10px;padding-inline:10px}
+.app.golden-home #v-home .slide {
+  height:auto;
+  aspect-ratio:2.61;
+  min-height:0;
+  padding:12px 16px;
+  border:1.5px solid #ebaf6b;
+  border-radius:19px;
+  box-shadow:inset 0 0 4px #fff5cc6b,0 4px 13px #feaf483b;
 }
-#v-home :is(.room-card-title,.room-card-meta) {
-  display:flex;
-  align-items:center;
-  gap:5px;
-  min-width:0;
+.app.golden-home #v-home .slide.slide--image {padding:0;background:#281129}
+.app.golden-home #v-home .slide.slide--image::after { content: none; }
+.app.golden-home #v-home .slide i {animation:none}
+.app.golden-home #v-home .dots {margin:8px 0 11px}
+.app.golden-home #v-home .dots u.on {background:#fff0be;box-shadow:0 0 8px #ffd778}
+.app.golden-home #v-home .qa {
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:7px;
+  margin:0 7px 15px;
 }
-#v-home .room-card-title>b {
-  flex:1;
-  min-width:0;
-  color:#fff3d9;
-  font-size:14px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+.app.golden-home #v-home .qa button {
+  min-height:57px;
+  aspect-ratio:1.1;
+  justify-content:center;
+  gap:2px;
+  padding:4px 2px;
+  font-size:clamp(9px,2.65vw,12px);
+  font-weight:750;
+  line-height:1.08;
+  color:#fff0df;
+  border:1px solid #f5c180;
+  border-radius:15px;
+  background:radial-gradient(ellipse at 60% 100%,#67216f,#3c1744 54%,#211121);
+  box-shadow:inset 0 0 6px #ee8f537d,0 3px 9px #da802f4f;
 }
-#v-home .room-card-flag {flex:none;font-size:17px;line-height:1}
-#v-home .room-card-meta {color:#efd9b9;font-size:11px;font-variant-numeric:tabular-nums}
-#v-home .room-card-online {margin-inline-start:auto;white-space:nowrap}
-.app.golden-home #v-home .empty {
-  color: #fbe9c6;
-  background: rgba(43, 27, 24, .9);
-  border: 1px solid #c8a072;
-  border-radius: 20px;
+#v-home .qa .home-icon {width:clamp(26px,8.6vw,39px);aspect-ratio:1;flex:none}
+#v-home .qa .hi-reward {background-position:100% 0}
+#v-home .qa .hi-games {background-position:0 50%}
+#v-home .qa .hi-invite {background-position:25% 50%}
+#v-home .qa .hi-cp {background-position:50% 50%}
+#v-home .qa .hi-more {background-position:75% 50%}
+.sh-home-more-actions {display:grid;gap:9px}
+.sh-home-more-actions button {
+  min-height:44px;
+  border:1px solid #dfae6a;
+  border-radius:12px;
+  color:#ffe7b3;
+  background:#4a2154;
 }
-
-.app.golden-home .nav {
-  background: rgba(27, 16, 17, .95);
-  border: 1.5px solid #d6ab6b;
-  box-shadow: 0 9px 28px #080405ad,inset 0 1px 0 #ffe4a847;
-}
-.app.golden-home .nav .ni { color: #dbc5ad; }
-.app.golden-home .nav .ni.on { color: #ffdf9a; }
-.app.golden-home .nav .ni.on span {filter: drop-shadow(0 0 6px #ffd27a);}
-.app.golden-home .nav .plus {
-  color: #5c2e0b;border: 3px solid #ffe6a8;
-  background: linear-gradient(145deg,#fff4c9,#dba258 76%,#915221);
-  box-shadow:0 7px 15px #0009,inset 0 2px 2px #fff9;
-}
-
-@media (max-width: 365px) {
-  .app.golden-home #v-home .hd {
-    grid-template-columns: 38px minmax(0, 1fr) 58px 40px;
-    column-gap: 5px;
-    padding: 7px 6px;
-  }
-  .app.golden-home #v-home .hd .logo {width: 38px; height: 38px;}
-  .app.golden-home #v-home .hd h1 {font-size: 12px;}
-  .app.golden-home #v-home .hd h1 small {font-size: 8px;}
-  .app.golden-home #v-home .pill {padding: 5px;max-width: 60px;}
-  .app.golden-home #v-home .tabs button {padding: 8px 7px;font-size: 10px;}
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app.golden-home #v-home { animation: none; }
-}
-
-/* Keep the new home artwork while avoiding continuous GPU work on touch phones. */
-@media (pointer: coarse) {
-  .app.golden-home .blob,
-  .app.golden-home #v-home .slide i {
-    animation: none !important;
-  }
-  .app.golden-home #v-home .hd,
-  .app.golden-home #v-home .srch,
-  .app.golden-home #v-home .qa button,
-  .app.golden-home #v-home .tabs button {
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-  }
+.app.golden-home #v-home :is(button,.room-card):focus-visible {
+  outline:2px solid #ffe5a2;
+  outline-offset:2px;
 }
 
-/* Royal compact country selector + equal-height room cards (2026-11-16).
-   Keep the native select: Android can show the complete, searchable system list
-   without adding network permissions or changing room sorting logic. */
 .app.golden-home #v-home .tabs {
   display:flex;align-items:stretch;gap:5px;
   overflow-x:auto;scrollbar-width:none;
@@ -390,39 +169,143 @@
   position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;
   clip:rect(0,0,0,0);clip-path:inset(50%);overflow:hidden;white-space:nowrap;
 }
-.app.golden-home #v-home .grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 10px}
-.app.golden-home #v-home .room-card {
-  align-self:stretch;display:flex;flex-direction:column;
-  border:2px solid #dbaa63;border-radius:22px;
-  background:linear-gradient(140deg,#682e67,#2b142b 55%,#1d0b1c);
-  box-shadow:inset 0 0 0 1px #ffe8b355,0 9px 17px #12060ea8,
-    0 0 12px #d5934e36;
-  transition:transform .15s ease,box-shadow .15s ease;
+
+.app.golden-home #v-home .tabs > button {min-height:36px;border-radius:22px}
+.app.golden-home #v-home .tabs .country-room-filter {
+  flex-basis:53px;width:53px;min-width:53px;height:auto;border-radius:22px;
+  grid-template-columns:1fr 13px;
+  padding:0 6px;
 }
-.app.golden-home #v-home .room-card:active {transform:scale(.985)}
-.app.golden-home #v-home .room-card-cover {
-  position:relative;display:grid;place-items:center;
-  width:100%;aspect-ratio:1;overflow:hidden;
-  border-radius:19px 19px 0 0;
-  background:radial-gradient(ellipse at 50% 38%,#6b3489 5%,#250e32 74%);
+.app.golden-home #v-home .tabs .country-room-filter::after {content:'⌄';pointer-events:none}
+.app.golden-home #v-home .tabs .country-room-filter > span {font-size:17px}
+.app.golden-home #v-home .grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 9px}
+#v-home .room-card {
+  min-width:0;
+  overflow:hidden;
+  text-align:left;
+  border:2px solid #ffcf8b;
+  border-radius:18px;
+  color:#fff;
+  background:#211120;
+  box-shadow:0 0 0 1px #a96434,0 4px 10px #ffab436a;
+  cursor:pointer;
 }
-.app.golden-home #v-home .room-card-cover:has(>img:not([hidden])) {
-  display:block;aspect-ratio:1;
+#v-home .room-card-cover {
+  position:relative;
+  display:grid;
+  place-items:center;
+  width:100%;
+  aspect-ratio:1.24;
+  overflow:hidden;
+  background:radial-gradient(ellipse at 50% 34%,#653185,#230d32 75%);
+  font-size:38px;
 }
-.app.golden-home #v-home .room-card-cover img.sh-room-card-photo {
-  width:100%;height:100%;object-fit:cover;max-height:none;
+#v-home .room-card-cover:has(>img:not([hidden])) > span:first-child {visibility:hidden}
+#v-home .room-card-cover img.sh-room-card-photo {
+  position:absolute;inset:0;width:100%;height:100%;
+  max-height:none;
+  object-fit:cover;
 }
-.app.golden-home #v-home .room-card-cover::after {
-  content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(150deg,#fff2be33,transparent 29%,transparent 75%,#c88a4f33);
+#v-home .room-card-status {
+  position:absolute;top:5px;right:5px;
+  display:grid;justify-items:end;gap:3px;
+  font-size:clamp(8px,2.4vw,11px);
+  line-height:1.2;
+  color:white;
 }
-.app.golden-home #v-home .room-card-details {
-  flex:1;min-height:59px;gap:4px;padding:8px 9px;
-  border-top:1px solid #f7cc84;
-  background:linear-gradient(153deg,#62305a,#281226 60%,#1c0e19);
+#v-home :is(.room-card-live,.room-card-online,.room-access-lock) {
+  border-radius:12px;
+  padding:3px 5px;
+  background:#210f21df;
+  font-weight:750;
 }
-.app.golden-home #v-home .room-card-title>b {color:#fff5da;font-weight:800}
-.app.golden-home #v-home .room-card-meta {color:#eed0ad}
+#v-home .room-card-live {background:linear-gradient(#e43cbd,#981396);border:1px solid #fac0de}
+#v-home .room-access-lock {position:absolute;left:5px;top:5px;font-size:10px}
+#v-home .room-card-details {
+  position:relative;
+  display:grid;
+  gap:3px;
+  padding:5px 35px 6px 9px;
+  border-top:1px solid #d9975d;
+  background:linear-gradient(146deg,#4d284a,#231421 60%);
+}
+#v-home .room-card-title>b {
+  display:block;
+  color:#fff5e5;
+  font-size:clamp(12px,3.65vw,16px);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#v-home .room-card-flag {position:absolute;right:6px;bottom:6px;font-size:18px;line-height:1}
+#v-home .room-card-meta {color:#f7debd;font-size:clamp(9px,2.7vw,12px);font-variant-numeric:tabular-nums}
+#v-home .empty {color:#ffe6c5;background:#2a142e;border:1px solid #c8a072;border-radius:18px}
+
+.app.golden-home .nav {
+  height:59px;
+  background:linear-gradient(170deg,#4c1a49,#211121 70%);
+  border:1px solid #f5c68b;
+  box-shadow:0 3px 16px #030105, inset 0 1px 4px #ffbf6770;
+  backdrop-filter:none;
+}
+.app.golden-home .nav .ni {color:#fff0d8}
+.app.golden-home .nav .ni span {width:30px;height:30px;margin:0 auto 2px;filter:none}
+.app.golden-home .nav .ni[data-v="home"] span {background-position:100% 50%}
+.app.golden-home .nav .ni[data-v="rank"] span {background-position:0 100%}
+.app.golden-home .nav .ni[data-v="msg"] span {background-position:50% 100%}
+.app.golden-home .nav .ni[data-v="me"] span {background-position:75% 100%}
+.app.golden-home .nav .ni.on {
+  height:100%;
+  border-radius:20px;
+  color:#ffdf87;
+  background:radial-gradient(ellipse at 50% 100%,#925225,#381832 74%);
+  box-shadow:inset 0 -1px 7px #efa84694;
+}
+.app.golden-home .nav .plus {
+  display:grid;place-items:center;
+  width:62px;height:62px;
+  padding:0;
+  margin-top:-19px;
+  border:3px solid #ffcf74;
+  border-radius:50%;
+  color:#ffd781;
+  font-size:0;
+  background:radial-gradient(ellipse at 38% 32%,#7524bd,#380b53 72%);
+  box-shadow:0 0 10px #f8ad53,inset 0 0 8px #e390e5;
+}
+.app.golden-home .nav .plus::before {
+  content:"";width:46px;height:46px;background-position:25% 100%;
+}
+
+#sh-global-search,#sh-cp-center{
+  position:fixed;z-index:2147483200;inset:0;margin:0 auto;width:min(100%,520px);
+  box-sizing:border-box;overflow-y:auto;padding:calc(24px + env(safe-area-inset-top,0px)) 17px 35px;
+  color:#ffe9c0;background:#1e1025 url('./champagne-home-background.webp') center/cover;
+  font:inherit;
+}
+#sh-global-search[hidden]{display: none !important;}
+.sh-search-head,.sh-cp-center-head{display:flex;align-items:center;gap:15px;margin-bottom:30px;
+  border-bottom:1px solid #d5ab70;padding-bottom:15px;font-size:23px}
+.sh-search-head button,.sh-cp-center-head button{
+  width:44px;height:44px;border:1.5px solid #ffe5a0;border-radius:13px;
+  background:#402331;color:#ffeab6;font-size:30px;
+}
+#sh-global-search label{font-size:13px;color:#f1d1a5;display:block;margin-bottom:10px}
+.sh-search-form{display:flex;gap:8px;align-items:stretch}
+.sh-search-form input{min-width:0;flex:1;padding:13px 12px;border-radius:15px;
+  border:1.5px solid #caa06e;background:#301c2e;color:#fff;font:inherit;font-size:16px}
+.sh-search-form button,.sh-cp-center-actions button{border:1.5px solid #fff0b4;
+  background:linear-gradient(160deg,#ffe6a3,#e3ad58 60%,#b3783f);color:#502916;
+  font:inherit;font-weight:850;border-radius:15px;padding:12px;min-height:45px}
+#sh-search-status{font-size:12px;color:#ebd3b1;line-height:1.5;margin:18px 0}
+.sh-search-result{display:block;width:100%;min-height:61px;margin:10px 0;
+  text-align:left;border:1px solid #b98a59;border-radius:16px;padding:12px;
+  color:#fff0d0;background:#392337e8;font:inherit;font-size:13px;overflow-wrap:anywhere}
+#sh-cp-center p{color:#e8cba8;font-size:13px;line-height:1.6}
+.sh-cp-center-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:24px}
+.sh-cp-center-actions button{min-height:88px;box-shadow:0 5px 12px #12081688}
+#sh-cp-center button:focus-visible,#sh-global-search button:focus-visible,
+#sh-global-search input:focus-visible{outline:3px solid #fff1c4;outline-offset:3px}
 /* The room-create gallery picker is visible in the existing bottom sheet. */
 #sh .sh-create-cover-picker {
   display:flex;align-items:center;gap:13px;

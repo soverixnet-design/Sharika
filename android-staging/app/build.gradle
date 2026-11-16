@@ -88,8 +88,8 @@ android {
         applicationId 'com.soverixnet.sharika'
         minSdk 26
         targetSdk 36
-        versionCode 135
-        versionName = productionApiOrigin ? '1.0.35' : '1.0.35-staging'
+        versionCode 136
+        versionName = productionApiOrigin ? '1.0.36' : '1.0.36-staging'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -177,6 +177,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/champagne-home-background.webp'))
     from(rootProject.file('../app/champagne-home-icons.webp'))
     from(rootProject.file('../app/golden-home.css'))
+    from(rootProject.file('../app/royal-manager-banner.webp'))
+    from(rootProject.file('../app/royal-home-icons.webp'))
     from(rootProject.file('../app/room-discovery.js'))
     from(rootProject.file('../app/royal-room-ui.js'))
     from(rootProject.file('../app/royal-room-ui.css'))
