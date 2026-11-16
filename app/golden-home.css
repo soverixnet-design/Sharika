@@ -1,6 +1,10 @@
 /* Sharika Royal lobby. Use the reference artwork with live room content. */
 .app.golden-home {
-  background:#1b0a20 radial-gradient(ellipse at 72% 0%,#42134c,transparent 46%);
+  background-color:#1b0a20;
+  background-image:linear-gradient(#21092048,#1b0a206e 50%,#1b0a2055),
+    url('./royal-winged-bg.jpg');
+  background-position:center;
+  background-size:cover;
 }
 .app.golden-home::before,.app.golden-home .blob {display:none}
 .app.golden-home #v-home {
@@ -48,6 +52,7 @@
   color:#ffe8c6;
   font-size:clamp(8px,2.6vw,11px);
   font-style:normal;
+  -webkit-text-fill-color:currentColor;
 }
 .app.golden-home #v-home :is(.home-vip,#sh-search-button,.sh-notify-bell) {
   position:relative;
@@ -264,6 +269,7 @@
 .app.golden-home .nav .plus {
   display:grid;place-items:center;
   width:62px;height:62px;
+  animation:none;
   padding:0;
   margin-top:-19px;
   border:3px solid #ffcf74;

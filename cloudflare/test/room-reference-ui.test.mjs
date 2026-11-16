@@ -44,9 +44,10 @@ test('obsolete room demo timers and users are removed from the Android template'
   assert.doesNotMatch(template,/setInterval\(function\(\)\{tick\(false\)\},1600\)/);
 });
 
-test('retired golden JPG is neither layered under the new WebP nor packaged',()=>{
-  assert.match(goldenHome,/champagne-home-background\.webp/);
-  assert.match(winged,/champagne-home-background\.webp/);
+test('the lobby uses the packaged purple art and its own icon atlas',()=>{
+  assert.match(goldenHome,/royal-winged-bg\.jpg/);
+  assert.match(goldenHome,/royal-home-icons\.webp/);
+  assert.doesNotMatch(winged,/\.app\.golden-home\s*\{/);
   assert.doesNotMatch(goldenHome,/golden-home-background\.jpg/);
   assert.doesNotMatch(winged,/golden-home-background\.jpg/);
   assert.doesNotMatch(gradle,/from\(rootProject\.file\('\.\.\/app\/golden-home-background\.jpg'\)\)/);

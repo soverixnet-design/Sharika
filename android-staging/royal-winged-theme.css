@@ -10,7 +10,7 @@ html.royal-root {
   --winged-ink:#160824;
   --winged-stroke:rgba(255,218,130,.7);
 }
-html.royal-root .app:not(.royal-profile) {
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) {
   background-color:#100419 !important;
   background-image:url('./royal-winged-bg.jpg') !important;
   background-position:center top !important;
@@ -21,7 +21,7 @@ html.royal-root .app:not(.royal-profile) .blob {opacity:.08}
 html.royal-root .app:not(.royal-profile) .view:not(#v-me) {
   background:transparent !important;
 }
-html.royal-root .app:not(.royal-profile) .hd,
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .hd,
 html.royal-root .app:not(.royal-profile) .rtop {
   border:1px solid var(--winged-stroke);
   background:rgba(29,9,53,.85);
@@ -29,13 +29,13 @@ html.royal-root .app:not(.royal-profile) .rtop {
   padding:10px;
   box-shadow:0 12px 24px rgba(2,0,10,.55),inset 0 1px 0 #fff5;
 }
-html.royal-root .app:not(.royal-profile) .hd h1,
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .hd h1,
 html.royal-root .app:not(.royal-profile) .rtop h1 {
   color:var(--winged-light);
   -webkit-text-fill-color:var(--winged-light);
   text-shadow:0 2px 10px #000;
 }
-html.royal-root .app:not(.royal-profile) .tabs button,
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .tabs button,
 html.royal-root .app:not(.royal-profile) .seg button,
 html.royal-root .app:not(.royal-profile) #rt button,
 html.royal-root .app:not(.royal-profile) .pill {
@@ -44,7 +44,7 @@ html.royal-root .app:not(.royal-profile) .pill {
   background:rgba(32,10,60,.92);
   box-shadow:0 4px 0 #0b0315,inset 0 1px 0 #fff3;
 }
-html.royal-root .app:not(.royal-profile) .tabs button.on,
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .tabs button.on,
 html.royal-root .app:not(.royal-profile) .seg button.on,
 html.royal-root .app:not(.royal-profile) #rt button.on {
   color:#38163b;
@@ -58,7 +58,7 @@ html.royal-root .app:not(.royal-profile) #ml > * {
   border-color:rgba(255,215,132,.75);
   box-shadow:0 10px 20px #0008,inset 0 1px 0 #fff5;
 }
-html.royal-root .app:not(.royal-profile) .qa button {
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .qa button {
   border:1.5px solid #efc575;
   background:rgba(32,9,64,.89);
   color:#ffe8b9;
@@ -66,13 +66,13 @@ html.royal-root .app:not(.royal-profile) .qa button {
   transform:translateZ(0);
   transition:transform .16s ease,box-shadow .16s ease;
 }
-html.royal-root .app:not(.royal-profile) .qa button:active {
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .qa button:active {
   transform:translateY(4px) scale(.98);
   box-shadow:0 2px 0 #230d37,0 5px 10px #0009;
 }
-html.royal-root .app:not(.royal-profile) .qa .home-icon,
-html.royal-root .app:not(.royal-profile) .nav .ni span,
-html.royal-root .app:not(.royal-profile) .nav .plus::before {
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .qa .home-icon,
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .ni span,
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .plus::before {
   background-image:url('./royal-icon-atlas.png') !important;
   background-size:400% 300% !important;
   background-repeat:no-repeat !important;
@@ -82,25 +82,25 @@ html.royal-root .app:not(.royal-profile) .nav .plus::before {
   filter:drop-shadow(0 5px 7px #0008);
   animation:winged-icon-float 4.6s ease-in-out infinite;
 }
-html.royal-root .app:not(.royal-profile) #qd .home-icon {background-position:0% 100%!important}
-html.royal-root .app:not(.royal-profile) #qg .home-icon {background-position:100% 0%!important}
-html.royal-root .app:not(.royal-profile) #qi .home-icon {background-position:66.666% 100%!important}
-html.royal-root .app:not(.royal-profile) .nav {
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) #qd .home-icon {background-position:0% 100%!important}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) #qg .home-icon {background-position:100% 0%!important}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) #qi .home-icon {background-position:66.666% 100%!important}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav {
   background:rgba(18,4,37,.96);
   border-top:1.5px solid #f4ca78;
   box-shadow:0 -10px 28px #0009,inset 0 2px 0 #fff2;
 }
-html.royal-root .app:not(.royal-profile) .nav .ni span {
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .ni span {
   display:block;width:30px;height:30px;
   margin:0 auto 1px;line-height:0;
 }
-html.royal-root .app:not(.royal-profile) .nav .ni[data-v="home"] span {background-position:33.333% 0%!important}
-html.royal-root .app:not(.royal-profile) .nav .ni[data-v="rank"] span {background-position:0% 50%!important}
-html.royal-root .app:not(.royal-profile) .nav .ni[data-v="msg"] span {background-position:100% 50%!important}
-html.royal-root .app:not(.royal-profile) .nav .ni[data-v="me"] span {background-position:100% 100%!important}
-html.royal-root .app:not(.royal-profile) .nav .ni.on {color:#ffe4a7}
-html.royal-root .app:not(.royal-profile) .nav .plus {font-size:0}
-html.royal-root .app:not(.royal-profile) .nav .plus::before {
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .ni[data-v="home"] span {background-position:33.333% 0%!important}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .ni[data-v="rank"] span {background-position:0% 50%!important}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .ni[data-v="msg"] span {background-position:100% 50%!important}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .ni[data-v="me"] span {background-position:100% 100%!important}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .ni.on {color:#ffe4a7}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .plus {font-size:0}
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .plus::before {
   content:"";display:block;width:40px;height:40px;margin:auto;
   background-position:0% 0%!important;
 }
@@ -170,12 +170,12 @@ html.royal-root #sh-royal-market .sh-rm-cat:active {
   50% {transform:translate3d(0,-3px,0)}
 }
 @media (prefers-reduced-motion:reduce) {
-  html.royal-root .app:not(.royal-profile) .qa .home-icon,
-  html.royal-root .app:not(.royal-profile) .nav .ni span,
-  html.royal-root .app:not(.royal-profile) .nav .plus::before {
+  html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .qa .home-icon,
+  html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .ni span,
+  html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .nav .plus::before {
     animation:none!important;
   }
-  html.royal-root .app:not(.royal-profile) .qa button {
+  html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .qa button {
     transition:none!important;
   }
   html.royal-root #sh-royal-market .sh-rm-card {animation:none!important}
@@ -193,17 +193,12 @@ html.royal-root{
   --sh-gold-active:linear-gradient(155deg,#fff1c5,#e8b85f 56%,#b67837);
 }
 html.royal-root body{background:#130c0c;color:#fff1d6}
-html.royal-root .app.golden-home{
-  background-color:#291a12!important;
-  background-image:url('./champagne-home-background.webp')!important;
-  background-position:center center!important;background-size:cover!important;
-}
-html.royal-root .app:not(.royal-profile) .hd,
+html.royal-root .app:not(.royal-profile):where(:not(.golden-home)) .hd,
 html.royal-root .app:not(.royal-profile) .rtop{
   background:linear-gradient(155deg,#433021e8,#201611f2)!important;
   border-color:#e4bc78!important;
 }
-html.royal-root .app .nav{
+html.royal-root .app:where(:not(.golden-home)) .nav{
   background:linear-gradient(170deg,#2d1a15f5,#120b0dfc)!important;
   border:1px solid #e6bb77!important;
   box-shadow:0 -8px 24px #090503a6,inset 0 2px 0 #ffe6ae35!important;

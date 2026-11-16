@@ -35,7 +35,6 @@ test('new royal styles are present before the app or room is shown',()=>{
 test('golden theme unifies staging screens while keeping chosen artwork and room themes',()=>{
   const sheet=readFileSync(new URL('royal-winged-theme.css',android),'utf8');
   const required=[
-    'html.royal-root .app.golden-home',
     'html.royal-root .app.royal-profile .nav .ni span',
     'html.royal-root #v-rank',
     'html.royal-root #v-msg',
@@ -50,7 +49,7 @@ test('golden theme unifies staging screens while keeping chosen artwork and room
   ];
   for(const selector of required)
     assert.ok(sheet.includes(selector),selector+' missing golden treatment');
-  assert.match(sheet,/\.app\.golden-home\{[\s\S]*?champagne-home-background\.webp/);
+  assert.match(sheet,/\.app:not\(\.royal-profile\):where\(:not\(\.golden-home\)\) \.qa \.home-icon/);
   assert.match(sheet,/\.app\.royal-profile \.nav \.ni\[data-v="me"\] span/);
   assert.match(sheet,/html\.royal-room\{[\s\S]*?--gold:#ffdb8d/);
   assert.doesNotMatch(sheet,/html\.royal-room \.app\.hasbg\s*\{[\s\S]{0,150}background-image/);
