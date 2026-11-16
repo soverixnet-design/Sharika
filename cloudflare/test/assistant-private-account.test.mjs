@@ -64,3 +64,34 @@ test('Balance and level formatting reject invalid state rather than inventing nu
   assert.equal(formatters.ownLevel(0),'0');
   assert.equal(formatters.ownLevel(undefined),null);
 });
+
+
+test('room endpoint returns only the authenticated account room in a mocked D1 call',async()=>{
+  const route=block(backend,
+    "if(path==='/api/v1/me/room' && request.method==='GET'){",
+    "if (path === '/api/v1/me/location')");
+  const exec=Function('path','request','env','uid','cors','assertActive','reply',
+    'return (async()=>{'+route+'return null;})()');
+  const owners=new Map([
+    ['account-A',{id:'10000011',name:'Room A',seat_count:12,theme:'mid',created_at:null}],
+    ['account-B',{id:'10000022',name:'Room B',seat_count:8,theme:'gold',created_at:null}]
+  ]);
+  for(const id of ['account-A','account-B','account-C']){
+    let checked=null,bound=null;
+    const env={DB:{prepare(sql){
+      assert.match(sql,/owner_id=\? LIMIT 1/);
+      return {bind(owner){
+        bound=owner;
+        return {first:async()=>owners.get(owner)||null};
+      }};
+    }}};
+    const result=await exec('/api/v1/me/room',
+      {method:'GET',body:{owner_id:'account-B'}},env,id,{},
+      async(_,principal)=>{checked=principal;},
+      payload=>payload);
+    assert.equal(checked,id);
+    assert.equal(bound,id);
+    assert.deepEqual(result.room?.name,owners.get(id)?.name);
+    if(id==='account-C')assert.equal(result.room,null);
+  }
+});
