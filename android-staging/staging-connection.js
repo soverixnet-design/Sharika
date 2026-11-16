@@ -13995,6 +13995,7 @@
   const originalLogout=window.logout;
   window.logout=function(){
     ++authAttemptId;
+    window.sharikaAssistantClear?.();
     document.getElementById('sh-login-recovery')?.remove();
     document.getElementById('sh-opening')?.remove();
     document.getElementById('sp')?.classList.remove('sharika-opening-pending','sharika-opening-featured');
@@ -14057,8 +14058,9 @@
     }
   }
   // SHARIKA_ASSISTANT_HELP_20261117
-  // Local, no-cost app help. Deliberately does not call AWS Bedrock or access
-  // private wallet data. The existing verified Customer Service is the escalation.
+  // Local, no-cost app help plus explicitly requested authenticated own-account
+  // reads. Reuse the native Firebase-authenticated Cloudflare Worker bridge.
+  // No AI provider key, user-ID parameter, or client-side balance authority.
   function mountSharikaAssistant() {
     const home=document.getElementById('v-home');
     const app=document.getElementById('app');
@@ -14137,14 +14139,14 @@
       '<section id="sh-assistant-panel" role="dialog" aria-modal="true" aria-labelledby="sh-assistant-title">'+
       '<header id="sh-assistant-head"><span class="sh-as-star" aria-hidden="true">✦</span>'+
       '<div class="sh-as-titles"><strong id="sh-assistant-title">Sharika Assistant</strong>'+
-      '<small>অ্যাপের তথ্য ও সহায়তা • Offline FAQ</small></div>'+
+      '<small>অ্যাপ তথ্য • নিজের verified account • FAQ</small></div>'+
       '<button id="sh-assistant-close" type="button" aria-label="Close Assistant">×</button></header>'+
       '<div id="sh-assistant-log" role="log" aria-live="polite" aria-relevant="additions"></div>'+
       '<div id="sh-assistant-chips" aria-label="সাধারণ প্রশ্ন"></div>'+
       '<form id="sh-assistant-form"><input id="sh-assistant-input" autocomplete="off" maxlength="250"'+
       ' aria-label="প্রশ্ন লিখুন" placeholder="Sharika সম্পর্কে প্রশ্ন লিখুন…">'+
       '<button id="sh-assistant-send" type="submit">পাঠান</button></form>'+
-      '<footer id="sh-assistant-footer"><span>এই সহায়তা লাইভ ব্যালেন্স বা ব্যক্তিগত তথ্য পড়ে না।</span>'+
+      '<footer id="sh-assistant-footer"><span>নিজের তথ্য Firebase Login দিয়ে যাচাই করা হয়।</span>'+
       '<button id="sh-assistant-support" type="button">Customer Service</button></footer></section>';
     app.appendChild(overlay);
 
@@ -14154,7 +14156,7 @@
     const topics=[
       {label:'মাইক/ভয়েস',keys:['মাইক','মাইক্রোফোন','ভয়েস','ভয়েস','voice','audio','শুনতে','শোনা','কথা'],answer:'রুমে কথা বলতে প্রথমে একটি খালি সিট নির্বাচন করুন, তারপর Mic চালু করুন। Android-এর Microphone permission দিন এবং ইন্টারনেট সংযোগ পরীক্ষা করুন। অন্যরা শুনতে না পেলে রুমে পুনরায় প্রবেশ করুন; সমস্যা থাকলে Customer Service-এ জানান।'},
       {label:'রুম',keys:['রুম','room','সিট','seat','create room','country','দেশ','গ্যালারি'],answer:'Home থেকে Room তৈরি করার অপশন ব্যবহার করুন। রুমের নাম লিখুন এবং Gallery থেকে কভার ছবি নির্বাচন করুন। Room list-এর দেশ নির্বাচন অপশন দিয়ে নির্দিষ্ট দেশের রুম খুঁজতে পারবেন। সিট ও রুম পরিচালনার ক্ষমতা আপনার ভূমিকার ওপর নির্ভর করে।'},
-      {label:'কয়েন/ওয়ালেট',keys:['কয়েন','কয়েন','coin','wallet','ওয়ালেট','ওয়ালেট','ব্যালেন্স','balance','রিচার্জ','recharge','withdraw','টাকা','ডলার'],answer:'Sharika-র Coins অ্যাপের ভেতরের ভার্চুয়াল ব্যবহারযোগ্য মুদ্রা। এগুলো নগদ অর্থে উত্তোলনযোগ্য নয়। নিজের ব্যালেন্স ও অনুমোদিত Recharge অপশন Wallet-এ দেখুন। Assistant আপনার ব্যক্তিগত ব্যালেন্স বা লেনদেন সরাসরি পড়ে না।'},
+      {label:'কয়েন/ওয়ালেট',keys:['কয়েন','কয়েন','coin','wallet','ওয়ালেট','ওয়ালেট','ব্যালেন্স','balance','রিচার্জ','recharge','withdraw','টাকা','ডলার'],answer:'Sharika-র Coins অ্যাপের ভেতরের ভার্চুয়াল ব্যবহারযোগ্য মুদ্রা। এগুলো নগদ অর্থে উত্তোলনযোগ্য নয়। নিজের ব্যালেন্স ও অনুমোদিত Recharge অপশন Wallet-এ দেখুন। নিজের ব্যালেন্স জানতে “আমার ব্যালেন্স” লিখুন; এটি নিরাপদ সার্ভার থেকে নতুন করে যাচাই করা হবে।'},
       {label:'গিফট/SVIP',keys:['গিফট','gift','svip','vip','ফ্রেম','frame','নোবেল','noble','medal','এন্ট্রি','entry'],answer:'রুমে Gift ব্যবহার ও প্রোফাইলে Frame, Entry এবং SVIP আইটেম দেখার সুবিধা রয়েছে। প্রতিটি আইটেমের মূল্য, মেয়াদ ও উপলব্ধতা অ্যাপের Shop বা সংশ্লিষ্ট পেজ থেকে দেখুন।'},
       {label:'লগইন',keys:['লগইন','login','google','জিমেইল','gmail','password','পাসওয়ার্ড','সাইন','account','অ্যাকাউন্ট'],answer:'অ্যাপে দেখানো সমর্থিত Login অপশন ব্যবহার করুন। Google বা Email Login-এ সমস্যা হলে ইন্টারনেট, অ্যাপের সংস্করণ ও অ্যাকাউন্টের তথ্য যাচাই করুন। পাসওয়ার্ড বা OTP কখনও চ্যাটে শেয়ার করবেন না। সমস্যা থাকলে Customer Service-এ জানান।'},
       {label:'ডেইলি রিওয়ার্ড',keys:['ডেইলি','daily','reward','রিওয়ার্ড','task','টাস্ক','ইনভাইট','invite','referral','রেফার'],answer:'Daily Task/Reward পেজে আপনার প্রাপ্য পুরস্কার ও শর্ত দেখুন। Invite পেজে রেফারেলের নিয়ম ও অ্যাপের বর্তমান অফার যাচাই করুন। পুরস্কারের পরিমাণ অ্যাডমিন পরিবর্তন করতে পারেন।'},
@@ -14162,7 +14164,7 @@
       {label:'গেম',keys:['গেম','game','greedy','wheel','খেলা'],answer:'গেমের উপলব্ধতা আপনার অ্যাপের সংস্করণের ওপর নির্ভর করে। Google Play সংস্করণে গেম ও ভার্চুয়াল কয়েনের নিয়ম অনুসরণ করুন; নগদ অর্থে জুয়া বা উত্তোলনের সুবিধা নেই।'},
       {label:'সাপোর্ট',keys:['সাপোর্ট','support','সমস্যা','problem','report','রিপোর্ট','abuse','ব্লক','block','delete','ডিলিট'],answer:'নিরাপত্তা, রিপোর্ট, অ্যাকাউন্ট সমস্যা বা আনুষ্ঠানিক সহায়তার জন্য নিচে Customer Service চাপুন। Assistant সরাসরি আপনার অ্যাকাউন্ট পরিবর্তন বা অন্য ব্যবহারকারীর তথ্য প্রকাশ করতে পারে না।'}
     ];
-    const common=['মাইক/ভয়েস','রুম','কয়েন/ওয়ালেট','গিফট/SVIP','লগইন','সাপোর্ট'];
+    const common=['আমার ব্যালেন্স','আমার লেভেল','আমার রুম','আমার প্রোফাইল','মাইক/ভয়েস','রুম','গিফট/SVIP','সাপোর্ট'];
     function addMessage(text,fromUser){
       const message=document.createElement('div');
       message.className='sh-as-bubble'+(fromUser?' sh-as-user':'');
@@ -14171,24 +14173,155 @@
       while(log.children.length>24)log.firstElementChild.remove();
       log.scrollTop=log.scrollHeight;
     }
-    function respond(question){
+    // One signed-in Firebase identity per Assistant conversation. Never retain
+    // private answers through logout, account switch, or a superseding request.
+    let assistantAccountId=null,assistantAuthVersion=-1,assistantRequest=0;
+    const sendButton=overlay.querySelector('#sh-assistant-send');
+    const ownQueries=[
+      {kind:'wallet',labels:['আমার ব্যালেন্স','আমার কয়েন','আমার কয়েন','my balance','my wallet','my coins']},
+      {kind:'level',labels:['আমার লেভেল','আমার লেভেল কত','my level','my levels']},
+      {kind:'room',labels:['আমার রুম','আমার রুমের তথ্য','my room','my room info']},
+      {kind:'profile',labels:['আমার প্রোফাইল','আমার আইডি','my profile','my id','my account']}
+    ];
+    function privateIntent(value){
+      const q=value.toLowerCase().trim();
+      if(/(অন্যের|অন্য কারো|অন্য কারও|another user|other user|someone else's)/i.test(q))
+        return 'other';
+      const exact=ownQueries.find(row=>row.labels.some(label=>q===label));
+      if(exact)return exact.kind;
+      const mine=/(আমার|নিজের|my |mine|আমি)/i.test(q);
+      if(!mine)return null;
+      if(/(ব্যালেন্স|balance|wallet|ওয়ালেট|ওয়ালেট|কয়েন|কয়েন|coins?)/i.test(q))return 'wallet';
+      if(/(লেভেল|level|rank|র‍্যাঙ্ক)/i.test(q))return 'level';
+      if(/(রুম|room)/i.test(q))return 'room';
+      if(/(প্রোফাইল|profile|আইডি|account|অ্যাকাউন্ট)/i.test(q))return 'profile';
+      return null;
+    }
+    function clearAssistant(){
+      ++assistantRequest;
+      sendButton.disabled=false;
+      overlay.hidden=true;
+      log.textContent='';
+      input.value='';
+      assistantAccountId=null;
+      assistantAuthVersion=-1;
+    }
+    window.sharikaAssistantClear=clearAssistant;
+    function syncOwnAccount(){
+      const nowId=session?.user?.id??null;
+      if(nowId!==assistantAccountId || assistantAuthVersion!==authAttemptId){
+        ++assistantRequest;
+        log.textContent='';
+        assistantAccountId=nowId;
+        assistantAuthVersion=authAttemptId;
+        sendButton.disabled=false;
+      }
+      return nowId;
+    }
+    function ownCoinCount(value){
+      if(value===null||value===undefined||value==='')return null;
+      const number=Number(value);
+      if(!Number.isSafeInteger(number)||number<0)return null;
+      return new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(number);
+    }
+    function ownLevel(value){
+      const number=Number(value);
+      return value!==null&&value!==undefined&&Number.isSafeInteger(number)&&number>=0
+        ?String(number):null;
+    }
+    async function ownAccountResponse(kind,accountId,authVersion){
+      // Every request uses the existing native bridge with a Firebase ID token.
+      // Never send account IDs in the path/body or derive personal information
+      // from the public room feed, cached demo state or unverified profiles.
+      if(kind==='wallet'){
+        const wallet=await api('GET','/wallet');
+        const coins=ownCoinCount(wallet?.coins);
+        const diamonds=ownCoinCount(wallet?.diamonds);
+        if(coins===null)throw new Error('Wallet balance unavailable');
+        return 'আপনার বর্তমান Main Wallet ব্যালেন্স: '+coins+' Coins'+
+          (diamonds!==null?'\nDiamonds: '+diamonds:'')+
+          '\nতথ্যটি সার্ভার থেকে এখনই যাচাই করা হয়েছে। কয়েন নগদে উত্তোলনযোগ্য নয়।';
+      }
+      if(kind==='room'){
+        const data=await api('GET','/me/room');
+        if(!data||!Object.prototype.hasOwnProperty.call(data,'room'))
+          throw new Error('Room information unavailable');
+        const room=data.room;
+        if(room===null)return 'আপনার অ্যাকাউন্টে এই মুহূর্তে নিজের তৈরি কোনো রুম নেই।';
+        if(!room||typeof room.id!=='string'||typeof room.name!=='string')
+          throw new Error('Room information unavailable');
+        const seat=ownCoinCount(room.seat_count);
+        return 'আপনার রুমের নাম: '+room.name.slice(0,100)+
+          '\nRoom ID: '+room.id.slice(0,20)+
+          (seat!==null?'\nসিট সংখ্যা: '+seat:'')+
+          '\nএই তথ্য আপনার লগইন করা অ্যাকাউন্টের রুম থেকে নেওয়া।';
+      }
+      if(kind==='level'||kind==='profile'){
+        const data=await api('GET','/me');
+        if(!data||String(data.user_id)!==String(accountId))
+          throw new Error('Account verification mismatch');
+        const wealth=ownLevel(data.wealth_level);
+        const charm=ownLevel(data.charm_level);
+        const levels='Wealth Level: '+(wealth??'পাওয়া যায়নি')+
+          '\nCharm Level: '+(charm??'পাওয়া যায়নি');
+        if(kind==='level')return 'আপনার সার্ভারে সংরক্ষিত লেভেল:\n'+levels;
+        const publicId=String(data.display_id||data.public_id||'').slice(0,30);
+        return 'আপনার প্রোফাইল:\nনাম: '+String(data.name||'').slice(0,80)+
+          (publicId?'\nDisplay ID: '+publicId:'')+
+          '\n'+levels+'\nএই তথ্য আপনার নিজের অ্যাকাউন্ট থেকে যাচাই করা।';
+      }
+      throw new Error('Unsupported account question');
+    }
+    async function respond(question){
       const value=String(question||'').trim().slice(0,250);
       if(!value)return;
+      const accountId=syncOwnAccount();
       addMessage(value,true);
-      const normalized=value.toLowerCase();
-      const topic=topics.find(entry=>entry.label===value)||
-        topics.find(entry=>entry.keys.some(key=>normalized.includes(key)));
-      addMessage(topic?topic.answer:
-        'আমি এখন Sharika-র সাধারণ ফিচার সম্পর্কে তথ্য দিতে পারি। রুম, মাইক, কয়েন, গিফট, লগইন বা সাপোর্ট সম্পর্কে জিজ্ঞেস করুন। নির্দিষ্ট অ্যাকাউন্ট সমস্যা হলে Customer Service ব্যবহার করুন।',false);
       input.value='';
+      const kind=privateIntent(value);
+      if(kind==='other'){
+        addMessage('আমি শুধু আপনার নিজের যাচাই করা অ্যাকাউন্টের তথ্য দেখাতে পারি। অন্য ব্যবহারকারীর ব্যক্তিগত তথ্য দিতে পারি না।',false);
+        return;
+      }
+      if(!kind){
+        const normalized=value.toLowerCase();
+        const topic=topics.find(entry=>entry.label===value)||
+          topics.find(entry=>entry.keys.some(key=>normalized.includes(key)));
+        addMessage(topic?topic.answer:
+          'আমি এখন Sharika-র সাধারণ ফিচার এবং নিজের যাচাই করা ব্যালেন্স, লেভেল, প্রোফাইল ও রুমের তথ্য দিতে পারি। নির্দিষ্ট সমস্যা হলে Customer Service ব্যবহার করুন।',false);
+        return;
+      }
+      if(!accountId){
+        addMessage('নিজের অ্যাকাউন্টের তথ্য জানতে প্রথমে Sharika-তে লগইন করুন।',false);
+        return;
+      }
+      const version=authAttemptId,requestId=++assistantRequest;
+      sendButton.disabled=true;
+      addMessage('আপনার অ্যাকাউন্টের তথ্য নিরাপদ সার্ভার থেকে যাচাই করছি…',false);
+      const loading=log.lastElementChild;
+      try{
+        const answer=await ownAccountResponse(kind,accountId,version);
+        if(requestId!==assistantRequest||session?.user?.id!==accountId||
+           authAttemptId!==version||overlay.hidden)return;
+        loading.textContent=answer;
+      }catch(error){
+        if(requestId!==assistantRequest||session?.user?.id!==accountId||
+           authAttemptId!==version||overlay.hidden)return;
+        loading.textContent='এই মুহূর্তে যাচাই করা তথ্য পাওয়া যাচ্ছে না। আবার চেষ্টা করুন, অথবা Customer Service-এ যোগাযোগ করুন।';
+      }finally{
+        if(requestId===assistantRequest)sendButton.disabled=false;
+      }
     }
     function closeAssistant(){
+      ++assistantRequest;
+      sendButton.disabled=false;
       overlay.hidden=true;
       trigger.focus();
     }
     trigger.addEventListener('click',()=>{
+      syncOwnAccount();
       overlay.hidden=false;
-      if(!log.children.length)addMessage('স্বাগতম! আমি Sharika Assistant। রুম, মাইক, কয়েন, গিফট ও লগইন সম্পর্কে প্রশ্ন করতে পারেন। এটি তথ্যভিত্তিক সহায়তা, লাইভ AI বা অ্যাকাউন্ট অ্যাক্সেস নয়।',false);
+      if(!log.children.length)addMessage('স্বাগতম! আমি Sharika Assistant। নিজের ব্যালেন্স, লেভেল, প্রোফাইল ও রুম সম্পর্কে সার্ভারে যাচাই করা তথ্য জানতে পারেন। সাধারণ প্রশ্নের জন্য FAQ আছে; এটি এখনো জেনারেটিভ AI নয়।',false);
       input.focus();
     });
     overlay.querySelector('#sh-assistant-close').addEventListener('click',closeAssistant);
