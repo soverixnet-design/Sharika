@@ -433,8 +433,10 @@ function updateRoomCountryFilter(){
   var account=String(A.id||'');
   if(account!==roomCountryAccount){roomCountryAccount=account;roomCountryFilter='';roomCountryOptionsSignature=''}
   var viewer=discovery.countryCode(CFG.viewerCountry||A.country);
-  var countries=(CFG.rooms||[]).concat(A.myRoom?[myR()]:[]).map(function(r){return discovery.countryCode(r.owner_country||r.country)}).filter(Boolean);
-  if(viewer)countries.push(viewer);
+  // The compact selector lists every supported country, not only countries
+  // currently hosting rooms. The chosen filter still uses verified room data.
+  var countries=CTRY.map(function(country){return country[2]});
+  if(viewer&&countries.indexOf(viewer)<0)countries.push(viewer);
   countries=Array.from(new Set(countries)).sort(function(a,b){if(a===viewer)return -1;if(b===viewer)return 1;return a.localeCompare(b)});
   if(roomCountryFilter&&countries.indexOf(roomCountryFilter)<0)roomCountryFilter='';
   var signature=viewer+':'+countries.join(',');
