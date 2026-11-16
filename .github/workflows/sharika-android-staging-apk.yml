@@ -375,10 +375,71 @@ jobs:
           echo "SHARIKA_STAGING_SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
           keytool -list -v -keystore "$path" -storepass "$KEY_PASSWORD" -alias sharika-staging | grep -E 'SHA1:|SHA256:' | sed 's/^/STAGING_SIGNER_/'
           
+      - name: Select existing Firebase-registered signer for Assistant QA APK
+        env:
+          PLAY_B64: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEYSTORE_B64 }}
+          PLAY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$PLAY_B64" && test -n "$PLAY_PASSWORD" && test -n "$PLAY_ALIAS"
+          key="$RUNNER_TEMP/sharika-assistant-registered-play-upload.p12"
+          printf '%s' "$PLAY_B64" | tr -d '[:space:]' | base64 --decode > "$key"
+          chmod 600 "$key"
+          fingerprint="$(keytool -list -v -keystore "$key" -storepass "$PLAY_PASSWORD" -alias "$PLAY_ALIAS" 2>/dev/null |
+            sed -n 's/^[[:space:]]*SHA1:[[:space:]]*//p' | head -1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          test -n "$fingerprint"
+          CERT_SHA1="$fingerprint" node - <<'NODE'
+          const fs=require('node:fs');
+          const cfg=JSON.parse(fs.readFileSync('app/google-services.json','utf8'));
+          const allowed=(cfg.client||[]).flatMap(c=>c.oauth_client||[])
+            .filter(c=>c.client_type===1&&c.android_info?.package_name==='com.soverixnet.sharika')
+            .map(c=>String(c.android_info.certificate_hash||'').toLowerCase());
+          if(!allowed.includes(process.env.CERT_SHA1)){
+            console.error('Refusing staging Google Login APK signed with unregistered certificate');
+            process.exit(1);
+          }
+          console.log('SHARIKA_ASSISTANT_FIREBASE_REGISTERED_QA_SIGNER_OK');
+          NODE
+          echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$key" >> "$GITHUB_ENV"
+          echo "SHARIKA_STAGING_USE_REGISTERED_PLAY_SIGNER=true" >> "$GITHUB_ENV"
+          echo 'QA key is reused only from masked existing GitHub secrets; no private key is committed'
+
       - name: Compile staging APK only
         env:
           SHARIKA_STAGING_KEYSTORE_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+          SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify Assistant APK has Firebase-registered signing certificate
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$apk"
+          signer="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$signer" verify --verbose "$apk"
+          fingerprint="$("$signer" verify --print-certs "$apk" |
+            sed -n 's/^Signer #1 certificate SHA-1 digest: //p' | head -1 |
+            tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          test -n "$fingerprint"
+          CERT_SHA1="$fingerprint" node - <<'NODE'
+          const fs=require('node:fs');
+          const cfg=JSON.parse(fs.readFileSync('app/google-services.json','utf8'));
+          const allowed=(cfg.client||[]).flatMap(c=>c.oauth_client||[])
+            .filter(c=>c.client_type===1&&c.android_info?.package_name==='com.soverixnet.sharika')
+            .map(c=>String(c.android_info.certificate_hash||'').toLowerCase());
+          if(!allowed.includes(process.env.CERT_SHA1)){
+            console.error('APK signing certificate does not match any registered Android OAuth client');
+            process.exit(1);
+          }
+          console.log('SHARIKA_ASSISTANT_APK_CERTIFICATE_REGISTERED_FOR_GOOGLE_SIGNIN');
+          NODE
+          unzip -p "$apk" assets/connection.js > "$RUNNER_TEMP/sharika-assistant-qa.js"
+          grep -Fq 'SHARIKA_ASSISTANT_HELP_20261117' "$RUNNER_TEMP/sharika-assistant-qa.js"
+          grep -Fq "api('GET','/me/room')" "$RUNNER_TEMP/sharika-assistant-qa.js"
+          echo 'SHARIKA_ASSISTANT_APK_PACKAGED_WITH_AUTHENTICATED_ROOM_AND_REGISTERED_CERT'
 
       - name: Verify visible room Games icon and verified gift video playback
         run: |
