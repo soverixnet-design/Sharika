@@ -9969,6 +9969,34 @@
       /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image\?v=[1-9][0-9]*$/.exec(value);
     return match&&Number(match[1])===Number(bannerId)?value:null;
   }
+  // Recruitment campaigns can use the existing D1 banner schema even on
+  // installations whose legacy SQLite CHECK does not yet permit 'apply'.
+  // Only trusted, precisely named recruitment banners receive this route.
+  function isRecruitmentBanner(row){
+    if(row?.action!=='none')return false;
+    const title=String(row.title||'');
+    return /(?:manager|ম্যানেজার|coin seller)/i.test(title)&&
+      /(?:recruitment|hiring|নিয়োগ|আবেদন)/i.test(title);
+  }
+  const recruitmentStyle=document.createElement('style');
+  recruitmentStyle.id='sh-manager-recruitment-banner-css';
+  recruitmentStyle.textContent=[
+    '#ban .sh-manager-banner{isolation:isolate;border:1.5px solid #f1c56b;box-sizing:border-box;box-shadow:0 12px 26px #0009,inset 0 0 0 1px #fff6d480!important;padding:15px 15px 13px;background-image:linear-gradient(115deg,#051329 0%,#101f43 56%,#9d702d 150%)!important}',
+    '#ban .sh-manager-banner::before{content:"";position:absolute;width:170px;height:170px;right:-48px;top:-60px;border:22px solid #ffda7360;border-radius:50%;box-shadow:0 0 22px #efad4970,inset 0 0 16px #ffe3a8a0}',
+    '#ban .sh-manager-banner::after{background:linear-gradient(115deg,transparent 55%,#fff2a122 66%,transparent 85%);pointer-events:none}',
+    '#ban .sh-manager-banner b{font-weight:900;font-size:clamp(17px,4.8vw,21px);line-height:1.18;max-width:72%;color:#ffdc80;text-shadow:0 2px 3px #000d}',
+    '#ban .sh-manager-banner small{font-size:10px;max-width:74%;color:#ffefd0;line-height:1.35;margin-top:5px;opacity:1}',
+    '#ban .sh-manager-banner i{right:13px;top:47%;font-size:49px;color:#ffe69e;filter:drop-shadow(0 4px 10px #000b)}',
+    '#ban .sh-manager-brand{position:relative;z-index:1;font:800 9px system-ui,sans-serif;letter-spacing:1.4px;color:#fff4cb;margin-bottom:8px;text-transform:uppercase}',
+    '#ban .sh-manager-cta{position:relative;z-index:2;align-self:flex-start;margin-top:8px;border-radius:30px;background:linear-gradient(#fff0af,#e8b84f);border:1px solid #fff3c5;box-shadow:0 3px 9px #0008;padding:5px 13px;color:#1b2137;font:900 11px system-ui,sans-serif}',
+    '#sh-recruit-overlay{background:radial-gradient(circle at 100% 0,#29446a 0%,#081325 40%,#030814 100%)!important;color:#f6e3b9!important}',
+    '#sh-recruit-overlay #sh-recruit-form{border:1px solid #d3ae68;padding:18px 14px;border-radius:21px;background:linear-gradient(135deg,#182644,#071526);box-shadow:0 10px 35px #0009}',
+    '#sh-recruit-overlay #sh-recruit-form label{color:#ffe1a1;font-weight:700;font-size:13px}',
+    '#sh-recruit-overlay #sh-recruit-form input,#sh-recruit-overlay #sh-recruit-form select,#sh-recruit-overlay #sh-recruit-form textarea{background:#101d37!important;border:1px solid #967442!important;color:#fff!important}',
+    '#sh-recruit-overlay #sh-recruit-submit{background:linear-gradient(180deg,#ffeda8,#d8a23d)!important;color:#1c263e!important;box-shadow:0 6px 18px #c18b4150}',
+    '@media(max-width:360px){#ban .sh-manager-banner{padding:12px}#ban .sh-manager-banner b{font-size:16px}#ban .sh-manager-banner i{font-size:42px}}'
+  ].join('');
+  document.head.appendChild(recruitmentStyle);
   let lastVerifiedBannerSignature='';
   function renderVerifiedBanners(list,eventList){
     const approved=Array.isArray(list)?list.filter(row=>row&&
@@ -9985,7 +10013,7 @@
     const cards=approved.map(row=>({
       t:row.title,s:String(row.subtitle||'').slice(0,160),
       e:String(row.emoji||'🎉').slice(0,12),
-      c:row.color_a+','+row.color_b,a:row.action,
+      c:row.color_a+','+row.color_b,a:isRecruitmentBanner(row)?'apply':row.action,
       img:verifiedBannerImageUrl(row.image_url,row.id)
     }));
     // An event is discoverable only from a currently published home banner.
@@ -10020,9 +10048,13 @@
         '" role="button" tabindex="0" aria-label="'+sellerEscape(row.t)+
         '"><img class="banner-art" src="'+sellerEscape(row.img)+
         '" alt="'+sellerEscape(row.t)+'" loading="eager" decoding="async"></div>';
-      return '<div class="slide" data-i="'+i+'" role="button" tabindex="0" style="background:linear-gradient(135deg,'+
-        row.c+')"><b>'+sellerEscape(row.t)+'</b><small>'+sellerEscape(row.s)+
-        '</small><i>'+sellerEscape(row.e)+'</i></div>';
+      const hiring=row.a==='apply';
+      return '<div class="slide'+(hiring?' sh-manager-banner':'')+'" data-i="'+i+
+        '" role="button" tabindex="0" style="background:linear-gradient(135deg,'+
+        row.c+')">'+(hiring?'<span class="sh-manager-brand">✦ SHARIKA OFFICIAL TEAM</span>':'')+
+        '<b>'+sellerEscape(row.t)+'</b><small>'+sellerEscape(row.s)+
+        '</small><i>'+sellerEscape(row.e)+'</i>'+
+        (hiring?'<span class="sh-manager-cta">আবেদন করুন ›</span>':'')+'</div>';
     }).join('');
     if(dots)dots.innerHTML=cards.map((_,i)=>'<u'+(!i?' class="on"':'')+'></u>').join('');
     window.bi=0;
@@ -10048,12 +10080,12 @@
     document.getElementById('sh-recruit-overlay')?.remove();
     const page=document.createElement('div');page.id='sh-recruit-overlay';
     page.style.cssText='position:fixed;inset:0;z-index:2147483095;overflow:auto;'+
-      'background:#061a17;color:#f9e6b8;font-family:system-ui,sans-serif;'+
+      'background:#081525;color:#f9e6b8;font-family:system-ui,sans-serif;'+
       'padding:22px 15px 55px';
     page.innerHTML='<div style="max-width:520px;margin:auto">'+
       '<button id="sh-recruit-back" style="border:1px solid #f3d48c;border-radius:14px;'+
       'background:#142e2a;color:#ffe6af;padding:12px 18px">‹ Back</button>'+
-      '<h1 style="font-size:26px;color:#ffdf94">👑 Sharika Global Recruitment</h1>'+
+      '<h1 style="font-size:26px;color:#ffdf94">👑 ম্যানেজার নিয়োগ · Sharika</h1>'+
       '<p style="font-size:13px;line-height:1.6">Apply for official Manager, BD, Admin, '+
       'Super Admin or Coin Seller review. Applications do not provide access. '+
       'Only a verified Super Admin can grant permissions separately.</p>'+
@@ -10061,13 +10093,13 @@
       '<label>Position<select id="sh-recruit-role" required></select></label>'+
       '<label>Country<input id="sh-recruit-country" required minlength="2" maxlength="60" '+
       'placeholder="Your country"></label>'+
-      '<label>Contact email or messaging handle<input id="sh-recruit-contact" required '+
-      'minlength="5" maxlength="120" autocomplete="email" '+
-      'placeholder="How can the team contact you?"></label>'+
+      '<label>Mobile / WhatsApp (include country code)<input id="sh-recruit-contact" required '+
+      'minlength="7" maxlength="30" inputmode="tel" autocomplete="tel" '+
+      'placeholder="e.g. +8801XXXXXXXXX"></label>'+
       '<label>Your experience and reasons for applying<textarea id="sh-recruit-experience" '+
       'required minlength="20" maxlength="500" rows="5" '+
       'placeholder="Tell us about your experience"></textarea></label>'+
-      '<p style="font-size:11px;color:#b9d5d0">Never include passwords, OTPs, '+
+      '<p style="font-size:11px;color:#b9d5d0">Your Sharika account identifies the applicant. Never include passwords, OTPs, '+
       'identity documents, payment details or API keys.</p>'+
       '<button id="sh-recruit-submit" type="submit" style="padding:13px;'+
       'border:2px solid #ffe3aa;border-radius:15px;background:#d5a747;color:#19352a;'+
