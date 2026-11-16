@@ -251,17 +251,19 @@
 }
 #v-home .room-card-cover:has(> img:not([hidden])) {
   display:block;
-  aspect-ratio:auto;
-  background:transparent;
+  aspect-ratio:1;
+  background:#211021;
 }
 #v-home .room-card-cover:has(> img:not([hidden])) > span {display:none}
 #v-home .room-card-cover>span {font-size:33px;line-height:1}
 #v-home .sh-room-card-photo {
   display:block;
   width:100%;
-  height:auto;
-  max-height:340px;
-  object-fit:contain;
+  height:100%;
+  max-height:none;
+  aspect-ratio:1 / 1;
+  object-fit:cover;
+  object-position:center;
   opacity:1;
   filter:none;
 }
@@ -342,4 +344,107 @@
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
   }
+}
+
+/* Royal compact country selector + equal-height room cards (2026-11-16).
+   Keep the native select: Android can show the complete, searchable system list
+   without adding network permissions or changing room sorting logic. */
+.app.golden-home #v-home .tabs {
+  display:flex;align-items:stretch;gap:5px;
+  overflow-x:auto;scrollbar-width:none;
+  margin-bottom:12px;
+}
+.app.golden-home #v-home .tabs > button {
+  flex:1 1 0;min-width:0;padding:9px 2px;
+  border:1px solid rgba(247,202,120,.56);border-radius:15px;
+  background:linear-gradient(168deg,rgba(84,38,75,.97),rgba(32,14,35,.96));
+  color:#f7e2c2;font-size:clamp(10px,2.65vw,12px);
+  white-space:nowrap;text-overflow:clip;
+  box-shadow:inset 0 1px 0 #fff4c028,0 3px 6px #12061388;
+}
+.app.golden-home #v-home .tabs > button.on {
+  background:linear-gradient(165deg,#fff3c3 0%,#e5b95c 55%,#a56525 100%);
+  color:#482813;border-color:#ffe8a3;
+  box-shadow:0 3px 12px #ffc05e78,inset 0 2px 1px #fff9;
+}
+.app.golden-home #v-home .tabs .country-room-filter {
+  position:relative;display:grid;place-items:center;
+  flex:0 0 43px;width:43px;min-width:43px;height:43px;
+  margin:0;padding:0;border:1px solid #efd095;border-radius:15px;
+  background:linear-gradient(154deg,#6a256e 0%,#27102c 68%,#170b1b 100%);
+  color:#fce0a2;box-shadow:inset 0 1px 1px #fff6c063,0 3px 10px #0b0411a3;
+}
+.app.golden-home #v-home .tabs .country-room-filter > span {
+  font-size:22px;line-height:1;pointer-events:none;
+  filter:drop-shadow(0 1px 4px #ecc05caa);
+}
+.app.golden-home #v-home .tabs .country-room-filter select {
+  position:absolute;inset:0;width:100%;height:100%;
+  min-width:0;min-height:0;margin:0;padding:0;
+  opacity:0;cursor:pointer;border:0;z-index:2;
+}
+.app.golden-home #v-home .tabs .country-room-filter:focus-within {
+  outline:2px solid #ffe5a2;outline-offset:2px;
+}
+.app.golden-home #v-home .tabs .country-room-filter small {
+  position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;
+  clip:rect(0,0,0,0);clip-path:inset(50%);overflow:hidden;white-space:nowrap;
+}
+.app.golden-home #v-home .grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 10px}
+.app.golden-home #v-home .room-card {
+  align-self:stretch;display:flex;flex-direction:column;
+  border:2px solid #dbaa63;border-radius:22px;
+  background:linear-gradient(140deg,#682e67,#2b142b 55%,#1d0b1c);
+  box-shadow:inset 0 0 0 1px #ffe8b355,0 9px 17px #12060ea8,
+    0 0 12px #d5934e36;
+  transition:transform .15s ease,box-shadow .15s ease;
+}
+.app.golden-home #v-home .room-card:active {transform:scale(.985)}
+.app.golden-home #v-home .room-card-cover {
+  position:relative;display:grid;place-items:center;
+  width:100%;aspect-ratio:1;overflow:hidden;
+  border-radius:19px 19px 0 0;
+  background:radial-gradient(ellipse at 50% 38%,#6b3489 5%,#250e32 74%);
+}
+.app.golden-home #v-home .room-card-cover:has(>img:not([hidden])) {
+  display:block;aspect-ratio:1;
+}
+.app.golden-home #v-home .room-card-cover img.sh-room-card-photo {
+  width:100%;height:100%;object-fit:cover;max-height:none;
+}
+.app.golden-home #v-home .room-card-cover::after {
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(150deg,#fff2be33,transparent 29%,transparent 75%,#c88a4f33);
+}
+.app.golden-home #v-home .room-card-details {
+  flex:1;min-height:59px;gap:4px;padding:8px 9px;
+  border-top:1px solid #f7cc84;
+  background:linear-gradient(153deg,#62305a,#281226 60%,#1c0e19);
+}
+.app.golden-home #v-home .room-card-title>b {color:#fff5da;font-weight:800}
+.app.golden-home #v-home .room-card-meta {color:#eed0ad}
+/* The room-create gallery picker is visible in the existing bottom sheet. */
+#sh .sh-create-cover-picker {
+  display:flex;align-items:center;gap:13px;
+  min-height:87px;padding:9px 12px;margin-top:6px;
+  border:1px solid #f3cf8a;border-radius:17px;cursor:pointer;
+  color:#fff3d8;background:linear-gradient(130deg,#60335e,#20112b);
+  box-shadow:inset 0 1px 0 #fff6d933,0 5px 13px #0c061276;
+}
+#sh .sh-create-cover-picker b {display:block;font-size:14px;font-weight:750}
+#sh .sh-create-cover-picker small {display:block;font-size:11px;color:#e3c7a7;margin-top:4px}
+#sh .sh-create-cover-picker > span:last-child {margin-left:auto;font-size:25px;color:#f9d28e}
+#sh .sh-create-cover-image {
+  display:grid;place-items:center;flex:none;overflow:hidden;
+  width:65px;height:65px;border-radius:14px;font-size:26px;
+  background:#392038;border:1px solid #d8a96c;
+}
+#sh .sh-create-cover-image img {width:100%;height:100%;object-fit:cover}
+#sh .sh-create-cover-file {
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip-path:inset(50%);
+}
+#sh .sh-create-cover-picker:focus-within,
+#sh .sh-create-cover-file:focus-visible + .sh-create-cover-picker {
+  outline:2px solid #ffe7a2;outline-offset:2px;
 }

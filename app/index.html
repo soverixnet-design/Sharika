@@ -327,8 +327,7 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
   <div class="srch">🔍<input id="q" placeholder="Search room name or ID" autocomplete="off"></div>
   <div class="ban" id="ban"></div><div class="dots" id="dots"></div>
   <div class="qa"><button id="qd"><span class="home-icon hi-reward" aria-hidden="true"></span>Daily reward</button><button id="qg"><span class="home-icon hi-games" aria-hidden="true"></span>Games</button><button id="qi"><span class="home-icon hi-invite" aria-hidden="true"></span>Invite</button></div>
-  <div class="country-room-filter"><label for="room-country">🌍 Country</label><select id="room-country" aria-label="Filter rooms by country"><option value="">🌍 Global · All Rooms</option></select><small id="room-country-hint">All countries · Your country first</small></div>
-  <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My room</button><button>🕘 History</button></div>
+  <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My room</button><button>🕘 History</button><div class="country-room-filter" title="Choose country"><span aria-hidden="true">🌐</span><select id="room-country" aria-label="Show all countries or choose a country"><option value="">🌍 Global · All Rooms</option></select><small id="room-country-hint" aria-live="polite">All countries visible</small></div></div>
   <div class="grid" id="grid"></div>
  </section>
  <section class="view" id="v-rank"><div class="rtop"><button class="rbk" id="rbk">‹</button><div id="rt"><button>Lucky</button><button class="on">Rich</button><button>Charm</button><button>Room</button><button>Noble</button><button>Play</button><button>Recharge</button></div></div><div class="seg" id="rp"><button>Daily</button><button class="on">Weekly</button><button>Monthly</button></div><div id="rb"></div></section>
@@ -434,8 +433,10 @@ function updateRoomCountryFilter(){
   var account=String(A.id||'');
   if(account!==roomCountryAccount){roomCountryAccount=account;roomCountryFilter='';roomCountryOptionsSignature=''}
   var viewer=discovery.countryCode(CFG.viewerCountry||A.country);
-  var countries=(CFG.rooms||[]).concat(A.myRoom?[myR()]:[]).map(function(r){return discovery.countryCode(r.owner_country||r.country)}).filter(Boolean);
-  if(viewer)countries.push(viewer);
+  // The compact selector lists every supported country, not only countries
+  // currently hosting rooms. The chosen filter still uses verified room data.
+  var countries=CTRY.map(function(country){return country[2]});
+  if(viewer&&countries.indexOf(viewer)<0)countries.push(viewer);
   countries=Array.from(new Set(countries)).sort(function(a,b){if(a===viewer)return -1;if(b===viewer)return 1;return a.localeCompare(b)});
   if(roomCountryFilter&&countries.indexOf(roomCountryFilter)<0)roomCountryFilter='';
   var signature=viewer+':'+countries.join(',');
@@ -515,9 +516,36 @@ $("minib").onclick=function(){$("rw").classList.add("on");$("mini").classList.re
 $("minix").onclick=leaveRoom;
 function createSheet(){
   var E=["🎙️","🎤","🎶","🌙","⚽","📖","🎮","🌍","💬","🔥","💎","🌸"],ch="🎙️";
-  openSheet('<h3>🎙️ Create your own room</h3><div class="lbl">Room name</div><input class="field" id="cn" maxlength="24" placeholder="e.g. My Chat House"><div class="lbl" style="margin-top:12px">Room icon</div><div class="g4" id="ce">'+E.map(function(e,i){return'<button class="'+(i?"":"sel")+'"><span>'+e+'</span></button>'}).join("")+'</div><div class="lbl" style="margin-top:10px">Room ID = Your profile ID ('+A.id+')</div><button class="big" id="cm">Create room</button>');
+  openSheet('<h3>👑 Create your own room</h3>'+
+    '<div class="lbl">Room name <span aria-hidden="true">*</span></div>'+
+    '<input class="field" id="cn" maxlength="24" required placeholder="Enter your room name" autocomplete="off">'+
+    '<div class="lbl" style="margin-top:12px">Room photo from gallery</div>'+
+    '<label class="sh-create-cover-picker" for="sh-new-room-cover"><span class="sh-create-cover-image" id="sh-new-room-cover-preview">📷</span><span><b>Choose room photo</b><small>Open phone gallery · JPG, PNG or WebP · Max 15 MB</small></span><span aria-hidden="true">›</span></label>'+
+    '<input id="sh-new-room-cover" type="file" accept="image/*" class="sh-create-cover-file" aria-label="Choose a room photo from your phone gallery">'+
+    '<div class="lbl" style="margin-top:12px">Room icon (if no photo)</div><div class="g4" id="ce">'+E.map(function(e,i){return'<button type="button" class="'+(i?"":"sel")+'"><span>'+e+'</span></button>'}).join("")+'</div>'+
+    '<div class="lbl" style="margin-top:10px">Room ID = Your profile ID ('+A.id+')</div><button class="big" id="cm" type="button">Create room</button>');
   $("ce").querySelectorAll("button").forEach(function(b,i){b.onclick=function(){ch=E[i];$("ce").querySelectorAll("button").forEach(function(x){x.classList.remove("sel")});b.classList.add("sel")}});
-  $("cm").onclick=function(){var n=$("cn").value.trim()||"My room";var T=["mid","rose","ocean","forest","gold","sunset"],C=["#9b4dff,#4c1d95","#ff3dc8,#9d174d","#0ea5e9,#075985","#10b981,#065f46","#f59e0b,#92400e","#a855f7,#581c87"],k=Math.floor(Math.random()*6);A.myRoom={name:n,emoji:ch,th:T[k],c:C[k]};saveA();closeSheet();tab=2;$("tabs").querySelectorAll("button").forEach(function(x,i){x.classList.toggle("on",i===2)});renderRooms();toast("Room created ✓");openRoom(myR())};
+  var coverInput=$("sh-new-room-cover"),preview=$("sh-new-room-cover-preview"),previewUrl=null;
+  coverInput.onchange=function(){
+    var file=coverInput.files&&coverInput.files[0];
+    if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null}
+    if(!file){preview.textContent="📷";return}
+    if(!file.type.startsWith("image/")||file.size>15*1024*1024){
+      coverInput.value="";preview.textContent="📷";toast("Choose a photo under 15 MB");return;
+    }
+    previewUrl=URL.createObjectURL(file);
+    preview.replaceChildren();
+    var image=document.createElement("img");image.src=previewUrl;image.alt="Selected room photo preview";image.onload=function(){if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null}};
+    image.onerror=function(){preview.textContent="📷";coverInput.value="";if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null}};
+    preview.appendChild(image);
+  };
+  $("cm").onclick=function(){
+    var n=$("cn").value.trim();if(!n){toast("Please enter a room name");$("cn").focus();return}
+    var T=["mid","rose","ocean","forest","gold","sunset"],C=["#9b4dff,#4c1d95","#ff3dc8,#9d174d","#0ea5e9,#075985","#10b981,#065f46","#f59e0b,#92400e","#a855f7,#581c87"],k=Math.floor(Math.random()*6);
+    A.myRoom={name:n,emoji:ch,th:T[k],c:C[k]};saveA();closeSheet();tab=2;
+    $("tabs").querySelectorAll("button").forEach(function(x,i){x.classList.toggle("on",i===2)});
+    renderRooms();toast("Room created ✓");openRoom(myR())
+  };
 }
 $("plus").onclick=function(){if(A.myRoom)openRoom(myR());else createSheet()};
 /* ===== Daily reward, recharge, invite ===== */

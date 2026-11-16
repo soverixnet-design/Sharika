@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/sharika-room-card-games-voice-20261115
+      - feature/sharika-royal-home-gallery-20261116
       - feature/sharika-unified-release-qa-20261111
       - feature/sharika-android-staging-20261030
       - feature/sharika-original-games-cards-20261030
@@ -65,6 +66,7 @@ on:
       - 'app/royal-ranking-v2.css'
       - 'app/reference-profile.css'
       - 'app/reference-room.css'
+      - 'app/index.html'
       - 'app/golden-home.css'
       - 'app/royal-room-ui.js'
       - 'app/royal-room-ui.css'
@@ -531,6 +533,21 @@ jobs:
           ]) if(!js.includes(expected))throw Error('Agency profile packaging missing: '+expected);
           console.log('SHARIKA_AGENCY_MAIN_PROFILE_ICON_PACKAGED');
           NODE
+
+      - name: Verify compact country and gallery create form shipped in APK
+        run: |
+          set -euo pipefail
+          apk='app/build/outputs/apk/debug/app-debug.apk'
+          unzip -p "$apk" assets/index.html > "$RUNNER_TEMP/sharika-royal-home.html"
+          unzip -p "$apk" assets/golden-home.css > "$RUNNER_TEMP/sharika-royal-home.css"
+          unzip -p "$apk" assets/connection.js > "$RUNNER_TEMP/sharika-gallery-adapter.js"
+          grep -Fq 'id="sh-new-room-cover"' "$RUNNER_TEMP/sharika-royal-home.html"
+          grep -Fq 'countries=CTRY.map' "$RUNNER_TEMP/sharika-royal-home.html"
+          grep -Fq 'class="country-room-filter"' "$RUNNER_TEMP/sharika-royal-home.html"
+          grep -Fq 'object-fit:cover' "$RUNNER_TEMP/sharika-royal-home.css"
+          grep -Fq 'createdRoomId' "$RUNNER_TEMP/sharika-gallery-adapter.js"
+          grep -Fq "api('PUT','/rooms/'+createdRoomId+'/cover'" "$RUNNER_TEMP/sharika-gallery-adapter.js"
+          echo 'SHARIKA_ROYAL_HOME_AND_NEW_ROOM_GALLERY_APK_VERIFIED'
 
       - name: Save private-test APK artifact
         uses: actions/upload-artifact@v4
