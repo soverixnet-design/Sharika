@@ -1,0 +1,64 @@
+name: Sharika Assistant signing eligibility preflight
+on:
+  push:
+    branches:
+      - feature/sharika-assistant-help-staging-20261117
+    paths:
+      - '.github/workflows/sharika-assistant-signing-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compare registered Firebase fingerprints (never print private keys)
+        env:
+          STAGING_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          STAGING_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+          PLAY_B64: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEYSTORE_B64 }}
+          PLAY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+          const crypto=require('node:crypto'),cp=require('node:child_process');
+          const cfg=JSON.parse(fs.readFileSync('android-staging/app/google-services.json','utf8'));
+          const registered=(cfg.client||[]).flatMap(c=>c.oauth_client||[])
+            .filter(c=>c.client_type===1&&c.android_info?.package_name==='com.soverixnet.sharika')
+            .map(c=>String(c.android_info.certificate_hash||'').toLowerCase());
+          for(const info of [
+            ['STAGING',process.env.STAGING_B64,process.env.STAGING_PASSWORD,'sharika-staging'],
+            ['PLAY_UPLOAD',process.env.PLAY_B64,process.env.PLAY_PASSWORD,process.env.PLAY_ALIAS]
+          ]){
+            const [label,encoded,password,alias]=info;
+            if(!encoded||!password||!alias){console.log(label+': NOT_CONFIGURED');continue;}
+            const raw=Buffer.from(encoded.replace(/\s+/g,''),'base64');
+            if(raw.length<500){console.log(label+': INVALID_KEYSTORE_BYTES');continue;}
+            const folder=fs.mkdtempSync(path.join(os.tmpdir(),'sharika-signcheck-'));
+            const target=path.join(folder,'key.p12');
+            try {
+              fs.writeFileSync(target,raw,{mode:0o600});
+              const result=cp.spawnSync('keytool',['-list','-v','-keystore',target,
+                '-storepass',password,'-alias',alias],{encoding:'utf8'});
+              if(result.status!==0){console.log(label+': KEY_OR_ALIAS_INVALID');continue;}
+              const sha1=result.stdout.match(/SHA1:\s*([0-9A-F:]+)/i)?.[1]?.replaceAll(':','').toLowerCase();
+              if(!sha1){console.log(label+': SHA1_UNAVAILABLE');continue;}
+              const pinned=crypto.createHash('sha256').update(raw).digest('hex')===
+                '0373e29ebef4eaf193af678a108aefd164b12babd811d2b3e87b46b3a3026d0e';
+              console.log(label+': VALID_KEYSTORE; FIREBASE_REGISTERED='+
+                (registered.includes(sha1)?'YES':'NO')+'; PINNED_ORIGINAL='+(pinned?'YES':'NO'));
+            } finally {
+              fs.rmSync(folder,{recursive:true,force:true});
+            }
+          }
+          NODE
+          echo 'This diagnostic made no changes and disclosed no keys.'
