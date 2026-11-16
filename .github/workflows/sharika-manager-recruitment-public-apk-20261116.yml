@@ -1,0 +1,66 @@
+name: Sharika Manager Recruitment Public QA APK
+
+on:
+  push:
+    branches:
+      - fix/sharika-room-card-games-voice-20261115
+    paths:
+      - '.github/workflows/sharika-manager-recruitment-public-apk-20261116.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-manager-recruitment-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require exact verified Android staging build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          run_id='43778020505'
+          test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.head_sha')" = '17a782d923b97eb8daf61de28859b38b1ffd6bdf'
+          test "$(gh api "repos/$repo/actions/runs/$run_id/jobs" --jq '[.jobs[] | select(.name=="Build a staging-only Android debug APK")][0].conclusion')" = success
+          gh api "repos/$repo/actions/artifacts/14187505533" --jq '.name + " " + (.expired|tostring)' | grep -Fx 'Sharika-Android-Staging-Debug false'
+      - name: Download pinned QA APK
+        uses: actions/download-artifact@v4
+        with:
+          repository: soverixnet-design/Sharika
+          run-id: 43778020505
+          name: Sharika-Android-Staging-Debug
+          github-token: ${{ github.token }}
+          path: apk
+      - name: Verify embedded recruitment UI and signed Android package
+        run: |
+          set -euo pipefail
+          test -s apk/app-debug.apk
+          echo '2241edc57c28118501c790e6d8a84a1551a871ea8d5929b997c5026b697e1df3  apk/app-debug.apk' | sha256sum -c -
+          unzip -tqq apk/app-debug.apk
+          unzip -Z1 apk/app-debug.apk | grep -Fx 'AndroidManifest.xml'
+          unzip -p apk/app-debug.apk assets/connection.js | grep -Fq 'sh-manager-recruitment-banner-css'
+          unzip -p apk/app-debug.apk assets/connection.js | grep -Fq 'isRecruitmentBanner'
+          signer="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$signer"
+          "$signer" verify --verbose apk/app-debug.apk
+          install -m 0644 apk/app-debug.apk Sharika-v1.0.35-v135-Manager-Recruitment-QA.apk
+      - name: Publish public direct-download QA prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-manager-recruitment-qa-20261116-17a782d9'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "Release already exists; refusing overwrite"
+            exit 1
+          fi
+          gh release create "$tag" Sharika-v1.0.35-v135-Manager-Recruitment-QA.apk \
+            --repo "$repo" \
+            --target 17a782d923b97eb8daf61de28859b38b1ffd6bdf \
+            --title 'Sharika v1.0.35 (135) · Manager Recruitment QA APK' \
+            --notes 'Public, directly installable QA/debug APK for invited testers. Includes manager recruitment home banners routed to the existing application form, Bengali royal-navy-gold CTA UI, phone/WhatsApp and country fields. Application records remain server-side and require Super Admin review; applications grant no administrative privileges. Built from pinned Android QA run 43778020505 and SHA-256 verified. This is NOT the Play Store production release; login, two-way audio, signature compatibility and device integration must be tested. Live production service/database was not changed.' \
+            --prerelease
