@@ -196,7 +196,7 @@ Do not enable billing or merge this branch to production.
 2. Install the new staging APK over the previous *same-signed test APK*.
    Never uninstall a different live installation or clear its data.
 3. On the original Sharika login page, use **Continue with Google** or
-   sign up with an email and a password of at least 12 characters.
+   sign up with an email and a password of at least 8 characters.
 4. For email signup, click the verification link and sign in again.
    New Google accounts may be asked for a real name/date of birth.
 5. Create a new isolated D1 profile. Room creation, listing, member joining

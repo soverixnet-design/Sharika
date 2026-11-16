@@ -9,7 +9,7 @@ const nativeSource = readFileSync(join(
 ), 'utf8');
 
 function signupHarness(playStoreMode) {
-  const start = script.indexOf('  window.API.signup = async function (form) {');
+  const start = script.indexOf('  function passwordCredentials(identity, password) {');
   const end = script.indexOf('  function showConnectionRecovery(', start);
   assert.ok(start > 0 && end > start);
   const calls = [], profiles = [], saved = [];
@@ -20,7 +20,7 @@ function signupHarness(playStoreMode) {
     window,
     async (action, input) => {
       calls.push({ action, input });
-      return { signedIn: true, emailVerified: false, email: input.email, verificationSent: true };
+      return { signedIn: true, emailVerified: false, email: input.email || 'test-alias@phone.sharika.invalid', verificationSent: true };
     }, Promise.resolve(playStoreMode), playStoreMode, 0,
     { setItem: (key, value) => saved.push({ key, value }) },
     'profile-meta', country => country,
@@ -35,7 +35,7 @@ function signupHarness(playStoreMode) {
 
 test('Play virtual signup enters the same newly created Firebase identity', async () => {
   const harness = signupHarness(true);
-  const form = { key: 'tester@example.com', pw: 'a-long-passphrase', name: 'Tester', dob: '2000-01-01', country: 'BD' };
+  const form = { key: 'tester@example.com', pw: '12345678', name: 'Tester', dob: '2000-01-01', country: 'BD' };
   const result = await harness.signup(form);
   assert.equal(result.ok, true);
   assert.equal(result.acct.key, form.key);
@@ -70,4 +70,25 @@ test('Native API requests accept unverified Firebase identity only on isolated P
   assert.match(callApi, /if \(user\.isEmailVerified\(\) \|\| isIsolatedPlayVirtualBuild\(\)\) \{\s*requestStagingToken\(id, method, path, data, user\);/);
   assert.match(callApi, /if \(!current\.isEmailVerified\(\)\) \{\s*sendResult\(id, result\(false,null,"email_verification_required"\)\);/);
   assert.match(nativeSource, /private static boolean isIsolatedPlayVirtualBuild\(\)/);
+});
+
+test('seven-character signup is rejected before Firebase is called', async () => {
+  const harness = signupHarness(true);
+  const result = await harness.signup({ key: 'tester@example.com', pw: '1234567' });
+  assert.equal(result.ok, false);
+  assert.match(result.msg, /at least 8 characters/);
+  assert.deepEqual(harness.calls, []);
+  assert.match(nativeSource, /password.length\(\) < 8/);
+});
+
+test('phone signup sends a canonical login name and password and enters the Play profile', async () => {
+  const harness = signupHarness(true);
+  const form = { key: '008801234567890', pw: '12345678', name: 'Tester', dob: '2000-01-01', country: 'BD' };
+  const result = await harness.signup(form);
+  assert.equal(result.ok, true);
+  assert.deepEqual(harness.calls, [{action: 'emailSignUp', input: {phone: '+8801234567890', password: form.pw}}]);
+  assert.equal(JSON.parse(harness.saved[0].value).email, result.acct.key);
+  const staging = signupHarness(false);
+  assert.equal((await staging.signup(form)).ok, false);
+  assert.deepEqual(staging.calls, []);
 });

@@ -140,7 +140,7 @@ public final class MainActivity extends Activity {
 
         email = entry("Email", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         root.addView(email);
-        password = entry("Password (12+ characters)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        password = entry("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         root.addView(password);
 
         root.addView(action("Continue with Google", this::signInGoogle, "#4285F4"));
@@ -251,19 +251,22 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private boolean credentialsReady() {
+    private boolean credentialsReady(boolean signingUp) {
         String address = email.getText().toString().trim();
         String secret = password.getText().toString();
-        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(address).matches()
-            || secret.length() < 12) {
-            show("Enter a valid email and a password of at least 12 characters.");
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(address).matches() || secret.isEmpty()) {
+            show("Enter a valid email and password.");
+            return false;
+        }
+        if (signingUp && secret.length() < 8) {
+            show("Use at least 8 characters for your new password.");
             return false;
         }
         return true;
     }
 
     private void register(View view) {
-        if (!credentialsReady()) return;
+        if (!credentialsReady(true)) return;
         show("Creating a NEW Firebase staging user…");
         auth.createUserWithEmailAndPassword(
             email.getText().toString().trim(), password.getText().toString()
@@ -355,7 +358,7 @@ public final class MainActivity extends Activity {
     }
 
     private void signIn(View view) {
-        if (!credentialsReady()) return;
+        if (!credentialsReady(false)) return;
         show("Signing in to Firebase staging…");
         auth.signInWithEmailAndPassword(
             email.getText().toString().trim(), password.getText().toString()

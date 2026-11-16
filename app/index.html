@@ -801,7 +801,7 @@ function enter(a,msg){
 function authRender(){
   $("au").classList.toggle("w",amode==="welcome");
   if(amode==="welcome"){
-    $("au").innerHTML='<div class="wl2"><img class="wimg" src="'+BRAND.top+'" alt="Sharika Voice Chat App"><div class="wbtns"><button class="wb g" id="wg"><svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg><span>Continue with Google</span><i>›</i></button><button class="wb p" id="wp"><svg viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg><span>Continue with Phone</span><i>›</i></button><button class="wb u" id="wgs"><svg viewBox="0 0 24 24" fill="#fff"><path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zm-8 0c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.6 0-1 .1 1.2.8 2 2 2 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5z"/></svg><span>Enter as Guest</span><i>›</i></button></div><div class="wfoot">By continuing you agree to our <a href="#" data-pol="terms">Terms &amp; Conditions</a> and <a href="#" data-pol="privacy">Privacy Policy</a></div><img class="wbot" src="'+BRAND.bot+'" alt=""></div>';
+    $("au").innerHTML='<div class="wl2"><img class="wimg" src="'+BRAND.top+'" alt="Sharika Voice Chat App"><div class="wbtns"><button class="wb g" id="wg"><svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg><span>Continue with Google</span><i>›</i></button><button class="wb p" id="wp"><svg viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg><span>Continue with Email</span><i>›</i></button><button class="wb u" id="wgs"><svg viewBox="0 0 24 24" fill="#fff"><path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zm-8 0c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.6 0-1 .1 1.2.8 2 2 2 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5z"/></svg><span>Enter as Guest</span><i>›</i></button></div><div class="wfoot">By continuing you agree to our <a href="#" data-pol="terms">Terms &amp; Conditions</a> and <a href="#" data-pol="privacy">Privacy Policy</a></div><img class="wbot" src="'+BRAND.bot+'" alt=""></div>';
     bindPol($("au"));
     $("wg").onclick=function(){toast("Google Login will work once the server is connected")};
     $("wp").onclick=function(){showAuth("login")};
@@ -813,15 +813,15 @@ function authRender(){
   if(s){
     h+='<div class="apic" id="apic" style="'+(apic?"background-image:url("+apic+");border-style:solid":"")+'">'+(apic?"":"📷")+'</div><div class="lbl" style="text-align:center;margin-top:2px">Profile photo from gallery (optional)</div>';
     h+='<div class="lbl">Your name</div><input class="field" id="an" maxlength="20" placeholder="e.g. Shakil" autocomplete="name">';
-    h+='<div class="lbl">Email or phone number</div><input class="field" id="aid" placeholder="name@email.com or +8801XXXXXXXXX" autocomplete="username">';
-    h+='<div class="lbl">Password (at least 6 characters)</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="new-password"><button type="button" class="eye" id="eye">👁️</button></div>';
+    h+='<div class="lbl">Email address</div><input class="field" id="aid" type="email" placeholder="name@gmail.com" autocomplete="username">';
+    h+='<div class="lbl">Password (at least 8 characters)</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="new-password"><button type="button" class="eye" id="eye">👁️</button></div>';
     h+='<div class="lbl">Re-enter password</div><input class="field" id="apw2" type="password" autocomplete="new-password">';
     h+='<div class="lbl">Country</div><select class="field" id="ac"><option value="">Select country</option>'+CTRY.map(function(c){return'<option value="'+c[2]+'">'+c[0]+" "+c[1]+'</option>'}).join("")+'</select>';
     h+='<div class="lbl">Date of birth (cannot be changed later)</div><div class="drow"><select class="field" id="ad"><option value="">Day</option>';for(i=1;i<=31;i++)h+='<option value="'+i+'">'+bn(i)+'</option>';
     h+='</select><select class="field" id="am"><option value="">Month</option>'+MONTHS.map(function(m,k){return'<option value="'+k+'">'+m+'</option>'}).join("")+'</select><select class="field" id="ay"><option value="">Year</option>';for(i=yr-5;i>=yr-90;i--)h+='<option value="'+i+'">'+bn(i)+'</option>';
     h+='</select></div><label class="tc"><input type="checkbox" id="at"><span>I agree to the <a href="#" data-pol="terms">Terms &amp; Conditions</a> and <a href="#" data-pol="privacy">Privacy Policy</a>. Accounts cannot be created under age 13; Betting-style games stay closed under age 18.</span></label>';
   }else{
-    h+='<div class="lbl">Email, phone number or ID</div><input class="field" id="aid" placeholder="name@email.com / +8801… / ID" autocomplete="username"><div class="lbl">Password</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="current-password"><button type="button" class="eye" id="eye">👁️</button></div>';
+    h+='<div class="lbl">Email address</div><input class="field" id="aid" type="email" placeholder="name@gmail.com" autocomplete="username"><div class="lbl">Password</div><div class="pw"><input class="field" id="apw" type="password" autocomplete="current-password"><button type="button" class="eye" id="eye">👁️</button></div>';
   }
   h+='<div class="aerr" id="ae"></div><button class="big" id="ago" style="margin-top:4px">'+(s?"Create account":"Log in")+'</button>';
   if(!s)h+='<div class="alt"><button id="af">🔑 Forgot password?</button></div>';
@@ -836,15 +836,15 @@ function authRender(){
   $("ago").onclick=s?doSignup:doLogin;
 }
 async function doLogin(){
-  var id=norm($("aid").value),pw=$("apw").value;if(!id||!pw){aerr("Enter email/number/ID and password");return}
+  var id=norm($("aid").value),pw=$("apw").value;if(!id||!pw){aerr("Enter email and password");return}
   var b=$("ago");b.disabled=true;var r=await API.login(id,pw);b.disabled=false;if(!r.ok){aerr(r.msg);return}
   enter(r.acct,"Welcome, "+r.acct.p.name+"! 🎉");
 }
 async function doSignup(){
   var name=$("an").value.trim(),key=norm($("aid").value),pw=$("apw").value,c=$("ac").value,dd=+$("ad").value,mm=$("am").value,yy=+$("ay").value;
   if(name.length<2)return aerr("Enter at least 2 characters for the name");
-  if(!validIdent(key))return aerr("Enter a valid email or phone number");
-  if(pw.length<6)return aerr("Password must be at least 6 characters");
+  if(!validIdent(key.replace(/[()-]/g,""))&&!validIdent(key))return aerr("Enter a valid email or phone number with country code");
+  if(pw.length<8)return aerr("Password must be at least 8 characters");
   if(pw!==$("apw2").value)return aerr("Passwords do not match");
   if(!c)return aerr("Select country");
   if(!dd||mm===""||!yy)return aerr("Select day, month and year of birth");

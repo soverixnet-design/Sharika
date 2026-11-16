@@ -1074,13 +1074,46 @@ public final class SharikaActivity extends Activity {
         }
     }
 
-    private void emailSignIn(String id, JSONObject data) {
-        String email = data.optString("email", "").trim();
-        String password = data.optString("password", "");
-        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            sendResult(id, result(false, null, "valid_email_required"));
-            return;
+    private static final String PHONE_ACCOUNT_SUFFIX = "@phone.sharika.invalid";
+
+    private String passwordAccountEmail(String id, JSONObject data) {
+        String phone = data.optString("phone", "");
+        if (!phone.isEmpty()) {
+            // A phone number here is a login name. Firebase verifies the password.
+            // Access is limited to the existing unverified-identity Play edition.
+            if (!isIsolatedPlayVirtualBuild()) {
+                sendResult(id, result(false, null, "phone_sign_in_unavailable"));
+                return null;
+            }
+            if (!phone.matches("[+][1-9][0-9]{7,14}")) {
+                sendResult(id, result(false, null, "phone_country_code_required"));
+                return null;
+            }
+            try {
+                byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                    phone.getBytes(StandardCharsets.UTF_8));
+                StringBuilder alias = new StringBuilder(64);
+                for (byte value : digest)
+                    alias.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
+                return alias + PHONE_ACCOUNT_SUFFIX;
+            } catch (java.security.NoSuchAlgorithmException unavailable) {
+                sendResult(id, result(false, null, "phone_sign_in_unavailable"));
+                return null;
+            }
         }
+        String email = data.optString("email", "").trim();
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
+                || email.toLowerCase(java.util.Locale.ROOT).endsWith(PHONE_ACCOUNT_SUFFIX)) {
+            sendResult(id, result(false, null, "valid_email_required"));
+            return null;
+        }
+        return email;
+    }
+
+    private void emailSignIn(String id, JSONObject data) {
+        String email = passwordAccountEmail(id, data);
+        if (email == null) return;
+        String password = data.optString("password", "");
         auth.signInWithEmailAndPassword(email, password).addOnCompleteListener(this, task -> {
             if (!task.isSuccessful())
                 sendResult(id, result(false, null, safe(task.getException())));
@@ -1102,9 +1135,10 @@ public final class SharikaActivity extends Activity {
 
     private void passwordReset(String id, JSONObject data) {
         // Firebase owns password recovery; never expose whether this email has an account.
-        String email = data.optString("email", "").trim();
-        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            sendResult(id, result(false, null, "valid_email_required"));
+        String email = passwordAccountEmail(id, data);
+        if (email == null) return;
+        if (email.endsWith(PHONE_ACCOUNT_SUFFIX)) {
+            sendResult(id, result(false, null, "password_reset_requires_email"));
             return;
         }
         auth.sendPasswordResetEmail(email).addOnCompleteListener(this, task -> {
@@ -1116,10 +1150,11 @@ public final class SharikaActivity extends Activity {
     }
 
     private void emailSignUp(String id, JSONObject data) {
-        String email = data.optString("email", "").trim();
+        String email = passwordAccountEmail(id, data);
+        if (email == null) return;
         String password = data.optString("password", "");
-        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() || password.length() < 12) {
-            sendResult(id, result(false,null,"valid_email_and_12_character_password_required"));
+        if (password.length() < 8) {
+            sendResult(id, result(false,null,"8_character_password_required"));
             return;
         }
         auth.createUserWithEmailAndPassword(email, password).addOnCompleteListener(this, task -> {

@@ -5644,18 +5644,28 @@
     ensureInviteCodeInput();
   }
 
+  function passwordCredentials(identity, password) {
+    const value=String(identity||'').trim();
+    if(value.includes('@'))return {email:value,password};
+    // Keep one canonical account for +880..., 00880... and 880... spellings.
+    const number=value.replace(/[()\s-]/g,'').replace(/^(?:\+|00)/,'');
+    if(!/^[1-9]\d{7,14}$/.test(number))
+      throw new Error('Enter your email or phone number with country code, for example +8801XXXXXXXXX.');
+    if(!playVirtualIdentityAllowed)
+      throw new Error('This version supports email and password sign-in.');
+    return {phone:'+'+number,password};
+  }
   window.API.signup = async function (form) {
-    if (!form.key || !form.key.includes('@'))
-      return { ok:false, msg:'Use an email address. Phone OTP is not enabled yet.' };
-    if (String(form.pw || '').length < 12)
-      return { ok:false, msg:'Use at least 12 characters for your password.' };
+    if (String(form.pw || '').length < 8)
+      return { ok:false, msg:'Use at least 8 characters for your password.' };
     const attempt=++authAttemptId;
     try {
       await playModeReady;
-      const result = await native('emailSignUp', {email:form.key.trim(), password:form.pw});
+      const credentials=passwordCredentials(form.key,form.pw);
+      const result = await native('emailSignUp', credentials);
       try {
         localStorage.setItem(META_KEY, JSON.stringify({
-          email:form.key.trim(), name:form.name, dob:form.dob,
+          email:result.email, name:form.name, dob:form.dob,
           country:manualCountryCode(form.country),
           invite_code:document.getElementById('stage-invite-code')?.value.trim()||deferredInviteCode
         }));
@@ -5700,18 +5710,19 @@
       layer.appendChild(panel);document.body.appendChild(layer);
     }
     layer.querySelector('[data-sh-login-status]').textContent=
-      'Your Google account is still signed in. The server did not finish loading: '+
+      'Your account is still signed in. The server did not finish loading: '+
       errText(error)+'. Please retry when your connection is available.';
     document.getElementById('sp')?.classList.remove('sharika-opening-pending');
     window.hideAuth();
   }
 
   window.API.login = async function (identity, password) {
-    if (!identity.includes('@')) return {ok:false,msg:'Sign in using your email address'};
     const attempt=++authAttemptId;
-    let account=null;
+    let account=null,credentials=null;
     try {
-      account = await native('emailSignIn',{email:identity.trim(),password});
+      await playModeReady;
+      credentials=passwordCredentials(identity,password);
+      account = await native('emailSignIn',credentials);
       if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
       const local = await authenticated(account,undefined,attempt);
       if(attempt!==authAttemptId)return {ok:false,msg:'Newer sign-in in progress'};
@@ -5723,7 +5734,9 @@
         showConnectionRecovery(error);
       const message = errText(error);
       if (/supplied auth credential|invalid.credential|wrong.password|invalid.login.credentials/i.test(message))
-        return {ok:false,msg:'Email or password did not match. If you signed up with Google, use Google sign-in. Otherwise tap Forgot password.'};
+        return {ok:false,msg:credentials?.phone
+          ?'Phone number or password did not match.'
+          :'Email or password did not match. If you signed up with Google, use Google sign-in. Otherwise tap Forgot password.'};
       return {ok:false,msg:message};
     }
   };
@@ -5793,6 +5806,18 @@
     previousAuthRender();
     const google = document.getElementById('wg');
     if (google) google.onclick = googleLogin;
+    const accessButton=document.querySelector('#wp span');
+    const identityField=document.getElementById('aid');
+    playModeReady.then(()=>{
+      if(!playVirtualIdentityAllowed)return;
+      if(accessButton?.isConnected)accessButton.textContent='Continue with Email or Phone';
+      if(identityField?.isConnected){
+        identityField.type='text';
+        identityField.placeholder='name@gmail.com or +8801XXXXXXXXX';
+        if(identityField.previousElementSibling)
+          identityField.previousElementSibling.textContent='Email or phone with country code';
+      }
+    });
     const reset = document.getElementById('af');
     if (reset) reset.onclick = async function () {
       if (reset.disabled) return;
@@ -5800,7 +5825,7 @@
       const status = document.getElementById('ae');
       const email = String(field?.value || '').trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        if (status) status.textContent = 'Enter your email address above to reset your password.';
+        if (status) status.textContent = 'Enter your email address above to reset your password. Phone login names do not receive reset emails.';
         return;
       }
       reset.disabled = true;
