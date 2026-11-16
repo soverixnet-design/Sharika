@@ -9,7 +9,7 @@ assert.ok(start > 0 && end > start, 'publisher helper must remain available');
 const helper = source.slice(start, end);
 
 function simulatedSeatPromotion(failPublish = false) {
-  let stopped = false, closedReceiver = false, cleaned = 0;
+  let stopped = false, closedReceiver = false, cleaned = 0, microphonePrepared = false;
   const receiver = { connectionState: 'connected', close() { closedReceiver = true; } };
   const state = { roomId: '10000001', closed: false, canPublish: false,
     sessionIds: ['subscriber-1'], receivePC: receiver,
@@ -28,8 +28,13 @@ function simulatedSeatPromotion(failPublish = false) {
   const dependencies = {
     sfuState: state, wantedVoiceRoom: state.roomId, joinedRoom: { id: state.roomId },
     musicLocal: null, session: { user: { id: 'user-1' } },
-    navigator: { mediaDevices: { getUserMedia: async () => ({
-      getAudioTracks: () => [audioTrack], getTracks: () => [audioTrack] }) } },
+    native: async action => {
+      if (action === 'prepareRoomMicrophone') microphonePrepared = true;
+    },
+    navigator: { mediaDevices: { getUserMedia: async () => {
+      assert.equal(microphonePrepared, true, 'prepare the foreground service before capture');
+      return { getAudioTracks: () => [audioTrack], getTracks: () => [audioTrack] };
+    } } },
     RTCPeerConnection: FakePeer,
     SHARIKA_ICE_CONFIG: { iceServers: [] }, microphoneWanted: () => true,
     watchSfuSpeaking() {}, unwatchSfuSpeaking() {},

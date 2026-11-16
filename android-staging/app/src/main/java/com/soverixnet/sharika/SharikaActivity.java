@@ -26,6 +26,7 @@ import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ResultReceiver;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
@@ -83,6 +84,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * Hybrid Android shell for the unchanged original Sharika HTML design.
@@ -114,6 +116,12 @@ public final class SharikaActivity extends Activity {
     // Notifications page, never as part of signing in.
     private String pendingNotificationRequestId;
     private boolean roomAudioRouteActive;
+    private boolean roomAudioRequested;
+    private boolean roomAudioStarting;
+    private boolean roomAudioListeningReady;
+    private boolean roomMicrophonePrepared;
+    private int roomAudioGeneration;
+    private final Handler roomAudioHandler = new Handler(Looper.getMainLooper());
     private int priorAudioMode = AudioManager.MODE_NORMAL;
     private boolean priorSpeakerphone;
     private ValueCallback<Uri[]> pendingImageSelection;
@@ -236,6 +244,11 @@ public final class SharikaActivity extends Activity {
         browser.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> requestMicrophone(request));
+            }
+            @Override public void onPermissionRequestCanceled(PermissionRequest request) {
+                runOnUiThread(() -> {
+                    if (pendingMic == request) pendingMic = null;
+                });
             }
             @Override public boolean onShowFileChooser(WebView view,
                     ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
@@ -688,6 +701,67 @@ public final class SharikaActivity extends Activity {
         }
     }
 
+    private void requestRoomAudioService(String action, Consumer<Boolean> completed) {
+        int generation = roomAudioGeneration;
+        ResultReceiver callback = new ResultReceiver(roomAudioHandler) {
+            @Override protected void onReceiveResult(int code, Bundle extras) {
+                if (!roomAudioRequested || generation != roomAudioGeneration) {
+                    completed.accept(false);
+                    return;
+                }
+                if (code == RoomAudioService.LEFT) {
+                    stopRoomAudio();
+                    if (browser != null) browser.evaluateJavascript(
+                        "window.leaveRoom && window.leaveRoom()", null);
+                    return;
+                }
+                completed.accept(code == RoomAudioService.READY);
+            }
+        };
+        try {
+            startForegroundService(new Intent(this, RoomAudioService.class)
+                .setAction(action).putExtra(RoomAudioService.CALLBACK, callback));
+        } catch (RuntimeException backgroundRestricted) {
+            completed.accept(false);
+        }
+    }
+
+    private void stopRoomAudio() {
+        roomAudioRequested = false;
+        roomAudioStarting = false;
+        roomAudioListeningReady = false;
+        roomMicrophonePrepared = false;
+        roomAudioGeneration++;
+        if (pendingMic != null) { pendingMic.deny(); pendingMic = null; }
+        stopService(new Intent(this, RoomAudioService.class));
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        setRoomAudioRoute(false);
+    }
+
+    private void prepareRoomMicrophone(Consumer<Boolean> completed) {
+        if (!roomAudioRequested || auth.getCurrentUser() == null) {
+            completed.accept(false);
+            return;
+        }
+        if (roomMicrophonePrepared) {
+            completed.accept(true);
+            return;
+        }
+        requestRoomAudioService(RoomAudioService.PREPARE_MIC, success -> {
+            if (success) roomMicrophonePrepared = true;
+            completed.accept(success);
+        });
+    }
+
+    private void grantPreparedMicrophone(PermissionRequest request) {
+        prepareRoomMicrophone(success -> {
+            if (pendingMic != request) return;
+            pendingMic = null;
+            if (success) request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+            else request.deny();
+        });
+    }
+
     private void requestMicrophone(PermissionRequest request) {
         // Never grant capture to an embedded remote page. Only the packaged
         // Sharika document may ask for WebRTC microphone access.
@@ -704,11 +778,14 @@ public final class SharikaActivity extends Activity {
             if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) isAudio = true;
             else { request.deny(); return; }
         }
-        if (!isAudio) { request.deny(); return; }
+        if (!isAudio || !roomAudioRequested || pendingMic != null) {
+            request.deny();
+            return;
+        }
+        pendingMic = request;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            request.grant(new String[] { PermissionRequest.RESOURCE_AUDIO_CAPTURE });
+            grantPreparedMicrophone(request);
         } else {
-            pendingMic = request;
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC_PERMISSION_REQUEST);
         }
     }
@@ -726,10 +803,12 @@ public final class SharikaActivity extends Activity {
         }
         if (code != MIC_PERMISSION_REQUEST || pendingMic == null) return;
         PermissionRequest request = pendingMic;
-        pendingMic = null;
-        if (grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED)
-            request.grant(new String[]{ PermissionRequest.RESOURCE_AUDIO_CAPTURE });
-        else request.deny();
+        if (grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED) {
+            grantPreparedMicrophone(request);
+        } else {
+            pendingMic = null;
+            request.deny();
+        }
     }
 
     private JSONObject object() { return new JSONObject(); }
@@ -822,6 +901,7 @@ public final class SharikaActivity extends Activity {
             case "passwordReset": passwordReset(id, data); break;
             case "googleSignIn": googleSignIn(id); break;
             case "signOut":
+                stopRoomAudio();
                 auth.signOut();
                 credentials.clearCredentialStateAsync(
                     new ClearCredentialStateRequest(), new CancellationSignal(),
@@ -888,14 +968,50 @@ public final class SharikaActivity extends Activity {
                     (value,error) -> sendResult(id,result(error==null,value,error)));
                 break;
             case "roomScreenAwake":
-                // Keep the display active only during an authenticated voice
-                // room, including when its mini-player is on another app page.
-                if (data.optBoolean("enabled", false)) {
-                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                    setRoomAudioRoute(true);
-                } else {
-                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                    setRoomAudioRoute(false);
+                if (!data.optBoolean("enabled", false)) {
+                    stopRoomAudio();
+                    sendResult(id, result(true, object(), null));
+                    break;
+                }
+                if (auth.getCurrentUser() == null) {
+                    sendResult(id, result(false, null, "login_required"));
+                    break;
+                }
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                setRoomAudioRoute(true);
+                roomAudioRequested = true;
+                if (roomAudioListeningReady || roomAudioStarting) {
+                    sendResult(id, result(true, object(), null));
+                    break;
+                }
+                roomAudioStarting = true;
+                int audioGeneration = roomAudioGeneration;
+                requestRoomAudioService(RoomAudioService.START_LISTENING, success -> {
+                    if (audioGeneration == roomAudioGeneration) {
+                        roomAudioStarting = false;
+                        roomAudioListeningReady = success;
+                    }
+                    sendResult(id, result(success, object(),
+                        success ? null : "background_room_audio_unavailable"));
+                });
+                break;
+            case "prepareRoomMicrophone":
+                if (!roomAudioRequested || auth.getCurrentUser() == null) {
+                    sendResult(id, result(false, null, "join_room_first"));
+                    break;
+                }
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                    // WebChromeClient prompts for the permission, then prepares the service.
+                    sendResult(id, result(true, object(), null));
+                    break;
+                }
+                prepareRoomMicrophone(success -> sendResult(id, result(success, object(),
+                    success ? null : "open_sharika_to_enable_room_microphone")));
+                break;
+            case "releaseRoomMicrophone":
+                if (roomAudioRequested && roomMicrophonePrepared) {
+                    roomMicrophonePrepared = false;
+                    requestRoomAudioService(RoomAudioService.RELEASE_MIC, ignored -> {});
                 }
                 sendResult(id, result(true, object(), null));
                 break;
@@ -1499,8 +1615,7 @@ public final class SharikaActivity extends Activity {
         if (dailyTaskBanner != null) dailyTaskBanner.destroy();
         if (playBilling != null) { playBilling.close(); playBilling = null; }
         if (googlePending) expireGoogleSignIn(googleAttempt);
-        setRoomAudioRoute(false);
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        stopRoomAudio();
         if (unregisterModernBack != null) {
             unregisterModernBack.run();
             unregisterModernBack = null;

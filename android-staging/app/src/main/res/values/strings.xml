@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Sharika</string>
+    <string name="room_audio_channel">Voice room audio</string>
+    <string name="room_audio_title">Sharika voice room</string>
+    <string name="room_audio_active">Room audio is active. Tap to return to Sharika.</string>
+    <string name="room_audio_leave">Leave room</string>
 </resources>

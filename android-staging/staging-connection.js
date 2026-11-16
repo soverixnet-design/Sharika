@@ -4433,7 +4433,10 @@
   // Android background/foreground transitions may pause remote WebRTC audio
   // while leaving the receiving peer connection itself connected.
   document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden)resumeRoomAudio();
+    if(!document.hidden){
+      resumeRoomAudio();
+      if(joinedRoom)setRoomScreenAwake(true);
+    }
   });
   window.addEventListener('pageshow',resumeRoomAudio);
   const roomAudioFrame=document.getElementById('rf');
@@ -4795,6 +4798,7 @@
       const publications=initialPublications??
         (await api('GET','/rooms/'+state.roomId+'/voice/publications')).publications??[];
       const live=new Set(publications.map(x=>x.sessionId+':'+x.trackName));
+      state.subscriptionFailures=0;
       for(const key of state.failedPublications.keys())
         if(!live.has(key))state.failedPublications.delete(key);
       const upcoming=publications.filter(x=>x &&
@@ -4915,6 +4919,8 @@
     state.startedAt=Date.now();
     state.captureError=null;
     try {
+      await native('prepareRoomMicrophone');
+      if(!currentVisit())throw new Error('Voice room changed');
       state.media=await navigator.mediaDevices.getUserMedia({
         audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
       });
@@ -5004,6 +5010,7 @@
     }catch(error){
       if(!state.media)state.captureError=error;
       stopSfuPublishing(state);
+      if(currentVisit())native('releaseRoomMicrophone').catch(()=>{});
       throw error;
     }
   }
@@ -5150,8 +5157,9 @@
             current.iceConfig=iceConfig;
             await startSfuPublishing(current);
           }
-        }else if(current.canPublish){
+        }else if(current.canPublish||current.media){
           stopSfuPublishing(current);
+          native('releaseRoomMicrophone').catch(()=>{});
         }
         return {publishing:!!current.readyPublication};
       }
@@ -5203,8 +5211,11 @@
     return connectVoice(roomId);
   }
   function setRoomScreenAwake(enabled) {
-    native('roomScreenAwake',{enabled:!!enabled}).catch(error=>
-      console.warn('Room screen-awake update:',errText(error)));
+    native('roomScreenAwake',{enabled:!!enabled}).catch(error=>{
+      console.warn('Room audio service:',errText(error));
+      if(enabled&&joinedRoom&&errText(error)==='background_room_audio_unavailable')
+        toast('Background room audio unavailable. Open Sharika to resume room audio.');
+    });
   }
   function markLocalMicrophone(enabled) {
     // WebView may reselect the earpiece when WebRTC starts capturing audio.
@@ -7365,8 +7376,9 @@
         await reloadWallet();
     }
     async function setRoomAdmin(publicId,makeAdmin){
-      if(room.owner_id!==session?.user?.id)throw new Error('Room owner only');
+      if(!visitIsActive()||room.owner_id!==session?.user?.id)throw new Error('Room owner only');
       if(!/^[0-9]{8}$/.test(String(publicId||''))||
+         String(publicId)===String(profile?.public_id)||
          frame.__sharikaMemberRoles?.get(String(publicId))==='owner')
         throw new Error('Choose another verified room member');
       const result=await api('POST','/rooms/'+room.id+'/admins',{
@@ -7575,8 +7587,6 @@
           } else throw new Error('Only a Room Admin can mute another user');
         } else if(action==='kick' && seat>0) {
           await moderateSeat('kick',seat);
-        } else if(action==='admin_toggle' && owner && target?.public_id && !isSelf) {
-          await setRoomAdmin(target.public_id,target.room_role!=='admin');
         } else if(action==='own' && owner) {
           frame.open('<h3>👑 Verified owner controls</h3>'+
             '<div class="row">Tap an occupied seat to mute, unmute, remove from mic or kick a guest.</div>');
@@ -7773,6 +7783,27 @@
         pair.classList.add('has-cp');
       }).catch(error=>console.warn('Verified room CP unavailable:',errText(error)));
     }
+    function addRoomAdminAction(actions,publicId){
+      if(!actions||!visitIsActive()||room.owner_id!==session?.user?.id||
+         !/^[0-9]{8}$/.test(String(publicId||''))||
+         String(publicId)===String(profile?.public_id)||
+         verifiedMemberRole(publicId)==='owner')return;
+      const button=frame.document.createElement('button');
+      button.type='button';button.className='act';
+      const icon=frame.document.createElement('span');icon.textContent='🛡';
+      const makeAdmin=verifiedMemberRole(publicId)!=='admin';
+      button.append(icon,frame.document.createTextNode(makeAdmin?'Make Room Admin':'Remove Room Admin'));
+      button.onclick=async()=>{
+        if(button.disabled)return;
+        button.disabled=true;
+        try{await setRoomAdmin(publicId,makeAdmin);}
+        catch(error){
+          frame.toast('Room Admin: '+errText(error));
+          if(button.isConnected)button.disabled=false;
+        }
+      };
+      actions.append(button);
+    }
     // Top-row portraits, online list and mic-seat avatars use the same
     // first-tap mini profile. The second tap opens the full verified profile.
     frame.__sharikaOpenQuickProfile=async member=>{
@@ -7811,6 +7842,7 @@
         button.onclick=()=>Promise.resolve(callback()).catch(error=>frame.toast(errText(error)));
         actions.append(button);
       }
+      addRoomAdminAction(actions,publicId);
     };
     frame.seatSheet=function(index){
       const selected=frame.seats?.[index];
@@ -7843,9 +7875,6 @@
          (owner||selected.room_role!=='admin'))options.push(
         ['mute',selected.muted?'🔊':'🔇',selected.muted?'Unmute':'Mute'],
         ['down','⬇️','Remove from mic'],['kick','🚫','Kick out']);
-      if(owner&&index>0&&!self)options.push(
-        ['admin_toggle','🛡',selected.room_role==='admin'
-          ?'Remove Room Admin':'Make Room Admin']);
       for(const [action,icon,label] of options){
         const button=frame.document.createElement('button');
         button.className='act'+(action==='kick'?' dg':'');
@@ -7855,6 +7884,7 @@
         button.onclick=()=>frame.act(action,index);
         actions.appendChild(button);
       }
+      if(!self)addRoomAdminAction(actions,selected.public_id);
       return result;
     };
     const originalSeatEmoji=frame.seatEmoji;
@@ -8031,24 +8061,7 @@
         if(!verified){frame.toast('Verified member ID unavailable');return;}
         openVerifiedReport('user',verifiedId,String(user.n||'Member'));
       };
-      if(verified&&room.owner_id===session?.user?.id&&
-         selectedRole!=='owner'){
-        const adminButton=frame.document.createElement('button');
-        adminButton.type='button';
-        adminButton.className='act';
-        adminButton.textContent=selectedRole==='admin'
-          ?'🛡 Remove Room Admin':'🛡 Make Room Admin';
-        sheet?.querySelector('.acts')?.appendChild(adminButton);
-        adminButton.onclick=async()=>{
-          if(adminButton.disabled)return;
-          adminButton.disabled=true;
-          try{await setRoomAdmin(verifiedId,selectedRole!=='admin');}
-          catch(error){
-            if(adminButton.isConnected)adminButton.disabled=false;
-            frame.toast('Room Admin: '+errText(error));
-          }
-        };
-      }
+      if(verified)addRoomAdminAction(sheet?.querySelector('.acts'),verifiedId);
       const inviteButton=sheet?.querySelector('button.act[data-a="iv"]');
       if(inviteButton)inviteButton.onclick=async()=>{
         if(inviteButton.disabled)return;
@@ -8558,7 +8571,7 @@
         page.remove();frame.themeSheet();
       }:null);
       const modGroup=section('Moderation');
-      const adminRow=row(modGroup,'Admins',owner?'Loading count…':'Owner only',
+      const adminRow=row(modGroup,'Room Admins',owner?'Loading count…':'Owner only',
         owner?adminsPanel:null);
       if(owner)api('GET','/rooms/'+room.id+'/admins').then(data=>{
         if(adminRow.trail.isConnected)
@@ -9401,10 +9414,10 @@
         return;
       }
       joinedRoom=room;
+      setRoomScreenAwake(true);
       ensureVoiceConnected(room.id).catch(error=>{
         if(isCurrent())console.warn('Room voice:',errText(error));
       });
-      setRoomScreenAwake(true);
       if(window.SharikaDiscovery){
         window.CFG.roomHistoryIds=window.SharikaDiscovery.recordVisit(
           window.localStorage,accountId,room.id);

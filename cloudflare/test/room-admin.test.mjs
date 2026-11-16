@@ -93,6 +93,10 @@ test('Android bridge, server member role and UI include room admin feature',()=>
   assert.match(ui,/Make Room Admin/);
   assert.match(ui,/Remove Room Admin/);
   assert.match(ui,/__sharikaRoomRole/);
+  const quickProfile=ui.slice(ui.indexOf('    frame.__sharikaOpenQuickProfile=async'),
+    ui.indexOf('    frame.seatSheet=function(index)'));
+  assert.match(quickProfile,/addRoomAdminAction\(actions,publicId\)/);
+  assert.match(ui,/if\(!self\)addRoomAdminAction\(actions,selected.public_id\)/);
   assert.match(migration,/CREATE TABLE IF NOT EXISTS sharika_room_admins/);
 });
 

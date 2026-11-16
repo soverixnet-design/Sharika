@@ -203,7 +203,7 @@ test('seat half-profile opens fully verified profile and mute badge sits above f
 
 test('standalone Room Settings reads real admins, blocks and kick history',()=>{
   assert.match(ui,/frame\.settings=openRoomSettingsPage/);
-  assert.match(ui,/row\(modGroup,'Admins'/);
+  assert.match(ui,/row\(modGroup,'Room Admins'/);
   assert.match(ui,/row\(modGroup,'Blocked List'/);
   assert.match(ui,/row\(modGroup,'Kick History'/);
   assert.match(worker,/action==='kick-history'/);
