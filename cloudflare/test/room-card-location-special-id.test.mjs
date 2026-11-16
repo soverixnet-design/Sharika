@@ -46,7 +46,10 @@ test('room cards put verified identity below the unfiltered photo',()=>{
   assert.doesNotMatch(card,/class="(?:pat|shine|tilt|live)"/);
   assert.doesNotMatch(render({...room,cover_url:photo.replace('10000002','10000003')}),/sh-room-card-photo/);
   assert.doesNotMatch(render({...room,cover_url:'https://example.test/cover.jpg'}),/sh-room-card-photo/);
-  assert.match(css,/\.sh-room-card-photo \{[^}]*object-fit:contain/);
+  // Royal 3D cards use a 1:1 cover crop so user-uploaded portraits of
+  // different dimensions never create uneven room-card heights.
+  assert.match(css,/\.sh-room-card-photo \{[^}]*aspect-ratio:1 \/ 1;[^}]*object-fit:cover/);
+  assert.match(css,/\.room-card-cover:has\(> img:not\(\[hidden\]\)\) \{[^}]*aspect-ratio:1/);
   assert.match(ui,/row\(roomGroup,'Profile photo',owner\?'Edit cover':''/);
   assert.match(ui,/paintRoomCoverPreview\(preview,verifiedCoverUrl\(room\.cover_url\)\)/);
   assert.match(ui,/owner\?\(\)=>pickRoomCover\(room,frame\):null/);
