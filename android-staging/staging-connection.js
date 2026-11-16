@@ -14243,7 +14243,19 @@
           '\nতথ্যটি সার্ভার থেকে এখনই যাচাই করা হয়েছে। কয়েন নগদে উত্তোলনযোগ্য নয়।';
       }
       if(kind==='room'){
-        const data=await api('GET','/me/room');
+        let data;
+        try{
+          data=await api('GET','/me/room');
+        }catch(error){
+          // Rolling upgrade: older staging Workers don't yet expose /me/room.
+          // Public discovery has a 100-room cap, so a missing match cannot
+          // safely be treated as proof that this owner has no room.
+          const listing=await api('GET','/rooms');
+          const own=(Array.isArray(listing?.rooms)?listing.rooms:[])
+            .find(item=>String(item.owner_id)===String(accountId));
+          if(!own)throw new Error('Owner room verification is temporarily unavailable');
+          data={room:own};
+        }
         if(!data||!Object.prototype.hasOwnProperty.call(data,'room'))
           throw new Error('Room information unavailable');
         const room=data.room;
