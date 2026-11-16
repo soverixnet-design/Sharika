@@ -534,6 +534,22 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB,uid);
       return reply({banners:await listPublicBanners(env.DB,url.origin)},200,cors);
     }
+    // SHARIKA_ASSISTANT_PRIVATE_ROOM_20261117
+    // Only the authenticated Firebase principal can read their own room.
+    // No client-supplied owner ID or room ID is accepted.
+    if(path==='/api/v1/me/room' && request.method==='GET'){
+      await assertActive(env.DB,uid);
+      const room=await env.DB.prepare(
+        'SELECT id,name,seat_count,theme,created_at FROM sharika_rooms WHERE owner_id=? LIMIT 1'
+      ).bind(uid).first();
+      return reply({room:room?{
+        id:room.id,
+        name:room.name,
+        seat_count:Number(room.seat_count)||0,
+        theme:room.theme||'mid',
+        created_at:room.created_at||null
+      }:null},200,cors);
+    }
     if (path === '/api/v1/me/location') {
       await assertActive(env.DB,uid);
       return handleLocation({request,db:env.DB,uid,readBody,reply,fail,cors});
