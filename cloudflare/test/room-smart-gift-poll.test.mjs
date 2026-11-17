@@ -109,3 +109,62 @@ test('failed gift poll releases its single-flight lock so later retries still wo
   requests[1].resolve({events:[]});
   await retry;
 });
+
+function roomsHarness() {
+  const requests=[];
+  const ctx=createContext({
+    session:{user:{id:'alice'}},
+    reloadRoomsOnce(){
+      const request=deferred();
+      requests.push(request);
+      return request.promise;
+    }
+  });
+  runInContext(sourceBetween('  let roomsRequestNo=0;',
+    '  async function reloadRoomsOnce() {'),ctx);
+  return {ctx,requests};
+}
+
+test('room-list heartbeat reuses a slow verified GET instead of restarting UI loading',async()=>{
+  const {ctx,requests}=roomsHarness();
+  const first=ctx.reloadRooms(true);
+  const second=ctx.reloadRooms(true);
+  assert.equal(requests.length,1);
+  assert.equal(first,second);
+  requests[0].resolve('room cards from server');
+  await first;
+  assert.equal(requests.length,1);
+  const next=ctx.reloadRooms(true);
+  assert.equal(requests.length,2);
+  requests[1].resolve('new cards');
+  assert.equal(await next,'new cards');
+});
+
+test('room setting edits get one fresh room list after an older background poll',async()=>{
+  const {ctx,requests}=roomsHarness();
+  const passive=ctx.reloadRooms(true);
+  const edited=ctx.reloadRooms();
+  const otherEdit=ctx.reloadRooms();
+  assert.equal(requests.length,1);
+  assert.equal(edited,otherEdit);
+  requests[0].resolve('old rooms');
+  await passive;
+  await Promise.resolve();
+  assert.equal(requests.length,2,'settings change must not reuse stale pre-edit snapshot');
+  requests[1].resolve('new rooms');
+  assert.equal(await edited,'new rooms');
+});
+
+test('switching accounts must not coalesce a new user room list with the previous identity',async()=>{
+  const {ctx,requests}=roomsHarness();
+  const oldUser=ctx.reloadRooms(true);
+  ctx.session={user:{id:'bob'}};
+  const newUser=ctx.reloadRooms(true);
+  assert.equal(requests.length,2);
+  requests[0].resolve('old');
+  requests[1].resolve('bob rooms');
+  assert.equal(await oldUser,'old');
+  assert.equal(await newUser,'bob rooms');
+  assert.match(adapter,/requestNo!==roomsRequestNo \|\| session\?\.user\?\.id!==userId/);
+  assert.match(adapter,/document\.visibilityState==='visible'\)reloadRooms\(true\)/);
+});
