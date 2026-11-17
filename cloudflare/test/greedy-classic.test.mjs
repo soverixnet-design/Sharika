@@ -108,6 +108,7 @@ test('original uploaded 21 PNGs are kept, English-only, with no client coin muta
  assert.doesNotMatch(html,/Math\.random\(\)|S\.bal\+=|S\.bal-=/);
  assert.doesNotMatch(js,/Math\.random\(\)|S\.bal\+=|S\.bal-=/);
  assert.match(html,/greedy-classic-live\.js/);
+ assert.match(html,/S\.pool\?\.\[i\]/,'original HOT and fire icons must use verified pool totals');
  assert.match(js,/window\.bet=bet/);
  assert.match(js,/sharika:original-request/);
  assert.match(js,/unconfirmed=payload/);
@@ -138,11 +139,12 @@ test('native parent bridge confirms wager before wallet changes, without fake de
  };
  send(requests[0],{serverTime:Date.now(),balance:1000,todayWin:0,todayPlayed:0,
   user:{name:'Verified Test'},myBets:Array(8).fill(0),history:[],
-  state:{round:123,phase:'betting',endsAt:Date.now()+8000}});
+  state:{round:123,phase:'betting',endsAt:Date.now()+8000,totals:[500,0,0,0,0,0,0,0]}});
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(S.bal,1000);
  assert.equal(S.round,123);
  assert.equal(S.phase,'bet');
+ assert.equal(S.pool[0],500,'HOT and fire are based on verified total player wagers');
  const wager=window.bet('chicken');
  assert.equal(S.bal,1000,'client may not optimistically debit before verified result');
  const request=requests.at(-1);
