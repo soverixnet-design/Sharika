@@ -775,3 +775,60 @@ html.sh-room-preview .app.sh-royal-room > :is(.sh-composer,.sh-room-side-gift,.s
 .app.sh-royal-room:has(.sh-reference-room-tools.on) .sh-reference-game-banner {
   pointer-events:none!important;
 }
+
+
+/* Only verified Super-Admin artwork is rendered in these room-only slots.
+   Every overlay remains outside the microphone hit targets. */
+.app.sh-royal-room .sh-reference-game-banner > img {
+  display:block;
+  width:48px;
+  height:48px;
+  object-fit:cover;
+  border-radius:10px;
+  pointer-events:none;
+}
+.app.sh-royal-room .sh-reference-game-banner > span:not(.sh-sprite) {
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:9px;
+}
+.app.sh-royal-room .sh-reference-event-banner {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:4px 9px;
+  margin:3px 10px;
+  flex:0 0 auto;
+  min-height:41px;
+  max-height:60px;
+  overflow:hidden;
+  border:1px solid #d6b36e;
+  border-radius:12px;
+  background:linear-gradient(120deg,#1a362aee,#311a31e8);
+  box-shadow:inset 0 1px #ffffff29;
+  color:#ffe8bc;
+}
+.app.sh-royal-room .sh-reference-event-banner[hidden] {
+  display:none!important;
+}
+.app.sh-royal-room .sh-reference-event-banner img {
+  width:70px;
+  height:43px;
+  flex:none;
+  border-radius:9px;
+  object-fit:cover;
+}
+.app.sh-royal-room .sh-reference-event-banner strong {
+  min-width:0;
+  line-height:1.2;
+  font-size:12px;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
+.app.sh-royal-room.sh-keyboard-open .sh-reference-event-banner {
+  display:none!important;
+}
