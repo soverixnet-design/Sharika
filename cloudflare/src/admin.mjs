@@ -12,6 +12,7 @@ import { handleBondAdmin } from './bonds.mjs';
 import { handleCpRewardAdmin } from './cp-rewards.mjs';
 import { handleEventAdmin } from './events.mjs';
 import {handleGameCatalogAdmin} from './game-catalog.mjs';
+import {handleCleopatraAdmin} from './cleopatra.mjs';
 import {handleProfileLayoutAdmin} from './profile-layout.mjs';
 import { handleInviteAdmin } from './invites.mjs';
 import { handleRechargeAdmin } from './recharges.mjs';
@@ -180,6 +181,9 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
   if(operation.startsWith('special-ids'))
     return await handleSpecialAdmin({request,env,uid,actor,operation,cors,reply,fail,ctx});
   if(operation==='profile-layout')return await handleProfileLayoutAdmin({
+    request,db:env.DB,uid,role:actor.role,reply,fail,cors
+  });
+  if(operation==='cleopatra')return await handleCleopatraAdmin({
     request,db:env.DB,uid,role:actor.role,reply,fail,cors
   });
   if(operation==='game-catalog')return await handleGameCatalogAdmin({

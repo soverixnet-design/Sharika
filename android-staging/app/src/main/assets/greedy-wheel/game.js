@@ -20,47 +20,25 @@
     // Order matters: first 4 = right side (meat ×10 ×15 ×25 ×45, top→bottom), last 4 = left side (veg ×5).
     // weight = relative chance (out of 1000 together with specials). Demo mode only — online the server decides.
     items: [
-      { id: 'shrimp',  img: 'img/shrimp.webp',  mult: 10, type: 'meat', weight: 96.94,  name: { bn: 'চিংড়ি',   en: 'Shrimp'  } },
-      { id: 'fish',    img: 'img/fish.webp',    mult: 15, type: 'meat', weight: 63.96,  name: { bn: 'মাছ',     en: 'Fish'    } },
-      { id: 'chicken', img: 'img/chicken.webp', mult: 25, type: 'meat', weight: 37.58,  name: { bn: 'চিকেন',   en: 'Chicken' } },
-      { id: 'steak',   img: 'img/steak.webp',   mult: 45, type: 'meat', weight: 19.99,  name: { bn: 'স্টেক',   en: 'Steak'   } },
-      { id: 'cabbage', img: 'img/cabbage.webp', mult: 5,  type: 'veg',  weight: 193.88, name: { bn: 'বাঁধাকপি', en: 'Cabbage' } },
-      { id: 'carrot',  img: 'img/carrot.webp',  mult: 5,  type: 'veg',  weight: 193.88, name: { bn: 'গাজর',    en: 'Carrot'  } },
-      { id: 'corn',    img: 'img/corn.webp',    mult: 5,  type: 'veg',  weight: 193.88, name: { bn: 'ভুট্টা',   en: 'Corn'    } },
-      { id: 'tomato',  img: 'img/tomato.webp',  mult: 5,  type: 'veg',  weight: 193.88, name: { bn: 'টমেটো',   en: 'Tomato'  } },
+      { id: 'shrimp',  img: 'img/shrimp.webp',  mult: 10, type: 'meat', weight: 96.94,  name: { en: 'Shrimp'  } },
+      { id: 'fish',    img: 'img/fish.webp',    mult: 15, type: 'meat', weight: 63.96,  name: { en: 'Fish'    } },
+      { id: 'chicken', img: 'img/chicken.webp', mult: 25, type: 'meat', weight: 37.58,  name: { en: 'Chicken' } },
+      { id: 'steak',   img: 'img/steak.webp',   mult: 45, type: 'meat', weight: 19.99,  name: { en: 'Steak'   } },
+      { id: 'cabbage', img: 'img/cabbage.webp', mult: 5,  type: 'veg',  weight: 193.88, name: { en: 'Cabbage' } },
+      { id: 'carrot',  img: 'img/carrot.webp',  mult: 5,  type: 'veg',  weight: 193.88, name: { en: 'Carrot'  } },
+      { id: 'corn',    img: 'img/corn.webp',    mult: 5,  type: 'veg',  weight: 193.88, name: { en: 'Corn'    } },
+      { id: 'tomato',  img: 'img/tomato.webp',  mult: 5,  type: 'veg',  weight: 193.88, name: { en: 'Tomato'  } },
     ],
     // Special results (cannot be bet on directly). wins = indexes of items that ALL win together.
     specials: [
-      { id: 'salad', img: 'img/salad.webp', type: 'veg',  wins: [4, 5, 6, 7], weight: 4, name: { bn: 'সালাদ', en: 'Salad' }, desc: { bn: 'সব সবজি জিতবে', en: 'All veg win' } },
-      { id: 'pizza', img: 'img/pizza.webp', type: 'meat', wins: [0, 1, 2, 3], weight: 2, name: { bn: 'পিৎজা', en: 'Pizza' }, desc: { bn: 'সব মাংস জিতবে', en: 'All meat win' } },
+      { id: 'salad', img: 'img/salad.webp', type: 'veg',  wins: [4, 5, 6, 7], weight: 4, name: { en: 'Salad' }, desc: { en: 'All veg win' } },
+      { id: 'pizza', img: 'img/pizza.webp', type: 'meat', wins: [0, 1, 2, 3], weight: 2, name: { en: 'Pizza' }, desc: { en: 'All meat win' } },
     ],
     resultProvider: null,   // demo-mode hook (optional)
     betValidator: null,     // demo-mode hook (optional)
   };
 
   const T = {
-    bn: {
-      lastWin: 'শেষ জয়', round: 'রাউন্ড', placeBet: 'বেট করো', spinning: 'ঘুরছে', result: 'ফলাফল', waiting: 'অপেক্ষা',
-      today: 'আজকের আয়', repeat: 'আবার', auto: 'অটো', online: 'জন খেলছে', veg: 'সবজি ×5', meat: 'মাংস ×10–×45',
-      resSuffix: 'ফলাফল', earn: 'এই রাউন্ডে জয়', bets: 'এই রাউন্ডে বেট',
-      rank: 'এই রাউন্ডের সেরা', noCoins: 'পর্যাপ্ত কয়েন নেই', betClosed: 'বেট বন্ধ, পরের রাউন্ডের অপেক্ষা করো',
-      maxBet: 'এই রাউন্ডের সর্বোচ্চ বেট হয়ে গেছে', noLast: 'আগের রাউন্ডে কোনো বেট নেই', you: 'তুমি',
-      helpTitle: 'কীভাবে খেলবে', tabResults: 'ফলাফল হিস্ট্রি', tabRecords: 'আমার রেকর্ড',
-      last20: 'শেষ ২০ রাউন্ডে কতবার এসেছে', noRecords: 'এখনো কোনো বেট করোনি',
-      thRound: 'রাউন্ড', thResult: 'ফলাফল', thBet: 'বেট', thWin: 'জয়',
-      connecting: 'সার্ভারে যুক্ত হচ্ছে…', offline: 'সংযোগ বিচ্ছিন্ন, আবার চেষ্টা হচ্ছে…', walletErr: 'কয়েন কাটা যায়নি, আবার চেষ্টা করো',
-      authErr: 'লগইন যাচাই হয়নি, অ্যাপ থেকে আবার খোলো', bigWin: 'বড় জয়!',
-      help: [
-        'নিচ থেকে একটি কয়েন চিপ বাছাই করো।',
-        'যে খাবারে বেট করতে চাও, সেটায় ট্যাপ করো। একসাথে একাধিক খাবারে বেট করা যায়।',
-        'বাম পাশের সবজিগুলোতে ×5, ডান পাশের মাংসে ×10, ×15, ×25, ×45।',
-        'সময় শেষ হলে আলো ঘুরে একটি খাবারে থামবে। সেখানে বেট থাকলে বেট × গুণ কয়েন পাবে।',
-        'সালাদ এলে বাম পাশের ৪টি সবজির সব বেট একসাথে জিতবে।',
-        'পিৎজা এলে ডান পাশের ৪টি মাংসের (×10, ×15, ×25, ×45) সব বেট একসাথে জিতবে।',
-        '“আবার” চাপলে আগের বেট আবার বসবে, “অটো” চালু থাকলে প্রতি রাউন্ডে নিজে থেকে বসবে।',
-        'উপরের ঘড়ি বাটনে আগের ফলাফল ও তোমার রেকর্ড দেখা যাবে।'
-      ]
-    },
     en: {
       lastWin: 'Last win', round: 'Round', placeBet: 'Place bets', spinning: 'Spinning', result: 'Result', waiting: 'Waiting',
       today: "Today's revenue", repeat: 'Repeat', auto: 'Auto', online: 'playing', veg: 'Veg ×5', meat: 'Meat ×10–×45',
@@ -97,7 +75,7 @@
   const payoutOf = (o, bets) => OUT[o].wins.reduce((a, w) => a + bets[w] * CONFIG.items[w].mult, 0);
 
   const S = {
-    lang: T[qs.get('lang')] ? qs.get('lang') : 'bn',
+    lang: 'en', // English-only game UI regardless of URL or device locale
     user: { id: qs.get('uid') || 'guest', name: qs.get('name') || 'Player', avatar: qs.get('avatar') || '' },
     balance: qs.has('balance') ? Math.max(0, parseInt(qs.get('balance'), 10) || 0) : CONFIG.startBalance,
     round: parseInt(qs.get('round'), 10) || 580,

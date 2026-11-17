@@ -2,21 +2,26 @@
 // Turning a game off rejects NEW bets but never interrupts historical settlement.
 export const GAME_DEFINITIONS=Object.freeze([
   {id:'sovera-food',name:'Sovera Food Wheel',engine:'original'},
+  {id:'food-deluxe',name:'Food Wheel Deluxe',engine:'food-wheel-d1'},
   {id:'sovera-gaddy',name:'Sovera Gaddy Game',engine:'gaddy-d1'},
   {id:'night-food',name:'Night Food Wheel',engine:'original'},
   {id:'jackpot-fruit',name:'Jackpot Fruit',engine:'original/legacy'},
   {id:'fruit-royale',name:'Fruit Royale V2',engine:'fruit-royale'},
   {id:'greedy-wheel',name:'Greedy Wheel',engine:'greedy'},
+  {id:'greedy-classic',name:'Greedy Game',engine:'greedy-classic-d1'},
+  {id:'cleopatra',name:"Cleopatra's Gold Deluxe",engine:'slot-d1'},
   {id:'food-wheel',name:'Food Wheel (legacy)',engine:'legacy'}
 ]);
 const GAME_IDS=new Set(GAME_DEFINITIONS.map(game=>game.id));
+const NEW_GAMES_REQUIRING_MIGRATION=new Set(['cleopatra','food-deluxe','greedy-classic']);
 
 export async function readGameCatalog(db){
   const result=await db.prepare(
     'SELECT id,enabled FROM sharika_game_catalog ORDER BY id'
   ).all();
   const state=new Map((result?.results||[]).map(row=>[row.id,Number(row.enabled)===1]));
-  return GAME_DEFINITIONS.map(game=>({...game,enabled:state.get(game.id)!==false}));
+  return GAME_DEFINITIONS.map(game=>({...game,
+    enabled:state.has(game.id)?state.get(game.id):!NEW_GAMES_REQUIRING_MIGRATION.has(game.id)}));
 }
 
 export async function gameAcceptsBets(db,id){
@@ -24,7 +29,9 @@ export async function gameAcceptsBets(db,id){
   const state=await db.prepare(
     'SELECT enabled FROM sharika_game_catalog WHERE id=?'
   ).bind(id).first();
-  return !state||state.enabled===undefined||Number(state.enabled)===1;
+  if(!state||state.enabled===undefined)
+    return !NEW_GAMES_REQUIRING_MIGRATION.has(id);
+  return Number(state.enabled)===1;
 }
 
 export async function handleGameCatalogAdmin({request,db,uid,role,reply,fail,cors}){

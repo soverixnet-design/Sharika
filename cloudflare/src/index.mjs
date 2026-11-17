@@ -29,9 +29,12 @@ import { handleAdminOperation, readGiftRankings } from './admin.mjs';
 import { handleOpeningApp } from './opening.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
+import {handleFoodDeluxe,settleFoodDueBets} from './food-wheel-deluxe.mjs';
 import {handleSoveraGaddy} from './sovera-gaddy.mjs';
+import {handleCleopatra} from './cleopatra.mjs';
 import {handleFruitRoyaleRequest,settleFruitDueBets} from './fruit-royale.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
+import {handleGreedyClassicRequest,settleGreedyClassicDueBets} from './greedy-classic.mjs';
 import {readExchangeRate,respondRate,exchangeCredit,MAX_DIAMONDS} from './exchange-rate.mjs';
 import {readEquipped,readRoomEquipped,handleCosmeticApp,publicAppearanceSelect} from './cosmetics.mjs';
 import {activeSpecial,activeSpecialSelect} from './special-ids.mjs';
@@ -400,6 +403,13 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/game-catalog'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       return reply({games:await readGameCatalog(env.DB)},200,cors);
+    }
+    if(path==='/api/v1/cleopatra/state'||path==='/api/v1/cleopatra/spin'){
+      await assertActive(env.DB,uid);
+      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'cleopatra')))
+        return fail('game_disabled',403,cors);
+      return await handleCleopatra({request,db:env.DB,uid,
+        action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
     }
     if(path==='/api/v1/events'||/^\/api\/v1\/events\/[1-9]\d*\/ranking$/.test(path)) return await handleEventApp({
       request,env,uid,path,cors,reply,fail
@@ -978,12 +988,18 @@ export async function handleRequest(request, env, ctx) {
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='original-games'){
       await assertActive(env.DB,uid);
       if(parts.length===3&&request.method==='GET')
-        return reply({games:['sovera-food','sovera-gaddy','night-food','fruit-royale'],virtual_coins_only:true},200,cors);
+        return reply({games:['sovera-food','sovera-gaddy','night-food','fruit-royale','food-deluxe','greedy-classic'],virtual_coins_only:true},200,cors);
       if(parts.length===5){
         if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
         if(parts[3]==='fruit-royale')
           return await handleFruitRoyaleRequest({request,db:env.DB,uid,
+            action:parts[4],reply,fail,cors});
+        if(parts[3]==='greedy-classic')
+          return await handleGreedyClassicRequest({request,db:env.DB,uid,
+            action:parts[4],reply,fail,cors});
+        if(parts[3]==='food-deluxe')
+          return await handleFoodDeluxe({request,db:env.DB,uid,
             action:parts[4],reply,fail,cors});
         if(parts[3]==='sovera-gaddy')
           return await handleSoveraGaddy({request,db:env.DB,uid,
@@ -1056,7 +1072,9 @@ export async function handleRequest(request, env, ctx) {
       if(!playVirtualOnly(env)){
         await settleDueBets(env.DB,uid);
         await settleOriginalDueBets(env.DB);
+        await settleFoodDueBets(env.DB);
         await settleGreedyDueBets(env.DB);
+        await settleGreedyClassicDueBets(env.DB);
         await settleFruitDueBets(env.DB);
       }
       const user = await me(env.DB,uid);

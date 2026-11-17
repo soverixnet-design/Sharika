@@ -3783,8 +3783,71 @@
         '<p class="n" id="sh-game-status" role="status"></p></div>'+
         '<div class="card"><h3>Verified game activity</h3>'+
         '<div id="sh-game-activity">Loading settled games…</div>'+
-        '<button type="button" id="game-winners" class="btn s">Show settled winners</button></div>';
+        '<button type="button" id="game-winners" class="btn s">Show settled winners</button></div>'+
+        '<div class="card"><h3>Cleopatra Gold Deluxe · Verified server rates</h3>'+
+        '<div id="sh-cleopatra-admin-rates" role="region" aria-label="Cleopatra rate settings">'+
+        'Loading protected settings…</div></div>';
       byId('game-winners').onclick=()=>openVerifiedPage('winb');
+      const cleopatraPanel=byId('sh-cleopatra-admin-rates');
+      try{
+        const game=await api('GET','cleopatra');
+        const cfg=game.settings||{};
+        const weights=JSON.parse(cfg.weights_json||'{}');
+        const betList=JSON.parse(cfg.bets_json||'[]');
+        const symbols=['H','E','L','A','K','Q','J','T','N','W','B','P'];
+        const field=(id,label,value,step,min,max)=>
+          '<label style="display:flex;flex-direction:column;gap:4px;min-width:90px;flex:1">'+
+          '<span>'+esc(label)+'</span>'+
+          '<input type="number" class="field" id="cp-'+esc(id)+'" value="'+
+          esc(String(value))+'" step="'+esc(step)+'" min="'+esc(min)+'" max="'+esc(max)+'"'+
+          (role==='super'?'':' disabled')+'></label>';
+        cleopatraPanel.innerHTML=
+          '<p class="n">All balances and spin outcomes are verified by D1. No simulated coins. '+
+          'Changing weights or payout takes effect only on new paid spins; existing Free Spin settings remain locked.</p>'+
+          '<p>Jackpot pool (read-only): <b>'+fmt(game.jackpot||0)+' coins</b></p>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:9px;margin:12px 0">'+
+          field('scale','Payout scale',cfg.payout_scale||1,'0.01','0.1','2')+
+          field('contribution','Jackpot contribution (basis points)',cfg.contribution_bps,'1','0','1000')+
+          field('maxwin','Max win per spin',cfg.max_win,'1','1','1000000000')+'</div>'+
+          '<label>Allowed bets, comma separated<input class="field" id="cp-bets" '+
+          'value="'+esc(betList.join(','))+'"'+(role==='super'?'':' disabled')+'></label>'+
+          '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));'+
+          'gap:8px;margin:12px 0">'+
+          symbols.map(k=>field('w-'+k,k+' weight',weights[k]||1,'0.1','0.1','100')).join('')+
+          '</div>'+
+          '<label><input type="checkbox" id="cp-engine-on"'+
+          (cfg.enabled?' checked':'')+(role==='super'?'':' disabled')+
+          '> Enable server rate engine (catalog availability must also be ON)</label>'+
+          '<div style="display:flex;gap:10px;align-items:center;margin-top:12px">'+
+          (role==='super'?'<button class="btn s" id="cp-rates-save" type="button">Save server rates</button>':'Read only')+
+          '<span id="cp-rates-status" role="status"></span></div>';
+        const save=byId('cp-rates-save');
+        if(save)save.onclick=async()=>{
+          const num=id=>Number(byId('cp-'+id)?.value);
+          const nextWeights=Object.fromEntries(symbols.map(k=>[k,num('w-'+k)]));
+          const bets=byId('cp-bets').value.split(',').map(n=>Number(n.trim()));
+          if(bets.some(n=>!Number.isSafeInteger(n)||n<100||n>10000000)||
+            new Set(bets).size!==bets.length||bets.length<1||bets.length>20||
+            Object.values(nextWeights).some(n=>!Number.isFinite(n)||n<0.1||n>100)){
+            byId('cp-rates-status').textContent='Invalid bet list or symbol weights.';
+            return;
+          }
+          if(!window.confirm('Publish Cleopatra rates for future paid spins?'))return;
+          save.disabled=true;
+          try{
+            await api('PATCH','cleopatra',{
+              enabled:byId('cp-engine-on').checked,
+              bets,weights:nextWeights,payout_scale:num('scale'),
+              contribution_bps:num('contribution'),max_win:num('maxwin')
+            });
+            byId('cp-rates-status').textContent='Rates saved and audited on server.';
+          }catch(error){
+            byId('cp-rates-status').textContent='Save rejected: '+error.message;
+          }finally{save.disabled=false;}
+        };
+      }catch(error){
+        cleopatraPanel.textContent='Cleopatra rates not available: '+error.message;
+      }
       root.querySelectorAll('button[data-game-save]').forEach(button=>button.onclick=async ()=>{
         const id=button.dataset.gameSave;
         const input=Array.from(root.querySelectorAll('[data-game-flag]')).find(x=>x.dataset.gameFlag===id);

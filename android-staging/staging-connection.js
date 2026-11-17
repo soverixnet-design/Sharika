@@ -13518,6 +13518,9 @@
     {id:'sovera-gaddy',name:'Sovera Gaddy Game',tag:'👑 New • Royal Food Wheel',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/sovera-gaddy-game.html'},
+    {id:'food-deluxe',name:'Food Wheel Deluxe',tag:'Classic 8-Food Wheel',
+      image:'file:///android_asset/fruit-machine.webp',
+      page:'file:///android_asset/original-games/food-wheel-deluxe.html'},
     {id:'sovera-food',name:'Sovera Food Wheel',tag:'🎡 Classic',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/sovera-food-wheel.html'},
@@ -13527,9 +13530,15 @@
     {id:'fruit-royale',name:'Fruit Royale',tag:'👑 New Royal Jackpot',
       image:'file:///android_asset/jackpot-fruit-original-card.png',
       page:'file:///android_asset/fruit-royale/index.html'},
+    {id:'greedy-classic',name:'Greedy Game',tag:'Original 8-Food Wheel',
+      image:'file:///android_asset/greedy-game.webp',
+      page:'file:///android_asset/original-games/greedy-classic.html'},
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
-      page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'}
+      page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'},
+    {id:'cleopatra',name:"Cleopatra's Gold Deluxe",tag:'Egyptian Golden Slots',
+      image:'file:///android_asset/cleopatra.webp',
+      page:'file:///android_asset/original-games/cleopatra-slot.html'}
   ];
   // Only announce server-confirmed round winners during the first ten seconds
   // after settlement. Persist one announcement per game/round across reopens.
@@ -13655,12 +13664,51 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
+    // Preserve the original portrait artwork and every hit target. In a
+    // compact voice-room sheet fit the SHEET to the canvas, rather than
+    // stretching the canvas or leaving wide, unusable side gutters.
+    const gameView=doc.defaultView||window;
+    function resetFoodDeluxeAspectFit(){
+      sheet.__shFoodDeluxeObserver?.disconnect();
+      sheet.__shFoodDeluxeObserver=null;
+      if(sheet.__shFoodDeluxeResize){
+        gameView.removeEventListener('resize',sheet.__shFoodDeluxeResize);
+        sheet.__shFoodDeluxeResize=null;
+      }
+      sheet.style.width='';
+    }
+    function fitFoodDeluxeRoomSheet(){
+      if(!insideRoom)return;
+      const host=sheet.querySelector('#sh-original-host');
+      if(!host||!host.isConnected)return;
+      const fit=()=>{
+        if(!host.isConnected||!overlay.classList.contains('on'))return;
+        const frameHeight=host.clientHeight-2;
+        if(frameHeight<=0)return;
+        const outerWidth=sheet.getBoundingClientRect().width;
+        const chromeWidth=Math.max(0,outerWidth-(host.clientWidth-2));
+        const optimal=Math.ceil(frameHeight*(1080/2352)+chromeWidth);
+        const viewportWidth=Math.max(0,gameView.innerWidth-16);
+        const target=Math.min(480,viewportWidth,optimal);
+        if(target>0&&Math.abs(outerWidth-target)>1)
+          sheet.style.width=target+'px';
+      };
+      sheet.__shFoodDeluxeResize=fit;
+      gameView.addEventListener('resize',fit);
+      if(typeof gameView.ResizeObserver==='function'){
+        const observer=new gameView.ResizeObserver(fit);
+        observer.observe(host);
+        sheet.__shFoodDeluxeObserver=observer;
+      }
+      gameView.requestAnimationFrame(fit);
+    }
     // Reuse the existing verified Greedy Wheel asset and server bridge.
     // Keep the other legacy game assets and ledgers intact; they are no longer
     // selectable in the only Games entry point.
     const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel');
-    let visibleGameCards=[greedyGame];
+    let visibleGameCards=[greedyGame]; // Catalog permissions are checked below.
     function catalog(){
+      resetFoodDeluxeAspectFit();
       if(portal)sheet.style.height='';
       overlay.classList.remove('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div><h3>🎮 Sharika Royal Games</h3>'+
@@ -13683,6 +13731,11 @@
         img.alt=item.name;
         img.style.cssText='width:100%;aspect-ratio:3/2;object-fit:cover;'+
           'border-radius:10px;display:block';
+        // New owner-approved square game icons must remain fully visible in landscape cards.
+        if(['food-deluxe','greedy-classic','cleopatra'].includes(item.id)){
+          img.style.objectFit='contain';
+          img.style.background='#190b2f';
+        }
         if(item.id==='night-food')img.style.filter='hue-rotate(24deg) brightness(.72)';
         const title=doc.createElement('b');
         title.textContent=item.name;
@@ -13809,8 +13862,9 @@
         Math.min(9000,confirmed.winners.length*3000));
     }
     function preview(item){
+      resetFoodDeluxeAspectFit();
       currentGameFrame=null;clearWinnerBanner();
-      if(portal)sheet.style.height=insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
+      if(portal)sheet.style.height=insideRoom&&item.id==='greedy-classic'?'min(54dvh,460px)':insideRoom&&item.id==='cleopatra'?'min(60dvh,610px)':insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
       sheet.classList.remove('sh-game-catalog-sheet');
       if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
       // In the room the game itself is the focus: the main close button
@@ -13825,7 +13879,7 @@
         'overflow:hidden;background:#100424"></div>';
       const title=sheet.querySelector('h3');
       title.textContent=item.name;
-      title.hidden=item.id==='greedy-wheel';
+      title.hidden=item.id==='greedy-wheel'||item.id==='greedy-classic';
       const returnToCatalog=sheet.querySelector('#sh-original-back');
       if(returnToCatalog)returnToCatalog.onclick=()=>{
         currentGameFrame=null;clearWinnerBanner();catalog();
@@ -13833,12 +13887,15 @@
       const gameFrame=doc.createElement('iframe');
       // The fragment chooses responsive room-only CSS in the trusted asset.
       // It does not alter the authenticated bet or settlement bridge.
-      gameFrame.src=item.page+(insideRoom&&item.id!=='greedy-wheel'?'#sharika-room':'');
+      gameFrame.src=item.id==='cleopatra'
+        ?item.page+'?mode='+(insideRoom?'room':'full')+'&host=1'
+        :item.page+(insideRoom&&item.id!=='greedy-wheel'?'#sharika-room':'');
       gameFrame.setAttribute('title',item.name);
       gameFrame.style.cssText='width:100%;height:100%;border:0;display:block';
       gameFrame.setAttribute('referrerpolicy','no-referrer');
       sheet.querySelector('#sh-original-host').appendChild(gameFrame);
       currentGameFrame={element:gameFrame,item};
+      if(insideRoom&&item.id==='food-deluxe')fitFoodDeluxeRoomSheet();
     }
     // Child frame has no Firebase session, no native bridge, no wallet setter.
     // Only the active exact iframe can request one of these fixed operations.
@@ -13852,6 +13909,48 @@
       }
       const data=event.data;
       if(!data||typeof data!=='object')return;
+      // Cleopatra: original HTML is display-only. The verified Android bridge
+      // authenticates requests and the server alone settles every coin.
+      if(current.item.id==='cleopatra'){
+        const target=current.element.contentWindow;
+        if(data.type==='close'){
+          view.__sharikaOriginalGameCleanup?.();
+          overlay.classList.remove('on');
+          return;
+        }
+        if(data.type==='expand'){
+          if(portal)sheet.style.height='min(92dvh,820px)';
+          return;
+        }
+        if(data.type==='ready'){
+          try{
+            const state=await api('GET','/cleopatra/state');
+            if(session&&currentGameFrame===current)
+              target.postMessage({type:'init',...state},'*');
+          }catch(error){
+            if(session&&currentGameFrame===current){
+              showToast('Game unavailable: '+errText(error));
+              target.postMessage({type:'gameError',error:errText(error)},'*');
+            }
+          }
+          return;
+        }
+        if(data.type!=='spin'||typeof data.id!=='string'||
+           !/^[A-Za-z0-9_-]{8,120}$/.test(data.id)||
+           !Number.isSafeInteger(data.bet)||data.bet<1)return;
+        try{
+          const response=await api('POST','/cleopatra/spin',
+            {bet:data.bet,requestId:data.id});
+          if(!session||currentGameFrame!==current)return;
+          target.postMessage({type:'spinResult',id:data.id,...response},'*');
+          reloadWallet().catch(()=>{});
+        }catch(error){
+          if(session&&currentGameFrame===current)
+            target.postMessage({type:'spinResult',id:data.id,
+              error:errText(error)},'*');
+        }
+        return;
+      }
       if(current.item.id==='greedy-wheel'){
         if(data.source==='greedy-game'&&data.type==='close'){
           view.__sharikaOriginalGameCleanup?.();
@@ -13883,7 +13982,12 @@
         }
         return;
       }
-      if(data.type==='sharika:original-exit'){currentGameFrame=null;clearWinnerBanner();catalog();return;}
+      if(data.type==='sharika:original-exit'){
+        if(insideRoom&&current.item.id==='greedy-classic'){
+          view.__sharikaOriginalGameCleanup?.();overlay.classList.remove('on');return;
+        }
+        currentGameFrame=null;clearWinnerBanner();catalog();return;
+      }
       if(data.type!=='sharika:original-request')return;
       const permitted=['state','history','stats','rankings','bet'];
       if(data.game!==current.item.id||!permitted.includes(data.action)||
@@ -13926,6 +14030,7 @@
     });
     hiddenObserver.observe(overlay,{attributes:true,attributeFilter:['class']});
     view.__sharikaOriginalGameCleanup=()=>{
+      resetFoodDeluxeAspectFit();
       hiddenObserver.disconnect();
       view.removeEventListener('message',onOriginalGameMessage);
       clearWinnerBanner();
@@ -13948,7 +14053,8 @@
       if(catalogRequestNo!==gameCatalogRequestSequence||
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=[greedyGame].filter(game=>enabled.has(game.id));
+      visibleGameCards=originalGameCards.filter(game=>
+        ['greedy-wheel','cleopatra','food-deluxe','greedy-classic'].includes(game.id)&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||

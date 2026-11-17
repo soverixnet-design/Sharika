@@ -1,0 +1,86 @@
+name: Sharika Greedy Game isolated staging publish
+on:
+  push:
+    branches: [feature/sharika-cleopatra-slot-staging-20261117]
+    paths: ['.github/workflows/sharika-two-games-staging-publish.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+jobs:
+  validate-and-publish:
+    if: github.ref == 'refs/heads/feature/sharika-cleopatra-slot-staging-20261117'
+    environment: sharika-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify isolated staging target, repo branch and virtual-only economy
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const c=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          const a=JSON.parse(fs.readFileSync('wrangler.admin.jsonc','utf8'));
+          const id='b2c62252-12a5-4740-90c7-01a536d9a39a';
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-cleopatra-slot-staging-20261117'||
+            c.name!=='sharika-api-staging'||
+            c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+            c.vars?.SHARIKA_ENV!=='staging'||
+            c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+            c.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+            c.workers_dev!==true||c.keep_vars!==true||
+            c.d1_databases?.find(x=>x.binding==='DB')?.database_id!==id||
+            c.d1_databases?.find(x=>x.binding==='SHARIKA_ID_DB')?.database_id!==id||
+            a.name!=='sharika-admin-staging'||
+            a.d1_databases?.find(x=>x.binding==='STAGING_DB')?.database_id!==id)
+            throw new Error('UNSAFE_CLOUDFLARE_TARGET');
+          const worker=fs.readFileSync('src/index.mjs','utf8');
+          if(!worker.includes('handleFoodDeluxe')||!worker.includes('handleCleopatra')||!worker.includes('handleGreedyClassicRequest'))
+            throw new Error('All three staging game engines must be present before publish');
+          console.log('ONLY_SHARIKA_STAGING_WORKER_AND_D1_VERIFIED');
+          NODE
+      - name: Verify all existing voice, auth, game and wallet regressions
+        run: npm run check
+      - name: Validate original uploaded client script
+        run: node --check ../android-staging/app/src/main/assets/original-games/greedy-classic-live.js
+      - name: Dry-run staged Worker bundle (no user-state mutation)
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
+      - name: Apply only new isolated uploaded Greedy Game tables to staging D1
+        run: npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0097_greedy_classic.sql
+      - name: Verify all three game tables and catalog rows before releasing API
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_cleopatra_rounds','sharika_food_deluxe_rounds','sharika_greedy_classic_rounds') ORDER BY name"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT id,enabled FROM sharika_game_catalog WHERE id IN ('cleopatra','food-deluxe','greedy-classic') ORDER BY id"
+      - name: Publish staging-only API Worker (no Play/production worker)
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Check live staging health without credentials
+        run: |
+          curl --fail --silent --show-error --max-time 20 \
+            https://sharika-api-staging.soverixnet.workers.dev/health
+      - name: Enable uploaded Greedy Game on staging only for private adult testing
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "UPDATE sharika_game_catalog SET enabled=1,updated_at=datetime('now') WHERE id='greedy-classic'"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
+            --command "SELECT id,enabled FROM sharika_game_catalog WHERE id IN ('cleopatra','food-deluxe') ORDER BY id"
+      - name: Confirm the isolated API remains available
+        run: |
+          curl --fail --silent --show-error --max-time 20 \
+            https://sharika-api-staging.soverixnet.workers.dev/health
+          echo SHARIKA_GREEDY_CLASSIC_STAGING_API_PUBLISHED_PRODUCTION_UNCHANGED

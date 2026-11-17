@@ -217,6 +217,9 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('agency-center.css'))
     from(rootProject.file('agency-center.js'))
     if (playVirtualPresentation) from(rootProject.file('play-virtual-ui.js'))
+    from(rootProject.file('game-icons/fruit-machine.webp'))
+    from(rootProject.file('game-icons/greedy-game.webp'))
+    from(rootProject.file('game-icons/cleopatra.webp'))
     from(rootProject.file('staging-connection.js')) {
         rename { 'connection.js' }
     }

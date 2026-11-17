@@ -64,7 +64,7 @@ test('Play UI fails closed while selecting native mode and omits old recharge ba
   assert.match(source,/if\(playStoreMode!==false\)return;[\s\S]*?const listButton=/);
   assert.match(source,/if\(playStoreMode===null\)\{\s*const visit=joinedRoom;\s*playModeReady\.then\(\(\)=>\{\s*if\(!insideRoom\|\|joinedRoom===visit\)showGameCard/);
   assert.match(source,/if\(playStoreMode===true\)\{[\s\S]*?preview\(greedyGame\);\s*return;/);
-  assert.match(source,/visibleGameCards=\[greedyGame\]\.filter\(game=>enabled\.has\(game\.id\)\)/);
+  assert.match(source,/visibleGameCards=originalGameCards\.filter\(game=>[\s\S]*?'greedy-wheel','cleopatra','food-deluxe','greedy-classic'[\s\S]*?enabled\.has\(game\.id\)/);
   assert.doesNotMatch(source,/window\.sharikaOpenPlayCasualGames\(doc,portal\)/);
   assert.match(source,/row\.action!=='recharge'/);
   assert.match(source,/event\.kind!=='game_tournament'/);
