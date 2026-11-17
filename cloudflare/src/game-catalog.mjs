@@ -12,13 +12,15 @@ export const GAME_DEFINITIONS=Object.freeze([
   {id:'food-wheel',name:'Food Wheel (legacy)',engine:'legacy'}
 ]);
 const GAME_IDS=new Set(GAME_DEFINITIONS.map(game=>game.id));
+const NEW_GAMES_REQUIRING_MIGRATION=new Set(['cleopatra','food-deluxe']);
 
 export async function readGameCatalog(db){
   const result=await db.prepare(
     'SELECT id,enabled FROM sharika_game_catalog ORDER BY id'
   ).all();
   const state=new Map((result?.results||[]).map(row=>[row.id,Number(row.enabled)===1]));
-  return GAME_DEFINITIONS.map(game=>({...game,enabled:state.get(game.id)!==false}));
+  return GAME_DEFINITIONS.map(game=>({...game,
+    enabled:state.has(game.id)?state.get(game.id):!NEW_GAMES_REQUIRING_MIGRATION.has(game.id)}));
 }
 
 export async function gameAcceptsBets(db,id){
@@ -26,7 +28,9 @@ export async function gameAcceptsBets(db,id){
   const state=await db.prepare(
     'SELECT enabled FROM sharika_game_catalog WHERE id=?'
   ).bind(id).first();
-  return !state||state.enabled===undefined||Number(state.enabled)===1;
+  if(!state||state.enabled===undefined)
+    return !NEW_GAMES_REQUIRING_MIGRATION.has(id);
+  return Number(state.enabled)===1;
 }
 
 export async function handleGameCatalogAdmin({request,db,uid,role,reply,fail,cors}){
