@@ -424,10 +424,19 @@
         byId('le').textContent=error.message || 'Access denied';
       } finally {button.disabled=false;}
     }
-    button.onclick=submit;
-    for (const field of [email,password]) field.onkeydown=e=>{
-      if(e.key==='Enter'){e.preventDefault();submit();}
-    };
+    const loginForm=byId('sh-admin-login-form');
+    if (loginForm) {
+      // Native form semantics provide one Enter/submit path and password autofill.
+      loginForm.onsubmit=event=>{event.preventDefault();submit();};
+      email.onkeydown=null;
+      password.onkeydown=null;
+    } else {
+      // Compatibility fallback if a legacy Admin template is still cached.
+      button.onclick=submit;
+      for (const field of [email,password]) field.onkeydown=e=>{
+        if(e.key==='Enter'){e.preventDefault();submit();}
+      };
+    }
   };
   const originalShell = window.shell;
   window.shell = function () {
