@@ -153,7 +153,8 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                     '<html lang="en" class="royal-premium royal-root">')
                 .replace('<link rel="stylesheet" href="./reference-profile.css">',
                     '<link rel="stylesheet" href="./reference-profile.css">\n' +
-                    '<link id="sharika-cover-profile-v1" rel="stylesheet" href="./sharika-cover-profile.css">')
+                    '<link id="sharika-cover-profile-v1" rel="stylesheet" href="./sharika-cover-profile.css">\n' +
+                    '<link id="sharika-official-notice-style" rel="stylesheet" href="./official-notice.css">')
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
                     '<link rel="stylesheet" href="./royal-profile.css">\n' +
                     '<link id="sharika-royal-premium-style" rel="stylesheet" href="./royal-premium.css">\n' +
@@ -199,6 +200,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
     from(rootProject.file('../app/royal-profile.css'))
     from(rootProject.file('../app/reference-profile.css'))
     from(rootProject.file('../app/sharika-cover-profile.css'))
+    from(rootProject.file('../app/official-notice.css'))
     from(rootProject.file('../app/royal-profile-background.jpg'))
     from(rootProject.file('../app/profile-collection-atlas.webp'))
     from(rootProject.file('../app/profile-menu-atlas.webp'))
