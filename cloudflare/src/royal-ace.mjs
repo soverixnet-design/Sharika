@@ -41,7 +41,7 @@ function cascade(grid,marks,combo){
   for(const k of marks){
     const c=Math.floor(k/4),r=k%4,x=grid[c][r];
     if(x.g)grid[c][r]={s:secureInt(2)?9:10,g:false};
-    else if(x.s<9)grid[c][r]=null;
+    else grid[c][r]=null;
   }
   for(let c=0;c<5;c++){
     const remaining=grid[c].filter(Boolean);
