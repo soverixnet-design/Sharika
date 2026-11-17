@@ -1,4 +1,4 @@
-name: Sharika Cleopatra and Food Wheel isolated staging publish
+name: Sharika Greedy Game isolated staging publish
 on:
   push:
     branches: [feature/sharika-cleopatra-slot-staging-20261117]
@@ -49,44 +49,38 @@ jobs:
             a.d1_databases?.find(x=>x.binding==='STAGING_DB')?.database_id!==id)
             throw new Error('UNSAFE_CLOUDFLARE_TARGET');
           const worker=fs.readFileSync('src/index.mjs','utf8');
-          if(!worker.includes('handleFoodDeluxe')||!worker.includes('handleCleopatra'))
-            throw new Error('Both games must be present before publish');
+          if(!worker.includes('handleFoodDeluxe')||!worker.includes('handleCleopatra')||!worker.includes('handleGreedyClassicRequest'))
+            throw new Error('All three staging game engines must be present before publish');
           console.log('ONLY_SHARIKA_STAGING_WORKER_AND_D1_VERIFIED');
           NODE
       - name: Verify all existing voice, auth, game and wallet regressions
         run: npm run check
+      - name: Validate original uploaded client script
+        run: node --check ../android-staging/app/src/main/assets/original-games/greedy-classic-live.js
       - name: Dry-run staged Worker bundle (no user-state mutation)
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
-      - name: Apply only new isolated Cleopatra game tables to staging D1
-        run: npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0095_cleopatra_slot.sql
-      - name: Apply only new isolated Food Wheel game tables to staging D1
-        run: npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0096_food_wheel_deluxe.sql
-      - name: Verify both tables and the catalog rows before releasing API
+      - name: Apply only new isolated uploaded Greedy Game tables to staging D1
+        run: npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --file migrations/0097_greedy_classic.sql
+      - name: Verify all three game tables and catalog rows before releasing API
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
-            --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_cleopatra_rounds','sharika_food_deluxe_rounds') ORDER BY name"
+            --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_cleopatra_rounds','sharika_food_deluxe_rounds','sharika_greedy_classic_rounds') ORDER BY name"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
-            --command "SELECT id,enabled FROM sharika_game_catalog WHERE id IN ('cleopatra','food-deluxe') ORDER BY id"
+            --command "SELECT id,enabled FROM sharika_game_catalog WHERE id IN ('cleopatra','food-deluxe','greedy-classic') ORDER BY id"
       - name: Publish staging-only API Worker (no Play/production worker)
         run: npx --yes wrangler@4 deploy --config wrangler.jsonc
       - name: Check live staging health without credentials
         run: |
           curl --fail --silent --show-error --max-time 20 \
             https://sharika-api-staging.soverixnet.workers.dev/health
-      - name: Deploy only staging Admin UI for game controls
-        run: |
-          cp ../admin/index.html src/admin-index.html
-          cp ../admin/connection.js src/admin-connection.txt
-          npx --yes wrangler@4 deploy --dry-run --config wrangler.admin.jsonc
-          npx --yes wrangler@4 deploy --config wrangler.admin.jsonc
-      - name: Enable both games on staging only for private testing
+      - name: Enable uploaded Greedy Game on staging only for private adult testing
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
-            --command "UPDATE sharika_game_catalog SET enabled=1,updated_at=datetime('now') WHERE id IN ('cleopatra','food-deluxe')"
+            --command "UPDATE sharika_game_catalog SET enabled=1,updated_at=datetime('now') WHERE id='greedy-classic'"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc \
             --command "SELECT id,enabled FROM sharika_game_catalog WHERE id IN ('cleopatra','food-deluxe') ORDER BY id"
       - name: Confirm the isolated API remains available
         run: |
           curl --fail --silent --show-error --max-time 20 \
             https://sharika-api-staging.soverixnet.workers.dev/health
-          echo SHARIKA_TWO_GAMES_STAGING_API_PUBLISHED_PRODUCTION_UNCHANGED
+          echo SHARIKA_GREEDY_CLASSIC_STAGING_API_PUBLISHED_PRODUCTION_UNCHANGED
