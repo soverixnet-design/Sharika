@@ -49,6 +49,17 @@ test('Cleopatra retry reuses requestId and locked wager after unknown result',()
   assert.match(cleopatra,/unconfirmedSpin=\{id,bet\}/);
   assert.match(cleopatra,/if\(!d.error\|\|rejectedSpin\(d.error\)\)unconfirmedSpin=null/);
 });
+test('Game UX prevents stale round bets while server time expires',()=>{
+  assert.match(greedy,/state\.state\.endsAt-\(Date\.now\(\)\+clockOffset\)<=1200/);
+  assert.match(food,/Date\.now\(\)\+serverDelta>=currentState\.round\.bet_closes_ms-1000/);
+  assert.match(greedy,/Reconnecting to game server/);
+  assert.match(food,/Reconnecting to game server/);
+});
+test('Cleopatra retries the authenticated state handshake after temporary failure',()=>{
+  assert.match(cleopatra,/function scheduleInitRetry\(\)/);
+  assert.match(cleopatra,/post\(\{type:'ready'\}\)/);
+  assert.match(cleopatra,/if\(d.type==='gameError'\).*scheduleInitRetry\(\)/);
+});
 test('only active authenticated game iframe can request a real bet',()=>{
   assert.match(bridge,/event.source!==current.element.contentWindow/);
   assert.match(bridge,/if\(data.action==='bet'\)reloadWallet\(\)\.catch/);
