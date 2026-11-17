@@ -13530,6 +13530,9 @@
     {id:'fruit-royale',name:'Fruit Royale',tag:'👑 New Royal Jackpot',
       image:'file:///android_asset/jackpot-fruit-original-card.png',
       page:'file:///android_asset/fruit-royale/index.html'},
+    {id:'greedy-classic',name:'Greedy Game',tag:'Original 8-Food Wheel',
+      image:'file:///android_asset/food-wheel-original-card.png',
+      page:'file:///android_asset/original-games/greedy-classic.html'},
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
       page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'},
@@ -13999,7 +14002,7 @@
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
       visibleGameCards=originalGameCards.filter(game=>
-        ['greedy-wheel','cleopatra','food-deluxe'].includes(game.id)&&enabled.has(game.id));
+        ['greedy-wheel','cleopatra','food-deluxe','greedy-classic'].includes(game.id)&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
