@@ -483,7 +483,7 @@
   // CP/Friendship links are rendered only for verified D1 bond pairs.
 
   const premiumState={room:null,announcement:null,announcementAt:0,announcementPromise:null};
-  const promoState={roomId:null,lastRefresh:0,promise:null};
+  const promoState={roomId:null,lastRefresh:0,promise:null,requestRoomId:null,generation:0};
   const promoImagePattern=/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/room-banners\/([1-9][0-9]{0,8})\/image\?v=[1-9][0-9]*$/;
   const eventStrip=document.createElement('div');
   eventStrip.id='sh-reference-event-banner';
@@ -526,22 +526,32 @@
   async function refreshRoomBanners() {
     const view=premiumState.room;
     if(!view||!canShow()||typeof view.loadBanners!=='function')return;
-    if(promoState.promise)return promoState.promise;
-    if(Date.now()-promoState.lastRefresh<60000)return;
     const roomId=view.roomId;
-    // The API returns only actively published artwork and never a payment action.
-    promoState.promise=Promise.resolve().then(()=>view.loadBanners()).then(data=>{
-      if(premiumState.room?.roomId!==roomId||!canShow())return;
+    const generation=promoState.generation;
+    // A previous room's slow request must not block the newly entered room.
+    if(promoState.promise&&promoState.requestRoomId===roomId)return promoState.promise;
+    if(Date.now()-promoState.lastRefresh<60000)return;
+    // Capture this visit's generation so A -> B -> A cannot display stale A artwork.
+    const request=Promise.resolve().then(()=>view.loadBanners()).then(data=>{
+      if(premiumState.room?.roomId!==roomId||
+         promoState.generation!==generation||!canShow())return;
       renderRoomBanners(data?.banners);
       promoState.lastRefresh=Date.now();
     }).catch(()=>{
-      // Do not display stale artwork from a different room or fabricate promos.
-      if(premiumState.room?.roomId===roomId){
+      if(premiumState.room?.roomId===roomId&&promoState.generation===generation){
         renderRoomBanners([]);
         promoState.lastRefresh=Date.now();
       }
-    }).finally(()=>{promoState.promise=null;});
-    return promoState.promise;
+    }).finally(()=>{
+      // An old request must never clear the new room's in-flight reference.
+      if(promoState.promise===request){
+        promoState.promise=null;
+        promoState.requestRoomId=null;
+      }
+    });
+    promoState.promise=request;
+    promoState.requestRoomId=roomId;
+    return request;
   }
   function vipAvatar(member,cls){
     const el=document.createElement('span');
@@ -830,6 +840,7 @@
       if(promoState.roomId!==view.roomId){
         promoState.roomId=view.roomId;
         promoState.lastRefresh=0;
+        promoState.generation++;
         renderRoomBanners([]);
       }
       premiumState.room=view;
