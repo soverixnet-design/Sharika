@@ -10,7 +10,7 @@ export const GAME_DEFINITIONS=Object.freeze([
   {id:'greedy-wheel',name:'Greedy Wheel',engine:'greedy'},
   {id:'greedy-classic',name:'Greedy Game',engine:'greedy-classic-d1'},
   {id:'cleopatra',name:"Cleopatra's Gold Deluxe",engine:'slot-d1'},
-  {id:'royal-ace',name:'Royal Ace Deluxe',engine:'royal-ace-d1'},
+  {id:'royal-ace',name:'SuperAce Deluxe',engine:'royal-ace-d1'},
   {id:'food-wheel',name:'Food Wheel (legacy)',engine:'legacy'}
 ]);
 const GAME_IDS=new Set(GAME_DEFINITIONS.map(game=>game.id));
