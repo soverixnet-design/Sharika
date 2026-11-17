@@ -1337,7 +1337,7 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit|food-deluxe)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
-        if (path.matches("^/api/v1/original-games/(sovera-food|night-food)/rankings\\?period=(daily|weekly|monthly)&metric=(totalWin|totalBet|profitLoss|winCount)$"))
+        if (path.matches("^/api/v1/original-games/(sovera-food|night-food|food-deluxe)/rankings\\?period=(daily|weekly|monthly)&metric=(totalWin|totalBet|profitLoss|winCount)$"))
             return method.equals("GET");
         // Only a numeric cursor on the verified room-chat route may carry a
         // query string. All other arbitrary query parameters stay blocked.
@@ -1423,9 +1423,9 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/bet$"))
             return method.equals("POST");
-        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit)/(state|history|stats|rankings)$"))
+        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit|food-deluxe)/(state|history|stats|rankings)$"))
             return method.equals("GET");
-        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit)/bet$"))
+        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit|food-deluxe)/bet$"))
             return method.equals("POST");
         if (path.matches("^/api/v1/greedy-wheel/(state|records|winners)$"))
             return method.equals("GET");
