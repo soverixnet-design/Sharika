@@ -108,3 +108,13 @@ test('source artwork, server-only financial bridge, room and Play Store gates re
   const loader=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/royal-ace-loader.svg',import.meta.url),'utf8');
   assert.match(loader,/<svg/);
 });
+
+test('Android bridge permits only verified Royal Ace staging endpoints and denies Play',()=>{
+  const java=readFileSync(new URL('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
+  const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
+  assert.match(java,/path\.equals\("\/api\/v1\/royal-ace\/state"\).*"GET"/);
+  assert.match(java,/path\.equals\("\/api\/v1\/royal-ace\/spin"\).*"POST"/);
+  assert.match(java,/game-catalog\|cleopatra\|royal-ace\|lucky-box/);
+  assert.match(worker,/gameAcceptsBets\(env\.DB,'royal-ace'\)/);
+  assert.match(worker,/handleRoyalAce\(/);
+});
