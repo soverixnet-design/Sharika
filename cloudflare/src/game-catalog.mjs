@@ -8,11 +8,12 @@ export const GAME_DEFINITIONS=Object.freeze([
   {id:'jackpot-fruit',name:'Jackpot Fruit',engine:'original/legacy'},
   {id:'fruit-royale',name:'Fruit Royale V2',engine:'fruit-royale'},
   {id:'greedy-wheel',name:'Greedy Wheel',engine:'greedy'},
+  {id:'greedy-classic',name:'Greedy Game',engine:'greedy-classic-d1'},
   {id:'cleopatra',name:"Cleopatra's Gold Deluxe",engine:'slot-d1'},
   {id:'food-wheel',name:'Food Wheel (legacy)',engine:'legacy'}
 ]);
 const GAME_IDS=new Set(GAME_DEFINITIONS.map(game=>game.id));
-const NEW_GAMES_REQUIRING_MIGRATION=new Set(['cleopatra','food-deluxe']);
+const NEW_GAMES_REQUIRING_MIGRATION=new Set(['cleopatra','food-deluxe','greedy-classic']);
 
 export async function readGameCatalog(db){
   const result=await db.prepare(
