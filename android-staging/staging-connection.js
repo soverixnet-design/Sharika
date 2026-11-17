@@ -13519,7 +13519,7 @@
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/sovera-gaddy-game.html'},
     {id:'food-deluxe',name:'Food Wheel Deluxe',tag:'Classic 8-Food Wheel',
-      image:'file:///android_asset/fruit-machine-game-icon.webp',
+      image:'file:///android_asset/fruit-machine.webp',
       page:'file:///android_asset/original-games/food-wheel-deluxe.html'},
     {id:'sovera-food',name:'Sovera Food Wheel',tag:'🎡 Classic',
       image:'file:///android_asset/food-wheel-original-card.png',
@@ -13531,13 +13531,13 @@
       image:'file:///android_asset/jackpot-fruit-original-card.png',
       page:'file:///android_asset/fruit-royale/index.html'},
     {id:'greedy-classic',name:'Greedy Game',tag:'Original 8-Food Wheel',
-      image:'file:///android_asset/greedy-game-icon.webp',
+      image:'file:///android_asset/greedy-game.webp',
       page:'file:///android_asset/original-games/greedy-classic.html'},
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
       page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'},
     {id:'cleopatra',name:"Cleopatra's Gold Deluxe",tag:'Egyptian Golden Slots',
-      image:'file:///android_asset/cleopatra-gold-game-icon.webp',
+      image:'file:///android_asset/cleopatra.webp',
       page:'file:///android_asset/original-games/cleopatra-slot.html'}
   ];
   // Only announce server-confirmed round winners during the first ten seconds
