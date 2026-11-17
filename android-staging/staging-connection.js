@@ -13556,6 +13556,9 @@
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
       page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'},
+    {id:'royal-ace',name:'Royal Ace Deluxe',tag:'Golden Star · 1024 Ways',
+      image:'file:///android_asset/royal-ace-card.svg',
+      page:'file:///android_asset/original-games/royal-ace-deluxe.html'},
     {id:'cleopatra',name:"Cleopatra's Gold Deluxe",tag:'Egyptian Golden Slots',
       image:'file:///android_asset/jackpot-fruit-original-card.png',
       page:'file:///android_asset/original-games/cleopatra-slot.html'}
@@ -13688,7 +13691,8 @@
     // Keep the other legacy game assets and ledgers intact; they are no longer
     // selectable in the only Games entry point.
     const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel');
-    let visibleGameCards=[greedyGame]; // Catalog permissions are checked below.
+    const royalGame=originalGameCards.find(game=>game.id==='royal-ace');
+    let visibleGameCards=[greedyGame,royalGame].filter(Boolean); // Catalog permissions are checked below.
     function catalog(){
       if(portal)sheet.style.height='';
       overlay.classList.remove('sh-original-fullscreen');
@@ -13839,7 +13843,7 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
-      if(portal)sheet.style.height=insideRoom&&item.id==='greedy-classic'?'min(54dvh,460px)':insideRoom&&item.id==='cleopatra'?'min(60dvh,610px)':insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
+      if(portal)sheet.style.height=insideRoom&&item.id==='greedy-classic'?'min(54dvh,460px)':insideRoom&&item.id==='royal-ace'?'min(84dvh,740px)':insideRoom&&item.id==='cleopatra'?'min(60dvh,610px)':insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
       sheet.classList.remove('sh-game-catalog-sheet');
       if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
       // In the room the game itself is the focus: the main close button
@@ -13854,7 +13858,7 @@
         'overflow:hidden;background:#100424"></div>';
       const title=sheet.querySelector('h3');
       title.textContent=item.name;
-      title.hidden=item.id==='greedy-wheel'||item.id==='greedy-classic';
+      title.hidden=item.id==='greedy-wheel'||item.id==='greedy-classic'||item.id==='royal-ace';
       const returnToCatalog=sheet.querySelector('#sh-original-back');
       if(returnToCatalog)returnToCatalog.onclick=()=>{
         currentGameFrame=null;clearWinnerBanner();catalog();
@@ -13862,7 +13866,7 @@
       const gameFrame=doc.createElement('iframe');
       // The fragment chooses responsive room-only CSS in the trusted asset.
       // It does not alter the authenticated bet or settlement bridge.
-      gameFrame.src=item.id==='cleopatra'
+      gameFrame.src=(item.id==='cleopatra'||item.id==='royal-ace')
         ?item.page+'?mode='+(insideRoom?'room':'full')+'&host=1'
         :item.page+(insideRoom&&item.id!=='greedy-wheel'?'#sharika-room':'');
       gameFrame.setAttribute('title',item.name);
@@ -13885,7 +13889,9 @@
       if(!data||typeof data!=='object')return;
       // Cleopatra: original HTML is display-only. The verified Android bridge
       // authenticates requests and the server alone settles every coin.
-      if(current.item.id==='cleopatra'){
+      if(current.item.id==='cleopatra'||current.item.id==='royal-ace'){
+        const royal=current.item.id==='royal-ace';
+        if(royal&&data.source!=='sharika-royal-ace')return;
         const target=current.element.contentWindow;
         if(data.type==='close'){
           view.__sharikaOriginalGameCleanup?.();
@@ -13898,29 +13904,31 @@
         }
         if(data.type==='ready'){
           try{
-            const state=await api('GET','/cleopatra/state');
+            const state=await api('GET',royal?'/royal-ace/state':'/cleopatra/state');
             if(session&&currentGameFrame===current)
-              target.postMessage({type:'init',...state},'*');
+              target.postMessage({type:'init',...(royal?{source:'sharika-royal-ace-server'}:{}),...state},'*');
           }catch(error){
             if(session&&currentGameFrame===current){
               showToast('Game unavailable: '+errText(error));
-              target.postMessage({type:'gameError',error:errText(error)},'*');
+              target.postMessage({type:'gameError',...(royal?{source:'sharika-royal-ace-server'}:{}),error:errText(error)},'*');
             }
           }
           return;
         }
         if(data.type!=='spin'||typeof data.id!=='string'||
            !/^[A-Za-z0-9_-]{8,120}$/.test(data.id)||
-           !Number.isSafeInteger(data.bet)||data.bet<1)return;
+           !Number.isSafeInteger(data.bet)||data.bet<1||
+           (royal&&typeof data.buy!=='boolean'))return;
         try{
-          const response=await api('POST','/cleopatra/spin',
-            {bet:data.bet,requestId:data.id});
+          const response=await api('POST',royal?'/royal-ace/spin':'/cleopatra/spin',
+            royal?{bet:data.bet,requestId:data.id,buy:data.buy}:
+              {bet:data.bet,requestId:data.id});
           if(!session||currentGameFrame!==current)return;
-          target.postMessage({type:'spinResult',id:data.id,...response},'*');
+          target.postMessage({type:'spinResult',...(royal?{source:'sharika-royal-ace-server'}:{}),id:data.id,...response},'*');
           reloadWallet().catch(()=>{});
         }catch(error){
           if(session&&currentGameFrame===current)
-            target.postMessage({type:'spinResult',id:data.id,
+            target.postMessage({type:'spinResult',...(royal?{source:'sharika-royal-ace-server'}:{}),id:data.id,
               error:errText(error)},'*');
         }
         return;
@@ -14027,7 +14035,7 @@
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
       visibleGameCards=originalGameCards.filter(game=>
-        ['greedy-wheel','cleopatra','food-deluxe','greedy-classic'].includes(game.id)&&enabled.has(game.id));
+        ['greedy-wheel','cleopatra','food-deluxe','greedy-classic','royal-ace'].includes(game.id)&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
