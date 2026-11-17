@@ -187,7 +187,7 @@ test('cosmetics and profile uploads do not accumulate effects or cross accounts'
   assert.match(adapter,/document\.getElementById\('rf'\)\?\.contentWindow!==frame/);
 });
 
-test('room creation and seat settings reload even during an in-flight room poll',async()=>{
+test('room creation and seat settings queue a fresh list without repainting stale rooms',async()=>{
   const adapter=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
   const start=adapter.indexOf('  let roomsRequestNo=0;');
   const end=adapter.indexOf('  // Android\'s system picker',start);
@@ -202,20 +202,24 @@ test('room creation and seat settings reload even during an in-flight room poll'
       ()=>new Promise(resolve=>pending.push(resolve)),
       {user:{id:'owner-uid'}},view,['#000,#fff'],()=>{},String
     );
-  const previous=reloadRooms();
+  const previous=reloadRooms(true);
   const saved=reloadRooms();
-  assert.equal(pending.length,2,'a save must not skip its refresh');
+  assert.equal(pending.length,1,'slow background requests must coalesce with the room list');
   const room=seat_count=>({
     id:'10000001',owner_id:'owner-uid',name:'My room',seat_count,
     online_count:1,theme:'mid'
   });
+  // An outdated response that arrives after a room edit cannot re-render
+  // the old seat count, even briefly, before the fresh response is fetched.
+  pending[0]({rooms:[room(12)]});
+  await previous;
+  assert.equal(view.renders,0,'an explicit save invalidates the old snapshot');
+  await Promise.resolve();
+  assert.equal(pending.length,2,'one fresh server lookup is queued after a save');
   pending[1]({rooms:[room(4)]});
   await saved;
   assert.equal(view.A.myRoom.seat_count,4);
-  pending[0]({rooms:[room(12)]});
-  await previous;
-  assert.equal(view.A.myRoom.seat_count,4);
-  assert.equal(view.renders,1,'stale response cannot redraw room cards');
+  assert.equal(view.renders,1,'only the fresh post-save response redraws room cards');
 });
 
 test('Android startup hides legacy demo screens until Firebase session restoration',()=>{
