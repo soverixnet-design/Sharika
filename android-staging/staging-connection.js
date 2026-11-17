@@ -11828,7 +11828,11 @@
     if(!view)return;
     notificationBadges();
     if(!session){view.innerHTML='<div class="empty">Sign in to view your conversations.</div>';return;}
-    view.innerHTML='<div class="chatrow" id="verified-support-chat">'+
+    view.innerHTML='<button class="chatrow" id="verified-official-notices" type="button" '+
+      'style="width:100%;text-align:left;border:0;font:inherit" aria-label="Open Official Notice">'+
+      '<div class="av">📣</div><div><b>Official Notice</b>'+
+      '<small>Official Sharika announcements</small></div><time>›</time></button>'+
+      '<div class="chatrow" id="verified-support-chat">'+
       '<div class="av">🎧</div><div><b>Customer service</b>'+
       '<small>Verified Sharika support conversation</small></div><time>›</time></div>'+
       '<div class="row"><input class="field" id="find-user-id" inputmode="numeric" '+
@@ -11836,6 +11840,7 @@
       '<button class="btn" type="button" id="find-user-button">Find</button></div>'+
       '<div id="real-inbox">Loading messages…</div>';
     document.getElementById('verified-support-chat').onclick=openSupportThread;
+    document.getElementById('verified-official-notices').onclick=showOfficialNotice;
     const find=async()=>{
       const value=document.getElementById('find-user-id').value.trim();
       if(!/^[0-9]{1,10}$/.test(value)){toast('Enter a 1–10 digit Sharika ID');return;}
@@ -14113,6 +14118,164 @@
     select(playStoreMode===false?'recharge':'charm');
   };
 
+  // Official Notice is a read-only conversation-style view of verified
+  // kind='official' D1 notifications. Never substitute demo support messages.
+  let officialNoticePanel=null,officialNoticeItems=[],officialNoticeCursor=null;
+  let officialNoticeLoading=false,officialNoticeEpoch=0;
+  function officialNoticeTimestamp(value){
+    const raw=String(value||'').trim();
+    if(!raw)return '';
+    const iso=raw.includes('T')?raw:raw.replace(' ','T')+'Z';
+    const date=new Date(iso);
+    if(!Number.isFinite(date.getTime()))return '';
+    const pad=n=>String(n).padStart(2,'0');
+    return date.getFullYear()+'-'+pad(date.getMonth()+1)+'-'+pad(date.getDate())+
+      ' '+pad(date.getHours())+':'+pad(date.getMinutes());
+  }
+  function ensureOfficialNoticePanel(){
+    if(officialNoticePanel)return officialNoticePanel;
+    const panel=document.createElement('section');
+    panel.className='sh-official-page';
+    panel.setAttribute('aria-label','Official Notice');
+    panel.innerHTML='<header class="sh-official-top">'+
+      '<button type="button" class="sh-official-icon sh-official-back" '+
+        'aria-label="Back">‹</button>'+
+      '<h2>Official Notice</h2>'+
+      '<button type="button" class="sh-official-icon sh-official-more" '+
+        'aria-label="Official Notice options" aria-expanded="false">•••</button>'+
+      '</header>'+
+      '<div class="sh-official-menu" hidden>'+
+        '<button type="button" data-notice-option="refresh">Refresh</button>'+
+        '<button type="button" data-notice-option="read">Mark visible as read</button>'+
+        '<button type="button" data-notice-option="inbox">All notifications</button>'+
+      '</div>'+
+      '<div class="sh-official-feed" role="feed" aria-label="Verified official announcements"></div>';
+    document.getElementById('app').appendChild(panel);
+    officialNoticePanel=panel;
+    const menu=panel.querySelector('.sh-official-menu');
+    const more=panel.querySelector('.sh-official-more');
+    const closeMenu=()=>{menu.hidden=true;more.setAttribute('aria-expanded','false');};
+    more.onclick=()=>{menu.hidden=!menu.hidden;more.setAttribute('aria-expanded',String(!menu.hidden));};
+    panel.querySelector('.sh-official-back').onclick=()=>{
+      closeMenu();panel.classList.remove('on');officialNoticeEpoch++;
+    };
+    menu.querySelector('[data-notice-option="refresh"]').onclick=()=>{
+      closeMenu();loadOfficialNotices(true).catch(()=>{});
+    };
+    menu.querySelector('[data-notice-option="inbox"]').onclick=()=>{
+      closeMenu();panel.classList.remove('on');officialNoticeEpoch++;
+      showNotifications();
+    };
+    menu.querySelector('[data-notice-option="read"]').onclick=async()=>{
+      closeMenu();
+      const items=officialNoticeItems.filter(item=>!item.read_at);
+      if(!items.length){toast('All displayed official notices are read');return;}
+      const epoch=officialNoticeEpoch;
+      try{
+        // Scope changes to only the displayed official notification IDs.
+        // Never use /notifications/read-all: that would mark other inboxes.
+        for(const item of items){
+          if(epoch!==officialNoticeEpoch||!session)break;
+          await api('PATCH','/notifications/'+item.id+'/read',{});
+          item.read_at='read';
+        }
+        if(epoch===officialNoticeEpoch){
+          toast('Displayed official notices marked as read ✓');
+          refreshNotifications(false).catch(()=>{});
+        }
+      }catch(error){toast('Unable to mark notice read: '+errText(error));}
+    };
+    return panel;
+  }
+  function paintOfficialNotices(){
+    const panel=officialNoticePanel;
+    if(!panel)return;
+    const feed=panel.querySelector('.sh-official-feed');
+    feed.replaceChildren();
+    let lastDate='';
+    if(!officialNoticeItems.length){
+      const empty=document.createElement('p');empty.className='sh-official-empty';
+      empty.textContent=officialNoticeCursor?
+        'No official notices in this batch. You can check older notices.':
+        'No official notices yet.';
+      feed.appendChild(empty);
+    }
+    for(const item of officialNoticeItems){
+      const time=officialNoticeTimestamp(item.created_at);
+      if(time&&time!==lastDate){
+        const date=document.createElement('div');date.className='sh-official-date';
+        date.textContent=time;feed.appendChild(date);lastDate=time;
+      }
+      const row=document.createElement('article');row.className='sh-official-row';
+      const avatar=document.createElement('span');avatar.className='sh-official-avatar';
+      const mark=document.createElement('img');mark.alt='Sharika';
+      mark.src='./sharika_logo.jpg';
+      mark.onerror=()=>{if(mark.isConnected)mark.replaceWith(
+        Object.assign(document.createElement('span'),{textContent:'S'}));};
+      avatar.appendChild(mark);
+      const bubble=document.createElement('div');bubble.className='sh-official-bubble';
+      const title=String(item.title||'').trim(),body=String(item.body||'').trim();
+      if(title&&title!==body){
+        const heading=document.createElement('strong');heading.textContent=title;
+        bubble.appendChild(heading);
+      }
+      if(body){
+        const message=document.createElement('p');message.textContent=body;
+        bubble.appendChild(message);
+      }else if(!title){bubble.textContent='Official Notice';}
+      else if(!bubble.childElementCount){
+        const heading=document.createElement('strong');heading.textContent=title;
+        bubble.appendChild(heading);
+      }
+      row.append(avatar,bubble);feed.appendChild(row);
+    }
+    if(officialNoticeCursor){
+      const more=document.createElement('button');more.type='button';
+      more.className='sh-official-load-more';
+      more.textContent='View older notices';
+      more.onclick=()=>loadOfficialNotices(false);
+      feed.appendChild(more);
+    }
+  }
+  async function loadOfficialNotices(reset=false){
+    if(!session||officialNoticeLoading)return;
+    if(reset){officialNoticeItems=[];officialNoticeCursor=null;}
+    if(!reset&&!officialNoticeCursor)return;
+    const panel=ensureOfficialNoticePanel();
+    const epoch=officialNoticeEpoch;
+    const feed=panel.querySelector('.sh-official-feed');
+    const cursor=officialNoticeCursor;
+    if(reset)feed.innerHTML='<p class="sh-official-empty">Loading official notices…</p>';
+    const more=feed.querySelector('.sh-official-load-more');
+    if(more)more.disabled=true;
+    officialNoticeLoading=true;
+    try{
+      const data=await api('GET',cursor?'/notifications/history/'+cursor:'/notifications');
+      if(epoch!==officialNoticeEpoch||!panel.classList.contains('on'))return;
+      const existing=new Set(officialNoticeItems.map(item=>String(item.id)));
+      for(const item of data.notifications||[]){
+        if(item.kind!=='official'||existing.has(String(item.id)))continue;
+        officialNoticeItems.push(item);existing.add(String(item.id));
+      }
+      const next=Number(data.next_before);
+      officialNoticeCursor=Number.isSafeInteger(next)&&next>0?next:null;
+      paintOfficialNotices();
+    }catch(error){
+      if(epoch!==officialNoticeEpoch||!panel.classList.contains('on'))return;
+      if(officialNoticeItems.length)paintOfficialNotices();
+      else feed.textContent='Official notices unavailable: '+errText(error);
+    }finally{officialNoticeLoading=false;}
+  }
+  function showOfficialNotice(){
+    if(!session){window.showAuth('welcome');return;}
+    const panel=ensureOfficialNoticePanel();
+    panel.classList.add('on');
+    panel.querySelector('.sh-official-menu').hidden=true;
+    panel.querySelector('.sh-official-more').setAttribute('aria-expanded','false');
+    officialNoticeEpoch++;
+    loadOfficialNotices(true).catch(()=>{});
+  }
+
   // Real Notifications inbox. Official notices/rewards/gifts/events are not chats.
   // Message badges count verified unread private messages only.
   let notificationPanel=null,notificationUnread=0,messageUnread=0,notificationPoll=null;
@@ -14187,13 +14350,16 @@
       '<span id="sh-notify-unread"></span>'+
       '<button class="sh-notify-action" id="sh-notify-readall" type="button">Mark all as read</button>'+
       '</div><div style="margin:8px 0 14px">'+
-      '<button class="sh-notify-action" id="sh-notify-enable" type="button">🔔 Enable phone alerts</button>'+ 
+      '<button class="sh-notify-action" id="sh-notify-enable" type="button">🔔 Enable phone alerts</button>'+
+      '<button class="sh-notify-action" id="sh-notify-official" type="button" '+
+        'style="margin-left:7px">📣 Official Notice</button>'+ 
       '<button class="sh-notify-action" id="sh-notify-bonds" type="button" style="margin-left:7px">💌 CP / Friends Invitations</button>'+ 
       '</div><div class="sh-notify-list" id="sh-notify-list"></div>';
     document.getElementById('app').appendChild(notificationPanel);
     notificationPanel.querySelector('#sh-notify-back').onclick=()=>{
       notificationPanel.classList.remove('on');
     };
+    notificationPanel.querySelector('#sh-notify-official').onclick=showOfficialNotice;
     notificationPanel.querySelector('#sh-notify-enable').onclick=async()=>{
       const enabled=await registerPushDevice(true);
       toast(enabled ? 'Phone alerts enabled' : 'Phone alerts not enabled. You can still use Sharika.');
