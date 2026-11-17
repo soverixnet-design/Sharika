@@ -151,7 +151,7 @@ let bal=0,bi=0,bet=1000,busy=false,auto=false,turbo=false,G=[],fresh=new Set();
 // Authoritative game balance is supplied by the Sharika server; never use browser storage.
 const sleep=ms=>new Promise(r=>setTimeout(r,turbo?ms/3:ms));
 const fmt=n=>Math.round(n).toLocaleString('en-US');
-function upd(){$('bl').textContent=fmt(bal);$('bt').textContent=fmt(bet);// Read-only display: wallet settlement happens in Cloudflare D1.}
+function upd(){$('bl').textContent=fmt(bal);$('bt').textContent=fmt(bet);/* Read-only display: wallet settlement happens in Cloudflare D1. */}
 function gen(c){let s;if(Math.random()<.045)s=8;else{let t=Math.random()*WT.reduce((a,b)=>a+b),i=0;while((t-=WT[i])>0)i++;s=i}
 return{s,g:s<8&&c>=1&&c<=3&&Math.random()<.1}}
 function html(x){const s=x.s;return '<img draggable="false" src="'+(s<8?IM[(x.g?'g':'n')+s]:s==8?IM.s8:IM['w'+s])+'">'}
