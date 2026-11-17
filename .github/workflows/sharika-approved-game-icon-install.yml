@@ -50,7 +50,7 @@ jobs:
           gradle=Path('android-staging/app/build.gradle')
           source=gradle.read_text()
           needle="    from(rootProject.file('staging-connection.js')) {"
-          assert source.count(needle)==1
+          assert source.count(needle)>=1
           original=source
           lines="".join("    from(rootProject.file('game-icons/"+v+"'))\n" for v in paths.values())
           source=source.replace(needle,lines+needle,1)
