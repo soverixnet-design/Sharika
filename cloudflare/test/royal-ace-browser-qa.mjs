@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync,copyFileSync,writeFileSync,mkdirSync,rmSync} from 'node:fs';
+import {mkdtempSync,copyFileSync,writeFileSync,mkdirSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -11,7 +11,8 @@ mkdirSync(images,{recursive:true});
 for(const n of ['royal-ace-deluxe.html','royal-ace-loader.svg'])copyFileSync(join(source,n),join(dir,n));
 let browser;
 try{
- browser=await chromium.launch({headless:true,args:['--allow-file-access-from-files','--no-sandbox']});
+ const chrome=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/opt/google/chrome/chrome','/usr/bin/chromium'].find(existsSync);
+ browser=await chromium.launch({headless:true,...(chrome?{executablePath:chrome}:{}),args:['--allow-file-access-from-files','--no-sandbox']});
  for(const m of [{mode:'full',width:393,height:852},{mode:'room',width:360,height:710}]){
   const html=[
    '<html><style>html,body{margin:0;height:100%;overflow:hidden}iframe{width:100%;height:100%;border:0}</style>',
