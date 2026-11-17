@@ -135,6 +135,9 @@ test('Royal Assistant redesign has branded 3D controls and adaptive mobile layou
   assert.match(assistant,/#sh-assistant-hero\{/);
   assert.match(assistant,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(assistant,/@media\(max-height:610px\)/);
+  assert.match(assistant,/#sh-assistant-panel:not\(\.sh-as-chatting\) #sh-assistant-chips\{/);
+  assert.match(assistant,/grid-template-rows:repeat\(4,minmax\(62px,1fr\)\)/);
+  assert.match(assistant,/#sh-assistant-panel:not\(\.sh-as-chatting\) #sh-assistant-log\{display:none\}/);
   assert.match(assistant,/#sh-assistant-panel\.sh-as-chatting #sh-assistant-hero\{display:none\}/);
   assert.match(assistant,/id="sh-assistant-title"/);
   assert.match(assistant,/id="sh-assistant-log" role="log"/);
