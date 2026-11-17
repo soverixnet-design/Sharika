@@ -40,7 +40,7 @@ test('server uses bounded 5x4 grids and caps win',()=>{
   for(let i=0;i<150;i++){
     const g=simulateRoyalAce(1000,false,100000);
     assert.ok(g.steps.length>=1&&g.steps.length<=9);
-    assert.ok(g.win>=0&&g.win<=100000);
+    assert.ok(g.win>=0&&g.win<=40000,'A 1000-coin spin must never pay more than 40x');
     assert.ok([0,10].includes(g.bonusSpins));
     for(const step of g.steps){
       assert.equal(step.grid.length,5);
@@ -102,6 +102,9 @@ test('source artwork, server-only financial bridge, room and Play Store gates re
   assert.match(html,/sharika-royal-ace-server/);
   assert.doesNotMatch(html,/localStorage\.setItem\('sa_bal'/);
   assert.match(html,/royal-ace-loader\.svg/);
+  assert.match(html,/Retry connection/);
+  assert.match(html,/maximum 40× stake per spin/);
+  assert.match(html,/Reconnecting safely/);
   assert.match(bridge,/file:\/\/\/android_asset\/royal-ace-card\.svg/);
   assert.match(bridge,/event\.source!==current\.element\.contentWindow/);
   assert.match(bridge,/preview\(greedyGame\)/);
@@ -124,4 +127,15 @@ test('Android bridge permits only verified Royal Ace staging endpoints and denie
   assert.match(java,/game-catalog\|cleopatra\|royal-ace\|lucky-box/);
   assert.match(worker,/gameAcceptsBets\(env\.DB,'royal-ace'\)/);
   assert.match(worker,/handleRoyalAce\(/);
+});
+
+
+test('SuperAce capped RTP applies to paid and bonus rounds',()=>{
+  for(const stake of [1000,10000,100000])for(const free of [false,true]){
+    for(let i=0;i<30;i++){
+      const result=simulateRoyalAce(stake,free,100000000);
+      assert.ok(result.win>=0&&result.win<=stake*40,'Payout must remain below 40x');
+      assert.ok(result.steps.length<=9);
+    }
+  }
 });
