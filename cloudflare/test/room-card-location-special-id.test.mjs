@@ -48,9 +48,9 @@ test('room cards put verified identity below the unfiltered photo',()=>{
   assert.doesNotMatch(render({...room,cover_url:photo.replace('10000002','10000003')}),/sh-room-card-photo/);
   assert.doesNotMatch(render({...room,cover_url:'https://example.test/cover.jpg'}),/sh-room-card-photo/);
   assert.match(css,/\.sh-room-card-photo \{[^}]*object-fit:cover/);
-  assert.match(ui,/row\(roomGroup,'Profile photo',owner\?'Edit cover':''/);
+  assert.match(ui,/sh-room-settings-cover-action/);
   assert.match(ui,/paintRoomCoverPreview\(preview,verifiedCoverUrl\(room\.cover_url\)\)/);
-  assert.match(ui,/owner\?\(\)=>pickRoomCover\(room,frame\):null/);
+  assert.match(ui,/photo\.onclick=\(\)=>pickRoomCover\(room,frame\)/);
 });
 
 test('signup requires manual ISO country; existing users can choose a country without GPS',()=>{
