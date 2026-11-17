@@ -13529,7 +13529,10 @@
       page:'file:///android_asset/fruit-royale/index.html'},
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
-      page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'}
+      page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'},
+    {id:'cleopatra',name:"Cleopatra's Gold Deluxe",tag:'Egyptian Golden Slots',
+      image:'file:///android_asset/jackpot-fruit-original-card.png',
+      page:'file:///android_asset/original-games/cleopatra-slot.html'}
   ];
   // Only announce server-confirmed round winners during the first ten seconds
   // after settlement. Persist one announcement per game/round across reopens.
@@ -13659,7 +13662,7 @@
     // Keep the other legacy game assets and ledgers intact; they are no longer
     // selectable in the only Games entry point.
     const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel');
-    let visibleGameCards=[greedyGame];
+    let visibleGameCards=[greedyGame]; // Catalog permissions are checked below.
     function catalog(){
       if(portal)sheet.style.height='';
       overlay.classList.remove('sh-original-fullscreen');
@@ -13810,7 +13813,7 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
-      if(portal)sheet.style.height=insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
+      if(portal)sheet.style.height=insideRoom&&item.id==='cleopatra'?'min(60dvh,610px)':insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
       sheet.classList.remove('sh-game-catalog-sheet');
       if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
       // In the room the game itself is the focus: the main close button
@@ -13833,7 +13836,9 @@
       const gameFrame=doc.createElement('iframe');
       // The fragment chooses responsive room-only CSS in the trusted asset.
       // It does not alter the authenticated bet or settlement bridge.
-      gameFrame.src=item.page+(insideRoom&&item.id!=='greedy-wheel'?'#sharika-room':'');
+      gameFrame.src=item.id==='cleopatra'
+        ?item.page+'?mode='+(insideRoom?'room':'full')+'&host=1'
+        :item.page+(insideRoom&&item.id!=='greedy-wheel'?'#sharika-room':'');
       gameFrame.setAttribute('title',item.name);
       gameFrame.style.cssText='width:100%;height:100%;border:0;display:block';
       gameFrame.setAttribute('referrerpolicy','no-referrer');
@@ -13852,6 +13857,48 @@
       }
       const data=event.data;
       if(!data||typeof data!=='object')return;
+      // Cleopatra: original HTML is display-only. The verified Android bridge
+      // authenticates requests and the server alone settles every coin.
+      if(current.item.id==='cleopatra'){
+        const target=current.element.contentWindow;
+        if(data.type==='close'){
+          view.__sharikaOriginalGameCleanup?.();
+          overlay.classList.remove('on');
+          return;
+        }
+        if(data.type==='expand'){
+          if(portal)sheet.style.height='min(92dvh,820px)';
+          return;
+        }
+        if(data.type==='ready'){
+          try{
+            const state=await api('GET','/cleopatra/state');
+            if(session&&currentGameFrame===current)
+              target.postMessage({type:'init',...state},'*');
+          }catch(error){
+            if(session&&currentGameFrame===current){
+              showToast('Game unavailable: '+errText(error));
+              target.postMessage({type:'gameError',error:errText(error)},'*');
+            }
+          }
+          return;
+        }
+        if(data.type!=='spin'||typeof data.id!=='string'||
+           !/^[A-Za-z0-9_-]{8,120}$/.test(data.id)||
+           !Number.isSafeInteger(data.bet)||data.bet<1)return;
+        try{
+          const response=await api('POST','/cleopatra/spin',
+            {bet:data.bet,requestId:data.id});
+          if(!session||currentGameFrame!==current)return;
+          target.postMessage({type:'spinResult',id:data.id,...response},'*');
+          reloadWallet().catch(()=>{});
+        }catch(error){
+          if(session&&currentGameFrame===current)
+            target.postMessage({type:'spinResult',id:data.id,
+              error:errText(error)},'*');
+        }
+        return;
+      }
       if(current.item.id==='greedy-wheel'){
         if(data.source==='greedy-game'&&data.type==='close'){
           view.__sharikaOriginalGameCleanup?.();
@@ -13948,7 +13995,8 @@
       if(catalogRequestNo!==gameCatalogRequestSequence||
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
-      visibleGameCards=[greedyGame].filter(game=>enabled.has(game.id));
+      visibleGameCards=originalGameCards.filter(game=>
+        ['greedy-wheel','cleopatra'].includes(game.id)&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
