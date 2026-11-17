@@ -50,17 +50,21 @@ async function submit(payload){
 async function recoverUnknown(){
  if(!unconfirmed)return;
  try{
+  // A server receipt for the original request ID is the only proof that
+  // retrying is safe. Never mint a second ID for an unknown wager.
   const item=unconfirmed;
   await submit(item);
   unconfirmed=null;
  }catch(error){
-  // A timeout cannot prove whether the database debited this request.
-  // Keep the original ID and block new bets; never create a second debit.
-  if(!String(error.message).includes('timeout')&&
-     !String(error.message).includes('closed')){
-   const value=String(error.message).toLowerCase();
-   if(value.includes('idempotency_conflict'))return;
+  const reason=String(error?.message||error).toLowerCase();
+  // The Worker checks idempotent receipts BEFORE checking whether the
+  // round closed. BETTING_CLOSED therefore proves this ID was not debited.
+  if(/betting_closed|invalid_bet|insufficient_balance|games_adult_only|max_bet/.test(reason)){
+   unconfirmed=null;
+   toast('The previous bet was not accepted. You can try the next round.');
   }
+  // Timeout, connection failures and unrecognized errors are inconclusive:
+  // preserve the same request ID and keep new wagers blocked.
  }
 }
 async function bet(id,amount=S.chip){
