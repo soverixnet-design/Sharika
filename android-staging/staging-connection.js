@@ -8676,11 +8676,19 @@
         balance.className='sh-room-reward-balance';
         const coins=doc.createElement('strong');coins.textContent='—';
         const percent=doc.createElement('span');percent.textContent='Room commission: 10%';
-        const accrued=doc.createElement('span');accrued.textContent='Loading transaction history…';
+        const accrued=doc.createElement('span');accrued.textContent='Loading verified room rewards…';
+        const transaction=doc.createElement('div');
+        transaction.className='sh-room-reward-transaction';
+        const transactionName=doc.createElement('span');
+        transactionName.textContent='Current room transaction';
+        const transactionValue=doc.createElement('strong');
+        transactionValue.textContent='—';
+        transaction.append(transactionName,transactionValue);
         const claim=doc.createElement('button');claim.type='button';
         claim.className='sh-room-reward-collect';
         claim.textContent='Collect';claim.disabled=true;
-        balance.append(coins,percent,claim,accrued);
+        balance.append(coins,percent,claim,accrued,transaction);
+        transaction.append(transactionName,transactionValue);
         panel.append(balance);
         const rules=doc.createElement('div');rules.className='sh-room-reward-rules';
         const title=doc.createElement('h3');title.textContent='Rules';
@@ -8693,32 +8701,69 @@
           const p=doc.createElement('p');p.textContent=rule;rules.append(p);
         }
         const tier=doc.createElement('p');tier.className='sh-room-reward-policy';
-        tier.textContent='Current Sharika policy: 10% fixed. The 5–8% example tiers in the reference screenshots are not active.';
-        rules.append(tier);panel.append(rules);
+        tier.textContent='Sharika room commission is fixed at 10%. Reward collection never resets the immutable gift history; already credited coins cannot be collected again.';
+        rules.append(tier);
+        const rates=doc.createElement('div');
+        rates.className='sh-room-reward-rates';
+        const rateHeader=doc.createElement('div');
+        const rateRange=doc.createElement('span');rateRange.textContent='Room transaction';
+        const ratePercent=doc.createElement('span');ratePercent.textContent='Commission';
+        rateHeader.append(rateRange,ratePercent);
+        const rateRow=doc.createElement('div');
+        const eligible=doc.createElement('span');eligible.textContent='All eligible ordinary gifts';
+        const share=doc.createElement('strong');share.textContent='10%';
+        rateRow.append(eligible,share);
+        rates.append(rateHeader,rateRow);
+        rules.append(rates);panel.append(rules);
+        let requestPending=false;
         async function refresh(){
           const data=await api('GET',rewardsPath);
           if(!panel.isConnected)return;
-          const ready=Number(data.claimable_coins)||0;
-          coins.textContent=ready.toLocaleString('en-US')+' coins available';
-          accrued.textContent='Accrued: '+(Number(data.regular_reward_hundredths||0)/100).toLocaleString('en-US')+
-            ' · Previously credited: '+(Number(data.owner_wallet_credited_coins)||0).toLocaleString('en-US')+' coins';
-          claim.disabled=ready<1;
+          const ready=Math.max(0,Number(data.claimable_coins)||0);
+          if(Number(data.regular_gift_percent)!==10||
+             !Number.isSafeInteger(Number(data.verified_room_transaction_coins))||
+             Number(data.verified_room_transaction_coins)<0)
+            throw new Error('Verified room reward totals do not match current policy');
+          const total=Number(data.verified_room_transaction_coins);
+          coins.textContent=ready.toLocaleString('en-US')+' coins';
+          accrued.textContent='Accrued reward: '+
+            (Number(data.regular_reward_hundredths||0)/100).toLocaleString('en-US')+
+            ' · Collected or credited: '+
+            (Number(data.owner_wallet_credited_coins)||0).toLocaleString('en-US')+' coins';
+          transactionValue.textContent=total.toLocaleString('en-US')+' coins';
+          claim.disabled=requestPending||ready<1;
         }
         claim.onclick=async()=>{
-          if(claim.disabled)return;
+          if(claim.disabled||requestPending)return;
+          requestPending=true;
           claim.disabled=true;state.textContent='Collecting verified coins…';
           try{
             const result=await api('POST',rewardsPath,{});
-            state.textContent=(Number(result.claimed_coins)||0).toLocaleString('en-US')+
-              ' coins collected to your Main Wallet.';
+            const claimed=Math.max(0,Number(result.claimed_coins)||0);
+            state.textContent=claimed>0
+              ?claimed.toLocaleString('en-US')+' coins collected to your Main Wallet.'
+              :'Nothing new to collect. Already credited rewards remain in the ledger.';
             await reloadWallet().catch(()=>{});
-            await refresh();
           }catch(error){
-            state.textContent='Collect failed: '+errText(error);
-            await refresh().catch(()=>{});
+            state.textContent='Collect status uncertain: '+errText(error)+
+              '. Read the verified balance before trying again.';
+          }finally{
+            requestPending=false;
+            await refresh().catch(error=>{
+              if(panel.isConnected){
+                state.textContent='Reward refresh failed: '+errText(error)+
+                  '. Reopen this page to confirm the balance.';
+                claim.disabled=true;
+              }
+            });
           }
         };
-        await refresh();
+        await refresh().catch(error=>{
+          if(panel.isConnected){
+            state.textContent='Room reward unavailable: '+errText(error);
+            claim.disabled=true;
+          }
+        });
       }:null);
       if(owner)api('GET',rewardsPath).then(data=>{
         if(rewardRow.trail.isConnected)rewardRow.trail.textContent=
