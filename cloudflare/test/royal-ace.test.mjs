@@ -107,6 +107,13 @@ test('source artwork, server-only financial bridge, room and Play Store gates re
   assert.match(bridge,/preview\(greedyGame\)/);
   const loader=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/royal-ace-loader.svg',import.meta.url),'utf8');
   assert.match(loader,/<svg/);
+  assert.match(loader,/data:image\/webp;base64,UklG/);
+  const match=loader.match(/href="data:image\/webp;base64,([^"]+)"/);
+  assert.ok(match,'original screenshot must be embedded in the packaged offline SVG');
+  const bytes=Buffer.from(match[1],'base64');
+  assert.ok(bytes.length>25000,'full-quality loading screenshot unexpectedly truncated');
+  assert.equal(bytes.toString('ascii',0,4),'RIFF');
+  assert.equal(bytes.toString('ascii',8,12),'WEBP');
 });
 
 test('Android bridge permits only verified Royal Ace staging endpoints and denies Play',()=>{
