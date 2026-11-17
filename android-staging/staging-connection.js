@@ -7671,25 +7671,25 @@
         css.textContent=[
           '#sh-seat-action-overlay{position:fixed;inset:0;z-index:2147483000;',
           'display:flex;align-items:center;justify-content:center;box-sizing:border-box;',
-          'padding:18px;background:rgba(4,6,20,.72)}',
-          '#sh-seat-action-overlay .sh-seat-action-card{width:min(100%,440px);',
-          'max-height:90vh;overflow-y:auto;box-sizing:border-box;border-radius:30px;',
-          'padding:clamp(22px,6vw,42px) clamp(20px,6vw,40px);',
-          'background:linear-gradient(110deg,#fa3093 0%,#ff7360 50%,#ffb923 100%);',
-          'box-shadow:0 18px 60px rgba(0,0,0,.45)}',
-          '#sh-seat-action-overlay h3{color:white;text-align:center;',
-          'font:600 clamp(23px,5vw,34px)/1.2 Georgia,serif;margin:0 0 26px}',
-          '#sh-seat-action-overlay .sh-seat-action-list{display:grid;gap:17px}',
-          '#sh-seat-action-overlay button{width:100%;border:0;min-height:65px;',
-          'border-radius:999px;background:#fff;color:#3479fa;padding:10px 14px;',
-          'font:600 clamp(21px,5vw,30px)/1.2 Georgia,serif;cursor:pointer}',
-          '#sh-seat-action-overlay button.lock{color:#f72f91}',
-          '#sh-seat-action-overlay button.all{color:#7545fa}',
-          '#sh-seat-action-overlay button.cancel{color:#fff;',
-          'background:rgba(255,255,255,.23)}',
+          'padding:16px;background:rgba(0,0,0,.72)}',
+          '#sh-seat-action-overlay .sh-seat-action-card{width:min(100%,430px);',
+          'max-height:85dvh;overflow-y:auto;box-sizing:border-box;border-radius:21px;',
+          'padding:24px 22px;background:#fff;color:#1a1a1a;',
+          'box-shadow:0 14px 45px rgba(0,0,0,.42)}',
+          '#sh-seat-action-overlay h3{color:#111;text-align:center;',
+          'font:500 clamp(17px,4.2vw,21px)/1.3 system-ui,sans-serif;margin:0 0 20px}',
+          '#sh-seat-action-overlay .sh-seat-action-list{display:grid;gap:13px}',
+          '#sh-seat-action-overlay button{width:100%;border:0;min-height:49px;',
+          'border-radius:999px;background:#0bc9a8;color:white;padding:10px 14px;',
+          'font:750 clamp(15px,4.2vw,19px)/1.2 system-ui,sans-serif;cursor:pointer}',
+          '#sh-seat-action-overlay button.lock{background:#c58bef;color:white}',
+          '#sh-seat-action-overlay button.all{background:#ffc853;color:#fff}',
+          '#sh-seat-action-overlay button.cancel{background:#d9d9d9;color:#fff}',
+          '#sh-seat-action-overlay button:disabled{opacity:.68;cursor:default}',
+          '#sh-seat-action-overlay button:focus-visible{outline:3px solid #174f44;outline-offset:2px}',
           '@media(max-height:640px){#sh-seat-action-overlay .sh-seat-action-card{',
-          'padding:18px 22px}#sh-seat-action-overlay .sh-seat-action-list{gap:10px}',
-          '#sh-seat-action-overlay button{min-height:50px}}'
+          'padding:17px}#sh-seat-action-overlay .sh-seat-action-list{gap:9px}',
+          '#sh-seat-action-overlay button{min-height:45px}}'
         ].join('');
         doc.head.appendChild(css);
       }
@@ -7701,8 +7701,7 @@
       card.setAttribute('aria-modal','true');
       card.setAttribute('aria-label','Mic seat actions');
       const title=doc.createElement('h3');
-      title.textContent=index===0?'Owner throne':
-        selected.lock&&!owner?'Seat locked':'Please select an action';
+      title.textContent=selected.lock&&!owner?'Seat locked':'Please select an action';
       const buttons=doc.createElement('div');
       buttons.className='sh-seat-action-list';
       card.append(title,buttons);
@@ -7713,15 +7712,17 @@
         if(e.key==='Escape'||e.key==='Backspace'){e.preventDefault();close();}
       };
       const options=index===0?[]:selected.lock?
-        (owner?[['unlock','Unlock seat','lock'],['unlock_all','Unlock all','all']]:[]):
-        (owner?[['take','Sit here','take'],['invite','Invite to mic','invite'],['lock','Lock seat','lock'],
+        (owner?[['unlock','Unlock seat','lock'],['unlock_all','Unlock all','all']]:
+          [['disabled','Locked','lock']]):
+        (owner?[['take','Take Mic','take'],['lock','Lock seat','lock'],
           ['lock_all','Lock all','all']]:[['take','Take Mic','take']]);
       for(const [action,label,kind] of options){
         const button=doc.createElement('button');
         button.type='button';
         button.className=kind==='take'?'':kind;
         button.textContent=label;
-        button.onclick=()=>{close();frame.act(action,index);};
+        if(action==='disabled')button.disabled=true;
+        else button.onclick=()=>{close();frame.act(action,index);};
         buttons.appendChild(button);
       }
       const cancel=doc.createElement('button');
