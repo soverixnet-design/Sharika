@@ -53,7 +53,8 @@ async function call(f,role,method,body){
 test('Fruit Royale replaces the old playable Jackpot while history switch stays visible',async()=>{
   const f=fixture();
   const games=await readGameCatalog(f.db);
-  assert.equal(games.length,10);
+  assert.equal(games.length,11);
+  assert.equal(games.find(game=>game.id==='royal-ace').enabled,false);
   assert.equal(games.filter(game=>game.enabled).length,6);
   assert.equal(games.find(game=>game.id==='jackpot-fruit').enabled,false);
   assert.equal(games.find(game=>game.id==='fruit-royale').enabled,true);
