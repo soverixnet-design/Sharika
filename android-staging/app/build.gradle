@@ -152,7 +152,7 @@ tasks.register('prepareSharikaUiAssets', Copy) {
                 .replace('<html lang="en">',
                     '<html lang="en" class="royal-premium royal-root">')
                 .replace('<link rel="stylesheet" href="./reference-profile.css">',
-                    '<link rel="stylesheet" href="./reference-profile.css">\\n' +
+                    '<link rel="stylesheet" href="./reference-profile.css">\n' +
                     '<link id="sharika-cover-profile-v1" rel="stylesheet" href="./sharika-cover-profile.css">')
                 .replace('<link rel="stylesheet" href="./royal-profile.css">',
                     '<link rel="stylesheet" href="./royal-profile.css">\n' +
