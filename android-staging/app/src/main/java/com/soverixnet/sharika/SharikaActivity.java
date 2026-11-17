@@ -1335,7 +1335,7 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/games/(food-wheel|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
-        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit)/rankings\\?period=(daily|weekly|monthly)$"))
+        if (path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit|food-deluxe)/rankings\\?period=(daily|weekly|monthly)$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/original-games/(sovera-food|night-food)/rankings\\?period=(daily|weekly|monthly)&metric=(totalWin|totalBet|profitLoss|winCount)$"))
             return method.equals("GET");
