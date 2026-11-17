@@ -7396,11 +7396,25 @@
       if(shownGiftEvents.has(id))return;
       shownGiftEvents.add(id);
       if(shownGiftEvents.size>200)shownGiftEvents.delete(shownGiftEvents.values().next().value);
-      queueGiftPresentation(frame,event);
-      if(Number(event.tab)===FEATURED_GIFT_TAB||isVideoMedia(verifiedMediaUrl(event.animation_url)))
-        queueGiftPresentation(frame,event,true);
+      // One verified receipt produces exactly one UI overlay. Featured/video
+      // gifts use the fullscreen parade; regular gifts use the small notice.
+      // Running both caused stacked overlays and duplicate animation work.
+      const featured=Number(event.tab)===FEATURED_GIFT_TAB||
+        isVideoMedia(verifiedMediaUrl(event.animation_url));
+      queueGiftPresentation(frame,event,featured);
     }
-    async function pollGiftEvents(ownTransactionId=null){
+    // A slow /gifts response can exceed the five-second poll interval.
+    // Share a pending fetch so it cannot race the cursor, duplicate gift
+    // animations, or keep multiple heavyweight media tasks in flight.
+    // A newly confirmed send still gets one fresh receipt check afterward.
+    let giftPollInFlight=null;
+    function pollGiftEvents(ownTransactionId=null){
+      if(giftPollInFlight){
+        if(ownTransactionId===null)return giftPollInFlight;
+        return giftPollInFlight.catch(()=>{}).then(()=>
+          pollGiftEvents(ownTransactionId));
+      }
+      const work=(async()=>{
       const data=await api('GET','/rooms/'+room.id+'/gifts');
       const events=data.events||[];
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
@@ -7433,6 +7447,12 @@
       // when somebody sends a gift to another user in this room.
       if(receivedGift||(sawNewGift&&room.owner_id===session?.user?.id))
         await reloadWallet();
+      })();
+      const finished=work.finally(()=>{
+        if(giftPollInFlight===finished)giftPollInFlight=null;
+      });
+      giftPollInFlight=finished;
+      return finished;
     }
     async function setRoomAdmin(publicId,makeAdmin){
       if(!visitIsActive()||room.owner_id!==session?.user?.id)throw new Error('Room owner only');
