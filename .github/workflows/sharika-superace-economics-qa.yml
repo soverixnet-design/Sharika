@@ -1,0 +1,17 @@
+name: SuperAce payout sampling QA (virtual coins only)
+on:
+  push:
+    branches: [feature/sharika-royal-ace-server-room-20261118]
+    paths: ['.github/workflows/sharika-superace-economics-qa.yml','cloudflare/test/royal-ace-economics-qa.mjs']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Sample 7000 paid and free spins with no wallet writes
+        run: node cloudflare/test/royal-ace-economics-qa.mjs
