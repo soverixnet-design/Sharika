@@ -220,3 +220,51 @@ test('standalone Room Settings reads real admins, blocks and kick history',()=>{
   assert.match(worker,/action==='policy'/);
   assert.match(java,/\/policy\$/);
 });
+
+
+test('screenshot ranking uses an actual full-height pane with a working Back action',()=>{
+  assert.match(room,/id="sh-ranking-back"/);
+  assert.match(room,/rankingBackdrop\.classList\.add\('sh-rank-page-active'\)/);
+  assert.match(room,/const observer=new MutationObserver\(cleanup\)/);
+  assert.match(room,/rankingBackdrop\.classList\.remove\('sh-rank-page-active'\)/);
+  assert.match(room,/observer\.disconnect\(\)/);
+  assert.match(css,/#bg\.sh-rank-page-active/);
+  assert.match(css,/\.sh-rank-podium-card\[data-place="1"\]/);
+  assert.match(css,/\.sh-rank-podium-card\[data-place="2"\]/);
+  assert.match(css,/\.sh-rank-podium-card\[data-place="3"\]/);
+  assert.match(room,/v\.loadRankings\(period,offset,kind\)/,
+    'the page must use actual verified server ranking data');
+});
+
+test('reference reward is 10% fixed and sourced from immutable ordinary gift ledger',()=>{
+  const r=worker.slice(worker.indexOf("if(parts.length===5&&action==='rewards'"),
+    worker.indexOf("      // Gift sending uses the real D1 catalog",worker.indexOf(
+      "if(parts.length===5&&action==='rewards'")));
+  assert.match(r,/regular_gift_percent:10/);
+  assert.match(r,/verified_room_transaction_coins/);
+  assert.match(r,/Math\.floor\(\(Number\(recorded\?\.points\)\|\|0\)\/10\)/);
+  assert.match(r,/INSERT INTO sharika_room_reward_claims/);
+  assert.match(r,/room\.owner_id!==uid/);
+  assert.match(ui,/Room commission: 10%/);
+  assert.match(ui,/Current room transaction/);
+  assert.match(ui,/verified_room_transaction_coins/);
+  assert.match(ui,/requestPending/);
+  assert.match(ui,/api\('POST',rewardsPath,\{\}\)/);
+  assert.match(ui,/Collect status uncertain:/);
+  assert.match(css,/\.sh-room-reward-transaction/);
+  assert.match(css,/\.sh-room-reward-rates/);
+  assert.doesNotMatch(r,/UPDATE sharika_regular_room_rewards|DELETE FROM sharika_regular_room_rewards/);
+});
+
+test('locked seat action dialog keeps server-owned commands and user permissions',()=>{
+  const seat=ui.slice(ui.indexOf('function verifiedSeatMenu('),
+    ui.indexOf('function renderMemberHalfProfile(',ui.indexOf('function verifiedSeatMenu(')));
+  assert.match(seat,/owner\?\[\['unlock','Unlock seat'/);
+  assert.match(seat,/owner\?\[\['take','Take Mic'/);
+  assert.match(seat,/\['lock_all','Lock all'/);
+  assert.match(seat,/\['disabled','Locked'/);
+  assert.match(seat,/frame\.act\(action,index\)/);
+  assert.match(ui,/api\('PUT','\/rooms\/'\+room\.id\+'\/locks\/all'/);
+  assert.match(ui,/api\('PUT','\/rooms\/'\+room\.id\+'\/locks'/);
+  assert.match(worker,/action==='locks'/);
+});
