@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {webcrypto,createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import {handleGreedyClassicRequest,greedyClassicOutcome,greedyClassicPayout,
  settleGreedyClassicDueBets} from '../src/greedy-classic.mjs';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
@@ -110,4 +111,50 @@ test('original uploaded 21 PNGs are kept, English-only, with no client coin muta
  assert.match(js,/window\.bet=bet/);
  assert.match(js,/sharika:original-request/);
  assert.match(js,/unconfirmed=payload/);
+});
+
+test('native parent bridge confirms wager before wallet changes, without fake deposits',async()=>{
+ const source=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/greedy-classic-live.js',import.meta.url),'utf8');
+ const requests=[],listeners=new Map(),elements=new Map(),messages=[];
+ const parent={postMessage(data){requests.push(data)}};
+ const window={parent,addEventListener(type,fn){listeners.set(type,fn)}};
+ const S={bal:0,round:0,t:0,phase:'load',chip:100,bets:{},last:{},hist:[],played:0,rev:0,auto:false};
+ const F=['chicken','fish','hotdog','steak','grape','lettuce','pepper','watermelon'].map(id=>({id}));
+ const $=selector=>{
+  if(!elements.has(selector))elements.set(selector,{textContent:'',src:'',onclick:null});
+  return elements.get(selector);
+ };
+ runInNewContext(source,{window,S,F,CH:[100,1000,10000,50000],$,draw(){},
+  show(message){messages.push(message)},hide(){},clearOn(){},
+  im(){return ''},winners:item=>[item],crypto:webcrypto,Uint8Array,Map,
+  setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>1,
+  Date,Promise,Number,Object,String,Array,Math,Set});
+ assert.equal(typeof window.bet,'function');
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].action,'state');
+ const send=(req,data)=>{
+  listeners.get('message')({source:parent,data:{
+   type:'sharika:original-response',id:req.id,ok:true,value:data}});
+ };
+ send(requests[0],{serverTime:Date.now(),balance:1000,todayWin:0,todayPlayed:0,
+  user:{name:'Verified Test'},myBets:Array(8).fill(0),history:[],
+  state:{round:123,phase:'betting',endsAt:Date.now()+8000}});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(S.bal,1000);
+ assert.equal(S.round,123);
+ assert.equal(S.phase,'bet');
+ const wager=window.bet('chicken');
+ assert.equal(S.bal,1000,'client may not optimistically debit before verified result');
+ const request=requests.at(-1);
+ assert.equal(request.action,'bet');
+ assert.equal(request.method,'POST');
+ assert.equal(request.body.round,123);
+ assert.equal(request.body.itemId,'chicken');
+ assert.equal(request.body.amount,100);
+ assert.match(request.body.request_id,/^[A-Za-z0-9:_-]{12,80}$/);
+ send(request,{round:123,balance:900,myBets:[100,0,0,0,0,0,0,0]});
+ assert.equal(await wager,true);
+ assert.equal(S.bal,900);
+ assert.equal(S.bets.chicken,100);
+ assert.equal(messages.length,0,'normal confirmed wager has no fake banner');
 });
