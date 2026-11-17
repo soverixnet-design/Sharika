@@ -4,6 +4,8 @@ on:
     branches: [feature/sharika-royal-ace-server-room-20261118]
     paths:
       - '.github/workflows/sharika-royal-ace-stage-worker.yml'
+      - 'cloudflare/src/royal-ace.mjs'
+      - 'cloudflare/src/cleopatra.mjs'
   workflow_dispatch:
 permissions:
   contents: read
@@ -46,6 +48,8 @@ jobs:
           node --check src/game-catalog.mjs
       - name: Verify wallet, UI adapter, and Play boundary regressions
         run: node --test test/royal-ace.test.mjs test/cleopatra.test.mjs test/game-availability-bridge.test.mjs
+      - name: Validate food, greedy, and card bundle after payout tuning
+        run: node --test test/food-wheel-deluxe.test.mjs test/greedy-classic.test.mjs test/greedy-wheel.test.mjs test/sovera-gaddy.test.mjs test/room-announcement-and-legacy-games.test.mjs
       - name: Verify migration already applied on isolated staging D1
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE name IN ('sharika_royal_ace_rounds','royal_ace_settle','royal_ace_validate') ORDER BY name"
