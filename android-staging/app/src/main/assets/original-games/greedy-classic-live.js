@@ -68,8 +68,15 @@ async function recoverUnknown(){
  }
 }
 async function bet(id,amount=S.chip){
- if(!ready||changing||unconfirmed||S.phase!=='bet'){
-  if(unconfirmed)toast('Checking the previous bet. New bets are paused.');
+ if(unconfirmed){toast('Checking the previous bet. New bets are paused.');return false;}
+ if(!ready){toast('Reconnecting to game server. Try again shortly.');return false;}
+ if(changing){toast('Waiting for the previous bet confirmation.');return false;}
+ // A server-confirmed open phase can become stale between 1.6s polls.
+ // Stop tapping before the deadline to avoid an apparently ignored 409.
+ if(S.phase!=='bet'||!state?.state?.endsAt||
+    state.state.endsAt-(Date.now()+clockOffset)<=1200){
+  S.phase='spin';S.t=0;draw();
+  toast('Betting closed. Please wait for the next round.');
   return false;
  }
  if(!F.some(f=>f.id===id)||!CH.includes(amount))return false;
@@ -140,7 +147,9 @@ function finishVerified(r,round){
 }
 function updateTime(){
  if(!state||!state.state)return;
- S.t=Math.max(0,Math.ceil((state.state.endsAt-(Date.now()+clockOffset))/1000));
+ const remaining=state.state.endsAt-(Date.now()+clockOffset);
+ S.t=Math.max(0,Math.ceil(remaining/1000));
+ if(S.phase==='bet'&&remaining<=1200)S.phase='spin';
  if(S.phase==='pop'){
   const counter=$('#box .cnt');if(counter)counter.textContent='('+Math.min(S.t,4)+'s)';
  }
