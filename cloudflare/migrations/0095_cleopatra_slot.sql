@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS sharika_cleopatra_rounds(
   jackpot_version INTEGER NOT NULL,
   created_ms INTEGER NOT NULL,
   balance_after INTEGER,
+  free_spins_after INTEGER NOT NULL DEFAULT 0,
+  jackpot_after INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(user_uid,request_id)
 );
@@ -110,7 +112,9 @@ BEGIN
        * (1-NEW.is_free_spin) END,
    version=version+1 WHERE id=1;
  UPDATE sharika_cleopatra_rounds SET
-   balance_after=(SELECT coins FROM sharika_users WHERE auth_uid=NEW.user_uid)
+   balance_after=(SELECT coins FROM sharika_users WHERE auth_uid=NEW.user_uid),
+   free_spins_after=(SELECT remaining FROM sharika_cleopatra_free_spins WHERE user_uid=NEW.user_uid),
+   jackpot_after=(SELECT pool FROM sharika_cleopatra_jackpot WHERE id=1)
    WHERE id=NEW.id;
 END;
 
