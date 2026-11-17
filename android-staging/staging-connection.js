@@ -8587,6 +8587,23 @@
       intro.placeholder='Please enter introduction';
       intro.setAttribute('aria-label','Introduction');
       field('Introduction',intro);
+
+      // Match the reference's inline Password field, but never prefill a PIN.
+      // The value is sent only through the existing owner-only policy endpoint.
+      const inlinePassword=doc.createElement('input');
+      inlinePassword.type='password';
+      inlinePassword.className='sh-room-settings-input';
+      inlinePassword.inputMode='numeric';
+      inlinePassword.autocomplete='new-password';
+      inlinePassword.maxLength=12;
+      inlinePassword.disabled=!owner;
+      inlinePassword.placeholder='Please enter password (optional, 4–12 digits)';
+      inlinePassword.setAttribute('aria-label','Set room password');
+      field('Password',inlinePassword);
+      const passwordHelp=doc.createElement('small');
+      passwordHelp.className='sh-room-settings-password-help';
+      passwordHelp.textContent='Leave blank to keep the existing password. Room entry PINs are never displayed.';
+      body.append(passwordHelp);
       const saveStatus=status(body);
       const detailState={tag:'general',introduction:'',ready:false};
       const labels={general:'General',music:'Music',chat:'Chat',
@@ -8609,6 +8626,11 @@
         const value=name.value.trim();
         if(!value){saveStatus.textContent='Room name is required';return;}
         if(!detailState.ready){saveStatus.textContent='Room details are not loaded';return;}
+        const newPin=inlinePassword.value;
+        if(newPin&&!/^[0-9]{4,12}$/.test(newPin)){
+          saveStatus.textContent='Password must contain 4–12 digits, or be left blank';
+          inlinePassword.focus();return;
+        }
         saveMain.disabled=true;saveStatus.textContent='Saving room settings…';
         try{
           const introduction=intro.value.trim();
@@ -8620,6 +8642,15 @@
             await reloadRooms();await syncFrame(room,frame);
           }
           detailState.introduction=introduction;
+          if(newPin){
+            await api('PUT','/rooms/'+room.id+'/policy',{
+              password_action:'set',password:newPin
+            });
+            inlinePassword.value='';
+            frame.__sharikaRoomPolicy={
+              ...(frame.__sharikaRoomPolicy||{}),password_required:true
+            };
+          }
           saveStatus.textContent='Saved ✓';
         }catch(error){
           saveStatus.textContent='Not fully saved: '+errText(error)+
@@ -8627,8 +8658,11 @@
         }finally{if(page.isConnected)saveMain.disabled=false;}
       };
       const settings=section('Room Settings');
-      row(settings,'Password',currentPolicy.password_required?'Set':'Not set',
-        owner?passwordPolicyPage:null);
+      // Password is edited inline above. When set, the separate owner-only
+      // screen remains available for explicit removal without exposing the PIN.
+      if(currentPolicy.password_required)
+        row(settings,'Remove or change password','Protected',
+          owner?passwordPolicyPage:null);
       row(settings,'Release notification','Room announcement',owner?async()=>{
         const data=await api('GET','/rooms/'+room.id+'/announcement');
         editText('Announcement',data.text,280,async value=>{
