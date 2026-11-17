@@ -2,7 +2,7 @@ name: SuperAce payout sampling QA (virtual coins only)
 on:
   push:
     branches: [feature/sharika-royal-ace-server-room-20261118]
-    paths: ['.github/workflows/sharika-superace-economics-qa.yml','cloudflare/test/royal-ace-economics-qa.mjs']
+    paths: ['.github/workflows/sharika-superace-economics-qa.yml','cloudflare/test/royal-ace-economics-qa.mjs','cloudflare/src/royal-ace.mjs']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
