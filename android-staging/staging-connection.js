@@ -13819,7 +13819,7 @@
     }
     function preview(item){
       currentGameFrame=null;clearWinnerBanner();
-      if(portal)sheet.style.height=insideRoom&&item.id==='cleopatra'?'min(60dvh,610px)':insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
+      if(portal)sheet.style.height=insideRoom&&item.id==='greedy-classic'?'min(54dvh,460px)':insideRoom&&item.id==='cleopatra'?'min(60dvh,610px)':insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
       sheet.classList.remove('sh-game-catalog-sheet');
       if(!insideRoom)overlay.classList.add('sh-original-fullscreen');
       // In the room the game itself is the focus: the main close button
@@ -13834,7 +13834,7 @@
         'overflow:hidden;background:#100424"></div>';
       const title=sheet.querySelector('h3');
       title.textContent=item.name;
-      title.hidden=item.id==='greedy-wheel';
+      title.hidden=item.id==='greedy-wheel'||item.id==='greedy-classic';
       const returnToCatalog=sheet.querySelector('#sh-original-back');
       if(returnToCatalog)returnToCatalog.onclick=()=>{
         currentGameFrame=null;clearWinnerBanner();catalog();
@@ -13936,7 +13936,12 @@
         }
         return;
       }
-      if(data.type==='sharika:original-exit'){currentGameFrame=null;clearWinnerBanner();catalog();return;}
+      if(data.type==='sharika:original-exit'){
+        if(insideRoom&&current.item.id==='greedy-classic'){
+          view.__sharikaOriginalGameCleanup?.();overlay.classList.remove('on');return;
+        }
+        currentGameFrame=null;clearWinnerBanner();catalog();return;
+      }
       if(data.type!=='sharika:original-request')return;
       const permitted=['state','history','stats','rankings','bet'];
       if(data.game!==current.item.id||!permitted.includes(data.action)||
