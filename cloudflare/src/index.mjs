@@ -30,6 +30,7 @@ import { handleOpeningApp } from './opening.mjs';
 import { handleGameRequest, settleDueBets } from './games.mjs';
 import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.mjs';
 import {handleSoveraGaddy} from './sovera-gaddy.mjs';
+import {handleCleopatra} from './cleopatra.mjs';
 import {handleFruitRoyaleRequest,settleFruitDueBets} from './fruit-royale.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {readExchangeRate,respondRate,exchangeCredit,MAX_DIAMONDS} from './exchange-rate.mjs';
@@ -400,6 +401,13 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/game-catalog'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       return reply({games:await readGameCatalog(env.DB)},200,cors);
+    }
+    if(path==='/api/v1/cleopatra/state'||path==='/api/v1/cleopatra/spin'){
+      await assertActive(env.DB,uid);
+      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'cleopatra')))
+        return fail('game_disabled',403,cors);
+      return await handleCleopatra({request,db:env.DB,uid,
+        action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
     }
     if(path==='/api/v1/events'||/^\/api\/v1\/events\/[1-9]\d*\/ranking$/.test(path)) return await handleEventApp({
       request,env,uid,path,cors,reply,fail
