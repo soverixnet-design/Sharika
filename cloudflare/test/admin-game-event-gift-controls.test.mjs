@@ -9,7 +9,7 @@ const fail=(error,status)=>Response.json({error},{status});
 function fixture(){
   const changes=[],catalog=new Map([
     ['sovera-food',1],['sovera-gaddy',1],['night-food',1],['jackpot-fruit',0],['fruit-royale',1],
-    ['greedy-wheel',1],['food-wheel',1],['cleopatra',0],['food-deluxe',0]
+    ['greedy-wheel',1],['food-wheel',1],['cleopatra',0],['food-deluxe',0],['greedy-classic',0]
   ]);
   const db={
     prepare(sql){
@@ -53,7 +53,7 @@ async function call(f,role,method,body){
 test('Fruit Royale replaces the old playable Jackpot while history switch stays visible',async()=>{
   const f=fixture();
   const games=await readGameCatalog(f.db);
-  assert.equal(games.length,9);
+  assert.equal(games.length,10);
   assert.equal(games.filter(game=>game.enabled).length,6);
   assert.equal(games.find(game=>game.id==='jackpot-fruit').enabled,false);
   assert.equal(games.find(game=>game.id==='fruit-royale').enabled,true);
