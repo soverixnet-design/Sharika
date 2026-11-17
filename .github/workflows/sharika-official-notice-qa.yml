@@ -9,6 +9,7 @@ on:
       - 'android-staging/staging-connection.js'
       - 'android-staging/back-navigation.js'
       - 'android-staging/official-notice.test.mjs'
+      - 'android-staging/official-notice-ui.test.mjs'
       - '.github/workflows/sharika-official-notice-qa.yml'
   workflow_dispatch:
 
@@ -32,6 +33,7 @@ jobs:
           node --check android-staging/staging-connection.js
           node --check android-staging/back-navigation.js
           node --test android-staging/official-notice.test.mjs
+          node --test android-staging/official-notice-ui.test.mjs
           node --test android-staging/profile-cover-layout.test.mjs
       - name: Set up JDK 17
         uses: actions/setup-java@v4
