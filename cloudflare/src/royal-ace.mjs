@@ -72,21 +72,25 @@ function cascade(grid,marks,combo){
 }
 export function simulateRoyalAce(bet,free=false,maxWin=100000000){
   if(!INT(bet)||bet<1||!INT(maxWin)||maxWin<1)throw Error('invalid_royal_round');
+  // Tuned staging economics: future spins pay 45% of the original ways-table gross.
+  // Each round also caps credited winnings at 40x the stake; no historical ledgers change.
+  // Keep these limits mirrored in the client Rules panel.
+  const payoutBps=4500,cap=Math.min(maxWin,bet*40);
   const g=makeGrid(),steps=[{grid:copy(g),marks:[],combo:0,multiplier:MULT[free?1:0][0]}];
   let total=0;
   for(let combo=0;combo<8;combo++){
     const result=evaluate(g,bet,free,combo);
     if(!result.marks.length)break;
-    total=Math.min(maxWin,total+result.win);
+    total=Math.min(Math.ceil(cap*10000/payoutBps),total+result.win);
     steps[steps.length-1].marks=result.marks;
-    steps[steps.length-1].payout=Math.min(result.win,maxWin);
-    if(total>=maxWin)break;
+    steps[steps.length-1].payout=Math.min(cap,Math.floor(result.win*payoutBps/10000));
+    if(Math.floor(total*payoutBps/10000)>=cap)break;
     cascade(g,result.marks,combo);
     steps.push({grid:copy(g),marks:[],combo:Math.min(combo+1,4),
       multiplier:MULT[free?1:0][Math.min(combo+1,4)]});
   }
   let scatters=0;for(const col of g)for(const x of col)if(x.s===8)scatters++;
-  return {steps,win:total,bonusSpins:scatters>=3?(free?5:10):0};
+  return {steps,win:Math.floor(Math.min(cap,total*payoutBps/10000)),bonusSpins:scatters>=3?(free?5:10):0};
 }
 async function getState(db,uid){
   const [u,conf,fs]=await Promise.all([
