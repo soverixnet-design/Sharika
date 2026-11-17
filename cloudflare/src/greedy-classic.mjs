@@ -91,8 +91,8 @@ async function topWinners(db,roundId){
   const rows=(await db.prepare('SELECT u.public_no,u.name,u.pic,SUM(b.payout) AS win '+
     'FROM sharika_greedy_classic_bets b JOIN sharika_users u ON u.auth_uid=b.user_uid '+
     "WHERE b.round_id=? AND b.status='settled' AND b.payout>0 "+
-    'GROUP BY b.user_uid HAVING SUM(b.payout)>? ORDER BY win DESC,u.public_no LIMIT 3')
-    .bind(roundId,WINNER_BANNER_MIN).all()).results||[];
+    'GROUP BY b.user_uid HAVING SUM(b.payout)>0 ORDER BY win DESC,u.public_no LIMIT 10')
+    .bind(roundId).all()).results||[];
   return rows.map(winnerDetails);
 }
 async function recentWinners(db,now=Date.now()){
@@ -139,6 +139,9 @@ async function currentState(db,uid){
   // settled_at is written by the one-time D1 settlement trigger.
   const todayDay=new Date(now).toISOString().slice(0,10);
   const nextDay=new Date(Date.parse(todayDay+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+  const played=await db.prepare('SELECT COALESCE(SUM(amount),0) AS total '+
+    "FROM sharika_greedy_classic_bets WHERE user_uid=? AND created_at>=? AND created_at<?")
+    .bind(uid,todayDay+' 00:00:00',nextDay+' 00:00:00').first();
   const daily=await db.prepare('SELECT COALESCE(SUM(payout),0) AS total '+
     'FROM sharika_greedy_classic_bets WHERE user_uid=? AND status=\'settled\' '+
     'AND settled_at>=? AND settled_at<?')
@@ -149,6 +152,7 @@ async function currentState(db,uid){
     totals:amounts.totals,online:amounts.online};
   const response={serverTime:now,balance:user.coins,
     todayDay,todayWin:Math.max(0,Number(daily?.total)||0),
+    todayPlayed:Math.max(0,Number(played?.total)||0),
     user:{id:String(user.public_no).padStart(8,'0'),name:user.name,avatar:user.pic||''},
     config:{chips:CHIPS,maxBetPerRound:MAX_ROUND_STAKE},
     state,myBets:amounts.myBets,history:await recentHistory(db,now)};
