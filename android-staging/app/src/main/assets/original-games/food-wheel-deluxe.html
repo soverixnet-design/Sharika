@@ -92,7 +92,8 @@ const snd=(f,d=.08)=>{if(!sound)return;try{const a=window.AC||(window.AC=new(win
 function toast(s){const t=$('toast');t.textContent=s;t.style.opacity=1;clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.opacity=0,1400)}
 // Only the native authenticated parent can submit a wager; no optimistic wallet debit.
 const GAME='food-deluxe',pending=new Map();let seq=0,ready=false,placing=false,
-  currentState=null,serverDelta=0,animating=false,animatedRound=-1,refreshing=false;
+  currentState=null,serverDelta=0,animating=false,animatedRound=-1,refreshing=false,
+  unconfirmedBet=null,reconcilingBet=false;
 const escapeHtml=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 window.addEventListener('message',e=>{
  if(e.source!==parent)return;
@@ -113,21 +114,56 @@ function call(action,method='GET',body=null,query=null){
 function requestId(){
  return 'food_'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'_'+(++seq));
 }
+// A timeout or malformed receipt cannot prove whether the server debited a wager.
+// Keep the exact payload until the Worker confirms it or definitively rejects it.
+const rejectedBet=reason=>/betting_closed|invalid_bet|insufficient_coins|game_not_eligible|idempotency_conflict/.test(
+ String(reason||'').toLowerCase());
+async function reconcileUnconfirmedBet(){
+ if(!unconfirmedBet||placing||reconcilingBet||!ready)return;
+ reconcilingBet=true;
+ const payload=unconfirmedBet;
+ try{
+  const receipt=await call('bet','POST',payload);
+  if(receipt?.round_no!==payload.round_no||
+     !Number.isSafeInteger(receipt.balance)||receipt.balance<0)
+   throw Error('Invalid verified bet receipt');
+  unconfirmedBet=null;
+  coins=receipt.balance;
+  await refresh();
+  toast('Previous bet confirmed');
+ }catch(error){
+  if(rejectedBet(error?.message)){
+   unconfirmedBet=null;await refresh();
+   toast('Previous bet was not accepted');
+  }
+  // Unknown network/server errors retain the original request ID.
+ }finally{reconcilingBet=false}
+}
 async function place(stakes){
+ if(unconfirmedBet)return toast('Checking previous bet. New bets are paused.');
  if(!ready||placing||phase!=='bet'||!currentState)return toast('Betting is closed');
  const total=stakes.reduce((a,b)=>a+b,0);
+ if(!Number.isSafeInteger(total)||total<100||total>100000000)return toast('Invalid bet');
  if(coins<total)return toast('Not enough coins');
+ const payload={round_no:round,request_id:requestId(),stakes:[...stakes]};
  placing=true;
  try{
-  const saved=await call('bet','POST',{
-    round_no:round,request_id:requestId(),stakes
-  });
-  if(saved.round_no!==round)return refresh();
+  const saved=await call('bet','POST',payload);
+  if(saved?.round_no!==payload.round_no||
+     !Number.isSafeInteger(saved.balance)||saved.balance<0)
+   throw Error('Invalid verified bet receipt');
   coins=saved.balance;
-  bets=await myRoundStakes(stakes);
+  if(saved.round_no===round)bets=await myRoundStakes(stakes);
+  else await refresh();
   snd(700);draw();
- }catch(e){toast(e.message);await refresh()}
- finally{placing=false}
+ }catch(error){
+  const reason=String(error?.message||error);
+  if(!rejectedBet(reason)){
+   unconfirmedBet=payload;
+   toast('Checking previous bet. Do not repeat it.');
+  }else toast(reason);
+  await refresh();
+ }finally{placing=false}
 }
 async function myRoundStakes(stakes){
  const total=bets.slice();
@@ -264,5 +300,5 @@ function tick(){
  draw();
 }
 function fit(){const s=Math.min(innerWidth/1080,innerHeight/2352),st=$('stage');st.style.transform=`scale(${s})`;st.style.left=(innerWidth-1080*s)/2+'px';st.style.top=(innerHeight-2352*s)/2+'px'}
-addEventListener('resize',fit);fit();build();draw();refresh();setInterval(tick,1000);setInterval(refresh,2500);
+addEventListener('resize',fit);fit();build();draw();refresh();setInterval(tick,1000);setInterval(refresh,2500);setInterval(reconcileUnconfirmedBet,4000);
 </script></body></html>
