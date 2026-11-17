@@ -162,6 +162,7 @@ async function refresh(){
   S.round=r.state.round;S.bal=r.balance;S.rev=Number(r.todayWin)||0;
   S.played=Number(r.todayPlayed)||0;
   S.bets=betAmounts(r.myBets);
+  S.pool=Array.isArray(r.state.totals)&&r.state.totals.length===8?r.state.totals:Array(8).fill(0);
   S.hist=r.history.map(x=>x.itemId).filter(x=>OUTCOMES.has(x)).slice(0,7);
   if(r.user){
    $('#me .nm').textContent=String(r.user.name||'Player').slice(0,30);
