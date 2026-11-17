@@ -113,20 +113,40 @@ function call(action,method='GET',body=null,query=null){
 function requestId(){
  return 'food_'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'_'+(++seq));
 }
+let unresolvedFoodBet=null;
 async function place(stakes){
  if(!ready||placing||phase!=='bet'||!currentState)return toast('Betting is closed');
+ if(unresolvedFoodBet&&unresolvedFoodBet.round_no===round){
+   toast('Checking an earlier bet before another coin debit');
+   return refresh();
+ }
  const total=stakes.reduce((a,b)=>a+b,0);
  if(coins<total)return toast('Not enough coins');
  placing=true;
+ const payload={round_no:round,request_id:requestId(),stakes,before:bets.slice()};
+ const wirePayload={round_no:payload.round_no,request_id:payload.request_id,stakes:payload.stakes};
  try{
-  const saved=await call('bet','POST',{
-    round_no:round,request_id:requestId(),stakes
-  });
+  let saved;
+  try{saved=await call('bet','POST',wirePayload);}
+  catch(error){
+    if(!/timeout|network|unavailable|connection|failed/i.test(String(error.message||error)))throw error;
+    toast('Connection slow. Retrying the SAME bet safely…');
+    // Same idempotency key: the D1 server cannot debit this bet twice.
+    saved=await call('bet','POST',wirePayload);
+  }
   if(saved.round_no!==round)return refresh();
+  if(!Number.isSafeInteger(saved.balance)||saved.balance<0)throw Error('Invalid server bet receipt');
   coins=saved.balance;
   bets=await myRoundStakes(stakes);
+  unresolvedFoodBet=null;
   snd(700);draw();
- }catch(e){toast(e.message);await refresh()}
+ }catch(e){
+  if(/timeout|network|unavailable|connection|failed/i.test(String(e.message||e))){
+    unresolvedFoodBet=payload;
+    toast('Bet confirmation pending. Wait for the server to reconnect.');
+  }else toast('Bet not accepted: '+e.message);
+  await refresh();
+ }
  finally{placing=false}
 }
 async function myRoundStakes(stakes){
@@ -199,6 +219,14 @@ async function refresh(){
   if(currentState&&round!==state.round.round_no){
    animating=false;animatedRound=-1;win=-1;
   }
+  // Resolve a timed-out wager against the authoritative server stake totals.
+  // Never create a fresh request ID until the old bet is confirmed or expired.
+  if(unresolvedFoodBet){
+    if(state.round.round_no!==unresolvedFoodBet.round_no)unresolvedFoodBet=null;
+    else if((state.my_stakes||[]).every((x,i)=>
+      Number(x)>=Number(unresolvedFoodBet.before?.[i]||0)+Number(unresolvedFoodBet.stakes[i]||0)))
+      unresolvedFoodBet=null;
+  }
   currentState=state;serverDelta=state.server_time-Date.now();
   round=state.round.round_no;
   coins=Number(state.balance);
@@ -222,7 +250,11 @@ async function refresh(){
    draw();
   }
  }catch(e){
-  ready=false;phase='loading';draw();toast('Connection: '+e.message);
+  ready=false;
+  // Keep the last verified wheel visible during poor connectivity; never fake a bet.
+  if(!currentState){phase='loading';draw();}
+  else T.ping.textContent='RECONNECTING';
+  toast('Connection slow. Waiting for verified data.');
  }finally{refreshing=false}
 }
 // Wheel highlight always follows the server-confirmed index; only animation
@@ -264,5 +296,13 @@ function tick(){
  draw();
 }
 function fit(){const s=Math.min(innerWidth/1080,innerHeight/2352),st=$('stage');st.style.transform=`scale(${s})`;st.style.left=(innerWidth-1080*s)/2+'px';st.style.top=(innerHeight-2352*s)/2+'px'}
-addEventListener('resize',fit);fit();build();draw();refresh();setInterval(tick,1000);setInterval(refresh,2500);
+addEventListener('resize',fit);fit();build();draw();refresh();setInterval(tick,1000);
+let lastSmartRefresh=0;
+setInterval(()=>{
+ if(document.visibilityState==='hidden')return;
+ const weak=/2g|slow/i.test(navigator.connection?.effectiveType||'');
+ const minGap=weak?6000:2500;
+ if(Date.now()-lastSmartRefresh<minGap)return;
+ lastSmartRefresh=Date.now();refresh();
+},2500);
 </script></body></html>
