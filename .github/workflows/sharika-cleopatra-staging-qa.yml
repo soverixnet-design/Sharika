@@ -1,0 +1,53 @@
+name: Cleopatra staging security and integration QA
+on:
+  push:
+    branches:
+      - feature/sharika-cleopatra-slot-staging-20261117
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleopatra-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check server and Android bridge syntax
+        run: |
+          node --check cloudflare/src/cleopatra.mjs
+          node --check cloudflare/src/index.mjs
+          node --check cloudflare/src/admin.mjs
+          node --check cloudflare/src/game-catalog.mjs
+          node --check android-staging/staging-connection.js
+      - name: Run Cleopatra backend + in-memory SQLite regression tests
+        run: node --test cloudflare/test/cleopatra.test.mjs
+      - name: Verify original embedded image and full/room host asset
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android-staging/app/src/main/assets/original-games/cleopatra-slot.html')
+          h=p.read_text()
+          assert len(h)>400000, 'original inline graphics missing'
+          assert "host" in h and "window.__sharikaGameReady" in h
+          assert "if(HOST){" in h and "type:'ready'" in h
+          assert "type:'spin'" in h and "type:'spinResult'" in h
+          print('GAME_ASSET_AND_HOST_MESSAGES_OK')
+          PY
+      - name: Confirm Play restrictions and verified host routing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          android=Path('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java').read_text()
+          bridge=Path('android-staging/staging-connection.js').read_text()
+          assert "game-catalog|cleopatra|lucky-box" in android
+          assert '"/api/v1/cleopatra/spin"' in android
+          assert "event.source!==current.element.contentWindow" in bridge
+          assert "['greedy-wheel','cleopatra']" in bridge
+          assert "api('POST','/cleopatra/spin'" in bridge
+          print('ROOM_AND_PLAY_GUARDRAILS_OK')
+          PY
