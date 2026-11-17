@@ -23,25 +23,20 @@ test('all six Royal room controls stay on one compact row so Games is visible',(
   assert.ok(css.includes('width:clamp(44px,12vw,50px)'));
 });
 
-test('obsolete room demo timers and users are removed from the Android template',()=>{
-  assert.match(ui,/for\\\(var ui=0;ui<121;ui\\\+\\\+\\\)U\\\.push/);
-  assert.match(ui,/setInterval\(function\(\)\{tick\(false\)\},1600\)/);
-  assert.match(ui,/setInterval\(botGift,28000\)/);
-  assert.match(ui,/var o=others/);
-  const marker='var ROOM_HTML=';
-  const start=host.indexOf(marker);
-  assert.ok(start>0);
-  let end=start+marker.length+1;
-  for(;end<host.length;end++){
-    if(host[end]==='\\'){end++;continue;}
-    if(host[end]==='"')break;
-  }
-  let template=JSON.parse(host.slice(start+marker.length,end+1));
-  assert.match(template,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
-  template=template.replace(/for\(var ui=0;ui<121;ui\+\+\)U\.push\([^\n]*\);/,'')
-    .replace('setInterval(function(){tick(false)},1600);','');
+test('obsolete room demo timers, bots and invented audience are absent from the shipped HTML',()=>{
+  const literal=host.match(/var ROOM_HTML=("(?:\\.|[^"\\])*");/);
+  assert.ok(literal,'bundled verified room HTML missing');
+  const template=JSON.parse(literal[1]);
+  // The APK no longer relies on hiding simulated users and timers at runtime.
+  // The source HTML itself is safe even before the bridge sanitizes it.
   assert.doesNotMatch(template,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
+  assert.doesNotMatch(template,/var UN=\[/);
+  assert.doesNotMatch(template,/function botGift\(\)/);
+  assert.doesNotMatch(template,/setInterval\(botGift,28000\)/);
   assert.doesNotMatch(template,/setInterval\(function\(\)\{tick\(false\)\},1600\)/);
+  assert.doesNotMatch(template,/setInterval\(function\(\)\{var o=others\(\)/);
+  assert.doesNotMatch(template,/msg\("Rafi","🧑‍🎤","Greetings to everyone/);
+  assert.match(template,/coins:0,xp:0/);
 });
 
 test('the lobby uses the packaged purple art and its own icon atlas',()=>{
