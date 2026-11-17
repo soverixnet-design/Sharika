@@ -1,0 +1,110 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {webcrypto} from 'node:crypto';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import {simulateRoyalAce,handleRoyalAce} from '../src/royal-ace.mjs';
+
+if(!globalThis.crypto)globalThis.crypto=webcrypto;
+const sql=name=>readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8');
+function fixture(){
+  const sqlite=new DatabaseSync(':memory:');
+  sqlite.exec(sql('0001_initial.sql'));
+  sqlite.exec(sql('0046_admin_game_catalog.sql'));
+  sqlite.exec(sql('0098_royal_ace_deluxe.sql'));
+  const ins=sqlite.prepare('INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(?,?,?,?,?,?)');
+  ins.run(10000011,'adult-a','Adult','1991-01-01',0,1000000);
+  ins.run(10000012,'minor-b','Minor','2015-01-01',1,1000000);
+  const db={prepare(query){const stmt=sqlite.prepare(query);let args=[];
+    return {bind(...v){args=v;return this;},
+      async first(){return stmt.get(...args)||null;},
+      async all(){return {results:stmt.all(...args)};},
+      async run(){return {meta:stmt.run(...args)};}};
+  }};
+  const reply=(data,status=200)=>Response.json(data,{status});
+  const fail=(error,status)=>Response.json({error},{status});
+  const route=(action,body={},uid='adult-a')=>handleRoyalAce({
+    request:new Request('https://example.test/api/v1/royal-ace/'+action,{
+      method:action==='state'?'GET':'POST',
+      ...(action==='state'?{}:{body:JSON.stringify(body),headers:{'content-type':'application/json'}})}),
+    db,uid,action,reply,fail,cors:{}
+  });
+  const enable=()=>{
+    sqlite.prepare('UPDATE sharika_royal_ace_settings SET enabled=1 WHERE id=1').run();
+    sqlite.prepare("UPDATE sharika_game_catalog SET enabled=1 WHERE id='royal-ace'").run();
+  };
+  return {sqlite,route,enable};
+}
+test('server uses bounded 5x4 grids and caps win',()=>{
+  assert.throws(()=>simulateRoyalAce(0),/invalid_royal_round/);
+  for(let i=0;i<150;i++){
+    const g=simulateRoyalAce(1000,false,100000);
+    assert.ok(g.steps.length>=1&&g.steps.length<=9);
+    assert.ok(g.win>=0&&g.win<=100000);
+    assert.ok([0,10].includes(g.bonusSpins));
+    for(const step of g.steps){
+      assert.equal(step.grid.length,5);
+      for(const col of step.grid){assert.equal(col.length,4);
+        for(const cell of col)assert.ok(Number.isInteger(cell.s)&&cell.s>=0&&cell.s<=10);
+      }
+    }
+  }
+});
+test('staging migration starts game disabled and does not alter player balance',async()=>{
+  const {sqlite,route}=fixture();
+  assert.equal(sqlite.prepare("SELECT enabled FROM sharika_game_catalog WHERE id='royal-ace'").get().enabled,0);
+  assert.equal((await route('state')).status,403);
+  assert.equal(sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='adult-a'").get().coins,1000000);
+  sqlite.close();
+});
+test('server validates bets, adults, idempotency and wallet ledger',async()=>{
+  const {sqlite,route,enable}=fixture();enable();
+  assert.equal((await route('spin',{bet:100,requestId:'ra_badbet_100',buy:false})).status,400);
+  assert.equal((await route('spin',{bet:1000,requestId:'ra_minor_10001',buy:false},'minor-b')).status,403);
+  const req={bet:1000,requestId:'ra_idempotency_00001',buy:false};
+  const first=await route('spin',req);
+  assert.equal(first.status,200);
+  const a=await first.json();
+  assert.equal(a.settled,true);
+  assert.ok(a.steps.length>=1);
+  assert.equal(a.balance,1000000-1000+a.win);
+  const again=await (await route('spin',req)).json();
+  assert.deepEqual(again,a);
+  assert.equal((await route('spin',{...req,buy:true})).status,409);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_royal_ace_rounds').get().n,1);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='royal_ace_bet'").get().n,1);
+  assert.equal((await route('spin',{bet:1000,requestId:'ra_second_0000001',buy:false})).status,429);
+  sqlite.close();
+});
+test('bonus purchase debits exactly 50x and server owns 10 free spins',async()=>{
+  const {sqlite,route,enable}=fixture();enable();
+  const buy=await route('spin',{bet:1000,requestId:'ra_buy_0000000001',buy:true});
+  assert.equal(buy.status,200);
+  const b=await buy.json();
+  assert.equal(b.balance,950000);assert.equal(b.freeSpins,10);
+  assert.equal(b.win,0);assert.equal(b.steps.length,0);
+  assert.equal((await route('spin',{bet:10000,requestId:'ra_mismatch_00001',buy:false})).status,409);
+  // Bypass wall-clock delay for this follow-up; it exercises the persisted free counter.
+  sqlite.prepare('UPDATE sharika_royal_ace_rounds SET created_ms=1 WHERE id=1').run();
+  const free=await route('spin',{bet:1000,requestId:'ra_free_000000001',buy:false});
+  assert.equal(free.status,200);
+  const x=await free.json();
+  assert.equal(x.mode,'free');
+  assert.equal(x.balance,950000+x.win);
+  assert.equal(x.freeSpins,9+x.bonusSpins);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='royal_ace_bonus'").get().n,1);
+  sqlite.close();
+});
+test('source artwork, server-only financial bridge, room and Play Store gates remain explicit',()=>{
+  const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/royal-ace-deluxe.html',import.meta.url),'utf8');
+  const bridge=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  assert.ok(html.length>400000);
+  assert.match(html,/sharika-royal-ace-server/);
+  assert.doesNotMatch(html,/localStorage\.setItem\('sa_bal'/);
+  assert.match(html,/royal-ace-loader\.svg/);
+  assert.match(bridge,/file:\/\/\/android_asset\/royal-ace-card\.svg/);
+  assert.match(bridge,/event\.source!==current\.element\.contentWindow/);
+  assert.match(bridge,/preview\(greedyGame\)/);
+  const loader=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/royal-ace-loader.svg',import.meta.url),'utf8');
+  assert.match(loader,/<svg/);
+});
