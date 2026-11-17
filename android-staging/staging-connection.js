@@ -8242,12 +8242,36 @@
         if(label)label.textContent='Microphone seats · Owner can use any seat';
         const count=frame.$('cnt');
         if(count)count.textContent=String(room.seat_count);
+        // Reference mic modes use the authenticated room PATCH below.
+        const presets=frame.document.createElement('div');
+        presets.className='sh-mic-mode-presets';
+        presets.setAttribute('aria-label','Microphone layout presets');
+        const title=frame.document.createElement('h4');
+        title.textContent='Mic mode · Choose a layout';
+        presets.append(title);
+        for(const amount of [8,9,10,12,15,20]){
+          const button=frame.document.createElement('button');
+          button.type='button';
+          button.className='sh-mic-mode-preset';
+          button.dataset.micModeCount=String(amount);
+          button.setAttribute('aria-pressed',String(room.seat_count===amount));
+          button.disabled=room.owner_id!==session?.user?.id;
+          const preview=frame.document.createElement('span');
+          preview.className='sh-mic-mode-mini';
+          preview.setAttribute('aria-hidden','true');
+          for(let i=0;i<amount;i++)preview.append(frame.document.createElement('i'));
+          const label=frame.document.createElement('span');
+          label.textContent=amount+'-Mic';
+          button.append(preview,label);
+          presets.append(button);
+        }
+        (sheet.querySelector('.step')||sheet).after(presets);
       }
       return result;
     };
     let seatCountSaveBusy=false;
     frame.document.addEventListener('click',async event=>{
-      const control=event.target.closest?.('#mn,#pl');
+      const control=event.target.closest?.('#mn,#pl,.sh-mic-mode-preset');
       if(!control||!frame.$('sheet')?.querySelector('h3')?.textContent?.includes('Seat arrangement'))return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -8259,12 +8283,18 @@
       if(!Number.isInteger(oldCount)||oldCount<4||oldCount>20){
         frame.toast('Refresh the room before editing seats');return;
       }
-      const requested=oldCount+(control.id==='pl'?1:-1);
-      if(requested<4||requested>20){
+      const requested=control.classList.contains('sh-mic-mode-preset')
+        ?Number(control.dataset.micModeCount)
+        :oldCount+(control.id==='pl'?1:-1);
+      if(!Number.isInteger(requested)||requested<4||requested>20){
         frame.toast('Choose between 4 and 20 mic seats');return;
       }
+      if(requested===oldCount){
+        frame.toast('This mic mode is already selected');return;
+      }
       seatCountSaveBusy=true;
-      const buttons=[frame.$('mn'),frame.$('pl')].filter(Boolean);
+      const buttons=[frame.$('mn'),frame.$('pl'),
+        ...frame.document.querySelectorAll('.sh-mic-mode-preset')].filter(Boolean);
       buttons.forEach(button=>{button.disabled=true;});
       let note=frame.$('sharika-seat-save-state');
       if(!note){
@@ -8292,6 +8322,8 @@
         await reloadRooms();
         if(frame.$('cnt'))frame.$('cnt').textContent=String(room.seat_count);
         if(note.isConnected)note.textContent='Saved ✓ '+String(room.seat_count)+' mic seats';
+        for(const preset of frame.document.querySelectorAll('.sh-mic-mode-preset'))
+          preset.setAttribute('aria-pressed',String(Number(preset.dataset.micModeCount)===room.seat_count));
         frame.toast('Seat count saved to room ✓');
       }catch(error){
         await syncFrame(room,frame).catch(()=>{});
