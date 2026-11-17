@@ -64,12 +64,9 @@ async function readSaved(db,uid,requestId){
   .bind(uid,requestId).first();
 }
 async function resultFor(db,uid,row){
- const free=await db.prepare('SELECT remaining FROM sharika_cleopatra_free_spins WHERE user_uid=?')
-  .bind(uid).first();
- const pool=await db.prepare('SELECT pool FROM sharika_cleopatra_jackpot WHERE id=1').first();
  return {requestId:row.request_id,grid:JSON.parse(row.grid_json),win:Number(row.win),
-   balance:Number(row.balance_after),freeSpins:Number(free?.remaining||0),
-   jackpot:Number(pool?.pool||0),isFreeSpin:!!row.is_free_spin,
+   balance:Number(row.balance_after),freeSpins:Number(row.free_spins_after),
+   jackpot:Number(row.jackpot_after),isFreeSpin:!!row.is_free_spin,
    jackpotHit:!!row.jackpot_hit,bonusHit:!!row.bonus_spins};
 }
 async function state(db,uid){
