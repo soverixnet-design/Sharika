@@ -11,6 +11,8 @@ const gameAssets=[
   'original-games/sovera-gaddy-live.js',
   'original-games/cleopatra-slot.html',
   'original-games/food-wheel-deluxe.html',
+  'original-games/greedy-classic.html',
+  'original-games/greedy-classic-live.js',
   'fruit-royale/index.html',
   'fruit-royale/game.js',
   'fruit-royale/adapter.live.js',
