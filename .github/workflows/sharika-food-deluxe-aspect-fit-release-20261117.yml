@@ -1,0 +1,52 @@
+name: Publish Sharika Food Wheel aspect-fit QA APK (17 Nov)
+
+on:
+  push:
+    branches:
+      - feature/sharika-food-deluxe-room-aspect-fit-20261117
+    paths:
+      - '.github/workflows/sharika-food-deluxe-aspect-fit-release-20261117.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify successful pinned staging Android build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/feature/sharika-food-deluxe-room-aspect-fit-20261117'
+          result="$(gh run view 44103656469 --repo "${{ github.repository }}" --json conclusion,headSha --jq '.conclusion+" "+.headSha')"
+          test "$result" = 'success 4293abf166fd18bd4eb148e6025d190e544fa61c'
+
+      - name: Download APK from the verified Android Actions run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 44103656469 --repo "${{ github.repository }}" \
+            --name Sharika-Android-Staging-Debug --dir qa-apk
+          test -s qa-apk/app-debug.apk
+          unzip -tqq qa-apk/app-debug.apk
+          unzip -Z1 qa-apk/app-debug.apk | grep -Fx 'assets/original-games/food-wheel-deluxe.html'
+          unzip -p qa-apk/app-debug.apk assets/connection.js | grep -q 'fitFoodDeluxeRoomSheet'
+          mv qa-apk/app-debug.apk qa-apk/Sharika-2026-11-17-Food-Wheel-Size-Fix-QA.apk
+          sha256sum qa-apk/Sharika-2026-11-17-Food-Wheel-Size-Fix-QA.apk
+
+      - name: Publish public friend-shareable APK prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create 'sharika-food-wheel-size-fix-20261117-4293abf1' \
+            'qa-apk/Sharika-2026-11-17-Food-Wheel-Size-Fix-QA.apk' \
+            --repo "${{ github.repository }}" \
+            --target '4293abf166fd18bd4eb148e6025d190e544fa61c' \
+            --title 'Sharika 17 Nov 2026 Food Wheel Deluxe responsive popup (QA APK)' \
+            --notes 'Android staging QA build with a scoped Food Wheel Deluxe room popup aspect-fit correction. Removes wide colored side gutters by matching the room sheet width to the original 1080x2352 stage aspect ratio, without stretching wheel art, controls or coin denominations. Not a Play Store production build; device testing and existing app signature compatibility still required. Backend and user balances were not modified.' \
+            --prerelease
