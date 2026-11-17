@@ -73,6 +73,12 @@ on:
       - 'app/golden-home.css'
       - 'app/royal-room-ui.js'
       - 'app/royal-room-ui.css'
+      - 'cloudflare/src/room-banners.mjs'
+      - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/admin.mjs'
+      - 'cloudflare/test/room-banners.test.mjs'
+      - 'cloudflare/migrations/0093_room_banner_positions.sql'
+      - 'admin/connection.js'
       - '.github/workflows/sharika-android-staging-apk.yml'
   workflow_dispatch:
 
@@ -243,6 +249,15 @@ jobs:
             'Presentation change must not rewrite economy levels');
           console.log('SHARIKA_MAIN_PROFILE_LEVEL_1_TO_100_AND_VERIFIED_CP_CONTRACT_OK');
           NODE
+
+      - name: Verify safe room banner API, Super Admin gate and source syntax
+        run: |
+          node --check ../cloudflare/src/room-banners.mjs
+          node --check ../cloudflare/src/index.mjs
+          node --check ../cloudflare/src/admin.mjs
+          node --check ../admin/connection.js
+          node --check ../app/royal-room-ui.js
+          node --test ../cloudflare/test/room-banners.test.mjs
 
       - name: Check reference tool menu and authenticated mic mode presets
         run: |
