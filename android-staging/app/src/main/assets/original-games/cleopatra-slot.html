@@ -250,7 +250,7 @@ document.documentElement.className=MODE;
 function fit(){const H=MODE==='room'?580:880,s=Math.min(innerWidth/480,innerHeight/H),a=$('#app');a.style.transform=`scale(${s})`;a.style.left=(innerWidth-480*s)/2+'px';a.style.top=(innerHeight-H*s)/2+'px'}
 addEventListener('resize',fit);fit();
 if(MODE==='room'){const b=document.createElement('div');b.className='rb';b.textContent='\u26F6';b.onclick=()=>post({type:'expand'});$('.top').appendChild(b)}
-if(HOST){window.__sharikaGameReady=false;RK.d=[];RK.w=[];bal=0;$('#bal').textContent='—';post({type:'ready'});}
+// Initialize hosted ranking state only after RK is declared.
 $('#spin').onclick=()=>{if(!spinning)spin()};
 $('#plus').onclick=()=>{bi=Math.min(bets.length-1,bi+1);upd();beep(600,.08)};
 $('#minus').onclick=()=>{bi=Math.max(0,bi-1);upd();beep(400,.08)};
@@ -262,6 +262,7 @@ document.querySelectorAll('[data-o]').forEach(e=>e.onclick=()=>op(e.dataset.o));
 $('#menu').onclick=()=>op('mMenu');
 $('#bk').onclick=()=>{auto=false;post({type:'close'})};
 const RK={d:[['........',9507000],['',3359100],['\u0639\u0645\u0631 \u0627\u0628\u0648 \u0645\u062D\u0645\u062F',13100],['MR_JAVED.seller',400]],w:[['King_Ali',48200000],['Rani',31500000],['Sultan',12900000],['MR_JAVED.seller',2400]]};
+if(HOST){window.__sharikaGameReady=false;RK.d=[];RK.w=[];bal=0;$('#bal').textContent='—';post({type:'ready'});}
 function rank(t){$('#rl').innerHTML=RK[t].map((r,i)=>`<div class="row"><div class="n">${i<3?['\uD83E\uDD47','\uD83E\uDD48','\uD83E\uDD49'][i]:i+1}</div><div class="av">&#128100;</div><div class="nm">${r[0]}</div><div class="cn">&#129689; ${fmt(r[1])}</div></div>`).join('');$('#myr').textContent='\uD83E\uDE99 0'}
 document.querySelectorAll('.tabs div').forEach(e=>e.onclick=()=>{document.querySelectorAll('.tabs div').forEach(x=>x.classList.remove('a'));e.classList.add('a');rank(e.dataset.t)});
 $('#bRank').onclick=()=>{rank('d');op('mRank')};
