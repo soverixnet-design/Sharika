@@ -1,0 +1,147 @@
+name: Sharika 20 Themes Signed Play Review AAB
+
+on:
+  push:
+    branches:
+      - feature/sharika-20themes-play-aab-20261117
+    paths:
+      - 'android-staging/**'
+      - '.github/workflows/sharika-20themes-play-aab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-play-review:
+    name: Validate live theme gallery and build signed AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integrated source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Source and virtual-only safety preflight
+        run: |
+          set -euo pipefail
+          node --check android-staging/staging-connection.js
+          node --check cloudflare/src/index.mjs
+          node --check cloudflare/src/room-themes.mjs
+          node --test android-staging/play-virtual-ui.test.mjs
+          node --test cloudflare/test/android-production-routing.test.mjs
+          grep -F "api('GET','/room-themes')" android-staging/staging-connection.js
+          grep -F 'catalog:' android-staging/staging-connection.js
+          grep -F "verifiedThemeUrl" android-staging/staging-connection.js
+          grep -F "versionCode 140" android-staging/app/build.gradle
+
+      - name: Verify live 20-theme Play virtual catalog without changing user data
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 2 --max-time 25 \
+            'https://sharika-api-play-virtual.soverixnet.workers.dev/health' \
+            -o "$RUNNER_TEMP/sharika-health.json"
+          curl --fail --silent --show-error --retry 2 --max-time 25 \
+            'https://sharika-api-play-virtual.soverixnet.workers.dev/api/v1/room-themes' \
+            -o "$RUNNER_TEMP/sharika-themes.json"
+          node -e '
+            const fs=require("fs");
+            const health=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+            const data=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+            if(!health.ok||health.environment!=="play_virtual")throw Error("Play backend is not ready");
+            if(!Array.isArray(data.themes)||data.themes.length<20)throw Error("Missing public room themes");
+            const ids=new Set(data.themes.map(t=>t.id));
+            for(let id=1;id<=20;id++)if(!ids.has(id))throw Error("Missing theme "+id);
+            for(const t of data.themes)if(typeof t.image_url!=="string"||!t.image_url.includes("/room-themes/"))throw Error("Theme image URL missing");
+            console.log("VERIFIED_20_PUBLIC_PLAY_ROOM_THEMES");
+          ' "$RUNNER_TEMP/sharika-health.json" "$RUNNER_TEMP/sharika-themes.json"
+
+      - name: Checkout pinned owner-owned Sovera original media
+        uses: actions/checkout@v4
+        with:
+          repository: soverixnet-design/sovera-voice-app
+          ref: 0e30b48962272b8a687509aef4dee9bc4a047767
+          path: _sovera_cosmetics
+          persist-credentials: false
+
+      - name: Preserve original room frames, medals, effects and sounds
+        run: |
+          set -euo pipefail
+          mkdir -p android-staging/app/src/main/assets/sovera-effects
+          mkdir -p android-staging/app/src/main/assets/sovera-medals
+          mkdir -p android-staging/app/src/main/assets/sovera-sounds
+          cp -a _sovera_cosmetics/assets/effects/. android-staging/app/src/main/assets/sovera-effects/
+          cp -a _sovera_cosmetics/assets/medals/. android-staging/app/src/main/assets/sovera-medals/
+          cp -a _sovera_cosmetics/assets/sounds/. android-staging/app/src/main/assets/sovera-sounds/
+          test "$(find android-staging/app/src/main/assets/sovera-effects -type f | wc -l)" -ge 30
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install Android API 36 build platform
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Restore dedicated Play upload signing key securely
+        env:
+          KEY_B64: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY_B64" && test -n "$STORE_PASSWORD"
+          test -n "$ALIAS" && test -n "$KEY_PASSWORD"
+          printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/sharika-play-upload.p12"
+          chmod 600 "$RUNNER_TEMP/sharika-play-upload.p12"
+          echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$RUNNER_TEMP/sharika-play-upload.p12" >> "$GITHUB_ENV"
+
+      - name: Build signed virtual-only Android App Bundle
+        working-directory: android-staging
+        env:
+          SHARIKA_PLAY_API_ORIGIN: https://sharika-api-play-virtual.soverixnet.workers.dev
+          SHARIKA_PLAY_STAGING_CANDIDATE: 'false'
+          SHARIKA_PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          SHARIKA_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          SHARIKA_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          gradle :app:bundleRelease --no-daemon --stacktrace
+          test -s app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab
+
+      - name: Verify packaged Android room-theme bridge and signing
+        run: |
+          set -euo pipefail
+          bundle=android-staging/app/build/outputs/bundle/release/app-release.aab
+          unzip -tqq "$bundle"
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/connection.js'
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/royal-room-ui.js'
+          unzip -Z1 "$bundle" | grep -Fx 'base/assets/play-virtual-ui.js'
+          unzip -p "$bundle" base/assets/connection.js > "$RUNNER_TEMP/packaged-connection.js"
+          grep -F 'https://sharika-api-play-virtual.soverixnet.workers.dev' "$RUNNER_TEMP/packaged-connection.js" >/dev/null
+          grep -F "api('GET','/room-themes')" "$RUNNER_TEMP/packaged-connection.js" >/dev/null
+          grep -F 'catalog:' "$RUNNER_TEMP/packaged-connection.js" >/dev/null
+          cp "$bundle" Sharika-20Themes-v140-Play-Review.aab
+          sha256sum Sharika-20Themes-v140-Play-Review.aab
+
+      - name: Keep signed AAB as private CI artifact (no Play publication)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-20Themes-v140-Signed-Play-Review-AAB
+          path: Sharika-20Themes-v140-Play-Review.aab
+          if-no-files-found: error
+          retention-days: 30
