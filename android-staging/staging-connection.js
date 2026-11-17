@@ -14236,6 +14236,16 @@
         #sh-assistant-form{padding-top:6px}
         #sh-assistant-footer{padding-bottom:6px}
       }
+      @media(max-height:610px) and (min-width:700px){
+        #sh-assistant-panel:not(.sh-as-chatting) #sh-assistant-chips{
+          grid-template-columns:repeat(4,minmax(0,1fr));
+          grid-template-rows:repeat(2,minmax(52px,1fr));gap:6px;
+        }
+        #sh-assistant-chips button{gap:5px;padding:6px}
+        #sh-assistant-chips button .sh-as-chip-icon{width:27px;height:27px}
+        #sh-assistant-chips button .sh-as-chip-icon svg{width:17px;height:17px}
+        #sh-assistant-chips button .sh-as-chip-label{font-size:9px}
+      }
       @media(max-width:360px){
         #sh-assistant-head .sh-as-eyebrow{letter-spacing:.55px;font-size:8px}
         #sh-assistant-title{font-size:15px}
