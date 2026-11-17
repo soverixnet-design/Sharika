@@ -21,6 +21,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['playTesters','🧪','Play Closed-Test Users']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='roomBanners')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='banners');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['roomBanners','🖼️','In-room Game & Event Banners']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='cosmetics')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='gifts');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -419,10 +424,19 @@
         byId('le').textContent=error.message || 'Access denied';
       } finally {button.disabled=false;}
     }
-    button.onclick=submit;
-    for (const field of [email,password]) field.onkeydown=e=>{
-      if(e.key==='Enter'){e.preventDefault();submit();}
-    };
+    const loginForm=byId('sh-admin-login-form');
+    if (loginForm) {
+      // Native form semantics provide one Enter/submit path and password autofill.
+      loginForm.onsubmit=event=>{event.preventDefault();submit();};
+      email.onkeydown=null;
+      password.onkeydown=null;
+    } else {
+      // Compatibility fallback if a legacy Admin template is still cached.
+      button.onclick=submit;
+      for (const field of [email,password]) field.onkeydown=e=>{
+        if(e.key==='Enter'){e.preventDefault();submit();}
+      };
+    }
   };
   const originalShell = window.shell;
   window.shell = function () {
@@ -3464,6 +3478,149 @@
     verifiedHub('Invite codes & promotions',
       'Real invite links and referral rewards are managed under Check-in, Tasks & Invites. Generic coupon redemption is not yet connected; no simulated promo codes are issued.',
       [['Open verified Invite settings','daily'],['Create event campaign','events']]);
+  };
+  // Room banners are independent of the home carousel and room wallpaper.
+  // Only a verified Super Admin can publish an image; no demo banners.
+  P.roomBanners=async function(){
+    const root=byId('pg');
+    root.innerHTML=card('In-room banners','Loading server-published game and event artwork…');
+    const validImage=(value,id)=>typeof value==='string'&&
+      /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/room-banners\/[1-9][0-9]{0,8}\/image\?v=[1-9][0-9]*$/.test(value)&&
+      value.includes('/room-banners/'+id+'/image?');
+    async function compressPhoto(file){
+      if(!file||!file.type.startsWith('image/')||file.size>12*1024*1024)
+        throw Error('Choose a JPEG/PNG/WebP under 12 MB');
+      const object=URL.createObjectURL(file),img=new Image();
+      try{
+        await new Promise((resolve,reject)=>{
+          img.onload=resolve;img.onerror=()=>reject(Error('Cannot open picture'));img.src=object;
+        });
+        if(!img.naturalWidth||!img.naturalHeight)throw Error('Empty image');
+        const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+        if(!ctx)throw Error('Canvas unavailable');
+        for(const target of [1200,960,800,640,480]){
+          const scale=Math.min(1,target/Math.max(img.naturalWidth,img.naturalHeight));
+          canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+          canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+          ctx.fillStyle='#10211b';ctx.fillRect(0,0,canvas.width,canvas.height);
+          ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+          ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          for(const quality of [.91,.82,.70,.58]){
+            const result=canvas.toDataURL('image/jpeg',quality);
+            if(result.startsWith('data:image/jpeg;base64,')&&result.length<480023)
+              return result;
+          }
+        }
+        throw Error('Picture cannot fit the 360 KB limit');
+      }finally{URL.revokeObjectURL(object);}
+    }
+    try{
+      const result=await api('GET','room-banners');
+      const items=Array.isArray(result.banners)?result.banners:[];
+      const writable=role==='super';
+      root.innerHTML='<div class="card"><h3>Room Game & Event Banners</h3>'+
+        '<p class="n">Game artwork appears in the room right rail; event artwork appears above the room chat. '+
+        'Choose GLOBAL (all countries) or an ISO two-letter country. '+ 
+        'Images are uploaded by the Super Admin only. No changes to home banners, room cover or wallets.</p>'+
+        (writable?'<div class="row"><label>Banner title<input id="rb-new-title" maxlength="70" placeholder="Weekly Games"></label>'+
+          '<label>Placement<select id="rb-new-position"><option value="game">Game icon/right side</option>'+
+          '<option value="event">Room event/chat</option></select></label></div>'+
+          '<div class="row"><label>Country (blank = global)<input id="rb-new-country" maxlength="2" placeholder="BD" style="text-transform:uppercase"></label>'+
+          '<label>Image from gallery<input id="rb-new-image" type="file" accept="image/jpeg,image/png,image/webp"></label>'+
+          '<button class="btn" type="button" id="rb-create">Upload & publish</button></div>':'')+
+        '<p id="rb-status" class="n" role="status"></p></div>'+
+        '<div id="rb-existing"></div>';
+      const note=byId('rb-status'),list=byId('rb-existing');
+      function showError(error){note.textContent='Not saved: '+String(error?.message||error);}
+      const create=byId('rb-create');
+      if(create)create.onclick=async()=>{
+        create.disabled=true;note.textContent='Preparing room banner…';
+        try{
+          const title=byId('rb-new-title').value.trim();
+          const placement=byId('rb-new-position').value;
+          const country_code=byId('rb-new-country').value.trim().toUpperCase();
+          const photo=byId('rb-new-image').files?.[0];
+          if(!title||title.length>70||!/^(|[A-Z]{2})$/.test(country_code)||!photo)
+            throw Error('Provide a title, gallery image and valid two-letter country or blank');
+          const image_data=await compressPhoto(photo);
+          const created=await api('POST','room-banners',{title,placement,country_code});
+          if(!Number.isSafeInteger(Number(created.id))||Number(created.id)<=0)
+            throw Error('Created banner ID not confirmed; refresh before retrying');
+          await api('PUT','room-banners/'+created.id+'/image',{image_data});
+          await api('PATCH','room-banners/'+created.id,{active:true});
+          await P.roomBanners();
+        }catch(error){showError(error);}finally{if(create.isConnected)create.disabled=false;}
+      };
+      for(const item of items){
+        const cardNode=document.createElement('div');
+        cardNode.className='card';cardNode.style.margin='10px 0';
+        const image=validImage(item.image_url,item.id)?item.image_url:null;
+        const header=document.createElement('h3');header.textContent='#'+item.id+' · '+item.title;
+        cardNode.append(header);
+        if(image){
+          const img=document.createElement('img');img.src=image;img.alt=item.title;
+          img.style.cssText='width:100%;max-height:220px;object-fit:contain;border-radius:14px;background:#13241b';
+          cardNode.append(img);
+        }
+        const info=document.createElement('p');info.className='n';
+        info.textContent=(item.placement==='game'?'Game side banner':'Room event banner')+
+          ' · '+(item.country_code||'GLOBAL')+' · '+(item.active?'Published':'Hidden');
+        cardNode.append(info);
+        if(writable){
+          const controls=document.createElement('div');controls.className='row';
+          const title=document.createElement('input');title.value=item.title;title.maxLength=70;
+          title.setAttribute('aria-label','Banner title');
+          const country=document.createElement('input');
+          country.value=item.country_code||'';country.maxLength=2;country.placeholder='Global';
+          country.setAttribute('aria-label','Country code');
+          const placement=document.createElement('select');
+          for(const [value,name] of [['game','Game side'],['event','Event/chat']]){
+            const option=document.createElement('option');option.value=value;option.textContent=name;
+            option.selected=item.placement===value;placement.append(option);
+          }
+          const save=document.createElement('button');save.className='btn s';save.textContent='Save';
+          const toggle=document.createElement('button');toggle.className='btn s';
+          toggle.textContent=item.active?'Unpublish':'Publish';
+          toggle.disabled=!image&&!item.active;
+          const upload=document.createElement('input');upload.type='file';
+          upload.accept='image/jpeg,image/png,image/webp';
+          upload.setAttribute('aria-label','Replace room banner image');
+          controls.append(title,country,placement,save,toggle,upload);
+          save.onclick=async()=>{
+            save.disabled=true;
+            try{
+              const code=country.value.trim().toUpperCase();
+              if(!/^(|[A-Z]{2})$/.test(code))throw Error('Country must be blank or two-letter ISO code');
+              await api('PATCH','room-banners/'+item.id,{
+                title:title.value.trim(),country_code:code,placement:placement.value
+              });
+              await P.roomBanners();
+            }catch(error){showError(error);}finally{if(save.isConnected)save.disabled=false;}
+          };
+          toggle.onclick=async()=>{
+            toggle.disabled=true;
+            try{await api('PATCH','room-banners/'+item.id,{active:!item.active});await P.roomBanners();}
+            catch(error){showError(error);}finally{if(toggle.isConnected)toggle.disabled=false;}
+          };
+          upload.onchange=async()=>{
+            if(!upload.files?.[0])return;
+            upload.disabled=true;note.textContent='Uploading room banner…';
+            try{
+              await api('PUT','room-banners/'+item.id+'/image',{
+                image_data:await compressPhoto(upload.files[0])
+              });
+              await P.roomBanners();
+            }catch(error){showError(error);}finally{if(upload.isConnected)upload.disabled=false;}
+          };
+          cardNode.append(controls);
+        }
+        list.append(cardNode);
+      }
+      if(!items.length)list.textContent='No room banners published yet.';
+    }catch(error){
+      root.innerHTML=card('Room banners unavailable',
+        String(error?.message||error)+'. Apply isolated staging migration 0093 before enabling.');
+    }
   };
   P.themes=async function(){
     const root=byId('pg');root.innerHTML=card('Room Theme Gallery','Loading official themes…');

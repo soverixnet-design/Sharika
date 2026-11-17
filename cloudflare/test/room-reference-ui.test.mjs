@@ -23,25 +23,20 @@ test('all six Royal room controls stay on one compact row so Games is visible',(
   assert.ok(css.includes('width:clamp(44px,12vw,50px)'));
 });
 
-test('obsolete room demo timers and users are removed from the Android template',()=>{
-  assert.match(ui,/for\\\(var ui=0;ui<121;ui\\\+\\\+\\\)U\\\.push/);
-  assert.match(ui,/setInterval\(function\(\)\{tick\(false\)\},1600\)/);
-  assert.match(ui,/setInterval\(botGift,28000\)/);
-  assert.match(ui,/var o=others/);
-  const marker='var ROOM_HTML=';
-  const start=host.indexOf(marker);
-  assert.ok(start>0);
-  let end=start+marker.length+1;
-  for(;end<host.length;end++){
-    if(host[end]==='\\'){end++;continue;}
-    if(host[end]==='"')break;
-  }
-  let template=JSON.parse(host.slice(start+marker.length,end+1));
-  assert.match(template,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
-  template=template.replace(/for\(var ui=0;ui<121;ui\+\+\)U\.push\([^\n]*\);/,'')
-    .replace('setInterval(function(){tick(false)},1600);','');
+test('obsolete room demo timers, bots and invented audience are absent from the shipped HTML',()=>{
+  const literal=host.match(/var ROOM_HTML=("(?:\\.|[^"\\])*");/);
+  assert.ok(literal,'bundled verified room HTML missing');
+  const template=JSON.parse(literal[1]);
+  // The APK no longer relies on hiding simulated users and timers at runtime.
+  // The source HTML itself is safe even before the bridge sanitizes it.
   assert.doesNotMatch(template,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
+  assert.doesNotMatch(template,/var UN=\[/);
+  assert.doesNotMatch(template,/function botGift\(\)/);
+  assert.doesNotMatch(template,/setInterval\(botGift,28000\)/);
   assert.doesNotMatch(template,/setInterval\(function\(\)\{tick\(false\)\},1600\)/);
+  assert.doesNotMatch(template,/setInterval\(function\(\)\{var o=others\(\)/);
+  assert.doesNotMatch(template,/msg\("Rafi","🧑‍🎤","Greetings to everyone/);
+  assert.match(template,/coins:0,xp:0/);
 });
 
 test('the lobby uses the packaged purple art and its own icon atlas',()=>{
@@ -203,9 +198,13 @@ test('seat half-profile opens fully verified profile and mute badge sits above f
 
 test('standalone Room Settings reads real admins, blocks and kick history',()=>{
   assert.match(ui,/frame\.settings=openRoomSettingsPage/);
-  assert.match(ui,/row\(modGroup,'Room Admins'/);
-  assert.match(ui,/row\(modGroup,'Blocked List'/);
-  assert.match(ui,/row\(modGroup,'Kick History'/);
+  assert.match(ui,/row\(settings,'Admin'/);
+  assert.match(ui,/row\(settings,'Black List'/);
+  assert.match(ui,/row\(settings,'Forbidden List','Kick history'/);
+  assert.match(ui,/Room cover settings/);
+  assert.match(ui,/field\('Introduction',intro\)/);
+  assert.match(ui,/api\('GET',detailsPath\)/);
+  assert.match(ui,/api\('PUT',detailsPath,/);
   assert.match(worker,/action==='kick-history'/);
   assert.match(java,/kick-history\$/);
   assert.match(css,/#sh-room-settings-page/);
@@ -215,4 +214,52 @@ test('standalone Room Settings reads real admins, blocks and kick history',()=>{
   assert.match(ui,/super_mic:currentPolicy\.super_mic===false/);
   assert.match(worker,/action==='policy'/);
   assert.match(java,/\/policy\$/);
+});
+
+
+test('screenshot ranking uses an actual full-height pane with a working Back action',()=>{
+  assert.match(room,/id="sh-ranking-back"/);
+  assert.match(room,/rankingBackdrop\.classList\.add\('sh-rank-page-active'\)/);
+  assert.match(room,/const observer=new MutationObserver\(cleanup\)/);
+  assert.match(room,/rankingBackdrop\.classList\.remove\('sh-rank-page-active'\)/);
+  assert.match(room,/observer\.disconnect\(\)/);
+  assert.match(css,/#bg\.sh-rank-page-active/);
+  assert.match(css,/\.sh-rank-podium-card\[data-place="1"\]/);
+  assert.match(css,/\.sh-rank-podium-card\[data-place="2"\]/);
+  assert.match(css,/\.sh-rank-podium-card\[data-place="3"\]/);
+  assert.match(room,/v\.loadRankings\(period,offset,kind\)/,
+    'the page must use actual verified server ranking data');
+});
+
+test('reference reward is 10% fixed and sourced from immutable ordinary gift ledger',()=>{
+  const r=worker.slice(worker.indexOf("if(parts.length===5&&action==='rewards'"),
+    worker.indexOf("      // Gift sending uses the real D1 catalog",worker.indexOf(
+      "if(parts.length===5&&action==='rewards'")));
+  assert.match(r,/regular_gift_percent:10/);
+  assert.match(r,/verified_room_transaction_coins/);
+  assert.match(r,/Math\.floor\(\(Number\(recorded\?\.points\)\|\|0\)\/10\)/);
+  assert.match(r,/INSERT INTO sharika_room_reward_claims/);
+  assert.match(r,/room\.owner_id!==uid/);
+  assert.match(ui,/Room commission: 10%/);
+  assert.match(ui,/Current room transaction/);
+  assert.match(ui,/verified_room_transaction_coins/);
+  assert.match(ui,/requestPending/);
+  assert.match(ui,/api\('POST',rewardsPath,\{\}\)/);
+  assert.match(ui,/Collect status uncertain:/);
+  assert.match(css,/\.sh-room-reward-transaction/);
+  assert.match(css,/\.sh-room-reward-rates/);
+  assert.doesNotMatch(r,/UPDATE sharika_regular_room_rewards|DELETE FROM sharika_regular_room_rewards/);
+});
+
+test('locked seat action dialog keeps server-owned commands and user permissions',()=>{
+  const seat=ui.slice(ui.indexOf('function verifiedSeatMenu('),
+    ui.indexOf('function renderMemberHalfProfile(',ui.indexOf('function verifiedSeatMenu(')));
+  assert.match(seat,/owner\?\[\['unlock','Unlock seat'/);
+  assert.match(seat,/owner\?\[\['take','Take Mic'/);
+  assert.match(seat,/\['lock_all','Lock all'/);
+  assert.match(seat,/\['disabled','Locked'/);
+  assert.match(seat,/frame\.act\(action,index\)/);
+  assert.match(ui,/api\('PUT','\/rooms\/'\+room\.id\+'\/locks\/all'/);
+  assert.match(ui,/api\('PUT','\/rooms\/'\+room\.id\+'\/locks'/);
+  assert.match(worker,/action==='locks'/);
 });

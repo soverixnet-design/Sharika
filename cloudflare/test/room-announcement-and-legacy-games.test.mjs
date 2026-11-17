@@ -25,7 +25,11 @@ test('compact verified ranking and owner-only room announcement endpoints',()=>{
   assert.match(ui,/renderLiveMembers\(view\);\s*roomControls\.hidden=false/);
   const css=src('../../app/reference-room.css');
   assert.match(css,/\.sh-room-rank-button \{\s*position:static;/);
-  assert.ok(ui.includes("v.loadRankings('monthly',offset)"));
+  assert.ok(ui.includes("v.loadRankings(period,offset,kind)"));
+  assert.ok(ui.includes("['weekly','Weekly']"));
+  assert.ok(ui.includes("['monthly','Monthly']"));
+  assert.ok(ui.includes("['riches','Riches']"));
+  assert.ok(ui.includes("['lucky','Lucky']"));
   assert.ok(native.includes('/contributors'));
   assert.ok(ui.includes("menuItem('📣 Announcement'"));
   assert.ok(worker.includes("action==='announcement'"));

@@ -44,8 +44,8 @@ function menuFor({owner,admin=false,seat,index=3}) {
 test('owner sees Take Mic, Invite, Lock seat, Lock all, Cancel and can lock',()=>{
   const x=menuFor({owner:true,seat:{empty:1,i:3}});
   assert.equal(x.originalCalled,false);
-  assert.deepEqual(x.labels,['Sit here','Invite to mic','Lock seat','Lock all','Cancel']);
-  x.buttons[2].onclick();
+  assert.deepEqual(x.labels,['Take Mic','Lock seat','Lock all','Invite to mic','Cancel']);
+  x.buttons.find(button=>button.textContent==='Lock seat').onclick();
   assert.deepEqual(x.events,[['lock',3]]);
   assert.equal(x.nodes.includes(x.overlay),false);
 });
@@ -54,13 +54,13 @@ test('owner can take mic or lock all available seats',()=>{
   x.buttons[0].onclick();
   assert.deepEqual(x.events,[['take',4]]);
   const y=menuFor({owner:true,index:4,seat:{empty:1,i:4}});
-  y.buttons[3].onclick();
+  y.buttons.find(button=>button.textContent==='Lock all').onclick();
   assert.deepEqual(y.events,[['lock_all',4]]);
 });
 test('assigned Room Admin gets seat lock and invitation actions',()=>{
   const x=menuFor({owner:false,admin:true,seat:{empty:1,i:3}});
-  assert.deepEqual(x.labels,['Sit here','Invite to mic','Lock seat','Lock all','Cancel']);
-  x.buttons[1].onclick();
+  assert.deepEqual(x.labels,['Take Mic','Lock seat','Lock all','Invite to mic','Cancel']);
+  x.buttons.find(button=>button.textContent==='Invite to mic').onclick();
   assert.deepEqual(x.events,[['invite',3]]);
 });
 test('locked seat allows owner unlock and unlock all, but no guest lock',()=>{
@@ -69,7 +69,8 @@ test('locked seat allows owner unlock and unlock all, but no guest lock',()=>{
   x.buttons[1].onclick();
   assert.deepEqual(x.events,[['unlock_all',3]]);
   const y=menuFor({owner:false,seat:{lock:1,i:3}});
-  assert.deepEqual(y.labels,['Cancel']);
+  assert.deepEqual(y.labels,['Locked','Cancel']);
+  assert.equal(y.buttons[0].disabled,true,'guest cannot unlock a locked seat');
 });
 test('guest may directly take open mic; owner throne is decorative',()=>{
   const x=menuFor({owner:false,seat:{empty:1,i:3}});

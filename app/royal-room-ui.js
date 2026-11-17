@@ -363,6 +363,109 @@
   menuItem('🖼️ Photo', () => photo?.click());
   menuItem('📣 Announcement', () => editAnnouncement());
 
+  // Reference-room tools: preserve original wired handlers; do not simulate
+  // unimplemented money/PK/game transactions on the client.
+  (function installReferenceRoomTools() {
+    menuPanel.classList.add('sh-reference-room-tools');
+    heading.textContent = 'Room Tools';
+    const original = Array.from(menuGrid.querySelectorAll('button'));
+    const originalAction = label => {
+      const control = original.find(button => button.textContent.includes(label));
+      if (control) control.click();
+      else window.toast?.(label + ' is not available in this build');
+    };
+    menuGrid.replaceChildren();
+    function section(name) {
+      const node = document.createElement('section');
+      node.className = 'sh-reference-tool-section';
+      const heading = document.createElement('h4');
+      heading.textContent = name;
+      const grid = document.createElement('div');
+      grid.className = 'sh-reference-tool-grid';
+      node.append(heading, grid);
+      menuGrid.append(node);
+      return grid;
+    }
+    function item(grid, label, icon, handler, detail) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sh-reference-tool';
+      button.setAttribute('aria-label', label + (handler ? '' : ' — not available'));
+      const picture = document.createElement('span');
+      picture.className = 'sh-reference-tool-icon';
+      picture.setAttribute('aria-hidden', 'true');
+      picture.textContent = icon;
+      const title = document.createElement('span');
+      title.className = 'sh-reference-tool-title';
+      title.textContent = label;
+      button.append(picture, title);
+      if (detail) {
+        const hint = document.createElement('small');
+        hint.textContent = detail;
+        button.append(hint);
+      }
+      if (!handler) {
+        button.disabled = true;
+        button.classList.add('sh-reference-unavailable');
+        button.title = label + ' needs a verified server-backed feature';
+      } else {
+        button.onclick = () => {
+          closeMenu();
+          handler();
+        };
+      }
+      grid.append(button);
+    }
+    const interactions = section('Interactive features');
+    item(interactions, 'Counter', '🧧', null, 'Not enabled');
+    item(interactions, 'PK', '⚔️', null, 'Not enabled');
+    item(interactions, 'Wheel', '🎡', null, 'Not enabled');
+    item(interactions, 'Smash Eggs', '🥚', null, 'Not enabled');
+
+    const management = section('Management tool');
+    item(management, 'Clean text', '🧹', null);
+    item(management, 'Music', '♫', () => originalAction('Music'));
+    item(management, 'Mount effect', '✨', null);
+    item(management, 'Gift effect', '🎁', null);
+    item(management, 'Sound', '🔊', () => originalAction('Audio'));
+    item(management, 'Mic PK', '🎙️', null);
+    item(management, 'Gift count', '🎨', null);
+    item(management, 'Mic mode', '🪑', () => {
+      if (premiumState.room && !premiumState.room.isOwner) {
+        window.toast?.('Only the room owner can change mic mode');
+        return;
+      }
+      originalAction('Seats');
+    });
+
+    const others = section('Others');
+    item(others, 'Dice', '🎲', null);
+    item(others, 'RPS', '✌️', null);
+    item(others, 'Number', '7️⃣', null);
+
+    const quick = section('Room management');
+    item(quick, 'Games', '🎮', () => originalAction('Games'));
+    item(quick, 'Theme', '🖼️', () => originalAction('Theme'));
+    item(quick, 'Settings', '⚙️', () => originalAction('Settings'));
+    item(quick, 'Lock', '🔒', () => originalAction('Room Lock'));
+    item(quick, 'Notice', '📣', () => originalAction('Announcement'));
+    item(quick, 'Owner', '👑', () => originalAction('Owner tools'));
+    item(quick, 'Room photo', '📷', () => originalAction('Photo'));
+    item(quick, 'Lucky Box', '🎁', () => box.click());
+
+    const sideGame = document.createElement('button');
+    sideGame.id = 'sh-reference-game-banner';
+    sideGame.className = 'sh-reference-game-banner';
+    sideGame.type = 'button';
+    sideGame.setAttribute('aria-label', 'Open room games');
+    sideGame.append(sprite('games'), document.createTextNode('Games'));
+    sideGame.onclick = () => games.click();
+    app.append(sideGame);
+
+    menuButton.setAttribute('aria-label', 'Open interactive and management tools');
+  })();
+
+
   // Photo remains reachable from the menu with its original permissions.
   if (photo) {
     photo.style.position = 'absolute';
@@ -380,6 +483,76 @@
   // CP/Friendship links are rendered only for verified D1 bond pairs.
 
   const premiumState={room:null,announcement:null,announcementAt:0,announcementPromise:null};
+  const promoState={roomId:null,lastRefresh:0,promise:null,requestRoomId:null,generation:0};
+  const promoImagePattern=/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/room-banners\/([1-9][0-9]{0,8})\/image\?v=[1-9][0-9]*$/;
+  const eventStrip=document.createElement('div');
+  eventStrip.id='sh-reference-event-banner';
+  eventStrip.className='sh-reference-event-banner';
+  eventStrip.hidden=true;
+  app.querySelector('.chatw')?.before(eventStrip);
+  function bannerImage(row) {
+    const match=typeof row?.image_url==='string'&&promoImagePattern.exec(row.image_url);
+    return match&&Number(match[1])===Number(row.id)&&row.active
+      ?row.image_url:null;
+  }
+  function renderRoomBanners(entries){
+    const sideGame=byId('sh-reference-game-banner');
+    if(!sideGame)return;
+    const rows=Array.isArray(entries)?entries:[];
+    const game=rows.find(item=>item.placement==='game'&&bannerImage(item));
+    const event=rows.find(item=>item.placement==='event'&&bannerImage(item));
+    const gameLabel=document.createElement('span');gameLabel.textContent='Games';
+    if(game){
+      const picture=document.createElement('img');
+      picture.alt='';picture.loading='lazy';
+      picture.src=bannerImage(game);
+      picture.onerror=()=>sideGame.replaceChildren(sprite('games'),gameLabel);
+      sideGame.replaceChildren(picture,gameLabel);
+      sideGame.setAttribute('aria-label','Games · '+game.title);
+    }else{
+      sideGame.replaceChildren(sprite('games'),gameLabel);
+      sideGame.setAttribute('aria-label','Open room games');
+    }
+    eventStrip.replaceChildren();
+    eventStrip.hidden=!event;
+    if(event){
+      const img=document.createElement('img');img.alt='';img.loading='lazy';img.src=bannerImage(event);
+      const caption=document.createElement('strong');caption.textContent=String(event.title||'Room event').slice(0,70);
+      img.onerror=()=>{eventStrip.hidden=true;};
+      eventStrip.append(img,caption);
+      eventStrip.setAttribute('aria-label','Room event: '+caption.textContent);
+    }
+  }
+  async function refreshRoomBanners() {
+    const view=premiumState.room;
+    if(!view||!canShow()||typeof view.loadBanners!=='function')return;
+    const roomId=view.roomId;
+    const generation=promoState.generation;
+    // A previous room's slow request must not block the newly entered room.
+    if(promoState.promise&&promoState.requestRoomId===roomId)return promoState.promise;
+    if(Date.now()-promoState.lastRefresh<60000)return;
+    // Capture this visit's generation so A -> B -> A cannot display stale A artwork.
+    const request=Promise.resolve().then(()=>view.loadBanners()).then(data=>{
+      if(premiumState.room?.roomId!==roomId||
+         promoState.generation!==generation||!canShow())return;
+      renderRoomBanners(data?.banners);
+      promoState.lastRefresh=Date.now();
+    }).catch(()=>{
+      if(premiumState.room?.roomId===roomId&&promoState.generation===generation){
+        renderRoomBanners([]);
+        promoState.lastRefresh=Date.now();
+      }
+    }).finally(()=>{
+      // An old request must never clear the new room's in-flight reference.
+      if(promoState.promise===request){
+        promoState.promise=null;
+        promoState.requestRoomId=null;
+      }
+    });
+    promoState.promise=request;
+    promoState.requestRoomId=roomId;
+    return request;
+  }
   function vipAvatar(member,cls){
     const el=document.createElement('span');
     el.className='sh-vip-avatar'+(cls?' '+cls:'');
@@ -452,68 +625,141 @@
   async function showRankings(){
     const v=premiumState.room;
     if(!v||!canShow())return;
-    window.open('<div class="sh-premium-sheet">'+
-      '<h3>🏆 Monthly Room Gift Ranking</h3>'+
-      '<p class="sh-footnote">Ranked by coins spent on gifts in this room. Resets on the first day of each month (UTC).</p>'+
-      '<div id="sh-ranking-list" class="sh-rank-list">Loading room gifts…</div>'+
+    window.open('<div class="sh-premium-sheet sh-reference-rankings">'+
+      '<div class="sh-ranking-heading">'+
+      '<button type="button" id="sh-ranking-back" aria-label="Back to room">‹</button>'+
+      '<h3>Room Ranking</h3></div>'+
+      '<div class="sh-ranking-kinds" id="sh-ranking-kinds"></div>'+
+      '<div class="sh-ranking-periods" id="sh-ranking-periods"></div>'+
+      '<p class="sh-ranking-explanation" id="sh-ranking-explanation"></p>'+
+      '<div class="sh-ranking-podium" id="sh-ranking-podium"></div>'+
+      '<div id="sh-ranking-list" class="sh-rank-list"></div>'+
       '<button type="button" id="sh-ranking-more" class="sh-wide-action" hidden>Show more</button>'+
       '<p id="sh-ranking-status" role="status"></p></div>');
+    // The reference ranking is a real full-height page rather than another
+    // cramped mic/dock sheet. Restore the shared sheet for all other controls.
+    const rankingBackdrop=byId('bg'),rankingSheet=byId('sheet');
+    if(rankingBackdrop&&rankingSheet){
+      rankingBackdrop.classList.add('sh-rank-page-active');
+      const cleanup=()=>{
+        if(!rankingBackdrop.classList.contains('on')||
+           !rankingSheet.querySelector('.sh-reference-rankings')){
+          rankingBackdrop.classList.remove('sh-rank-page-active');
+          observer.disconnect();
+        }
+      };
+      const observer=new MutationObserver(cleanup);
+      observer.observe(rankingBackdrop,{attributes:true,attributeFilter:['class']});
+      observer.observe(rankingSheet,{childList:true});
+      const back=document.getElementById('sh-ranking-back');
+      if(back)back.onclick=()=>{
+        rankingBackdrop.classList.remove('sh-rank-page-active');
+        observer.disconnect();
+        window.close();
+      };
+    }
     const list=document.getElementById('sh-ranking-list');
     const more=document.getElementById('sh-ranking-more');
     const status=document.getElementById('sh-ranking-status');
-    let offset=0;
-    let month=null;
-    async function load(){
-      more.disabled=true;
-      more.textContent='Show more';
-      status.textContent='';
+    const podium=document.getElementById('sh-ranking-podium');
+    const periodButtons=document.getElementById('sh-ranking-periods');
+    const kindButtons=document.getElementById('sh-ranking-kinds');
+    const explanation=document.getElementById('sh-ranking-explanation');
+    if(!list||!more||!status||!podium||!periodButtons||!kindButtons)return;
+    const selected={kind:'riches',period:'weekly',offset:0,since:null,revision:0};
+    function memberProfile(member){
+      return {publicId:String(member.public_id||''),
+        name:String(member.name||'Member'),pic:member.pic||null,
+        displayId:String(member.display_id||member.public_id||''),seatNo:null};
+    }
+    function memberButton(member,card=false){
+      const profile=memberProfile(member);
+      const row=document.createElement('button');
+      row.type='button';row.className=card?'sh-rank-podium-card':'sh-rank-row';
+      const rank=document.createElement('span');
+      rank.className=card?'sh-rank-podium-rank':'sh-rank-medal';
+      rank.textContent=Number(member.rank)<=3?
+        ['🥇','🥈','🥉'][Number(member.rank)-1]:'#'+String(member.rank||'—');
+      const label=document.createElement('span');label.className='sh-rank-name';
+      const title=document.createElement('strong');title.textContent=profile.name;
+      const id=document.createElement('small');id.textContent='ID '+profile.displayId;
+      label.append(title,id);
+      const amount=document.createElement('b');
+      amount.className='sh-rank-amount';
+      amount.textContent=Number(member.total||0).toLocaleString('en-US')+' 🪙';
+      row.append(rank,vipAvatar(profile),label,amount);
+      if(card)row.dataset.place=String(member.rank);
+      row.onclick=()=>Promise.resolve(v.openProfile(profile)).catch(error=>
+        window.toast?.('Profile: '+String(error?.message||error)));
+      return row;
+    }
+    function drawTabs(container,values,field){
+      container.replaceChildren();
+      for(const [value,label] of values){
+        const button=document.createElement('button');
+        button.type='button';button.textContent=label;
+        button.setAttribute('aria-pressed',String(selected[field]===value));
+        button.onclick=()=>{
+          if(selected[field]===value)return;
+          selected[field]=value;
+          selected.offset=0;selected.since=null;
+          renderTabs();load(false).catch(()=>{});
+        };
+        container.append(button);
+      }
+    }
+    function renderTabs(){
+      drawTabs(kindButtons,[['riches','Riches'],['lucky','Lucky']], 'kind');
+      drawTabs(periodButtons,[['weekly','Weekly'],['monthly','Monthly']], 'period');
+      explanation.textContent=selected.kind==='riches'
+        ?'Verified coins spent on gifts in this room. Periods reset in UTC.'
+        :'Verified gift coins received by members in this room. This is not a random cash payout.';
+    }
+    async function load(morePage=false){
+      const revision=++selected.revision;
+      const period=selected.period,kind=selected.kind;
+      const offset=morePage?selected.offset:0;
+      if(!morePage){
+        selected.offset=0;selected.since=null;
+        list.replaceChildren();podium.replaceChildren();
+      }
+      more.disabled=true;more.hidden=true;
+      status.textContent='Loading verified ranking…';
       try{
-        const result=await v.loadRankings('monthly',offset);
-        if(!list.isConnected||!canShow())return;
-        if(month&&month!==result.since_utc){
-          offset=0;month=null;
-          return await load();
-        }
-        month=result.since_utc;
-        if(!offset)list.replaceChildren();
+        const result=await v.loadRankings(period,offset,kind);
+        if(!status.isConnected||!canShow()||revision!==selected.revision||
+           premiumState.room?.roomId!==v.roomId)return;
+        if(result.period!==period||result.kind!==kind)
+          throw Error('Ranking response does not match selected filter');
+        if(morePage&&selected.since!==result.since_utc)
+          return await load(false);
+        selected.since=result.since_utc;
         const leaders=Array.isArray(result.leaders)?result.leaders:[];
-        if(!leaders.length&&!offset)list.textContent='No gifts sent in this room this month.';
-        for(const member of leaders){
-          const row=document.createElement('button');
-          row.type='button';row.className='sh-rank-row';
-          const rank=document.createElement('span');rank.className='sh-rank-medal';
-          rank.textContent=Number(member.rank)<=3?
-            ['🥇','🥈','🥉'][Number(member.rank)-1]:'#'+String(member.rank||'—');
-          const profile={
-            publicId:String(member.public_id||''),
-            name:String(member.name||'Member'),
-            pic:member.pic||null,
-            displayId:String(member.display_id||member.public_id||''),
-            seatNo:null
-          };
-          const name=document.createElement('span');name.className='sh-rank-name';
-          const title=document.createElement('strong');
-          title.textContent=profile.name;
-          const id=document.createElement('small');
-          id.textContent='ID '+profile.displayId;
-          name.append(title,id);
-          const sum=document.createElement('b');
-          sum.textContent=Number(member.total||0).toLocaleString('en-US')+' 🪙';
-          row.append(rank,vipAvatar(profile),name,sum);
-          row.onclick=()=>Promise.resolve(v.openProfile(profile)).catch(error=>
-            window.toast?.('Profile: '+String(error?.message||error)));
-          list.appendChild(row);
+        if(!offset){
+          podium.replaceChildren();
+          const firstThree=leaders.filter(item=>Number(item.rank)<=3);
+          for(const position of [2,1,3]){
+            const member=firstThree.find(item=>Number(item.rank)===position);
+            if(member)podium.append(memberButton(member,true));
+          }
+          podium.hidden=firstThree.length===0;
+          if(!leaders.length)list.textContent='No verified gifts for this period.';
         }
+        for(const member of leaders)
+          list.append(memberButton(member,false));
+        selected.offset=result.next_offset;
         more.hidden=result.next_offset==null;
-        offset=result.next_offset;
+        more.textContent='Show more';
+        status.textContent='';
       }catch(error){
-        if(list.isConnected)status.textContent='Ranking unavailable: '+String(error?.message||error);
-        more.hidden=false;
-        more.textContent='Retry';
+        if(!status.isConnected||revision!==selected.revision)return;
+        status.textContent='Ranking unavailable: '+String(error?.message||error);
+        more.hidden=false;more.textContent='Retry';
       }finally{more.disabled=false;}
     }
-    more.onclick=load;
-    await load();
+    more.onclick=()=>load(selected.offset!=null).catch(()=>{});
+    renderTabs();
+    await load(false);
   }
   function displayAnnouncement(text){
     let strip=document.getElementById('sh-room-announcement');
@@ -591,13 +837,20 @@
       if(premiumState.room?.roomId!==view.roomId){
         premiumState.announcement=null;premiumState.announcementAt=0;
       }
+      if(promoState.roomId!==view.roomId){
+        promoState.roomId=view.roomId;
+        promoState.lastRefresh=0;
+        promoState.generation++;
+        renderRoomBanners([]);
+      }
       premiumState.room=view;
+      refreshRoomBanners().catch(()=>{});
       renderLiveMembers(view);
       roomControls.hidden=false;
       loadAnnouncement().catch(()=>{});
     },
     showMembers,showRankings,
-    refreshAnnouncement:()=>renderAnnouncement(true)
+    refreshAnnouncement:()=>loadAnnouncement(true)
   };
 
 })();

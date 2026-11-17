@@ -13,6 +13,7 @@ import {MUSIC_LIBRARY_OBJECT,musicTitle} from './music-library.mjs';
 import {recordAgencyRoomActivity} from './agency-room-time.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
+import {listRoomBanners} from './room-banners.mjs';
 import {listRoomThemes,roomThemeId,catalogThemeImage,validateCatalogTheme} from './room-themes.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
@@ -229,9 +230,10 @@ export async function handleRequest(request, env, ctx) {
   const profileCoverPath=/^\/api\/v1\/users\/([0-9]{8})\/cover-image$/.exec(path);
   const bannerImagePath=/^\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image$/.exec(path);
   const galleryImagePath=/^\/api\/v1\/room-themes\/([1-9][0-9]{0,8})\/image$/.exec(path);
+  const roomBannerImagePath=/^\/api\/v1\/room-banners\/([1-9][0-9]{0,8})\/image$/.exec(path);
   // Public image thumbnails support anonymous GET; edits remain authenticated.
   // all mutations continue through strict origin and Firebase checks.
-  const cors = (coverPath || themeImagePath || avatarPath || profileCoverPath || bannerImagePath || galleryImagePath) && request.method==='GET'
+  const cors = (coverPath || themeImagePath || avatarPath || profileCoverPath || bannerImagePath || galleryImagePath || roomBannerImagePath) && request.method==='GET'
     ? {'access-control-allow-origin':'*'} : corsFor(request, env);
   if (!cors) return fail('origin_forbidden', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -299,6 +301,26 @@ export async function handleRequest(request, env, ctx) {
     const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
     return new Response(bytes,{status:200,headers:{
       'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  if(roomBannerImagePath && request.method==='GET'){
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    let row;
+    try{
+      row=await env.DB.prepare(
+        'SELECT image_base64 FROM sharika_room_banners WHERE id=? '+
+        'AND active=1 AND image_bytes>0'
+      ).bind(Number(roomBannerImagePath[1])).first();
+    }catch(error){
+      if(/no such table: sharika_room_banners/i.test(String(error)))
+        return fail('room_banner_unavailable',404,cors);
+      throw error;
+    }
+    if(!row)return fail('room_banner_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(row.image_base64),char=>char.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public,max-age=3600',
       'x-content-type-options':'nosniff',...cors
     }});
   }
@@ -529,6 +551,11 @@ export async function handleRequest(request, env, ctx) {
       if(!writes[0]?.meta?.changes)return fail('cover_rate_limited',429,cors);
       if(!writes[1]?.meta?.changes)return fail('profile_unavailable',409,cors);
       return reply(showProfile(await me(env.DB,uid)),200,cors);
+    }
+    if(path==='/api/v1/room-banners'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      const country=String(url.searchParams.get('country')||'').trim().toUpperCase();
+      return reply({banners:await listRoomBanners(env.DB,url.origin,country)},200,cors);
     }
     if(path==='/api/v1/banners' && request.method==='GET') {
       await assertActive(env.DB,uid);
@@ -1311,6 +1338,43 @@ export async function handleRequest(request, env, ctx) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // Reference-room metadata is descriptive, not an admission policy.
+      // Gender or other identity-based entry restrictions are deliberately
+      // NOT inferred from a cosmetic room tag.
+      if(parts.length===5&&action==='details'&&['GET','PUT'].includes(request.method)){
+        if(!member)return fail('join_room_first',403,cors);
+        if(request.method==='GET'){
+          const row=await env.DB.prepare(
+            'SELECT introduction,tag,updated_at FROM sharika_room_details WHERE room_id=?'
+          ).bind(roomId).first();
+          return reply({room_id:roomId,introduction:row?.introduction||'',
+            tag:row?.tag||'general',updated_at:row?.updated_at||null,
+            tag_is_access_policy:false},200,cors);
+        }
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        const value=await readBody(request);
+        if(!value||typeof value!=='object'||Array.isArray(value)||
+           Object.keys(value).some(k=>!['introduction','tag'].includes(k))||
+           Object.keys(value).length===0||
+           (value.introduction!==undefined&&
+             (typeof value.introduction!=='string'||value.introduction.length>300))||
+           (value.tag!==undefined&&
+             !['general','music','chat','friends','games'].includes(value.tag)))
+          return fail('invalid_room_details',400,cors);
+        const before=await env.DB.prepare(
+          'SELECT introduction,tag FROM sharika_room_details WHERE room_id=?'
+        ).bind(roomId).first();
+        const introduction=value.introduction===undefined
+          ?before?.introduction||'':value.introduction.trim();
+        const tag=value.tag||before?.tag||'general';
+        await env.DB.prepare(
+          "INSERT INTO sharika_room_details(room_id,introduction,tag) VALUES(?,?,?) "+
+          "ON CONFLICT(room_id) DO UPDATE SET introduction=excluded.introduction,"+
+          "tag=excluded.tag,updated_at=datetime('now')"
+        ).bind(roomId,introduction,tag).run();
+        return reply({room_id:roomId,introduction,tag,
+          tag_is_access_policy:false,updated:true},200,cors);
+      }
       // Room-specific chat, microphone and entry policies remain independent
       // of D1 entry locks and of the public theme gallery.
       if(parts.length===5&&action==='policy'){
@@ -1642,6 +1706,9 @@ export async function handleRequest(request, env, ctx) {
         const period=url.searchParams.get('period')||'monthly';
         if(!['daily','weekly','monthly'].includes(period))
           return fail('invalid_ranking_period',400,cors);
+        const kind=url.searchParams.get('kind')||'riches';
+        if(!['riches','lucky'].includes(kind))
+          return fail('invalid_ranking_kind',400,cors);
         const now=new Date();
         const since=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),
           period==='monthly'?1:now.getUTCDate()));
@@ -1650,9 +1717,9 @@ export async function handleRequest(request, env, ctx) {
         const after=since.toISOString().slice(0,19).replace('T',' ');
         const offset=Number(url.searchParams.get('offset')||0);
         if(!Number.isSafeInteger(offset)||offset<0)return fail('invalid_ranking_offset',400,cors);
-        const [group,summary]=await Promise.all([
-          env.DB.prepare(
-            'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
+        const fromSent=kind==='riches';
+        const rowsQuery=fromSent
+          ? 'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
             'u.pic AS sender_pic,u.special_id AS sender_special_id,'+
             'SUM(t.total_coins) AS total '+
             'FROM sharika_gift_transactions t '+
@@ -1660,13 +1727,25 @@ export async function handleRequest(request, env, ctx) {
             'WHERE t.room_id=? AND t.created_at>=? '+
             'GROUP BY t.sender_uid '+
             'ORDER BY total DESC,u.public_no ASC LIMIT 31 OFFSET ?'
-          ).bind(roomId,after,offset).all(),
-          env.DB.prepare(
-            'SELECT COALESCE(SUM(total_coins),0) AS total '+
+          : 'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
+            'u.pic AS sender_pic,u.special_id AS sender_special_id,'+
+            'SUM(e.price_coins*e.quantity) AS total '+
+            'FROM sharika_gift_events e '+
+            'JOIN sharika_users u ON u.auth_uid=e.recipient_uid '+
+            'WHERE e.room_id=? AND e.created_at>=? '+
+            'GROUP BY e.recipient_uid '+
+            'ORDER BY total DESC,u.public_no ASC LIMIT 31 OFFSET ?';
+        const totalQuery=fromSent
+          ? 'SELECT COALESCE(SUM(total_coins),0) AS total '+
             'FROM sharika_gift_transactions WHERE room_id=? AND created_at>=?'
-          ).bind(roomId,after).first()
+          : 'SELECT COALESCE(SUM(price_coins*quantity),0) AS total '+
+            'FROM sharika_gift_events WHERE room_id=? AND created_at>=?';
+        const [group,summary]=await Promise.all([
+          env.DB.prepare(rowsQuery).bind(roomId,after,offset).all(),
+          env.DB.prepare(totalQuery).bind(roomId,after).first()
         ]);
-        return reply({room_id:roomId,period,timezone:'UTC',
+        return reply({room_id:roomId,period,kind,timezone:'UTC',
+          metric:fromSent?'coins_sent':'coins_received_in_room',
           since_utc:since.toISOString(),
           total_contribution_coins:Number(summary?.total)||0,
           next_offset:(group.results||[]).length>30?offset+30:null,
@@ -1711,6 +1790,12 @@ export async function handleRequest(request, env, ctx) {
         return reply({room_id:roomId,regular_gift_percent:10,
           reward_hundredths:Number(recorded?.points)||0,
           regular_reward_hundredths:Number(recorded?.points)||0,
+          // Regular reward rows are immutable and their trigger verifies
+          // reward_hundredths = transaction.total_coins * 10.
+          // This is lifetime eligible virtual-gift volume, not an amount
+          // that can be reset or claimed again.
+          verified_room_transaction_coins:Math.max(0,
+            Math.floor((Number(recorded?.points)||0)/10)),
           owner_wallet_credited_coins:paid,
           claimable_coins:Math.floor(pending/100),
           pending_hundredths:pending,withdrawal_enabled:false},200,cors);

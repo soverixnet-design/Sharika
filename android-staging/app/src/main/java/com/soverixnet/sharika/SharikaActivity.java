@@ -1480,9 +1480,13 @@ public final class SharikaActivity extends Activity {
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/policy$"))
             return method.equals("GET") || method.equals("PUT");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/details$"))
+            return method.equals("GET") || method.equals("PUT");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/rewards$"))
             return method.equals("GET") || method.equals("POST");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/contributors\\?period=(daily|weekly|monthly)(?:&offset=[0-9]{1,9})?$"))
+            return method.equals("GET");
+        if (path.matches("^/api/v1/rooms/[0-9]{8}/contributors\\?period=(daily|weekly|monthly)&offset=[0-9]{1,9}&kind=(riches|lucky)$"))
             return method.equals("GET");
         if (path.matches("^/api/v1/rooms/[0-9]{8}/announcement$"))
             return method.equals("GET") || method.equals("PUT");
