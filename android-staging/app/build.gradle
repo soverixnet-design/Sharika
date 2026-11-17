@@ -63,7 +63,13 @@ android {
             manifestPlaceholders = [sharikaInviteHost: 'sharika-api-staging.soverixnet.workers.dev']
             buildConfigField 'boolean', 'SHARIKA_PLAY_BUILD', 'false'
             buildConfigField 'String', 'SHARIKA_API_ORIGIN', '"https://sharika-api-staging.soverixnet.workers.dev"'
-            if (stableStagingSigner) {
+            // Assistant QA only: if CI explicitly verified the existing
+            // Play upload certificate against Firebase Android OAuth, use it
+            // as a stable debug APK signer. No Play release is published.
+            if (System.getenv('SHARIKA_STAGING_USE_REGISTERED_PLAY_SIGNER') == 'true' &&
+                stablePlayUploadSigner) {
+                signingConfig signingConfigs.sharikaPlayUpload
+            } else if (stableStagingSigner) {
                 signingConfig signingConfigs.sharikaStaging
             }
         }
