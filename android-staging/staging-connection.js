@@ -13547,11 +13547,11 @@
     {id:'night-food',name:'Night Food Wheel',tag:'🌙 Night',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/night-food-wheel.html'},
-    {id:'fruit-royale',name:'Fruit Royale',tag:'👑 New Royal Jackpot',
-      image:'file:///android_asset/jackpot-fruit-original-card.png',
+    {id:'fruit-royale',name:'Fruit Royale',tag:'Original Fruit Machine',
+      image:'file:///android_asset/game-cards/fruit-machine.jpg',
       page:'file:///android_asset/fruit-royale/index.html'},
-    {id:'greedy-classic',name:'Greedy Game',tag:'Original 8-Food Wheel',
-      image:'file:///android_asset/food-wheel-original-card.png',
+    {id:'greedy-classic',name:'Greedy Game',tag:'Original Food Wheel',
+      image:'file:///android_asset/game-cards/hot-food.jpg',
       page:'file:///android_asset/original-games/greedy-classic.html'},
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
@@ -13560,7 +13560,7 @@
       image:'file:///android_asset/royal-ace-card.svg',
       page:'file:///android_asset/original-games/royal-ace-deluxe.html'},
     {id:'cleopatra',name:"Cleopatra's Gold Deluxe",tag:'Egyptian Golden Slots',
-      image:'file:///android_asset/jackpot-fruit-original-card.png',
+      image:'file:///android_asset/game-cards/cleopatra-gold.jpg',
       page:'file:///android_asset/original-games/cleopatra-slot.html'}
   ];
   // Only announce server-confirmed round winners during the first ten seconds
@@ -14035,7 +14035,7 @@
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
       visibleGameCards=originalGameCards.filter(game=>
-        ['greedy-wheel','cleopatra','food-deluxe','greedy-classic','royal-ace'].includes(game.id)&&enabled.has(game.id));
+        ['greedy-wheel','cleopatra','food-deluxe','greedy-classic','royal-ace','fruit-royale'].includes(game.id)&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
