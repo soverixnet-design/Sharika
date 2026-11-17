@@ -94,7 +94,7 @@ body{margin:0;background:#0d0705;color:#fff;font-family:system-ui,"Noto Sans Ben
 <style id="sharika-royal-ace-responsive">
 html,body{height:100%;margin:0;overflow:hidden;background:#12081b}#g{max-width:none!important;width:100%!important;height:100dvh!important;min-height:0!important}#tbl{min-height:0!important;display:flex;flex-direction:column;justify-content:center;padding:7px 4%!important}#grid{width:100%;height:100%;min-height:0;grid-template-rows:repeat(4,minmax(0,1fr))}#grid .c{aspect-ratio:auto!important;min-height:0!important}#grid .c img{max-height:100%}
 .top .logo{height:clamp(34px,9dvh,74px)!important}.bn .star{font-size:clamp(11px,2.9vw,18px)!important}.arches i{height:clamp(10px,3dvh,28px)}.pan{margin-top:-14px!important;padding-top:23px!important;padding-bottom:calc(8px + env(safe-area-inset-bottom))!important}.band{margin-top:0!important;padding:6px 0 13px!important;font-size:clamp(16px,4.1vw,26px)!important}.info{font-size:clamp(10px,2.5vw,15px)!important}.balb{font-size:clamp(11px,2.7vw,17px)!important}.ctl{margin-top:-9px}.ib{width:14%}#sp{width:26%;margin-top:-9px}
-body.sharika-room .top .logo{height:clamp(26px,6dvh,48px)!important}body.sharika-room .arches i{height:10px}body.sharika-room .top .bn .star{font-size:11px!important;padding:2px}body.sharika-room .pan{padding:18px 4px 3px!important}body.sharika-room .band{padding:3px 0 9px!important}body.sharika-room .info{font-size:11px!important}body.sharika-room #sp{width:25%}
+body.sharika-room .top .logo{height:clamp(26px,6dvh,48px)!important}body.sharika-room .arches i{height:10px}body.sharika-room .top .bn .star{font-size:11px!important;padding:2px}body.sharika-room .pan{padding:18px 4px 3px!important}body.sharika-room .band{padding:3px 0 9px!important}body.sharika-room .info{font-size:clamp(12px,3.1vw,17px)!important}body.sharika-room #sp{width:25%}
 #royal-loading{position:absolute;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2.2dvh;background:radial-gradient(ellipse at 50% 55%,#ffe1a2 0,#f8aa4a 34%,#dc6323 70%,#97200e 100%);color:white;text-align:center;padding:6%;font-family:system-ui}
 #royal-loading:before{content:"★";position:absolute;top:12%;right:10%;font-size:clamp(60px,18vw,150px);color:#ffdf6b;text-shadow:0 0 12px #a83b07,0 8px 2px #ad430d;transform:rotate(15deg);opacity:.9}
 #royal-loading:after{content:"$";position:absolute;bottom:16%;left:5%;display:grid;place-items:center;border:7px solid #fff0a1;width:70px;height:70px;border-radius:50%;font-weight:900;font-size:45px;background:radial-gradient(#fceb76,#e59716);color:#ac5314;transform:rotate(-20deg);box-shadow:0 0 20px #9a4f0c}
@@ -109,7 +109,7 @@ body.sharika-room .top .logo{height:clamp(26px,6dvh,48px)!important}body.sharika
 #royal-progress{height:15px;margin-top:2dvh}
 #royal-network-error{font-size:13px;background:#531f1fdd;border-radius:9px;padding:8px 10px;max-width:90%;display:none}
 @media(max-height:460px){#royal-loading-art{font-size:45px}#royal-loading-logo{max-height:50px}#royal-loading{gap:7px}.wf{display:none}.top .logo{height:30px!important}}
-</style></head><body><div id="g"><div id="royal-loading" role="status" aria-live="polite"><img id="royal-loading-logo" alt="Royal Ace Deluxe"><div id="royal-loading-title">ROYAL ACE DELUXE</div><div id="royal-loading-art" aria-hidden="true">♠ A ★ K</div><div id="royal-progress"><i id="royal-progress-fill"></i></div><div id="royal-loading-caption">Loading game assets…</div><label><input type="checkbox" id="royal-skip-intro">Don't show next time</label><div id="royal-network-error"></div></div>
+</style></head><body><div id="g"><div id="royal-loading" role="status" aria-live="polite"><img id="royal-loading-logo" alt="Royal Ace Deluxe"><div id="royal-loading-title">ROYAL ACE DELUXE</div><div id="royal-loading-art" aria-hidden="true">♠ A ★ K</div><div id="royal-progress"><i id="royal-progress-fill"></i></div><div id="royal-loading-caption">Loading game assets…</div><label><input type="checkbox" id="royal-skip-intro">Don't show next time</label><div id="royal-network-error"></div><button id="royal-try-again" type="button" style="font:700 14px system-ui;display:none;background:#65261e;color:#fff1c1;border:2px solid #f4d07c;border-radius:9px;padding:9px 19px">Retry connection</button></div>
 <div class="top"><img class="logo" id="lg"><button id="bb"><img id="bbi"></button>
 <div class="row"><div class="cw"><img id="cbar"><div id="hl"></div></div><img id="starc"></div><div class="bn"><div class="arches"><i></i><i></i><i></i><i></i><i></i></div><div id="fsb"></div><div class="star" id="st">Get a Golden Symbol and have a chance at Joker Wild!</div></div></div>
 <div id="tbl"><div class="pill" style="display:none">
@@ -242,13 +242,15 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   const SOURCE='sharika-royal-ace',SERVER='sharika-royal-ace-server',pending=new Map();
   let ready=false,waiting=false,freeRemaining=0,activeBets=[1000,10000,100000,1000000,10000000];
   const loading=$('royal-loading'),spinner=$('sp'),errorBox=$('royal-network-error');
+  const retryButton=$('royal-try-again');
   const room=new URLSearchParams(location.search).get('mode')==='room';
   if(room)document.body.classList.add('sharika-room');
   $('royal-loading-logo').src=IM.logo;
   try{$('royal-skip-intro').checked=localStorage.getItem('sharika_royal_intro_off')==='1'}catch(_){}
   $('royal-skip-intro').onchange=e=>{try{localStorage.setItem('sharika_royal_intro_off',e.target.checked?'1':'0')}catch(_){}};
-  const showError=s=>{errorBox.style.display='block';errorBox.textContent=s;};
-  const clearError=()=>{errorBox.style.display='none';errorBox.textContent='';};
+  const showError=s=>{errorBox.style.display='block';errorBox.textContent=s;retryButton.style.display='block';};
+  const clearError=()=>{errorBox.style.display='none';errorBox.textContent='';retryButton.style.display='none';};
+  retryButton.onclick=()=>{clearError();$('royal-loading-caption').textContent='Connecting to Sharika…';replyToHost({type:'ready'});};
   const hideIntro=()=>{loading.style.display='none';};
   spinner.disabled=true;$('bb').disabled=true;
   const previewBalance=v=>{if(Number.isSafeInteger(v)&&v>=0){bal=v;upd();}};
@@ -263,7 +265,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     const d=event.data;
     if(d.type==='init'){
       if(!Array.isArray(d.bets)||!d.bets.every(x=>Number.isSafeInteger(x)&&x>0))return showError('Game configuration is unavailable.');
-      activeBets=d.bets;freeRemaining=Number(d.freeSpins)||0;
+      clearError();activeBets=d.bets;freeRemaining=Number(d.freeSpins)||0;
       bet=freeRemaining>0&&activeBets.includes(Number(d.lockedBet))?Number(d.lockedBet):activeBets[0];
       bi=activeBets.indexOf(bet);ready=true;
       previewBalance(d.balance);spinner.disabled=false;$('bb').disabled=false;
@@ -278,6 +280,20 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       if(d.error)cb.reject(Error(String(d.error)));else cb.resolve(d);
     }
   });
+  const confirmedRound=async(requestId,amount,buy)=>{
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        const receipt=awaitRound(requestId,11000);
+        replyToHost({type:'spin',id:requestId,bet:amount,buy:!!buy});
+        return await receipt;
+      }catch(error){
+        const transient=/timeout|network|unavailable|failed|busy|temporar|connection/i.test(String(error?.message||error));
+        if(!transient||attempt===2)throw error;
+        $('st').textContent='Reconnecting safely · same bet ID';
+        await sleep(650*(attempt+1));
+      }
+    }
+  };
   spin=async function(buy=false){
     if(busy||waiting)return;
     if(!ready){showError('Connect to Sharika server before playing.');return;}
@@ -286,10 +302,9 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     if(bal<cost){auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
     busy=true;waiting=true;spinner.disabled=true;
     const requestId=id();
+    $('st').textContent='Verifying bet with Sharika server…';
     try{
-      const responsePromise=awaitRound(requestId);
-      replyToHost({type:'spin',id:requestId,bet:amount,buy:!!buy});
-      const r=await responsePromise;
+      const r=await confirmedRound(requestId,amount,buy);
       if(!Number.isSafeInteger(r.win)||r.win<0||!Number.isSafeInteger(r.balance)||r.balance<0||
          !Array.isArray(r.steps))throw Error('Invalid server response.');
       clearError();waiting=false;SFX.spin();
@@ -332,7 +347,19 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     });
   };
   $('hm').onclick=()=>replyToHost({type:'close'});
-  const initTimer=setTimeout(()=>{if(!ready){showError('Unable to load game from server. Close and reopen to retry.');}},25000);
+  setTimeout(()=>{if(!ready){showError('Network is slow. Tap Retry connection. No coins have been charged.');}},9000);
+  const originalRules=$('inf').onclick;
+  $('inf').onclick=event=>{
+    if(typeof originalRules==='function')originalRules.call($('inf'),event);
+    const panel=$('bx');
+    if(panel&&panel.querySelector('h2')){
+      const note=document.createElement('p');
+      note.style.cssText='font:700 13px system-ui;color:#ffe4a2;padding:8px;border:1px solid #c68d48;border-radius:8px';
+      note.textContent='Sharika Staging payouts: 45% of the original gross wins; maximum 40× stake per spin. All results and balances are settled by the server.';
+      panel.appendChild(note);
+    }
+  };
+  const initTimer=setTimeout(()=>{if(!ready)showError('Unable to connect to the game. Try again.');},25000);
   replyToHost({type:'ready'});
 })();
 
