@@ -38,20 +38,34 @@ function evaluate(grid,bet,free,combo){
   return {win:Math.floor(raw*MULT[free?1:0][Math.min(combo,4)]),marks:[...marks]};
 }
 function cascade(grid,marks,combo){
+  let bigJokers=0;
   for(const k of marks){
     const c=Math.floor(k/4),r=k%4,x=grid[c][r];
-    if(x.g)grid[c][r]={s:secureInt(2)?9:10,g:false};
-    else grid[c][r]=null;
+    if(x.g){
+      const big=secureInt(2)===0;
+      if(big)bigJokers++;
+      // Golden cards transform into a big/little Joker and stay in place.
+      grid[c][r]={s:big?9:10,g:false};
+    }else grid[c][r]=null;
   }
   for(let c=0;c<5;c++){
     const remaining=grid[c].filter(Boolean);
     grid[c]=Array.from({length:4-remaining.length},()=>draw(c)).concat(remaining);
   }
-  // Convert some regular cards to golden after a successful combo.
+  // The original Big Joker replicates 1 to 4 times on reels 2–5.
+  for(let n=0;n<Math.min(bigJokers,12);n++){
+    const copies=1+secureInt(4);
+    for(let i=0;i<copies;i++){
+      const c=1+secureInt(4),r=secureInt(4);
+      if(grid[c][r].s<8)grid[c][r]={s:9,g:false};
+    }
+  }
+  // Original Star Card may trigger after combos 2–4 and always after combo 5.
   if(combo>=1&&(combo>=4||secureInt(100)<45)){
-    for(let n=0;n<3;n++){
-      const c=1+secureInt(3),r=secureInt(4);
-      if(grid[c][r].s<8)grid[c][r].g=true;
+    let changed=0;
+    for(let tries=0;tries<12&&changed<3;tries++){
+      const c=1+secureInt(3),r=secureInt(4),x=grid[c][r];
+      if(x.s<8&&!x.g){grid[c][r].g=true;changed++;}
     }
   }
   return grid;
