@@ -6423,6 +6423,9 @@
         openProfile:member=>frame.__sharikaOpenQuickProfile?.(member),
         loadAnnouncement:()=>api('GET','/rooms/'+room.id+'/announcement'),
         saveAnnouncement:text=>api('PUT','/rooms/'+room.id+'/announcement',{text}),
+        loadBanners:()=>api('GET','/room-banners?country='+encodeURIComponent(
+          String(room.owner_country||room.country||'').trim().toUpperCase()
+        )),
         loadRankings:(period,offset=0)=>api('GET','/rooms/'+room.id+
           '/contributors?period='+encodeURIComponent(period)+'&offset='+offset).then(result=>({
             ...result,leaders:(result.leaders||[]).map(item=>({
