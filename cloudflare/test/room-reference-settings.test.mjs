@@ -68,7 +68,10 @@ test('room reward remains server-governed 10% without enabling example tiers',()
   assert.match(bridge,/Room commission: 10%/);
   assert.match(bridge,/Collect transfers only unpaid whole coins/);
   assert.match(bridge,/api\('POST',rewardsPath,\{\}\)/);
-  assert.match(bridge,/The 5–8% example tiers in the reference screenshots are not active/);
+  assert.match(bridge,/Sharika room commission is fixed at 10%/);
+  assert.match(bridge,/Reward collection never resets the immutable gift history/);
+  assert.match(bridge,/Current room transaction/);
+  assert.match(bridge,/verified_room_transaction_coins/);
   assert.match(worker,/regular_gift_percent:10/);
   assert.match(worker,/owner_wallet_credited_coins:paid/);
 });
