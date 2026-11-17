@@ -5909,7 +5909,7 @@
     presenceTimer=setInterval(()=>{
       heartbeatPresence();
       // Refresh real room-card counters without changing the original cards.
-      if(!window.cur && document.visibilityState==='visible')reloadRooms().catch(()=>{});
+      if(!window.cur && document.visibilityState==='visible')reloadRooms(true).catch(()=>{});
     },25000);
   }
   document.addEventListener('visibilitychange',()=>{
@@ -5951,7 +5951,37 @@
   }
   let roomsRequestNo=0;
   let lastRoomsRenderSignature=null;
-  async function reloadRooms() {
+  // The presence heartbeat refreshes room cards in the background. On
+  // congested mobile links, repeated GET /rooms calls used to invalidate
+  // earlier (still valid) replies and restart the card render indefinitely.
+  // Coalesce passive requests while allowing settings/room edits to queue
+  // exactly one fresh lookup once the older request settles.
+  let roomsInFlight=null,roomsRefreshAfter=null;
+  function reloadRooms(passive=false) {
+    const userId=session?.user?.id;
+    if(!userId)return Promise.resolve();
+    if(roomsInFlight?.userId===userId){
+      if(passive)return roomsInFlight.promise;
+      if(roomsRefreshAfter?.userId!==userId){
+        // A room was just created/edited. Invalidate the old in-flight
+        // snapshot now: it must not briefly repaint stale cards.
+        ++roomsRequestNo;
+        const refresh=roomsInFlight.promise.catch(()=>{}).then(()=>reloadRooms(true));
+        roomsRefreshAfter={userId,promise:refresh};
+        refresh.finally(()=>{
+          if(roomsRefreshAfter?.promise===refresh)roomsRefreshAfter=null;
+        }).catch(()=>{});
+      }
+      return roomsRefreshAfter.promise;
+    }
+    const work=reloadRoomsOnce();
+    const tracked=work.finally(()=>{
+      if(roomsInFlight?.promise===tracked)roomsInFlight=null;
+    });
+    roomsInFlight={userId,promise:tracked};
+    return tracked;
+  }
+  async function reloadRoomsOnce() {
     if (!session) return;
     // Room creation and settings saves must always request a fresh list.
     // An earlier background poll may finish later, but cannot undo it.
@@ -7396,11 +7426,25 @@
       if(shownGiftEvents.has(id))return;
       shownGiftEvents.add(id);
       if(shownGiftEvents.size>200)shownGiftEvents.delete(shownGiftEvents.values().next().value);
-      queueGiftPresentation(frame,event);
-      if(Number(event.tab)===FEATURED_GIFT_TAB||isVideoMedia(verifiedMediaUrl(event.animation_url)))
-        queueGiftPresentation(frame,event,true);
+      // One verified receipt produces exactly one UI overlay. Featured/video
+      // gifts use the fullscreen parade; regular gifts use the small notice.
+      // Running both caused stacked overlays and duplicate animation work.
+      const featured=Number(event.tab)===FEATURED_GIFT_TAB||
+        isVideoMedia(verifiedMediaUrl(event.animation_url));
+      queueGiftPresentation(frame,event,featured);
     }
-    async function pollGiftEvents(ownTransactionId=null){
+    // A slow /gifts response can exceed the five-second poll interval.
+    // Share a pending fetch so it cannot race the cursor, duplicate gift
+    // animations, or keep multiple heavyweight media tasks in flight.
+    // A newly confirmed send still gets one fresh receipt check afterward.
+    let giftPollInFlight=null;
+    function pollGiftEvents(ownTransactionId=null){
+      if(giftPollInFlight){
+        if(ownTransactionId===null)return giftPollInFlight;
+        return giftPollInFlight.catch(()=>{}).then(()=>
+          pollGiftEvents(ownTransactionId));
+      }
+      const work=(async()=>{
       const data=await api('GET','/rooms/'+room.id+'/gifts');
       const events=data.events||[];
       const latest=Math.max(0,...events.map(e=>Number(e.id)||0));
@@ -7433,6 +7477,12 @@
       // when somebody sends a gift to another user in this room.
       if(receivedGift||(sawNewGift&&room.owner_id===session?.user?.id))
         await reloadWallet();
+      })();
+      const finished=work.finally(()=>{
+        if(giftPollInFlight===finished)giftPollInFlight=null;
+      });
+      giftPollInFlight=finished;
+      return finished;
     }
     async function setRoomAdmin(publicId,makeAdmin){
       if(!visitIsActive()||room.owner_id!==session?.user?.id)throw new Error('Room owner only');
@@ -9379,6 +9429,14 @@
       /var base=\[\{n:"You",e:"😎"\}[\s\S]*?\];\nfor\(var q=0;/,
       'var base=[];\nfor(var q=0;');
     window.ROOM_HTML=window.ROOM_HTML.replace('setInterval(botGift,28000);','');
+    // Remove the offline gift bot code itself, not only its interval. It
+    // simulated wallet rewards and gift flights from invented senders.
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      /function botGift\(\)\{[\s\S]*?\}\n(?=function luckyFx\()/,'');
+    // The sample-name and emoji pools were used only by 121 fabricated
+    // audience profiles. The real room uses authenticated D1 members.
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      /var UN=\[[^\n]*\],UE=\[[^\n]*\],U=\[\],FOL=\{\};/,'var U=[],FOL={};');
     // The retired room template creates 121 fictitious audience accounts
     // and a 1.6-second speaking simulator. Verified D1 member snapshots
     // supersede both, so do not allocate or schedule them in Android.

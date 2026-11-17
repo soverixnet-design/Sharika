@@ -18,12 +18,18 @@ const mainFn=new Function(
   between(original,'var fmt=function(n)','/* ===== Config')+
   'return fmt;'
 )();
-const roomStart=original.indexOf('var cfmt=function(n)');
+// ROOM_HTML is a JSON-encoded JavaScript string. Decode its HTML-safe
+// escapes before evaluating the in-room formatter, rather than treating
+// escaped source bytes (such as \\u003c) as executable JavaScript.
+const roomLiteral=original.match(/var ROOM_HTML=("(?:\\.|[^"\\])*");/);
+assert.ok(roomLiteral,'room HTML literal missing');
+const roomHTML=JSON.parse(roomLiteral[1]);
+const roomStart=roomHTML.indexOf('var cfmt=function(n)');
 assert.ok(roomStart>=0,'room coin formatter missing');
-const roomEnd=original.indexOf('};\\n',roomStart);
+const roomEnd=roomHTML.indexOf('};\n',roomStart);
 assert.ok(roomEnd>roomStart);
 const roomFn=new Function('const bn=n=>String(n);'+
-  original.slice(roomStart,roomEnd+2)+';return cfmt;')();
+  roomHTML.slice(roomStart,roomEnd+2)+';return cfmt;')();
 
 test('profile, room and verified wallet display the same k/m coin amounts',()=>{
   const cases=[
