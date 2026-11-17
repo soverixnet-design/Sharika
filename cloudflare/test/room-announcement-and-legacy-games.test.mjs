@@ -6,7 +6,7 @@ const src = relative => readFileSync(new URL(relative,import.meta.url),'utf8');
 
 test('admin-enabled games including SuperAce are visible while legacy games stay preserved',()=>{
   const bridge=src('../../android-staging/staging-connection.js');
-  assert.ok(bridge.includes("['greedy-wheel','cleopatra','food-deluxe','greedy-classic','royal-ace'].includes(game.id)&&enabled.has(game.id)"));
+  assert.ok(bridge.includes("['greedy-wheel','cleopatra','food-deluxe','greedy-classic','royal-ace','fruit-royale'].includes(game.id)&&enabled.has(game.id)"));
   assert.ok(!bridge.includes('requestedOriginalGames.has(game.id)'));
   assert.ok(bridge.includes('const catalogRequestNo=++gameCatalogRequestSequence'));
   assert.ok(!bridge.includes("visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale'"));
