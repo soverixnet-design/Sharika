@@ -496,6 +496,8 @@
       ?row.image_url:null;
   }
   function renderRoomBanners(entries){
+    const sideGame=byId('sh-reference-game-banner');
+    if(!sideGame)return;
     const rows=Array.isArray(entries)?entries:[];
     const game=rows.find(item=>item.placement==='game'&&bannerImage(item));
     const event=rows.find(item=>item.placement==='event'&&bannerImage(item));
