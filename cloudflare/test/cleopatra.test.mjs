@@ -148,3 +148,14 @@ test('bonus grants ten persisted free spins, follow-up costs zero and pays twice
  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='cleopatra_win'").get().n,1);
  sqlite.close();
 });
+
+test('original Cleopatra hosted page initializes rankings before server init and trusts signed result flags',()=>{
+ const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/cleopatra-slot.html',import.meta.url),'utf8');
+ const rankStore=html.indexOf('const RK={');
+ const start=html.indexOf("if(HOST){window.__sharikaGameReady=false;RK.d=[]");
+ assert.ok(rankStore>=0&&start>rankStore,'host initialization cannot use RK before declaration');
+ assert.match(html,/hitJack=HOST\?R\.jackpotHit===true/);
+ assert.match(html,/hitBonus=HOST\?R\.bonusHit===true/);
+ assert.match(html,/if\(HOST\)\{bal=R\.balance;fs=R\.freeSpins;jp=R\.jackpot;/);
+ assert.doesNotMatch(html,/if\(R\.jackpot\)jp=R\.jackpot/,'zero jackpot pool must not show stale UI amount');
+});
