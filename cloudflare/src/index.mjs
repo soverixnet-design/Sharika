@@ -1706,6 +1706,9 @@ export async function handleRequest(request, env, ctx) {
         const period=url.searchParams.get('period')||'monthly';
         if(!['daily','weekly','monthly'].includes(period))
           return fail('invalid_ranking_period',400,cors);
+        const kind=url.searchParams.get('kind')||'riches';
+        if(!['riches','lucky'].includes(kind))
+          return fail('invalid_ranking_kind',400,cors);
         const now=new Date();
         const since=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),
           period==='monthly'?1:now.getUTCDate()));
@@ -1714,9 +1717,9 @@ export async function handleRequest(request, env, ctx) {
         const after=since.toISOString().slice(0,19).replace('T',' ');
         const offset=Number(url.searchParams.get('offset')||0);
         if(!Number.isSafeInteger(offset)||offset<0)return fail('invalid_ranking_offset',400,cors);
-        const [group,summary]=await Promise.all([
-          env.DB.prepare(
-            'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
+        const fromSent=kind==='riches';
+        const rowsQuery=fromSent
+          ? 'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
             'u.pic AS sender_pic,u.special_id AS sender_special_id,'+
             'SUM(t.total_coins) AS total '+
             'FROM sharika_gift_transactions t '+
@@ -1724,13 +1727,25 @@ export async function handleRequest(request, env, ctx) {
             'WHERE t.room_id=? AND t.created_at>=? '+
             'GROUP BY t.sender_uid '+
             'ORDER BY total DESC,u.public_no ASC LIMIT 31 OFFSET ?'
-          ).bind(roomId,after,offset).all(),
-          env.DB.prepare(
-            'SELECT COALESCE(SUM(total_coins),0) AS total '+
+          : 'SELECT u.public_no AS sender_no,u.name AS sender_name,'+
+            'u.pic AS sender_pic,u.special_id AS sender_special_id,'+
+            'SUM(e.price_coins*e.quantity) AS total '+
+            'FROM sharika_gift_events e '+
+            'JOIN sharika_users u ON u.auth_uid=e.recipient_uid '+
+            'WHERE e.room_id=? AND e.created_at>=? '+
+            'GROUP BY e.recipient_uid '+
+            'ORDER BY total DESC,u.public_no ASC LIMIT 31 OFFSET ?';
+        const totalQuery=fromSent
+          ? 'SELECT COALESCE(SUM(total_coins),0) AS total '+
             'FROM sharika_gift_transactions WHERE room_id=? AND created_at>=?'
-          ).bind(roomId,after).first()
+          : 'SELECT COALESCE(SUM(price_coins*quantity),0) AS total '+
+            'FROM sharika_gift_events WHERE room_id=? AND created_at>=?';
+        const [group,summary]=await Promise.all([
+          env.DB.prepare(rowsQuery).bind(roomId,after,offset).all(),
+          env.DB.prepare(totalQuery).bind(roomId,after).first()
         ]);
-        return reply({room_id:roomId,period,timezone:'UTC',
+        return reply({room_id:roomId,period,kind,timezone:'UTC',
+          metric:fromSent?'coins_sent':'coins_received_in_room',
           since_utc:since.toISOString(),
           total_contribution_coins:Number(summary?.total)||0,
           next_offset:(group.results||[]).length>30?offset+30:null,
