@@ -9429,6 +9429,14 @@
       /var base=\[\{n:"You",e:"😎"\}[\s\S]*?\];\nfor\(var q=0;/,
       'var base=[];\nfor(var q=0;');
     window.ROOM_HTML=window.ROOM_HTML.replace('setInterval(botGift,28000);','');
+    // Remove the offline gift bot code itself, not only its interval. It
+    // simulated wallet rewards and gift flights from invented senders.
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      /function botGift\(\)\{[\s\S]*?\}\n(?=function luckyFx\()/,'');
+    // The sample-name and emoji pools were used only by 121 fabricated
+    // audience profiles. The real room uses authenticated D1 members.
+    window.ROOM_HTML=window.ROOM_HTML.replace(
+      /var UN=\[[^\n]*\],UE=\[[^\n]*\],U=\[\],FOL=\{\};/,'var U=[],FOL={};');
     // The retired room template creates 121 fictitious audience accounts
     // and a 1.6-second speaking simulator. Verified D1 member snapshots
     // supersede both, so do not allocate or schedule them in Android.
