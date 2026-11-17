@@ -13556,7 +13556,7 @@
     {id:'greedy-wheel',name:'Greedy Wheel',tag:'🍕 Food & Veg',
       image:'file:///android_asset/greedy-wheel/img/pizza.webp',
       page:'file:///android_asset/greedy-wheel/index.html?sheet=1&lang=en'},
-    {id:'royal-ace',name:'Royal Ace Deluxe',tag:'Golden Star · 1024 Ways',
+    {id:'royal-ace',name:'SuperAce Deluxe',tag:'Original SuperAce game',
       image:'file:///android_asset/royal-ace-card.svg',
       page:'file:///android_asset/original-games/royal-ace-deluxe.html'},
     {id:'cleopatra',name:"Cleopatra's Gold Deluxe",tag:'Egyptian Golden Slots',
