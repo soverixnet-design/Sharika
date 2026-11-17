@@ -67,3 +67,15 @@ test('premium admin panel offers independent purchasing, grant and automatic gif
   assert.match(source,/sh-premium-grant-level/);
   assert.match(source,/role==='super'\?/);
 });
+
+test('verified Admin login is a semantic form with one keyboard submit and browser autofill',()=>{
+  const html=readFileSync(new URL('../../admin/index.html',import.meta.url),'utf8');
+  assert.match(html,/id="sh-admin-login-form" autocomplete="on"/);
+  assert.match(html,/id="em" type="email" autocomplete="username"/);
+  assert.match(html,/id="pw" type="password" autocomplete="current-password"/);
+  assert.match(html,/type="submit" id="go"/);
+  assert.match(html,/id="le" aria-live="polite"/);
+  assert.match(source,/loginForm\.onsubmit=event=>\{event\.preventDefault\(\);submit\(\);\}/);
+  assert.match(source,/email\.onkeydown=null;/);
+  assert.match(source,/password\.onkeydown=null;/);
+});
