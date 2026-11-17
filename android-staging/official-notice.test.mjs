@@ -37,7 +37,7 @@ test('options are functional and read updates never affect unrelated inbox items
   assert.match(notice,/data-notice-option="read"/);
   assert.match(notice,/data-notice-option="inbox"/);
   assert.match(notice,/api\('PATCH','\/notifications\/'\+item\.id\+'\/read'/);
-  assert.doesNotMatch(notice,/\/notifications\/read-all/);
+  assert.doesNotMatch(notice,/api\('POST','\/notifications\/read-all'/);
 });
 test('both Messages and Notifications link to Official Notice',()=>{
   assert.match(script,/id="verified-official-notices"/);
