@@ -6426,8 +6426,9 @@
         loadBanners:()=>api('GET','/room-banners?country='+encodeURIComponent(
           String(room.owner_country||room.country||'').trim().toUpperCase()
         )),
-        loadRankings:(period,offset=0)=>api('GET','/rooms/'+room.id+
-          '/contributors?period='+encodeURIComponent(period)+'&offset='+offset).then(result=>({
+        loadRankings:(period,offset=0,kind='riches')=>api('GET','/rooms/'+room.id+
+          '/contributors?period='+encodeURIComponent(period)+'&offset='+offset+
+          '&kind='+encodeURIComponent(kind)).then(result=>({
             ...result,leaders:(result.leaders||[]).map(item=>({
               ...item,pic:verifiedAvatarUrl(item.pic)
             }))
