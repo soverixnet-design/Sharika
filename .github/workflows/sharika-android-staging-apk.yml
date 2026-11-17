@@ -6,6 +6,7 @@ on:
       - fix/sharika-room-card-games-voice-20261115
       - feature/sharika-royal-home-gallery-20261116
       - feature/sharika-assistant-help-staging-20261117
+      - feature/sharika-reference-room-controls-20261117
       - feature/sharika-unified-release-qa-20261111
       - feature/sharika-android-staging-20261030
       - feature/sharika-original-games-cards-20261030
@@ -241,6 +242,30 @@ jobs:
           assert(!adapter.includes('UPDATE sharika_users SET wealth_level'),
             'Presentation change must not rewrite economy levels');
           console.log('SHARIKA_MAIN_PROFILE_LEVEL_1_TO_100_AND_VERIFIED_CP_CONTRACT_OK');
+          NODE
+
+      - name: Check reference tool menu and authenticated mic mode presets
+        run: |
+          node --check ../app/royal-room-ui.js
+          node --check staging-connection.js
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const assert=require('node:assert/strict');
+          const ui=fs.readFileSync('../app/royal-room-ui.js','utf8');
+          const adapter=fs.readFileSync('staging-connection.js','utf8');
+          const styles=fs.readFileSync('../app/reference-room.css','utf8');
+          for(const label of ['Interactive features','Management tool','Mic mode','Room management','Smash Eggs']) {
+            assert(ui.includes(label),'Missing reference tool '+label);
+          }
+          for(const count of [8,9,10,12,15,20]) {
+            assert(adapter.includes('[8,9,10,12,15,20]'),'Missing mic preset list');
+            assert(styles.includes('nth-child('+count+'):last-child'),'Missing seat geometry '+count);
+          }
+          assert(adapter.includes("event.target.closest?.('#mn,#pl,.sh-mic-mode-preset')"));
+          assert(adapter.includes("api('PATCH','/rooms/'+room.id"));
+          assert(adapter.includes("room.owner_id!==session?.user?.id"));
+          assert(ui.includes('button.disabled = true'),'Unavailable features must be labelled and disabled');
+          console.log('REFERENCE_ROOM_TOOLS_AND_SERVER_AUTHORIZED_MIC_PRESETS_OK');
           NODE
 
       - name: Verify premium room design and verified ranking contract
