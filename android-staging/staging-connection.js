@@ -14119,7 +14119,7 @@
   };
 
   // Official Notice is a read-only conversation-style view of verified
-  // kind='official' D1 notifications. Never substitute demo support messages.
+  // official/system D1 notifications. Never substitute demo support messages.
   let officialNoticePanel=null,officialNoticeItems=[],officialNoticeCursor=null;
   let officialNoticeLoading=false,officialNoticeEpoch=0;
   function officialNoticeTimestamp(value){
@@ -14254,7 +14254,7 @@
       if(epoch!==officialNoticeEpoch||!panel.classList.contains('on'))return;
       const existing=new Set(officialNoticeItems.map(item=>String(item.id)));
       for(const item of data.notifications||[]){
-        if(item.kind!=='official'||existing.has(String(item.id)))continue;
+        if(!['official','system'].includes(item.kind)||existing.has(String(item.id)))continue;
         officialNoticeItems.push(item);existing.add(String(item.id));
       }
       const next=Number(data.next_before);
