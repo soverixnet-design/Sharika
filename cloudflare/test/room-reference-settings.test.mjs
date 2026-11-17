@@ -32,7 +32,7 @@ test('room details are authenticated, owner-only to edit and descriptive only',(
   assert.match(block,/if\(!member\)return fail\('join_room_first',403,cors\)/);
   assert.match(block,/if\(room\.owner_id!==uid\)return fail\('room_owner_only',403,cors\)/);
   assert.match(block,/typeof value\.introduction!=='string'\|\|value\.introduction\.length>300/);
-  assert.match(block,/!\\?\['general','music','chat','friends','games'\]/);
+  assert.ok(block.includes("!['general','music','chat','friends','games'].includes(value.tag)"));
   assert.match(block,/tag_is_access_policy:false/);
   assert.match(block,/ON CONFLICT\(room_id\) DO UPDATE/);
   assert.doesNotMatch(block,/UPDATE sharika_rooms SET/);
@@ -46,7 +46,7 @@ test('native WebView accepts only exact verified details and ranking filters',()
   assert.match(native,/return method\.equals\("GET"\) \|\| method\.equals\("PUT"\)/);
   assert.match(native,/kind=\(riches\|lucky\)/);
   assert.match(bridge,/loadRankings:\(period,offset=0,kind='riches'\)/);
-  assert.match(bridge,/kind='\+'?[\s\S]*?\+encodeURIComponent\(kind\)/);
+  assert.ok(bridge.includes("'&kind='+encodeURIComponent(kind)"));
 });
 
 test('rankings are verified sender/receiver metrics, not fabricated results',()=>{
