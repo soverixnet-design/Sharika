@@ -12834,9 +12834,21 @@
       when.textContent='Together since '+new Date(data.cp.created_at_ms).toLocaleDateString();
       cpCard.append(cpBody,when);
     }else{
-      cpBody.classList.add('single');cpCard.appendChild(cpBody);
+      // Explicit empty slot, matching the CP-connected footprint. No fake
+      // partner is ever rendered: the authenticated bond API determines it.
+      cpBody.classList.add('single');
+      const heart=document.createElement('span');heart.className='sh-public-cp-heart';
+      heart.textContent='💗';heart.setAttribute('aria-hidden','true');
+      const add=document.createElement('button');add.type='button';
+      add.className='sh-public-cp-add';add.textContent='+';
+      const mine=id===profile?.public_id;
+      add.setAttribute('aria-label',mine?'Add CP partner':'Invite this member to CP');
+      add.onclick=()=>showBondGiftSheet(mine?null:{id,
+        display_id:person.display_id||person.id,name:person.name},'cp');
+      cpBody.append(heart,add);cpCard.appendChild(cpBody);
       const empty=document.createElement('p');empty.className='sh-public-card-empty';
-      empty.textContent='No CP linked · Your own picture stays visible.';
+      empty.textContent=mine?'No CP Partner · Tap + to invite':
+        'No CP Partner · Tap + to send an invitation';
       cpCard.appendChild(empty);
     }
     panel.appendChild(cpCard);
@@ -12916,7 +12928,10 @@
       loading.remove();
       intro.remove();
       paintRoyalPublicLevels(root,person,data);
-      mountRoyalCpHero(root,id,person,data.cp);
+      // The full-width cover keeps the primary avatar in place. The verified
+      // CP couple belongs in the dedicated card below the profile counters,
+      // rather than moving the user's photo out of the header.
+      root.querySelector('.pf')?.classList.add('sh-royal-cover-v1');
       const stats=document.createElement('div');stats.className='sh-bond-stats';
       for(const [value,label] of [
         [data.followers,'Followers'],[data.following,'Following'],[data.visitors,'Visitors'],
