@@ -14,7 +14,7 @@ function secureInt(max){
 }
 function draw(c){
   let s=8;
-  if(secureInt(1000)>=45){let n=secureInt(TOTAL);for(let i=0;i<WT.length;i++){
+  if(secureInt(1000)>=18){let n=secureInt(TOTAL);for(let i=0;i<WT.length;i++){
     n-=WT[i];if(n<0){s=i;break;}
   }}
   return {s,g:s<8&&c>=1&&c<=3&&secureInt(10)===0};
