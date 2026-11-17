@@ -28,8 +28,8 @@ test('game aspect observers and resize listeners are released on every exit',()=
   assert.match(adapter,/function preview\(item\)\{\s*resetFoodDeluxeAspectFit\(\)/);
 });
 test('room creation has a gallery control, validates photo before D1 creation',()=>{
-  assert.match(home,/id=\\"sh-new-room-cover\\"/);
-  assert.match(home,/type=\\"file\\" accept=\\"image\/\*\\"/);
+  assert.ok(home.includes('id="sh-new-room-cover"'));
+  assert.ok(home.includes('type="file" accept="image/*"'));
   const creation=adapter.slice(adapter.indexOf("const selectedPhoto=document.getElementById('sh-new-room-cover')"));
   assert.ok(creation.indexOf('await jpegRoomPreview(selectedPhoto)')<creation.indexOf("await api('POST','/rooms'"));
   assert.match(creation.slice(0,2100),/photoError='Room ID was not returned/);
