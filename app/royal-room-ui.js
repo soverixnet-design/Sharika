@@ -483,6 +483,64 @@
   // CP/Friendship links are rendered only for verified D1 bond pairs.
 
   const premiumState={room:null,announcement:null,announcementAt:0,announcementPromise:null};
+  const promoState={roomId:null,lastRefresh:0,promise:null};
+  const promoImagePattern=/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/room-banners\/([1-9][0-9]{0,8})\/image\?v=[1-9][0-9]*$/;
+  const eventStrip=document.createElement('div');
+  eventStrip.id='sh-reference-event-banner';
+  eventStrip.className='sh-reference-event-banner';
+  eventStrip.hidden=true;
+  app.querySelector('.chatw')?.before(eventStrip);
+  function bannerImage(row) {
+    const match=typeof row?.image_url==='string'&&promoImagePattern.exec(row.image_url);
+    return match&&Number(match[1])===Number(row.id)&&row.active
+      ?row.image_url:null;
+  }
+  function renderRoomBanners(entries){
+    const rows=Array.isArray(entries)?entries:[];
+    const game=rows.find(item=>item.placement==='game'&&bannerImage(item));
+    const event=rows.find(item=>item.placement==='event'&&bannerImage(item));
+    const gameLabel=document.createElement('span');gameLabel.textContent='Games';
+    if(game){
+      const picture=document.createElement('img');
+      picture.alt='';picture.loading='lazy';
+      picture.src=bannerImage(game);
+      picture.onerror=()=>sideGame.replaceChildren(sprite('games'),gameLabel);
+      sideGame.replaceChildren(picture,gameLabel);
+      sideGame.setAttribute('aria-label','Games · '+game.title);
+    }else{
+      sideGame.replaceChildren(sprite('games'),gameLabel);
+      sideGame.setAttribute('aria-label','Open room games');
+    }
+    eventStrip.replaceChildren();
+    eventStrip.hidden=!event;
+    if(event){
+      const img=document.createElement('img');img.alt='';img.loading='lazy';img.src=bannerImage(event);
+      const caption=document.createElement('strong');caption.textContent=String(event.title||'Room event').slice(0,70);
+      img.onerror=()=>{eventStrip.hidden=true;};
+      eventStrip.append(img,caption);
+      eventStrip.setAttribute('aria-label','Room event: '+caption.textContent);
+    }
+  }
+  async function refreshRoomBanners() {
+    const view=premiumState.room;
+    if(!view||!canShow()||typeof view.loadBanners!=='function')return;
+    if(promoState.promise)return promoState.promise;
+    if(Date.now()-promoState.lastRefresh<60000)return;
+    const roomId=view.roomId;
+    // The API returns only actively published artwork and never a payment action.
+    promoState.promise=Promise.resolve().then(()=>view.loadBanners()).then(data=>{
+      if(premiumState.room?.roomId!==roomId||!canShow())return;
+      renderRoomBanners(data?.banners);
+      promoState.lastRefresh=Date.now();
+    }).catch(()=>{
+      // Do not display stale artwork from a different room or fabricate promos.
+      if(premiumState.room?.roomId===roomId){
+        renderRoomBanners([]);
+        promoState.lastRefresh=Date.now();
+      }
+    }).finally(()=>{promoState.promise=null;});
+    return promoState.promise;
+  }
   function vipAvatar(member,cls){
     const el=document.createElement('span');
     el.className='sh-vip-avatar'+(cls?' '+cls:'');
@@ -694,7 +752,13 @@
       if(premiumState.room?.roomId!==view.roomId){
         premiumState.announcement=null;premiumState.announcementAt=0;
       }
+      if(promoState.roomId!==view.roomId){
+        promoState.roomId=view.roomId;
+        promoState.lastRefresh=0;
+        renderRoomBanners([]);
+      }
       premiumState.room=view;
+      refreshRoomBanners().catch(()=>{});
       renderLiveMembers(view);
       roomControls.hidden=false;
       loadAnnouncement().catch(()=>{});
