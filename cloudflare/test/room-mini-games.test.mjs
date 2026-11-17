@@ -88,7 +88,7 @@ test('Android Back returns to catalog then closes mini-game before minimizing ro
 
 test('in-room game removes the extra catalog header without removing bet API',()=>{
   assert.match(adapter,/\(insideRoom\?'':'<button id="sh-original-back"/);
-  assert.match(adapter,/gameFrame\.src=item\.id==='cleopatra'/);
+  assert.match(adapter,/gameFrame\.src=\(item\.id==='cleopatra'\|\|item\.id==='royal-ace'\)/);
   assert.match(adapter,/item\.page\+\(insideRoom&&item\.id!=='greedy-wheel'\?'#sharika-room':''\)/);
   assert.match(adapter,/data\.action==='bet'\?'POST':'GET'/);
   assert.match(adapter,/target\.postMessage\(\{type:'sharika:original-response'/);
