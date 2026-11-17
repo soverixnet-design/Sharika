@@ -8358,7 +8358,11 @@
       back.className='sh-room-settings-back';back.textContent='‹';
       back.setAttribute('aria-label','Back to room');back.onclick=()=>page.remove();
       const heading=doc.createElement('h2');heading.textContent='Room Settings';
-      header.append(back,heading);page.append(header);
+      const saveMain=doc.createElement('button');
+      saveMain.type='button';saveMain.className='sh-room-settings-save';
+      saveMain.textContent='Save';
+      saveMain.disabled=!owner;
+      header.append(back,heading,saveMain);page.append(header);
       const body=doc.createElement('div');body.className='sh-room-settings-body';
       page.append(body);
       function section(title){
@@ -8542,139 +8546,235 @@
           item.append(name,meta);panel.append(item);
         }
       }
-      const details=section('Room Activity');
-      row(details,'Online Members',String(frame.__sharikaOnlineMemberCount??'—'),()=>{
-        page.remove();
-        frame.SharikaRoomPremium?.showMembers();
-      });
-      for(const [label,id] of [['Microphones in use','mstat'],['Your Coins','cstat'],['Your Level','lstat']]){
-        const value=frame.$(id)?.textContent?.replace(/^\S+\s*/, '').trim();
-        row(details,label,value);
+      // Source-matched arrangement: cover, room name, introduction, password,
+      // announcement, descriptive tags, theme, moderation and real reward.
+      // Never mix a guest's view with owner mutation controls.
+      body.classList.add('sh-room-settings-reference');
+      function field(title,element){
+        const label=doc.createElement('label');
+        label.className='sh-room-settings-field';
+        const caption=doc.createElement('strong');caption.textContent=title;
+        label.append(caption,element);body.append(label);
+        return element;
       }
-      if(owner){
-        const rewardsPath='/rooms/'+room.id+'/rewards';
-        const reward=row(details,'Room Reward · 10%','Loading…',async()=>{
-          const panel=subpage('Room Reward');
-          const state=status(panel);
-          const total=doc.createElement('p');
-          const claim=doc.createElement('button');
-          claim.type='button';claim.className='sh-room-settings-primary';
-          claim.textContent='Claim to Main Wallet';claim.disabled=true;
-          panel.append(total,claim);
-          async function refresh(){
-            const data=await api('GET',rewardsPath);
-            const coins=Number(data.claimable_coins)||0;
-            total.textContent=(Number(data.pending_hundredths||0)/100).toLocaleString('en-US')+
-              ' coins accrued · '+coins.toLocaleString('en-US')+' available to claim.';
-            claim.disabled=coins<1;
-          }
-          state.textContent='10% of ordinary gift coins sent in this room.';
-          claim.onclick=async()=>{
-            claim.disabled=true;
-            try{
-              const result=await api('POST',rewardsPath,{});
-              const coins=Number(result.claimed_coins)||0;
-              state.textContent=coins?coins.toLocaleString('en-US')+' coins added to your Main Wallet.':
-                'No coins available to claim.';
-              reloadWallet().catch(()=>{});
-              await refresh();
-            }catch(error){
-              state.textContent='Room reward: '+errText(error);
-              await refresh().catch(()=>{claim.disabled=false;});
-            }
-          };
-          await refresh();
-        });
-        api('GET',rewardsPath).then(data=>{
-          if(reward.trail.isConnected)reward.trail.textContent=
-            (Number(data.claimable_coins)||0).toLocaleString('en-US')+' coins';
-        }).catch(()=>{if(reward.trail.isConnected)reward.trail.textContent='Unavailable';});
-      }
-      const roomGroup=section('Room');
-      const photo=row(roomGroup,'Profile photo',owner?'Edit cover':'',owner?()=>pickRoomCover(room,frame):null);
+      const photo=doc.createElement('button');photo.type='button';
+      photo.className='sh-room-settings-cover-action';
+      photo.disabled=!owner;
+      photo.setAttribute('aria-label','Change room cover image from gallery');
       const preview=doc.createElement('img');
       preview.className='sh-room-settings-cover';
       preview.id='sh-room-cover-preview';
-      preview.alt='';
+      preview.alt='Room cover image';
       paintRoomCoverPreview(preview,verifiedCoverUrl(room.cover_url));
-      photo.trail.before(preview);
-      row(roomGroup,'Room Name',room.name,owner?()=>editText('Room Name',room.name,100,
-        async value=>{if(!value)throw new Error('Room name required');
-          const result=await api('PATCH','/rooms/'+room.id,{name:value});
-          room.name=result.room.name;await syncFrame(room,frame);await reloadRooms();}):null);
-      row(roomGroup,'Announcement','Edit notice',owner?async()=>{
+      const photoLabel=doc.createElement('strong');
+      photoLabel.textContent='Room cover settings';
+      photo.append(preview,photoLabel);
+      if(owner)photo.onclick=()=>pickRoomCover(room,frame);
+      body.append(photo);
+
+      const name=doc.createElement('input');name.type='text';
+      name.className='sh-room-settings-input';name.maxLength=100;
+      name.value=String(room.name||'');name.disabled=!owner;
+      name.setAttribute('aria-label','Room name');
+      field('Room name',name);
+
+      const intro=doc.createElement('textarea');
+      intro.className='sh-room-settings-input';intro.rows=4;
+      intro.maxLength=300;intro.disabled=!owner;
+      intro.placeholder='Please enter introduction';
+      intro.setAttribute('aria-label','Introduction');
+      field('Introduction',intro);
+      const saveStatus=status(body);
+      const detailState={tag:'general',introduction:'',ready:false};
+      const labels={general:'General',music:'Music',chat:'Chat',
+        friends:'Friends',games:'Games'};
+      const detailsPath='/rooms/'+room.id+'/details';
+      api('GET',detailsPath).then(data=>{
+        if(!page.isConnected)return;
+        detailState.introduction=String(data.introduction||'');
+        detailState.tag=labels[data.tag]?data.tag:'general';
+        detailState.ready=true;
+        intro.value=detailState.introduction;
+        if(tagRow.trail.isConnected)tagRow.trail.textContent=labels[detailState.tag];
+      }).catch(error=>{
+        if(page.isConnected)saveStatus.textContent=
+          'Room introduction unavailable: '+errText(error);
+        if(page.isConnected)saveMain.disabled=true;
+      });
+      saveMain.onclick=async()=>{
+        if(!owner||saveMain.disabled)return;
+        const value=name.value.trim();
+        if(!value){saveStatus.textContent='Room name is required';return;}
+        if(!detailState.ready){saveStatus.textContent='Room details are not loaded';return;}
+        saveMain.disabled=true;saveStatus.textContent='Saving room settings…';
+        try{
+          const introduction=intro.value.trim();
+          if(introduction!==detailState.introduction)
+            await api('PUT',detailsPath,{introduction});
+          if(value!==room.name){
+            const result=await api('PATCH','/rooms/'+room.id,{name:value});
+            room.name=result.room.name;
+            await reloadRooms();await syncFrame(room,frame);
+          }
+          detailState.introduction=introduction;
+          saveStatus.textContent='Saved ✓';
+        }catch(error){
+          saveStatus.textContent='Not fully saved: '+errText(error)+
+            '. Reopen settings to confirm values.';
+        }finally{if(page.isConnected)saveMain.disabled=false;}
+      };
+      const settings=section('Room Settings');
+      row(settings,'Password',currentPolicy.password_required?'Set':'Not set',
+        owner?passwordPolicyPage:null);
+      row(settings,'Release notification','Room announcement',owner?async()=>{
         const data=await api('GET','/rooms/'+room.id+'/announcement');
-        editText('Announcement',data.announcement,300,async value=>{
-          await api('PUT','/rooms/'+room.id+'/announcement',{announcement:value});
+        editText('Announcement',data.text,280,async value=>{
+          await api('PUT','/rooms/'+room.id+'/announcement',{text:value});
           frame.SharikaRoomPremium?.refreshAnnouncement?.();
         });
       }:null);
-      const micGroup=section('Chat & Microphones');
-      const chatPolicyRow=row(micGroup,'Who Can Send Room Chat',
+      const tagRow=row(settings,'Tags','Loading…',owner?async()=>{
+        const panel=subpage('Room tags');
+        const state=status(panel);
+        state.textContent='Choose a descriptive room category. Tags do not restrict entry or verify gender.';
+        const list=doc.createElement('div');list.className='sh-room-settings-tag-options';
+        for(const [key,label] of Object.entries(labels)){
+          const option=doc.createElement('button');
+          option.type='button';option.textContent=label;
+          option.className=detailState.tag===key?'selected':'';
+          option.onclick=async()=>{
+            if(!detailState.ready)return;
+            list.querySelectorAll('button').forEach(node=>node.disabled=true);
+            state.textContent='Saving tag…';
+            try{
+              await api('PUT',detailsPath,{tag:key});
+              detailState.tag=key;
+              if(page.isConnected)openRoomSettingsPage();
+              frame.toast('Room tag saved ✓');
+            }catch(error){
+              state.textContent='Tag not saved: '+errText(error);
+              list.querySelectorAll('button').forEach(node=>node.disabled=false);
+            }
+          };
+          list.append(option);
+        }
+        panel.append(list);
+      }:null);
+      row(settings,'Theme',String(room.th||room.theme||'Premium'),
+        owner?()=>{page.remove();frame.themeSheet();}:null);
+      row(settings,'Admin','Room administrators',owner?adminsPanel:null);
+      row(settings,'Black List','Blocked members',moderator?bansPanel:null);
+      row(settings,'Forbidden List','Kick history',moderator?kicksPanel:null);
+      const rewardsPath='/rooms/'+room.id+'/rewards';
+      const rewardRow=row(settings,'Room reward','10%',owner?async()=>{
+        const panel=subpage('Room reward');
+        const state=status(panel);
+        const balance=doc.createElement('section');
+        balance.className='sh-room-reward-balance';
+        const coins=doc.createElement('strong');coins.textContent='—';
+        const percent=doc.createElement('span');percent.textContent='Room commission: 10%';
+        const accrued=doc.createElement('span');accrued.textContent='Loading transaction history…';
+        const claim=doc.createElement('button');claim.type='button';
+        claim.className='sh-room-reward-collect';
+        claim.textContent='Collect';claim.disabled=true;
+        balance.append(coins,percent,claim,accrued);
+        panel.append(balance);
+        const rules=doc.createElement('div');rules.className='sh-room-reward-rules';
+        const title=doc.createElement('h3');title.textContent='Rules';
+        rules.append(title);
+        for(const rule of [
+          'The room owner receives 10% of eligible ordinary gifts sent in the room.',
+          'Rewards are based on verified transactions, not a device-local balance.',
+          'Collect transfers only unpaid whole coins to the owner Main Wallet. Already paid coins cannot be claimed twice.'
+        ]){
+          const p=doc.createElement('p');p.textContent=rule;rules.append(p);
+        }
+        const tier=doc.createElement('p');tier.className='sh-room-reward-policy';
+        tier.textContent='Current Sharika policy: 10% fixed. The 5–8% example tiers in the reference screenshots are not active.';
+        rules.append(tier);panel.append(rules);
+        async function refresh(){
+          const data=await api('GET',rewardsPath);
+          if(!panel.isConnected)return;
+          const ready=Number(data.claimable_coins)||0;
+          coins.textContent=ready.toLocaleString('en-US')+' coins available';
+          accrued.textContent='Accrued: '+(Number(data.regular_reward_hundredths||0)/100).toLocaleString('en-US')+
+            ' · Previously credited: '+(Number(data.owner_wallet_credited_coins)||0).toLocaleString('en-US')+' coins';
+          claim.disabled=ready<1;
+        }
+        claim.onclick=async()=>{
+          if(claim.disabled)return;
+          claim.disabled=true;state.textContent='Collecting verified coins…';
+          try{
+            const result=await api('POST',rewardsPath,{});
+            state.textContent=(Number(result.claimed_coins)||0).toLocaleString('en-US')+
+              ' coins collected to your Main Wallet.';
+            await reloadWallet().catch(()=>{});
+            await refresh();
+          }catch(error){
+            state.textContent='Collect failed: '+errText(error);
+            await refresh().catch(()=>{});
+          }
+        };
+        await refresh();
+      }:null);
+      if(owner)api('GET',rewardsPath).then(data=>{
+        if(rewardRow.trail.isConnected)rewardRow.trail.textContent=
+          (Number(data.claimable_coins)||0).toLocaleString('en-US')+' coins · 10%';
+      }).catch(()=>{if(rewardRow.trail.isConnected)rewardRow.trail.textContent='Unavailable';});
+
+      // Existing advanced permissions remain accessible without cluttering
+      // the 10-item reference settings list.
+      const advanced=section('Chat & Microphones');
+      const chatPolicyRow=row(advanced,'Who Can Send Room Chat',
         policyLabels[currentPolicy.chat_mode]||'Loading…',
         owner?()=>policyModePage('Who Can Send Room Chat','chat_mode'):null);
-      const micPolicyRow=row(micGroup,'Who Can Take The Mic',
+      const micPolicyRow=row(advanced,'Who Can Take The Mic',
         policyLabels[currentPolicy.mic_mode]||'Loading…',
         owner?()=>policyModePage('Who Can Take The Mic','mic_mode'):null);
-      row(micGroup,'Number of Mic',String(Number(room.seat_count)||0),owner?()=>{
-        const panel=subpage('Number of Mic');const state=status(panel);
-        const selector=doc.createElement('div');selector.className='sh-room-settings-seat-options';
-        for(let count=4;count<=20;count++){
-          const button=doc.createElement('button');button.type='button';
-          button.className=count===room.seat_count?'selected':'';
-          button.textContent=String(count);button.setAttribute('aria-label',count+' microphones');
-          button.onclick=async()=>{
-            if(button.disabled)return;
+      row(advanced,'Mic Mode',String(Number(room.seat_count)||0)+'-Mic',owner?()=>{
+        const panel=subpage('Mic mode');const state=status(panel);
+        const selector=doc.createElement('div');
+        selector.className='sh-room-settings-mode-grid';
+        for(const count of [8,9,10,12,15,20]){
+          const option=doc.createElement('button');option.type='button';
+          option.className=count===room.seat_count?'selected':'';
+          option.textContent=count+'-Mic';
+          option.onclick=async()=>{
             selector.querySelectorAll('button').forEach(node=>node.disabled=true);
-            state.textContent='Saving seat count…';
-            try{const result=await api('PATCH','/rooms/'+room.id,{seat_count:count});
+            state.textContent='Saving mic layout…';
+            try{
+              const result=await api('PATCH','/rooms/'+room.id,{seat_count:count});
               room.seat_count=result.room.seat_count;
               await syncFrame(room,frame);await reloadRooms();
               if(page.isConnected)openRoomSettingsPage();
-              frame.toast('Mic count saved ✓');
-            }catch(error){state.textContent='Not saved: '+errText(error);
-              selector.querySelectorAll('button').forEach(node=>node.disabled=false);}
-          };selector.append(button);
+              frame.toast('Mic layout saved ✓');
+            }catch(error){
+              state.textContent='Not saved: '+errText(error);
+              selector.querySelectorAll('button').forEach(node=>node.disabled=false);
+            }
+          };
+          selector.append(option);
         }
         panel.append(selector);
       }:null);
-      const passwordRow=row(micGroup,'Room Password',
-        currentPolicy.password_required?'On':'Off',owner?passwordPolicyPage:null);
-      const superRow=row(micGroup,'Super Mic',
+      const superRow=row(advanced,'Super Mic',
         currentPolicy.super_mic===false?'Off':'On',owner?async()=>{
           await updatePolicy({super_mic:currentPolicy.super_mic===false});
         }:null);
       if(!currentPolicy.chat_mode){
         api('GET','/rooms/'+room.id+'/policy').then(policy=>{
-          Object.assign(currentPolicy,policy);
-          frame.__sharikaRoomPolicy=policy;
+          Object.assign(currentPolicy,policy);frame.__sharikaRoomPolicy=policy;
           if(!page.isConnected)return;
           chatPolicyRow.trail.textContent=policyLabels[policy.chat_mode]||'Anyone';
           micPolicyRow.trail.textContent=policyLabels[policy.mic_mode]||'Anyone';
-          passwordRow.trail.textContent=policy.password_required?'On':'Off';
           superRow.trail.textContent=policy.super_mic?'On':'Off';
-        }).catch(error=>{
-          if(page.isConnected)frame.toast('Room policy loading: '+errText(error));
-        });
+          const pass=settings.querySelector('.sh-room-settings-row');
+          if(pass)pass.querySelector('small').textContent=policy.password_required?'Set':'Not set';
+        }).catch(()=>{});
       }
-      row(micGroup,'Room Theme','Golden / Premium',owner?()=>{
-        page.remove();frame.themeSheet();
-      }:null);
-      const modGroup=section('Moderation');
-      const adminRow=row(modGroup,'Room Admins',owner?'Loading count…':'Owner only',
-        owner?adminsPanel:null);
-      if(owner)api('GET','/rooms/'+room.id+'/admins').then(data=>{
-        if(adminRow.trail.isConnected)
-          adminRow.trail.textContent=(data.admins||[]).length+' appointed';
-      }).catch(()=>{
-        if(adminRow.trail.isConnected)adminRow.trail.textContent='Unavailable';
-      });
-      row(modGroup,'Blocked List','Manage blocks',moderator?bansPanel:null);
-      row(modGroup,'Kick History','View recent actions',moderator?kicksPanel:null);
-      const footer=doc.createElement('p');footer.className='sh-room-settings-footnote';
-      footer.textContent='Room changes are saved and enforced by Sharika server. '+
-        'Super Mic allows the owner to speak from the throne without a numbered mic seat.';
-      body.append(footer);
+      const foot=doc.createElement('p');foot.className='sh-room-settings-footnote';
+      foot.textContent='Room name, introduction, tags, seats, password, admin roles and reward are verified by Sharika server. Tags describe a room; they do not enforce entry restrictions.';
+      body.append(foot);
       doc.body.append(page);
     }
     frame.settings=openRoomSettingsPage;
