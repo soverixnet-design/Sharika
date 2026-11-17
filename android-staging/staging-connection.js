@@ -5909,7 +5909,7 @@
     presenceTimer=setInterval(()=>{
       heartbeatPresence();
       // Refresh real room-card counters without changing the original cards.
-      if(!window.cur && document.visibilityState==='visible')reloadRooms().catch(()=>{});
+      if(!window.cur && document.visibilityState==='visible')reloadRooms(true).catch(()=>{});
     },25000);
   }
   document.addEventListener('visibilitychange',()=>{
@@ -5951,7 +5951,34 @@
   }
   let roomsRequestNo=0;
   let lastRoomsRenderSignature=null;
-  async function reloadRooms() {
+  // The presence heartbeat refreshes room cards in the background. On
+  // congested mobile links, repeated GET /rooms calls used to invalidate
+  // earlier (still valid) replies and restart the card render indefinitely.
+  // Coalesce passive requests while allowing settings/room edits to queue
+  // exactly one fresh lookup once the older request settles.
+  let roomsInFlight=null,roomsRefreshAfter=null;
+  function reloadRooms(passive=false) {
+    const userId=session?.user?.id;
+    if(!userId)return Promise.resolve();
+    if(roomsInFlight?.userId===userId){
+      if(passive)return roomsInFlight.promise;
+      if(roomsRefreshAfter?.userId!==userId){
+        const refresh=roomsInFlight.promise.catch(()=>{}).then(()=>reloadRooms(true));
+        roomsRefreshAfter={userId,promise:refresh};
+        refresh.finally(()=>{
+          if(roomsRefreshAfter?.promise===refresh)roomsRefreshAfter=null;
+        }).catch(()=>{});
+      }
+      return roomsRefreshAfter.promise;
+    }
+    const work=reloadRoomsOnce();
+    const tracked=work.finally(()=>{
+      if(roomsInFlight?.promise===tracked)roomsInFlight=null;
+    });
+    roomsInFlight={userId,promise:tracked};
+    return tracked;
+  }
+  async function reloadRoomsOnce() {
     if (!session) return;
     // Room creation and settings saves must always request a fresh list.
     // An earlier background poll may finish later, but cannot undo it.
