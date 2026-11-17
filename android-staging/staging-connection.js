@@ -13518,6 +13518,9 @@
     {id:'sovera-gaddy',name:'Sovera Gaddy Game',tag:'👑 New • Royal Food Wheel',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/sovera-gaddy-game.html'},
+    {id:'food-deluxe',name:'Food Wheel Deluxe',tag:'Classic 8-Food Wheel',
+      image:'file:///android_asset/food-wheel-original-card.png',
+      page:'file:///android_asset/original-games/food-wheel-deluxe.html'},
     {id:'sovera-food',name:'Sovera Food Wheel',tag:'🎡 Classic',
       image:'file:///android_asset/food-wheel-original-card.png',
       page:'file:///android_asset/original-games/sovera-food-wheel.html'},
@@ -13996,7 +13999,7 @@
          !overlay.classList.contains('on')||!sheet.isConnected)return;
       const enabled=new Set((result.games||[]).filter(g=>g.enabled).map(g=>g.id));
       visibleGameCards=originalGameCards.filter(game=>
-        ['greedy-wheel','cleopatra'].includes(game.id)&&enabled.has(game.id));
+        ['greedy-wheel','cleopatra','food-deluxe'].includes(game.id)&&enabled.has(game.id));
       catalog();
     }).catch(error=>{
       if(catalogRequestNo!==gameCatalogRequestSequence||
