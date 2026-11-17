@@ -1,0 +1,82 @@
+name: SuperAce exact-loading staging QA prerelease
+on:
+  push:
+    branches: [feature/sharika-royal-ace-server-room-20261118]
+    paths: ['.github/workflows/sharika-superace-exact-loading-qa-release.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  release-staging-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Verify pinned successful source APK build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          run='44190571516'
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq '.head_sha')" = '0087b87c9c35991f91c9e84de25ed2160f294257'
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq '.conclusion')" = 'success'
+          test "$(gh api "repos/$repo/actions/artifacts/14376426802" --jq '.name')" = 'Sharika-Android-Staging-Debug'
+          test "$(gh api "repos/$repo/actions/artifacts/14376426802" --jq '.expired')" = 'false'
+      - name: Download exact APK from successful build
+        uses: actions/download-artifact@v4
+        with:
+          repository: soverixnet-design/Sharika
+          run-id: 44190571516
+          name: Sharika-Android-Staging-Debug
+          github-token: ${{ github.token }}
+          path: apk
+      - name: Verify exact offline screenshot, package, game and signature
+        run: |
+          set -euo pipefail
+          test -s apk/app-debug.apk
+          unzip -tqq apk/app-debug.apk
+          python3 - <<'PY'
+          import base64, hashlib, re, zipfile
+          archive='apk/app-debug.apk'
+          with zipfile.ZipFile(archive) as z:
+              names=z.namelist()
+              for name in (
+                  'assets/original-games/royal-ace-deluxe.html',
+                  'assets/original-games/royal-ace-loader.svg',
+                  'assets/royal-ace-card.svg',
+              ):
+                  assert name in names, name
+              loader=z.read('assets/original-games/royal-ace-loader.svg').decode('utf-8')
+              assert 'viewBox="0 0 550 832"' in loader
+              match=re.search(r'data:image/webp;base64,([A-Za-z0-9+/=]+)',loader)
+              assert match, 'original screenshot not embedded'
+              picture=base64.b64decode(match.group(1),validate=True)
+              assert len(picture)==26618, 'screenshot size incorrect'
+              assert picture[:4]==b'RIFF' and picture[8:12]==b'WEBP'
+              assert hashlib.sha256(picture).hexdigest()=='e5a906dcdf7caaae34470950a9e46a34488b75e8aabd66936eae943be788513d'
+              bridge=z.read('assets/connection.js').decode('utf-8')
+              assert "'/royal-ace/spin'" in bridge
+              assert "sharika-royal-ace-server" in bridge
+              print('OFFLINE_ORIGINAL_SUPERACE_SCREENSHOT_AND_VERIFIED_BRIDGE_OK')
+          PY
+          signer="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$signer"
+          "$signer" verify --verbose apk/app-debug.apk
+          "$signer" verify --print-certs apk/app-debug.apk
+          install -m 0644 apk/app-debug.apk Sharika-SuperAce-Exact-Loading-v140-Staging-QA.apk
+          sha256sum Sharika-SuperAce-Exact-Loading-v140-Staging-QA.apk
+      - name: Publish uniquely named prerelease, never Play or production
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-superace-exact-loading-v140-staging-qa-20261118'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "::error::Refusing to replace an existing release"
+            exit 1
+          fi
+          gh release create "$tag" Sharika-SuperAce-Exact-Loading-v140-Staging-QA.apk \
+            --repo "$repo" --target 0087b87c9c35991f91c9e84de25ed2160f294257 \
+            --title 'Sharika SuperAce v140 exact screenshot — staging test only' --prerelease \
+            --notes 'Staging-only APK with the user-provided SuperAce loading artwork embedded offline (SHA-256 e5a906dcdf7caaae34470950a9e46a34488b75e8aabd66936eae943be788513d). Server-settled virtual coins only. APK built successfully in GitHub Actions run 44190571516. TEMPORARY DEBUG SIGNER: it is not guaranteed to update any prior Sharika installation, and Google OAuth login may not work. Do not uninstall the main app or treat this as a Play Store/production release. Use a separate test device or profile. See PR #140 for code, game and D1 tests.'
