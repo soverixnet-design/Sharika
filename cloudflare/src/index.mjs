@@ -1790,6 +1790,12 @@ export async function handleRequest(request, env, ctx) {
         return reply({room_id:roomId,regular_gift_percent:10,
           reward_hundredths:Number(recorded?.points)||0,
           regular_reward_hundredths:Number(recorded?.points)||0,
+          // Regular reward rows are immutable and their trigger verifies
+          // reward_hundredths = transaction.total_coins * 10.
+          // This is lifetime eligible virtual-gift volume, not an amount
+          // that can be reset or claimed again.
+          verified_room_transaction_coins:Math.max(0,
+            Math.floor((Number(recorded?.points)||0)/10)),
           owner_wallet_credited_coins:paid,
           claimable_coins:Math.floor(pending/100),
           pending_hundredths:pending,withdrawal_enabled:false},200,cors);
