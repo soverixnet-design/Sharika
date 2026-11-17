@@ -210,5 +210,11 @@ $('#pl').onclick=()=>toast('Open your Sharika Wallet from the profile to recharg
 $('#bk').onclick=()=>window.parent.postMessage({type:'sharika:original-exit'},'*');
 S.phase='load';S.bal=0;S.round=0;S.rev=0;draw();refresh();
 setInterval(updateTime,400);
-setInterval(refresh,1600);
+let lastNetworkPoll=0;
+setInterval(()=>{
+  if(document.visibilityState==='hidden')return;
+  const minGap=/2g|slow/i.test(navigator.connection?.effectiveType||'')?5000:2500;
+  if(Date.now()-lastNetworkPoll<minGap)return;
+  lastNetworkPoll=Date.now();refresh();
+},1600);
 })();
