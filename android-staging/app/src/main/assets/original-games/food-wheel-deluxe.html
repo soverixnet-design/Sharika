@@ -151,7 +151,7 @@ function draw(){
  T.ping.textContent=ready?'LIVE':'OFFLINE';
  T.hist.forEach((e,k)=>{const h=hist[k];if(h===undefined){e.style.display='none';return}const a=A['i'+h],w=k?92:100;e.src=a[0];e.style.display='block';e.style.width=w+'px';e.style.left=(138+k*134-w/2)+'px';e.style.top=(1782-w*a[2]/a[1]/2)+'px'});
  T.new.style.display=hist.length?'block':'none';
- foods.forEach((f,i)=>{f.className='food btn'+(phase==='bet'?'':(win>=0?(i===win?' win':' dim'):''))});
+ if(!animating)foods.forEach((f,i)=>{f.className='food btn'+(phase==='bet'?'':(win>=0?(i===win?' win':' dim'):''))});
 }
 function modal(h){const m=$('m');m.innerHTML=h;m.style.display='block';m.onclick=e=>{if(e.target===m||e.target.classList.contains('x'))m.style.display='none'}}
 const icons=a=>a.map(i=>`<img src="${A['i'+i][0]}" style="position:static;display:inline;width:90px;margin:6px">`).join('');
@@ -196,6 +196,9 @@ async function refresh(){
  try{
   const state=await call('state');
   if(!state||!state.round||state.virtual_coins_only!==true)throw Error('Invalid server state');
+  if(currentState&&round!==state.round.round_no){
+   animating=false;animatedRound=-1;win=-1;
+  }
   currentState=state;serverDelta=state.server_time-Date.now();
   round=state.round.round_no;
   coins=Number(state.balance);
@@ -227,21 +230,22 @@ async function refresh(){
 function spin(resultIndex,serverPayout){
  if(!Number.isInteger(resultIndex)||resultIndex<0||resultIndex>7)return;
  animating=true;
- const goal=RING.indexOf(resultIndex),start=round%8,
+ const spinRound=round,goal=RING.indexOf(resultIndex),start=round%8,
   steps=16+((goal-start+8)%8);
  let k=0;
  const walk=()=>{
-  if(!currentState||currentState.round.round_no!==round){animating=false;return}
+  if(!currentState||round!==spinRound||currentState.round.round_no!==spinRound){animating=false;return}
   foods.forEach(f=>f.className='food btn dim');
   const idx=RING[(start+k)%8];
   foods[idx].className='food btn hl';
   snd(400+k*8,.04);
-  if(k>=steps){setTimeout(()=>finish(resultIndex,serverPayout),350);return}
+  if(k>=steps){setTimeout(()=>finish(resultIndex,serverPayout,spinRound),350);return}
   k++;setTimeout(walk,40+Math.pow(k/steps,3)*155)
  };
  walk();
 }
-function finish(index,payout){
+function finish(index,payout,spinRound){
+ if(round!==spinRound||currentState?.round.round_no!==spinRound){animating=false;return}
  animating=false;phase='result';win=index;
  T.t5.textContent=payout?'You +'+fmt(payout):'No Winner';
  draw();snd(payout?1000:300,.25);
