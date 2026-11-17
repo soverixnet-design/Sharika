@@ -1338,6 +1338,43 @@ export async function handleRequest(request, env, ctx) {
       const roomId = parts[3];
       const action = parts[4];
       const { room, member } = await roomAndMember(env.DB, roomId, uid);
+      // Reference-room metadata is descriptive, not an admission policy.
+      // Gender or other identity-based entry restrictions are deliberately
+      // NOT inferred from a cosmetic room tag.
+      if(parts.length===5&&action==='details'&&['GET','PUT'].includes(request.method)){
+        if(!member)return fail('join_room_first',403,cors);
+        if(request.method==='GET'){
+          const row=await env.DB.prepare(
+            'SELECT introduction,tag,updated_at FROM sharika_room_details WHERE room_id=?'
+          ).bind(roomId).first();
+          return reply({room_id:roomId,introduction:row?.introduction||'',
+            tag:row?.tag||'general',updated_at:row?.updated_at||null,
+            tag_is_access_policy:false},200,cors);
+        }
+        if(room.owner_id!==uid)return fail('room_owner_only',403,cors);
+        const value=await readBody(request);
+        if(!value||typeof value!=='object'||Array.isArray(value)||
+           Object.keys(value).some(k=>!['introduction','tag'].includes(k))||
+           Object.keys(value).length===0||
+           (value.introduction!==undefined&&
+             (typeof value.introduction!=='string'||value.introduction.length>300))||
+           (value.tag!==undefined&&
+             !['general','music','chat','friends','games'].includes(value.tag)))
+          return fail('invalid_room_details',400,cors);
+        const before=await env.DB.prepare(
+          'SELECT introduction,tag FROM sharika_room_details WHERE room_id=?'
+        ).bind(roomId).first();
+        const introduction=value.introduction===undefined
+          ?before?.introduction||'':value.introduction.trim();
+        const tag=value.tag||before?.tag||'general';
+        await env.DB.prepare(
+          "INSERT INTO sharika_room_details(room_id,introduction,tag) VALUES(?,?,?) "+
+          "ON CONFLICT(room_id) DO UPDATE SET introduction=excluded.introduction,"+
+          "tag=excluded.tag,updated_at=datetime('now')"
+        ).bind(roomId,introduction,tag).run();
+        return reply({room_id:roomId,introduction,tag,
+          tag_is_access_policy:false,updated:true},200,cors);
+      }
       // Room-specific chat, microphone and entry policies remain independent
       // of D1 entry locks and of the public theme gallery.
       if(parts.length===5&&action==='policy'){
