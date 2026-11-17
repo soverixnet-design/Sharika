@@ -20,8 +20,13 @@ function sanitizedPackagedRoom(){
 
 test('packaged verified room does not load legacy fake users, gift bot or fake chat timers',()=>{
   const {original,cleaned}=sanitizedPackagedRoom();
-  assert.match(original,/function botGift\(\)/,'test must use the actual former demo room');
-  assert.match(original,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
+  // The static asset itself must now be clean, not just an Android
+  // runtime replacement. Otherwise the next UI rebuild revives demo traffic.
+  assert.doesNotMatch(original,/function botGift\(\)/);
+  assert.doesNotMatch(original,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
+  assert.doesNotMatch(original,/var UN=\[/);
+  assert.doesNotMatch(original,/setInterval\(botGift,28000\)/);
+  assert.doesNotMatch(original,/msg\("Rafi","🧑‍🎤","Greetings to everyone/);
   assert.doesNotMatch(cleaned,/function botGift\(\)/);
   assert.doesNotMatch(cleaned,/for\(var ui=0;ui<121;ui\+\+\)U\.push/);
   assert.doesNotMatch(cleaned,/var UN=\[/);
