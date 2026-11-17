@@ -1310,7 +1310,7 @@ public final class SharikaActivity extends Activity {
         // the family Crystal transfer is whitelisted further below and must
         // never return early before this test-only finance gate executes.
         if (BuildConfig.SHARIKA_PLAY_BUILD) {
-            if (path.matches("^/api/v1/(admin|agency|family|sellers|games|original-games|fruit-royale|game-catalog|lucky-box|events|role-applications)(/.*|\\?.*)?$") ||
+            if (path.matches("^/api/v1/(admin|agency|family|sellers|games|original-games|fruit-royale|game-catalog|cleopatra|lucky-box|events|role-applications)(/.*|\\?.*)?$") ||
                 path.matches("^/api/v1/rankings(?:/rewards)?\\?.*kind=(games|recharge|lucky)(?:&.*)?$") ||
                 path.equals("/api/v1/celebrations") ||
                 path.matches("^/api/v1/(games|original-games)/[^/]+/bet$") ||
@@ -1433,6 +1433,8 @@ public final class SharikaActivity extends Activity {
             return method.equals("POST");
         // The original game-card picker reads the server-controlled catalog.
         // Keep the route GET-only; bets stay confined to the existing game APIs.
+        if (path.equals("/api/v1/cleopatra/state")) return method.equals("GET");
+        if (path.equals("/api/v1/cleopatra/spin")) return method.equals("POST");
         if (path.equals("/api/v1/game-catalog")) return method.equals("GET");
         if (path.equals("/api/v1/games")) return method.equals("GET");
         if (path.equals("/api/v1/lucky-box")) return method.equals("GET");
