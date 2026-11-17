@@ -203,7 +203,7 @@ function evalG(g,bet){let total=0,wins=[],cnt={B:0,P:0};
   if(n>=3){const m=S[base].p[5-n];total+=m*bet;wins.push(l.slice(0,n).map((row,r)=>[r,row]))}});
  return{total,wins}}
 async function spin(){
- if(spinning)return;if(HOST&&!window.__sharikaGameReady){toast('Connecting...');return;}const bet=HOST&&unconfirmedSpin?unconfirmedSpin.bet:bets[bi];
+ if(spinning)return;if(HOST&&!window.__sharikaGameReady){toast('Reconnecting to game server...');scheduleInitRetry();return;}const bet=HOST&&unconfirmedSpin?unconfirmedSpin.bet:bets[bi];
  if(fs<=0){if(bal<bet){toast('Balance!');auto=false;return}if(!HOST)bal-=bet}else if(!HOST)fs--;
  spinning=true;$('#spin').classList.add('on');$('#win').innerHTML='&nbsp;';upd();
  $('#fs').style.display=fs>0?'block':'none';$('#fs').textContent='FREE SPINS '+fs;
@@ -241,13 +241,22 @@ async function spin(){
 const Q=new URLSearchParams(location.search),MODE=Q.get('mode')==='room'?'room':'full',HOST=Q.get('host')==='1',ORIGIN=Q.get('origin')||'*',pend={};
 // A timed-out spin might already have debited D1. Keep its id and bet until
 // the Worker returns a verified result or a definitive rejection.
-let unconfirmedSpin=null;
+let unconfirmedSpin=null,initRetryTimer=null,initRetryCount=0;
 const rejectedSpin=s=>/invalid_spin_request|not_enough_balance|game_not_eligible|free_spin_bet_locked|spin_rate_limited|game_disabled|request_id_conflict/.test(String(s||'').toLowerCase());
 function post(m){try{parent.postMessage(m,ORIGIN)}catch(e){}}
+function scheduleInitRetry(){
+ if(!HOST||window.__sharikaGameReady||initRetryTimer)return;
+ // Only the parent reads authenticated state; the child never receives a token.
+ const delay=Math.min(15000,2000*Math.pow(2,Math.min(initRetryCount++,3)));
+ initRetryTimer=setTimeout(()=>{
+  initRetryTimer=null;
+  if(!window.__sharikaGameReady)post({type:'ready'});
+ },delay);
+}
 function getResult(bet){if(!HOST)return Promise.resolve({grid:[0,1,2,3,4].map(()=>[rnd(),rnd(),rnd()])});return new Promise(ok=>{const id=unconfirmedSpin?unconfirmedSpin.id:(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.floor(Math.random()*1e12));if(unconfirmedSpin&&unconfirmedSpin.bet!==bet){ok({error:'Previous spin confirmation pending'});return}unconfirmedSpin={id,bet};pend[id]=ok;post({type:'spin',id,bet});setTimeout(()=>{if(pend[id]){delete pend[id];ok({error:'Timeout. Tap Spin to confirm your previous result.'})}},10000)})}
 addEventListener('message',e=>{if(ORIGIN!=='*'&&e.origin!==ORIGIN)return;const d=e.data||{};
-if(d.type==='init'){if(d.balance!=null)bal=d.balance;window.__sharikaGameReady=Number.isSafeInteger(bal)&&bal>=0;if(d.bets){bets=d.bets;bi=Math.min(bi,bets.length-1)}if(d.freeSpins!=null)fs=Math.max(0,Number(d.freeSpins)||0);if(fs>0&&d.lockedBet!=null){const index=bets.indexOf(d.lockedBet);if(index>=0)bi=index}if(d.jackpot!=null)jp=d.jackpot;if(d.rank){RK.d=d.rank.daily||RK.d;RK.w=d.rank.weekly||RK.w}if(d.history)hist=d.history;if(d.user){document.querySelector('.row.me .nm').textContent=d.user.name||''}upd()}
-if(d.type==='gameError'){window.__sharikaGameReady=false;auto=false;toast('Game unavailable')}
+if(d.type==='init'){if(d.balance!=null)bal=d.balance;window.__sharikaGameReady=Number.isSafeInteger(bal)&&bal>=0;if(d.bets){bets=d.bets;bi=Math.min(bi,bets.length-1)}if(d.freeSpins!=null)fs=Math.max(0,Number(d.freeSpins)||0);if(fs>0&&d.lockedBet!=null){const index=bets.indexOf(d.lockedBet);if(index>=0)bi=index}if(d.jackpot!=null)jp=d.jackpot;if(d.rank){RK.d=d.rank.daily||RK.d;RK.w=d.rank.weekly||RK.w}if(d.history)hist=d.history;if(d.user){document.querySelector('.row.me .nm').textContent=d.user.name||''}if(window.__sharikaGameReady){initRetryCount=0;clearTimeout(initRetryTimer);initRetryTimer=null}else scheduleInitRetry();upd()}
+if(d.type==='gameError'){window.__sharikaGameReady=false;auto=false;toast('Game unavailable. Reconnecting...');scheduleInitRetry()}
 if(d.type==='balance'){bal=d.balance;upd()}
 if(d.type==='spinResult'&&pend[d.id]){if(!d.error||rejectedSpin(d.error))unconfirmedSpin=null;pend[d.id](d);delete pend[d.id]}});
 document.documentElement.className=MODE;
