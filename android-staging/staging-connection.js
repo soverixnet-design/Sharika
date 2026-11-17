@@ -7716,7 +7716,8 @@
         (owner?[['unlock','Unlock seat','lock'],['unlock_all','Unlock all','all']]:
           [['disabled','Locked','lock']]):
         (owner?[['take','Take Mic','take'],['lock','Lock seat','lock'],
-          ['lock_all','Lock all','all']]:[['take','Take Mic','take']]);
+          ['lock_all','Lock all','all'],['invite','Invite to mic','invite']]:
+          [['take','Take Mic','take']]);
       for(const [action,label,kind] of options){
         const button=doc.createElement('button');
         button.type='button';
