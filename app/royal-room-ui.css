@@ -974,3 +974,96 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   #sh-room-settings-page .sh-room-settings-row {font-size:14px;}
   #sh-room-settings-page .sh-room-settings-input {font-size:15px;}
 }
+
+
+/* Screenshot-matched, server-verified weekly/monthly Riches and Lucky.
+   Podium entries reflect real ranking API rows; empty periods show no winners. */
+.app.sh-royal-room .sh-reference-rankings {
+  padding:6px 8px 15px;
+  color:#f8fff6;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-heading {
+  display:flex;justify-content:center;margin:5px 0 15px;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-heading h3 {
+  margin:0;color:#fff;font-size:21px;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-kinds,
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-periods {
+  display:flex;align-items:center;justify-content:center;gap:4px;
+  padding:4px;margin:8px auto;
+  border:1px solid #7ce9c891;border-radius:999px;
+  background:#136f5f;max-width:320px;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-kinds button,
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-periods button {
+  flex:1;padding:9px 12px;border:0;border-radius:999px;
+  background:transparent;color:#b5e9df;font-size:15px;font-weight:750;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-kinds button[aria-pressed=true],
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-periods button[aria-pressed=true] {
+  background:#eafff7;color:#06a88d;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-explanation {
+  max-width:330px;margin:9px auto 12px;
+  font-size:11px;line-height:1.45;text-align:center;color:#e0f7ef;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-podium {
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  align-items:end;gap:7px;min-height:130px;
+  border-radius:16px;margin:10px 0 18px;
+  padding:13px 8px;
+  background:linear-gradient(180deg,#48d79e,#2a8d87 55%,#143e55);
+  overflow:hidden;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-ranking-podium[hidden] {display:none!important;}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card {
+  min-width:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:end;gap:5px;padding:12px 3px 9px;
+  border:1px solid #ffffff8c;border-radius:50% 50% 15px 15px / 22% 22% 15px 15px;
+  background:linear-gradient(165deg,#4daee4,#1d4663);
+  min-height:135px;color:white;
+  box-shadow:0 4px 10px #071d3460;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card[data-place="1"] {
+  min-height:170px;background:linear-gradient(160deg,#ffd674,#a26a1e);
+  border-color:#ffe7a5;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card[data-place="3"] {
+  background:linear-gradient(160deg,#ec9e65,#804825);
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-rank {font-size:25px;line-height:1;}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card .sh-vip-avatar {
+  width:40px;height:40px;flex:none;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card .sh-rank-name {
+  max-width:100%;text-align:center;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card .sh-rank-name strong {
+  font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card .sh-rank-name small {
+  font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card .sh-rank-amount {
+  font-size:10px;text-align:center;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-list {
+  display:flex;flex-direction:column;gap:5px;
+  max-height:30vh;overflow-y:auto;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-list .sh-rank-row {
+  width:100%;display:flex;align-items:center;gap:8px;
+  padding:8px;border:1px solid #d3e3d666;border-radius:12px;
+  background:#063c32;color:#fff;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-list .sh-rank-name {
+  flex:1;text-align:left;min-width:0;
+}
+.app.sh-royal-room .sh-reference-rankings .sh-rank-list .sh-rank-amount {
+  font-size:11px;
+}
+@media(max-width:360px) {
+  .app.sh-royal-room .sh-reference-rankings .sh-ranking-podium {gap:4px;padding:8px 3px;}
+  .app.sh-royal-room .sh-reference-rankings .sh-rank-podium-card {padding-inline:2px;}
+}
