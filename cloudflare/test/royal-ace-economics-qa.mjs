@@ -14,3 +14,19 @@ for(const free of [false,true]){
  if(overCap)throw Error('Payout limit violated');
  if(!free&&total/(n*bet)>1.0)throw Error('Paid-spin simulated credit return exceeds wager; review game payout economics');
 }
+
+let allCredits=0,freeRounds=0,paidRounds=3000,bonusTriggered=0;
+for(let i=0;i<paidRounds;i++){
+  const regular=simulateRoyalAce(1000,false,100000000);
+  allCredits+=regular.win;
+  if(regular.bonusSpins)bonusTriggered++;
+  let queue=regular.bonusSpins;
+  while(queue>0&&freeRounds<30000){
+    queue--;freeRounds++;
+    const bonus=simulateRoyalAce(1000,true,100000000);
+    allCredits+=bonus.win;queue+=bonus.bonusSpins;
+  }
+}
+const combined=allCredits/(paidRounds*1000);
+console.log(JSON.stringify({mode:'paid-with-triggered-free-spins',paidRounds,freeRounds,bonusTriggered,credit_ratio:Number(combined.toFixed(4))}));
+if(freeRounds===30000)throw Error('Bonus-spin chain too large');
