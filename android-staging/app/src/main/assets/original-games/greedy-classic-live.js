@@ -204,6 +204,7 @@ $('#hist').onclick=async()=>{
   show('<h3>My History<u>×</u></h3>'+(rows||'<p>No verified bets yet</p>'));
  }catch(error){toast(error.message);}
 };
+window.bet=bet; // The original artwork's food-click closures resolve this global.
 $('#pl').onclick=()=>toast('Open your Sharika Wallet from the profile to recharge.');
 $('#bk').onclick=()=>window.parent.postMessage({type:'sharika:original-exit'},'*');
 S.phase='load';S.bal=0;S.round=0;S.rev=0;draw();refresh();
