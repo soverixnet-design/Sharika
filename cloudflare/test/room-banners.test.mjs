@@ -114,3 +114,53 @@ test('the room banner feature preserves live room permissions and does not mutat
   assert.match(migration,/CREATE TABLE IF NOT EXISTS sharika_room_banners/);
   assert.doesNotMatch(migration,/UPDATE sharika_users|ALTER TABLE sharika_wallet|DELETE FROM/i);
 });
+
+test('slow room banner requests cannot block the next room or paint stale artwork',async()=>{
+  // Evaluate the shipped refresh implementation without mounting a browser DOM.
+  const source=readFileSync(new URL('../../app/royal-room-ui.js',import.meta.url),'utf8');
+  const start=source.indexOf('  async function refreshRoomBanners() {');
+  const end=source.indexOf('  function vipAvatar(',start);
+  assert.ok(start>=0&&end>start);
+  const implementation=source.slice(start,end);
+  const deferred=()=>{
+    let resolve;
+    const promise=new Promise(done=>{resolve=done;});
+    return {promise,resolve};
+  };
+  const first=deferred(),second=deferred(),third=deferred();
+  const calls=[],painted=[];
+  let visit=0;
+  const view=roomId=>({roomId,loadBanners:()=>{
+    calls.push(roomId+':'+visit);
+    return (visit===1?first:visit===2?second:third).promise;
+  }});
+  const premiumState={room:null};
+  const promoState={roomId:null,lastRefresh:0,promise:null,requestRoomId:null,generation:0};
+  const refresh=new Function('premiumState','promoState','canShow','renderRoomBanners',
+    implementation+'; return refreshRoomBanners;')(
+      premiumState,promoState,()=>true,banners=>painted.push(banners));
+  const enter=roomId=>{
+    visit++;
+    premiumState.room=view(roomId);
+    promoState.roomId=roomId;
+    promoState.lastRefresh=0;
+    promoState.generation++;
+    return refresh();
+  };
+  const a1=enter('A');
+  await Promise.resolve();
+  const b=enter('B');
+  await Promise.resolve();
+  const a2=enter('A');
+  await Promise.resolve();
+  assert.deepEqual(calls,['A:1','B:2','A:3']);
+  first.resolve({banners:['stale-A']});
+  second.resolve({banners:['stale-B']});
+  await Promise.all([a1,b]);
+  assert.deepEqual(painted,[]);
+  assert.equal(promoState.requestRoomId,'A');
+  third.resolve({banners:['current-A']});
+  await a2;
+  assert.deepEqual(painted,[['current-A']]);
+  assert.equal(promoState.requestRoomId,null);
+});
