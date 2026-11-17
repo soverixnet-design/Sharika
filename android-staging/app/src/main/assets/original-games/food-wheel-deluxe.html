@@ -141,7 +141,13 @@ async function reconcileUnconfirmedBet(){
 }
 async function place(stakes){
  if(unconfirmedBet)return toast('Checking previous bet. New bets are paused.');
- if(!ready||placing||phase!=='bet'||!currentState)return toast('Betting is closed');
+ if(!ready)return toast('Reconnecting to game server. Try again shortly.');
+ if(placing)return toast('Waiting for bet confirmation.');
+ // Refresh can lag the real deadline by 2.5 seconds. Do not submit a stale
+ // round wager during the last network-latency margin.
+ if(phase!=='bet'||!currentState||
+    Date.now()+serverDelta>=currentState.round.bet_closes_ms-1000)
+  return toast('Betting closed. Please wait for the next round.');
  const total=stakes.reduce((a,b)=>a+b,0);
  if(!Number.isSafeInteger(total)||total<100||total>100000000)return toast('Invalid bet');
  if(coins<total)return toast('Not enough coins');
