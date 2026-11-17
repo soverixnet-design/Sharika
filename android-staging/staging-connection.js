@@ -14121,7 +14121,7 @@
   // Official Notice is a read-only conversation-style view of verified
   // official/system D1 notifications. Never substitute demo support messages.
   let officialNoticePanel=null,officialNoticeItems=[],officialNoticeCursor=null;
-  let officialNoticeLoading=false,officialNoticeEpoch=0;
+  let officialNoticeLoading=false,officialNoticeEpoch=0,officialNoticeRequest=0;
   function officialNoticeTimestamp(value){
     const raw=String(value||'').trim();
     if(!raw)return '';
@@ -14238,33 +14238,46 @@
     }
   }
   async function loadOfficialNotices(reset=false){
-    if(!session||officialNoticeLoading)return;
+    if(!session||(officialNoticeLoading&&!reset))return;
+    const requestNo=++officialNoticeRequest;
     if(reset){officialNoticeItems=[];officialNoticeCursor=null;}
     if(!reset&&!officialNoticeCursor)return;
     const panel=ensureOfficialNoticePanel();
     const epoch=officialNoticeEpoch;
     const feed=panel.querySelector('.sh-official-feed');
-    const cursor=officialNoticeCursor;
+    let cursor=officialNoticeCursor;
     if(reset)feed.innerHTML='<p class="sh-official-empty">Loading official notices…</p>';
     const more=feed.querySelector('.sh-official-load-more');
     if(more)more.disabled=true;
     officialNoticeLoading=true;
     try{
-      const data=await api('GET',cursor?'/notifications/history/'+cursor:'/notifications');
-      if(epoch!==officialNoticeEpoch||!panel.classList.contains('on'))return;
-      const existing=new Set(officialNoticeItems.map(item=>String(item.id)));
-      for(const item of data.notifications||[]){
-        if(!['official','system'].includes(item.kind)||existing.has(String(item.id)))continue;
-        officialNoticeItems.push(item);existing.add(String(item.id));
-      }
-      const next=Number(data.next_before);
-      officialNoticeCursor=Number.isSafeInteger(next)&&next>0?next:null;
+      // The backend pages all notification types together. Advance through a
+      // few pages when the first page has only receipts/gifts and no notices.
+      // The next cursor remains available for explicit View older.
+      let pages=0;
+      do{
+        const data=await api('GET',cursor?'/notifications/history/'+cursor:'/notifications');
+        if(requestNo!==officialNoticeRequest||epoch!==officialNoticeEpoch||
+          !panel.classList.contains('on'))return;
+        const existing=new Set(officialNoticeItems.map(item=>String(item.id)));
+        for(const item of data.notifications||[]){
+          if(!['official','system'].includes(item.kind)||existing.has(String(item.id)))continue;
+          officialNoticeItems.push(item);existing.add(String(item.id));
+        }
+        const next=Number(data.next_before);
+        cursor=Number.isSafeInteger(next)&&next>0?next:null;
+        pages++;
+      }while(!officialNoticeItems.length&&cursor&&pages<4);
+      officialNoticeCursor=cursor;
       paintOfficialNotices();
     }catch(error){
-      if(epoch!==officialNoticeEpoch||!panel.classList.contains('on'))return;
+      if(requestNo!==officialNoticeRequest||epoch!==officialNoticeEpoch||
+        !panel.classList.contains('on'))return;
       if(officialNoticeItems.length)paintOfficialNotices();
       else feed.textContent='Official notices unavailable: '+errText(error);
-    }finally{officialNoticeLoading=false;}
+    }finally{
+      if(requestNo===officialNoticeRequest)officialNoticeLoading=false;
+    }
   }
   function showOfficialNotice(){
     if(!session){window.showAuth('welcome');return;}
