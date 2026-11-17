@@ -106,6 +106,19 @@
       return 'handled';
     }
 
+    // Official Notice is a separate read-only full-screen message feed.
+    // Android Back closes its options first, then returns to the previous tab.
+    var official = document.querySelector('.sh-official-page.on');
+    if (official) {
+      var options = official.querySelector('.sh-official-menu');
+      var target = options && !options.hidden ?
+        official.querySelector('.sh-official-more') :
+        official.querySelector('.sh-official-back');
+      if (target) target.click();
+      else official.classList.remove('on');
+      return 'handled';
+    }
+
     var notifications = document.querySelector('.sh-notify-panel.on');
     if (notifications) {
       notifications.classList.remove('on');

@@ -1,0 +1,73 @@
+name: Sharika Official Notice UI - isolated staging APK QA
+on:
+  push:
+    branches:
+      - feature/sharika-official-notice-thread-20261117
+    paths:
+      - 'app/official-notice.css'
+      - 'android-staging/app/build.gradle'
+      - 'android-staging/staging-connection.js'
+      - 'android-staging/back-navigation.js'
+      - 'android-staging/official-notice.test.mjs'
+      - 'android-staging/official-notice-ui.test.mjs'
+      - '.github/workflows/sharika-official-notice-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notice-ui-and-debug-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate source and notification UX regression
+        run: |
+          set -euo pipefail
+          node --check android-staging/staging-connection.js
+          node --check android-staging/back-navigation.js
+          node --test android-staging/official-notice.test.mjs
+          node --test android-staging/official-notice-ui.test.mjs
+          node --test android-staging/profile-cover-layout.test.mjs
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android API 36
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build staging debug APK without publishing
+        working-directory: android-staging
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Inspect actual packaged notice styles and verified messages
+        run: |
+          set -euo pipefail
+          APK='android-staging/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -tqq "$APK"
+          unzip -Z1 "$APK" | grep -Fx 'assets/official-notice.css'
+          unzip -p "$APK" assets/index.html | grep -F 'sharika-official-notice-style' >/dev/null
+          unzip -p "$APK" assets/connection.js | grep -F 'verified-official-notices' >/dev/null
+          unzip -p "$APK" assets/back-navigation.js | grep -F 'sh-official-page.on' >/dev/null
+      - name: Upload QA-only APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Official-Notice-Staging-APK
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,83 @@
+/* Sharika Official Notice - reference-proportioned 1080x2352 Android screen.
+ * Distinct read-only server notifications; no support-chat drafts or demo rows.
+ */
+.sh-official-page,.sh-official-page *{box-sizing:border-box}
+.sh-official-page{
+  position:absolute;inset:0;z-index:89;display:none;flex-direction:column;
+  background:#f6f6f6;color:#222;overflow:hidden;
+  font-family:system-ui,-apple-system,Roboto,"Noto Sans",Arial,sans-serif;
+}
+.sh-official-page.on{display:flex}
+.sh-official-top{
+  flex:0 0 auto;display:grid;grid-template-columns:54px 1fr 54px;
+  align-items:center;min-height:74px;
+  padding:calc(8px + env(safe-area-inset-top,0px)) 10px 10px;
+  background:#fff;border-bottom:1px solid #eee;
+}
+.sh-official-top h2{margin:0;text-align:center;letter-spacing:-.4px;
+  color:#111;font-size:clamp(21px,6vw,27px);font-weight:800;line-height:1.2;
+  white-space:nowrap}
+.sh-official-icon{
+  display:grid;place-items:center;width:46px;height:46px;
+  border:0;background:transparent;color:#141414;cursor:pointer;
+  font:600 35px/1 system-ui,sans-serif;border-radius:13px;
+}
+.sh-official-icon:focus-visible{outline:3px solid #268fac;outline-offset:1px}
+.sh-official-back{font-size:43px;font-weight:400;justify-self:start}
+.sh-official-more{font-size:30px;letter-spacing:3px;justify-self:end}
+.sh-official-menu{
+  position:absolute;right:12px;top:calc(62px + env(safe-area-inset-top,0px));z-index:4;
+  display:grid;min-width:175px;padding:7px;background:#fff;
+  border:1px solid #dedede;border-radius:15px;box-shadow:0 10px 25px #0002;
+}
+.sh-official-menu[hidden]{display:none}
+.sh-official-menu button{
+  min-height:43px;padding:9px 13px;border:0;border-radius:10px;background:#fff;
+  color:#252525;font:650 14px/1.3 system-ui,sans-serif;text-align:left;
+}
+.sh-official-menu button:active{background:#e9f3f4}
+.sh-official-feed{
+  flex:1;overflow:auto;overscroll-behavior:contain;
+  padding:13px 7px calc(30px + env(safe-area-inset-bottom,0px));
+  scrollbar-width:thin;scrollbar-color:#c9c9c9 transparent;
+}
+.sh-official-date{
+  text-align:center;color:#a3a3a3;font-size:14px;font-weight:750;
+  line-height:1.4;margin:21px 0 12px;
+}
+.sh-official-row{
+  display:grid;grid-template-columns:43px minmax(0,1fr);align-items:start;gap:10px;
+  width:100%;margin:0 0 12px;
+}
+.sh-official-avatar{
+  display:grid;place-items:center;width:42px;height:42px;margin-top:0;
+  border-radius:50%;background:#1dc6b2;overflow:hidden;
+  box-shadow:0 1px 2px #0001;
+}
+.sh-official-avatar img{width:100%;height:100%;object-fit:contain;border-radius:50%}
+.sh-official-avatar span{color:#fff;font-size:18px;font-weight:900}
+.sh-official-bubble{
+  max-width:100%;min-width:0;justify-self:start;
+  padding:14px 15px;border-radius:19px;background:#fff;color:#292929;
+  box-shadow:none;overflow-wrap:anywhere;white-space:pre-wrap;
+  font-size:16px;line-height:1.4;
+}
+.sh-official-bubble strong{display:block;font-size:16px;line-height:1.4;font-weight:780}
+.sh-official-bubble p{margin:0;font-size:16px;line-height:1.45;font-weight:500}
+.sh-official-bubble strong+p{margin-top:4px}
+.sh-official-empty{color:#808080;line-height:1.6;font-size:14px;text-align:center;
+  padding:42px 18px}
+.sh-official-load-more{
+  display:block;width:calc(100% - 54px);margin:20px 0 0 53px;
+  padding:12px 14px;border:1px solid #d9d9d9;background:#fff;
+  color:#333;border-radius:15px;font-size:14px;font-weight:700;
+}
+.sh-official-load-more:disabled{opacity:.6}
+@media(max-width:340px){
+  .sh-official-top{grid-template-columns:44px 1fr 44px}
+  .sh-official-top h2{font-size:21px}
+  .sh-official-row{grid-template-columns:39px minmax(0,1fr);gap:8px}
+  .sh-official-avatar{width:38px;height:38px}
+  .sh-official-bubble{padding:12px;font-size:14px}
+  .sh-official-load-more{width:calc(100% - 47px);margin-left:47px}
+}
