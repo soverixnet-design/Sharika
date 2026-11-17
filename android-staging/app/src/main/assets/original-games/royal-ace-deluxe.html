@@ -294,6 +294,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
          !Array.isArray(r.steps))throw Error('Invalid server response.');
       clearError();waiting=false;SFX.spin();
       freeRemaining=Number(r.freeSpins)||0;
+      free=r.mode==='free';
       const steps=r.steps.slice(0,12);
       for(const step of steps){
         if(!Array.isArray(step.grid)||step.grid.length!==5)continue;
