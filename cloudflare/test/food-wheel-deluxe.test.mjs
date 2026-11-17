@@ -117,4 +117,8 @@ test('uploaded HTML uses authenticated messages, never local random wallet credi
  assert.ok(html.includes("virtual_coins_only!==true"));
  assert.ok(!html.includes("coins+=pay"));
  assert.ok(!html.includes("function draw1()"));
+ assert.match(html,/if\(!animating\)foods\.forEach/,'timed refresh must not erase wheel glow');
+ assert.match(html,/const spinRound=round/,'spin must capture its round');
+ assert.match(html,/round!==spinRound/,'a late previous round must be discarded');
+
 });
