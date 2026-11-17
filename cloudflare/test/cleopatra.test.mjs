@@ -113,3 +113,38 @@ test('admin validation, read permission and audit log',async()=>{
  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_admin_audit WHERE action='cleopatra_settings_update'").get().n,1);
  sqlite.close();
 });
+
+test('bonus grants ten persisted free spins, follow-up costs zero and pays twice',()=>{
+ const {sqlite}=fixture();
+ const conf=sqlite.prepare('SELECT * FROM sharika_cleopatra_settings WHERE id=1').get();
+ const config={
+   bets:JSON.parse(conf.bets_json),weights:JSON.parse(conf.weights_json),
+   payout_scale:conf.payout_scale,max_win:conf.max_win,version:conf.version
+ };
+ const snapshot=JSON.stringify(config);
+ const gridJson=JSON.stringify(grid);
+ const insert=sqlite.prepare('INSERT INTO sharika_cleopatra_rounds '+
+  '(user_uid,request_id,bet,is_free_spin,grid_json,settings_json,win,'+
+  'bonus_spins,jackpot_hit,settings_version,jackpot_version,created_ms) '+
+  'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
+ const initialPool=sqlite.prepare('SELECT pool,version FROM sharika_cleopatra_jackpot WHERE id=1').get();
+ insert.run('adult-a','test-bonus-round-001',1000,0,gridJson,snapshot,0,10,0,
+   config.version,initialPool.version,1000);
+ const free=()=>sqlite.prepare("SELECT remaining,settings_json FROM sharika_cleopatra_free_spins WHERE user_uid='adult-a'").get();
+ assert.equal(sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='adult-a'").get().coins,99000);
+ assert.equal(free().remaining,10);
+ const pool=sqlite.prepare('SELECT pool,version FROM sharika_cleopatra_jackpot WHERE id=1').get();
+ // Deliberately mutate the admin rate mid-sequence. Free rounds preserve
+ // original settings_version / settings_json from the credited bonus.
+ sqlite.prepare('UPDATE sharika_cleopatra_settings SET payout_scale=1.2,version=version+1 WHERE id=1').run();
+ insert.run('adult-a','test-free-round-0001',1000,1,gridJson,snapshot,10000,0,0,
+   config.version,pool.version,2000);
+ assert.equal(sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='adult-a'").get().coins,109000);
+ assert.equal(free().remaining,9);
+ const rows=sqlite.prepare('SELECT balance_after,free_spins_after,win FROM sharika_cleopatra_rounds ORDER BY id').all();
+ assert.deepEqual(rows.map(r=>r.free_spins_after),[10,9]);
+ assert.deepEqual(rows.map(r=>r.balance_after),[99000,109000]);
+ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='cleopatra_bet'").get().n,1);
+ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='cleopatra_win'").get().n,1);
+ sqlite.close();
+});
