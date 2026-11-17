@@ -1,0 +1,41 @@
+name: Publish Sharika 17 Nov 2026 friends testing APK
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-sharika-20261117-friends-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release-friends-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download successful November 17 Android build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 44085716325 \
+            --repo "${{ github.repository }}" \
+            --name "Sharika-Android-Staging-Debug" \
+            --dir ./qa-apk
+          test -s ./qa-apk/app-debug.apk
+          mv ./qa-apk/app-debug.apk ./qa-apk/Sharika-2026-11-17-Friends-Staging.apk
+          sha256sum ./qa-apk/Sharika-2026-11-17-Friends-Staging.apk
+
+      - name: Publish shareable GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "sharika-20261117-friends-staging-c177e8b0" \
+            "./qa-apk/Sharika-2026-11-17-Friends-Staging.apk" \
+            --repo "${{ github.repository }}" \
+            --target "c177e8b02a639431f07267b2017627349e391f5a" \
+            --title "Sharika 17 November 2026 – Friends Staging APK (TEST ONLY)" \
+            --notes "Shareable Android QA/debug APK from the successful 2026-11-17 Sharika staging workflow run 44085716325. Not a Play Store production release. Device testing is still required for Google login, in-room audio, games, and install-signature compatibility. No production backend updates are made by this publication." \
+            --prerelease
