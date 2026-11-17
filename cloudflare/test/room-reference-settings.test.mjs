@@ -66,7 +66,7 @@ test('rankings are verified sender/receiver metrics, not fabricated results',()=
 
 test('room reward remains server-governed 10% without enabling example tiers',()=>{
   assert.match(bridge,/Room commission: 10%/);
-  assert.match(bridge,/Claim transfers only unpaid whole coins/);
+  assert.match(bridge,/Collect transfers only unpaid whole coins/);
   assert.match(bridge,/api\('POST',rewardsPath,\{\}\)/);
   assert.match(bridge,/The 5–8% example tiers in the reference screenshots are not active/);
   assert.match(worker,/regular_gift_percent:10/);
