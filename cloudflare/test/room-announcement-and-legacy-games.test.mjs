@@ -6,7 +6,7 @@ const src = relative => readFileSync(new URL(relative,import.meta.url),'utf8');
 
 test('only existing Greedy Wheel is visible while legacy games stay preserved',()=>{
   const bridge=src('../../android-staging/staging-connection.js');
-  assert.ok(bridge.includes("['greedy-wheel','cleopatra'].includes(game.id)&&enabled.has(game.id)"));
+  assert.ok(bridge.includes("['greedy-wheel','cleopatra','food-deluxe'].includes(game.id)&&enabled.has(game.id)"));
   assert.ok(!bridge.includes('requestedOriginalGames.has(game.id)'));
   assert.ok(bridge.includes('const catalogRequestNo=++gameCatalogRequestSequence'));
   assert.ok(!bridge.includes("visibleGameCards=originalGameCards.filter(game=>game.id==='fruit-royale'"));
