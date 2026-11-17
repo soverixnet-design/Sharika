@@ -554,3 +554,173 @@ html.sh-room-preview .app.sh-royal-room > :is(.sh-composer,.sh-room-side-gift,.s
 @media(prefers-reduced-motion:reduce) {
   .sh-speaking-effect {transition:none}
 }
+
+
+/* Source-screen room tools: a full-width, scrollable drawer with explicit
+   availability states. Stays separate from the authenticated Android pages. */
+.app.sh-royal-room .sh-menu-panel.sh-reference-room-tools {
+  position:absolute!important;
+  inset:auto 0 0 0!important;
+  width:100%!important;
+  max-width:none!important;
+  max-height:min(77vh,760px)!important;
+  padding:20px 14px calc(28px + env(safe-area-inset-bottom,0px))!important;
+  background:linear-gradient(165deg,#001f19,#002b21 55%,#00160f)!important;
+  border:1px solid #397563!important;
+  border-radius:26px 26px 0 0!important;
+  box-shadow:0 -14px 50px #000b!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+  z-index:120!important;
+}
+.app.sh-royal-room .sh-menu-panel.sh-reference-room-tools > h3 {
+  margin:2px 0 12px!important;
+  font-size:20px!important;
+  color:#f3e9ca!important;
+  text-align:center;
+}
+.app.sh-royal-room .sh-reference-room-tools .sh-menu-grid {
+  display:block!important;
+}
+.app.sh-royal-room .sh-reference-tool-section {
+  margin:0 0 20px;
+}
+.app.sh-royal-room .sh-reference-tool-section h4 {
+  margin:6px 0 12px;
+  color:#f6ebd8;
+  font-size:17px;
+  font-weight:650;
+}
+.app.sh-royal-room .sh-reference-tool-grid {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px 6px;
+}
+.app.sh-royal-room .sh-reference-room-tools button.sh-reference-tool {
+  min-width:0;
+  min-height:91px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  gap:4px;
+  padding:0!important;
+  border:0!important;
+  border-radius:12px;
+  background:none!important;
+  color:#fbf1e6!important;
+  font:500 11px/1.25 system-ui,sans-serif;
+  text-align:center;
+  box-shadow:none!important;
+}
+.app.sh-royal-room .sh-reference-tool-icon {
+  display:grid;
+  place-items:center;
+  width:min(61px,17vw);
+  height:min(61px,17vw);
+  border:1px solid #69847a;
+  border-radius:19px;
+  font-size:27px;
+  background:linear-gradient(145deg,#42564e,#23392f);
+  box-shadow:inset 0 1px #ffffff35,0 3px 10px #0005;
+}
+.app.sh-royal-room .sh-reference-tool-title {
+  overflow-wrap:anywhere;
+  word-break:normal;
+  max-width:100%;
+}
+.app.sh-royal-room button.sh-reference-tool small {
+  font:400 9px/1.2 system-ui,sans-serif;
+  color:#b7c7bb;
+}
+.app.sh-royal-room button.sh-reference-unavailable {
+  opacity:.52!important;
+  cursor:not-allowed!important;
+}
+.app.sh-royal-room button.sh-reference-tool:focus-visible {
+  outline:2px solid #ffd789;
+  outline-offset:3px;
+}
+.app.sh-royal-room .sh-reference-game-banner {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  position:absolute;
+  right:8px;
+  bottom:calc(192px + env(safe-area-inset-bottom,0px));
+  z-index:7;
+  width:55px;
+  height:67px;
+  padding:2px;
+  border:1px solid #dfb77a;
+  border-radius:14px;
+  color:#ffebbf;
+  background:linear-gradient(140deg,#a0532d,#2d1545 65%,#061f18);
+  box-shadow:0 4px 15px #000a,inset 0 1px #ffeed388;
+  font-size:10px;
+  font-weight:700;
+}
+.app.sh-royal-room .sh-reference-game-banner .sh-sprite {
+  width:44px;
+  height:44px;
+}
+.app.sh-royal-room.sh-keyboard-open .sh-reference-game-banner {
+  display:none!important;
+}
+/* Six real microphone presets; the Android bridge performs the authorized
+   PATCH and only marks a preset selected after server confirmation. */
+#sheet .sh-mic-mode-presets {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin:16px 0;
+}
+#sheet .sh-mic-mode-presets > h4 {
+  grid-column:1/-1;
+  font-size:16px;
+  margin:0 0 2px;
+}
+#sheet .sh-mic-mode-preset {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:9px;
+  min-height:126px;
+  padding:12px 7px;
+  background:linear-gradient(145deg,#183a2e,#0b241b);
+  border:2px solid #658c76;
+  border-radius:18px;
+  color:#fff1d6;
+  font-size:15px;
+  font-weight:700;
+}
+#sheet .sh-mic-mode-preset[aria-pressed=true] {
+  border-color:#45e1aa;
+  box-shadow:0 0 0 2px #24d89777;
+}
+#sheet .sh-mic-mode-preset:disabled {opacity:.48}
+#sheet .sh-mic-mode-mini {
+  display:grid;
+  grid-template-columns:repeat(5,12px);
+  justify-content:center;
+  gap:6px 5px;
+  min-height:66px;
+  align-content:center;
+}
+#sheet .sh-mic-mode-mini i {
+  height:12px;
+  width:12px;
+  border:1px solid #b2cbba;
+  border-radius:50%;
+  background:#2d5947;
+}
+@media(max-height:680px) {
+  .app.sh-royal-room .sh-reference-game-banner {bottom:calc(160px + env(safe-area-inset-bottom,0px));}
+  .app.sh-royal-room .sh-menu-panel.sh-reference-room-tools {max-height:68vh!important;}
+}
+@media(max-width:345px) {
+  .app.sh-royal-room .sh-reference-tool-grid {gap:11px 3px;}
+  .app.sh-royal-room .sh-reference-tool-icon {border-radius:14px;font-size:23px;}
+  .app.sh-royal-room .sh-reference-game-banner {width:47px;height:56px;}
+}
