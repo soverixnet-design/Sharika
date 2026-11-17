@@ -1,0 +1,15 @@
+import {webcrypto} from 'node:crypto';
+import {simulateRoyalAce} from '../src/royal-ace.mjs';
+if(!globalThis.crypto)globalThis.crypto=webcrypto;
+for(const free of [false,true]){
+ let total=0,paid=0,nonzero=0,max=0,overCap=0;
+ const n=7000,bet=1000;
+ for(let i=0;i<n;i++){
+   const r=simulateRoyalAce(bet,free,100000000);
+   total+=r.win;if(r.win>0)nonzero++;
+   if(r.win>max)max=r.win;
+   if(r.win>bet*40)overCap++;
+ }
+ console.log(JSON.stringify({mode:free?'free':'paid',spins:n,bet,credit_ratio:Number((total/(n*bet)).toFixed(4)),hit_rate:Number((nonzero/n).toFixed(4)),max_win:max,overCap}));
+ if(overCap)throw Error('Payout limit violated');
+}
