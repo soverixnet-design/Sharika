@@ -13664,12 +13664,54 @@
     const overlay=portal?.overlay||doc.getElementById('shb');
     if(!sheet||!overlay){showToast('Game menu unavailable');return;}
     originalGameFullscreenStyle(doc);
+    // Food Wheel Deluxe is a fixed 1080 x 2352 portrait canvas. Its existing
+    // contain-fit preserves circular chips but leaves broad blue side gutters
+    // in a wider room sheet. Make the sheet follow the rendered canvas width,
+    // not the reverse: never stretch, crop, or change betting/game logic.
+    const gameView=doc.defaultView||window;
+    function resetFoodDeluxeAspectFit(){
+      sheet.__shFoodDeluxeObserver?.disconnect();
+      sheet.__shFoodDeluxeObserver=null;
+      if(sheet.__shFoodDeluxeResize){
+        gameView.removeEventListener('resize',sheet.__shFoodDeluxeResize);
+        sheet.__shFoodDeluxeResize=null;
+      }
+      sheet.style.width='';
+    }
+    function fitFoodDeluxeRoomSheet(){
+      if(!insideRoom)return;
+      const host=sheet.querySelector('#sh-original-host');
+      if(!host||!host.isConnected)return;
+      const resize=()=>{
+        if(!host.isConnected||!overlay.classList.contains('on'))return;
+        const frameHeight=host.clientHeight-2; // host's 1px top/bottom borders
+        if(frameHeight<=0)return;
+        // Sheet padding/border stay unchanged; just remove side letterboxing.
+        const outerWidth=sheet.getBoundingClientRect().width;
+        const contentWidth=host.clientWidth-2;
+        const chromeWidth=outerWidth-contentWidth;
+        const idealWidth=Math.ceil(frameHeight*(1080/2352)+chromeWidth);
+        const maxWidth=Math.max(0,Math.min(gameView.innerWidth-16,480));
+        const targetWidth=Math.min(maxWidth,idealWidth);
+        if(targetWidth>0&&Math.abs(outerWidth-targetWidth)>1)
+          sheet.style.width=targetWidth+'px';
+      };
+      sheet.__shFoodDeluxeResize=resize;
+      gameView.addEventListener('resize',resize);
+      if(typeof gameView.ResizeObserver==='function'){
+        const observer=new gameView.ResizeObserver(resize);
+        observer.observe(host);
+        sheet.__shFoodDeluxeObserver=observer;
+      }
+      gameView.requestAnimationFrame(resize);
+    }
     // Reuse the existing verified Greedy Wheel asset and server bridge.
     // Keep the other legacy game assets and ledgers intact; they are no longer
     // selectable in the only Games entry point.
     const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel');
     let visibleGameCards=[greedyGame]; // Catalog permissions are checked below.
     function catalog(){
+      resetFoodDeluxeAspectFit();
       if(portal)sheet.style.height='';
       overlay.classList.remove('sh-original-fullscreen');
       sheet.innerHTML='<div class="grab"></div><h3>🎮 Sharika Royal Games</h3>'+
@@ -13818,6 +13860,7 @@
         Math.min(9000,confirmed.winners.length*3000));
     }
     function preview(item){
+      resetFoodDeluxeAspectFit();
       currentGameFrame=null;clearWinnerBanner();
       if(portal)sheet.style.height=insideRoom&&item.id==='greedy-classic'?'min(54dvh,460px)':insideRoom&&item.id==='cleopatra'?'min(60dvh,610px)':insideRoom&&item.id==='sovera-gaddy'?'min(65dvh,650px)':'';
       sheet.classList.remove('sh-game-catalog-sheet');
@@ -13850,6 +13893,7 @@
       gameFrame.setAttribute('referrerpolicy','no-referrer');
       sheet.querySelector('#sh-original-host').appendChild(gameFrame);
       currentGameFrame={element:gameFrame,item};
+      if(insideRoom&&item.id==='food-deluxe')fitFoodDeluxeRoomSheet();
     }
     // Child frame has no Firebase session, no native bridge, no wallet setter.
     // Only the active exact iframe can request one of these fixed operations.
@@ -13989,6 +14033,7 @@
       clearWinnerBanner();
       currentGameFrame?.element?.remove();
       currentGameFrame=null;
+      resetFoodDeluxeAspectFit();
       overlay.classList.remove('sh-original-fullscreen');
       sheet.classList.remove('sh-game-catalog-sheet');
     };
