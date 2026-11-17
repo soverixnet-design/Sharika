@@ -5963,6 +5963,9 @@
     if(roomsInFlight?.userId===userId){
       if(passive)return roomsInFlight.promise;
       if(roomsRefreshAfter?.userId!==userId){
+        // A room was just created/edited. Invalidate the old in-flight
+        // snapshot now: it must not briefly repaint stale cards.
+        ++roomsRequestNo;
         const refresh=roomsInFlight.promise.catch(()=>{}).then(()=>reloadRooms(true));
         roomsRefreshAfter={userId,promise:refresh};
         refresh.finally(()=>{
