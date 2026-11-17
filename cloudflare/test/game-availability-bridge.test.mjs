@@ -29,7 +29,7 @@ test('Games picker and Cloudflare Worker agree on the exact catalog path', () =>
   // Staging adds the server-verified Cleopatra card; Play's isolated
   // server does not expose any other game or the catalog route.
   assert.ok(client.includes("const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel')"));
-  assert.ok(client.includes("['greedy-wheel','cleopatra'].includes(game.id)&&enabled.has(game.id)"));
+  assert.ok(client.includes("['greedy-wheel','cleopatra','food-deluxe'].includes(game.id)&&enabled.has(game.id)"));
   assert.ok(client.includes('preview(greedyGame);'));
   assert.ok(!client.includes("originalGameCards.filter(game=>game.id==='fruit-royale'"));
   assert.match(client,/Sharika Royal Games/);
