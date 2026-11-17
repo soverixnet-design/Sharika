@@ -363,6 +363,109 @@
   menuItem('🖼️ Photo', () => photo?.click());
   menuItem('📣 Announcement', () => editAnnouncement());
 
+  // Reference-room tools: preserve original wired handlers; do not simulate
+  // unimplemented money/PK/game transactions on the client.
+  (function installReferenceRoomTools() {
+    menuPanel.classList.add('sh-reference-room-tools');
+    heading.textContent = 'Room Tools';
+    const original = Array.from(menuGrid.querySelectorAll('button'));
+    const originalAction = label => {
+      const control = original.find(button => button.textContent.includes(label));
+      if (control) control.click();
+      else window.toast?.(label + ' is not available in this build');
+    };
+    menuGrid.replaceChildren();
+    function section(name) {
+      const node = document.createElement('section');
+      node.className = 'sh-reference-tool-section';
+      const heading = document.createElement('h4');
+      heading.textContent = name;
+      const grid = document.createElement('div');
+      grid.className = 'sh-reference-tool-grid';
+      node.append(heading, grid);
+      menuGrid.append(node);
+      return grid;
+    }
+    function item(grid, label, icon, handler, detail) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sh-reference-tool';
+      button.setAttribute('aria-label', label + (handler ? '' : ' — not available'));
+      const picture = document.createElement('span');
+      picture.className = 'sh-reference-tool-icon';
+      picture.setAttribute('aria-hidden', 'true');
+      picture.textContent = icon;
+      const title = document.createElement('span');
+      title.className = 'sh-reference-tool-title';
+      title.textContent = label;
+      button.append(picture, title);
+      if (detail) {
+        const hint = document.createElement('small');
+        hint.textContent = detail;
+        button.append(hint);
+      }
+      if (!handler) {
+        button.disabled = true;
+        button.classList.add('sh-reference-unavailable');
+        button.title = label + ' needs a verified server-backed feature';
+      } else {
+        button.onclick = () => {
+          closeMenu();
+          handler();
+        };
+      }
+      grid.append(button);
+    }
+    const interactions = section('Interactive features');
+    item(interactions, 'Counter', '🧧', null, 'Not enabled');
+    item(interactions, 'PK', '⚔️', null, 'Not enabled');
+    item(interactions, 'Wheel', '🎡', null, 'Not enabled');
+    item(interactions, 'Smash Eggs', '🥚', null, 'Not enabled');
+
+    const management = section('Management tool');
+    item(management, 'Clean text', '🧹', null);
+    item(management, 'Music', '♫', () => originalAction('Music'));
+    item(management, 'Mount effect', '✨', null);
+    item(management, 'Gift effect', '🎁', null);
+    item(management, 'Sound', '🔊', () => originalAction('Audio'));
+    item(management, 'Mic PK', '🎙️', null);
+    item(management, 'Gift count', '🎨', null);
+    item(management, 'Mic mode', '🪑', () => {
+      if (premiumState.room && !premiumState.room.isOwner) {
+        window.toast?.('Only the room owner can change mic mode');
+        return;
+      }
+      originalAction('Seats');
+    });
+
+    const others = section('Others');
+    item(others, 'Dice', '🎲', null);
+    item(others, 'RPS', '✌️', null);
+    item(others, 'Number', '7️⃣', null);
+
+    const quick = section('Room management');
+    item(quick, 'Games', '🎮', () => originalAction('Games'));
+    item(quick, 'Theme', '🖼️', () => originalAction('Theme'));
+    item(quick, 'Settings', '⚙️', () => originalAction('Settings'));
+    item(quick, 'Lock', '🔒', () => originalAction('Room Lock'));
+    item(quick, 'Notice', '📣', () => originalAction('Announcement'));
+    item(quick, 'Owner', '👑', () => originalAction('Owner tools'));
+    item(quick, 'Room photo', '📷', () => originalAction('Photo'));
+    item(quick, 'Lucky Box', '🎁', () => box.click());
+
+    const sideGame = document.createElement('button');
+    sideGame.id = 'sh-reference-game-banner';
+    sideGame.className = 'sh-reference-game-banner';
+    sideGame.type = 'button';
+    sideGame.setAttribute('aria-label', 'Open room games');
+    sideGame.append(sprite('games'), document.createTextNode('Games'));
+    sideGame.onclick = () => games.click();
+    app.append(sideGame);
+
+    menuButton.setAttribute('aria-label', 'Open interactive and management tools');
+  })();
+
+
   // Photo remains reachable from the menu with its original permissions.
   if (photo) {
     photo.style.position = 'absolute';
