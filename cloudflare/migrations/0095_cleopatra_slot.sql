@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS sharika_cleopatra_settings(
 INSERT OR IGNORE INTO sharika_cleopatra_settings
  (id,enabled,bets_json,weights_json,payout_scale,jackpot_seed,contribution_bps,max_win)
 VALUES
- (1,0,'[100,500,1000,2000,5000,10000]',
+ (1,1,'[100,500,1000,2000,5000,10000]',
  '{"H":2,"E":3,"L":3,"A":4,"K":5,"Q":6,"J":7,"T":8,"N":9,"W":4,"B":1.3,"P":0.2}',
  1,24074034,100,50000000);
 
@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS sharika_cleopatra_rounds(
   bet INTEGER NOT NULL CHECK(bet>0),
   is_free_spin INTEGER NOT NULL CHECK(is_free_spin IN(0,1)),
   grid_json TEXT NOT NULL CHECK(json_valid(grid_json)),
+  settings_json TEXT NOT NULL CHECK(json_valid(settings_json)),
   win INTEGER NOT NULL CHECK(win>=0),
   bonus_spins INTEGER NOT NULL CHECK(bonus_spins IN(0,10)),
   jackpot_hit INTEGER NOT NULL CHECK(jackpot_hit IN(0,1)),
@@ -96,11 +97,12 @@ BEGIN
   SELECT NEW.user_uid,'coins',NEW.win,coins,'cleopatra_win','cleopatra:win:'||NEW.id
   FROM sharika_users WHERE auth_uid=NEW.user_uid AND NEW.win>0;
  INSERT INTO sharika_cleopatra_free_spins(user_uid,remaining,bet,settings_version,settings_json)
-  VALUES(NEW.user_uid,NEW.bonus_spins,NEW.bet,NEW.settings_version,'{}')
+  VALUES(NEW.user_uid,NEW.bonus_spins,NEW.bet,NEW.settings_version,NEW.settings_json)
   ON CONFLICT(user_uid) DO UPDATE SET
     remaining=MIN(1000,MAX(0,remaining-NEW.is_free_spin)+NEW.bonus_spins),
     bet=CASE WHEN remaining>NEW.is_free_spin THEN bet ELSE NEW.bet END,
-    settings_version=CASE WHEN remaining>NEW.is_free_spin THEN settings_version ELSE NEW.settings_version END;
+    settings_version=CASE WHEN remaining>NEW.is_free_spin THEN settings_version ELSE NEW.settings_version END,
+    settings_json=CASE WHEN remaining>NEW.is_free_spin THEN settings_json ELSE NEW.settings_json END;
  UPDATE sharika_cleopatra_jackpot SET
    pool=CASE WHEN NEW.jackpot_hit=1 THEN
        (SELECT jackpot_seed FROM sharika_cleopatra_settings WHERE id=1)
