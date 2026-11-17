@@ -103,6 +103,10 @@ body.sharika-room .top .logo{height:clamp(26px,6dvh,48px)!important}body.sharika
 #royal-loading-art{font-size:clamp(54px,21vw,120px);line-height:1;text-shadow:0 5px 3px #b34912;filter:drop-shadow(0 4px 4px #c2721c)}
 #royal-progress{width:min(80%,300px);height:13px;border:2px solid #d08b53;border-radius:15px;overflow:hidden;background:#743b27}#royal-progress i{display:block;width:5%;height:100%;background:linear-gradient(#65efff,#00a9d7);transition:width .35s}
 #royal-loading label{display:flex;gap:8px;align-items:center;font-size:14px;min-height:35px}#royal-loading input{width:19px;height:19px}
+#royal-loading{justify-content:flex-end;padding-bottom:clamp(45px,9dvh,130px);background:url('royal-ace-loader.svg') center center/cover no-repeat,radial-gradient(#ffdb9a,#cd571d)}
+#royal-loading:before,#royal-loading:after,#royal-loading-logo,#royal-loading-title,#royal-loading-art{display:none!important}
+#royal-progress,#royal-loading-caption,#royal-loading label,#royal-network-error{position:relative;z-index:101;text-shadow:0 2px 3px #773211}
+#royal-progress{height:15px;margin-top:2dvh}
 #royal-network-error{font-size:13px;background:#531f1fdd;border-radius:9px;padding:8px 10px;max-width:90%;display:none}
 @media(max-height:460px){#royal-loading-art{font-size:45px}#royal-loading-logo{max-height:50px}#royal-loading{gap:7px}.wf{display:none}.top .logo{height:30px!important}}
 </style></head><body><div id="g"><div id="royal-loading" role="status" aria-live="polite"><img id="royal-loading-logo" alt="Royal Ace Deluxe"><div id="royal-loading-title">ROYAL ACE DELUXE</div><div id="royal-loading-art" aria-hidden="true">♠ A ★ K</div><div id="royal-progress"><i id="royal-progress-fill"></i></div><div id="royal-loading-caption">Loading game assets…</div><label><input type="checkbox" id="royal-skip-intro">Don't show next time</label><div id="royal-network-error"></div></div>
