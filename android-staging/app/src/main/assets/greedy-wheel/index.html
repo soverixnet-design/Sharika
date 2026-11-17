@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="bn">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -23,7 +23,7 @@
     </div>
     <div class="logo">
       <span class="logo-main">GREEDY</span>
-      <span class="logo-sub" id="lblRoundTop">রাউন্ড <b id="roundNo">1</b></span>
+      <span class="logo-sub" id="lblRoundTop">Round <b id="roundNo">1</b></span>
     </div>
     <div class="tb-right">
       <button class="icon-btn" id="btnSound" aria-label="Sound">
@@ -38,20 +38,20 @@
 
   <!-- info strip -->
   <div class="infostrip">
-    <div class="lastwin"><span id="lblWin">শেষ জয়</span> <span class="coin"></span><b id="lastWin">0</b></div>
+    <div class="lastwin"><span id="lblWin">Last Win</span> <span class="coin"></span><b id="lastWin">0</b></div>
   </div>
 
   <!-- Wheel -->
   <main class="stage" id="stage">
     <div class="wheel" id="wheel">
       <div class="rim"><div class="bulbs" id="bulbs"></div></div>
-      <div class="side-tag left" id="tagLeft">সবজি</div>
-      <div class="side-tag right" id="tagRight">মাংস</div>
+      <div class="side-tag left" id="tagLeft">Vegetables</div>
+      <div class="side-tag right" id="tagRight">Meat</div>
       <svg class="spokes" viewBox="0 0 100 100" aria-hidden="true"><g id="spokeLines"></g></svg>
       <div class="hub" id="hub">
         <div class="hub-ring">
           <div class="hub-plate">
-            <div class="hub-label" id="hubLabel">বেট করো</div>
+            <div class="hub-label" id="hubLabel">Place Bets</div>
             <div class="hub-time" id="hubTime">30</div>
           </div>
         </div>
@@ -61,7 +61,7 @@
 
   <!-- history strip -->
   <div class="history">
-    <span class="history-title" id="lblResult">ফলাফল</span>
+    <span class="history-title" id="lblResult">Result</span>
     <div class="history-track" id="history"></div>
     <button class="more" id="btnHistory2" aria-label="History">›</button>
   </div>
@@ -79,12 +79,12 @@
         <button class="topup" id="btnTopup" aria-label="Top up">+</button>
       </div>
       <div class="rev-box">
-        <div class="rev-title" id="lblToday">আজকের আয়</div>
+        <div class="rev-title" id="lblToday">Today's Winnings</div>
         <div class="me-bal"><span class="coin"></span><b id="todayRev">0</b></div>
       </div>
       <div class="btn-col">
-        <button class="pill-btn" id="btnRepeat">আবার</button>
-        <button class="pill-btn auto" id="btnAuto">অটো</button>
+        <button class="pill-btn" id="btnRepeat">Repeat</button>
+        <button class="pill-btn auto" id="btnAuto">Auto</button>
       </div>
     </div>
   </footer>
@@ -92,17 +92,17 @@
   <!-- Result popup -->
   <div class="modal" id="resultModal" hidden>
     <div class="card result">
-      <div class="ribbon"><span id="lblRoundRes">রাউন্ড</span> <b id="resRound">1</b> <span id="lblResSuffix">ফলাফল</span></div>
+      <div class="ribbon"><span id="lblRoundRes">Round</span> <b id="resRound">1</b> <span id="lblResSuffix">Result</span></div>
       <div class="card-timer" id="resTimer">5</div>
       <div class="res-head">
         <div class="res-big"><img id="resIcon" alt=""></div>
         <div class="res-name" id="resName"></div>
       </div>
       <div class="res-stats">
-        <div><small id="lblEarn">এই রাউন্ডে জয়</small><b><span class="coin"></span><span id="resEarn">0</span></b></div>
-        <div><small id="lblBets">এই রাউন্ডে বেট</small><b><span class="coin"></span><span id="resBet">0</span></b></div>
+        <div><small id="lblEarn">Won This Round</small><b><span class="coin"></span><span id="resEarn">0</span></b></div>
+        <div><small id="lblBets">Bet This Round</small><b><span class="coin"></span><span id="resBet">0</span></b></div>
       </div>
-      <div class="rank-title" id="lblRank">এই রাউন্ডের সেরা</div>
+      <div class="rank-title" id="lblRank">Top Winners</div>
       <div class="ranks" id="ranks"></div>
     </div>
   </div>
@@ -112,8 +112,8 @@
     <div class="card panel">
       <button class="close" id="btnHistoryClose" aria-label="Close">×</button>
       <div class="tabs">
-        <button class="tab active" data-tab="results" id="tabResults">ফলাফল হিস্ট্রি</button>
-        <button class="tab" data-tab="records" id="tabRecords">আমার রেকর্ড</button>
+        <button class="tab active" data-tab="results" id="tabResults">Result History</button>
+        <button class="tab" data-tab="records" id="tabRecords">My Records</button>
       </div>
       <div class="tab-body" id="histResults"></div>
       <div class="tab-body" id="histRecords" hidden></div>
@@ -124,7 +124,7 @@
   <div class="modal" id="helpModal" hidden>
     <div class="card panel help">
       <button class="close" id="btnHelpClose" aria-label="Close">×</button>
-      <h2 id="helpTitle">কীভাবে খেলবে</h2>
+      <h2 id="helpTitle">How to Play</h2>
       <ol id="helpList"></ol>
       <div class="odds" id="oddsTable"></div>
     </div>
