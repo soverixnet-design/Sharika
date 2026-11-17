@@ -619,11 +619,33 @@ jobs:
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           CERTS="$("$SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk)"
           echo "$CERTS"
-          if [[ "${SHARIKA_STAGING_SIGNER_KIND:-}" == "original" ]]; then
-            printf '%s\n' "$CERTS" | grep -qi 'Signer #1 certificate SHA-1 digest: ab491a1a905a42bf42417d7b62c658b379f32bb0'
+          # Evaluate the certificate ON THE APK, not the auxiliary staging
+          # keystore kind. The debug build can intentionally use the separately
+          # verified Firebase-registered Play upload signer.
+          actual_sha1="$(printf '%s\n' "$CERTS" |
+            sed -n 's/^Signer #1 certificate SHA-1 digest: //p' | head -1 |
+            tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          test -n "$actual_sha1"
+          CERT_SHA1="$actual_sha1" node - <<'NODE'
+          const fs = require('node:fs');
+          const cfg = JSON.parse(fs.readFileSync('app/google-services.json', 'utf8'));
+          const sha1 = process.env.CERT_SHA1;
+          const registered = (cfg.client || []).flatMap(c => c.oauth_client || [])
+            .filter(c => c.client_type === 1 &&
+              c.android_info?.package_name === 'com.soverixnet.sharika')
+            .map(c => String(c.android_info?.certificate_hash || '').toLowerCase());
+          if (!registered.includes(sha1)) {
+            console.error('Actual APK certificate is NOT Firebase OAuth registered');
+            process.exit(1);
+          }
+          console.log('SHARIKA_ACTUAL_APK_FIREBASE_OAUTH_CERTIFICATE_VERIFIED');
+          NODE
+          if [[ "$actual_sha1" == "ab491a1a905a42bf42417d7b62c658b379f32bb0" ]]; then
             echo 'SHARIKA_STABLE_STAGING_CERTIFICATE_VERIFIED'
+          elif [[ "${SHARIKA_STAGING_USE_REGISTERED_PLAY_SIGNER:-}" == "true" ]]; then
+            echo 'SHARIKA_FIREBASE_REGISTERED_PLAY_UPLOAD_SIGNER_VERIFIED'
           else
-            echo "::warning::Temporary staging signing certificate verified cryptographically, but Google OAuth SHA-1 is not registered and this APK cannot update previously signed installs."
+            echo "::warning::APK uses a Firebase-registered SHA-1 different from the original staging signer; confirm update compatibility before sharing."
           fi
 
       - name: Verify Agency 3D icons and active BD dashboard in compiled profile
