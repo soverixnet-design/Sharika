@@ -96,7 +96,7 @@ async function state(db,uid){
  const t=clock(n);
  const prev=await db.prepare('SELECT * FROM sharika_food_deluxe_rounds WHERE result_ms<=? '+
   'ORDER BY round_no DESC LIMIT 1').bind(now).first();
- const lastWager=await db.prepare('SELECT stakes_json FROM sharika_food_deluxe_bets '+
+ const lastWager=await db.prepare('SELECT round_id FROM sharika_food_deluxe_bets '+
   'WHERE user_uid=? AND round_no<? ORDER BY id DESC LIMIT 1').bind(uid,n).first();
  const hist=await db.prepare('SELECT * FROM sharika_food_deluxe_rounds '+
   'WHERE result_ms<=? ORDER BY round_no DESC LIMIT 15').bind(now).all();
@@ -111,7 +111,7 @@ async function state(db,uid){
   round:{...t,phase:now<t.bet_closes_ms?'bet':now<t.result_ms?'spin':'result',commit_sha256:r.commit_sha256},
   balance:Number(u?.coins||0),chips:CHIPS,multipliers:MULT,symbols:NAMES,
   my_stakes:await userStakes(db,uid,r.id),
-  last_stakes:lastWager?stakesFromJSON(lastWager.stakes_json):Array(8).fill(0),
+  last_stakes:lastWager?await userStakes(db,uid,lastWager.round_id):Array(8).fill(0),
   history:recent,result:currentResult,
   previous_result:prev?await readRoundResult(db,prev,uid):null,
   today_wagered:Number(daily?.wagered||0),today_won:Number(daily?.won||0)};
