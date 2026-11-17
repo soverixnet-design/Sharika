@@ -22,7 +22,7 @@ jobs:
           node --check cloudflare/src/game-catalog.mjs
           node --check android-staging/staging-connection.js
       - name: Run Royal Ace wallet and integration tests
-        run: node --test cloudflare/test/royal-ace.test.mjs
+        run: node --test cloudflare/test/royal-ace.test.mjs cloudflare/test/cleopatra.test.mjs cloudflare/test/game-availability-bridge.test.mjs cloudflare/test/game-english-only.test.mjs
       - name: Check uploaded original HTML JavaScript
         run: |
           python3 - <<'PY'
