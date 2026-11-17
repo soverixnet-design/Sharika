@@ -238,7 +238,9 @@
       if(result)settleDisplay(result);
       else hub('🎡','Waiting for result…',null);
     }
-    if(Date.now()-lastPoll>1800){lastPoll=Date.now();refresh();}
+    if(document.visibilityState!=='hidden'&&
+       Date.now()-lastPoll>(/2g|slow/i.test(navigator.connection?.effectiveType||'')?4200:1800)){
+       lastPoll=Date.now();refresh();}
   }
   function listHistory(data){
     const rows=(data.bets||[]).slice(0,30);
