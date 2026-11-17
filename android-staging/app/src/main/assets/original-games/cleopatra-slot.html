@@ -228,9 +228,10 @@ async function spin(){
  if(fs>0||auto)setTimeout(spin,300)}
 const Q=new URLSearchParams(location.search),MODE=Q.get('mode')==='room'?'room':'full',HOST=Q.get('host')==='1',ORIGIN=Q.get('origin')||'*',pend={};
 function post(m){try{parent.postMessage(m,ORIGIN)}catch(e){}}
-function getResult(bet){if(!HOST)return Promise.resolve({grid:[0,1,2,3,4].map(()=>[rnd(),rnd(),rnd()])});return new Promise(ok=>{const id=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random());pend[id]=ok;post({type:'spin',id,bet});setTimeout(()=>{if(pend[id]){delete pend[id];ok({error:'Timeout'})}},10000)})}
+function getResult(bet){if(!HOST)return Promise.resolve({grid:[0,1,2,3,4].map(()=>[rnd(),rnd(),rnd()])});return new Promise(ok=>{const id=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.floor(Math.random()*1e12));pend[id]=ok;post({type:'spin',id,bet});setTimeout(()=>{if(pend[id]){delete pend[id];ok({error:'Timeout'})}},10000)})}
 addEventListener('message',e=>{if(ORIGIN!=='*'&&e.origin!==ORIGIN)return;const d=e.data||{};
-if(d.type==='init'){if(d.balance!=null)bal=d.balance;window.__sharikaGameReady=Number.isSafeInteger(bal)&&bal>=0;if(d.bets){bets=d.bets;bi=Math.min(bi,bets.length-1)}if(d.jackpot)jp=d.jackpot;if(d.rank){RK.d=d.rank.daily||RK.d;RK.w=d.rank.weekly||RK.w}if(d.history)hist=d.history;if(d.user){document.querySelector('.row.me .nm').textContent=d.user.name||''}upd()}
+if(d.type==='init'){if(d.balance!=null)bal=d.balance;window.__sharikaGameReady=Number.isSafeInteger(bal)&&bal>=0;if(d.bets){bets=d.bets;bi=Math.min(bi,bets.length-1)}if(d.freeSpins!=null)fs=Math.max(0,Number(d.freeSpins)||0);if(fs>0&&d.lockedBet!=null){const index=bets.indexOf(d.lockedBet);if(index>=0)bi=index}if(d.jackpot!=null)jp=d.jackpot;if(d.rank){RK.d=d.rank.daily||RK.d;RK.w=d.rank.weekly||RK.w}if(d.history)hist=d.history;if(d.user){document.querySelector('.row.me .nm').textContent=d.user.name||''}upd()}
+if(d.type==='gameError'){window.__sharikaGameReady=false;auto=false;toast('Game unavailable')}
 if(d.type==='balance'){bal=d.balance;upd()}
 if(d.type==='spinResult'&&pend[d.id]){pend[d.id](d);delete pend[d.id]}});
 document.documentElement.className=MODE;
