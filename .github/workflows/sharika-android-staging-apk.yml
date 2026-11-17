@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/sharika-cleopatra-slot-staging-20261117
+      - feature/sharika-food-deluxe-room-aspect-fit-20261117
       - fix/sharika-room-card-games-voice-20261115
       - feature/sharika-royal-home-gallery-20261116
       - feature/sharika-assistant-help-staging-20261117
