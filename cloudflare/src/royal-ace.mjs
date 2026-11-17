@@ -72,10 +72,10 @@ function cascade(grid,marks,combo){
 }
 export function simulateRoyalAce(bet,free=false,maxWin=100000000){
   if(!INT(bet)||bet<1||!INT(maxWin)||maxWin<1)throw Error('invalid_royal_round');
-  // Tuned staging economics: future spins pay 45% of the original ways-table gross.
-  // Each round also caps credited winnings at 40x the stake; no historical ledgers change.
+  // Tuned staging economics: future spins pay 17% of the original ways-table gross.
+  // Each round also caps credited winnings at 20x the stake; no historical ledgers change.
   // Keep these limits mirrored in the client Rules panel.
-  const payoutBps=4500,cap=Math.min(maxWin,bet*40);
+  const payoutBps=1700,cap=Math.min(maxWin,bet*20);
   const g=makeGrid(),steps=[{grid:copy(g),marks:[],combo:0,multiplier:MULT[free?1:0][0]}];
   let total=0;
   for(let combo=0;combo<8;combo++){
