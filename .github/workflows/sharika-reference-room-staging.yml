@@ -1,0 +1,99 @@
+name: Sharika reference room staging Worker and Admin (guarded)
+
+on:
+  push:
+    branches:
+      - feature/sharika-reference-room-controls-20261117
+    paths:
+      - '.github/workflows/sharika-reference-room-staging.yml'
+      - 'cloudflare/src/room-banners.mjs'
+      - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/admin.mjs'
+      - 'cloudflare/test/room-banners.test.mjs'
+      - 'cloudflare/migrations/0093_room_banner_positions.sql'
+      - 'admin/connection.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-isolated-staging-worker-publish
+  cancel-in-progress: false
+
+jobs:
+  reference-room-staging:
+    name: Safe tests then staging Worker/Admin only (no D1 migrations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: sharika-staging
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse wrong Git ref or infrastructure (production forbidden)
+        run: |
+          test "$GITHUB_REF" = "refs/heads/feature/sharika-reference-room-controls-20261117"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const api=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          const adm=JSON.parse(readFileSync('cloudflare/wrangler.admin.jsonc','utf8'));
+          const expectedDb='b2c62252-12a5-4740-90c7-01a536d9a39a';
+          const account='d81cf7c48fb9b36d468cb0a08720cd74';
+          if(api.account_id!==account || adm.account_id!==account ||
+             api.name!=='sharika-api-staging'||adm.name!=='sharika-admin-staging'||
+             api.vars?.SHARIKA_ENV!=='staging'||adm.vars?.SHARIKA_ENV!=='staging'||
+             api.vars?.FIREBASE_PROJECT_ID!=='sharika-voice-chat-app'||
+             api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             api.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+             api.keep_vars!==true||
+             api.d1_databases?.length!==2||
+             api.d1_databases.some(d=>d.database_id!==expectedDb)||
+             api.d1_databases.find(d=>d.binding==='DB')?.database_name!=='sharika-staging'||
+             api.d1_databases.find(d=>d.binding==='SHARIKA_ID_DB')?.database_name!=='sharika-staging'||
+             api.r2_buckets?.[0]?.bucket_name!=='sharika-staging-media'||
+             api.durable_objects?.bindings?.find(d=>d.name==='VOICE_ROOMS')?.class_name!=='SharikaVoiceRoom'||
+             adm.d1_databases?.find(d=>d.binding==='STAGING_DB')?.database_id!==expectedDb||
+             adm.d1_databases?.find(d=>d.binding==='PLAY_DB')?.database_name!=='sharika-play-virtual'||
+             adm.services?.[0]?.service!=='sharika-api-staging')
+            throw Error('Unexpected Worker, D1, R2, voice binding or production target');
+          console.log('Staging Worker/Admin identities and existing bindings verified');
+          NODE
+      - name: Verify JavaScript and full backend/room regression tests
+        run: |
+          npm --prefix cloudflare run check
+          node --test cloudflare/test/room-banners.test.mjs
+      - name: Check ONLY new staging room banner schema (read-only)
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote \
+            --config cloudflare/wrangler.jsonc \
+            --command "SELECT COUNT(*) AS banner_count FROM sharika_room_banners"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote \
+            --config cloudflare/wrangler.jsonc \
+            --command "SELECT COUNT(*) AS existing_users FROM sharika_users"
+          echo 'No D1 migration or data write was invoked by this workflow'
+      - name: Publish isolated staging API (never production)
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Package and publish staging Admin frontend
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --check admin/connection.js
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Verify staging endpoints without user data
+        run: |
+          curl --fail --silent --show-error --max-time 25 \
+            https://sharika-api-staging.soverixnet.workers.dev/health \
+            | grep -F '"ok":true'
+          curl --fail --silent --show-error --max-time 25 \
+            https://sharika-admin-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --max-time 25 \
+            https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js \
+            | grep -F 'P.roomBanners=async function'
+          echo 'SHARIKA_REFERENCE_ROOM_STAGING_ONLY_PUBLISHED'
