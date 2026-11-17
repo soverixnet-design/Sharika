@@ -213,15 +213,27 @@ async function spin(){
  const iv=setInterval(()=>{reels.forEach((r,i)=>{if(r.classList.contains('spin'))for(let j=0;j<3;j++)setCell(i,j,rnd())});beep(200+Math.random()*80,.05,'square',.04)},70);
  for(let i=0;i<5;i++){await sleep(i?260:600);reels[i].classList.remove('spin');reels[i].classList.add('stop');ng[i].forEach((k,j)=>setCell(i,j,k));beep(300,.12,'triangle',.25)}
  clearInterval(iv);grid=ng;
- const res=evalG(ng,bet);let w=res.total;if(fs>0||res.fsMode)w*=1;
- if(S.bonusMult&&0){}
- if(window._inFS)w*=2;
- if(res.jack){w=res.total;jp=24074034;toast('JACKPOT!');coins(40);winSnd()}
- else if(res.bonus){toast('BONUS!');fs+=10;window._inFS=true;coins(20);winSnd();ng.forEach((r,i)=>r.forEach((k,j)=>{if(k==='B')reels[i].children[j].classList.add('win')}))}
+ // In the hosted game, server receipt flags and win amounts are authoritative.
+ // Never display a jackpot or bonus just because local graphics matched.
+ const res=evalG(ng,bet),hitJack=HOST?R.jackpotHit===true:!!res.jack,
+  hitBonus=HOST?R.bonusHit===true:!!res.bonus;
+ if(HOST&&(!Number.isSafeInteger(R.win)||R.win<0||
+    !Number.isSafeInteger(R.balance)||R.balance<0||
+    !Number.isSafeInteger(R.freeSpins)||R.freeSpins<0||
+    !Number.isSafeInteger(R.jackpot)||R.jackpot<0)){
+  toast('Invalid verified result');spinning=false;auto=false;$('#spin').classList.remove('on');return;
+ }
+ let w=HOST?R.win:res.total;
+ if(!HOST&&window._inFS)w*=2;
+ if(hitJack){if(!HOST){w=res.total;jp=24074034}toast('JACKPOT!');coins(40);winSnd()}
+ else if(hitBonus){toast('BONUS!');if(!HOST){fs+=10;window._inFS=true}coins(20);winSnd();
+  ng.forEach((r,i)=>r.forEach((k,j)=>{if(k==='B')reels[i].children[j].classList.add('win')}))}
  else if(w>0){res.wins.forEach(l=>l.forEach(([r,row])=>reels[r].children[row].classList.add('win')));
   if(w>=bet*10){toast('BIG WIN!');coins(30)}else if(w>=bet*3)coins(12);winSnd()}
- if(HOST){w=R.win||0;bal=R.balance;fs=R.freeSpins||0;if(R.jackpot)jp=R.jackpot;if(w>0)$('#win').textContent=fmt(w)}else if(w>0){bal+=w;$('#win').textContent=fmt(w)}
- if(fs<=0&&!res.bonus)window._inFS=false;
+ if(HOST){bal=R.balance;fs=R.freeSpins;jp=R.jackpot;
+  if(w>0)$('#win').textContent=fmt(w)}
+ else if(w>0){bal+=w;$('#win').textContent=fmt(w)}
+ if(!HOST&&fs<=0&&!hitBonus)window._inFS=false;
  hist.unshift(`${new Date().toLocaleTimeString()} \u2022 Bet ${fmt(bet)} \u2022 Win ${fmt(w)}`);hist=hist.slice(0,30);
  upd();$('#fs').style.display=fs>0?'block':'none';$('#fs').textContent='FREE SPINS '+fs;
  await sleep(w>0?1400:300);spinning=false;$('#spin').classList.remove('on');
