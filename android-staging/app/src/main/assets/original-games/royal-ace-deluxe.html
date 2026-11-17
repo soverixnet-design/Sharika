@@ -263,8 +263,9 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     const d=event.data;
     if(d.type==='init'){
       if(!Array.isArray(d.bets)||!d.bets.every(x=>Number.isSafeInteger(x)&&x>0))return showError('Game configuration is unavailable.');
-      activeBets=d.bets;bi=Math.max(0,activeBets.indexOf(bet));
-      bet=activeBets[bi];freeRemaining=Number(d.freeSpins)||0;ready=true;
+      activeBets=d.bets;freeRemaining=Number(d.freeSpins)||0;
+      bet=freeRemaining>0&&activeBets.includes(Number(d.lockedBet))?Number(d.lockedBet):activeBets[0];
+      bi=activeBets.indexOf(bet);ready=true;
       previewBalance(d.balance);spinner.disabled=false;$('bb').disabled=false;
       $('royal-progress-fill').style.width='100%';$('royal-loading-caption').textContent='Ready';
       setTimeout(hideIntro,$('royal-skip-intro').checked?0:650);
@@ -318,8 +319,8 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   $('sp').onclick=()=>spin(false);
   $('bb').onclick=()=>{if(!ready||busy)return;
     if(confirm('Buy 10 Free Spins for '+fmt(bet*50)+' virtual coins?'))spin(true);};
-  $('pl').onclick=()=>{if(busy||!ready)return;bi=(bi+1)%activeBets.length;bet=activeBets[bi];upd();};
-  $('mn').onclick=()=>{if(busy||!ready)return;bi=Math.max(0,bi-1);bet=activeBets[bi];upd();};
+  $('pl').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=(bi+1)%activeBets.length;bet=activeBets[bi];upd();};
+  $('mn').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=Math.max(0,bi-1);bet=activeBets[bi];upd();};
   $('gr').onclick=()=>{if(busy)return;
     $('bx').innerHTML='<h2>Game Menu</h2><button class="mb" data-menu="rules">Game Rules</button><button class="mb" data-menu="history">Records</button><button class="mb" data-menu="sound">Sound '+(mute?'OFF':'ON')+'</button><button class="mb" data-menu="close">Close</button>';
     $('ov').style.display='flex';
