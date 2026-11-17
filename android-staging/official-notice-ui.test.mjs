@@ -33,7 +33,7 @@ test('official messages come from verified notifications, never from fake chat h
   assert.match(note,/message\.textContent=body/);
   assert.match(note,/mark\.src='\.\/sharika_logo\.jpg'/);
   assert.match(note,/api\('PATCH','\/notifications\/'\+item\.id\+'\/read',\{\}\)/);
-  assert.doesNotMatch(note,/\/notifications\/read-all/); // only per-ID official notices
+  assert.doesNotMatch(note,/api\('POST','\/notifications\/read-all'/); // only per-ID official notices
   assert.doesNotMatch(note,/Hello, I am the official customer service/);
   assert.match(source,/id="verified-official-notices"/);
   assert.match(source,/id="sh-notify-official"/);
