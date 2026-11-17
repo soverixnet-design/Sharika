@@ -1,0 +1,49 @@
+name: Import supplied game card art into staging bundle
+on:
+  push:
+    branches:
+      - feature/sharika-royal-ace-server-room-20261118
+    paths:
+      - .github/workflows/sharika-import-game-card-art.yml
+permissions:
+  contents: write
+concurrency:
+  group: sharika-game-card-asset-import
+  cancel-in-progress: false
+jobs:
+  import-cards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Import 200px offline thumbnails from user-supplied artwork
+        env:
+          FRUIT_URL: 'https://media.canva.com/v2/image-resize/format:JPG/height:200/quality:75/uri:ifs%3A%2F%2FM%2F29a45f27-8954-468b-b232-a5b214f443e8/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAAOxdUN-fZtg6oQ1l_Cq81ntu_n9w85cIhb2L2OoR_Yb&exp=1794974103&osig=AAAAAAAAAAAAAAAAAAAAAPB6Zfyetwd5kTp5OalM1KJlHjnebNrX_Ff7ExDtvYJW&signer=media-rpc&token=AAIAAU0AJDI5YTQ1ZjI3LTg5NTQtNDY4Yi1iMjMyLWE1YjIxNGY0NDNlOAAAAAABoezLNdhfB6tdU8qr5c2BvT4YoQoLkWs5sWpOjwxaJUc1ySdE_A&x-canva-quality=thumbnail'
+          CLEOPATRA_URL: 'https://media.canva.com/v2/image-resize/format:JPG/height:200/quality:75/uri:ifs%3A%2F%2FM%2F29749e99-c1e3-493b-bd57-34523014c026/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAHSeGxDJf3x4Ko2Ux0CXNDjJUlhNYCgbeEp_PLARA76k&exp=1794973269&osig=AAAAAAAAAAAAAAAAAAAAALDMSfRMYiH9iqTg5Q1EthI5mS_FKm7EhqWTpqHJSvBe&signer=media-rpc&token=AAIAAU0AJDI5NzQ5ZTk5LWMxZTMtNDkzYi1iZDU3LTM0NTIzMDE0YzAyNgAAAAABoey-fAhzFRjzymodURcO__seBweD8Q8PrzVoLazBTaT_2JrMLQ&x-canva-quality=thumbnail'
+          FOOD_URL: 'https://media.canva.com/v2/image-resize/format:JPG/height:200/quality:75/uri:ifs%3A%2F%2FM%2F90d8c3ec-2c50-494c-93d4-0aba804d24f6/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAJBJwzXFR-FlSg96W8gZ4EiX2fLapamcH6pWqhqrVgED&exp=1794973030&osig=AAAAAAAAAAAAAAAAAAAAAJZQUAqEWRvjie2TydDVyaOAYYQRWCLUtbFNCU2va7WN&signer=media-rpc&token=AAIAAU0AJDkwZDhjM2VjLTJjNTAtNDk0Yy05M2Q0LTBhYmE4MDRkMjRmNgAAAAABoey61nCrfhZQeaTkEtExNBrCa6eLX1g7mSoNv-wXhhcti6sAOQ&x-canva-quality=thumbnail'
+        run: |
+          set -euo pipefail
+          mkdir -p android-staging/app/src/main/assets/game-cards
+          curl -fLsS --max-time 25 --retry 2 "$FRUIT_URL" -o android-staging/app/src/main/assets/game-cards/fruit-machine.jpg
+          curl -fLsS --max-time 25 --retry 2 "$CLEOPATRA_URL" -o android-staging/app/src/main/assets/game-cards/cleopatra-gold.jpg
+          curl -fLsS --max-time 25 --retry 2 "$FOOD_URL" -o android-staging/app/src/main/assets/game-cards/hot-food.jpg
+          python3 - <<'PY'
+          from pathlib import Path
+          for filename in ['fruit-machine.jpg','cleopatra-gold.jpg','hot-food.jpg']:
+              p=Path('android-staging/app/src/main/assets/game-cards')/filename
+              b=p.read_bytes()
+              assert 3000 < len(b) < 200000, filename
+              assert b[:3]==b'\xff\xd8\xff' and b[-2:]==b'\xff\xd9', filename
+              print('VERIFIED ORIGINAL CARD',filename,len(b))
+          PY
+      - name: Commit offline artwork to feature branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add android-staging/app/src/main/assets/game-cards/*.jpg
+          git diff --cached --quiet && exit 0
+          git commit -m 'assets(games): bundle supplied fruit, Cleopatra and hot-food cards for offline use'
+          git push origin HEAD:feature/sharika-royal-ace-server-room-20261118
