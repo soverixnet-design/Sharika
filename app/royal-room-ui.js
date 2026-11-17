@@ -616,7 +616,9 @@
     const v=premiumState.room;
     if(!v||!canShow())return;
     window.open('<div class="sh-premium-sheet sh-reference-rankings">'+
-      '<div class="sh-ranking-heading"><h3>Room Ranking</h3></div>'+
+      '<div class="sh-ranking-heading">'+
+      '<button type="button" id="sh-ranking-back" aria-label="Back to room">‹</button>'+
+      '<h3>Room Ranking</h3></div>'+
       '<div class="sh-ranking-kinds" id="sh-ranking-kinds"></div>'+
       '<div class="sh-ranking-periods" id="sh-ranking-periods"></div>'+
       '<p class="sh-ranking-explanation" id="sh-ranking-explanation"></p>'+
@@ -624,6 +626,28 @@
       '<div id="sh-ranking-list" class="sh-rank-list"></div>'+
       '<button type="button" id="sh-ranking-more" class="sh-wide-action" hidden>Show more</button>'+
       '<p id="sh-ranking-status" role="status"></p></div>');
+    // The reference ranking is a real full-height page rather than another
+    // cramped mic/dock sheet. Restore the shared sheet for all other controls.
+    const rankingBackdrop=byId('bg'),rankingSheet=byId('sheet');
+    if(rankingBackdrop&&rankingSheet){
+      rankingBackdrop.classList.add('sh-rank-page-active');
+      const cleanup=()=>{
+        if(!rankingBackdrop.classList.contains('on')||
+           !rankingSheet.querySelector('.sh-reference-rankings')){
+          rankingBackdrop.classList.remove('sh-rank-page-active');
+          observer.disconnect();
+        }
+      };
+      const observer=new MutationObserver(cleanup);
+      observer.observe(rankingBackdrop,{attributes:true,attributeFilter:['class']});
+      observer.observe(rankingSheet,{childList:true});
+      const back=document.getElementById('sh-ranking-back');
+      if(back)back.onclick=()=>{
+        rankingBackdrop.classList.remove('sh-rank-page-active');
+        observer.disconnect();
+        window.close();
+      };
+    }
     const list=document.getElementById('sh-ranking-list');
     const more=document.getElementById('sh-ranking-more');
     const status=document.getElementById('sh-ranking-status');
