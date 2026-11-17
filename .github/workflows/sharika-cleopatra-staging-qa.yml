@@ -35,7 +35,7 @@ jobs:
           assert len(h)>400000, 'original inline graphics missing'
           assert "host" in h and "window.__sharikaGameReady" in h
           assert "if(HOST){" in h and "type:'ready'" in h
-          assert "type:'spin'" in h and "type:'spinResult'" in h
+          assert "type:'spin'" in h and "d.type==='spinResult'" in h
           print('GAME_ASSET_AND_HOST_MESSAGES_OK')
           PY
       - name: Confirm Play restrictions and verified host routing
