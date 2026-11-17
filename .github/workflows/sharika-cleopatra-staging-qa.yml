@@ -20,12 +20,13 @@ jobs:
       - name: Check server and Android bridge syntax
         run: |
           node --check cloudflare/src/cleopatra.mjs
+          node --check cloudflare/src/food-wheel-deluxe.mjs
           node --check cloudflare/src/index.mjs
           node --check cloudflare/src/admin.mjs
           node --check cloudflare/src/game-catalog.mjs
           node --check android-staging/staging-connection.js
       - name: Run Cleopatra backend + in-memory SQLite regression tests
-        run: node --test cloudflare/test/cleopatra.test.mjs
+        run: node --test cloudflare/test/cleopatra.test.mjs cloudflare/test/food-wheel-deluxe.test.mjs
       - name: Verify original embedded image and full/room host asset
         run: |
           python3 - <<'PY'
@@ -47,7 +48,7 @@ jobs:
           assert "game-catalog|cleopatra|lucky-box" in android
           assert '"/api/v1/cleopatra/spin"' in android
           assert "event.source!==current.element.contentWindow" in bridge
-          assert "['greedy-wheel','cleopatra']" in bridge
+          assert "['greedy-wheel','cleopatra','food-deluxe']" in bridge
           assert "api('POST','/cleopatra/spin'" in bridge
           print('ROOM_AND_PLAY_GUARDRAILS_OK')
           PY
