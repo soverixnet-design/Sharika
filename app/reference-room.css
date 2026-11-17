@@ -724,3 +724,42 @@ html.sh-room-preview .app.sh-royal-room > :is(.sh-composer,.sh-room-side-gift,.s
   .app.sh-royal-room .sh-reference-tool-icon {border-radius:14px;font-size:23px;}
   .app.sh-royal-room .sh-reference-game-banner {width:47px;height:56px;}
 }
+
+
+/* The selected microphone mode controls the visible, numbered seats (the
+   legacy internal owner seat is already hidden by royal-room-ui.js).
+   No DOM reshuffle: seat click handlers and verified IDs remain intact. */
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(8):last-child),
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(9):last-child),
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(10):last-child) {
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(12):last-child),
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(15):last-child),
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(20):last-child) {
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(9):last-child) > .seat:first-child {
+  grid-column:2 / span 2;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(9):last-child) > .seat:nth-child(2) {
+  grid-column:1;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(10):last-child) > .seat:nth-child(1) {
+  grid-column:2;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(10):last-child) > .seat:nth-child(2) {
+  grid-column:3;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(10):last-child) > .seat:nth-child(3) {
+  grid-column:1;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(12):last-child) > .seat:nth-child(1) {
+  grid-column:2;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(12):last-child) > .seat:nth-child(2) {
+  grid-column:4;
+}
+.app.sh-royal-room #grid.grid:has(> .seat:nth-child(12):last-child) > .seat:nth-child(3) {
+  grid-column:1;
+}
