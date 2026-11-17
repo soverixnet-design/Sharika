@@ -13,6 +13,7 @@ import {MUSIC_LIBRARY_OBJECT,musicTitle} from './music-library.mjs';
 import {recordAgencyRoomActivity} from './agency-room-time.mjs';
 import { syncFamilyGoogleSheetIfDue } from './family-sheets.mjs';
 import { listPublicBanners } from './banners.mjs';
+import {listRoomBanners} from './room-banners.mjs';
 import {listRoomThemes,roomThemeId,catalogThemeImage,validateCatalogTheme} from './room-themes.mjs';
 import { handleDailyApp } from './daily.mjs';
 import { handlePremiumApp,readSvipLevel,publicSvipSelect } from './premium.mjs';
@@ -229,9 +230,10 @@ export async function handleRequest(request, env, ctx) {
   const profileCoverPath=/^\/api\/v1\/users\/([0-9]{8})\/cover-image$/.exec(path);
   const bannerImagePath=/^\/api\/v1\/banners\/([1-9][0-9]{0,8})\/image$/.exec(path);
   const galleryImagePath=/^\/api\/v1\/room-themes\/([1-9][0-9]{0,8})\/image$/.exec(path);
+  const roomBannerImagePath=/^\/api\/v1\/room-banners\/([1-9][0-9]{0,8})\/image$/.exec(path);
   // Public image thumbnails support anonymous GET; edits remain authenticated.
   // all mutations continue through strict origin and Firebase checks.
-  const cors = (coverPath || themeImagePath || avatarPath || profileCoverPath || bannerImagePath || galleryImagePath) && request.method==='GET'
+  const cors = (coverPath || themeImagePath || avatarPath || profileCoverPath || bannerImagePath || galleryImagePath || roomBannerImagePath) && request.method==='GET'
     ? {'access-control-allow-origin':'*'} : corsFor(request, env);
   if (!cors) return fail('origin_forbidden', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -299,6 +301,26 @@ export async function handleRequest(request, env, ctx) {
     const bytes=Uint8Array.from(atob(image.image_base64),c=>c.charCodeAt(0));
     return new Response(bytes,{status:200,headers:{
       'content-type':'image/jpeg','cache-control':'public, max-age=3600',
+      'x-content-type-options':'nosniff',...cors
+    }});
+  }
+  if(roomBannerImagePath && request.method==='GET'){
+    if(!env.DB)return fail('database_unavailable',503,cors);
+    let row;
+    try{
+      row=await env.DB.prepare(
+        'SELECT image_base64 FROM sharika_room_banners WHERE id=? '+
+        'AND active=1 AND image_bytes>0'
+      ).bind(Number(roomBannerImagePath[1])).first();
+    }catch(error){
+      if(/no such table: sharika_room_banners/i.test(String(error)))
+        return fail('room_banner_unavailable',404,cors);
+      throw error;
+    }
+    if(!row)return fail('room_banner_not_found',404,cors);
+    const bytes=Uint8Array.from(atob(row.image_base64),char=>char.charCodeAt(0));
+    return new Response(bytes,{status:200,headers:{
+      'content-type':'image/jpeg','cache-control':'public,max-age=3600',
       'x-content-type-options':'nosniff',...cors
     }});
   }
@@ -529,6 +551,11 @@ export async function handleRequest(request, env, ctx) {
       if(!writes[0]?.meta?.changes)return fail('cover_rate_limited',429,cors);
       if(!writes[1]?.meta?.changes)return fail('profile_unavailable',409,cors);
       return reply(showProfile(await me(env.DB,uid)),200,cors);
+    }
+    if(path==='/api/v1/room-banners'&&request.method==='GET'){
+      await assertActive(env.DB,uid);
+      const country=String(url.searchParams.get('country')||'').trim().toUpperCase();
+      return reply({banners:await listRoomBanners(env.DB,url.origin,country)},200,cors);
     }
     if(path==='/api/v1/banners' && request.method==='GET') {
       await assertActive(env.DB,uid);
