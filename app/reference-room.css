@@ -763,3 +763,15 @@ html.sh-room-preview .app.sh-royal-room > :is(.sh-composer,.sh-room-side-gift,.s
 .app.sh-royal-room #grid.grid:has(> .seat:nth-child(12):last-child) > .seat:nth-child(3) {
   grid-column:1;
 }
+
+
+/* Keep the sheet above the persistent gift/chest shortcuts while it is open,
+   without moving those click handlers or changing room voice state. */
+.app.sh-royal-room .dock:has(.sh-reference-room-tools.on) {
+  z-index:130!important;
+}
+.app.sh-royal-room:has(.sh-reference-room-tools.on) .sh-room-side-gift,
+.app.sh-royal-room:has(.sh-reference-room-tools.on) .sh-room-side-box,
+.app.sh-royal-room:has(.sh-reference-room-tools.on) .sh-reference-game-banner {
+  pointer-events:none!important;
+}
