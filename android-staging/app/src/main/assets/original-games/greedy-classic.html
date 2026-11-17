@@ -81,7 +81,7 @@ function draw(){
 $("#rn").innerHTML="Today Round:<br>"+S.round;$("#bal").textContent=S.bal;$("#rev").textContent=S.rev;$("#tb").textContent=tot();
 hand.style.display=S.hint&&S.phase==="bet"?"block":"none";$("#mu").style.opacity=S.mute?.4:1;
 document.querySelectorAll(".chip").forEach(b=>b.classList.toggle("sel",+b.dataset.v===S.chip));
-let mx=0,hid="";F.forEach(f=>{const v=S.bets[f.id]||0;if(v>mx){mx=v;hid=f.id}});F.forEach(f=>{$("#c_"+f.id).classList.toggle("hh",f.id===hid)});F.forEach(f=>{const v=S.bets[f.id];$("#a_"+f.id).textContent=v||"";$("#f_"+f.id).classList.toggle("mb",!!v)});
+let mx=0,hid="";F.forEach((f,i)=>{const v=Number(S.pool?.[i]||0);if(v>mx){mx=v;hid=f.id}});F.forEach(f=>{$("#c_"+f.id).classList.toggle("hh",mx>0&&f.id===hid)});F.forEach((f,i)=>{const mine=S.bets[f.id]||0;$("#a_"+f.id).textContent=mine||"";$("#f_"+f.id).classList.toggle("mb",Number(S.pool?.[i]||0)>0)});
 $("#auto").classList.toggle("on",S.auto);
 $("#hub").innerHTML=S.phase==="bet"?`Select Time<b>${S.t}s</b>`:S.phase==="spin"?`<b>Spinning...</b>`:S.phase==="load"?`<b>Connecting...</b>`:`<b>${S.t}s</b>`;
 $("#res").innerHTML="Results:"+S.hist.slice(0,7).map((r,i)=>`<span class="rc">${i?"":"<i>NEW</i>"}${im(r)}</span>`).join("")}
