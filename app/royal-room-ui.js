@@ -615,68 +615,117 @@
   async function showRankings(){
     const v=premiumState.room;
     if(!v||!canShow())return;
-    window.open('<div class="sh-premium-sheet">'+
-      '<h3>🏆 Monthly Room Gift Ranking</h3>'+
-      '<p class="sh-footnote">Ranked by coins spent on gifts in this room. Resets on the first day of each month (UTC).</p>'+
-      '<div id="sh-ranking-list" class="sh-rank-list">Loading room gifts…</div>'+
+    window.open('<div class="sh-premium-sheet sh-reference-rankings">'+
+      '<div class="sh-ranking-heading"><h3>Room Ranking</h3></div>'+
+      '<div class="sh-ranking-kinds" id="sh-ranking-kinds"></div>'+
+      '<div class="sh-ranking-periods" id="sh-ranking-periods"></div>'+
+      '<p class="sh-ranking-explanation" id="sh-ranking-explanation"></p>'+
+      '<div class="sh-ranking-podium" id="sh-ranking-podium"></div>'+
+      '<div id="sh-ranking-list" class="sh-rank-list"></div>'+
       '<button type="button" id="sh-ranking-more" class="sh-wide-action" hidden>Show more</button>'+
       '<p id="sh-ranking-status" role="status"></p></div>');
     const list=document.getElementById('sh-ranking-list');
     const more=document.getElementById('sh-ranking-more');
     const status=document.getElementById('sh-ranking-status');
-    let offset=0;
-    let month=null;
-    async function load(){
-      more.disabled=true;
-      more.textContent='Show more';
-      status.textContent='';
+    const podium=document.getElementById('sh-ranking-podium');
+    const periodButtons=document.getElementById('sh-ranking-periods');
+    const kindButtons=document.getElementById('sh-ranking-kinds');
+    const explanation=document.getElementById('sh-ranking-explanation');
+    if(!list||!more||!status||!podium||!periodButtons||!kindButtons)return;
+    const selected={kind:'riches',period:'weekly',offset:0,since:null,revision:0};
+    function memberProfile(member){
+      return {publicId:String(member.public_id||''),
+        name:String(member.name||'Member'),pic:member.pic||null,
+        displayId:String(member.display_id||member.public_id||''),seatNo:null};
+    }
+    function memberButton(member,card=false){
+      const profile=memberProfile(member);
+      const row=document.createElement('button');
+      row.type='button';row.className=card?'sh-rank-podium-card':'sh-rank-row';
+      const rank=document.createElement('span');
+      rank.className=card?'sh-rank-podium-rank':'sh-rank-medal';
+      rank.textContent=Number(member.rank)<=3?
+        ['🥇','🥈','🥉'][Number(member.rank)-1]:'#'+String(member.rank||'—');
+      const label=document.createElement('span');label.className='sh-rank-name';
+      const title=document.createElement('strong');title.textContent=profile.name;
+      const id=document.createElement('small');id.textContent='ID '+profile.displayId;
+      label.append(title,id);
+      const amount=document.createElement('b');
+      amount.className='sh-rank-amount';
+      amount.textContent=Number(member.total||0).toLocaleString('en-US')+' 🪙';
+      row.append(rank,vipAvatar(profile),label,amount);
+      if(card)row.dataset.place=String(member.rank);
+      row.onclick=()=>Promise.resolve(v.openProfile(profile)).catch(error=>
+        window.toast?.('Profile: '+String(error?.message||error)));
+      return row;
+    }
+    function drawTabs(container,values,field){
+      container.replaceChildren();
+      for(const [value,label] of values){
+        const button=document.createElement('button');
+        button.type='button';button.textContent=label;
+        button.setAttribute('aria-pressed',String(selected[field]===value));
+        button.onclick=()=>{
+          if(selected[field]===value)return;
+          selected[field]=value;
+          selected.offset=0;selected.since=null;
+          renderTabs();load(false).catch(()=>{});
+        };
+        container.append(button);
+      }
+    }
+    function renderTabs(){
+      drawTabs(kindButtons,[['riches','Riches'],['lucky','Lucky']], 'kind');
+      drawTabs(periodButtons,[['weekly','Weekly'],['monthly','Monthly']], 'period');
+      explanation.textContent=selected.kind==='riches'
+        ?'Verified coins spent on gifts in this room. Periods reset in UTC.'
+        :'Verified gift coins received by members in this room. This is not a random cash payout.';
+    }
+    async function load(morePage=false){
+      const revision=++selected.revision;
+      const period=selected.period,kind=selected.kind;
+      const offset=morePage?selected.offset:0;
+      if(!morePage){
+        selected.offset=0;selected.since=null;
+        list.replaceChildren();podium.replaceChildren();
+      }
+      more.disabled=true;more.hidden=true;
+      status.textContent='Loading verified ranking…';
       try{
-        const result=await v.loadRankings('monthly',offset);
-        if(!list.isConnected||!canShow())return;
-        if(month&&month!==result.since_utc){
-          offset=0;month=null;
-          return await load();
-        }
-        month=result.since_utc;
-        if(!offset)list.replaceChildren();
+        const result=await v.loadRankings(period,offset,kind);
+        if(!status.isConnected||!canShow()||revision!==selected.revision||
+           premiumState.room?.roomId!==v.roomId)return;
+        if(result.period!==period||result.kind!==kind)
+          throw Error('Ranking response does not match selected filter');
+        if(morePage&&selected.since!==result.since_utc)
+          return await load(false);
+        selected.since=result.since_utc;
         const leaders=Array.isArray(result.leaders)?result.leaders:[];
-        if(!leaders.length&&!offset)list.textContent='No gifts sent in this room this month.';
-        for(const member of leaders){
-          const row=document.createElement('button');
-          row.type='button';row.className='sh-rank-row';
-          const rank=document.createElement('span');rank.className='sh-rank-medal';
-          rank.textContent=Number(member.rank)<=3?
-            ['🥇','🥈','🥉'][Number(member.rank)-1]:'#'+String(member.rank||'—');
-          const profile={
-            publicId:String(member.public_id||''),
-            name:String(member.name||'Member'),
-            pic:member.pic||null,
-            displayId:String(member.display_id||member.public_id||''),
-            seatNo:null
-          };
-          const name=document.createElement('span');name.className='sh-rank-name';
-          const title=document.createElement('strong');
-          title.textContent=profile.name;
-          const id=document.createElement('small');
-          id.textContent='ID '+profile.displayId;
-          name.append(title,id);
-          const sum=document.createElement('b');
-          sum.textContent=Number(member.total||0).toLocaleString('en-US')+' 🪙';
-          row.append(rank,vipAvatar(profile),name,sum);
-          row.onclick=()=>Promise.resolve(v.openProfile(profile)).catch(error=>
-            window.toast?.('Profile: '+String(error?.message||error)));
-          list.appendChild(row);
+        if(!offset){
+          podium.replaceChildren();
+          const firstThree=leaders.filter(item=>Number(item.rank)<=3);
+          for(const position of [2,1,3]){
+            const member=firstThree.find(item=>Number(item.rank)===position);
+            if(member)podium.append(memberButton(member,true));
+          }
+          podium.hidden=firstThree.length===0;
+          if(!leaders.length)list.textContent='No verified gifts for this period.';
         }
+        for(const member of leaders)
+          list.append(memberButton(member,false));
+        selected.offset=result.next_offset;
         more.hidden=result.next_offset==null;
-        offset=result.next_offset;
+        more.textContent='Show more';
+        status.textContent='';
       }catch(error){
-        if(list.isConnected)status.textContent='Ranking unavailable: '+String(error?.message||error);
-        more.hidden=false;
-        more.textContent='Retry';
+        if(!status.isConnected||revision!==selected.revision)return;
+        status.textContent='Ranking unavailable: '+String(error?.message||error);
+        more.hidden=false;more.textContent='Retry';
       }finally{more.disabled=false;}
     }
-    more.onclick=load;
-    await load();
+    more.onclick=()=>load(selected.offset!=null).catch(()=>{});
+    renderTabs();
+    await load(false);
   }
   function displayAnnouncement(text){
     let strip=document.getElementById('sh-room-announcement');
@@ -766,7 +815,7 @@
       loadAnnouncement().catch(()=>{});
     },
     showMembers,showRankings,
-    refreshAnnouncement:()=>renderAnnouncement(true)
+    refreshAnnouncement:()=>loadAnnouncement(true)
   };
 
 })();
