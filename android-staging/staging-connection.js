@@ -14179,7 +14179,12 @@
       .sh-as-bubble.sh-as-user{align-self:flex-end;border-color:#efc98080;
         border-radius:17px 17px 6px 17px;background:linear-gradient(125deg,#8d5f76,#603958);
         color:white}
-      #sh-assistant-panel:not(.sh-as-chatting) #sh-assistant-log{padding:0 13px;min-height:0}
+      #sh-assistant-panel:not(.sh-as-chatting) #sh-assistant-chips{
+        flex:1;min-height:0;max-height:none;overflow-y:auto;
+        grid-template-rows:repeat(4,minmax(62px,1fr));align-content:stretch;
+        padding-top:12px;padding-bottom:15px;
+      }
+      #sh-assistant-panel:not(.sh-as-chatting) #sh-assistant-log{display:none}
       #sh-assistant-panel:not(.sh-as-chatting) #sh-assistant-log .sh-as-bubble{display:none}
       #sh-assistant-panel.sh-as-chatting #sh-assistant-hero{display:none}
       #sh-assistant-panel.sh-as-chatting #sh-assistant-chips{display:flex;gap:7px;
