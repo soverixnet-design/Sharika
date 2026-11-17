@@ -12,4 +12,5 @@ for(const free of [false,true]){
  }
  console.log(JSON.stringify({mode:free?'free':'paid',spins:n,bet,credit_ratio:Number((total/(n*bet)).toFixed(4)),hit_rate:Number((nonzero/n).toFixed(4)),max_win:max,overCap}));
  if(overCap)throw Error('Payout limit violated');
+ if(!free&&total/(n*bet)>1.0)throw Error('Paid-spin simulated credit return exceeds wager; review game payout economics');
 }
