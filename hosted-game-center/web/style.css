@@ -524,3 +524,24 @@ html.app-surface:not(.room-mode) body.is-playing main{
  margin:0!important;padding:0!important;height:100dvh!important;
  overflow:hidden!important
 }
+
+/* ROYAL_EMERALD_VARIANT_ICONS: distinguish the three food-wheel derivatives
+   without stretching their existing artwork or inserting fake game assets. */
+.app-surface .tile .theme-gaddy img,.room-mode .tile .theme-gaddy img{
+ filter:hue-rotate(-35deg) saturate(1.45) contrast(1.07)!important
+}
+.app-surface .tile .theme-sovera-food img,.room-mode .tile .theme-sovera-food img{
+ filter:hue-rotate(72deg) saturate(1.3) contrast(1.08)!important
+}
+.app-surface .tile .theme-night-food img,.room-mode .tile .theme-night-food img{
+ filter:hue-rotate(172deg) brightness(.76) saturate(1.48)!important
+}
+.app-surface .tile .theme-gaddy::before,.room-mode .tile .theme-gaddy::before{
+ filter:blur(9px) hue-rotate(-35deg) brightness(.5)!important
+}
+.app-surface .tile .theme-sovera-food::before,.room-mode .tile .theme-sovera-food::before{
+ filter:blur(9px) hue-rotate(72deg) brightness(.5)!important
+}
+.app-surface .tile .theme-night-food::before,.room-mode .tile .theme-night-food::before{
+ filter:blur(9px) hue-rotate(172deg) brightness(.43)!important
+}
