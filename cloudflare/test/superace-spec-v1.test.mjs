@@ -4,7 +4,7 @@ import {webcrypto} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {SUPERACE_BETS,SUPERACE_SPEC,evaluateSuperAce,simulateRoyalAce,
-  superAceTier,superAceTestRng} from '../src/superace-spec-v1.mjs';
+  superAceTier,superAceTestRng,parseSuperAceConfig} from '../src/superace-spec-v1.mjs';
 import {handleRoyalAce} from '../src/royal-ace.mjs';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const sql=name=>readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8');
@@ -182,4 +182,26 @@ test('migration preserves a historic 10x bonus, wallet ledger, and pending free 
  assert.equal(session.spins_done,0);
  assert.equal(old.prepare("SELECT enabled FROM sharika_royal_ace_settings WHERE id=1").get().enabled,0);
  old.close();
+});
+
+test('RTP tuning parameters are validated, persisted and affect only future rounds',()=>{
+ const f=fixture();
+ const config=f.dbSql.prepare('SELECT * FROM sharika_royal_ace_spec_config WHERE id=1').get();
+ const defaults=parseSuperAceConfig(config);
+ assert.equal(defaults.scatterBps,115);
+ assert.equal(defaults.goldenPercent,5);
+ assert.equal(defaults.starPercent,20);
+ assert.equal(defaults.betDivisor,50);
+ assert.deepEqual(defaults.symbolWeights,[6,7,8,9,10,10,11,11]);
+ const grid=Array.from({length:5},()=>Array.from({length:4},()=>({s:8,g:false})));
+ grid[0][0].s=0;grid[0][1].s=0;grid[1][0].s=0;grid[1][1].s=9;grid[2][0].s=0;
+ assert.equal(evaluateSuperAce(grid,100,false,0,defaults).stepWin,4);
+ f.dbSql.prepare('UPDATE sharika_royal_ace_spec_config SET bet_divisor=25 WHERE id=1').run();
+ const tuned=parseSuperAceConfig(f.dbSql.prepare(
+  'SELECT * FROM sharika_royal_ace_spec_config WHERE id=1').get());
+ assert.equal(evaluateSuperAce(grid,100,false,0,tuned).stepWin,8);
+ assert.throws(()=>parseSuperAceConfig({...config,weights_json:'[0,0,0]'}),/invalid_superace_weights/);
+ assert.throws(()=>parseSuperAceConfig({...config,scatter_bps:10001}),/invalid_superace_probabilities/);
+ assert.equal(f.dbSql.prepare('SELECT COUNT(*) n FROM sharika_royal_ace_rounds').get().n,0);
+ f.dbSql.close();
 });
