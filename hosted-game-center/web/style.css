@@ -201,3 +201,89 @@ html.room-mode,html.room-mode body{height:100%;min-height:0;overflow:hidden;back
  .room-mode main{padding-left:5px;padding-right:5px}
 }
 @media(prefers-reduced-motion:reduce){.tile,.tile .art img{transition:none}}
+
+/* Clean game-first surfaces: square icons, names underneath, and no
+   decorative card/border around the artwork. Room and outside share this UI. */
+.games{grid-template-columns:repeat(4,minmax(0,1fr));gap:15px 9px}
+.tile,.room-mode .tile{
+ border:0!important;border-radius:0!important;background:transparent!important;
+ box-shadow:none!important;overflow:visible;text-align:center;align-items:stretch
+}
+.tile:hover:not(:disabled){transform:none;border-color:transparent}
+.tile .art,.room-mode .tile .art{
+ width:100%;aspect-ratio:1;min-height:0;border:0;border-radius:15px;
+ background:transparent!important;overflow:hidden
+}
+.tile .art img,.room-mode .tile .art img{
+ width:100%;height:100%;object-fit:contain;object-position:center;
+ border-radius:15px
+}
+.tile .art:after{display:none}
+.tile .theme-gaddy,.tile .theme-sovera-food,.tile .theme-night-food{
+ background:transparent!important
+}
+.tile .art .theme-title{display:none}
+.tile .meta,.room-mode .tile .meta{
+ min-height:0;padding:5px 1px 0;background:transparent!important;text-align:center
+}
+.tile b,.room-mode .tile b{
+ display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+ min-height:0;max-height:33px;line-height:1.2;font-size:clamp(10px,2.65vw,14px);
+ font-weight:750;overflow:hidden;overflow-wrap:anywhere
+}
+.tile small{display:none}
+.tile .badge-ribbon{top:2px;right:-16px;min-width:58px;font-size:8px;padding:2px 0}
+.room-mode .games{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 8px}
+.room-mode .tile .badge-ribbon{font-size:7px}
+.room-mode .tile b{font-size:clamp(9px,2.4vw,11px);max-height:28px}
+.room-mode .player-profile{background:transparent;border:0;box-shadow:none}
+@media(max-width:320px){
+ .games,.room-mode .games{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+
+/* While playing, only the original game canvas is visible. Native audio
+   and the bridge are untouched. The profile remains available to the
+   verified game-state bridge but is not duplicated above the iframe. */
+body.is-playing{background:transparent}
+body.is-playing header{display:none!important}
+body.is-playing main{
+ width:100%;max-width:none;margin:0;padding:0;height:100dvh;overflow:hidden
+}
+body.is-playing #player{
+ position:relative;width:100%;height:100dvh;min-height:0;
+ overflow:hidden;display:flex;flex-direction:column
+}
+body.is-playing .playhead{
+ position:absolute;z-index:12;right:calc(8px + env(safe-area-inset-right,0px));
+ top:calc(8px + env(safe-area-inset-top,0px));
+ display:flex;align-items:center;justify-content:flex-end;
+ width:38px;height:38px;min-height:0;padding:0;pointer-events:none
+}
+body.is-playing .playhead>div{display:none}
+body.is-playing #exit{
+ display:grid;place-items:center;pointer-events:auto;
+ width:36px;height:36px;min-height:36px;padding:0;border:1px solid #f0d09099;
+ border-radius:50%;background:#23112cbf;box-shadow:none;
+ color:#ffe6a2;font-size:24px;line-height:1
+}
+body.is-playing #game-profile{display:none!important}
+body.is-playing #game-frame{
+ display:block;flex:1;min-width:0;min-height:0;width:100%;height:100%;
+ border:0!important;border-radius:0!important;box-shadow:none;
+ background:transparent!important
+}
+body.is-playing .demo-banner{
+ position:absolute;z-index:11;left:8px;top:calc(8px + env(safe-area-inset-top,0px));
+ max-width:calc(100% - 65px);margin:0;padding:5px 7px;
+ border:0;border-radius:6px;background:#201028cc;font-size:9px;
+ font-weight:650;text-align:left;pointer-events:none
+}
+body.is-playing #error:not([hidden]){
+ position:absolute;z-index:13;top:53px;left:8px;right:8px;
+ margin:0;background:#652130ed
+}
+.room-mode body.is-playing main{height:100%;padding:0}
+.room-mode body.is-playing #player{height:100%}
+/* The room has one reliable native X; hide the duplicate web X. */
+.room-mode body.is-playing .playhead{display:none}
+.room-mode body.is-playing .demo-banner{top:5px}
