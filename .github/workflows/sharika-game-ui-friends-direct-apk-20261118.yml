@@ -1,0 +1,77 @@
+name: Sharika Game UI 65% direct friends APK
+on:
+  push:
+    branches:
+      - release/sharika-game-ui-65pct-friends-20261118
+    paths:
+      - .github/workflows/sharika-game-ui-friends-direct-apk-20261118.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-qa:
+    name: Verify exact signed staging APK and publish direct download
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      SOURCE_RUN: '44307193943'
+      SOURCE_SHA: '826f3538cf063195a4180551ea8f1afa4f5cfc87'
+      EXPECTED_SHA256: 'efdfaa3d9f48489c061990c7e6f853d873fbb088b27129359f119d8fc58f21f5'
+      RELEASE_TAG: 'sharika-game-ui-65pct-friends-20261118-826f3538'
+      ASSET_NAME: 'Sharika-Game-UI-65pct-Friends-20261118.apk'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Validate immutable original build reference
+        run: |
+          set -euo pipefail
+          actual_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .head_sha)"
+          actual_status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .conclusion)"
+          test "$actual_sha" = "$SOURCE_SHA"
+          test "$actual_status" = success
+          test "${{ github.repository }}" = "soverixnet-design/Sharika"
+          echo "Sharika staging APK sourced from verified merged commit $SOURCE_SHA"
+
+      - name: Download existing compiled APK, do not rebuild or resign
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          repository: soverixnet-design/Sharika
+          run-id: 44307193943
+          github-token: ${{ github.token }}
+          path: release-assets
+
+      - name: Inspect and verify exact APK before public release
+        run: |
+          set -euo pipefail
+          test -s release-assets/app-debug.apk
+          printf '%s  %s\n' "$EXPECTED_SHA256" release-assets/app-debug.apk | sha256sum --check --status
+          unzip -tqq release-assets/app-debug.apk
+          cp release-assets/app-debug.apk "release-assets/$ASSET_NAME"
+          test -s "release-assets/$ASSET_NAME"
+          sha256sum "release-assets/$ASSET_NAME"
+
+      - name: Create public GitHub prerelease with direct APK asset
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release tag already exists; refusing to replace a shared APK."
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "release-assets/$ASSET_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "Sharika Game UI 65% - Friends Staging APK (18 Nov 2026)" \
+            --notes 'Direct Android APK for invited friends to test. Room game panel 65%, square borderless game icons, cleaner full-screen game view and Greedy responsive sizing. Source: merged PR #144, staging commit 826f3538. Staging only, not a Play Store production release. Virtual coins have no cash value. This APK may not update a Play Store-signed installation; test Google Login and voice on device before sharing widely.' \
+            --prerelease
+
+      - name: Verify publicly addressable asset metadata
+        run: |
+          set -euo pipefail
+          actual="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.assets[] | select(.name == "Sharika-Game-UI-65pct-Friends-20261118.apk") | .size')"
+          test "$actual" -gt 90000000
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
+          curl --fail --silent --show-error --location --head --max-time 60 "$url" -o /dev/null
+          echo "PUBLIC_DIRECT_APK_URL=$url"
