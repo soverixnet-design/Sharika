@@ -1,0 +1,63 @@
+name: SuperAce staging-only test APK prerelease
+on:
+  push:
+    branches: [feature/sharika-royal-ace-server-room-20261118]
+    paths: ['.github/workflows/sharika-superace-staging-qa-release.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  release-qa-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Confirm successful isolated Android build and fixed source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          run=44183030300
+          sha='7fb3a513a8331c7a4b49762947e499bce912a600'
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq '.head_sha')" = "$sha"
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq '.conclusion')" = 'success'
+          test "$(gh api "repos/$repo/actions/artifacts/14373213166" --jq '.name')" = 'Sharika-Android-Staging-Debug'
+          test "$(gh api "repos/$repo/actions/artifacts/14373213166" --jq '.expired')" = 'false'
+      - name: Download the verified prebuilt debug APK
+        uses: actions/download-artifact@v4
+        with:
+          repository: soverixnet-design/Sharika
+          run-id: 44183030300
+          name: Sharika-Android-Staging-Debug
+          github-token: ${{ github.token }}
+          path: apk
+      - name: Validate package, user game assets, and signature
+        run: |
+          set -euo pipefail
+          test -s apk/app-debug.apk
+          unzip -tqq apk/app-debug.apk
+          unzip -Z1 apk/app-debug.apk | grep -Fx 'assets/original-games/royal-ace-deluxe.html'
+          unzip -Z1 apk/app-debug.apk | grep -Fx 'assets/original-games/royal-ace-loader.svg'
+          unzip -Z1 apk/app-debug.apk | grep -Fx 'assets/royal-ace-card.svg'
+          test "$(unzip -p apk/app-debug.apk assets/connection.js | grep -c '/royal-ace/spin')" -ge 1
+          tool="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$tool"
+          "$tool" verify --verbose apk/app-debug.apk
+          "$tool" verify --print-certs apk/app-debug.apk
+          install -m 0644 apk/app-debug.apk Sharika-SuperAce-v140-Staging-QA.apk
+          sha256sum Sharika-SuperAce-v140-Staging-QA.apk
+      - name: Publish test-only GitHub prerelease (not Google Play)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-superace-v140-staging-qa-20261118'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "::error::Existing test release: refusing overwrite"
+            exit 1
+          fi
+          gh release create "$tag" Sharika-SuperAce-v140-Staging-QA.apk \
+            --repo "$repo" --target 7fb3a513a8331c7a4b49762947e499bce912a600 \
+            --title 'Sharika SuperAce Deluxe v140 - STAGING TEST ONLY' --prerelease \
+            --notes 'Android staging debug APK, built and verified by GitHub Actions 44183030300. Uses a TEMPORARY test signing key: Google sign-in may fail; cannot update an install signed with the original Sharika key. Uninstalling old apps can erase local data; do not uninstall your main app just for this test. This build is for testing on a separate device or test profile with email/password where supported. NOT a Google Play/production release. Sharika staging API only. SuperAce wallet settlement is server-authoritative. The splash is an approximate SVG; the provided exact screenshot is not yet packaged. See PR #140 for source and QA.'

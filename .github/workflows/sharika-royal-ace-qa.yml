@@ -1,0 +1,37 @@
+name: Royal Ace staging QA (no deployment)
+on:
+  push:
+    branches:
+      - feature/sharika-royal-ace-server-room-20261118
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  royal-ace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse API and game bridge
+        run: |
+          node --check cloudflare/src/royal-ace.mjs
+          node --check cloudflare/src/index.mjs
+          node --check cloudflare/src/game-catalog.mjs
+          node --check android-staging/staging-connection.js
+      - name: Run Royal Ace wallet and integration tests
+        run: node --test cloudflare/test/royal-ace.test.mjs cloudflare/test/cleopatra.test.mjs cloudflare/test/game-availability-bridge.test.mjs cloudflare/test/game-english-only.test.mjs
+      - name: Check uploaded original HTML JavaScript
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          p=pathlib.Path('android-staging/app/src/main/assets/original-games/royal-ace-deluxe.html')
+          html=p.read_text()
+          code='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',html,re.S|re.I))
+          pathlib.Path('/tmp/sharika-royal-ace.js').write_text(code)
+          assert len(html)>400000
+          assert "sa_bal" not in html
+          PY
+          node --check /tmp/sharika-royal-ace.js

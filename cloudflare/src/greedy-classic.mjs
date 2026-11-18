@@ -9,7 +9,8 @@ const MULT=[45,25,15,10,5,5,5,5];
 const OUTCOMES=[...ITEMS,'salad','pizza'];
 // Source game's supplied relative weights, scaled to integer units.
 const WEIGHTS=[2222,4000,6667,10000,20000,20000,20000,20000,20,10];
-const ROUND_MS=38000,BET_MS=30000,SPIN_MS=1;
+// Keep an actual visible spinning phase; the original 1 ms window never reached most phones.
+const ROUND_MS=38000,BET_MS=30000,SPIN_MS=3500;
 const WINNER_BANNER_MIN=500000;
 const CHIPS=[100,1000,10000,50000];
 const MAX_ROUND_STAKE=100000000,MAX_BET=50000;

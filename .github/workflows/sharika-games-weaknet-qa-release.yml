@@ -1,0 +1,65 @@
+name: Sharika games original cards weak-network verified APK artifact
+on:
+  push:
+    branches: [feature/sharika-royal-ace-server-room-20261118]
+    paths: ['.github/workflows/sharika-games-weaknet-qa-release.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  release-test-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify the validated Android build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          sha='cf61bf6f336f6fe2bafc0ef217d971403e24e0d9'
+          run='44204379873'
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq '.head_sha')" = "$sha"
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq '.conclusion')" = 'success'
+          test "$(gh api "repos/$repo/actions/artifacts/14381699813" --jq '.expired')" = 'false'
+      - name: Retrieve the previously validated test APK
+        uses: actions/download-artifact@v4
+        with:
+          repository: soverixnet-design/Sharika
+          run-id: 44204379873
+          name: Sharika-Android-Staging-Debug
+          github-token: ${{ github.token }}
+          path: staging-apk
+      - name: Confirm uploaded art, gameplay bridges and APK signature
+        run: |
+          set -euo pipefail
+          apk='staging-apk/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          for card in fruit-machine.jpg cleopatra-gold.jpg hot-food.jpg; do
+            unzip -Z1 "$apk" | grep -Fx "assets/game-cards/$card"
+          done
+          unzip -Z1 "$apk" | grep -Fx 'assets/original-games/royal-ace-deluxe.html'
+          unzip -Z1 "$apk" | grep -Fx 'assets/original-games/royal-ace-loader.svg'
+          unzip -p "$apk" 'assets/connection.js' | grep -F 'game-cards/cleopatra-gold.jpg'
+          unzip -p "$apk" 'assets/connection.js' | grep -F 'game-cards/fruit-machine.jpg'
+          unzip -p "$apk" 'assets/original-games/food-wheel-deluxe.html' | grep -F 'unresolvedFoodBet'
+          unzip -p "$apk" 'assets/original-games/royal-ace-deluxe.html' | grep -F 'Reconnecting safely'
+          if unzip -p "$apk" 'assets/greedy-wheel/index.html' | grep -q 'fonts.googleapis.com'; then
+            echo 'Unexpected external fonts in low-bandwidth game'; exit 1
+          fi
+          signer="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$signer"
+          "$signer" verify --verbose "$apk"
+          "$signer" verify --print-certs "$apk"
+          install -m 0644 "$apk" Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA.apk
+          sha256sum Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA.apk
+      # The GitHub App has Actions read but Releases write is denied (HTTP 403).
+      # Publish a downloadable Actions artifact rather than marking a false release.
+      - name: Publish verified staging APK artifact (not a GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA
+          path: Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA.apk
+          if-no-files-found: error
+          retention-days: 14

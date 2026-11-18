@@ -29,9 +29,27 @@ test('Games picker and Cloudflare Worker agree on the exact catalog path', () =>
   // Staging adds the server-verified Cleopatra card; Play's isolated
   // server does not expose any other game or the catalog route.
   assert.ok(client.includes("const greedyGame=originalGameCards.find(game=>game.id==='greedy-wheel')"));
-  assert.ok(client.includes("['greedy-wheel','cleopatra','food-deluxe','greedy-classic'].includes(game.id)&&enabled.has(game.id)"));
+  assert.ok(client.includes("['greedy-wheel','cleopatra','food-deluxe','greedy-classic','royal-ace','fruit-royale'].includes(game.id)&&enabled.has(game.id)"));
   assert.ok(client.includes('preview(greedyGame);'));
   assert.ok(!client.includes("originalGameCards.filter(game=>game.id==='fruit-royale'"));
   assert.match(client,/Sharika Royal Games/);
   assert.match(client,/All games are currently disabled by Admin/);
+});
+
+
+test('Supplied card images are offline and not substituted with other games',()=>{
+  const bridge=readFileSync(new URL('../../android-staging/staging-connection.js',import.meta.url),'utf8');
+  const cards=[
+    ['cleopatra','cleopatra-gold.jpg'],
+    ['fruit-royale','fruit-machine.jpg'],
+    ['greedy-classic','hot-food.jpg']
+  ];
+  for(const [game,asset] of cards){
+    assert.match(bridge,new RegExp("id:'"+game+"'.*?image:'file:///android_asset/game-cards/"+asset.replace('.','\\.')+"'",'s'));
+    const jpg=readFileSync(new URL('../../android-staging/app/src/main/assets/game-cards/'+asset,import.meta.url));
+    assert.ok(jpg.length>3000,'Card should not be missing or empty: '+asset);
+    assert.equal(jpg.readUInt16BE(0),0xffd8,'JPEG SOI: '+asset);
+  }
+  assert.match(bridge,/enabled\.has\(game\.id\)/);
+  assert.match(bridge,/preview\(greedyGame\)/); // Play version restriction remains.
 });

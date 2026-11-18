@@ -1,0 +1,68 @@
+name: SuperAce staging Worker publish (isolated, no production)
+on:
+  push:
+    branches: [feature/sharika-royal-ace-server-room-20261118]
+    paths:
+      - '.github/workflows/sharika-royal-ace-stage-worker.yml'
+      - 'cloudflare/src/royal-ace.mjs'
+      - 'cloudflare/src/cleopatra.mjs'
+      - 'cloudflare/src/greedy-classic.mjs'
+      - 'cloudflare/test/game-odds-integrity.test.mjs'
+      - 'cloudflare/migrations/0099_royal_ace_bonus_buy_10x.sql'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-royal-ace-staging-worker
+  cancel-in-progress: false
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: sharika-staging
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify staging-only source, database, policy and Worker bindings
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const c=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          if(c.name!=='sharika-api-staging' ||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74' ||
+             c.main!=='src/voice-worker.mjs' ||
+             c.vars?.SHARIKA_ENV!=='staging' ||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false' ||
+             c.d1_databases?.[0]?.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a' ||
+             c.d1_databases?.[0]?.binding!=='DB')throw Error('Staging target mismatch');
+          const sql=fs.readFileSync('migrations/0098_royal_ace_deluxe.sql','utf8');
+          if(!sql.includes("INSERT OR IGNORE INTO sharika_game_catalog(id,enabled) VALUES('royal-ace',0)"))throw Error('Unexpected rollout');
+          NODE
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --check src/royal-ace.mjs
+          node --check src/index.mjs
+          node --check src/game-catalog.mjs
+      - name: Verify wallet, UI adapter, and Play boundary regressions
+        run: node --test test/royal-ace.test.mjs test/cleopatra.test.mjs test/game-availability-bridge.test.mjs
+      - name: Validate food, greedy, and card bundle after payout tuning
+        run: node --test test/food-wheel-deluxe.test.mjs test/greedy-classic.test.mjs test/greedy-wheel.test.mjs test/sovera-gaddy.test.mjs test/room-announcement-and-legacy-games.test.mjs test/game-odds-integrity.test.mjs
+      - name: Verify migration already applied on isolated staging D1
+        run: |
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE name IN ('sharika_royal_ace_rounds','royal_ace_settle','royal_ace_validate') ORDER BY name"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT enabled FROM sharika_royal_ace_settings WHERE id=1"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT sql LIKE '%NEW.bet*10%' AS bonus_buy_10x FROM sqlite_master WHERE name='royal_ace_validate'"
+      - name: Bundle staging Worker without affecting live traffic
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/royal-ace-staging-worker-build
+      - name: Deploy staging Worker only
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify staging health without authentication
+        run: |
+          set -e
+          curl --retry 3 --retry-delay 2 --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health

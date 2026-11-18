@@ -1,0 +1,36 @@
+name: SuperAce browser mobile viewport QA
+on:
+  push:
+    branches: [feature/sharika-royal-ace-server-room-20261118]
+    paths:
+      - '.github/workflows/sharika-superace-browser-qa.yml'
+      - 'cloudflare/test/royal-ace-browser-qa.mjs'
+      - 'android-staging/app/src/main/assets/original-games/royal-ace-deluxe.html'
+      - 'android-staging/app/src/main/assets/original-games/royal-ace-loader.svg'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Install isolated Chromium QA runtime
+        run: |
+          npm install --no-save playwright@1.57.0
+          command -v google-chrome || command -v google-chrome-stable || command -v chromium || npx playwright install chromium
+      - name: Verify actual offline HTML in room and home mobile viewports
+        env:
+          SUPERACE_QA_OUTPUT: ${{ runner.temp }}/superace-screens
+        run: node cloudflare/test/royal-ace-browser-qa.mjs
+      - name: Save screenshots for visual inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuperAce-Mobile-Viewport-QA
+          path: ${{ runner.temp }}/superace-screens/*.png
+          if-no-files-found: ignore
+          retention-days: 3

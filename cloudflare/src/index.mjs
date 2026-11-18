@@ -32,6 +32,7 @@ import {handleOriginalGameRequest,settleOriginalDueBets} from './original-games.
 import {handleFoodDeluxe,settleFoodDueBets} from './food-wheel-deluxe.mjs';
 import {handleSoveraGaddy} from './sovera-gaddy.mjs';
 import {handleCleopatra} from './cleopatra.mjs';
+import {handleRoyalAce} from './royal-ace.mjs';
 import {handleFruitRoyaleRequest,settleFruitDueBets} from './fruit-royale.mjs';
 import {handleGreedyRequest,settleGreedyDueBets} from './greedy-wheel.mjs';
 import {handleGreedyClassicRequest,settleGreedyClassicDueBets} from './greedy-classic.mjs';
@@ -403,6 +404,14 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/game-catalog'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       return reply({games:await readGameCatalog(env.DB)},200,cors);
+    }
+    if(path==='/api/v1/royal-ace/state'||path==='/api/v1/royal-ace/spin'){
+      await assertActive(env.DB,uid);
+      // No automatic Play Store exposure: virtual-only routing and admin flag are independent gates.
+      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'royal-ace')))
+        return fail('game_disabled',403,cors);
+      return await handleRoyalAce({request,db:env.DB,uid,
+        action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
     }
     if(path==='/api/v1/cleopatra/state'||path==='/api/v1/cleopatra/spin'){
       await assertActive(env.DB,uid);
