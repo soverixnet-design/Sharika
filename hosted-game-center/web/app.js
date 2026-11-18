@@ -132,7 +132,7 @@
  const compact=(name,id)=>inRoom?(shortNames[id]||name):name;
  function renderFeatured(catalog,enabled){
   hotGames.replaceChildren();
-  if(!appSurface||inRoom){hot.hidden=true;hero.hidden=true;return;}
+  if(inRoom){hot.hidden=true;hero.hidden=true;return;}
   hero.hidden=false;
   const order=['royal-ace','cleopatra','greedy-classic','food-deluxe'];
   let count=0;
@@ -165,7 +165,7 @@
    if(match)visible++;
   }
   $('no-games').hidden=visible>0;
-  if(appSurface&&!inRoom){
+  if(!inRoom){
    hot.hidden=!!query||hotGames.childElementCount===0;
    hero.hidden=!!query;
   }
@@ -391,8 +391,8 @@
    if(!response.ok)throw Error('Catalog unavailable');
    const data=await response.json();games=data.games||[];
    if(!bridge){
-    status.textContent='Tap a game for a free browser demo; no Sharika coins are used.';
-    browserNote.hidden=false;
+    status.textContent='Free browser demo · virtual coins only';
+    browserNote.hidden=true;
     displayCards(games,new Set(games.map(g=>g.id)));
     $('game-count').textContent=games.length+' games';
     toolbarCount.textContent=games.length+' Games';
