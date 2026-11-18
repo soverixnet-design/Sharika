@@ -257,22 +257,91 @@ function render(d){
   $('hb').textContent=d.round.phase==='bet'?'Select Time':'SPINNING';
   $('ht').textContent=String(left);
 }
-async function place(i,amount){
-  if(waiting)return;
-  const d=GameBridge.get();
-  if(!d||d.round.phase!=='bet'){modal('Betting is closed for this round');return;}
-  waiting=true;
-  try{await GameBridge.bet(i,amount)}catch(e){modal(e.message||'Bet failed')}
-  finally{waiting=false;}
+// Synchronous capture: while one authenticated bet is in-flight, new taps
+// are queued rather than silently dropped. Same-symbol taps are aggregated
+// into one D1 wager; only a server receipt verifies their total coin value.
+let queuedSovera=[],queuedSoveraRound=-1,soveraTimer=null,
+    soveraVerified=0,soveraDeclined=0,soveraPending=false;
+const soveraStatus=document.createElement('div');
+soveraStatus.id='sovera-bet-status';
+soveraStatus.setAttribute('role','status');
+soveraStatus.style.cssText='position:absolute;z-index:7;left:8px;bottom:52px;'+
+ 'padding:3px 7px;border-radius:7px;background:#163d39e8;color:#fff;'+
+ 'font:700 11px system-ui;pointer-events:none';
+$('sheet').appendChild(soveraStatus);
+function updateSoveraStatus(){
+ soveraStatus.textContent=soveraPending
+  ?'Confirming bet with server · no duplicate charges'
+  :'Queued '+queuedSovera.length+' · Verified '+soveraVerified+' · Declined '+soveraDeclined;
+}
+function place(i,amount){
+ const d=GameBridge.get();
+ if(!d||d.round.phase!=='bet'||!S[i]||!CH.includes(amount)){
+  updateSoveraStatus();return;
+ }
+ if(soveraPending){
+  soveraStatus.textContent='Previous bet awaiting confirmation';return;
+ }
+ if(queuedSoveraRound!==d.round.round_no){
+  queuedSovera=[];soveraVerified=0;soveraDeclined=0;
+  queuedSoveraRound=d.round.round_no;
+ }
+ const pendingAmount=queuedSovera.reduce((n,b)=>n+b.amount,0);
+ if(d.coins<pendingAmount+amount){
+  soveraStatus.textContent='Insufficient confirmed coins';return;
+ }
+ if(pendingAmount+amount>100000000){
+  soveraStatus.textContent='Round stake limit reached';return;
+ }
+ queuedSovera.push({pick:i,amount,round:d.round.round_no});
+ updateSoveraStatus();
+ if(!soveraTimer)soveraTimer=setTimeout(()=>{
+  soveraTimer=null;void flushSovera();
+ },90);
+}
+async function flushSovera(){
+ if(waiting||soveraPending||!queuedSovera.length)return;
+ waiting=true;
+ try{
+  while(queuedSovera.length){
+   const d=GameBridge.get(),item=queuedSovera[0];
+   if(!d||d.round.phase!=='bet'||d.round.round_no!==item.round){
+    soveraDeclined+=queuedSovera.length;queuedSovera=[];
+    soveraStatus.textContent='Round closed; unsent taps not charged';break;
+   }
+   // Aggregate adjacent identical selections while preserving every stake.
+   let amount=0,count=0;
+   while(queuedSovera.length&&queuedSovera[0].pick===item.pick&&
+         queuedSovera[0].round===item.round){
+    const tap=queuedSovera.shift();amount+=tap.amount;count++;
+   }
+   soveraPending=true;updateSoveraStatus();
+   try{
+    const receipt=await GameBridge.bet(item.pick,amount);
+    if(!receipt||!Number.isSafeInteger(receipt.coins))
+      throw Error('Invalid verified bet receipt');
+    soveraVerified+=count;soveraPending=false;updateSoveraStatus();
+   }catch(e){
+    const message=String(e?.message||e);
+    if(/delayed|timeout|network|unavailable|connection/i.test(message)){
+      // Original GameBridge retains uncertainBet and its exact request_id.
+      // Do not start another wager while settlement is uncertain.
+      soveraStatus.textContent='Verification pending; check the same bet';
+      return;
+    }
+    soveraDeclined+=count;soveraPending=false;
+    soveraStatus.textContent='Bet not accepted: '+message;
+   }
+  }
+ }finally{
+  waiting=false;
+  void GameBridge.refresh();
+ }
 }
 S.forEach((s,i)=>{$('s_'+s.id).onclick=()=>place(i,chip)});
-for(const g of ['v','m'])$('c_'+g).onclick=async()=>{
-  // The original SALAD and PIZZA select four *separate* spots.
-  if(waiting)return;waiting=true;
-  try{for(const s of S.filter(s=>s.g===g)){const i=S.indexOf(s);
-    await GameBridge.bet(i,chip);
-  }}catch(e){modal('Some selections were not placed: '+e.message)}
-  finally{waiting=false;GameBridge.refresh()}
+for(const g of ['v','m'])$('c_'+g).onclick=()=>{
+ // A group tap reserves four separate positions, no repeat-tap loss.
+ for(const spot of S.filter(s=>s.g===g))place(S.indexOf(spot),chip);
 };
 $('chips').onclick=e=>{const b=e.target.closest('.chip');if(b){chip=Number(b.dataset.c);makeChips()}};
 $('hp').onclick=()=>modal('Original Food Wheel: select a chip and food to place a real virtual-coin bet. The result is shared by all players. Winning food pays the displayed multiplier. SALAD/PIZZA each place four separate bets. No fake coins or bots.');
