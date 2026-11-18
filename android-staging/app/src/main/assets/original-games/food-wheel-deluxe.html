@@ -78,6 +78,8 @@ function build(){
  [178,358,540,720,902].forEach((x,k)=>{const s=document.createElement('div');s.className='a slot'+(k==chip?' sel':'');s.style.cssText=`left:${x-77}px;top:1413px;width:154px;height:154px`;L.appendChild(s);chips.push(s);const e=im('chip'+k,x,1490,138);btn(e,()=>{chip=k;chips.forEach((c,j)=>c.classList.toggle('sel',j==k));snd(500)})});
  // bottom
  const r=im('repeat',925,1950,225);btn(r,repeat);T.rep=tx('0',925,1985,50,'#fff',150);T.rep.style.setProperty('--s','#6a1b8a');T.rep.style.pointerEvents='none';
+ T.tapStatus=tx('',540,1362,28,'#ffffff',730);
+ T.tapStatus.style.textShadow='0 2px 3px #283f73';
  const t5=im('top5',410,1955,735);T.t5=tx('No Winner',430,1962,56,'#fff',500);T.t5.style.cssText+=';--s:#9a3410;opacity:.9';
  // top bar
  const bk=im('back',68,188,86),hp=im('help',184,188,86),rk=im('rank',299,188,86),mu=im('music',411,188,86);
@@ -114,7 +116,41 @@ function requestId(){
  return 'food_'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'_'+(++seq));
 }
 let unresolvedFoodBet=null;
-async function place(stakes){
+let queuedFoodStakes=Array(8).fill(0),queuedFoodTaps=0,verifiedFoodTaps=0,
+  declinedFoodTaps=0,queuedFoodRound=-1,foodQueueTimer=null;
+function queueFood(stakes){
+ if(!ready||phase!=='bet'||!currentState)return toast('Betting is closed');
+ if(queuedFoodRound!==round){
+  queuedFoodRound=round;queuedFoodStakes=Array(8).fill(0);queuedFoodTaps=0;
+  verifiedFoodTaps=0;declinedFoodTaps=0;
+ }
+ const total=stakes.reduce((a,b)=>a+b,0),queued=queuedFoodStakes.reduce((a,b)=>a+b,0);
+ if(!Number.isSafeInteger(total)||total<100||total+queued>100000000)
+  return toast('Bet size is over the round limit');
+ if(coins<total+queued)return toast('Not enough confirmed coins');
+ queuedFoodStakes=queuedFoodStakes.map((v,i)=>v+stakes[i]);
+ queuedFoodTaps++;
+ draw();
+ if(!foodQueueTimer)foodQueueTimer=setTimeout(()=>{
+  foodQueueTimer=null;void flushFoodQueue();
+ },85);
+}
+async function flushFoodQueue(){
+ if(placing||!queuedFoodTaps)return;
+ if(!ready||phase!=='bet'||round!==queuedFoodRound){
+  declinedFoodTaps+=queuedFoodTaps;
+  queuedFoodStakes=Array(8).fill(0);queuedFoodTaps=0;
+  toast('Round closed. Unsubmitted taps were not charged.');draw();return;
+ }
+ const stakes=queuedFoodStakes.slice(),count=queuedFoodTaps;
+ queuedFoodStakes=Array(8).fill(0);queuedFoodTaps=0;
+ await place(stakes,count);
+ if(queuedFoodTaps&&!foodQueueTimer)foodQueueTimer=setTimeout(()=>{
+  foodQueueTimer=null;void flushFoodQueue();
+ },0);
+}
+
+async function place(stakes,clicks=1){
  if(!ready||placing||phase!=='bet'||!currentState)return toast('Betting is closed');
  if(unresolvedFoodBet&&unresolvedFoodBet.round_no===round){
    toast('Checking an earlier bet before another coin debit');
@@ -139,15 +175,17 @@ async function place(stakes){
   coins=saved.balance;
   bets=await myRoundStakes(stakes);
   unresolvedFoodBet=null;
+  verifiedFoodTaps+=clicks;
   snd(700);draw();
  }catch(e){
+  declinedFoodTaps+=clicks;
   if(/timeout|network|unavailable|connection|failed/i.test(String(e.message||e))){
     unresolvedFoodBet=payload;
     toast('Bet confirmation pending. Wait for the server to reconnect.');
   }else toast('Bet not accepted: '+e.message);
   await refresh();
  }
- finally{placing=false}
+ finally{placing=false;if(queuedFoodTaps)void flushFoodQueue();}
 }
 async function myRoundStakes(stakes){
  const total=bets.slice();
@@ -157,11 +195,11 @@ async function myRoundStakes(stakes){
 function bet(i){
  const keys=Array.isArray(i)?i:[i],values=Array(8).fill(0);
  keys.forEach(k=>{values[k]=CH[chip]});
- return place(values);
+ return queueFood(values);
 }
 function repeat(){
  if(!last.some(n=>n))return toast('No previous round bet');
- return place(last.slice());
+ return queueFood(last.slice());
 }
 function draw(){
  T.coins.textContent=coins.toLocaleString('en');T.rid.textContent=round;T.rep.textContent=fmt(last.reduce((a,b)=>a+b,0));
@@ -169,6 +207,7 @@ function draw(){
  T.ph.textContent=phase==='bet'?'Select Time':phase==='spin'?'Drawing...':phase==='result'?'Result Time':'Connecting';
  T.sec.textContent=phase==='spin'?'':left+'s';
  T.ping.textContent=ready?'LIVE':'OFFLINE';
+ if(T.tapStatus)T.tapStatus.textContent='Queued '+queuedFoodTaps+'  |  Verified '+verifiedFoodTaps+'  |  Declined '+declinedFoodTaps;
  T.hist.forEach((e,k)=>{const h=hist[k];if(h===undefined){e.style.display='none';return}const a=A['i'+h],w=k?92:100;e.src=a[0];e.style.display='block';e.style.width=w+'px';e.style.left=(138+k*134-w/2)+'px';e.style.top=(1782-w*a[2]/a[1]/2)+'px'});
  T.new.style.display=hist.length?'block':'none';
  if(!animating)foods.forEach((f,i)=>{f.className='food btn'+(phase==='bet'?'':(win>=0?(i===win?' win':' dim'):''))});
