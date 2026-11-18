@@ -26,15 +26,17 @@ export function superAceSecureInt(max){
   return buf[0]%max;
 }
 export const superAceCopy=grid=>grid.map(col=>col.map(cell=>({s:cell.s,g:!!cell.g})));
-const draw=(reel,rng)=>{
-  if(rng(10000)<SUPERACE_SPEC.scatterBps)return{s:8,g:false};
-  let left=rng(WEIGHT_TOTAL),symbol=7;
-  for(let i=0;i<WEIGHTS.length;i++){left-=WEIGHTS[i];if(left<0){symbol=i;break}}
-  return{s:symbol,g:reel>=1&&reel<=3&&rng(100)<SUPERACE_SPEC.goldenPercent};
+const draw=(reel,rng,config=SUPERACE_SPEC)=>{
+  if(rng(10000)<config.scatterBps)return{s:8,g:false};
+  const weights=config.symbolWeights||WEIGHTS;
+  const total=config.weightsTotal||WEIGHT_TOTAL;
+  let left=rng(total),symbol=7;
+  for(let i=0;i<weights.length;i++){left-=weights[i];if(left<0){symbol=i;break}}
+  return{s:symbol,g:reel>=1&&reel<=3&&rng(100)<config.goldenPercent};
 };
-export const newSuperAceGrid=(rng=superAceSecureInt)=>
- Array.from({length:5},(_,reel)=>Array.from({length:4},()=>draw(reel,rng)));
-export function evaluateSuperAce(grid,bet,free=false,combo=0){
+export const newSuperAceGrid=(rng=superAceSecureInt,config=SUPERACE_SPEC)=>
+ Array.from({length:5},(_,reel)=>Array.from({length:4},()=>draw(reel,rng,config)));
+export function evaluateSuperAce(grid,bet,free=false,combo=0,config=SUPERACE_SPEC){
   if(!Array.isArray(grid)||grid.length!==5||grid.some(col=>!Array.isArray(col)||col.length!==4))
     throw Error('invalid_grid');
   if(!safe(bet)||bet<1)throw Error('invalid_bet');
@@ -50,7 +52,7 @@ export function evaluateSuperAce(grid,bet,free=false,combo=0){
     }
     if(matches.length<3)continue;
     const ways=matches.reduce((n,rows)=>n*rows.length,1);
-    baseWin+=SUPERACE_PAY[symbol][5-matches.length]*ways*(bet/SUPERACE_SPEC.betDivisor);
+    baseWin+=SUPERACE_PAY[symbol][5-matches.length]*ways*(bet/config.betDivisor);
     matches.forEach((rows,reel)=>rows.forEach(row=>marked.add(reel*4+row)));
   }
   const multiplier=SUPERACE_MULT[free?1:0][Math.min(combo,4)];
@@ -58,7 +60,7 @@ export function evaluateSuperAce(grid,bet,free=false,combo=0){
   return {baseWin,stepWin,multiplier,marks:[...marked].sort((a,b)=>a-b),
     markCoords:[...marked].sort((a,b)=>a-b).map(i=>[Math.floor(i/4),i%4])};
 }
-function advanceSuperAceGrid(grid,marks,combo,rng){
+function advanceSuperAceGrid(grid,marks,combo,rng,config=SUPERACE_SPEC){
   const toJoker=[],removed=[],jokerCopies=[],starCards=[];
   const next=superAceCopy(grid);
   const anchors=Array.from({length:5},()=>new Set());
@@ -86,7 +88,7 @@ function advanceSuperAceGrid(grid,marks,combo,rng){
         remaining.push({row,cell:next[reel][row]});
       const count=boundary-first,holes=count-remaining.length;
       for(let j=0;j<holes;j++)
-        col[first+j]={...draw(reel,rng),fall:0,flip:false};
+        col[first+j]={...draw(reel,rng,config),fall:0,flip:false};
       for(let j=0;j<remaining.length;j++){
         const item=remaining[j],target=first+holes+j;
         col[target]={...item.cell,fall:target-item.row,flip:false};
@@ -106,7 +108,7 @@ function advanceSuperAceGrid(grid,marks,combo,rng){
       }
     }
   }
-  if(combo>=1&&(combo>=4||rng(100)<SUPERACE_SPEC.starPercent)){
+  if(combo>=1&&(combo>=4||rng(100)<config.starPercent)){
     for(let tried=0;tried<12&&starCards.length<3;tried++){
       const reel=1+rng(3),row=rng(4),cell=nextGrid[reel][row];
       if(cell.s<8&&!cell.g){cell.g=true;cell.flip=true;starCards.push([reel,row]);}
@@ -114,22 +116,50 @@ function advanceSuperAceGrid(grid,marks,combo,rng){
   }
   return {nextGrid,toJoker,removed,jokerCopies,starCards};
 }
+
+/**
+ * Runtime-tunable staging parameters, stored in the D1 spec-config table.
+ * Reject malformed admin values: every draw must use bounded probabilities.
+ * Changing these values must be preceded by a new independent RTP audit.
+ */
+export function parseSuperAceConfig(row){
+  if(!row)return SUPERACE_SPEC;
+  let weights;
+  try{weights=JSON.parse(row.weights_json)}catch{throw Error('invalid_superace_weights_json')}
+  if(!Array.isArray(weights)||weights.length!==8||
+     weights.some(x=>!Number.isSafeInteger(x)||x<1||x>100))
+    throw Error('invalid_superace_weights');
+  const parsed={
+    scatterBps:Number(row.scatter_bps),
+    goldenPercent:Number(row.golden_percent),
+    starPercent:Number(row.star_percent),
+    betDivisor:Number(row.bet_divisor)
+  };
+  if(!Number.isSafeInteger(parsed.scatterBps)||parsed.scatterBps<1||parsed.scatterBps>1000 ||
+     !Number.isSafeInteger(parsed.goldenPercent)||parsed.goldenPercent<0||parsed.goldenPercent>50 ||
+     !Number.isSafeInteger(parsed.starPercent)||parsed.starPercent<0||parsed.starPercent>100 ||
+     !Number.isSafeInteger(parsed.betDivisor)||parsed.betDivisor<1||parsed.betDivisor>1000)
+    throw Error('invalid_superace_probabilities');
+  return {...SUPERACE_SPEC,...parsed,symbolWeights:weights,
+    weightsTotal:weights.reduce((sum,x)=>sum+x,0)};
+}
+
 export function superAceTier(win,bet){
   if(win>=bet*SUPERACE_SPEC.superWin)return{tier:'SUPER',multiple:win/bet};
   if(win>=bet*SUPERACE_SPEC.megaWin)return{tier:'MEGA',multiple:win/bet};
   if(win>=bet*SUPERACE_SPEC.bigWin)return{tier:'BIG',multiple:win/bet};
   return null;
 }
-export function simulateRoyalAce(bet,free=false,maxWin=500000000,rng=superAceSecureInt){
+export function simulateRoyalAce(bet,free=false,maxWin=500000000,rng=superAceSecureInt,config=SUPERACE_SPEC){
   if(!safe(bet)||bet<1||!safe(maxWin)||maxWin<1||typeof rng!=='function')
     throw Error('invalid_royal_round');
   const cap=Math.min(bet*SUPERACE_SPEC.hardCapMultiplier,maxWin);
-  let grid=newSuperAceGrid(rng),initialGrid=superAceCopy(grid);
+  let grid=newSuperAceGrid(rng,config),initialGrid=superAceCopy(grid);
   const steps=[];let total=0,combos=0;
   // Cap is a hard, server-enforced payout guard. Cascade continues until no
   // marks, the payout cap, or a conservative bounded-resource safeguard.
   for(let combo=0;combo<128;combo++){
-    const result=evaluateSuperAce(grid,bet,free,combo);
+    const result=evaluateSuperAce(grid,bet,free,combo,config);
     const remaining=cap-total;
     const stepWin=Math.min(remaining,result.stepWin);
     const step={grid:superAceCopy(grid),marks:result.marks,
@@ -142,7 +172,7 @@ export function simulateRoyalAce(bet,free=false,maxWin=500000000,rng=superAceSec
       step.nextGrid=grid.map(col=>col.map(cell=>({...cell,fall:0,flip:false})));
       steps.push(step);break;
     }
-    const advanced=advanceSuperAceGrid(grid,result.marks,combo,rng);
+    const advanced=advanceSuperAceGrid(grid,result.marks,combo,rng,config);
     Object.assign(step,advanced);
     steps.push(step);
     grid=superAceCopy(advanced.nextGrid);
