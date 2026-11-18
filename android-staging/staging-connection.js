@@ -311,11 +311,16 @@
   // The actual Android build type decides whether Play policy restrictions
   // apply. Never trust a query string, localStorage, or a user-editable toggle.
   let playStoreMode=null;
+  // Distinguish a verified Play build from the fail-closed default used
+  // after a clientMode timeout. Unverified state must never show the old
+  // in-app two-column menu in a staging APK.
+  let clientModeVerified=false;
   // Only the separately isolated virtual Play backend may accept an email
   // password identity without inbox verification. If the native bridge fails,
   // Play restrictions stay closed but authentication cannot be relaxed.
   let playVirtualIdentityAllowed=false;
   const playModeReady=native('clientMode',{}).then(result=>{
+    clientModeVerified=true;
     playStoreMode=result.play_store===true;
     playVirtualIdentityAllowed=playStoreMode && result.api_origin===
       'https://sharika-api-play-virtual.soverixnet.workers.dev';
@@ -13674,25 +13679,22 @@
   }
   function showGameCard(doc,insideRoom,showToast){
     if(!session){window.showAuth('welcome');return;}
-    if(playStoreMode===null){
-      const visit=joinedRoom;
-      playModeReady.then(()=>{
-        if(!insideRoom||joinedRoom===visit)showGameCard(doc,insideRoom,showToast);
-      });
-      return;
-    }
     if(insideRoom&&!joinedRoom)return;
-    // ALWAYS ask native whether the authenticated hosted Game Center is
-    // available. An interrupted clientMode handshake must not send a staging
-    // APK back to the older two-column, bundled HTML game menu.
-    // Play builds reject this route in Java; only then may the explicitly
-    // approved Play fallback run. The games stay on Cloudflare for staging.
+    // Open the authenticated Cloudflare site immediately, even when
+    // clientMode has not responded. Its Android gate rejects Play builds.
+    // Never substitute the old 2-column HTML catalog for staging.
+    const visit=joinedRoom;
     native('openHostedGameCenter',{insideRoom:!!insideRoom}).catch(error=>{
       const reason=errText(error);
-      if(playStoreMode===true && reason==='hosted_game_center_unavailable'){
-        showPlayLegacyGames(doc,insideRoom,showToast);
+      if(reason==='hosted_game_center_unavailable'){
+        playModeReady.then(()=>{
+          if(insideRoom&&joinedRoom!==visit)return;
+          if(clientModeVerified&&playStoreMode===true)
+            showPlayLegacyGames(doc,insideRoom,showToast);
+          else showToast('Website Game Center unavailable: '+reason);
+        });
       }else{
-        showToast('Game Center unavailable: '+reason);
+        showToast('Website Game Center unavailable: '+reason);
       }
     });
   }
