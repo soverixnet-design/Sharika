@@ -141,8 +141,9 @@ public final class SharikaGameCenterActivity extends Activity {
         if ("GET".equals(method) &&
             path.matches("^/api/v1/original-games/(sovera-food|night-food|jackpot-fruit|food-deluxe|greedy-classic|fruit-royale)/rankings\\?period=(daily|weekly|monthly)&metric=(totalWin|totalBet|profitLoss|winCount)$"))
             return true;
-        return "POST".equals(method) && path.matches(
-            "^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit|food-deluxe|greedy-classic|fruit-royale)/bet$");
+        return "POST".equals(method) && (path.matches(
+            "^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit|food-deluxe|greedy-classic|fruit-royale)/bet$") ||
+            "/api/v1/original-games/greedy-classic/bet-batch".equals(path));
     }
 
     private void requestGameApi(String id,String method,String path,JSONObject body,JavaScriptReplyProxy reply) {
