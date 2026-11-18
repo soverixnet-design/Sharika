@@ -1,7 +1,7 @@
 // Super Ace Deluxe: authenticated server settlement over Sharika's non-cash coins.
 // New owner-spec endpoints are /api/superace/*. Old /api/v1/royal-ace
 // requests remain compatible with existing staging clients.
-import {simulateRoyalAce,superAceTier,SUPERACE_BETS,SUPERACE_SPEC} from './superace-spec-v1.mjs';
+import {simulateRoyalAce,superAceTier,SUPERACE_BETS,SUPERACE_SPEC,parseSuperAceConfig} from './superace-spec-v1.mjs';
 export {simulateRoyalAce} from './superace-spec-v1.mjs';
 const INT=x=>Number.isSafeInteger(x)&&x>=0;
 const ID=/^[A-Za-z0-9:_-]{12,100}$/;
@@ -21,6 +21,7 @@ function info(r,session){
     spinsDone:Number(session.spins_done),
     spinsLeft:Math.max(0,Number(session.spins_total)-Number(session.spins_done)),
     totalWin:Number(session.total_win),bet:Number(session.bet),
+    bigWin:superAceTier(Number(session.total_win),Number(session.bet)),
     triggered:r.mode==='paid'&&Number(r.bonus_spins)===10,
     extraSpins:r.mode==='free'?Number(r.bonus_spins):0
   }:null;
@@ -38,13 +39,14 @@ function info(r,session){
   return round;
 }
 async function userState(db,uid){
-  const [u,conf,fs,session]=await Promise.all([
+  const [u,conf,fs,session,tune]=await Promise.all([
     db.prepare("SELECT coins,minor,status FROM sharika_users WHERE auth_uid=?").bind(uid).first(),
     db.prepare("SELECT enabled,bets_json,max_win FROM sharika_royal_ace_settings WHERE id=1").first(),
     db.prepare("SELECT remaining,bet FROM sharika_royal_ace_free WHERE user_uid=?").bind(uid).first(),
-    db.prepare("SELECT * FROM sharika_royal_ace_sessions WHERE user_uid=? AND status='open'").bind(uid).first()
+    db.prepare("SELECT * FROM sharika_royal_ace_sessions WHERE user_uid=? AND status='open'").bind(uid).first(),
+    db.prepare("SELECT * FROM sharika_royal_ace_spec_config WHERE id=1").first()
   ]);
-  return {u,conf,fs,session};
+  return {u,conf,fs,session,tune};
 }
 async function readRound(db,uid,key){
   return db.prepare("SELECT * FROM sharika_royal_ace_rounds WHERE user_uid=? AND request_id=?")
@@ -69,6 +71,7 @@ function toFree(session,fs){
     spinsTotal:Number(session.spins_total),
     spinsDone:Number(session.spins_done),
     spinsLeft:Number(fs?.remaining)||0,totalWin:Number(session.total_win),
+    bigWin:superAceTier(Number(session.total_win),Number(session.bet)),
     triggered:true,extraSpins:0
   }:null;
 }
@@ -138,7 +141,8 @@ export async function handleRoyalAce({request,db,uid,action,reply,fail,cors}){
   const result=desiredMode==='bonus_buy'?
     {initialGrid:[],steps:[],finalGrid:[],scatterCount:0,win:0,totalWin:0,
      bonusSpins:10,bigWin:null,specVersion:SUPERACE_SPEC.version}
-     :simulateRoyalAce(bet,desiredMode==='free',Number(s.conf.max_win));
+     :simulateRoyalAce(bet,desiredMode==='free',Number(s.conf.max_win),undefined,
+       parseSuperAceConfig(s.tune));
   // The INSERT trigger atomically validates mode, balance, price, user, rate,
   // D1 wallet debit, payout, free session and wallet ledger. Never trust client results.
   try{
