@@ -5,6 +5,7 @@ const GAME='greedy-classic';
 const OUTCOMES=new Set(F.map(f=>f.id).concat(['salad','pizza']));
 const pending=new Map();
 let seq=0,ready=false,changing=false,refreshing=false,unconfirmed=null,clockOffset=0;
+let lastOfflineNoticeAt=0;
 let state=null,displayedResultRound=-1,animationRound=-1,autoRunning=false,placedDuringThisRound={};
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const format=n=>Math.max(0,Number(n)||0).toLocaleString('en-US');
@@ -181,8 +182,15 @@ async function refresh(){
   draw();
   if(unconfirmed&&!changing)recoverUnknown();
  }catch(error){
-  ready=false;S.phase='load';draw();
-  // The game stays fail-closed whenever the native authenticated bridge is unavailable.
+  // Keep the last verified screen during low connectivity, but block all new wagers.
+  ready=false;
+  if(!state)S.phase='load';
+  draw();
+  if(Date.now()-lastOfflineNoticeAt>12000){
+   lastOfflineNoticeAt=Date.now();
+   toast('Network weak. Reconnecting to verified game state.');
+  }
+  // No fabricated result, local coin mutation or new request ID on refresh failure.
  }finally{refreshing=false;}
 }
 $('#rank').onclick=async()=>{
