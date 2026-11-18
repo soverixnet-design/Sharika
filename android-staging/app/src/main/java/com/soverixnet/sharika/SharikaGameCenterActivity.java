@@ -219,7 +219,18 @@ public final class SharikaGameCenterActivity extends Activity {
                 proxy.postMessage(response.toString());
         });
     }
-    @Override @SuppressWarnings("deprecation") public void onBackPressed(){finish();}
+    @Override @SuppressWarnings("deprecation") public void onBackPressed(){
+        // Android Back first exits the active iframe to the Premium Games
+        // catalog. A second Back closes this Activity. Keep the existing
+        // signed-in WebView session and never reload the game center.
+        if(web==null){finish();return;}
+        web.evaluateJavascript(
+            "(function(){return window.sharikaPremiumBack && "+
+            "window.sharikaPremiumBack() ? 'handled':'exit';})()",
+            result -> {
+                if(!isFinishing() && (result==null || !result.contains("handled")))finish();
+            });
+    }
     @Override protected void onDestroy(){
         if(web!=null){web.stopLoading();web.destroy();web=null;}
         io.shutdownNow();

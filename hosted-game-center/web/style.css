@@ -575,3 +575,149 @@ html.app-surface:not(.room-mode) body.is-playing main{
 .room-mode #games>.tile:nth-child(9):nth-last-child(2){grid-column:2}
 /* Ensure an obscured landscape can still scroll rather than clip game cards. */
 @media(max-height:450px){.room-mode .games{align-content:start;row-gap:10px}}
+
+/* SHARIKA_PREMIUM_GAMES_FINAL_20261118
+   Native game shell + honest public practice surface. No game engine or
+   authenticated wallet requests are performed by these presentation rules. */
+.royal-hero[hidden]{display:none!important}
+.app-surface:not(.room-mode) .catalog-title-row{display:none!important}
+.app-surface:not(.room-mode) .app-toolbar{
+ height:60px;margin-bottom:11px;
+ background:linear-gradient(105deg,#0f4335,#072b24 62%,#061c17);
+ border-bottom-color:#ddb46c85
+}
+.app-surface:not(.room-mode) .app-brand b{
+ color:#fff0c7;font-size:17px;letter-spacing:.1px
+}
+.app-surface:not(.room-mode) .app-brand small{
+ font-size:9px;letter-spacing:1.5px;color:#ddb777
+}
+.app-surface:not(.room-mode) main{scrollbar-width:thin;scrollbar-color:#af905b33 transparent}
+.app-surface:not(.room-mode) body:not(.is-playing){
+ background:
+  radial-gradient(ellipse 95% 22% at 53% 0%,#276a4e65,transparent),
+  radial-gradient(ellipse 65% 25% at 0% 42%,#9f763319,transparent),
+  repeating-linear-gradient(120deg,transparent 0px,transparent 76px,#dfbd4e03 77px,#dfbd4e03 78px),
+  linear-gradient(180deg,#062d24,#05221c 58%,#031510);
+}
+.app-surface.native-verified .eyebrow,
+.app-surface.native-verified .notice,
+.app-surface.native-verified .browser-only{display:none!important}
+/* A browser preview is still a simulated practice page, even with
+   ?surface=app. Do not hide its required virtual-coin disclosure. */
+.app-surface:not(.native-verified) .notice,
+.app-surface:not(.native-verified) .eyebrow{display:block!important}
+.app-surface:not(.native-verified) .notice{font-size:11px;line-height:1.35}
+:is(.app-surface:not(.room-mode),.premium-browser) .royal-hero:not([hidden]){
+ position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);
+ align-items:center;min-height:145px;margin:0 0 18px;padding:17px 15px 14px;
+ border-radius:22px;border:1.5px solid #f3ca75b0;overflow:hidden;
+ background:
+  radial-gradient(ellipse 84% 94% at 78% 25%,#f4c36a4c,transparent 80%),
+  linear-gradient(125deg,#77501d,#d49b40 49%,#603817 100%);
+ box-shadow:0 7px 0 #031d17,0 14px 22px #0008,inset 0 1px 0 #fff7d9a3
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .royal-hero::before{
+ content:"";position:absolute;inset:6px;border-radius:16px;
+ border:1px solid #fff1b64f;pointer-events:none
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-copy{
+ position:relative;z-index:1;display:flex;flex-direction:column;gap:5px;min-width:0
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-copy>span{
+ color:#fff5c6;font-size:9px;font-weight:900;letter-spacing:1.6px
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-copy strong{
+ color:#fffadf;font-size:clamp(18px,5vw,25px);line-height:1.12;
+ text-shadow:0 2px 6px #492508bb
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-copy small{
+ color:#fff5c2;font-size:10px
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-crowns{
+ display:flex;align-items:flex-end;justify-content:center;gap:3px;min-width:0
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-award{
+ display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;
+ max-width:85px;height:73px;border-radius:48% 48% 14px 14px;
+ background:linear-gradient(160deg,#fff6cc70,#ffdc8d16);
+ border:1px solid #ffe7a1c4;box-shadow:0 3px 12px #70411477;
+ color:#ffeab3
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-award.center{
+ height:94px;border-color:#fff9ce;background:linear-gradient(155deg,#fff9d49c,#edb95b45)
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-award b{
+ font-size:clamp(26px,8vw,43px);line-height:1;
+ color:#fff4ae;text-shadow:0 2px 6px #6c451c
+}
+:is(.app-surface:not(.room-mode),.premium-browser) .hero-award small{
+ margin-top:4px;color:#ffefc1;font-size:8px;font-weight:900;letter-spacing:.2px
+}
+.premium-browser body{
+ background:
+  radial-gradient(ellipse 85% 25% at 90% 0%,#235d4c5c,transparent),
+  linear-gradient(160deg,#092e27,#041b16 90%);
+ color:#fff0dc
+}
+.premium-browser header{background:linear-gradient(120deg,#0c3b30,#072820)!important}
+.premium-browser .eyebrow{font-size:10px;letter-spacing:1.1px;color:#dfc697}
+.premium-browser h1{font-family:system-ui,sans-serif;letter-spacing:-.5px;color:#fff0cd;
+ font-size:clamp(25px,6.4vw,38px)}
+.premium-browser #catalog-profile{display:none!important}
+.premium-browser #status{color:#e0cc9f;font-size:11px;margin:5px 3px 15px}
+.premium-browser .notice{color:#d8caaf;background:#102e2666;border-color:#be98594f;
+ font-size:11px;line-height:1.45}
+.premium-browser .hot-section:not([hidden]){
+ display:block;margin:0 0 20px;padding:12px 10px;
+ border:1.5px solid #e5bc73;border-radius:20px;
+ background:linear-gradient(135deg,#7b461e,#3f2d20 67%,#113a2c);
+ box-shadow:0 5px 14px #0007
+}
+.premium-browser .section-heading{display:flex;justify-content:space-between;
+ align-items:center;margin:0 5px 10px}
+.premium-browser .section-heading h2{font-size:17px;margin:0;color:#fff2cf}
+.premium-browser .hot-flame{color:#ffdb8a}
+.premium-browser .hot-games{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.premium-browser .featured-game{display:flex;flex-direction:column;
+ gap:5px;align-items:stretch;text-align:center;padding:0;
+ border:0;background:transparent;color:#ffecc8;min-width:0;font-size:10px}
+.premium-browser .featured-art{display:block;width:100%;aspect-ratio:1;
+ overflow:hidden;border:1px solid #f6d6888a;border-radius:14px;background:#103b2e}
+.premium-browser .featured-art img{width:100%;height:100%;object-fit:contain}
+.premium-browser .featured-game b{line-height:1.25}
+.premium-browser .all-games-head{display:flex;align-items:center;justify-content:space-between;
+ margin:0 0 12px;gap:8px}
+.premium-browser .all-games-head h2{margin:0;font-size:19px;color:#fff0cb}
+.premium-browser .game-search{display:flex;align-items:center;gap:7px;
+ border:1px solid #c9a45f7a;background:#0c3028;border-radius:13px;
+ padding:8px;color:#ffe3a8;min-width:0;width:min(52%,190px)}
+.premium-browser .game-search input{border:0;background:transparent;outline:0;
+ min-width:0;width:100%;color:#ffe8c5;font-size:12px}
+.premium-browser .no-games{display:block;text-align:center;padding:20px}
+.premium-browser .games{grid-template-columns:repeat(4,minmax(0,1fr));gap:17px 9px}
+.premium-browser .tile{border:0!important;background:transparent!important;
+ border-radius:0!important;box-shadow:none!important;overflow:visible!important;
+ align-items:stretch;text-align:center;padding:0!important}
+.premium-browser .tile .art{aspect-ratio:1;border:0;border-radius:16px;overflow:hidden;
+ box-shadow:0 5px 12px #00100baa,0 0 0 1px #dfc07864;
+ background:linear-gradient(135deg,#144d3c,#082a22)}
+.premium-browser .tile .art img{width:100%;height:100%;object-fit:contain}
+.premium-browser .tile .meta{background:transparent!important;min-height:0;
+ padding:6px 0 0;text-align:center}
+.premium-browser .tile b{font-size:clamp(10px,2.75vw,13px);line-height:1.2;
+ min-height:0;max-height:32px}
+.premium-browser .tile small,.premium-browser .tile .theme-title{display:none!important}
+.premium-browser .tile .badge-ribbon{top:5px;right:5px;left:auto;transform:none;
+ min-width:0;padding:3px 5px;font-size:9px;border-radius:6px}
+:is(.premium-browser,.app-surface:not(.room-mode)) .hot-games .featured-game:focus-visible{
+ outline:2px solid #ffe7a2;outline-offset:3px
+}
+@media(max-width:350px){
+ :is(.app-surface:not(.room-mode),.premium-browser) .royal-hero:not([hidden]){
+  padding:13px 9px;min-height:130px
+ }
+ :is(.app-surface:not(.room-mode),.premium-browser) .hero-award{height:61px}
+ :is(.app-surface:not(.room-mode),.premium-browser) .hero-award.center{height:80px}
+ :is(.app-surface:not(.room-mode),.premium-browser) .hero-award small{font-size:6px}
+}
