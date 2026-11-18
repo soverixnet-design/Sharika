@@ -31,7 +31,7 @@
    let wagers=Array(8).fill(0),yesterday=Array(8).fill(0),totals=Array(8).fill(0);
    const person={id:'00000000',name:'Demo Player',avatar:'',pic:''};
    const pay=(amount,id,value)=>{
-     if(!valid(amount)||amount===0)throw Error('invalid_demo_bet');
+     if(!valid(amount))throw Error('invalid_demo_bet');
      if(id&&receiptCache.has(id))return receiptCache.get(id);
      if(coins<amount)throw Error('insufficient_demo_coins');
      coins-=amount;
