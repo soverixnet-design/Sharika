@@ -69,6 +69,35 @@ test('Greedy outside uses a compact lower results/bet deck instead of a giant re
  }finally{await browser.close();}
 });
 
+
+test('Sovera Food and Night Food activate their original compact mobile controls inside a room',
+ {timeout:90000},async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try{
+  const ctx=await browser.newContext({viewport:{width:390,height:560}});
+  const page=await ctx.newPage();
+  await page.goto(site+'/?view=room&surface=app',{waitUntil:'domcontentloaded'});
+  await page.getByRole('button',{name:/Sovera Food Wheel · Play/}).click();
+  await page.frameLocator('#game-frame').locator('html.sharika-room-mini').waitFor({timeout:20000});
+  const food=await page.frameLocator('#game-frame').locator('#chips').evaluate(el=>{
+   const chips=el.getBoundingClientRect(),me=document.querySelector('.me')?.getBoundingClientRect();
+   return {chipBottom:chips.bottom,footerBottom:me?.bottom||0,viewport:innerHeight};
+  });
+  assert.ok(food.chipBottom<=food.viewport+2,
+   'Sovera Food must not clip coin chips below 65% room panel');
+  assert.ok(food.footerBottom<=food.viewport+2,'Player wallet and Autoplay stay visible');
+  await page.evaluate(()=>window.sharikaPremiumBack());
+  await page.getByRole('button',{name:/Night Food Wheel · Play/}).click();
+  await page.frameLocator('#game-frame').locator('html.sharika-room-mini').waitFor({timeout:20000});
+  const night=await page.frameLocator('#game-frame').locator('#chips').evaluate(el=>({
+    height:el.getBoundingClientRect().height,buttons:el.querySelectorAll('button').length
+  }));
+  assert.ok(night.buttons>0,'Night Food coin chips exist');
+  assert.ok(night.height<=100,'Night Food coin chips use room compact sizing');
+  await ctx.close();
+ }finally{await browser.close();}
+});
+
 test('original games remain iframe-isolated and keep server bet routes unchanged',()=>{
  const js=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
  const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8');
