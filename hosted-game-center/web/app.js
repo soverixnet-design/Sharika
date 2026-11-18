@@ -5,6 +5,7 @@
  const $=id=>document.getElementById(id);
  const bridge=window.SharikaGameBridge||null;
  const inRoom=new URLSearchParams(location.search).get('view')==='room';
+ if(inRoom)document.documentElement.classList.add('room-mode');
  const all=$('games'),landing=$('landing'),player=$('player'),frame=$('game-frame');
  const status=$('status'),banner=$('error'),browserNote=$('browser-note');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
@@ -206,7 +207,8 @@
  function showSoloSpinWinner(game,receipt,requestId){
   if(!bridge||!verifiedProfile||!receipt||!game||!requestId)return;
   // Only an accepted, authenticated, settled POST /spin response qualifies.
-  if(!receipt.settled||!Number.isSafeInteger(receipt.win)||receipt.win<=0)return;
+  if(receipt.requestId!==requestId||!Number.isSafeInteger(receipt.balance)||
+    !Number.isSafeInteger(receipt.win)||receipt.win<=0)return;
   showWinner({name:verifiedProfile.name,pic:verifiedProfile.pic,
     public_id:verifiedProfile.id,win:receipt.win},
     game.id+':confirmed-spin:'+requestId);
