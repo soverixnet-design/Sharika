@@ -29,6 +29,31 @@ for(const [relative,oldCode,newCode] of iframeTimeouts){
  if(original.split(oldCode).length!==2)throw Error('timeout_patch_mismatch:'+relative);
  writeFileSync(file,original.replace(oldCode,newCode));
 }
+
+ // Keep the original Food Wheel source and all hit-target geometry intact.
+ // In the 65%-height room iframe, the old 2352px stage included ~250px of
+ // lower decorative floor and forced avoidable navy side gutters. Crop ONLY
+ // that noninteractive floor in the hosted copy and paint matching gutters.
+ // In the outside full-screen game, keep the exact original 2352px stage.
+ const foodFile=join(dist,'games/original-games/food-wheel-deluxe.html');
+ const foodOriginal=readFileSync(foodFile,'utf8');
+ const oldFit="function fit(){const s=Math.min(innerWidth/1080,innerHeight/2352),st=$('stage');st.style.transform=`scale(${s})`;st.style.left=(innerWidth-1080*s)/2+'px';st.style.top=(innerHeight-2352*s)/2+'px'}";
+ const roomFit=[
+  'function fit(){',
+  "const room=new URLSearchParams(location.search).get('mode')==='room';",
+  'const designHeight=room?2100:2352;',
+  "const st=$('stage'),s=Math.min(innerWidth/1080,innerHeight/designHeight);",
+  "st.style.height=designHeight+'px';",
+  "st.style.transform='scale('+s+')';",
+  "st.style.left=(innerWidth-1080*s)/2+'px';",
+  "st.style.top=(innerHeight-designHeight*s)/2+'px';",
+  "document.body.style.background=room?",
+  "'linear-gradient(180deg,#1d56cf,#3b8ae6 29%,#9fd0f7 56%,#f08545 57%,#f9b878)':'#0b2a6b';",
+  '}'
+ ].join('');
+ if(foodOriginal.split(oldFit).length!==2)throw Error('food_room_fit_source_changed');
+ writeFileSync(foodFile,foodOriginal.replace(oldFit,roomFit));
+
 // Use the owner's original game-card artwork from the Android app.
 mkdirSync(join(dist,'cards'),{recursive:true});
 for(const [dest,src] of Object.entries({
