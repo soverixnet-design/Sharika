@@ -15,6 +15,21 @@ UPDATE sharika_game_catalog SET enabled=0 WHERE id='royal-ace';
 ALTER TABLE sharika_royal_ace_rounds ADD COLUMN result_json TEXT;
 ALTER TABLE sharika_royal_ace_rounds ADD COLUMN receipt_json TEXT;
 
+-- Editable, validated Section 12 weights. Admin changes require a new RTP audit.
+CREATE TABLE IF NOT EXISTS sharika_royal_ace_spec_config(
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ scatter_bps INTEGER NOT NULL DEFAULT 115 CHECK(scatter_bps BETWEEN 1 AND 1000),
+ golden_percent INTEGER NOT NULL DEFAULT 5 CHECK(golden_percent BETWEEN 0 AND 50),
+ star_percent INTEGER NOT NULL DEFAULT 20 CHECK(star_percent BETWEEN 0 AND 100),
+ bet_divisor INTEGER NOT NULL DEFAULT 50 CHECK(bet_divisor BETWEEN 1 AND 1000),
+ weights_json TEXT NOT NULL DEFAULT '[6,7,8,9,10,10,11,11]'
+  CHECK(json_valid(weights_json)),
+ updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO sharika_royal_ace_spec_config
+ (id,scatter_bps,golden_percent,star_percent,bet_divisor,weights_json)
+ VALUES(1,115,5,20,50,'[6,7,8,9,10,10,11,11]');
+
 CREATE TABLE IF NOT EXISTS sharika_royal_ace_sessions(
   id TEXT PRIMARY KEY CHECK(length(id) BETWEEN 12 AND 72),
   user_uid TEXT NOT NULL REFERENCES sharika_users(auth_uid),
