@@ -25,13 +25,14 @@ function mockWebViewBridge(account){
       const call=JSON.parse(encoded);
       window.__gameCalls.push(call);
       let payload={};
-      if(call.path==='/api/v1/game-catalog')payload={games:catalog};
+      if(call.path==='/api/v1/me')payload={name:account==='test-a'?'Sharika Alice':'Sharika Bob',public_id:account==='test-a'?'10000011':'10000012',display_id:account==='test-a'?'10000011':'10000012',pic:'https://sharika-api-staging.soverixnet.workers.dev/api/v1/users/10000011/avatar?v=1',coins:firstBalance};
+      else if(call.path==='/api/v1/game-catalog')payload={games:catalog};
       else if(call.path==='/api/v1/royal-ace/state')payload={balance:firstBalance,bets:[1000,10000,100000,1000000],freeSpins:0,lockedBet:0,virtual_coins_only:true};
       else if(call.path==='/api/v1/cleopatra/state')payload={balance:firstBalance,bets:[1000,10000,100000],freeSpins:0,lockedBet:0};
       else if(call.path==='/api/v1/royal-ace/spin'){
         const b=call.body;
         payload={requestId:b.requestId,bet:b.bet,mode:b.buy?'bonus_buy':'paid',
-          win:0,balance:firstBalance-b.bet,freeSpins:0,bonusSpins:0,
+          win:2000,balance:firstBalance-b.bet+2000,freeSpins:0,bonusSpins:0,
           steps:[{grid:Array.from({length:5},()=>Array.from({length:4},()=>({s:0,g:false}))),
             marks:[],win:0,multiplier:1}],settled:true,virtual_coins_only:true};
       }
@@ -229,4 +230,67 @@ test('all ten original cards can be opened in browser practice without a Firebas
     const blocked=await page.request.post(site+'/api/spin',{data:{bet:1000}});
     assert.equal(blocked.status(),405,'The free public website cannot debit any Sharika wallet');
   } finally{await browser.close();}
+});
+
+
+test('compact room catalog uses four complete icons, verified profile and confirmed winner',
+ {timeout:100000},async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try{
+  const context=await browser.newContext({viewport:{width:390,height:490},deviceScaleFactor:2});
+  await context.addInitScript(mockWebViewBridge,'test-a');
+  const page=await context.newPage();
+  await page.goto(site+'/?view=room',{waitUntil:'domcontentloaded'});
+  await page.locator('.tile:enabled').first().waitFor();
+  assert.equal(await page.locator('.tile').count(),10);
+  const layout=await page.evaluate(()=>({
+   room:document.documentElement.classList.contains('room-mode'),
+   columns:getComputedStyle(document.getElementById('games')).gridTemplateColumns.split(' ').length,
+   viewport:document.documentElement.clientHeight,
+   container:document.getElementById('landing').getBoundingClientRect().height,
+   iconWidths:[...document.querySelectorAll('.tile .art')].map(x=>x.getBoundingClientRect().width)
+  }));
+  assert.equal(layout.room,true);
+  assert.equal(layout.columns,4,'room uses four icon columns');
+  assert.ok(layout.container<=layout.viewport+2,'catalog never expands out of room sheet');
+  assert.ok(Math.max(...layout.iconWidths)-Math.min(...layout.iconWidths)<2,'all icons aligned');
+  assert.equal(await page.locator('#catalog-profile .profile-name').innerText(),'Sharika Alice');
+  assert.equal(await page.locator('#catalog-profile .profile-id').innerText(),'ID: 10000011');
+  assert.equal(await page.locator('.tile .art img').count(),10);
+  await page.getByRole('button',{name:/SuperAce Deluxe/}).click();
+  assert.equal(await page.locator('#game-profile .profile-name').innerText(),'Sharika Alice');
+  assert.equal(await page.locator('#game-profile .profile-id').innerText(),'ID: 10000011');
+  assert.ok((await page.locator('#game-frame').getAttribute('src')).includes('mode=room'));
+  const royal=page.frameLocator('#game-frame');
+  await royal.locator('#sp').waitFor({state:'visible',timeout:18000});
+  await royal.locator('#sp').click();
+  await page.locator('#verified-winner:not([hidden])').waitFor({timeout:20000});
+  assert.equal(await page.locator('#winner-name').innerText(),'Sharika Alice');
+  assert.equal(await page.locator('#winner-id').innerText(),'ID: 10000011');
+  assert.equal(await page.locator('#winner-amount').innerText(),'+2,000');
+  // An untrusted game iframe message cannot claim a winner or change identity.
+  await page.getByRole('button',{name:'Close Game'}).click();
+  assert.equal(await page.locator('#verified-winner').isVisible(),false);
+  await context.close();
+ }finally{await browser.close()}
+});
+
+test('independent accounts show different verified Sharika profiles, no iframe identity trust',
+ {timeout:90000},async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try{
+  for(const [account,name,id] of [['test-a','Sharika Alice','10000011'],
+   ['test-b','Sharika Bob','10000012']]){
+   const context=await browser.newContext({viewport:{width:375,height:470}});
+   await context.addInitScript(mockWebViewBridge,account);
+   const page=await context.newPage();
+   await page.goto(site+'/?view=room',{waitUntil:'domcontentloaded'});
+   await page.locator('.tile:enabled').first().waitFor();
+   assert.equal(await page.locator('#catalog-profile .profile-name').innerText(),name);
+   assert.equal(await page.locator('#catalog-profile .profile-id').innerText(),'ID: '+id);
+   const calls=await page.evaluate(()=>window.__gameCalls.map(x=>x.path));
+   assert.ok(calls.includes('/api/v1/me'),'profile must be fetched through the native bridge');
+   await context.close();
+  }
+ }finally{await browser.close()}
 });
