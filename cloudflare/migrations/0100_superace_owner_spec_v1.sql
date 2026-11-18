@@ -96,7 +96,7 @@ BEGIN
   bet=NEW.bet WHERE user_uid=NEW.user_uid;
  -- Close old session only when its remaining spins are actually exhausted.
  UPDATE sharika_royal_ace_sessions SET
-  spins_done=spins_done+1,spins_total=spins_total+NEW.bonus_spins,
+  spins_done=spins_done+1,spins_total=MIN(1000,spins_total+NEW.bonus_spins),
   total_win=total_win+NEW.win,
   status=CASE WHEN (SELECT remaining FROM sharika_royal_ace_free
    WHERE user_uid=NEW.user_uid)=0 THEN 'closed' ELSE 'open' END,
