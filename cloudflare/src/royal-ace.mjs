@@ -110,7 +110,7 @@ export async function handleRoyalAce({request,db,uid,action,reply,fail,cors}){
   const open=Number(s.fs?.remaining)||0;
   if(isLegacy){
     if(typeof b.buy!=='boolean')return fail('invalid_spin_request',400,cors);
-    desiredMode=b.buy?'bonus_buy':open?'free':'paid';
+    desiredMode=b.buy?'bonus_buy':old?old.mode:open?'free':'paid';
   }
   if(old){
     if(old.mode!==desiredMode || (desiredMode!=='free'&&Number(old.bet)!==b.bet))
