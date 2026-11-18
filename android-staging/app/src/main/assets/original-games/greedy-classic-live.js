@@ -59,9 +59,15 @@ else {
   'html.sharika-greedy-full #top{flex:0 0 auto!important}',
   'html.sharika-greedy-full #stage{width:min(96%,56dvh,510px)!important;',
   'max-height:none!important;flex:0 0 auto!important}',
-  'html.sharika-greedy-full #low{flex:1 1 auto!important;',
-  'min-height:130px!important;max-height:none!important;',
-  'justify-content:space-around!important;overflow:hidden!important}',
+  // Keep result, chips and wallet in a compact lower control deck instead
+  // of stretching the bright-red deck across the entire tall phone screen.
+  'html.sharika-greedy-full #app{justify-content:space-between!important}',
+  'html.sharika-greedy-full #low{',
+  'flex:0 0 clamp(190px,30dvh,258px)!important;',
+  'height:clamp(190px,30dvh,258px)!important;',
+  'min-height:190px!important;max-height:258px!important;',
+  'justify-content:space-between!important;gap:3px!important;',
+  'padding:5px 10px 9px!important;overflow:hidden!important}',
   'html.sharika-greedy-full #res,html.sharika-greedy-full #chips,',
   'html.sharika-greedy-full #me{flex:0 0 auto!important}',
   '@media(max-height:570px){html.sharika-greedy-full #stage{',
@@ -83,7 +89,7 @@ function request(action,method='GET',body){
  return new Promise((resolve,reject)=>{
   if(window.parent===window){reject(Error('Open this game from Sharika'));return;}
   const id=++seq;
-  const timer=setTimeout(()=>{pending.delete(id);reject(Error('Server timeout'))},9000);
+  const timer=setTimeout(()=>{pending.delete(id);reject(Error('Server timeout'))},34000);
   pending.set(id,{resolve,reject,timer});
   window.parent.postMessage({type:'sharika:original-request',game:GAME,action,method,id,body},'*');
  });
