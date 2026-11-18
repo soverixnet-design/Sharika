@@ -61,5 +61,8 @@ jobs:
         run: npx --yes wrangler@4 deploy --config wrangler.jsonc
       - name: Confirm website health and public catalog
         run: |
-          curl --fail --silent --show-error --retry 4 --retry-delay 2 https://sharika-games-web-staging.soverixnet.workers.dev/health
-          curl --fail --silent --show-error --retry 4 --retry-delay 2 https://sharika-games-web-staging.soverixnet.workers.dev/api/catalog | grep -q 'requires_sharika_app'
+          # A brand-new workers.dev hostname can briefly return 404 while
+          # Cloudflare publishes the route. Retry *all* HTTP failures.
+          curl --fail --silent --show-error --retry 12 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-games-web-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --retry 12 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-games-web-staging.soverixnet.workers.dev/api/catalog | grep -q 'requires_sharika_app'
+          curl --fail --silent --show-error --retry 12 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-games-web-staging.soverixnet.workers.dev/ | grep -q 'SHARIKA'
