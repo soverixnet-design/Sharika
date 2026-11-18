@@ -1,0 +1,61 @@
+name: Sharika hosted games routing QA
+on:
+  push:
+    branches:
+      - fix/sharika-hosted-games-priority-20261118
+  pull_request:
+    paths:
+      - android-staging/staging-connection.js
+      - hosted-game-center/test/hosted-route.test.mjs
+      - .github/workflows/sharika-hosted-games-route-qa.yml
+permissions:
+  contents: read
+jobs:
+  route:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check bundled staging game routing and regression tests
+        run: |
+          node --check android-staging/staging-connection.js
+          node --test hosted-game-center/test/hosted-route.test.mjs
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs
+  android:
+    needs: route
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: android-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build staging debug APK (not Play Store)
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Validate APK and bundled JS
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq app/build/outputs/apk/debug/app-debug.apk
+          grep -q "function showPlayLegacyGames" app/build/generated/sharika-ui-assets/connection.js
+          grep -q "native('openHostedGameCenter'" app/build/generated/sharika-ui-assets/connection.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Hosted-Game-Route-Staging-Debug
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7

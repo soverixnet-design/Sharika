@@ -1,0 +1,32 @@
+name: Sharika hosted Games route PR validation
+on:
+  push:
+    branches: [fix/sharika-hosted-games-priority-20261118]
+    paths:
+      - 'android-staging/staging-connection.js'
+      - 'hosted-game-center/test/hosted-route.test.mjs'
+      - '.github/workflows/sharika-hosted-route-pr-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  route-qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify Android-hosted game routing and no legacy staging fallback
+        run: |
+          node --check android-staging/staging-connection.js
+          node --check hosted-game-center/web/app.js
+          node --test hosted-game-center/test/hosted-route.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/site.test.mjs
+      - name: Build original hosted assets with no server or wallet mutations
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          test -s hosted-game-center/dist/games/original-games/greedy-classic.html
+          test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+          test -s hosted-game-center/dist/games/original-games/royal-ace-deluxe.html
+          test -s hosted-game-center/dist/games/original-games/cleopatra-slot.html
