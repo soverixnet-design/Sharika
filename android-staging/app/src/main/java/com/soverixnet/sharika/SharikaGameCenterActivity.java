@@ -228,7 +228,7 @@ public final class SharikaGameCenterActivity extends Activity {
             "(function(){return window.sharikaPremiumBack && "+
             "window.sharikaPremiumBack() ? 'handled':'exit';})()",
             result -> {
-                if(!isFinishing() && !"\\\"handled\\\"".equals(result))finish();
+                if(!isFinishing() && (result==null || !result.contains("handled")))finish();
             });
     }
     @Override protected void onDestroy(){
