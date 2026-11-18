@@ -78,7 +78,15 @@ function build(){
  [178,358,540,720,902].forEach((x,k)=>{const s=document.createElement('div');s.className='a slot'+(k==chip?' sel':'');s.style.cssText=`left:${x-77}px;top:1413px;width:154px;height:154px`;L.appendChild(s);chips.push(s);const e=im('chip'+k,x,1490,138);btn(e,()=>{chip=k;chips.forEach((c,j)=>c.classList.toggle('sel',j==k));snd(500)})});
  // bottom
  const r=im('repeat',925,1950,225);btn(r,repeat);T.rep=tx('0',925,1985,50,'#fff',150);T.rep.style.setProperty('--s','#6a1b8a');T.rep.style.pointerEvents='none';
+ T.tapStatus=tx('',540,1362,28,'#ffffff',730);
+ T.tapStatus.style.textShadow='0 2px 3px #283f73';
  const t5=im('top5',410,1955,735);T.t5=tx('No Winner',430,1962,56,'#fff',500);T.t5.style.cssText+=';--s:#9a3410;opacity:.9';
+ T.winnerAvatar=document.createElement('img');
+ T.winnerAvatar.alt='';T.winnerAvatar.hidden=true;
+ T.winnerAvatar.style.cssText='position:absolute;left:138px;top:1908px;width:76px;height:76px;'+
+  'border-radius:50%;object-fit:cover;border:4px solid #ffdb65;'+
+  'box-shadow:0 0 15px #f6be44;pointer-events:none;z-index:3';
+ L.appendChild(T.winnerAvatar);
  // top bar
  const bk=im('back',68,188,86),hp=im('help',184,188,86),rk=im('rank',299,188,86),mu=im('music',411,188,86);
  btn(bk,()=>FoodWheel.onBack());btn(hp,help);btn(rk,rank);btn(mu,()=>{sound=!sound;mu.style.opacity=sound?1:.45});
@@ -114,7 +122,42 @@ function requestId(){
  return 'food_'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'_'+(++seq));
 }
 let unresolvedFoodBet=null;
-async function place(stakes){
+let queuedFoodStakes=Array(8).fill(0),queuedFoodTaps=0,verifiedFoodTaps=0,
+  declinedFoodTaps=0,queuedFoodRound=-1,foodQueueTimer=null,unverifiedFoodTaps=0;
+function queueFood(stakes){
+ if(!ready||phase!=='bet'||!currentState)return toast('Betting is closed');
+ if(unresolvedFoodBet)return toast('Previous bet is awaiting server verification');
+ if(queuedFoodRound!==round){
+  queuedFoodRound=round;queuedFoodStakes=Array(8).fill(0);queuedFoodTaps=0;
+  verifiedFoodTaps=0;declinedFoodTaps=0;
+ }
+ const total=stakes.reduce((a,b)=>a+b,0),queued=queuedFoodStakes.reduce((a,b)=>a+b,0);
+ if(!Number.isSafeInteger(total)||total<100||total+queued>100000000)
+  return toast('Bet size is over the round limit');
+ if(coins<total+queued)return toast('Not enough confirmed coins');
+ queuedFoodStakes=queuedFoodStakes.map((v,i)=>v+stakes[i]);
+ queuedFoodTaps++;
+ draw();
+ if(!foodQueueTimer)foodQueueTimer=setTimeout(()=>{
+  foodQueueTimer=null;void flushFoodQueue();
+ },85);
+}
+async function flushFoodQueue(){
+ if(placing||!queuedFoodTaps)return;
+ if(!ready||phase!=='bet'||round!==queuedFoodRound){
+  declinedFoodTaps+=queuedFoodTaps;
+  queuedFoodStakes=Array(8).fill(0);queuedFoodTaps=0;
+  toast('Round closed. Unsubmitted taps were not charged.');draw();return;
+ }
+ const stakes=queuedFoodStakes.slice(),count=queuedFoodTaps;
+ queuedFoodStakes=Array(8).fill(0);queuedFoodTaps=0;
+ await place(stakes,count);
+ if(queuedFoodTaps&&!foodQueueTimer)foodQueueTimer=setTimeout(()=>{
+  foodQueueTimer=null;void flushFoodQueue();
+ },0);
+}
+
+async function place(stakes,clicks=1){
  if(!ready||placing||phase!=='bet'||!currentState)return toast('Betting is closed');
  if(unresolvedFoodBet&&unresolvedFoodBet.round_no===round){
    toast('Checking an earlier bet before another coin debit');
@@ -139,15 +182,17 @@ async function place(stakes){
   coins=saved.balance;
   bets=await myRoundStakes(stakes);
   unresolvedFoodBet=null;
+  verifiedFoodTaps+=clicks;
   snd(700);draw();
  }catch(e){
   if(/timeout|network|unavailable|connection|failed/i.test(String(e.message||e))){
+    unverifiedFoodTaps+=clicks;
     unresolvedFoodBet=payload;
     toast('Bet confirmation pending. Wait for the server to reconnect.');
-  }else toast('Bet not accepted: '+e.message);
+  }else {declinedFoodTaps+=clicks;toast('Bet not accepted: '+e.message);}
   await refresh();
  }
- finally{placing=false}
+ finally{placing=false;if(queuedFoodTaps)void flushFoodQueue();}
 }
 async function myRoundStakes(stakes){
  const total=bets.slice();
@@ -157,11 +202,11 @@ async function myRoundStakes(stakes){
 function bet(i){
  const keys=Array.isArray(i)?i:[i],values=Array(8).fill(0);
  keys.forEach(k=>{values[k]=CH[chip]});
- return place(values);
+ return queueFood(values);
 }
 function repeat(){
  if(!last.some(n=>n))return toast('No previous round bet');
- return place(last.slice());
+ return queueFood(last.slice());
 }
 function draw(){
  T.coins.textContent=coins.toLocaleString('en');T.rid.textContent=round;T.rep.textContent=fmt(last.reduce((a,b)=>a+b,0));
@@ -169,6 +214,8 @@ function draw(){
  T.ph.textContent=phase==='bet'?'Select Time':phase==='spin'?'Drawing...':phase==='result'?'Result Time':'Connecting';
  T.sec.textContent=phase==='spin'?'':left+'s';
  T.ping.textContent=ready?'LIVE':'OFFLINE';
+ renderFoodWinner();
+ if(T.tapStatus)T.tapStatus.textContent='Queued '+queuedFoodTaps+'  |  Verified '+verifiedFoodTaps+'  |  Declined '+declinedFoodTaps+'  |  Checking '+unverifiedFoodTaps;
  T.hist.forEach((e,k)=>{const h=hist[k];if(h===undefined){e.style.display='none';return}const a=A['i'+h],w=k?92:100;e.src=a[0];e.style.display='block';e.style.width=w+'px';e.style.left=(138+k*134-w/2)+'px';e.style.top=(1782-w*a[2]/a[1]/2)+'px'});
  T.new.style.display=hist.length?'block':'none';
  if(!animating)foods.forEach((f,i)=>{f.className='food btn'+(phase==='bet'?'':(win>=0?(i===win?' win':' dim'):''))});
@@ -198,12 +245,44 @@ async function rank(){
     '<p style="font-size:40px">No verified winners yet</p>')+'</div>');
  }catch(e){toast(e.message)}
 }
+function safeWinnerPhoto(value){
+ const pic=String(value||'');
+ if(!/^https:\/\/(?:sharika-api-staging\.soverixnet\.workers\.dev|lh3\.googleusercontent\.com|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(pic))return '';
+ return pic;
+}
+function foodTopWinner(){
+ const result=currentState?.result,previous=currentState?.previous_result;
+ const latest=result||previous;
+ const winner=latest?.top_winners?.[0];
+ return winner&&typeof winner.name==='string'&&winner.name.trim()&&
+  Number(winner.total_win)>0?winner:null;
+}
+function renderFoodWinner(){
+ if(!T.winnerAvatar||!T.t5)return;
+ const winner=foodTopWinner(),pic=winner?safeWinnerPhoto(winner.pic||winner.avatar):'';
+ T.winnerAvatar.hidden=!pic;
+ if(pic&&T.winnerAvatar.src!==pic)T.winnerAvatar.src=pic;
+ if(winner){
+  T.t5.style.left='247px';T.t5.style.width='530px';
+  T.t5.style.fontSize='39px';
+  T.t5.textContent=winner.name.trim().slice(0,17)+' +'+fmt(Number(winner.total_win));
+ }else{
+  T.t5.style.left='180px';T.t5.style.width='500px';
+  T.t5.style.fontSize='56px';
+  T.t5.textContent=currentState?.result?.my_payout?
+    'You +'+fmt(Number(currentState.result.my_payout)):'No Winner';
+ }
+}
 function players(){
  const winners=currentState?.previous_result?.top_winners||[];
  modal('<div class="box res" style="height:690px"><div class="x">×</div>'+
   '<div class="ban">Top Winners</div><br><br>'+
-  (winners.length?winners.map((w,i)=>'<p style="font-size:35px">'+(i+1)+
-   '. '+escapeHtml(w.name)+' · '+fmt(w.total_win)+'</p>').join(''):
+  (winners.length?winners.map((w,i)=>{
+    const pic=safeWinnerPhoto(w.pic||w.avatar);
+    return '<p style="font-size:35px;display:flex;align-items:center;gap:12px">'+
+      (pic?'<img alt="" src="'+escapeHtml(pic)+'" style="width:55px;height:55px;object-fit:cover;border-radius:50%"/>':'')+
+      (i+1)+'. '+escapeHtml(w.name||'Player')+' · '+fmt(Number(w.total_win)||0)+'</p>';
+   }).join(''):
    '<p style="font-size:40px">No confirmed winners this round</p>')+'</div>');
 }
 function phaseAt(r,now){return now<r.bet_closes_ms?'bet':now<r.result_ms?'spin':
@@ -222,10 +301,14 @@ async function refresh(){
   // Resolve a timed-out wager against the authoritative server stake totals.
   // Never create a fresh request ID until the old bet is confirmed or expired.
   if(unresolvedFoodBet){
-    if(state.round.round_no!==unresolvedFoodBet.round_no)unresolvedFoodBet=null;
-    else if((state.my_stakes||[]).every((x,i)=>
-      Number(x)>=Number(unresolvedFoodBet.before?.[i]||0)+Number(unresolvedFoodBet.stakes[i]||0)))
+    if(state.round.round_no!==unresolvedFoodBet.round_no){
+      // Closed rounds may settle late: do not count a timeout as a rejection.
       unresolvedFoodBet=null;
+    }else if((state.my_stakes||[]).every((x,i)=>
+      Number(x)>=Number(unresolvedFoodBet.before?.[i]||0)+Number(unresolvedFoodBet.stakes[i]||0))){
+      verifiedFoodTaps+=unverifiedFoodTaps;
+      unverifiedFoodTaps=0;unresolvedFoodBet=null;
+    }
   }
   currentState=state;serverDelta=state.server_time-Date.now();
   round=state.round.round_no;

@@ -22,11 +22,20 @@ function fixture(){
     async all(){return {results:statement.all(...args)}},
     async run(){return {meta:statement.run(...args)}}
   };
+ },async batch(statements){
+  // Test D1's documented all-or-nothing batch against the REAL SQLite triggers.
+  sqlite.exec('BEGIN IMMEDIATE');
+  try{
+   const results=[];
+   for(const statement of statements)results.push(await statement.run());
+   sqlite.exec('COMMIT');return results;
+  }catch(error){sqlite.exec('ROLLBACK');throw error;}
  }};
  const call=(action,body,uid='adult-1')=>handleGreedyClassicRequest({
    request:new Request('https://staging.invalid/api/v1/original-games/greedy-classic/'+action,{
-     method:action==='bet'?'POST':'GET',
-     ...(action==='bet'?{headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{})
+     method:['bet','bet-batch'].includes(action)?'POST':'GET',
+     ...(['bet','bet-batch'].includes(action)?
+       {headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{})
    }),
    db,uid,action,reply:(v,s)=>Response.json(v,{status:s}),
    fail:(e,s)=>Response.json({error:e},{status:s}),cors:{}});
@@ -79,6 +88,31 @@ test('server-verified bet, exact retry, atomic debit and one-time payout',async(
  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='greedy_classic_win'").get().n,payout?1:0);
  sqlite.close();
 });
+test('100 real SQLite D1-triggered clicks debit once, retry idempotently and reject 101',async()=>{
+ const {sqlite,call,balance}=fixture(),real=Date.now,now=Date.now(),n=Math.floor(now/38000);
+ round(sqlite,now,n);
+ const body={round:n,request_id:'greedy-batch-sqlite-qa-20261119',
+   entries:[{itemId:'chicken',amount:100,count:100}]};
+ Date.now=()=>n*38000+1000;
+ try{
+  const accepted=await call('bet-batch',body);
+  assert.equal(accepted.status,200,'SQLite batch API must accept 100 virtual-coin taps');
+  const receipt=await accepted.json();
+  assert.equal(receipt.accepted_clicks,100);
+  assert.equal(balance(),90000);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_greedy_classic_bets").get().n,100);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='greedy_classic_bet'").get().n,100);
+  const duplicate=await call('bet-batch',body);
+  assert.equal(duplicate.status,200);
+  assert.equal((await duplicate.json()).duplicate,true);
+  assert.equal(balance(),90000);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_greedy_classic_bets").get().n,100);
+  const over=await call('bet-batch',{...body,request_id:'greedy-batch-over-limit-qa-20261119',
+    entries:[{itemId:'fish',amount:100,count:101}]});
+  assert.equal(over.status,400);
+  assert.equal(balance(),90000);
+ }finally{Date.now=real;sqlite.close();}
+});
 test('disallows unknown food, arbitrary coin stake, underage and insufficient wallet',async()=>{
  const {sqlite,call,balance}=fixture(),now=Date.now(),n=Math.floor(now/38000);
  round(sqlite,now,n);
@@ -111,7 +145,8 @@ test('original uploaded 21 PNGs are kept, English-only, with no client coin muta
  assert.match(html,/S\.pool\?\.\[i\]/,'original HOT and fire icons must use verified pool totals');
  assert.match(js,/window\.bet=bet/);
  assert.match(js,/sharika:original-request/);
- assert.match(js,/unconfirmed=payload/);
+ assert.match(js,/greedyPendingBatch=work/,'Unknown batched bet retains its original request ID');
+ assert.match(js,/request\('bet-batch','POST',work\.payload\)/);
  assert.match(js,/lastOfflineNoticeAt/);
  assert.match(js,/if\(!state\)S\.phase='load'/,'Keep last verified UI during weak network');
  assert.match(js,/ready=false;[\s\S]*?if\(!state\)S\.phase='load'/,'Disable bets while offline');
@@ -122,16 +157,19 @@ test('native parent bridge confirms wager before wallet changes, without fake de
  const requests=[],listeners=new Map(),elements=new Map(),messages=[];
  const parent={postMessage(data){requests.push(data)}};
  const window={parent,addEventListener(type,fn){listeners.set(type,fn)}};
+ const document={documentElement:{classList:{add(){}}},head:{append(){}},
+  body:{appendChild(){}},visibilityState:'visible',
+  createElement(){return {style:{},setAttribute(){},textContent:''}}};
  const S={bal:0,round:0,t:0,phase:'load',chip:100,bets:{},last:{},hist:[],played:0,rev:0,auto:false};
  const F=['chicken','fish','hotdog','steak','grape','lettuce','pepper','watermelon'].map(id=>({id}));
  const $=selector=>{
   if(!elements.has(selector))elements.set(selector,{textContent:'',src:'',onclick:null});
   return elements.get(selector);
  };
- runInNewContext(source,{window,S,F,CH:[100,1000,10000,50000],$,draw(){},
+ runInNewContext(source,{window,document,location:{hash:''},navigator:{},S,F,CH:[100,1000,10000,50000],$,draw(){},
   show(message){messages.push(message)},hide(){},clearOn(){},
   im(){return ''},winners:item=>[item],crypto:webcrypto,Uint8Array,Map,
-  setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>1,
+  setTimeout,clearTimeout,setInterval:()=>1,
   Date,Promise,Number,Object,String,Array,Math,Set});
  assert.equal(typeof window.bet,'function');
  assert.equal(requests.length,1);
@@ -148,18 +186,26 @@ test('native parent bridge confirms wager before wallet changes, without fake de
  assert.equal(S.round,123);
  assert.equal(S.phase,'bet');
  assert.equal(S.pool[0],500,'HOT and fire are based on verified total player wagers');
- const wager=window.bet('chicken');
- assert.equal(S.bal,1000,'client may not optimistically debit before verified result');
+ const taps=Array.from({length:10},()=>window.bet('chicken'));
+ assert.equal(S.bal,1000,'queue does not optimistically debit before verified result');
+ await Promise.all(taps);
+ await new Promise(resolve=>setTimeout(resolve,145)); // 90ms tap capture window
  const request=requests.at(-1);
- assert.equal(request.action,'bet');
+ assert.equal(request.action,'bet-batch');
  assert.equal(request.method,'POST');
  assert.equal(request.body.round,123);
- assert.equal(request.body.itemId,'chicken');
- assert.equal(request.body.amount,100);
+ assert.equal(request.body.entries.length,1);
+ assert.equal(request.body.entries[0].itemId,'chicken');
+ assert.equal(request.body.entries[0].amount,100);
+ assert.equal(request.body.entries[0].count,10);
  assert.match(request.body.request_id,/^[A-Za-z0-9:_-]{12,80}$/);
- send(request,{round:123,balance:900,myBets:[100,0,0,0,0,0,0,0]});
- assert.equal(await wager,true);
- assert.equal(S.bal,900);
- assert.equal(S.bets.chicken,100);
- assert.equal(messages.length,0,'normal confirmed wager has no fake banner');
+ assert.equal(S.bal,1000,'real coins only update after server acceptance');
+ send(request,{round:123,batch_request_id:request.body.request_id,accepted_clicks:10,
+  balance:0,myBets:[1000,0,0,0,0,0,0,0]});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(S.bal,0);
+ assert.equal(S.bets.chicken,1000);
+ assert.equal(requests.filter(r=>r.action==='bet-batch').length,1,
+  'Ten touches become ten immutable server records in one request');
+ assert.equal(messages.length,0,'confirmed taps use verified receipts, no fake win');
 });

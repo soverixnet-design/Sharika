@@ -75,6 +75,7 @@ for(const [dest,src] of Object.entries({
   'fruit-machine.jpg':'game-cards/fruit-machine.jpg',
   'greedy.jpg':'game-cards/hot-food.jpg',
   'food-wheel.png':'food-wheel-original-card.png',
+  'fruit-machine-user.webp':'@web/fruit-machine-user.webp',
   'jackpot-fruit.png':'jackpot-fruit-original-card.png',
   'gaddy-royal.svg':'@web/gaddy-royal.svg',
   'sovera-food-royal.svg':'@web/sovera-food-royal.svg',

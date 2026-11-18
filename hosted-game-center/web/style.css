@@ -139,6 +139,8 @@ a{color:#f4d085}
  font-size:10px;margin-left:auto;white-space:nowrap;
  color:#ffdb8e;letter-spacing:.2px
 }
+body.is-playing .verified-winner{position:absolute;z-index:15;top:46px;left:8px;right:47px;margin:0;pointer-events:none;box-shadow:0 7px 26px #0009}
+.room-mode body.is-playing .verified-winner{top:5px;left:8px;right:43px}
 .verified-winner{
  display:flex;align-items:center;gap:8px;padding:7px;margin:0 0 7px;
  border:1px solid #f6cb70;border-radius:13px;

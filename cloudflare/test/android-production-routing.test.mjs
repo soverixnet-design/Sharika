@@ -15,7 +15,13 @@ test('native API, messaging and HTTPS invite origin use release BuildConfig',()=
   assert.match(activity,/Uri\.parse\(API_ORIGIN\)\.getHost\(\)\.equals\(uri\.getHost\(\)\)/);
   assert.match(main,/private static final String BACKEND = BuildConfig\.SHARIKA_API_ORIGIN/);
   assert.match(push,/BuildConfig\.SHARIKA_API_ORIGIN \+ "\/api\/v1\/notifications\/devices"/);
-  for(const source of [activity,main,push])assert.ok(!source.includes(staging));
+  // Staging-only website Game Center is explicitly denied to Play and to
+  // every non-staging API origin; the constant is only a deny-by-default gate.
+  const gameGate=activity.slice(activity.indexOf('case "openHostedGameCenter":'),
+    activity.indexOf('case "openHostedGameCenter":')+450);
+  assert.match(gameGate,/BuildConfig\.SHARIKA_PLAY_BUILD/);
+  assert.ok(gameGate.includes('!"'+staging+'".equals(API_ORIGIN)'));
+  for(const source of [main,push])assert.ok(!source.includes(staging));
   assert.match(manifest,/android:host="\$\{sharikaInviteHost\}"/);
 });
 
@@ -62,7 +68,11 @@ test('Play UI fails closed while selecting native mode and omits old recharge ba
   const source=read('staging-connection.js');
   assert.match(source,/playStoreMode=null/);
   assert.match(source,/if\(playStoreMode!==false\)return;[\s\S]*?const listButton=/);
-  assert.match(source,/if\(playStoreMode===null\)\{\s*const visit=joinedRoom;\s*playModeReady\.then\(\(\)=>\{\s*if\(!insideRoom\|\|joinedRoom===visit\)showGameCard/);
+  // The modern safe flow tries the native hosted route first, then waits for
+  // verified Play-mode detection before allowing the Play-only fallback.
+  assert.match(source,/const visit=joinedRoom;\s*native\('openHostedGameCenter',\{insideRoom:!!insideRoom\}\)\.catch/);
+  assert.match(source,/if\(clientModeVerified&&playStoreMode===true\)\s*showPlayLegacyGames/);
+  assert.match(source,/function showPlayLegacyGames\(doc,insideRoom,showToast\)\{[\s\S]*?if\(playStoreMode!==true\)return/);
   assert.match(source,/if\(playStoreMode===true\)\{[\s\S]*?preview\(greedyGame\);\s*return;/);
   assert.match(source,/visibleGameCards=originalGameCards\.filter\(game=>[\s\S]*?'greedy-wheel','cleopatra','food-deluxe','greedy-classic'[\s\S]*?enabled\.has\(game\.id\)/);
   assert.doesNotMatch(source,/window\.sharikaOpenPlayCasualGames\(doc,portal\)/);
