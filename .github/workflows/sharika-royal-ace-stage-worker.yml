@@ -8,6 +8,7 @@ on:
       - 'cloudflare/src/cleopatra.mjs'
       - 'cloudflare/src/greedy-classic.mjs'
       - 'cloudflare/test/game-odds-integrity.test.mjs'
+      - 'cloudflare/migrations/0099_royal_ace_bonus_buy_10x.sql'
   workflow_dispatch:
 permissions:
   contents: read
@@ -56,6 +57,7 @@ jobs:
         run: |
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE name IN ('sharika_royal_ace_rounds','royal_ace_settle','royal_ace_validate') ORDER BY name"
           npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT enabled FROM sharika_royal_ace_settings WHERE id=1"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT sql LIKE '%NEW.bet*10%' AS bonus_buy_10x FROM sqlite_master WHERE name='royal_ace_validate'"
       - name: Bundle staging Worker without affecting live traffic
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/royal-ace-staging-worker-build
       - name: Deploy staging Worker only
