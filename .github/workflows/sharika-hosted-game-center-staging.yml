@@ -1,0 +1,65 @@
+name: Sharika Hosted Game Center — isolated staging
+on:
+  push:
+    branches: [feature/sharika-hosted-game-center-20261118]
+    paths:
+      - 'hosted-game-center/**'
+      - 'android-staging/app/src/main/assets/original-games/**'
+      - 'android-staging/app/src/main/assets/fruit-royale/**'
+      - 'android-staging/app/src/main/assets/greedy-wheel/**'
+      - '.github/workflows/sharika-hosted-game-center-staging.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-hosted-game-center-staging
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check local assets and secure browser bridge
+        run: |
+          node --check hosted-game-center/src/index.mjs
+          node --check hosted-game-center/web/app.js
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/site.test.mjs
+          test -s hosted-game-center/dist/games/original-games/royal-ace-deluxe.html
+          test -s hosted-game-center/dist/games/original-games/cleopatra-slot.html
+      - name: Validate Cloudflare worker bundle without changes
+        working-directory: hosted-game-center
+        run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/sharika-game-center-bundle
+  publish-staging:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: sharika-staging
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Ensure deployment stays separate from Play and production
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const w=JSON.parse(readFileSync('hosted-game-center/wrangler.jsonc','utf8'));
+          if(w.name!=='sharika-games-web-staging'||w.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             w.d1_databases||w.r2_buckets||w.services)throw Error('Invalid isolated hosting target');
+          NODE
+      - name: Build hosted content
+        run: node hosted-game-center/scripts/build.mjs
+      - name: Publish isolated website only
+        working-directory: hosted-game-center
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Confirm website health and public catalog
+        run: |
+          curl --fail --silent --show-error --retry 4 --retry-delay 2 https://sharika-games-web-staging.soverixnet.workers.dev/health
+          curl --fail --silent --show-error --retry 4 --retry-delay 2 https://sharika-games-web-staging.soverixnet.workers.dev/api/catalog | grep -q 'requires_sharika_app'
