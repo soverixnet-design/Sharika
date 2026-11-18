@@ -37,7 +37,7 @@
    window.SharikaGame.init({mode:'production',host,profile:{
      id:String(m.profile.display_id||m.profile.public_id),name:m.profile.name,
      avatar:m.profile.pic||m.profile.avatar||''},
-     balance:m.balance,freeSpins:m.freeSpins,
+     balance:m.balance,bet:m.lockedBet||1000,freeSpins:m.freeSpins,
      jackpot:Number.isSafeInteger(m.jackpot)?m.jackpot:0});
   }else if(m.type==='spinResult'&&typeof m.id==='string'){
    const p=pending.get(m.id);if(!p)return;
