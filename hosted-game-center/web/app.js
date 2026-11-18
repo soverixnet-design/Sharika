@@ -19,6 +19,7 @@
  const hero=$('royal-hero'),toolbarCount=$('toolbar-count');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
  const artworks={
+  'royal-slots':'/cards/royal-slots.svg',
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
   'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/food-wheel.png',
   'sovera-gaddy':'/cards/gaddy-royal.svg','sovera-food':'/cards/sovera-food-royal.svg',
@@ -26,6 +27,7 @@
   'fruit-royale':'/cards/fruit-machine.jpg','jackpot-fruit':'/cards/jackpot-fruit.png'
  };
  const shortNames={
+  'royal-slots':'Royal Slots',
   'royal-ace':'SuperAce Deluxe','cleopatra':'Cleopatra Gold',
   'greedy-classic':'Greedy Game','food-deluxe':'Food Wheel',
   'sovera-gaddy':'Sovera Gaddy','sovera-food':'Sovera Food',
@@ -37,7 +39,7 @@
   'sovera-food':{className:'theme-sovera-food',label:'SOVERA FOOD'},
   'night-food':{className:'theme-night-food',label:'NIGHT FOOD'}
  };
- const badges={'royal-ace':'HOT','food-deluxe':'HOT','sovera-gaddy':'NEW',
+ const badges={'royal-slots':'NEW','royal-ace':'HOT','food-deluxe':'HOT','sovera-gaddy':'NEW',
   'greedy-classic':'NEW','jackpot-fruit':'NEW'};
  let games=[],active=null,number=0,gameVersion=0,practice=null,verifiedProfile=null;
  let winnerTimer=null;
@@ -135,7 +137,7 @@
   hotGames.replaceChildren();
   if(inRoom){hot.hidden=true;hero.hidden=true;return;}
   hero.hidden=false;
-  const order=['royal-ace','cleopatra','greedy-classic','food-deluxe'];
+  const order=['royal-slots','royal-ace','cleopatra','greedy-classic','food-deluxe'];
   let count=0;
   for(const id of order){
    const g=catalog.find(item=>item.id===id);
@@ -287,9 +289,10 @@
   clearWinner();notify('');
   // In-room games use only the existing 65%-tall Android Dialog. The voice
   // room is still visible above it; NEVER start an expanded Android Activity.
-  const hostedSlot=game.id==='royal-ace'||game.id==='cleopatra';
+  const hostedSlot=game.id==='royal-ace'||game.id==='cleopatra'||game.id==='royal-slots';
   const serverMode=!!bridge||game.id==='royal-ace';
-  const params=hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
+  const params=game.id==='royal-slots'?'mode='+(bridge?'production':'demo'):
+    hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
     game.id==='greedy-wheel'&&inRoom?'sheet=1':'';
   const separator=params?(game.asset.includes('?')?'&':'?'):'';
   frame.src=game.asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
@@ -320,6 +323,31 @@
   }
   // Ignore iframe-driven full-screen requests. Half-screen mode is native.
   if(m.type==='expand')return;
+  if(game.id==='royal-slots'){
+   if(m.source!=='sharika-royal-slots')return;
+   if(m.type==='close'){closeGame();return;}
+   if(!bridge)return; // browser practice runs entirely inside the iframe
+   if(m.type==='ready'){
+    try{
+     const state=await call('GET','/api/v1/royal-slots/state');
+     send({source:'sharika-royal-slots-server',type:'init',
+       ...addUserToGameState(state),profile:verifiedUser()});
+    }catch(error){notify('Royal Slots unavailable: '+error.message);}
+   }else if(m.type==='spin'&&typeof m.id==='string'&&
+     /^[A-Za-z0-9_-]{12,100}$/.test(m.id)&&
+     [1000,10000,100000,1000000,10000000].includes(m.bet)&&
+     typeof m.freeSpin==='boolean'){
+    try{
+     const result=await call('POST','/api/v1/royal-slots/spin',
+       {bet:m.bet,requestId:m.id,freeSpin:m.freeSpin});
+     send({source:'sharika-royal-slots-server',type:'spinResult',id:m.id,result});
+     if(active===game&&version===gameVersion)
+       showSoloSpinWinner(game,{...result,win:result.totalWin},m.id);
+    }catch(error){send({source:'sharika-royal-slots-server',
+      type:'spinResult',id:m.id,error:error.message});}
+   }
+   return;
+  }
   const royal=game.id==='royal-ace',cleo=game.id==='cleopatra';
   if(royal||cleo){
    if(royal&&m.source!=='sharika-royal-ace')return;
