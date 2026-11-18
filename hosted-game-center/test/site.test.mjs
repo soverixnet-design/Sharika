@@ -19,7 +19,18 @@ test('public catalog exposes only static pages and no wallet API',async()=>{
  assert.equal(denied.status,405);
 });
 test('hosted origin contains no Firebase token or wide native bridge',()=>{
- const js=read('web/app.js');
+ const js=read('web/app.js'),practice=read('web/practice.js');
+ assert.match(js,/createSharikaPractice/);
+ assert.match(js,/cards\/superace\.svg/);
+ assert.match(js,/cards\/cleopatra\.jpg/);
+ assert.match(js,/cards\/fruit-machine\.jpg/);
+ assert.match(practice,/practice_only:true/);
+ assert.doesNotMatch(practice,/fetch\(|SharikaNative|Authorization|Bearer |localStorage\./);
+ const builder=read('scripts/build.mjs');
+ for(const file of ['royal-ace-card.svg','game-cards/cleopatra-gold.jpg',
+    'game-cards/fruit-machine.jpg','food-wheel-original-card.png',
+    'jackpot-fruit-original-card.png'])
+   assert.ok(builder.includes(file),'Original art must be copied: '+file);
  assert.match(js,/SharikaGameBridge/);
  assert.doesNotMatch(js,/SharikaNative|Bearer |localStorage\.setItem\(['"](?:coin|wallet|sa_bal)/);
  assert.match(js,/e.origin!=='null'/);
