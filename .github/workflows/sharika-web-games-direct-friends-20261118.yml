@@ -1,0 +1,80 @@
+name: Sharika Cloudflare Games direct friends APK
+on:
+  push:
+    branches:
+      - release/sharika-web-games-fix-v140-friends-20261118
+    paths:
+      - .github/workflows/sharika-web-games-direct-friends-20261118.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Validate merged website games APK and publish direct download
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_RUN: '44313667255'
+      SOURCE_SHA: '7ff82a394d1adb2d0be1371fe7e1d9f3e33ddcb2'
+      RELEASE_TAG: 'sharika-web-games-fix-v140-staging-20261118-7ff82a39'
+      ASSET_NAME: 'Sharika-Web-Games-Fix-v140-Friends.apk'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Confirm original signed staging build and merged code
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REPOSITORY}" = 'soverixnet-design/Sharika'
+          actual_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .head_sha)"
+          actual_result="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .conclusion)"
+          test "$actual_sha" = "$SOURCE_SHA"
+          test "$actual_result" = success
+          echo "Verified staging CI from fixed route commit $SOURCE_SHA"
+
+      - name: Retrieve same compiled staging APK - never rebuild or resign
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          repository: soverixnet-design/Sharika
+          run-id: 44313667255
+          github-token: ${{ github.token }}
+          path: verified-apk
+
+      - name: Verify APK and Cloudflare Games routing is bundled
+        run: |
+          set -euo pipefail
+          apk=verified-apk/app-debug.apk
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js > "${RUNNER_TEMP}/verified-connection.js"
+          grep -Fq "native('openHostedGameCenter',{insideRoom:!!insideRoom})" "${RUNNER_TEMP}/verified-connection.js"
+          grep -Fq "let clientModeVerified=false" "${RUNNER_TEMP}/verified-connection.js"
+          grep -Fq "function showPlayLegacyGames(" "${RUNNER_TEMP}/verified-connection.js"
+          grep -Fq "Website Game Center unavailable:" "${RUNNER_TEMP}/verified-connection.js"
+          cp "$apk" "verified-apk/$ASSET_NAME"
+          sha256sum "verified-apk/$ASSET_NAME"
+
+      - name: Publish public friends staging APK without replacing older APKs
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists, refusing to overwrite shared asset"
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "verified-apk/$ASSET_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "Sharika Website Games Fix - Friends Staging APK (18 Nov 2026)" \
+            --notes 'TEST ONLY: Room and home Games buttons use the authenticated Cloudflare-hosted Royal Games Collection, rather than the legacy two-column Sharika Royal Games panel. Keeps 65% room game sheet, borderless four-column game icons, user profile verification and original server-ledger logic. Based on merged PR #146 and verified staging Android build. Not a Play Store production release. Requires Android install approval; may not replace Play Store signed installation.' \
+            --prerelease
+
+      - name: Check live public direct APK URL responds
+        run: |
+          set -euo pipefail
+          actual_size="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.assets[] | select(.name == "Sharika-Web-Games-Fix-v140-Friends.apk") | .size')"
+          test "$actual_size" -gt 80000000
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
+          curl --fail --silent --show-error --location --head --max-time 60 "$url" -o /dev/null
+          echo "PUBLIC_DIRECT_APK=$url"
