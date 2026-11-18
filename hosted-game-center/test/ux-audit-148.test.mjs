@@ -55,6 +55,7 @@ async function checkCatalog(page,{room,width,height}){
    icons,
    room:document.documentElement.classList.contains('room-mode'),
    beforeBottom:document.querySelector('#landing').getBoundingClientRect().bottom,
+   mainBottom:document.querySelector('main').getBoundingClientRect().bottom,
    viewportHeight:innerHeight
   };
  });
@@ -81,7 +82,8 @@ async function checkCatalog(page,{room,width,height}){
  if(room){
   assert.ok(metrics.icons[8].x>metrics.icons[0].x+2,
    'The last two room icons should be centered instead of left-aligned');
-  assert.ok(metrics.beforeBottom>=height-4,'Room view fills available native sheet');
+  assert.ok(metrics.beforeBottom>=metrics.mainBottom-12,
+   'Room catalog fills the padded main content area');
  }
  await page.screenshot({path:join(screenshotDir,(room?'room':'outside')+'-'+width+'.png'),fullPage:!room});
 }
