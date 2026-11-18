@@ -66,3 +66,18 @@ jobs:
           curl --fail --silent --show-error --retry 12 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-games-web-staging.soverixnet.workers.dev/health
           curl --fail --silent --show-error --retry 12 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-games-web-staging.soverixnet.workers.dev/api/catalog | grep -q 'requires_sharika_app'
           curl --fail --silent --show-error --retry 12 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-games-web-staging.soverixnet.workers.dev/ | grep -q 'SHARIKA'
+
+  browser-qa:
+    needs: publish-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Install isolated Playwright QA dependencies
+        run: npm install --prefix hosted-game-center --no-audit --no-fund
+      - name: Install real headless Chromium
+        run: ./hosted-game-center/node_modules/.bin/playwright install --with-deps chromium
+      - name: Verify public and two-account hosted game requests in real browser
+        run: node --test hosted-game-center/test/browser.test.mjs
