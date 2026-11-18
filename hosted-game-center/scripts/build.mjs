@@ -1,4 +1,4 @@
-import {cpSync,mkdirSync,rmSync,copyFileSync,statSync} from 'node:fs';
+import {cpSync,mkdirSync,rmSync,copyFileSync,statSync,readFileSync,writeFileSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 const root=resolve(import.meta.dirname,'..'),source=resolve(root,'../android-staging/app/src/main/assets');
 const dist=join(root,'dist');rmSync(dist,{recursive:true,force:true});mkdirSync(join(dist,'games'),{recursive:true});
@@ -7,10 +7,17 @@ for(const part of ['original-games','greedy-wheel','fruit-royale']){
  if(!statSync(src).isDirectory())throw Error('missing_game_assets:'+part);
  cpSync(src,join(dist,'games',part),{recursive:true});
 }
+// Royal Slots uses its own original inline assets (including premium MP3).
+mkdirSync(join(dist,'games','royal-slots'),{recursive:true});
+const slotHtml=readFileSync(join(root,'web','royal-slots.html'),'utf8');
+if(!slotHtml.includes('</body>'))throw Error('invalid_royal_slots_html');
+writeFileSync(join(dist,'games','royal-slots','index.html'),slotHtml.replace('</body>','<script src="bridge.js"></script></body>'));
+copyFileSync(join(root,'web','royal-slots-bridge.js'),join(dist,'games','royal-slots','bridge.js'));
 // Use the owner's original game-card artwork from the Android app.
 mkdirSync(join(dist,'cards'),{recursive:true});
 for(const [dest,src] of Object.entries({
   'superace.svg':'royal-ace-card.svg',
+  'royal-slots.svg':'@web/royal-slots-card.svg',
   'cleopatra.jpg':'game-cards/cleopatra-gold.jpg',
   'fruit-machine.jpg':'game-cards/fruit-machine.jpg',
   'greedy.jpg':'game-cards/hot-food.jpg',
