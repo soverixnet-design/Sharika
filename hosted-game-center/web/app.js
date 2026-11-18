@@ -387,8 +387,10 @@
   try{
    // Safe, independent read operations run concurrently. Game actions
    // still require the verified main-frame native bridge.
-   const profileTask=bridge?refreshProfile():Promise.resolve();
-   const response=await fetch('/api/catalog',{cache:'no-store'});
+   const [response]=await Promise.all([
+    fetch('/api/catalog',{cache:'no-store'}),
+    bridge?refreshProfile():Promise.resolve()
+   ]);
    if(!response.ok)throw Error('Catalog unavailable');
    const data=await response.json();games=data.games||[];
    if(!bridge){
@@ -401,7 +403,6 @@
    }
    // This is the same authenticated /me profile used by the main room, not a
    // game iframe name or query-string avatar. Fail closed if the profile fails.
-   await profileTask;
    const result=await call('GET','/api/v1/game-catalog');
    const enabled=new Set((result.games||[]).filter(x=>x.enabled===true).map(x=>x.id));
    displayCards(games,enabled);
