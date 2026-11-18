@@ -87,12 +87,9 @@ test('public browser shows original game cards and free demo without wallet API'
     await page.getByRole('button',{name:/Cleopatra/}).click();
     const cleo=page.frameLocator('#game-frame');
     await cleo.locator('#spin').waitFor({state:'visible'});
-    let cleopatraReady=false;
-    for(let n=0;n<60;n++){
-      cleopatraReady=await cleo.locator('#spin').evaluate(el=>Boolean(el.ownerDocument.defaultView.__sharikaGameReady));
-      if(cleopatraReady)break;await pause(200);
-    }
-    assert.equal(cleopatraReady,true,'Cleopatra Demo should receive initialization response');
+    const cleopatraUrl=await page.locator('#game-frame').getAttribute('src');
+    assert.ok(cleopatraUrl.includes('host=0'),
+      'The public Cleopatra demo must use the original self-contained practice engine');
     const cleopatraInitial=await cleo.locator('#bal').innerText();
     await cleo.locator('#spin').click();
     let cleopatraChanged=false;
