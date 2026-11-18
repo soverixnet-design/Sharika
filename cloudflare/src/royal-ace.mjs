@@ -136,7 +136,7 @@ export async function handleRoyalAce({request,db,uid,action,reply,fail,cors}){
   const hasFree=Number(s.fs?.remaining||0)>0;
   if(hasFree&&b.buy)return fail('free_spins_active',409,cors);
   if(hasFree&&Number(s.fs.bet)!==b.bet)return fail('free_spin_bet_locked',409,cors);
-  const mode=b.buy?'bonus_buy':hasFree?'free':'paid',cost=b.buy?b.bet*50:hasFree?0:b.bet;
+  const mode=b.buy?'bonus_buy':hasFree?'free':'paid',cost=b.buy?b.bet*10:hasFree?0:b.bet;
   if(!INT(cost)||Number(s.u.coins)<cost)return fail('not_enough_balance',409,cors);
   const game=b.buy?{steps:[],win:0,bonusSpins:10}:
     simulateRoyalAce(b.bet,hasFree,Number(s.conf.max_win));
