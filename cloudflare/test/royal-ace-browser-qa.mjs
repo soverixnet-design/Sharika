@@ -62,8 +62,17 @@ try{
   await f.locator('#sp').click({timeout:12000});
   await page.waitForFunction(()=>window.requests.length===2,{timeout:6000});
   await page.waitForTimeout(300);
+  const rejected=await f.locator('body').evaluate(()=>({
+    status:document.getElementById('st').textContent,
+    overlay:document.getElementById('royal-loading').style.display,
+    toast:document.getElementById('wp').textContent,
+    busy,waiting,disabled:document.getElementById('sp').disabled
+  }));
+  console.log(JSON.stringify({mode:m.mode,rejected}));
   assert.equal(await f.locator('#royal-loading').isVisible(),false);
   assert.equal(await f.locator('#sp').isDisabled(),false);
+  await page.waitForFunction(()=>document.getElementById('game').contentDocument
+    ?.getElementById('st')?.textContent?.includes('Bet not accepted'),undefined,{timeout:4000});
   assert.match(await f.locator('#st').textContent(),/Bet not accepted: spin rate limited/);
   assert.equal(await f.locator('#bl').textContent(),'999,500');
   // A failure after a successful spin must expose a visible Retry action,
