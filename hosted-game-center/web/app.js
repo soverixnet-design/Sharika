@@ -11,9 +11,11 @@
  const appSurface=params.get('surface')==='app';
  if(inRoom)document.documentElement.classList.add('room-mode');
  if(appSurface)document.documentElement.classList.add('app-surface');
+ if(appSurface&&bridge)document.documentElement.classList.add('native-verified');
  const all=$('games'),landing=$('landing'),player=$('player'),frame=$('game-frame');
  const status=$('status'),banner=$('error'),browserNote=$('browser-note');
  const hot=$('hot-section'),hotGames=$('hot-games'),search=$('game-search');
+ const hero=$('royal-hero'),toolbarCount=$('toolbar-count');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
  const artworks={
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
@@ -130,7 +132,8 @@
  const compact=(name,id)=>inRoom?(shortNames[id]||name):name;
  function renderFeatured(catalog,enabled){
   hotGames.replaceChildren();
-  if(!appSurface||inRoom){hot.hidden=true;return;}
+  if(!appSurface||inRoom){hot.hidden=true;hero.hidden=true;return;}
+  hero.hidden=false;
   const order=['royal-ace','cleopatra','greedy-classic','food-deluxe'];
   let count=0;
   for(const id of order){
@@ -162,7 +165,10 @@
    if(match)visible++;
   }
   $('no-games').hidden=visible>0;
-  if(appSurface&&!inRoom)hot.hidden=!!query||hotGames.childElementCount===0;
+  if(appSurface&&!inRoom){
+   hot.hidden=!!query||hotGames.childElementCount===0;
+   hero.hidden=!!query;
+  }
  }
  function displayCards(catalog,enabled){
   all.replaceChildren();
@@ -288,6 +294,8 @@
   frame.src=game.asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
     '#sharika-room':'');
  }
+ // System Back first closes the game, then the native Activity.
+ window.sharikaPremiumBack=()=>{if(!active)return false;closeGame();return true;};
  $('exit').addEventListener('click',closeGame);
  $('back').addEventListener('click',closeGame);
  search.addEventListener('input',filterCatalog);
@@ -376,6 +384,9 @@
  });
  async function start(){
   try{
+   // Safe, independent read operations run concurrently. Game actions
+   // still require the verified main-frame native bridge.
+   const profileTask=bridge?refreshProfile():Promise.resolve();
    const response=await fetch('/api/catalog',{cache:'no-store'});
    if(!response.ok)throw Error('Catalog unavailable');
    const data=await response.json();games=data.games||[];
@@ -384,15 +395,17 @@
     browserNote.hidden=false;
     displayCards(games,new Set(games.map(g=>g.id)));
     $('game-count').textContent=games.length+' games';
+    toolbarCount.textContent=games.length+' Games';
     return;
    }
    // This is the same authenticated /me profile used by the main room, not a
    // game iframe name or query-string avatar. Fail closed if the profile fails.
-   await refreshProfile();
+   await profileTask;
    const result=await call('GET','/api/v1/game-catalog');
    const enabled=new Set((result.games||[]).filter(x=>x.enabled===true).map(x=>x.id));
    displayCards(games,enabled);
    $('game-count').textContent=enabled.size+' games';
+   toolbarCount.textContent=enabled.size+' Games';
    status.textContent=enabled.size?'Games ready':'No games are enabled for this account.';
    // Do not show the staging website's diagnostic paragraph inside the app.
    status.hidden=appSurface&&enabled.size>0;
@@ -400,6 +413,7 @@
    status.hidden=false;
    status.textContent='Could not verify game access: '+error.message;
    $('game-count').textContent='Unavailable';
+   toolbarCount.textContent='Unavailable';
    displayCards(games,new Set());
   }
  }
