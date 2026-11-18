@@ -73,12 +73,12 @@ test('new site does not deploy new SuperAce RTP or touch player ledger',()=>{
 });
 
 test('game views are clean: transparent icon cards, no duplicate chrome, 65% native room',()=>{
- assert.match(sheet,/heightPixels\\*\\.65f/);
- assert.match(sheet,/window\\.setDimAmount\\(0f\\)/);
- assert.match(sheet,/container\\.setBackgroundColor\\(Color\\.TRANSPARENT\\)/);
- assert.match(css,/body\\.is-playing header\\{display:none!important\\}/);
- assert.match(css,/body\\.is-playing #game-profile\\{display:none!important\\}/);
+ assert.match(sheet,/heightPixels\*\.65f/);
+ assert.match(sheet,/window\.setDimAmount\(0f\)/);
+ assert.match(sheet,/container\.setBackgroundColor\(Color\.TRANSPARENT\)/);
+ assert.match(css,/body\.is-playing header\{display:none!important\}/);
+ assert.match(css,/body\.is-playing #game-profile\{display:none!important\}/);
  assert.match(css,/border:0!important;border-radius:0!important;background:transparent!important/);
- assert.match(js,/document\\.body\\.classList\\.add\\('is-playing'\\)/);
- assert.match(js,/document\\.body\\.classList\\.remove\\('is-playing'\\)/);
+ assert.match(js,/document\.body\.classList\.add\('is-playing'\)/);
+ assert.match(js,/document\.body\.classList\.remove\('is-playing'\)/);
 });
