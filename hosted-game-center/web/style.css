@@ -513,3 +513,14 @@ html.app-surface:not(.room-mode) body:not(.is-playing){
 @media(prefers-reduced-motion:reduce){
  .app-surface .tile .art,.room-mode .tile .art{transition:none}
 }
+
+/* ROYAL_EMERALD_FULL_BLEED_FIX: the catalog uses side padding, but the
+   launched game must NOT inherit it. Keep a 40px unobstructed close strip. */
+html.app-surface:not(.room-mode) body.is-playing{
+ background:#0a2c24!important
+}
+html.app-surface:not(.room-mode) body.is-playing main{
+ box-sizing:border-box;width:100%!important;max-width:none!important;
+ margin:0!important;padding:0!important;height:100dvh!important;
+ overflow:hidden!important
+}
