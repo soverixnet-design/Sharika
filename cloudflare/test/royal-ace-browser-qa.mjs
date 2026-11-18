@@ -54,6 +54,16 @@ try{
   assert.equal(state.balance,999500,'server balance');
   assert.equal(state.win,'500');
   assert.equal(state.stored,null);
+  // A failure after a successful spin must expose a visible Retry action,
+  // not leave the user with a disabled Spin and an invisible error panel.
+  await page.evaluate(()=>document.getElementById('game').contentWindow.postMessage(
+    {source:'sharika-royal-ace-server',type:'gameError',error:'temporary_network_test'},'*'));
+  await f.locator('#royal-loading').waitFor({state:'visible',timeout:5000});
+  assert.equal(await f.locator('#sp').isDisabled(),true);
+  assert.equal(await f.locator('#royal-try-again').isVisible(),true);
+  await f.locator('#royal-try-again').click();
+  await f.locator('#royal-loading').waitFor({state:'hidden',timeout:10000});
+  assert.equal(await f.locator('#sp').isDisabled(),false);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({mode:m.mode,status:'passed',box}));
   await page.close();
