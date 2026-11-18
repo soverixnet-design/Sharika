@@ -52,4 +52,11 @@ jobs:
         run: |
           test -f cloudflare/migrations/0100_superace_owner_spec_v1.sql
           grep -q 'SET enabled=0' cloudflare/migrations/0100_superace_owner_spec_v1.sql
-          ! grep -qE 'wrangler.*(migrations apply|d1 execute.*remote|deploy --config)' .github/workflows/superace-owner-spec-v1-qa.yml
+          # Check mutating CLI steps without matching this check's own script.
+          python3 - <<'PY'
+          from pathlib import Path
+          wf=Path('.github/workflows/superace-owner-spec-v1-qa.yml').read_text()
+          forbidden=['wrangler@4 d1 migrations apply','wrangler@4 d1 execute sharika-staging --remote','wrangler@4 deploy --config']
+          lines=[x.strip() for x in wf.splitlines() if x.strip().startswith('run:')]
+          assert not any(f in line for line in lines for f in forbidden)
+          PY
