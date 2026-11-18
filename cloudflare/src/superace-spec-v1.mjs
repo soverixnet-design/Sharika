@@ -60,33 +60,46 @@ export function evaluateSuperAce(grid,bet,free=false,combo=0){
 }
 function advanceSuperAceGrid(grid,marks,combo,rng){
   const toJoker=[],removed=[],jokerCopies=[],starCards=[];
-  const original=superAceCopy(grid),newGrid=superAceCopy(grid);
-  for(const i of marks){
-    const reel=Math.floor(i/4),row=i%4,cell=newGrid[reel][row];
+  const next=superAceCopy(grid);
+  const anchors=Array.from({length:5},()=>new Set());
+  for(const index of marks){
+    const reel=Math.floor(index/4),row=index%4,cell=next[reel][row];
     if(cell.g){
       const symbol=rng(2)?10:9;
-      newGrid[reel][row]={s:symbol,g:false};
+      next[reel][row]={s:symbol,g:false};
+      anchors[reel].add(row);
       toJoker.push({reel,row,s:symbol});
-    }else{newGrid[reel][row]=null;removed.push([reel,row]);}
+    }else{
+      next[reel][row]=null;removed.push([reel,row]);
+    }
   }
   const nextGrid=[];
   for(let reel=0;reel<5;reel++){
-    const remaining=[];
-    for(let row=0;row<4;row++)if(newGrid[reel][row])
-      remaining.push({...newGrid[reel][row],fall:0,flip:original[reel][row].g});
-    const needed=4-remaining.length;
-    const next=Array.from({length:needed},()=>({...draw(reel,rng),fall:0,flip:false}));
-    remaining.forEach((cell,index)=>{
-      cell.fall=needed+index-grid[reel].findIndex((_,i)=>i>=0);
-      if(cell.fall<0)cell.fall=0;
-    });
-    nextGrid.push(next.concat(remaining));
+    const col=new Array(4);
+    // Golden->Joker cards are pinned. Apply gravity independently to each
+    // contiguous segment between pinned rows so a Joker stays in place.
+    const boundaries=[...anchors[reel]].sort((a,b)=>a-b).concat([4]);
+    let first=0;
+    for(const boundary of boundaries){
+      const remaining=[];
+      for(let row=first;row<boundary;row++)if(next[reel][row])
+        remaining.push({row,cell:next[reel][row]});
+      const count=boundary-first,holes=count-remaining.length;
+      for(let j=0;j<holes;j++)
+        col[first+j]={...draw(reel,rng),fall:0,flip:false};
+      for(let j=0;j<remaining.length;j++){
+        const item=remaining[j],target=first+holes+j;
+        col[target]={...item.cell,fall:target-item.row,flip:false};
+      }
+      if(boundary<4)col[boundary]={...next[reel][boundary],fall:0,flip:true};
+      first=boundary+1;
+    }
+    nextGrid.push(col);
   }
   for(const joker of toJoker.filter(x=>x.s===9)){
     const copies=1+rng(4);
     for(let i=0;i<copies;i++){
-      const reel=1+rng(4),row=rng(4);
-      const cell=nextGrid[reel][row];
+      const reel=1+rng(4),row=rng(4),cell=nextGrid[reel][row];
       if(cell.s<8){
         nextGrid[reel][row]={s:9,g:false,fall:cell.fall||0,flip:true};
         jokerCopies.push([reel,row]);
