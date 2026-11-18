@@ -288,7 +288,6 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       setTimeout(hideIntro,$('royal-skip-intro').checked?0:650);
       if(freeRemaining){$('st').textContent='Free Spins: '+freeRemaining+' remaining';}
     }else if(d.type==='gameError'){
-      if(ready)return; // Ignore errors from an obsolete parallel state handshake.
       clearTimeout(connectTimer);
       ready=false;spinner.disabled=true;$('bb').disabled=true;
       showError('Server unavailable: '+String(d.error||'Please try again'));
