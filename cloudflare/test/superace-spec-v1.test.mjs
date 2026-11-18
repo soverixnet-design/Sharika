@@ -150,3 +150,36 @@ test('legacy staging API remains compatible without changing previous payouts',a
  assert.deepEqual(await(await f.route('spin',input,'adult-a',true)).json(),result);
  f.dbSql.close();
 });
+
+test('migration preserves a historic 10x bonus, wallet ledger, and pending free spins',()=>{
+ const old=new DatabaseSync(':memory:');
+ for(const migration of ['0001_initial.sql','0046_admin_game_catalog.sql',
+  '0098_royal_ace_deluxe.sql','0099_royal_ace_bonus_buy_10x.sql'])
+  old.exec(sql(migration));
+ old.prepare('INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(?,?,?,?,?,?)')
+   .run(10000123,'historic-user','Historic','1991-01-01',0,1000000);
+ old.exec("UPDATE sharika_royal_ace_settings SET enabled=1 WHERE id=1");
+ old.exec("UPDATE sharika_game_catalog SET enabled=1 WHERE id='royal-ace'");
+ old.prepare('INSERT INTO sharika_royal_ace_rounds '+
+  '(user_uid,request_id,bet,mode,cost,steps_json,win,bonus_spins,created_ms) '+
+  'VALUES(?,?,?,?,?,?,?,?,?)')
+  .run('historic-user','historic_buy_001',1000,'bonus_buy',10000,'[]',0,10,1);
+ const balance=old.prepare("SELECT coins FROM sharika_users WHERE auth_uid='historic-user'").get().coins;
+ const ledger=old.prepare("SELECT COUNT(*) n FROM sharika_wallet_ledger WHERE auth_uid='historic-user'").get().n;
+ assert.equal(balance,990000);
+ assert.equal(old.prepare("SELECT remaining FROM sharika_royal_ace_free WHERE user_uid='historic-user'").get().remaining,10);
+ old.exec(sql('0100_superace_owner_spec_v1.sql'));
+ assert.equal(old.prepare("SELECT coins FROM sharika_users WHERE auth_uid='historic-user'").get().coins,balance);
+ assert.equal(old.prepare("SELECT COUNT(*) n FROM sharika_wallet_ledger WHERE auth_uid='historic-user'").get().n,ledger);
+ const prior=old.prepare("SELECT cost,mode,result_json,receipt_json FROM sharika_royal_ace_rounds WHERE user_uid='historic-user'").get();
+ assert.equal(prior.cost,10000);
+ assert.equal(prior.mode,'bonus_buy');
+ assert.equal(prior.result_json,null);
+ assert.equal(prior.receipt_json,null);
+ const session=old.prepare("SELECT * FROM sharika_royal_ace_sessions WHERE user_uid='historic-user' AND status='open'").get();
+ assert.equal(session.bet,1000);
+ assert.equal(session.spins_total,10);
+ assert.equal(session.spins_done,0);
+ assert.equal(old.prepare("SELECT enabled FROM sharika_royal_ace_settings WHERE id=1").get().enabled,0);
+ old.close();
+});
