@@ -2,6 +2,40 @@
 (()=>{
 'use strict';
 const GAME='greedy-classic';
+// Restrict compact layout to the half-screen, in-room Game Center. The game
+// still uses the original DOM and authenticated settlement bridge.
+if(location.hash==='#sharika-room'){
+ document.documentElement.classList.add('sharika-greedy-mini');
+ const style=document.createElement('style');
+ style.id='sharika-compact-game-fit';
+ style.textContent=[
+  'html.sharika-greedy-mini,html.sharika-greedy-mini body{',
+  'height:100dvh!important;min-height:0!important;overflow:hidden!important}',
+  'html.sharika-greedy-mini #app{height:100dvh!important;',
+  'min-height:0!important;max-height:100dvh!important;overflow:visible!important}',
+  'html.sharika-greedy-mini #top{height:clamp(38px,12dvh,48px)!important;',
+  'min-height:0!important;flex:0 0 auto!important}',
+  'html.sharika-greedy-mini #stage{',
+  'width:min(48dvh,53vw,170px)!important;height:min(48dvh,53vw,170px)!important;',
+  'max-height:min(48dvh,53vw,170px)!important;flex-shrink:1!important;',
+  'margin:0 auto!important}',
+  'html.sharika-greedy-mini #stage>img.w{',
+  'width:100%!important;height:100%!important;object-fit:contain!important}',
+  'html.sharika-greedy-mini #low{height:114px!important;',
+  'min-height:100px!important;max-height:126px!important;',
+  'overflow:visible!important;flex-shrink:0!important}',
+  'html.sharika-greedy-mini #chips{',
+  'height:34px!important;min-height:0!important;max-height:36px!important}',
+  'html.sharika-greedy-mini #me{',
+  'height:36px!important;min-height:0!important;max-height:38px!important}',
+  'html.sharika-greedy-mini #auto{',
+  'position:fixed!important;right:7px!important;bottom:5px!important;',
+  'left:auto!important;top:auto!important;z-index:80!important}',
+  'html.sharika-greedy-mini .chip{max-height:36px!important}',
+ ].join('');
+ document.head.append(style);
+}
+
 const OUTCOMES=new Set(F.map(f=>f.id).concat(['salad','pizza']));
 const pending=new Map();
 let seq=0,ready=false,changing=false,refreshing=false,unconfirmed=null,clockOffset=0;
