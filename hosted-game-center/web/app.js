@@ -14,7 +14,7 @@
   'night-food':'/cards/food-wheel.png','greedy-wheel':'/cards/greedy-wheel.webp',
   'fruit-royale':'/cards/fruit-machine.jpg','jackpot-fruit':'/cards/jackpot-fruit.png'
  };
- let games=[],active=null,number=0,gameVersion=0,practice=null;
+ let games=[],active=null,number=0,gameVersion=0,practice=null,superAceSession=null;
  const pending=new Map();
  function notify(message){banner.textContent=message;banner.hidden=!message;}
  function call(method,path,body){
@@ -61,12 +61,12 @@
   }
  };
  function closeGame(){
-  gameVersion++;active=null;practice=null;frame.removeAttribute('src');
+  gameVersion++;active=null;practice=null;superAceSession=null;frame.removeAttribute('src');
   player.hidden=true;landing.hidden=false;
   $('back').hidden=true;notify('');window.scrollTo(0,0);
  }
  function openGame(game){
-  gameVersion++;active=game;
+  gameVersion++;active=game;superAceSession=null;
   // Browser demos never get native app credentials or the real Sharika wallet.
   practice=bridge?null:window.createSharikaPractice(game.id);
   landing.hidden=true;player.hidden=false;$('back').hidden=false;
@@ -103,16 +103,34 @@
   const royal=game.id==='royal-ace',cleo=game.id==='cleopatra';
   if(royal||cleo){
    if(royal&&m.source!=='sharika-royal-ace')return;
-   const prefix=royal?'/api/v1/royal-ace':'/api/v1/cleopatra';
+   const prefix=royal?(bridge?'/api/superace':'/api/v1/royal-ace'):'/api/v1/cleopatra';
    const source=royal?{source:'sharika-royal-ace-server'}:{};
    if(m.type==='ready'){
-    try{const state=await call('GET',prefix+'/state');send({type:'init',...source,...state})}
-    catch(error){send({type:'gameError',...source,error:error.message});notify('Game unavailable: '+error.message)}
+    try{
+      const state=await call('GET',prefix+'/state');
+      if(royal)superAceSession=state.freeGame||null;
+      send({type:'init',...source,...state});
+    }catch(error){
+      send({type:'gameError',...source,error:error.message});
+      notify('Game unavailable: '+error.message);
+    }
    }else if(m.type==='spin'&&typeof m.id==='string'&&/^[a-zA-Z0-9_-]{12,100}$/.test(m.id)&&
     Number.isSafeInteger(m.bet)&&m.bet>0&&(!royal||typeof m.buy==='boolean')){
-    try{const result=await call('POST',prefix+'/spin',{bet:m.bet,requestId:m.id,...(royal?{buy:m.buy}:{})});
-     send({type:'spinResult',id:m.id,...source,...result});}
-    catch(error){send({type:'spinResult',id:m.id,...source,error:error.message})}
+    try{
+      let path=prefix+'/spin',body={bet:m.bet,requestId:m.id,...(royal?{buy:m.buy}:{})};
+      if(royal&&bridge){
+        if(m.buy){path=prefix+'/buy-bonus';body={bet:m.bet,idempotencyKey:m.id};}
+        else if(superAceSession&&superAceSession.spinsLeft>0){
+          path=prefix+'/freespin';
+          body={sessionId:superAceSession.sessionId,idempotencyKey:m.id};
+        }else body={bet:m.bet,idempotencyKey:m.id};
+      }
+      const result=await call('POST',path,body);
+      if(royal&&bridge)superAceSession=result.freeGame||null;
+      send({type:'spinResult',id:m.id,...source,...result});
+    }catch(error){
+      send({type:'spinResult',id:m.id,...source,error:error.message});
+    }
    }
    return;
   }
