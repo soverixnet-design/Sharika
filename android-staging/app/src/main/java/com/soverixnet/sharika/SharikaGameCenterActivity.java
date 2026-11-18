@@ -123,11 +123,14 @@ public final class SharikaGameCenterActivity extends Activity {
         web.loadUrl(SITE_ORIGIN+"/");
     }
 
-    private static boolean allowedGameRoute(String method,String path) {
+    static boolean allowedGameRoute(String method,String path) {
         if (!"GET".equals(method) && !"POST".equals(method)) return false;
         if (path == null || path.length()>240 || path.contains("%") || path.contains("#")
             || path.contains("..") || path.contains("//")) return false;
         if ("GET".equals(method) && "/api/v1/game-catalog".equals(path)) return true;
+        // A single authenticated read returns the same profile as the main
+        // Sharika UI. No user ID can be provided or impersonated by the page.
+        if ("GET".equals(method) && "/api/v1/me".equals(path)) return true;
         if (path.matches("^/api/v1/(royal-ace|cleopatra)/state$")) return "GET".equals(method);
         if (path.matches("^/api/v1/(royal-ace|cleopatra)/spin$")) return "POST".equals(method);
         if (path.matches("^/api/v1/greedy-wheel/(state|records)$")) return "GET".equals(method);
