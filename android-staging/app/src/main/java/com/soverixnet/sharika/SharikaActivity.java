@@ -107,6 +107,7 @@ public final class SharikaActivity extends Activity {
     private SharikaPlayBilling playBilling;
     private CredentialManager credentials;
     private WebView browser;
+    private SharikaRoomGameDialog roomGameDialog;
     private DailyTaskBanner dailyTaskBanner;
     private View openingOverlay;
     private boolean backInProgress;
@@ -874,8 +875,18 @@ public final class SharikaActivity extends Activity {
                     sendResult(id,result(false,null,"hosted_game_center_unavailable"));
                     break;
                 }
-                startActivity(new Intent(this,SharikaGameCenterActivity.class));
-                sendResult(id,result(true,object(),null));
+                if (data.optBoolean("insideRoom",false)) {
+                    if (roomGameDialog!=null&&roomGameDialog.isShowing()) {
+                        sendResult(id,result(true,object(),null));break;
+                    }
+                    roomGameDialog=SharikaRoomGameDialog.show(this);
+                    sendResult(id,roomGameDialog==null?
+                        result(false,null,"secure_room_game_unavailable"):
+                        result(true,object(),null));
+                } else {
+                    startActivity(new Intent(this,SharikaGameCenterActivity.class));
+                    sendResult(id,result(true,object(),null));
+                }
                 break;
             case "visualReady":
                 // A read-only signal from the packaged visual layer.
@@ -1665,6 +1676,7 @@ public final class SharikaActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (roomGameDialog!=null){roomGameDialog.dismiss();roomGameDialog=null;}
         if (dailyTaskBanner != null) dailyTaskBanner.destroy();
         if (playBilling != null) { playBilling.close(); playBilling = null; }
         if (googlePending) expireGoogleSignIn(googleAttempt);

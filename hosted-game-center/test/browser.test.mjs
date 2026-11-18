@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 
-const site='https://sharika-games-web-staging.soverixnet.workers.dev';
+const site=process.env.SHARIKA_GAME_QA_URL||'https://sharika-games-web-staging.soverixnet.workers.dev';
 const enabled=['royal-ace','cleopatra','greedy-classic','food-deluxe','sovera-gaddy','sovera-food','night-food','greedy-wheel'];
 const catalog=enabled.map(id=>({id,enabled:true})).concat(
   ['fruit-royale','jackpot-fruit'].map(id=>({id,enabled:false})));
@@ -25,19 +25,27 @@ function mockWebViewBridge(account){
       const call=JSON.parse(encoded);
       window.__gameCalls.push(call);
       let payload={};
-      if(call.path==='/api/v1/game-catalog')payload={games:catalog};
+      if(call.path==='/api/v1/me')payload={name:account==='test-a'?'Sharika Alice':'Sharika Bob',public_id:account==='test-a'?'10000011':'10000012',display_id:account==='test-a'?'10000011':'10000012',pic:'https://sharika-api-staging.soverixnet.workers.dev/api/v1/users/10000011/avatar?v=1',coins:firstBalance};
+      else if(call.path==='/api/v1/game-catalog')payload={games:catalog};
       else if(call.path==='/api/v1/royal-ace/state')payload={balance:firstBalance,bets:[1000,10000,100000,1000000],freeSpins:0,lockedBet:0,virtual_coins_only:true};
       else if(call.path==='/api/v1/cleopatra/state')payload={balance:firstBalance,bets:[1000,10000,100000],freeSpins:0,lockedBet:0};
       else if(call.path==='/api/v1/royal-ace/spin'){
         const b=call.body;
         payload={requestId:b.requestId,bet:b.bet,mode:b.buy?'bonus_buy':'paid',
-          win:0,balance:firstBalance-b.bet,freeSpins:0,bonusSpins:0,
+          win:2000,balance:firstBalance-b.bet+2000,freeSpins:0,bonusSpins:0,
           steps:[{grid:Array.from({length:5},()=>Array.from({length:4},()=>({s:0,g:false}))),
             marks:[],win:0,multiplier:1}],settled:true,virtual_coins_only:true};
       }
       else if(call.path==='/api/v1/cleopatra/spin'){
         payload={requestId:call.body.requestId,bet:call.body.bet,win:0,balance:firstBalance-call.body.bet,
           freeSpins:0,grid:[['K','H','N'],['Q','H','J'],['T','H','K'],['L','N','E'],['J','A','T']],settled:true};
+      }
+      else if(call.path==='/api/v1/original-games/greedy-classic/state'){
+        const now=Date.now();
+        payload={balance:firstBalance,coins:firstBalance,serverTime:now,
+          todayWin:0,todayPlayed:0,history:[],myBets:Array(8).fill(0),
+          state:{round:Math.floor(now/40000),phase:'betting',
+            endsAt:now+15000,totals:Array(8).fill(0)}};
       }
       else if(call.path.startsWith('/api/v1/original-games/'))payload={
         balance:firstBalance,coins:firstBalance,enabled:true,round:{
@@ -192,6 +200,17 @@ test('all eight enabled hosted games load safely and connect their original stat
       await page.getByRole('button',{name:new RegExp(label)}).click();
       await page.waitForFunction(path=>
         window.__gameCalls.some(call=>call.path===path),endpoint,{timeout:25000});
+      const clean=await page.evaluate(()=>({
+       hiddenHeader:getComputedStyle(document.querySelector('header')).display==='none',
+       hiddenProfile:getComputedStyle(document.getElementById('game-profile')).display==='none',
+       borderless:getComputedStyle(document.getElementById('game-frame')).borderTopWidth==='0px',
+       frameWidth:document.getElementById('game-frame').getBoundingClientRect().width,
+       viewportWidth:document.documentElement.clientWidth
+      }));
+      assert.ok(clean.hiddenHeader&&clean.hiddenProfile&&clean.borderless,
+       'full-screen game must not show redundant Sharika chrome');
+      assert.ok(clean.frameWidth>=clean.viewportWidth-2,
+       'game iframe must use full available width');
       const child=page.frameLocator('#game-frame');
       const origin=await child.locator('html').evaluate(()=>{
         try {return window.parent.SharikaGameBridge?'exposed':'sandboxed'}
@@ -229,4 +248,173 @@ test('all ten original cards can be opened in browser practice without a Firebas
     const blocked=await page.request.post(site+'/api/spin',{data:{bet:1000}});
     assert.equal(blocked.status(),405,'The free public website cannot debit any Sharika wallet');
   } finally{await browser.close();}
+});
+
+
+test('compact room catalog uses four complete icons, verified profile and confirmed winner',
+ {timeout:100000},async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try{
+  const context=await browser.newContext({viewport:{width:390,height:490},deviceScaleFactor:2});
+  await context.addInitScript(mockWebViewBridge,'test-a');
+  const page=await context.newPage();
+  await page.goto(site+'/?view=room',{waitUntil:'domcontentloaded'});
+  await page.locator('.tile:enabled').first().waitFor();
+  assert.equal(await page.locator('.tile').count(),10);
+  const layout=await page.evaluate(()=>({
+   room:document.documentElement.classList.contains('room-mode'),
+   columns:getComputedStyle(document.getElementById('games')).gridTemplateColumns.split(' ').length,
+   viewport:document.documentElement.clientHeight,
+   container:document.getElementById('landing').getBoundingClientRect().height,
+   iconWidths:[...document.querySelectorAll('.tile .art')].map(x=>x.getBoundingClientRect().width)
+  }));
+  assert.equal(layout.room,true);
+  assert.equal(layout.columns,4,'room uses four icon columns');
+  assert.ok(layout.container<=layout.viewport+2,'catalog never expands out of room sheet');
+  assert.ok(Math.max(...layout.iconWidths)-Math.min(...layout.iconWidths)<2,'all icons aligned');
+  assert.equal(await page.locator('#catalog-profile .profile-name').innerText(),'Sharika Alice');
+  assert.equal(await page.locator('#catalog-profile .profile-id').innerText(),'ID: 10000011');
+  assert.equal(await page.locator('.tile .art img').count(),10);
+  await page.getByRole('button',{name:/SuperAce Deluxe/}).click();
+  assert.equal(await page.locator('#game-profile .profile-name').textContent(),'Sharika Alice');
+  assert.equal(await page.locator('#game-profile .profile-id').textContent(),'ID: 10000011');
+  assert.ok((await page.locator('#game-frame').getAttribute('src')).includes('mode=room'));
+  assert.equal(await page.locator('body').evaluate(body=>body.classList.contains('is-playing')),true);
+  assert.equal(await page.locator('#game-frame').evaluate(el=>getComputedStyle(el).borderTopWidth),'0px');
+  assert.equal(await page.locator('#game-profile').isVisible(),false);
+  const royal=page.frameLocator('#game-frame');
+  await royal.locator('#sp').waitFor({state:'visible',timeout:18000});
+  await royal.locator('#sp').click();
+  await page.locator('#verified-winner:not([hidden])').waitFor({timeout:20000});
+  assert.equal(await page.locator('#winner-name').innerText(),'Sharika Alice');
+  assert.equal(await page.locator('#winner-id').innerText(),'ID: 10000011');
+  assert.equal(await page.locator('#winner-amount').innerText(),'+2,000');
+  // An untrusted game iframe message cannot claim a winner or change identity.
+  // A real room uses its native X; simulate closing its web view here.
+  await page.locator('#exit').evaluate(button=>button.click());
+  assert.equal(await page.locator('#verified-winner').isVisible(),false);
+  // Original Greedy artwork is very tall in full mode; ensure room-compact
+  // layout now keeps real account name/avatar, chips and auto controls reachable.
+  await page.getByRole('button',{name:/Greedy Game/}).click();
+  const greedy=page.frameLocator('#game-frame');
+  await greedy.locator('#me .nm').waitFor({state:'visible',timeout:22000});
+  await greedy.locator('html.sharika-greedy-mini').waitFor({state:'attached',timeout:22000});
+  await page.waitForFunction(()=>{
+   const iframe=document.getElementById('game-frame');
+   return iframe?.contentWindow===null?false:true;
+  },null,{timeout:8000});
+  const fit=await greedy.locator('#app').evaluate(()=>{
+   const ids=['top','stage','chips','me','auto'];
+   return {compact:document.documentElement.classList.contains('sharika-greedy-mini'),
+    height:innerHeight,width:innerWidth,
+    boxes:Object.fromEntries(ids.map(id=>{
+     const e=document.getElementById(id),r=e.getBoundingClientRect();
+     return [id,{left:r.left,right:r.right,top:r.top,bottom:r.bottom}]
+    }))};
+  });
+  assert.equal(fit.compact,true);
+  for(const id of ['chips','me','auto']){
+   const rect=fit.boxes[id];
+   assert.ok(rect.top>=-3&&rect.bottom<=fit.height+3,
+    id+' must be visible inside half-screen frame: '+JSON.stringify(rect));
+   assert.ok(rect.left>=-3&&rect.right<=fit.width+3,
+    id+' must not overflow viewport horizontally: '+JSON.stringify(rect));
+  }
+  assert.equal(await greedy.locator('#me .nm').innerText(),'Sharika Alice');
+  await context.close();
+ }finally{await browser.close()}
+});
+
+test('independent accounts show different verified Sharika profiles, no iframe identity trust',
+ {timeout:90000},async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try{
+  for(const [account,name,id] of [['test-a','Sharika Alice','10000011'],
+   ['test-b','Sharika Bob','10000012']]){
+   const context=await browser.newContext({viewport:{width:375,height:470}});
+   await context.addInitScript(mockWebViewBridge,account);
+   const page=await context.newPage();
+   await page.goto(site+'/?view=room',{waitUntil:'domcontentloaded'});
+   await page.locator('.tile:enabled').first().waitFor();
+   assert.equal(await page.locator('#catalog-profile .profile-name').innerText(),name);
+   assert.equal(await page.locator('#catalog-profile .profile-id').innerText(),'ID: '+id);
+   const calls=await page.evaluate(()=>window.__gameCalls.map(x=>x.path));
+   assert.ok(calls.includes('/api/v1/me'),'profile must be fetched through the native bridge');
+   await context.close();
+  }
+ }finally{await browser.close()}
+});
+
+
+test('clean 65% room and full-screen game layouts avoid extra chrome and dark gutters',
+ {timeout:120000},async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try{
+  const context=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:2});
+  await context.addInitScript(mockWebViewBridge,'test-a');
+  const page=await context.newPage();
+  await page.goto(site+'/',{waitUntil:'domcontentloaded'});
+  await page.locator('.tile:enabled').first().waitFor();
+  const games=[
+   {name:'Greedy Game',root:'#app',fillHeight:true},
+   {name:'Food Wheel Deluxe',root:'#stage'},
+   {name:'SuperAce Deluxe',root:'#g'},
+   {name:"Cleopatra's Gold Deluxe",root:'#app'}
+  ];
+  for(const g of games){
+   await page.getByRole('button',{name:new RegExp(g.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'))}).click();
+   await page.locator('#game-frame').waitFor({state:'visible'});
+   const metrics=await page.evaluate(()=>({
+    header:getComputedStyle(document.querySelector('header')).display,
+    profile:getComputedStyle(document.getElementById('game-profile')).display,
+    canvasBorder:getComputedStyle(document.getElementById('game-frame')).borderTopWidth,
+    frame:document.getElementById('game-frame').getBoundingClientRect(),
+    viewport:document.documentElement.clientWidth
+   }));
+   assert.equal(metrics.header,'none',g.name+': hide duplicate header');
+   assert.equal(metrics.profile,'none',g.name+': hide duplicate profile');
+   assert.equal(metrics.canvasBorder,'0px',g.name+': remove frame border');
+   assert.ok(metrics.frame.width>=metrics.viewport-2,g.name+': use entire width');
+   const game=page.frameLocator('#game-frame');
+   await game.locator(g.root).waitFor({state:'attached',timeout:12000});
+   if(g.fillHeight){
+    await game.locator('html.sharika-greedy-full').waitFor({state:'attached',timeout:18000});
+    const fit=await game.locator(g.root).evaluate(el=>{
+      const r=el.getBoundingClientRect();
+      return {top:r.top,bottom:r.bottom,height:innerHeight,
+       rootClass:document.documentElement.className};
+    });
+    assert.match(fit.rootClass,/sharika-greedy-full/);
+    assert.ok(fit.top>=-2&&fit.top<=2, 'Greedy full screen has no black top bar');
+    assert.ok(fit.bottom>=fit.height-2&&fit.bottom<=fit.height+2,
+     'Greedy full screen has no black bottom bar');
+   }
+   await page.getByRole('button',{name:'Close Game'}).click();
+  }
+  await context.close();
+  const room=await browser.newContext({viewport:{width:390,height:550},deviceScaleFactor:2});
+  await room.addInitScript(mockWebViewBridge,'test-a');
+  const roomPage=await room.newPage();
+  await roomPage.goto(site+'/?view=room',{waitUntil:'domcontentloaded'});
+  await roomPage.locator('.tile:enabled').first().waitFor();
+  const iconMetrics=await roomPage.evaluate(()=>[...document.querySelectorAll('.tile .art')].map(e=>({
+   width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height,
+   border:getComputedStyle(e.closest('.tile')).borderTopWidth
+  })));
+  assert.ok(iconMetrics.every(i=>Math.abs(i.width-i.height)<1.5&&i.border==='0px'),
+   'Each game card is a uniform square icon without a card border');
+  await roomPage.getByRole('button',{name:/Greedy Game/}).click();
+  const greedy=roomPage.frameLocator('#game-frame');
+  await greedy.locator('#stage').waitFor({state:'visible'});
+  await greedy.locator('html.sharika-greedy-mini').waitFor({state:'attached',timeout:22000});
+  const roomFit=await greedy.locator('#stage').evaluate(el=>{
+   const stage=el.getBoundingClientRect(),root=document.getElementById('app').getBoundingClientRect(),
+    low=document.getElementById('low').getBoundingClientRect();
+   return {stage:stage.width,rootBottom:root.bottom,lowBottom:low.bottom,viewport:innerHeight}
+  });
+  assert.ok(roomFit.stage>=180,'65% room panel gives Greedy wheel usable size');
+  assert.ok(roomFit.rootBottom>=roomFit.viewport-2,'room canvas uses full height');
+  assert.ok(roomFit.lowBottom>=roomFit.viewport-5,'no unused turquoise void below betting panel');
+  await room.close();
+ }finally{await browser.close()}
 });

@@ -2,6 +2,81 @@
 (()=>{
 'use strict';
 const GAME='greedy-classic';
+// Restrict compact layout to the half-screen, in-room Game Center. The game
+// still uses the original DOM and authenticated settlement bridge.
+if(location.hash==='#sharika-room'){
+ document.documentElement.classList.add('sharika-greedy-mini');
+ const style=document.createElement('style');
+ style.id='sharika-compact-game-fit';
+ style.textContent=[
+  'html.sharika-greedy-mini,html.sharika-greedy-mini body{',
+  'height:100dvh!important;min-height:0!important;overflow:hidden!important}',
+  'html.sharika-greedy-mini #app{height:100dvh!important;',
+  'min-height:0!important;max-height:100dvh!important;overflow:hidden!important}',
+  'html.sharika-greedy-mini #top{height:clamp(38px,12dvh,48px)!important;',
+  'min-height:0!important;flex:0 0 auto!important}',
+  'html.sharika-greedy-mini #stage{',
+  'width:min(90vw,57dvh,390px)!important;height:auto!important;',
+  'max-height:none!important;flex:0 0 auto!important;',
+  'margin:0 auto!important}',
+  'html.sharika-greedy-mini #stage>img.w{',
+  'width:100%!important;height:100%!important;object-fit:contain!important}',
+  'html.sharika-greedy-mini #low{height:auto!important;',
+  'min-height:112px!important;max-height:none!important;',
+  'overflow:hidden!important;flex:1 1 auto!important;',
+  'gap:7px!important;padding:8px 12px 10px!important;',
+  'justify-content:space-between!important}',
+  'html.sharika-greedy-mini #chips{',
+  'height:34px!important;min-height:0!important;max-height:36px!important}',
+  'html.sharika-greedy-mini #me{',
+  'height:36px!important;min-height:0!important;max-height:38px!important}',
+  'html.sharika-greedy-mini #auto{',
+  'position:static!important;right:auto!important;bottom:auto!important;',
+  'left:auto!important;top:auto!important;z-index:auto!important;',
+  'min-width:47px!important;padding:3px 5px!important}',
+  'html.sharika-greedy-mini .chip{max-height:36px!important}',
+  '@media(max-height:390px){html.sharika-greedy-mini #stage{',
+  'width:min(90vw,44dvh)!important;max-height:none!important}}',
+ ].join('');
+ document.head.append(style);
+}
+else {
+ // In a full Game Center WebView the original fixed 1080:1617 canvas
+ // produced large BLACK bands on tall screens. Expand the *container*,
+ // never stretch the 1:1 food wheel or its aligned hit targets.
+ document.documentElement.classList.add('sharika-greedy-full');
+ const style=document.createElement('style');
+ style.id='sharika-fullscreen-game-fit';
+ style.textContent=[
+  'html.sharika-greedy-full,html.sharika-greedy-full body{',
+  'width:100%;height:100dvh!important;min-height:0!important;',
+  'background:#0bbcb0!important;overflow:hidden!important}',
+  'html.sharika-greedy-full body{display:flex!important;',
+  'align-items:stretch!important;justify-content:center!important}',
+  'html.sharika-greedy-full #app{width:min(100vw,520px)!important;',
+  'max-width:none!important;height:100dvh!important;',
+  'min-height:0!important;aspect-ratio:auto!important;margin:0 auto!important}',
+  'html.sharika-greedy-full #top{flex:0 0 auto!important}',
+  'html.sharika-greedy-full #stage{width:min(96%,56dvh,510px)!important;',
+  'max-height:none!important;flex:0 0 auto!important}',
+  // Keep result, chips and wallet in a compact lower control deck instead
+  // of stretching the bright-red deck across the entire tall phone screen.
+  'html.sharika-greedy-full #app{justify-content:space-between!important}',
+  'html.sharika-greedy-full #low{',
+  'flex:0 0 clamp(190px,30dvh,258px)!important;',
+  'height:clamp(190px,30dvh,258px)!important;',
+  'min-height:190px!important;max-height:258px!important;',
+  'justify-content:space-between!important;gap:3px!important;',
+  'padding:5px 10px 9px!important;overflow:hidden!important}',
+  'html.sharika-greedy-full #res,html.sharika-greedy-full #chips,',
+  'html.sharika-greedy-full #me{flex:0 0 auto!important}',
+  '@media(max-height:570px){html.sharika-greedy-full #stage{',
+  'width:min(87vw,46dvh)!important}}'
+ ].join('');
+ document.head.append(style);
+}
+
+
 const OUTCOMES=new Set(F.map(f=>f.id).concat(['salad','pizza']));
 const pending=new Map();
 let seq=0,ready=false,changing=false,refreshing=false,unconfirmed=null,clockOffset=0;
@@ -14,7 +89,7 @@ function request(action,method='GET',body){
  return new Promise((resolve,reject)=>{
   if(window.parent===window){reject(Error('Open this game from Sharika'));return;}
   const id=++seq;
-  const timer=setTimeout(()=>{pending.delete(id);reject(Error('Server timeout'))},9000);
+  const timer=setTimeout(()=>{pending.delete(id);reject(Error('Server timeout'))},34000);
   pending.set(id,{resolve,reject,timer});
   window.parent.postMessage({type:'sharika:original-request',game:GAME,action,method,id,body},'*');
  });
@@ -124,9 +199,17 @@ function finishVerified(r,round){
  const earned=Number(r.you?.win||0),betTotal=Number(r.you?.bet||0);
  if(!isValidMoney(earned)||!isValidMoney(betTotal))return;
  S.phase='pop';S.t=Math.min(4,Math.max(0,Math.ceil((state?.state?.endsAt-(Date.now()+clockOffset))/1000)));
- const winnersHtml=(r.top||[]).slice(0,10).map((u,i)=>
-  '<div class="row"><b>'+(i+1)+'</b><span>'+esc(u.name||'Player')+
-  '</span><span>'+im('gem')+' '+format(u.win)+'</span></div>').join('');
+ const winnersHtml=(r.top||[]).slice(0,10).map((u,i)=>{
+  // Rankings are received from the verified game-state API; never accept a
+  // fabricated browser-posted winner. Escape both name and image attributes.
+  const pic=String(u.avatar||u.pic||'');
+  const safePic=/^https:\/\/(?:sharika-api-staging\.soverixnet\.workers\.dev|lh3\.googleusercontent\.com|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(pic)?
+   '<img src="'+esc(pic)+'" alt="" loading="lazy" style="width:23px;height:23px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:5px">':'';
+  const id=String(u.userId||u.public_id||'');
+  return '<div class="row"><b>'+(i+1)+'</b><span>'+safePic+esc(u.name||'Player')+
+   (/^[0-9]{1,12}$/.test(id)?'<small style="display:block">ID: '+id+'</small>':'')+
+   '</span><span>'+im('gem')+' '+format(u.win)+'</span></div>';
+ }).join('');
  show('<span class="cnt">('+S.t+'s)</span>'+im(r.resultId,'big')+
   '<div style="padding-top:14px">Round '+round+' Result</div><div style="clear:both"></div>'+
   '<div class="row"><span>Coins Won</span><span>'+im('gem')+' '+format(earned)+'</span></div>'+

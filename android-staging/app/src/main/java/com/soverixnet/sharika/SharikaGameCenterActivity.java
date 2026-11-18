@@ -56,9 +56,9 @@ public final class SharikaGameCenterActivity extends Activity {
             return;
         }
         FrameLayout layout = new FrameLayout(this);
-        layout.setBackgroundColor(Color.rgb(15, 8, 28));
+        layout.setBackgroundColor(Color.rgb(5, 32, 25));
         web = new WebView(this);
-        web.setBackgroundColor(Color.rgb(15, 8, 28));
+        web.setBackgroundColor(Color.rgb(5, 32, 25));
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
         web.getSettings().setAllowFileAccess(false);
@@ -71,6 +71,15 @@ public final class SharikaGameCenterActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
+                // An app toolbar Back button closes this Activity only.
+                // Main-frame restriction prevents sandboxed game iframes
+                // from controlling native navigation or authenticated APIs.
+                if (request.isForMainFrame() &&
+                    "sharika-app".equals(uri.getScheme()) &&
+                    "close".equals(uri.getHost())) {
+                    runOnUiThread(SharikaGameCenterActivity.this::finish);
+                    return true;
+                }
                 String origin = uri.getScheme() + "://" + uri.getAuthority();
                 return !SITE_ORIGIN.equals(origin);
             }
@@ -107,27 +116,21 @@ public final class SharikaGameCenterActivity extends Activity {
                 requestGameApi(id,method,path,body,reply);
             });
         layout.addView(web,new FrameLayout.LayoutParams(-1,-1));
-        Button back = new Button(this);
-        back.setText("‹ SHARIKA");
-        back.setTextColor(Color.rgb(255,228,174));
-        back.setBackgroundColor(Color.rgb(38,17,52));
-        FrameLayout.LayoutParams pos = new FrameLayout.LayoutParams(
-            (int)(118*getResources().getDisplayMetrics().density),
-            (int)(43*getResources().getDisplayMetrics().density),
-            Gravity.BOTTOM|Gravity.START);
-        pos.setMargins(10,0,0,15);
-        back.setOnClickListener(v->finish());
-        // A native Back control remains available if a hosted page stops responding.
-        layout.addView(back,pos);
+        // Do not place the former "SHARIKA" button over the game artwork.
+        // The Android system Back gesture exits this Activity, while the
+        // small web close control returns from a game to the catalog.
         setContentView(layout);
-        web.loadUrl(SITE_ORIGIN+"/");
+        web.loadUrl(SITE_ORIGIN+"/?surface=app");
     }
 
-    private static boolean allowedGameRoute(String method,String path) {
+    static boolean allowedGameRoute(String method,String path) {
         if (!"GET".equals(method) && !"POST".equals(method)) return false;
         if (path == null || path.length()>240 || path.contains("%") || path.contains("#")
             || path.contains("..") || path.contains("//")) return false;
         if ("GET".equals(method) && "/api/v1/game-catalog".equals(path)) return true;
+        // A single authenticated read returns the same profile as the main
+        // Sharika UI. No user ID can be provided or impersonated by the page.
+        if ("GET".equals(method) && "/api/v1/me".equals(path)) return true;
         if (path.matches("^/api/v1/(royal-ace|cleopatra)/state$")) return "GET".equals(method);
         if (path.matches("^/api/v1/(royal-ace|cleopatra)/spin$")) return "POST".equals(method);
         if (path.matches("^/api/v1/greedy-wheel/(state|records)$")) return "GET".equals(method);
@@ -216,7 +219,18 @@ public final class SharikaGameCenterActivity extends Activity {
                 proxy.postMessage(response.toString());
         });
     }
-    @Override @SuppressWarnings("deprecation") public void onBackPressed(){finish();}
+    @Override @SuppressWarnings("deprecation") public void onBackPressed(){
+        // Android Back first exits the active iframe to the Premium Games
+        // catalog. A second Back closes this Activity. Keep the existing
+        // signed-in WebView session and never reload the game center.
+        if(web==null){finish();return;}
+        web.evaluateJavascript(
+            "(function(){return window.sharikaPremiumBack && "+
+            "window.sharikaPremiumBack() ? 'handled':'exit';})()",
+            result -> {
+                if(!isFinishing() && (result==null || !result.contains("handled")))finish();
+            });
+    }
     @Override protected void onDestroy(){
         if(web!=null){web.stopLoading();web.destroy();web=null;}
         io.shutdownNow();

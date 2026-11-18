@@ -1,0 +1,116 @@
+name: Sharika Premium Games final UI staging QA
+on:
+  push:
+    branches:
+      - feature/sharika-premium-games-final-ui-20261118
+    paths:
+      - 'hosted-game-center/**'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
+      - 'android-staging/app/src/main/assets/original-games/greedy-classic-live.js'
+      - '.github/workflows/sharika-premium-games-final-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    name: Validate source and trusted game bridge
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build and assert server-safe UI
+        run: |
+          node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/test/royal-emerald-ui.test.mjs
+          node --check hosted-game-center/test/final-premium-games.test.mjs
+          node --check android-staging/app/src/main/assets/original-games/greedy-classic-live.js
+          node --check android-staging/staging-connection.js
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/hosted-route.test.mjs
+          test -s hosted-game-center/dist/games/original-games/greedy-classic.html
+          test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+          test -s hosted-game-center/dist/games/original-games/royal-ace-deluxe.html
+          test -s hosted-game-center/dist/games/original-games/cleopatra-slot.html
+  visual:
+    name: Mobile Chromium 3D interface and game fit
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build exact hosted assets and install Playwright
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+      - name: Start secure local Worker (never deploy)
+        run: |
+          set -euo pipefail
+          nohup npx --yes wrangler@4 dev --local --config hosted-game-center/wrangler.jsonc --ip 127.0.0.1 --port 8787 > "${RUNNER_TEMP}/premium-games-local-worker.log" 2>&1 &
+          ready=0
+          for attempt in $(seq 1 65); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8787/health | grep -q 'sharika-hosted-game-center'; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then cat "${RUNNER_TEMP}/premium-games-local-worker.log"; exit 1; fi
+      - name: Run real-browser bridge, card fit and native-like visual tests
+        env:
+          SHARIKA_GAME_QA_URL: http://127.0.0.1:8787
+          GAME_UX_SCREENSHOT_DIR: ${{ runner.temp }}/sharika-premium-screenshots
+        run: |
+          node --test hosted-game-center/test/browser.test.mjs
+          node --test hosted-game-center/test/royal-emerald-ui.test.mjs hosted-game-center/test/final-premium-games.test.mjs hosted-game-center/test/ux-audit-148.test.mjs
+      - name: Upload 4 mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Premium-Games-Mobile-UI
+          path: ${{ runner.temp }}/sharika-premium-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload Worker error log if needed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Premium-Games-Local-Worker
+          path: ${{ runner.temp }}/premium-games-local-worker.log
+          if-no-files-found: ignore
+  android:
+    name: Compile isolated Android staging APK
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Install Android 36
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Assemble debug test APK only
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Verify asset routing and APK integrity
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq app/build/outputs/apk/debug/app-debug.apk
+          grep -Fq "native('openHostedGameCenter'" app/build/generated/sharika-ui-assets/connection.js
+          grep -Fq 'view=room&surface=app' app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java
+          grep -Fq '?surface=app' app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Premium-Games-Final-UI-Debug
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7

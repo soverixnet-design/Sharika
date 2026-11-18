@@ -1,0 +1,72 @@
+name: Sharika Issue 148 Games UX staging QA
+on:
+  push:
+    branches:
+      - fix/sharika-games-ui-audit-148-20261118
+    paths:
+      - 'hosted-game-center/**'
+      - '.github/workflows/sharika-game-audit-148-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate JavaScript and static assets
+        run: |
+          node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/test/ux-audit-148.test.mjs
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/hosted-route.test.mjs
+          for i in gaddy-royal.svg sovera-food-royal.svg night-food-royal.svg greedy-wheel-royal.svg; do
+            test -s "hosted-game-center/dist/cards/$i"
+            grep -Fq 'viewBox="0 0 512 512"' "hosted-game-center/dist/cards/$i"
+          done
+  browser:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build and install Playwright
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+      - name: Start local Cloudflare worker
+        run: |
+          set -euo pipefail
+          nohup npx --yes wrangler@4 dev --local --config hosted-game-center/wrangler.jsonc --ip 127.0.0.1 --port 8787 > "${RUNNER_TEMP}/game-audit148-worker.log" 2>&1 &
+          ready=0
+          for attempt in $(seq 1 65); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8787/health | grep -q 'sharika-hosted-game-center'; then ready=1;break;fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then cat "${RUNNER_TEMP}/game-audit148-worker.log";exit 1;fi
+      - name: Run gameplay regression and eight mobile viewport screenshots
+        env:
+          SHARIKA_GAME_QA_URL: http://127.0.0.1:8787
+          GAME_UX_SCREENSHOT_DIR: ${{ runner.temp }}/game-148-screens
+        run: |
+          node --test hosted-game-center/test/browser.test.mjs hosted-game-center/test/royal-emerald-ui.test.mjs hosted-game-center/test/ux-audit-148.test.mjs
+      - name: Export screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Issue-148-Eight-Responsive-QA-Screenshots
+          path: ${{ runner.temp }}/game-148-screens/*.png
+          if-no-files-found: ignore
+      - name: Upload Worker logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Issue-148-Worker-Log
+          path: ${{ runner.temp }}/game-audit148-worker.log
+          if-no-files-found: ignore
