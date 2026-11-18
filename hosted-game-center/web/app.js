@@ -78,8 +78,13 @@
   notify('');
   // Game Center is its own full-screen Activity, even if entered from a voice
   // room. Never force the cramped #sharika-room mini-game layout here.
-  frame.src=game.asset+(game.id==='royal-ace'||game.id==='cleopatra'?
-   (game.asset.includes('?')?'&':'?')+'mode=full&host=1':'');
+  // The original Cleopatra HTML already has a fully offline sample-spin
+  // engine. Use that for public browser practice; the authenticated Android
+  // session continues using the server-owned settlement protocol.
+  const hostedSlot=game.id==='royal-ace'||game.id==='cleopatra';
+  const serverMode=!!bridge||game.id==='royal-ace';
+  frame.src=game.asset+(hostedSlot?
+   (game.asset.includes('?')?'&':'?')+'mode=full&host='+(serverMode?'1':'0'):'');
  }
  $('exit').addEventListener('click',closeGame);
  $('back').addEventListener('click',closeGame);
