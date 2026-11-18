@@ -52,7 +52,7 @@
    const timer=setTimeout(()=>{
     pending.delete(id);
     reject(Error('Game server timed out. Check the wallet before trying again.'));
-   },19000);
+   },30000);
    pending.set(id,{resolve,reject,timer});
    bridge.postMessage(JSON.stringify({id,method,path,body:body||null}));
   });
