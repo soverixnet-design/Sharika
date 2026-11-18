@@ -5,13 +5,14 @@
  *
  * node cloudflare/scripts/superace-rtp.mjs 10000000 100 123456
  */
-import {simulateRoyalAce,superAceTestRng,SUPERACE_SPEC} from '../src/superace-spec-v1.mjs';
+import {simulateRoyalAce,superAceTestRng,superAceSecureInt,SUPERACE_SPEC} from '../src/superace-spec-v1.mjs';
 const count=Number(process.argv[2]||100000);
 const bet=Number(process.argv[3]||100),seed=Number(process.argv[4]||123456);
 if(!Number.isSafeInteger(count)||count<1||count>10000000||
    ![100,200,500,1000,2000,5000,10000,50000].includes(bet)||
    !Number.isSafeInteger(seed))throw Error('invalid_simulation_arguments');
-const rng=superAceTestRng(seed);
+const useCrypto=process.argv[5]==='crypto';
+const rng=useCrypto?superAceSecureInt:superAceTestRng(seed);
 let paidHit=0,freeTriggered=0,freeGames=0,freeHits=0;
 let returnPaid=0,returnFree=0,maximumRound=0,steps=0,scatter3=0;
 const t=Date.now();
@@ -38,7 +39,7 @@ for(let i=0;i<count;i++){
 const totalCost=count*bet;
 const output={
  source:'Super Ace Deluxe Server Integration Spec v1 — Section 12',
- simulation:'deterministic QA PRNG, production uses cryptographic RNG',
+ simulation:useCrypto?'cryptographic cross-check':'deterministic QA PRNG, production uses cryptographic RNG',
  bet,seed,paidSpins:count,freeSpins:freeGames,
  totalBet:totalCost,paidWin:returnPaid,freeWin:returnFree,
  totalWin:returnPaid+returnFree,rtpPercent:+(100*(returnPaid+returnFree)/totalCost).toFixed(4),
