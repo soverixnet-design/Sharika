@@ -177,6 +177,7 @@ const API = root.SharikaGame = {
     if (cfg.profile) API.setProfile(cfg.profile);
     if (cfg.balance != null) API.setBalance(cfg.balance);
     if (cfg.jackpot != null) API.setJackpot(cfg.jackpot);
+    if (cfg.bet != null && BETS.includes(cfg.bet)) { S.bi=BETS.indexOf(cfg.bet); upd(); }
     if (cfg.freeSpins != null) { S.fs = cfg.freeSpins; upd(); }
     modeUI(); emit('gameInit', { mode: S.mode });
   },
