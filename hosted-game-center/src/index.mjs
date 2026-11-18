@@ -1,5 +1,6 @@
 // Public static game assets only. Never handles coins, credentials or winning outcomes.
 const games=Object.freeze([
+{id:'royal-slots',name:'Royal Slots',category:'Slots',asset:'/games/royal-slots/index.html'},
 {id:'royal-ace',name:'SuperAce Deluxe',category:'Slots',asset:'/games/original-games/royal-ace-deluxe.html'},
 {id:'cleopatra',name:"Cleopatra's Gold Deluxe",category:'Slots',asset:'/games/original-games/cleopatra-slot.html'},
 {id:'greedy-classic',name:'Greedy Game',category:'Food Wheels',asset:'/games/original-games/greedy-classic.html'},
