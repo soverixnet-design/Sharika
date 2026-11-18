@@ -273,9 +273,7 @@ function finishVerified(r,round){
   const pic=String(u.avatar||u.pic||'');
   const safePic=/^https:\/\/(?:sharika-api-staging\.soverixnet\.workers\.dev|lh3\.googleusercontent\.com|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(pic)?
    '<img src="'+esc(pic)+'" alt="" loading="lazy" style="width:23px;height:23px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:5px">':'';
-  const id=String(u.userId||u.public_id||'');
   return '<div class="row"><b>'+(i+1)+'</b><span>'+safePic+esc(u.name||'Player')+
-   (/^[0-9]{1,12}$/.test(id)?'<small style="display:block">ID: '+id+'</small>':'')+
    '</span><span>'+im('gem')+' '+format(u.win)+'</span></div>';
  }).join('');
  show('<span class="cnt">('+S.t+'s)</span>'+im(r.resultId,'big')+
