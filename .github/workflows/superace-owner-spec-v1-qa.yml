@@ -73,3 +73,5 @@ jobs:
         run: node cloudflare/scripts/superace-rtp.mjs 10000000 100 20261118
       - name: Ten-thousand paid spins at maximum documented bet
         run: node cloudflare/scripts/superace-rtp.mjs 10000 50000 12345
+      - name: Independent cryptographic RNG cross-check (100,000 spins)
+        run: node cloudflare/scripts/superace-rtp.mjs 100000 100 20261118 crypto
