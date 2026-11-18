@@ -9,6 +9,7 @@ on:
       - 'cloudflare/src/game-catalog.mjs'
       - 'cloudflare/migrations/0100_royal_slots.sql'
       - 'cloudflare/test/royal-slots.test.mjs'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
       - '.github/workflows/sharika-royal-slots-staging.yml'
   workflow_dispatch:
 permissions:
@@ -34,6 +35,7 @@ jobs:
           node --check hosted-game-center/web/app.js
           node --check hosted-game-center/web/royal-slots-bridge.js
           node --test cloudflare/test/royal-slots.test.mjs
+          node --test hosted-game-center/test/royal-slots-integration.test.mjs
           node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/hosted-route.test.mjs
           node hosted-game-center/scripts/build.mjs
           test -s hosted-game-center/dist/games/royal-slots/index.html
@@ -89,6 +91,36 @@ jobs:
       - name: Verify Royal Slots asset and API health
         run: |
           set -euo pipefail
-          curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-api-staging.soverixnet.workers.dev/health
-          curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-games-web-staging.soverixnet.workers.dev/api/catalog | grep -Fq royal-slots
-          curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-games-web-staging.soverixnet.workers.dev/games/royal-slots/bridge.js | grep -Fq sharika-royal-slots
+          api="$(curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-api-staging.soverixnet.workers.dev/health)"
+          [[ "$api" == *'"ok":true'* ]]
+          catalog="$(curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-games-web-staging.soverixnet.workers.dev/api/catalog)"
+          [[ "$catalog" == *'"id":"royal-slots"'* ]]
+          bridge="$(curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-games-web-staging.soverixnet.workers.dev/games/royal-slots/bridge.js)"
+          [[ "$bridge" == *'sharika-royal-slots'* ]]
+
+  android-debug:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Install Android 36
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Compile APK with Royal Slots native API route
+        working-directory: android-staging
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Upload staging debug APK for device QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Royal-Slots-Game-Center-Debug
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+          if-no-files-found: error
