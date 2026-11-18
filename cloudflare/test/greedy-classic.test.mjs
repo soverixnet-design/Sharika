@@ -96,7 +96,7 @@ test('100 real SQLite D1-triggered clicks debit once, retry idempotently and rej
  Date.now=()=>n*38000+1000;
  try{
   const accepted=await call('bet-batch',body);
-  assert.equal(accepted.status,200,await accepted.text());
+  assert.equal(accepted.status,200,'SQLite batch API must accept 100 virtual-coin taps');
   const receipt=await accepted.json();
   assert.equal(receipt.accepted_clicks,100);
   assert.equal(balance(),90000);
