@@ -1,6 +1,7 @@
 // Server-owned game visibility. Only bundled, verified game engines may be enabled.
 // Turning a game off rejects NEW bets but never interrupts historical settlement.
 export const GAME_DEFINITIONS=Object.freeze([
+  {id:'royal-slots',name:'Royal Slots',engine:'royal-slots-d1'},
   {id:'sovera-food',name:'Sovera Food Wheel',engine:'original'},
   {id:'food-deluxe',name:'Food Wheel Deluxe',engine:'food-wheel-d1'},
   {id:'sovera-gaddy',name:'Sovera Gaddy Game',engine:'gaddy-d1'},
@@ -14,7 +15,7 @@ export const GAME_DEFINITIONS=Object.freeze([
   {id:'food-wheel',name:'Food Wheel (legacy)',engine:'legacy'}
 ]);
 const GAME_IDS=new Set(GAME_DEFINITIONS.map(game=>game.id));
-const NEW_GAMES_REQUIRING_MIGRATION=new Set(['cleopatra','food-deluxe','greedy-classic','royal-ace']);
+const NEW_GAMES_REQUIRING_MIGRATION=new Set(['cleopatra','food-deluxe','greedy-classic','royal-ace','royal-slots']);
 
 export async function readGameCatalog(db){
   const result=await db.prepare(
