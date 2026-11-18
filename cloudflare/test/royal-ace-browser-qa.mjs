@@ -17,11 +17,13 @@ try{
   const html=[
    '<html><style>html,body{margin:0;height:100%;overflow:hidden}iframe{width:100%;height:100%;border:0}</style>',
    '<iframe id="game" src="./royal-ace-deluxe.html?mode='+m.mode+'&host=1"></iframe>',
-   '<script>window.requests=[];window.connected=false;',
+   '<script>window.requests=[];window.connected=false;window.readyCount=0;',
    "addEventListener('message',e=>{const d=e.data;if(d?.source!=='sharika-royal-ace')return;",
-   "if(d.type==='ready')setTimeout(()=>{e.source.postMessage({source:'sharika-royal-ace-server',type:'init',",
-   "balance:1000000,bets:[1000,10000,100000,1000000,10000000],lockedBet:0,freeSpins:0},'*');window.connected=true},1200);",
-   "if(d.type==='spin'){window.requests.push(d);let grid=Array.from({length:5},()=>Array.from({length:4},()=>({s:8,g:false})));",
+   "if(d.type==='ready'){window.readyCount++;if(window.readyCount===1)return;setTimeout(()=>{e.source.postMessage({source:'sharika-royal-ace-server',type:'init',",
+   "balance:1000000,bets:[1000,10000,100000,1000000,10000000],lockedBet:0,freeSpins:0},'*');window.connected=true},1200);}",
+   "if(d.type==='spin'){window.requests.push(d);if(window.requests.length===2){",
+   "setTimeout(()=>e.source.postMessage({source:'sharika-royal-ace-server',type:'spinResult',id:d.id,error:'spin_rate_limited'},'*'),100);return;}",
+   "let grid=Array.from({length:5},()=>Array.from({length:4},()=>({s:8,g:false})));",
    "setTimeout(()=>e.source.postMessage({source:'sharika-royal-ace-server',type:'spinResult',id:d.id,",
    "win:500,balance:999500,mode:'paid',freeSpins:0,bonusSpins:0,steps:[{grid,marks:[],combo:0,multiplier:1}]},'*'),100)",
    "}});</script></html>"
@@ -35,6 +37,7 @@ try{
   assert.equal(await f.locator('#sp').isDisabled(),true);
   await page.screenshot({path:join(images,m.mode+'-loading.png')});
   await page.waitForFunction(()=>window.connected,{timeout:10000});
+  assert.ok(await page.evaluate(()=>window.readyCount)>=2,'Lost first ready handshake must recover');
   await f.locator('#royal-loading').waitFor({state:'hidden',timeout:10000});
   assert.equal(await f.locator('#sp').isDisabled(),false);
   assert.equal(await f.locator('#grid .c').count(),20);
@@ -54,6 +57,15 @@ try{
   assert.equal(state.balance,999500,'server balance');
   assert.equal(state.win,'500');
   assert.equal(state.stored,null);
+  // The D1 rate guard declines a rapid bet without taking coins. The UI must
+  // remain usable rather than displaying a full-screen connection error.
+  await f.locator('#sp').click({timeout:12000});
+  await page.waitForFunction(()=>window.requests.length===2,{timeout:6000});
+  await page.waitForTimeout(300);
+  assert.equal(await f.locator('#royal-loading').isVisible(),false);
+  assert.equal(await f.locator('#sp').isDisabled(),false);
+  assert.match(await f.locator('#st').textContent(),/Bet not accepted: spin rate limited/);
+  assert.equal(await f.locator('#bl').textContent(),'999,500');
   // A failure after a successful spin must expose a visible Retry action,
   // not leave the user with a disabled Spin and an invisible error panel.
   await page.evaluate(()=>document.getElementById('game').contentWindow.postMessage(
