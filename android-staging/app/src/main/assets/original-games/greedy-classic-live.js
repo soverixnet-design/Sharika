@@ -124,9 +124,17 @@ function finishVerified(r,round){
  const earned=Number(r.you?.win||0),betTotal=Number(r.you?.bet||0);
  if(!isValidMoney(earned)||!isValidMoney(betTotal))return;
  S.phase='pop';S.t=Math.min(4,Math.max(0,Math.ceil((state?.state?.endsAt-(Date.now()+clockOffset))/1000)));
- const winnersHtml=(r.top||[]).slice(0,10).map((u,i)=>
-  '<div class="row"><b>'+(i+1)+'</b><span>'+esc(u.name||'Player')+
-  '</span><span>'+im('gem')+' '+format(u.win)+'</span></div>').join('');
+ const winnersHtml=(r.top||[]).slice(0,10).map((u,i)=>{
+  // Rankings are received from the verified game-state API; never accept a
+  // fabricated browser-posted winner. Escape both name and image attributes.
+  const pic=String(u.avatar||u.pic||'');
+  const safePic=/^https:\/\/(?:sharika-api-staging\.soverixnet\.workers\.dev|lh3\.googleusercontent\.com|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(pic)?
+   '<img src="'+esc(pic)+'" alt="" loading="lazy" style="width:23px;height:23px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:5px">':'';
+  const id=String(u.userId||u.public_id||'');
+  return '<div class="row"><b>'+(i+1)+'</b><span>'+safePic+esc(u.name||'Player')+
+   (/^[0-9]{1,12}$/.test(id)?'<small style="display:block">ID: '+id+'</small>':'')+
+   '</span><span>'+im('gem')+' '+format(u.win)+'</span></div>';
+ }).join('');
  show('<span class="cnt">('+S.t+'s)</span>'+im(r.resultId,'big')+
   '<div style="padding-top:14px">Round '+round+' Result</div><div style="clear:both"></div>'+
   '<div class="row"><span>Coins Won</span><span>'+im('gem')+' '+format(earned)+'</span></div>'+
