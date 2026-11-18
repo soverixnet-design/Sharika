@@ -298,6 +298,7 @@ test('compact room catalog uses four complete icons, verified profile and confir
   await page.getByRole('button',{name:/Greedy Game/}).click();
   const greedy=page.frameLocator('#game-frame');
   await greedy.locator('#me .nm').waitFor({state:'visible',timeout:22000});
+  await greedy.locator('html.sharika-greedy-mini').waitFor({state:'attached',timeout:22000});
   await page.waitForFunction(()=>{
    const iframe=document.getElementById('game-frame');
    return iframe?.contentWindow===null?false:true;
@@ -377,6 +378,7 @@ test('clean 65% room and full-screen game layouts avoid extra chrome and dark gu
    const game=page.frameLocator('#game-frame');
    await game.locator(g.root).waitFor({state:'attached',timeout:12000});
    if(g.fillHeight){
+    await game.locator('html.sharika-greedy-full').waitFor({state:'attached',timeout:18000});
     const fit=await game.locator(g.root).evaluate(el=>{
       const r=el.getBoundingClientRect();
       return {top:r.top,bottom:r.bottom,height:innerHeight,
@@ -404,6 +406,7 @@ test('clean 65% room and full-screen game layouts avoid extra chrome and dark gu
   await roomPage.getByRole('button',{name:/Greedy Game/}).click();
   const greedy=roomPage.frameLocator('#game-frame');
   await greedy.locator('#stage').waitFor({state:'visible'});
+  await greedy.locator('html.sharika-greedy-mini').waitFor({state:'attached',timeout:22000});
   const roomFit=await greedy.locator('#stage').evaluate(el=>{
    const stage=el.getBoundingClientRect(),root=document.getElementById('app').getBoundingClientRect(),
     low=document.getElementById('low').getBoundingClientRect();
