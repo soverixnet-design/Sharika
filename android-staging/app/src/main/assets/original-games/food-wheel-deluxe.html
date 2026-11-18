@@ -81,6 +81,12 @@ function build(){
  T.tapStatus=tx('',540,1362,28,'#ffffff',730);
  T.tapStatus.style.textShadow='0 2px 3px #283f73';
  const t5=im('top5',410,1955,735);T.t5=tx('No Winner',430,1962,56,'#fff',500);T.t5.style.cssText+=';--s:#9a3410;opacity:.9';
+ T.winnerAvatar=document.createElement('img');
+ T.winnerAvatar.alt='';T.winnerAvatar.hidden=true;
+ T.winnerAvatar.style.cssText='position:absolute;left:138px;top:1908px;width:76px;height:76px;'+
+  'border-radius:50%;object-fit:cover;border:4px solid #ffdb65;'+
+  'box-shadow:0 0 15px #f6be44;pointer-events:none;z-index:3';
+ L.appendChild(T.winnerAvatar);
  // top bar
  const bk=im('back',68,188,86),hp=im('help',184,188,86),rk=im('rank',299,188,86),mu=im('music',411,188,86);
  btn(bk,()=>FoodWheel.onBack());btn(hp,help);btn(rk,rank);btn(mu,()=>{sound=!sound;mu.style.opacity=sound?1:.45});
@@ -208,6 +214,7 @@ function draw(){
  T.ph.textContent=phase==='bet'?'Select Time':phase==='spin'?'Drawing...':phase==='result'?'Result Time':'Connecting';
  T.sec.textContent=phase==='spin'?'':left+'s';
  T.ping.textContent=ready?'LIVE':'OFFLINE';
+ renderFoodWinner();
  if(T.tapStatus)T.tapStatus.textContent='Queued '+queuedFoodTaps+'  |  Verified '+verifiedFoodTaps+'  |  Declined '+declinedFoodTaps+'  |  Checking '+unverifiedFoodTaps;
  T.hist.forEach((e,k)=>{const h=hist[k];if(h===undefined){e.style.display='none';return}const a=A['i'+h],w=k?92:100;e.src=a[0];e.style.display='block';e.style.width=w+'px';e.style.left=(138+k*134-w/2)+'px';e.style.top=(1782-w*a[2]/a[1]/2)+'px'});
  T.new.style.display=hist.length?'block':'none';
@@ -238,12 +245,44 @@ async function rank(){
     '<p style="font-size:40px">No verified winners yet</p>')+'</div>');
  }catch(e){toast(e.message)}
 }
+function safeWinnerPhoto(value){
+ const pic=String(value||'');
+ if(!/^https:\/\/(?:sharika-api-staging\.soverixnet\.workers\.dev|lh3\.googleusercontent\.com|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(pic))return '';
+ return pic;
+}
+function foodTopWinner(){
+ const result=currentState?.result,previous=currentState?.previous_result;
+ const latest=result||previous;
+ const winner=latest?.top_winners?.[0];
+ return winner&&typeof winner.name==='string'&&winner.name.trim()&&
+  Number(winner.total_win)>0?winner:null;
+}
+function renderFoodWinner(){
+ if(!T.winnerAvatar||!T.t5)return;
+ const winner=foodTopWinner(),pic=winner?safeWinnerPhoto(winner.pic||winner.avatar):'';
+ T.winnerAvatar.hidden=!pic;
+ if(pic&&T.winnerAvatar.src!==pic)T.winnerAvatar.src=pic;
+ if(winner){
+  T.t5.style.left='247px';T.t5.style.width='530px';
+  T.t5.style.fontSize='39px';
+  T.t5.textContent=winner.name.trim().slice(0,17)+' +'+fmt(Number(winner.total_win));
+ }else{
+  T.t5.style.left='180px';T.t5.style.width='500px';
+  T.t5.style.fontSize='56px';
+  T.t5.textContent=currentState?.result?.my_payout?
+    'You +'+fmt(Number(currentState.result.my_payout)):'No Winner';
+ }
+}
 function players(){
  const winners=currentState?.previous_result?.top_winners||[];
  modal('<div class="box res" style="height:690px"><div class="x">×</div>'+
   '<div class="ban">Top Winners</div><br><br>'+
-  (winners.length?winners.map((w,i)=>'<p style="font-size:35px">'+(i+1)+
-   '. '+escapeHtml(w.name)+' · '+fmt(w.total_win)+'</p>').join(''):
+  (winners.length?winners.map((w,i)=>{
+    const pic=safeWinnerPhoto(w.pic||w.avatar);
+    return '<p style="font-size:35px;display:flex;align-items:center;gap:12px">'+
+      (pic?'<img alt="" src="'+escapeHtml(pic)+'" style="width:55px;height:55px;object-fit:cover;border-radius:50%"/>':'')+
+      (i+1)+'. '+escapeHtml(w.name||'Player')+' · '+fmt(Number(w.total_win)||0)+'</p>';
+   }).join(''):
    '<p style="font-size:40px">No confirmed winners this round</p>')+'</div>');
 }
 function phaseAt(r,now){return now<r.bet_closes_ms?'bet':now<r.result_ms?'spin':
