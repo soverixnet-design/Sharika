@@ -26,6 +26,12 @@ For grouped specials include their contribution, even though they have a separat
 - **SuperAce Deluxe:** source now credits 7.5% of the original paytable gross, capped at 10× the stake per spin; paid spins and recursively awarded free spins are included in its separate Monte Carlo check. A previous 10,000× maximum shown by the original HTML was a misleading *visual* bug and was corrected in the staging source. This is NOT a guarantee of 7.5% overall RTP.
 - **Cleopatra:** currently configured at payout scale 0.60; normal line payouts, bonus free spins, jackpot pool and max win must be assessed together. The historical 138 paid sample returned 72.8% before counting 10 free spins; those observations alone do not establish long-run RTP.
 
+## Bonus purchase balance correction (2026-11-18)
+- The original SuperAce bonus price was 50× stake for **only 10 Free Spins**. Under the current free-spin return sampling, that had a markedly worse expected return than ordinary gameplay.
+- New staging rule: **10× stake buys 10 Free Spins**. Source `royal-ace.mjs`, bundled HTML and D1 validation migration `0099_royal_ace_bonus_buy_10x.sql` agree; old history and previous wallet debits are unchanged.
+- Replaced the D1 validation trigger with a transition guard to prevent unvalidated bets during the migration. Checked staging D1 after cutover: `NEW.bet*10` active, no null-settlement rounds, old `NEW.bet*50` absent.
+- Previous free-spin sampling gives an illustrative return near 80–85% of the new Bonus Buy price, not a promise. Payout, hit frequency and free-spin chaining must continue to be evaluated under the same engine version.
+
 ## Bugs found and repairs
 1. Greedy Classic used a **1 ms spinning window**. Staging changed this to 3,500 ms, leaving 4,500 ms for the result in the existing 38 s round. Existing D1 rounds retain their original timing; newly created rounds use the new timing.
 2. SuperAce Rules UI claimed **10,000×** where the Worker caps paid-out wins at **10×**. It now states the correct 7.5%-of-original-gross/10× cap, including the example equation.
