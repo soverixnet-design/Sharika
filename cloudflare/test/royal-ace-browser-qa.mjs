@@ -66,7 +66,7 @@ try{
     status:document.getElementById('st').textContent,
     overlay:document.getElementById('royal-loading').style.display,
     toast:document.getElementById('wp').textContent,
-    busy,waiting,disabled:document.getElementById('sp').disabled
+    busy,disabled:document.getElementById('sp').disabled
   }));
   console.log(JSON.stringify({mode:m.mode,rejected}));
   assert.equal(await f.locator('#royal-loading').isVisible(),false);
