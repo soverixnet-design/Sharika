@@ -1,4 +1,4 @@
-import {cpSync,mkdirSync,rmSync,copyFileSync,statSync} from 'node:fs';
+import {cpSync,mkdirSync,rmSync,copyFileSync,statSync,readFileSync,writeFileSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 const root=resolve(import.meta.dirname,'..'),source=resolve(root,'../android-staging/app/src/main/assets');
 const dist=join(root,'dist');rmSync(dist,{recursive:true,force:true});mkdirSync(join(dist,'games'),{recursive:true});
@@ -6,6 +6,28 @@ for(const part of ['original-games','greedy-wheel','fruit-royale']){
  const src=join(source,part);
  if(!statSync(src).isDirectory())throw Error('missing_game_assets:'+part);
  cpSync(src,join(dist,'games',part),{recursive:true});
+}
+
+// Native Firebase + Cloudflare round-trip may exceed an individual iframe's old
+// 9–15 second timer. Keep the original artwork/game engines unchanged; widen
+// only the hosted copies' response window beyond the parent bridge (30 seconds).
+// Existing request IDs / idempotency and the pending-bet lock remain intact.
+const iframeTimeouts=[
+ ['original-games/food-wheel-deluxe.html',
+  "reject(Error('Server timeout'))},12000);",
+  "reject(Error('Server timeout'))},34000);"],
+ ['original-games/sovera-food-wheel.html',
+  "reject(Error('server_timeout'));\n      },15000);",
+  "reject(Error('server_timeout'));\n      },34000);"],
+ ['original-games/night-food-wheel.html',
+  "reject(Error('server_timeout'));\n      },15000);",
+  "reject(Error('server_timeout'));\n      },34000);"]
+];
+for(const [relative,oldCode,newCode] of iframeTimeouts){
+ const file=join(dist,'games',relative);
+ const original=readFileSync(file,'utf8');
+ if(original.split(oldCode).length!==2)throw Error('timeout_patch_mismatch:'+relative);
+ writeFileSync(file,original.replace(oldCode,newCode));
 }
 // Use the owner's original game-card artwork from the Android app.
 mkdirSync(join(dist,'cards'),{recursive:true});
