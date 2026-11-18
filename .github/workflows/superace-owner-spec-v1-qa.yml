@@ -75,3 +75,7 @@ jobs:
         run: node cloudflare/scripts/superace-rtp.mjs 10000 50000 12345
       - name: Independent cryptographic RNG cross-check (100,000 spins)
         run: node cloudflare/scripts/superace-rtp.mjs 100000 100 20261118 crypto
+      - name: Candidate calibration only — divisor 25 (1M paid spins)
+        run: node cloudflare/scripts/superace-rtp.mjs 1000000 100 20261118 qa 25
+      - name: Candidate calibration only — divisor 24 (1M paid spins)
+        run: node cloudflare/scripts/superace-rtp.mjs 1000000 100 20261118 qa 24
