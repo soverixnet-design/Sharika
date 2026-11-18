@@ -97,6 +97,15 @@ test('mobile WebView test bridge links both slots to authenticated API routes an
       });
       assert.notEqual(bridgeAccess,'exposed','game frame must NOT access the native bridge');
       await royal.locator('#sp').waitFor({state:'visible',timeout:15000});
+      await royal.locator('#sp').waitFor({state:'attached'});
+      // Bonus-buy confirms before sending a paid request, even in the sandbox.
+      const confirmations=[];
+      page.on('dialog',async dialog=>{
+        confirmations.push(dialog.message());await dialog.dismiss();
+      });
+      await royal.locator('#bb').click({timeout:15000});
+      assert.ok(confirmations.some(message=>message.includes('Buy 10 Free Spins')),
+        'Bonus Buy confirmation must remain visible in isolated game iframe');
       await royal.locator('#sp').click({timeout:15000});
       await page.waitForFunction(()=>
         window.__gameCalls.some(c=>c.path==='/api/v1/royal-ace/spin'),null,{timeout:20000});
@@ -123,5 +132,42 @@ test('mobile WebView test bridge links both slots to authenticated API routes an
         'frame isolation must not crash the hosted UI');
       await context.close();
     }
+  } finally {await browser.close();}
+});
+
+test('all eight enabled hosted games load safely and connect their original state APIs',
+  {timeout:180000},async()=>{
+  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  try{
+    const context=await browser.newContext({viewport:{width:393,height:852}});
+    await context.addInitScript(mockWebViewBridge,'test-a');
+    const page=await context.newPage();
+    await page.goto(site+'/',{waitUntil:'domcontentloaded'});
+    await page.locator('.tile:enabled').first().waitFor();
+    const scenarios=[
+      ['Food Wheel Deluxe','/api/v1/original-games/food-deluxe/state'],
+      ['Greedy Game','/api/v1/original-games/greedy-classic/state'],
+      ['Sovera Gaddy','/api/v1/original-games/sovera-gaddy/state'],
+      ['Sovera Food Wheel','/api/v1/original-games/sovera-food/state'],
+      ['Night Food Wheel','/api/v1/original-games/night-food/state'],
+      ['Greedy Wheel','/api/v1/greedy-wheel/state']
+    ];
+    for(const [label,endpoint] of scenarios){
+      await page.getByRole('button',{name:new RegExp(label)}).click();
+      await page.waitForFunction(path=>
+        window.__gameCalls.some(call=>call.path===path),endpoint,{timeout:25000});
+      const child=page.frameLocator('#game-frame');
+      const origin=await child.locator('html').evaluate(()=>{
+        try {return window.parent.SharikaGameBridge?'exposed':'sandboxed'}
+        catch{return 'sandboxed'}
+      });
+      assert.equal(origin,'sandboxed',label+' must not receive native bridge');
+      if(label==='Sovera Gaddy'){
+        const url=await page.locator('#game-frame').getAttribute('src');
+        assert.ok(!url.includes('#sharika-room'),'Full-page Game Center must avoid room mini layout');
+      }
+      await page.getByRole('button',{name:'Close Game'}).click();
+    }
+    await context.close();
   } finally {await browser.close();}
 });
