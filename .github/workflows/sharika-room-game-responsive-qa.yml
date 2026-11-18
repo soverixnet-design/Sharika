@@ -3,9 +3,11 @@ on:
   push:
     branches:
       - fix/sharika-room-game-responsive-20261118
+      - fix/sharika-game-reopen-fit-zero-20261118
   pull_request:
     branches:
       - fix/sharika-game-bridge-timeout-budget-20261118
+      - feature/sharika-room-half-sheet-profile-games-20261118
 permissions:
   contents: read
 jobs:

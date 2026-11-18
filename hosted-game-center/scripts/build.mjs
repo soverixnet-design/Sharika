@@ -38,18 +38,31 @@ for(const [relative,oldCode,newCode] of iframeTimeouts){
  const foodFile=join(dist,'games/original-games/food-wheel-deluxe.html');
  const foodOriginal=readFileSync(foodFile,'utf8');
  const oldFit="function fit(){const s=Math.min(innerWidth/1080,innerHeight/2352),st=$('stage');st.style.transform=`scale(${s})`;st.style.left=(innerWidth-1080*s)/2+'px';st.style.top=(innerHeight-2352*s)/2+'px'}";
+ // A newly opened WebView/iframe may report a zero-sized viewport during
+ // its first layout pass. Never store scale(0), which can hide all bet targets
+ // until the iframe is forcibly reloaded. Refit on restored visibility.
  const roomFit=[
+  'let fitRetry=0;',
   'function fit(){',
   "const room=new URLSearchParams(location.search).get('mode')==='room';",
   'const designHeight=room?2100:2352;',
-  "const st=$('stage'),s=Math.min(innerWidth/1080,innerHeight/designHeight);",
+  'const w=Math.max(innerWidth||0,document.documentElement.clientWidth||0);',
+  'const h=Math.max(innerHeight||0,document.documentElement.clientHeight||0);',
+  'if(w<10||h<10){if(fitRetry++<50)setTimeout(fit,80);return;}',
+  'fitRetry=0;',
+  'const s=Math.min(w/1080,h/designHeight);',
+  'if(!Number.isFinite(s)||s<=0)return;',
+  "const st=$('stage');",
   "st.style.height=designHeight+'px';",
   "st.style.transform='scale('+s+')';",
-  "st.style.left=(innerWidth-1080*s)/2+'px';",
-  "st.style.top=(innerHeight-designHeight*s)/2+'px';",
+  "st.style.left=(w-1080*s)/2+'px';",
+  "st.style.top=(h-designHeight*s)/2+'px';",
   "document.body.style.background=room?",
   "'linear-gradient(180deg,#1d56cf,#3b8ae6 29%,#9fd0f7 56%,#f08545 57%,#f9b878)':'#0b2a6b';",
-  '}'
+  '}',
+  "addEventListener('pageshow',()=>setTimeout(fit,0));",
+  "document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(fit,0);});",
+  "if(window.ResizeObserver)new ResizeObserver(()=>fit()).observe(document.documentElement);"
  ].join('');
  if(foodOriginal.split(oldFit).length!==2)throw Error('food_room_fit_source_changed');
  writeFileSync(foodFile,foodOriginal.replace(oldFit,roomFit));
