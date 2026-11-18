@@ -4,10 +4,16 @@
 (()=>{'use strict';
  const $=id=>document.getElementById(id);
  const bridge=window.SharikaGameBridge||null;
- const inRoom=new URLSearchParams(location.search).get('view')==='room';
+ const params=new URLSearchParams(location.search);
+ const inRoom=params.get('view')==='room';
+ // surface=app affects presentation only. It never grants server or wallet
+ // access: the authenticated origin-scoped Android bridge remains mandatory.
+ const appSurface=params.get('surface')==='app';
  if(inRoom)document.documentElement.classList.add('room-mode');
+ if(appSurface)document.documentElement.classList.add('app-surface');
  const all=$('games'),landing=$('landing'),player=$('player'),frame=$('game-frame');
  const status=$('status'),banner=$('error'),browserNote=$('browser-note');
+ const hot=$('hot-section'),hotGames=$('hot-games'),search=$('game-search');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
  const artworks={
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
@@ -122,6 +128,42 @@
     profile:u};
  }
  const compact=(name,id)=>inRoom?(shortNames[id]||name):name;
+ function renderFeatured(catalog,enabled){
+  hotGames.replaceChildren();
+  if(!appSurface||inRoom){hot.hidden=true;return;}
+  const order=['royal-ace','cleopatra','greedy-classic','food-deluxe'];
+  let count=0;
+  for(const id of order){
+   const g=catalog.find(item=>item.id===id);
+   if(!g||!(enabled.has(id)||!bridge))continue;
+   const button=document.createElement('button');
+   button.type='button';button.className='featured-game';
+   // Use a distinct accessible name to avoid duplicate game-card actions.
+   button.setAttribute('aria-label','Play featured game '+(++count));
+   const art=document.createElement('span');art.className='featured-art';
+   const picture=document.createElement('img');
+   picture.src=artworks[id]||'/cards/food-wheel.png';picture.alt='';
+   picture.loading='eager';picture.decoding='async';
+   art.append(picture);
+   const name=document.createElement('b');name.textContent=shortNames[id]||g.name;
+   button.append(art,name);
+   button.addEventListener('click',()=>openGame(g));
+   hotGames.append(button);
+   if(count===3)break;
+  }
+  hot.hidden=count===0;
+ }
+ function filterCatalog(){
+  const query=(search?.value||'').trim().toLocaleLowerCase('en');
+  let visible=0;
+  for(const tile of all.querySelectorAll('.tile')){
+   const match=!query||tile.dataset.search?.includes(query);
+   tile.hidden=!match;
+   if(match)visible++;
+  }
+  $('no-games').hidden=visible>0;
+  if(appSurface&&!inRoom)hot.hidden=!!query||hotGames.childElementCount===0;
+ }
  function displayCards(catalog,enabled){
   all.replaceChildren();
   for(const g of catalog){
@@ -129,6 +171,7 @@
    const usable=!bridge||enabled.has(g.id);
    const button=document.createElement('button');
    button.type='button';button.className='tile';button.disabled=!usable;
+   button.dataset.search=[g.name,shortNames[g.id]||'',g.category||''].join(' ').toLocaleLowerCase('en');
    button.setAttribute('aria-label',g.name+(usable?' · Play':' · Unavailable'));
    button.title=g.name;
    const art=document.createElement('span');
@@ -137,6 +180,9 @@
    image.src=artworks[g.id]||'/cards/food-wheel.png';
    image.alt=g.name+' original game artwork';image.loading='eager';
    image.decoding='async';art.append(image);
+   // The same original artwork supplies a subtle square backdrop for the
+   // few landscape cards. Foreground artwork stays uncropped.
+   art.style.setProperty('--art-url','url("'+image.src+'")');
    if(variants[g.id]){
     const label=document.createElement('span');
     label.className='theme-title';label.textContent=variants[g.id].label;
@@ -157,6 +203,8 @@
    button.addEventListener('click',()=>openGame(g));
    all.append(button);
   }
+  renderFeatured(catalog,enabled);
+  filterCatalog();
  }
  function clearWinner(){
   if(winnerTimer!==null){clearTimeout(winnerTimer);winnerTimer=null}
@@ -242,6 +290,13 @@
  }
  $('exit').addEventListener('click',closeGame);
  $('back').addEventListener('click',closeGame);
+ search.addEventListener('input',filterCatalog);
+ $('app-return').addEventListener('click',()=>{
+  if(!bridge){window.history.back();return;}
+  // Close only this native Activity. The secure WebViewClient checks the
+  // exact app-only scheme and main frame before closing.
+  location.href='sharika-app://close';
+ });
  window.addEventListener('message',async e=>{
   const game=active;
   // Each child iframe has a sandboxed, opaque origin. Verify actual message
@@ -328,6 +383,7 @@
     status.textContent='Tap a game for a free browser demo; no Sharika coins are used.';
     browserNote.hidden=false;
     displayCards(games,new Set(games.map(g=>g.id)));
+    $('game-count').textContent=games.length+' games';
     return;
    }
    // This is the same authenticated /me profile used by the main room, not a
@@ -336,10 +392,14 @@
    const result=await call('GET','/api/v1/game-catalog');
    const enabled=new Set((result.games||[]).filter(x=>x.enabled===true).map(x=>x.id));
    displayCards(games,enabled);
-   status.textContent=enabled.size?'Connected to Sharika staging · '+enabled.size+' server-enabled games':
-    'No games are enabled for this account.';
+   $('game-count').textContent=enabled.size+' games';
+   status.textContent=enabled.size?'Games ready':'No games are enabled for this account.';
+   // Do not show the staging website's diagnostic paragraph inside the app.
+   status.hidden=appSurface&&enabled.size>0;
   }catch(error){
+   status.hidden=false;
    status.textContent='Could not verify game access: '+error.message;
+   $('game-count').textContent='Unavailable';
    displayCards(games,new Set());
   }
  }

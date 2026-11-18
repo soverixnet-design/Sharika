@@ -83,9 +83,15 @@ final class SharikaRoomGameDialog {
 
     private void open() {
         FrameLayout container=new FrameLayout(host);
-        // Keep the live voice-room visible around the game: no purple
-        // card, ornamental border, or dim backdrop outside the game itself.
-        container.setBackgroundColor(Color.TRANSPARENT);
+        // A single opaque, rounded Royal Emerald surface keeps the room
+        // seats visible ABOVE the 65% sheet, never through its game icons.
+        GradientDrawable sheetBg=new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{Color.rgb(12,55,44),Color.rgb(3,29,23)});
+        sheetBg.setCornerRadius(dp(23));
+        sheetBg.setStroke(dp(1),Color.rgb(177,141,83));
+        container.setBackground(sheetBg);
+        container.setClipToOutline(true);
 
         WebView view=new WebView(host);
         gameWebView=view;
@@ -133,7 +139,7 @@ final class SharikaRoomGameDialog {
         close.setText("×");close.setTextSize(26);close.setTextColor(Color.rgb(255,229,169));
         close.setGravity(Gravity.CENTER);
         GradientDrawable closeBg=new GradientDrawable();
-        closeBg.setColor(Color.rgb(55,25,72));
+        closeBg.setColor(Color.rgb(10,51,39));
         closeBg.setCornerRadius(dp(18));
         closeBg.setStroke(dp(1),Color.rgb(229,184,104));
         close.setBackground(closeBg);
@@ -161,7 +167,7 @@ final class SharikaRoomGameDialog {
             int height=Math.round(host.getResources().getDisplayMetrics().heightPixels*.65f);
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,height);
         }
-        view.loadUrl(SITE_ORIGIN+"/?view=room");
+        view.loadUrl(SITE_ORIGIN+"/?view=room&surface=app");
     }
 
     private int dp(float value){

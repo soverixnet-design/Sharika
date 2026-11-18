@@ -289,3 +289,259 @@ body.is-playing #error:not([hidden]){
 /* The room has one reliable native X; hide the duplicate web X. */
 .room-mode body.is-playing .playhead{display:none}
 .room-mode body.is-playing .demo-banner{top:5px}
+
+/* SHARIKA_ROYAL_EMERALD_APP_UI_20261118
+   App-only surface: secure server/iframe logic remains unchanged.
+   Use original game artwork without surrounding cards or cropping. */
+.app-toolbar,.room-handle,.app-title,.room-title,.all-games-head{display:none}
+.catalog-title-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#game-count{display:none;flex:none;font-size:11px;font-weight:800;
+ color:#ffe5aa;padding:5px 8px;border-radius:16px;background:#ffffff12;
+ border:1px solid #eec67860}
+.hot-section[hidden],.tile[hidden],.no-games[hidden]{display:none!important}
+.hot-section,.no-games{display:none}
+.app-surface .web-title,.room-mode .web-title{display:none}
+.app-surface:not(.room-mode) .app-title{display:inline}
+.room-mode .room-title{display:inline}
+.app-surface #game-count,.room-mode #game-count{display:block}
+.app-surface .eyebrow,.app-surface .notice,.app-surface .browser-only{
+ display:none!important
+}
+
+/* OUTSIDE THE ROOM: native compact emerald app layout, not a website page. */
+html.app-surface:not(.room-mode) body:not(.is-playing){
+ min-height:100dvh;color:#f7f2dc;
+ background:
+  radial-gradient(ellipse 100% 27% at 100% 0%,#2a665342,transparent),
+  radial-gradient(ellipse 85% 35% at 0% 70%,#174c3929,transparent),
+  linear-gradient(170deg,#092f27 0%,#05251e 46%,#041811 100%);
+}
+.app-surface:not(.room-mode) header{display:none!important}
+.app-surface:not(.room-mode) main{
+ max-width:620px;padding:0 14px calc(24px + env(safe-area-inset-bottom,0px));
+ height:100dvh;overflow-y:auto;overscroll-behavior:contain
+}
+.app-surface .app-toolbar{
+ display:flex;align-items:center;gap:12px;height:62px;
+ margin:0 -14px 13px;padding:7px 14px;
+ background:linear-gradient(110deg,#154b3be8,#0a2c25eb);
+ border-bottom:1px solid #d7b86a85;box-shadow:0 8px 19px #0005
+}
+.app-surface .app-toolbar #app-return{
+ display:grid;place-items:center;width:39px;height:39px;flex:none;
+ color:#ffeab5;background:#ffffff0b;border:1px solid #daba7669;
+ border-radius:13px;font-size:29px;line-height:1;cursor:pointer
+}
+.app-surface .app-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.app-surface .app-brand-mark{
+ display:grid;place-items:center;width:38px;height:38px;flex:none;
+ border-radius:13px;color:#4b3011;font-size:27px;font-weight:900;
+ background:linear-gradient(145deg,#fff6bd 0%,#e4b964 45%,#ae752c 100%);
+ border:1px solid #ffedb6;box-shadow:0 3px 12px #eabe6547
+}
+.app-surface .app-brand b{
+ display:block;font-size:16px;font-weight:900;letter-spacing:1.5px;
+ color:#fff2c3;line-height:1.2
+}
+.app-surface .app-brand small{
+ display:block;font-size:9px;letter-spacing:2px;color:#e8bf78;margin-top:2px
+}
+.app-surface .app-toolbar-tag{
+ margin-left:auto;font-size:9px;letter-spacing:1.1px;color:#f6d18a;
+ border:1px solid #e5ba7257;border-radius:20px;padding:6px 8px
+}
+.app-surface:not(.room-mode) .catalog-title-row{padding:5px 1px 12px}
+.app-surface:not(.room-mode) h1{
+ margin:0;color:#fff4d1;font:900 clamp(23px,6vw,32px)/1.2 system-ui,sans-serif
+}
+.app-surface .app-title em{color:#f3c779}
+.app-surface:not(.room-mode) #catalog-profile{display:none!important}
+.app-surface:not(.room-mode) #status{
+ margin:2px 0 10px;font-size:12px;color:#e1cda4
+}
+.app-surface:not(.room-mode) #status[hidden],
+.room-mode #status[hidden]{display:none!important}
+.app-surface:not(.room-mode) .hot-section:not([hidden]){
+ display:block;margin:2px 0 20px;padding:11px 10px 13px;
+ border-radius:22px;border:1.5px solid #e3b668;
+ background:
+  radial-gradient(ellipse 70% 70% at 90% 0%,#e5b05d2d,transparent),
+  linear-gradient(145deg,#53432c 0%,#49321f 34%,#122f29 100%);
+ box-shadow:0 7px 0 #071911,0 13px 22px #010b09aa,inset 0 1px #fff5c44d
+}
+.app-surface .section-heading{display:flex;justify-content:space-between;align-items:center;margin:0 6px 9px}
+.app-surface .section-heading h2{margin:0;font-size:17px;color:#fff3d1;font-weight:850}
+.app-surface .hot-flame{font-size:21px;color:#ffe5a6;filter:drop-shadow(0 0 6px #ffbb55)}
+.app-surface .hot-games{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.app-surface .featured-game{
+ display:flex;flex-direction:column;gap:6px;text-align:center;
+ border:0;background:transparent;min-width:0;padding:0;color:#fff1cf;
+ cursor:pointer;font-size:11px
+}
+.app-surface .featured-art{
+ position:relative;width:100%;aspect-ratio:1;display:grid;place-items:center;
+ border-radius:15px;overflow:hidden;
+ background:linear-gradient(155deg,#14503d,#08261e);
+ border:1px solid #f5d28079;
+ box-shadow:0 5px 11px #0008,inset 0 0 9px #fff5bc22
+}
+.app-surface .featured-art img{
+ display:block;width:100%;height:100%;object-fit:contain;
+ filter:saturate(1.12) contrast(1.03)
+}
+.app-surface .featured-game b{
+ display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+ overflow:hidden;line-height:1.18;min-height:26px;font-weight:800
+}
+.app-surface:not(.room-mode) .all-games-head{
+ display:flex;align-items:center;justify-content:space-between;
+ gap:9px;margin:0 1px 13px
+}
+.app-surface .all-games-head h2{margin:0;font-size:18px;color:#fff1d1;white-space:nowrap}
+.app-surface .game-search{
+ display:flex;align-items:center;gap:5px;border:1px solid #d0af6a65;
+ border-radius:14px;color:#f3dba8;background:#07271f;
+ min-width:0;width:min(54%,210px);padding:6px 9px;
+ box-shadow:inset 0 1px 4px #0006
+}
+.app-surface .game-search span{font-size:20px;line-height:1}
+.app-surface .game-search input{
+ background:transparent;min-width:0;width:100%;border:0;outline:0;
+ font:inherit;color:#ffedc8;font-size:12px
+}
+.app-surface .game-search input::placeholder{color:#bea990}
+.app-surface .no-games{display:block;padding:22px 12px;text-align:center;color:#ddc89c;font-size:13px}
+
+/* SHARED ICONS: square original art, no outer card or second label. */
+.app-surface .games,.room-mode .games{
+ grid-template-columns:repeat(4,minmax(0,1fr));gap:20px 9px
+}
+.app-surface .tile,.room-mode .tile{
+ display:flex!important;flex-direction:column;align-items:stretch;
+ padding:0!important;overflow:visible!important;
+ color:#fff1d5;background:transparent!important;border:0!important;
+ border-radius:0!important;box-shadow:none!important;text-align:center!important;
+ transform:none;min-width:0
+}
+.app-surface .tile[hidden],.room-mode .tile[hidden]{display:none!important}
+.app-surface .tile .art,.room-mode .tile .art{
+ position:relative;width:100%;aspect-ratio:1/1;min-height:0;
+ isolation:isolate;border-radius:17px;border:0!important;
+ overflow:hidden;background:linear-gradient(145deg,#14503d,#0b2921)!important;
+ box-shadow:0 6px 13px #00120e99,0 0 0 1px #f6d68138,
+  inset 0 1px #fff1c64a
+}
+.app-surface .tile .art::before,.room-mode .tile .art::before{
+ content:"";position:absolute;inset:-12px;z-index:0;
+ background:var(--art-url) center/cover no-repeat;
+ filter:blur(9px) saturate(1.25) brightness(.48);opacity:.78;
+ pointer-events:none
+}
+.app-surface .tile .art img,.room-mode .tile .art img{
+ position:relative;z-index:1;width:100%;height:100%;object-fit:contain;
+ border-radius:13px;filter:contrast(1.05) saturate(1.12);
+ transform:none;pointer-events:none
+}
+.app-surface .tile:hover:not(:disabled) .art img{transform:none}
+.app-surface .tile:active:not(:disabled) .art,.room-mode .tile:active:not(:disabled) .art{
+ transform:scale(.965);box-shadow:0 2px 7px #0008,0 0 0 1px #f5d58766
+}
+.app-surface .tile .meta,.room-mode .tile .meta{
+ min-height:0!important;margin:0;padding:6px 1px 0!important;
+ background:transparent!important;text-align:center
+}
+.app-surface .tile b,.room-mode .tile b{
+ display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+ overflow:hidden;color:#fff0d5;line-height:1.22;max-height:34px;min-height:0;
+ font-weight:750;text-overflow:ellipsis;text-shadow:0 1px 4px #0008;
+ font-size:clamp(10px,2.75vw,13px)
+}
+.app-surface .tile small,.room-mode .tile small,
+.app-surface .tile .theme-title,.room-mode .tile .theme-title{display:none!important}
+.app-surface .tile .badge-ribbon,.room-mode .tile .badge-ribbon{
+ top:3px;right:-17px;min-width:63px;font-size:8px;padding:2px 0;
+ color:#fff;box-shadow:0 2px 3px #0008
+}
+.app-surface .tile:disabled,.room-mode .tile:disabled{opacity:.38}
+.app-surface .tile:focus-visible,.room-mode .tile:focus-visible,
+.app-surface .featured-game:focus-visible,.app-surface #app-return:focus-visible{
+ outline:2px solid #ffe7a2;outline-offset:4px
+}
+
+/* IN ROOM: one opaque 65% bottom sheet; room seats never show THROUGH cards. */
+.room-mode body:not(.is-playing){
+ background:
+ radial-gradient(ellipse 90% 24% at 50% -15%,#30745175,transparent),
+ linear-gradient(180deg,#0b382d 0%,#06251e 45%,#031d17 100%)!important;
+ color:#fff1d0
+}
+.room-mode .room-handle{
+ display:block;width:44px;height:4px;border-radius:20px;
+ background:#e2bd7a85;margin:3px auto 8px
+}
+.room-mode #landing{padding-bottom:15px}
+.room-mode main{padding:7px 11px 6px}
+.room-mode .app-toolbar,.room-mode .eyebrow,.room-mode .all-games-head,
+.room-mode .hot-section{display:none!important}
+.room-mode .catalog-title-row{
+ padding:0 45px 10px 3px;min-height:47px;border-bottom:1px solid #d0a96050;
+ margin-bottom:12px;justify-content:flex-start;gap:12px
+}
+.room-mode .catalog-title-row h1{
+ font:850 21px/1.2 system-ui,sans-serif!important;
+ color:#fff0bf;margin:0!important;text-align:left!important;white-space:nowrap
+}
+.room-mode #game-count{
+ font-size:10px;letter-spacing:.4px;background:#143e32;
+ padding:4px 8px;border:1px solid #b2a36a66
+}
+.room-mode #catalog-profile{display:none!important}
+.room-mode #status{font-size:10px;margin:4px 0 10px;text-align:left;color:#f1d9a0}
+.room-mode .games{gap:15px 9px}
+.room-mode .tile .art{border-radius:14px}
+.room-mode .tile b{font-size:clamp(10px,2.75vw,12px);max-height:30px}
+.room-mode .tile .badge-ribbon{font-size:7px}
+.room-mode #player{height:100%;overflow:hidden}
+.room-mode body.is-playing{background:transparent!important}
+.room-mode body.is-playing #game-frame{border-radius:0!important}
+@media(max-width:340px){
+ .room-mode main{padding-left:7px;padding-right:7px}
+ .room-mode .games{gap:11px 6px}
+ .room-mode .tile b{font-size:9px}
+ .app-surface:not(.room-mode) main{padding-left:9px;padding-right:9px}
+}
+@media(prefers-reduced-motion:reduce){
+ .app-surface .tile .art,.room-mode .tile .art{transition:none}
+}
+
+/* ROYAL_EMERALD_FULL_BLEED_FIX: the catalog uses side padding, but the
+   launched game must NOT inherit it. Keep a 40px unobstructed close strip. */
+html.app-surface:not(.room-mode) body.is-playing{
+ background:#0a2c24!important
+}
+html.app-surface:not(.room-mode) body.is-playing main{
+ box-sizing:border-box;width:100%!important;max-width:none!important;
+ margin:0!important;padding:0!important;height:100dvh!important;
+ overflow:hidden!important
+}
+
+/* ROYAL_EMERALD_VARIANT_ICONS: distinguish the three food-wheel derivatives
+   without stretching their existing artwork or inserting fake game assets. */
+.app-surface .tile .theme-gaddy img,.room-mode .tile .theme-gaddy img{
+ filter:hue-rotate(-35deg) saturate(1.45) contrast(1.07)!important
+}
+.app-surface .tile .theme-sovera-food img,.room-mode .tile .theme-sovera-food img{
+ filter:hue-rotate(72deg) saturate(1.3) contrast(1.08)!important
+}
+.app-surface .tile .theme-night-food img,.room-mode .tile .theme-night-food img{
+ filter:hue-rotate(172deg) brightness(.76) saturate(1.48)!important
+}
+.app-surface .tile .theme-gaddy::before,.room-mode .tile .theme-gaddy::before{
+ filter:blur(9px) hue-rotate(-35deg) brightness(.5)!important
+}
+.app-surface .tile .theme-sovera-food::before,.room-mode .tile .theme-sovera-food::before{
+ filter:blur(9px) hue-rotate(72deg) brightness(.5)!important
+}
+.app-surface .tile .theme-night-food::before,.room-mode .tile .theme-night-food::before{
+ filter:blur(9px) hue-rotate(172deg) brightness(.43)!important
+}

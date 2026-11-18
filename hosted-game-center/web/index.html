@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#210c33">
+<meta name="theme-color" content="#071f1b">
 <title>Sharika Royal Game Center · Staging</title>
 <link rel="stylesheet" href="/style.css">
 <script src="/practice.js" defer></script>
@@ -13,15 +13,32 @@
 </header>
 <main>
  <section id="landing">
+  <div class="room-handle" aria-hidden="true"></div>
+  <div class="app-toolbar">
+    <button id="app-return" type="button" aria-label="Back to Sharika">‹</button>
+    <div class="app-brand"><span class="app-brand-mark" aria-hidden="true">✦</span><span><b>SHARIKA</b><small>ROYAL GAMES</small></span></div>
+    <span class="app-toolbar-tag">GAMES</span>
+  </div>
   <div class="eyebrow">STAGING · VIRTUAL COINS ONLY</div>
-  <h1>Royal Games <em>Collection</em></h1>
+  <div class="catalog-title-row">
+    <h1><span class="web-title">Royal Games <em>Collection</em></span><span class="app-title">Royal <em>Games</em></span><span class="room-title">Game</span></h1>
+    <span id="game-count" aria-live="polite"></span>
+  </div>
   <div id="catalog-profile" class="player-profile" hidden>
    <span class="avatar-holder"><img class="profile-avatar" alt="Your Sharika avatar" hidden><span class="avatar-initial">?</span></span>
    <span class="identity"><b class="profile-name">Sharika Player</b><small class="profile-id"></small></span>
    <span class="profile-verified">Verified profile</span>
   </div>
   <p id="status" role="status">Checking your Sharika game access…</p>
+  <section id="hot-section" class="hot-section" aria-labelledby="hot-title" hidden>
+    <div class="section-heading"><h2 id="hot-title">Hot Games</h2><span class="hot-flame" aria-hidden="true">✦</span></div>
+    <div id="hot-games" class="hot-games"></div>
+  </section>
+  <div class="all-games-head"><h2>All Games</h2>
+    <label class="game-search" aria-label="Search games"><span aria-hidden="true">⌕</span><input id="game-search" type="search" autocomplete="off" placeholder="Search games" aria-label="Search games"></label>
+  </div>
   <div class="games" id="games"></div>
+  <p id="no-games" class="no-games" hidden>No matching games.</p>
   <div class="notice" id="notice">Browser demo uses only simulated coins. In the Sharika Android app, eligible games use the authenticated Cloudflare server. Nothing here represents cash or withdrawable rewards.</div>
   <p class="browser-only" id="browser-note" hidden>Free practice: simulated results, no Sharika wallet. Open inside the staging Android app for server-verified coins.</p>
  </section>

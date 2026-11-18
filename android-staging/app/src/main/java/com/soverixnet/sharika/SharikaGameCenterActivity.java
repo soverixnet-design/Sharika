@@ -56,9 +56,9 @@ public final class SharikaGameCenterActivity extends Activity {
             return;
         }
         FrameLayout layout = new FrameLayout(this);
-        layout.setBackgroundColor(Color.rgb(15, 8, 28));
+        layout.setBackgroundColor(Color.rgb(5, 32, 25));
         web = new WebView(this);
-        web.setBackgroundColor(Color.rgb(15, 8, 28));
+        web.setBackgroundColor(Color.rgb(5, 32, 25));
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
         web.getSettings().setAllowFileAccess(false);
@@ -71,6 +71,15 @@ public final class SharikaGameCenterActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
+                // An app toolbar Back button closes this Activity only.
+                // Main-frame restriction prevents sandboxed game iframes
+                // from controlling native navigation or authenticated APIs.
+                if (request.isForMainFrame() &&
+                    "sharika-app".equals(uri.getScheme()) &&
+                    "close".equals(uri.getHost())) {
+                    runOnUiThread(SharikaGameCenterActivity.this::finish);
+                    return true;
+                }
                 String origin = uri.getScheme() + "://" + uri.getAuthority();
                 return !SITE_ORIGIN.equals(origin);
             }
@@ -111,7 +120,7 @@ public final class SharikaGameCenterActivity extends Activity {
         // The Android system Back gesture exits this Activity, while the
         // small web close control returns from a game to the catalog.
         setContentView(layout);
-        web.loadUrl(SITE_ORIGIN+"/");
+        web.loadUrl(SITE_ORIGIN+"/?surface=app");
     }
 
     static boolean allowedGameRoute(String method,String path) {
