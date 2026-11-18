@@ -13682,15 +13682,23 @@
       return;
     }
     if(insideRoom&&!joinedRoom)return;
-    // Staging only: game binaries are served by the isolated Cloudflare site.
-    // The dedicated Android Activity has NO general SharikaNative interface.
-    // Play releases continue using their independently approved game surface.
-    if(playStoreMode===false){
-      native('openHostedGameCenter',{insideRoom:!!insideRoom}).catch(error=>{
-        showToast('Game Center unavailable: '+errText(error));
-      });
-      return;
-    }
+    // ALWAYS ask native whether the authenticated hosted Game Center is
+    // available. An interrupted clientMode handshake must not send a staging
+    // APK back to the older two-column, bundled HTML game menu.
+    // Play builds reject this route in Java; only then may the explicitly
+    // approved Play fallback run. The games stay on Cloudflare for staging.
+    native('openHostedGameCenter',{insideRoom:!!insideRoom}).catch(error=>{
+      const reason=errText(error);
+      if(playStoreMode===true && reason==='hosted_game_center_unavailable'){
+        showPlayLegacyGames(doc,insideRoom,showToast);
+      }else{
+        showToast('Game Center unavailable: '+reason);
+      }
+    });
+  }
+  function showPlayLegacyGames(doc,insideRoom,showToast){
+    // This legacy UI must never be used by the staging debug APK.
+    if(playStoreMode!==true)return;
     const portal=insideRoom?ensureRoomGamePortal(doc):null;
     const sheet=portal?.sheet||doc.getElementById('sh');
     const overlay=portal?.overlay||doc.getElementById('shb');
