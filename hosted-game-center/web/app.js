@@ -5,12 +5,22 @@
  const bridge=window.SharikaGameBridge||null;
  const all=$('games'),landing=$('landing'),player=$('player'),frame=$('game-frame');
  const status=$('status'),banner=$('error'),browserNote=$('browser-note');
- const icons={'royal-ace':'♠','cleopatra':'♛','greedy-classic':'✦','food-deluxe':'◈','sovera-gaddy':'◆','sovera-food':'🍔','night-food':'☾','greedy-wheel':'◎','fruit-royale':'🍒','jackpot-fruit':'🍓'};
- let games=[],active=null,number=0,gameVersion=0;
+ // These are the original game-card illustrations already owned by Sharika,
+ // copied unchanged at website build time from android-staging assets.
+ const artworks={
+  'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
+  'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/food-wheel.png',
+  'sovera-gaddy':'/cards/food-wheel.png','sovera-food':'/cards/food-wheel.png',
+  'night-food':'/cards/food-wheel.png','greedy-wheel':'/cards/greedy-wheel.webp',
+  'fruit-royale':'/cards/fruit-machine.jpg','jackpot-fruit':'/cards/jackpot-fruit.png'
+ };
+ let games=[],active=null,number=0,gameVersion=0,practice=null;
  const pending=new Map();
  function notify(message){banner.textContent=message;banner.hidden=!message;}
  function call(method,path,body){
-  if(!bridge)return Promise.reject(Error('Open Sharika staging app to play.'));
+  if(!bridge)return practice
+    ? practice.request(method,path,body)
+    : Promise.reject(Error('Open a free demo first.'));
   return new Promise((resolve,reject)=>{
    const id=String(++number);
    const timer=setTimeout(()=>{pending.delete(id);reject(Error('Game server timed out. Check the wallet before trying again.'));},19000);
@@ -31,26 +41,41 @@
   all.replaceChildren();
   for(const g of catalog){
    if(!/^[a-z-]+$/.test(g.id)||!/^\/games\/[a-z0-9/_?=.&-]+$/.test(g.asset))continue;
-   const usable=enabled.has(g.id);
+   const usable=!bridge||enabled.has(g.id);
    const button=document.createElement('button');button.type='button';
    button.className='tile';button.disabled=!usable;
-   const symbol=document.createElement('span');symbol.className='symbol';symbol.textContent=icons[g.id]||'✦';
+   const symbol=document.createElement('span');symbol.className='art';
+   const img=document.createElement('img');
+   img.src=artworks[g.id]||'/cards/food-wheel.png';
+   img.alt=g.name+' original game card';img.loading='lazy';
+   img.decoding='async';symbol.append(img);
    const meta=document.createElement('span');meta.className='meta';
    const title=document.createElement('b');title.textContent=g.name;
-   const label=document.createElement('small');label.textContent=usable?g.category+' · Play':'Unavailable in this build';
+   const label=document.createElement('small');
+   label.textContent=bridge
+     ? (usable?g.category+' · Server Game':'Unavailable in this build')
+     : g.category+' · Free Demo';
    meta.append(title,label);button.append(symbol,meta);
    button.addEventListener('click',()=>openGame(g));
    all.append(button);
   }
  };
  function closeGame(){
-  gameVersion++;active=null;frame.removeAttribute('src');player.hidden=true;landing.hidden=false;
+  gameVersion++;active=null;practice=null;frame.removeAttribute('src');
+  player.hidden=true;landing.hidden=false;
   $('back').hidden=true;notify('');window.scrollTo(0,0);
  }
  function openGame(game){
-  if(!bridge)return;
-  gameVersion++;active=game;landing.hidden=true;player.hidden=false;$('back').hidden=false;
-  $('game-name').textContent=game.name;notify('');
+  gameVersion++;active=game;
+  // Browser demos never get native app credentials or the real Sharika wallet.
+  practice=bridge?null:window.createSharikaPractice(game.id);
+  landing.hidden=true;player.hidden=false;$('back').hidden=false;
+  $('game-name').textContent=game.name;
+  $('play-label').textContent=bridge
+    ? 'Cloudflare server · Verified virtual coins'
+    : 'Free browser practice · No wallet or real server settlement';
+  $('demo-banner').hidden=!!bridge;
+  notify('');
   // Game Center is its own full-screen Activity, even if entered from a voice
   // room. Never force the cramped #sharika-room mini-game layout here.
   frame.src=game.asset+(game.id==='royal-ace'||game.id==='cleopatra'?
@@ -114,8 +139,8 @@
    const response=await fetch('/api/catalog',{cache:'no-store'});if(!response.ok)throw Error('Catalog unavailable');
    const data=await response.json();games=data.games||[];
    if(!bridge){
-    status.textContent='Preview catalog. Sign in through the Sharika staging app to play with virtual coins.';
-    browserNote.hidden=false;displayCards(games,new Set());return;
+    status.textContent='Tap any original game card to try a free browser demo. No login or Sharika coins required.';
+    browserNote.hidden=false;displayCards(games,new Set(games.map(g=>g.id)));return;
    }
    const result=await call('GET','/api/v1/game-catalog');
    const enabled=new Set((result.games||[]).filter(x=>x.enabled===true).map(x=>x.id));
