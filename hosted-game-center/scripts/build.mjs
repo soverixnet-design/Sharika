@@ -16,9 +16,12 @@ for(const [dest,src] of Object.entries({
   'greedy.jpg':'game-cards/hot-food.jpg',
   'food-wheel.png':'food-wheel-original-card.png',
   'jackpot-fruit.png':'jackpot-fruit-original-card.png',
-  'greedy-wheel.webp':'greedy-wheel/img/emerald-garden.webp'
+  'gaddy-royal.svg':'@web/gaddy-royal.svg',
+  'sovera-food-royal.svg':'@web/sovera-food-royal.svg',
+  'night-food-royal.svg':'@web/night-food-royal.svg',
+  'greedy-wheel-royal.svg':'@web/greedy-wheel-royal.svg'
 })){
-  copyFileSync(join(source,src),join(dist,'cards',dest));
+  copyFileSync(src.startsWith('@web/')?join(root,'web',src.slice(5)):join(source,src),join(dist,'cards',dest));
 }
 for(const name of ['index.html','app.js','practice.js','style.css'])
   copyFileSync(join(root,'web',name),join(dist,name));
