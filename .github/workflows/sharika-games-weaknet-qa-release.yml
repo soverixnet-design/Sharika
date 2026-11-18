@@ -1,10 +1,10 @@
-name: Sharika games offline cards and weak-network staging APK prerelease
+name: Sharika games original cards weak-network verified APK artifact
 on:
   push:
     branches: [feature/sharika-royal-ace-server-room-20261118]
     paths: ['.github/workflows/sharika-games-weaknet-qa-release.yml']
 permissions:
-  contents: write
+  contents: read
   actions: read
 jobs:
   release-test-only:
@@ -17,16 +17,16 @@ jobs:
         run: |
           set -euo pipefail
           repo='soverixnet-design/Sharika'
-          sha='fd8569873e3af98a4547a9929bbe14c2348ed5d3'
-          run='44201345093'
+          sha='cf61bf6f336f6fe2bafc0ef217d971403e24e0d9'
+          run='44204379873'
           test "$(gh api "repos/$repo/actions/runs/$run" --jq '.head_sha')" = "$sha"
           test "$(gh api "repos/$repo/actions/runs/$run" --jq '.conclusion')" = 'success'
-          test "$(gh api "repos/$repo/actions/artifacts/14381762240" --jq '.expired')" = 'false'
+          test "$(gh api "repos/$repo/actions/artifacts/14381699813" --jq '.expired')" = 'false'
       - name: Retrieve the previously validated test APK
         uses: actions/download-artifact@v4
         with:
           repository: soverixnet-design/Sharika
-          run-id: 44201345093
+          run-id: 44204379873
           name: Sharika-Android-Staging-Debug
           github-token: ${{ github.token }}
           path: staging-apk
@@ -54,18 +54,12 @@ jobs:
           "$signer" verify --print-certs "$apk"
           install -m 0644 "$apk" Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA.apk
           sha256sum Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA.apk
-      - name: Release staging APK outside Play Store only
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          repo='soverixnet-design/Sharika'
-          tag='sharika-games-original-cards-weaknet-v141-staging-qa-20261118'
-          if gh release view "$tag" -R "$repo" >/dev/null 2>&1; then
-            echo 'Existing release: refusing overwrite'; exit 1
-          fi
-          gh release create "$tag" Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA.apk \
-            --repo "$repo" --target fd8569873e3af98a4547a9929bbe14c2348ed5d3 \
-            --title 'Sharika Games v141 - Original Cards & Weak Network (STAGING QA)' \
-            --prerelease \
-            --notes 'TEST APK ONLY, not a Google Play or production release. Includes uploaded Cleopatra, Fruit Machine and Hot Food cards (bundled 200px offline copies), SuperAce responsive 5x4 UI and original loading image, same-ID bet retry on poor connectivity, reduced repeated polling, and no external fonts in Greedy Wheel. Cloudflare staging API has separately deployed tuned SuperAce payouts capped at 40x and 45% old gross, and Cleopatra payout scale 0.60. APK uses temporary DEBUG signing: Google Sign-In may fail; it must not replace the main signed Sharika app. Test on a separate device/profile and do not uninstall your main Play version. Real-device voice/audio and end-to-end bets still require verification. See PR #140.'
+      # The GitHub App has Actions read but Releases write is denied (HTTP 403).
+      # Publish a downloadable Actions artifact rather than marking a false release.
+      - name: Publish verified staging APK artifact (not a GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA
+          path: Sharika-Games-Original-Cards-WeakNet-v141-Staging-QA.apk
+          if-no-files-found: error
+          retention-days: 14
