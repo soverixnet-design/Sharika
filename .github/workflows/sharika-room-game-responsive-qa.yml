@@ -1,0 +1,80 @@
+name: Sharika room game responsive and controls QA
+on:
+  push:
+    branches:
+      - fix/sharika-room-game-responsive-20261118
+  pull_request:
+    branches:
+      - fix/sharika-game-bridge-timeout-budget-20261118
+permissions:
+  contents: read
+jobs:
+  source-and-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build original artwork and validate staged code
+        run: |
+          node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/scripts/build.mjs
+          node --check android-staging/app/src/main/assets/original-games/greedy-classic-live.js
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/iframe-bridge-timeout-budget.test.mjs
+          node --test hosted-game-center/test/room-profile.test.mjs
+      - name: Install Chromium and start isolated local Worker
+        run: |
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+          nohup npx --yes wrangler@4 dev --local --config hosted-game-center/wrangler.jsonc --ip 127.0.0.1 --port 8787 > /tmp/room-game-responsive-worker.log 2>&1 &
+          ready=0
+          for attempt in $(seq 1 65); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8787/health | grep -q 'sharika-hosted-game-center'; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then cat /tmp/room-game-responsive-worker.log; exit 1; fi
+      - name: Verify room and outside responsive game engines without wagers
+        env:
+          SHARIKA_GAME_QA_URL: http://127.0.0.1:8787
+        run: |
+          node --test hosted-game-center/test/room-game-render-fit.test.mjs
+
+  android-debug:
+    name: Compile isolated Sharika staging APK (never upload to Play)
+    needs: source-and-browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: android-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 36
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build debug staging APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Verify APK and game room routing
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq app/build/outputs/apk/debug/app-debug.apk
+          grep -Fq 'view=room&surface=app' app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java
+          grep -Fq '?surface=app' app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java
+      - name: Upload QA-only debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Room-Game-UI-Staging-Debug
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7

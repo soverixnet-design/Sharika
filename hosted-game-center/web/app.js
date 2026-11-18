@@ -290,9 +290,10 @@
   const hostedSlot=game.id==='royal-ace'||game.id==='cleopatra';
   const serverMode=!!bridge||game.id==='royal-ace';
   const params=hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
+    game.id==='food-deluxe'&&inRoom?'mode=room':
     game.id==='greedy-wheel'&&inRoom?'sheet=1':'';
   const separator=params?(game.asset.includes('?')?'&':'?'):'';
-  frame.src=game.asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
+  frame.src=game.asset+separator+params+((['sovera-gaddy','sovera-food','night-food','greedy-classic'].includes(game.id))&&inRoom?
     '#sharika-room':'');
  }
  // System Back first closes the game, then the native Activity.
