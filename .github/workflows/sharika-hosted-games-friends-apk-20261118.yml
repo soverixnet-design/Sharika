@@ -1,0 +1,74 @@
+name: Sharika web-hosted Games fixed direct APK for friends
+on:
+  push:
+    branches:
+      - release/sharika-hosted-games-fix-friends-20261118
+    paths:
+      - .github/workflows/sharika-hosted-games-friends-apk-20261118.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  direct-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    env:
+      SOURCE_RUN: '44313027131'
+      SOURCE_SHA: 'd37922c7231f55481abfc80f7d818dc59131f34b'
+      EXPECTED_SHA256: '8a63d37311bda6175cf2e62cb97dad6dc8d32c7fb9db8bd6a25cb5327d98ca84'
+      RELEASE_TAG: 'sharika-web-games-fix-v140-friends-20261118-d37922c7'
+      ASSET_NAME: 'Sharika-Web-Games-Fix-v140-Friends.apk'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify source build belongs to merged hosted-games fix
+        run: |
+          set -euo pipefail
+          actual="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .head_sha)"
+          result="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .conclusion)"
+          test "$actual" = "$SOURCE_SHA"
+          test "$result" = success
+
+      - name: Download compiled staging APK from successful CI
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          repository: soverixnet-design/Sharika
+          run-id: 44313027131
+          github-token: ${{ github.token }}
+          path: release-assets
+
+      - name: Verify exact artifact bytes and native Android package
+        run: |
+          set -euo pipefail
+          apk="release-assets/app-debug.apk"
+          test -s "$apk"
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$apk" | sha256sum --check
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js > "${RUNNER_TEMP}/verified-sharika-connection.js"
+          grep -Fq "function showPlayLegacyGames(doc,insideRoom,showToast)" "${RUNNER_TEMP}/verified-sharika-connection.js"
+          grep -Fq "native('openHostedGameCenter',{insideRoom:!!insideRoom})" "${RUNNER_TEMP}/verified-sharika-connection.js"
+          cp "$apk" "release-assets/$ASSET_NAME"
+
+      - name: Publish public prerelease APK for invited friends
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Refusing to replace previously shared release"
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "release-assets/$ASSET_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "Sharika Web-hosted Games Menu Fix - Friends Staging v1.0.40" \
+            --notes 'STAGING QA FOR FRIENDS ONLY. Corrects Games button route: Android staging first opens the authenticated Cloudflare-hosted four-column Royal Games Collection website inside room and outside room instead of the older two-column Sharika Royal Games HTML menu. Retains 65 percent in-room sheet, verified profile, voice-room WebView and server-side virtual coins. Based on merged PR #145 and source commit d37922c7. Not a Google Play production release. Installation may not update apps signed by the Play Store; confirm Google Sign-In on your phone.' \
+            --prerelease
+
+      - name: Confirm real public APK asset and shareable direct link
+        run: |
+          set -euo pipefail
+          count="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.assets[] | select(.name == "Sharika-Web-Games-Fix-v140-Friends.apk") | .size')"
+          test "$count" -eq 98441723
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
+          curl --fail --silent --show-error --location --head --max-time 75 "$url" -o /dev/null
+          echo "SHARIKA_DIRECT_FRIENDS_APK=$url"
