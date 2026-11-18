@@ -8,7 +8,7 @@ for(const free of [false,true]){
    const r=simulateRoyalAce(bet,free,100000000);
    total+=r.win;if(r.win>0)nonzero++;
    if(r.win>max)max=r.win;
-   if(r.win>bet*40)overCap++;
+   if(r.win>bet*10)overCap++;
  }
  console.log(JSON.stringify({mode:free?'free':'paid',spins:n,bet,credit_ratio:Number((total/(n*bet)).toFixed(4)),hit_rate:Number((nonzero/n).toFixed(4)),max_win:max,overCap}));
  if(overCap)throw Error('Payout limit violated');
@@ -30,3 +30,4 @@ for(let i=0;i<paidRounds;i++){
 const combined=allCredits/(paidRounds*1000);
 console.log(JSON.stringify({mode:'paid-with-triggered-free-spins',paidRounds,freeRounds,bonusTriggered,credit_ratio:Number(combined.toFixed(4))}));
 if(freeRounds===30000)throw Error('Bonus-spin chain too large');
+if(combined>0.95)throw Error('Paid plus free-spin expected return is too high; tune payout table before rollout');
