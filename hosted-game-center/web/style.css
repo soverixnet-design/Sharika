@@ -545,3 +545,33 @@ html.app-surface:not(.room-mode) body.is-playing main{
 .app-surface .tile .theme-night-food::before,.room-mode .tile .theme-night-food::before{
  filter:blur(9px) hue-rotate(172deg) brightness(.43)!important
 }
+
+/* AUDIT_148_20261118: Inset badges never extend beyond original game artwork.
+   Keep a compact HOT/NEW label rather than a rotated clipped ribbon. */
+.app-surface .tile .badge-ribbon,.room-mode .tile .badge-ribbon{
+ top:5px!important;right:5px!important;left:auto!important;
+ transform:none!important;min-width:0!important;max-width:calc(100% - 10px);
+ padding:3px 5px!important;font-size:9px!important;line-height:1.15!important;
+ border-radius:6px;border:1px solid #fff5c7b6;
+ box-sizing:border-box;box-shadow:0 2px 5px #0008;
+ text-shadow:0 1px 3px #000a
+}
+/* Dedicated vector thumbnails are already color-graded; do not apply the
+   previous hue shift that made food game artwork muddy and confusing. */
+.app-surface .tile .theme-gaddy img,.room-mode .tile .theme-gaddy img,
+.app-surface .tile .theme-sovera-food img,.room-mode .tile .theme-sovera-food img,
+.app-surface .tile .theme-night-food img,.room-mode .tile .theme-night-food img{
+ filter:none!important
+}
+.app-surface .tile .theme-gaddy::before,.room-mode .tile .theme-gaddy::before,
+.app-surface .tile .theme-sovera-food::before,.room-mode .tile .theme-sovera-food::before,
+.app-surface .tile .theme-night-food::before,.room-mode .tile .theme-night-food::before{
+ filter:blur(9px) saturate(1.1) brightness(.5)!important
+}
+/* Evenly distribute the room's three rows across the available 65% sheet.
+   The last partial row of two games is centered, not stranded on the left. */
+.room-mode #landing{display:flex;flex-direction:column;min-height:0}
+.room-mode .games{flex:1 0 auto;align-content:space-evenly;row-gap:clamp(10px,1.6dvh,19px)}
+.room-mode #games>.tile:nth-child(9):nth-last-child(2){grid-column:2}
+/* Ensure an obscured landscape can still scroll rather than clip game cards. */
+@media(max-height:450px){.room-mode .games{align-content:start;row-gap:10px}}

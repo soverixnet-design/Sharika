@@ -18,8 +18,8 @@
  const artworks={
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
   'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/food-wheel.png',
-  'sovera-gaddy':'/cards/food-wheel.png','sovera-food':'/cards/food-wheel.png',
-  'night-food':'/cards/food-wheel.png','greedy-wheel':'/cards/greedy-wheel.webp',
+  'sovera-gaddy':'/cards/gaddy-royal.svg','sovera-food':'/cards/sovera-food-royal.svg',
+  'night-food':'/cards/night-food-royal.svg','greedy-wheel':'/cards/greedy-wheel-royal.svg',
   'fruit-royale':'/cards/fruit-machine.jpg','jackpot-fruit':'/cards/jackpot-fruit.png'
  };
  const shortNames={
@@ -178,7 +178,7 @@
    art.className='art'+(variants[g.id]?' '+variants[g.id].className:'');
    const image=document.createElement('img');
    image.src=artworks[g.id]||'/cards/food-wheel.png';
-   image.alt=g.name+' original game artwork';image.loading='eager';
+   image.alt=g.name+' game artwork';image.loading=inRoom?'eager':'lazy';
    image.decoding='async';art.append(image);
    // The same original artwork supplies a subtle square backdrop for the
    // few landscape cards. Foreground artwork stays uncropped.
