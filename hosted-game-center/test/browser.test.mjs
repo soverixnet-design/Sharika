@@ -54,15 +54,30 @@ function mockWebViewBridge(account){
   };
 }
 
-test('public browser shows catalog but cannot access virtual-coin APIs', {timeout:45000},async()=>{
+test('public browser shows original game cards and free demo without wallet API', {timeout:75000},async()=>{
   const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   try {
     const page=await browser.newPage({viewport:{width:390,height:844}});
     await page.goto(site+'/',{waitUntil:'domcontentloaded'});
     await page.locator('.tile').first().waitFor();
     assert.equal(await page.locator('.tile').count(),10);
-    assert.equal(await page.locator('.tile:enabled').count(),0);
-    assert.match(await page.locator('#status').innerText(),/Preview catalog/);
+    assert.equal(await page.locator('.tile:enabled').count(),10);
+    assert.match(await page.locator('#status').innerText(),/free browser demo/i);
+    const cardImages=await page.locator('.tile .art img').count();
+    assert.equal(cardImages,10);
+    assert.equal(await page.locator('.tile .art img').first().evaluate(img=>img.complete&&img.naturalWidth>0),true,
+      'Original Royal Ace card image must load');
+    await page.getByRole('button',{name:/SuperAce Deluxe/}).click();
+    assert.equal(await page.locator('#demo-banner').isVisible(),true);
+    const royal=page.frameLocator('#game-frame');
+    await royal.locator('#sp').waitFor({state:'visible',timeout:15000});
+    await royal.locator('#sp').click();
+    await page.waitForFunction(()=>document.querySelector('#game-name').textContent.includes('SuperAce'));
+    await page.getByRole('button',{name:'Close Game'}).click();
+    await page.getByRole('button',{name:/Cleopatra/}).click();
+    await page.frameLocator('#game-frame').locator('#spin').waitFor({state:'visible'});
+    await page.frameLocator('#game-frame').locator('#spin').click();
+    await page.getByRole('button',{name:'Close Game'}).click();
     const api=await page.request.post(site+'/api/spin',{data:{}});
     assert.equal(api.status(),405,'public Game Center must reject virtual wallet changes');
     await page.close();
@@ -170,4 +185,27 @@ test('all eight enabled hosted games load safely and connect their original stat
     }
     await context.close();
   } finally {await browser.close();}
+});
+
+test('all ten original cards can be opened in browser practice without a Firebase token',
+  {timeout:120000},async()=>{
+  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  try{
+    const page=await browser.newPage({viewport:{width:390,height:844}});
+    await page.goto(site+'/',{waitUntil:'domcontentloaded'});
+    await page.locator('.tile').first().waitFor();
+    const titles=['SuperAce Deluxe',"Cleopatra's Gold Deluxe",'Greedy Game',
+      'Food Wheel Deluxe','Sovera Gaddy','Sovera Food Wheel','Night Food Wheel',
+      'Greedy Wheel','Fruit Royale','Fruit Jackpot'];
+    for(const name of titles){
+      await page.locator('.tile').filter({has:page.locator('b').filter({hasText:name})}).first().click();
+      await page.locator('#game-frame').waitFor({state:'visible'});
+      const url=await page.locator('#game-frame').getAttribute('src');
+      assert.ok(url.startsWith('/games/'),name+': hosted static game required');
+      assert.equal(await page.locator('#demo-banner').isVisible(),true);
+      await page.getByRole('button',{name:'Close Game'}).click();
+    }
+    const blocked=await page.request.post(site+'/api/spin',{data:{bet:1000}});
+    assert.equal(blocked.status(),405,'The free public website cannot debit any Sharika wallet');
+  } finally{await browser.close();}
 });
