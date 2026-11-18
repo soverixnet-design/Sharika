@@ -10,12 +10,12 @@ const css=read('hosted-game-center/web/style.css');
 const worker=read('hosted-game-center/src/index.mjs');
 const markup=read('hosted-game-center/web/index.html');
 
-test('room games stay in the SAME Activity with 58%-height native sheet',()=>{
+test('room games stay in the SAME Activity with 65%-height native sheet',()=>{
  assert.match(activity,/case "openHostedGameCenter":/);
  assert.match(activity,/data\.optBoolean\("insideRoom",false\)/);
  assert.match(activity,/roomGameDialog=SharikaRoomGameDialog\.show\(this\)/);
  assert.match(sheet,/new Dialog\(host\)/);
- assert.match(sheet,/heightPixels\*\.58f/);
+ assert.match(sheet,/heightPixels\*\.65f/);
  assert.match(sheet,/Gravity\.BOTTOM/);
  assert.match(sheet,/room.*WebView|voice-room WebView/i);
  assert.doesNotMatch(sheet,/startActivity\(/);
@@ -70,4 +70,15 @@ test('new site does not deploy new SuperAce RTP or touch player ledger',()=>{
  assert.doesNotMatch(sheet,/api\/superace\/buy-bonus|coins=coins-|ALTER TABLE/);
  assert.doesNotMatch(js,/localStorage\.setItem\(["'](?:coins|wallet|winnings)/);
  assert.doesNotMatch(worker,/INSERT INTO|UPDATE sharika_users|sharika_wallet_ledger/);
+});
+
+test('game views are clean: transparent icon cards, no duplicate chrome, 65% native room',()=>{
+ assert.match(sheet,/heightPixels\*\.65f/);
+ assert.match(sheet,/window\.setDimAmount\(0f\)/);
+ assert.match(sheet,/container\.setBackgroundColor\(Color\.TRANSPARENT\)/);
+ assert.match(css,/body\.is-playing header\{display:none!important\}/);
+ assert.match(css,/body\.is-playing #game-profile\{display:none!important\}/);
+ assert.match(css,/border:0!important;border-radius:0!important;background:transparent!important/);
+ assert.match(js,/document\.body\.classList\.add\('is-playing'\)/);
+ assert.match(js,/document\.body\.classList\.remove\('is-playing'\)/);
 });

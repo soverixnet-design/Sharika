@@ -1,0 +1,112 @@
+name: Sharika game layout isolated PR QA
+on:
+  push:
+    branches:
+      - fix/sharika-game-clean-surface-65pct-20261118
+    paths:
+      - 'hosted-game-center/**'
+      - 'android-staging/app/src/main/assets/original-games/greedy-classic-live.js'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
+      - '.github/workflows/sharika-game-layout-pr-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    name: Validate room and full-screen source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate JS, game assets, and isolated wallet route contracts
+        run: |
+          node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/test/browser.test.mjs
+          node --check android-staging/app/src/main/assets/original-games/greedy-classic-live.js
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs
+          test -s hosted-game-center/dist/games/original-games/greedy-classic.html
+          test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+          test -s hosted-game-center/dist/games/original-games/royal-ace-deluxe.html
+          test -s hosted-game-center/dist/games/original-games/cleopatra-slot.html
+
+  browser:
+    name: Playwright mobile game layout QA
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build exact isolated game assets
+        run: node hosted-game-center/scripts/build.mjs
+      - name: Install browser testing tools
+        run: |
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+      - name: Start private local Cloudflare Worker simulation
+        run: |
+          set -euo pipefail
+          nohup npx --yes wrangler@4 dev --local --config hosted-game-center/wrangler.jsonc --ip 127.0.0.1 --port 8787 > "${RUNNER_TEMP}/game-layout-wrangler.log" 2>&1 &
+          echo $! > "${RUNNER_TEMP}/game-layout-wrangler.pid"
+          ready=0
+          for attempt in $(seq 1 65); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8787/health | grep -q 'sharika-hosted-game-center'; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then cat "${RUNNER_TEMP}/game-layout-wrangler.log"; exit 1; fi
+      - name: Test primary game viewports, verified profiles and iframe isolation
+        env:
+          SHARIKA_GAME_QA_URL: http://127.0.0.1:8787
+        run: node --test hosted-game-center/test/browser.test.mjs
+      - name: Upload local worker log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-layout-local-server-log
+          path: ${{ runner.temp }}/game-layout-wrangler.log
+          if-no-files-found: ignore
+
+  android:
+    name: Compile staging debug APK (no release)
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 36 packages
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build debug APK only
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Confirm Android APK is generated
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk
+      - name: Store internal QA-only APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-65pct-Game-UI-QA-APK
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+          if-no-files-found: error

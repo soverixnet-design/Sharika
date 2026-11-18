@@ -216,19 +216,21 @@
  function closeGame(){
   gameVersion++;active=null;practice=null;frame.removeAttribute('src');
   clearWinner();player.hidden=true;landing.hidden=false;
+  document.body.classList.remove('is-playing');
   $('back').hidden=true;notify('');window.scrollTo(0,0);
  }
  function openGame(game){
   gameVersion++;active=game;
   practice=bridge?null:window.createSharikaPractice(game.id);
   landing.hidden=true;player.hidden=false;$('back').hidden=false;
+  document.body.classList.add('is-playing');
   $('game-name').textContent=game.name;
   $('play-label').textContent=bridge?'Cloudflare server · Verified virtual coins':
     'Free browser practice · No wallet or real server settlement';
   $('demo-banner').hidden=!!bridge;
   $('game-profile').hidden=!verifiedProfile;
   clearWinner();notify('');
-  // In-room games use only the existing 58%-tall Android Dialog. The voice
+  // In-room games use only the existing 65%-tall Android Dialog. The voice
   // room is still visible above it; NEVER start an expanded Android Activity.
   const hostedSlot=game.id==='royal-ace'||game.id==='cleopatra';
   const serverMode=!!bridge||game.id==='royal-ace';

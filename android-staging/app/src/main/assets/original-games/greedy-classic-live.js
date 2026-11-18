@@ -16,14 +16,15 @@ if(location.hash==='#sharika-room'){
   'html.sharika-greedy-mini #top{height:clamp(38px,12dvh,48px)!important;',
   'min-height:0!important;flex:0 0 auto!important}',
   'html.sharika-greedy-mini #stage{',
-  'width:min(48dvh,53vw,170px)!important;height:min(48dvh,53vw,170px)!important;',
-  'max-height:min(48dvh,53vw,170px)!important;flex-shrink:1!important;',
+  'width:min(44dvh,70vw,245px)!important;height:min(44dvh,70vw,245px)!important;',
+  'max-height:min(44dvh,70vw,245px)!important;flex-shrink:1!important;',
   'margin:0 auto!important}',
   'html.sharika-greedy-mini #stage>img.w{',
   'width:100%!important;height:100%!important;object-fit:contain!important}',
-  'html.sharika-greedy-mini #low{height:114px!important;',
-  'min-height:100px!important;max-height:126px!important;',
-  'overflow:visible!important;flex-shrink:0!important}',
+  'html.sharika-greedy-mini #low{height:auto!important;',
+  'min-height:112px!important;max-height:none!important;',
+  'overflow:hidden!important;flex:1 1 auto!important;',
+  'justify-content:space-around!important}',
   'html.sharika-greedy-mini #chips{',
   'height:34px!important;min-height:0!important;max-height:36px!important}',
   'html.sharika-greedy-mini #me{',
@@ -32,9 +33,41 @@ if(location.hash==='#sharika-room'){
   'position:fixed!important;right:7px!important;bottom:5px!important;',
   'left:auto!important;top:auto!important;z-index:80!important}',
   'html.sharika-greedy-mini .chip{max-height:36px!important}',
+  '@media(max-height:360px){html.sharika-greedy-mini #stage{',
+  'width:min(30dvh,60vw)!important;height:min(30dvh,60vw)!important}}',
  ].join('');
  document.head.append(style);
 }
+else {
+ // In a full Game Center WebView the original fixed 1080:1617 canvas
+ // produced large BLACK bands on tall screens. Expand the *container*,
+ // never stretch the 1:1 food wheel or its aligned hit targets.
+ document.documentElement.classList.add('sharika-greedy-full');
+ const style=document.createElement('style');
+ style.id='sharika-fullscreen-game-fit';
+ style.textContent=[
+  'html.sharika-greedy-full,html.sharika-greedy-full body{',
+  'width:100%;height:100dvh!important;min-height:0!important;',
+  'background:#0bbcb0!important;overflow:hidden!important}',
+  'html.sharika-greedy-full body{display:flex!important;',
+  'align-items:stretch!important;justify-content:center!important}',
+  'html.sharika-greedy-full #app{width:min(100vw,520px)!important;',
+  'max-width:none!important;height:100dvh!important;',
+  'min-height:0!important;aspect-ratio:auto!important;margin:0 auto!important}',
+  'html.sharika-greedy-full #top{flex:0 0 auto!important}',
+  'html.sharika-greedy-full #stage{width:min(96%,56dvh,510px)!important;',
+  'max-height:none!important;flex:0 0 auto!important}',
+  'html.sharika-greedy-full #low{flex:1 1 auto!important;',
+  'min-height:130px!important;max-height:none!important;',
+  'justify-content:space-around!important;overflow:hidden!important}',
+  'html.sharika-greedy-full #res,html.sharika-greedy-full #chips,',
+  'html.sharika-greedy-full #me{flex:0 0 auto!important}',
+  '@media(max-height:570px){html.sharika-greedy-full #stage{',
+  'width:min(87vw,46dvh)!important}}'
+ ].join('');
+ document.head.append(style);
+}
+
 
 const OUTCOMES=new Set(F.map(f=>f.id).concat(['salad','pizza']));
 const pending=new Map();

@@ -107,18 +107,9 @@ public final class SharikaGameCenterActivity extends Activity {
                 requestGameApi(id,method,path,body,reply);
             });
         layout.addView(web,new FrameLayout.LayoutParams(-1,-1));
-        Button back = new Button(this);
-        back.setText("‹ SHARIKA");
-        back.setTextColor(Color.rgb(255,228,174));
-        back.setBackgroundColor(Color.rgb(38,17,52));
-        FrameLayout.LayoutParams pos = new FrameLayout.LayoutParams(
-            (int)(118*getResources().getDisplayMetrics().density),
-            (int)(43*getResources().getDisplayMetrics().density),
-            Gravity.BOTTOM|Gravity.START);
-        pos.setMargins(10,0,0,15);
-        back.setOnClickListener(v->finish());
-        // A native Back control remains available if a hosted page stops responding.
-        layout.addView(back,pos);
+        // Do not place the former "SHARIKA" button over the game artwork.
+        // The Android system Back gesture exits this Activity, while the
+        // small web close control returns from a game to the catalog.
         setContentView(layout);
         web.loadUrl(SITE_ORIGIN+"/");
     }
