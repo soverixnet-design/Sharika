@@ -13682,6 +13682,15 @@
       return;
     }
     if(insideRoom&&!joinedRoom)return;
+    // Staging only: game binaries are served by the isolated Cloudflare site.
+    // The dedicated Android Activity has NO general SharikaNative interface.
+    // Play releases continue using their independently approved game surface.
+    if(playStoreMode===false){
+      native('openHostedGameCenter',{insideRoom:!!insideRoom}).catch(error=>{
+        showToast('Game Center unavailable: '+errText(error));
+      });
+      return;
+    }
     const portal=insideRoom?ensureRoomGamePortal(doc):null;
     const sheet=portal?.sheet||doc.getElementById('sh');
     const overlay=portal?.overlay||doc.getElementById('shb');

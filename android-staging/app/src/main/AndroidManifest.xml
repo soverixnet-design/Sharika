@@ -60,6 +60,10 @@
             </intent-filter>
         </service>
         <activity
+            android:name=".SharikaGameCenterActivity"
+            android:exported="false"
+            android:theme="@style/SharikaStagingTheme" />
+        <activity
             android:name=".MainActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

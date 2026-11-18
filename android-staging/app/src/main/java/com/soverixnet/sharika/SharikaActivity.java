@@ -867,6 +867,16 @@ public final class SharikaActivity extends Activity {
     private void handle(String id, String action, JSONObject data) {
         if (action == null) { sendResult(id, result(false,null,"unknown_action")); return; }
         switch (action) {
+            case "openHostedGameCenter":
+                if (BuildConfig.SHARIKA_PLAY_BUILD ||
+                    auth.getCurrentUser()==null ||
+                    !"https://sharika-api-staging.soverixnet.workers.dev".equals(API_ORIGIN)) {
+                    sendResult(id,result(false,null,"hosted_game_center_unavailable"));
+                    break;
+                }
+                startActivity(new Intent(this,SharikaGameCenterActivity.class));
+                sendResult(id,result(true,object(),null));
+                break;
             case "visualReady":
                 // A read-only signal from the packaged visual layer.
                 if (browser != null &&
