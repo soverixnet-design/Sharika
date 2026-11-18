@@ -69,10 +69,15 @@
        r.phase==='spinning'?r.spinEnd:r.end,
        totals:totals.slice(),online:1};
      if(r.phase!=='betting')state.resultId='chicken';
-     if(action==='state')return {serverTime:r.now,balance:coins,
-       todayDay:new Date().toISOString().slice(0,10),todayWin:0,todayPlayed:0,
-       user:person,config:{chips:[1000,10000,100000,1000000],maxBetPerRound:10000000},
-       state,myBets:wagers.slice(),history:[]};
+     if(action==='state'){
+       const out={serverTime:r.now,balance:coins,
+         todayDay:new Date().toISOString().slice(0,10),todayWin:0,todayPlayed:0,
+         user:person,config:{chips:[1000,10000,100000,1000000],maxBetPerRound:10000000},
+         state,myBets:wagers.slice(),history:[]};
+       if(r.phase==='result')out.result={round:r.n,resultId:state.resultId,
+         endsAt:r.end,you:{bet:0,win:0,balance:coins},top:{winners:[]}};
+       return out;
+     }
      if(action==='records'||action==='history')return {list:history};
      if(action==='rankings')return {rankings:[],period:'daily'};
      if(action==='winners')return {winners:[]};
@@ -127,7 +132,13 @@
            multipliers:[45,25,15,10,5,5,5,5,2,4],
            symbols:games['sovera-food'].symbols,round,
            my_bets:bets.filter(x=>x.round_no>=r.n-1),
-           spin:null,current_result:null,previous_result:null};
+           spin:r.now>=r.betEnd?{round_no:r.n,item:games['sovera-food'].names[r.n%8],
+             result_index:r.n%8,target_index:0,visual:[games['sovera-food'].names[r.n%8]],
+             top_winners:[]}:null,
+           current_result:r.phase==='result'?{round_no:r.n,
+             item:games['sovera-food'].names[r.n%8],top_winners:[]}:null,
+           previous_result:{round_no:r.n-1,
+             item:games['sovera-food'].names[(r.n+7)%8],top_winners:[]}};
          if(action==='history')return {game,rounds:[],bets:[]};
          if(action==='rankings')return {list:[],me:{rank:null,total:0}};
          if(action==='stats')return {game,bets:bets.length,wagered:0,won:0};
@@ -151,8 +162,13 @@
            round_ms:40000,round,balance:coins,chips:[50,500,2000,10000],
            multipliers:[45,25,15,10,5,5,5,5],
            symbols:games['sovera-food'].symbols,my_stakes:wagers.slice(),
-           last_stakes:yesterday.slice(),history:[],result:null,previous_result:null,
-           today_wagered:0,today_won:0};
+           last_stakes:yesterday.slice(),
+           history:[(r.n+7)%8,(r.n+6)%8,(r.n+5)%8],
+           result:r.phase==='result'?{round_no:r.n,index:r.n%8,
+             multiplier:[45,25,15,10,5,5,5,5][r.n%8],my_payout:0,
+             top_winners:[]}:null,
+           previous_result:{round_no:r.n-1,index:(r.n+7)%8,my_payout:0,
+             top_winners:[]},today_wagered:0,today_won:0};
          if(action==='history')return {rounds:[]};
          if(action==='rankings')return {rankings:[],verified:false};
          if(action==='bet'&&method==='POST'){
@@ -179,7 +195,10 @@
          if(action==='state')return {game,virtual_coins_only:true,server_time:r.now,
            round,symbols:g.symbols,multipliers:g.mult,
            chips:[1000,10000,100000,1000000,10000000],
-           coins,my_bets:bets.filter(x=>x.round_no>=r.n-1),previous_result:null,
+           coins,my_bets:bets.filter(x=>x.round_no>=r.n-1),
+           previous_result:{round_no:r.n-1,index:(r.n+7)%8,
+             positions:[(r.n+7)%8],symbols:[g.symbols[(r.n+7)%8]],
+             bonus:'none',top_winners:[]},
            today_won:0,today_wagered:0,bonus_pool:0};
          if(action==='history')return {game,rounds:[]};
          if(action==='stats')return {game,today_utc:new Date().toISOString().slice(0,10),
