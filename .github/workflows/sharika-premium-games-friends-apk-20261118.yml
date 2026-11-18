@@ -1,0 +1,81 @@
+name: Sharika Premium Games Final friends APK direct
+on:
+  push:
+    branches:
+      - release/sharika-premium-games-final-friends-20261118
+    paths:
+      - .github/workflows/sharika-premium-games-friends-apk-20261118.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Verify merged staging website and APK; publish direct download
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_RUN: '44346647087'
+      SITE_RUN: '44346646939'
+      SOURCE_SHA: 'd8659be9aa5db9de3226b0b24bb9c7a3799e3988'
+      RELEASE_TAG: 'sharika-premium-games-final-v140-20261118-d8659be9'
+      APK_NAME: 'Sharika-Premium-Games-v140-Friends.apk'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Ensure exact merged signed APK and published site match
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'soverixnet-design/Sharika'
+          apk_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .head_sha)"
+          site_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SITE_RUN}" --jq .head_sha)"
+          apk_status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .conclusion)"
+          site_status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SITE_RUN}" --jq .conclusion)"
+          test "$apk_sha" = "$SOURCE_SHA" && test "$site_sha" = "$SOURCE_SHA"
+          test "$apk_status" = success && test "$site_status" = success
+          echo "VERIFIED_PREMIUM_GAMES_SITE_AND_SIGNED_ANDROID_STAGING_SAME_SHA"
+
+      - name: Reuse the exact signed staging APK, without rebuilding
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          repository: soverixnet-design/Sharika
+          run-id: 44346647087
+          github-token: ${{ github.token }}
+          path: signed-apk
+
+      - name: Check APK integrity and native hosted Games routing
+        run: |
+          set -euo pipefail
+          apk=signed-apk/app-debug.apk
+          test -s "$apk"
+          unzip -tqq "$apk"
+          unzip -p "$apk" assets/connection.js > "${RUNNER_TEMP}/verified-sharika-connection.js"
+          grep -Fq "native('openHostedGameCenter',{insideRoom:!!insideRoom})" "${RUNNER_TEMP}/verified-sharika-connection.js"
+          grep -Fq "clientModeVerified" "${RUNNER_TEMP}/verified-sharika-connection.js"
+          cp "$apk" "signed-apk/$APK_NAME"
+          sha256sum "signed-apk/$APK_NAME"
+
+      - name: Create immutable public staging prerelease for friends
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release tag already exists; refusing to replace a shared APK."
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "signed-apk/$APK_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title 'Sharika Premium Games Final UI - Friends Staging APK' \
+            --notes 'TEST ONLY: Royal Emerald + Gold Premium Games UI, Royal Spotlight, Hot Games, four-column All Games with search, clean native app-only headers, opaque 65% room sheet, and Android Back from game to catalog. The games remain hosted on Cloudflare and authenticated virtual coins/bets remain server-controlled. Public browser still discloses simulated-coins demo. Built from merged PR #150, exact successful Cloudflare staging publish and Android QA APK. NOT a Play Store production release. This signed QA APK may not update Play Store-installed apps; voice, Firebase login and real bet transactions still require on-device testing.' \
+            --prerelease
+
+      - name: Verify GitHub public direct APK download
+        run: |
+          set -euo pipefail
+          size="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.assets[] | select(.name == "Sharika-Premium-Games-v140-Friends.apk") | .size')"
+          test "$size" -gt 80000000
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${APK_NAME}"
+          curl --fail --silent --show-error --location --head --max-time 60 "$url" -o /dev/null
+          echo "PUBLIC_DIRECT_APK_URL=$url"
