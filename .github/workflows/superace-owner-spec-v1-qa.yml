@@ -9,6 +9,7 @@ on:
       - 'cloudflare/migrations/0100_superace_owner_spec_v1.sql'
       - 'cloudflare/test/royal-ace.test.mjs'
       - 'cloudflare/test/superace-spec-v1.test.mjs'
+      - 'cloudflare/scripts/superace-rtp.mjs'
       - 'android-staging/app/src/main/assets/original-games/royal-ace-deluxe.html'
       - 'hosted-game-center/web/app.js'
       - 'hosted-game-center/web/practice.js'
@@ -60,3 +61,15 @@ jobs:
           lines=[x.strip() for x in wf.splitlines() if x.strip().startswith('run:')]
           assert not any(f in line for line in lines for f in forbidden)
           PY
+
+  rtp-10m:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Ten million paid spins plus triggered free spins (100-coin minimum)
+        run: node cloudflare/scripts/superace-rtp.mjs 10000000 100 20261118
+      - name: Ten-thousand paid spins at maximum documented bet
+        run: node cloudflare/scripts/superace-rtp.mjs 10000 50000 12345
