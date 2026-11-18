@@ -2,6 +2,9 @@
 -- The source slot charges 50x for only 10 bonus spins, grossly below ordinary spin RTP.
 -- Cost is adjusted to 10x; 10 spins remain unchanged; historical debits are untouched.
 -- Run only after validating target D1 identifier and staging lockout.
+-- Protect every insert throughout an interrupted migration: reject bets, never unvalidated debit.
+CREATE TRIGGER IF NOT EXISTS royal_ace_validate_transition BEFORE INSERT ON sharika_royal_ace_rounds
+BEGIN SELECT RAISE(ABORT,'royal_migrating'); END;
 DROP TRIGGER IF EXISTS royal_ace_validate;
 CREATE TRIGGER royal_ace_validate BEFORE INSERT ON sharika_royal_ace_rounds
 BEGIN
@@ -31,3 +34,4 @@ BEGIN
     SELECT 1 FROM sharika_royal_ace_rounds
      WHERE user_uid=NEW.user_uid AND created_ms>NEW.created_ms-600 LIMIT 1);
 END;
+DROP TRIGGER IF EXISTS royal_ace_validate_transition;
