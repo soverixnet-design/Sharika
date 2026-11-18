@@ -366,8 +366,9 @@
   }
   if(m.type!=='sharika:original-request'||m.game!==game.id||
     !Number.isSafeInteger(m.id)||m.id<1||
-    !['state','history','stats','rankings','bet'].includes(m.action))return;
-  const method=m.action==='bet'?'POST':'GET';
+    !['state','history','stats','rankings','bet','bet-batch'].includes(m.action))return;
+  if(m.action==='bet-batch'&&game.id!=='greedy-classic')return;
+  const method=(m.action==='bet'||m.action==='bet-batch')?'POST':'GET';
   if(m.method!==method)return;
   let query='';
   if(m.action==='rankings'&&m.query&&['daily','weekly','monthly'].includes(m.query.period)&&
