@@ -112,6 +112,9 @@ test('original uploaded 21 PNGs are kept, English-only, with no client coin muta
  assert.match(js,/window\.bet=bet/);
  assert.match(js,/sharika:original-request/);
  assert.match(js,/unconfirmed=payload/);
+ assert.match(js,/lastOfflineNoticeAt/);
+ assert.match(js,/if\(!state\)S\.phase='load'/,'Keep last verified UI during weak network');
+ assert.match(js,/ready=false;[\s\S]*?if\(!state\)S\.phase='load'/,'Disable bets while offline');
 });
 
 test('native parent bridge confirms wager before wallet changes, without fake deposits',async()=>{
