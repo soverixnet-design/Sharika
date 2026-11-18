@@ -22,11 +22,20 @@ function fixture(){
     async all(){return {results:statement.all(...args)}},
     async run(){return {meta:statement.run(...args)}}
   };
+ },async batch(statements){
+  // Test D1's documented all-or-nothing batch against the REAL SQLite triggers.
+  sqlite.exec('BEGIN IMMEDIATE');
+  try{
+   const results=[];
+   for(const statement of statements)results.push(await statement.run());
+   sqlite.exec('COMMIT');return results;
+  }catch(error){sqlite.exec('ROLLBACK');throw error;}
  }};
  const call=(action,body,uid='adult-1')=>handleGreedyClassicRequest({
    request:new Request('https://staging.invalid/api/v1/original-games/greedy-classic/'+action,{
-     method:action==='bet'?'POST':'GET',
-     ...(action==='bet'?{headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{})
+     method:['bet','bet-batch'].includes(action)?'POST':'GET',
+     ...(['bet','bet-batch'].includes(action)?
+       {headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{})
    }),
    db,uid,action,reply:(v,s)=>Response.json(v,{status:s}),
    fail:(e,s)=>Response.json({error:e},{status:s}),cors:{}});
@@ -78,6 +87,31 @@ test('server-verified bet, exact retry, atomic debit and one-time payout',async(
  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='greedy_classic_bet'").get().n,1);
  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='greedy_classic_win'").get().n,payout?1:0);
  sqlite.close();
+});
+test('100 real SQLite D1-triggered clicks debit once, retry idempotently and reject 101',async()=>{
+ const {sqlite,call,balance}=fixture(),real=Date.now,now=Date.now(),n=Math.floor(now/38000);
+ round(sqlite,now,n);
+ const body={round:n,request_id:'greedy-batch-sqlite-qa-20261119',
+   entries:[{itemId:'chicken',amount:100,count:100}]};
+ Date.now=()=>n*38000+1000;
+ try{
+  const accepted=await call('bet-batch',body);
+  assert.equal(accepted.status,200,await accepted.text());
+  const receipt=await accepted.json();
+  assert.equal(receipt.accepted_clicks,100);
+  assert.equal(balance(),90000);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_greedy_classic_bets").get().n,100);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='greedy_classic_bet'").get().n,100);
+  const duplicate=await call('bet-batch',body);
+  assert.equal(duplicate.status,200);
+  assert.equal((await duplicate.json()).duplicate,true);
+  assert.equal(balance(),90000);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_greedy_classic_bets").get().n,100);
+  const over=await call('bet-batch',{...body,request_id:'greedy-batch-over-limit-qa-20261119',
+    entries:[{itemId:'fish',amount:100,count:101}]});
+  assert.equal(over.status,400);
+  assert.equal(balance(),90000);
+ }finally{Date.now=real;sqlite.close();}
 });
 test('disallows unknown food, arbitrary coin stake, underage and insufficient wallet',async()=>{
  const {sqlite,call,balance}=fixture(),now=Date.now(),n=Math.floor(now/38000);
