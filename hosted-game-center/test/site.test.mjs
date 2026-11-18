@@ -22,7 +22,11 @@ test('hosted origin contains no Firebase token or wide native bridge',()=>{
  const js=read('web/app.js');
  assert.match(js,/SharikaGameBridge/);
  assert.doesNotMatch(js,/SharikaNative|Bearer |localStorage\.setItem\(['"](?:coin|wallet|sa_bal)/);
- assert.match(js,/e.origin!==location.origin/);
+ assert.match(js,/e.origin!=='null'/);
+ assert.match(js,/version===gameVersion/);
+ const markup=read('web/index.html');
+ assert.match(markup,/sandbox="allow-scripts"/);
+ assert.doesNotMatch(markup,/allow-same-origin/);
  assert.match(js,/pending\.delete\(id\)/);
  assert.match(js,/requestId:m.id/);
  const wrangler=JSON.parse(read('wrangler.jsonc'));
