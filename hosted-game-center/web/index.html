@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#071f1b">
-<title>Sharika Royal Game Center · Staging</title>
+<title>Sharika Premium Games</title>
 <link rel="stylesheet" href="/style.css">
 <script src="/practice.js" defer></script>
 <script src="/app.js" defer></script>
@@ -16,12 +16,12 @@
   <div class="room-handle" aria-hidden="true"></div>
   <div class="app-toolbar">
     <button id="app-return" type="button" aria-label="Back to Sharika">‹</button>
-    <div class="app-brand"><span class="app-brand-mark" aria-hidden="true">✦</span><span><b>SHARIKA</b><small>ROYAL GAMES</small></span></div>
-    <span class="app-toolbar-tag">GAMES</span>
+    <div class="app-brand"><span class="app-brand-mark" aria-hidden="true">✦</span><span><b>Premium Games</b><small>SHARIKA ROYAL</small></span></div>
+    <span id="toolbar-count" class="app-toolbar-tag" aria-live="polite">Games</span>
   </div>
   <div class="eyebrow">STAGING · VIRTUAL COINS ONLY</div>
   <div class="catalog-title-row">
-    <h1><span class="web-title">Royal Games <em>Collection</em></span><span class="app-title">Royal <em>Games</em></span><span class="room-title">Game</span></h1>
+    <h1><span class="web-title">Royal Games <em>Collection</em></span><span class="app-title">Premium <em>Games</em></span><span class="room-title">Game</span></h1>
     <span id="game-count" aria-live="polite"></span>
   </div>
   <div id="catalog-profile" class="player-profile" hidden>
@@ -30,6 +30,14 @@
    <span class="profile-verified">Verified profile</span>
   </div>
   <p id="status" role="status">Checking your Sharika game access…</p>
+  <section id="royal-hero" class="royal-hero" aria-label="Royal game highlights" hidden>
+    <div class="hero-copy"><span>SHARIKA ROYAL</span><strong>Royal Spotlight</strong><small>Discover premium games</small></div>
+    <div class="hero-crowns" aria-hidden="true">
+      <span class="hero-award side"><b>♛</b><small>POPULAR</small></span>
+      <span class="hero-award center"><b>♛</b><small>FEATURED</small></span>
+      <span class="hero-award side"><b>♛</b><small>NEW</small></span>
+    </div>
+  </section>
   <section id="hot-section" class="hot-section" aria-labelledby="hot-title" hidden>
     <div class="section-heading"><h2 id="hot-title">Hot Games</h2><span class="hot-flame" aria-hidden="true">✦</span></div>
     <div id="hot-games" class="hot-games"></div>
@@ -39,7 +47,7 @@
   </div>
   <div class="games" id="games"></div>
   <p id="no-games" class="no-games" hidden>No matching games.</p>
-  <div class="notice" id="notice">Browser demo uses only simulated coins. In the Sharika Android app, eligible games use the authenticated Cloudflare server. Nothing here represents cash or withdrawable rewards.</div>
+  <div class="notice" id="notice">Free browser demo: simulated virtual coins and results only. No cash withdrawal or Sharika wallet transactions. In the Android app, eligible games use the authenticated Cloudflare server.</div>
   <p class="browser-only" id="browser-note" hidden>Free practice: simulated results, no Sharika wallet. Open inside the staging Android app for server-verified coins.</p>
  </section>
  <section id="player" hidden>
