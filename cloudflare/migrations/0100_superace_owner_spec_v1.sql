@@ -13,6 +13,7 @@ WHERE id=1;
 UPDATE sharika_game_catalog SET enabled=0 WHERE id='royal-ace';
 
 ALTER TABLE sharika_royal_ace_rounds ADD COLUMN result_json TEXT;
+ALTER TABLE sharika_royal_ace_rounds ADD COLUMN receipt_json TEXT;
 
 CREATE TABLE IF NOT EXISTS sharika_royal_ace_sessions(
   id TEXT PRIMARY KEY CHECK(length(id) BETWEEN 12 AND 72),
