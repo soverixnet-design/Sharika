@@ -16,6 +16,7 @@ function fixture(){
   const ins=sqlite.prepare('INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(?,?,?,?,?,?)');
   ins.run(10000011,'adult-a','Adult','1991-01-01',0,1000000);
   ins.run(10000012,'minor-b','Minor','2015-01-01',1,1000000);
+  ins.run(10000013,'adult-c','Adult C','1994-01-01',0,1000000);
   const db={prepare(query){const stmt=sqlite.prepare(query);let args=[];
     return {bind(...v){args=v;return this;},
       async first(){return stmt.get(...args)||null;},
@@ -75,6 +76,22 @@ test('server validates bets, adults, idempotency and wallet ledger',async()=>{
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_royal_ace_rounds').get().n,1);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='royal_ace_bet'").get().n,1);
   assert.equal((await route('spin',{bet:1000,requestId:'ra_second_0000001',buy:false})).status,429);
+  sqlite.close();
+});
+test('two eligible users have independent rounds, balances and ledger entries',async()=>{
+  const {sqlite,route,enable}=fixture();enable();
+  const a={bet:1000,requestId:'ra_parallel_a_00001',buy:false};
+  const c={bet:1000,requestId:'ra_parallel_c_00001',buy:false};
+  const [first,second]=await Promise.all([route('spin',a,'adult-a'),route('spin',c,'adult-c')]);
+  assert.equal(first.status,200);assert.equal(second.status,200);
+  const [ar,cr]=await Promise.all([first.json(),second.json()]);
+  assert.equal(ar.balance,999000+ar.win);assert.equal(cr.balance,999000+cr.win);
+  assert.equal(sqlite.prepare('SELECT COUNT(DISTINCT user_uid) AS n FROM sharika_royal_ace_rounds').get().n,2);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='royal_ace_bet'").get().n,2);
+  assert.equal((await route('state',{},'adult-c')).status,200);
+  const repeat=await (await route('spin',c,'adult-c')).json();
+  assert.deepEqual(repeat,cr);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_royal_ace_rounds').get().n,2);
   sqlite.close();
 });
 test('bonus purchase debits exactly 10x and server owns 10 free spins',async()=>{
