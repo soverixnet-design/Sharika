@@ -135,8 +135,8 @@ win(c){[0,4,7,12].forEach((n,i)=>tone(440*2**((n+c*2)/12),.2,'triangle',.07,i*.0
 flip(){noise(.28,.04,1500);tone(320,.3,'sine',.05,0,2.6)},star(){[0,5,9,14,17].forEach((n,i)=>tone(660*2**(n/12),.28,'sine',.06,i*.07))},
 scatter(){[0,7,12,19,24].forEach((n,i)=>tone(523*2**(n/12),.45,'sine',.07,i*.1));noise(.5,.03,4000,.1)},
 fanfare(){[0,4,7,12,16,19,24].forEach((n,i)=>{tone(262*2**(n/12),.45,'triangle',.07,i*.09);tone(262*2**(n/12)*2,.3,'square',.02,i*.09)})},coin(){tone(1500,.05,'square',.03);tone(2000,.09,'square',.03,.04)}};
-function bigWin(amount){const ra=amount/bet;if(ra<15)return Promise.resolve();
-const tr=ra>=100?['SUPER WIN','#ff5ad1']:ra>=40?['MEGA WIN','#ff8a2a']:['BIG WIN','#ffd34d'];const o=$('bw');let cn='';for(let i=0;i<30;i++)cn+='<i style="left:'+Math.random()*100+'%;animation-delay:'+Math.random()*2+'s;animation-duration:'+(1.4+Math.random()*1.4)+'s"></i>';
+function bigWin(amount){const ra=amount/bet;if(ra<20)return Promise.resolve();
+const tr=ra>=120?['SUPER WIN','#ff5ad1']:ra>=50?['MEGA WIN','#ff8a2a']:['BIG WIN','#ffd34d'];const o=$('bw');let cn='';for(let i=0;i<30;i++)cn+='<i style="left:'+Math.random()*100+'%;animation-delay:'+Math.random()*2+'s;animation-duration:'+(1.4+Math.random()*1.4)+'s"></i>';
 o.innerHTML='<div class="cr">'+cn+'</div><div class="bt1" style="--c:'+tr[1]+'">'+tr[0]+'</div><div class="bn1" id="bwn">0</div><div class="bt2">'+Math.round(ra)+'× BET · Tap to continue</div>';o.style.display='flex';SFX.fanfare();
 return new Promise(res=>{let done=false,last=0;const t0=performance.now(),dur=2600;const close=()=>{if(done)return;done=true;o.style.display='none';res()};o.onclick=close;
 const step=now=>{if(done)return;const p=Math.min((now-t0)/dur,1);$('bwn').textContent=fmt(amount*(1-Math.pow(1-p,3)));if(now-last>90&&p<1){SFX.coin();last=now}if(p<1)requestAnimationFrame(step);else setTimeout(close,1500)};requestAnimationFrame(step)})}
@@ -146,8 +146,8 @@ const IM={"back":"data:image/webp;base64,UklGRkAIAABXRUJQVlA4IDQIAAAQQQCdASqPALQ
 const $=id=>document.getElementById(id);
 const R=['A','K','Q','J'],F=['♠','👑','👸','🎩'],SU=['♠','♥','♦','♣'];
 const P=[[2.5,1.5,.5],[2,1.2,.4],[1.5,.9,.3],[1,.6,.2],[.5,.3,.1],[.5,.3,.1],[.25,.15,.05],[.25,.15,.05]];
-const WT=[6,7,8,9,10,10,11,11],ML=[[1,2,3,5,10],[2,4,6,10,20]],BETS=[1000,10000,100000,1000000,10000000];
-let bal=0,bi=0,bet=1000,busy=false,auto=false,turbo=false,G=[],fresh=new Set();
+const WT=[6,7,8,9,10,10,11,11],ML=[[1,2,3,5,10],[2,4,6,10,20]],BETS=[100,200,500,1000,2000,5000,10000,50000];
+let bal=0,bi=0,bet=100,busy=false,auto=false,turbo=false,G=[],fresh=new Set();
 // Authoritative game balance is supplied by the Sharika server; never use browser storage.
 const sleep=ms=>new Promise(r=>setTimeout(r,turbo?ms/3:ms));
 const fmt=n=>Math.round(n).toLocaleString('en-US');
@@ -220,8 +220,8 @@ t+=S('4. Golden Cards','<p>Golden cards only appear on reels 2, 3 and 4. A Golde
 t+=S('5. Joker (Wild)','<p>A Joker replaces any symbol except Scatter.</p><div class="ex">'+ci('w9')+ci('w10')+'</div><p><b>Big Joker</b> (red): also adds 1~4 more Big Jokers on reels 2~5.<br><b>Little Joker</b> (blue): only replaces the Golden card’s own position.</p>');
 t+=S('6. Star Card','<div class="ex">'+ci('star')+'</div><p>After the 2nd to 4th win it may trigger. From the 5th win it always triggers. It turns random normal cards on reels 2~4 into Golden cards.</p>');
 t+=S('7. Scatter &amp; Free Game','<div class="ex">'+ci('s8')+'</div><p><b>3 or more Scatter</b> anywhere = <b>10 Free Spins</b>. The counter on top shows how many spins are played and how many are left. 3 or more Scatter during Free Game = <b>+5 spins</b> (once per spin). Free Game uses higher multipliers.</p>');
-t+=S('8. Buy Bonus','<p>Pay <b>10× your bet</b> to start the Free Game directly.</p>');
-t+=S('9. Paytable','<p>Pay per way (Bet = 1). Jokers also count.</p><table><tr><th>Symbol</th><th>5 reels</th><th>4 reels</th><th>3 reels</th></tr>'+P.map((p,i)=>'<tr><td>'+ci('n'+i,'sm')+'</td><td>x'+p[0]+'</td><td>x'+p[1]+'</td><td>x'+p[2]+'</td></tr>').join('')+'</table><p>Maximum credited payout per spin: 10× the stake. Original symbol paytable is scaled by 7.5%.</p>');
+t+=S('8. Buy Bonus','<p>Pay <b>50× your bet</b> to start the Free Game directly.</p>');
+t+=S('9. Paytable','<p>Pay per way (Bet = 1). Jokers also count.</p><table><tr><th>Symbol</th><th>5 reels</th><th>4 reels</th><th>3 reels</th></tr>'+P.map((p,i)=>'<tr><td>'+ci('n'+i,'sm')+'</td><td>x'+p[0]+'</td><td>x'+p[1]+'</td><td>x'+p[2]+'</td></tr>').join('')+'</table><p>Maximum credited payout per spin: 10,000× the stake. Winning ways use Bet / 50 and each cascade step is rounded to whole coins.</p>');
 msg(t,'Close')};
 let mi=0;setInterval(()=>{if(!busy&&!free){mi=(mi+1)%MSG.length;$('st').textContent=MSG[mi]}},3500);
 $('gr').onclick=()=>{if(busy)return;$('bx').innerHTML='<h2>Menu</h2><button class="mb" data-k="inf">Game Rules</button><button class="mb" data-k="rc">Records</button><button class="mb" data-k="sn">Sound: '+(mute?'OFF':'ON')+'</button><button class="mb" data-k="rs">Reset Balance</button><button class="mb" data-k="hm">Exit</button><button class="mb" data-k="x" style="background:#6b2f4d;color:#fff">Close</button>';$('ov').style.display='flex';[...document.querySelectorAll('.mb')].forEach(b=>b.onclick=()=>{$('ov').style.display='none';const k=b.dataset.k;if(k=='rs'){if(confirm('Reset balance to 1,000,000?')){bal=1000000;upd()}}else if(k!='x')$(k).click()})};
@@ -240,7 +240,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
 /* Sharika verified bridge. Never settle bets, choose outcomes, or persist coins here. */
 (function(){
   const SOURCE='sharika-royal-ace',SERVER='sharika-royal-ace-server',pending=new Map();
-  let ready=false,waiting=false,freeRemaining=0,activeBets=[1000,10000,100000,1000000,10000000];
+  let ready=false,waiting=false,freeRemaining=0,activeBets=[100,200,500,1000,2000,5000,10000,50000];
   const loading=$('royal-loading'),spinner=$('sp'),errorBox=$('royal-network-error');
   const retryButton=$('royal-try-again');
   const room=new URLSearchParams(location.search).get('mode')==='room';
@@ -314,7 +314,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     if(busy||waiting)return;
     if(!ready){showError('Connect to Sharika server before playing.');return;}
     const amount=activeBets[bi];
-    const cost=buy?amount*10:freeRemaining?0:amount;
+    const cost=buy?amount*50:freeRemaining?0:amount;
     if(bal<cost){auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
     busy=true;waiting=true;spinner.disabled=true;
     const requestId=id();
@@ -341,12 +341,12 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       if(r.win>0){SFX.win(0);toast('+'+fmt(r.win),'Verified win');}
       if(r.bonusSpins>0){SFX.scatter();toast('FREE SPINS','+'+r.bonusSpins);}
       $('st').textContent=freeRemaining?'Free Spins: '+freeRemaining+' remaining':MSG[0];
-      if(r.win>0)await bigWin(r.win);
+      if(r.bigWin&&r.win>0)await bigWin(r.win);
       completed=true;
     }catch(err){
       auto=false;$('au').classList.remove('on');
       const code=String(err?.message||'Connection error');
-      const declined=/^(?:spin_rate_limited|not_enough_balance|free_spins_active|free_spin_bet_locked|invalid_bet|request_id_conflict)$/.test(code);
+      const declined=/^(?:spin_rate_limited|not_enough_balance|free_spins_active|free_spin_bet_locked|invalid_bet|request_id_conflict|SPIN_IN_PROGRESS|INSUFFICIENT_BALANCE|INVALID_BET|FREE_GAME_OPEN)$/.test(code);
       if(declined){
         // D1 rejected this bet. Do not cover the game with a reconnect overlay
         // and do not automatically resubmit it with a fresh request ID.
@@ -365,7 +365,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   };
   $('sp').onclick=()=>spin(false);
   $('bb').onclick=()=>{if(!ready||busy)return;
-    if(confirm('Buy 10 Free Spins for '+fmt(bet*10)+' virtual coins?'))spin(true);};
+    if(confirm('Buy 10 Free Spins for '+fmt(bet*50)+' virtual coins (50× your bet)?'))spin(true);};
   $('pl').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=(bi+1)%activeBets.length;bet=activeBets[bi];upd();};
   $('mn').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=Math.max(0,bi-1);bet=activeBets[bi];upd();};
   $('gr').onclick=()=>{if(busy)return;
@@ -385,7 +385,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     if(panel&&panel.querySelector('h2')){
       const note=document.createElement('p');
       note.style.cssText='font:700 13px system-ui;color:#ffe4a2;padding:8px;border:1px solid #c68d48;border-radius:8px';
-      note.textContent='Sharika Staging payouts: 7.5% of the original gross wins; maximum 10× stake per spin. All results and balances are settled by the server.';
+      note.textContent='Super Ace Deluxe v1 (Section 12): Pay × Ways × (Bet / 50); 10,000× hard cap; Buy Bonus costs 50× bet. All coins and results are settled by the server.';
       panel.appendChild(note);
     }
   };
