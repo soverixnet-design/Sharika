@@ -200,6 +200,17 @@ test('all eight enabled hosted games load safely and connect their original stat
       await page.getByRole('button',{name:new RegExp(label)}).click();
       await page.waitForFunction(path=>
         window.__gameCalls.some(call=>call.path===path),endpoint,{timeout:25000});
+      const clean=await page.evaluate(()=>({
+       hiddenHeader:getComputedStyle(document.querySelector('header')).display==='none',
+       hiddenProfile:getComputedStyle(document.getElementById('game-profile')).display==='none',
+       borderless:getComputedStyle(document.getElementById('game-frame')).borderTopWidth==='0px',
+       frameWidth:document.getElementById('game-frame').getBoundingClientRect().width,
+       viewportWidth:document.documentElement.clientWidth
+      }));
+      assert.ok(clean.hiddenHeader&&clean.hiddenProfile&&clean.borderless,
+       'full-screen game must not show redundant Sharika chrome');
+      assert.ok(clean.frameWidth>=clean.viewportWidth-2,
+       'game iframe must use full available width');
       const child=page.frameLocator('#game-frame');
       const origin=await child.locator('html').evaluate(()=>{
         try {return window.parent.SharikaGameBridge?'exposed':'sandboxed'}
@@ -265,9 +276,12 @@ test('compact room catalog uses four complete icons, verified profile and confir
   assert.equal(await page.locator('#catalog-profile .profile-id').innerText(),'ID: 10000011');
   assert.equal(await page.locator('.tile .art img').count(),10);
   await page.getByRole('button',{name:/SuperAce Deluxe/}).click();
-  assert.equal(await page.locator('#game-profile .profile-name').innerText(),'Sharika Alice');
-  assert.equal(await page.locator('#game-profile .profile-id').innerText(),'ID: 10000011');
+  assert.equal(await page.locator('#game-profile .profile-name').textContent(),'Sharika Alice');
+  assert.equal(await page.locator('#game-profile .profile-id').textContent(),'ID: 10000011');
   assert.ok((await page.locator('#game-frame').getAttribute('src')).includes('mode=room'));
+  assert.equal(await page.locator('body').evaluate(body=>body.classList.contains('is-playing')),true);
+  assert.equal(await page.locator('#game-frame').evaluate(el=>getComputedStyle(el).borderTopWidth),'0px');
+  assert.equal(await page.locator('#game-profile').isVisible(),false);
   const royal=page.frameLocator('#game-frame');
   await royal.locator('#sp').waitFor({state:'visible',timeout:18000});
   await royal.locator('#sp').click();
@@ -276,7 +290,8 @@ test('compact room catalog uses four complete icons, verified profile and confir
   assert.equal(await page.locator('#winner-id').innerText(),'ID: 10000011');
   assert.equal(await page.locator('#winner-amount').innerText(),'+2,000');
   // An untrusted game iframe message cannot claim a winner or change identity.
-  await page.getByRole('button',{name:'Close Game'}).click();
+  // A real room uses its native X; simulate closing its web view here.
+  await page.locator('#exit').evaluate(button=>button.click());
   assert.equal(await page.locator('#verified-winner').isVisible(),false);
   // Original Greedy artwork is very tall in full mode; ensure room-compact
   // layout now keeps real account name/avatar, chips and auto controls reachable.
