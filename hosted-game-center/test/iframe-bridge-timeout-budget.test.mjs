@@ -9,7 +9,7 @@ const read=(path)=>readFileSync(resolve(root,path),'utf8');
 test('the parent bridge waits for native Firebase + Cloudflare network timeouts',()=>{
  const js=read('web/app.js');
  assert.match(js,/Game server timed out\. Check the wallet before trying again\.\s*'\)\);\s*\},30000\);/);
- assert.match(js,/if\(m\.action==='bet'/);
+ assert.match(js,/m\.action==='bet'\?'POST':'GET'/);
  assert.match(js,/call\(method,'\/api\/v1\/original-games\/'/);
 });
 
