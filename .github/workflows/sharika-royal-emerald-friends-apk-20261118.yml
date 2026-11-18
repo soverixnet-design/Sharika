@@ -1,0 +1,81 @@
+name: Sharika Royal Emerald Game UI friends APK direct
+on:
+  push:
+    branches: [release/sharika-royal-emerald-games-friends-20261118]
+    paths:
+      - '.github/workflows/sharika-royal-emerald-friends-apk-20261118.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  share:
+    name: Publish exact verified staging Android APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_RUN: '44320741083'
+      STAGING_SITE_RUN: '44320741067'
+      SOURCE_SHA: 'b9abd79ac6e4ce60a6f7a334d3d5de5e9e4e78a8'
+      RELEASE_TAG: 'sharika-royal-emerald-3d-games-v140-20261118-b9abd79a'
+      APK_NAME: 'Sharika-Royal-Emerald-Games-v140-Friends.apk'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify APK and published website are from the exact merged revision
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'soverixnet-design/Sharika'
+          apk_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .head_sha)"
+          apk_status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq .conclusion)"
+          site_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_SITE_RUN}" --jq .head_sha)"
+          site_status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_SITE_RUN}" --jq .conclusion)"
+          test "$apk_sha" = "$SOURCE_SHA"
+          test "$site_sha" = "$SOURCE_SHA"
+          test "$apk_status" = success
+          test "$site_status" = success
+          echo "VERIFIED_SAME_SHA_STAGING_ANDROID_AND_CLOUDFLARE_GAMES"
+
+      - name: Retrieve signed original QA build (never rebuild or resign)
+        uses: actions/download-artifact@v4
+        with:
+          name: Sharika-Android-Staging-Debug
+          repository: soverixnet-design/Sharika
+          run-id: 44320741083
+          github-token: ${{ github.token }}
+          path: validated-build
+
+      - name: Verify APK contents and original website routing
+        run: |
+          set -euo pipefail
+          test -s validated-build/app-debug.apk
+          unzip -tqq validated-build/app-debug.apk
+          unzip -p validated-build/app-debug.apk assets/connection.js > "${RUNNER_TEMP}/verified-connection.js"
+          grep -Fq "native('openHostedGameCenter',{insideRoom:!!insideRoom})" "${RUNNER_TEMP}/verified-connection.js"
+          grep -Fq 'clientModeVerified' "${RUNNER_TEMP}/verified-connection.js"
+          cp validated-build/app-debug.apk "validated-build/$APK_NAME"
+          sha256sum "validated-build/$APK_NAME"
+
+      - name: Create public prerelease with direct .apk asset
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::The friends release already exists; do not overwrite it."
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "validated-build/$APK_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title 'Sharika Royal Emerald 3D Games - Friends Staging APK' \
+            --notes 'TEST ONLY. New Royal Emerald + Gold Game Center UI with 4-column 3D-style game icons, compact branded native toolbar, Hot Games, All Games and Search. In-room games open in an opaque 65% bottom sheet with voice room preserved. Greedy Food Wheel now uses more space and keeps bets/results visible. The same Cloudflare game hosting and original authenticated coin/bet server are unchanged. Source: merged PR #147 and successful verified staging site/Android CI. Not a Play Store production release. The debug APK may not update a Play Store-signed version. Google Sign-In and live voice still require device QA.' \
+            --prerelease
+
+      - name: Verify shareable direct APK URL
+        run: |
+          set -euo pipefail
+          size="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.assets[] | select(.name == "Sharika-Royal-Emerald-Games-v140-Friends.apk") | .size')"
+          test "$size" -gt 80000000
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${APK_NAME}"
+          curl --fail --silent --show-error --location --head --max-time 60 "$url" -o /dev/null
+          echo "DIRECT_FRIENDS_APK_URL=$url"
