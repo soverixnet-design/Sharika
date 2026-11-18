@@ -47,7 +47,7 @@
    const symbol=document.createElement('span');symbol.className='art';
    const img=document.createElement('img');
    img.src=artworks[g.id]||'/cards/food-wheel.png';
-   img.alt=g.name+' original game card';img.loading='lazy';
+   img.alt=g.name+' original game card';img.loading='eager';
    img.decoding='async';symbol.append(img);
    const meta=document.createElement('span');meta.className='meta';
    const title=document.createElement('b');title.textContent=g.name;
