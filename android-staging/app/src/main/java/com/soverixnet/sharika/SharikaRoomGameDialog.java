@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Room-only, at-most-58%-screen secure hosted game bottom sheet.
+ * Room-only, 65%-screen secure hosted game bottom sheet.
  *
  * Important: this is a Dialog inside the existing SharikaActivity, NOT a
  * second Activity. The voice-room WebView, active WebRTC and mic service
@@ -83,14 +83,9 @@ final class SharikaRoomGameDialog {
 
     private void open() {
         FrameLayout container=new FrameLayout(host);
-        GradientDrawable surface=new GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[]{Color.rgb(61,24,78),Color.rgb(23,10,43),Color.rgb(15,8,30)});
-        float radius=dp(22);
-        surface.setCornerRadii(new float[]{radius,radius,radius,radius,0,0,0,0});
-        surface.setStroke(dp(1),Color.rgb(228,183,104));
-        container.setBackground(surface);
-        container.setClipToOutline(true);
+        // Keep the live voice-room visible around the game: no purple
+        // card, ornamental border, or dim backdrop outside the game itself.
+        container.setBackgroundColor(Color.TRANSPARENT);
 
         WebView view=new WebView(host);
         gameWebView=view;
@@ -156,14 +151,14 @@ final class SharikaRoomGameDialog {
         Window window=dialog.getWindow();
         if(window!=null){
             window.setBackgroundDrawableResource(android.R.color.transparent);
-            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(.25f);
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0f);
             window.setGravity(Gravity.BOTTOM);
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         }
         dialog.show();
         if(window!=null){
-            int height=Math.round(host.getResources().getDisplayMetrics().heightPixels*.58f);
+            int height=Math.round(host.getResources().getDisplayMetrics().heightPixels*.65f);
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,height);
         }
         view.loadUrl(SITE_ORIGIN+"/?view=room");
