@@ -235,7 +235,7 @@
   const params=hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
     game.id==='greedy-wheel'&&inRoom?'sheet=1':'';
   const separator=params?(game.asset.includes('?')?'&':'?'):'';
-  frame.src=game.asset+separator+params+(game.id==='sovera-gaddy'&&inRoom?
+  frame.src=game.asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
     '#sharika-room':'');
  }
  $('exit').addEventListener('click',closeGame);
