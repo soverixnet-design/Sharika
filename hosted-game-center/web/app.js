@@ -20,7 +20,7 @@
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
  const artworks={
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
-  'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/food-wheel.png',
+  'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/fruit-machine-user.webp',
   'sovera-gaddy':'/cards/gaddy-royal.svg','sovera-food':'/cards/sovera-food-royal.svg',
   'night-food':'/cards/night-food-royal.svg','greedy-wheel':'/cards/greedy-wheel-royal.svg',
   'fruit-royale':'/cards/fruit-machine.jpg','jackpot-fruit':'/cards/jackpot-fruit.png'
