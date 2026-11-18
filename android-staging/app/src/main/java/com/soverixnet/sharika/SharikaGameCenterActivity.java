@@ -77,7 +77,7 @@ public final class SharikaGameCenterActivity extends Activity {
                 if (request.isForMainFrame() &&
                     "sharika-app".equals(uri.getScheme()) &&
                     "close".equals(uri.getHost())) {
-                    runOnUiThread(this::finish);
+                    runOnUiThread(SharikaGameCenterActivity.this::finish);
                     return true;
                 }
                 String origin = uri.getScheme() + "://" + uri.getAuthority();
