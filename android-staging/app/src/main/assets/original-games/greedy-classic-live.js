@@ -139,25 +139,93 @@ async function recoverUnknown(){
   }
  }
 }
-async function bet(id,amount=S.chip){
- if(!ready||changing||unconfirmed||S.phase!=='bet'){
-  if(unconfirmed)toast('Checking the previous bet. New bets are paused.');
-  return false;
+// Every touch is counted synchronously and coalesced into verified D1 bets.
+// A batch contains <=100 individual chip taps, never optimistic coin payouts.
+let queuedGreedy=[],greedyDraining=false,greedyTimer=null,greedyPendingBatch=null;
+let greedyVerified=0,greedyDeclined=0,greedyRound=-1;
+const greedyStatus=document.createElement('div');
+greedyStatus.id='greedy-wager-status';
+greedyStatus.setAttribute('role','status');
+greedyStatus.style.cssText='position:fixed;right:8px;bottom:88px;z-index:12;'+
+ 'padding:3px 7px;border-radius:8px;background:#461523de;color:#fff3bd;'+
+ 'font:700 11px system-ui;pointer-events:none;max-width:90vw';
+document.body.appendChild(greedyStatus);
+function updateGreedyStatus(){
+ greedyStatus.textContent=greedyPendingBatch
+  ?'Verifying '+greedyPendingBatch.taps.length+' earlier taps · no extra charge'
+  :'Queued '+queuedGreedy.length+' · Verified '+greedyVerified+' · Declined '+greedyDeclined;
+}
+function bet(id,amount=S.chip){
+ if(!ready||S.phase!=='bet'||!F.some(f=>f.id===id)||!CH.includes(amount)){
+  updateGreedyStatus();return Promise.resolve(false);
  }
- if(!F.some(f=>f.id===id)||!CH.includes(amount))return false;
- if(S.bal<amount){toast('Not enough coins. Open your wallet to recharge.');return false;}
- changing=true;
- const payload={round:S.round,itemId:id,amount,request_id:token()};
+ if(greedyPendingBatch){
+  greedyStatus.textContent='Previous batch unconfirmed. No new charge.';
+  return Promise.resolve(false);
+ }
+ if(greedyRound!==S.round){
+  greedyRound=S.round;queuedGreedy=[];greedyVerified=0;greedyDeclined=0;
+ }
+ const reserved=queuedGreedy.reduce((n,t)=>n+t.amount,0);
+ if(S.bal<reserved+amount){
+  greedyStatus.textContent='Not enough confirmed coins for more taps';
+  return Promise.resolve(false);
+ }
+ queuedGreedy.push({id,amount,round:S.round});
+ updateGreedyStatus();
+ if(!greedyTimer)greedyTimer=setTimeout(()=>{
+  greedyTimer=null;void flushGreedyQueue();
+ },90);
+ return Promise.resolve(true);
+}
+async function flushGreedyQueue(){
+ if(greedyDraining||(!greedyPendingBatch&&!queuedGreedy.length))return;
+ greedyDraining=true;changing=true;
  try{
-  await submit(payload);
-  placedDuringThisRound[id]=(placedDuringThisRound[id]||0)+amount;
-  return true;
- }catch(error){
-  const msg=String(error.message);
-  if(msg.includes('timeout')){unconfirmed=payload;toast('Bet confirmation pending. Reconnecting.');}
-  else toast(msg);
-  return false;
- }finally{changing=false;}
+  while(greedyPendingBatch||queuedGreedy.length){
+   let work=greedyPendingBatch;
+   if(!work){
+    if(!ready||S.phase!=='bet'||queuedGreedy[0].round!==S.round){
+     greedyDeclined+=queuedGreedy.length;queuedGreedy=[];
+     greedyStatus.textContent='Round closed · unsubmitted taps were not charged';
+     return;
+    }
+    const taps=queuedGreedy.splice(0,100),groups=new Map();
+    for(const tap of taps){
+     const key=tap.id+'|'+tap.amount;
+     const v=groups.get(key)||{itemId:tap.id,amount:tap.amount,count:0};
+     v.count++;groups.set(key,v);
+    }
+    work={taps,payload:{round:S.round,request_id:token(),entries:[...groups.values()]}};
+   }
+   greedyPendingBatch=work;
+   updateGreedyStatus();
+   try{
+    const result=await request('bet-batch','POST',work.payload);
+    if(!result||!isValidMoney(result.balance)||
+      !Array.isArray(result.myBets)||result.myBets.length!==8||
+      result.batch_request_id!==work.payload.request_id||
+      result.accepted_clicks!==work.taps.length)
+      throw Error('Invalid verified batch receipt');
+    S.bal=result.balance;
+    if(result.round===S.round)S.bets=betAmounts(result.myBets);
+    for(const tap of work.taps)
+      placedDuringThisRound[tap.id]=(placedDuringThisRound[tap.id]||0)+tap.amount;
+    greedyVerified+=work.taps.length;greedyPendingBatch=null;
+    S.hint=false;draw();updateGreedyStatus();
+   }catch(error){
+    const code=String(error?.message||error);
+    if(/timeout|network|unavailable|connection|failed/i.test(code)){
+     greedyStatus.textContent='Unconfirmed batch. Check server before new taps.';
+     // Keep the exact request ID: a delayed accepted batch must never be paid twice.
+     return;
+    }
+    greedyPendingBatch=null;greedyDeclined+=work.taps.length;
+    greedyStatus.textContent='Batch not accepted: '+code;
+    if(code.includes('BETTING_CLOSED')){greedyDeclined+=queuedGreedy.length;queuedGreedy=[];return;}
+   }
+  }
+ }finally{changing=false;greedyDraining=false;}
 }
 async function replayLast(){
  if(autoRunning||!S.auto||!ready||!Object.values(S.last).some(n=>n>0))return;
