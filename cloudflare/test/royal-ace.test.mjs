@@ -16,7 +16,6 @@ function fixture(){
   const ins=sqlite.prepare('INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(?,?,?,?,?,?)');
   ins.run(10000011,'adult-a','Adult','1991-01-01',0,1000000);
   ins.run(10000012,'minor-b','Minor','2015-01-01',1,1000000);
-  ins.run(10000013,'adult-c','Second Adult','1990-01-01',0,1000000);
   ins.run(10000013,'adult-c','Adult C','1994-01-01',0,1000000);
   const db={prepare(query){const stmt=sqlite.prepare(query);let args=[];
     return {bind(...v){args=v;return this;},
