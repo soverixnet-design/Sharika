@@ -999,7 +999,7 @@ export async function handleRequest(request, env, ctx) {
       if(parts.length===3&&request.method==='GET')
         return reply({games:['sovera-food','sovera-gaddy','night-food','fruit-royale','food-deluxe','greedy-classic'],virtual_coins_only:true},200,cors);
       if(parts.length===5){
-        if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
+        if((parts[4]==='bet'||parts[4]==='bet-batch')&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
         if(parts[3]==='fruit-royale')
           return await handleFruitRoyaleRequest({request,db:env.DB,uid,
