@@ -75,10 +75,26 @@ test('new site does not deploy new SuperAce RTP or touch player ledger',()=>{
 test('game views are clean: transparent icon cards, no duplicate chrome, 65% native room',()=>{
  assert.match(sheet,/heightPixels\*\.65f/);
  assert.match(sheet,/window\.setDimAmount\(0f\)/);
- assert.match(sheet,/container\.setBackgroundColor\(Color\.TRANSPARENT\)/);
+ assert.match(sheet,/container\\.setBackground\\(sheetBg\\)/);
+ assert.match(sheet,/sheetBg\\.setCornerRadius\\(dp\\(23\\)\\)/);
  assert.match(css,/body\.is-playing header\{display:none!important\}/);
  assert.match(css,/body\.is-playing #game-profile\{display:none!important\}/);
  assert.match(css,/border:0!important;border-radius:0!important;background:transparent!important/);
  assert.match(js,/document\.body\.classList\.add\('is-playing'\)/);
  assert.match(js,/document\.body\.classList\.remove\('is-playing'\)/);
+});
+
+test('Royal Emerald app surfaces are local Android chrome, not a full website',()=>{
+ assert.match(activity,/\\?view=room&surface=app/);
+ assert.match(secure,/\\?surface=app/);
+ assert.match(secure,/sharika-app/);
+ assert.match(secure,/request\\.isForMainFrame\\(\\)/);
+ assert.match(js,/appSurface=params\\.get\\('surface'\\)==='app'/);
+ assert.match(js,/renderFeatured\\(catalog,enabled\\)/);
+ assert.match(js,/filterCatalog\\(\\)/);
+ assert.match(css,/SHARIKA_ROYAL_EMERALD_APP_UI_20261118/);
+ assert.match(css,/\\.room-mode body:not\\(\\.is-playing\\)/);
+ assert.match(markup,/id="hot-section"/);
+ assert.match(markup,/id="game-search"/);
+ assert.match(markup,/id="app-return"/);
 });
