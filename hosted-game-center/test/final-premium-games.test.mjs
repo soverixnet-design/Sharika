@@ -18,7 +18,7 @@ function verifiedBridge(){
    if(message.path==='/api/v1/me')
     data={name:'QA Player',public_id:'10000011',display_id:'10000011',coins:400000};
    else if(message.path==='/api/v1/game-catalog')
-    data={games:['royal-ace','cleopatra','greedy-classic','food-deluxe',
+    data={games:['royal-slots','royal-ace','cleopatra','greedy-classic','food-deluxe',
       'sovera-gaddy','sovera-food','night-food','greedy-wheel',
       'fruit-royale','jackpot-fruit'].map(id=>({id,enabled:true}))};
    queueMicrotask(()=>this.onmessage?.({data:JSON.stringify({id:message.id,ok:true,data})}));
@@ -34,7 +34,7 @@ test('native Premium Games has one title, Royal Spotlight, three Hot Games and w
   await ctx.addInitScript(verifiedBridge);
   const page=await ctx.newPage();
   await page.goto(site+'/?surface=app',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>document.querySelector('#toolbar-count')?.textContent==='10 Games');
+  await page.waitForFunction(()=>document.querySelector('#toolbar-count')?.textContent==='11 Games');
   assert.equal(await page.locator('html.native-verified').count(),1);
   assert.equal(await page.locator('.app-toolbar .app-brand b').innerText(),'Premium Games');
   assert.equal(await page.locator('.catalog-title-row').isVisible(),false);
@@ -44,7 +44,7 @@ test('native Premium Games has one title, Royal Spotlight, three Hot Games and w
   assert.equal(await page.locator('#royal-hero').isVisible(),true);
   assert.equal(await page.locator('#hot-section').isVisible(),true);
   assert.equal(await page.locator('.featured-game').count(),3);
-  assert.equal(await page.locator('.tile').count(),10);
+  assert.equal(await page.locator('.tile').count(),11);
   assert.equal(await page.getByRole('heading',{name:'All Games'}).count(),1);
   const hero=await page.locator('.hero-award').allTextContents();
   assert.equal(hero.length,3);
@@ -82,7 +82,7 @@ test('public browser still has honest demo notice but uses Premium Games visual 
   assert.equal(await page.locator('#hot-section').isVisible(),true);
   assert.equal(await page.locator('.notice').isVisible(),true);
   assert.match(await page.locator('.notice').innerText(),/simulated virtual coins/i);
-  assert.equal(await page.locator('.tile').count(),10);
+  assert.equal(await page.locator('.tile').count(),11);
   const columns=await page.locator('.games').evaluate(el=>
    getComputedStyle(el).gridTemplateColumns.split(' ').length);
   assert.equal(columns,4);
@@ -104,13 +104,13 @@ test('native room catalog stays compact: no outside hero or web controls',
   await ctx.addInitScript(verifiedBridge);
   const page=await ctx.newPage();
   await page.goto(site+'/?view=room&surface=app',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>document.querySelector('#game-count')?.textContent==='10 games');
+  await page.waitForFunction(()=>document.querySelector('#game-count')?.textContent==='11 games');
   assert.equal(await page.locator('#royal-hero').isVisible(),false);
   assert.equal(await page.locator('#hot-section').isVisible(),false);
   assert.equal(await page.locator('.app-toolbar').isVisible(),false);
   assert.equal(await page.locator('#game-count').isVisible(),true);
   assert.equal(await page.locator('.room-title').innerText(),'Game');
-  assert.equal(await page.locator('.tile').count(),10);
+  assert.equal(await page.locator('.tile').count(),11);
   const grid=await page.locator('#games').evaluate(el=>
    getComputedStyle(el).gridTemplateColumns.split(' ').length);
   assert.equal(grid,4);
