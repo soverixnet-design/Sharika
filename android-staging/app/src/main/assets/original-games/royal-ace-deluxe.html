@@ -196,12 +196,12 @@ fsTotal=10;fsDone=0;let tot=0;$('fsb').style.display='flex';
 while(fsDone<fsTotal){fsDone++;showFS();fsBase=tot;const r=await play(true);tot+=r.win;bal+=r.win;upd();$('wn').textContent=fmt(tot);if(r.sc>=3){fsTotal+=5}showFS();await sleep(700)}
 fsBase=0;$('fsb').style.display='none';free=false;setCombo(0);await bigWin(tot);await msg('<div class="big-w">'+fmt(tot)+'</div>Total Free Game Win','COLLECT')}
 
-async function spin(buy){if(busy)return;const cost=buy?bet*50:bet;if(bal<cost){auto=false;$('au').classList.remove('on');msg('Not enough balance','OK');return}
+async function spin(buy){if(busy)return;const cost=buy?bet*10:bet;if(bal<cost){auto=false;$('au').classList.remove('on');msg('Not enough balance','OK');return}
 busy=true;SFX.spin();$('sp').disabled=true;bal-=cost;upd();
 if(buy)await freeGame();else{const r=await play(false);bal+=r.win;H.unshift([bet,r.win]);H.length=Math.min(H.length,30);upd();$('wn').textContent=fmt(r.win);await bigWin(r.win);if(r.sc>=3)await freeGame()}
 busy=false;$('sp').disabled=false;if(auto)setTimeout(()=>spin(),600)}
 $('sp').onclick=()=>spin();
-$('bb').onclick=()=>{if(!busy&&confirm('Buy Bonus for '+fmt(bet*50)+' coins (50x bet)?'))spin(true)};
+$('bb').onclick=()=>{if(!busy&&confirm('Buy Bonus for '+fmt(bet*10)+' coins (10x bet)?'))spin(true)};
 $('pl').onclick=()=>{if(!busy){bi=(bi+1)%BETS.length;bet=BETS[bi];upd()}};
 $('mn').onclick=()=>{if(!busy){bi=Math.max(0,bi-1);bet=BETS[bi];upd()}};
 $('au').onclick=()=>{auto=!auto;$('au').classList.toggle('on',auto);if(auto&&!busy)spin()};
@@ -220,7 +220,7 @@ t+=S('4. Golden Cards','<p>Golden cards only appear on reels 2, 3 and 4. A Golde
 t+=S('5. Joker (Wild)','<p>A Joker replaces any symbol except Scatter.</p><div class="ex">'+ci('w9')+ci('w10')+'</div><p><b>Big Joker</b> (red): also adds 1~4 more Big Jokers on reels 2~5.<br><b>Little Joker</b> (blue): only replaces the Golden card’s own position.</p>');
 t+=S('6. Star Card','<div class="ex">'+ci('star')+'</div><p>After the 2nd to 4th win it may trigger. From the 5th win it always triggers. It turns random normal cards on reels 2~4 into Golden cards.</p>');
 t+=S('7. Scatter &amp; Free Game','<div class="ex">'+ci('s8')+'</div><p><b>3 or more Scatter</b> anywhere = <b>10 Free Spins</b>. The counter on top shows how many spins are played and how many are left. 3 or more Scatter during Free Game = <b>+5 spins</b> (once per spin). Free Game uses higher multipliers.</p>');
-t+=S('8. Buy Bonus','<p>Pay <b>50× your bet</b> to start the Free Game directly.</p>');
+t+=S('8. Buy Bonus','<p>Pay <b>10× your bet</b> to start the Free Game directly.</p>');
 t+=S('9. Paytable','<p>Pay per way (Bet = 1). Jokers also count.</p><table><tr><th>Symbol</th><th>5 reels</th><th>4 reels</th><th>3 reels</th></tr>'+P.map((p,i)=>'<tr><td>'+ci('n'+i,'sm')+'</td><td>x'+p[0]+'</td><td>x'+p[1]+'</td><td>x'+p[2]+'</td></tr>').join('')+'</table><p>Maximum credited payout per spin: 10× the stake. Original symbol paytable is scaled by 7.5%.</p>');
 msg(t,'Close')};
 let mi=0;setInterval(()=>{if(!busy&&!free){mi=(mi+1)%MSG.length;$('st').textContent=MSG[mi]}},3500);
@@ -298,7 +298,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     if(busy||waiting)return;
     if(!ready){showError('Connect to Sharika server before playing.');return;}
     const amount=activeBets[bi];
-    const cost=buy?amount*50:freeRemaining?0:amount;
+    const cost=buy?amount*10:freeRemaining?0:amount;
     if(bal<cost){auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
     busy=true;waiting=true;spinner.disabled=true;
     const requestId=id();
@@ -334,7 +334,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   };
   $('sp').onclick=()=>spin(false);
   $('bb').onclick=()=>{if(!ready||busy)return;
-    if(confirm('Buy 10 Free Spins for '+fmt(bet*50)+' virtual coins?'))spin(true);};
+    if(confirm('Buy 10 Free Spins for '+fmt(bet*10)+' virtual coins?'))spin(true);};
   $('pl').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=(bi+1)%activeBets.length;bet=activeBets[bi];upd();};
   $('mn').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=Math.max(0,bi-1);bet=activeBets[bi];upd();};
   $('gr').onclick=()=>{if(busy)return;
