@@ -40,7 +40,7 @@ test('server uses bounded 5x4 grids and caps win',()=>{
   for(let i=0;i<150;i++){
     const g=simulateRoyalAce(1000,false,100000);
     assert.ok(g.steps.length>=1&&g.steps.length<=9);
-    assert.ok(g.win>=0&&g.win<=15000,'A 1000-coin spin must never pay more than 15x');
+    assert.ok(g.win>=0&&g.win<=10000,'A 1000-coin spin must never pay more than 10x');
     assert.ok([0,10].includes(g.bonusSpins));
     for(const step of g.steps){
       assert.equal(step.grid.length,5);
@@ -103,7 +103,7 @@ test('source artwork, server-only financial bridge, room and Play Store gates re
   assert.doesNotMatch(html,/localStorage\.setItem\('sa_bal'/);
   assert.match(html,/royal-ace-loader\.svg/);
   assert.match(html,/Retry connection/);
-  assert.match(html,/maximum 15× stake per spin/);
+  assert.match(html,/maximum 10× stake per spin/);
   assert.match(html,/Reconnecting safely/);
   assert.match(bridge,/file:\/\/\/android_asset\/royal-ace-card\.svg/);
   assert.match(bridge,/event\.source!==current\.element\.contentWindow/);
@@ -134,7 +134,7 @@ test('SuperAce capped RTP applies to paid and bonus rounds',()=>{
   for(const stake of [1000,10000,100000])for(const free of [false,true]){
     for(let i=0;i<30;i++){
       const result=simulateRoyalAce(stake,free,100000000);
-      assert.ok(result.win>=0&&result.win<=stake*15,'Payout must remain below 15x');
+      assert.ok(result.win>=0&&result.win<=stake*10,'Payout must remain below 10x');
       assert.ok(result.steps.length<=9);
     }
   }
