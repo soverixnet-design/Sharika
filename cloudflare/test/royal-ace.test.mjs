@@ -102,6 +102,8 @@ test('source artwork, server-only financial bridge, room and Play Store gates re
   assert.match(html,/sharika-royal-ace-server/);
   assert.doesNotMatch(html,/localStorage\.setItem\('sa_bal'/);
   assert.match(html,/royal-ace-loader\.svg/);
+  assert.match(html,/7\.5% of gross/);
+  assert.doesNotMatch(html,/10,000x the bet|10,000× bet/,'Published game rules cannot claim a false maximum');
   assert.match(html,/Retry connection/);
   assert.match(html,/maximum 10× stake per spin/);
   assert.match(html,/Reconnecting safely/);
