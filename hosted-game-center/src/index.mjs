@@ -26,8 +26,11 @@ export default {async fetch(request,env){
  for(const [k,v] of Object.entries(security))h.set(k,v);
  // No authenticated data is embedded or cached on this origin.
  h.set('cache-control',url.pathname.endsWith('.html')||url.pathname==='/'?'public,max-age=60':'public,max-age=300');
+ // A sandboxed iframe has an opaque origin, so CSP 'self' alone does not
+ // permit its own hosted subresources. Explicitly allow ONLY this game host.
+ const staticOrigin='https://sharika-games-web-staging.soverixnet.workers.dev';
  h.set('content-security-policy',url.pathname.startsWith('/games/')?
-   "default-src 'none'; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-ancestors 'self'; connect-src 'none'; media-src 'self' data: blob:":
+   "default-src 'none'; img-src 'self' "+staticOrigin+" data: blob:; script-src 'self' "+staticOrigin+" 'unsafe-inline'; style-src 'self' "+staticOrigin+" 'unsafe-inline'; font-src 'self' "+staticOrigin+" data:; frame-ancestors 'self' "+staticOrigin+"; connect-src 'none'; media-src 'self' "+staticOrigin+" data: blob:":
    "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
  return new Response(request.method==='HEAD'?null:result.body,{status:result.status,headers:h});
 }};
