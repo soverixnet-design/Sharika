@@ -222,12 +222,12 @@
   const win=Number(winner.win??winner.total_win??winner.totalWin??0);
   const name=typeof winner.name==='string'?winner.name.trim().slice(0,80):'';
   const id=String(winner.public_id||winner.userId||winner.id||'');
-  if(!name||!Number.isSafeInteger(win)||win<=0||!/^[0-9]{1,12}$/.test(id))return;
+  if(!name||!Number.isSafeInteger(win)||win<=0)return;
   seenWinners.add(key);
   if(seenWinners.size>150)seenWinners.clear();
   clearWinner();
   $('winner-name').textContent=name;
-  $('winner-id').textContent='ID: '+id;
+  $('winner-id').textContent=''; // Winner banner displays name and photo, never the public number.
   $('winner-amount').textContent='+'+win.toLocaleString('en-US');
   const image=$('winner-avatar'),first=$('winner-initial');
   first.textContent=name[0].toUpperCase();
@@ -252,9 +252,9 @@
    if(!list||!list.length)continue;
    const round=String(candidate.round_no||candidate.round||data.round?.round_no||'');
    const winner=list[0];
-   const id=String(winner?.public_id||winner?.userId||winner?.id||'');
-   if(id&&round){
-    showWinner(winner,game.id+':'+round+':'+id);
+   const key=String(winner?.public_id||winner?.userId||winner?.id||winner?.name||'');
+   if(key&&round){
+    showWinner(winner,game.id+':'+round+':'+key);
     return;
    }
   }
