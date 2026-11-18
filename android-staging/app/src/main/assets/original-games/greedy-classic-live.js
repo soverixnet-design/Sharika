@@ -83,7 +83,7 @@ function request(action,method='GET',body){
  return new Promise((resolve,reject)=>{
   if(window.parent===window){reject(Error('Open this game from Sharika'));return;}
   const id=++seq;
-  const timer=setTimeout(()=>{pending.delete(id);reject(Error('Server timeout'))},9000);
+  const timer=setTimeout(()=>{pending.delete(id);reject(Error('Server timeout'))},34000);
   pending.set(id,{resolve,reject,timer});
   window.parent.postMessage({type:'sharika:original-request',game:GAME,action,method,id,body},'*');
  });
