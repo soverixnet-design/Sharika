@@ -168,7 +168,7 @@ async function currentState(db,uid){
 }
 
 export async function handleGreedyClassicRequest({request,db,uid,action,reply,fail,cors}){
-  if(!['state','bet','history','rankings'].includes(action))return fail('greedy_route_not_found',404,cors);
+  if(!['state','bet','bet-batch','history','rankings'].includes(action))return fail('greedy_route_not_found',404,cors);
   const user=await wallet(db,uid);
   if(!user||user.status!=='active')return fail('profile_unavailable',403,cors);
   if(user.minor)return fail('games_adult_only',403,cors);
@@ -177,6 +177,71 @@ export async function handleGreedyClassicRequest({request,db,uid,action,reply,fa
   if(action==='history'&&request.method==='GET'){
     await settleGreedyClassicDueBets(db);
     return reply(await records(db,uid),200,cors);
+  }
+  // Multiple rapid chip taps can be settled atomically in one server round trip.
+  // Every tap gets its own immutable D1 bet and request ID; retries are idempotent.
+  if(action==='bet-batch'&&request.method==='POST'){
+    let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
+    if(!b||typeof b!=='object'||Array.isArray(b)||!Number.isSafeInteger(b.round)||
+      b.round<0||!REQUEST_ID.test(b.request_id||'')||b.request_id.length>65||
+      !Array.isArray(b.entries)||b.entries.length<1||b.entries.length>8||
+      b.entries.some(x=>!x||!ITEMS.includes(x.itemId)||
+        !Number.isSafeInteger(x.amount)||!CHIPS.includes(x.amount)||
+        !Number.isSafeInteger(x.count)||x.count<1||x.count>100))
+      return fail('invalid_batch',400,cors);
+    const clicks=b.entries.reduce((a,x)=>a+x.count,0);
+    const total=b.entries.reduce((a,x)=>a+x.count*x.amount,0);
+    if(clicks<1||clicks>100||!Number.isSafeInteger(total)||total>MAX_ROUND_STAKE)
+      return fail('invalid_batch',400,cors);
+    const requested=[];
+    for(const entry of b.entries)for(let i=0;i<entry.count;i++)
+      requested.push({itemId:entry.itemId,amount:entry.amount,
+        id:b.request_id+':'+requested.length.toString(36)});
+    const present=(await db.prepare(
+      'SELECT request_id,item_id,amount FROM sharika_greedy_classic_bets '+
+      'WHERE user_uid=? AND substr(request_id,1,?)=? ORDER BY id')
+      .bind(uid,b.request_id.length+1,b.request_id+':').all()).results||[];
+    if(present.length){
+      const found=new Map(present.map(x=>[x.request_id,x]));
+      if(found.size!==requested.length||requested.some(x=>
+        !found.has(x.id)||found.get(x.id).item_id!==x.itemId||
+        Number(found.get(x.id).amount)!==x.amount))
+        return fail('idempotency_conflict',409,cors);
+    }else{
+      const now=Date.now(),n=roundNumber(now),t=timing(n);
+      if(n!==b.round||now>=t.bet_closes_ms)return fail('BETTING_CLOSED',409,cors);
+      const current=await wallet(db,uid);
+      if(!current||current.coins<total)return fail('INSUFFICIENT_BALANCE',409,cors);
+      const round=await ensureRound(db,n);
+      try{
+        await db.batch(requested.map(x=>db.prepare(
+          'INSERT INTO sharika_greedy_classic_bets '+
+          '(round_id,round_no,user_uid,item_id,amount,request_id) VALUES(?,?,?,?,?,?)')
+          .bind(round.id,n,uid,x.itemId,x.amount,x.id)));
+      }catch(error){
+        const detail=String(error?.message||error);
+        const after=(await db.prepare(
+          'SELECT COUNT(*) AS n FROM sharika_greedy_classic_bets '+
+          'WHERE user_uid=? AND substr(request_id,1,?)=?')
+          .bind(uid,b.request_id.length+1,b.request_id+':').first())?.n;
+        if(Number(after)===requested.length){
+          // Same batch was committed on a concurrent/retried request.
+        }else{
+          if(detail.includes('insufficient'))return fail('INSUFFICIENT_BALANCE',409,cors);
+          if(detail.includes('closed'))return fail('BETTING_CLOSED',409,cors);
+          if(detail.includes('round_limit'))return fail('MAX_BET',409,cors);
+          if(detail.includes('ineligible'))return fail('games_adult_only',403,cors);
+          throw error;
+        }
+      }
+    }
+    const row=await db.prepare('SELECT id FROM sharika_greedy_classic_rounds WHERE round_no=?')
+      .bind(b.round).first();
+    const amounts=await roundAmounts(db,row.id,uid);
+    return reply({round:b.round,batch_request_id:b.request_id,
+      accepted_clicks:requested.length,balance:(await wallet(db,uid)).coins,
+      myBets:amounts.myBets,totals:amounts.totals,online:amounts.online,
+      duplicate:present.length>0,virtual_coins_only:true},200,cors);
   }
   if(action!=='bet'||request.method!=='POST')return fail('method_not_allowed',405,cors);
   let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
