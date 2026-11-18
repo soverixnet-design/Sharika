@@ -74,6 +74,9 @@ test('outside room has app-like Royal Emerald header, featured row and searchabl
    border:getComputedStyle(document.getElementById('game-frame')).borderTopWidth
   }));
   assert.deepEqual(state,{header:'none',profile:'none',border:'0px'});
+  const frameRect=await page.locator('#game-frame').boundingBox();
+  assert.ok(frameRect&&frameRect.width>=388,
+   'Android app game must fill the whole 390px screen, with no catalog gutters');
   await page.screenshot({path:join(screenshots,'outside-greedy-game.png')});
   await context.close();
  }finally{await browser.close()}
