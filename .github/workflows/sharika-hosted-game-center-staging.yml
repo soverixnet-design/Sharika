@@ -26,10 +26,16 @@ jobs:
         run: |
           node --check hosted-game-center/src/index.mjs
           node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/web/practice.js
           node hosted-game-center/scripts/build.mjs
           node --test hosted-game-center/test/site.test.mjs
           test -s hosted-game-center/dist/games/original-games/royal-ace-deluxe.html
           test -s hosted-game-center/dist/games/original-games/cleopatra-slot.html
+          test -s hosted-game-center/dist/cards/superace.svg
+          test -s hosted-game-center/dist/cards/cleopatra.jpg
+          test -s hosted-game-center/dist/cards/fruit-machine.jpg
+          test -s hosted-game-center/dist/cards/food-wheel.png
+          test -s hosted-game-center/dist/cards/jackpot-fruit.png
       - name: Validate Cloudflare worker bundle without changes
         working-directory: hosted-game-center
         run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/sharika-game-center-bundle
