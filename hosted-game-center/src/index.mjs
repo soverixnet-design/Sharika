@@ -19,7 +19,7 @@ const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'cont
 export default {async fetch(request,env){
  const url=new URL(request.url);
  if(url.pathname==='/health')return json({ok:true,service:'sharika-hosted-game-center',environment:'staging',wallet:'native-bridge-only'});
- if(url.pathname==='/api/catalog')return request.method==='GET'?json({games,virtual_only:true,requires_sharika_app:true}):json({error:'method_not_allowed'},405);
+ if(url.pathname==='/api/catalog')return request.method==='GET'?json({games,virtual_only:true,browser_demo:true,requires_sharika_app:true}):json({error:'method_not_allowed'},405);
  if(!['GET','HEAD'].includes(request.method))return json({error:'method_not_allowed'},405);
  const result=await env.ASSETS.fetch(request);
  const h=new Headers(result.headers);
