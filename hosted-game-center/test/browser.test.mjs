@@ -65,8 +65,12 @@ test('public browser shows original game cards and free demo without wallet API'
     assert.match(await page.locator('#status').innerText(),/free browser demo/i);
     const cardImages=await page.locator('.tile .art img').count();
     assert.equal(cardImages,10);
-    assert.equal(await page.locator('.tile .art img').first().evaluate(img=>img.complete&&img.naturalWidth>0),true,
-      'Original Royal Ace card image must load');
+    const imageResponse=await page.request.get(site+'/cards/superace.svg');
+    assert.equal(imageResponse.status(),200,'Original Royal Ace card must be publicly accessible');
+    await page.waitForFunction(()=>{
+      const img=document.querySelector('.tile .art img');
+      return !!img && img.complete && img.naturalWidth>0;
+    },null,{timeout:15000});
     await page.getByRole('button',{name:/SuperAce Deluxe/}).click();
     assert.equal(await page.locator('#demo-banner').isVisible(),true);
     const royal=page.frameLocator('#game-frame');
