@@ -13,6 +13,10 @@ function mockWebViewBridge(account){
   // WebView in real Android injects only into the top-level trusted document.
   if(window!==window.top)return;
   const firstBalance=account==='test-a'?500000:750000;
+  // Playwright init scripts run in the page without Node-side lexical closures.
+  const catalog=['royal-ace','cleopatra','greedy-classic','food-deluxe','sovera-gaddy',
+    'sovera-food','night-food','greedy-wheel'].map(id=>({id,enabled:true}))
+    .concat(['fruit-royale','jackpot-fruit'].map(id=>({id,enabled:false})));
   window.__gameCalls=[];
   window.__gameAccount=account;
   window.SharikaGameBridge={
