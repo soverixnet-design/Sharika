@@ -40,6 +40,13 @@ function mockWebViewBridge(account){
         payload={requestId:call.body.requestId,bet:call.body.bet,win:0,balance:firstBalance-call.body.bet,
           freeSpins:0,grid:[['K','H','N'],['Q','H','J'],['T','H','K'],['L','N','E'],['J','A','T']],settled:true};
       }
+      else if(call.path==='/api/v1/original-games/greedy-classic/state'){
+        const now=Date.now();
+        payload={balance:firstBalance,coins:firstBalance,serverTime:now,
+          todayWin:0,todayPlayed:0,history:[],myBets:Array(8).fill(0),
+          state:{round:Math.floor(now/40000),phase:'betting',
+            endsAt:now+15000,totals:Array(8).fill(0)}};
+      }
       else if(call.path.startsWith('/api/v1/original-games/'))payload={
         balance:firstBalance,coins:firstBalance,enabled:true,round:{
           id:'mock-round-1',round_no:1,starts_ms:Date.now(),bets:[],total:0
@@ -271,6 +278,33 @@ test('compact room catalog uses four complete icons, verified profile and confir
   // An untrusted game iframe message cannot claim a winner or change identity.
   await page.getByRole('button',{name:'Close Game'}).click();
   assert.equal(await page.locator('#verified-winner').isVisible(),false);
+  // Original Greedy artwork is very tall in full mode; ensure room-compact
+  // layout now keeps real account name/avatar, chips and auto controls reachable.
+  await page.getByRole('button',{name:/Greedy Game/}).click();
+  const greedy=page.frameLocator('#game-frame');
+  await greedy.locator('#me .nm').waitFor({state:'visible',timeout:22000});
+  await page.waitForFunction(()=>{
+   const iframe=document.getElementById('game-frame');
+   return iframe?.contentWindow===null?false:true;
+  },null,{timeout:8000});
+  const fit=await greedy.locator('#app').evaluate(()=>{
+   const ids=['top','stage','chips','me','auto'];
+   return {compact:document.documentElement.classList.contains('sharika-greedy-mini'),
+    height:innerHeight,width:innerWidth,
+    boxes:Object.fromEntries(ids.map(id=>{
+     const e=document.getElementById(id),r=e.getBoundingClientRect();
+     return [id,{left:r.left,right:r.right,top:r.top,bottom:r.bottom}]
+    }))};
+  });
+  assert.equal(fit.compact,true);
+  for(const id of ['chips','me','auto']){
+   const rect=fit.boxes[id];
+   assert.ok(rect.top>=-3&&rect.bottom<=fit.height+3,
+    id+' must be visible inside half-screen frame: '+JSON.stringify(rect));
+   assert.ok(rect.left>=-3&&rect.right<=fit.width+3,
+    id+' must not overflow viewport horizontally: '+JSON.stringify(rect));
+  }
+  assert.equal(await greedy.locator('#me .nm').innerText(),'Sharika Alice');
   await context.close();
  }finally{await browser.close()}
 });
