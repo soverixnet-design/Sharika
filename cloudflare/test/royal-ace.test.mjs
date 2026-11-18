@@ -122,6 +122,18 @@ test('source artwork, server-only financial bridge, room and Play Store gates re
   assert.equal(bytes.toString('ascii',8,12),'WEBP');
 });
 
+test('Buy Bonus cost and user-visible rules match the staging D1 validation and no old 50x price survives',()=>{
+  const engine=readFileSync(new URL('../src/royal-ace.mjs',import.meta.url),'utf8');
+  const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/royal-ace-deluxe.html',import.meta.url),'utf8');
+  const validator=sql('0099_royal_ace_bonus_buy_10x.sql');
+  assert.match(engine,/cost=b\.buy\?b\.bet\*10/);
+  assert.match(validator,/ELSE NEW\.bet\*10 END/);
+  assert.match(validator,/royal_ace_validate_transition/);
+  assert.match(html,/Buy 10 Free Spins for/);
+  assert.match(html,/10× your bet/);
+  assert.doesNotMatch(html,/bet\*50|amount\*50|50x bet|50× your bet/);
+});
+
 test('Android bridge permits only verified Royal Ace staging endpoints and denies Play',()=>{
   const java=readFileSync(new URL('../../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../src/index.mjs',import.meta.url),'utf8');
