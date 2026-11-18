@@ -16,6 +16,7 @@ function fixture(){
   const ins=sqlite.prepare('INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(?,?,?,?,?,?)');
   ins.run(10000011,'adult-a','Adult','1991-01-01',0,1000000);
   ins.run(10000012,'minor-b','Minor','2015-01-01',1,1000000);
+  ins.run(10000013,'adult-c','Second Adult','1990-01-01',0,1000000);
   ins.run(10000013,'adult-c','Adult C','1994-01-01',0,1000000);
   const db={prepare(query){const stmt=sqlite.prepare(query);let args=[];
     return {bind(...v){args=v;return this;},
@@ -92,6 +93,22 @@ test('two eligible users have independent rounds, balances and ledger entries',a
   const repeat=await (await route('spin',c,'adult-c')).json();
   assert.deepEqual(repeat,cr);
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_royal_ace_rounds').get().n,2);
+  sqlite.close();
+});
+test('two eligible adults can spin independently with the same client request ID',async()=>{
+  const {sqlite,route,enable}=fixture();enable();
+  const shared={bet:1000,requestId:'ra_two_adults_00001',buy:false};
+  const first=await route('spin',shared,'adult-a');
+  const second=await route('spin',shared,'adult-c');
+  assert.equal(first.status,200);
+  assert.equal(second.status,200);
+  const a=await first.json(),b=await second.json();
+  const balanceA=sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='adult-a'").get().coins;
+  const balanceB=sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='adult-c'").get().coins;
+  assert.equal(balanceA,1000000-1000+a.win);
+  assert.equal(balanceB,1000000-1000+b.win);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_royal_ace_rounds').get().n,2);
+  assert.deepEqual(await (await route('spin',shared,'adult-c')).json(),b,'retry must not debit again');
   sqlite.close();
 });
 test('bonus purchase debits exactly 10x and server owns 10 free spins',async()=>{
