@@ -13,7 +13,7 @@ permissions:
   contents: read
 concurrency:
   group: sharika-hosted-game-center-staging
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -79,6 +79,6 @@ jobs:
       - name: Install isolated Playwright QA dependencies
         run: npm install --prefix hosted-game-center --no-audit --no-fund
       - name: Install real headless Chromium
-        run: ./hosted-game-center/node_modules/.bin/playwright install --with-deps chromium
+        run: ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
       - name: Verify public and two-account hosted game requests in real browser
         run: node --test hosted-game-center/test/browser.test.mjs
