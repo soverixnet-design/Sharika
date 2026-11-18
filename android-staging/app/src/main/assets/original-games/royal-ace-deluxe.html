@@ -248,7 +248,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   $('royal-loading-logo').src=IM.logo;
   try{$('royal-skip-intro').checked=localStorage.getItem('sharika_royal_intro_off')==='1'}catch(_){}
   $('royal-skip-intro').onchange=e=>{try{localStorage.setItem('sharika_royal_intro_off',e.target.checked?'1':'0')}catch(_){}};
-  const showError=s=>{errorBox.style.display='block';errorBox.textContent=s;retryButton.style.display='block';};
+  const showError=s=>{loading.style.display='flex';errorBox.style.display='block';errorBox.textContent=s;retryButton.style.display='block';};
   const clearError=()=>{errorBox.style.display='none';errorBox.textContent='';retryButton.style.display='none';};
   retryButton.onclick=()=>{clearError();$('royal-loading-caption').textContent='Connecting to Sharika…';replyToHost({type:'ready'});};
   const hideIntro=()=>{loading.style.display='none';};
