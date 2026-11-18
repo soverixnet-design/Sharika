@@ -71,9 +71,10 @@ try{
   console.log(JSON.stringify({mode:m.mode,rejected}));
   assert.equal(await f.locator('#royal-loading').isVisible(),false);
   assert.equal(await f.locator('#sp').isDisabled(),false);
-  await page.waitForFunction(()=>document.getElementById('game').contentDocument
-    ?.getElementById('st')?.textContent?.includes('Bet not accepted'),undefined,{timeout:4000});
-  assert.match(await f.locator('#st').textContent(),/Bet not accepted: spin rate limited/);
+  // The rotating Star Card ticker updates #st, so assert the dedicated
+  // rejection toast instead of the ticker text.
+  assert.match(rejected.toast,/BET NOT ACCEPTED\s*spin rate limited/);
+  assert.equal(rejected.busy,false);
   assert.equal(await f.locator('#bl').textContent(),'999,500');
   // A failure after a successful spin must expose a visible Retry action,
   // not leave the user with a disabled Spin and an invisible error panel.
