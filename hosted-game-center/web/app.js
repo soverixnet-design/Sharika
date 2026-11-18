@@ -11,6 +11,7 @@
  const appSurface=params.get('surface')==='app';
  if(inRoom)document.documentElement.classList.add('room-mode');
  if(appSurface)document.documentElement.classList.add('app-surface');
+ if(!inRoom&&!appSurface)document.documentElement.classList.add('premium-browser');
  if(appSurface&&bridge)document.documentElement.classList.add('native-verified');
  const all=$('games'),landing=$('landing'),player=$('player'),frame=$('game-frame');
  const status=$('status'),banner=$('error'),browserNote=$('browser-note');
