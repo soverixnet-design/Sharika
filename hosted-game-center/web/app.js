@@ -6,7 +6,7 @@
  const all=$('games'),landing=$('landing'),player=$('player'),frame=$('game-frame');
  const status=$('status'),banner=$('error'),browserNote=$('browser-note');
  const icons={'royal-ace':'♠','cleopatra':'♛','greedy-classic':'✦','food-deluxe':'◈','sovera-gaddy':'◆','sovera-food':'🍔','night-food':'☾','greedy-wheel':'◎','fruit-royale':'🍒','jackpot-fruit':'🍓'};
- let games=[],active=null,number=0;
+ let games=[],active=null,number=0,gameVersion=0;
  const pending=new Map();
  function notify(message){banner.textContent=message;banner.hidden=!message;}
  function call(method,path,body){
@@ -44,12 +44,12 @@
   }
  };
  function closeGame(){
-  active=null;frame.removeAttribute('src');player.hidden=true;landing.hidden=false;
+  gameVersion++;active=null;frame.removeAttribute('src');player.hidden=true;landing.hidden=false;
   $('back').hidden=true;notify('');window.scrollTo(0,0);
  }
  function openGame(game){
   if(!bridge)return;
-  active=game;landing.hidden=true;player.hidden=false;$('back').hidden=false;
+  gameVersion++;active=game;landing.hidden=true;player.hidden=false;$('back').hidden=false;
   $('game-name').textContent=game.name;notify('');
   frame.src=game.asset+(game.id==='royal-ace'||game.id==='cleopatra'?
    (game.asset.includes('?')?'&':'?')+'mode=full&host=1':
@@ -59,10 +59,14 @@
  $('back').addEventListener('click',closeGame);
  window.addEventListener('message',async e=>{
   const game=active;
-  if(!game||e.origin!==location.origin||e.source!==frame.contentWindow)return;
-  const m=e.data;
+  // The game frame has a deliberately opaque sandbox origin. Source identity,
+  // not the untrusted message body, binds requests to the active frame.
+  if(!game||e.origin!=='null'||e.source!==frame.contentWindow)return;
+  const m=e.data,version=gameVersion;
   if(!m||typeof m!=='object')return;
-  const send=data=>{if(active===game)frame.contentWindow?.postMessage(data,location.origin)};
+  // A late API response must never be delivered to a newly reopened iframe.
+  const send=data=>{if(active===game&&version===gameVersion)
+    frame.contentWindow?.postMessage(data,'*')};
   if(m.type==='sharika:original-exit'||m.type==='close'&&game.id==='royal-ace'){closeGame();return;}
   if(m.type==='expand')return;
   const royal=game.id==='royal-ace',cleo=game.id==='cleopatra';
