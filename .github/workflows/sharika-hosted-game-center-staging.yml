@@ -28,7 +28,7 @@ jobs:
           node --check hosted-game-center/web/app.js
           node --check hosted-game-center/web/practice.js
           node hosted-game-center/scripts/build.mjs
-          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/hosted-route.test.mjs
           test -s hosted-game-center/dist/games/original-games/royal-ace-deluxe.html
           test -s hosted-game-center/dist/games/original-games/cleopatra-slot.html
           test -s hosted-game-center/dist/cards/superace.svg
