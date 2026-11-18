@@ -8,6 +8,9 @@ const ID=/^[A-Za-z0-9:_-]{12,100}$/;
 const BASE='/api/superace/';
 const success=(value,reply,cors,status=200)=>reply(value,status,cors);
 function info(r,session){
+  // Historical retry must be byte-for-byte value-equivalent even when the
+  // player's Free Session later advances or closes.
+  if(r.receipt_json)return JSON.parse(r.receipt_json);
   const financial=Number(r.balance_after);
   const win=Number(r.win),cost=Number(r.cost),bet=Number(r.bet);
   const raw=r.result_json?JSON.parse(r.result_json):null;
@@ -163,5 +166,9 @@ export async function handleRoyalAce({request,db,uid,action,reply,fail,cors}){
   }
   const row=await readRound(db,uid,key),now=await userState(db,uid);
   if(!row||!INT(Number(row.balance_after)))return fail('missing_round_settlement',503,cors);
-  return success(info(row,now.session),reply,cors);
+  const receipt=info(row,now.session);
+  await db.prepare("UPDATE sharika_royal_ace_rounds SET receipt_json=? "+
+    "WHERE user_uid=? AND request_id=? AND receipt_json IS NULL")
+    .bind(JSON.stringify(receipt),uid,key).run();
+  return success(receipt,reply,cors);
 }
