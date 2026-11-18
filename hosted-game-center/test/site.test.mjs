@@ -25,7 +25,7 @@ test('hosted origin contains no Firebase token or wide native bridge',()=>{
  assert.match(js,/e.origin!=='null'/);
  assert.match(js,/version===gameVersion/);
  const markup=read('web/index.html');
- assert.match(markup,/sandbox="allow-scripts"/);
+ assert.match(markup,/sandbox="allow-scripts allow-modals"/);
  assert.doesNotMatch(markup,/allow-same-origin/);
  assert.match(js,/pending\.delete\(id\)/);
  assert.match(js,/requestId:m.id/);
