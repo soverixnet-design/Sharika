@@ -1,7 +1,7 @@
 name: Sharika Hosted Game Center — isolated staging
 on:
   push:
-    branches: [feature/sharika-hosted-game-center-20261118]
+    branches: [feature/sharika-hosted-game-center-20261118, feature/sharika-room-half-sheet-profile-games-20261118]
     paths:
       - 'hosted-game-center/**'
       - 'android-staging/app/src/main/assets/original-games/**'
@@ -28,7 +28,7 @@ jobs:
           node --check hosted-game-center/web/app.js
           node --check hosted-game-center/web/practice.js
           node hosted-game-center/scripts/build.mjs
-          node --test hosted-game-center/test/site.test.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs
           test -s hosted-game-center/dist/games/original-games/royal-ace-deluxe.html
           test -s hosted-game-center/dist/games/original-games/cleopatra-slot.html
           test -s hosted-game-center/dist/cards/superace.svg
