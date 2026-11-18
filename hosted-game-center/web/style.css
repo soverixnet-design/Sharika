@@ -161,7 +161,7 @@ a{color:#f4d085}
  #player{height:calc(100dvh - 82px)}
  #play-label{max-width:195px}
 }
-/* The room's Android Dialog is 58% tall. Do NOT open another Activity or turn
+/* The room's Android Dialog is 65% tall. Do NOT open another Activity or turn
    the games full screen; keep the voice-room WebView visible behind the panel. */
 html.room-mode,html.room-mode body{height:100%;min-height:0;overflow:hidden;background:transparent}
 .room-mode header,.room-mode .eyebrow,.room-mode .notice,.room-mode .browser-only{display:none!important}
