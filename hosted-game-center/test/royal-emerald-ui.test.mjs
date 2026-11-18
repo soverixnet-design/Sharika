@@ -88,7 +88,7 @@ test('room shows opaque 65% panel content, four icon columns and larger Greedy g
   const page=await context.newPage();
   await page.goto(site+'/?view=room&surface=app',{waitUntil:'domcontentloaded'});
   await page.locator('.tile').first().waitFor();
-  await page.locator('#game-count').getByText('10 games').waitFor();
+  await page.waitForFunction(()=>document.querySelector('#game-count')?.textContent==='10 games');
   assert.equal(await page.locator('.tile').count(),10);
   assert.equal(await page.locator('.app-toolbar').isVisible(),false);
   assert.equal(await page.locator('#hot-section').isVisible(),false);
