@@ -74,13 +74,33 @@ test('public browser shows original game cards and free demo without wallet API'
     await page.getByRole('button',{name:/SuperAce Deluxe/}).click();
     assert.equal(await page.locator('#demo-banner').isVisible(),true);
     const royal=page.frameLocator('#game-frame');
-    await royal.locator('#sp').waitFor({state:'visible',timeout:15000});
+    await royal.locator('#sp:not([disabled])').waitFor({state:'attached',timeout:16000});
+    const royalInitial=await royal.locator('#bl').innerText();
     await royal.locator('#sp').click();
-    await page.waitForFunction(()=>document.querySelector('#game-name').textContent.includes('SuperAce'));
+    let royalChanged=false;
+    for(let n=0;n<40;n++){
+      if((await royal.locator('#bl').innerText())!==royalInitial){royalChanged=true;break;}
+      await pause(200);
+    }
+    assert.equal(royalChanged,true,'Royal Ace Demo Spin must visibly update balance');
     await page.getByRole('button',{name:'Close Game'}).click();
     await page.getByRole('button',{name:/Cleopatra/}).click();
-    await page.frameLocator('#game-frame').locator('#spin').waitFor({state:'visible'});
-    await page.frameLocator('#game-frame').locator('#spin').click();
+    const cleo=page.frameLocator('#game-frame');
+    await cleo.locator('#spin').waitFor({state:'visible'});
+    let cleopatraReady=false;
+    for(let n=0;n<60;n++){
+      cleopatraReady=await cleo.locator('#spin').evaluate(el=>Boolean(el.ownerDocument.defaultView.__sharikaGameReady));
+      if(cleopatraReady)break;await pause(200);
+    }
+    assert.equal(cleopatraReady,true,'Cleopatra Demo should receive initialization response');
+    const cleopatraInitial=await cleo.locator('#bal').innerText();
+    await cleo.locator('#spin').click();
+    let cleopatraChanged=false;
+    for(let n=0;n<50;n++){
+      if((await cleo.locator('#bal').innerText())!==cleopatraInitial){cleopatraChanged=true;break;}
+      await pause(200);
+    }
+    assert.equal(cleopatraChanged,true,'Cleopatra Demo Spin must visibly update balance');
     await page.getByRole('button',{name:'Close Game'}).click();
     const api=await page.request.post(site+'/api/spin',{data:{}});
     assert.equal(api.status(),405,'public Game Center must reject virtual wallet changes');
