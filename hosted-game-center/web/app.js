@@ -51,9 +51,10 @@
   if(!bridge)return;
   gameVersion++;active=game;landing.hidden=true;player.hidden=false;$('back').hidden=false;
   $('game-name').textContent=game.name;notify('');
+  // Game Center is its own full-screen Activity, even if entered from a voice
+  // room. Never force the cramped #sharika-room mini-game layout here.
   frame.src=game.asset+(game.id==='royal-ace'||game.id==='cleopatra'?
-   (game.asset.includes('?')?'&':'?')+'mode=full&host=1':
-   (game.id==='sovera-gaddy'?'#sharika-room':''));
+   (game.asset.includes('?')?'&':'?')+'mode=full&host=1':'');
  }
  $('exit').addEventListener('click',closeGame);
  $('back').addEventListener('click',closeGame);
