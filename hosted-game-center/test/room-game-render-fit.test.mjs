@@ -98,6 +98,43 @@ test('Sovera Food and Night Food activate their original compact mobile controls
  }finally{await browser.close();}
 });
 
+
+test('Food Wheel does not remain at scale zero on repeat room opens',
+ {timeout:90000},async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try{
+  const context=await browser.newContext({viewport:{width:390,height:560}});
+  const page=await context.newPage();
+  await page.goto(site+'/?view=room&surface=app',{waitUntil:'domcontentloaded'});
+  for(let attempt=0;attempt<4;attempt++){
+   await page.getByRole('button',{name:/Food Wheel Deluxe · Play/}).click();
+   const stage=page.frameLocator('#game-frame').locator('#stage');
+   await stage.waitFor({timeout:20000});
+   await page.waitForTimeout(200);
+   const rect=await stage.evaluate(el=>({
+    w:el.getBoundingClientRect().width,
+    h:el.getBoundingClientRect().height,
+    transform:el.style.transform,
+    height:parseFloat(el.style.height)
+   }));
+   assert.equal(rect.height,2100);
+   assert.ok(rect.w>270&&rect.h>=550,
+    'Repeated room entry must never leave Food Wheel at scale(0): '+JSON.stringify(rect));
+   assert.ok(!rect.transform.includes('scale(0)'));
+   await page.evaluate(()=>window.sharikaPremiumBack());
+  }
+  await context.close();
+ }finally{await browser.close();}
+});
+
+test('hosted Food Wheel retries invalid viewport dimensions without removing bet controls',()=>{
+ const source=readFileSync(new URL('../dist/games/original-games/food-wheel-deluxe.html',import.meta.url),'utf8');
+ assert.match(source,/if\(w<10\|\|h<10\)\{if\(fitRetry\+\+<50\)setTimeout\(fit,80\);return;\}/);
+ assert.match(source,/addEventListener\('pageshow'/);
+ assert.match(source,/ResizeObserver/);
+ assert.match(source,/requestId\(\)/);
+});
+
 test('original games remain iframe-isolated and keep server bet routes unchanged',()=>{
  const js=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
  const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8');
