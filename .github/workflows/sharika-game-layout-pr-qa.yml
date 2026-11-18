@@ -3,8 +3,10 @@ on:
   push:
     branches:
       - fix/sharika-game-clean-surface-65pct-20261118
+      - fix/sharika-hosted-games-priority-20261118
     paths:
       - 'hosted-game-center/**'
+      - 'android-staging/staging-connection.js'
       - 'android-staging/app/src/main/assets/original-games/greedy-classic-live.js'
       - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
       - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
@@ -28,7 +30,7 @@ jobs:
           node --check hosted-game-center/test/browser.test.mjs
           node --check android-staging/app/src/main/assets/original-games/greedy-classic-live.js
           node hosted-game-center/scripts/build.mjs
-          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/hosted-route.test.mjs
           test -s hosted-game-center/dist/games/original-games/greedy-classic.html
           test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
           test -s hosted-game-center/dist/games/original-games/royal-ace-deluxe.html
