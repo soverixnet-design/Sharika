@@ -250,11 +250,25 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   $('royal-skip-intro').onchange=e=>{try{localStorage.setItem('sharika_royal_intro_off',e.target.checked?'1':'0')}catch(_){}};
   const showError=s=>{loading.style.display='flex';errorBox.style.display='block';errorBox.textContent=s;retryButton.style.display='block';};
   const clearError=()=>{errorBox.style.display='none';errorBox.textContent='';retryButton.style.display='none';};
-  retryButton.onclick=()=>{clearError();$('royal-loading-caption').textContent='Connecting to Sharika…';replyToHost({type:'ready'});};
+  retryButton.onclick=()=>{ready=false;connectRetries=0;clearError();requestConnection();};
   const hideIntro=()=>{loading.style.display='none';};
   spinner.disabled=true;$('bb').disabled=true;
   const previewBalance=v=>{if(Number.isSafeInteger(v)&&v>=0){bal=v;upd();}};
   const replyToHost=data=>parent.postMessage({...data,source:SOURCE},'*');
+  // An iframe may send its first ready event before the host listener/session is
+  // available. Re-send only the read-only state handshake; never auto-submit bets.
+  let connectTimer=null,connectRetries=0;
+  const requestConnection=()=>{
+    if(ready)return;
+    clearTimeout(connectTimer);
+    $('royal-loading-caption').textContent='Connecting to Sharika…';
+    replyToHost({type:'ready'});
+    connectTimer=setTimeout(()=>{
+      if(ready)return;
+      if(connectRetries<2){connectRetries++;requestConnection();}
+      else showError('Connection not confirmed. Tap Retry connection. No bet was submitted.');
+    },3500);
+  };
   const id=()=>{const a=new Uint8Array(16);crypto.getRandomValues(a);return 'ra_'+Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');};
   const awaitRound=(key,ms=25000)=>new Promise((resolve,reject)=>{
     const timeout=setTimeout(()=>{pending.delete(key);reject(Error('Server response timed out. Check connection.'))},ms);
@@ -264,6 +278,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     if(event.source!==parent||!event.data||event.data.source!==SERVER)return;
     const d=event.data;
     if(d.type==='init'){
+      clearTimeout(connectTimer);connectRetries=0;
       if(!Array.isArray(d.bets)||!d.bets.every(x=>Number.isSafeInteger(x)&&x>0))return showError('Game configuration is unavailable.');
       clearError();activeBets=d.bets;freeRemaining=Number(d.freeSpins)||0;
       bet=freeRemaining>0&&activeBets.includes(Number(d.lockedBet))?Number(d.lockedBet):activeBets[0];
@@ -273,6 +288,8 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       setTimeout(hideIntro,$('royal-skip-intro').checked?0:650);
       if(freeRemaining){$('st').textContent='Free Spins: '+freeRemaining+' remaining';}
     }else if(d.type==='gameError'){
+      if(ready)return; // Ignore errors from an obsolete parallel state handshake.
+      clearTimeout(connectTimer);
       ready=false;spinner.disabled=true;$('bb').disabled=true;
       showError('Server unavailable: '+String(d.error||'Please try again'));
     }else if(d.type==='spinResult'&&typeof d.id==='string'){
@@ -302,6 +319,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     if(bal<cost){auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
     busy=true;waiting=true;spinner.disabled=true;
     const requestId=id();
+    let completed=false;
     $('st').textContent='Verifying bet with Sharika server…';
     try{
       const r=await confirmedRound(requestId,amount,buy);
@@ -325,12 +343,26 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       if(r.bonusSpins>0){SFX.scatter();toast('FREE SPINS','+'+r.bonusSpins);}
       $('st').textContent=freeRemaining?'Free Spins: '+freeRemaining+' remaining':MSG[0];
       if(r.win>0)await bigWin(r.win);
+      completed=true;
     }catch(err){
-      auto=false;$('au').classList.remove('on');showError(err.message||'Connection error');
-      // Refresh the server wallet after an unknown timeout; never refund locally.
-      ready=false;replyToHost({type:'ready'});
+      auto=false;$('au').classList.remove('on');
+      const code=String(err?.message||'Connection error');
+      const declined=/^(?:spin_rate_limited|not_enough_balance|free_spins_active|free_spin_bet_locked|invalid_bet|request_id_conflict)$/.test(code);
+      if(declined){
+        // D1 rejected this bet. Do not cover the game with a reconnect overlay
+        // and do not automatically resubmit it with a fresh request ID.
+        const description=code.replace(/_/g,' ');
+        $('st').textContent='Bet not accepted: '+description;
+        toast('BET NOT ACCEPTED',description);
+        if(code!=='spin_rate_limited')replyToHost({type:'ready'});
+      }else{
+        // Unknown network results can be settled on D1. Never refund locally
+        // or automatically start another bet; require a verified state refresh.
+        ready=false;
+        showError('Spin not confirmed. Reconnect and check your balance: '+code);
+      }
     }finally{busy=false;waiting=false;spinner.disabled=!ready;}
-    if(ready&&(auto||freeRemaining>0))setTimeout(()=>spin(false),750);
+    if(completed&&ready&&(auto||freeRemaining>0))setTimeout(()=>spin(false),750);
   };
   $('sp').onclick=()=>spin(false);
   $('bb').onclick=()=>{if(!ready||busy)return;
@@ -347,7 +379,6 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
     });
   };
   $('hm').onclick=()=>replyToHost({type:'close'});
-  setTimeout(()=>{if(!ready){showError('Network is slow. Tap Retry connection. No coins have been charged.');}},9000);
   const originalRules=$('inf').onclick;
   $('inf').onclick=event=>{
     if(typeof originalRules==='function')originalRules.call($('inf'),event);
@@ -359,8 +390,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       panel.appendChild(note);
     }
   };
-  const initTimer=setTimeout(()=>{if(!ready)showError('Unable to connect to the game. Try again.');},25000);
-  replyToHost({type:'ready'});
+  requestConnection();
 })();
 
 </script></body></html>
