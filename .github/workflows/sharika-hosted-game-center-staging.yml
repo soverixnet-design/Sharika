@@ -12,7 +12,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: sharika-hosted-game-center-staging
+  group: sharika-hosted-game-center-staging-v2
   cancel-in-progress: true
 jobs:
   validate:
