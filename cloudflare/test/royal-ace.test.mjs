@@ -12,6 +12,7 @@ function fixture(){
   sqlite.exec(sql('0001_initial.sql'));
   sqlite.exec(sql('0046_admin_game_catalog.sql'));
   sqlite.exec(sql('0098_royal_ace_deluxe.sql'));
+  sqlite.exec(sql('0099_royal_ace_bonus_buy_10x.sql'));
   const ins=sqlite.prepare('INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(?,?,?,?,?,?)');
   ins.run(10000011,'adult-a','Adult','1991-01-01',0,1000000);
   ins.run(10000012,'minor-b','Minor','2015-01-01',1,1000000);
@@ -76,12 +77,12 @@ test('server validates bets, adults, idempotency and wallet ledger',async()=>{
   assert.equal((await route('spin',{bet:1000,requestId:'ra_second_0000001',buy:false})).status,429);
   sqlite.close();
 });
-test('bonus purchase debits exactly 50x and server owns 10 free spins',async()=>{
+test('bonus purchase debits exactly 10x and server owns 10 free spins',async()=>{
   const {sqlite,route,enable}=fixture();enable();
   const buy=await route('spin',{bet:1000,requestId:'ra_buy_0000000001',buy:true});
   assert.equal(buy.status,200);
   const b=await buy.json();
-  assert.equal(b.balance,950000);assert.equal(b.freeSpins,10);
+  assert.equal(b.balance,990000);assert.equal(b.freeSpins,10);
   assert.equal(b.win,0);assert.equal(b.steps.length,0);
   assert.equal((await route('spin',{bet:10000,requestId:'ra_mismatch_00001',buy:false})).status,409);
   // Bypass wall-clock delay for this follow-up; it exercises the persisted free counter.
@@ -90,7 +91,7 @@ test('bonus purchase debits exactly 50x and server owns 10 free spins',async()=>
   assert.equal(free.status,200);
   const x=await free.json();
   assert.equal(x.mode,'free');
-  assert.equal(x.balance,950000+x.win);
+  assert.equal(x.balance,990000+x.win);
   assert.equal(x.freeSpins,9+x.bonusSpins);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='royal_ace_bonus'").get().n,1);
   sqlite.close();
