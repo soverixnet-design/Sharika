@@ -221,11 +221,14 @@ export async function handleGreedyClassicRequest({request,db,uid,action,reply,fa
       }catch(error){
         const detail=String(error?.message||error);
         const after=(await db.prepare(
-          'SELECT COUNT(*) AS n FROM sharika_greedy_classic_bets '+
+          'SELECT request_id,item_id,amount FROM sharika_greedy_classic_bets '+
           'WHERE user_uid=? AND substr(request_id,1,?)=?')
-          .bind(uid,b.request_id.length+1,b.request_id+':').first())?.n;
-        if(Number(after)===requested.length){
-          // Same batch was committed on a concurrent/retried request.
+          .bind(uid,b.request_id.length+1,b.request_id+':').all()).results||[];
+        const found=new Map(after.map(x=>[x.request_id,x]));
+        if(found.size===requested.length&&requested.every(x=>
+          found.has(x.id)&&found.get(x.id).item_id===x.itemId&&
+          Number(found.get(x.id).amount)===x.amount)){
+          // Identical batch committed concurrently; never create new IDs.
         }else{
           if(detail.includes('insufficient'))return fail('INSUFFICIENT_BALANCE',409,cors);
           if(detail.includes('closed'))return fail('BETTING_CLOSED',409,cors);
