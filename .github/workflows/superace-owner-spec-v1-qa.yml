@@ -1,0 +1,81 @@
+name: SuperAce Owner Spec v1 — isolated staging verification
+on:
+  push:
+    branches: [feature/sharika-superace-spec-v1-20261118]
+    paths:
+      - 'cloudflare/src/royal-ace.mjs'
+      - 'cloudflare/src/superace-spec-v1.mjs'
+      - 'cloudflare/src/index.mjs'
+      - 'cloudflare/migrations/0100_superace_owner_spec_v1.sql'
+      - 'cloudflare/test/royal-ace.test.mjs'
+      - 'cloudflare/test/superace-spec-v1.test.mjs'
+      - 'cloudflare/scripts/superace-rtp.mjs'
+      - 'android-staging/app/src/main/assets/original-games/royal-ace-deluxe.html'
+      - 'hosted-game-center/web/app.js'
+      - 'hosted-game-center/web/practice.js'
+      - '.github/workflows/superace-owner-spec-v1-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: superace-owner-v1-code-only
+  cancel-in-progress: true
+jobs:
+  spec-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Syntax-check all modified Worker/browser sources
+        run: |
+          node --check cloudflare/src/superace-spec-v1.mjs
+          node --check cloudflare/src/royal-ace.mjs
+          node --check cloudflare/src/index.mjs
+          node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/web/practice.js
+      - name: Owner spec and legacy wallet ledger regression
+        run: node --test cloudflare/test/superace-spec-v1.test.mjs cloudflare/test/royal-ace.test.mjs
+      - name: Validate original game HTML inline scripts
+        run: |
+          python3 - <<'PY'
+          import pathlib,re
+          s=pathlib.Path('android-staging/app/src/main/assets/original-games/royal-ace-deluxe.html').read_text()
+          code='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',s,re.I|re.S))
+          pathlib.Path('/tmp/superace-spec-inline.js').write_text(code)
+          assert len(s)>400000
+          PY
+          node --check /tmp/superace-spec-inline.js
+      - name: Build an isolated dry-run of the staging Worker, no deployment
+        run: cd cloudflare && npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/superace-v1-worker
+      - name: Verify no rollout is enabled automatically
+        run: |
+          test -f cloudflare/migrations/0100_superace_owner_spec_v1.sql
+          grep -q 'SET enabled=0' cloudflare/migrations/0100_superace_owner_spec_v1.sql
+          # Check mutating CLI steps without matching this check's own script.
+          python3 - <<'PY'
+          from pathlib import Path
+          wf=Path('.github/workflows/superace-owner-spec-v1-qa.yml').read_text()
+          forbidden=['wrangler@4 d1 migrations apply','wrangler@4 d1 execute sharika-staging --remote','wrangler@4 deploy --config']
+          lines=[x.strip() for x in wf.splitlines() if x.strip().startswith('run:')]
+          assert not any(f in line for line in lines for f in forbidden)
+          PY
+
+  rtp-10m:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Ten million paid spins plus triggered free spins (100-coin minimum)
+        run: node cloudflare/scripts/superace-rtp.mjs 10000000 100 20261118
+      - name: Ten-thousand paid spins at maximum documented bet
+        run: node cloudflare/scripts/superace-rtp.mjs 10000 50000 12345
+      - name: Independent cryptographic RNG cross-check (100,000 spins)
+        run: node cloudflare/scripts/superace-rtp.mjs 100000 100 20261118 crypto
+      - name: Candidate calibration only — divisor 25 (1M paid spins)
+        run: node cloudflare/scripts/superace-rtp.mjs 1000000 100 20261118 qa 25
+      - name: Candidate calibration only — divisor 24 (1M paid spins)
+        run: node cloudflare/scripts/superace-rtp.mjs 1000000 100 20261118 qa 24

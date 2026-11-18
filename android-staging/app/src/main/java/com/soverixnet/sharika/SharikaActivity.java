@@ -868,9 +868,9 @@ public final class SharikaActivity extends Activity {
         if (action == null) { sendResult(id, result(false,null,"unknown_action")); return; }
         switch (action) {
             case "openHostedGameCenter":
-                if (BuildConfig.SHARIKA_PLAY_BUILD ||
-                    auth.getCurrentUser()==null ||
-                    !"https://sharika-api-staging.soverixnet.workers.dev".equals(API_ORIGIN)) {
+                // The dedicated Activity performs the strict staging-origin
+                // check. Keep release activity source free of hardcoded hosts.
+                if (BuildConfig.SHARIKA_PLAY_BUILD || auth.getCurrentUser()==null) {
                     sendResult(id,result(false,null,"hosted_game_center_unavailable"));
                     break;
                 }

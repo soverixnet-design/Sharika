@@ -13,6 +13,7 @@ function fixture(){
   sqlite.exec(sql('0046_admin_game_catalog.sql'));
   sqlite.exec(sql('0098_royal_ace_deluxe.sql'));
   sqlite.exec(sql('0099_royal_ace_bonus_buy_10x.sql'));
+  sqlite.exec(sql('0100_superace_owner_spec_v1.sql'));
   const ins=sqlite.prepare('INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(?,?,?,?,?,?)');
   ins.run(10000011,'adult-a','Adult','1991-01-01',0,1000000);
   ins.run(10000012,'minor-b','Minor','2015-01-01',1,1000000);
@@ -41,9 +42,10 @@ test('server uses bounded 5x4 grids and caps win',()=>{
   assert.throws(()=>simulateRoyalAce(0),/invalid_royal_round/);
   for(let i=0;i<150;i++){
     const g=simulateRoyalAce(1000,false,100000);
-    assert.ok(g.steps.length>=1&&g.steps.length<=9);
-    assert.ok(g.win>=0&&g.win<=10000,'A 1000-coin spin must never pay more than 10x');
+    assert.ok(g.steps.length>=1&&g.steps.length<=128);
+    assert.ok(g.win>=0&&g.win<=10000000,'A 1000-coin spin must never pay more than 10000x');
     assert.ok([0,10].includes(g.bonusSpins));
+    assert.equal(g.specVersion,'superace-v1-section-12');
     for(const step of g.steps){
       assert.equal(step.grid.length,5);
       for(const col of step.grid){assert.equal(col.length,4);
@@ -61,7 +63,7 @@ test('staging migration starts game disabled and does not alter player balance',
 });
 test('server validates bets, adults, idempotency and wallet ledger',async()=>{
   const {sqlite,route,enable}=fixture();enable();
-  assert.equal((await route('spin',{bet:100,requestId:'ra_badbet_100',buy:false})).status,400);
+  assert.equal((await route('spin',{bet:90,requestId:'ra_badbet_100',buy:false})).status,400);
   assert.equal((await route('spin',{bet:1000,requestId:'ra_minor_10001',buy:false},'minor-b')).status,403);
   const req={bet:1000,requestId:'ra_idempotency_00001',buy:false};
   const first=await route('spin',req);
@@ -110,12 +112,13 @@ test('two eligible adults can spin independently with the same client request ID
   assert.deepEqual(await (await route('spin',shared,'adult-c')).json(),b,'retry must not debit again');
   sqlite.close();
 });
-test('bonus purchase debits exactly 10x and server owns 10 free spins',async()=>{
+test('bonus purchase debits exactly 50x and server owns 10 free spins',async()=>{
   const {sqlite,route,enable}=fixture();enable();
   const buy=await route('spin',{bet:1000,requestId:'ra_buy_0000000001',buy:true});
   assert.equal(buy.status,200);
   const b=await buy.json();
-  assert.equal(b.balance,990000);assert.equal(b.freeSpins,10);
+  assert.equal(b.balance,950000);assert.equal(b.freeSpins,10);
+  assert.equal(b.freeGame.spinsLeft,10);
   assert.equal(b.win,0);assert.equal(b.steps.length,0);
   assert.equal((await route('spin',{bet:10000,requestId:'ra_mismatch_00001',buy:false})).status,409);
   // Bypass wall-clock delay for this follow-up; it exercises the persisted free counter.
@@ -124,7 +127,7 @@ test('bonus purchase debits exactly 10x and server owns 10 free spins',async()=>
   assert.equal(free.status,200);
   const x=await free.json();
   assert.equal(x.mode,'free');
-  assert.equal(x.balance,990000+x.win);
+  assert.equal(x.balance,950000+x.win);
   assert.equal(x.freeSpins,9+x.bonusSpins);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='royal_ace_bonus'").get().n,1);
   sqlite.close();
@@ -136,10 +139,10 @@ test('source artwork, server-only financial bridge, room and Play Store gates re
   assert.match(html,/sharika-royal-ace-server/);
   assert.doesNotMatch(html,/localStorage\.setItem\('sa_bal'/);
   assert.match(html,/royal-ace-loader\.svg/);
-  assert.match(html,/7\.5% of gross/);
-  assert.doesNotMatch(html,/10,000x the bet|10,000× bet/,'Published game rules cannot claim a false maximum');
+  assert.match(html,/Super Ace Deluxe v1 \(Section 12\)/);
+  assert.match(html,/10,000× the stake/,'Published rules must show the correct cap');
   assert.match(html,/Retry connection/);
-  assert.match(html,/maximum 10× stake per spin/);
+  assert.match(html,/10,000× hard cap/);
   assert.match(html,/Reconnecting safely/);
   assert.match(bridge,/file:\/\/\/android_asset\/royal-ace-card\.svg/);
   assert.match(bridge,/event\.source!==current\.element\.contentWindow/);
@@ -155,16 +158,16 @@ test('source artwork, server-only financial bridge, room and Play Store gates re
   assert.equal(bytes.toString('ascii',8,12),'WEBP');
 });
 
-test('Buy Bonus cost and user-visible rules match the staging D1 validation and no old 50x price survives',()=>{
+test('Buy Bonus 50x and owner spec Section 12 rules match validated SQL and UI',()=>{
   const engine=readFileSync(new URL('../src/royal-ace.mjs',import.meta.url),'utf8');
   const html=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/royal-ace-deluxe.html',import.meta.url),'utf8');
-  const validator=sql('0099_royal_ace_bonus_buy_10x.sql');
-  assert.match(engine,/cost=b\.buy\?b\.bet\*10/);
-  assert.match(validator,/ELSE NEW\.bet\*10 END/);
-  assert.match(validator,/royal_ace_validate_transition/);
+  const validator=sql('0100_superace_owner_spec_v1.sql');
+  assert.match(engine,/SUPERACE_SPEC\.buyBonusMultiplier/);
+  assert.match(validator,/ELSE NEW\.bet\*50 END/);
+  assert.match(validator,/royal_ace_spec_migration_guard/);
   assert.match(html,/Buy 10 Free Spins for/);
-  assert.match(html,/10× your bet/);
-  assert.doesNotMatch(html,/bet\*50|amount\*50|50x bet|50× your bet/);
+  assert.match(html,/50× your bet/);
+  assert.doesNotMatch(html,/7\.5% of gross wins|maximum 10× stake per spin/);
 });
 
 test('Android bridge permits only verified Royal Ace staging endpoints and denies Play',()=>{
@@ -178,12 +181,12 @@ test('Android bridge permits only verified Royal Ace staging endpoints and denie
 });
 
 
-test('SuperAce capped RTP applies to paid and bonus rounds',()=>{
+test('SuperAce owner spec payout cap applies to paid and bonus rounds',()=>{
   for(const stake of [1000,10000,100000])for(const free of [false,true]){
     for(let i=0;i<30;i++){
       const result=simulateRoyalAce(stake,free,100000000);
-      assert.ok(result.win>=0&&result.win<=stake*10,'Payout must remain below 10x');
-      assert.ok(result.steps.length<=9);
+      assert.ok(result.win>=0&&result.win<=Math.min(stake*10000,100000000),'Spec payout cap');
+      assert.ok(result.steps.length<=128);
     }
   }
 });

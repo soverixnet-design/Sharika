@@ -129,6 +129,8 @@ public final class SharikaGameCenterActivity extends Activity {
             || path.contains("..") || path.contains("//")) return false;
         if ("GET".equals(method) && "/api/v1/game-catalog".equals(path)) return true;
         if (path.matches("^/api/v1/(royal-ace|cleopatra)/state$")) return "GET".equals(method);
+        if (path.matches("^/api/superace/(state|history)$")) return "GET".equals(method);
+        if (path.matches("^/api/superace/(spin|freespin|buy-bonus)$")) return "POST".equals(method);
         if (path.matches("^/api/v1/(royal-ace|cleopatra)/spin$")) return "POST".equals(method);
         if (path.matches("^/api/v1/greedy-wheel/(state|records)$")) return "GET".equals(method);
         if ("/api/v1/greedy-wheel/bet".equals(path)) return "POST".equals(method);

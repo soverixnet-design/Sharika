@@ -405,13 +405,16 @@ export async function handleRequest(request, env, ctx) {
       await assertActive(env.DB,uid);
       return reply({games:await readGameCatalog(env.DB)},200,cors);
     }
-    if(path==='/api/v1/royal-ace/state'||path==='/api/v1/royal-ace/spin'){
+    if(path==='/api/v1/royal-ace/state'||path==='/api/v1/royal-ace/spin'||
+       /^\/api\/superace\/(state|spin|freespin|buy-bonus|history)$/.test(path)){
       await assertActive(env.DB,uid);
-      // No automatic Play Store exposure: virtual-only routing and admin flag are independent gates.
+      // The owner-spec API remains staging-only and cannot bypass the
+      // separate Play virtual-only policy gate or admin catalog flag.
       if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'royal-ace')))
         return fail('game_disabled',403,cors);
+      const action=path.slice(path.lastIndexOf('/')+1);
       return await handleRoyalAce({request,db:env.DB,uid,
-        action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
+        action,reply,fail,cors});
     }
     if(path==='/api/v1/cleopatra/state'||path==='/api/v1/cleopatra/spin'){
       await assertActive(env.DB,uid);
