@@ -1,7 +1,7 @@
 name: Sharika Private Center Android staging APK (QA only)
 on:
   push:
-    branches: [feature/sharika-private-center-catalog-20261119]
+    branches: [feature/sharika-private-center-catalog-20261119, feature/sharika-private-center-rapid-tap-integration-20261120]
     paths:
       - '.github/workflows/sharika-private-center-android-qa.yml'
       - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
