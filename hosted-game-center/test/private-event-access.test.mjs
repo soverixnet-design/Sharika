@@ -6,11 +6,13 @@ globalThis.crypto??=webcrypto;
 const origin='https://sharika-private-center-staging.soverixnet.workers.dev';
 const cookie='__Host-sh_center='+'A'.repeat(43);
 const jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
-function dbFixture({moduleEnabled=true,eventEnabled=true,engineEnabled=true}={}){
+function dbFixture({moduleEnabled=true,eventEnabled=true,engineEnabled=true,
+ eventCountry='GLOBAL',memberCountry='BD'}={}){
  return {prepare(sql){
   return {sql,args:[],bind(...args){this.args=args;return this;},
    async first(){
     if(sql.includes('FROM sharika_center_browser_sessions'))return {auth_uid:'firebase:test:member'};
+    if(sql.includes('SELECT country FROM sharika_users'))return {country:memberCountry};
     if(sql.includes('SELECT published FROM sharika_center_publishing')){
      if(this.args[0]==='module'&&this.args[1]==='events')return {published:Number(moduleEnabled)};
      if(this.args[0]==='event'&&this.args[1]==='event:7')return {published:Number(eventEnabled)};
@@ -19,7 +21,7 @@ function dbFixture({moduleEnabled=true,eventEnabled=true,engineEnabled=true}={})
     }
     if(sql.includes('SELECT id,starts_at,ends_at,banner_id,status FROM sharika_events'))
      return {id:7,starts_at:'2020-01-01T00:00:00.000Z',
-      ends_at:'2099-01-01T00:00:00.000Z',banner_id:3,status:'published'};
+      ends_at:'2099-01-01T00:00:00.000Z',banner_id:3,status:'published',country_code:eventCountry};
     if(sql.includes('SELECT image_base64,mime,image_bytes'))
      return {image_base64:jpeg.toString('base64'),mime:'image/jpeg',image_bytes:jpeg.length};
     if(sql.includes('SELECT enabled FROM sharika_game_catalog'))
@@ -85,4 +87,19 @@ test('practice-mode browser Javascript is disabled on the private member origin'
 test('disabled game cannot load its direct HTML in a signed-in session',async()=>{
  const res=await get('/games/royal-slots/index.html',{auth:true,engineEnabled:false});
  assert.equal(res.status,403);
+});
+
+test('country-limited event direct banner and ranking reject users from other countries',async()=>{
+ for(const suffix of ['banner','ranking']){
+  const notAllowed=await get('/api/center/events/7/'+suffix,{
+   auth:true,eventCountry:'BD',memberCountry:'India'});
+  assert.equal(notAllowed.status,404);
+  assert.equal((await notAllowed.json()).error,'event_hidden');
+ }
+ const allowed=await get('/api/center/events/7/banner',{
+  auth:true,eventCountry:'BD',memberCountry:'Bangladesh'});
+ assert.equal(allowed.status,200);
+ const global=await get('/api/center/events/7/banner',{
+  auth:true,eventCountry:'GLOBAL',memberCountry:'India'});
+ assert.equal(global.status,200);
 });
