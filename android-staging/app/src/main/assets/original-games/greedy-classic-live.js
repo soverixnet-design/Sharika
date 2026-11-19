@@ -54,7 +54,7 @@ const format=n=>Math.max(0,Number(n)||0).toLocaleString('en-US');
   for(const [unit,label] of [[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']]){
    if(v>=unit){
     const x=v/unit;
-    return (x>=100||Number.isInteger(x)?x.toFixed(0):x.toFixed(1).replace(/\\.0$/,''))+label;
+    return (x>=100||Number.isInteger(x)?x.toFixed(0):x.toFixed(1).replace(/\.0$/,''))+label;
    }
   }
   return format(v);
