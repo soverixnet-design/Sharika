@@ -108,6 +108,25 @@ test('Super Admin can Save Draft, Edit, Publish, Hide; hidden module never leaks
   assert.equal(sql.prepare('SELECT COUNT(*) n FROM sharika_admin_audit').get().n,2);
  }finally{sql.close();}
 });
+test('Draft and expired Events cannot be marked as member-published by Private Center',async()=>{
+ const {sql,db}=fixture();
+ try{
+  assert.equal((await admin(db,'events','POST',event)).status,201);
+  let response=await center(db,'/api/v1/center/admin/visibility','PATCH',
+    {kind:'event',id:'event:1',published:true});
+  assert.equal(response.status,409);
+  assert.equal((await response.json()).error,'event_not_ready');
+  const old={...event,status:'published',
+    starts_at:'2020-01-01T00:00:00.000Z',ends_at:'2020-01-02T00:00:00.000Z'};
+  assert.equal((await admin(db,'events/1','PATCH',old)).status,200);
+  response=await center(db,'/api/v1/center/admin/visibility','PATCH',
+    {kind:'event',id:'event:1',published:true});
+  assert.equal(response.status,409);
+  assert.equal((await response.json()).error,'event_expired');
+  assert.equal(sql.prepare("SELECT COUNT(*) AS n FROM sharika_center_publishing WHERE kind='event'").get().n,0);
+  assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM sharika_center_audit').get().n,0);
+ }finally{sql.close();}
+});
 test('CP/BD/Agency/Host rankings require settled ledger and enforce Publish/Hide',async()=>{
  const {sql,db}=fixture();
  try{
