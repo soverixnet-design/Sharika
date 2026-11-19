@@ -108,6 +108,7 @@ public final class SharikaActivity extends Activity {
     private CredentialManager credentials;
     private WebView browser;
     private SharikaRoomGameDialog roomGameDialog;
+    private SharikaWinnerTicker globalWinnerTicker;
     private DailyTaskBanner dailyTaskBanner;
     private View openingOverlay;
     private boolean backInProgress;
@@ -314,6 +315,10 @@ public final class SharikaActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(browser, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        // The same authenticated 10-second ticker spans home, profiles and voice rooms.
+        // When a hosted room game opens, its own marquee takes priority.
+        globalWinnerTicker = new SharikaWinnerTicker(this,root,
+            () -> roomGameDialog != null && roomGameDialog.isShowing());
         if (BuildConfig.SHARIKA_PLAY_BUILD) dailyTaskBanner = new DailyTaskBanner(this, content);
         FrameLayout opening = new FrameLayout(this);
         opening.setBackground(new GradientDrawable(
@@ -1675,7 +1680,21 @@ public final class SharikaActivity extends Activity {
         }
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        if (globalWinnerTicker != null) globalWinnerTicker.start();
+    }
+
+    @Override protected void onPause() {
+        if (globalWinnerTicker != null) globalWinnerTicker.stop();
+        super.onPause();
+    }
+
     @Override protected void onDestroy() {
+        if (globalWinnerTicker != null) {
+            globalWinnerTicker.destroy();
+            globalWinnerTicker = null;
+        }
         if (roomGameDialog!=null){roomGameDialog.dismiss();roomGameDialog=null;}
         if (dailyTaskBanner != null) dailyTaskBanner.destroy();
         if (playBilling != null) { playBilling.close(); playBilling = null; }
