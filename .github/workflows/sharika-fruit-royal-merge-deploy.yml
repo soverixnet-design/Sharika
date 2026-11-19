@@ -127,14 +127,24 @@ jobs:
           test -s /tmp/fruit-machine.jpg || { echo "Fruit Machine image empty"; exit 1; }
           echo "Smoke test: latest Fruit Machine avatar ranking asset"
           wheel_ready=0
-          for attempt in $(seq 1 18); do
-            curl -fsS --max-time 12 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html?qa=${GITHUB_SHA}-${attempt}" -o /tmp/food-wheel-deluxe.html
-            if grep -Fq 'T.rankAvatars' /tmp/food-wheel-deluxe.html &&
-               ! grep -Fq 'T.t5' /tmp/food-wheel-deluxe.html; then wheel_ready=1; break; fi
-            echo "Waiting for updated Fruit Machine asset at attempt ${attempt}"
+          echo "Expected packaged game fingerprint:"
+          sha256sum hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+          for attempt in $(seq 1 28); do
+            curl -fsS --max-time 15 -H 'Cache-Control: no-cache' \
+              "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html?qa=${GITHUB_SHA}-${attempt}" -o /tmp/food-wheel-deluxe.html
+            rank_ok=0;legacy_ok=0
+            if grep -Fq 'T.rankAvatars' /tmp/food-wheel-deluxe.html; then rank_ok=1; fi
+            if ! grep -Fq 'T.t5' /tmp/food-wheel-deluxe.html; then legacy_ok=1; fi
+            if [ "$rank_ok" -eq 1 ] && [ "$legacy_ok" -eq 1 ]; then wheel_ready=1; break; fi
+            echo "Fruit Machine propagation: attempt=${attempt} bytes=$(wc -c </tmp/food-wheel-deluxe.html) rank_ok=${rank_ok} legacy_ok=${legacy_ok}"
             sleep 3
           done
-          test "$wheel_ready" -eq 1 || { echo "New Food Wheel html not visible"; exit 1; }
+          if [ "$wheel_ready" -ne 1 ]; then
+            echo "Latest Fruit Machine not visible on this Cloudflare edge"
+            sha256sum /tmp/food-wheel-deluxe.html
+            head -c 150 /tmp/food-wheel-deluxe.html
+            exit 1
+          fi
           echo "Both staged games verified online"
 
   android-debug:
