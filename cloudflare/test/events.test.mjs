@@ -133,8 +133,8 @@ test('unpublished event-specific leaderboard is hidden',async()=>{
   const f=fixture({event:{id:3,status:'draft',gift_rules_json:'[]'}});
   const response=await handleEventApp({request:new Request('https://x.invalid/api/v1/events/3/ranking'),
     env:{DB:f.db},uid:'winner',path:'/api/v1/events/3/ranking',cors:{},reply,fail});
-  assert.equal(response.status,404);
-  assert.equal((await response.json()).error,'event_unavailable');
+  assert.equal(response.status,403);
+  assert.equal((await response.json()).error,'event_hidden');
 });
 test('published event-specific leaderboard uses only configured settled gifts within UTC window',async()=>{
   const f=fixture({event:{id:3,status:'published',
