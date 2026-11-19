@@ -56,7 +56,7 @@ test('1,000 taps preserve picks, chip amounts and wallet debits across a lost re
 test('all eight round games accept each tap once and reject late taps',async()=>{
   const sql=new DatabaseSync(':memory:');
   for(const name of ['0001_initial','0007_original_games','0027_greedy_wheel','0046_admin_game_catalog',
-    '0055_fruit_royale_v2','0058_sovera_gaddy_game','0096_food_wheel_deluxe','0097_greedy_classic','0101_rapid_tap_rounds']){
+    '0055_fruit_royale_v2','0058_sovera_gaddy_game','0096_food_wheel_deluxe','0097_greedy_classic','0103_rapid_tap_rounds']){
     sql.exec(readFileSync(new URL('../migrations/'+name+'.sql',import.meta.url),'utf8'));
   }
   sql.exec("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(10000001,'qa','QA','1995-01-01',0,800000)");
