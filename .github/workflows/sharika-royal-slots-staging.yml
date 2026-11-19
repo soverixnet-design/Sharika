@@ -16,6 +16,7 @@ on:
       - 'cloudflare/src/greedy-classic.mjs'
       - 'cloudflare/src/security-rate-limit.mjs'
       - 'cloudflare/test/security-hardening.test.mjs'
+      - 'cloudflare/test/greedy-classic.test.mjs'
       - '.github/workflows/sharika-royal-slots-staging.yml'
   workflow_dispatch:
 permissions:
