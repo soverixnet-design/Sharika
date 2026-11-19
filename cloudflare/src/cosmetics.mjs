@@ -3,6 +3,12 @@ import {recordUserEvent} from './transaction-notices.mjs';
 import {safeMediaUrl} from './admin-media.mjs';
 // Server-owned paid cosmetics. Never trust client-side "owned" style flags.
 const KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
+const OFFICIAL_ROLE_FRAME_SKUS=new Set([
+ 'frame_style:cs-royal-wings','frame_style:coin-seller-royal',
+ 'frame_style:official-manager-royal-gold-v1',
+ 'frame_style:bd-admin-blue-diamond-v1',
+ 'frame_style:official-host-rose-gold-v1'
+]);
 const numbered=(prefix,count)=>Array.from({length:count},(_,i)=>
  prefix+'-'+String(i+1).padStart(2,'0'));
 // Role names printed on the artwork are purely decorative; this catalogue
@@ -11,7 +17,8 @@ const roleArt=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,
  .map(number=>'role-frame-'+String(number).padStart(2,'0'));
 const KEYS={
  frame_style:new Set(['phoenix-fire','ice-wings','royal-dragon','vip7','royal-gold','violet-love','ice-admin','golden-dragon','ice-dragon','violet-phoenix','castle-flag','lion-queen','phoenix-queen','tiger-queen',
-  'vip5-animated','noble-gold-microphone','cs-royal-wings','coin-seller-royal',...numbered('svip-frame',8),
+  'vip5-animated','noble-gold-microphone','cs-royal-wings','coin-seller-royal',
+  'official-manager-royal-gold-v1','bd-admin-blue-diamond-v1','official-host-rose-gold-v1',...numbered('svip-frame',8),
   ...[2,3,4,5].map(n=>'vip-royal-frame-'+String(n).padStart(2,'0')),
   ...[4,5].map(n=>'svip-royal-frame-'+String(n).padStart(2,'0')),...roleArt]),
  entry_style:new Set(['phoenix','dragon-queen','ice-king','castle-flag','lion-queen','phoenix-queen','tiger-queen',...numbered('svip-entry',8)]),
@@ -110,8 +117,7 @@ export async function handleCosmeticApp({request,db,uid,path,readBody,reply,fail
   };
   // These designs visibly claim an official CS/Seller role. They may be
   // granted and equipped through the audited Super Admin flow, never purchased.
-  if(itemId==='frame_style:cs-royal-wings'||
-     itemId==='frame_style:coin-seller-royal')
+  if(OFFICIAL_ROLE_FRAME_SKUS.has(itemId))
     return fail('official_role_frame_admin_grant_only',403,cors);
   if(typeof itemId!=='string'||itemId.length>70||
      typeof requestId!=='string'||!TX.test(requestId))return invalid(fail,cors);

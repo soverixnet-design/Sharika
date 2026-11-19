@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<title>Official Manager Royal Gold animated frame — transparent center</title>
+<defs>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff7b0"/><stop offset=".22" stop-color="#ffdb62"/><stop offset=".5" stop-color="#ad5712"/><stop offset=".72" stop-color="#ffe36f"/><stop offset="1" stop-color="#8e3c13"/></linearGradient>
+<linearGradient id="ruby" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffb0b6"/><stop offset=".25" stop-color="#f7164d"/><stop offset=".65" stop-color="#8f092e"/><stop offset="1" stop-color="#37031b"/></linearGradient>
+<radialGradient id="gem"><stop stop-color="#fff"/><stop offset=".24" stop-color="#bbf7ff"/><stop offset=".65" stop-color="#86c5fa"/><stop offset="1" stop-color="#5436aa"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="7"/></filter>
+<g id="feather"><path d="M311 477 Q195 407 30 252 Q85 412 254 519 Q104 476 5 443 Q106 567 269 562 Q124 574 31 631 Q166 625 297 573 Q225 618 190 680 Q305 654 344 567Z" fill="url(#gold)" stroke="#f9be54" stroke-width="12"/><path d="M290 490 Q151 402 70 300 M284 526 Q158 486 27 462 M299 556 Q178 573 49 624" fill="none" stroke="#fff2bc" stroke-width="11" opacity=".7"/></g>
+<g id="star"><path d="M0 -26 Q5 -6 27 0 Q5 5 0 26 Q-6 5 -27 0 Q-5 -6 0 -26Z" fill="#fffad8"/></g>
+</defs>
+<g><use href="#feather"><animateTransform attributeName="transform" type="rotate" values="-3 315 535;5 315 535;-3 315 535" dur="2.9s" repeatCount="indefinite"/></use></g>
+<g transform="translate(1024 0) scale(-1 1)"><use href="#feather"><animateTransform attributeName="transform" type="rotate" values="-3 315 535;5 315 535;-3 315 535" dur="2.9s" repeatCount="indefinite"/></use></g>
+<circle cx="512" cy="486" r="339" fill="none" stroke="#682d20" stroke-width="55"/>
+<circle cx="512" cy="486" r="342" fill="none" stroke="url(#gold)" stroke-width="44"/>
+<circle cx="512" cy="486" r="310" fill="none" stroke="url(#ruby)" stroke-width="13"/>
+<circle cx="512" cy="486" r="362" fill="none" stroke="#fff1a2" stroke-width="9" opacity=".7"/>
+<g fill="url(#gem)" stroke="#fff4d1" stroke-width="8"><path d="M512 123 l32 38 -32 40 -32 -40z"/><path d="M512 772 l32 38 -32 40 -32 -40z"/><path d="M184 462 l26 25 -26 26 -26 -26z"/><path d="M840 462 l26 25 -26 26 -26 -26z"/></g>
+<path d="M385 223 L340 74 L443 136 L512 18 L581 136 L684 74 L640 223 Z" fill="url(#gold)" stroke="#fff2b2" stroke-width="16"/>
+<path d="M379 221 Q512 244 645 221 L632 273 Q512 292 393 273Z" fill="url(#ruby)" stroke="#ffdf74" stroke-width="14"/>
+<path d="M512 102 l44 66 -44 66 -44 -66z" fill="url(#ruby)" stroke="#ffe5aa" stroke-width="13"/>
+<path d="M182 805 Q512 740 842 805 L868 909 Q512 975 156 909Z" fill="url(#ruby)" stroke="url(#gold)" stroke-width="25"/>
+<text x="512" y="866" font-family="serif" font-size="61" font-weight="bold" text-anchor="middle" fill="#fff0bb" stroke="#6d2d14" stroke-width="2">OFFICIAL MANAGER</text>
+<g><use href="#star" x="185" y="365" transform="scale(.7)"><animate attributeName="opacity" values=".2;1;.2" dur="1.2s" repeatCount="indefinite"/></use><use href="#star" transform="translate(825 360) scale(.95)"><animate attributeName="opacity" values="1;.2;1" dur="1.6s" repeatCount="indefinite"/></use><use href="#star" transform="translate(742 138) scale(.6)"><animate attributeName="opacity" values=".2;1;.2" dur="1.9s" repeatCount="indefinite"/></use></g>
+</svg>

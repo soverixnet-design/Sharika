@@ -1,0 +1,37 @@
+name: Sharika Official Frame and CP Gift UI QA
+on:
+  push:
+    branches:
+      - feature/sharika-manager-frame-cp-gift-import-20261119
+  pull_request:
+    paths:
+      - 'android-staging/staging-connection.js'
+      - 'android-staging/app/src/main/assets/sharika-premium/**'
+      - 'scripts/verify-manager-cp-assets.mjs'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify JavaScript syntax
+        run: node --check android-staging/staging-connection.js
+      - name: Verify role frame and gift assets
+        run: node scripts/verify-manager-cp-assets.mjs
+      - name: Validate SVG document syntax
+        run: |
+          python3 - <<'PY'
+          import pathlib,xml.etree.ElementTree as ET
+          root=pathlib.Path('android-staging/app/src/main/assets/sharika-premium')
+          names=['official-manager-royal-gold-v1.svg','bd-admin-blue-diamond-v1.svg',
+                 'official-host-rose-gold-v1.svg','cp-royal-rose.svg',
+                 'cp-diamond-heart.svg','cp-eternal-promise.svg',
+                 'cp-rose-promise.svg','cp-royal-wedding.svg',
+                 'friendship-blue-promise.svg','friendship-forever-friends.svg']
+          for name in names: ET.parse(root/name)
+          print('PASS: SVG XML validation')
+          PY

@@ -762,6 +762,10 @@
   });
   const roleNumbers=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,63,64];
   SOVERA_FRAMES.push(
+    // Official-only staged frame: local animated SVG. Accepted WebP master is kept in the asset pack.
+    {id:'official-manager-royal-gold-v1',name:'Official Manager Royal Gold',source:'sharika',group:'role',art:'official-manager-royal-gold-v1.svg'},
+    {id:'bd-admin-blue-diamond-v1',name:'BD Admin Blue Diamond',source:'sharika',group:'role',art:'bd-admin-blue-diamond-v1.svg'},
+    {id:'official-host-rose-gold-v1',name:'Official Host Rose Gold',source:'sharika',group:'role',art:'official-host-rose-gold-v1.svg'},
     premiumItem('vip5-animated','VIP5 Royal Wings','vip'),
     ...premiumRange('svip-frame',8,'SVIP Animated Frame','svip'),
     ...[2,3,4,5].map(level=>premiumItem('vip-royal-frame-'+String(level).padStart(2,'0'),
@@ -1034,7 +1038,10 @@
     const image=cosmeticMedia(item);
     if(!image)return '';
     const url=sellerEscape(image);
-    if(seatImage)return '<img class="'+classes+'" alt="" aria-hidden="true" src="'+url+'">';
+    // Embedded SVG SMIL must be an image node even on profile surfaces:
+    // CSS background-image can disable timelines on some Android WebViews.
+    if(seatImage||/\.svg(?:[?#]|$)/i.test(image))
+      return '<img class="'+classes+'" alt="" aria-hidden="true" src="'+url+'">';
     return '<i class="'+classes+'" aria-hidden="true" style="background-image:url(&quot;'+url+'&quot;)"></i>';
 
   }
@@ -1825,6 +1832,9 @@
   ];
   const ROYAL_KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
   const OFFICIAL_ROLE_FRAMES=new Set([
+    'frame_style:official-manager-royal-gold-v1',
+    'frame_style:bd-admin-blue-diamond-v1',
+    'frame_style:official-host-rose-gold-v1',
     'frame_style:cs-royal-wings','frame_style:coin-seller-royal'
   ]);
   let royalMarket=null,royalMarketRequest=0,royalMarketBusy=false;
@@ -12334,6 +12344,7 @@
       '.sh-bond-sheet .sh-bond-section{margin:9px 0}.sh-bond-input{box-sizing:border-box;width:100%;font-size:16px;padding:12px;color:#fff;background:#190d32;border-radius:13px;border:1px solid #f4b5d7}',
       '.sh-bond-gift{display:flex;align-items:center;justify-content:space-between;gap:9px;margin:9px 0;padding:12px;border-radius:16px;border:1px solid #ffd2b96b;background:#fff1}',
       '.sh-bond-gift strong{font-size:13px}.sh-bond-gift small{font-size:11px;color:#ffdfa8}',
+      '.sh-bond-gift-icon{width:52px;height:52px;flex:0 0 52px;object-fit:contain;image-rendering:auto;pointer-events:none}',
       '.sh-bond-invite{margin:9px 0;padding:11px;border-radius:15px;border:1px solid #ffd6af77;background:#fff1;font-size:12px}',
       '.sh-bond-invite .sh-bond-actions{margin-top:8px}',
       '.sh-bond-rankrow{display:flex;align-items:center;justify-content:space-between;gap:7px;border-radius:19px;padding:11px 8px;margin:11px 0;background:linear-gradient(125deg,#4b2049,#292359);border:1px solid #ffdc9d91;box-shadow:0 6px 15px #09021d99}',
@@ -12431,6 +12442,26 @@
         if(!allowed||!gifts.length){giftList.textContent='This gift type is disabled by the admin.';return;}
         for(const gift of gifts){
           const card=document.createElement('div');card.className='sh-bond-gift';
+          // Original generic gift icon imported from the Sura Chat client.
+          // Sura has no actual CP gift media/catalog rows to copy; this changes presentation only.
+          const icon=document.createElement('img');icon.className='sh-bond-gift-icon';
+          // Explicitly map server-published gifts to verified local artwork.
+          // Older Sura Chat contains no published CP-gift media rows: the
+          // imported Sura gift icon remains the generic fallback only.
+          const giftArt={
+            'cp:Royal Rose':'cp-royal-rose.svg',
+            'cp:Diamond Heart':'cp-diamond-heart.svg',
+            'cp:Eternal Promise':'cp-eternal-promise.svg',
+            'cp:Rose Promise':'cp-rose-promise.svg',
+            'cp:Royal Wedding':'cp-royal-wedding.svg',
+            'friendship:Blue Promise':'friendship-blue-promise.svg',
+            'friendship:Forever Friends':'friendship-forever-friends.svg'
+          };
+          icon.src='./sharika-premium/'+
+            (giftArt[String(gift.type)+':'+String(gift.name)]||'sura-gift-icon.png');
+          icon.alt='';icon.addEventListener('error',()=>{
+            if(!icon.src.endsWith('/sura-gift-icon.png'))icon.src='./sharika-premium/sura-gift-icon.png';
+          },{once:true});
           const description=document.createElement('div');
           const title=document.createElement('strong');title.textContent=gift.emoji+' '+gift.name;
           const price=document.createElement('small');price.style.display='block';
@@ -12478,7 +12509,7 @@
               toast(hints[reason]||'Invitation not confirmed: '+reason);send.disabled=false;
             }
           };
-          card.append(description,send);giftList.appendChild(card);
+          card.append(icon,description,send);giftList.appendChild(card);
         }
       };
       for(const item of [{id:'cp',label:'💝 CP Gifts'},{id:'friendship',label:'🤝 Friendship'}]){
