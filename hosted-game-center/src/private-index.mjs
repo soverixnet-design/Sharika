@@ -3,6 +3,7 @@
 import oldGameSite from './index.mjs';
 import {handlePrivateCenter,centerPublished} from '../../cloudflare/src/private-center.mjs';
 import {readGiftRankings} from '../../cloudflare/src/admin.mjs';
+import {handleEventApp} from '../../cloudflare/src/events.mjs';
 const hdr={
   'cache-control':'private, no-store',
   'x-content-type-options':'nosniff',
@@ -108,6 +109,40 @@ export default {async fetch(req,env){
       headers:{...hdr,...cors,'content-type':'application/json; charset=utf-8'}}),
     fail:(error,status,cors)=>new Response(JSON.stringify({error}),{status,
       headers:{...hdr,...cors,'content-type':'application/json; charset=utf-8'}}),cors:{}});
+ }
+ const eventEndpoint=/^\/api\/center\/events\/([1-9][0-9]{0,10})\/(ranking|banner)$/.exec(path);
+ if(eventEndpoint){
+  if(req.method!=='GET'&&req.method!=='HEAD')return json({error:'method_not_allowed'},405);
+  const eid=Number(eventEndpoint[1]);
+  if(!Number.isSafeInteger(eid)||!await centerPublished(env.DB,'module','events')||
+    !await centerPublished(env.DB,'event','event:'+eid))
+    return json({error:'event_hidden'},404);
+  // Event-level status and time bounds are always independently enforced.
+  const row=await env.DB.prepare("SELECT id,starts_at,ends_at,banner_id,status FROM sharika_events WHERE id=?")
+    .bind(eid).first();
+  const now=new Date().toISOString();
+  if(!row||row.status!=='published'||row.ends_at<=now)return json({error:'event_unavailable'},404);
+  if(eventEndpoint[2]==='ranking'){
+   if(req.method==='HEAD')return new Response(null,{status:405,headers:hdr});
+   return handleEventApp({request:req,env,uid,path:'/api/v1/events/'+eid+'/ranking',cors:{},
+    reply:(data,status=200)=>json(data,status),fail:(error,status=400)=>json({error},status)});
+  }
+  if(!Number.isSafeInteger(Number(row.banner_id))||Number(row.banner_id)<1)
+    return json({error:'event_banner_unavailable'},404);
+  const banner=await env.DB.prepare("SELECT image_base64,mime,image_bytes FROM sharika_banner_images "+
+   "WHERE banner_id=? AND image_bytes>0").bind(Number(row.banner_id)).first();
+  if(!banner||banner.mime!=='image/jpeg'||banner.image_bytes>360000)
+    return json({error:'event_banner_unavailable'},404);
+  if(req.method==='HEAD')return new Response(null,{status:200,headers:{
+   ...hdr,'content-type':'image/jpeg'}});
+  const decoded=atob(banner.image_base64);
+  if(decoded.length!==Number(banner.image_bytes))
+    return json({error:'event_banner_corrupt'},503);
+  const bytes=Uint8Array.from(decoded,c=>c.charCodeAt(0));
+  return new Response(bytes,{status:200,headers:{
+   ...hdr,'content-type':'image/jpeg','content-security-policy':"default-src 'none'",
+   'x-robots-tag':'noindex, nofollow, noarchive'
+  }});
  }
  if(path==='/api/center/rankings'&&req.method==='GET'){
   const kind=url.searchParams.get('kind')||'rich';
