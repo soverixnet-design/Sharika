@@ -1,3 +1,4 @@
+import {settleTapBatch} from './round-tap-batch.mjs';
 import {readBoundedJson} from './request-body.mjs';
 
 // Greedy Wheel: server-authoritative virtual-coin game for Sharika staging.
@@ -10,7 +11,7 @@ const WEIGHTS=[9694,6396,3758,1999,19388,19388,19388,19388,400,200];
 const ROUND_MS=41000,BET_MS=30000,SPIN_MS=6000;
 const WINNER_BANNER_MIN=500000;
 const CHIPS=[1000,10000,100000,1000000,10000000];
-const MAX_ROUND_STAKE=1000000000,MAX_BET=100000000;
+const MAX_ROUND_STAKE=Number.MAX_SAFE_INTEGER,MAX_BET=100000000;
 const REQUEST_ID=/^[A-Za-z0-9:_-]{12,80}$/;
 const enc=new TextEncoder();
 function hex(bytes){return [...bytes].map(x=>x.toString(16).padStart(2,'0')).join('');}
@@ -161,6 +162,9 @@ export async function handleGreedyRequest({request,db,uid,action,reply,fail,cors
   }
   if(action!=='bet'||request.method!=='POST')return fail('method_not_allowed',405,cors);
   let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
+  if(b?.taps)return settleTapBatch({db,uid,game:'greedy-wheel',body:b,
+    currentRound:roundNumber(Date.now()),ensure:()=>ensureRound(db,b.round_no),
+    validAmount:a=>Number.isSafeInteger(a)&&a>0&&a<=MAX_BET,maxPick:7,items:ITEMS,reply,fail,cors});
   if(!b||typeof b!=='object'||Array.isArray(b)||
     !Number.isSafeInteger(b.round)||b.round<0||!ITEMS.includes(b.itemId)||
     !Number.isSafeInteger(b.amount)||b.amount<1||b.amount>MAX_BET||

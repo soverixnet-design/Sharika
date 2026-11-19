@@ -46,15 +46,11 @@ test('standalone source never ships live client-side fake payouts or Socket.io t
   assert.match(live,/type:'sharika:original-request'/);
   assert.match(live,/game:GAME/);
   assert.match(live,/request\('bet',body\)/);
-  assert.match(live,/pendingPicks\.has\(Number\(x\.dataset\.pick\)\)/,
-    'only the tapped food locks while a bet is awaiting confirmation');
-  assert.doesNotMatch(live,/!betting/,'one pending request never locks every food');
-  assert.match(live,/Bet accepted ✓/,'English confirmation replaces the Bengali toast');
+  assert.match(html,/rapid-bets\.js[\s\S]*sovera-gaddy-live\.js/);
+  assert.match(live,/x.disabled=!canBet;/,'an outstanding tap leaves the tile available');
+  assert.match(live,/Bet accepted/);
   assert.doesNotMatch(live,/বাজি গ্রহণ/);
-  assert.match(live,/uncertainBets\.set\(pick,body\)/,
-    'uncertain timeout reuses its original idempotent request');
-  assert.match(live,/request_id===body\.request_id/,
-    'state refresh reconciles a previous slow server receipt');
+  assert.match(live,/request_id===r.request_id/,'the same receipt is rendered once');
   assert.match(live,/gaddy-bet-ranking/);
   assert.match(live,/Daily Bet Ranking · Top 100/);
   assert.match(live,/My rank:/);

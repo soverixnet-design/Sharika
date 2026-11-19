@@ -11,7 +11,7 @@ function node(tag,cls,value){const n=document.createElement(tag);if(cls)n.classN
 function bettingOpen(){return state&&state.round.status==='open'&&Date.now()+offset<state.round.closesAt;}
 function updateControls(){
  if(!state)return;
- document.querySelectorAll('.fruit').forEach(b=>b.disabled=busy||!!pending||!bettingOpen()||state.balance<chip);
+ document.querySelectorAll('.fruit').forEach(b=>b.disabled=(cfg.mode==='demo'&&(busy||!!pending))||!bettingOpen()||state.balance<chip);
  document.querySelectorAll('[data-amount]').forEach(b=>{b.classList.toggle('selected',Number(b.dataset.amount)===chip);b.disabled=Number(b.dataset.amount)>state.balance;});
  $('retry').hidden=!pending;$('retry').disabled=busy;
 }
@@ -36,7 +36,24 @@ function apply(s){
 }
 function tick(){if(!state)return;const remaining=Math.max(0,Math.ceil((state.round.closesAt-Date.now()-offset)/1000));text('clock',remaining);$('clock').classList.toggle('urgent',remaining>0&&remaining<=5);text('phase',bettingOpen()?'BETTING OPEN':state.round.status==='settled'?'ROUND COMPLETE':'WAITING FOR RESULT');text('totalbet',fmt(state.bets.reduce((a,b)=>a+b.amount,0)));updateControls();}
 function selectChip(amount){if(!Number.isSafeInteger(amount)||amount<1)return notify('Enter a positive whole-number amount.');if(state&&(amount<state.limits.minBet||amount>state.limits.maxBet))return notify('Amount is outside this game’s bet limits.');chip=amount;updateControls();if(state)renderWheel();notify('Selected chip: '+fmt(chip));}
+const liveQueue=createRoundTapQueue({
+ send:body=>api.placeBet(body),
+ openRound:n=>bettingOpen()&&state.round.id==='fruit-royale:'+n,
+ onStatus:n=>{if(n)notify(n+' pending');}
+});
 async function bet(fruitId){
+ if(cfg.mode!=='demo'){
+  if(!bettingOpen())return;
+  const round=Number(state.round.id.split(':')[1]),amount=chip;
+  try{
+   const r=await liveQueue(round,state.fruits.findIndex(f=>f.id===fruitId),amount,state.balance);
+   state.balance=r.coins;
+   if(state.round.id==='fruit-royale:'+round&&!state.bets.some(b=>b.id===r.bet_id))
+    state.bets.push({id:r.bet_id,requestId:r.request_id,roundId:state.round.id,fruitId,amount});
+   text('balance',fmt(state.balance));renderWheel();
+  }catch(error){report(error);}
+  return;
+ }
  if(busy||pending||!bettingOpen())return;
  pending={requestId:crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join(''),roundId:state.round.id,fruitId,amount:chip};await submit();
 }

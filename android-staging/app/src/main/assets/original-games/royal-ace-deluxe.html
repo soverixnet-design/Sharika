@@ -310,13 +310,20 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       }
     }
   };
-  spin=async function(buy=false){
+  const spinTaps=[];
+  function manualSpin(){
+    if(!ready)return;
+    if(!busy&&!waiting)return spin(false);
+    spinTaps.push({amount:activeBets[bi],free:freeRemaining>0});
+    $('st').textContent=spinTaps.length+' spins pending';
+  }
+  spin=async function(buy=false,amount=activeBets[bi]){
     if(busy||waiting)return;
     if(!ready){showError('Connect to Sharika server before playing.');return;}
-    const amount=activeBets[bi];
+
     const cost=buy?amount*10:freeRemaining?0:amount;
-    if(bal<cost){auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
-    busy=true;waiting=true;spinner.disabled=true;
+    if(bal<cost){spinTaps.length=0;auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
+    busy=true;waiting=true;
     const requestId=id();
     let completed=false;
     $('st').textContent='Verifying bet with Sharika server…';
@@ -344,7 +351,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       if(r.win>0)await bigWin(r.win);
       completed=true;
     }catch(err){
-      auto=false;$('au').classList.remove('on');
+      spinTaps.length=0;auto=false;$('au').classList.remove('on');
       const code=String(err?.message||'Connection error');
       const declined=/^(?:spin_rate_limited|not_enough_balance|free_spins_active|free_spin_bet_locked|invalid_bet|request_id_conflict)$/.test(code);
       if(declined){
@@ -361,9 +368,14 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
         showError('Spin not confirmed. Reconnect and check your balance: '+code);
       }
     }finally{busy=false;waiting=false;spinner.disabled=!ready;}
+    while(completed&&ready&&spinTaps.length){
+      const next=spinTaps.shift();
+      if(next.free&&!freeRemaining)continue;
+      return spin(false,freeRemaining?activeBets[bi]:next.amount);
+    }
     if(completed&&ready&&(auto||freeRemaining>0))setTimeout(()=>spin(false),750);
   };
-  $('sp').onclick=()=>spin(false);
+  $('sp').onclick=manualSpin;
   $('bb').onclick=()=>{if(!ready||busy)return;
     if(confirm('Buy 10 Free Spins for '+fmt(bet*10)+' virtual coins?'))spin(true);};
   $('pl').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=(bi+1)%activeBets.length;bet=activeBets[bi];upd();};
