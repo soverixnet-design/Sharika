@@ -42,7 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * only; JWTs and app permissions cannot be accessed from the hosted page.
  */
 public final class SharikaGameCenterActivity extends Activity {
-    private static final String SITE_ORIGIN = "https://sharika-games-web-staging.soverixnet.workers.dev";
+    private static final String SITE_ORIGIN = "https://sharika-private-center-staging.soverixnet.workers.dev";
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final AtomicInteger outstanding = new AtomicInteger();
     private WebView web;
@@ -120,7 +120,7 @@ public final class SharikaGameCenterActivity extends Activity {
         // The Android system Back gesture exits this Activity, while the
         // small web close control returns from a game to the catalog.
         setContentView(layout);
-        web.loadUrl(SITE_ORIGIN+"/?surface=app");
+        openAuthenticatedPrivateCenter();
     }
 
     static boolean allowedGameRoute(String method,String path) {
@@ -128,6 +128,7 @@ public final class SharikaGameCenterActivity extends Activity {
         if (path == null || path.length()>240 || path.contains("%") || path.contains("#")
             || path.contains("..") || path.contains("//")) return false;
         if ("GET".equals(method) && "/api/v1/game-catalog".equals(path)) return true;
+        if ("GET".equals(method) && "/api/v1/center/manifest".equals(path)) return true;
         // A single authenticated read returns the same profile as the main
         // Sharika UI. No user ID can be provided or impersonated by the page.
         if ("GET".equals(method) && "/api/v1/me".equals(path)) return true;
@@ -146,6 +147,64 @@ public final class SharikaGameCenterActivity extends Activity {
             return true;
         return "POST".equals(method) && path.matches(
             "^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit|food-deluxe|greedy-classic|fruit-royale)/bet$");
+    }
+
+    /** Obtain a one-use site ticket from the already-authenticated Sharika Worker.
+     * Never hand Firebase tokens to hosted JS or put them into a URL.
+     */
+    private void openAuthenticatedPrivateCenter() {
+        FirebaseUser signedIn = FirebaseAuth.getInstance().getCurrentUser();
+        if (signedIn == null) { finish(); return; }
+        signedIn.getIdToken(false).addOnCompleteListener(this, task -> {
+            if (!task.isSuccessful() || task.getResult() == null ||
+                task.getResult().getToken() == null) {
+                showPrivateCenterError("Session unavailable. Sign in again.");
+                return;
+            }
+            String idToken=task.getResult().getToken();
+            io.execute(() -> {
+                HttpURLConnection connection=null;
+                try {
+                    connection=(HttpURLConnection)new URL(BuildConfig.SHARIKA_API_ORIGIN+
+                        "/api/v1/center/launch-ticket").openConnection();
+                    connection.setRequestMethod("POST");
+                    connection.setConnectTimeout(12000);
+                    connection.setReadTimeout(12000);
+                    connection.setInstanceFollowRedirects(false);
+                    connection.setDoOutput(true);
+                    connection.setRequestProperty("Authorization","Bearer "+idToken);
+                    connection.setRequestProperty("Content-Type","application/json");
+                    try(OutputStream stream=connection.getOutputStream()) {
+                        stream.write("{}".getBytes(StandardCharsets.UTF_8));
+                    }
+                    if(connection.getResponseCode()!=201)throw new IllegalStateException("launch_unavailable");
+                    JSONObject reply;
+                    try(InputStream in=connection.getInputStream()){
+                        reply=new JSONObject(readLimited(in));
+                    }
+                    String ticket=reply.optString("ticket","");
+                    if(!ticket.matches("[A-Za-z0-9_-]{43}"))
+                        throw new IllegalStateException("launch_ticket_invalid");
+                    runOnUiThread(() -> {
+                        if(web!=null&&!isFinishing()&&!isDestroyed())
+                            web.loadUrl(SITE_ORIGIN+"/session?ticket="+ticket);
+                    });
+                } catch (Exception e) {
+                    showPrivateCenterError("Private Game Center unavailable.");
+                } finally {if(connection!=null)connection.disconnect();}
+            });
+        });
+    }
+
+    private void showPrivateCenterError(String detail){
+        runOnUiThread(() -> {
+            if(isFinishing()||isDestroyed())return;
+            TextView message=new TextView(this);
+            message.setText(detail);
+            message.setTextColor(Color.WHITE);
+            message.setGravity(Gravity.CENTER);
+            setContentView(message);
+        });
     }
 
     private void requestGameApi(String id,String method,String path,JSONObject body,JavaScriptReplyProxy reply) {
