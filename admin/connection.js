@@ -16,6 +16,11 @@
     support_reply:'Support inbox and reply',coin_recharge:'Credit user coins'
   };
   const NAV_ALL=(window.NAV||[]).slice();
+  if(!NAV_ALL.some(item=>item[0]==='privateCenter')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='games');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['privateCenter','🔐','Private Center · Publish / Hide']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='playTesters')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='users');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -4604,8 +4609,123 @@
     }
   };
 
+  // The owner's existing standalone Admin Panel is the SINGLE control surface.
+  // It calls the same Firebase-protected staging Worker, never the game website.
+  P.privateCenter=async function(){
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Private Center','Only verified Super Admin may publish games or events.');
+      return;
+    }
+    root.innerHTML=card('Private Center','Loading real publication permissions from Sharika staging…');
+    let state;
+    try{state=await api('GET','private-center/state');}
+    catch(e){root.innerHTML=card('Private Center unavailable',e.message);return;}
+    root.replaceChildren();
+    const notice=document.createElement('section');notice.className='card';
+    notice.innerHTML='<h3>🔐 Sharika Private Center</h3>'+
+      '<p class="n">Users sign in ONCE through Sharika. Published games appear automatically; hidden items cannot be launched, even with a direct link. Existing games, account balances and accepted bets are preserved.</p>'+
+      '<p class="n">This is your existing Admin Panel, not another admin website. Win Rate and RTP below save as DRAFTS ONLY; they never secretly change a running round.</p>';
+    root.appendChild(notice);
+    const current=new Map((state.items||[]).map(item=>[item.kind+':'+item.id,item]));
+    function renderSection(kind,label,list){
+      const panel=document.createElement('section');panel.className='card';
+      const title=document.createElement('h3');title.textContent=label;panel.appendChild(title);
+      const info=document.createElement('p');info.className='n';
+      info.textContent='Published means visible to signed-in members. Hidden means unavailable in the app and private website.';
+      panel.appendChild(info);
+      const message=document.createElement('p');message.className='n';
+      message.setAttribute('role','status');
+      for(const item of list){
+        const row=document.createElement('div');row.className='row';
+        row.style.cssText='display:flex;gap:9px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffffff25';
+        const info=document.createElement('span');info.textContent=item.title+' · '+item.id;
+        info.style.flex='1';
+        const checkbox=document.createElement('input');checkbox.type='checkbox';
+        checkbox.checked=!!item.published;
+        checkbox.setAttribute('aria-label','Show '+item.title+' in Sharika app');
+        const save=document.createElement('button');save.type='button';save.className='btn s';
+        save.textContent='Save';
+        save.onclick=async()=>{
+          const wanted=checkbox.checked;
+          if(wanted===!!item.published){message.textContent='No change for '+item.title;return;}
+          if(!window.confirm((wanted?'Publish ':'Hide ')+item.title+
+              ' for Sharika users? This controls the private website and server APIs.')){
+            checkbox.checked=!!item.published;return;
+          }
+          save.disabled=true;message.textContent='Saving to verified Cloudflare staging…';
+          try{
+            await api('PATCH','private-center/visibility',{
+              kind:item.kind,id:item.id,published:wanted
+            });
+            item.published=wanted;
+            current.set(item.kind+':'+item.id,item);
+            message.textContent=item.title+(wanted?' published':' hidden')+' ✓';
+          }catch(error){
+            checkbox.checked=!!item.published;
+            message.textContent='Change rejected: '+error.message;
+          }finally{save.disabled=false;}
+        };
+        row.append(info,checkbox,save);panel.append(row);
+      }
+      if(!list.length){const empty=document.createElement('p');empty.className='n';
+        empty.textContent='No items configured.';panel.append(empty);}
+      panel.append(message);root.append(panel);
+    }
+    for(const [kind,title] of [['game','🎮 Game Visibility'],['ranking','🏆 Ranking Visibility'],
+      ['module','✨ Events, Wallet, Gifts & Assets']]){
+      renderSection(kind,title,(state.items||[]).filter(x=>x.kind===kind));
+    }
+    // Event-specific publish controls are independent of the event draft/published
+    // lifecycle. An event is visible only when BOTH conditions allow it.
+    const events=(state.events||[]).map(x=>({
+      id:'event:'+x.id,kind:'event',title:x.title+' · '+x.status,
+      published:!!current.get('event:event:'+x.id)?.published
+    }));
+    renderSection('event','🎊 Individual Event Visibility',events);
+    const panel=document.createElement('section');panel.className='card';
+    panel.innerHTML='<h3>🎲 Game Win Probability & RTP Proposals</h3>'+
+      '<p class="n">Saving a draft does NOT apply it to live bets or previously accepted rounds. Each engine needs a reviewed rule version, accurate player disclosures and payout verification before activation.</p>'+
+      '<label>Game<select id="sh-pc-odds-game" class="field"></select></label>'+
+      '<div class="row">'+
+      '<label>Win probability (%)<input id="sh-pc-odds-win" class="field" type="number" min="0" max="100" step="0.01" value="35"></label>'+
+      '<label>Target RTP (%)<input id="sh-pc-odds-rtp" class="field" type="number" min="0" max="100" step="0.01" value="90"></label>'+
+      '</div><button type="button" class="btn s" id="sh-pc-odds-save">Save Proposed Settings</button>'+
+      '<p class="n" id="sh-pc-odds-message" role="status"></p>';
+    root.append(panel);
+    const select=byId('sh-pc-odds-game');
+    for(const item of (state.items||[]).filter(x=>x.kind==='game')){
+      const opt=document.createElement('option');opt.value=item.id;
+      opt.textContent=item.title;select.append(opt);
+    }
+    const drafts=new Map((state.odds_drafts||[]).map(d=>[d.game_id,d]));
+    function showSaved(){
+      const draft=drafts.get(select.value);
+      byId('sh-pc-odds-win').value=draft?String(draft.win_rate_basis_points/100):'35';
+      byId('sh-pc-odds-rtp').value=draft?String(draft.target_rtp_basis_points/100):'90';
+    }
+    select.onchange=showSaved;showSaved();
+    byId('sh-pc-odds-save').onclick=async()=>{
+      const w=Number(byId('sh-pc-odds-win').value);
+      const r=Number(byId('sh-pc-odds-rtp').value);
+      const message=byId('sh-pc-odds-message');
+      if(!Number.isFinite(w)||!Number.isFinite(r)||w<0||r<0||w>100||r>100){
+        message.textContent='Win rate and RTP must be between 0 and 100 percent.';return;
+      }
+      const button=byId('sh-pc-odds-save');button.disabled=true;
+      try{
+        const body={game_id:select.value,win_rate_basis_points:Math.round(w*100),
+          target_rtp_basis_points:Math.round(r*100),notes:'Awaiting verified engine integration'};
+        const result=await api('PATCH','private-center/odds-draft',body);
+        drafts.set(select.value,body);
+        message.textContent=result.notice||'Draft saved. Not applied to running games.';
+      }catch(e){message.textContent='Not saved: '+e.message;}
+      finally{button.disabled=false;}
+    };
+  };
+
   const verifiedPages=new Set([
-    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','luckyBox','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
+    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','luckyBox','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','privateCenter','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];
