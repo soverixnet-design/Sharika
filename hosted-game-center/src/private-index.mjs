@@ -2,6 +2,7 @@
 // game website until the authenticated Android launch flow is tested.
 import oldGameSite from './index.mjs';
 import {handlePrivateCenter,centerPublished} from '../../cloudflare/src/private-center.mjs';
+import {readGiftRankings} from '../../cloudflare/src/admin.mjs';
 const hdr={
   'cache-control':'private, no-store',
   'x-content-type-options':'nosniff',
@@ -99,6 +100,33 @@ export default {async fetch(req,env){
       headers:{...hdr,...cors,'content-type':'application/json; charset=utf-8'}}),
     fail:(error,status,cors)=>new Response(JSON.stringify({error}),{status,
       headers:{...hdr,...cors,'content-type':'application/json; charset=utf-8'}}),cors:{}});
+ }
+ if(path==='/api/center/rankings'&&req.method==='GET'){
+  const kind=url.searchParams.get('kind')||'rich';
+  const period=url.searchParams.get('period')||'weekly';
+  if(!await centerPublished(env.DB,'ranking',kind))
+    return json({error:'ranking_hidden'},403);
+  const supported=['rich','charm','room','games','recharge','noble','lucky'];
+  if(!supported.includes(kind))return json({error:'ranking_source_not_available',leaders:[]},404);
+  const output=await readGiftRankings(env.DB,period,kind,0);
+  return output?json(output):json({error:'invalid_ranking_period'},400);
+ }
+ if(path==='/api/center/wallet'&&req.method==='GET'){
+  if(!await centerPublished(env.DB,'module','wallet'))return json({error:'wallet_hidden'},403);
+  const account=await env.DB.prepare("SELECT public_no,name,coins FROM sharika_users WHERE auth_uid=? AND status='active'")
+    .bind(uid).first();
+  if(!account)return json({error:'account_unavailable'},404);
+  const statement=await env.DB.prepare('SELECT currency,delta,balance_after,reason,created_at '+
+    'FROM sharika_wallet_ledger WHERE auth_uid=? ORDER BY id DESC LIMIT 15')
+    .bind(uid).all();
+  return json({wallet:'main',virtual_only:true,coins:Number(account.coins)||0,
+    ledger:statement.results||[]});
+ }
+ if(path==='/api/center/gifts'&&req.method==='GET'){
+  if(!await centerPublished(env.DB,'module','gifts'))return json({error:'gifts_hidden'},403);
+  const cp=await env.DB.prepare('SELECT type,name,emoji,price_coins FROM sharika_bond_gifts '+
+   'WHERE active=1 ORDER BY type,sort_order,id LIMIT 60').all();
+  return json({gifts:cp.results||[],source:'verified_sharika_bond_catalog',read_only:true});
  }
  if(path==='/api/catalog'){
   if(req.method!=='GET')return json({error:'method_not_allowed'},405);
