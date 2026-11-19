@@ -85,7 +85,9 @@ test('game views are clean: transparent icon cards, no duplicate chrome, 65% nat
 });
 
 test('Royal Emerald app surfaces are local Android chrome, not a full website',()=>{
- assert.ok(sheet.includes('view=room&surface=app'));
+ assert.ok(sheet.includes('/session?ticket='));
+ assert.ok(sheet.includes('&view=room'));
+ assert.ok(sheet.includes('sharika-private-center-staging.soverixnet.workers.dev'));
  assert.ok(secure.includes('?surface=app'));
  assert.ok(secure.includes('sharika-app'));
  assert.ok(secure.includes('request.isForMainFrame()'));
