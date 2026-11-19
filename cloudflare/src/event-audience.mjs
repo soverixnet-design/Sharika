@@ -24,3 +24,13 @@ export async function readMemberCountry(db,uid){
    .bind(uid).first();
  return normalizedMemberCountry(member?.country);
 }
+
+// Server-side event leaderboard filter. Column references are deliberately
+// restricted to the three static SQL aliases used by event ranking queries.
+export function eventAudienceSqlExpression(alias){
+ if(!['u','a','z'].includes(alias))throw Error('invalid_member_country_sql_alias');
+ const cases=Object.entries(COUNTRY_ALIASES).map(([raw,code])=>
+  "WHEN '"+raw.replaceAll("'","''")+"' THEN '"+code+"'").join(' ');
+ return 'CASE UPPER(TRIM('+alias+'.country)) '+cases+
+   ' ELSE UPPER(TRIM('+alias+'.country)) END';
+}
