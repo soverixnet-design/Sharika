@@ -48,7 +48,8 @@ async function settledConfiguredEventRanking(db,event,limit=100){
    "JOIN sharika_users u ON u.auth_uid=l.auth_uid AND u.status='active' "+
    "WHERE l.currency='coins' AND l.delta>0 AND "+
    "l.reason IN ('game_win','original_game_win','greedy_wheel_win',"+
-   "'gaddy_game_win','fruit_royale_win') "+
+   "'gaddy_game_win','fruit_royale_win','cleopatra_win','food_deluxe_win',"+
+   "'greedy_classic_win','royal_ace_win','royal_slots_win') "+
    'AND l.created_at>=? AND l.created_at<? '+
    'GROUP BY l.auth_uid ORDER BY points DESC,u.public_no ASC LIMIT '+(limit===3?3:100)
   ).bind(stamp(start),stamp(end)).all();
