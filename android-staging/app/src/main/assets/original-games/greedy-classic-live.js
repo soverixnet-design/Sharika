@@ -129,7 +129,7 @@ winAmount.className='winner-coins';
 winBanner.append(winHeading,winName,winAmount);
 $('#app').append(winBanner);
 let winnerBannerTimer=0,lastLeaderCheck=0,leaderCheckBusy=false,
- bannerCheckBusy=false,lastShownBannerKey='',lastGlobalBannerId=0;
+ bannerCheckBusy=false,lastShownBannerKey='',lastGlobalBannerId=0,globalWinnersInitialized=false;
 function displayVerifiedWinner({win,userId,name,round,heading='BIG WINNER',id}){
  const amount=Number(win);
  if(!Number.isSafeInteger(amount)||amount<=0)return;
@@ -165,11 +165,11 @@ async function refreshVerifiedGlobalWinners(){
   const result=await request('winners');
   const first=Array.isArray(result?.winners)?result.winners[0]:null;
   if(first&&Number.isSafeInteger(Number(first.id))&&Number(first.id)>lastGlobalBannerId){
-   const initial=lastGlobalBannerId===0;
    lastGlobalBannerId=Number(first.id);
    // Show fresh verified broadcasts, not stale announcements on initial entry.
-   if(!initial)displayVerifiedWinner({...first,heading:'GLOBAL BIG WIN'});
+   if(globalWinnersInitialized)displayVerifiedWinner({...first,heading:'GLOBAL BIG WIN'});
   }
+  globalWinnersInitialized=true;
  }catch{/* No fake winnings during disconnection. */}
  finally{bannerCheckBusy=false}
 }
