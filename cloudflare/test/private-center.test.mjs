@@ -119,3 +119,20 @@ test('unimplemented generic Event ranking may not be published with fabricated w
  assert.equal((await result.json()).error,'ranking_source_not_ready');
  assert.equal(db.events.length,0);
 });
+
+
+test('public manifest advertises only actual hosted game assets, never a missing legacy engine',async()=>{
+ const db={prepare(sql){
+  return {bind(){return this;},async all(){
+   if(sql.includes('JOIN sharika_game_catalog'))return {results:[
+    {id:'food-wheel',kind:'game',title:'Food Wheel',sort_order:1},
+    {id:'royal-ace',kind:'game',title:'Royal Ace',sort_order:2}
+   ]};
+   return {results:[]};
+  }};
+ }};
+ const res=await invoke({path:'/api/v1/center/manifest',db});
+ assert.equal(res.status,200);
+ const data=await res.json();
+ assert.deepEqual(data.games.map(g=>g.id),['royal-ace']);
+});
