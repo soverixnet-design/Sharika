@@ -484,6 +484,14 @@
    ]);
    if(!response.ok)throw Error('Catalog unavailable');
    const data=await response.json();games=data.games||[];
+   // The website controls which separate sections are visible. Never add
+   // unavailable Ranking/Event/Wallet links to the user's navigation.
+   const sectionResponse=await fetch('/api/center/manifest',{cache:'no-store',credentials:'same-origin'});
+   if(!sectionResponse.ok)throw Error('Private Center session expired');
+   const sections=await sectionResponse.json();
+   const centerLink=$('private-center-link');
+   if(centerLink)centerLink.hidden=!((sections.rankings||[]).length||
+     (sections.events||[]).length||(sections.modules||[]).length);
    if(!bridge){
     status.textContent='Free browser demo · virtual coins only';
     browserNote.hidden=true;
