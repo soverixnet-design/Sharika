@@ -1038,7 +1038,10 @@
     const image=cosmeticMedia(item);
     if(!image)return '';
     const url=sellerEscape(image);
-    if(seatImage)return '<img class="'+classes+'" alt="" aria-hidden="true" src="'+url+'">';
+    // Embedded SVG SMIL must be an image node even on profile surfaces:
+    // CSS background-image can disable timelines on some Android WebViews.
+    if(seatImage||/\\.svg(?:[?#]|$)/i.test(image))
+      return '<img class="'+classes+'" alt="" aria-hidden="true" src="'+url+'">';
     return '<i class="'+classes+'" aria-hidden="true" style="background-image:url(&quot;'+url+'&quot;)"></i>';
 
   }
