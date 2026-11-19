@@ -42,8 +42,13 @@
  const badges={'royal-slots':'NEW','royal-ace':'HOT','food-deluxe':'HOT','sovera-gaddy':'NEW',
   'greedy-classic':'NEW','jackpot-fruit':'NEW'};
  let games=[],active=null,number=0,gameVersion=0,practice=null,verifiedProfile=null;
- let winnerTimer=null;
+ let winnerTimer=null, winnerShowing=false;
+ const winnerQueue=[];
  const seenWinners=new Set(),pending=new Map();
+ let globalWinnerFeedInitialized=false,globalWinnerLastId=0,globalWinnerBusy=false;
+ // A top-level ticker survives opening/closing games and is not clipped by
+ // the game's own full-height iframe. It works in room and outside-room modes.
+ document.body.append($('verified-winner'));
 
  function notify(message){banner.textContent=message;banner.hidden=!message;}
  function call(method,path,body){
@@ -216,32 +221,67 @@
   filterCatalog();
  }
  function clearWinner(){
-  if(winnerTimer!==null){clearTimeout(winnerTimer);winnerTimer=null}
+  if(winnerTimer!==null)clearTimeout(winnerTimer);
+  winnerTimer=null;winnerShowing=false;winnerQueue.length=0;
   $('verified-winner').hidden=true;
  }
- function showWinner(winner,key){
+ function showNextWinner(){
+  if(winnerShowing||!winnerQueue.length)return;
+  const {winner,name,id,win,gameId}=winnerQueue.shift();
+  winnerShowing=true;
+  $('winner-name').textContent=name;
+  $('winner-id').textContent='ID: '+id;
+  $('winner-amount').textContent='+'+win.toLocaleString('en-US')+' COINS';
+  const logo=$('winner-game-icon'),asset=artworks[gameId]||'';
+  logo.hidden=!asset;
+  if(asset)logo.src=asset;else logo.removeAttribute('src');
+  const image=$('winner-avatar'),first=$('winner-initial');
+  first.textContent=name[0].toUpperCase();first.hidden=false;
+  image.removeAttribute('src');image.hidden=true;
+  const src=safeAvatar(winner.pic||winner.avatar||'');
+  if(src){
+   image.onerror=()=>{image.hidden=true;first.hidden=false;};
+   image.onload=()=>{image.hidden=false;first.hidden=true;};
+   image.src=src;
+  }
+  const ticker=$('verified-winner');
+  ticker.hidden=false;
+  ticker.style.animation='none';
+  void ticker.offsetWidth;
+  ticker.style.animation='';
+  winnerTimer=setTimeout(()=>{
+   winnerTimer=null;winnerShowing=false;ticker.hidden=true;
+   showNextWinner();
+  },10000);
+ }
+ function showWinner(winner,key,gameId=active?.id||'greedy-classic'){
   if(!bridge||!winner||typeof winner!=='object'||!key||seenWinners.has(key))return;
   const win=Number(winner.win??winner.total_win??winner.totalWin??0);
   const name=typeof winner.name==='string'?winner.name.trim().slice(0,80):'';
   const id=String(winner.public_id||winner.userId||winner.id||'');
   if(!name||!Number.isSafeInteger(win)||win<=0||!/^[0-9]{1,12}$/.test(id))return;
   seenWinners.add(key);
-  if(seenWinners.size>150)seenWinners.clear();
-  clearWinner();
-  $('winner-name').textContent=name;
-  $('winner-id').textContent='ID: '+id;
-  $('winner-amount').textContent='+'+win.toLocaleString('en-US');
-  const image=$('winner-avatar'),first=$('winner-initial');
-  first.textContent=name[0].toUpperCase();
-  image.removeAttribute('src');image.hidden=true;
-  const src=safeAvatar(winner.pic||winner.avatar||'');
-  if(src){
-   image.onerror=()=>{image.hidden=true;first.hidden=false;};
-   image.onload=()=>{image.hidden=false;first.hidden=true;};
-   first.hidden=false;image.src=src;
-  }else first.hidden=false;
-  $('verified-winner').hidden=false;
-  winnerTimer=setTimeout(()=>{$('verified-winner').hidden=true;winnerTimer=null;},5500);
+  if(seenWinners.size>500)seenWinners.clear();
+  winnerQueue.push({winner,name,id,win,gameId});
+  showNextWinner();
+ }
+ async function pollGlobalFoodWinners(){
+  if(!bridge||globalWinnerBusy||document.visibilityState==='hidden')return;
+  globalWinnerBusy=true;
+  try{
+   const result=await call('GET','/api/v1/original-games/greedy-classic/winners');
+   const list=Array.isArray(result?.winners)?result.winners:[];
+   const fresh=list.filter(x=>Number.isSafeInteger(Number(x.id))&&Number(x.id)>globalWinnerLastId);
+   for(const x of fresh)globalWinnerLastId=Math.max(globalWinnerLastId,Number(x.id));
+   if(globalWinnerFeedInitialized){
+    for(const x of fresh.sort((a,b)=>Number(a.id)-Number(b.id))){
+     const publicId=String(x.userId||x.public_id||'');
+     showWinner(x,'greedy-classic:'+String(x.round||'')+':'+publicId+':'+x.win,'greedy-classic');
+    }
+   }
+   globalWinnerFeedInitialized=true;
+  }catch{/* A network or authentication failure must not fabricate a winner. */}
+  finally{globalWinnerBusy=false}
  }
  function showServerWinners(game,data){
   if(!bridge||!game||!data||typeof data!=='object')return;
@@ -256,7 +296,7 @@
    const winner=list[0];
    const id=String(winner?.public_id||winner?.userId||winner?.id||'');
    if(id&&round){
-    showWinner(winner,game.id+':'+round+':'+id);
+    showWinner(winner,game.id+':'+round+':'+id+':'+(winner.win||0),game.id);
     return;
    }
   }
@@ -268,11 +308,11 @@
     !Number.isSafeInteger(receipt.win)||receipt.win<=0)return;
   showWinner({name:verifiedProfile.name,pic:verifiedProfile.pic,
     public_id:verifiedProfile.id,win:receipt.win},
-    game.id+':confirmed-spin:'+requestId);
+    game.id+':confirmed-spin:'+requestId,game.id);
  }
  function closeGame(){
   gameVersion++;active=null;practice=null;frame.removeAttribute('src');
-  clearWinner();player.hidden=true;landing.hidden=false;
+  player.hidden=true;landing.hidden=false;
   document.body.classList.remove('is-playing');
   $('back').hidden=true;notify('');window.scrollTo(0,0);
  }
@@ -286,7 +326,7 @@
     'Free browser practice · No wallet or real server settlement';
   $('demo-banner').hidden=!!bridge;
   $('game-profile').hidden=!verifiedProfile;
-  clearWinner();notify('');
+  notify('');
   // In-room games use only the existing 65%-tall Android Dialog. The voice
   // room is still visible above it; NEVER start an expanded Android Activity.
   const hostedSlot=game.id==='royal-ace'||game.id==='cleopatra'||game.id==='royal-slots';
@@ -411,6 +451,12 @@
    send({type:'sharika:original-response',id:m.id,ok:false,error:error.message});
   }
  });
+ // Poll only authenticated, verified wins; no local RNG or fake banners.
+ if(bridge){
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollGlobalFoodWinners();});
+  setInterval(pollGlobalFoodWinners,6500);
+  pollGlobalFoodWinners();
+ }
  async function start(){
   try{
    // Safe, independent read operations run concurrently. Game actions
