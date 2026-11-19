@@ -493,6 +493,19 @@
    if(centerLink)centerLink.hidden=!((sections.rankings||[]).length||
      (sections.events||[]).length||(sections.modules||[]).length);
    if(!bridge){
+    // This authenticated PRIVATE site never offers unverified practice
+    // results or a simulated wallet in place of actual Sharika gameplay.
+    if(location.hostname==='sharika-private-center-staging.soverixnet.workers.dev'){
+      games=[];
+      displayCards(games,new Set());
+      status.hidden=false;
+      status.textContent='Open games inside the signed-in Sharika Android app.';
+      const notice=$('notice');if(notice)notice.hidden=true;
+      if(browserNote)browserNote.hidden=true;
+      $('game-count').textContent='0 games';
+      toolbarCount.textContent='App required';
+      return;
+    }
     status.textContent='Free browser demo · virtual coins only';
     browserNote.hidden=true;
     displayCards(games,new Set(games.map(g=>g.id)));
