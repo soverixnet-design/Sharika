@@ -129,9 +129,9 @@ jobs:
           wheel_ready=0
           echo "Expected packaged game fingerprint:"
           sha256sum hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
-          for attempt in $(seq 1 28); do
+          for attempt in $(seq 1 12); do
             curl -fsS --max-time 15 -H 'Cache-Control: no-cache' \
-              "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html?qa=${GITHUB_SHA}-${attempt}" -o /tmp/food-wheel-deluxe.html
+              "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html" -o /tmp/food-wheel-deluxe.html
             rank_ok=0;legacy_ok=0
             if grep -Fq 'T.rankAvatars' /tmp/food-wheel-deluxe.html; then rank_ok=1; fi
             if ! grep -Fq 'T.t5' /tmp/food-wheel-deluxe.html; then legacy_ok=1; fi
