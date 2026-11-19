@@ -1087,6 +1087,8 @@ export async function handleRequest(request, env, ctx) {
     if (path === '/api/v1/rankings' && request.method === 'GET') {
       await assertActive(env.DB,uid);
       const requestedKind=url.searchParams.get('kind')||'rich';
+      if(!['lucky','rich','charm','room','recharge','noble','games'].includes(requestedKind))
+        return fail('invalid_ranking_filter',400,cors);
       if(!await centerPublished(env.DB,'ranking',requestedKind))return fail('ranking_hidden',403,cors);
       const period=url.searchParams.get('period')||'weekly';
       const kind=url.searchParams.get('kind')||'rich';
