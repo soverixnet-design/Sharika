@@ -3318,7 +3318,7 @@
         'maxlength="80" placeholder="e.g. Royal medal + frame" style="min-width:130px"></label>').join('')+'</div>'+
       '<button class="btn s" type="button" id="sh-event-save">Create event</button>'+
       ' <button class="btn" type="button" id="sh-event-clear">Clear form</button>'+
-      '<p class="n" id="sh-event-note">Use 0 to disable a prize. Awarded events are locked to protect old receipts.</p>'+
+      '<p class="n" id="sh-event-note">Use 0 to disable a prize. After saving, use the Event card Publish button and Event Center Master Visibility to show the event in the app. Existing prize receipts are protected.</p>'+
       '</div>':'')+
       '<div id="sh-event-list">Loading…</div>';
     let data;
@@ -3329,10 +3329,40 @@
       return;
     }
     const all=data.events||[];
+    // This is the owner's SAME Super Admin console: event creation and
+    // final member publication are intentionally separate audited actions.
+    let centerState={items:[]};
+    if(role==='super')try{centerState=await api('GET','private-center/state');}
+      catch(error){console.warn('event_publication_unavailable',error.message);}
+    const publishedItems=new Map((centerState.items||[]).map(i=>[i.kind+':'+i.id,!!i.published]));
+    const eventsModuleOn=publishedItems.get('module:events')===true;
     byId('sh-event-stats').innerHTML='<b>'+fmt(all.length)+'</b> real events · '+
       '<b>'+fmt(all.filter(e=>e.status==='live').length)+'</b> live · '+
       '<b>'+fmt(all.reduce((sum,e)=>sum+(e.awards||[]).length,0))+'</b> paid prizes';
     const list=byId('sh-event-list');
+    if(role==='super'){
+      const moduleBar=document.createElement('div');moduleBar.className='card';
+      moduleBar.style.cssText='border:1px solid #d5ad63;background:#241741;color:#ffe8af';
+      const heading=document.createElement('h3');heading.textContent='Event Center · Master Visibility';
+      const label=document.createElement('p');
+      label.textContent=eventsModuleOn?
+        'Event Center is enabled. Each event still needs its own Publish switch.':
+        'Event Center is hidden. No event can appear in Sharika until you enable this section.';
+      const button=document.createElement('button');button.className='btn s';button.type='button';
+      button.textContent=eventsModuleOn?'Hide Entire Event Center':'Enable Event Center';
+      button.onclick=async()=>{
+        if(!confirm((eventsModuleOn?'Hide all Event pages':'Enable Event Center')+
+          ' for every signed-in Sharika member?'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','private-center/visibility',{
+            kind:'module',id:'events',published:!eventsModuleOn});
+          note('Event Center visibility saved ✓');await P.events();
+        }catch(error){note(error.message);button.disabled=false;}
+      };
+      moduleBar.append(heading,label,button);
+      list.before(moduleBar);
+    }
     if(!all.length)list.innerHTML=card('No events yet',
       'Create an event above. No demo competitions or prize payments are enabled.');
     else list.innerHTML=all.map(e=>{
@@ -3366,6 +3396,14 @@
           ' · Scoring gifts: '+(e.gift_rules||[]).map(g=>
             '#'+Number(g.gift_id)+' × '+Number(g.points)).join(', ')+(e.gift_rules?.length?'':'none')+'</p>'+
         '<div>'+prizes+'</div>'+
+        '<p class="n">App visibility: <b>'+(
+          publishedItems.get('event:event:'+e.id)?'PUBLISHED':'HIDDEN')+
+          '</b> · Global Event Center: '+(eventsModuleOn?'ON':'OFF')+'</p>'+
+        (role==='super'&&e.published&&!e.locked?
+          '<button type="button" class="btn s" data-sh-event-publication="'+e.id+'">'+
+          (publishedItems.get('event:event:'+e.id)?'Hide this Event':'Publish this Event')+
+          '</button>':role==='super'&&e.published?
+          '<span class="n">Paid Event · visibility locked to protect receipts</span>':'')+
         (role==='super'&&!e.locked?
           '<button class="btn" type="button" data-sh-event-edit="'+e.id+'">Edit event / prizes</button>':
           e.locked?'<p class="n">🔒 Paid event cannot be edited.</p>':'')+
@@ -3483,6 +3521,21 @@
         }catch(error){hint.textContent='Event save failed: '+error.message;}
         finally{button.disabled=false;}
       };
+      list.querySelectorAll('[data-sh-event-publication]').forEach(button=>button.onclick=async()=>{
+        const id=Number(button.dataset.shEventPublication);
+        const entity=all.find(e=>e.id===id);
+        if(!entity||!entity.published)return;
+        const current=publishedItems.get('event:event:'+id)===true;
+        const wanted=!current;
+        if(!window.confirm((wanted?'Publish':'Hide')+' '+entity.title+' for Sharika users?'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','private-center/visibility',{
+            id:'event:'+id,kind:'event',published:wanted});
+          note(entity.title+(wanted?' published':' hidden')+' ✓');
+          await P.events();
+        }catch(error){note(error.message);button.disabled=false;}
+      });
       list.querySelectorAll('[data-sh-event-award]').forEach(button=>button.onclick=async event=>{
         const id=Number(button.dataset.shEventAward),rank=Number(button.dataset.shEventRank);
         const input=byId('sh-ev-recipient-'+id+'-'+rank);
