@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class SharikaRoomGameDialog {
     private static final String SITE_ORIGIN =
-        "https://sharika-games-web-staging.soverixnet.workers.dev";
+        "https://sharika-private-center-staging.soverixnet.workers.dev";
     private final Activity host;
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final AtomicInteger outstanding = new AtomicInteger();
@@ -167,7 +167,70 @@ final class SharikaRoomGameDialog {
             int height=Math.round(host.getResources().getDisplayMetrics().heightPixels*.65f);
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,height);
         }
-        view.loadUrl(SITE_ORIGIN+"/?view=room&surface=app");
+        openAuthenticatedRoomGames();
+    }
+
+    /** Room games share the exact same one-time Firebase-authenticated
+     * site bootstrap as the fullscreen Game Center. Nothing falls back
+     * to the legacy public website. The voice room stays in this Activity.
+     */
+    private void openAuthenticatedRoomGames() {
+        final FirebaseUser user=FirebaseAuth.getInstance().getCurrentUser();
+        if(user==null || BuildConfig.SHARIKA_PLAY_BUILD ||
+            !"https://sharika-api-staging.soverixnet.workers.dev".equals(BuildConfig.SHARIKA_API_ORIGIN)){
+            failRoomLaunch("Sign in to Sharika before opening games.");
+            return;
+        }
+        user.getIdToken(false).addOnCompleteListener(host,task->{
+            if(closed.get())return;
+            if(!task.isSuccessful() || task.getResult()==null ||
+                task.getResult().getToken()==null){
+                failRoomLaunch("Unable to verify Sharika login.");return;
+            }
+            final String idToken=task.getResult().getToken();
+            io.execute(()->{
+                HttpURLConnection conn=null;
+                try {
+                    conn=(HttpURLConnection)new URL(BuildConfig.SHARIKA_API_ORIGIN+
+                        "/api/v1/center/launch-ticket").openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setDoOutput(true);
+                    conn.setConnectTimeout(12000);
+                    conn.setReadTimeout(12000);
+                    conn.setInstanceFollowRedirects(false);
+                    conn.setRequestProperty("Authorization","Bearer "+idToken);
+                    conn.setRequestProperty("Content-Type","application/json");
+                    try(OutputStream output=conn.getOutputStream()){
+                        output.write("{}".getBytes(StandardCharsets.UTF_8));
+                    }
+                    if(conn.getResponseCode()!=201)
+                        throw new IllegalStateException("private_room_ticket_unavailable");
+                    final JSONObject reply;
+                    try(InputStream response=conn.getInputStream()){
+                        reply=new JSONObject(readLimited(response));
+                    }
+                    final String ticket=reply.optString("ticket","");
+                    if(!ticket.matches("[A-Za-z0-9_-]{43}"))
+                        throw new IllegalStateException("invalid_room_ticket");
+                    host.runOnUiThread(()->{
+                        if(!closed.get()&&gameWebView!=null)
+                            gameWebView.loadUrl(SITE_ORIGIN+"/session?ticket="+ticket+"&view=room");
+                    });
+                } catch (Exception error) {
+                    failRoomLaunch("Private Room Game Center unavailable.");
+                } finally {
+                    if(conn!=null)conn.disconnect();
+                }
+            });
+        });
+    }
+
+    private void failRoomLaunch(String message){
+        host.runOnUiThread(()->{
+            if(closed.get())return;
+            Toast.makeText(host,message,Toast.LENGTH_LONG).show();
+            dismiss();
+        });
     }
 
     private int dp(float value){
