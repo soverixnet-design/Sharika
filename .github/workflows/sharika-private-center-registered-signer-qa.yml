@@ -1,7 +1,7 @@
-name: Sharika Private Center and Rapid Taps - registered Google OAuth signer QA
+name: Sharika Royal Events and Rapid Taps - registered Google OAuth signer QA
 on:
   push:
-    branches: [feature/sharika-private-center-rapid-tap-integration-20261120]
+    branches: [feature/sharika-private-center-rapid-tap-integration-20261120, feature/sharika-event-country-preview-20261120]
     paths: ['.github/workflows/sharika-private-center-registered-signer-qa.yml']
   workflow_dispatch:
 permissions:
@@ -23,6 +23,7 @@ jobs:
           node --test hosted-game-center/test/royal-slots-native-bridge.test.mjs
           node --test hosted-game-center/test/royal-slots-integration.test.mjs
           node --test cloudflare/test/private-center.test.mjs cloudflare/test/rapid-round-taps.test.mjs
+          node --test cloudflare/test/event-audience.test.mjs cloudflare/test/event-country-leaderboards.test.mjs cloudflare/test/royal-liveops-admin-e2e.test.mjs
       - name: Use only a previously registered stable Firebase OAuth signer
         env:
           STAGING_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
@@ -115,12 +116,12 @@ jobs:
           test "$actual" = "$expected" || { echo "::error::Wrong APK signer"; exit 1; }
           unzip -Z1 "$apk" | grep -Fx 'AndroidManifest.xml'
           unzip -p "$apk" assets/connection.js | grep -F 'sharika-api-staging.soverixnet.workers.dev' >/dev/null
-          cp "$apk" Sharika-Private-Center-Rapid-Taps-Google-Login-Staging-QA.apk
-          sha256sum Sharika-Private-Center-Rapid-Taps-Google-Login-Staging-QA.apk
+          cp "$apk" Sharika-Royal-Events-Rapid-Taps-Google-Login-Staging-QA.apk
+          sha256sum Sharika-Royal-Events-Rapid-Taps-Google-Login-Staging-QA.apk
       - name: Upload registered-signer QA APK only (no public release or Play upload)
         uses: actions/upload-artifact@v4
         with:
-          name: sharika-private-center-rapid-taps-google-oauth-registered-qa
-          path: Sharika-Private-Center-Rapid-Taps-Google-Login-Staging-QA.apk
+          name: sharika-royal-events-rapid-taps-registered-google-qa
+          path: Sharika-Royal-Events-Rapid-Taps-Google-Login-Staging-QA.apk
           if-no-files-found: error
           retention-days: 3
