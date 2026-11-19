@@ -4752,10 +4752,15 @@
         checkbox.setAttribute('aria-label','Show '+item.title+' in Sharika app');
         const save=document.createElement('button');save.type='button';save.className='btn s';
         const ineligibleEvent=item.kind==='event'&&item.can_publish===false&&!item.published;
-        checkbox.disabled=ineligibleEvent;
-        save.disabled=ineligibleEvent;
-        save.textContent=ineligibleEvent?'Not ready':'Save';
+        const verifiedRankingIds=new Set(['rich','charm','room','games','recharge',
+          'noble','lucky','cp','bd','agency','host']);
+        const ineligibleRanking=item.kind==='ranking'&&!verifiedRankingIds.has(item.id)&&!item.published;
+        const notReady=ineligibleEvent||ineligibleRanking;
+        checkbox.disabled=notReady;
+        save.disabled=notReady;
+        save.textContent=notReady?'Not ready':'Save';
         if(ineligibleEvent)save.title='Publish the event status with a future end date before enabling member visibility.';
+        if(ineligibleRanking)save.title='This leaderboard has no approved verified scoring source yet.';
         save.onclick=async()=>{
           const wanted=checkbox.checked;
           if(wanted===!!item.published){message.textContent='No change for '+item.title;return;}
