@@ -723,3 +723,33 @@ html.app-surface:not(.room-mode) body.is-playing main{
  :is(.app-surface:not(.room-mode),.premium-browser) .hero-award.center{height:80px}
  :is(.app-surface:not(.room-mode),.premium-browser) .hero-award small{font-size:6px}
 }
+
+
+/* Compact verified winner ticker: one animated line, never a full overlay. */
+#player{position:relative;overflow:hidden}
+body.is-playing .verified-winner,
+.room-mode body.is-playing .verified-winner{
+ position:absolute;top:4px;left:0;right:auto;margin:0;
+ z-index:18;pointer-events:none;min-height:40px;
+ width:max-content;max-width:min(90%,430px);padding:4px 10px;
+ gap:7px;border-radius:24px;
+ border:1px solid #f9d378;background:linear-gradient(110deg,#38183ee8,#6d2b3fe8);
+ box-shadow:0 4px 12px #0009;
+ animation:sharikaWinnerTravel 10s linear 1 both;
+ will-change:transform;
+}
+.verified-winner .avatar-holder{width:30px;height:30px;flex:none}
+.verified-winner .winner-game-icon{width:28px;height:28px;flex:none;object-fit:contain;border-radius:7px}
+.verified-winner .winner-game-icon[hidden]{display:none}
+.verified-winner .winner-text{display:block;min-width:0;flex:1}
+.verified-winner .winner-text span{font-size:12px;line-height:1.25}
+.verified-winner #winner-amount{font-size:12px;color:#ffe083;white-space:nowrap}
+@keyframes sharikaWinnerTravel{
+ from{transform:translateX(100vw)}
+ to{transform:translateX(-105%)}
+}
+@media(prefers-reduced-motion:reduce){
+ body.is-playing .verified-winner,.room-mode body.is-playing .verified-winner{
+  animation:none;left:6px;right:6px;width:auto;max-width:calc(100% - 12px)
+ }
+}
