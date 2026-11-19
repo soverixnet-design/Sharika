@@ -43,9 +43,9 @@ jobs:
           import {readFileSync} from 'node:fs';
           import {Script} from 'node:vm';
           const wheel=readFileSync('hosted-game-center/dist/games/original-games/food-wheel-deluxe.html','utf8');
-          const match=wheel.match(/<script>([\\s\\S]*?)<\\/script>/);
+          const match=wheel.split('<script>')[1]?.split('</script>')[0];
           if(!match)throw Error('missing_fruit_machine_script');
-          new Script(match[1],{filename:'food-wheel-deluxe.html'});
+          new Script(match,{filename:'food-wheel-deluxe.html'});
           const hosted=readFileSync('hosted-game-center/dist/app.js','utf8');
           if(!hosted.includes("if(game.id==='royal-slots')")||
              !hosted.includes("'/cards/fruit-machine-user.webp'"))throw Error('integrated_catalog_missing');
