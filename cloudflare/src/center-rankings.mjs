@@ -25,7 +25,7 @@ export async function readCenterRankings(db,period,kind,now=new Date()){
    'SELECT b.id AS bond_id,ua.public_no AS a_id,ua.name AS a_name,ua.pic AS a_pic,'+
    'ub.public_no AS b_id,ub.name AS b_name,ub.pic AS b_pic,'+
    'SUM(e.value_coins) AS total FROM sharika_bond_gift_events e '+
-   'JOIN sharika_bonds b ON b.id=e.bond_id AND b.type=\\'cp\\' '+
+   "JOIN sharika_bonds b ON b.id=e.bond_id AND b.type='cp' "+
    "JOIN sharika_users ua ON ua.auth_uid=b.uid_a AND ua.status='active' "+
    "JOIN sharika_users ub ON ub.auth_uid=b.uid_b AND ub.status='active' "+
    "WHERE e.type='cp' AND e.created_at_ms>=? AND e.created_at_ms<? "+
