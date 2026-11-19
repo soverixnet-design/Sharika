@@ -27,7 +27,7 @@
  };
  const shortNames={
   'royal-ace':'SuperAce Deluxe','cleopatra':'Cleopatra Gold',
-  'greedy-classic':'Greedy Game','food-deluxe':'Food Wheel',
+  'greedy-classic':'Greedy Game','food-deluxe':'Fruit Machine',
   'sovera-gaddy':'Sovera Gaddy','sovera-food':'Sovera Food',
   'night-food':'Night Food','greedy-wheel':'Greedy Wheel',
   'fruit-royale':'Fruit Royale','jackpot-fruit':'Fruit Jackpot'
@@ -217,7 +217,7 @@
   if(winnerTimer!==null){clearTimeout(winnerTimer);winnerTimer=null}
   $('verified-winner').hidden=true;
  }
- function showWinner(winner,key){
+ function showWinner(winner,key,game){
   if(!bridge||!winner||typeof winner!=='object'||!key||seenWinners.has(key))return;
   const win=Number(winner.win??winner.total_win??winner.totalWin??0);
   const name=typeof winner.name==='string'?winner.name.trim().slice(0,80):'';
@@ -228,7 +228,10 @@
   clearWinner();
   $('winner-name').textContent=name;
   $('winner-id').textContent=''; // Winner banner displays name and photo, never the public number.
-  $('winner-amount').textContent='+'+win.toLocaleString('en-US');
+  $('winner-amount').textContent='+'+win.toLocaleString('en-US')+' coins';
+   const gameIcon=$('winner-game-icon'),gameArt=game&&artworks[game.id];
+   if(gameArt){gameIcon.src=gameArt;gameIcon.hidden=false;}
+   else{gameIcon.removeAttribute('src');gameIcon.hidden=true;}
   const image=$('winner-avatar'),first=$('winner-initial');
   first.textContent=name[0].toUpperCase();
   image.removeAttribute('src');image.hidden=true;
@@ -239,7 +242,7 @@
    first.hidden=false;image.src=src;
   }else first.hidden=false;
   $('verified-winner').hidden=false;
-  winnerTimer=setTimeout(()=>{$('verified-winner').hidden=true;winnerTimer=null;},5500);
+  winnerTimer=setTimeout(()=>{$('verified-winner').hidden=true;winnerTimer=null;},10000);
  }
  function showServerWinners(game,data){
   if(!bridge||!game||!data||typeof data!=='object')return;
@@ -254,7 +257,7 @@
    const winner=list[0];
    const key=String(winner?.public_id||winner?.userId||winner?.id||winner?.name||'');
    if(key&&round){
-    showWinner(winner,game.id+':'+round+':'+key);
+    showWinner(winner,game.id+':'+round+':'+key,game);
     return;
    }
   }
@@ -266,7 +269,7 @@
     !Number.isSafeInteger(receipt.win)||receipt.win<=0)return;
   showWinner({name:verifiedProfile.name,pic:verifiedProfile.pic,
     public_id:verifiedProfile.id,win:receipt.win},
-    game.id+':confirmed-spin:'+requestId);
+    game.id+':confirmed-spin:'+requestId,game);
  }
  function closeGame(){
   gameVersion++;active=null;practice=null;frame.removeAttribute('src');
