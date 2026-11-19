@@ -107,23 +107,35 @@ jobs:
           node hosted-game-center/scripts/build.mjs
           cd hosted-game-center
           npx --yes wrangler@4 deploy --config wrangler.jsonc
-      - name: Verify Royal Slots asset and API health
+      - name: Verify Royal Slots and Fruit Machine online after staging deployment
         run: |
           set -euo pipefail
+          echo "Smoke test: authenticated API health"
           api="$(curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-api-staging.soverixnet.workers.dev/health)"
-          [[ "$api" == *'"ok":true'* ]]
+          [[ "$api" == *'"ok":true'* ]] || { echo "API health mismatch: $api"; exit 1; }
+          echo "Smoke test: Game Center catalog"
           catalog="$(curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-games-web-staging.soverixnet.workers.dev/api/catalog)"
-          [[ "$catalog" == *'"id":"royal-slots"'* ]]
-          bridge="$(curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-games-web-staging.soverixnet.workers.dev/games/royal-slots/bridge.js)"
-          [[ "$bridge" == *'sharika-royal-slots'* ]]
-          # Verify Fruit Machine artwork and latest modified wheel were deployed.
+          [[ "$catalog" == *'"id":"royal-slots"'* ]] || { echo "Royal Slots missing from catalog"; exit 1; }
+          [[ "$catalog" == *'"id":"food-deluxe"'* ]] || { echo "Fruit Machine missing from catalog"; exit 1; }
+          echo "Smoke test: Royal Slots bridge"
           curl -fsS --retry 8 --retry-delay 2 --retry-all-errors \
-            https://sharika-games-web-staging.soverixnet.workers.dev/cards/fruit-machine-user.webp -o /tmp/fruit-machine.webp
-          test -s /tmp/fruit-machine.webp
+            https://sharika-games-web-staging.soverixnet.workers.dev/games/royal-slots/bridge.js -o /tmp/royal-slots-bridge.js
+          grep -Fq 'sharika-royal-slots' /tmp/royal-slots-bridge.js || { echo "Royal Slots bridge missing"; exit 1; }
+          echo "Smoke test: Fruit Machine original card"
           curl -fsS --retry 8 --retry-delay 2 --retry-all-errors \
-            https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html -o /tmp/food-wheel-deluxe.html
-          grep -Fq 'T.rankAvatars' /tmp/food-wheel-deluxe.html
-          ! grep -Fq "T.t5" /tmp/food-wheel-deluxe.html
+            https://sharika-games-web-staging.soverixnet.workers.dev/cards/fruit-machine.jpg -o /tmp/fruit-machine.jpg
+          test -s /tmp/fruit-machine.jpg || { echo "Fruit Machine image empty"; exit 1; }
+          echo "Smoke test: latest Fruit Machine avatar ranking asset"
+          wheel_ready=0
+          for attempt in $(seq 1 18); do
+            curl -fsS --max-time 12 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html?qa=${GITHUB_SHA}-${attempt}" -o /tmp/food-wheel-deluxe.html
+            if grep -Fq 'T.rankAvatars' /tmp/food-wheel-deluxe.html &&
+               ! grep -Fq 'T.t5' /tmp/food-wheel-deluxe.html; then wheel_ready=1; break; fi
+            echo "Waiting for updated Fruit Machine asset at attempt ${attempt}"
+            sleep 3
+          done
+          test "$wheel_ready" -eq 1 || { echo "New Food Wheel html not visible"; exit 1; }
+          echo "Both staged games verified online"
 
   android-debug:
     needs: validate
