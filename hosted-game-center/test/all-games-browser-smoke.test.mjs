@@ -114,8 +114,8 @@ test('private native Game Center loads every sandboxed game asset without accoun
    await page.goto(privateHost+'/?surface=app',{waitUntil:'domcontentloaded'});
    await page.locator('#games .tile').first().waitFor();
    assert.equal(await page.locator('#games .tile:enabled').count(),catalog.length);
-   for(const game of catalog){
-     const tile=page.locator('#games .tile').filter({has:page.locator('b').filter({hasText:game.name})}).first();
+   for(const [i,game] of catalog.entries()){
+     const tile=page.locator('#games .tile').nth(i);
      await tile.click();
      const child=await loadedFrame(page,game.asset);
      assert.ok(child.url().startsWith(publicHost+'/games/'));
