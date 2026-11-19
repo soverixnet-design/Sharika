@@ -18,9 +18,9 @@ function fakeDb(){
     async run(){events.push({sql,args});return {success:true};}
    };
   },
-  async all(){return {results:[]}},
-  async batch(stmts){for(const statement of stmts)await statement.run();return []}
- };
+  async all(){return {results:[]}}
+ });
+ db.batch=async stmts=>{for(const statement of stmts)await statement.run();return []};
  return db;
 }
 const reply=(v,status=200)=>new Response(JSON.stringify(v),{status});
