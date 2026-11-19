@@ -43,6 +43,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class SharikaGameCenterActivity extends Activity {
     private static final String SITE_ORIGIN = "https://sharika-private-center-staging.soverixnet.workers.dev";
+    private static final String GAME_ASSET_ORIGIN =
+        "https://sharika-games-web-staging.soverixnet.workers.dev";
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final AtomicInteger outstanding = new AtomicInteger();
     private WebView web;
@@ -81,6 +83,11 @@ public final class SharikaGameCenterActivity extends Activity {
                     return true;
                 }
                 String origin = uri.getScheme() + "://" + uri.getAuthority();
+                // The only allowed external subframe is our unprivileged
+                // static game-asset host. Authenticated main-frame navigation
+                // and native bridge access remain private-origin-only.
+                if (!request.isForMainFrame() && GAME_ASSET_ORIGIN.equals(origin))
+                    return false;
                 return !SITE_ORIGIN.equals(origin);
             }
         });

@@ -18,6 +18,8 @@
  const hot=$('hot-section'),hotGames=$('hot-games'),search=$('game-search');
  const hero=$('royal-hero'),toolbarCount=$('toolbar-count');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
+ const GAME_ASSET_ORIGIN='https://sharika-games-web-staging.soverixnet.workers.dev';
+ const isPrivateCenter=location.hostname==='sharika-private-center-staging.soverixnet.workers.dev';
  const artworks={
   'royal-slots':'/cards/royal-slots.webp',
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
@@ -338,7 +340,13 @@
     hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
     game.id==='greedy-wheel'&&inRoom?'sheet=1':'';
   const separator=params?(game.asset.includes('?')?'&':'?'):'';
-  frame.src=game.asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
+  // Hosted game files are unprivileged STATIC artwork and JavaScript. Their
+  // sandboxed opaque-origin iframe must never depend on the private login
+  // cookie, which Android WebView may omit for cross-site iframe resources.
+  // The authenticated main frame keeps the native bridge and verifies every
+  // real coin operation with Sharika API. Child pages cannot access it.
+  const asset=isPrivateCenter?GAME_ASSET_ORIGIN+game.asset:game.asset;
+  frame.src=asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
     '#sharika-room':'');
  }
  // System Back first closes the game, then the native Activity.
@@ -478,20 +486,38 @@
   try{
    // Safe, independent read operations run concurrently. Game actions
    // still require the verified main-frame native bridge.
-   const [response]=await Promise.all([
-    fetch('/api/catalog',{cache:'no-store'}),
-    bridge?refreshProfile():Promise.resolve()
-   ]);
+   // Profile is optional for DRAWING game cards; each real wager is still
+   // authenticated by the native bridge and verified D1 API. An intermittent
+   // profile request must not blank the entire Game Center catalogue.
+   const profileTask=bridge?refreshProfile().catch(error=>{
+     console.warn('Sharika game profile refresh delayed:',String(error?.message||error));
+   }):Promise.resolve();
+   const response=await fetch('/api/catalog',{cache:'no-store'});
    if(!response.ok)throw Error('Catalog unavailable');
-   const data=await response.json();games=data.games||[];
-   // The website controls which separate sections are visible. Never add
-   // unavailable Ranking/Event/Wallet links to the user's navigation.
-   const sectionResponse=await fetch('/api/center/manifest',{cache:'no-store',credentials:'same-origin'});
-   if(!sectionResponse.ok)throw Error('Private Center session expired');
-   const sections=await sectionResponse.json();
+   const data=await response.json();games=Array.isArray(data.games)?data.games:[];
+   // Public free-practice hosting has no private member manifest endpoint.
+   // Requesting it unconditionally made EVERY public game card disappear.
+   // Private center visibility is still fail-closed and checked again by the
+   // authenticated /api/v1/center/manifest before any real game is listed.
+   const privateHost=isPrivateCenter;
    const centerLink=$('private-center-link');
-   if(centerLink)centerLink.hidden=!((sections.rankings||[]).length||
-     (sections.events||[]).length||(sections.modules||[]).length);
+   if(centerLink)centerLink.hidden=true;
+   if(privateHost){
+     try{
+       const sectionResponse=await fetch('/api/center/manifest',{
+         cache:'no-store',credentials:'same-origin'
+       });
+       if(sectionResponse.ok){
+         const sections=await sectionResponse.json();
+         if(centerLink)centerLink.hidden=!((
+           (sections.rankings||[]).length||
+           (sections.events||[]).length||(sections.modules||[]).length));
+       }
+     }catch(error){
+       console.warn('Sharika member sections unavailable:',String(error?.message||error));
+     }
+   }
+   await profileTask;
    if(!bridge){
     // This authenticated PRIVATE site never offers unverified practice
     // results or a simulated wallet in place of actual Sharika gameplay.
