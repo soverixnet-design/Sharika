@@ -3280,6 +3280,15 @@
       Object.entries(EVENT_SCORE_MODES).map(([key,label])=>
         '<option value="'+key+'">'+esc(label)+'</option>').join('')+
       '</select></label></div>'+
+      '<label>🌍 Event Audience<select class="field" id="sh-ev-country">'+
+      '<option value="GLOBAL">Global · All countries</option>'+
+      '<option value="BD">Bangladesh only</option><option value="IN">India only</option>'+
+      '<option value="OM">Oman only</option><option value="AE">UAE only</option>'+
+      '<option value="SA">Saudi Arabia only</option><option value="US">United States only</option>'+
+      '<option value="GB">United Kingdom only</option><option value="DE">Germany only</option>'+
+      '<option value="PK">Pakistan only</option><option value="NP">Nepal only</option>'+
+      '</select></label>'+
+      '<p class="n">Uses the member’s manually selected Sharika profile country. No GPS or IP detection.</p>'+
       '<div id="sh-ev-design-preview" role="img" aria-label="Selected royal event design preview" '+
       'style="padding:20px;text-align:center;border:2px solid #d9b369;border-radius:20px;'+
       'margin:10px 0;color:#ffe7b3;background:linear-gradient(145deg,#432460,#14092f)"></div>'+
@@ -3391,7 +3400,8 @@
         '<p class="n">'+esc(EVENT_KINDS[e.kind]||e.kind)+' · <b>'+esc(e.status.toUpperCase())+'</b></p>'+
         '<p class="n">'+schedule+'</p><p>'+esc(e.description||'No rules entered')+'</p>'+
         '<p class="n">Design: '+esc(ROYAL_EVENT_PRESETS[e.template_id]?.label||'Royal Gold')+
-          ' · Ranking: '+esc(EVENT_SCORE_MODES[e.scoring_mode]||EVENT_SCORE_MODES.gift_points)+'</p>'+
+          ' · Ranking: '+esc(EVENT_SCORE_MODES[e.scoring_mode]||EVENT_SCORE_MODES.gift_points)+
+          ' · Audience: '+esc(e.country_code==='GLOBAL'?'Global':e.country_code||'Global')+'</p>'+
         '<p class="n">Home banner: '+(e.banner_id?'#'+Number(e.banner_id):'Royal gradient')+
           ' · Scoring gifts: '+(e.gift_rules||[]).map(g=>
             '#'+Number(g.gift_id)+' × '+Number(g.points)).join(', ')+(e.gift_rules?.length?'':'none')+'</p>'+
@@ -3428,7 +3438,22 @@
       const note=document.createElement('p');note.textContent='Template preview · '+theme.label+
         ' · '+(EVENT_SCORE_MODES[byId('sh-ev-scoring')?.value]||EVENT_SCORE_MODES.gift_points);
       note.style.cssText='font-size:11px;color:#f9edda';
-      target.append(sign,title,note);
+      const country=byId('sh-ev-country')?.value||'GLOBAL';
+      const audience=document.createElement('p');
+      audience.textContent=country==='GLOBAL'?'Worldwide audience':'Audience restricted to '+country;
+      audience.style.cssText='font-size:12px;color:#f9edda';
+      const dates=document.createElement('p');
+      const start=byId('sh-ev-start')?.value,end=byId('sh-ev-end')?.value;
+      dates.textContent='Schedule · '+(start||'Choose start time')+' — '+(end||'Choose end time');
+      dates.style.cssText='font-size:12px;color:#f9edda';
+      const amounts=[1,2,3].map(i=>byId('sh-ev-p'+i)?.value||'0');
+      const prizes=document.createElement('p');
+      prizes.textContent='Top 3 virtual coin prizes · '+amounts.join(' / ');
+      prizes.style.cssText='font-size:14px;color:'+theme.color+';font-weight:700';
+      const protectedNotice=document.createElement('small');
+      protectedNotice.textContent='ADMIN PREVIEW ONLY · No event published · No ranking winners generated';
+      protectedNotice.style.cssText='display:block;color:#e9d5aa';
+      target.append(sign,title,note,audience,dates,prizes,protectedNotice);
     }
     function clear(){
       editing=null;
@@ -3442,6 +3467,7 @@
       byId('sh-ev-banner').value='0';
       byId('sh-ev-template').value='royal_gold';
       byId('sh-ev-scoring').value='gift_points';
+      byId('sh-ev-country').value='GLOBAL';
       previewEventDesign();
       root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>input.checked=false);
       root.querySelectorAll('[data-sh-ev-points]').forEach(input=>input.value='1');
@@ -3452,7 +3478,8 @@
     if(role==='super'){
       clear();
       byId('sh-event-clear').onclick=clear;
-      for(const id of ['sh-ev-title','sh-ev-template','sh-ev-scoring'])
+      for(const id of ['sh-ev-title','sh-ev-template','sh-ev-scoring',
+        'sh-ev-country','sh-ev-start','sh-ev-end','sh-ev-p1','sh-ev-p2','sh-ev-p3'])
         byId(id).addEventListener('input',previewEventDesign);
       list.querySelectorAll('[data-sh-event-edit]').forEach(button=>button.onclick=()=>{
         const e=all.find(row=>row.id===Number(button.dataset.shEventEdit));
@@ -3468,6 +3495,7 @@
         byId('sh-ev-banner').value=String(e.banner_id||0);
         byId('sh-ev-template').value=e.template_id||'royal_gold';
         byId('sh-ev-scoring').value=e.scoring_mode||'gift_points';
+        byId('sh-ev-country').value=e.country_code||'GLOBAL';
         previewEventDesign();
         root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>{
           const found=(e.gift_rules||[]).find(rule=>Number(rule.gift_id)===Number(input.dataset.shEvGift));
@@ -3477,6 +3505,7 @@
         });
         for(let i=1;i<=7;i++)byId('sh-ev-label-'+i).value=e.reward_labels?.[i-1]||'';
         (e.prizes||[]).forEach((n,i)=>byId('sh-ev-p'+(i+1)).value=n);
+        previewEventDesign();
         byId('sh-event-save').textContent='Save event changes';
         byId('sh-event-form-title').scrollIntoView({behavior:'smooth',block:'start'});
       });
@@ -3509,7 +3538,8 @@
           description:byId('sh-ev-desc').value.trim(),starts_at:new Date(start).toISOString(),
           ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p,
           banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,reward_labels,
-          template_id:byId('sh-ev-template').value,scoring_mode:byId('sh-ev-scoring').value};
+          template_id:byId('sh-ev-template').value,scoring_mode:byId('sh-ev-scoring').value,
+          country_code:byId('sh-ev-country').value};
         if(payload.title.length<3){hint.textContent='Enter an event name of at least 3 characters.';return;}
         if(!window.confirm((editing?'Update event #'+editing:'Create this event')+
           ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;
