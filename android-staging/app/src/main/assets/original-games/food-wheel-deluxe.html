@@ -78,15 +78,33 @@ function build(){
  [178,358,540,720,902].forEach((x,k)=>{const s=document.createElement('div');s.className='a slot'+(k==chip?' sel':'');s.style.cssText=`left:${x-77}px;top:1413px;width:154px;height:154px`;L.appendChild(s);chips.push(s);const e=im('chip'+k,x,1490,138);btn(e,()=>{chip=k;chips.forEach((c,j)=>c.classList.toggle('sel',j==k));snd(500)})});
  // bottom
  const r=im('repeat',925,1950,225);btn(r,repeat);T.rep=tx('0',925,1985,50,'#fff',150);T.rep.style.setProperty('--s','#6a1b8a');T.rep.style.pointerEvents='none';
- T.tapStatus=tx('',540,1362,28,'#ffffff',730);
- T.tapStatus.style.textShadow='0 2px 3px #283f73';
- const t5=im('top5',410,1955,735);T.t5=tx('No Winner',430,1962,56,'#fff',500);T.t5.style.cssText+=';--s:#9a3410;opacity:.9';
- T.winnerAvatar=document.createElement('img');
- T.winnerAvatar.alt='';T.winnerAvatar.hidden=true;
- T.winnerAvatar.style.cssText='position:absolute;left:138px;top:1908px;width:76px;height:76px;'+
-  'border-radius:50%;object-fit:cover;border:4px solid #ffdb65;'+
-  'box-shadow:0 0 15px #f6be44;pointer-events:none;z-index:3';
- L.appendChild(T.winnerAvatar);
+
+ // Only verified player avatars in the compact ranking preview.
+ const preview=document.createElement('div');
+ preview.className='a btn';
+ preview.setAttribute('role','button');preview.setAttribute('tabindex','0');
+ preview.setAttribute('aria-label','Open verified game ranking');
+ preview.style.cssText='left:72px;top:1886px;width:704px;height:152px;display:flex;'+
+  'justify-content:center;align-items:center;gap:33px;border:5px solid #ffca69;'+
+  'border-radius:36px;background:linear-gradient(145deg,#ff9b45,#ed6b2b);'+
+  'box-shadow:inset 0 8px 12px #ffdf9455,0 8px 12px #9d3d2944';
+ T.rankAvatars=[];
+ for(let i=0;i<3;i++){
+  const avatar=document.createElement('img');avatar.alt='Verified player '+(i+1);
+  avatar.style.cssText='width:105px;height:105px;object-fit:cover;border-radius:50%;'+
+    'border:6px solid #ffe495;background:#ad5a36;display:none';
+  const placeholder=document.createElement('span');
+  placeholder.setAttribute('aria-hidden','true');placeholder.textContent='👤';
+  placeholder.style.cssText='width:105px;height:105px;border-radius:50%;'+
+    'border:6px solid #ffe495;background:#9b502d;display:grid;place-items:center;font-size:54px';
+  const cell=document.createElement('div');cell.style.cssText='width:105px;height:105px;flex:none';
+  cell.append(avatar,placeholder);preview.appendChild(cell);
+  T.rankAvatars.push({avatar,placeholder});
+ }
+ preview.addEventListener('click',rank);
+ preview.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();rank()}});
+ L.appendChild(preview);
+
  // top bar
  const bk=im('back',68,188,86),hp=im('help',184,188,86),rk=im('rank',299,188,86),mu=im('music',411,188,86);
  btn(bk,()=>FoodWheel.onBack());btn(hp,help);btn(rk,rank);btn(mu,()=>{sound=!sound;mu.style.opacity=sound?1:.45});
@@ -122,6 +140,7 @@ function requestId(){
  return 'food_'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'_'+(++seq));
 }
 let unresolvedFoodBet=null;
+let inFlightFoodTotal=0;
 let queuedFoodStakes=Array(8).fill(0),queuedFoodTaps=0,verifiedFoodTaps=0,
   declinedFoodTaps=0,queuedFoodRound=-1,foodQueueTimer=null,unverifiedFoodTaps=0;
 function queueFood(stakes){
@@ -132,9 +151,9 @@ function queueFood(stakes){
   verifiedFoodTaps=0;declinedFoodTaps=0;
  }
  const total=stakes.reduce((a,b)=>a+b,0),queued=queuedFoodStakes.reduce((a,b)=>a+b,0);
- if(!Number.isSafeInteger(total)||total<100||total+queued>100000000)
-  return toast('Bet size is over the round limit');
- if(coins<total+queued)return toast('Not enough confirmed coins');
+ if(!Number.isSafeInteger(total)||total<100)return toast('Invalid bet amount');
+ // No cumulative stake/tap cap while the server's bet clock is open.
+ if(coins<total+queued+inFlightFoodTotal)return toast('Not enough confirmed coins');
  queuedFoodStakes=queuedFoodStakes.map((v,i)=>v+stakes[i]);
  queuedFoodTaps++;
  draw();
@@ -143,20 +162,27 @@ function queueFood(stakes){
  },85);
 }
 async function flushFoodQueue(){
- if(placing||!queuedFoodTaps)return;
+ if(placing||!queuedFoodStakes.some(Boolean))return;
  if(!ready||phase!=='bet'||round!==queuedFoodRound){
   declinedFoodTaps+=queuedFoodTaps;
   queuedFoodStakes=Array(8).fill(0);queuedFoodTaps=0;
   toast('Round closed. Unsubmitted taps were not charged.');draw();return;
  }
- const stakes=queuedFoodStakes.slice(),count=queuedFoodTaps;
- queuedFoodStakes=Array(8).fill(0);queuedFoodTaps=0;
+ // Retain the D1 safety cap per transaction; split large queues instead of
+ // arbitrarily limiting a player's bets in the same round.
+ let allowance=100000000;
+ const stakes=queuedFoodStakes.map(amount=>{
+  const portion=Math.min(amount,allowance);allowance-=portion;return portion;
+ });
+ queuedFoodStakes=queuedFoodStakes.map((amount,i)=>amount-stakes[i]);
+ const more=queuedFoodStakes.some(Boolean);
+ const count=more?0:queuedFoodTaps;
+ if(!more)queuedFoodTaps=0;
  await place(stakes,count);
- if(queuedFoodTaps&&!foodQueueTimer)foodQueueTimer=setTimeout(()=>{
+ if(queuedFoodStakes.some(Boolean)&&!foodQueueTimer)foodQueueTimer=setTimeout(()=>{
   foodQueueTimer=null;void flushFoodQueue();
  },0);
 }
-
 async function place(stakes,clicks=1){
  if(!ready||placing||phase!=='bet'||!currentState)return toast('Betting is closed');
  if(unresolvedFoodBet&&unresolvedFoodBet.round_no===round){
@@ -165,7 +191,7 @@ async function place(stakes,clicks=1){
  }
  const total=stakes.reduce((a,b)=>a+b,0);
  if(coins<total)return toast('Not enough coins');
- placing=true;
+ placing=true;inFlightFoodTotal=total;
  const payload={round_no:round,request_id:requestId(),stakes,before:bets.slice()};
  const wirePayload={round_no:payload.round_no,request_id:payload.request_id,stakes:payload.stakes};
  try{
@@ -192,7 +218,7 @@ async function place(stakes,clicks=1){
   }else {declinedFoodTaps+=clicks;toast('Bet not accepted: '+e.message);}
   await refresh();
  }
- finally{placing=false;if(queuedFoodTaps)void flushFoodQueue();}
+ finally{placing=false;inFlightFoodTotal=0;}
 }
 async function myRoundStakes(stakes){
  const total=bets.slice();
@@ -215,7 +241,6 @@ function draw(){
  T.sec.textContent=phase==='spin'?'':left+'s';
  T.ping.textContent=ready?'LIVE':'OFFLINE';
  renderFoodWinner();
- if(T.tapStatus)T.tapStatus.textContent='Queued '+queuedFoodTaps+'  |  Verified '+verifiedFoodTaps+'  |  Declined '+declinedFoodTaps+'  |  Checking '+unverifiedFoodTaps;
  T.hist.forEach((e,k)=>{const h=hist[k];if(h===undefined){e.style.display='none';return}const a=A['i'+h],w=k?92:100;e.src=a[0];e.style.display='block';e.style.width=w+'px';e.style.left=(138+k*134-w/2)+'px';e.style.top=(1782-w*a[2]/a[1]/2)+'px'});
  T.new.style.display=hist.length?'block':'none';
  if(!animating)foods.forEach((f,i)=>{f.className='food btn'+(phase==='bet'?'':(win>=0?(i===win?' win':' dim'):''))});
@@ -238,11 +263,18 @@ async function rank(){
  try{
   const result=await call('rankings','GET',null,{period:'daily',metric:'totalWin'});
   const ranks=(result.rankings||[]).slice(0,10);
-  modal('<div class="box res" style="height:950px;overflow:auto">'+
+  const rows=ranks.map(w=>{
+   const pic=safeWinnerPhoto(w.pic||w.avatar);
+   const avatar=pic?'<img alt="" src="'+escapeHtml(pic)+'" style="width:76px;height:76px;object-fit:cover;border-radius:50%;border:4px solid #ffda74"/>':
+    '<span style="width:76px;height:76px;border-radius:50%;border:4px solid #ffda74;display:grid;place-items:center">👤</span>';
+   return '<div style="display:flex;align-items:center;gap:18px;margin:15px 2px;padding:11px;border-bottom:2px solid #e5a75e">'+
+    avatar+'<div style="min-width:0;text-align:left"><b style="font-size:35px">'+escapeHtml(w.name||'Player')+'</b>'+
+    '<div style="font-size:26px">ID '+escapeHtml(w.public_id||'—')+'</div>'+
+    '<div style="font-size:31px;color:#ffe67d">'+Number(w.total_win||0).toLocaleString('en-US')+' coins</div></div></div>';
+  }).join('');
+  modal('<div class="box res" style="height:1050px;overflow:auto">'+
    '<div class="x">×</div><div class="ban">Daily Ranking</div><br><br>'+
-   (ranks.length?ranks.map((w,i)=>'<p style="font-size:37px;padding:5px">'+
-    (i+1)+'. '+escapeHtml(w.name)+' · 🪙 '+fmt(w.total_win)+'</p>').join(''):
-    '<p style="font-size:40px">No verified winners yet</p>')+'</div>');
+   (rows||'<p style="font-size:40px">No verified winners yet</p>')+'</div>');
  }catch(e){toast(e.message)}
 }
 function safeWinnerPhoto(value){
@@ -250,28 +282,20 @@ function safeWinnerPhoto(value){
  if(!/^https:\/\/(?:sharika-api-staging\.soverixnet\.workers\.dev|lh3\.googleusercontent\.com|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(pic))return '';
  return pic;
 }
-function foodTopWinner(){
- const result=currentState?.result,previous=currentState?.previous_result;
- const latest=result||previous;
- const winner=latest?.top_winners?.[0];
- return winner&&typeof winner.name==='string'&&winner.name.trim()&&
-  Number(winner.total_win)>0?winner:null;
-}
 function renderFoodWinner(){
- if(!T.winnerAvatar||!T.t5)return;
- const winner=foodTopWinner(),pic=winner?safeWinnerPhoto(winner.pic||winner.avatar):'';
- T.winnerAvatar.hidden=!pic;
- if(pic&&T.winnerAvatar.src!==pic)T.winnerAvatar.src=pic;
- if(winner){
-  T.t5.style.left='247px';T.t5.style.width='530px';
-  T.t5.style.fontSize='39px';
-  T.t5.textContent=winner.name.trim().slice(0,17)+' +'+fmt(Number(winner.total_win));
- }else{
-  T.t5.style.left='180px';T.t5.style.width='500px';
-  T.t5.style.fontSize='56px';
-  T.t5.textContent=currentState?.result?.my_payout?
-    'You +'+fmt(Number(currentState.result.my_payout)):'No Winner';
- }
+ if(!T.rankAvatars)return;
+ const latest=currentState?.result||currentState?.previous_result;
+ const winners=Array.isArray(latest?.top_winners)?latest.top_winners:[];
+ T.rankAvatars.forEach((slot,i)=>{
+  const winner=winners[i],pic=safeWinnerPhoto(winner?.pic||winner?.avatar);
+  if(pic){
+   if(slot.avatar.getAttribute('src')!==pic)slot.avatar.src=pic;
+   slot.avatar.style.display='block';slot.placeholder.style.display='none';
+  }else{
+   slot.avatar.removeAttribute('src');slot.avatar.style.display='none';
+   slot.placeholder.style.display='grid';
+  }
+ });
 }
 function players(){
  const winners=currentState?.previous_result?.top_winners||[];
@@ -321,16 +345,13 @@ async function refresh(){
   const now=Date.now()+serverDelta,nextPhase=phaseAt(state.round,now);
   left=leftAt(state.round,now,nextPhase);
   if(nextPhase!=='result'||!state.result){
-   phase=nextPhase;win=-1;
-   T.t5.textContent='No Winner';draw();
+   phase=nextPhase;win=-1;draw();
   }else if(animatedRound!==round&&!animating){
    animatedRound=round;
    phase='spin';win=-1;draw();
    spin(state.result.index,Number(state.result.my_payout)||0);
   }else if(!animating){
-   phase='result';win=state.result.index;
-   T.t5.textContent=state.result.my_payout?'You +'+fmt(state.result.my_payout):'No Winner';
-   draw();
+   phase='result';win=state.result.index;draw();
   }
  }catch(e){
   ready=false;
@@ -362,14 +383,10 @@ function spin(resultIndex,serverPayout){
 function finish(index,payout,spinRound){
  if(round!==spinRound||currentState?.round.round_no!==spinRound){animating=false;return}
  animating=false;phase='result';win=index;
- T.t5.textContent=payout?'You +'+fmt(payout):'No Winner';
+ // Never cover the wheel with another large result/winner popup.
+ // The hosted Game Center will display the single top ticker instead.
  draw();snd(payout?1000:300,.25);
- if(!currentState||currentState.round.round_no!==round)return;
- modal('<div class="box res"><div class="ban">'+(payout?'YOU WIN':bets.some(n=>n)?'NO LUCK':'NOT JOIN')+
-  '</div><br><br><br><div style="font-size:60px">'+escapeHtml(NAMES[index])+
-  '</div><div style="font-size:75px;color:#ffe464;margin-top:70px">🪙 +'+fmt(payout)+
-  '</div><div style="font-size:35px">RoundID '+round+'</div></div>');
- setTimeout(()=>{const m=$('m');if(m)m.style.display='none'},2300);
+
 }
 function tick(){
  const r=currentState?.round;if(!r)return;
