@@ -83,7 +83,13 @@ export default {
       const authorization = request.headers.get('authorization') || '';
       if (!/^Bearer\s+\S+$/.test(authorization)) return fail('not_authenticated', 401);
       if (!env.SHARIKA_API) return fail('admin_api_unavailable', 503);
-      const target = new URL(path + url.search, 'https://sharika-api-staging.soverixnet.workers.dev');
+      // Keep Private Center publication controls in this EXISTING Admin Panel.
+      // The main Worker authenticates the same Firebase token again and
+      // checks Super Admin rights. The member portal has no admin endpoints.
+      const privatePrefix='/api/v1/admin/private-center/';
+      const upstreamPath=path.startsWith(privatePrefix)?
+        '/api/v1/center/admin/'+path.slice(privatePrefix.length):path;
+      const target = new URL(upstreamPath + url.search, 'https://sharika-api-staging.soverixnet.workers.dev');
       const upstream = new Request(target, request);
       // Internal service binding call is not a browser CORS request.
       upstream.headers.delete('origin');
