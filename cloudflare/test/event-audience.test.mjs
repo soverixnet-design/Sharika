@@ -17,7 +17,7 @@ test('manual country codes and historic country names are normalized without GPS
 });
 test('audience editor accepts only Global or uppercase two-letter country codes',()=>{
  for(const country of [undefined,'GLOBAL','BD','IN','DE','US'])assert.equal(validEventAudience(country),true);
- for(const country of ['bd','BanGladesh','ALL','',false,'🇧🇩','US\n','GLOBAL ')assert.equal(validEventAudience(country),false);
+ for(const country of ['bd','BanGladesh','ALL','',false,'🇧🇩','US\n','GLOBAL '])assert.equal(validEventAudience(country),false);
 });
 test('event save rejects spoofed geographic audience values',()=>{
  const base={title:'Royal CP Country QA',kind:'festival',description:'Safe',
