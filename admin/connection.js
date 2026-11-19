@@ -4751,7 +4751,11 @@
         checkbox.checked=!!item.published;
         checkbox.setAttribute('aria-label','Show '+item.title+' in Sharika app');
         const save=document.createElement('button');save.type='button';save.className='btn s';
-        save.textContent='Save';
+        const ineligibleEvent=item.kind==='event'&&item.can_publish===false&&!item.published;
+        checkbox.disabled=ineligibleEvent;
+        save.disabled=ineligibleEvent;
+        save.textContent=ineligibleEvent?'Not ready':'Save';
+        if(ineligibleEvent)save.title='Publish the event status with a future end date before enabling member visibility.';
         save.onclick=async()=>{
           const wanted=checkbox.checked;
           if(wanted===!!item.published){message.textContent='No change for '+item.title;return;}
@@ -4786,7 +4790,8 @@
     // lifecycle. An event is visible only when BOTH conditions allow it.
     const events=(state.events||[]).map(x=>({
       id:'event:'+x.id,kind:'event',title:x.title+' · '+x.status,
-      published:!!current.get('event:event:'+x.id)?.published
+      published:!!current.get('event:event:'+x.id)?.published,
+      can_publish:x.status==='published'&&Date.parse(x.ends_at)>Date.now()
     }));
     renderSection('event','🎊 Individual Event Visibility',events);
     const panel=document.createElement('section');panel.className='card';
