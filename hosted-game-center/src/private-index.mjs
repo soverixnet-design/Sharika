@@ -84,8 +84,14 @@ export default {async fetch(req,env){
   // Room bottom sheet keeps voice in the existing Activity. Do not allow
   // arbitrary redirect targets or external URLs from a launch ticket.
   const view=url.searchParams.get('view')==='room'?'&view=room':'';
+  const eventsRequested=url.searchParams.get('tab')==='events';
+  const eventId=/^[1-9][0-9]{0,10}$/.test(url.searchParams.get('event')||'')?
+   url.searchParams.get('event'):null;
+  const redirect=eventsRequested?
+   url.origin+'/center.html?tab=events'+(eventId?'&event='+eventId:''):
+   url.origin+'/?surface=app'+view;
   return new Response(null,{status:303,headers:{
-   ...hdr,'location':url.origin+'/?surface=app'+view,
+   ...hdr,'location':redirect,
    'set-cookie':'__Host-sh_center='+token+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=1800'
   }});
  }
