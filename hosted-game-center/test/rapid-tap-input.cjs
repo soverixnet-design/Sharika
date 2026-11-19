@@ -30,7 +30,7 @@ const server=http.createServer((req,res)=>{
   });
   document.querySelector('iframe').src='/original-games/'+file+'.html';
  },{name,file});
- const frame=page.frames().find(f=>f.parentFrame());await frame.waitForURL('**/'+file+'.html');await frame.waitForLoadState('load');await frame.waitForTimeout(500);
+ const frame=page.frames().find(f=>f.parentFrame());await frame.waitForURL('**/'+file+'.html');await frame.waitForLoadState('load');await page.waitForFunction(()=>window.stateRequests>0);await frame.waitForFunction(()=>typeof GameBridge==='undefined'||GameBridge.get()!=null);
  const result=await frame.evaluate(({selector,name})=>{
   let b=document.querySelector(selector);
   
