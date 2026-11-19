@@ -62,7 +62,11 @@ test('Play UI fails closed while selecting native mode and omits old recharge ba
   const source=read('staging-connection.js');
   assert.match(source,/playStoreMode=null/);
   assert.match(source,/if\(playStoreMode!==false\)return;[\s\S]*?const listButton=/);
-  assert.match(source,/if\(playStoreMode===null\)\{\s*const visit=joinedRoom;\s*playModeReady\.then\(\(\)=>\{\s*if\(!insideRoom\|\|joinedRoom===visit\)showGameCard/);
+  // The staging app now uses an isolated authenticated WebView, not the old
+  // mode-pending catalog. Play builds still fall back to the one permitted
+  // Greedy Wheel while the native bridge is blocked.
+  assert.match(source,/native\('openHostedGameCenter',\{insideRoom:!!insideRoom\}\)/);
+  assert.match(source,/if\(clientModeVerified&&playStoreMode===true\)\s*showPlayLegacyGames/);
   assert.match(source,/if\(playStoreMode===true\)\{[\s\S]*?preview\(greedyGame\);\s*return;/);
   assert.match(source,/visibleGameCards=originalGameCards\.filter\(game=>[\s\S]*?'greedy-wheel','cleopatra','food-deluxe','greedy-classic'[\s\S]*?enabled\.has\(game\.id\)/);
   assert.doesNotMatch(source,/window\.sharikaOpenPlayCasualGames\(doc,portal\)/);
