@@ -44,17 +44,28 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
    'JOIN sharika_game_catalog c ON c.id=p.id AND c.enabled=1 '+
    "WHERE p.kind='game' AND p.published=1 ORDER BY p.sort_order,p.id").all();
   const now=new Date().toISOString();
-  const events=await db.prepare('SELECT e.id,e.title,e.kind,e.description,e.starts_at,e.ends_at,e.banner_id '+
+  // Event-specific publishing is not enough: the global Event module must
+  // also be enabled. Scheduled events are shown only if explicitly published.
+  const eventsEnabled=active.some(item=>item.kind==='module'&&item.id==='events');
+  const events=eventsEnabled?await db.prepare(
+   'SELECT e.id,e.title,e.kind,e.description,e.starts_at,e.ends_at,e.banner_id,'+
+   'e.prize_1,e.prize_2,e.prize_3,e.reward_labels_json,'+
+   'CASE WHEN i.image_bytes>0 THEN i.version ELSE 0 END AS banner_version '+
    'FROM sharika_events e JOIN sharika_center_publishing p ON p.id=(\'event:\'||e.id) '+
    "AND p.kind='event' AND p.published=1 " +
-   "WHERE e.status='published' AND e.starts_at<=? AND e.ends_at>? ORDER BY e.starts_at DESC LIMIT 30")
-   .bind(now,now).all();
+   'LEFT JOIN sharika_banner_images i ON i.banner_id=e.banner_id '+
+   "WHERE e.status='published' AND e.ends_at>? ORDER BY e.starts_at DESC LIMIT 30")
+   .bind(now).all():{results:[]};
   return send({
    games:rows(games).map(safeItem),
    rankings:active.filter(x=>x.kind==='ranking').map(safeItem),
    modules:active.filter(x=>x.kind==='module').map(safeItem),
    events:rows(events).map(e=>({id:Number(e.id),title:e.title,kind:e.kind,
-    description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,banner_id:e.banner_id||null})),
+    description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,
+    status:e.starts_at>now?'scheduled':'live',
+    banner_url:Number(e.banner_version)>0?'/api/center/events/'+Number(e.id)+'/banner?v='+Number(e.banner_version):null,
+    prizes:[Number(e.prize_1)||0,Number(e.prize_2)||0,Number(e.prize_3)||0],
+    reward_labels:(()=>{try{const a=JSON.parse(e.reward_labels_json||'[]');return Array.isArray(a)?a.filter(x=>typeof x==='string').slice(0,7):[]}catch(_){return []}})()})),
    issued_at:now,virtual_coins_only:true
   });
  }
@@ -109,6 +120,11 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
   const existed=await db.prepare('SELECT id,kind,published FROM sharika_center_publishing WHERE id=? AND kind=?')
    .bind(id,kind).first();
   if(!existed)return deny('item_not_found',404);
+  // Do not publish rankings without a verified data source. Admin may
+  // prepare unsupported categories, but members must never see fake winners.
+  if(kind==='ranking'&&body.published&&
+      !['rich','charm','room','games','recharge','noble','lucky'].includes(id))
+    return deny('ranking_source_not_ready',409);
   if(kind==='game'&&body.published){
    const ready=await db.prepare('SELECT enabled FROM sharika_game_catalog WHERE id=?')
     .bind(id).first();
