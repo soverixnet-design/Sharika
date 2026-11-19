@@ -9,6 +9,8 @@ on:
       - 'cloudflare/src/private-center.mjs'
       - 'cloudflare/migrations/0104_event_country_visibility.sql'
       - 'cloudflare/test/event-audience.test.mjs'
+      - 'cloudflare/test/event-design.test.mjs'
+      - 'cloudflare/test/private-center.test.mjs'
       - 'cloudflare/test/royal-liveops-admin-e2e.test.mjs'
       - 'hosted-game-center/src/private-index.mjs'
       - 'hosted-game-center/web/center.js'
@@ -35,6 +37,14 @@ jobs:
           node --check hosted-game-center/src/private-index.mjs
           node --check hosted-game-center/web/center.js
           node --check admin/connection.js
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const admin=readFileSync('admin/connection.js','utf8');
+          const member=readFileSync('hosted-game-center/web/center.js','utf8');
+          if(!admin.includes('sh-ev-country')||!admin.includes('ADMIN PREVIEW ONLY')||
+             !admin.includes('private-center/visibility')||
+             !member.includes('eventAudienceLabel'))throw Error('Event preview/country UI missing');
+          NODE
           node hosted-game-center/scripts/build.mjs
       - name: Validate additive audience migration using memory-only SQLite
         run: |
