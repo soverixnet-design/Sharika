@@ -1126,6 +1126,9 @@ test('gift leaderboards require Firebase auth and use only settled gift events',
       const stmt=old(sql);
       if(sql.startsWith('SELECT * FROM sharika_users WHERE auth_uid'))
         stmt.first=async()=>({status:'active',public_no:10000001});
+      // Rank publication is a separate explicit server-owned policy.
+      if(sql.includes('SELECT published FROM sharika_center_publishing'))
+        stmt.first=async()=>({published:1});
       if(sql.includes('FROM sharika_gift_events'))
         stmt.all=async()=>{db.calls.push(['all',sql,stmt.values]);return {results:[{public_no:10000002,name:'A real recipient',
           pic:null,wealth_level:1,charm_level:2,total:75}]};};
