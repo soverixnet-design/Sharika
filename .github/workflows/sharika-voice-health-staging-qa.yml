@@ -1,0 +1,43 @@
+name: Sharika Voice Health and Background Performance QA (staging only)
+on:
+  push:
+    branches: [fix/sharika-voice-health-background-qa-20261120]
+    paths:
+      - '.github/workflows/sharika-voice-health-staging-qa.yml'
+      - 'android-staging/staging-connection.js'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/RoomAudioService.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java'
+      - 'cloudflare/test/voice-health-background.test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  voice-health-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Voice UI JavaScript and privacy check
+        run: |
+          node --check android-staging/staging-connection.js
+          node --test cloudflare/test/voice-health-background.test.mjs
+          node --test cloudflare/test/voice-ui.test.mjs cloudflare/test/voice-ice.test.mjs cloudflare/test/voice-seat-upgrade.test.mjs
+      - name: Full Cloudflare regression and SQLite checks
+        run: npm --prefix cloudflare run check
+      - name: Compile Android staging debug app (no Play release)
+        run: gradle -p android-staging :app:assembleDebug --no-daemon
+      - name: Verify APK package integrity, never upload as production build
+        run: |
+          set -euo pipefail
+          APK=android-staging/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -tqq "$APK"
+          echo SHARIKA_VOICE_HEALTH_STAGING_BUILD_SUCCESS
