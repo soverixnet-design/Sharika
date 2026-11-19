@@ -19,7 +19,7 @@
  const hero=$('royal-hero'),toolbarCount=$('toolbar-count');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
  const artworks={
-  'royal-slots':'/cards/royal-slots.svg',
+  'royal-slots':'/cards/royal-slots.webp',
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
   'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/food-wheel.png',
   'sovera-gaddy':'/cards/gaddy-royal.svg','sovera-food':'/cards/sovera-food-royal.svg',

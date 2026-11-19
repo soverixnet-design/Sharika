@@ -18,6 +18,7 @@ mkdirSync(join(dist,'cards'),{recursive:true});
 for(const [dest,src] of Object.entries({
   'superace.svg':'royal-ace-card.svg',
   'royal-slots.svg':'@web/royal-slots-card.svg',
+  'royal-slots.webp':'@web/royal-slots-card.webp',
   'cleopatra.jpg':'game-cards/cleopatra-gold.jpg',
   'fruit-machine.jpg':'game-cards/fruit-machine.jpg',
   'greedy.jpg':'game-cards/hot-food.jpg',
