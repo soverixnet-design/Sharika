@@ -10,6 +10,12 @@ on:
       - 'cloudflare/migrations/0100_royal_slots.sql'
       - 'cloudflare/test/royal-slots.test.mjs'
       - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaWinnerTicker.java'
+      - 'android-staging/app/src/main/assets/original-games/greedy-classic-live.js'
+      - 'cloudflare/src/greedy-classic.mjs'
+      - 'cloudflare/src/security-rate-limit.mjs'
+      - 'cloudflare/test/security-hardening.test.mjs'
       - '.github/workflows/sharika-royal-slots-staging.yml'
   workflow_dispatch:
 permissions:
@@ -33,6 +39,12 @@ jobs:
           node --check cloudflare/src/game-catalog.mjs
           node --check hosted-game-center/src/index.mjs
           node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/web/practice.js
+          node --check android-staging/app/src/main/assets/original-games/greedy-classic-live.js
+          node --check cloudflare/src/greedy-classic.mjs
+          node --check cloudflare/src/security-rate-limit.mjs
+          node --test cloudflare/test/security-hardening.test.mjs
+          node --test cloudflare/test/greedy-classic.test.mjs
           node --check hosted-game-center/web/royal-slots-bridge.js
           node --test cloudflare/test/royal-slots.test.mjs
           node --test hosted-game-center/test/royal-slots-integration.test.mjs
