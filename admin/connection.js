@@ -16,6 +16,11 @@
     support_reply:'Support inbox and reply',coin_recharge:'Credit user coins'
   };
   const NAV_ALL=(window.NAV||[]).slice();
+  if(!NAV_ALL.some(item=>item[0]==='privateCenter')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='games');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['privateCenter','🔐','Private Center · Publish / Hide']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='playTesters')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='users');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -3158,6 +3163,18 @@
     invite_campaign:'🤝 Invite campaign',checkin_festival:'📅 Check-in festival',
     festival:'🎊 Festival',custom:'✨ Custom event'
   };
+  const ROYAL_EVENT_PRESETS={
+    royal_gold:{label:'Royal Gold · Crowns',color:'#f6ce78',base:'#3c175a',symbol:'♛'},
+    diamond_luxury:{label:'Diamond Luxury · Crystals',color:'#80e3ff',base:'#102d59',symbol:'◆'},
+    game_tournament:{label:'Game Tournament · Arena',color:'#ffba79',base:'#571f2c',symbol:'⚔'},
+    cp_love:{label:'CP Love · Hearts',color:'#ffc0d8',base:'#6b204f',symbol:'♥'},
+    festival_special:{label:'Festival Special · Lights',color:'#bbffcb',base:'#285647',symbol:'✦'}
+  };
+  const EVENT_SCORE_MODES={
+    gift_points:'Selected verified Gift Points',
+    game_wins:'Settled Game Win Coins',
+    cp_gifts:'Verified CP Gift Coins (couple ranking; no automatic prize payout)'
+  };
   function eventLocal(iso){
     const time=new Date(iso);
     if(!Number.isFinite(+time))return '';
@@ -3255,6 +3272,17 @@
       '<label>Type<select class="field" id="sh-ev-kind">'+
       Object.entries(EVENT_KINDS).map(([key,label])=>'<option value="'+key+'">'+esc(label)+'</option>').join('')+
       '</select></label></div>'+
+      '<div class="row"><label>👑 Event Design Template<select class="field" id="sh-ev-template">'+
+      Object.entries(ROYAL_EVENT_PRESETS).map(([key,v])=>
+        '<option value="'+key+'">'+esc(v.label)+'</option>').join('')+
+      '</select></label>'+
+      '<label>🏆 Event Ranking Rule<select class="field" id="sh-ev-scoring">'+
+      Object.entries(EVENT_SCORE_MODES).map(([key,label])=>
+        '<option value="'+key+'">'+esc(label)+'</option>').join('')+
+      '</select></label></div>'+
+      '<div id="sh-ev-design-preview" role="img" aria-label="Selected royal event design preview" '+
+      'style="padding:20px;text-align:center;border:2px solid #d9b369;border-radius:20px;'+
+      'margin:10px 0;color:#ffe7b3;background:linear-gradient(145deg,#432460,#14092f)"></div>'+
       '<label>Description / rules<textarea class="field" id="sh-ev-desc" maxlength="1000" rows="3" '+
       'placeholder="Describe the ranking and how winners are chosen"></textarea></label>'+
       '<div class="row"><label>Starts (local time)<input class="field" id="sh-ev-start" type="datetime-local"></label>'+
@@ -3290,7 +3318,7 @@
         'maxlength="80" placeholder="e.g. Royal medal + frame" style="min-width:130px"></label>').join('')+'</div>'+
       '<button class="btn s" type="button" id="sh-event-save">Create event</button>'+
       ' <button class="btn" type="button" id="sh-event-clear">Clear form</button>'+
-      '<p class="n" id="sh-event-note">Use 0 to disable a prize. Awarded events are locked to protect old receipts.</p>'+
+      '<p class="n" id="sh-event-note">Use 0 to disable a prize. After saving, use the Event card Publish button and Event Center Master Visibility to show the event in the app. Existing prize receipts are protected.</p>'+
       '</div>':'')+
       '<div id="sh-event-list">Loading…</div>';
     let data;
@@ -3301,10 +3329,40 @@
       return;
     }
     const all=data.events||[];
+    // This is the owner's SAME Super Admin console: event creation and
+    // final member publication are intentionally separate audited actions.
+    let centerState={items:[]};
+    if(role==='super')try{centerState=await api('GET','private-center/state');}
+      catch(error){console.warn('event_publication_unavailable',error.message);}
+    const publishedItems=new Map((centerState.items||[]).map(i=>[i.kind+':'+i.id,!!i.published]));
+    const eventsModuleOn=publishedItems.get('module:events')===true;
     byId('sh-event-stats').innerHTML='<b>'+fmt(all.length)+'</b> real events · '+
       '<b>'+fmt(all.filter(e=>e.status==='live').length)+'</b> live · '+
       '<b>'+fmt(all.reduce((sum,e)=>sum+(e.awards||[]).length,0))+'</b> paid prizes';
     const list=byId('sh-event-list');
+    if(role==='super'){
+      const moduleBar=document.createElement('div');moduleBar.className='card';
+      moduleBar.style.cssText='border:1px solid #d5ad63;background:#241741;color:#ffe8af';
+      const heading=document.createElement('h3');heading.textContent='Event Center · Master Visibility';
+      const label=document.createElement('p');
+      label.textContent=eventsModuleOn?
+        'Event Center is enabled. Each event still needs its own Publish switch.':
+        'Event Center is hidden. No event can appear in Sharika until you enable this section.';
+      const button=document.createElement('button');button.className='btn s';button.type='button';
+      button.textContent=eventsModuleOn?'Hide Entire Event Center':'Enable Event Center';
+      button.onclick=async()=>{
+        if(!confirm((eventsModuleOn?'Hide all Event pages':'Enable Event Center')+
+          ' for every signed-in Sharika member?'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','private-center/visibility',{
+            kind:'module',id:'events',published:!eventsModuleOn});
+          note('Event Center visibility saved ✓');await P.events();
+        }catch(error){note(error.message);button.disabled=false;}
+      };
+      moduleBar.append(heading,label,button);
+      list.before(moduleBar);
+    }
     if(!all.length)list.innerHTML=card('No events yet',
       'Create an event above. No demo competitions or prize payments are enabled.');
     else list.innerHTML=all.map(e=>{
@@ -3320,7 +3378,7 @@
           '<b>'+medal+' '+fmt(coins)+' 🪙</b> '+
           (receipt?'<span class="n">✓ Paid to '+esc(receipt.public_id)+
              ' ('+esc(receipt.name)+')</span>':
-           role==='super'&&e.status==='ended'?
+           role==='super'&&e.status==='ended'&&e.scoring_mode!=='cp_gifts'?
              '<input class="field" style="max-width:145px" inputmode="numeric" maxlength="8" '+
              'placeholder="8-digit user ID" id="sh-ev-recipient-'+e.id+'-'+(i+1)+'">'+
              '<button type="button" class="btn s" data-sh-event-award="'+e.id+'" '+
@@ -3332,10 +3390,20 @@
         '<h3>🏆 '+esc(e.title)+' <small>#'+e.id+'</small></h3>'+
         '<p class="n">'+esc(EVENT_KINDS[e.kind]||e.kind)+' · <b>'+esc(e.status.toUpperCase())+'</b></p>'+
         '<p class="n">'+schedule+'</p><p>'+esc(e.description||'No rules entered')+'</p>'+
+        '<p class="n">Design: '+esc(ROYAL_EVENT_PRESETS[e.template_id]?.label||'Royal Gold')+
+          ' · Ranking: '+esc(EVENT_SCORE_MODES[e.scoring_mode]||EVENT_SCORE_MODES.gift_points)+'</p>'+
         '<p class="n">Home banner: '+(e.banner_id?'#'+Number(e.banner_id):'Royal gradient')+
           ' · Scoring gifts: '+(e.gift_rules||[]).map(g=>
             '#'+Number(g.gift_id)+' × '+Number(g.points)).join(', ')+(e.gift_rules?.length?'':'none')+'</p>'+
         '<div>'+prizes+'</div>'+
+        '<p class="n">App visibility: <b>'+(
+          publishedItems.get('event:event:'+e.id)?'PUBLISHED':'HIDDEN')+
+          '</b> · Global Event Center: '+(eventsModuleOn?'ON':'OFF')+'</p>'+
+        (role==='super'&&e.published&&!e.locked?
+          '<button type="button" class="btn s" data-sh-event-publication="'+e.id+'">'+
+          (publishedItems.get('event:event:'+e.id)?'Hide this Event':'Publish this Event')+
+          '</button>':role==='super'&&e.published?
+          '<span class="n">Paid Event · visibility locked to protect receipts</span>':'')+
         (role==='super'&&!e.locked?
           '<button class="btn" type="button" data-sh-event-edit="'+e.id+'">Edit event / prizes</button>':
           e.locked?'<p class="n">🔒 Paid event cannot be edited.</p>':'')+
@@ -3343,6 +3411,25 @@
     }).join('');
     let editing=null;
     const now=new Date(),tomorrow=new Date(now.getTime()+86400000);
+    function previewEventDesign(){
+      const id=byId('sh-ev-template')?.value||'royal_gold';
+      const theme=ROYAL_EVENT_PRESETS[id]||ROYAL_EVENT_PRESETS.royal_gold;
+      const target=byId('sh-ev-design-preview');
+      if(!target)return;
+      target.style.background='radial-gradient(circle at 50% 0, '+theme.color+'77, transparent 65%),'+
+        'linear-gradient(145deg,'+theme.base+',#150b2a)';
+      target.style.borderColor=theme.color;
+      target.replaceChildren();
+      const sign=document.createElement('div');sign.textContent=theme.symbol;
+      sign.style.cssText='font-size:43px;color:'+theme.color+';text-shadow:0 0 22px '+theme.color;
+      const title=document.createElement('strong');
+      title.textContent=byId('sh-ev-title')?.value.trim()||'YOUR EVENT TITLE';
+      title.style.cssText='display:block;font-family:Georgia,serif;font-size:23px;color:'+theme.color;
+      const note=document.createElement('p');note.textContent='Template preview · '+theme.label+
+        ' · '+(EVENT_SCORE_MODES[byId('sh-ev-scoring')?.value]||EVENT_SCORE_MODES.gift_points);
+      note.style.cssText='font-size:11px;color:#f9edda';
+      target.append(sign,title,note);
+    }
     function clear(){
       editing=null;
       byId('sh-event-form-title')?.replaceChildren(document.createTextNode('✨ Create event'));
@@ -3353,6 +3440,9 @@
       byId('sh-ev-end').value=eventLocal(tomorrow.toISOString());
       byId('sh-ev-status').value='draft';
       byId('sh-ev-banner').value='0';
+      byId('sh-ev-template').value='royal_gold';
+      byId('sh-ev-scoring').value='gift_points';
+      previewEventDesign();
       root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>input.checked=false);
       root.querySelectorAll('[data-sh-ev-points]').forEach(input=>input.value='1');
       for(let i=1;i<=7;i++)byId('sh-ev-label-'+i).value='';
@@ -3362,6 +3452,8 @@
     if(role==='super'){
       clear();
       byId('sh-event-clear').onclick=clear;
+      for(const id of ['sh-ev-title','sh-ev-template','sh-ev-scoring'])
+        byId(id).addEventListener('input',previewEventDesign);
       list.querySelectorAll('[data-sh-event-edit]').forEach(button=>button.onclick=()=>{
         const e=all.find(row=>row.id===Number(button.dataset.shEventEdit));
         if(!e||e.locked)return;
@@ -3374,6 +3466,9 @@
         byId('sh-ev-end').value=eventLocal(e.ends_at);
         byId('sh-ev-status').value=e.published?'published':e.status;
         byId('sh-ev-banner').value=String(e.banner_id||0);
+        byId('sh-ev-template').value=e.template_id||'royal_gold';
+        byId('sh-ev-scoring').value=e.scoring_mode||'gift_points';
+        previewEventDesign();
         root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>{
           const found=(e.gift_rules||[]).find(rule=>Number(rule.gift_id)===Number(input.dataset.shEvGift));
           input.checked=!!found;
@@ -3413,7 +3508,8 @@
         const payload={title:byId('sh-ev-title').value.trim(),kind:byId('sh-ev-kind').value,
           description:byId('sh-ev-desc').value.trim(),starts_at:new Date(start).toISOString(),
           ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p,
-          banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,reward_labels};
+          banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,reward_labels,
+          template_id:byId('sh-ev-template').value,scoring_mode:byId('sh-ev-scoring').value};
         if(payload.title.length<3){hint.textContent='Enter an event name of at least 3 characters.';return;}
         if(!window.confirm((editing?'Update event #'+editing:'Create this event')+
           ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;
@@ -3425,6 +3521,21 @@
         }catch(error){hint.textContent='Event save failed: '+error.message;}
         finally{button.disabled=false;}
       };
+      list.querySelectorAll('[data-sh-event-publication]').forEach(button=>button.onclick=async()=>{
+        const id=Number(button.dataset.shEventPublication);
+        const entity=all.find(e=>e.id===id);
+        if(!entity||!entity.published)return;
+        const current=publishedItems.get('event:event:'+id)===true;
+        const wanted=!current;
+        if(!window.confirm((wanted?'Publish':'Hide')+' '+entity.title+' for Sharika users?'))return;
+        button.disabled=true;
+        try{
+          await api('PATCH','private-center/visibility',{
+            id:'event:'+id,kind:'event',published:wanted});
+          note(entity.title+(wanted?' published':' hidden')+' ✓');
+          await P.events();
+        }catch(error){note(error.message);button.disabled=false;}
+      });
       list.querySelectorAll('[data-sh-event-award]').forEach(button=>button.onclick=async event=>{
         const id=Number(button.dataset.shEventAward),rank=Number(button.dataset.shEventRank);
         const input=byId('sh-ev-recipient-'+id+'-'+rank);
@@ -4604,8 +4715,123 @@
     }
   };
 
+  // The owner's existing standalone Admin Panel is the SINGLE control surface.
+  // It calls the same Firebase-protected staging Worker, never the game website.
+  P.privateCenter=async function(){
+    const root=byId('pg');
+    if(role!=='super'){
+      root.innerHTML=card('Private Center','Only verified Super Admin may publish games or events.');
+      return;
+    }
+    root.innerHTML=card('Private Center','Loading real publication permissions from Sharika staging…');
+    let state;
+    try{state=await api('GET','private-center/state');}
+    catch(e){root.innerHTML=card('Private Center unavailable',e.message);return;}
+    root.replaceChildren();
+    const notice=document.createElement('section');notice.className='card';
+    notice.innerHTML='<h3>🔐 Sharika Private Center</h3>'+
+      '<p class="n">Users sign in ONCE through Sharika. Published games appear automatically; hidden items cannot be launched, even with a direct link. Existing games, account balances and accepted bets are preserved.</p>'+
+      '<p class="n">This is your existing Admin Panel, not another admin website. Win Rate and RTP below save as DRAFTS ONLY; they never secretly change a running round.</p>';
+    root.appendChild(notice);
+    const current=new Map((state.items||[]).map(item=>[item.kind+':'+item.id,item]));
+    function renderSection(kind,label,list){
+      const panel=document.createElement('section');panel.className='card';
+      const title=document.createElement('h3');title.textContent=label;panel.appendChild(title);
+      const info=document.createElement('p');info.className='n';
+      info.textContent='Published means visible to signed-in members. Hidden means unavailable in the app and private website.';
+      panel.appendChild(info);
+      const message=document.createElement('p');message.className='n';
+      message.setAttribute('role','status');
+      for(const item of list){
+        const row=document.createElement('div');row.className='row';
+        row.style.cssText='display:flex;gap:9px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffffff25';
+        const info=document.createElement('span');info.textContent=item.title+' · '+item.id;
+        info.style.flex='1';
+        const checkbox=document.createElement('input');checkbox.type='checkbox';
+        checkbox.checked=!!item.published;
+        checkbox.setAttribute('aria-label','Show '+item.title+' in Sharika app');
+        const save=document.createElement('button');save.type='button';save.className='btn s';
+        save.textContent='Save';
+        save.onclick=async()=>{
+          const wanted=checkbox.checked;
+          if(wanted===!!item.published){message.textContent='No change for '+item.title;return;}
+          if(!window.confirm((wanted?'Publish ':'Hide ')+item.title+
+              ' for Sharika users? This controls the private website and server APIs.')){
+            checkbox.checked=!!item.published;return;
+          }
+          save.disabled=true;message.textContent='Saving to verified Cloudflare staging…';
+          try{
+            await api('PATCH','private-center/visibility',{
+              kind:item.kind,id:item.id,published:wanted
+            });
+            item.published=wanted;
+            current.set(item.kind+':'+item.id,item);
+            message.textContent=item.title+(wanted?' published':' hidden')+' ✓';
+          }catch(error){
+            checkbox.checked=!!item.published;
+            message.textContent='Change rejected: '+error.message;
+          }finally{save.disabled=false;}
+        };
+        row.append(info,checkbox,save);panel.append(row);
+      }
+      if(!list.length){const empty=document.createElement('p');empty.className='n';
+        empty.textContent='No items configured.';panel.append(empty);}
+      panel.append(message);root.append(panel);
+    }
+    for(const [kind,title] of [['game','🎮 Game Visibility'],['ranking','🏆 Ranking Visibility'],
+      ['module','✨ Events, Wallet, Gifts & Assets']]){
+      renderSection(kind,title,(state.items||[]).filter(x=>x.kind===kind));
+    }
+    // Event-specific publish controls are independent of the event draft/published
+    // lifecycle. An event is visible only when BOTH conditions allow it.
+    const events=(state.events||[]).map(x=>({
+      id:'event:'+x.id,kind:'event',title:x.title+' · '+x.status,
+      published:!!current.get('event:event:'+x.id)?.published
+    }));
+    renderSection('event','🎊 Individual Event Visibility',events);
+    const panel=document.createElement('section');panel.className='card';
+    panel.innerHTML='<h3>🎲 Game Win Probability & RTP Proposals</h3>'+
+      '<p class="n">Saving a draft does NOT apply it to live bets or previously accepted rounds. Each engine needs a reviewed rule version, accurate player disclosures and payout verification before activation.</p>'+
+      '<label>Game<select id="sh-pc-odds-game" class="field"></select></label>'+
+      '<div class="row">'+
+      '<label>Win probability (%)<input id="sh-pc-odds-win" class="field" type="number" min="0" max="100" step="0.01" value="35"></label>'+
+      '<label>Target RTP (%)<input id="sh-pc-odds-rtp" class="field" type="number" min="0" max="100" step="0.01" value="90"></label>'+
+      '</div><button type="button" class="btn s" id="sh-pc-odds-save">Save Proposed Settings</button>'+
+      '<p class="n" id="sh-pc-odds-message" role="status"></p>';
+    root.append(panel);
+    const select=byId('sh-pc-odds-game');
+    for(const item of (state.items||[]).filter(x=>x.kind==='game')){
+      const opt=document.createElement('option');opt.value=item.id;
+      opt.textContent=item.title;select.append(opt);
+    }
+    const drafts=new Map((state.odds_drafts||[]).map(d=>[d.game_id,d]));
+    function showSaved(){
+      const draft=drafts.get(select.value);
+      byId('sh-pc-odds-win').value=draft?String(draft.win_rate_basis_points/100):'35';
+      byId('sh-pc-odds-rtp').value=draft?String(draft.target_rtp_basis_points/100):'90';
+    }
+    select.onchange=showSaved;showSaved();
+    byId('sh-pc-odds-save').onclick=async()=>{
+      const w=Number(byId('sh-pc-odds-win').value);
+      const r=Number(byId('sh-pc-odds-rtp').value);
+      const message=byId('sh-pc-odds-message');
+      if(!Number.isFinite(w)||!Number.isFinite(r)||w<0||r<0||w>100||r>100){
+        message.textContent='Win rate and RTP must be between 0 and 100 percent.';return;
+      }
+      const button=byId('sh-pc-odds-save');button.disabled=true;
+      try{
+        const body={game_id:select.value,win_rate_basis_points:Math.round(w*100),
+          target_rtp_basis_points:Math.round(r*100),notes:'Awaiting verified engine integration'};
+        const result=await api('PATCH','private-center/odds-draft',body);
+        drafts.set(select.value,body);
+        message.textContent=result.notice||'Draft saved. Not applied to running games.';
+      }catch(e){message.textContent='Not saved: '+e.message;}
+      finally{button.disabled=false;}
+    };
+  };
+
   const verifiedPages=new Set([
-    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','luckyBox','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','winb','lucky','config','flags','push'
+    'family','dash','analytics','users','support','rooms','ledger','sellers','daily','events','premium','bonds','rech','money','store','md','gifts','cosmetics','luckyBox','profileDesigner','rank','audit','admins','system','banners','opening','levels','promo','themes','rr','games','privateCenter','winb','lucky','config','flags','push'
   ]);
   for(const entry of window.NAV||[]) {
     const key=entry[0];

@@ -53,7 +53,7 @@ async function call(f,role,method,body){
 test('Fruit Royale replaces the old playable Jackpot while history switch stays visible',async()=>{
   const f=fixture();
   const games=await readGameCatalog(f.db);
-  assert.equal(games.length,11);
+  assert.equal(games.length,12);
   assert.equal(games.find(game=>game.id==='royal-ace').enabled,false);
   assert.equal(games.filter(game=>game.enabled).length,6);
   assert.equal(games.find(game=>game.id==='jackpot-fruit').enabled,false);
@@ -73,7 +73,10 @@ test('disabled games reject new bets while other games stay available',async()=>
   assert.equal(saved.data.audited,true);
   assert.equal(await gameAcceptsBets(f.db,'night-food'),false);
   assert.equal(await gameAcceptsBets(f.db,'sovera-food'),true);
-  assert.equal(f.changes[1].args[1],'game_catalog_toggle');
+  assert.ok(f.changes.some(x=>x.sql.includes('INSERT INTO sharika_admin_audit')&&
+    x.args[1]==='game_catalog_toggle'));
+  assert.ok(f.changes.some(x=>x.sql.includes('UPDATE sharika_center_publishing')&&
+    x.args[0]===0&&x.args[2]==='night-food'));
   assert.equal((await readGameCatalog(f.db)).find(g=>g.id==='night-food').enabled,false);
 });
 test('unknown game and malformed value cannot change the DB',async()=>{

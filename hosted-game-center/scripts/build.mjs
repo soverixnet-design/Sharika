@@ -102,6 +102,6 @@ for(const [dest,src] of Object.entries({
 })){
   copyFileSync(src.startsWith('@web/')?join(root,'web',src.slice(5)):join(source,src),join(dist,'cards',dest));
 }
-for(const name of ['index.html','app.js','practice.js','style.css'])
+for(const name of ['index.html','app.js','practice.js','style.css','center.html','center.css','center.js'])
   copyFileSync(join(root,'web',name),join(dist,name));
 console.log('Sharika Game Center assets ready; original game files preserved');

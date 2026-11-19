@@ -9,7 +9,7 @@ const eventPayload={
   starts_at:'2026-10-28T00:00:00.000Z',ends_at:'2026-11-03T00:00:00.000Z',
   status:'published',prizes:[10000,5000,2500]
 };
-function fixture({event=null,oldAward=null,recipient=null}={}){
+function fixture({event=null,oldAward=null,recipient=null,eventPublished=false}={}){
   const state={queries:[],batches:[]};
   const db={
     prepare(sql){
@@ -17,6 +17,7 @@ function fixture({event=null,oldAward=null,recipient=null}={}){
         bind(...args){this.args=args;return this;},
         async first(){
           state.queries.push({sql,args:this.args});
+          if(sql.includes('SELECT published FROM sharika_center_publishing'))return eventPublished?{published:1}:null;
           if(sql.includes('FROM sharika_events WHERE id'))return event;
           if(sql.includes('FROM sharika_event_awards a')&&sql.includes('a.rank=?'))
             return oldAward;
@@ -132,11 +133,11 @@ test('unpublished event-specific leaderboard is hidden',async()=>{
   const f=fixture({event:{id:3,status:'draft',gift_rules_json:'[]'}});
   const response=await handleEventApp({request:new Request('https://x.invalid/api/v1/events/3/ranking'),
     env:{DB:f.db},uid:'winner',path:'/api/v1/events/3/ranking',cors:{},reply,fail});
-  assert.equal(response.status,404);
-  assert.equal((await response.json()).error,'event_unavailable');
+  assert.equal(response.status,403);
+  assert.equal((await response.json()).error,'event_hidden');
 });
 test('published event-specific leaderboard uses only configured settled gifts within UTC window',async()=>{
-  const f=fixture({event:{id:3,status:'published',
+  const f=fixture({eventPublished:true,event:{id:3,status:'published',
     starts_at:'2026-11-01T00:00:00.000Z',ends_at:'2026-11-08T00:00:00.000Z',
     gift_rules_json:JSON.stringify([{gift_id:17,points:9},{gift_id:18,points:12}])}});
   const response=await handleEventApp({request:new Request('https://x.invalid/api/v1/events/3/ranking'),

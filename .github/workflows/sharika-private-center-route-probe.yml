@@ -1,0 +1,43 @@
+name: Verify Sharika Private Center live staging routes (read-only)
+on:
+  push:
+    branches: [feature/sharika-private-center-catalog-20261119]
+    paths: ['.github/workflows/sharika-private-center-route-probe.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe all public health endpoints separately without changing anything
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,time,socket
+          names=[
+            'sharika-api-staging',
+            'sharika-admin-staging',
+            'sharika-private-center-staging',
+          ]
+          for name in names:
+            for path in ['/health','/api/catalog']:
+              u='https://'+name+'.soverixnet.workers.dev'+path
+              try:
+                with urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'SharikaStagingProbe/1.0'}),timeout=15) as f:
+                  print(name,path,'STATUS',f.status,'TEXT',f.read(240).decode(errors='replace'))
+              except urllib.error.HTTPError as e:
+                print(name,path,'HTTP_ERROR',e.code,'TEXT',e.read(250).decode(errors='replace'))
+              except Exception as e:
+                print(name,path,'ERROR',str(e)[:230])
+          host='https://sharika-admin-staging.soverixnet.workers.dev'
+          for path in ['/admin/','/admin/connection.js']:
+            u=host+path
+            for label,headers in [('default',{}),('browser',{'User-Agent':'Mozilla/5.0','Accept':'text/html,application/javascript,*/*'})]:
+              try:
+                with urllib.request.urlopen(urllib.request.Request(u,headers=headers),timeout=15) as f:
+                  body=f.read()
+                  print('ADMIN_ROUTE',path,label,'STATUS',f.status,'LENGTH',len(body),'PRIVATE_CENTER_MENU',('Private Center' in body.decode(errors='replace')))
+              except urllib.error.HTTPError as e:
+                print('ADMIN_ROUTE',path,label,'HTTP_ERROR',e.code,'TEXT',e.read(350).decode(errors='replace'))
+              except Exception as e:
+                print('ADMIN_ROUTE',path,label,'ERROR',str(e)[:220])
+          PY

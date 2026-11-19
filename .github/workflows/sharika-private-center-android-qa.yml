@@ -1,0 +1,68 @@
+name: Sharika Private Center Android staging APK (QA only)
+on:
+  push:
+    branches: [feature/sharika-private-center-catalog-20261119]
+    paths:
+      - '.github/workflows/sharika-private-center-android-qa.yml'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
+      - 'android-staging/staging-connection.js'
+permissions:
+  contents: read
+jobs:
+  build-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+    env:
+      SHARIKA_PLAY_API_ORIGIN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Verify this is the staging-only signed-in Private Game Center
+        run: |
+          node --check android-staging/staging-connection.js
+          node --check admin/connection.js
+          node --test cloudflare/test/private-center.test.mjs
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const gradle=readFileSync('android-staging/app/build.gradle','utf8');
+          const activity=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java','utf8');
+          const room=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java','utf8');
+          const main=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java','utf8');
+          const frontend=readFileSync('android-staging/staging-connection.js','utf8');
+          if(!gradle.includes("applicationId 'com.soverixnet.sharika'")||
+             !activity.includes('sharika-private-center-staging.soverixnet.workers.dev')||
+             !activity.includes('/api/v1/center/launch-ticket')||
+             !activity.includes('BuildConfig.SHARIKA_PLAY_BUILD')||
+             !activity.includes('SharikaGameBridge')||
+             !room.includes('sharika-private-center-staging.soverixnet.workers.dev')||
+             !room.includes('/api/v1/center/launch-ticket')||
+             !room.includes('/session?ticket=')||
+             room.includes('sharika-games-web-staging.soverixnet.workers.dev')||
+             !main.includes('case "openHostedEventCenter"')||
+             !activity.includes('center_event_id')||
+             !frontend.includes("native('openHostedEventCenter'"))
+             throw Error('Wrong package, origin, auth or Play safety gate');
+          console.log('Sharika signed-in private staging WebView verified');
+          NODE
+      - name: Assemble only debug staging APK (never Play or production)
+        run: gradle -p android-staging :app:assembleDebug --no-daemon
+      - name: Upload QA Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sharika-private-center-android-staging-qa-apk
+          path: android-staging/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 3

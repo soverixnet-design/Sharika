@@ -1,4 +1,6 @@
 import {notifyUser,deliverNotification} from './notifications.mjs';
+import {centerPublished} from './private-center.mjs';
+import {safeEventTemplate,safeEventScoring,validEventDesignFields} from './event-design.mjs';
 // Server-verified, Super-Admin-controlled staging events and one-time coin prizes.
 // Publication is separate from payment; only an ended published event can pay a rank.
 // Winners are selected explicitly by Super Admin and every credit has a D1 receipt + ledger.
@@ -31,7 +33,49 @@ async function settledEventRanking(db,event,limit=100){
   return rows(await db.prepare(query)
     .bind(...weightsArgs,...rules.map(r=>r.gift_id),start,end).all());
 }
+// Event ranking type is part of each event record. Every query uses only
+// settled server-owned transactions in the event's own UTC date window.
+async function settledConfiguredEventRanking(db,event,limit=100){
+ const mode=safeEventScoring(event.scoring_mode);
+ if(mode==='gift_points')return settledEventRanking(db,event,limit);
+ const start=Date.parse(event.starts_at),end=Date.parse(event.ends_at);
+ if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return [];
+ if(mode==='game_wins'){
+  const stamp=ms=>new Date(ms).toISOString().slice(0,19).replace('T',' ');
+  const list=await db.prepare(
+   'SELECT u.public_no,u.name,u.pic,COUNT(l.id) AS gift_count,'+
+   'SUM(l.delta) AS points FROM sharika_wallet_ledger l '+
+   "JOIN sharika_users u ON u.auth_uid=l.auth_uid AND u.status='active' "+
+   "WHERE l.currency='coins' AND l.delta>0 AND "+
+   "l.reason IN ('game_win','original_game_win','greedy_wheel_win',"+
+   "'gaddy_game_win','fruit_royale_win') "+
+   'AND l.created_at>=? AND l.created_at<? '+
+   'GROUP BY l.auth_uid ORDER BY points DESC,u.public_no ASC LIMIT '+(limit===3?3:100)
+  ).bind(stamp(start),stamp(end)).all();
+  return rows(list);
+ }
+ // CP rankings rank verified PAIRS, not individual members. The reward
+ // distribution is separately disabled until a two-member payout policy exists.
+ const list=await db.prepare(
+   'SELECT b.id AS bond_id,a.name AS a_name,a.pic AS a_pic,'+
+   'z.name AS b_name,z.pic AS b_pic,a.public_no AS a_no,z.public_no AS b_no,'+
+   'COUNT(e.id) AS gift_count,SUM(e.value_coins) AS points '+
+   'FROM sharika_bond_gift_events e '+
+   "JOIN sharika_bonds b ON b.id=e.bond_id AND b.type='cp' "+
+   "JOIN sharika_users a ON a.auth_uid=b.uid_a AND a.status='active' "+
+   "JOIN sharika_users z ON z.auth_uid=b.uid_b AND z.status='active' "+
+   "WHERE e.type='cp' AND e.created_at_ms>=? AND e.created_at_ms<? "+
+   'GROUP BY b.id ORDER BY points DESC,b.id ASC LIMIT '+(limit===3?3:100)
+ ).bind(start,end).all();
+ return rows(list).map(pair=>({
+   name:pair.a_name+' ♡ '+pair.b_name,
+   pair_id:String(pair.a_no).padStart(8,'0')+' / '+String(pair.b_no).padStart(8,'0'),
+   pic:pair.a_pic,partner_pic:pair.b_pic,points:pair.points,gift_count:pair.gift_count
+ }));
+}
+
 function validCampaign(body){
+  if(!validEventDesignFields(body))return false;
   if(body.banner_id!==undefined&&body.banner_id!==null&&
     (!Number.isSafeInteger(body.banner_id)||body.banner_id<0||body.banner_id>999999999))return false;
   if(body.gift_rules!==undefined&&(!Array.isArray(body.gift_rules)||body.gift_rules.length>12||
@@ -63,6 +107,7 @@ function eventDto(row,awards,now){
     starts_at:row.starts_at,ends_at:row.ends_at,status,published:row.status==='published',
     prizes:[Number(row.prize_1),Number(row.prize_2),Number(row.prize_3)],
     gift_rules:safeJson(row.gift_rules_json),reward_labels:safeJson(row.reward_labels_json),
+    template_id:safeEventTemplate(row.template_id),scoring_mode:safeEventScoring(row.scoring_mode),
     banner_id:row.banner_id==null?null:Number(row.banner_id),
     banner_image_url:row.banner_image_version>0&&row.banner_id!=null?
       '/api/v1/banners/'+Number(row.banner_id)+'/image?v='+Number(row.banner_image_version):null,
@@ -100,9 +145,11 @@ export async function listEventData(db,admin=false,now=new Date()){
   let statement=db.prepare(
     'SELECT e.id,e.title,e.kind,e.description,e.starts_at,e.ends_at,e.status,'+
     'e.prize_1,e.prize_2,e.prize_3,e.banner_id,e.gift_rules_json,e.reward_labels_json,'+
+    'e.template_id,e.scoring_mode,'+
     'CASE WHEN i.image_bytes>0 THEN i.version ELSE 0 END AS banner_image_version '+
     'FROM sharika_events e LEFT JOIN sharika_banner_images i ON i.banner_id=e.banner_id '+
-    (admin?'':'WHERE e.status=? AND e.ends_at>=? ')+
+    (admin?'':"WHERE e.status=? AND e.ends_at>=? AND EXISTS (SELECT 1 FROM sharika_center_publishing p "+
+      "WHERE p.id=('event:' || e.id) AND p.kind='event' AND p.published=1) ")+
     'ORDER BY e.starts_at DESC,e.id DESC LIMIT 60');
   if(!admin)statement=statement.bind('published',boundary);
   const events=rows(await statement.all());
@@ -129,18 +176,22 @@ export async function handleEventApp({request,env,uid,path,cors,reply,fail}){
   ).bind(uid,'active').first();
   if(!active)return fail('profile_unavailable',403,cors);
   if(leaderboard){
-    const event=await env.DB.prepare('SELECT id,title,starts_at,ends_at,status,gift_rules_json '+
+    if(!await centerPublished(env.DB,'event','event:'+leaderboard[1]))
+      return fail('event_hidden',403,cors);
+    const event=await env.DB.prepare('SELECT id,title,starts_at,ends_at,status,gift_rules_json,scoring_mode '+
       'FROM sharika_events WHERE id=?').bind(Number(leaderboard[1])).first();
     if(!event||event.status!=='published')return fail('event_unavailable',404,cors);
-    const ranked=await settledEventRanking(env.DB,event);
+    const ranked=await settledConfiguredEventRanking(env.DB,event);
     return reply({event_id:event.id,ranking:ranked.map((r,i)=>({rank:i+1,
-      public_id:r.special_id||pad(r.public_no),name:r.name,pic:r.pic||null,
+      public_id:r.pair_id||r.special_id||pad(r.public_no),name:r.name,pic:r.pic||null,partner_pic:r.partner_pic||null,
       points:Number(r.points)||0,gift_count:Number(r.gift_count)||0})),
-      scoring:'selected_settled_gifts',server_time:new Date().toISOString()},200,cors);
+      scoring:safeEventScoring(event.scoring_mode),server_time:new Date().toISOString()},200,cors);
   }
   return reply(await listEventData(env.DB,false),200,cors);
 }
 async function announceEvent(env,ctx,id,title,actorUid){
+  if(!await centerPublished(env.DB,'module','events')||
+      !await centerPublished(env.DB,'event','event:'+id))return;
   const members=await env.DB.prepare(
     "SELECT auth_uid FROM sharika_users WHERE status='active' ORDER BY public_no LIMIT 500"
   ).all();
@@ -169,11 +220,12 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
     const result=await db.batch([
       db.prepare('INSERT INTO sharika_events '+
         '(title,kind,description,starts_at,ends_at,status,prize_1,prize_2,prize_3,'+
-        'banner_id,gift_rules_json,reward_labels_json,created_by,updated_by) '+
-        'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        'banner_id,gift_rules_json,reward_labels_json,created_by,updated_by,template_id,scoring_mode) '+
+        'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .bind(body.title.trim(),body.kind,body.description.trim(),body.starts_at,body.ends_at,
           body.status,...body.prizes,body.banner_id||null,JSON.stringify(body.gift_rules||[]),
-          JSON.stringify(body.reward_labels||[]),uid,uid),
+          JSON.stringify(body.reward_labels||[]),uid,uid,
+          safeEventTemplate(body.template_id),safeEventScoring(body.scoring_mode)),
       db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) '+
         "VALUES(?,'event_created',?)")
         .bind(uid,JSON.stringify({title:body.title.trim(),kind:body.kind,status:body.status}))
@@ -199,12 +251,16 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
           'status=?,prize_1=?,prize_2=?,prize_3=?,'+
           'banner_id=CASE WHEN ?=0 THEN NULL ELSE COALESCE(?,banner_id) END,'+
           'gift_rules_json=COALESCE(?,gift_rules_json),'+
-          "reward_labels_json=COALESCE(?,reward_labels_json),updated_by=?,updated_at=datetime('now') "+
+          'reward_labels_json=COALESCE(?,reward_labels_json),'+
+          'template_id=COALESCE(?,template_id),scoring_mode=COALESCE(?,scoring_mode),'+
+          "updated_by=?,updated_at=datetime('now') "+
           'WHERE id=?')
           .bind(body.title.trim(),body.kind,body.description.trim(),body.starts_at,body.ends_at,
             body.status,...body.prizes,body.banner_id??null,body.banner_id??null,
             body.gift_rules===undefined?null:JSON.stringify(body.gift_rules),
-            body.reward_labels===undefined?null:JSON.stringify(body.reward_labels),uid,id),
+            body.reward_labels===undefined?null:JSON.stringify(body.reward_labels),
+            body.template_id===undefined?null:body.template_id,
+            body.scoring_mode===undefined?null:body.scoring_mode,uid,id),
         db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) '+
           "VALUES(?,'event_updated',?)").bind(uid,JSON.stringify({event_id:id,status:body.status,prizes:body.prizes}))
       ]);
@@ -224,7 +280,7 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
       typeof publicId!=='string'||!PUBLIC_ID.test(publicId)||
       typeof requestId!=='string'||!ID_RE.test(requestId))
       return fail('invalid_event_award',400,cors);
-    const event=await db.prepare('SELECT id,status,starts_at,ends_at,prize_1,prize_2,prize_3,gift_rules_json '+
+    const event=await db.prepare('SELECT id,status,starts_at,ends_at,prize_1,prize_2,prize_3,gift_rules_json,scoring_mode '+
       'FROM sharika_events WHERE id=?').bind(eventId).first();
     if(!event)return fail('event_not_found',404,cors);
     if(event.status!=='published'||Date.now()<Date.parse(event.ends_at))
@@ -240,8 +296,10 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
         ?reply({duplicate:true,award_id:old.id,rank,public_id:pad(old.public_no),coins:Number(old.coins)},200,cors)
         :fail('event_rank_already_awarded',409,cors);
     }
-    if(safeJson(event.gift_rules_json).length){
-      const winners=await settledEventRanking(db,event,3);
+    if(safeEventScoring(event.scoring_mode)==='cp_gifts')
+      return fail('couple_awards_require_separate_distribution_policy',409,cors);
+    if(safeEventScoring(event.scoring_mode)==='game_wins'||safeJson(event.gift_rules_json).length){
+      const winners=await settledConfiguredEventRanking(db,event,3);
       if(Number(winners[rank-1]?.public_no)!==Number(publicId))
         return fail('event_rank_mismatch',409,cors);
     }

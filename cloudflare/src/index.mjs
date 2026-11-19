@@ -21,6 +21,8 @@ import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
 import {readGameCatalog,gameAcceptsBets} from './game-catalog.mjs';
+import {handlePrivateCenter,centerPublished} from './private-center.mjs';
+import {readCenterRankings} from './center-rankings.mjs';
 import {readPublishedProfileLayouts} from './profile-layout.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import {readInviteRules} from './invite-rules.mjs';
@@ -378,6 +380,10 @@ export async function handleRequest(request, env, ctx) {
   } catch (_) { return fail('rate_limiter_unavailable', 503, cors); }
   const parts = path.split('/').filter(Boolean);
   try {
+    if(path.startsWith('/api/v1/center/')){
+      await assertActive(env.DB,uid);
+      return await handlePrivateCenter({request,path,db:env.DB,uid,reply,fail,cors});
+    }
     if(path==='/api/v1/opening/next')return await handleOpeningApp({
       request,env,uid,path,cors,reply,fail
     });
@@ -404,11 +410,15 @@ export async function handleRequest(request, env, ctx) {
     }
     if(path==='/api/v1/game-catalog'&&request.method==='GET'){
       await assertActive(env.DB,uid);
-      return reply({games:await readGameCatalog(env.DB)},200,cors);
+      const catalog=await readGameCatalog(env.DB);
+      const published=(await env.DB.prepare("SELECT id FROM sharika_center_publishing WHERE kind='game' AND published=1").all()).results||[];
+      const visibleIds=new Set(published.map(item=>item.id));
+      return reply({games:catalog.filter(game=>visibleIds.has(game.id))},200,cors);
     }
     if(path==='/api/v1/royal-slots/state'||path==='/api/v1/royal-slots/spin'){
       await assertActive(env.DB,uid);
-      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'royal-slots')))
+      if(playVirtualOnly(env)||!(await centerPublished(env.DB,'game','royal-slots'))||
+        !(await gameAcceptsBets(env.DB,'royal-slots')))
         return fail('game_disabled',403,cors);
       return await handleRoyalSlots({request,db:env.DB,uid,
         action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
@@ -416,21 +426,26 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/royal-ace/state'||path==='/api/v1/royal-ace/spin'){
       await assertActive(env.DB,uid);
       // No automatic Play Store exposure: virtual-only routing and admin flag are independent gates.
-      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'royal-ace')))
+      if(playVirtualOnly(env)||!(await centerPublished(env.DB,'game','royal-ace'))||
+        !(await gameAcceptsBets(env.DB,'royal-ace')))
         return fail('game_disabled',403,cors);
       return await handleRoyalAce({request,db:env.DB,uid,
         action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
     }
     if(path==='/api/v1/cleopatra/state'||path==='/api/v1/cleopatra/spin'){
       await assertActive(env.DB,uid);
-      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'cleopatra')))
+      if(playVirtualOnly(env)||!(await centerPublished(env.DB,'game','cleopatra'))||
+        !(await gameAcceptsBets(env.DB,'cleopatra')))
         return fail('game_disabled',403,cors);
       return await handleCleopatra({request,db:env.DB,uid,
         action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
     }
-    if(path==='/api/v1/events'||/^\/api\/v1\/events\/[1-9]\d*\/ranking$/.test(path)) return await handleEventApp({
+    if(path==='/api/v1/events'||/^\/api\/v1\/events\/[1-9]\d*\/ranking$/.test(path)){
+      if(!await centerPublished(env.DB,'module','events'))return fail('event_hidden',403,cors);
+      return await handleEventApp({
       request,env,uid,path,cors,reply,fail
-    });
+      });
+    }
     if(path==='/api/v1/role-applications')return await handleRoleApplicationApp({
       request,env,uid,path,cors,reply,fail
     });
@@ -1004,9 +1019,15 @@ export async function handleRequest(request, env, ctx) {
     // Reuse the authenticated user's existing virtual-coin wallet and D1 ledger.
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='original-games'){
       await assertActive(env.DB,uid);
-      if(parts.length===3&&request.method==='GET')
-        return reply({games:['sovera-food','sovera-gaddy','night-food','fruit-royale','food-deluxe','greedy-classic'],virtual_coins_only:true},200,cors);
+      if(parts.length===3&&request.method==='GET'){
+        const candidates=['sovera-food','sovera-gaddy','night-food','fruit-royale','food-deluxe','greedy-classic'];
+        const allowed=[];
+        for(const game of candidates)if(await centerPublished(env.DB,'game',game))allowed.push(game);
+        return reply({games:allowed,virtual_coins_only:true},200,cors);
+      }
       if(parts.length===5){
+        if(!await centerPublished(env.DB,'game',parts[3]))
+          return fail('game_hidden',403,cors);
         if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
         if(parts[3]==='fruit-royale')
@@ -1029,6 +1050,8 @@ export async function handleRequest(request, env, ctx) {
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='greedy-wheel'){
       await assertActive(env.DB,uid);
       if(parts.length===4){
+        if(!await centerPublished(env.DB,'game','greedy-wheel'))
+          return fail('game_hidden',403,cors);
         if(parts[3]==='bet'&&!(await gameAcceptsBets(env.DB,'greedy-wheel')))
           return fail('game_disabled',403,cors);
         return await handleGreedyRequest({request,db:env.DB,uid,
@@ -1040,10 +1063,15 @@ export async function handleRequest(request, env, ctx) {
     // owns the atomic debit/payout triggers and exactly-once settlement.
     if (parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='games') {
       await assertActive(env.DB,uid);
-      if(parts.length===3&&request.method==='GET')
-        return reply({games:['food-wheel','jackpot-fruit'],round_ms:40000,
-          virtual_coins_only:true},200,cors);
+      if(parts.length===3&&request.method==='GET'){
+        const allowed=[];
+        for(const game of ['food-wheel','jackpot-fruit'])
+          if(await centerPublished(env.DB,'game',game))allowed.push(game);
+        return reply({games:allowed,round_ms:40000,virtual_coins_only:true},200,cors);
+      }
       if(parts.length===5){
+        if(!await centerPublished(env.DB,'game',parts[3]))
+          return fail('game_hidden',403,cors);
         if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
         return await handleGameRequest({request,db:env.DB,uid,game:parts[3],
@@ -1053,16 +1081,24 @@ export async function handleRequest(request, env, ctx) {
     }
     if(path==='/api/v1/rankings/rewards'&&request.method==='GET'){
       await assertActive(env.DB,uid);
+      if(!await centerPublished(env.DB,'ranking','weekly'))return fail('ranking_hidden',403,cors);
       const result=await readRankingRewardPreview(env.DB,url.searchParams.get('kind'));
       return result?reply(result,200,cors):fail('invalid_ranking_kind',400,cors);
     }
     if (path === '/api/v1/rankings' && request.method === 'GET') {
       await assertActive(env.DB,uid);
+      const requestedKind=url.searchParams.get('kind')||'rich';
+      if(!['lucky','rich','charm','room','recharge','noble','games','cp','bd','agency','host'].includes(requestedKind))
+        return fail('invalid_ranking_filter',400,cors);
+      if(!await centerPublished(env.DB,'ranking',requestedKind))return fail('ranking_hidden',403,cors);
       const period=url.searchParams.get('period')||'weekly';
       const kind=url.searchParams.get('kind')||'rich';
       const weekOffset=url.searchParams.get('week_offset');
-      const result=await readGiftRankings(env.DB,period,kind,
-        weekOffset===null?0:weekOffset==='1'?1:NaN);
+      const newKind=['cp','bd','agency','host'].includes(kind);
+      if(newKind&&weekOffset!==null)return fail('invalid_ranking_filter',400,cors);
+      const result=newKind?await readCenterRankings(env.DB,period,kind):
+        await readGiftRankings(env.DB,period,kind,
+          weekOffset===null?0:weekOffset==='1'?1:NaN);
       return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {

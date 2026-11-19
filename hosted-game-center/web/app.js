@@ -484,7 +484,28 @@
    ]);
    if(!response.ok)throw Error('Catalog unavailable');
    const data=await response.json();games=data.games||[];
+   // The website controls which separate sections are visible. Never add
+   // unavailable Ranking/Event/Wallet links to the user's navigation.
+   const sectionResponse=await fetch('/api/center/manifest',{cache:'no-store',credentials:'same-origin'});
+   if(!sectionResponse.ok)throw Error('Private Center session expired');
+   const sections=await sectionResponse.json();
+   const centerLink=$('private-center-link');
+   if(centerLink)centerLink.hidden=!((sections.rankings||[]).length||
+     (sections.events||[]).length||(sections.modules||[]).length);
    if(!bridge){
+    // This authenticated PRIVATE site never offers unverified practice
+    // results or a simulated wallet in place of actual Sharika gameplay.
+    if(location.hostname==='sharika-private-center-staging.soverixnet.workers.dev'){
+      games=[];
+      displayCards(games,new Set());
+      status.hidden=false;
+      status.textContent='Open games inside the signed-in Sharika Android app.';
+      const notice=$('notice');if(notice)notice.hidden=true;
+      if(browserNote)browserNote.hidden=true;
+      $('game-count').textContent='0 games';
+      toolbarCount.textContent='App required';
+      return;
+    }
     status.textContent='Free browser demo · virtual coins only';
     browserNote.hidden=true;
     displayCards(games,new Set(games.map(g=>g.id)));
@@ -494,14 +515,17 @@
    }
    // This is the same authenticated /me profile used by the main room, not a
    // game iframe name or query-string avatar. Fail closed if the profile fails.
-   const result=await call('GET','/api/v1/game-catalog');
-   const enabled=new Set((result.games||[]).filter(x=>x.enabled===true).map(x=>x.id));
-   displayCards(games,enabled);
-   $('game-count').textContent=enabled.size+' games';
-   toolbarCount.textContent=enabled.size+' Games';
-   status.textContent=enabled.size?'Games ready':'No games are enabled for this account.';
-   // Do not show the staging website's diagnostic paragraph inside the app.
-   status.hidden=appSurface&&enabled.size>0;
+   // Both the private site catalogue AND the authenticated app manifest
+   // must publish a game. Hidden entries are removed, not greyed out.
+   const result=await call('GET','/api/v1/center/manifest');
+   const visible=new Set((result.games||[]).map(x=>x.id));
+   games=games.filter(x=>visible.has(x.id));
+   displayCards(games,visible);
+   $('game-count').textContent=games.length+' games';
+   toolbarCount.textContent=games.length+' Games';
+   status.textContent=games.length?'Published games ready':'No games are published for this account.';
+   // Do not show diagnostic text over the gameplay UI.
+   status.hidden=appSurface&&games.length>0;
   }catch(error){
    status.hidden=false;
    status.textContent='Could not verify game access: '+error.message;
