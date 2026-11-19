@@ -187,7 +187,11 @@ public final class SharikaGameCenterActivity extends Activity {
                         throw new IllegalStateException("launch_ticket_invalid");
                     runOnUiThread(() -> {
                         if(web!=null&&!isFinishing()&&!isDestroyed())
-                            web.loadUrl(SITE_ORIGIN+"/session?ticket="+ticket);
+                            String section=getIntent().getStringExtra("center_section");
+                            int eventId=getIntent().getIntExtra("center_event_id",0);
+                            String suffix="events".equals(section)?"&tab=events"+
+                                (eventId>0?"&event="+eventId:""):"";
+                            web.loadUrl(SITE_ORIGIN+"/session?ticket="+ticket+suffix);
                     });
                 } catch (Exception e) {
                     showPrivateCenterError("Private Game Center unavailable.");
