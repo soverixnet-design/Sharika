@@ -80,13 +80,14 @@ async function showRankings(){
     '&period='+encodeURIComponent(period.value));
    holder.replaceChildren();
    const leaders=Array.isArray(data.leaders)?data.leaders:[];
+   const units=data.unit==='salary coins'?'salary coins':'coins';
    if(!leaders.length){holder.append(el('div','empty','No confirmed ranking results in this period.'));return;}
    const podium=el('div','podium');
    for(let i=0;i<Math.min(3,leaders.length);i++){
     const v=leaders[i],c=el('div','champ');
     c.append(el('div','medal',['♛','◆','✦'][i]));
     if(v.pic)c.append(avatar(v));
-    c.append(el('strong','',v.name||'Member'),el('small','',nice(v.total)+' coins'));
+    c.append(el('strong','',v.name||'Member'),el('small','',nice(v.total)+' '+units));
     podium.append(c);
    }
    holder.append(podium);
@@ -97,7 +98,7 @@ async function showRankings(){
     if(v.pic)line.append(avatar(v));
     const main=el('div');main.append(el('strong','',v.name||'Member'),
       el('small','',String(v.display_id||v.room_id||'')));
-    const amount=el('strong','',nice(v.total));amount.style.marginLeft='auto';
+    const amount=el('strong','',nice(v.total)+' '+units);amount.style.marginLeft='auto';
     line.append(main,amount);list.append(line);
    }
    holder.append(list);
