@@ -255,7 +255,9 @@
   },10000);
  }
  function showWinner(winner,key,gameId=active?.id||'greedy-classic'){
-  if(!bridge||!winner||typeof winner!=='object'||!key||seenWinners.has(key))return;
+  // Room mode uses the Activity's native ticker at the true top of screen.
+  // Do not overlay a second winner banner inside the bottom-sheet WebView.
+  if(inRoom||!bridge||!winner||typeof winner!=='object'||!key||seenWinners.has(key))return;
   const win=Number(winner.win??winner.total_win??winner.totalWin??0);
   const name=typeof winner.name==='string'?winner.name.trim().slice(0,80):'';
   const id=String(winner.public_id||winner.userId||winner.id||'');
@@ -266,7 +268,7 @@
   showNextWinner();
  }
  async function pollGlobalFoodWinners(){
-  if(!bridge||globalWinnerBusy||document.visibilityState==='hidden')return;
+  if(inRoom||!bridge||globalWinnerBusy||document.visibilityState==='hidden')return;
   globalWinnerBusy=true;
   try{
    const result=await call('GET','/api/v1/original-games/greedy-classic/winners');
