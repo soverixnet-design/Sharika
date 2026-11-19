@@ -24,7 +24,7 @@ jobs:
           test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.head_sha')" = "$sha"
           test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.conclusion')" = 'success'
           test "$(gh api "repos/$repo/actions/artifacts/14537276526" --jq '.workflow_run.head_sha')" = "$sha"
-          test "$(gh api "repos/$repo/actions/artifacts/14530994462" --jq '.name+":" + (.expired|tostring)')" = 'Sharika-Royal-Slots-Native-Bridge-Debug:false'
+          test "$(gh api "repos/$repo/actions/artifacts/14537276526" --jq '.name+":" + (.expired|tostring)')" = 'Sharika-Royal-Slots-Native-Bridge-Debug:false'
       - name: Download exact latest tested Android APK
         uses: actions/download-artifact@v4
         with:
