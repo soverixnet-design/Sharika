@@ -17,6 +17,7 @@ function fixture({event=null,oldAward=null,recipient=null,eventPublished=false}=
         bind(...args){this.args=args;return this;},
         async first(){
           state.queries.push({sql,args:this.args});
+          if(sql.includes('SELECT published FROM sharika_center_publishing'))return eventPublished?{published:1}:null;
           if(sql.includes('FROM sharika_events WHERE id'))return event;
           if(sql.includes('FROM sharika_event_awards a')&&sql.includes('a.rank=?'))
             return oldAward;
