@@ -18,6 +18,8 @@
  const hot=$('hot-section'),hotGames=$('hot-games'),search=$('game-search');
  const hero=$('royal-hero'),toolbarCount=$('toolbar-count');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
+ const GAME_ASSET_ORIGIN='https://sharika-games-web-staging.soverixnet.workers.dev';
+ const isPrivateCenter=location.hostname==='sharika-private-center-staging.soverixnet.workers.dev';
  const artworks={
   'royal-slots':'/cards/royal-slots.webp',
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
@@ -338,7 +340,13 @@
     hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
     game.id==='greedy-wheel'&&inRoom?'sheet=1':'';
   const separator=params?(game.asset.includes('?')?'&':'?'):'';
-  frame.src=game.asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
+  // Hosted game files are unprivileged STATIC artwork and JavaScript. Their
+  // sandboxed opaque-origin iframe must never depend on the private login
+  // cookie, which Android WebView may omit for cross-site iframe resources.
+  // The authenticated main frame keeps the native bridge and verifies every
+  // real coin operation with Sharika API. Child pages cannot access it.
+  const asset=isPrivateCenter?GAME_ASSET_ORIGIN+game.asset:game.asset;
+  frame.src=asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
     '#sharika-room':'');
  }
  // System Back first closes the game, then the native Activity.
@@ -491,7 +499,7 @@
    // Requesting it unconditionally made EVERY public game card disappear.
    // Private center visibility is still fail-closed and checked again by the
    // authenticated /api/v1/center/manifest before any real game is listed.
-   const privateHost=location.hostname==='sharika-private-center-staging.soverixnet.workers.dev';
+   const privateHost=isPrivateCenter;
    const centerLink=$('private-center-link');
    if(centerLink)centerLink.hidden=true;
    if(privateHost){
