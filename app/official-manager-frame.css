@@ -1,0 +1,9 @@
+/* Sharika verified-role animated frame renderer. Transparent overlay: no blur on photo. */
+.sharika-role-frame{position:relative;display:block;flex:none;overflow:visible;isolation:isolate;width:var(--sharika-frame-size,288px);height:var(--sharika-frame-size,288px);background:transparent;margin:0 auto}
+.sharika-role-frame__photo{position:absolute;left:29.5%;top:29%;width:41%;height:41%;border-radius:50%;object-fit:cover;object-position:center;z-index:1;background:#362452;image-rendering:auto;filter:none!important;backdrop-filter:none!important}
+.sharika-role-frame__motion{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:2;pointer-events:none;image-rendering:auto;filter:none!important;transform:translateZ(0)}
+.sharika-role-frame__name{position:absolute;top:99%;left:-12%;width:124%;z-index:3;text-align:center;color:#fff1c9;font-weight:750;line-height:1.1;font-size:clamp(11px,calc(var(--sharika-frame-size,288px) * .08),20px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #230519,0 0 5px #9b5a25}
+.sharika-role-frame--seat{--sharika-frame-size:92px}
+.sharika-role-frame--profile{--sharika-frame-size:288px}
+.sharika-role-frame--shop{--sharika-frame-size:160px}
+@media(prefers-reduced-motion:reduce){.sharika-role-frame__motion{animation:none!important}}
