@@ -1,0 +1,104 @@
+name: Sharika registered Google OAuth signed staging APK
+on:
+  push:
+    branches: [fix/sharika-google-signin-registered-signer-20261119]
+    paths: ['.github/workflows/sharika-google-login-registered-apk-20261119.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  signed-staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Verify Firebase config and Royal Slots native game
+        run: |
+          node --test android-staging/google-oauth-signing.test.cjs
+          node --test hosted-game-center/test/royal-slots-native-bridge.test.mjs
+          node --test hosted-game-center/test/royal-slots-integration.test.mjs
+      - name: Use only a previously registered stable Firebase OAuth signer
+        env:
+          STAGING_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          STAGING_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+          PLAY_B64: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEYSTORE_B64 }}
+          PLAY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [ -n "$STAGING_B64" ] && [ -n "$STAGING_PASSWORD" ]; then
+            file="$RUNNER_TEMP/sharika-registered-staging.p12"
+            printf '%s' "$STAGING_B64" | tr -d '[:space:]' | base64 -d > "$file"
+            test "$(wc -c < "$file")" -gt 500
+            sha1="$(keytool -list -v -keystore "$file" -storepass "$STAGING_PASSWORD" -alias sharika-staging | sed -n 's/.*SHA1: *//p' | head -n1)"
+            node android-staging/google-oauth-signing.cjs "$sha1"
+            echo "SHARIKA_STAGING_KEYSTORE_PATH=$file" >> "$GITHUB_ENV"
+            echo "SHARIKA_STAGING_KEYSTORE_PASSWORD=$STAGING_PASSWORD" >> "$GITHUB_ENV"
+            echo "SHARIKA_EXPECTED_APK_SHA1=$sha1" >> "$GITHUB_ENV"
+            echo 'SIGNER=REGISTERED_STAGING'
+          elif [ -n "$PLAY_B64" ] && [ -n "$PLAY_PASSWORD" ] && [ -n "$PLAY_ALIAS" ] && [ -n "$PLAY_KEY_PASSWORD" ]; then
+            file="$RUNNER_TEMP/sharika-registered-upload.p12"
+            printf '%s' "$PLAY_B64" | tr -d '[:space:]' | base64 -d > "$file"
+            test "$(wc -c < "$file")" -gt 500
+            sha1="$(keytool -list -v -keystore "$file" -storepass "$PLAY_PASSWORD" -alias "$PLAY_ALIAS" | sed -n 's/.*SHA1: *//p' | head -n1)"
+            node android-staging/google-oauth-signing.cjs "$sha1"
+            echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$file" >> "$GITHUB_ENV"
+            echo "SHARIKA_PLAY_UPLOAD_STORE_PASSWORD=$PLAY_PASSWORD" >> "$GITHUB_ENV"
+            echo "SHARIKA_PLAY_UPLOAD_KEY_ALIAS=$PLAY_ALIAS" >> "$GITHUB_ENV"
+            echo "SHARIKA_PLAY_UPLOAD_KEY_PASSWORD=$PLAY_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "SHARIKA_STAGING_USE_REGISTERED_PLAY_SIGNER=true" >> "$GITHUB_ENV"
+            echo "SHARIKA_EXPECTED_APK_SHA1=$sha1" >> "$GITHUB_ENV"
+            echo 'SIGNER=REGISTERED_UPLOAD_FOR_STAGING_TEST'
+          else
+            echo "::error::No stable registered keystore is available; refusing another Google-login-broken debug APK."
+            exit 1
+          fi
+      - name: Install Android SDK
+        run: |
+          set -euo pipefail
+          manager="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n1)"
+          test -n "$manager"
+          "$manager" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build test-only staging APK with registered signing key
+        working-directory: android-staging
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Verify actual APK signer against Firebase OAuth and package
+        run: |
+          set -euo pipefail
+          apk='android-staging/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          signer="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
+          test -n "$signer"
+          "$signer" verify --verbose "$apk"
+          actual="$("$signer" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: *//p' | head -n1)"
+          test -n "$actual" || { echo "::error::No APK certificate SHA-1"; exit 1; }
+          node android-staging/google-oauth-signing.cjs "$actual"
+          expected="$(printf '%s' "$SHARIKA_EXPECTED_APK_SHA1" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$expected" || { echo "::error::Wrong APK signer"; exit 1; }
+          unzip -Z1 "$apk" | grep -Fx 'AndroidManifest.xml'
+          unzip -p "$apk" assets/connection.js | grep -F 'sharika-api-staging.soverixnet.workers.dev' >/dev/null
+          cp "$apk" Sharika-Royal-Slots-Google-Login-Staging.apk
+          sha256sum Sharika-Royal-Slots-Google-Login-Staging.apk
+      - name: Publish new public staging friends prerelease (never Play)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short="$(printf '%s' "$GITHUB_SHA" | cut -c1-8)"
+          tag="sharika-google-login-staging-20261119-$short"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Already published: refusing overwrite"; exit 1
+          fi
+          gh release create "$tag" Sharika-Royal-Slots-Google-Login-Staging.apk \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'Sharika Royal Slots and Google Login — Registered Signer Staging Test' \
+            --notes 'Test-only APK signed with a Google/Firebase Android OAuth registered certificate. Royal Slots and Fruit Machine included. Real-device Google Sign-In still needs validation. No production or Play publication. Existing Play installations might have a different certificate and cannot be upgraded by sideload. Do not uninstall existing app without backing up. Virtual coins only.' \
+            --prerelease
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].url'
