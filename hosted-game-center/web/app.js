@@ -494,14 +494,17 @@
    }
    // This is the same authenticated /me profile used by the main room, not a
    // game iframe name or query-string avatar. Fail closed if the profile fails.
-   const result=await call('GET','/api/v1/game-catalog');
-   const enabled=new Set((result.games||[]).filter(x=>x.enabled===true).map(x=>x.id));
-   displayCards(games,enabled);
-   $('game-count').textContent=enabled.size+' games';
-   toolbarCount.textContent=enabled.size+' Games';
-   status.textContent=enabled.size?'Games ready':'No games are enabled for this account.';
-   // Do not show the staging website's diagnostic paragraph inside the app.
-   status.hidden=appSurface&&enabled.size>0;
+   // Both the private site catalogue AND the authenticated app manifest
+   // must publish a game. Hidden entries are removed, not greyed out.
+   const result=await call('GET','/api/v1/center/manifest');
+   const visible=new Set((result.games||[]).map(x=>x.id));
+   games=games.filter(x=>visible.has(x.id));
+   displayCards(games,visible);
+   $('game-count').textContent=games.length+' games';
+   toolbarCount.textContent=games.length+' Games';
+   status.textContent=games.length?'Published games ready':'No games are published for this account.';
+   // Do not show diagnostic text over the gameplay UI.
+   status.hidden=appSurface&&games.length>0;
   }catch(error){
    status.hidden=false;
    status.textContent='Could not verify game access: '+error.message;
