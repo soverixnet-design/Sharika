@@ -196,5 +196,12 @@ export default {async fetch(req,env){
  // The original public site's CSP was designed for demo only. Keep a strict
  // no-external-fetch policy on this private hosted frontend.
  h.set('cache-control','private,no-store');
+ // An opaque-origin sandboxed iframe cannot use CSP 'self'. The original
+ // static host's CSP names the OLD public game origin; replace it with this
+ // private, authenticated origin or game scripts/styles will silently fail.
+ const originalOrigin='https://sharika-games-web-staging.soverixnet.workers.dev';
+ const policy=h.get('content-security-policy')||'';
+ if(policy.includes(originalOrigin))
+  h.set('content-security-policy',policy.replaceAll(originalOrigin,url.origin));
  return new Response(req.method==='HEAD'?null:result.body,{status:result.status,headers:h});
 }};
