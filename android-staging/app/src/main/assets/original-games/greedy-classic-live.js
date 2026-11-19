@@ -47,6 +47,29 @@ let lastOfflineNoticeAt=0;
 let state=null,displayedResultRound=-1,animationRound=-1,autoRunning=false,placedDuringThisRound={};
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const format=n=>Math.max(0,Number(n)||0).toLocaleString('en-US');
+ // Presentation only: never abbreviate integer wallet requests or server values.
+ const compactCoins=n=>{
+  const v=Number(n)||0;
+  if(v<1000)return format(v);
+  for(const [unit,label] of [[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']]){
+   if(v>=unit){
+    const x=v/unit;
+    return (x>=100||Number.isInteger(x)?x.toFixed(0):x.toFixed(1).replace(/\\.0$/,''))+label;
+   }
+  }
+  return format(v);
+ };
+ // Preserve the original asset and hit targets; only format stake labels.
+ const originalGreedyDraw=draw;
+ draw=function(...args){
+  originalGreedyDraw(...args);
+  for(const food of F){
+   const value=Number(S.bets?.[food.id]||0);
+   const cell=$('#a_'+food.id);
+   if(cell)cell.textContent=value>0?compactCoins(value):'';
+  }
+ };
+
 const toast=message=>show('<h3>Game Notice<u>×</u></h3>'+esc(message));
 
 // User-requested original-video daily leader (not this player's current stake).
@@ -58,43 +81,26 @@ const leaderStyle=document.createElement('style');
 leaderStyle.id='sharika-greedy-daily-leader-and-winners';
 leaderStyle.textContent=String.raw`
 #tb{display:none!important}
-#rank .greedy-top-avatar{position:absolute;left:1.5%;top:18%;width:24%;height:60%;
+#rank{z-index:5}
+#rank .greedy-top-avatar{position:absolute;left:2%;top:15%;width:26%;height:67%;
   object-fit:cover;border-radius:8px;border:1px solid #f3ce83;pointer-events:none}
-#rank .greedy-leader-lines{position:absolute;left:30%;right:1%;top:12%;bottom:7%;
-  display:flex;flex-direction:column;justify-content:center;gap:1px;
+#rank .greedy-leader-lines{position:absolute;left:31%;right:3%;top:13%;bottom:12%;
+  display:flex;flex-direction:column;justify-content:center;gap:3px;
   color:#563018;pointer-events:none;text-shadow:0 1px 0 #fff8d6;
-  font:700 clamp(8px,2.45vw,13px)/1.05 system-ui,Arial,sans-serif;overflow:hidden}
-#rank .greedy-leader-lines .top-title{color:#b55b00;font-size:.80em}
-#rank .greedy-leader-lines .top-id{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-#rank .greedy-leader-lines .top-coins{color:#9b5600;white-space:nowrap;font-size:1.13em}
-#greedy-verified-win-banner{display:none;position:absolute;top:23%;left:4%;right:4%;
-  padding:9px 10px 11px;z-index:18;pointer-events:none;text-align:center;
-  border:3px solid #ffe57b;border-radius:19px;
-  background:radial-gradient(ellipse at center,#8922aef5,#39115cef 69%,#170a26ed);
-  box-shadow:0 8px 29px #0008,inset 0 0 16px #ffe9ad9c,0 0 30px #ffda67b5;
-  animation:greedyBannerIn .38s cubic-bezier(.2,1.5,.5,1) both}
-#greedy-verified-win-banner .winner-heading{display:block;font:900 clamp(18px,6vw,34px)/1.05 system-ui,sans-serif;
-  letter-spacing:.6px;color:#ffe55f;text-shadow:0 3px 1px #a34b02,0 6px 7px #000b,0 0 12px #fff3b0}
-#greedy-verified-win-banner .winner-person{display:block;color:#fff4ce;
-  font:700 clamp(10px,3vw,17px)/1.3 system-ui,sans-serif;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-#greedy-verified-win-banner .winner-coins{display:block;font:900 clamp(17px,5vw,31px)/1.14 system-ui,sans-serif;
-  color:#fff9b0;text-shadow:0 0 15px #ffb127}
-@keyframes greedyBannerIn{from{opacity:0;transform:scale(.67) translateY(25px)}
-  to{opacity:1;transform:scale(1) translateY(0)}}
-@media(prefers-reduced-motion:reduce){#greedy-verified-win-banner{animation:none}}
+  font:700 clamp(9px,2.5vw,13px)/1.08 system-ui,Arial,sans-serif;overflow:hidden}
+#rank .greedy-leader-lines .top-title,#rank .greedy-leader-lines .top-id{display:none!important}
+#rank .greedy-leader-lines .top-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:100%;font-weight:800}
+#rank .greedy-leader-lines .top-coins{color:#9b5600;white-space:nowrap;font-size:1.06em}
 `;
 document.head.append(leaderStyle);
 const leaderAvatar=document.createElement('img');
 leaderAvatar.className='greedy-top-avatar';leaderAvatar.alt='Daily Top 1';leaderAvatar.hidden=true;
 const leaderLines=document.createElement('span');leaderLines.className='greedy-leader-lines';
-const leaderTitle=document.createElement('span'),leaderName=document.createElement('span'),
- leaderId=document.createElement('span'),leaderCoins=document.createElement('span');
-leaderTitle.className='top-title';leaderId.className='top-id';
-leaderCoins.className='top-coins';
-leaderTitle.textContent='DAILY TOP 1';leaderName.textContent='No players yet';
-leaderId.textContent='ID: —';leaderCoins.textContent='0 coins';
-leaderLines.append(leaderTitle,leaderName,leaderId,leaderCoins);
+const leaderName=document.createElement('span'),leaderCoins=document.createElement('span');
+leaderName.className='top-name';leaderCoins.className='top-coins';
+leaderName.textContent='No players yet';leaderCoins.textContent='0 coins';
+leaderLines.append(leaderName,leaderCoins);
 rankHotspot.append(leaderAvatar,leaderLines);
 function safeUserPic(v) {
  if(typeof v!=='string'||v.length>2048)return '';
@@ -110,69 +116,18 @@ function applyDailyLeader(rows){
  const id=String(top?.public_id||'');
  const coins=Number(top?.total_played);
  if(!top||!/^\d{6,12}$/.test(id)||!Number.isSafeInteger(coins)||coins<0){
-  leaderName.textContent='No players yet';leaderId.textContent='ID: —';
+  leaderName.textContent='No players yet';
   leaderCoins.textContent='0 coins';leaderAvatar.hidden=true;leaderAvatar.removeAttribute('src');return;
  }
- leaderName.textContent=String(top.name||'Player').slice(0,20);
- leaderId.textContent='ID: '+id;
- leaderCoins.textContent=format(coins)+' coins';
+ leaderName.textContent=String(top.name||'Player').slice(0,24);
+ leaderCoins.textContent=compactCoins(coins)+' coins';
  const url=safeUserPic(top.avatar);
  leaderAvatar.hidden=!url;
  if(url)leaderAvatar.src=url;else leaderAvatar.removeAttribute('src');
 }
-const winBanner=document.createElement('div');
-winBanner.id='greedy-verified-win-banner';winBanner.setAttribute('aria-live','polite');
-const winHeading=document.createElement('b'),winName=document.createElement('span'),
- winAmount=document.createElement('strong');
-winHeading.className='winner-heading';winName.className='winner-person';
-winAmount.className='winner-coins';
-winBanner.append(winHeading,winName,winAmount);
-$('#app').append(winBanner);
-let winnerBannerTimer=0,lastLeaderCheck=0,leaderCheckBusy=false,
- bannerCheckBusy=false,lastShownBannerKey='',lastGlobalBannerId=0,globalWinnersInitialized=false;
-function displayVerifiedWinner({win,userId,name,round,heading='BIG WINNER',id}){
- const amount=Number(win);
- if(!Number.isSafeInteger(amount)||amount<=0)return;
- const publicId=String(userId||'');
- const key=String(id||'')+':'+String(round||'')+':'+publicId+':'+amount;
- if(key===lastShownBannerKey)return;
- lastShownBannerKey=key;
- winHeading.textContent=heading;
- winName.textContent=String(name||'Winner').slice(0,40)+
-  (/^\d{6,12}$/.test(publicId)?' · ID '+publicId:'');
- winAmount.textContent='+'+format(amount)+' COINS';
- winBanner.style.display='block';
- winBanner.style.animation='none';void winBanner.offsetWidth;
- winBanner.style.animation='';
- clearTimeout(winnerBannerTimer);
- winnerBannerTimer=setTimeout(()=>winBanner.style.display='none',3700);
-}
-async function refreshDailyLeader(){
- if(leaderCheckBusy||document.visibilityState==='hidden')return;
- leaderCheckBusy=true;
- try {
-  const result=await request('rankings');
-  if(result?.period==='daily'&&Array.isArray(result.rankings))
-   applyDailyLeader(result.rankings);
- }catch {
-  // Preserve last verified leaderboard on a transient network failure.
- }finally{leaderCheckBusy=false}
-}
-async function refreshVerifiedGlobalWinners(){
- if(bannerCheckBusy||document.visibilityState==='hidden')return;
- bannerCheckBusy=true;
- try {
-  const result=await request('winners');
-  const first=Array.isArray(result?.winners)?result.winners[0]:null;
-  if(first&&Number.isSafeInteger(Number(first.id))&&Number(first.id)>lastGlobalBannerId){
-   lastGlobalBannerId=Number(first.id);
-   // Show fresh verified broadcasts, not stale announcements on initial entry.
-   if(globalWinnersInitialized)displayVerifiedWinner({...first,heading:'GLOBAL BIG WIN'});
-  }
-  globalWinnersInitialized=true;
- }catch{/* No fake winnings during disconnection. */}
- finally{bannerCheckBusy=false}
-}
+// The authenticated Game Center owns the single top winner marquee.
+ // Keep the large verified round-result ranking inside this game; never
+ // draw a second winner banner over it.
 
 // Low-latency original-style wheel sounds. Purely presentational; server still
 // owns rounds, coins, wager receipts and the result. Respect room voice volume.
@@ -273,12 +228,20 @@ async function recoverUnknown(){
   }
  }
 }
+// Player taps are queued in order instead of silently dropped while a
+// previous authenticated receipt is pending. Each server request gets a
+// unique idempotency key; old-round taps are never carried into a new round.
+const pendingFoodTaps=[];
 async function bet(id,amount=S.chip){
- if(!ready||changing||unconfirmed||S.phase!=='bet'){
+ if(!ready||unconfirmed||S.phase!=='bet'){
   if(unconfirmed)toast('Checking the previous bet. New bets are paused.');
   return false;
  }
  if(!F.some(f=>f.id===id)||!CH.includes(amount))return false;
+ if(changing){
+  const round=S.round;
+  return new Promise(resolve=>pendingFoodTaps.push({id,amount,round,resolve}));
+ }
  if(S.bal<amount){toast('Not enough coins. Open your wallet to recharge.');return false;}
  changing=true;
  const payload={round:S.round,itemId:id,amount,request_id:token()};
@@ -288,10 +251,24 @@ async function bet(id,amount=S.chip){
   return true;
  }catch(error){
   const msg=String(error.message);
-  if(msg.includes('timeout')){unconfirmed=payload;toast('Bet confirmation pending. Reconnecting.');}
-  else toast(msg);
+  if(msg.includes('timeout')){
+   unconfirmed=payload;toast('Bet confirmation pending. Reconnecting.');
+  }else if(msg==='BETTING_CLOSED'||msg==='betting_closed'){
+   // The server clock is authoritative; do not display an intrusive modal.
+  }else toast(msg);
   return false;
- }finally{changing=false;}
+ }finally{
+  changing=false;
+  const next=pendingFoodTaps.shift();
+  if(next){
+   // A timeout or changed round cancels stale taps without extra debits.
+   if(unconfirmed||!ready||S.phase!=='bet'||next.round!==S.round){
+    next.resolve(false);
+   }else{
+    Promise.resolve().then(()=>bet(next.id,next.amount)).then(next.resolve,()=>next.resolve(false));
+   }
+  }
+ }
 }
 async function replayLast(){
  if(autoRunning||!S.auto||!ready||!Object.values(S.last).some(n=>n>0))return;
@@ -335,15 +312,8 @@ function finishVerified(r,round){
  const earned=Number(r.you?.win||0),betTotal=Number(r.you?.bet||0);
  if(!isValidMoney(earned)||!isValidMoney(betTotal))return;
  FoodSound.play(earned>0?'win':'result');
- if(earned>0){
-  displayVerifiedWinner({win:earned,userId:state?.user?.id,name:state?.user?.name,
-   round,heading:earned>=500000?'BIG WINNER':'WINNER'});
- }else if(Array.isArray(r.top)&&r.top.length){
-  const other=r.top[0];
-  if(Number(other.win)>=500000)displayVerifiedWinner({...other,round,heading:'BIG WINNER'});
- }
  S.phase='pop';S.t=Math.min(4,Math.max(0,Math.ceil((state?.state?.endsAt-(Date.now()+clockOffset))/1000)));
- const winnersHtml=(r.top||[]).slice(0,10).map((u,i)=>{
+ const winnersHtml=(r.top||[]).slice(0,3).map((u,i)=>{
   // Rankings are received from the verified game-state API; never accept a
   // fabricated browser-posted winner. Escape both name and image attributes.
   const pic=String(u.avatar||u.pic||'');
@@ -358,7 +328,7 @@ function finishVerified(r,round){
   '<div style="padding-top:14px">Round '+round+' Result</div><div style="clear:both"></div>'+
   '<div class="row"><span>Coins Won</span><span>'+im('gem')+' '+format(earned)+'</span></div>'+
   '<div class="row"><span>Total Bet</span><span>'+im('gem')+' '+format(betTotal)+'</span></div>'+
-  '<div style="text-align:center;color:#f0a800;font-size:24px;border-top:2px dashed #f0a800;padding-top:6px">Verified Round Ranking</div>'+
+  '<div style="text-align:center;color:#f0a800;font-size:24px;border-top:2px dashed #f0a800;padding-top:6px">Verified Round Top 3</div>'+
   (winnersHtml||'<div class="row">No verified winners</div>'),true);
  draw();
 }
@@ -445,9 +415,8 @@ window.bet=bet; // The original artwork's food-click closures resolve this globa
 $('#pl').onclick=()=>toast('Open your Sharika Wallet from the profile to recharge.');
 $('#bk').onclick=()=>window.parent.postMessage({type:'sharika:original-exit'},'*');
 S.phase='load';S.bal=0;S.round=0;S.rev=0;draw();refresh();
-refreshDailyLeader();refreshVerifiedGlobalWinners();
+refreshDailyLeader();
 setInterval(refreshDailyLeader,12000);
-setInterval(refreshVerifiedGlobalWinners,14000);
 setInterval(updateTime,400);
 let lastNetworkPoll=0;
 setInterval(()=>{
