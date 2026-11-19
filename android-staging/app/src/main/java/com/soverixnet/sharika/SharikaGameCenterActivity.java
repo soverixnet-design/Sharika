@@ -135,6 +135,9 @@ public final class SharikaGameCenterActivity extends Activity {
         if (path.matches("^/api/v1/(royal-ace|cleopatra|royal-slots)/spin$")) return "POST".equals(method);
         if (path.matches("^/api/v1/greedy-wheel/(state|records)$")) return "GET".equals(method);
         if ("/api/v1/greedy-wheel/bet".equals(path)) return "POST".equals(method);
+        // Verified global Food Wheel winners are read-only and require auth.
+        if ("/api/v1/original-games/greedy-classic/winners".equals(path))
+            return "GET".equals(method);
         if ("GET".equals(method) &&
             path.matches("^/api/v1/original-games/(sovera-food|sovera-gaddy|night-food|jackpot-fruit|food-deluxe|greedy-classic|fruit-royale)/(state|history|stats|rankings)$"))
             return true;
