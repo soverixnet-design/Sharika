@@ -3288,7 +3288,7 @@
       '<div class="row"><label>Starts (local time)<input class="field" id="sh-ev-start" type="datetime-local"></label>'+
       '<label>Ends (local time)<input class="field" id="sh-ev-end" type="datetime-local"></label>'+
       '<label>Status<select class="field" id="sh-ev-status">'+
-      '<option value="draft">Draft (hidden)</option><option value="published">Publish in app</option>'+
+      '<option value="draft">Draft (hidden)</option><option value="published">Ready for Event visibility (not live yet)</option>'+
       '<option value="cancelled">Cancelled</option></select></label></div>'+
       '<label>🖼️ Event home banner (upload artwork in Home banners first)'+
       '<select class="field" id="sh-ev-banner"><option value="0">Royal gradient / no uploaded image</option>'+
