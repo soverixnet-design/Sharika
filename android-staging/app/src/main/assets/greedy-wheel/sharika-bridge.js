@@ -6,6 +6,7 @@
   'use strict';
   const NativeWebSocket=window.WebSocket;
   const SERVER='wss://sharika-greedy.invalid';
+  const wheelItems=['shrimp','fish','chicken','steak','cabbage','carrot','corn','tomato'];
   const pending=new Map();
   // Only these explicit rejections prove that no wager was committed.
   // A timeout/5xx can happen after the D1 debit, so its request ID is kept.
@@ -47,6 +48,7 @@
     const st=data.state;
     if(!st||!Number.isSafeInteger(st.round))return;
     syncDaily(socket,data);
+    socket.closes=Date.now()+st.endsAt-data.serverTime;
     if(!socket.initialized){
       socket.initialized=true;
       socket.round=st.round;socket.phase=st.phase;
@@ -92,6 +94,10 @@
       this.readyState=0;this.initialized=false;this.round=null;this.phase=null;
       this.balance=null;this.unconfirmedBets=new Map();this.recoveryTimer=null;
       this.recoveringBet=false;activeSocket=this;
+      this.enqueue=createRoundTapQueue({
+        send:body=>request('bet',body),
+        openRound:n=>this.readyState===1&&this.phase==='betting'&&this.round===n&&Date.now()<this.closes
+      });
       queueMicrotask(()=>{
         if(this.readyState!==0)return;
         this.readyState=1;this.onopen?.({});
@@ -142,31 +148,12 @@
       if(this.readyState!==1)return;
       let message;try{message=JSON.parse(raw);}catch{return;}
       if(message.t==='bet'){
-        // A missing acknowledgment must never turn the next tap into another
-        // independent debit. Confirm all uncertain requests by ID first.
-        if(this.unconfirmedBets.size){
-          void this.reconcileUnconfirmed();
-          emit(this,{t:'bet_err',reqId:message.reqId,code:'BET_UNCONFIRMED'});
-          return;
-        }
-        const body={round:message.round,itemId:message.itemId,amount:message.amount,
-          request_id:randomId()};
-        const submit=()=>request('bet',body);
-        submit().catch(error=>error.message==='server_timeout'?submit():Promise.reject(error))
-        .then(result=>{
-          emit(this,{t:'bet_ok',reqId:message.reqId,...result});
-          void this.poll();
-        }).catch(error=>{
-          const code=error.message||'server_error';
-          if(!DEFINITIVE_BET_ERRORS.has(code)){
-            // Even after two timeouts, replay this exact ID in the background.
-            this.unconfirmedBets.set(body.request_id,body);
-            void this.reconcileUnconfirmed();
-          }
-          emit(this,{t:'bet_err',reqId:message.reqId,
-            code:this.unconfirmedBets.has(body.request_id)?'BET_UNCONFIRMED':code});
-          void this.poll();
-        });
+        const pick=wheelItems.indexOf(message.itemId);
+        this.enqueue(message.round,pick,message.amount,this.balance).then(r=>{
+          this.balance=r.coins;
+          emit(this,{t:'tap_receipt',reqId:message.reqId,round:message.round,balance:r.coins,
+            itemId:message.itemId,amount:message.amount});
+        }).catch(error=>emit(this,{t:'bet_err',reqId:message.reqId,code:error.message}));
       }else if(message.t==='records'){
         request('records').then(result=>emit(this,{t:'records',...result}))
           .catch(error=>emit(this,{t:'error',message:error.message}));

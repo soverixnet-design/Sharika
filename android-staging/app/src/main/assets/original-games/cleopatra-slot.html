@@ -202,13 +202,20 @@ function evalG(g,bet){let total=0,wins=[],cnt={B:0,P:0};
   let n=0;for(const k of sy){if(k===base||k==='W')n++;else break}
   if(n>=3){const m=S[base].p[5-n];total+=m*bet;wins.push(l.slice(0,n).map((row,r)=>[r,row]))}});
  return{total,wins}}
-async function spin(){
- if(spinning)return;if(HOST&&!window.__sharikaGameReady){toast('Connecting...');return;}const bet=bets[bi];
- if(fs<=0){if(bal<bet){toast('Balance!');auto=false;return}if(!HOST)bal-=bet}else if(!HOST)fs--;
+const spinTaps=[];
+function manualSpin(){
+ if(!spinning)return spin();
+ if(HOST&&!window.__sharikaGameReady)return;
+ spinTaps.push({bet:bets[bi],free:fs>0});
+ toast(spinTaps.length+' spins pending');
+}
+async function spin(selectedBet=bets[bi]){
+ if(spinning)return;if(HOST&&!window.__sharikaGameReady){toast('Connecting...');return;}const bet=selectedBet;
+ if(fs<=0){if(bal<bet){toast('Balance!');spinTaps.length=0;auto=false;return}if(!HOST)bal-=bet}else if(!HOST)fs--;
  spinning=true;$('#spin').classList.add('on');$('#win').innerHTML='&nbsp;';upd();
  $('#fs').style.display=fs>0?'block':'none';$('#fs').textContent='FREE SPINS '+fs;
  document.querySelectorAll('.c').forEach(c=>c.classList.remove('win'));
- const R=await getResult(bet);if(R.error){toast(R.error);spinning=false;auto=false;$('#spin').classList.remove('on');reels.forEach(r=>r.classList.remove('spin'));return}if(!Array.isArray(R.grid)||R.grid.length!==5||R.grid.some(reel=>!Array.isArray(reel)||reel.length!==3||reel.some(symbol=>!Object.prototype.hasOwnProperty.call(S,symbol)))){toast('Invalid server result');spinning=false;auto=false;$('#spin').classList.remove('on');return}const ng=R.grid;
+ const R=await getResult(bet);if(R.error){toast(R.error);spinTaps.length=0;spinning=false;auto=false;$('#spin').classList.remove('on');reels.forEach(r=>r.classList.remove('spin'));return}if(!Array.isArray(R.grid)||R.grid.length!==5||R.grid.some(reel=>!Array.isArray(reel)||reel.length!==3||reel.some(symbol=>!Object.prototype.hasOwnProperty.call(S,symbol)))){toast('Invalid server result');spinTaps.length=0;spinning=false;auto=false;$('#spin').classList.remove('on');return}const ng=R.grid;
  reels.forEach(r=>{r.classList.remove('stop');r.classList.add('spin')});
  const iv=setInterval(()=>{reels.forEach((r,i)=>{if(r.classList.contains('spin'))for(let j=0;j<3;j++)setCell(i,j,rnd())});beep(200+Math.random()*80,.05,'square',.04)},70);
  for(let i=0;i<5;i++){await sleep(i?260:600);reels[i].classList.remove('spin');reels[i].classList.add('stop');ng[i].forEach((k,j)=>setCell(i,j,k));beep(300,.12,'triangle',.25)}
@@ -221,7 +228,7 @@ async function spin(){
     !Number.isSafeInteger(R.balance)||R.balance<0||
     !Number.isSafeInteger(R.freeSpins)||R.freeSpins<0||
     !Number.isSafeInteger(R.jackpot)||R.jackpot<0)){
-  toast('Invalid verified result');spinning=false;auto=false;$('#spin').classList.remove('on');return;
+  toast('Invalid verified result');spinTaps.length=0;spinning=false;auto=false;$('#spin').classList.remove('on');return;
  }
  let w=HOST?R.win:res.total;
  if(!HOST&&window._inFS)w*=2;
@@ -237,6 +244,11 @@ async function spin(){
  hist.unshift(`${new Date().toLocaleTimeString()} \u2022 Bet ${fmt(bet)} \u2022 Win ${fmt(w)}`);hist=hist.slice(0,30);
  upd();$('#fs').style.display=fs>0?'block':'none';$('#fs').textContent='FREE SPINS '+fs;
  await sleep(w>0?1400:300);spinning=false;$('#spin').classList.remove('on');
+ while(spinTaps.length){
+  const next=spinTaps.shift();
+  if(next.free&&!fs)continue;
+  return spin(fs?bet:next.bet);
+ }
  if(fs>0||auto)setTimeout(spin,300)}
 const Q=new URLSearchParams(location.search),MODE=Q.get('mode')==='room'?'room':'full',HOST=Q.get('host')==='1',ORIGIN=Q.get('origin')||'*',pend={};
 function post(m){try{parent.postMessage(m,ORIGIN)}catch(e){}}
@@ -251,7 +263,7 @@ function fit(){const H=MODE==='room'?580:880,s=Math.min(innerWidth/480,innerHeig
 addEventListener('resize',fit);fit();
 if(MODE==='room'){const b=document.createElement('div');b.className='rb';b.textContent='\u26F6';b.onclick=()=>post({type:'expand'});$('.top').appendChild(b)}
 // Initialize hosted ranking state only after RK is declared.
-$('#spin').onclick=()=>{if(!spinning)spin()};
+$('#spin').onclick=manualSpin;
 $('#plus').onclick=()=>{bi=Math.min(bets.length-1,bi+1);upd();beep(600,.08)};
 $('#minus').onclick=()=>{bi=Math.max(0,bi-1);upd();beep(400,.08)};
 $('#auto').onclick=()=>{auto=!auto;$('#auto').style.filter=auto?'drop-shadow(0 0 10px #4aff6a) brightness(1.35)':'';if(auto&&!spinning)spin()};

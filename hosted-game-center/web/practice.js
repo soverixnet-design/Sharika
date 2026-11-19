@@ -103,6 +103,24 @@
          throw Error('practice_route_denied');
        if(path.includes('game-catalog'))throw Error('practice_catalog_uses_public_assets');
        const action=path.split('/').pop().split('?')[0];
+       if(action==='bet'&&Array.isArray(body?.taps)){
+         const receipts=[];
+         for(const tap of body.taps){
+           const key=tap.request_id;
+           try{
+             const classic=game==='greedy-classic',wheel=game==='greedy-wheel';
+             const items=classic?['chicken','fish','hotdog','steak','grape','lettuce','pepper','watermelon']:
+               ['shrimp','fish','chicken','steak','cabbage','carrot','corn','tomato'];
+             const data=classic||wheel?{...tap,round:body.round_no,itemId:items[tap.pick]}:
+               game==='food-deluxe'?{request_id:key,round_no:body.round_no,stakes:tap.pick}:
+               game==='fruit-royale'?{requestId:key,fruitId:fruit[tap.pick][0],roundId:'fruit-royale:'+body.round_no,amount:tap.amount}:
+               {...tap,round_no:body.round_no};
+             const receipt=await this.request(method,path,data);
+             receipts.push({request_id:key,bet_id:receipt.bet_id||receipt.id||1});
+           }catch(error){receipts.push({request_id:key,error:error.message});}
+         }
+         return {round_no:body.round_no,coins,receipts};
+       }
        if(path.startsWith('/api/v1/royal-ace/')){
          if(action==='state')return {balance:coins,bets:[1000,10000,100000,1000000,10000000],
            freeSpins:bonus,lockedBet:betLock,virtual_coins_only:true,practice_only:true};

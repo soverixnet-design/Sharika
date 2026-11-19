@@ -61,6 +61,7 @@ body{background:radial-gradient(circle at 50% 20%,#4b1a7a,#12061f 75%);color:#ff
 <div id="bt"><div>My Coins<b id="bal"></b></div><div>Today's Winnings<b id="td"></b></div><button id="au">Auto</button></div>
 </div>
 <div id="pop"><div id="pb"></div></div>
+<script src="rapid-bets.js"></script>
 <script>
 /* Same-origin native parent owns ALL identity and wallet operations.
  * The iframe is never given tokens, credentials, database handles, or
@@ -69,7 +70,7 @@ const GameBridge=(()=>{
   const game=document.documentElement.getAttribute('data-original-game');
   const pending=new Map();
   let seq=0,state=null,receivedAt=Date.now(),activeRefresh=null,refreshAgain=false;
-  let betRevision=0,uncertainBet=null,started=false;
+  let betRevision=0,started=false;
   let refreshHandler=()=>{},errorHandler=()=>{};
   window.addEventListener('message',e=>{
     if(e.source!==window.parent||!e.data||e.data.type!=='sharika:original-response')return;
@@ -145,43 +146,16 @@ const GameBridge=(()=>{
     receivedAt=Date.now();
     refreshHandler(state,now(),false);
   }
+  const enqueue=createRoundTapQueue({
+    send:body=>call('bet','POST',body),
+    openRound:n=>state?.round.round_no===n&&now()<state.round.bet_closes_ms,
+    onStatus(count){document.documentElement.dataset.pendingBets=String(count);}
+  });
   async function bet(pick,amount){
-    if(!state)throw Error('Connecting to the verified game server. Please wait.');
-    let request=uncertainBet;
-    if(request){
-      if(request.pick!==pick||request.amount!==amount){
-        throw Error('Previous bet not confirmed. Tap the same choice to verify it without another charge.');
-      }
-    }else{
-      if(now()>=state.round.bet_closes_ms)throw Error('Betting closed. Wait for the next round.');
-      request={
-        round_no:state.round.round_no,pick,amount,
-        request_id:'og:'+game+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,13)
-      };
-    }
-    // A timed-out native request may already have debited the wallet.
-    // Replay the SAME request_id once: the Worker returns its original receipt
-    // and never inserts a second bet for this request.
-    const known=/^(betting_closed|insufficient_coins|invalid_bet|game_adult_only|profile_required|idempotency_conflict)$/;
-    let result;
-    for(let attempt=0;attempt<2;attempt++){
-      try{
-        result=await call('bet','POST',request);
-        break;
-      }catch(e){
-        if(known.test(String(e.message||''))){
-          uncertainBet=null;
-          throw e;
-        }
-        if(attempt===0)continue;
-        uncertainBet=request;
-        throw Error('Bet confirmation delayed. Tap the same choice again to check without a second charge.');
-      }
-    }
-    uncertainBet=null;
-    updateFromReceipt(result,request);
-    // Poll in the background; confirmed bet taps never wait for the wallet GET.
-    void refresh();
+    if(!state)throw Error('Connecting to game server');
+    const round_no=state.round.round_no;
+    const result=await enqueue(round_no,pick,amount,state.coins);
+    updateFromReceipt(result,{round_no,pick,amount});
     return result;
   }
   function start(){
@@ -199,7 +173,7 @@ const $=s=>document.querySelector(s),fmt=n=>Number(n||0).toLocaleString('en-US')
 const F=[['🍋',5],['🍇',5],['🥝',5],['🍒',40],0,['🍑',5],['🍉',20],['🍌',10],['🍓',10]];
 const RING=[0,1,2,5,8,7,6,3],CH=[1000,10000,100000,1000000,10000000];
 const chipLabel=c=>c>=1000000?(c/1000000)+'M':c>=1000?(c/1000)+'K':String(c);
-let chip=CH[0],bets=Array(9).fill(0),busy=false,muted=false,latestSeen=null;
+let chip=CH[0],bets=Array(9).fill(0),muted=false,latestSeen=null;
 const verifiedWinners=document.createElement('div');
 verifiedWinners.id='og-top3';
 verifiedWinners.setAttribute('role','status');
@@ -219,12 +193,12 @@ $('#ch').innerHTML=CH.map((c,i)=>'<div class="cw"><button class="'+(i?'':'on')+'
 document.querySelectorAll('#ch button').forEach(b=>b.onclick=()=>{chip=Number(b.dataset.c);document.querySelectorAll('#ch button').forEach(v=>v.classList.toggle('on',b===v))});
 function msg(t){$('#msg').textContent=t;clearTimeout(msg.id);msg.id=setTimeout(()=>$('#msg').textContent='',3000)}
 async function place(tileIndex){
- if(busy)return;
+
  const d=GameBridge.get();if(!d||GameBridge.now()>=d.round.bet_closes_ms){msg('Betting closed');return;}
- busy=true;
+
  try{await GameBridge.bet(RING.indexOf(tileIndex),chip)}
  catch(e){msg(e.message||'Bet failed')}
- finally{busy=false}
+
 }
 function redraw(d){
  bets.fill(0);for(const b of d.my_bets||[])if(b.round_no===d.round.round_no)bets[RING[b.pick_index]]+=b.amount;
