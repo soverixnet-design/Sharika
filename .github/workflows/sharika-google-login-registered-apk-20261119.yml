@@ -107,7 +107,7 @@ jobs:
           signer="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
           test -n "$signer"
           "$signer" verify --verbose "$apk"
-          actual="$("$signer" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: *//p' | head -n1)"
+          actual="$(python3 android-staging/apk-signer-sha1.py "$apk")"
           test -n "$actual" || { echo "::error::No APK certificate SHA-1"; exit 1; }
           node android-staging/google-oauth-signing.cjs "$actual"
           expected="$(printf '%s' "$SHARIKA_EXPECTED_APK_SHA1" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
