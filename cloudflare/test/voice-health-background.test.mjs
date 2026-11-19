@@ -14,7 +14,7 @@ test('Voice Health is a read-only local panel available in room Settings',()=>{
  const panel=between('function openVoiceHealthPage(){',"const settings=section('Room Settings')");
  assert.match(source,/row\(settings,'Voice Health','Local mic & network diagnostics',openVoiceHealthPage\)/);
  assert.match(panel,/inspectSfuAudio\(state\)/);
- assert.match(panel,/state\.lastMediaStats/);
+ assert.match(panel,/state\?\.lastMediaStats/);
  assert.match(panel,/Receiving connection/);
  assert.match(panel,/Microphone/);
  assert.match(panel,/Lost incoming packets/);
