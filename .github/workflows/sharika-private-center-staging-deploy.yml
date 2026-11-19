@@ -63,7 +63,7 @@ jobs:
       - name: Run complete Sharika server tests and isolated Private Center tests
         run: |
           npm --prefix cloudflare run check
-          node --test cloudflare/test/private-center.test.mjs
+          node --test cloudflare/test/private-center.test.mjs cloudflare/test/center-rankings.test.mjs hosted-game-center/test/private-event-access.test.mjs
       - name: Assemble existing admin and new private Royal website assets
         run: |
           node hosted-game-center/scripts/build.mjs
@@ -91,6 +91,8 @@ jobs:
           curl --fail --silent --show-error --retry 8 --retry-delay 2 --retry-all-errors --max-time 10 https://sharika-private-center-staging.soverixnet.workers.dev/health | grep -q 'private_center'
           STATUS=$(curl --silent --output /tmp/sharika-private-anonymous.txt --write-out '%{http_code}' --max-time 12 https://sharika-private-center-staging.soverixnet.workers.dev/api/catalog)
           test "$STATUS" = "401"
+          EVENT_STATUS=$(curl --silent --output /tmp/sharika-private-event-anon.txt --write-out '%{http_code}' --max-time 12 https://sharika-private-center-staging.soverixnet.workers.dev/api/center/events/2/banner)
+          test "$EVENT_STATUS" = "401"
           # Cloudflare rejects curl's default User-Agent with anti-bot 1010;
           # the real browser-style request is 200 (verified independently).
           curl --fail --silent --show-error -A 'Mozilla/5.0' --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js | grep -q 'Private Center'
