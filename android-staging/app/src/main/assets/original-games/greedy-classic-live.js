@@ -125,6 +125,18 @@ function applyDailyLeader(rows){
  leaderAvatar.hidden=!url;
  if(url)leaderAvatar.src=url;else leaderAvatar.removeAttribute('src');
 }
+let leaderCheckBusy=false;
+async function refreshDailyLeader(){
+ if(leaderCheckBusy||document.visibilityState==='hidden')return;
+ leaderCheckBusy=true;
+ try{
+  const response=await request('rankings');
+  if(response?.period==='daily'&&Array.isArray(response.rankings))
+   applyDailyLeader(response.rankings);
+ }catch{/* Keep last verified leaderboard if the connection fails. */}
+ finally{leaderCheckBusy=false}
+}
+
 // The authenticated Game Center owns the single top winner marquee.
  // Keep the large verified round-result ranking inside this game; never
  // draw a second winner banner over it.
