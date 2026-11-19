@@ -2,74 +2,43 @@
 (()=>{
 'use strict';
 const GAME='greedy-classic';
-// Restrict compact layout to the half-screen, in-room Game Center. The game
-// still uses the original DOM and authenticated settlement bridge.
-if(location.hash==='#sharika-room'){
- document.documentElement.classList.add('sharika-greedy-mini');
- const style=document.createElement('style');
- style.id='sharika-compact-game-fit';
- style.textContent=[
-  'html.sharika-greedy-mini,html.sharika-greedy-mini body{',
-  'height:100dvh!important;min-height:0!important;overflow:hidden!important}',
-  'html.sharika-greedy-mini #app{height:100dvh!important;',
-  'min-height:0!important;max-height:100dvh!important;overflow:hidden!important}',
-  'html.sharika-greedy-mini #top{height:clamp(38px,12dvh,48px)!important;',
-  'min-height:0!important;flex:0 0 auto!important}',
-  'html.sharika-greedy-mini #stage{',
-  'width:min(90vw,57dvh,390px)!important;height:auto!important;',
-  'max-height:none!important;flex:0 0 auto!important;',
-  'margin:0 auto!important}',
-  'html.sharika-greedy-mini #stage>img.w{',
-  'width:100%!important;height:100%!important;object-fit:contain!important}',
-  'html.sharika-greedy-mini #low{height:auto!important;',
-  'min-height:112px!important;max-height:none!important;',
-  'overflow:hidden!important;flex:1 1 auto!important;',
-  'gap:7px!important;padding:8px 12px 10px!important;',
-  'justify-content:space-between!important}',
-  'html.sharika-greedy-mini #chips{',
-  'height:34px!important;min-height:0!important;max-height:36px!important}',
-  'html.sharika-greedy-mini #me{',
-  'height:36px!important;min-height:0!important;max-height:38px!important}',
-  'html.sharika-greedy-mini #auto{',
-  'position:static!important;right:auto!important;bottom:auto!important;',
-  'left:auto!important;top:auto!important;z-index:auto!important;',
-  'min-width:47px!important;padding:3px 5px!important}',
-  'html.sharika-greedy-mini .chip{max-height:36px!important}',
-  '@media(max-height:390px){html.sharika-greedy-mini #stage{',
-  'width:min(90vw,44dvh)!important;max-height:none!important}}',
- ].join('');
- document.head.append(style);
-}
-else {
- // In a full Game Center WebView the original fixed 1080:1617 canvas
- // produced large BLACK bands on tall screens. Expand the *container*,
- // never stretch the 1:1 food wheel or its aligned hit targets.
- document.documentElement.classList.add('sharika-greedy-full');
- const style=document.createElement('style');
- style.id='sharika-fullscreen-game-fit';
- style.textContent=[
-  'html.sharika-greedy-full,html.sharika-greedy-full body{',
-  'width:100%;height:100dvh!important;min-height:0!important;',
-  'background:#0bbcb0!important;overflow:hidden!important}',
-  'html.sharika-greedy-full body{display:flex!important;',
-  'align-items:stretch!important;justify-content:center!important}',
-  'html.sharika-greedy-full #app{width:min(100vw,520px)!important;',
-  'max-width:none!important;height:100dvh!important;',
-  'min-height:0!important;aspect-ratio:auto!important;margin:0 auto!important}',
-  'html.sharika-greedy-full #top{flex:0 0 auto!important}',
-  'html.sharika-greedy-full #stage{width:min(96%,56dvh,510px)!important;',
-  'max-height:none!important;flex:0 0 auto!important}',
-  'html.sharika-greedy-full #low{flex:1 1 auto!important;',
-  'min-height:130px!important;max-height:none!important;',
-  'justify-content:space-around!important;overflow:hidden!important}',
-  'html.sharika-greedy-full #res,html.sharika-greedy-full #chips,',
-  'html.sharika-greedy-full #me{flex:0 0 auto!important}',
-  '@media(max-height:570px){html.sharika-greedy-full #stage{',
-  'width:min(87vw,46dvh)!important}}'
- ].join('');
- document.head.append(style);
-}
-
+// Match the user's original 1080:1617 video artwork in both Android views.
+// Never stretch the game to screen height: that created the giant red empty zone.
+const inVoiceRoom=location.hash==='#sharika-room';
+document.documentElement.classList.add(inVoiceRoom?'sharika-greedy-mini':'sharika-greedy-full');
+const originalFit=document.createElement('style');
+originalFit.id='sharika-original-video-fit';
+originalFit.textContent=[
+ 'html,html body{width:100%;height:100dvh!important;min-height:0!important;',
+ 'overflow:hidden!important;background:#050708!important}',
+ 'html body{display:flex!important;align-items:center!important;',
+ 'justify-content:center!important}',
+ '#app{width:min(100vw,480px,calc(100dvh * .668))!important;',
+ 'height:auto!important;max-height:100dvh!important;',
+ 'aspect-ratio:1080 / 1617!important;flex:none!important;',
+ 'margin:auto!important;overflow:hidden!important}',
+ '#top{flex:0 0 auto!important;min-height:0!important}',
+ '#stage{width:96%!important;height:auto!important;max-height:none!important;',
+ 'flex:0 0 auto!important;margin:0 auto!important}',
+ '#stage>img.w{width:100%!important;height:auto!important;object-fit:contain!important}',
+ '#low{flex:1 1 auto!important;min-height:0!important;max-height:none!important;',
+ 'overflow:hidden!important;justify-content:space-between!important;',
+ 'gap:4px!important;padding:5px 10px 7px!important}',
+ '#res{flex:0 0 34px!important;min-height:0!important}',
+ '#chips,#me{flex:0 0 auto!important}',
+ '.chip{border:3px solid #f8da86!important;',
+ 'box-shadow:0 3px 0 #90502b,inset 0 1px 0 #fff5c8;',
+ 'background:linear-gradient(#e94343 0 40%,#fff5c7 43%,#fff7de 100%);',
+ 'opacity:.91!important}',
+ '.chip.sel{border-color:#ffd33f!important;opacity:1!important;',
+ 'box-shadow:0 0 12px #ffe45a,0 4px 0 #9e5c23,inset 0 1px 0 #fff!important}',
+ 'html.sharika-greedy-mini #app{width:min(100vw,480px,calc(100dvh * .668))!important}',
+ 'html.sharika-greedy-mini #auto{min-width:45px!important;padding:2px 5px!important}',
+ '@media(max-height:430px){#top{padding:2px 8px!important}',
+ '#res{height:26px!important;flex-basis:26px!important}',
+ '.chip{font-size:11px!important}#me{font-size:10px!important}}'
+].join('');
+document.head.append(originalFit);
 
 const OUTCOMES=new Set(F.map(f=>f.id).concat(['salad','pizza']));
 const pending=new Map();
@@ -79,6 +48,50 @@ let state=null,displayedResultRound=-1,animationRound=-1,autoRunning=false,place
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const format=n=>Math.max(0,Number(n)||0).toLocaleString('en-US');
 const toast=message=>show('<h3>Game Notice<u>×</u></h3>'+esc(message));
+// Low-latency original-style wheel sounds. Purely presentational; server still
+// owns rounds, coins, wager receipts and the result. Respect room voice volume.
+const FoodSound=(()=>{
+ const AudioClass=window.AudioContext||window.webkitAudioContext;
+ let context=null;
+ const quiet=inVoiceRoom?0.34:1;
+ function unlock(){
+  if(!AudioClass)return null;
+  try {
+   if(!context)context=new AudioClass();
+   if(context.state==='suspended')void context.resume().catch(()=>{});
+   return context;
+  }catch{return null}
+ }
+ function tone(frequency,duration,volume,kind='sine',delay=0){
+  if(S.mute||document.visibilityState==='hidden'||!context||context.state!=='running')return;
+  try {
+   const t=context.currentTime+delay,o=context.createOscillator(),g=context.createGain();
+   o.type=kind;o.frequency.setValueAtTime(frequency,t);
+   g.gain.setValueAtTime(Math.max(.0002,volume*quiet),t);
+   g.gain.exponentialRampToValueAtTime(.0001,t+duration);
+   o.connect(g);g.connect(context.destination);
+   o.start(t);o.stop(t+duration+.015);
+  }catch{}
+ }
+ function play(event,step=0){
+  if(event==='bet'){tone(710,.095,.028);tone(1100,.13,.022,'sine',.075);}
+  if(event==='start'){tone(310,.20,.035,'triangle');tone(510,.13,.022,'triangle',.09);}
+  if(event==='tick'){tone(480+((step||0)%8)*53,.055,.017,'triangle');}
+  if(event==='result'){tone(590,.16,.025,'sine');tone(440,.19,.019,'sine',.17);}
+  if(event==='win'){
+   tone(523,.23,.033,'triangle');tone(659,.24,.033,'triangle',.13);
+   tone(784,.29,.031,'sine',.26);tone(1046,.47,.026,'sine',.39);
+  }
+  if(event==='toggle'){tone(780,.13,.021);}
+ }
+ // Gesture required on some WebViews, without touching audio focus/room mic.
+ document.addEventListener('pointerdown',unlock,{passive:true});
+ document.addEventListener('keydown',unlock);
+ return {unlock,play};
+})();
+$('#mu')?.addEventListener('click',()=>{FoodSound.unlock();FoodSound.play('toggle');});
+
+
 function request(action,method='GET',body){
  return new Promise((resolve,reject)=>{
   if(window.parent===window){reject(Error('Open this game from Sharika'));return;}
@@ -115,6 +128,7 @@ async function submit(payload){
  S.hint=false;
  ready=true;
  draw();
+ FoodSound.play('bet');
  return true;
 }
 async function recoverUnknown(){
@@ -172,12 +186,14 @@ async function replayLast(){
 function startSpin(resultId,round){
  if(!OUTCOMES.has(resultId)||displayedResultRound===round||animationRound===round)return;
  animationRound=round;
+ FoodSound.play('start');
  S.phase='spin';S.hint=false;draw();
  const wins=winners(resultId),ids=F.map(f=>f.id);
  let i=0,target=Math.max(0,ids.indexOf(wins[0])),n=16+target;
  const walk=()=>{
   if(round!==S.round){clearOn();return;}
   clearOn();$('#c_'+ids[i%ids.length]).classList.add('on');
+  FoodSound.play('tick',i);
   if(i++<n){setTimeout(walk,45+Math.floor(85*i/n));return;}
   clearOn();wins.forEach(w=>$('#c_'+w)?.classList.add('on'));
   if(resultId==='salad'||resultId==='pizza')$('#g_'+resultId).classList.add('on');
@@ -192,6 +208,7 @@ function finishVerified(r,round){
  if(round!==S.round)return;
  const earned=Number(r.you?.win||0),betTotal=Number(r.you?.bet||0);
  if(!isValidMoney(earned)||!isValidMoney(betTotal))return;
+ FoodSound.play(earned>0?'win':'result');
  S.phase='pop';S.t=Math.min(4,Math.max(0,Math.ceil((state?.state?.endsAt-(Date.now()+clockOffset))/1000)));
  const winnersHtml=(r.top||[]).slice(0,10).map((u,i)=>{
   // Rankings are received from the verified game-state API; never accept a
