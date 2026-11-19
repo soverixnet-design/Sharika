@@ -58,6 +58,23 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
    issued_at:now,virtual_coins_only:true
   });
  }
+ if(path==='/api/v1/center/launch-ticket'&&request.method==='POST'){
+  // Android must first authenticate through its existing Firebase token.
+  // The URL carries ONLY this one-time 90-second random ticket, never an ID token.
+  const now=Date.now();
+  const recent=await db.prepare('SELECT COUNT(*) AS n FROM sharika_center_launch_tickets '+
+    'WHERE auth_uid=? AND created_at_ms>?').bind(uid,now-60000).first();
+  if(Number(recent?.n||0)>=8)return deny('launch_ticket_rate_limited',429);
+  const random=crypto.getRandomValues(new Uint8Array(32));
+  const ticket=btoa(String.fromCharCode(...random))
+   .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ticket));
+  const hashed=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
+  await db.prepare('INSERT INTO sharika_center_launch_tickets('+
+    'token_sha256,auth_uid,created_at_ms,expires_at_ms) VALUES(?,?,?,?)')
+    .bind(hashed,uid,now,now+90000).run();
+  return send({ticket,expires_in_seconds:90},201);
+ }
  if(!path.startsWith('/api/v1/center/admin'))return deny('not_found',404);
  if(!await superAdmin(db,uid))return deny('admin_forbidden');
  if(path==='/api/v1/center/admin/state'&&request.method==='GET'){
