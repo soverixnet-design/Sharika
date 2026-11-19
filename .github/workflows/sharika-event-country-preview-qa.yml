@@ -1,0 +1,67 @@
+name: Sharika Royal Events - country scope and admin preview QA
+on:
+  push:
+    branches: [feature/sharika-event-country-preview-20261120]
+    paths:
+      - '.github/workflows/sharika-event-country-preview-qa.yml'
+      - 'cloudflare/src/event-audience.mjs'
+      - 'cloudflare/src/events.mjs'
+      - 'cloudflare/src/private-center.mjs'
+      - 'cloudflare/migrations/0104_event_country_visibility.sql'
+      - 'cloudflare/test/event-audience.test.mjs'
+      - 'cloudflare/test/royal-liveops-admin-e2e.test.mjs'
+      - 'hosted-game-center/src/private-index.mjs'
+      - 'hosted-game-center/web/center.js'
+      - 'hosted-game-center/test/private-event-access.test.mjs'
+      - 'admin/connection.js'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-liveops-qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Syntax guards, web assets and Admin Panel
+        run: |
+          set -euo pipefail
+          node --check cloudflare/src/events.mjs
+          node --check cloudflare/src/event-audience.mjs
+          node --check cloudflare/src/private-center.mjs
+          node --check hosted-game-center/src/private-index.mjs
+          node --check hosted-game-center/web/center.js
+          node --check admin/connection.js
+          node hosted-game-center/scripts/build.mjs
+      - name: Validate additive audience migration using memory-only SQLite
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          sql=Path('cloudflare/migrations/0104_event_country_visibility.sql').read_text()
+          conn=sqlite3.connect(':memory:')
+          conn.execute("CREATE TABLE sharika_events(id INTEGER PRIMARY KEY,status TEXT,ends_at TEXT,starts_at TEXT)")
+          conn.execute("INSERT INTO sharika_events(id,status) VALUES(1,'draft')")
+          conn.executescript(sql)
+          assert conn.execute('SELECT country_code FROM sharika_events WHERE id=1').fetchone()[0]=='GLOBAL'
+          conn.execute("INSERT INTO sharika_events(id,status,country_code) VALUES(2,'draft','BD')")
+          try:
+              conn.execute("INSERT INTO sharika_events(id,status,country_code) VALUES(3,'draft','bangladesh')")
+              raise AssertionError('invalid scope accepted')
+          except sqlite3.IntegrityError:
+              pass
+          conn.close()
+          print('Event audience migration validated in isolated memory DB')
+          PY
+      - name: Isolated End-to-end Admin Event, member country and private URLs
+        run: |
+          node --test cloudflare/test/event-audience.test.mjs \
+            cloudflare/test/royal-liveops-admin-e2e.test.mjs \
+            cloudflare/test/private-center.test.mjs \
+            cloudflare/test/event-design.test.mjs \
+            hosted-game-center/test/private-event-access.test.mjs
+      - name: Complete backend regression suite
+        run: npm --prefix cloudflare run check
