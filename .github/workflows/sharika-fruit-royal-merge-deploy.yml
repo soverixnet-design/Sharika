@@ -133,9 +133,14 @@ jobs:
           test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
           grep -Fq 'T.rankAvatars' hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
           ! grep -Fq 'T.t5' hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
-          asset_status="$(curl -fsS --max-time 15 -o /dev/null -w '%{http_code}' https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html)"
-          [ "$asset_status" = "200" ] || { echo "Food Wheel HTML HTTP status $asset_status"; exit 1; }
-          echo "Both staged games verified for publication"
+          # Cloudflare redirects /games/.../food-wheel-deluxe.html to its
+          # canonical game URL with HTTP 307. Follow it before inspecting HTML.
+          curl -fLsS --max-time 20 --retry 5 --retry-delay 2 \
+            https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html -o /tmp/food-wheel-deluxe.html
+          test -s /tmp/food-wheel-deluxe.html || { echo "Fruit Machine HTML response empty"; exit 1; }
+          grep -Fq 'T.rankAvatars' /tmp/food-wheel-deluxe.html || { echo "Avatar-only ranking not deployed"; exit 1; }
+          ! grep -Fq 'T.t5' /tmp/food-wheel-deluxe.html || { echo "Legacy ranking label still deployed"; exit 1; }
+          echo "Both staged games verified for publication; Fruit Machine bytes=$(wc -c </tmp/food-wheel-deluxe.html)"
 
   android-debug:
     needs: validate
