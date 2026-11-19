@@ -1,0 +1,126 @@
+name: Sharika Private Center and Rapid Taps - registered Google OAuth signer QA
+on:
+  push:
+    branches: [feature/sharika-private-center-rapid-tap-integration-20261120]
+    paths: ['.github/workflows/sharika-private-center-registered-signer-qa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signed-staging:
+    environment: sharika-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Verify Firebase config and Royal Slots native game
+        run: |
+          node --test android-staging/google-oauth-signing.test.cjs
+          node --test hosted-game-center/test/royal-slots-native-bridge.test.mjs
+          node --test hosted-game-center/test/royal-slots-integration.test.mjs
+          node --test cloudflare/test/private-center.test.mjs cloudflare/test/rapid-round-taps.test.mjs
+      - name: Use only a previously registered stable Firebase OAuth signer
+        env:
+          STAGING_B64: ${{ secrets.SHARIKA_STAGING_KEYSTORE_B64 }}
+          STAGING_PASSWORD: ${{ secrets.SHARIKA_STAGING_KEYSTORE_PASSWORD }}
+          PLAY_B64: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEYSTORE_B64 }}
+          PLAY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_ALIAS: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_KEY_PASSWORD: ${{ secrets.SHARIKA_PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          echo "Firebase registered signer source check (no keys or passwords shown):"
+          if [ -n "$STAGING_B64" ]; then echo "STAGING_KEY_PRESENT"; else echo "STAGING_KEY_MISSING"; fi
+          if [ -n "$STAGING_PASSWORD" ]; then echo "STAGING_PASSWORD_PRESENT"; else echo "STAGING_PASSWORD_MISSING"; fi
+          if [ -n "$PLAY_B64" ]; then echo "PLAY_UPLOAD_KEY_PRESENT"; else echo "PLAY_UPLOAD_KEY_MISSING"; fi
+          if [ -n "$PLAY_PASSWORD" ] && [ -n "$PLAY_ALIAS" ] && [ -n "$PLAY_KEY_PASSWORD" ]; then
+            echo "PLAY_UPLOAD_CREDENTIALS_PRESENT"
+          else
+            echo "PLAY_UPLOAD_CREDENTIALS_INCOMPLETE"
+          fi
+          selected=''
+          if [ -n "$STAGING_B64" ] && [ -n "$STAGING_PASSWORD" ]; then
+            keyfile="$RUNNER_TEMP/sharika-registered-staging.p12"
+            if printf '%s' "$STAGING_B64" | tr -d '[:space:]' | base64 -d > "$keyfile" 2>/dev/null &&
+               test "$(wc -c < "$keyfile")" -gt 500 &&
+               keytool -list -v -keystore "$keyfile" -storepass "$STAGING_PASSWORD" -alias sharika-staging > "$RUNNER_TEMP/staging-signcheck.txt" 2>&1; then
+              sha1="$(sed -n 's/.*SHA1: *//p' "$RUNNER_TEMP/staging-signcheck.txt" | head -n1)"
+              if node android-staging/google-oauth-signing.cjs "$sha1"; then
+                echo "SHARIKA_STAGING_KEYSTORE_PATH=$keyfile" >> "$GITHUB_ENV"
+                echo "SHARIKA_STAGING_KEYSTORE_PASSWORD=$STAGING_PASSWORD" >> "$GITHUB_ENV"
+                echo "SHARIKA_EXPECTED_APK_SHA1=$sha1" >> "$GITHUB_ENV"
+                selected=registered_staging
+              else
+                echo "STAGING_SIGNER_NOT_REGISTERED"
+              fi
+            else
+              echo "STAGING_SECRET_INCORRECT_KEYSTORE_OR_ALIAS"
+            fi
+          fi
+          if [ -z "$selected" ] && [ -n "$PLAY_B64" ] &&
+             [ -n "$PLAY_PASSWORD" ] && [ -n "$PLAY_ALIAS" ] && [ -n "$PLAY_KEY_PASSWORD" ]; then
+            keyfile="$RUNNER_TEMP/sharika-registered-upload.p12"
+            if printf '%s' "$PLAY_B64" | tr -d '[:space:]' | base64 -d > "$keyfile" 2>/dev/null &&
+               test "$(wc -c < "$keyfile")" -gt 500 &&
+               keytool -list -v -keystore "$keyfile" -storepass "$PLAY_PASSWORD" -alias "$PLAY_ALIAS" > "$RUNNER_TEMP/upload-signcheck.txt" 2>&1; then
+              sha1="$(sed -n 's/.*SHA1: *//p' "$RUNNER_TEMP/upload-signcheck.txt" | head -n1)"
+              if node android-staging/google-oauth-signing.cjs "$sha1"; then
+                echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$keyfile" >> "$GITHUB_ENV"
+                echo "SHARIKA_PLAY_UPLOAD_STORE_PASSWORD=$PLAY_PASSWORD" >> "$GITHUB_ENV"
+                echo "SHARIKA_PLAY_UPLOAD_KEY_ALIAS=$PLAY_ALIAS" >> "$GITHUB_ENV"
+                echo "SHARIKA_PLAY_UPLOAD_KEY_PASSWORD=$PLAY_KEY_PASSWORD" >> "$GITHUB_ENV"
+                echo "SHARIKA_STAGING_USE_REGISTERED_PLAY_SIGNER=true" >> "$GITHUB_ENV"
+                echo "SHARIKA_EXPECTED_APK_SHA1=$sha1" >> "$GITHUB_ENV"
+                selected=registered_upload_for_staging_test
+              else
+                echo "UPLOAD_SIGNER_NOT_REGISTERED"
+              fi
+            else
+              echo "UPLOAD_SECRET_INCORRECT_KEYSTORE_OR_ALIAS"
+            fi
+          fi
+          if [ -z "$selected" ]; then
+            echo "::error::No configured keystore matches Firebase OAuth. Refusing another debug-signed APK."
+            exit 1
+          fi
+          echo "SELECTED_REGISTERED_SIGNER=$selected"
+      - name: Install Android SDK
+        run: |
+          set -euo pipefail
+          manager="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n1)"
+          test -n "$manager"
+          "$manager" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build test-only staging APK with registered signing key
+        working-directory: android-staging
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Verify actual APK signer against Firebase OAuth and package
+        run: |
+          set -euo pipefail
+          apk='android-staging/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$apk"
+          unzip -tqq "$apk"
+          signer="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
+          test -n "$signer"
+          "$signer" verify --verbose "$apk"
+          actual="$(python3 android-staging/apk-signer-sha1.py "$apk")"
+          test -n "$actual" || { echo "::error::No APK certificate SHA-1"; exit 1; }
+          node android-staging/google-oauth-signing.cjs "$actual"
+          expected="$(printf '%s' "$SHARIKA_EXPECTED_APK_SHA1" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$expected" || { echo "::error::Wrong APK signer"; exit 1; }
+          unzip -Z1 "$apk" | grep -Fx 'AndroidManifest.xml'
+          unzip -p "$apk" assets/connection.js | grep -F 'sharika-api-staging.soverixnet.workers.dev' >/dev/null
+          cp "$apk" Sharika-Private-Center-Rapid-Taps-Google-Login-Staging-QA.apk
+          sha256sum Sharika-Private-Center-Rapid-Taps-Google-Login-Staging-QA.apk
+      - name: Upload registered-signer QA APK only (no public release or Play upload)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sharika-private-center-rapid-taps-google-oauth-registered-qa
+          path: Sharika-Private-Center-Rapid-Taps-Google-Login-Staging-QA.apk
+          if-no-files-found: error
+          retention-days: 3
