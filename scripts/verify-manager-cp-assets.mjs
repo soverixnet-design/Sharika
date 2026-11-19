@@ -14,7 +14,9 @@ for(const id of frames){
   assert(code.includes("id:'"+id+"'"), 'not in frame catalog '+id);
   assert(code.includes("'frame_style:"+id+"'"), 'not in official guard '+id);
 }
-const gifts=['cp-royal-rose.svg','cp-diamond-heart.svg','cp-eternal-promise.svg'];
+const gifts=['cp-royal-rose.svg','cp-diamond-heart.svg','cp-eternal-promise.svg',
+  'cp-rose-promise.svg','cp-royal-wedding.svg',
+  'friendship-blue-promise.svg','friendship-forever-friends.svg'];
 for(const asset of gifts){
   assert(existsSync(join(root,asset)),'missing CP art '+asset);
   assert(code.includes(asset),'not in CP UI '+asset);
