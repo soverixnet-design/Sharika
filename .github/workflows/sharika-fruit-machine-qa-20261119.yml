@@ -1,0 +1,70 @@
+name: Sharika Fruit Machine responsive and wagering QA
+on:
+  push:
+    branches:
+      - fix/fruit-machine-unlimited-taps-ticker-ranking-20261119
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    name: Verify Fruit Machine server/iframe contract and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check hosted and server scripts
+        run: |
+          node --check hosted-game-center/web/app.js
+          node --check cloudflare/src/food-wheel-deluxe.mjs
+          node --check hosted-game-center/test/fruit-machine-winner-ticker.test.mjs
+      - name: Verify rapid bets, single ticker and original mobile artwork
+        run: |
+          node --test hosted-game-center/test/fruit-machine-winner-ticker.test.mjs
+          node --test cloudflare/test/food-wheel-deluxe.test.mjs
+          node hosted-game-center/scripts/build.mjs
+          test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+          test -s hosted-game-center/dist/cards/fruit-machine-user.webp
+      - name: Check compiled hosted game syntax without mutating production
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {Script} from 'node:vm';
+          const file=readFileSync('hosted-game-center/dist/games/original-games/food-wheel-deluxe.html','utf8');
+          const script=file.match(/<script>([\s\S]*?)<\/script>/);
+          if(!script)throw Error('missing_food_wheel_game_script');
+          new Script(script[1],{filename:'food-wheel-deluxe.html'});
+          NODE
+  android:
+    name: Build staging debug APK for visual QA only
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: android-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Install Android build platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Compile staging APK without deploying
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Verify package integrity
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Fruit-Machine-Staging-QA-APK
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
