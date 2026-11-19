@@ -764,6 +764,8 @@
   SOVERA_FRAMES.push(
     // Official-only staged frame: local animated SVG. Accepted WebP master is kept in the asset pack.
     {id:'official-manager-royal-gold-v1',name:'Official Manager Royal Gold',source:'sharika',group:'role',art:'official-manager-royal-gold-v1.svg'},
+    {id:'bd-admin-blue-diamond-v1',name:'BD Admin Blue Diamond',source:'sharika',group:'role',art:'bd-admin-blue-diamond-v1.svg'},
+    {id:'official-host-rose-gold-v1',name:'Official Host Rose Gold',source:'sharika',group:'role',art:'official-host-rose-gold-v1.svg'},
     premiumItem('vip5-animated','VIP5 Royal Wings','vip'),
     ...premiumRange('svip-frame',8,'SVIP Animated Frame','svip'),
     ...[2,3,4,5].map(level=>premiumItem('vip-royal-frame-'+String(level).padStart(2,'0'),
@@ -1828,6 +1830,8 @@
   const ROYAL_KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
   const OFFICIAL_ROLE_FRAMES=new Set([
     'frame_style:official-manager-royal-gold-v1',
+    'frame_style:bd-admin-blue-diamond-v1',
+    'frame_style:official-host-rose-gold-v1',
     'frame_style:cs-royal-wings','frame_style:coin-seller-royal'
   ]);
   let royalMarket=null,royalMarketRequest=0,royalMarketBusy=false;
