@@ -19,7 +19,7 @@ function dbFixture({moduleEnabled=true,eventEnabled=true,engineEnabled=true,
      if(this.args[0]==='game'&&this.args[1]==='royal-slots')return {published:1};
      return null;
     }
-    if(sql.includes('SELECT id,starts_at,ends_at,banner_id,status FROM sharika_events'))
+    if(sql.includes('SELECT id,starts_at,ends_at,banner_id,status,country_code FROM sharika_events'))
      return {id:7,starts_at:'2020-01-01T00:00:00.000Z',
       ends_at:'2099-01-01T00:00:00.000Z',banner_id:3,status:'published',country_code:eventCountry};
     if(sql.includes('SELECT image_base64,mime,image_bytes'))
