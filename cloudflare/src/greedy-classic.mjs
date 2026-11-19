@@ -108,9 +108,9 @@ async function recentWinners(db,now=Date.now()){
     "AND b.payout>0 AND u.status='active' AND u.minor=0 AND NOT EXISTS "+
     "(SELECT 1 FROM sharika_greedy_classic_bets pending WHERE pending.round_id=r.id AND pending.status='accepted') "+
     'GROUP BY r.round_no,b.user_uid HAVING SUM(b.payout)>? '+
-    'ORDER BY r.round_no,win DESC,u.public_no')
+    'ORDER BY r.round_no DESC,win DESC,u.public_no LIMIT 30')
     .bind(Math.max(0,latest-2),latest,now,WINNER_BANNER_MIN).all()).results||[];
-  return {winners:rows.map(row=>({id:row.id,...winnerDetails(row)}))};
+  return {winners:rows.map(row=>({id:row.id,round:row.round_no,gameId:'greedy-classic',...winnerDetails(row)}))};
 }
 async function rankings(db){
   const today=new Date().toISOString().slice(0,10);
@@ -168,11 +168,15 @@ async function currentState(db,uid){
 }
 
 export async function handleGreedyClassicRequest({request,db,uid,action,reply,fail,cors}){
-  if(!['state','bet','history','rankings'].includes(action))return fail('greedy_route_not_found',404,cors);
+  if(!['state','bet','history','rankings','winners'].includes(action))return fail('greedy_route_not_found',404,cors);
   const user=await wallet(db,uid);
   if(!user||user.status!=='active')return fail('profile_unavailable',403,cors);
   if(user.minor)return fail('games_adult_only',403,cors);
   if(action==='rankings'&&request.method==='GET')return reply(await rankings(db),200,cors);
+  if(action==='winners'&&request.method==='GET'){
+    await settleGreedyClassicDueBets(db);
+    return reply(await recentWinners(db),200,cors);
+  }
   if(action==='state'&&request.method==='GET')return reply(await currentState(db,uid),200,cors);
   if(action==='history'&&request.method==='GET'){
     await settleGreedyClassicDueBets(db);

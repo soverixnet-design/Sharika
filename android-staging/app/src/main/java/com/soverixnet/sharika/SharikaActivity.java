@@ -108,6 +108,7 @@ public final class SharikaActivity extends Activity {
     private CredentialManager credentials;
     private WebView browser;
     private SharikaRoomGameDialog roomGameDialog;
+    private SharikaWinnerTicker globalWinnerTicker;
     private DailyTaskBanner dailyTaskBanner;
     private View openingOverlay;
     private boolean backInProgress;
@@ -314,6 +315,12 @@ public final class SharikaActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(browser, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        // The same authenticated 10-second ticker spans home, profiles and voice rooms.
+        // A 65%-height room-game Dialog leaves the top 35% of the room visible.
+        // Keep one native ticker at that true screen top while its hosted
+        // counterpart stays disabled in room mode. The game Activity has
+        // its own full-screen ticker and pauses this Activity automatically.
+        globalWinnerTicker = new SharikaWinnerTicker(this,root,() -> false);
         if (BuildConfig.SHARIKA_PLAY_BUILD) dailyTaskBanner = new DailyTaskBanner(this, content);
         FrameLayout opening = new FrameLayout(this);
         opening.setBackground(new GradientDrawable(
@@ -1675,7 +1682,21 @@ public final class SharikaActivity extends Activity {
         }
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        if (globalWinnerTicker != null) globalWinnerTicker.start();
+    }
+
+    @Override protected void onPause() {
+        if (globalWinnerTicker != null) globalWinnerTicker.stop();
+        super.onPause();
+    }
+
     @Override protected void onDestroy() {
+        if (globalWinnerTicker != null) {
+            globalWinnerTicker.destroy();
+            globalWinnerTicker = null;
+        }
         if (roomGameDialog!=null){roomGameDialog.dismiss();roomGameDialog=null;}
         if (dailyTaskBanner != null) dailyTaskBanner.destroy();
         if (playBilling != null) { playBilling.close(); playBilling = null; }

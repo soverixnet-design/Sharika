@@ -19,6 +19,7 @@
  const hero=$('royal-hero'),toolbarCount=$('toolbar-count');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
  const artworks={
+  'royal-slots':'/cards/royal-slots.webp',
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
   'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/food-wheel.png',
   'sovera-gaddy':'/cards/gaddy-royal.svg','sovera-food':'/cards/sovera-food-royal.svg',
@@ -26,6 +27,7 @@
   'fruit-royale':'/cards/fruit-machine.jpg','jackpot-fruit':'/cards/jackpot-fruit.png'
  };
  const shortNames={
+  'royal-slots':'Royal Slots',
   'royal-ace':'SuperAce Deluxe','cleopatra':'Cleopatra Gold',
   'greedy-classic':'Greedy Game','food-deluxe':'Food Wheel',
   'sovera-gaddy':'Sovera Gaddy','sovera-food':'Sovera Food',
@@ -37,11 +39,16 @@
   'sovera-food':{className:'theme-sovera-food',label:'SOVERA FOOD'},
   'night-food':{className:'theme-night-food',label:'NIGHT FOOD'}
  };
- const badges={'royal-ace':'HOT','food-deluxe':'HOT','sovera-gaddy':'NEW',
+ const badges={'royal-slots':'NEW','royal-ace':'HOT','food-deluxe':'HOT','sovera-gaddy':'NEW',
   'greedy-classic':'NEW','jackpot-fruit':'NEW'};
  let games=[],active=null,number=0,gameVersion=0,practice=null,verifiedProfile=null;
- let winnerTimer=null;
+ let winnerTimer=null, winnerShowing=false;
+ const winnerQueue=[];
  const seenWinners=new Set(),pending=new Map();
+ let globalWinnerFeedInitialized=false,globalWinnerLastId=0,globalWinnerBusy=false;
+ // A top-level ticker survives opening/closing games and is not clipped by
+ // the game's own full-height iframe. It works in room and outside-room modes.
+ document.body.append($('verified-winner'));
 
  function notify(message){banner.textContent=message;banner.hidden=!message;}
  function call(method,path,body){
@@ -135,7 +142,7 @@
   hotGames.replaceChildren();
   if(inRoom){hot.hidden=true;hero.hidden=true;return;}
   hero.hidden=false;
-  const order=['royal-ace','cleopatra','greedy-classic','food-deluxe'];
+  const order=['royal-slots','royal-ace','cleopatra','greedy-classic','food-deluxe'];
   let count=0;
   for(const id of order){
    const g=catalog.find(item=>item.id===id);
@@ -214,32 +221,69 @@
   filterCatalog();
  }
  function clearWinner(){
-  if(winnerTimer!==null){clearTimeout(winnerTimer);winnerTimer=null}
+  if(winnerTimer!==null)clearTimeout(winnerTimer);
+  winnerTimer=null;winnerShowing=false;winnerQueue.length=0;
   $('verified-winner').hidden=true;
  }
- function showWinner(winner,key){
-  if(!bridge||!winner||typeof winner!=='object'||!key||seenWinners.has(key))return;
-  const win=Number(winner.win??winner.total_win??winner.totalWin??0);
-  const name=typeof winner.name==='string'?winner.name.trim().slice(0,80):'';
-  const id=String(winner.public_id||winner.userId||winner.id||'');
-  if(!name||!Number.isSafeInteger(win)||win<=0||!/^[0-9]{1,12}$/.test(id))return;
-  seenWinners.add(key);
-  if(seenWinners.size>150)seenWinners.clear();
-  clearWinner();
+ function showNextWinner(){
+  if(winnerShowing||!winnerQueue.length)return;
+  const {winner,name,id,win,gameId}=winnerQueue.shift();
+  winnerShowing=true;
   $('winner-name').textContent=name;
   $('winner-id').textContent='ID: '+id;
-  $('winner-amount').textContent='+'+win.toLocaleString('en-US');
+  $('winner-amount').textContent='+'+win.toLocaleString('en-US')+' COINS';
+  const logo=$('winner-game-icon'),asset=artworks[gameId]||'';
+  logo.hidden=!asset;
+  if(asset)logo.src=asset;else logo.removeAttribute('src');
   const image=$('winner-avatar'),first=$('winner-initial');
-  first.textContent=name[0].toUpperCase();
+  first.textContent=name[0].toUpperCase();first.hidden=false;
   image.removeAttribute('src');image.hidden=true;
   const src=safeAvatar(winner.pic||winner.avatar||'');
   if(src){
    image.onerror=()=>{image.hidden=true;first.hidden=false;};
    image.onload=()=>{image.hidden=false;first.hidden=true;};
-   first.hidden=false;image.src=src;
-  }else first.hidden=false;
-  $('verified-winner').hidden=false;
-  winnerTimer=setTimeout(()=>{$('verified-winner').hidden=true;winnerTimer=null;},5500);
+   image.src=src;
+  }
+  const ticker=$('verified-winner');
+  ticker.hidden=false;
+  ticker.style.animation='none';
+  void ticker.offsetWidth;
+  ticker.style.animation='';
+  winnerTimer=setTimeout(()=>{
+   winnerTimer=null;winnerShowing=false;ticker.hidden=true;
+   showNextWinner();
+  },10000);
+ }
+ function showWinner(winner,key,gameId=active?.id||'greedy-classic'){
+  // Room mode uses the Activity's native ticker at the true top of screen.
+  // Do not overlay a second winner banner inside the bottom-sheet WebView.
+  if(inRoom||!bridge||!winner||typeof winner!=='object'||!key||seenWinners.has(key))return;
+  const win=Number(winner.win??winner.total_win??winner.totalWin??0);
+  const name=typeof winner.name==='string'?winner.name.trim().slice(0,80):'';
+  const id=String(winner.public_id||winner.userId||winner.id||'');
+  if(!name||!Number.isSafeInteger(win)||win<=0||!/^[0-9]{1,12}$/.test(id))return;
+  seenWinners.add(key);
+  if(seenWinners.size>500)seenWinners.clear();
+  winnerQueue.push({winner,name,id,win,gameId});
+  showNextWinner();
+ }
+ async function pollGlobalFoodWinners(){
+  if(inRoom||!bridge||globalWinnerBusy||document.visibilityState==='hidden')return;
+  globalWinnerBusy=true;
+  try{
+   const result=await call('GET','/api/v1/original-games/greedy-classic/winners');
+   const list=Array.isArray(result?.winners)?result.winners:[];
+   const fresh=list.filter(x=>Number.isSafeInteger(Number(x.id))&&Number(x.id)>globalWinnerLastId);
+   for(const x of fresh)globalWinnerLastId=Math.max(globalWinnerLastId,Number(x.id));
+   if(globalWinnerFeedInitialized){
+    for(const x of fresh.sort((a,b)=>Number(a.id)-Number(b.id))){
+     const publicId=String(x.userId||x.public_id||'');
+     showWinner(x,'greedy-classic:'+String(x.round||'')+':'+publicId+':'+x.win,'greedy-classic');
+    }
+   }
+   globalWinnerFeedInitialized=true;
+  }catch{/* A network or authentication failure must not fabricate a winner. */}
+  finally{globalWinnerBusy=false}
  }
  function showServerWinners(game,data){
   if(!bridge||!game||!data||typeof data!=='object')return;
@@ -254,7 +298,7 @@
    const winner=list[0];
    const id=String(winner?.public_id||winner?.userId||winner?.id||'');
    if(id&&round){
-    showWinner(winner,game.id+':'+round+':'+id);
+    showWinner(winner,game.id+':'+round+':'+id+':'+(winner.win||0),game.id);
     return;
    }
   }
@@ -266,11 +310,11 @@
     !Number.isSafeInteger(receipt.win)||receipt.win<=0)return;
   showWinner({name:verifiedProfile.name,pic:verifiedProfile.pic,
     public_id:verifiedProfile.id,win:receipt.win},
-    game.id+':confirmed-spin:'+requestId);
+    game.id+':confirmed-spin:'+requestId,game.id);
  }
  function closeGame(){
   gameVersion++;active=null;practice=null;frame.removeAttribute('src');
-  clearWinner();player.hidden=true;landing.hidden=false;
+  player.hidden=true;landing.hidden=false;
   document.body.classList.remove('is-playing');
   $('back').hidden=true;notify('');window.scrollTo(0,0);
  }
@@ -284,12 +328,13 @@
     'Free browser practice · No wallet or real server settlement';
   $('demo-banner').hidden=!!bridge;
   $('game-profile').hidden=!verifiedProfile;
-  clearWinner();notify('');
+  notify('');
   // In-room games use only the existing 65%-tall Android Dialog. The voice
   // room is still visible above it; NEVER start an expanded Android Activity.
-  const hostedSlot=game.id==='royal-ace'||game.id==='cleopatra';
+  const hostedSlot=game.id==='royal-ace'||game.id==='cleopatra'||game.id==='royal-slots';
   const serverMode=!!bridge||game.id==='royal-ace';
-  const params=hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
+  const params=game.id==='royal-slots'?'mode='+(bridge?'production':'demo'):
+    hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
     game.id==='greedy-wheel'&&inRoom?'sheet=1':'';
   const separator=params?(game.asset.includes('?')?'&':'?'):'';
   frame.src=game.asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
@@ -320,6 +365,31 @@
   }
   // Ignore iframe-driven full-screen requests. Half-screen mode is native.
   if(m.type==='expand')return;
+  if(game.id==='royal-slots'){
+   if(m.source!=='sharika-royal-slots')return;
+   if(m.type==='close'){closeGame();return;}
+   if(!bridge)return; // browser practice runs entirely inside the iframe
+   if(m.type==='ready'){
+    try{
+     const state=await call('GET','/api/v1/royal-slots/state');
+     send({source:'sharika-royal-slots-server',type:'init',
+       ...addUserToGameState(state),profile:verifiedUser()});
+    }catch(error){notify('Royal Slots unavailable: '+error.message);}
+   }else if(m.type==='spin'&&typeof m.id==='string'&&
+     /^[A-Za-z0-9_-]{12,100}$/.test(m.id)&&
+     [1000,10000,100000,1000000,10000000].includes(m.bet)&&
+     typeof m.freeSpin==='boolean'){
+    try{
+     const result=await call('POST','/api/v1/royal-slots/spin',
+       {bet:m.bet,requestId:m.id,freeSpin:m.freeSpin});
+     send({source:'sharika-royal-slots-server',type:'spinResult',id:m.id,result});
+     if(active===game&&version===gameVersion)
+       showSoloSpinWinner(game,{...result,win:result.totalWin},m.id);
+    }catch(error){send({source:'sharika-royal-slots-server',
+      type:'spinResult',id:m.id,error:error.message});}
+   }
+   return;
+  }
   const royal=game.id==='royal-ace',cleo=game.id==='cleopatra';
   if(royal||cleo){
    if(royal&&m.source!=='sharika-royal-ace')return;
@@ -365,7 +435,7 @@
   }
   if(m.type!=='sharika:original-request'||m.game!==game.id||
     !Number.isSafeInteger(m.id)||m.id<1||
-    !['state','history','stats','rankings','bet'].includes(m.action))return;
+    !['state','history','stats','rankings','bet','winners'].includes(m.action))return;
   const method=m.action==='bet'?'POST':'GET';
   if(m.method!==method)return;
   let query='';
@@ -383,6 +453,12 @@
    send({type:'sharika:original-response',id:m.id,ok:false,error:error.message});
   }
  });
+ // Poll only authenticated, verified wins; no local RNG or fake banners.
+ if(bridge){
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollGlobalFoodWinners();});
+  setInterval(pollGlobalFoodWinners,6500);
+  pollGlobalFoodWinners();
+ }
  async function start(){
   try{
    // Safe, independent read operations run concurrently. Game actions

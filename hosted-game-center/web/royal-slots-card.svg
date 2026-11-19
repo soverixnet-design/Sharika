@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Royal Slots">
+<defs><radialGradient id="bg"><stop stop-color="#5929a4"/><stop offset="1" stop-color="#10052f"/></radialGradient>
+<linearGradient id="gold" x2="0" y2="1"><stop stop-color="#fff4bd"/><stop offset=".48" stop-color="#ffc83a"/><stop offset="1" stop-color="#ad6411"/></linearGradient></defs>
+<rect width="512" height="512" rx="76" fill="url(#bg)"/>
+<rect x="16" y="16" width="480" height="480" rx="62" fill="none" stroke="#f4ba46" stroke-width="14"/>
+<path d="M114 172l45-86 75 54 37-102 46 102 75-54 36 86-20 39H134z" fill="url(#gold)" stroke="#8d4a0c" stroke-width="7"/>
+<text x="256" y="310" fill="url(#gold)" text-anchor="middle" font-size="80" font-family="Arial,sans-serif" font-weight="900">ROYAL</text>
+<text x="256" y="386" fill="#fff3ba" text-anchor="middle" font-size="82" font-family="Arial,sans-serif" font-weight="900">SLOTS</text></svg>
