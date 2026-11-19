@@ -56,7 +56,7 @@ const rankHotspot=$('#rank'),ownStakeOnCard=$('#tb');
 ownStakeOnCard.style.display='none';
 const leaderStyle=document.createElement('style');
 leaderStyle.id='sharika-greedy-daily-leader-and-winners';
-leaderStyle.textContent=String.raw\`
+leaderStyle.textContent=String.raw`
 #tb{display:none!important}
 #rank .greedy-top-avatar{position:absolute;left:1.5%;top:18%;width:24%;height:60%;
   object-fit:cover;border-radius:8px;border:1px solid #f3ce83;pointer-events:none}
@@ -83,7 +83,7 @@ leaderStyle.textContent=String.raw\`
 @keyframes greedyBannerIn{from{opacity:0;transform:scale(.67) translateY(25px)}
   to{opacity:1;transform:scale(1) translateY(0)}}
 @media(prefers-reduced-motion:reduce){#greedy-verified-win-banner{animation:none}}
-\`;
+`;
 document.head.append(leaderStyle);
 const leaderAvatar=document.createElement('img');
 leaderAvatar.className='greedy-top-avatar';leaderAvatar.alt='Daily Top 1';leaderAvatar.hidden=true;
@@ -109,7 +109,7 @@ function applyDailyLeader(rows){
  const top=Array.isArray(rows)?rows[0]:null;
  const id=String(top?.public_id||'');
  const coins=Number(top?.total_played);
- if(!top||!/^\\d{6,12}$/.test(id)||!Number.isSafeInteger(coins)||coins<0){
+ if(!top||!/^\d{6,12}$/.test(id)||!Number.isSafeInteger(coins)||coins<0){
   leaderName.textContent='No players yet';leaderId.textContent='ID: —';
   leaderCoins.textContent='0 coins';leaderAvatar.hidden=true;leaderAvatar.removeAttribute('src');return;
  }
@@ -139,7 +139,7 @@ function displayVerifiedWinner({win,userId,name,round,heading='BIG WINNER',id}){
  lastShownBannerKey=key;
  winHeading.textContent=heading;
  winName.textContent=String(name||'Winner').slice(0,40)+
-  (/^\\d{6,12}$/.test(publicId)?' · ID '+publicId:'');
+  (/^\d{6,12}$/.test(publicId)?' · ID '+publicId:'');
  winAmount.textContent='+'+format(amount)+' COINS';
  winBanner.style.display='block';
  winBanner.style.animation='none';void winBanner.offsetWidth;
