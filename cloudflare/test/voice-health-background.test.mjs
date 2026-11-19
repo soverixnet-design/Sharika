@@ -63,8 +63,9 @@ test('room exit unregisters visibility observer, not foreground audio service',(
 
 test('WebRTC receive, heartbeat and TURN recovery continue while WebView is hidden',()=>{
  const voice=between('async function connectSfu(roomId,canPublish','async function disconnectVoice()');
- assert.match(voice,/state\.publicationTimer=setInterval\(/);
- assert.match(voice,/subscribeSfu\(state\)/);
+ const receiving=between('async function startSfuReceiving(state)','function stopSfuPublishing(state)');
+ assert.match(receiving,/state\.publicationTimer=setInterval\(/);
+ assert.match(receiving,/subscribeSfu\(state\)/);
  assert.match(voice,/inspectSfuAudio\(state\)/);
  assert.match(voice,/\/voice\/heartbeat/);
  assert.doesNotMatch(voice,/document\.hidden\)disconnectSfu/);
