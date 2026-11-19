@@ -44,7 +44,7 @@ jobs:
             apksigner verify --verbose latest-apk/app-debug.apk
           fi
           install -m 0644 latest-apk/app-debug.apk 'Sharika-Royal-Slots-Connected-Friends-Staging-20261119.apk'
-          sha256sum 'Sharika-v1.0.40-Latest-Games-2026-11-19-Friends.apk'
+          sha256sum 'Sharika-Royal-Slots-Connected-Friends-Staging-20261119.apk'
       - name: Publish latest friends APK as public prerelease, never overwrite
         env:
           GH_TOKEN: ${{ github.token }}
