@@ -1,0 +1,95 @@
+name: Publish Sharika Private Center to isolated staging (no Play or production)
+on:
+  push:
+    branches: [feature/sharika-private-center-catalog-20261119]
+    paths: ['.github/workflows/sharika-private-center-staging-deploy.yml']
+permissions:
+  contents: read
+concurrency:
+  group: sharika-private-center-rollout
+  cancel-in-progress: false
+jobs:
+  publish-private-staging:
+    name: Verify complete rollback-safe staging scope then publish three staging Workers
+    runs-on: ubuntu-latest
+    environment: sharika-staging
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify explicit staging targets, no production or Play
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const read=path=>JSON.parse(readFileSync(path,'utf8'));
+          const api=read('cloudflare/wrangler.jsonc');
+          const admin=read('cloudflare/wrangler.admin.jsonc');
+          const privateSite=read('hosted-game-center/wrangler.private.jsonc');
+          const account='d81cf7c48fb9b36d468cb0a08720cd74';
+          const db='b2c62252-12a5-4740-90c7-01a536d9a39a';
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-private-center-catalog-20261119'||
+            !process.env.CLOUDFLARE_API_TOKEN||
+            [api,admin,privateSite].some(c=>c.account_id!==account)||
+            api.name!=='sharika-api-staging'||admin.name!=='sharika-admin-staging'||
+            privateSite.name!=='sharika-private-center-staging'||
+            api.vars?.SHARIKA_ENV!=='staging'||api.keep_vars!==true||
+            api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+            api.vars?.SHARIKA_LUCKY_GIFTS_ENABLED!=='false'||
+            api.d1_databases?.[0]?.database_id!==db||
+            admin.d1_databases?.[0]?.database_id!==db||
+            privateSite.d1_databases?.[0]?.database_id!==db||
+            !api.durable_objects?.bindings?.some(b=>b.name==='VOICE_ROOMS')||
+            admin.services?.[0]?.service!=='sharika-api-staging')throw Error('Unsafe staging target: refusing deployment');
+          console.log('All Worker and D1 destinations restricted to Sharika STAGING');
+          NODE
+      - name: Confirm additive D1 tables already exist on staging without migrations
+        run: |
+          node --input-type=module <<'NODE'
+          const query='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const sql="SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_center_publishing','sharika_center_launch_tickets','sharika_center_browser_sessions','sharika_center_odds_drafts')";
+          const r=await fetch(query,{method:'POST',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql})});
+          const body=await r.json();
+          const names=(body.result?.[0]?.results||[]).map(x=>x.name);
+          if(!r.ok||!body.success||names.length!==4)throw Error('Missing private center schema; refusing staging deploy');
+          console.log('Existing private center tables verified; no migration or balances touched');
+          NODE
+      - name: Run complete Sharika server tests and isolated Private Center tests
+        run: |
+          npm --prefix cloudflare run check
+          node --test cloudflare/test/private-center.test.mjs
+      - name: Assemble existing admin and new private Royal website assets
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --check admin/connection.js
+          node --check hosted-game-center/src/private-index.mjs
+          node --check hosted-game-center/web/center.js
+      - name: Dry-run all bundles before any live staging mutation
+        run: |
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sharika-private-api
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sharika-private-admin
+          npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.private.jsonc --outdir /tmp/sharika-private-web
+      - name: Deploy NEW private staging web Worker (existing game website untouched)
+        run: npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.private.jsonc
+      - name: Deploy existing Sharika STAGING API (no production or Play)
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Deploy EXISTING Sharika STAGING Admin Panel (no duplicate Admin)
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Confirm only approved staging endpoints and fail-closed anonymous access
+        run: |
+          set -e
+          curl --fail --silent --show-error --retry 8 --retry-delay 2 --retry-all-errors --max-time 10 https://sharika-api-staging.soverixnet.workers.dev/health | grep -q 'staging'
+          curl --fail --silent --show-error --retry 8 --retry-delay 2 --retry-all-errors --max-time 10 https://sharika-admin-staging.soverixnet.workers.dev/health | grep -q 'sharika-admin-staging'
+          curl --fail --silent --show-error --retry 8 --retry-delay 2 --retry-all-errors --max-time 10 https://sharika-private-center-staging.soverixnet.workers.dev/health | grep -q 'private_center'
+          STATUS=$(curl --silent --output /tmp/sharika-private-anonymous.txt --write-out '%{http_code}' --max-time 12 https://sharika-private-center-staging.soverixnet.workers.dev/api/catalog)
+          test "$STATUS" = "401"
+          curl --fail --silent --show-error --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js | grep -q 'Private Center'
+          echo SHARIKA_PRIVATE_CENTER_STAGING_PUBLISHED_ANON_BLOCKED
