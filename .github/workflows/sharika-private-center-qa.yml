@@ -24,6 +24,7 @@ jobs:
           node --check cloudflare/src/private-center.mjs
           node --check cloudflare/src/index.mjs
           node --check cloudflare/src/events.mjs
+          node --check cloudflare/src/event-design.mjs
           node --check hosted-game-center/src/private-index.mjs
           node --check hosted-game-center/web/center.js
           node --check hosted-game-center/web/app.js
@@ -39,7 +40,7 @@ jobs:
       - name: Verify full Cloudflare staging business-logic regression suite
         run: npm --prefix cloudflare run check
       - name: Run isolated publication, private event media and WebView game CSP tests
-        run: node --test cloudflare/test/private-center.test.mjs cloudflare/test/center-rankings.test.mjs hosted-game-center/test/private-event-access.test.mjs
+        run: node --test cloudflare/test/private-center.test.mjs cloudflare/test/event-design.test.mjs cloudflare/test/center-rankings.test.mjs hosted-game-center/test/private-event-access.test.mjs
       - name: Check only new migration in temporary SQLite
         run: |
           python3 - <<'PY'
@@ -47,6 +48,12 @@ jobs:
           sql=pathlib.Path('cloudflare/migrations/0101_private_center_publishing.sql').read_text()
           c=sqlite3.connect(':memory:')
           c.executescript(sql)
+          # Preserve a minimal preexisting event while adding new design columns.
+          c.executescript("CREATE TABLE sharika_events(id INTEGER PRIMARY KEY,title TEXT NOT NULL);"
+            "INSERT INTO sharika_events(id,title) VALUES(7,'Existing Draft');")
+          c.executescript(pathlib.Path('cloudflare/migrations/0102_royal_event_templates.sql').read_text())
+          assert c.execute('SELECT id,template_id,scoring_mode FROM sharika_events').fetchone()==(
+            7,'royal_gold','gift_points')
           count=c.execute('SELECT COUNT(*) FROM sharika_center_publishing').fetchone()[0]
           assert count >= 20
           assert c.execute('SELECT COUNT(*) FROM sharika_center_publishing WHERE published=1').fetchone()[0]==0
