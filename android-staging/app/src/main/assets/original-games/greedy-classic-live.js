@@ -42,7 +42,7 @@ document.head.append(originalFit);
 
 const OUTCOMES=new Set(F.map(f=>f.id).concat(['salad','pizza']));
 const pending=new Map();
-let seq=0,ready=false,changing=false,refreshing=false,unconfirmed=null,clockOffset=0;
+let seq=0,ready=false,refreshing=false,clockOffset=0;
 let lastOfflineNoticeAt=0;
 let state=null,displayedResultRound=-1,animationRound=-1,autoRunning=false,placedDuringThisRound={};
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -203,84 +203,27 @@ window.addEventListener('message',e=>{
  clearTimeout(handler.timer);pending.delete(d.id);
  if(d.ok)handler.resolve(d.value);else handler.reject(Error(String(d.error||'Server unavailable')));
 });
-function token(){
- if(crypto.randomUUID)return 'greedy_'+crypto.randomUUID().replace(/-/g,'');
- const arr=crypto.getRandomValues(new Uint8Array(16));
- return 'greedy_'+Array.from(arr,x=>x.toString(16).padStart(2,'0')).join('');
-}
 const isValidMoney=n=>Number.isSafeInteger(n)&&n>=0;
 function betAmounts(a){
  return Object.fromEntries(F.map((f,i)=>[f.id,Number(a?.[i]||0)]));
 }
-async function submit(payload){
- const r=await request('bet','POST',payload);
- if(!r||!isValidMoney(r.balance)||!Array.isArray(r.myBets)||r.myBets.length!==8)
-  throw Error('Invalid verified bet receipt');
- S.bal=r.balance;
- if(r.round===S.round)S.bets=betAmounts(r.myBets);
- S.hint=false;
- ready=true;
- draw();
- FoodSound.play('bet');
- return true;
-}
-async function recoverUnknown(){
- if(!unconfirmed)return;
- try{
-  const item=unconfirmed;
-  await submit(item);
-  unconfirmed=null;
- }catch(error){
-  // A timeout cannot prove whether the database debited this request.
-  // Keep the original ID and block new bets; never create a second debit.
-  if(!String(error.message).includes('timeout')&&
-     !String(error.message).includes('closed')){
-   const value=String(error.message).toLowerCase();
-   if(value.includes('idempotency_conflict'))return;
-  }
- }
-}
-// Player taps are queued in order instead of silently dropped while a
-// previous authenticated receipt is pending. Each server request gets a
-// unique idempotency key; old-round taps are never carried into a new round.
-const pendingFoodTaps=[];
+const enqueue=createRoundTapQueue({
+ send:body=>request('bet','POST',body),
+ openRound:n=>state&&S.round===n&&S.phase==='bet'&&Date.now()+clockOffset<state.state.endsAt,
+});
 async function bet(id,amount=S.chip){
- if(!ready||unconfirmed||S.phase!=='bet'){
-  if(unconfirmed)toast('Checking the previous bet. New bets are paused.');
-  return false;
- }
- if(!F.some(f=>f.id===id)||!CH.includes(amount))return false;
- if(changing){
-  const round=S.round;
-  return new Promise(resolve=>pendingFoodTaps.push({id,amount,round,resolve}));
- }
- if(S.bal<amount){toast('Not enough coins. Open your wallet to recharge.');return false;}
- changing=true;
- const payload={round:S.round,itemId:id,amount,request_id:token()};
+ const pick=F.findIndex(f=>f.id===id);
+ if(!ready||pick<0||!CH.includes(amount))return false;
+ const round=S.round;
  try{
-  await submit(payload);
-  placedDuringThisRound[id]=(placedDuringThisRound[id]||0)+amount;
-  return true;
- }catch(error){
-  const msg=String(error.message);
-  if(msg.includes('timeout')){
-   unconfirmed=payload;toast('Bet confirmation pending. Reconnecting.');
-  }else if(msg==='BETTING_CLOSED'||msg==='betting_closed'){
-   // The server clock is authoritative; do not display an intrusive modal.
-  }else toast(msg);
-  return false;
- }finally{
-  changing=false;
-  const next=pendingFoodTaps.shift();
-  if(next){
-   // A timeout or changed round cancels stale taps without extra debits.
-   if(unconfirmed||!ready||S.phase!=='bet'||next.round!==S.round){
-    next.resolve(false);
-   }else{
-    Promise.resolve().then(()=>bet(next.id,next.amount)).then(next.resolve,()=>next.resolve(false));
-   }
+  const receipt=await enqueue(round,pick,amount,S.bal);
+  S.bal=receipt.coins;
+  if(S.round===round){
+   placedDuringThisRound[id]=(placedDuringThisRound[id]||0)+amount;
+   if(Array.isArray(receipt.myBets))S.bets=betAmounts(receipt.myBets);
   }
- }
+  S.hint=false;draw();FoodSound.play('bet');return true;
+ }catch(error){toast(error.message);return false;}
 }
 async function replayLast(){
  if(autoRunning||!S.auto||!ready||!Object.values(S.last).some(n=>n>0))return;
@@ -289,7 +232,7 @@ async function replayLast(){
   for(const f of F){
    let amount=Number(S.last[f.id]||0);
    for(const chip of [...CH].reverse()){
-    while(amount>=chip&&S.phase==='bet'&&ready&&!unconfirmed){
+    while(amount>=chip&&S.phase==='bet'&&ready){
      const ok=await bet(f.id,chip);
      if(!ok)return;
      amount-=chip;
@@ -382,14 +325,14 @@ async function refresh(){
   ready=true;
   if(r.state.phase==='betting'){
    S.phase='bet';S.t=Math.max(0,Math.ceil((r.state.endsAt-(Date.now()+clockOffset))/1000));
-   if(prevRound&&prevRound!==S.round&&S.auto&&!unconfirmed)replayLast();
+   if(prevRound&&prevRound!==S.round&&S.auto)replayLast();
   }else if(r.state.resultId&&r.result&&OUTCOMES.has(r.state.resultId)){
    if(displayedResultRound!==S.round&&animationRound!==S.round){
     startSpin(r.state.resultId,S.round);
    }else if(displayedResultRound===S.round){S.phase='pop';}
   }else S.phase='spin';
   draw();
-  if(unconfirmed&&!changing)recoverUnknown();
+
  }catch(error){
   // Keep the last verified screen during low connectivity, but block all new wagers.
   ready=false;

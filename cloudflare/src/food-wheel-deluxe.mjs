@@ -1,3 +1,4 @@
+import {settleTapBatch} from './round-tap-batch.mjs';
 // Food Wheel Deluxe — uploaded 8-food art with server-authoritative coin settlement.
 // Isolated from legacy sovera-food sessions; no modification of historical rules.
 const MULT=Object.freeze([5,10,15,25,5,5,5,45]);
@@ -143,9 +144,11 @@ export async function handleFoodDeluxe({request,db,uid,action,reply,fail,cors}){
  if(request.method!=='POST'||action!=='bet')return fail('method_not_allowed',405,cors);
  let b;
  try{
-  const raw=await request.text();if(raw.length>650)throw Error('too_large');
+  const raw=await request.text();if(raw.length>8192)throw Error('too_large');
   b=JSON.parse(raw);
  }catch{return fail('invalid_bet',400,cors);}
+ if(b?.taps)return settleTapBatch({db,uid,game:'food-deluxe',body:b,currentRound:roundNumber(Date.now()),
+  ensure:()=>ensureRound(db,b.round_no),validAmount:a=>Number.isSafeInteger(a)&&a>=100&&a<=MAX_STAKE,reply,fail,cors});
  if(!b||!Number.isSafeInteger(b.round_no)||b.round_no<0||!ID.test(b.request_id||'')||
   !Array.isArray(b.stakes)||b.stakes.length!==8||
   b.stakes.some(a=>!Number.isSafeInteger(a)||a<0||a>MAX_STAKE||a%100!==0))

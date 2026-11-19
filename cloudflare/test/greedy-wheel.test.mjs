@@ -6,6 +6,7 @@ import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {greedyOutcome,greedyPayout,settleGreedyDueBets,handleGreedyRequest} from '../src/greedy-wheel.mjs';
 
+const queueSource=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/rapid-bets.js',import.meta.url),'utf8');
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const seed='0123456789abcdef'.repeat(4);
 function database(){
@@ -213,7 +214,7 @@ test('opening Greedy mid-result shows the already settled outcome immediately',a
   const parent={postMessage(message){request=message;}};
   const window={WebSocket:class NativeWebSocket{},parent,
     addEventListener(name,callback){listeners.set(name,callback);}};
-  runInNewContext(bridge,{window,crypto:webcrypto,Uint8Array,
+  runInNewContext(queueSource+"\nconst createRoundTapQueue=window.createRoundTapQueue;\n"+bridge,{window,crypto:webcrypto,Uint8Array,
     setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>2,clearInterval:()=>{},
     queueMicrotask:callback=>queued.push(callback)});
   const socket=new window.WebSocket('wss://sharika-greedy.invalid/ws?demo=1');
@@ -244,7 +245,7 @@ test('Greedy lost receipts are retried by ID and cannot double-charge a later ta
   const parent={postMessage(data){requests.push(data);}};
   const window={WebSocket:class NativeSocket{},parent,
     addEventListener(name,fn){listeners.set(name,fn);}};
-  runInNewContext(bridge,{window,crypto:webcrypto,Uint8Array,
+  runInNewContext(queueSource+"\nconst createRoundTapQueue=window.createRoundTapQueue;\n"+bridge,{window,crypto:webcrypto,Uint8Array,
     setTimeout(fn){timers.set(++timerId,fn);return timerId;},
     clearTimeout(id){timers.delete(id);},
     setInterval:()=>1,clearInterval:()=>{},
@@ -261,30 +262,26 @@ test('Greedy lost receipts are retried by ID and cannot double-charge a later ta
     assert.ok(first,'a pending bridge timeout must exist');
     timers.delete(first[0]);first[1]();
   }
-  send(1,'fish');
-  const betRequests=()=>requests.filter(m=>m.action==='bet');
-  assert.equal(betRequests().length,1);
-  const originalId=betRequests()[0].body.request_id;
-  timeoutNext();await flush();
-  assert.equal(betRequests().length,2);
-  assert.equal(betRequests()[1].body.request_id,originalId);
-  timeoutNext();await flush();
-  assert.ok(seen.some(m=>m.t==='bet_err'&&m.reqId===1&&m.code==='BET_UNCONFIRMED'));
-  // Recovery now starts immediately instead of waiting for the next 1.6 s
-  // state poll. It always uses exactly the prior request ID.
-  assert.equal(betRequests().length,3);
-  assert.equal(betRequests()[2].body.request_id,originalId);
+  Object.assign(socket,{phase:'betting',round:321,balance:100000,closes:Date.now()+10000});
+  send(1,'fish');timeoutNext();await flush();
+  const first=requests.at(-1);
+  assert.equal(first.action,'bet');
+  const originalId=first.body.taps[0].request_id;
   send(2,'chicken');
-  assert.equal(betRequests().length,3);
-  assert.ok(seen.some(m=>m.t==='bet_err'&&m.reqId===2&&m.code==='BET_UNCONFIRMED'));
-  // The verified replay clears the guard; no extra debit can be created by
-  // a second tap while that recovery remains pending.
-  listeners.get('message')({source:parent,data:{type:'sharika:greedy-response',
-    id:betRequests()[2].id,ok:true,value:{balance:99000}}});
-  await flush();
-  send(3,'chicken');
-  assert.equal(betRequests().length,4);
-  assert.notEqual(betRequests()[3].body.request_id,originalId);
+  timeoutNext();await flush(); // Lose the first response.
+  timeoutNext();await flush(); // Reconcile using the original packet.
+  const replay=requests.at(-1);
+  assert.equal(replay.body.taps[0].request_id,originalId);
+  function receipt(req,balance){
+    listeners.get('message')({source:parent,data:{type:'sharika:greedy-response',
+      id:req.id,ok:true,value:{coins:balance,round_no:321,receipts:[{
+        request_id:req.body.taps[0].request_id,bet_id:req.id}]}}});
+  }
+  receipt(replay,99000);await flush();
+  const second=requests.at(-1);
+  assert.notEqual(second.body.taps[0].request_id,originalId);
+  receipt(second,98000);await flush();
+  assert.deepEqual(seen.filter(m=>m.t==='tap_receipt').map(m=>m.reqId),[1,2]);
   socket.close();
 });
 

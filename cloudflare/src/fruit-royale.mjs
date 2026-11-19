@@ -1,3 +1,4 @@
+import {settleTapBatch} from './round-tap-batch.mjs';
 // Fruit Royale V2: isolated, versioned virtual-coin game. Legacy Jackpot Fruit is untouched.
 // Server owns round entropy, wallet debits, payouts, and immutable history.
 import {activeSpecialSelect} from './special-ids.mjs';
@@ -137,7 +138,7 @@ async function readState(db,uid){
   if(!user||user.status!=='active')throw Error('profile_required');
   const bets=(await db.prepare('SELECT id,round_id,round_no,pick_index,amount,request_id,'+
     'status,payout,result_json,created_at FROM sharika_fruit_royale_bets '+
-    'WHERE user_uid=? AND round_no>=? ORDER BY id DESC LIMIT 100')
+    'WHERE user_uid=? AND round_no>=? ORDER BY id DESC')
     .bind(uid,n-1).all()).results||[];
   const mine=bets.map(b=>({...b,result:b.result_json?JSON.parse(b.result_json):null,result_json:undefined}));
   const pool=await db.prepare("SELECT coins FROM sharika_fruit_royale_pool WHERE id='main'").first();
@@ -225,9 +226,12 @@ async function acceptBet({request,db,uid,reply,fail,cors}){
   let b;
   try{
     const raw=await request.text();
-    if(raw.length>2048)return fail('invalid_bet_body',413,cors);
+    if(raw.length>8192)return fail('invalid_bet_body',413,cors);
     b=JSON.parse(raw||'{}');
   }catch{return fail('invalid_json',400,cors);}
+  if(b?.taps)return settleTapBatch({db,uid,game:'fruit-royale',body:b,
+    currentRound:roundNo(Date.now()),ensure:()=>ensureRound(db,b.round_no),
+    validAmount:a=>Number.isSafeInteger(a)&&a>0&&a<=MAX_BET,maxPick:7,reply,fail,cors});
   if(!b||typeof b!=='object'||Array.isArray(b)||
      typeof b.roundId!=='string'||!/^fruit-royale:[0-9]+$/.test(b.roundId)||
      !FRUIT_V2.some(f=>f.id===b.fruitId)||

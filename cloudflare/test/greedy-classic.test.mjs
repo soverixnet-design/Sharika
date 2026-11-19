@@ -6,6 +6,7 @@ import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {handleGreedyClassicRequest,greedyClassicOutcome,greedyClassicPayout,
  settleGreedyClassicDueBets} from '../src/greedy-classic.mjs';
+const queueSource=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/rapid-bets.js',import.meta.url),'utf8');
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const seed='fedcba9876543210'.repeat(4);
 function fixture(){
@@ -111,7 +112,7 @@ test('original uploaded 21 PNGs are kept, English-only, with no client coin muta
  assert.match(html,/S\.pool\?\.\[i\]/,'original HOT and fire icons must use verified pool totals');
  assert.match(js,/window\.bet=bet/);
  assert.match(js,/sharika:original-request/);
- assert.match(js,/unconfirmed=payload/);
+ assert.match(html,/rapid-bets\.js[\s\S]*greedy-classic-live\.js/);
  assert.match(js,/lastOfflineNoticeAt/);
  assert.match(js,/if\(!state\)S\.phase='load'/,'Keep last verified UI during weak network');
  assert.match(js,/ready=false;[\s\S]*?if\(!state\)S\.phase='load'/,'Disable bets while offline');
@@ -136,10 +137,10 @@ test('native parent bridge confirms wager before wallet changes, without fake de
  const document={createElement:element,head:{append(){},appendChild(){}},
    documentElement:{classList:{add(){}}},visibilityState:'visible',
    addEventListener(){}};
- runInNewContext(source,{window,document,location:{hash:''},S,F,CH:[100,1000,10000,50000],$,draw(){},
+ runInNewContext(queueSource+"\nconst createRoundTapQueue=window.createRoundTapQueue;\n"+source,{window,document,location:{hash:''},S,F,CH:[100,1000,10000,50000],$,draw(){},
   show(message){messages.push(message)},hide(){},clearOn(){},
   im(){return ''},winners:item=>[item],crypto:webcrypto,Uint8Array,Map,
-  setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>1,
+  setTimeout:(fn,ms)=>{if(ms===0)queueMicrotask(fn);return 1},clearTimeout:()=>{},setInterval:()=>1,
   Date,Promise,Number,Object,String,Array,Math,Set});
  assert.equal(typeof window.bet,'function');
  assert.equal(requests.filter(r=>r.action==='state').length,1);
@@ -158,14 +159,15 @@ test('native parent bridge confirms wager before wallet changes, without fake de
  assert.equal(S.pool[0],500,'HOT and fire are based on verified total player wagers');
  const wager=window.bet('chicken');
  assert.equal(S.bal,1000,'client may not optimistically debit before verified result');
+ await new Promise(resolve=>setImmediate(resolve));
  const request=requests.at(-1);
  assert.equal(request.action,'bet');
  assert.equal(request.method,'POST');
- assert.equal(request.body.round,123);
- assert.equal(request.body.itemId,'chicken');
- assert.equal(request.body.amount,100);
- assert.match(request.body.request_id,/^[A-Za-z0-9:_-]{12,80}$/);
- send(request,{round:123,balance:900,myBets:[100,0,0,0,0,0,0,0]});
+ assert.equal(request.body.round_no,123);
+ assert.equal(request.body.taps[0].pick,0);
+ assert.equal(request.body.taps[0].amount,100);
+ assert.match(request.body.taps[0].request_id,/^[A-Za-z0-9:_-]{12,80}$/);
+ send(request,{round_no:123,coins:900,receipts:[{request_id:request.body.taps[0].request_id,bet_id:7}],myBets:[100,0,0,0,0,0,0,0]});
  assert.equal(await wager,true);
  assert.equal(S.bal,900);
  assert.equal(S.bets.chicken,100);

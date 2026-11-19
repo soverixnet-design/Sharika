@@ -1,3 +1,4 @@
+import {settleTapBatch} from './round-tap-batch.mjs';
 import {readBoundedJson} from './request-body.mjs';
 
 // Sovera Gaddy: independently settled 30s virtual-coin food wheel.
@@ -89,7 +90,7 @@ async function state(db,uid,now=Date.now()){
   const n=number(now),t=timings(n),r=await ensureRound(db,n),u=await user(db,uid);
   // Own request IDs let a slow/reconnected client reconcile an uncertain bet
   // without sending a different ID and accidentally paying twice.
-  const bets=await db.prepare('SELECT round_no,pick_index,amount,request_id,status,payout,created_at FROM sharika_gaddy_bets WHERE user_uid=? AND round_no>=? ORDER BY id DESC LIMIT 100').bind(uid,n-1).all();
+  const bets=await db.prepare('SELECT round_no,pick_index,amount,request_id,status,payout,created_at FROM sharika_gaddy_bets WHERE user_uid=? AND round_no>=? ORDER BY id DESC').bind(uid,n-1).all();
   const prior=await previous(db,n-1,now);
   const current=now>=t.betEnd?await previous(db,n,now):null;
   const myBets=bets.results||[];
@@ -132,6 +133,7 @@ export async function handleSoveraGaddy({request,db,uid,action,reply,fail,cors})
   const u=await user(db,uid);
   if(!u||u.status!=='active'||u.minor)return fail('game_adult_only',403,cors);
   let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
+  if(b?.taps)return settleTapBatch({db,uid,game:GAME,body:b,currentRound:number(Date.now()),ensure:()=>ensureRound(db,b.round_no),validAmount:a=>BET_AMOUNTS.includes(a),maxPick:7,reply,fail,cors});
   if(!b||!Number.isSafeInteger(b.round_no)||b.round_no<0||
     !Number.isSafeInteger(b.pick)||b.pick<0||b.pick>7||
     !BET_AMOUNTS.includes(b.amount)||typeof b.request_id!=='string'||
