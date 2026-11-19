@@ -225,7 +225,8 @@ async function refresh(){
  status.textContent='Checking published permissions…';
  try{
   manifest=await endpoint('manifest');
-  try{admin=await endpoint('admin/state');}catch(e){admin=null;}
+  // No admin login or controls on a member-facing website.
+  admin=null;
   overview.textContent='Only content approved for Sharika members is visible here.';
   buildTabs();render();
  }catch(e){
