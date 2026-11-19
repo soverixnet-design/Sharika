@@ -1,5 +1,6 @@
 import {notifyUser,deliverNotification} from './notifications.mjs';
 import {centerPublished} from './private-center.mjs';
+import {normalizedMemberCountry,eventAudienceAllows,validEventAudience} from './event-audience.mjs';
 import {safeEventTemplate,safeEventScoring,validEventDesignFields} from './event-design.mjs';
 // Server-verified, Super-Admin-controlled staging events and one-time coin prizes.
 // Publication is separate from payment; only an ended published event can pay a rank.
@@ -76,7 +77,7 @@ async function settledConfiguredEventRanking(db,event,limit=100){
 }
 
 function validCampaign(body){
-  if(!validEventDesignFields(body))return false;
+  if(!validEventDesignFields(body)||!validEventAudience(body.country_code))return false;
   if(body.banner_id!==undefined&&body.banner_id!==null&&
     (!Number.isSafeInteger(body.banner_id)||body.banner_id<0||body.banner_id>999999999))return false;
   if(body.gift_rules!==undefined&&(!Array.isArray(body.gift_rules)||body.gift_rules.length>12||
@@ -109,6 +110,7 @@ function eventDto(row,awards,now){
     prizes:[Number(row.prize_1),Number(row.prize_2),Number(row.prize_3)],
     gift_rules:safeJson(row.gift_rules_json),reward_labels:safeJson(row.reward_labels_json),
     template_id:safeEventTemplate(row.template_id),scoring_mode:safeEventScoring(row.scoring_mode),
+    country_code:row.country_code||'GLOBAL',
     banner_id:row.banner_id==null?null:Number(row.banner_id),
     banner_image_url:row.banner_image_version>0&&row.banner_id!=null?
       '/api/v1/banners/'+Number(row.banner_id)+'/image?v='+Number(row.banner_image_version):null,
@@ -141,18 +143,19 @@ async function parseBody(request,max=4096){
   if(!value||typeof value!=='object'||Array.isArray(value))throw Error('invalid_body');
   return value;
 }
-export async function listEventData(db,admin=false,now=new Date()){
+export async function listEventData(db,admin=false,now=new Date(),memberCountry=''){ 
   const boundary=new Date(now.getTime()-30*86400000).toISOString();
   let statement=db.prepare(
     'SELECT e.id,e.title,e.kind,e.description,e.starts_at,e.ends_at,e.status,'+
     'e.prize_1,e.prize_2,e.prize_3,e.banner_id,e.gift_rules_json,e.reward_labels_json,'+
-    'e.template_id,e.scoring_mode,'+
+    'e.template_id,e.scoring_mode,e.country_code,'+
     'CASE WHEN i.image_bytes>0 THEN i.version ELSE 0 END AS banner_image_version '+
     'FROM sharika_events e LEFT JOIN sharika_banner_images i ON i.banner_id=e.banner_id '+
     (admin?'':"WHERE e.status=? AND e.ends_at>=? AND EXISTS (SELECT 1 FROM sharika_center_publishing p "+
-      "WHERE p.id=('event:' || e.id) AND p.kind='event' AND p.published=1) ")+
+      "WHERE p.id=('event:' || e.id) AND p.kind='event' AND p.published=1) "+
+      "AND (e.country_code='GLOBAL' OR e.country_code=?) ")+
     'ORDER BY e.starts_at DESC,e.id DESC LIMIT 60');
-  if(!admin)statement=statement.bind('published',boundary);
+  if(!admin)statement=statement.bind('published',boundary,normalizedMemberCountry(memberCountry));
   const events=rows(await statement.all());
   if(!events.length)return {events:[],server_time:now.toISOString()};
   const minId=Math.min(...events.map(e=>Number(e.id)));
@@ -173,22 +176,23 @@ export async function handleEventApp({request,env,uid,path,cors,reply,fail}){
   if(path!=='/api/v1/events'&&!leaderboard)return null;
   if(request.method!=='GET')return fail('events_method_not_allowed',405,cors);
   const active=await env.DB.prepare(
-    'SELECT public_no FROM sharika_users WHERE auth_uid=? AND status=?'
+    'SELECT public_no,country FROM sharika_users WHERE auth_uid=? AND status=?'
   ).bind(uid,'active').first();
   if(!active)return fail('profile_unavailable',403,cors);
   if(leaderboard){
     if(!await centerPublished(env.DB,'event','event:'+leaderboard[1]))
       return fail('event_hidden',403,cors);
-    const event=await env.DB.prepare('SELECT id,title,starts_at,ends_at,status,gift_rules_json,scoring_mode '+
+    const event=await env.DB.prepare('SELECT id,title,starts_at,ends_at,status,gift_rules_json,scoring_mode,country_code '+
       'FROM sharika_events WHERE id=?').bind(Number(leaderboard[1])).first();
     if(!event||event.status!=='published')return fail('event_unavailable',404,cors);
+    if(!eventAudienceAllows(event.country_code,active.country))return fail('event_hidden',403,cors);
     const ranked=await settledConfiguredEventRanking(env.DB,event);
     return reply({event_id:event.id,ranking:ranked.map((r,i)=>({rank:i+1,
       public_id:r.pair_id||r.special_id||pad(r.public_no),name:r.name,pic:r.pic||null,partner_pic:r.partner_pic||null,
       points:Number(r.points)||0,gift_count:Number(r.gift_count)||0})),
       scoring:safeEventScoring(event.scoring_mode),server_time:new Date().toISOString()},200,cors);
   }
-  return reply(await listEventData(env.DB,false),200,cors);
+  return reply(await listEventData(env.DB,false,new Date(),active.country),200,cors);
 }
 async function announceEvent(env,ctx,id,title,actorUid){
   if(!await centerPublished(env.DB,'module','events')||
@@ -221,12 +225,12 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
     const result=await db.batch([
       db.prepare('INSERT INTO sharika_events '+
         '(title,kind,description,starts_at,ends_at,status,prize_1,prize_2,prize_3,'+
-        'banner_id,gift_rules_json,reward_labels_json,created_by,updated_by,template_id,scoring_mode) '+
-        'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        'banner_id,gift_rules_json,reward_labels_json,created_by,updated_by,template_id,scoring_mode,country_code) '+
+        'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .bind(body.title.trim(),body.kind,body.description.trim(),body.starts_at,body.ends_at,
           body.status,...body.prizes,body.banner_id||null,JSON.stringify(body.gift_rules||[]),
           JSON.stringify(body.reward_labels||[]),uid,uid,
-          safeEventTemplate(body.template_id),safeEventScoring(body.scoring_mode)),
+          safeEventTemplate(body.template_id),safeEventScoring(body.scoring_mode),body.country_code||'GLOBAL'),
       db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) '+
         "VALUES(?,'event_created',?)")
         .bind(uid,JSON.stringify({title:body.title.trim(),kind:body.kind,status:body.status}))
@@ -254,6 +258,7 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
           'gift_rules_json=COALESCE(?,gift_rules_json),'+
           'reward_labels_json=COALESCE(?,reward_labels_json),'+
           'template_id=COALESCE(?,template_id),scoring_mode=COALESCE(?,scoring_mode),'+
+          'country_code=COALESCE(?,country_code),'+
           "updated_by=?,updated_at=datetime('now') "+
           'WHERE id=?')
           .bind(body.title.trim(),body.kind,body.description.trim(),body.starts_at,body.ends_at,
@@ -261,7 +266,8 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
             body.gift_rules===undefined?null:JSON.stringify(body.gift_rules),
             body.reward_labels===undefined?null:JSON.stringify(body.reward_labels),
             body.template_id===undefined?null:body.template_id,
-            body.scoring_mode===undefined?null:body.scoring_mode,uid,id),
+            body.scoring_mode===undefined?null:body.scoring_mode,
+            body.country_code===undefined?null:body.country_code,uid,id),
         db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) '+
           "VALUES(?,'event_updated',?)").bind(uid,JSON.stringify({event_id:id,status:body.status,prizes:body.prizes}))
       ]);
