@@ -21,7 +21,7 @@
  const artworks={
   'royal-slots':'/cards/royal-slots.webp',
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
-  'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/food-wheel.png',
+  'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/fruit-machine-user.webp',
   'sovera-gaddy':'/cards/gaddy-royal.svg','sovera-food':'/cards/sovera-food-royal.svg',
   'night-food':'/cards/night-food-royal.svg','greedy-wheel':'/cards/greedy-wheel-royal.svg',
   'fruit-royale':'/cards/fruit-machine.jpg','jackpot-fruit':'/cards/jackpot-fruit.png'
@@ -29,7 +29,7 @@
  const shortNames={
   'royal-slots':'Royal Slots',
   'royal-ace':'SuperAce Deluxe','cleopatra':'Cleopatra Gold',
-  'greedy-classic':'Greedy Game','food-deluxe':'Food Wheel',
+  'greedy-classic':'Greedy Game','food-deluxe':'Fruit Machine',
   'sovera-gaddy':'Sovera Gaddy','sovera-food':'Sovera Food',
   'night-food':'Night Food','greedy-wheel':'Greedy Wheel',
   'fruit-royale':'Fruit Royale','jackpot-fruit':'Fruit Jackpot'
