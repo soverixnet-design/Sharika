@@ -375,19 +375,33 @@
      const state=await call('GET','/api/v1/royal-slots/state');
      send({source:'sharika-royal-slots-server',type:'init',
        ...addUserToGameState(state),profile:verifiedUser()});
-    }catch(error){notify('Royal Slots unavailable: '+error.message);}
+    }catch(error){
+     const reason=String(error?.message||error).slice(0,180);
+     notify('Royal Slots unavailable: '+reason);
+     send({source:'sharika-royal-slots-server',type:'initError',error:reason});
+    }
    }else if(m.type==='spin'&&typeof m.id==='string'&&
      /^[A-Za-z0-9_-]{12,100}$/.test(m.id)&&
      [1000,10000,100000,1000000,10000000].includes(m.bet)&&
      typeof m.freeSpin==='boolean'){
     try{
-     const result=await call('POST','/api/v1/royal-slots/spin',
-       {bet:m.bet,requestId:m.id,freeSpin:m.freeSpin});
+     // Retry only unknown-commit network errors, with the ORIGINAL idempotent
+     // requestId. Reusing this exact ID prevents double wallet deductions.
+     const payload={bet:m.bet,requestId:m.id,freeSpin:m.freeSpin};
+     const attempt=()=>call('POST','/api/v1/royal-slots/spin',payload);
+     let result;
+     try{result=await attempt()}
+     catch(error){
+      const reason=String(error?.message||error);
+      const uncertain=/timed out|network_unavailable|firebase_token_unavailable|http_(502|503|504)|temporarily unavailable/i.test(reason);
+      if(!uncertain||active!==game||version!==gameVersion)throw error;
+      result=await attempt();
+     }
      send({source:'sharika-royal-slots-server',type:'spinResult',id:m.id,result});
      if(active===game&&version===gameVersion)
        showSoloSpinWinner(game,{...result,win:result.totalWin},m.id);
     }catch(error){send({source:'sharika-royal-slots-server',
-      type:'spinResult',id:m.id,error:error.message});}
+      type:'spinResult',id:m.id,error:String(error?.message||error).slice(0,180)});}
    }
    return;
   }
