@@ -1,0 +1,38 @@
+name: Verify Sharika Private Center live staging routes (read-only)
+on:
+  push:
+    branches: [feature/sharika-private-center-catalog-20261119]
+    paths: ['.github/workflows/sharika-private-center-route-probe.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe all public health endpoints separately without changing anything
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,time,socket
+          names=[
+            'sharika-api-staging',
+            'sharika-admin-staging',
+            'sharika-private-center-staging',
+          ]
+          for name in names:
+            for path in ['/health','/api/catalog']:
+              u='https://'+name+'.soverixnet.workers.dev'+path
+              try:
+                with urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'SharikaStagingProbe/1.0'}),timeout=15) as f:
+                  print(name,path,'STATUS',f.status,'TEXT',f.read(240).decode(errors='replace'))
+              except urllib.error.HTTPError as e:
+                print(name,path,'HTTP_ERROR',e.code,'TEXT',e.read(250).decode(errors='replace'))
+              except Exception as e:
+                print(name,path,'ERROR',str(e)[:230])
+          u='https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js'
+          try:
+            with urllib.request.urlopen(u,timeout=15) as f:
+              src=f.read().decode(errors='replace')
+              print('ADMIN_JS',f.status,'PRIVATE_CENTER_MENU',('Private Center' in src))
+          except Exception as e:
+            print('ADMIN_JS_ERROR',str(e)[:220])
+          PY
