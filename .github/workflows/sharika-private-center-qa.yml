@@ -36,6 +36,8 @@ jobs:
           cp admin/connection.js cloudflare/src/admin-connection.txt
           npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.private.jsonc --outdir /tmp/sharika-private-center-dryrun
           npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sharika-admin-private-dryrun
+      - name: Verify full Cloudflare staging business-logic regression suite
+        run: npm --prefix cloudflare run check
       - name: Run isolated publication and security tests
         run: node --test cloudflare/test/private-center.test.mjs
       - name: Check only new migration in temporary SQLite
