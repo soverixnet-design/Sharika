@@ -80,8 +80,11 @@ export default {async fetch(req,env){
   await env.DB.prepare('INSERT INTO sharika_center_browser_sessions('+
    'session_sha256,auth_uid,created_at_ms,expires_at_ms) VALUES(?,?,?,?)')
    .bind(digest,redeemed.auth_uid,now,now+1800000).run();
+  // Room bottom sheet keeps voice in the existing Activity. Do not allow
+  // arbitrary redirect targets or external URLs from a launch ticket.
+  const view=url.searchParams.get('view')==='room'?'&view=room':'';
   return new Response(null,{status:303,headers:{
-   ...hdr,'location':url.origin+'/?surface=app',
+   ...hdr,'location':url.origin+'/?surface=app'+view,
    'set-cookie':'__Host-sh_center='+token+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=1800'
   }});
  }
