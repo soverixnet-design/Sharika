@@ -1,0 +1,65 @@
+name: Sharika Royal Slots connected staging APK direct download
+on:
+  push:
+    branches: [fix/sharika-royal-slots-native-bet-bridge-20261119]
+    paths:
+      - '.github/workflows/sharika-royal-slots-native-public-apk.yml'
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish-friends-apk:
+    name: Verify latest successful Android APK and publish public direct-download prerelease
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Verify pinned newest successful QA build and exact artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          run_id='44537923202'
+          sha='8f83a968fbcadfe218328c124e9e4775fa6239d5'
+          test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.head_sha')" = "$sha"
+          test "$(gh api "repos/$repo/actions/runs/$run_id" --jq '.conclusion')" = 'success'
+          test "$(gh api "repos/$repo/actions/artifacts/14537276526" --jq '.workflow_run.head_sha')" = "$sha"
+          test "$(gh api "repos/$repo/actions/artifacts/14530994462" --jq '.name+":" + (.expired|tostring)')" = 'Sharika-Royal-Slots-Native-Bridge-Debug:false'
+      - name: Download exact latest tested Android APK
+        uses: actions/download-artifact@v4
+        with:
+          repository: soverixnet-design/Sharika
+          run-id: 44537923202
+          name: Sharika-Royal-Slots-Native-Bridge-Debug
+          github-token: ${{ github.token }}
+          path: latest-apk
+      - name: Validate Android APK ZIP, package and signing; preserve original bytes
+        run: |
+          set -euo pipefail
+          test -s latest-apk/app-debug.apk
+          test "$(wc -c < latest-apk/app-debug.apk)" -gt 40000000
+          unzip -tqq latest-apk/app-debug.apk
+          unzip -Z1 latest-apk/app-debug.apk | grep -Fx 'AndroidManifest.xml'
+          if command -v apksigner >/dev/null 2>&1; then
+            apksigner verify --verbose latest-apk/app-debug.apk
+          fi
+          install -m 0644 latest-apk/app-debug.apk 'Sharika-Royal-Slots-Connected-Friends-Staging-20261119.apk'
+          sha256sum 'Sharika-v1.0.40-Latest-Games-2026-11-19-Friends.apk'
+      - name: Publish latest friends APK as public prerelease, never overwrite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='soverixnet-design/Sharika'
+          tag='sharika-royal-slots-native-staging-20261119-8f83a968'
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "::error::Release already exists: no overwrite permitted"
+            exit 1
+          fi
+          gh release create "$tag" 'Sharika-v1.0.40-Latest-Games-2026-11-19-Friends.apk' \
+            --repo "$repo" \
+            --target 20d49991967c2ef47bd2fa660210a78599ce4487 \
+            --title 'Sharika Royal Slots Connected — Friends Staging Test (19 Nov 2026)' \
+            --notes 'Sharika TEST build for friends: Royal Slots native authenticated bridge fixes (block bets before verified state, strict receipt checks, safe same-request-ID retry), Fruit Machine and other staged games. Source: fully successful GitHub Actions run 44537923202 and Android debug artifact 14537276526. Staging-only virtual coins: no real-money cashout, not a Play Store release. Real authenticated Royal Slots spins are not yet device-verified. Sideloaded Google sign-in may fail if the debug certificate is not registered with Firebase; existing Play installations may use an incompatible signing certificate. Do not uninstall your existing app without backing up local data. For testing only.' \
+            --prerelease
+          gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].url'
