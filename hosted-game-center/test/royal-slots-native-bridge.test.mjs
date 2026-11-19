@@ -48,7 +48,7 @@ test('demo has no native wager relay or connection-blocking overlay',()=>{
 });
 test('authenticated production starts behind overlay and removes it after verified init',()=>{
  const ctx=boot();
- assert.equal(ctx.cover.style.display,'flex');
+ assert.match(ctx.cover.style.cssText,/display:flex/);
  assert.equal(ctx.sent.at(-1).payload.type,'ready');
  const host=init(ctx);
  assert.equal(ctx.game.config.mode,'production');
