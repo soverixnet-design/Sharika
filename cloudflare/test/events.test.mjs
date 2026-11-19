@@ -9,7 +9,7 @@ const eventPayload={
   starts_at:'2026-10-28T00:00:00.000Z',ends_at:'2026-11-03T00:00:00.000Z',
   status:'published',prizes:[10000,5000,2500]
 };
-function fixture({event=null,oldAward=null,recipient=null}={}){
+function fixture({event=null,oldAward=null,recipient=null,eventPublished=false}={}){
   const state={queries:[],batches:[]};
   const db={
     prepare(sql){
