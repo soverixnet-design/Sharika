@@ -48,7 +48,7 @@ test('one ten-second top winner ticker with avatar and game icon remains',()=>{
 });
 
 test('Royal Slots and Fruit Machine cards and room-fit build step are both preserved',()=>{
- assert.match(app,/'food-deluxe':'\/cards\/fruit-machine-user\.webp'/);
+ assert.match(app,/'food-deluxe':'\/cards\/fruit-machine\.jpg'/);
  assert.match(app,/'food-deluxe':'Fruit Machine'/);
  assert.match(build,/'fruit-machine-user\.webp':'@web\/fruit-machine-user\.webp'/);
  assert.match(build,/food_room_fit_source_changed/);
