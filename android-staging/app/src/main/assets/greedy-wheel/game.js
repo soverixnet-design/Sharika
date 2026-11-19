@@ -652,7 +652,8 @@
       }
       case 'tap_receipt': {
         S.pending.delete(m.reqId);S.balance=m.balance;
-        renderBalance();
+        if(m.round===S.round&&Array.isArray(m.myBets))S.myBets=m.myBets;
+        renderBets();renderBalance();
         emit('bet',{round:m.round,itemId:m.itemId,amount:m.amount,balance:m.balance});
         break;
       }

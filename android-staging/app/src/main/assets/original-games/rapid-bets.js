@@ -5,7 +5,7 @@ window.createRoundTapQueue=function({send,openRound,onStatus}){
   let indicator;
   function status(){
     onStatus?.(count,reserved);
-    if(typeof document==='undefined')return;
+    if(typeof document==='undefined'||!document.body)return;
     if(!indicator){
       indicator=document.createElement('output');
       indicator.style.cssText='position:fixed;top:4px;right:4px;z-index:10000;background:#271c27;color:white;padding:3px 7px;border-radius:8px;font:12px sans-serif;pointer-events:none';
@@ -43,7 +43,7 @@ window.createRoundTapQueue=function({send,openRound,onStatus}){
           packet.forEach((job,i)=>{
             const receipt=result.receipts[i];
             if(receipt.error)job.reject(Error(receipt.error));
-            else job.resolve({...receipt,coins:result.coins,round_no:round});
+            else job.resolve({...receipt,coins:result.coins,round_no:round,myBets:result.myBets});
           });
         }catch(error){packet.forEach(job=>job.reject(error));}
         reserved-=packet.reduce((sum,job)=>sum+job.tap.amount,0);

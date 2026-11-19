@@ -210,7 +210,6 @@ function betAmounts(a){
 const enqueue=createRoundTapQueue({
  send:body=>request('bet','POST',body),
  openRound:n=>state&&S.round===n&&S.phase==='bet'&&Date.now()+clockOffset<state.state.endsAt,
- onStatus:n=>{if(n)toast(n+' pending');}
 });
 async function bet(id,amount=S.chip){
  const pick=F.findIndex(f=>f.id===id);
@@ -221,7 +220,7 @@ async function bet(id,amount=S.chip){
   S.bal=receipt.coins;
   if(S.round===round){
    placedDuringThisRound[id]=(placedDuringThisRound[id]||0)+amount;
-   // The next state poll supplies exact per-item totals.
+   if(Array.isArray(receipt.myBets))S.bets=betAmounts(receipt.myBets);
   }
   S.hint=false;draw();FoodSound.play('bet');return true;
  }catch(error){toast(error.message);return false;}

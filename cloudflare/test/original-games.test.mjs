@@ -236,19 +236,19 @@ test('remaining original games retry timed-out bets with the same request ID',as
       }else if(message.action==='bet'){
         attempts.push(message.body);
         if(attempts.length===1){response.ok=false;response.error='server_timeout';}
-        else response.value={bet_id:81,coins:2000,round_no:9,duplicate:true};
+        else response.value={coins:2000,round_no:9,receipts:[{bet_id:81,request_id:message.body.taps[0].request_id}]};
       }else throw Error('Unexpected bridge action '+message.action);
       queueMicrotask(()=>listeners.forEach(listener=>listener({source:parent,data:response})));
     }};
     const window={parent,addEventListener(_type,listener){listeners.push(listener);}};
-    const document={documentElement:{getAttribute:()=>game}};
+    const document={documentElement:{getAttribute:()=>game,dataset:{}}};
     const bridge=new Function('window','document','setTimeout','clearTimeout',
-      html.slice(start,end)+';return GameBridge;')(window,document,setTimeout,clearTimeout);
+      readFileSync(new URL('rapid-bets.js',base),'utf8')+';const createRoundTapQueue=window.createRoundTapQueue;'+html.slice(start,end)+';return GameBridge;')(window,document,setTimeout,clearTimeout);
     await bridge.refresh();
     const receipt=await bridge.bet(2,1000);
     assert.equal(receipt.bet_id,81,page);
     assert.equal(attempts.length,2,page+' should retry exactly once');
-    assert.equal(attempts[0].request_id,attempts[1].request_id);
+    assert.ok(attempts[0].taps[0].request_id);assert.deepEqual(attempts[0],attempts[1]);
     assert.equal(bridge.get().coins,2000);
   }
 });

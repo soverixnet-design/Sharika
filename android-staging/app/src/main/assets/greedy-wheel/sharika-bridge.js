@@ -151,7 +151,7 @@
         const pick=wheelItems.indexOf(message.itemId);
         this.enqueue(message.round,pick,message.amount,this.balance).then(r=>{
           this.balance=r.coins;
-          emit(this,{t:'tap_receipt',reqId:message.reqId,round:message.round,balance:r.coins,
+          emit(this,{t:'tap_receipt',reqId:message.reqId,round:message.round,balance:r.coins,myBets:r.myBets,
             itemId:message.itemId,amount:message.amount});
         }).catch(error=>emit(this,{t:'bet_err',reqId:message.reqId,code:error.message}));
       }else if(message.t==='records'){

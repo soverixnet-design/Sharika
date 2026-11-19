@@ -30,6 +30,8 @@ export async function settleTapBatch({db,uid,game,body,currentRound,ensure,valid
     for(const t of taps)statements.push(insert.bind(...(shared?[game]:[]),target.id,round,uid,choice(t),t.amount,t.request_id,
       target.id,uid,t.amount,uid,t.request_id));
   }
+  if(items)statements.push(db.prepare('SELECT item_id,SUM(amount) AS stake FROM '+bets+
+    ' WHERE user_uid=? AND round_no=? GROUP BY item_id').bind(uid,round));
   statements.push(db.prepare('SELECT id,round_no,'+pickColumn+' AS chosen,'+amountColumn+' AS amount,request_id'+(shared?',game':'')+
     ' FROM '+bets+' WHERE user_uid=? AND request_id IN (SELECT value FROM json_each(?))')
     .bind(uid,JSON.stringify(taps.map(t=>t.request_id))));
@@ -43,5 +45,6 @@ export async function settleTapBatch({db,uid,game,body,currentRound,ensure,valid
       'idempotency_conflict':null):(!target||wallet.stamp>=target.bet_closes_ms?'betting_closed':'insufficient_coins');
     return error?{request_id:t.request_id,error}:{request_id:t.request_id,bet_id:r.id};
   });
-  return reply({coins:wallet.coins,round_no:round,receipts},200,cors);
+  const summary=items?{myBets:items.map(id=>results.at(-3).results.find(r=>r.item_id===id)?.stake||0)}:{};
+  return reply({coins:wallet.coins,round_no:round,receipts,...summary},200,cors);
 }
