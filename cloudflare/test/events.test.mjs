@@ -137,7 +137,7 @@ test('unpublished event-specific leaderboard is hidden',async()=>{
   assert.equal((await response.json()).error,'event_hidden');
 });
 test('published event-specific leaderboard uses only configured settled gifts within UTC window',async()=>{
-  const f=fixture({event:{id:3,status:'published',
+  const f=fixture({eventPublished:true,event:{id:3,status:'published',
     starts_at:'2026-11-01T00:00:00.000Z',ends_at:'2026-11-08T00:00:00.000Z',
     gift_rules_json:JSON.stringify([{gift_id:17,points:9},{gift_id:18,points:12}])}});
   const response=await handleEventApp({request:new Request('https://x.invalid/api/v1/events/3/ranking'),
