@@ -5,6 +5,9 @@ on:
     paths:
       - '.github/workflows/sharika-private-center-android-qa.yml'
       - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
+      - 'android-staging/staging-connection.js'
 permissions:
   contents: read
 jobs:
@@ -37,6 +40,8 @@ jobs:
           const gradle=readFileSync('android-staging/app/build.gradle','utf8');
           const activity=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java','utf8');
           const room=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java','utf8');
+          const main=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java','utf8');
+          const frontend=readFileSync('android-staging/staging-connection.js','utf8');
           if(!gradle.includes("applicationId 'com.soverixnet.sharika'")||
              !activity.includes('sharika-private-center-staging.soverixnet.workers.dev')||
              !activity.includes('/api/v1/center/launch-ticket')||
@@ -45,7 +50,11 @@ jobs:
              !room.includes('sharika-private-center-staging.soverixnet.workers.dev')||
              !room.includes('/api/v1/center/launch-ticket')||
              !room.includes('/session?ticket=')||
-             room.includes('sharika-games-web-staging.soverixnet.workers.dev'))
+             room.includes('sharika-games-web-staging.soverixnet.workers.dev')||
+             !main.includes('case "openHostedEventCenter"')||
+             !activity.includes('center_event_id')||
+             !frontend.includes("native('openHostedEventCenter'"))
+             )
              throw Error('Wrong package, origin, auth or Play safety gate');
           console.log('Sharika signed-in private staging WebView verified');
           NODE
