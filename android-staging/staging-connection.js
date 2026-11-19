@@ -12438,7 +12438,13 @@
           // Original generic gift icon imported from the Sura Chat client.
           // Sura has no actual CP gift media/catalog rows to copy; this changes presentation only.
           const icon=document.createElement('img');icon.className='sh-bond-gift-icon';
-          icon.src='./sharika-premium/sura-gift-icon.png';icon.alt='';
+          const cpGiftArt={'Royal Rose':'cp-royal-rose.svg',
+            'Diamond Heart':'cp-diamond-heart.svg',
+            'Eternal Promise':'cp-eternal-promise.svg'};
+          icon.src='./sharika-premium/'+(selected==='cp'&&cpGiftArt[gift.name]||'sura-gift-icon.png');
+          icon.alt='';icon.addEventListener('error',()=>{
+            if(!icon.src.endsWith('/sura-gift-icon.png'))icon.src='./sharika-premium/sura-gift-icon.png';
+          },{once:true});
           const description=document.createElement('div');
           const title=document.createElement('strong');title.textContent=gift.emoji+' '+gift.name;
           const price=document.createElement('small');price.style.display='block';
