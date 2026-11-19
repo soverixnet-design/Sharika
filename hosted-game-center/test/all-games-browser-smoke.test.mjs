@@ -53,7 +53,7 @@ function fakeNativeBridge(){
 
 function installAssetRouting(context){
  return context.route('**/*',async route=>{
-   const url=new URL(route.request().url);
+   const url=new URL(route.request().url());
    if(![new URL(publicHost).hostname,new URL(privateHost).hostname].includes(url.hostname)){
      await route.abort();return;
    }
