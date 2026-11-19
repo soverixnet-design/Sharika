@@ -5,6 +5,7 @@ import {handlePrivateCenter,centerPublished} from '../../cloudflare/src/private-
 import {readGiftRankings} from '../../cloudflare/src/admin.mjs';
 import {readCenterRankings} from '../../cloudflare/src/center-rankings.mjs';
 import {handleEventApp} from '../../cloudflare/src/events.mjs';
+import {readMemberCountry,eventAudienceAllows} from '../../cloudflare/src/event-audience.mjs';
 const hdr={
   'cache-control':'private, no-store',
   'x-content-type-options':'nosniff',
@@ -129,10 +130,12 @@ export default {async fetch(req,env){
     !await centerPublished(env.DB,'event','event:'+eid))
     return json({error:'event_hidden'},404);
   // Event-level status and time bounds are always independently enforced.
-  const row=await env.DB.prepare("SELECT id,starts_at,ends_at,banner_id,status FROM sharika_events WHERE id=?")
+  const row=await env.DB.prepare("SELECT id,starts_at,ends_at,banner_id,status,country_code FROM sharika_events WHERE id=?")
     .bind(eid).first();
   const now=new Date().toISOString();
   if(!row||row.status!=='published'||row.ends_at<=now)return json({error:'event_unavailable'},404);
+  if(!eventAudienceAllows(row.country_code,await readMemberCountry(env.DB,uid)))
+    return json({error:'event_hidden'},404);
   if(eventEndpoint[2]==='ranking'){
    if(req.method==='HEAD')return new Response(null,{status:405,headers:hdr});
    return handleEventApp({request:req,env,uid,path:'/api/v1/events/'+eid+'/ranking',cors:{},
