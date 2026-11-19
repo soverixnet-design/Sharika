@@ -316,9 +316,11 @@ public final class SharikaActivity extends Activity {
         content.addView(browser, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(content, new FrameLayout.LayoutParams(-1, -1));
         // The same authenticated 10-second ticker spans home, profiles and voice rooms.
-        // When a hosted room game opens, its own marquee takes priority.
-        globalWinnerTicker = new SharikaWinnerTicker(this,root,
-            () -> roomGameDialog != null && roomGameDialog.isShowing());
+        // A 65%-height room-game Dialog leaves the top 35% of the room visible.
+        // Keep one native ticker at that true screen top while its hosted
+        // counterpart stays disabled in room mode. The game Activity has
+        // its own full-screen ticker and pauses this Activity automatically.
+        globalWinnerTicker = new SharikaWinnerTicker(this,root,() -> false);
         if (BuildConfig.SHARIKA_PLAY_BUILD) dailyTaskBanner = new DailyTaskBanner(this, content);
         FrameLayout opening = new FrameLayout(this);
         opening.setBackground(new GradientDrawable(
