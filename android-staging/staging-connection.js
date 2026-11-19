@@ -10548,6 +10548,9 @@
     if(!session){window.showAuth('welcome');return;}
     const id=Number(eventId);
     if(!Number.isSafeInteger(id)||id<1)return;
+    // The event card opens its own template-driven HTTPS website INSIDE
+    // the Android app, with the verified Firebase launch-ticket handshake.
+    if(await openPrivateEventWebsite(id))return;
     document.getElementById('sh-banner-event')?.remove();
     const page=document.createElement('div');
     page.id='sh-banner-event';
@@ -10874,13 +10877,25 @@
       if(root.isConnected)root.textContent='Events unavailable: '+errText(error);
     }
   }
-  window.showVerifiedEvents=showVerifiedEventSheet;
+  async function openPrivateEventWebsite(eventId=0){
+    if(!session){window.showAuth('welcome');return true;}
+    try{
+      await native('openHostedEventCenter',{eventId:Number(eventId)||0});
+      return true;
+    }catch(error){
+      console.warn('Private Event Website unavailable; using verified legacy event page:',errText(error));
+      return false;
+    }
+  }
+  window.showVerifiedEvents=async function(){
+    if(!await openPrivateEventWebsite())await showVerifiedEventSheet();
+  };
   document.addEventListener('click',event=>{
     const button=event.target.closest?.('#sh-event-launch,#sh-event-back');
     if(!button)return;
     event.preventDefault();event.stopImmediatePropagation();
     if(button.id==='sh-event-back')showVerifiedDailySheet();
-    else showVerifiedEventSheet();
+    else window.showVerifiedEvents();
   },true);
 
   let dailyTaskClaimBusy=false;
