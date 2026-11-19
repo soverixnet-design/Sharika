@@ -27,6 +27,15 @@ jobs:
           node --check hosted-game-center/src/private-index.mjs
           node --check hosted-game-center/web/center.js
           node --check hosted-game-center/web/app.js
+      - name: Build protected admin and private website bundles without deploying
+        run: |
+          node --check admin/connection.js
+          node hosted-game-center/scripts/build.mjs
+          mkdir -p cloudflare/src
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.private.jsonc --outdir /tmp/sharika-private-center-dryrun
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sharika-admin-private-dryrun
       - name: Run isolated publication and security tests
         run: node --test cloudflare/test/private-center.test.mjs
       - name: Check only new migration in temporary SQLite
