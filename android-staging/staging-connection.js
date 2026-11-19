@@ -9710,7 +9710,9 @@
   const originalLeaveRoom=window.leaveRoom;
 
   function stopRoomServices(){
-    if(roomVisualVisibilityListener){
+    // Older isolated Back-button QA executes this helper without the outer
+    // module's optional visual-poll observer; room audio cleanup still works.
+    if(typeof roomVisualVisibilityListener!=='undefined'&&roomVisualVisibilityListener){
       document.removeEventListener('visibilitychange',roomVisualVisibilityListener);
       roomVisualVisibilityListener=null;
     }
