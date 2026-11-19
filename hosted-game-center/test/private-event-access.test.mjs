@@ -69,6 +69,18 @@ test('private hosted iframe CSP names private origin and never old public origin
  assert.ok(csp.includes(origin));
  assert.ok(!csp.includes('https://sharika-games-web-staging.soverixnet.workers.dev'));
  assert.match(csp,/connect-src 'none'/);
+ // Game screens must be allowed in their own origin's sandboxed iframe.
+ assert.equal(res.headers.get('x-frame-options'),'SAMEORIGIN');
+});
+test('top-level private Center pages refuse external framing',async()=>{
+ const res=await get('/center.html',{auth:true});
+ assert.equal(res.status,200);
+ assert.equal(res.headers.get('x-frame-options'),'DENY');
+});
+test('practice-mode browser Javascript is disabled on the private member origin',async()=>{
+ const res=await get('/practice.js',{auth:true});
+ assert.equal(res.status,404);
+ assert.equal((await res.json()).error,'practice_disabled_in_private_center');
 });
 test('disabled game cannot load its direct HTML in a signed-in session',async()=>{
  const res=await get('/games/royal-slots/index.html',{auth:true,engineEnabled:false});
