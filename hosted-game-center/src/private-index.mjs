@@ -87,7 +87,8 @@ export default {async fetch(req,env){
   return new Response(null,{status:204,headers:{
     ...hdr,'set-cookie':'__Host-sh_center=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0'}});
  }
- if(path.startsWith('/api/center/')){
+ if(path.startsWith('/api/center/')&&
+    !['/api/center/rankings','/api/center/wallet','/api/center/gifts'].includes(path)){
   if(req.method!=='GET'&&!sameOriginWrite(req,url))
     return json({error:'origin_forbidden'},403);
   const sub='/api/v1/center/'+path.slice('/api/center/'.length);
