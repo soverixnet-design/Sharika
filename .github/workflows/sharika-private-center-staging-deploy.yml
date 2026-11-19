@@ -91,5 +91,7 @@ jobs:
           curl --fail --silent --show-error --retry 8 --retry-delay 2 --retry-all-errors --max-time 10 https://sharika-private-center-staging.soverixnet.workers.dev/health | grep -q 'private_center'
           STATUS=$(curl --silent --output /tmp/sharika-private-anonymous.txt --write-out '%{http_code}' --max-time 12 https://sharika-private-center-staging.soverixnet.workers.dev/api/catalog)
           test "$STATUS" = "401"
-          curl --fail --silent --show-error --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js | grep -q 'Private Center'
+          # Cloudflare rejects curl's default User-Agent with anti-bot 1010;
+          # the real browser-style request is 200 (verified independently).
+          curl --fail --silent --show-error -A 'Mozilla/5.0' --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js | grep -q 'Private Center'
           echo SHARIKA_PRIVATE_CENTER_STAGING_PUBLISHED_ANON_BLOCKED
