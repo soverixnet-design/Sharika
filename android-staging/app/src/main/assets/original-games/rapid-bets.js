@@ -35,9 +35,20 @@ window.createRoundTapQueue=function({send,openRound,onStatus}){
                 throw Error('invalid_receipt');
               break;
             }catch(error){
-              if(/invalid_bet|games?_adult_only|game_not_eligible|profile_(required|unavailable)|game_disabled|invalid_json|method_not_allowed/i.test(error.message))throw error;
+              const reason=String(error?.message||error);
+              // Authorization, wallet, closed-round and malformed-receipt errors
+              // are definitive: retrying them cannot make the bet succeed.
+              if(/invalid_bet|insufficient_(coins|balance)|betting_closed|idempotency_conflict|invalid_receipt|games?_adult_only|game_not_eligible|profile_(required|unavailable)|game_disabled|invalid_json|method_not_allowed|permission_denied|forbidden/i.test(reason))
+                throw error;
+              // Retry the SAME 128-bit request IDs for an uncertain network
+              // response. Never spend forever on a dead server: an unbounded
+              // retry blocked every newer tap and the next round.
+              // After a bounded recovery, ask the player to check their
+              // authoritative wallet; NEVER invent a second request ID.
+              if(attempt>=3||!openRound(round))
+                throw Error('bet_status_unknown_check_wallet');
               onStatus?.(count,reserved,'Checking pending bets');
-              await new Promise(resolve=>setTimeout(resolve,Math.min(4000,250*(attempt+1))));
+              await new Promise(resolve=>setTimeout(resolve,Math.min(2000,400*(attempt+1))));
             }
           }
           packet.forEach((job,i)=>{
