@@ -21,6 +21,7 @@ import { handleBondApp,roomBondPairs,expireBondInvites } from './bonds.mjs';
 import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
 import {readGameCatalog,gameAcceptsBets} from './game-catalog.mjs';
+import {handlePrivateCenter,centerPublished} from './private-center.mjs';
 import {readPublishedProfileLayouts} from './profile-layout.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import {readInviteRules} from './invite-rules.mjs';
@@ -378,6 +379,10 @@ export async function handleRequest(request, env, ctx) {
   } catch (_) { return fail('rate_limiter_unavailable', 503, cors); }
   const parts = path.split('/').filter(Boolean);
   try {
+    if(path.startsWith('/api/v1/center/')){
+      await assertActive(env.DB,uid);
+      return await handlePrivateCenter({request,path,db:env.DB,uid,reply,fail,cors});
+    }
     if(path==='/api/v1/opening/next')return await handleOpeningApp({
       request,env,uid,path,cors,reply,fail
     });
@@ -408,7 +413,8 @@ export async function handleRequest(request, env, ctx) {
     }
     if(path==='/api/v1/royal-slots/state'||path==='/api/v1/royal-slots/spin'){
       await assertActive(env.DB,uid);
-      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'royal-slots')))
+      if(playVirtualOnly(env)||!(await centerPublished(env.DB,'game','royal-slots'))||
+        !(await gameAcceptsBets(env.DB,'royal-slots')))
         return fail('game_disabled',403,cors);
       return await handleRoyalSlots({request,db:env.DB,uid,
         action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
@@ -416,21 +422,26 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/royal-ace/state'||path==='/api/v1/royal-ace/spin'){
       await assertActive(env.DB,uid);
       // No automatic Play Store exposure: virtual-only routing and admin flag are independent gates.
-      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'royal-ace')))
+      if(playVirtualOnly(env)||!(await centerPublished(env.DB,'game','royal-ace'))||
+        !(await gameAcceptsBets(env.DB,'royal-ace')))
         return fail('game_disabled',403,cors);
       return await handleRoyalAce({request,db:env.DB,uid,
         action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
     }
     if(path==='/api/v1/cleopatra/state'||path==='/api/v1/cleopatra/spin'){
       await assertActive(env.DB,uid);
-      if(playVirtualOnly(env)||!(await gameAcceptsBets(env.DB,'cleopatra')))
+      if(playVirtualOnly(env)||!(await centerPublished(env.DB,'game','cleopatra'))||
+        !(await gameAcceptsBets(env.DB,'cleopatra')))
         return fail('game_disabled',403,cors);
       return await handleCleopatra({request,db:env.DB,uid,
         action:path.endsWith('/spin')?'spin':'state',reply,fail,cors});
     }
-    if(path==='/api/v1/events'||/^\/api\/v1\/events\/[1-9]\d*\/ranking$/.test(path)) return await handleEventApp({
+    if(path==='/api/v1/events'||/^\/api\/v1\/events\/[1-9]\d*\/ranking$/.test(path)){
+      if(!await centerPublished(env.DB,'module','events'))return fail('event_hidden',403,cors);
+      return await handleEventApp({
       request,env,uid,path,cors,reply,fail
-    });
+      });
+    }
     if(path==='/api/v1/role-applications')return await handleRoleApplicationApp({
       request,env,uid,path,cors,reply,fail
     });
@@ -1007,6 +1018,8 @@ export async function handleRequest(request, env, ctx) {
       if(parts.length===3&&request.method==='GET')
         return reply({games:['sovera-food','sovera-gaddy','night-food','fruit-royale','food-deluxe','greedy-classic'],virtual_coins_only:true},200,cors);
       if(parts.length===5){
+        if(!await centerPublished(env.DB,'game',parts[3]))
+          return fail('game_hidden',403,cors);
         if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
         if(parts[3]==='fruit-royale')
@@ -1029,6 +1042,8 @@ export async function handleRequest(request, env, ctx) {
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='greedy-wheel'){
       await assertActive(env.DB,uid);
       if(parts.length===4){
+        if(!await centerPublished(env.DB,'game','greedy-wheel'))
+          return fail('game_hidden',403,cors);
         if(parts[3]==='bet'&&!(await gameAcceptsBets(env.DB,'greedy-wheel')))
           return fail('game_disabled',403,cors);
         return await handleGreedyRequest({request,db:env.DB,uid,
@@ -1044,6 +1059,8 @@ export async function handleRequest(request, env, ctx) {
         return reply({games:['food-wheel','jackpot-fruit'],round_ms:40000,
           virtual_coins_only:true},200,cors);
       if(parts.length===5){
+        if(!await centerPublished(env.DB,'game',parts[3]))
+          return fail('game_hidden',403,cors);
         if(parts[4]==='bet'&&!(await gameAcceptsBets(env.DB,parts[3])))
           return fail('game_disabled',403,cors);
         return await handleGameRequest({request,db:env.DB,uid,game:parts[3],
@@ -1058,6 +1075,8 @@ export async function handleRequest(request, env, ctx) {
     }
     if (path === '/api/v1/rankings' && request.method === 'GET') {
       await assertActive(env.DB,uid);
+      const requestedKind=url.searchParams.get('kind')||'rich';
+      if(!await centerPublished(env.DB,'ranking',requestedKind))return fail('ranking_hidden',403,cors);
       const period=url.searchParams.get('period')||'weekly';
       const kind=url.searchParams.get('kind')||'rich';
       const weekOffset=url.searchParams.get('week_offset');
