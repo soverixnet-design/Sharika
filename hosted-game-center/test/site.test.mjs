@@ -97,6 +97,8 @@ test('Greedy Food Wheel leaderboard and banners use authenticated verified resul
  assert.ok(live.includes("request('rankings')"));
  assert.ok(live.includes("request('winners')"));
  assert.ok(live.includes("displayVerifiedWinner({win:earned"));
+ assert.ok(live.includes('globalWinnersInitialized=true'));
+ assert.ok(live.includes("if(globalWinnersInitialized)displayVerifiedWinner"));
  assert.ok(live.includes("leaderId.textContent='ID: '+id"));
  assert.ok(app.includes("'rankings','bet','winners'"));
  assert.ok(backend.includes("['state','bet','history','rankings','winners']"));
