@@ -2,7 +2,9 @@ name: Sharika Private Center Android staging APK (QA only)
 on:
   push:
     branches: [feature/sharika-private-center-catalog-20261119]
-    paths: ['.github/workflows/sharika-private-center-android-qa.yml']
+    paths:
+      - '.github/workflows/sharika-private-center-android-qa.yml'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
 permissions:
   contents: read
 jobs:
@@ -34,11 +36,16 @@ jobs:
           import {readFileSync} from 'node:fs';
           const gradle=readFileSync('android-staging/app/build.gradle','utf8');
           const activity=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java','utf8');
+          const room=readFileSync('android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java','utf8');
           if(!gradle.includes("applicationId 'com.soverixnet.sharika'")||
              !activity.includes('sharika-private-center-staging.soverixnet.workers.dev')||
              !activity.includes('/api/v1/center/launch-ticket')||
              !activity.includes('BuildConfig.SHARIKA_PLAY_BUILD')||
-             !activity.includes('SharikaGameBridge'))
+             !activity.includes('SharikaGameBridge')||
+             !room.includes('sharika-private-center-staging.soverixnet.workers.dev')||
+             !room.includes('/api/v1/center/launch-ticket')||
+             !room.includes('/session?ticket=')||
+             room.includes('sharika-games-web-staging.soverixnet.workers.dev'))
              throw Error('Wrong package, origin, auth or Play safety gate');
           console.log('Sharika signed-in private staging WebView verified');
           NODE
