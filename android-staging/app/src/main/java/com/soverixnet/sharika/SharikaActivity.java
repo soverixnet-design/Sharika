@@ -876,9 +876,8 @@ public final class SharikaActivity extends Activity {
         if (action == null) { sendResult(id, result(false,null,"unknown_action")); return; }
         switch (action) {
             case "openHostedEventCenter":
-                if(BuildConfig.SHARIKA_PLAY_BUILD||
-                   auth.getCurrentUser()==null||
-                   !"https://sharika-api-staging.soverixnet.workers.dev".equals(BuildConfig.SHARIKA_API_ORIGIN)){
+                if(BuildConfig.SHARIKA_PLAY_BUILD||!BuildConfig.DEBUG||
+                   auth.getCurrentUser()==null){
                     sendResult(id,result(false,null,"private_event_center_unavailable"));
                     break;
                 }
