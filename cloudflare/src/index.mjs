@@ -22,6 +22,7 @@ import {readCpRewardBoard,settleLastCpWeek} from './cp-rewards.mjs';
 import { handleEventApp } from './events.mjs';
 import {readGameCatalog,gameAcceptsBets} from './game-catalog.mjs';
 import {handlePrivateCenter,centerPublished} from './private-center.mjs';
+import {readCenterRankings} from './center-rankings.mjs';
 import {readPublishedProfileLayouts} from './profile-layout.mjs';
 import { handleInviteApp, resolveInviter, signupCoins, signupReferralStatements } from './invites.mjs';
 import {readInviteRules} from './invite-rules.mjs';
@@ -1087,14 +1088,17 @@ export async function handleRequest(request, env, ctx) {
     if (path === '/api/v1/rankings' && request.method === 'GET') {
       await assertActive(env.DB,uid);
       const requestedKind=url.searchParams.get('kind')||'rich';
-      if(!['lucky','rich','charm','room','recharge','noble','games'].includes(requestedKind))
+      if(!['lucky','rich','charm','room','recharge','noble','games','cp','bd','agency','host'].includes(requestedKind))
         return fail('invalid_ranking_filter',400,cors);
       if(!await centerPublished(env.DB,'ranking',requestedKind))return fail('ranking_hidden',403,cors);
       const period=url.searchParams.get('period')||'weekly';
       const kind=url.searchParams.get('kind')||'rich';
       const weekOffset=url.searchParams.get('week_offset');
-      const result=await readGiftRankings(env.DB,period,kind,
-        weekOffset===null?0:weekOffset==='1'?1:NaN);
+      const newKind=['cp','bd','agency','host'].includes(kind);
+      if(newKind&&weekOffset!==null)return fail('invalid_ranking_filter',400,cors);
+      const result=newKind?await readCenterRankings(env.DB,period,kind):
+        await readGiftRankings(env.DB,period,kind,
+          weekOffset===null?0:weekOffset==='1'?1:NaN);
       return result?reply(result,200,cors):fail('invalid_ranking_filter',400,cors);
     }
     if (path === '/api/v1/gifts' && request.method === 'GET') {
