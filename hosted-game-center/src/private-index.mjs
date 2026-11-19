@@ -219,8 +219,15 @@ export default {async fetch(req,env){
  // static host's CSP names the OLD public game origin; replace it with this
  // private, authenticated origin or game scripts/styles will silently fail.
  const originalOrigin='https://sharika-games-web-staging.soverixnet.workers.dev';
- const policy=h.get('content-security-policy')||'';
+ let policy=h.get('content-security-policy')||'';
  if(policy.includes(originalOrigin))
-  h.set('content-security-policy',policy.replaceAll(originalOrigin,url.origin));
+   policy=policy.replaceAll(originalOrigin,url.origin);
+ // The authenticated member shell may frame ONLY unprivileged game assets
+ // from the dedicated static Worker, never other third-party applications.
+ // Child games remain opaque-origin sandboxed and never receive the native
+ // SharikaGameBridge, JWTs, cookies or write-capable API access.
+ if(path==='/'||path==='/index.html')
+   policy=policy.replace("frame-src 'self'","frame-src 'self' "+originalOrigin);
+ if(policy)h.set('content-security-policy',policy);
  return new Response(req.method==='HEAD'?null:result.body,{status:result.status,headers:h});
 }};
