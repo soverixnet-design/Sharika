@@ -15,7 +15,7 @@ permissions:
 jobs:
   game-smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 27
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
@@ -37,6 +37,12 @@ jobs:
           node --test cloudflare/test/rapid-round-taps.test.mjs cloudflare/test/rapid-tap-recovery.test.mjs hosted-game-center/test/rapid-slot-input.test.mjs
       - name: All backend game regressions
         run: npm --prefix cloudflare run check
+      - name: Install isolated browser QA dependencies
+        run: |
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+      - name: Chromium smoke - every public and authenticated private game iframe
+        run: node --test hosted-game-center/test/all-games-browser-smoke.test.mjs
   android-debug:
     needs: game-smoke
     runs-on: ubuntu-24.04
