@@ -175,6 +175,7 @@ export default {async fetch(req,env){
    'WHERE active=1 ORDER BY type,sort_order,id LIMIT 60').all();
   return json({gifts:cp.results||[],source:'verified_sharika_bond_catalog',read_only:true});
  }
+ if(path==='/practice.js')return json({error:'practice_disabled_in_private_center'},404);
  if(path==='/api/catalog'){
   if(req.method!=='GET')return json({error:'method_not_allowed'},405);
   const originResult=await oldGameSite.fetch(req,env);
