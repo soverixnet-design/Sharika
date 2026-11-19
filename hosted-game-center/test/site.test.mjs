@@ -88,19 +88,31 @@ test('Greedy Food Wheel browser practice accepts real wheel item IDs, no fake ra
  assert.equal((await game.request('GET','/api/v1/original-games/greedy-classic/rankings')).rankings.length,0);
 });
 
-test('Greedy Food Wheel leaderboard and banners use authenticated verified results',()=>{
+
+test('Food Wheel has one top marquee and a separate verified Top 3 results panel',()=>{
  const live=read('../android-staging/app/src/main/assets/original-games/greedy-classic-live.js');
  const app=read('web/app.js');
+ const style=read('web/style.css');
  const backend=read('../cloudflare/src/greedy-classic.mjs');
+ const native=read('../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java');
+ const markup=read('web/index.html');
  assert.doesNotThrow(()=>new Function(live));
  assert.ok(live.includes("ownStakeOnCard.style.display='none'"));
  assert.ok(live.includes("request('rankings')"));
- assert.ok(live.includes("request('winners')"));
- assert.ok(live.includes("displayVerifiedWinner({win:earned"));
- assert.ok(live.includes('globalWinnersInitialized=true'));
- assert.ok(live.includes("if(globalWinnersInitialized)displayVerifiedWinner"));
- assert.ok(live.includes("leaderId.textContent='ID: '+id"));
- assert.ok(app.includes("'rankings','bet','winners'"));
- assert.ok(backend.includes("['state','bet','history','rankings','winners']"));
- assert.ok(backend.includes('recentWinners(db)'));
+ assert.ok(live.includes("leaderCoins.textContent=compactCoins(coins)"));
+ assert.ok(!live.includes('greedy-verified-win-banner'));
+ assert.ok(!live.includes('displayVerifiedWinner('));
+ assert.ok(!live.includes("leaderId.textContent='ID: '+id"));
+ assert.ok(!live.includes('DAILY TOP 1'));
+ assert.ok(live.includes("(r.top||[]).slice(0,3)"));
+ assert.ok(live.includes("Verified Round Top 3"));
+ assert.ok(live.includes("pendingFoodTaps.push"));
+ assert.ok(live.includes("cell.textContent=value>0?compactCoins(value)"));
+ assert.ok(style.includes('sharikaVerifiedWinnerTravel 10s'));
+ assert.ok(markup.includes('winner-game-icon'));
+ assert.ok(app.includes('setInterval(pollGlobalFoodWinners,6500)'));
+ assert.ok(app.includes('winnerQueue.push'));
+ assert.ok(app.includes('10000'));
+ assert.ok(backend.includes("gameId:'greedy-classic'"));
+ assert.ok(native.includes('/api/v1/original-games/greedy-classic/winners'));
 });
