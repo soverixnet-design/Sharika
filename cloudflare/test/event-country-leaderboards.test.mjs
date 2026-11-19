@@ -90,6 +90,7 @@ test('CP Event includes only pairs whose BOTH verified members are eligible',asy
 test('event reward cannot credit a user outside target country',async()=>{
  const x=fixture('gift_points');
  try{
+  x.sql.exec("UPDATE sharika_events SET starts_at='2020-11-20T00:00:00.000Z',ends_at='2020-11-21T00:00:00.000Z'");
   const response=await handleEventAdmin({
    request:new Request('https://test.invalid/api/v1/admin/events/1/award',{
     method:'POST',body:JSON.stringify({rank:1,public_id:'10000003',
