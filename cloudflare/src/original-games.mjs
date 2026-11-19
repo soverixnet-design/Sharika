@@ -1,3 +1,4 @@
+import {settleTapBatch} from './round-tap-batch.mjs';
 import {readBoundedJson} from './request-body.mjs';
 
 // Three original Sharika games, with *server-owned* virtual coin balances.
@@ -107,7 +108,7 @@ async function currentState(db,uid,game){
   const now=Date.now(),n=roundNo(now),r=await ensureRound(db,game,n),t=clock(n);
   const bets=await db.prepare(
     'SELECT id,round_no,pick_index,amount,status,payout,result_json,created_at FROM sharika_original_game_bets '+
-    'WHERE user_uid=? AND game=? AND round_no>=? ORDER BY id DESC LIMIT 100')
+    'WHERE user_uid=? AND game=? AND round_no>=? ORDER BY id DESC')
     .bind(uid,game,n-1).all();
   const prev=await db.prepare('SELECT * FROM sharika_original_game_rounds WHERE game=? AND closes_ms<=? ORDER BY round_no DESC LIMIT 1')
     .bind(game,now).first();
@@ -183,7 +184,8 @@ export async function handleOriginalGameRequest({request,db,uid,game,action,repl
     if(!wallet||wallet.status!=='active')return fail('profile_required',403,cors);
     if(wallet.minor)return fail('game_adult_only',403,cors);
     let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
-    if(!b||typeof b!=='object'||Array.isArray(b)||
+    if(b?.taps)return settleTapBatch({db,uid,game:game,body:b,currentRound:roundNo(Date.now()),ensure:()=>ensureRound(db,game,b.round_no),validAmount:a=>Number.isSafeInteger(a)&&a>=1&&a<=MAX_STAKE,maxPick:game==='night-food'?9:7,reply,fail,cors});
+  if(!b||typeof b!=='object'||Array.isArray(b)||
       !Number.isSafeInteger(b.round_no)||b.round_no<0||
       !Number.isSafeInteger(b.pick)||b.pick<0||b.pick>(game==='night-food'?9:7)||
       !Number.isSafeInteger(b.amount)||b.amount<1||b.amount>MAX_STAKE||

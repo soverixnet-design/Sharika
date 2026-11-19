@@ -186,7 +186,7 @@ const API = root.SharikaGame = {
   setJackpot(n) { S.pool = +n; renderJp(); },
   setTicker(list) { tick = list || []; },
   getState: () => ({ mode: S.mode, balance: S.bal, bet: BETS[S.bi], freeSpins: S.fs, user: S.user }),
-  close() { emit('gameClose', { balance: S.bal }); }
+  close() { spinTaps.length=0; emit('gameClose', { balance: S.bal }); }
 };
 root.addEventListener('message', e => { const d = e.data || {}; if (d.target !== 'SharikaGame') return;
   if (d.cmd === 'init') API.init(d.payload); else if (d.cmd === 'setBalance') API.setBalance(d.payload);
@@ -336,10 +336,16 @@ function celebrate(win, bet, jp) {
   return length;
 }
 
-async function play() {
+const spinTaps = [];
+function manualSpin() {
+  if (!S.busy) return play();
+  spinTaps.push({bet:BETS[S.bi], free:S.fs>0});
+  toast(spinTaps.length+' spins pending');
+}
+async function play(selectedBet=BETS[S.bi]) {
   if (S.busy) return; S.busy = true; upd(); clearHits(); $('wt').textContent = 'WIN'; $('win').classList.remove('on');
-  const free = S.fs > 0, bet = BETS[S.bi]; let r;
-  try { r = await getRound(bet, free); } catch (e) { toast(e.message || 'Error'); sfx('error'); S.busy = false; S.auto = false; upd(); return; }
+  const free = S.fs > 0, bet = selectedBet; let r;
+  try { r = await getRound(bet, free); } catch (e) { spinTaps.length=0; toast(e.message || 'Error'); sfx('error'); S.busy = false; S.auto = false; upd(); return; }
   if (free) { S.fs--; sfx('free'); }
   sfx('spin'); await spinReels(r.grid); S.grid = r.grid;
   const ev = evalGrid(r.grid, bet), lines = r.lines || ev.lines;
@@ -357,6 +363,11 @@ async function play() {
   emit('winLoseAnimation', { roundId: r.roundId, result: win > 0 ? 'win' : 'lose', amount: win });
   if (S.mode === 'demo' && S.bal < 1000 && S.fs === 0) { S.bal = 5e7; renderBal(); toast('Demo balance refilled'); }
   S.busy = false; upd();
+  while (spinTaps.length) {
+    const next=spinTaps.shift();
+    if (next.free && !S.fs) continue;
+    return play(S.fs ? bet : next.bet);
+  }
   if (S.fs > 0 || S.auto) setTimeout(() => { if (S.fs > 0 || S.auto) play(); }, Math.max(celebrationMs + 250, win > 0 ? (S.fast ? 1200 : 2000) : 500));
 }
 
@@ -410,7 +421,7 @@ function wire() {
   const sp = $('bSpin'); let ht, held = false;
   sp.onpointerdown = () => { held = false; ht = setTimeout(() => { held = true; S.auto = true; upd(); play(); }, 600); };
   sp.onpointerleave = () => clearTimeout(ht);
-  sp.onpointerup = () => { clearTimeout(ht); if (held) return; if (S.auto) { S.auto = false; upd(); } else play(); };
+  sp.onpointerup = () => { clearTimeout(ht); if (held) return; if (S.auto) { S.auto = false; upd(); } else manualSpin(); };
   root.addEventListener('resize', fit);
   root.addEventListener('pointerdown', unlockAudio, { once:true, passive:true });
   root.addEventListener('touchstart', unlockAudio, { once:true, passive:true });

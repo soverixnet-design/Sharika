@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/sharika-private-center-catalog-20261119
+      - feature/sharika-private-center-rapid-tap-integration-20261120
   pull_request:
     paths:
       - 'cloudflare/src/private-center.mjs'

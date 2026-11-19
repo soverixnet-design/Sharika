@@ -118,9 +118,13 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
   if(kind==='event'){
    const eventId=/^event:([1-9][0-9]{0,10})$/.exec(id);
    if(!eventId)return deny('invalid_event',400);
-   const event=await db.prepare('SELECT id FROM sharika_events WHERE id=?')
+   const event=await db.prepare('SELECT id,status,ends_at FROM sharika_events WHERE id=?')
     .bind(Number(eventId[1])).first();
    if(!event)return deny('event_not_found',404);
+   // Publishing an unfinished or expired event would create a misleading
+   // checked admin toggle with no corresponding member-visible event.
+   if(body.published&&event.status!=='published')return deny('event_not_ready',409);
+   if(body.published&&Date.parse(event.ends_at)<=Date.now())return deny('event_expired',409);
    await db.prepare("INSERT OR IGNORE INTO sharika_center_publishing(id,kind,title,published) VALUES(?,'event',?,0)")
     .bind(id,'Event '+eventId[1]).run();
   }

@@ -650,6 +650,13 @@
         renderBalance();
         break;
       }
+      case 'tap_receipt': {
+        S.pending.delete(m.reqId);S.balance=m.balance;
+        if(m.round===S.round&&Array.isArray(m.myBets))S.myBets=m.myBets;
+        renderBets();renderBalance();
+        emit('bet',{round:m.round,itemId:m.itemId,amount:m.amount,balance:m.balance});
+        break;
+      }
       case 'bet_ok': {
         const p = S.pending.get(m.reqId); S.pending.delete(m.reqId);
         S.myBets = m.myBets; S.balance = m.balance;

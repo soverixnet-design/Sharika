@@ -1,0 +1,19 @@
+name: Sharika rapid tap verification
+on:
+  push:
+    branches: [feature/sharika-all-games-rapid-taps-20261119]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: node --test cloudflare/test/rapid-round-taps.test.mjs hosted-game-center/test/rapid-slot-input.test.mjs
+      - run: node hosted-game-center/scripts/build.mjs
+      - run: npm install --prefix hosted-game-center --no-audit --no-fund
+      - run: hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+      - run: node hosted-game-center/test/rapid-tap-input.cjs

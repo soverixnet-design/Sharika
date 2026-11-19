@@ -14,7 +14,7 @@
   const icons=Object.fromEntries(ITEMS.map(x=>[x[0],x[1]]));
   icons.salad='🥗';icons.pizza='🍕';
   const host=window.parent;
-  const pending=new Map(),pendingPicks=new Set(),uncertainBets=new Map();
+  const pending=new Map();
   let seq=0,active=true,authorized=false,refreshing=false,selected=50,state=null;
   let lastServerSeenAt=0,lastRankingAt=0,rankingPromise=null,rankCache=null;
   let offset=0,roundNo=-1,shownResult=-1,lastPoll=0,lastSpin=-1;
@@ -124,15 +124,6 @@
       if(!active||!fresh?.round||!fresh.virtual_coins_only)throw new Error('invalid_game_state');
       state=fresh;offset=Number(fresh.server_time)-Date.now();
       authorized=true;lastServerSeenAt=Date.now();
-      for(const [pick,body] of uncertainBets){
-        if((fresh.my_bets||[]).some(b=>b.request_id===body.request_id)){
-          uncertainBets.delete(pick);
-          alertMessage('Bet accepted ✓',1700);
-        }else if(fresh.round.round_no>body.round_no+1){
-          // Keep stale, unconfirmed requests from locking a food in later rounds.
-          uncertainBets.delete(pick);
-        }
-      }
       render();
       if(Date.now()-lastRankingAt>20000)refreshBetRanking();
     }catch(error){
@@ -142,57 +133,21 @@
       }
     }finally{refreshing=false;}
   }
-  function requestId(){
-    if(!crypto?.getRandomValues)throw new Error('secure_request_unavailable');
-    return 'gaddy:'+Array.from(crypto.getRandomValues(new Uint8Array(16)),
-      x=>x.toString(16).padStart(2,'0')).join('');
-  }
+  const enqueue=createRoundTapQueue({
+    send:body=>request('bet',body),
+    openRound:n=>authorized&&state?.round.round_no===n&&Date.now()+offset<state.round.bet_closes_ms,
+    onStatus(count){if(count)alertMessage(count+' pending',800);}
+  });
   async function place(pick){
-    if(!authorized||!state)return alertMessage('Connecting to game server…');
-    if(pendingPicks.has(pick))return alertMessage('Placing your bet…',900);
-    const phase=(Date.now()+offset-state.round.starts_ms)%CYCLE;
-    const previous=uncertainBets.get(pick);
-    const existing=previous?.round_no===state.round.round_no?previous:null;
-    if(previous&&!existing)uncertainBets.delete(pick);
-    if(!existing&&phase>=BET)return alertMessage('Betting is closed');
-    if(!existing&&state.coins<selected)return alertMessage('Insufficient coins');
-    const body=existing||{round_no:state.round.round_no,pick,amount:selected,request_id:requestId()};
-    pendingPicks.add(pick);
-    const tile=slots.get(ITEMS[pick][0]);
-    tile?.classList.add('pending');
-    alertMessage(existing?'Checking previous bet…':'Placing your bet…',950);
-    let timedOut=false;
+    if(!authorized||!state)return alertMessage('Connecting to game server');
+    const round=state.round.round_no,amount=selected;
     try{
-      let receipt;
-      try{receipt=await request('bet',body);}catch(error){
-        // Retry the same idempotency key; never debit twice after a timeout.
-        if(error.message!=='server_timeout')throw error;
-        timedOut=true;alertMessage('Connection slow — retrying safely…',1700);
-        receipt=await request('bet',body);
-      }
-      if(!receipt||!Number.isSafeInteger(receipt.coins))throw new Error('invalid_bet_receipt');
-      uncertainBets.delete(pick);
-      state.coins=receipt.coins;
-      if(!(state.my_bets||[]).some(x=>x.request_id===body.request_id))
-        state.my_bets=[...(state.my_bets||[]),{round_no:body.round_no,
-          pick_index:pick,amount:body.amount,request_id:body.request_id,status:'accepted',payout:0}];
-      render();alertMessage('Bet accepted ✓',1500);
-      lastRankingAt=0;
-    }catch(error){
-      const code=String(error.message||error);
-      if(code==='server_timeout'||timedOut){
-        uncertainBets.set(pick,body);
-        alertMessage('Bet status pending. Tap again to check safely.',3800);
-      }else{
-        uncertainBets.delete(pick);
-        const reason=code==='insufficient_coins'?'Insufficient coins':
-          code==='betting_closed'?'Betting is closed':
-          /rate.?limit|too_many_requests/i.test(code)?'Too many bets. Please wait a moment.':code;
-        alertMessage('Bet not accepted: '+reason,3000);
-      }
-    }finally{
-      pendingPicks.delete(pick);tile?.classList.remove('pending');refresh();
-    }
+      const r=await enqueue(round,pick,amount,state.coins);
+      state.coins=r.coins;
+      if(round===state.round.round_no&&!state.my_bets.some(b=>b.request_id===r.request_id))
+        state.my_bets.push({round_no:round,pick_index:pick,amount,request_id:r.request_id});
+      render();alertMessage('Bet accepted',900);lastRankingAt=0;
+    }catch(error){alertMessage(error.message);}
   }
   function drawSpin(index){
     for(const item of slots.values())item.classList.remove('on');
@@ -224,7 +179,7 @@
     const n=Math.floor(now/CYCLE),t=now%CYCLE;
     if(n!==roundNo){roundNo=n;shownResult=-1;lastSpin=-1;for(const x of slots.values())x.classList.remove('win');}
     const canBet=authorized&&state.round.round_no===n&&t<BET;
-    for(const x of slots.values())x.disabled=!canBet||pendingPicks.has(Number(x.dataset.pick));
+    for(const x of slots.values())x.disabled=!canBet;
     if(t<BET)hub('🍽','Place your bets',Math.ceil((BET-t)/1000));
     else if(t<PAY){
       hub('🎡','Spinning…',null);
