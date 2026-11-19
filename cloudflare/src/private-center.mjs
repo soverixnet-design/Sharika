@@ -55,7 +55,7 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
   const eventsEnabled=active.some(item=>item.kind==='module'&&item.id==='events');
   const events=eventsEnabled?await db.prepare(
    'SELECT e.id,e.title,e.kind,e.description,e.starts_at,e.ends_at,e.banner_id,'+
-   'e.prize_1,e.prize_2,e.prize_3,e.reward_labels_json,'+
+   'e.prize_1,e.prize_2,e.prize_3,e.reward_labels_json,e.template_id,e.scoring_mode,'+
    'CASE WHEN i.image_bytes>0 THEN i.version ELSE 0 END AS banner_version '+
    'FROM sharika_events e JOIN sharika_center_publishing p ON p.id=(\'event:\'||e.id) '+
    "AND p.kind='event' AND p.published=1 " +
@@ -68,6 +68,7 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
    modules:active.filter(x=>x.kind==='module').map(safeItem),
    events:rows(events).map(e=>({id:Number(e.id),title:e.title,kind:e.kind,
     description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,
+    template_id:e.template_id||'royal_gold',scoring_mode:e.scoring_mode||'gift_points',
     status:e.starts_at>now?'scheduled':'live',
     banner_url:Number(e.banner_version)>0?'/api/center/events/'+Number(e.id)+'/banner?v='+Number(e.banner_version):null,
     prizes:[Number(e.prize_1)||0,Number(e.prize_2)||0,Number(e.prize_3)||0],
