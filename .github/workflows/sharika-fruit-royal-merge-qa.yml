@@ -1,0 +1,52 @@
+name: Sharika Royal Slots and Fruit Machine integration preflight
+on:
+  push:
+    branches: [fix/sharika-royal-slots-fruit-machine-integration-20261119]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate Game Center and D1 source
+        run: |
+          set -euo pipefail
+          node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/scripts/build.mjs
+          node --check hosted-game-center/src/index.mjs
+          node --check hosted-game-center/test/fruit-machine-royal-slots-integration.test.mjs
+          node --check cloudflare/src/food-wheel-deluxe.mjs
+          node --check cloudflare/src/royal-slots.mjs
+      - name: Verify both games and server-authoritative wagers
+        run: |
+          set -euo pipefail
+          node --test hosted-game-center/test/fruit-machine-royal-slots-integration.test.mjs
+          node --test hosted-game-center/test/royal-slots-integration.test.mjs
+          node --test cloudflare/test/food-wheel-deluxe.test.mjs
+          node --test cloudflare/test/royal-slots.test.mjs
+      - name: Build exact merged hosted assets
+        run: |
+          set -euo pipefail
+          node hosted-game-center/scripts/build.mjs
+          test -s hosted-game-center/dist/cards/fruit-machine-user.webp
+          test -s hosted-game-center/dist/cards/royal-slots.webp
+          test -s hosted-game-center/dist/games/royal-slots/index.html
+          test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+      - name: Validate hosted original game JS and no unauthenticated coin access
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {Script} from 'node:vm';
+          const wheel=readFileSync('hosted-game-center/dist/games/original-games/food-wheel-deluxe.html','utf8');
+          const match=wheel.match(/<script>([\\s\\S]*?)<\\/script>/);
+          if(!match)throw Error('missing_fruit_machine_script');
+          new Script(match[1],{filename:'food-wheel-deluxe.html'});
+          const hosted=readFileSync('hosted-game-center/dist/app.js','utf8');
+          if(!hosted.includes("if(game.id==='royal-slots')")||
+             !hosted.includes("'/cards/fruit-machine-user.webp'"))throw Error('integrated_catalog_missing');
+          NODE
