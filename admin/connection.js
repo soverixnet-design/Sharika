@@ -3430,6 +3430,26 @@
         'linear-gradient(145deg,'+theme.base+',#150b2a)';
       target.style.borderColor=theme.color;
       target.replaceChildren();
+      const selectedBanner=Number(byId('sh-ev-banner')?.value||0);
+      const image=availableBanners.find(b=>Number(b.id)===selectedBanner);
+      if(image?.image_url){
+        try{
+          const raw=new URL(String(image.image_url),location.href);
+          // Preview only the official authenticated Banner API. No third-party
+          // URLs, arbitrary HTML, or external tracking pixels in Admin Panel.
+          if(raw.origin===location.origin&&
+             /^\/api\/v1\/banners\/[0-9]+\/image$/.test(raw.pathname)){
+            const photo=document.createElement('img');
+            photo.src=raw.href;
+            photo.alt='Selected event banner preview';
+            photo.loading='lazy';photo.decoding='async';
+            photo.style.cssText='display:block;max-width:100%;max-height:145px;'+
+              'width:auto;object-fit:contain;border-radius:12px;margin:0 auto 12px';
+            photo.onerror=()=>photo.remove();
+            target.append(photo);
+          }
+        }catch(_){}
+      }
       const sign=document.createElement('div');sign.textContent=theme.symbol;
       sign.style.cssText='font-size:43px;color:'+theme.color+';text-shadow:0 0 22px '+theme.color;
       const title=document.createElement('strong');
@@ -3479,7 +3499,8 @@
       clear();
       byId('sh-event-clear').onclick=clear;
       for(const id of ['sh-ev-title','sh-ev-template','sh-ev-scoring',
-        'sh-ev-country','sh-ev-start','sh-ev-end','sh-ev-p1','sh-ev-p2','sh-ev-p3'])
+        'sh-ev-country','sh-ev-banner','sh-ev-start','sh-ev-end',
+        'sh-ev-p1','sh-ev-p2','sh-ev-p3'])
         byId(id).addEventListener('input',previewEventDesign);
       list.querySelectorAll('[data-sh-event-edit]').forEach(button=>button.onclick=()=>{
         const e=all.find(row=>row.id===Number(button.dataset.shEventEdit));
