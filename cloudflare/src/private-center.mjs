@@ -44,7 +44,7 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
    'JOIN sharika_game_catalog c ON c.id=p.id AND c.enabled=1 '+
    "WHERE p.kind='game' AND p.published=1 ORDER BY p.sort_order,p.id").all();
   const now=new Date().toISOString();
-  const events=await db.prepare('SELECT e.id,e.title,e.kind,e.description,e.starts_at,e.ends_at,e.banner_url '+
+  const events=await db.prepare('SELECT e.id,e.title,e.kind,e.description,e.starts_at,e.ends_at,e.banner_id '+
    'FROM sharika_events e JOIN sharika_center_publishing p ON p.id=(\'event:\'||e.id) '+
    "AND p.kind='event' AND p.published=1 " +
    "WHERE e.status='published' AND e.starts_at<=? AND e.ends_at>? ORDER BY e.starts_at DESC LIMIT 30")
@@ -54,7 +54,7 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
    rankings:active.filter(x=>x.kind==='ranking').map(safeItem),
    modules:active.filter(x=>x.kind==='module').map(safeItem),
    events:rows(events).map(e=>({id:Number(e.id),title:e.title,kind:e.kind,
-    description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,banner_url:e.banner_url||''})),
+    description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,banner_id:e.banner_id||null})),
    issued_at:now,virtual_coins_only:true
   });
  }
