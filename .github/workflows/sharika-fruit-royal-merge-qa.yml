@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           node hosted-game-center/scripts/build.mjs
-          test -s hosted-game-center/dist/cards/fruit-machine-user.webp
+          test -s hosted-game-center/dist/cards/fruit-machine.jpg
           test -s hosted-game-center/dist/cards/royal-slots.webp
           test -s hosted-game-center/dist/games/royal-slots/index.html
           test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
@@ -48,5 +48,5 @@ jobs:
           new Script(match,{filename:'food-wheel-deluxe.html'});
           const hosted=readFileSync('hosted-game-center/dist/app.js','utf8');
           if(!hosted.includes("if(game.id==='royal-slots')")||
-             !hosted.includes("'/cards/fruit-machine-user.webp'"))throw Error('integrated_catalog_missing');
+             !hosted.includes("'/cards/fruit-machine.jpg'"))throw Error('integrated_catalog_missing');
           NODE
