@@ -72,10 +72,10 @@
      if(action==='state'){
        const out={serverTime:r.now,balance:coins,
          todayDay:new Date().toISOString().slice(0,10),todayWin:0,todayPlayed:0,
-         user:person,config:{chips:[1000,10000,100000,1000000],maxBetPerRound:10000000},
+         user:person,config:{chips:[100,1000,10000,50000],maxBetPerRound:100000000},
          state,myBets:wagers.slice(),history:[]};
        if(r.phase==='result')out.result={round:r.n,resultId:state.resultId,
-         endsAt:r.end,you:{bet:0,win:0,balance:coins},top:{winners:[]}};
+         endsAt:r.end,you:{bet:0,win:0,balance:coins},top:[]};
        return out;
      }
      if(action==='records'||action==='history')return {list:history};
@@ -85,9 +85,10 @@
        if(r.now>=r.betEnd)throw Error('betting_closed');
        const itemId=String(body?.itemId||'chicken'),amount=Number(body?.amount);
        const id=String(body?.request_id||'');
-       const items=['chicken','fish','hotdog','steak','grapes','lettuce','pepper','melon',
-         'pizza','salad','beef','carrot','corn','tomato','cabbage','shrimp'];
-       if(!items.includes(itemId)||!valid(amount)||amount===0)throw Error('invalid_demo_bet');
+       const items=['chicken','fish','hotdog','steak','grape','lettuce','pepper','watermelon'];
+       if(!items.includes(itemId)||!valid(amount)||![100,1000,10000,50000].includes(amount)||
+          !Number.isSafeInteger(body?.round)||body.round!==r.n)
+         throw Error('invalid_demo_bet');
        return pay(amount,id,()=>{
          const index=items.indexOf(itemId)%8;wagers[index]+=amount;totals[index]+=amount;
          return {round:r.n,itemId,amount,balance:coins,myBets:wagers.slice(),
