@@ -8,6 +8,7 @@ permissions:
   contents: write
 jobs:
   signed-staging:
+    environment: sharika-staging
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -32,11 +33,26 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+
+          echo "Firebase registered signer source check (no keys or passwords shown):"
+          if [ -n "$STAGING_B64" ]; then echo "STAGING_KEY_PRESENT"; else echo "STAGING_KEY_MISSING"; fi
+          if [ -n "$STAGING_PASSWORD" ]; then echo "STAGING_PASSWORD_PRESENT"; else echo "STAGING_PASSWORD_MISSING"; fi
+          if [ -n "$PLAY_B64" ]; then echo "PLAY_UPLOAD_KEY_PRESENT"; else echo "PLAY_UPLOAD_KEY_MISSING"; fi
+          if [ -n "$PLAY_PASSWORD" ] && [ -n "$PLAY_ALIAS" ] && [ -n "$PLAY_KEY_PASSWORD" ]; then
+            echo "PLAY_UPLOAD_CREDENTIALS_PRESENT"
+          else
+            echo "PLAY_UPLOAD_CREDENTIALS_INCOMPLETE"
+          fi
           if [ -n "$STAGING_B64" ] && [ -n "$STAGING_PASSWORD" ]; then
             file="$RUNNER_TEMP/sharika-registered-staging.p12"
             printf '%s' "$STAGING_B64" | tr -d '[:space:]' | base64 -d > "$file"
-            test "$(wc -c < "$file")" -gt 500
-            sha1="$(keytool -list -v -keystore "$file" -storepass "$STAGING_PASSWORD" -alias sharika-staging | sed -n 's/.*SHA1: *//p' | head -n1)"
+            if ! test "$(wc -c < "$file")" -gt 500; then
+              echo "::error::Configured staging keystore secret decodes to an invalid/small file"; exit 1
+            fi
+            if ! keytool -list -v -keystore "$file" -storepass "$STAGING_PASSWORD" -alias sharika-staging > "$RUNNER_TEMP/signcheck.txt" 2>&1; then
+              echo "::error::Staging keystore password or alias invalid"; exit 1
+            fi
+            sha1="$(sed -n 's/.*SHA1: *//p' "$RUNNER_TEMP/signcheck.txt" | head -n1)"
             node android-staging/google-oauth-signing.cjs "$sha1"
             echo "SHARIKA_STAGING_KEYSTORE_PATH=$file" >> "$GITHUB_ENV"
             echo "SHARIKA_STAGING_KEYSTORE_PASSWORD=$STAGING_PASSWORD" >> "$GITHUB_ENV"
@@ -46,7 +62,10 @@ jobs:
             file="$RUNNER_TEMP/sharika-registered-upload.p12"
             printf '%s' "$PLAY_B64" | tr -d '[:space:]' | base64 -d > "$file"
             test "$(wc -c < "$file")" -gt 500
-            sha1="$(keytool -list -v -keystore "$file" -storepass "$PLAY_PASSWORD" -alias "$PLAY_ALIAS" | sed -n 's/.*SHA1: *//p' | head -n1)"
+            if ! keytool -list -v -keystore "$file" -storepass "$PLAY_PASSWORD" -alias "$PLAY_ALIAS" > "$RUNNER_TEMP/signcheck.txt" 2>&1; then
+              echo "::error::Upload keystore password or alias invalid"; exit 1
+            fi
+            sha1="$(sed -n 's/.*SHA1: *//p' "$RUNNER_TEMP/signcheck.txt" | head -n1)"
             node android-staging/google-oauth-signing.cjs "$sha1"
             echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$file" >> "$GITHUB_ENV"
             echo "SHARIKA_PLAY_UPLOAD_STORE_PASSWORD=$PLAY_PASSWORD" >> "$GITHUB_ENV"
