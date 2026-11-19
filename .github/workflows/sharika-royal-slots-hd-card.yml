@@ -1,0 +1,75 @@
+name: Sharika Royal Slots HD card
+on:
+  push:
+    branches:
+      - feature/sharika-royal-slots-audio-server-staging-20261119
+    paths:
+      - '.github/workflows/sharika-royal-slots-hd-card.yml'
+permissions:
+  contents: write
+jobs:
+  update-card:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    environment: sharika-staging
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CARD_URL: "https://eu-central.storage.cloudconvert.com/tasks/3cf10fd0-3790-4fc0-a635-94895e9e6ff0/glossy_bonus_slots_jackpot_icon.webp?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=cloudconvert-production%2F20261119%2Ffra%2Fs3%2Faws4_request&X-Amz-Date=20261119T003632Z&X-Amz-Expires=86400&X-Amz-Signature=6199cc8f52a35e228988378ccab75654ed421884cc2d2ceee6fdb3d692a53b8b&X-Amz-SignedHeaders=host&response-content-disposition=attachment%3B%20filename%3D%22glossy_bonus_slots_jackpot_icon.webp%22&response-content-type=image%2Fwebp&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download approved original-layout HD Royal Slots card
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 4 --retry-delay 2 "$CARD_URL" --output hosted-game-center/web/royal-slots-card.webp
+          test "$(wc -c < hosted-game-center/web/royal-slots-card.webp)" -gt 30000
+          file hosted-game-center/web/royal-slots-card.webp | grep -q 'Web/P'
+      - name: Update only Royal Slots game card references
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const app='hosted-game-center/web/app.js';
+          let a=readFileSync(app,'utf8');
+          const before="'royal-slots':'/cards/royal-slots.svg'";
+          if(!a.includes(before))throw Error('Royal Slots artwork mapping changed unexpectedly');
+          a=a.replace(before,"'royal-slots':'/cards/royal-slots.webp'");
+          writeFileSync(app,a);
+          const builder='hosted-game-center/scripts/build.mjs';
+          let b=readFileSync(builder,'utf8');
+          const map="'royal-slots.svg':'@web/royal-slots-card.svg',";
+          if(!b.includes(map))throw Error('Royal Slots build mapping changed unexpectedly');
+          b=b.replace(map,map+"\n  'royal-slots.webp':'@web/royal-slots-card.webp',");
+          writeFileSync(builder,b);
+          NODE
+      - name: Validate and build static Game Center
+        run: |
+          set -euo pipefail
+          node --check hosted-game-center/web/app.js
+          node --test hosted-game-center/test/royal-slots-integration.test.mjs hosted-game-center/test/site.test.mjs
+          node hosted-game-center/scripts/build.mjs
+          test -s hosted-game-center/dist/cards/royal-slots.webp
+      - name: Commit HD card to Royal Slots staging branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hosted-game-center/web/royal-slots-card.webp hosted-game-center/web/app.js hosted-game-center/scripts/build.mjs
+          git commit -m "Use approved original-style HD Royal Slots icon on Game Center card"
+          git push origin HEAD:feature/sharika-royal-slots-audio-server-staging-20261119
+      - name: Deploy Game Center only to Cloudflare staging
+        working-directory: hosted-game-center
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify HD game card online
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 8 --retry-delay 2 --retry-all-errors --output /tmp/royal-slots-card.webp https://sharika-games-web-staging.soverixnet.workers.dev/cards/royal-slots.webp
+          test "$(wc -c < /tmp/royal-slots-card.webp)" -gt 30000
