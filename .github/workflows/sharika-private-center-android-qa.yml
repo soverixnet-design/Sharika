@@ -53,8 +53,7 @@ jobs:
              room.includes('sharika-games-web-staging.soverixnet.workers.dev')||
              !main.includes('case "openHostedEventCenter"')||
              !activity.includes('center_event_id')||
-             !frontend.includes("native('openHostedEventCenter'"))
-             )
+             !frontend.includes("native('openHostedEventCenter'")))
              throw Error('Wrong package, origin, auth or Play safety gate');
           console.log('Sharika signed-in private staging WebView verified');
           NODE
