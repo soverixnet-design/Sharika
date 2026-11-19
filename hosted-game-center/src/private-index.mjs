@@ -198,6 +198,9 @@ export default {async fetch(req,env){
  const result=await oldGameSite.fetch(req,env);
  const h=new Headers(result.headers);
  Object.entries(hdr).forEach(([k,v])=>h.set(k,v));
+ // The page itself must not be framed, but game HTML is intentionally framed
+ // by the SAME authenticated site. DENY here breaks every game iframe.
+ if(path.startsWith('/games/'))h.set('x-frame-options','SAMEORIGIN');
  // The original public site's CSP was designed for demo only. Keep a strict
  // no-external-fetch policy on this private hosted frontend.
  h.set('cache-control','private,no-store');
