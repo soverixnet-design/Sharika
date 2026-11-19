@@ -3163,6 +3163,18 @@
     invite_campaign:'🤝 Invite campaign',checkin_festival:'📅 Check-in festival',
     festival:'🎊 Festival',custom:'✨ Custom event'
   };
+  const ROYAL_EVENT_PRESETS={
+    royal_gold:{label:'Royal Gold · Crowns',color:'#f6ce78',base:'#3c175a',symbol:'♛'},
+    diamond_luxury:{label:'Diamond Luxury · Crystals',color:'#80e3ff',base:'#102d59',symbol:'◆'},
+    game_tournament:{label:'Game Tournament · Arena',color:'#ffba79',base:'#571f2c',symbol:'⚔'},
+    cp_love:{label:'CP Love · Hearts',color:'#ffc0d8',base:'#6b204f',symbol:'♥'},
+    festival_special:{label:'Festival Special · Lights',color:'#bbffcb',base:'#285647',symbol:'✦'}
+  };
+  const EVENT_SCORE_MODES={
+    gift_points:'Selected verified Gift Points',
+    game_wins:'Settled Game Win Coins',
+    cp_gifts:'Verified CP Gift Coins (couple ranking; no automatic prize payout)'
+  };
   function eventLocal(iso){
     const time=new Date(iso);
     if(!Number.isFinite(+time))return '';
@@ -3260,6 +3272,17 @@
       '<label>Type<select class="field" id="sh-ev-kind">'+
       Object.entries(EVENT_KINDS).map(([key,label])=>'<option value="'+key+'">'+esc(label)+'</option>').join('')+
       '</select></label></div>'+
+      '<div class="row"><label>👑 Event Design Template<select class="field" id="sh-ev-template">'+
+      Object.entries(ROYAL_EVENT_PRESETS).map(([key,v])=>
+        '<option value="'+key+'">'+esc(v.label)+'</option>').join('')+
+      '</select></label>'+
+      '<label>🏆 Event Ranking Rule<select class="field" id="sh-ev-scoring">'+
+      Object.entries(EVENT_SCORE_MODES).map(([key,label])=>
+        '<option value="'+key+'">'+esc(label)+'</option>').join('')+
+      '</select></label></div>'+
+      '<div id="sh-ev-design-preview" role="img" aria-label="Selected royal event design preview" '+
+      'style="padding:20px;text-align:center;border:2px solid #d9b369;border-radius:20px;'+
+      'margin:10px 0;color:#ffe7b3;background:linear-gradient(145deg,#432460,#14092f)"></div>'+
       '<label>Description / rules<textarea class="field" id="sh-ev-desc" maxlength="1000" rows="3" '+
       'placeholder="Describe the ranking and how winners are chosen"></textarea></label>'+
       '<div class="row"><label>Starts (local time)<input class="field" id="sh-ev-start" type="datetime-local"></label>'+
@@ -3325,7 +3348,7 @@
           '<b>'+medal+' '+fmt(coins)+' 🪙</b> '+
           (receipt?'<span class="n">✓ Paid to '+esc(receipt.public_id)+
              ' ('+esc(receipt.name)+')</span>':
-           role==='super'&&e.status==='ended'?
+           role==='super'&&e.status==='ended'&&e.scoring_mode!=='cp_gifts'?
              '<input class="field" style="max-width:145px" inputmode="numeric" maxlength="8" '+
              'placeholder="8-digit user ID" id="sh-ev-recipient-'+e.id+'-'+(i+1)+'">'+
              '<button type="button" class="btn s" data-sh-event-award="'+e.id+'" '+
@@ -3337,6 +3360,8 @@
         '<h3>🏆 '+esc(e.title)+' <small>#'+e.id+'</small></h3>'+
         '<p class="n">'+esc(EVENT_KINDS[e.kind]||e.kind)+' · <b>'+esc(e.status.toUpperCase())+'</b></p>'+
         '<p class="n">'+schedule+'</p><p>'+esc(e.description||'No rules entered')+'</p>'+
+        '<p class="n">Design: '+esc(ROYAL_EVENT_PRESETS[e.template_id]?.label||'Royal Gold')+
+          ' · Ranking: '+esc(EVENT_SCORE_MODES[e.scoring_mode]||EVENT_SCORE_MODES.gift_points)+'</p>'+
         '<p class="n">Home banner: '+(e.banner_id?'#'+Number(e.banner_id):'Royal gradient')+
           ' · Scoring gifts: '+(e.gift_rules||[]).map(g=>
             '#'+Number(g.gift_id)+' × '+Number(g.points)).join(', ')+(e.gift_rules?.length?'':'none')+'</p>'+
@@ -3348,6 +3373,25 @@
     }).join('');
     let editing=null;
     const now=new Date(),tomorrow=new Date(now.getTime()+86400000);
+    function previewEventDesign(){
+      const id=byId('sh-ev-template')?.value||'royal_gold';
+      const theme=ROYAL_EVENT_PRESETS[id]||ROYAL_EVENT_PRESETS.royal_gold;
+      const target=byId('sh-ev-design-preview');
+      if(!target)return;
+      target.style.background='radial-gradient(circle at 50% 0, '+theme.color+'77, transparent 65%),'+
+        'linear-gradient(145deg,'+theme.base+',#150b2a)';
+      target.style.borderColor=theme.color;
+      target.replaceChildren();
+      const sign=document.createElement('div');sign.textContent=theme.symbol;
+      sign.style.cssText='font-size:43px;color:'+theme.color+';text-shadow:0 0 22px '+theme.color;
+      const title=document.createElement('strong');
+      title.textContent=byId('sh-ev-title')?.value.trim()||'YOUR EVENT TITLE';
+      title.style.cssText='display:block;font-family:Georgia,serif;font-size:23px;color:'+theme.color;
+      const note=document.createElement('p');note.textContent='Template preview · '+theme.label+
+        ' · '+(EVENT_SCORE_MODES[byId('sh-ev-scoring')?.value]||EVENT_SCORE_MODES.gift_points);
+      note.style.cssText='font-size:11px;color:#f9edda';
+      target.append(sign,title,note);
+    }
     function clear(){
       editing=null;
       byId('sh-event-form-title')?.replaceChildren(document.createTextNode('✨ Create event'));
@@ -3358,6 +3402,9 @@
       byId('sh-ev-end').value=eventLocal(tomorrow.toISOString());
       byId('sh-ev-status').value='draft';
       byId('sh-ev-banner').value='0';
+      byId('sh-ev-template').value='royal_gold';
+      byId('sh-ev-scoring').value='gift_points';
+      previewEventDesign();
       root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>input.checked=false);
       root.querySelectorAll('[data-sh-ev-points]').forEach(input=>input.value='1');
       for(let i=1;i<=7;i++)byId('sh-ev-label-'+i).value='';
@@ -3367,6 +3414,8 @@
     if(role==='super'){
       clear();
       byId('sh-event-clear').onclick=clear;
+      for(const id of ['sh-ev-title','sh-ev-template','sh-ev-scoring'])
+        byId(id).addEventListener('input',previewEventDesign);
       list.querySelectorAll('[data-sh-event-edit]').forEach(button=>button.onclick=()=>{
         const e=all.find(row=>row.id===Number(button.dataset.shEventEdit));
         if(!e||e.locked)return;
@@ -3379,6 +3428,9 @@
         byId('sh-ev-end').value=eventLocal(e.ends_at);
         byId('sh-ev-status').value=e.published?'published':e.status;
         byId('sh-ev-banner').value=String(e.banner_id||0);
+        byId('sh-ev-template').value=e.template_id||'royal_gold';
+        byId('sh-ev-scoring').value=e.scoring_mode||'gift_points';
+        previewEventDesign();
         root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>{
           const found=(e.gift_rules||[]).find(rule=>Number(rule.gift_id)===Number(input.dataset.shEvGift));
           input.checked=!!found;
@@ -3418,7 +3470,8 @@
         const payload={title:byId('sh-ev-title').value.trim(),kind:byId('sh-ev-kind').value,
           description:byId('sh-ev-desc').value.trim(),starts_at:new Date(start).toISOString(),
           ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p,
-          banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,reward_labels};
+          banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,reward_labels,
+          template_id:byId('sh-ev-template').value,scoring_mode:byId('sh-ev-scoring').value};
         if(payload.title.length<3){hint.textContent='Enter an event name of at least 3 characters.';return;}
         if(!window.confirm((editing?'Update event #'+editing:'Create this event')+
           ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;
