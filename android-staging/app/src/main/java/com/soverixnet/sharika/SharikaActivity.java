@@ -876,9 +876,10 @@ public final class SharikaActivity extends Activity {
         if (action == null) { sendResult(id, result(false,null,"unknown_action")); return; }
         switch (action) {
             case "openHostedGameCenter":
+                // Debug game access uses BuildConfig's configured API origin.
+                // Release/Play builds are still blocked independently below.
                 if (BuildConfig.SHARIKA_PLAY_BUILD ||
-                    auth.getCurrentUser()==null ||
-                    !"https://sharika-api-staging.soverixnet.workers.dev".equals(API_ORIGIN)) {
+                    auth.getCurrentUser()==null) {
                     sendResult(id,result(false,null,"hosted_game_center_unavailable"));
                     break;
                 }
