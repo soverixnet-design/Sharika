@@ -145,6 +145,8 @@ export async function handleEventApp({request,env,uid,path,cors,reply,fail}){
   return reply(await listEventData(env.DB,false),200,cors);
 }
 async function announceEvent(env,ctx,id,title,actorUid){
+  if(!await centerPublished(env.DB,'module','events')||
+      !await centerPublished(env.DB,'event','event:'+id))return;
   const members=await env.DB.prepare(
     "SELECT auth_uid FROM sharika_users WHERE status='active' ORDER BY public_no LIMIT 500"
   ).all();
