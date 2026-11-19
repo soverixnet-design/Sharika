@@ -409,7 +409,10 @@ export async function handleRequest(request, env, ctx) {
     }
     if(path==='/api/v1/game-catalog'&&request.method==='GET'){
       await assertActive(env.DB,uid);
-      return reply({games:await readGameCatalog(env.DB)},200,cors);
+      const catalog=await readGameCatalog(env.DB);
+      const published=(await env.DB.prepare("SELECT id FROM sharika_center_publishing WHERE kind='game' AND published=1").all()).results||[];
+      const visibleIds=new Set(published.map(item=>item.id));
+      return reply({games:catalog.filter(game=>visibleIds.has(game.id))},200,cors);
     }
     if(path==='/api/v1/royal-slots/state'||path==='/api/v1/royal-slots/spin'){
       await assertActive(env.DB,uid);
@@ -1015,8 +1018,12 @@ export async function handleRequest(request, env, ctx) {
     // Reuse the authenticated user's existing virtual-coin wallet and D1 ledger.
     if(parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='original-games'){
       await assertActive(env.DB,uid);
-      if(parts.length===3&&request.method==='GET')
-        return reply({games:['sovera-food','sovera-gaddy','night-food','fruit-royale','food-deluxe','greedy-classic'],virtual_coins_only:true},200,cors);
+      if(parts.length===3&&request.method==='GET'){
+        const candidates=['sovera-food','sovera-gaddy','night-food','fruit-royale','food-deluxe','greedy-classic'];
+        const allowed=[];
+        for(const game of candidates)if(await centerPublished(env.DB,'game',game))allowed.push(game);
+        return reply({games:allowed,virtual_coins_only:true},200,cors);
+      }
       if(parts.length===5){
         if(!await centerPublished(env.DB,'game',parts[3]))
           return fail('game_hidden',403,cors);
@@ -1055,9 +1062,12 @@ export async function handleRequest(request, env, ctx) {
     // owns the atomic debit/payout triggers and exactly-once settlement.
     if (parts[0]==='api'&&parts[1]==='v1'&&parts[2]==='games') {
       await assertActive(env.DB,uid);
-      if(parts.length===3&&request.method==='GET')
-        return reply({games:['food-wheel','jackpot-fruit'],round_ms:40000,
-          virtual_coins_only:true},200,cors);
+      if(parts.length===3&&request.method==='GET'){
+        const allowed=[];
+        for(const game of ['food-wheel','jackpot-fruit'])
+          if(await centerPublished(env.DB,'game',game))allowed.push(game);
+        return reply({games:allowed,round_ms:40000,virtual_coins_only:true},200,cors);
+      }
       if(parts.length===5){
         if(!await centerPublished(env.DB,'game',parts[3]))
           return fail('game_hidden',403,cors);
@@ -1070,6 +1080,7 @@ export async function handleRequest(request, env, ctx) {
     }
     if(path==='/api/v1/rankings/rewards'&&request.method==='GET'){
       await assertActive(env.DB,uid);
+      if(!await centerPublished(env.DB,'ranking','weekly'))return fail('ranking_hidden',403,cors);
       const result=await readRankingRewardPreview(env.DB,url.searchParams.get('kind'));
       return result?reply(result,200,cors):fail('invalid_ranking_kind',400,cors);
     }
