@@ -168,11 +168,15 @@ async function currentState(db,uid){
 }
 
 export async function handleGreedyClassicRequest({request,db,uid,action,reply,fail,cors}){
-  if(!['state','bet','history','rankings'].includes(action))return fail('greedy_route_not_found',404,cors);
+  if(!['state','bet','history','rankings','winners'].includes(action))return fail('greedy_route_not_found',404,cors);
   const user=await wallet(db,uid);
   if(!user||user.status!=='active')return fail('profile_unavailable',403,cors);
   if(user.minor)return fail('games_adult_only',403,cors);
   if(action==='rankings'&&request.method==='GET')return reply(await rankings(db),200,cors);
+  if(action==='winners'&&request.method==='GET'){
+    await settleGreedyClassicDueBets(db);
+    return reply(await recentWinners(db),200,cors);
+  }
   if(action==='state'&&request.method==='GET')return reply(await currentState(db,uid),200,cors);
   if(action==='history'&&request.method==='GET'){
     await settleGreedyClassicDueBets(db);
