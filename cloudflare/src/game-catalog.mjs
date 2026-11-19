@@ -54,6 +54,12 @@ export async function handleGameCatalogAdmin({request,db,uid,role,reply,fail,cor
   const changed=await db.batch([
     db.prepare("UPDATE sharika_game_catalog SET enabled=?,updated_at=datetime('now') WHERE id=?")
       .bind(body.enabled?1:0,body.id),
+    // One toggle in the owner's EXISTING Games Admin page controls both the
+    // engine permission and its private app publication. No second switch
+    // is needed for a logged-in player to see and play an enabled title.
+    db.prepare("UPDATE sharika_center_publishing SET published=?,updated_by=?,updated_at=datetime('now') "+
+      "WHERE kind='game' AND id=?")
+      .bind(body.enabled?1:0,uid,body.id),
     db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)')
       .bind(uid,'game_catalog_toggle',JSON.stringify({game_id:body.id,enabled:body.enabled}))
   ]);
