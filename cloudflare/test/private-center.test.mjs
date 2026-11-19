@@ -84,6 +84,7 @@ test('global Events OFF prevents exposing even individually published event card
 test('only approved scheduled events expose verified banner and real prize details',async()=>{
  const db={prepare(sql){
   const statement={sql,args:[],bind(...args){this.args=args;return this;},
+   async first(){return sql.includes('SELECT country FROM sharika_users')?{country:'Bangladesh'}:null;},
    async all(){
     if(sql.includes("SELECT p.id,p.kind,p.title,p.sort_order FROM"))return {results:[
      {id:'events',kind:'module',title:'Event Center',sort_order:1},
