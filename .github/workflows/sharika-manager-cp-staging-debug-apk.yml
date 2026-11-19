@@ -1,0 +1,38 @@
+name: Sharika Manager Frame and CP Android APK Build (QA only)
+on:
+  push:
+    branches:
+      - feature/sharika-manager-frame-cp-gift-import-20261119
+permissions:
+  contents: read
+jobs:
+  build-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+    env:
+      SHARIKA_PLAY_API_ORIGIN: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Validate source and assets
+        run: |
+          node --check android-staging/staging-connection.js
+          node scripts/verify-manager-cp-assets.mjs
+      - name: Assemble isolated staging debug APK (never release or deploy)
+        run: gradle -p android-staging :app:assembleDebug --no-daemon
+      - name: Upload internal QA-only APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sharika-manager-cp-staging-qa-apk
+          path: android-staging/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 3
