@@ -46,18 +46,18 @@ test('hosted origin contains no Firebase token or wide native bridge',()=>{
  assert.ok(!('d1_databases' in wrangler),'public site must not have main wallet database binding');
 });
 
-test('Greedy Food Wheel preserves video aspect ratio, without stretching red lower panel',()=>{
+test('Greedy Food Wheel preserves original video ratio and verified event sounds',()=>{
  const original=read('../android-staging/app/src/main/assets/original-games/greedy-classic.html');
  const live=read('../android-staging/app/src/main/assets/original-games/greedy-classic-live.js');
  const backend=read('../cloudflare/src/greedy-classic.mjs');
- assert.match(original,/aspect-ratio:1080\\/1617/);
- assert.match(live,/id='sharika-original-video-fit'/);
- assert.match(live,/aspect-ratio:1080 \\/ 1617!important/);
- assert.match(live,/height:auto!important/);
- assert.doesNotMatch(live,/aspect-ratio:auto!important/);
- assert.match(live,/justify-content:space-between!important/);
- assert.match(live,/FoodSound\\.play\\('tick',i\\)/);
- assert.match(live,/FoodSound\\.play\\(earned>0\\?'win':'result'\\)/);
- assert.match(live,/S\\.mute\\|\\|document\\.visibilityState/);
- assert.match(backend,/const CHIPS=\\[100,1000,10000,50000\\]/);
+ assert.ok(original.includes('aspect-ratio:1080/1617'));
+ assert.ok(live.includes("id='sharika-original-video-fit'"));
+ assert.ok(live.includes('aspect-ratio:1080 / 1617!important'));
+ assert.ok(live.includes('height:auto!important'));
+ assert.ok(!live.includes('aspect-ratio:auto!important'));
+ assert.ok(live.includes('justify-content:space-between!important'));
+ assert.ok(live.includes("FoodSound.play('tick',i)"));
+ assert.ok(live.includes("FoodSound.play(earned>0?'win':'result')"));
+ assert.ok(live.includes("S.mute||document.visibilityState"));
+ assert.ok(backend.includes('const CHIPS=[100,1000,10000,50000]'));
 });
