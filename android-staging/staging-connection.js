@@ -1040,7 +1040,7 @@
     const url=sellerEscape(image);
     // Embedded SVG SMIL must be an image node even on profile surfaces:
     // CSS background-image can disable timelines on some Android WebViews.
-    if(seatImage||/\\.svg(?:[?#]|$)/i.test(image))
+    if(seatImage||/\.svg(?:[?#]|$)/i.test(image))
       return '<img class="'+classes+'" alt="" aria-hidden="true" src="'+url+'">';
     return '<i class="'+classes+'" aria-hidden="true" style="background-image:url(&quot;'+url+'&quot;)"></i>';
 
