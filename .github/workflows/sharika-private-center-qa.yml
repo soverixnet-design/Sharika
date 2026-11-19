@@ -39,7 +39,7 @@ jobs:
       - name: Verify full Cloudflare staging business-logic regression suite
         run: npm --prefix cloudflare run check
       - name: Run isolated publication, private event media and WebView game CSP tests
-        run: node --test cloudflare/test/private-center.test.mjs hosted-game-center/test/private-event-access.test.mjs
+        run: node --test cloudflare/test/private-center.test.mjs cloudflare/test/center-rankings.test.mjs hosted-game-center/test/private-event-access.test.mjs
       - name: Check only new migration in temporary SQLite
         run: |
           python3 - <<'PY'
