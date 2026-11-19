@@ -112,6 +112,11 @@ test('Food Wheel has one top marquee and a separate verified Top 3 results panel
  assert.ok(markup.includes('winner-game-icon'));
  assert.ok(app.includes('setInterval(pollGlobalFoodWinners,6500)'));
  assert.ok(app.includes('winnerQueue.push'));
+ assert.ok(app.includes("if(inRoom||!bridge||!winner"));
+ assert.ok(app.includes("if(inRoom||!bridge||globalWinnerBusy"));
+ const activity=read('../android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java');
+ assert.ok(activity.includes('root,() -> false'));
+
  assert.ok(app.includes('10000'));
  assert.ok(backend.includes("gameId:'greedy-classic'"));
  assert.ok(native.includes('/api/v1/original-games/greedy-classic/winners'));
