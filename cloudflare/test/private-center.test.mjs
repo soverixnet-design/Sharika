@@ -111,10 +111,10 @@ test('only approved scheduled events expose verified banner and real prize detai
  assert.deepEqual(data.events[0].reward_labels,['Gold Crown','Silver','Bronze']);
  assert.equal(data.events[0].banner_url,'/api/center/events/7/banner?v=2');
 });
-test('unimplemented BD ranking may not be published with fabricated winners',async()=>{
+test('unimplemented generic Event ranking may not be published with fabricated winners',async()=>{
  const db=fakeDb();
  const result=await invoke({path:'/api/v1/center/admin/visibility',method:'PATCH',db,
-  uid:'firebase:example:super',data:{kind:'ranking',id:'bd',published:true}});
+  uid:'firebase:example:super',data:{kind:'ranking',id:'event',published:true}});
  assert.equal(result.status,409);
  assert.equal((await result.json()).error,'ranking_source_not_ready');
  assert.equal(db.events.length,0);
