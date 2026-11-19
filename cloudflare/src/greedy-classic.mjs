@@ -108,9 +108,9 @@ async function recentWinners(db,now=Date.now()){
     "AND b.payout>0 AND u.status='active' AND u.minor=0 AND NOT EXISTS "+
     "(SELECT 1 FROM sharika_greedy_classic_bets pending WHERE pending.round_id=r.id AND pending.status='accepted') "+
     'GROUP BY r.round_no,b.user_uid HAVING SUM(b.payout)>? '+
-    'ORDER BY r.round_no,win DESC,u.public_no')
+    'ORDER BY r.round_no DESC,win DESC,u.public_no LIMIT 30')
     .bind(Math.max(0,latest-2),latest,now,WINNER_BANNER_MIN).all()).results||[];
-  return {winners:rows.map(row=>({id:row.id,...winnerDetails(row)}))};
+  return {winners:rows.map(row=>({id:row.id,round:row.round_no,gameId:'greedy-classic',...winnerDetails(row)}))};
 }
 async function rankings(db){
   const today=new Date().toISOString().slice(0,10);
