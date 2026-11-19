@@ -43,3 +43,81 @@
 @media(min-width:700px){.event-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.event-feature .event-poster{min-height:209px}.event-poster{min-height:300px}.event-detail-body{padding:28px 32px}.prize-grid{gap:14px}}
 @media(max-width:370px){.event-detail-body{padding:15px 10px}.event-poster{padding:14px}.event-poster-overlay{max-width:98%;padding:13px}.event-detail-body h2{font-size:23px}.event-feature-info{padding:13px}}
 @media(prefers-reduced-motion:reduce){.event-poster::after{animation:none}}
+
+
+/* Royal Event Template Library · distinct, controlled CSS profiles.
+   No user-submitted CSS or script is ever interpreted by this theme system. */
+.event-theme--royal_gold{--event-primary:#ffdf9b;--event-accent:#bc7b35;--event-ink:#33184a;
+ --event-glow:#d1a458aa}
+.event-theme--diamond_luxury{--event-primary:#c2f4ff;--event-accent:#62c9ff;--event-ink:#13264e;
+ --event-glow:#65bce7bb}
+.event-theme--game_tournament{--event-primary:#ffe3ac;--event-accent:#e36c43;--event-ink:#450d24;
+ --event-glow:#e75d4faa}
+.event-theme--cp_love{--event-primary:#ffd6e6;--event-accent:#ff73af;--event-ink:#541c48;
+ --event-glow:#eb6bb4ba}
+.event-theme--festival_special{--event-primary:#ffefb3;--event-accent:#53d7ae;--event-ink:#183e39;
+ --event-glow:#4fdb9f9a}
+.event-feature.event-theme--diamond_luxury{
+ background:linear-gradient(140deg,#173963,#102548 62%,#0c1e3c);border-color:#9fe8ff9b}
+.event-feature.event-theme--game_tournament{
+ background:linear-gradient(120deg,#57202d,#291027 65%,#140d20);border-color:#ffac7688}
+.event-feature.event-theme--cp_love{
+ background:linear-gradient(120deg,#682746,#411b42 62%,#26122c);border-color:#ffb2ce96}
+.event-feature.event-theme--festival_special{
+ background:linear-gradient(120deg,#20594c,#19343b 65%,#1e1939);border-color:#8cfbd484}
+.event-poster.event-theme--diamond_luxury{
+ background:repeating-conic-gradient(from 15deg at 60% 33%,#b9fcff12 0 25deg,transparent 25deg 50deg),
+ radial-gradient(ellipse at 65% 10%,#b4f9ffb0,transparent 39%),
+ linear-gradient(140deg,#214c73,#0c1a43 64%,#050f2d)}
+.event-poster.event-theme--game_tournament{
+ background:repeating-linear-gradient(132deg,transparent 0 30px,#efac4920 30px 32px),
+ radial-gradient(ellipse at 65% 8%,#ffab5b95,transparent 44%),
+ linear-gradient(145deg,#572736,#251228 66%,#100b20)}
+.event-poster.event-theme--cp_love{
+ background:radial-gradient(circle at 28% 36%,#ffd1ee83,transparent 34%),
+ radial-gradient(circle at 74% 8%,#ef77c5c2,transparent 43%),
+ linear-gradient(145deg,#8b3d69,#441e55 66%,#201232)}
+.event-poster.event-theme--festival_special{
+ background:repeating-radial-gradient(circle at 75% 8%,#ffdb4c19 0 3px,transparent 4px 29px),
+ radial-gradient(circle at 50% 0%,#eff6b4a8,transparent 37%),
+ linear-gradient(145deg,#2d7167,#23464b 65%,#1a2033)}
+.event-poster.event-theme--diamond_luxury .event-poster-overlay{
+ border-color:#c7f8ffb3;background:linear-gradient(120deg,#0a2859db,#15254dba);
+ clip-path:polygon(0 0,93% 0,100% 13%,100% 100%,7% 100%,0 87%)}
+.event-poster.event-theme--game_tournament .event-poster-overlay{
+ border-width:2px;border-style:solid;border-color:#ffc889;
+ background:linear-gradient(110deg,#321026f0,#5c283ba9);border-radius:8px;
+ transform:skewX(-1deg)}
+.event-poster.event-theme--cp_love .event-poster-overlay{
+ border-radius:40px 8px 40px 8px;border-color:#ffc7e5b5;
+ background:linear-gradient(135deg,#5a1d4ccf,#3d1b53be)}
+.event-poster.event-theme--festival_special .event-poster-overlay{
+ border-radius:28px 9px 28px 9px;border-color:#e5d89eab;
+ background:linear-gradient(110deg,#1b5947d7,#2d2b55bc)}
+.event-poster.event-theme--diamond_luxury .event-crown{
+ font-family:Georgia,serif;font-size:45px;color:#bbf6ff;text-shadow:0 0 20px #66daffad}
+.event-poster.event-theme--game_tournament .event-crown{
+ font-size:42px;color:#ffd09b;text-shadow:0 0 20px #e75544bb}
+.event-poster.event-theme--cp_love .event-crown{
+ font-size:45px;color:#ffd0e9;text-shadow:0 0 24px #f06bcbaa}
+.event-poster.event-theme--festival_special .event-crown{
+ font-size:44px;color:#f7efbb;text-shadow:0 0 25px #c8f3aa9a}
+.event-poster-title,.event-detail-body h2,
+.event-detail-body h3{color:var(--event-primary,#ffe2a3)}
+.event-theme--diamond_luxury.event-detail-body{
+ background:linear-gradient(140deg,#18365ad7,#101f3be8);border-color:#9bdfff9c}
+.event-theme--game_tournament.event-detail-body{
+ background:linear-gradient(145deg,#592936d8,#221022ed);border-color:#e68f668f}
+.event-theme--cp_love.event-detail-body{
+ background:linear-gradient(140deg,#663252d9,#2d1844e9);border-color:#ffb0d699}
+.event-theme--festival_special.event-detail-body{
+ background:linear-gradient(140deg,#225447dc,#1a2636ed);border-color:#9ceac699}
+.event-theme--diamond_luxury .top-prize{background:linear-gradient(145deg,#287ca3,#28375f)}
+.event-theme--game_tournament .top-prize{background:linear-gradient(145deg,#b86337,#63223d)}
+.event-theme--cp_love .top-prize{background:linear-gradient(145deg,#b95587,#632b67)}
+.event-theme--festival_special .top-prize{background:linear-gradient(145deg,#3b9174,#425c52)}
+.event-feature[class*="event-theme--"] .action{
+ background:linear-gradient(140deg,var(--event-primary,#ffedb6),var(--event-accent,#bb8737));
+ border:1px solid var(--event-primary,#ffedb6);color:var(--event-ink,#42204b)}
+.event-feature[class*="event-theme--"] h3{color:var(--event-primary,#ffedb6)}
+@media(prefers-reduced-motion:reduce){.event-theme--game_tournament .event-poster-overlay{transform:none}}
