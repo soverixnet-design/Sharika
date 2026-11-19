@@ -54,16 +54,24 @@ jobs:
           const query='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
             '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
           const sql="SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_center_publishing','sharika_center_launch_tickets','sharika_center_browser_sessions','sharika_center_odds_drafts')";
+          const eventColumnQuery="SELECT name FROM pragma_table_info('sharika_events') WHERE name IN ('template_id','scoring_mode')";
           const r=await fetch(query,{method:'POST',headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({sql})});
           const body=await r.json();
           const names=(body.result?.[0]?.results||[]).map(x=>x.name);
           if(!r.ok||!body.success||names.length!==4)throw Error('Missing private center schema; refusing staging deploy');
-          console.log('Existing private center tables verified; no migration or balances touched');
+          const eventResponse=await fetch(query,{method:'POST',headers:{
+            Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'},body:JSON.stringify({sql:eventColumnQuery})});
+          const eventColumns=await eventResponse.json();
+          const columnNames=(eventColumns.result?.[0]?.results||[]).map(x=>x.name);
+          if(!eventResponse.ok||!eventColumns.success||columnNames.length!==2)
+            throw Error('Royal Event template migration missing; refusing deployment');
+          console.log('Private Center tables and additive Royal Event columns verified; no balances touched');
           NODE
       - name: Run complete Sharika server tests and isolated Private Center tests
         run: |
           npm --prefix cloudflare run check
-          node --test cloudflare/test/private-center.test.mjs cloudflare/test/center-rankings.test.mjs hosted-game-center/test/private-event-access.test.mjs
+          node --test cloudflare/test/private-center.test.mjs cloudflare/test/event-design.test.mjs cloudflare/test/center-rankings.test.mjs hosted-game-center/test/private-event-access.test.mjs
       - name: Assemble existing admin and new private Royal website assets
         run: |
           node hosted-game-center/scripts/build.mjs
@@ -73,6 +81,7 @@ jobs:
           node --check hosted-game-center/src/private-index.mjs
           node --check hosted-game-center/web/center.js
           node --check cloudflare/src/center-rankings.mjs
+          node --check cloudflare/src/event-design.mjs
       - name: Dry-run all bundles before any live staging mutation
         run: |
           npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sharika-private-api
