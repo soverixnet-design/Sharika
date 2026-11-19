@@ -875,6 +875,20 @@ public final class SharikaActivity extends Activity {
     private void handle(String id, String action, JSONObject data) {
         if (action == null) { sendResult(id, result(false,null,"unknown_action")); return; }
         switch (action) {
+            case "openHostedEventCenter":
+                if(BuildConfig.SHARIKA_PLAY_BUILD||
+                   auth.getCurrentUser()==null||
+                   !"https://sharika-api-staging.soverixnet.workers.dev".equals(BuildConfig.SHARIKA_API_ORIGIN)){
+                    sendResult(id,result(false,null,"private_event_center_unavailable"));
+                    break;
+                }
+                Intent eventIntent=new Intent(this,SharikaGameCenterActivity.class);
+                eventIntent.putExtra("center_section","events");
+                int eventId=data.optInt("eventId",0);
+                if(eventId>0)eventIntent.putExtra("center_event_id",eventId);
+                startActivity(eventIntent);
+                sendResult(id,result(true,object(),null));
+                break;
             case "openHostedGameCenter":
                 // Debug game access uses BuildConfig's configured API origin.
                 // Release/Play builds are still blocked independently below.
