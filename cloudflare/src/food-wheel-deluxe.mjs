@@ -119,12 +119,12 @@ async function state(db,uid){
 async function ranking(db,period){
  const when=period==='monthly'?"datetime('now','start of month')":
  period==='weekly'?"datetime('now','-7 days')":"datetime('now','start of day')";
- const r=await db.prepare('SELECT u.public_no,u.name,SUM(b.payout) AS coins FROM '+
+ const r=await db.prepare('SELECT u.public_no,u.name,u.pic,SUM(b.payout) AS coins FROM '+
   'sharika_food_deluxe_bets b JOIN sharika_users u ON u.auth_uid=b.user_uid '+
   "WHERE b.status='settled' AND b.settled_at>="+when+
   ' GROUP BY b.user_uid HAVING coins>0 ORDER BY coins DESC,u.public_no LIMIT 20').all();
  return (r.results||[]).map(u=>({
-  public_id:String(u.public_no).padStart(8,'0'),name:u.name,total_win:Number(u.coins)
+  public_id:String(u.public_no).padStart(8,'0'),name:u.name,pic:u.pic||'',total_win:Number(u.coins)
  }));
 }
 export async function handleFoodDeluxe({request,db,uid,action,reply,fail,cors}){
