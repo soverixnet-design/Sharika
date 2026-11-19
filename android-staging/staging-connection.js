@@ -762,6 +762,8 @@
   });
   const roleNumbers=[...Array.from({length:51},(_,i)=>i+1),54,55,56,57,58,59,60,61,62,63,64];
   SOVERA_FRAMES.push(
+    // Official-only staged frame: local animated SVG. Accepted WebP master is kept in the asset pack.
+    {id:'official-manager-royal-gold-v1',name:'Official Manager Royal Gold',source:'sharika',group:'role',art:'official-manager-royal-gold-v1.svg'},
     premiumItem('vip5-animated','VIP5 Royal Wings','vip'),
     ...premiumRange('svip-frame',8,'SVIP Animated Frame','svip'),
     ...[2,3,4,5].map(level=>premiumItem('vip-royal-frame-'+String(level).padStart(2,'0'),
@@ -1825,6 +1827,7 @@
   ];
   const ROYAL_KINDS=new Set(['frame_style','entry_style','medal_style','name_tag_style']);
   const OFFICIAL_ROLE_FRAMES=new Set([
+    'frame_style:official-manager-royal-gold-v1',
     'frame_style:cs-royal-wings','frame_style:coin-seller-royal'
   ]);
   let royalMarket=null,royalMarketRequest=0,royalMarketBusy=false;
@@ -12334,6 +12337,7 @@
       '.sh-bond-sheet .sh-bond-section{margin:9px 0}.sh-bond-input{box-sizing:border-box;width:100%;font-size:16px;padding:12px;color:#fff;background:#190d32;border-radius:13px;border:1px solid #f4b5d7}',
       '.sh-bond-gift{display:flex;align-items:center;justify-content:space-between;gap:9px;margin:9px 0;padding:12px;border-radius:16px;border:1px solid #ffd2b96b;background:#fff1}',
       '.sh-bond-gift strong{font-size:13px}.sh-bond-gift small{font-size:11px;color:#ffdfa8}',
+      '.sh-bond-gift-icon{width:39px;height:39px;flex:none;object-fit:contain;image-rendering:auto}',
       '.sh-bond-invite{margin:9px 0;padding:11px;border-radius:15px;border:1px solid #ffd6af77;background:#fff1;font-size:12px}',
       '.sh-bond-invite .sh-bond-actions{margin-top:8px}',
       '.sh-bond-rankrow{display:flex;align-items:center;justify-content:space-between;gap:7px;border-radius:19px;padding:11px 8px;margin:11px 0;background:linear-gradient(125deg,#4b2049,#292359);border:1px solid #ffdc9d91;box-shadow:0 6px 15px #09021d99}',
@@ -12431,6 +12435,10 @@
         if(!allowed||!gifts.length){giftList.textContent='This gift type is disabled by the admin.';return;}
         for(const gift of gifts){
           const card=document.createElement('div');card.className='sh-bond-gift';
+          // Original generic gift icon imported from the Sura Chat client.
+          // Sura has no actual CP gift media/catalog rows to copy; this changes presentation only.
+          const icon=document.createElement('img');icon.className='sh-bond-gift-icon';
+          icon.src='./sharika-premium/sura-gift-icon.png';icon.alt='';
           const description=document.createElement('div');
           const title=document.createElement('strong');title.textContent=gift.emoji+' '+gift.name;
           const price=document.createElement('small');price.style.display='block';
@@ -12478,7 +12486,7 @@
               toast(hints[reason]||'Invitation not confirmed: '+reason);send.disabled=false;
             }
           };
-          card.append(description,send);giftList.appendChild(card);
+          card.append(icon,description,send);giftList.appendChild(card);
         }
       };
       for(const item of [{id:'cp',label:'💝 CP Gifts'},{id:'friendship',label:'🤝 Friendship'}]){
