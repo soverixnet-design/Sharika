@@ -105,24 +105,128 @@ async function showRankings(){
  }
  select.onchange=load;period.onchange=load;load();
 }
-function eventCountdown(iso){
+function eventCountdown(iso,prefix='Ends in'){
  const ms=Date.parse(iso)-Date.now();
- if(!Number.isFinite(ms)||ms<0)return 'Ended';
- const days=Math.floor(ms/86400000),hours=Math.floor(ms%86400000/3600000);
- return days+'d '+hours+'h remaining';
+ if(!Number.isFinite(ms)||ms<=0)return 'Finished';
+ const d=Math.floor(ms/86400000),h=Math.floor(ms%86400000/3600000);
+ const m=Math.floor(ms%3600000/60000);
+ return prefix+' '+(d?d+'d ':'')+h+'h '+m+'m';
+}
+function eventPhase(e){
+ if(Date.parse(e.starts_at)>Date.now())return 'UPCOMING';
+ if(Date.parse(e.ends_at)<=Date.now())return 'ENDED';
+ return 'LIVE NOW';
+}
+function eventTimeLabel(e){
+ return eventPhase(e)==='UPCOMING'?
+   eventCountdown(e.starts_at,'Starts in'):eventCountdown(e.ends_at);
+}
+function eventPoster(event,compact=false){
+ // Only the server-authorized, first-party event endpoint may supply artwork.
+ const root=el('div','event-poster'+(compact?' compact':''));
+ const safeImage='/api/center/events/'+Number(event.id)+'/banner';
+ if(event.banner_url&&event.banner_url.startsWith(safeImage+'?v=')){
+  const photo=el('img','event-artwork');
+  photo.loading='lazy';photo.alt='';photo.decoding='async';
+  photo.referrerPolicy='no-referrer';photo.src=event.banner_url;
+  photo.onerror=()=>photo.remove();
+  root.append(photo);
+ }
+ const glow=el('div','event-poster-overlay');
+ const crown=el('span','event-crown','♛');
+ const title=el('strong','event-poster-title',event.title);
+ const band=el('span','event-poster-band',event.kind.replaceAll('_',' ').toUpperCase());
+ glow.append(crown,title,band);root.append(glow);
+ return root;
+}
+function eventPrizeDetails(e){
+ const prizes=Array.isArray(e.prizes)?e.prizes:[];
+ const labels=Array.isArray(e.reward_labels)?e.reward_labels:[];
+ const panel=el('section','event-prizes');
+ panel.append(el('h3','','Royal Prizes'));
+ const grid=el('div','prize-grid');
+ for(let i=0;i<3;i++){
+  const item=el('div','prize-position'+(i===0?' top-prize':''));
+  item.append(el('div','prize-medal',['♛','✦','◆'][i]),
+   el('strong','','TOP '+(i+1)));
+  if(Number(prizes[i])>0)item.append(el('span','',nice(prizes[i])+' coins'));
+  if(typeof labels[i]==='string'&&labels[i].trim())
+   item.append(el('small','',labels[i].trim().slice(0,80)));
+  grid.append(item);
+ }
+ panel.append(grid);
+ return panel;
 }
 function showEvents(){
- heading('Royal Events','Official published events only');
- const items=published('events');if(!items.length){empty('No events published.');return;}
+ heading('Royal Events','Only approved active or upcoming events');
+ const items=published('events');
+ if(!items.length){empty('No events are currently published.');return;}
+ const board=el('div','event-cards');
  for(const e of items){
-  const box=el('article','panel');
-  const top=el('div','row');top.append(el('span','pill','♛ '+e.kind.replace(/_/g,' ')),
-   el('span','timer',eventCountdown(e.ends_at)));box.append(top);
-  const h=el('h3','',e.title);h.style.fontSize='21px';h.style.margin='12px 0 4px';
-  box.append(h,el('p','muted',e.description||'Official Sharika event'));
-  box.append(el('p','muted','Start: '+new Date(e.starts_at).toLocaleString()));
-  content.append(box);
+  const card=el('article','event-feature');
+  card.append(eventPoster(e,true));
+  const details=el('div','event-feature-info');
+  const heading=el('div','row');
+  heading.append(el('span','pill',eventPhase(e)),
+   el('span','event-timer',eventTimeLabel(e)));
+  details.append(heading,el('h3','',e.title));
+  const summary=el('p','muted',e.description||'Official Sharika limited-time event');
+  details.append(summary);
+  const prizes=(e.prizes||[]).filter(x=>Number(x)>0);
+  if(prizes.length)details.append(el('span','event-feature-prizes',
+     'Royal rewards · '+prizes.map(n=>nice(n)).join(' / ')+' coins'));
+  const button=el('button','action','View Event & Ranking');
+  button.type='button';
+  button.onclick=()=>showEventDetail(e);
+  details.append(button);card.append(details);board.append(card);
  }
+ content.append(board);
+}
+function showEventDetail(event){
+ // A focused single-event screen: never insert unpublished cross-promotions.
+ content.replaceChildren();status.textContent='';
+ const top=el('div','event-detail-top');
+ const back=el('button','secondary','← All Events');back.type='button';
+ back.onclick=showEvents;
+ top.append(back,el('span','pill',eventPhase(event)));content.append(top);
+ content.append(eventPoster(event));
+ const section=el('section','event-detail-body');
+ const heading=el('h2','',event.title);section.append(heading);
+ section.append(el('p','event-date','Starts: '+new Date(event.starts_at).toLocaleString()+
+   ' · Ends: '+new Date(event.ends_at).toLocaleString()));
+ const time=el('div','event-live-time',eventTimeLabel(event));
+ section.append(time,el('p','event-description',event.description||
+    'Only verified activity qualifies for this official Sharika event.'));
+ section.append(eventPrizeDetails(event));
+ const ranking=el('section','event-leaderboard');
+ ranking.append(el('h3','','Event Ranking'));
+ const loading=el('div','muted','Loading verified event ranking…');ranking.append(loading);
+ section.append(ranking);content.append(section);
+ let viewToken=Symbol('event');content._eventViewToken=viewToken;
+ const path='events/'+Number(event.id)+'/ranking';
+ endpoint(path).then(data=>{
+  if(content._eventViewToken!==viewToken)return;
+  loading.remove();
+  if(!Array.isArray(data.ranking)||!data.ranking.length){
+   ranking.append(el('div','empty','No verified event points yet.'));return;
+  }
+  const list=el('div','leaderboard');
+  for(const member of data.ranking){
+   const line=el('div','leader');
+   line.append(el('span','num',Number(member.rank)||'–'));
+   if(member.pic)line.append(avatar(member));
+   const info=el('div');
+   info.append(el('strong','',member.name||'Member'),
+     el('small','',member.public_id||''));
+   const count=el('strong','',nice(member.points)+' pts');
+   count.style.marginLeft='auto';
+   line.append(info,count);list.append(line);
+  }
+  ranking.append(list,el('p','muted','Points from eligible settled gifts only.'));
+ }).catch(error=>{
+  if(content._eventViewToken!==viewToken)return;
+  loading.replaceWith(el('div','empty','Ranking unavailable: '+errMessage(error)));
+ });
 }
 async function showWallet(){
  heading('My Virtual Wallet','Read-only · No cash withdrawal');
@@ -211,7 +315,7 @@ function showAdmin(){
  };
  content.append(form);
 }
-function render(){content.replaceChildren();status.textContent='';
+function render(){content._eventViewToken=null;content.replaceChildren();status.textContent='';
  if(!current){empty('No games, rankings or events have been published for your account.');return;}
  if(current==='games')showGames();
  else if(current==='rankings')showRankings();
