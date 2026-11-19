@@ -123,7 +123,7 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
   // Do not publish rankings without a verified data source. Admin may
   // prepare unsupported categories, but members must never see fake winners.
   if(kind==='ranking'&&body.published&&
-      !['rich','charm','room','games','recharge','noble','lucky'].includes(id))
+      !['rich','charm','room','games','recharge','noble','lucky','cp','bd','agency','host'].includes(id))
     return deny('ranking_source_not_ready',409);
   if(kind==='game'&&body.published){
    const ready=await db.prepare('SELECT enabled FROM sharika_game_catalog WHERE id=?')
