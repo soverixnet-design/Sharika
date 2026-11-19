@@ -31,6 +31,12 @@ async function session(db,req){
  return row?.auth_uid||null;
 }
 function gameForPath(path){
+ // Directory aliases and all nested game assets must honor the same gate.
+ for(const [prefix,id] of [['/games/royal-slots','royal-slots'],
+   ['/games/greedy-wheel','greedy-wheel'],
+   ['/games/fruit-royale','fruit-royale']]){
+   if(path===prefix||path.startsWith(prefix+'/'))return id;
+ }
  // A direct link to a hidden game's entry HTML must never launch.
  const known={
   '/games/royal-slots/index.html':'royal-slots',
@@ -139,6 +145,7 @@ export default {async fetch(req,env){
  }
  if(path.startsWith('/games/')){
   const entry=gameForPath(path);
+  if(!entry&&/\.html$/i.test(path))return json({error:'unknown_game_entry'},404);
   if(entry){
    const active=await centerPublished(env.DB,'game',entry);
    const enabled=await env.DB.prepare('SELECT enabled FROM sharika_game_catalog WHERE id=?')
