@@ -9,6 +9,7 @@ on:
       - 'cloudflare/src/private-center.mjs'
       - 'cloudflare/migrations/0104_event_country_visibility.sql'
       - 'cloudflare/test/event-audience.test.mjs'
+      - 'cloudflare/test/event-country-leaderboards.test.mjs'
       - 'cloudflare/test/event-design.test.mjs'
       - 'cloudflare/test/private-center.test.mjs'
       - 'cloudflare/test/royal-liveops-admin-e2e.test.mjs'
@@ -69,6 +70,7 @@ jobs:
       - name: Isolated End-to-end Admin Event, member country and private URLs
         run: |
           node --test cloudflare/test/event-audience.test.mjs \
+            cloudflare/test/event-country-leaderboards.test.mjs \
             cloudflare/test/royal-liveops-admin-e2e.test.mjs \
             cloudflare/test/private-center.test.mjs \
             cloudflare/test/event-design.test.mjs \
