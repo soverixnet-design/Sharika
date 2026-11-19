@@ -124,23 +124,31 @@ test('native parent bridge confirms wager before wallet changes, without fake de
  const window={parent,addEventListener(type,fn){listeners.set(type,fn)}};
  const S={bal:0,round:0,t:0,phase:'load',chip:100,bets:{},last:{},hist:[],played:0,rev:0,auto:false};
  const F=['chicken','fish','hotdog','steak','grape','lettuce','pepper','watermelon'].map(id=>({id}));
+ const element=()=>({style:{},className:'',hidden:false,children:[],
+  append(...children){this.children.push(...children);},
+  appendChild(child){this.children.push(child);},
+  removeAttribute(){},addEventListener(){},setAttribute(){},
+  classList:{add(){},remove(){},toggle(){}},textContent:'',src:'',onclick:null});
  const $=selector=>{
-  if(!elements.has(selector))elements.set(selector,{textContent:'',src:'',onclick:null});
+  if(!elements.has(selector))elements.set(selector,element());
   return elements.get(selector);
  };
- runInNewContext(source,{window,S,F,CH:[100,1000,10000,50000],$,draw(){},
+ const document={createElement:element,head:{append(){},appendChild(){}},
+   documentElement:{classList:{add(){}}},visibilityState:'visible',
+   addEventListener(){}};
+ runInNewContext(source,{window,document,location:{hash:''},S,F,CH:[100,1000,10000,50000],$,draw(){},
   show(message){messages.push(message)},hide(){},clearOn(){},
   im(){return ''},winners:item=>[item],crypto:webcrypto,Uint8Array,Map,
   setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>1,
   Date,Promise,Number,Object,String,Array,Math,Set});
  assert.equal(typeof window.bet,'function');
- assert.equal(requests.length,1);
- assert.equal(requests[0].action,'state');
+ assert.equal(requests.filter(r=>r.action==='state').length,1);
+ assert.equal(requests.filter(r=>r.action==='rankings').length,1);
  const send=(req,data)=>{
   listeners.get('message')({source:parent,data:{
    type:'sharika:original-response',id:req.id,ok:true,value:data}});
  };
- send(requests[0],{serverTime:Date.now(),balance:1000,todayWin:0,todayPlayed:0,
+ send(requests.find(r=>r.action==='state'),{serverTime:Date.now(),balance:1000,todayWin:0,todayPlayed:0,
   user:{name:'Verified Test'},myBets:Array(8).fill(0),history:[],
   state:{round:123,phase:'betting',endsAt:Date.now()+8000,totals:[500,0,0,0,0,0,0,0]}});
  await new Promise(resolve=>setImmediate(resolve));
