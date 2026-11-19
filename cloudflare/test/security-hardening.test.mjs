@@ -59,3 +59,15 @@ test('Admin CSP and Android auth/voice guards remain in staging source', () => {
   assert.match(gradle,/sharika-staging-auth-guard/);
   assert.match(gradle,/Secure login unavailable/);
 });
+
+test('Food Wheel accepts repeated authenticated round bets without finance bucket throttling',async()=>{
+ const path='/api/v1/original-games/greedy-classic/bet';
+ assert.equal(sensitiveActionClass('POST',path),null);
+ assert.equal(sensitiveActionClass('GET',path),null);
+ const env={SHARIKA_ENV:'production',SHARIKA_FINANCE_RATE_LIMIT:{
+  limit:async()=>({success:false})}};
+ for(let i=0;i<32;i++)
+  assert.equal(await allowSensitiveAction({env,uid:'player-one',path,method:'POST'}),true);
+ assert.equal(sensitiveActionClass('POST','/api/v1/original-games/sovera-food/bet'),'finance');
+ assert.equal(sensitiveActionClass('POST','/api/v1/sellers/transfer'),'finance');
+});
