@@ -145,6 +145,10 @@ function eventTimeLabel(e){
  return eventPhase(e)==='UPCOMING'?
    eventCountdown(e.starts_at,'Starts in'):eventCountdown(e.ends_at);
 }
+function eventAudienceLabel(event){
+ const value=String(event.country_code||'GLOBAL').toUpperCase();
+ return value==='GLOBAL'?'Global event':value==='BD'?'Bangladesh event':'Country event · '+value;
+}
 function eventPoster(event,compact=false){
  // Only the server-authorized, first-party event endpoint may supply artwork.
  const root=el('div','event-poster event-theme--'+eventTheme(event)+(compact?' compact':''));
@@ -159,7 +163,7 @@ function eventPoster(event,compact=false){
  const glow=el('div','event-poster-overlay');
  const crown=el('span','event-crown',EVENT_THEMES[eventTheme(event)].symbol);
  const title=el('strong','event-poster-title',event.title);
- const band=el('span','event-poster-band',event.kind.replaceAll('_',' ').toUpperCase());
+ const band=el('span','event-poster-band',event.kind.replaceAll('_',' ').toUpperCase()+' · '+eventAudienceLabel(event));
  glow.append(crown,title,band);root.append(glow);
  return root;
 }
@@ -196,7 +200,7 @@ function showEvents(){
    el('span','event-timer',eventTimeLabel(e)));
   details.append(heading,el('h3','',e.title));
   const summary=el('p','muted',e.description||'Official Sharika limited-time event');
-  details.append(summary);
+  details.append(summary,el('small','muted',eventAudienceLabel(e)));
   const prizes=(e.prizes||[]).filter(x=>Number(x)>0);
   if(prizes.length)details.append(el('span','event-feature-prizes',
      'Royal rewards · '+prizes.map(n=>nice(n)).join(' / ')+' coins'));
@@ -218,7 +222,7 @@ function showEventDetail(event){
  content.append(eventPoster(event));
  const section=el('section','event-detail-body event-theme--'+eventTheme(event));
  const heading=el('h2','',event.title);section.append(heading);
- section.append(el('p','event-date','Starts: '+new Date(event.starts_at).toLocaleString()+
+ section.append(el('p','event-date',eventAudienceLabel(event)+' · Starts: '+new Date(event.starts_at).toLocaleString()+
    ' · Ends: '+new Date(event.ends_at).toLocaleString()));
  const time=el('div','event-live-time',eventTimeLabel(event));
  section.append(time,el('p','event-description',event.description||
