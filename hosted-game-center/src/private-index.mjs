@@ -97,7 +97,8 @@ export default {async fetch(req,env){
   return new Response(null,{status:204,headers:{
     ...hdr,'set-cookie':'__Host-sh_center=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0'}});
  }
- if(path.startsWith('/api/center/')&&
+ const eventEndpoint=/^\/api\/center\/events\/([1-9][0-9]{0,10})\/(ranking|banner)$/.exec(path);
+ if(path.startsWith('/api/center/')&&!eventEndpoint&&
     !['/api/center/rankings','/api/center/wallet','/api/center/gifts'].includes(path)){
   if(req.method!=='GET'&&!sameOriginWrite(req,url))
     return json({error:'origin_forbidden'},403);
@@ -113,7 +114,7 @@ export default {async fetch(req,env){
     fail:(error,status,cors)=>new Response(JSON.stringify({error}),{status,
       headers:{...hdr,...cors,'content-type':'application/json; charset=utf-8'}}),cors:{}});
  }
- const eventEndpoint=/^\/api\/center\/events\/([1-9][0-9]{0,10})\/(ranking|banner)$/.exec(path);
+
  if(eventEndpoint){
   if(req.method!=='GET'&&req.method!=='HEAD')return json({error:'method_not_allowed'},405);
   const eid=Number(eventEndpoint[1]);
