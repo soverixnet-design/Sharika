@@ -106,6 +106,29 @@ async function showRankings(){
  }
  select.onchange=load;period.onchange=load;load();
 }
+const EVENT_THEMES={
+ royal_gold:{label:'Royal Gold',symbol:'♛',rank:'Gift Royalty'},
+ diamond_luxury:{label:'Diamond Luxury',symbol:'◆',rank:'Diamond Champions'},
+ game_tournament:{label:'Game Tournament',symbol:'⚔',rank:'Tournament Winners'},
+ cp_love:{label:'CP Love Festival',symbol:'♥',rank:'Couple Ranking'},
+ festival_special:{label:'Festival Special',symbol:'✦',rank:'Festival Ranking'}
+};
+const EVENT_SCORE_CAPTIONS={
+ gift_points:'Points from selected, server-settled gifts',
+ game_wins:'Verified game winnings credited by the server',
+ cp_gifts:'Verified CP gifts scored as couples'
+};
+function eventTheme(event){return Object.hasOwn(EVENT_THEMES,event.template_id)?
+ event.template_id:'royal_gold';}
+function eventScore(event){return Object.hasOwn(EVENT_SCORE_CAPTIONS,event.scoring_mode)?
+ event.scoring_mode:'gift_points';}
+function changeEventLink(event){
+ const url=new URL(location.href);
+ url.searchParams.set('tab','events');
+ if(event)url.searchParams.set('event',String(event.id));
+ else url.searchParams.delete('event');
+ history.replaceState(null,'',url.pathname+url.search);
+}
 function eventCountdown(iso,prefix='Ends in'){
  const ms=Date.parse(iso)-Date.now();
  if(!Number.isFinite(ms)||ms<=0)return 'Finished';
@@ -124,7 +147,7 @@ function eventTimeLabel(e){
 }
 function eventPoster(event,compact=false){
  // Only the server-authorized, first-party event endpoint may supply artwork.
- const root=el('div','event-poster'+(compact?' compact':''));
+ const root=el('div','event-poster event-theme--'+eventTheme(event)+(compact?' compact':''));
  const safeImage='/api/center/events/'+Number(event.id)+'/banner';
  if(event.banner_url&&event.banner_url.startsWith(safeImage+'?v=')){
   const photo=el('img','event-artwork');
@@ -134,7 +157,7 @@ function eventPoster(event,compact=false){
   root.append(photo);
  }
  const glow=el('div','event-poster-overlay');
- const crown=el('span','event-crown','♛');
+ const crown=el('span','event-crown',EVENT_THEMES[eventTheme(event)].symbol);
  const title=el('strong','event-poster-title',event.title);
  const band=el('span','event-poster-band',event.kind.replaceAll('_',' ').toUpperCase());
  glow.append(crown,title,band);root.append(glow);
@@ -143,7 +166,7 @@ function eventPoster(event,compact=false){
 function eventPrizeDetails(e){
  const prizes=Array.isArray(e.prizes)?e.prizes:[];
  const labels=Array.isArray(e.reward_labels)?e.reward_labels:[];
- const panel=el('section','event-prizes');
+ const panel=el('section','event-prizes event-theme--'+eventTheme(e));
  panel.append(el('h3','','Royal Prizes'));
  const grid=el('div','prize-grid');
  for(let i=0;i<3;i++){
@@ -159,12 +182,13 @@ function eventPrizeDetails(e){
  return panel;
 }
 function showEvents(){
+ changeEventLink(null);
  heading('Royal Events','Only approved active or upcoming events');
  const items=published('events');
  if(!items.length){empty('No events are currently published.');return;}
  const board=el('div','event-cards');
  for(const e of items){
-  const card=el('article','event-feature');
+  const card=el('article','event-feature event-theme--'+eventTheme(e));
   card.append(eventPoster(e,true));
   const details=el('div','event-feature-info');
   const heading=el('div','row');
@@ -186,12 +210,13 @@ function showEvents(){
 function showEventDetail(event){
  // A focused single-event screen: never insert unpublished cross-promotions.
  content.replaceChildren();status.textContent='';
- const top=el('div','event-detail-top');
+ changeEventLink(event);
+ const top=el('div','event-detail-top event-theme--'+eventTheme(event));
  const back=el('button','secondary','← All Events');back.type='button';
  back.onclick=showEvents;
  top.append(back,el('span','pill',eventPhase(event)));content.append(top);
  content.append(eventPoster(event));
- const section=el('section','event-detail-body');
+ const section=el('section','event-detail-body event-theme--'+eventTheme(event));
  const heading=el('h2','',event.title);section.append(heading);
  section.append(el('p','event-date','Starts: '+new Date(event.starts_at).toLocaleString()+
    ' · Ends: '+new Date(event.ends_at).toLocaleString()));
@@ -200,7 +225,8 @@ function showEventDetail(event){
     'Only verified activity qualifies for this official Sharika event.'));
  section.append(eventPrizeDetails(event));
  const ranking=el('section','event-leaderboard');
- ranking.append(el('h3','','Event Ranking'));
+ ranking.append(el('h3','',EVENT_THEMES[eventTheme(event)].rank));
+ ranking.append(el('p','muted',EVENT_SCORE_CAPTIONS[eventScore(event)]));
  const loading=el('div','muted','Loading verified event ranking…');ranking.append(loading);
  section.append(ranking);content.append(section);
  let viewToken=Symbol('event');content._eventViewToken=viewToken;
@@ -219,11 +245,11 @@ function showEventDetail(event){
    const info=el('div');
    info.append(el('strong','',member.name||'Member'),
      el('small','',member.public_id||''));
-   const count=el('strong','',nice(member.points)+' pts');
+   const count=el('strong','',nice(member.points)+(eventScore(event)==='gift_points'?' pts':' coins'));
    count.style.marginLeft='auto';
    line.append(info,count);list.append(line);
   }
-  ranking.append(list,el('p','muted','Points from eligible settled gifts only.'));
+  ranking.append(list,el('p','muted',EVENT_SCORE_CAPTIONS[eventScore(event)]));
  }).catch(error=>{
   if(content._eventViewToken!==viewToken)return;
   loading.replaceWith(el('div','empty','Ranking unavailable: '+errMessage(error)));
@@ -333,7 +359,15 @@ async function refresh(){
   // No admin login or controls on a member-facing website.
   admin=null;
   overview.textContent='Only content approved for Sharika members is visible here.';
+  const params=new URLSearchParams(location.search);
+  if(params.get('tab')==='events'&&(manifest.events||[]).length)current='events';
   buildTabs();render();
+  const requestedId=params.get('event');
+  if(requestedId&&/^[1-9][0-9]{0,10}$/.test(requestedId)&&
+      (manifest.events||[]).length){
+    const selected=(manifest.events||[]).find(e=>String(e.id)===requestedId);
+    if(selected)showEventDetail(selected);
+  }
  }catch(e){
   tabs.replaceChildren();content.replaceChildren();empty('Private Center unavailable. Open from your signed-in Sharika app.');
   status.textContent=errMessage(e);overview.textContent='Authenticated Sharika access required.';
