@@ -13,6 +13,15 @@
 
 All three were inserted idempotently into **sharika-staging only** with active=1; `sharika-production` has not been modified. The verified `GET /bonds/catalog` and the existing atomic coin/consent/idempotency gift actions stay unchanged. The UI uses each new SVG and falls back to the original Sura generic gift icon. All user identity and wallets remain untouched.
 
+## Refreshed existing Sharika gifts — display only
+The four pre-existing bond gift SKUs remain unchanged in staging and production:
+- CP `Rose Promise` → `cp-rose-promise.svg` (5,200 coins)
+- CP `Royal Wedding` → `cp-royal-wedding.svg` (18,800 coins)
+- Friendship `Blue Promise` → `friendship-blue-promise.svg` (1,200 coins)
+- Friendship `Forever Friends` → `friendship-forever-friends.svg` (5,200 coins)
+
+Each is original transparent looping SVG illustration. The authenticated Sharika CP / Friendship sheet now maps these real D1 names to bundled art. The generic original Sura gift icon is retained only as a fallback. **No Sura CP video was found**, so do not call these original Sura assets.
+
 ## New staged official-role frame assets
 - `official-manager-royal-gold-v1.svg`
 - `bd-admin-blue-diamond-v1.svg`
