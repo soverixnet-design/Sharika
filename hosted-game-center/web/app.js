@@ -393,7 +393,7 @@
   }
   if(m.type!=='sharika:original-request'||m.game!==game.id||
     !Number.isSafeInteger(m.id)||m.id<1||
-    !['state','history','stats','rankings','bet'].includes(m.action))return;
+    !['state','history','stats','rankings','bet','winners'].includes(m.action))return;
   const method=m.action==='bet'?'POST':'GET';
   if(m.method!==method)return;
   let query='';
