@@ -3,6 +3,12 @@
 // the same visibility policy. Never infer permissions from client flags.
 const ALLOWED_KINDS=new Set(['game','ranking','event','module']);
 const SAFE_KEY=/^[a-z][a-z0-9:-]{1,79}$/;
+// Each published website game must have a real hosted HTML entry point.
+// The legacy food-wheel engine currently has no separate hosted asset;
+// exclude it rather than showing an unusable duplicate card.
+const HOSTED_GAME_IDS=new Set(['royal-slots','royal-ace','cleopatra','greedy-classic',
+ 'food-deluxe','sovera-gaddy','sovera-food','night-food','greedy-wheel',
+ 'fruit-royale','jackpot-fruit']);
 const corsNoStore={'cache-control':'private, no-store'};
 
 function rows(value){return value?.results||[];}
@@ -57,7 +63,7 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
    "WHERE e.status='published' AND e.ends_at>? ORDER BY e.starts_at DESC LIMIT 30")
    .bind(now).all():{results:[]};
   return send({
-   games:rows(games).map(safeItem),
+   games:rows(games).filter(x=>HOSTED_GAME_IDS.has(x.id)).map(safeItem),
    rankings:active.filter(x=>x.kind==='ranking').map(safeItem),
    modules:active.filter(x=>x.kind==='module').map(safeItem),
    events:rows(events).map(e=>({id:Number(e.id),title:e.title,kind:e.kind,
