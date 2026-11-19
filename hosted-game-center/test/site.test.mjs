@@ -61,3 +61,44 @@ test('Greedy Food Wheel preserves original video ratio and verified event sounds
  assert.ok(live.includes("S.mute||document.visibilityState"));
  assert.ok(backend.includes('const CHIPS=[100,1000,10000,50000]'));
 });
+
+test('Greedy Food Wheel browser practice accepts real wheel item IDs, no fake ranking',async()=>{
+ const vm=await import('node:vm');
+ const {webcrypto}=await import('node:crypto');
+ const FakeDate=class extends Date{
+  constructor(...a){super(...(a.length?a:[1000]));}
+  static now(){return 1000;}
+ };
+ const sandbox={window:{},crypto:webcrypto,Date:FakeDate,Uint32Array,Map,Array,Math};
+ vm.runInNewContext(read('web/practice.js'),sandbox);
+ const game=sandbox.window.createSharikaPractice('greedy-classic');
+ const get=()=>game.request('GET','/api/v1/original-games/greedy-classic/state');
+ const initial=await get();
+ assert.equal(initial.config.chips.join(','),'100,1000,10000,50000');
+ const round=initial.state.round;
+ for(const [itemId,amount,index] of [['grape',100,4],['watermelon',1000,7]]){
+  const receipt=await game.request('POST','/api/v1/original-games/greedy-classic/bet',
+   {round,itemId,amount,request_id:'demo-test-'+itemId});
+  assert.equal(receipt.practice_only,true);
+  assert.equal(receipt.myBets[index],amount);
+ }
+ const state=await get();
+ assert.equal(state.myBets[4],100);
+ assert.equal(state.myBets[7],1000);
+ assert.equal((await game.request('GET','/api/v1/original-games/greedy-classic/rankings')).rankings.length,0);
+});
+
+test('Greedy Food Wheel leaderboard and banners use authenticated verified results',()=>{
+ const live=read('../android-staging/app/src/main/assets/original-games/greedy-classic-live.js');
+ const app=read('web/app.js');
+ const backend=read('../cloudflare/src/greedy-classic.mjs');
+ assert.doesNotThrow(()=>new Function(live));
+ assert.ok(live.includes("ownStakeOnCard.style.display='none'"));
+ assert.ok(live.includes("request('rankings')"));
+ assert.ok(live.includes("request('winners')"));
+ assert.ok(live.includes("displayVerifiedWinner({win:earned"));
+ assert.ok(live.includes("leaderId.textContent='ID: '+id"));
+ assert.ok(app.includes("'rankings','bet','winners'"));
+ assert.ok(backend.includes("['state','bet','history','rankings','winners']"));
+ assert.ok(backend.includes('recentWinners(db)'));
+});
