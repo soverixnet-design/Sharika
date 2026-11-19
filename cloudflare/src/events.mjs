@@ -1,6 +1,6 @@
 import {notifyUser,deliverNotification} from './notifications.mjs';
 import {centerPublished} from './private-center.mjs';
-import {normalizedMemberCountry,eventAudienceAllows,validEventAudience} from './event-audience.mjs';
+import {normalizedMemberCountry,eventAudienceAllows,validEventAudience,eventAudienceSqlExpression} from './event-audience.mjs';
 import {safeEventTemplate,safeEventScoring,validEventDesignFields} from './event-design.mjs';
 // Server-verified, Super-Admin-controlled staging events and one-time coin prizes.
 // Publication is separate from payment; only an ended published event can pay a rank.
@@ -23,21 +23,27 @@ async function settledEventRanking(db,event,limit=100){
   const matches=rules.map(()=>'?').join(',');
   const weights=rules.map(()=> 'WHEN ? THEN ?').join(' ');
   const weightsArgs=rules.flatMap(r=>[r.gift_id,r.points]);
+  const country=event.country_code||'GLOBAL';
+  const scoped=country!=='GLOBAL';
   const query='SELECT u.public_no,u.name,u.pic,s.special_id,COUNT(g.id) AS gift_count,'+
     'SUM(g.quantity * CASE g.gift_id '+weights+' ELSE 0 END) AS points '+
     'FROM sharika_gift_events g JOIN sharika_users u ON u.auth_uid=g.sender_uid '+
     'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
     "AND (s.expires_at IS NULL OR s.expires_at>datetime('now')) "+
     'WHERE g.gift_id IN ('+matches+') AND g.created_at>=? AND g.created_at<? '+
-    "AND u.status='active' GROUP BY g.sender_uid ORDER BY points DESC,gift_count DESC,"+
+    "AND u.status='active' "+
+    (scoped?'AND '+eventAudienceSqlExpression('u')+'=? ':'')+
+    'GROUP BY g.sender_uid ORDER BY points DESC,gift_count DESC,'+
     'u.public_no ASC LIMIT '+(limit===3?3:100);
   return rows(await db.prepare(query)
-    .bind(...weightsArgs,...rules.map(r=>r.gift_id),start,end).all());
+    .bind(...weightsArgs,...rules.map(r=>r.gift_id),start,end,...(scoped?[country]:[])).all());
 }
 // Event ranking type is part of each event record. Every query uses only
 // settled server-owned transactions in the event's own UTC date window.
 async function settledConfiguredEventRanking(db,event,limit=100){
  const mode=safeEventScoring(event.scoring_mode);
+ const country=event.country_code||'GLOBAL';
+ const scoped=country!=='GLOBAL';
  if(mode==='gift_points')return settledEventRanking(db,event,limit);
  const start=Date.parse(event.starts_at),end=Date.parse(event.ends_at);
  if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return [];
@@ -52,8 +58,9 @@ async function settledConfiguredEventRanking(db,event,limit=100){
    "'gaddy_game_win','fruit_royale_win','cleopatra_win','food_deluxe_win',"+
    "'greedy_classic_win','royal_ace_win','royal_slots_win') "+
    'AND l.created_at>=? AND l.created_at<? '+
+   (scoped?'AND '+eventAudienceSqlExpression('u')+'=? ':'')+
    'GROUP BY l.auth_uid ORDER BY points DESC,u.public_no ASC LIMIT '+(limit===3?3:100)
-  ).bind(stamp(start),stamp(end)).all();
+  ).bind(stamp(start),stamp(end),...(scoped?[country]:[])).all();
   return rows(list);
  }
  // CP rankings rank verified PAIRS, not individual members. The reward
@@ -67,8 +74,9 @@ async function settledConfiguredEventRanking(db,event,limit=100){
    "JOIN sharika_users a ON a.auth_uid=b.uid_a AND a.status='active' "+
    "JOIN sharika_users z ON z.auth_uid=b.uid_b AND z.status='active' "+
    "WHERE e.type='cp' AND e.created_at_ms>=? AND e.created_at_ms<? "+
+   (scoped?'AND '+eventAudienceSqlExpression('a')+'=? AND '+eventAudienceSqlExpression('z')+'=? ':'')+
    'GROUP BY b.id ORDER BY points DESC,b.id ASC LIMIT '+(limit===3?3:100)
- ).bind(start,end).all();
+ ).bind(start,end,...(scoped?[country,country]:[])).all();
  return rows(list).map(pair=>({
    name:pair.a_name+' ♡ '+pair.b_name,
    pair_id:String(pair.a_no).padStart(8,'0')+' / '+String(pair.b_no).padStart(8,'0'),
@@ -287,7 +295,7 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
       typeof publicId!=='string'||!PUBLIC_ID.test(publicId)||
       typeof requestId!=='string'||!ID_RE.test(requestId))
       return fail('invalid_event_award',400,cors);
-    const event=await db.prepare('SELECT id,status,starts_at,ends_at,prize_1,prize_2,prize_3,gift_rules_json,scoring_mode '+
+    const event=await db.prepare('SELECT id,status,starts_at,ends_at,prize_1,prize_2,prize_3,gift_rules_json,scoring_mode,country_code '+
       'FROM sharika_events WHERE id=?').bind(eventId).first();
     if(!event)return fail('event_not_found',404,cors);
     if(event.status!=='published'||Date.now()<Date.parse(event.ends_at))
@@ -311,9 +319,11 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
         return fail('event_rank_mismatch',409,cors);
     }
     const recipient=await db.prepare(
-      'SELECT auth_uid,coins FROM sharika_users WHERE public_no=? AND status=?'
+      'SELECT auth_uid,coins,country FROM sharika_users WHERE public_no=? AND status=?'
     ).bind(Number(publicId),'active').first();
     if(!recipient)return fail('event_recipient_not_found',404,cors);
+    if(!eventAudienceAllows(event.country_code,recipient.country))
+      return fail('event_recipient_country_ineligible',409,cors);
     const prior=await db.prepare('SELECT id FROM sharika_event_awards WHERE event_id=? AND auth_uid=?')
       .bind(eventId,recipient.auth_uid).first();
     if(prior)return fail('event_user_already_awarded',409,cors);
