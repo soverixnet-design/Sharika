@@ -21,7 +21,8 @@ function fixture(){
  "CREATE TABLE sharika_special_ids(auth_uid TEXT,special_id TEXT,expires_at TEXT)",
  "CREATE TABLE sharika_bonds(id INTEGER PRIMARY KEY,type TEXT,uid_a TEXT,uid_b TEXT,created_at_ms INTEGER,ended_at_ms INTEGER)",
  "CREATE TABLE sharika_bond_gift_events(id INTEGER PRIMARY KEY,bond_id INTEGER,type TEXT,value_coins INTEGER,created_at_ms INTEGER)",
- "CREATE TABLE sharika_agency_earnings(id INTEGER PRIMARY KEY,beneficiary_uid TEXT,kind TEXT,amount_units INTEGER,created_at TEXT)"
+ "CREATE TABLE sharika_agency_earnings(id INTEGER PRIMARY KEY,beneficiary_uid TEXT,kind TEXT,amount_units INTEGER,created_at TEXT)",
+ "CREATE TABLE sharika_wallet_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,auth_uid TEXT,currency TEXT,delta INTEGER,reason TEXT,created_at TEXT)"
  ].join(';\n')+';');
  sql.exec("INSERT INTO sharika_users VALUES('qa:super',10000001,'QA Super',NULL,'active'),('qa:member',10000002,'QA Member',NULL,'active'); INSERT INTO sharika_admin_roles VALUES('qa:super','super');");
  for(const [id,kind] of [['events','module'],['cp','ranking'],['bd','ranking'],['agency','ranking'],['host','ranking'],['gift','ranking']])
@@ -152,5 +153,34 @@ test('CP/BD/Agency/Host rankings require settled ledger and enforce Publish/Hide
     {kind:'ranking',id:'bd',published:false})).status,200);
   response=await center(db,'/api/v1/center/manifest','GET',undefined,'qa:member');
   assert.equal((await response.json()).rankings.some(x=>x.id==='bd'),false);
+ }finally{sql.close();}
+});
+
+test('Game Event ranking aggregates all current server-owned win reasons, not bets or recharges',async()=>{
+ const {sql,db}=fixture();
+ try{
+  const start='2035-11-20T00:00:00.000Z',end='2035-11-21T00:00:00.000Z';
+  sql.prepare('INSERT INTO sharika_events(id,title,kind,starts_at,ends_at,status,gift_rules_json,scoring_mode) VALUES(?,?,?,?,?,?,?,?)')
+    .run(7,'Verified game wins','game_tournament',start,end,'published','[]','game_wins');
+  sql.prepare("INSERT INTO sharika_center_publishing(id,kind,title,published) VALUES('event:7','event','Verified game wins',1)").run();
+  const awards=[
+   ['royal_slots_win',10],['royal_ace_win',20],['cleopatra_win',30],
+   ['greedy_classic_win',40],['food_deluxe_win',50],
+   ['recharge',900000],['royal_slots_bet',-50]
+  ];
+  for(const [reason,amount] of awards)sql.prepare(
+   'INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,reason,created_at) VALUES(?,?,?,?,?)')
+   .run('qa:member','coins',amount,reason,'2035-11-20 11:00:00');
+  sql.prepare('INSERT INTO sharika_wallet_ledger(auth_uid,currency,delta,reason,created_at) VALUES(?,?,?,?,?)')
+   .run('qa:member','coins',900,'royal_slots_win','2035-11-21 10:00:00');
+  const response=await handleEventApp({env:{DB:db},uid:'qa:member',
+   request:new Request('https://qa.invalid/api/v1/events/7/ranking'),
+   path:'/api/v1/events/7/ranking',cors:{},reply,fail});
+  assert.equal(response.status,200);
+  const result=await response.json();
+  assert.equal(result.scoring,'game_wins');
+  assert.equal(result.ranking.length,1);
+  assert.equal(result.ranking[0].points,150);
+  assert.equal(result.ranking[0].gift_count,5);
  }finally{sql.close();}
 });
