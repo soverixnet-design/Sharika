@@ -98,8 +98,9 @@ export default {async fetch(req,env){
   if(req.method!=='GET'&&!sameOriginWrite(req,url))
     return json({error:'origin_forbidden'},403);
   const sub='/api/v1/center/'+path.slice('/api/center/'.length);
-  const allowed=sub==='/api/v1/center/manifest'||sub==='/api/v1/center/admin/state'||
-   sub==='/api/v1/center/admin/visibility'||sub==='/api/v1/center/admin/odds-draft';
+  // The dedicated Sharika Admin Panel owns all admin routes.
+  // The member website exposes ONLY its read-only manifest.
+  const allowed=sub==='/api/v1/center/manifest';
   if(!allowed)return json({error:'route_not_allowed'},404);
   // The authenticated user comes exclusively from a server-created session.
   return handlePrivateCenter({request:req,path:sub,db:env.DB,uid,
