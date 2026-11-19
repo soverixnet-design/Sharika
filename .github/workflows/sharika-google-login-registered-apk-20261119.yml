@@ -43,41 +43,52 @@ jobs:
           else
             echo "PLAY_UPLOAD_CREDENTIALS_INCOMPLETE"
           fi
+          selected=''
           if [ -n "$STAGING_B64" ] && [ -n "$STAGING_PASSWORD" ]; then
-            file="$RUNNER_TEMP/sharika-registered-staging.p12"
-            printf '%s' "$STAGING_B64" | tr -d '[:space:]' | base64 -d > "$file"
-            if ! test "$(wc -c < "$file")" -gt 500; then
-              echo "::error::Configured staging keystore secret decodes to an invalid/small file"; exit 1
+            keyfile="$RUNNER_TEMP/sharika-registered-staging.p12"
+            if printf '%s' "$STAGING_B64" | tr -d '[:space:]' | base64 -d > "$keyfile" 2>/dev/null &&
+               test "$(wc -c < "$keyfile")" -gt 500 &&
+               keytool -list -v -keystore "$keyfile" -storepass "$STAGING_PASSWORD" -alias sharika-staging > "$RUNNER_TEMP/staging-signcheck.txt" 2>&1; then
+              sha1="$(sed -n 's/.*SHA1: *//p' "$RUNNER_TEMP/staging-signcheck.txt" | head -n1)"
+              if node android-staging/google-oauth-signing.cjs "$sha1"; then
+                echo "SHARIKA_STAGING_KEYSTORE_PATH=$keyfile" >> "$GITHUB_ENV"
+                echo "SHARIKA_STAGING_KEYSTORE_PASSWORD=$STAGING_PASSWORD" >> "$GITHUB_ENV"
+                echo "SHARIKA_EXPECTED_APK_SHA1=$sha1" >> "$GITHUB_ENV"
+                selected=registered_staging
+              else
+                echo "STAGING_SIGNER_NOT_REGISTERED"
+              fi
+            else
+              echo "STAGING_SECRET_INCORRECT_KEYSTORE_OR_ALIAS"
             fi
-            if ! keytool -list -v -keystore "$file" -storepass "$STAGING_PASSWORD" -alias sharika-staging > "$RUNNER_TEMP/signcheck.txt" 2>&1; then
-              echo "::error::Staging keystore password or alias invalid"; exit 1
+          fi
+          if [ -z "$selected" ] && [ -n "$PLAY_B64" ] &&
+             [ -n "$PLAY_PASSWORD" ] && [ -n "$PLAY_ALIAS" ] && [ -n "$PLAY_KEY_PASSWORD" ]; then
+            keyfile="$RUNNER_TEMP/sharika-registered-upload.p12"
+            if printf '%s' "$PLAY_B64" | tr -d '[:space:]' | base64 -d > "$keyfile" 2>/dev/null &&
+               test "$(wc -c < "$keyfile")" -gt 500 &&
+               keytool -list -v -keystore "$keyfile" -storepass "$PLAY_PASSWORD" -alias "$PLAY_ALIAS" > "$RUNNER_TEMP/upload-signcheck.txt" 2>&1; then
+              sha1="$(sed -n 's/.*SHA1: *//p' "$RUNNER_TEMP/upload-signcheck.txt" | head -n1)"
+              if node android-staging/google-oauth-signing.cjs "$sha1"; then
+                echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$keyfile" >> "$GITHUB_ENV"
+                echo "SHARIKA_PLAY_UPLOAD_STORE_PASSWORD=$PLAY_PASSWORD" >> "$GITHUB_ENV"
+                echo "SHARIKA_PLAY_UPLOAD_KEY_ALIAS=$PLAY_ALIAS" >> "$GITHUB_ENV"
+                echo "SHARIKA_PLAY_UPLOAD_KEY_PASSWORD=$PLAY_KEY_PASSWORD" >> "$GITHUB_ENV"
+                echo "SHARIKA_STAGING_USE_REGISTERED_PLAY_SIGNER=true" >> "$GITHUB_ENV"
+                echo "SHARIKA_EXPECTED_APK_SHA1=$sha1" >> "$GITHUB_ENV"
+                selected=registered_upload_for_staging_test
+              else
+                echo "UPLOAD_SIGNER_NOT_REGISTERED"
+              fi
+            else
+              echo "UPLOAD_SECRET_INCORRECT_KEYSTORE_OR_ALIAS"
             fi
-            sha1="$(sed -n 's/.*SHA1: *//p' "$RUNNER_TEMP/signcheck.txt" | head -n1)"
-            node android-staging/google-oauth-signing.cjs "$sha1"
-            echo "SHARIKA_STAGING_KEYSTORE_PATH=$file" >> "$GITHUB_ENV"
-            echo "SHARIKA_STAGING_KEYSTORE_PASSWORD=$STAGING_PASSWORD" >> "$GITHUB_ENV"
-            echo "SHARIKA_EXPECTED_APK_SHA1=$sha1" >> "$GITHUB_ENV"
-            echo 'SIGNER=REGISTERED_STAGING'
-          elif [ -n "$PLAY_B64" ] && [ -n "$PLAY_PASSWORD" ] && [ -n "$PLAY_ALIAS" ] && [ -n "$PLAY_KEY_PASSWORD" ]; then
-            file="$RUNNER_TEMP/sharika-registered-upload.p12"
-            printf '%s' "$PLAY_B64" | tr -d '[:space:]' | base64 -d > "$file"
-            test "$(wc -c < "$file")" -gt 500
-            if ! keytool -list -v -keystore "$file" -storepass "$PLAY_PASSWORD" -alias "$PLAY_ALIAS" > "$RUNNER_TEMP/signcheck.txt" 2>&1; then
-              echo "::error::Upload keystore password or alias invalid"; exit 1
-            fi
-            sha1="$(sed -n 's/.*SHA1: *//p' "$RUNNER_TEMP/signcheck.txt" | head -n1)"
-            node android-staging/google-oauth-signing.cjs "$sha1"
-            echo "SHARIKA_PLAY_UPLOAD_KEYSTORE_PATH=$file" >> "$GITHUB_ENV"
-            echo "SHARIKA_PLAY_UPLOAD_STORE_PASSWORD=$PLAY_PASSWORD" >> "$GITHUB_ENV"
-            echo "SHARIKA_PLAY_UPLOAD_KEY_ALIAS=$PLAY_ALIAS" >> "$GITHUB_ENV"
-            echo "SHARIKA_PLAY_UPLOAD_KEY_PASSWORD=$PLAY_KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "SHARIKA_STAGING_USE_REGISTERED_PLAY_SIGNER=true" >> "$GITHUB_ENV"
-            echo "SHARIKA_EXPECTED_APK_SHA1=$sha1" >> "$GITHUB_ENV"
-            echo 'SIGNER=REGISTERED_UPLOAD_FOR_STAGING_TEST'
-          else
-            echo "::error::No stable registered keystore is available; refusing another Google-login-broken debug APK."
+          fi
+          if [ -z "$selected" ]; then
+            echo "::error::No configured keystore matches Firebase OAuth. Refusing another debug-signed APK."
             exit 1
           fi
+          echo "SELECTED_REGISTERED_SIGNER=$selected"
       - name: Install Android SDK
         run: |
           set -euo pipefail
