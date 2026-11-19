@@ -73,7 +73,10 @@ test('disabled games reject new bets while other games stay available',async()=>
   assert.equal(saved.data.audited,true);
   assert.equal(await gameAcceptsBets(f.db,'night-food'),false);
   assert.equal(await gameAcceptsBets(f.db,'sovera-food'),true);
-  assert.equal(f.changes[1].args[1],'game_catalog_toggle');
+  assert.ok(f.changes.some(x=>x.sql.includes('INSERT INTO sharika_admin_audit')&&
+    x.args[1]==='game_catalog_toggle'));
+  assert.ok(f.changes.some(x=>x.sql.includes('UPDATE sharika_center_publishing')&&
+    x.args[0]===0&&x.args[2]==='night-food'));
   assert.equal((await readGameCatalog(f.db)).find(g=>g.id==='night-food').enabled,false);
 });
 test('unknown game and malformed value cannot change the DB',async()=>{
