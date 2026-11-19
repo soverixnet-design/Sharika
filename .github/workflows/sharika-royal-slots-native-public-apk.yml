@@ -56,9 +56,9 @@ jobs:
             echo "::error::Release already exists: no overwrite permitted"
             exit 1
           fi
-          gh release create "$tag" 'Sharika-v1.0.40-Latest-Games-2026-11-19-Friends.apk' \
+          gh release create "$tag" 'Sharika-Royal-Slots-Connected-Friends-Staging-20261119.apk' \
             --repo "$repo" \
-            --target 20d49991967c2ef47bd2fa660210a78599ce4487 \
+            --target 8f83a968fbcadfe218328c124e9e4775fa6239d5 \
             --title 'Sharika Royal Slots Connected — Friends Staging Test (19 Nov 2026)' \
             --notes 'Sharika TEST build for friends: Royal Slots native authenticated bridge fixes (block bets before verified state, strict receipt checks, safe same-request-ID retry), Fruit Machine and other staged games. Source: fully successful GitHub Actions run 44537923202 and Android debug artifact 14537276526. Staging-only virtual coins: no real-money cashout, not a Play Store release. Real authenticated Royal Slots spins are not yet device-verified. Sideloaded Google sign-in may fail if the debug certificate is not registered with Firebase; existing Play installations may use an incompatible signing certificate. Do not uninstall your existing app without backing up local data. For testing only.' \
             --prerelease
