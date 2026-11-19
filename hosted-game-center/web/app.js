@@ -21,7 +21,7 @@
  const artworks={
   'royal-slots':'/cards/royal-slots.webp',
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
-  'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/food-wheel.png',
+  'greedy-classic':'/cards/greedy.jpg','food-deluxe':'/cards/fruit-machine.jpg',
   'sovera-gaddy':'/cards/gaddy-royal.svg','sovera-food':'/cards/sovera-food-royal.svg',
   'night-food':'/cards/night-food-royal.svg','greedy-wheel':'/cards/greedy-wheel-royal.svg',
   'fruit-royale':'/cards/fruit-machine.jpg','jackpot-fruit':'/cards/jackpot-fruit.png'
@@ -29,7 +29,7 @@
  const shortNames={
   'royal-slots':'Royal Slots',
   'royal-ace':'SuperAce Deluxe','cleopatra':'Cleopatra Gold',
-  'greedy-classic':'Greedy Game','food-deluxe':'Food Wheel',
+  'greedy-classic':'Greedy Game','food-deluxe':'Fruit Machine',
   'sovera-gaddy':'Sovera Gaddy','sovera-food':'Sovera Food',
   'night-food':'Night Food','greedy-wheel':'Greedy Wheel',
   'fruit-royale':'Fruit Royale','jackpot-fruit':'Fruit Jackpot'
@@ -137,7 +137,7 @@
     user:{...(data.user&&typeof data.user==='object'?data.user:{}),...u},
     profile:u};
  }
- const compact=(name,id)=>inRoom?(shortNames[id]||name):name;
+ const compact=(name,id)=>id==='food-deluxe'?'Fruit Machine':inRoom?(shortNames[id]||name):name;
  function renderFeatured(catalog,enabled){
   hotGames.replaceChildren();
   if(inRoom){hot.hidden=true;hero.hidden=true;return;}
@@ -186,13 +186,14 @@
    const button=document.createElement('button');
    button.type='button';button.className='tile';button.disabled=!usable;
    button.dataset.search=[g.name,shortNames[g.id]||'',g.category||''].join(' ').toLocaleLowerCase('en');
-   button.setAttribute('aria-label',g.name+(usable?' · Play':' · Unavailable'));
-   button.title=g.name;
+   const visibleName=compact(g.name,g.id);
+   button.setAttribute('aria-label',visibleName+(usable?' · Play':' · Unavailable'));
+   button.title=visibleName;
    const art=document.createElement('span');
    art.className='art'+(variants[g.id]?' '+variants[g.id].className:'');
    const image=document.createElement('img');
    image.src=artworks[g.id]||'/cards/food-wheel.png';
-   image.alt=g.name+' game artwork';image.loading=inRoom?'eager':'lazy';
+   image.alt=visibleName+' game artwork';image.loading=inRoom?'eager':'lazy';
    image.decoding='async';art.append(image);
    // The same original artwork supplies a subtle square backdrop for the
    // few landscape cards. Foreground artwork stays uncropped.
@@ -208,7 +209,7 @@
     ribbon.textContent=badges[g.id];art.append(ribbon);
    }
    const meta=document.createElement('span');meta.className='meta';
-   const title=document.createElement('b');title.textContent=compact(g.name,g.id);
+   const title=document.createElement('b');title.textContent=visibleName;
    const subtitle=document.createElement('small');
    subtitle.textContent=bridge
     ?usable?g.category+' · Server Game':'Unavailable in this build'

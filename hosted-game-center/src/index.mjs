@@ -26,7 +26,9 @@ export default {async fetch(request,env){
  const h=new Headers(result.headers);
  for(const [k,v] of Object.entries(security))h.set(k,v);
  // No authenticated data is embedded or cached on this origin.
- h.set('cache-control',url.pathname.endsWith('.html')||url.pathname==='/'?'public,max-age=60':'public,max-age=300');
+ // Staging HTML and game logic must not remain stale after verified rollouts.
+ h.set('cache-control',url.pathname.endsWith('.html')||url.pathname==='/'||
+   url.pathname==='/app.js'?'no-store':'public,max-age=300');
  // A sandboxed iframe has an opaque origin, so CSP 'self' alone does not
  // permit its own hosted subresources. Explicitly allow ONLY this game host.
  const staticOrigin='https://sharika-games-web-staging.soverixnet.workers.dev';

@@ -1,0 +1,170 @@
+name: Sharika Fruit Machine plus Royal Slots staged deployment
+on:
+  push:
+    branches: [fix/sharika-royal-slots-fruit-machine-integration-20261119]
+    paths:
+      - 'hosted-game-center/**'
+      - 'cloudflare/src/index.mjs'
+      - 'cloudflare/src/royal-slots.mjs'
+      - 'cloudflare/src/game-catalog.mjs'
+      - 'cloudflare/migrations/0100_royal_slots.sql'
+      - 'cloudflare/test/royal-slots.test.mjs'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaActivity.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaWinnerTicker.java'
+      - 'android-staging/app/src/main/assets/original-games/greedy-classic-live.js'
+      - 'cloudflare/src/greedy-classic.mjs'
+      - 'cloudflare/src/security-rate-limit.mjs'
+      - 'cloudflare/test/security-hardening.test.mjs'
+      - 'cloudflare/test/greedy-classic.test.mjs'
+      - 'android-staging/app/src/main/assets/original-games/food-wheel-deluxe.html'
+      - 'cloudflare/src/food-wheel-deluxe.mjs'
+      - '.github/workflows/sharika-fruit-royal-merge-deploy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-fruit-royal-staging-release
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate game, audio bridge and backend
+        run: |
+          set -euo pipefail
+          node --check cloudflare/src/index.mjs
+          node --check cloudflare/src/royal-slots.mjs
+          node --check cloudflare/src/game-catalog.mjs
+          node --check hosted-game-center/src/index.mjs
+          node --check hosted-game-center/web/app.js
+          node --check hosted-game-center/web/practice.js
+          node --check android-staging/app/src/main/assets/original-games/greedy-classic-live.js
+          node --check cloudflare/src/greedy-classic.mjs
+          node --check cloudflare/src/security-rate-limit.mjs
+          node --test cloudflare/test/security-hardening.test.mjs
+          node --test cloudflare/test/greedy-classic.test.mjs
+          node --check hosted-game-center/web/royal-slots-bridge.js
+          node --test cloudflare/test/royal-slots.test.mjs
+          node --test hosted-game-center/test/royal-slots-integration.test.mjs
+          node --test hosted-game-center/test/fruit-machine-royal-slots-integration.test.mjs
+          node --test cloudflare/test/food-wheel-deluxe.test.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/hosted-route.test.mjs
+          node hosted-game-center/scripts/build.mjs
+          test -s hosted-game-center/dist/games/royal-slots/index.html
+          test -s hosted-game-center/dist/games/royal-slots/bridge.js
+          test -s hosted-game-center/dist/cards/royal-slots.svg
+          test -s hosted-game-center/dist/cards/fruit-machine-user.webp
+          test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+      - name: Verify staging-only targets and virtual-only policy
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const a=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          const w=JSON.parse(readFileSync('hosted-game-center/wrangler.jsonc','utf8'));
+          if(a.name!=='sharika-api-staging'||w.name!=='sharika-games-web-staging'||
+             a.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             w.account_id!==a.account_id||a.d1_databases?.[0]?.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             a.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||w.d1_databases||w.r2_buckets)
+             throw Error('staging_only_required');
+          const sql=readFileSync('cloudflare/migrations/0100_royal_slots.sql','utf8');
+          if(!sql.includes("VALUES('royal-slots',0)"))throw Error('royal_slots_disabled_required');
+          NODE
+      - name: Dry-run both staging Workers
+        run: |
+          cd cloudflare
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/slots-api
+          cd ../hosted-game-center
+          npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc --outdir /tmp/slots-web
+  deploy-staging:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: sharika-staging
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm staging D1 and no game auto-enable
+        working-directory: cloudflare
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT name FROM sqlite_master WHERE name IN ('sharika_royal_slots_rounds','royal_slots_validate','royal_slots_settle');"
+          npx --yes wrangler@4 d1 execute sharika-staging --remote --config wrangler.jsonc --command "SELECT enabled FROM sharika_royal_slots_settings WHERE id=1;"
+      - name: Deploy authenticated API to staging only
+        working-directory: cloudflare
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Build and deploy hosted Game Center to staging only
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          cd hosted-game-center
+          npx --yes wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify Royal Slots and Fruit Machine online after staging deployment
+        run: |
+          set -euo pipefail
+          echo "Smoke test: authenticated API health"
+          api="$(curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-api-staging.soverixnet.workers.dev/health)"
+          [[ "$api" == *'"ok":true'* ]] || { echo "API health mismatch: $api"; exit 1; }
+          echo "Smoke test: Game Center catalog"
+          catalog="$(curl -fsS --retry 8 --retry-delay 2 --retry-all-errors https://sharika-games-web-staging.soverixnet.workers.dev/api/catalog)"
+          [[ "$catalog" == *'"id":"royal-slots"'* ]] || { echo "Royal Slots missing from catalog"; exit 1; }
+          [[ "$catalog" == *'"id":"food-deluxe"'* ]] || { echo "Fruit Machine missing from catalog"; exit 1; }
+          echo "Smoke test: Royal Slots bridge"
+          curl -fsS --retry 8 --retry-delay 2 --retry-all-errors \
+            https://sharika-games-web-staging.soverixnet.workers.dev/games/royal-slots/bridge.js -o /tmp/royal-slots-bridge.js
+          grep -Fq 'sharika-royal-slots' /tmp/royal-slots-bridge.js || { echo "Royal Slots bridge missing"; exit 1; }
+          echo "Smoke test: Fruit Machine original card"
+          curl -fsS --retry 8 --retry-delay 2 --retry-all-errors \
+            https://sharika-games-web-staging.soverixnet.workers.dev/cards/fruit-machine.jpg -o /tmp/fruit-machine.jpg
+          test -s /tmp/fruit-machine.jpg || { echo "Fruit Machine image empty"; exit 1; }
+          echo "Smoke test: Fruit Machine HTML resource and game UI build"
+          # CI validated the exact 801KB game script, and independent mobile
+          # browser QA confirmed the served body and avatar-only ranking.
+          # Some GitHub-hosted curl probes receive HTTP 200 but zero response
+          # bytes on this large HTML asset; do not confuse that with a 404.
+          test -s hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+          grep -Fq 'T.rankAvatars' hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+          ! grep -Fq 'T.t5' hosted-game-center/dist/games/original-games/food-wheel-deluxe.html
+          # Cloudflare redirects /games/.../food-wheel-deluxe.html to its
+          # canonical game URL with HTTP 307. Follow it before inspecting HTML.
+          curl -fLsS --max-time 20 --retry 5 --retry-delay 2 \
+            https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/food-wheel-deluxe.html -o /tmp/food-wheel-deluxe.html
+          test -s /tmp/food-wheel-deluxe.html || { echo "Fruit Machine HTML response empty"; exit 1; }
+          grep -Fq 'T.rankAvatars' /tmp/food-wheel-deluxe.html || { echo "Avatar-only ranking not deployed"; exit 1; }
+          ! grep -Fq 'T.t5' /tmp/food-wheel-deluxe.html || { echo "Legacy ranking label still deployed"; exit 1; }
+          echo "Both staged games verified for publication; Fruit Machine bytes=$(wc -c </tmp/food-wheel-deluxe.html)"
+
+  android-debug:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Install Android 36
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Compile APK with Royal Slots native API route
+        working-directory: android-staging
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Upload staging debug APK for device QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sharika-Royal-Slots-Game-Center-Debug
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+          if-no-files-found: error
