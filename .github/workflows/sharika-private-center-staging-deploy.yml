@@ -72,6 +72,7 @@ jobs:
           node --check admin/connection.js
           node --check hosted-game-center/src/private-index.mjs
           node --check hosted-game-center/web/center.js
+          node --check cloudflare/src/center-rankings.mjs
       - name: Dry-run all bundles before any live staging mutation
         run: |
           npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sharika-private-api
