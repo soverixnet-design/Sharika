@@ -205,9 +205,15 @@ export async function handleEventApp({request,env,uid,path,cors,reply,fail}){
 async function announceEvent(env,ctx,id,title,actorUid){
   if(!await centerPublished(env.DB,'module','events')||
       !await centerPublished(env.DB,'event','event:'+id))return;
+  const audience=(await env.DB.prepare('SELECT country_code FROM sharika_events WHERE id=?')
+    .bind(id).first())?.country_code||'GLOBAL';
+  // A Bangladesh-only or other regional event must never notify members
+  // outside its profile-country audience, even when they are active.
   const members=await env.DB.prepare(
-    "SELECT auth_uid FROM sharika_users WHERE status='active' ORDER BY public_no LIMIT 500"
-  ).all();
+    "SELECT u.auth_uid FROM sharika_users u WHERE u.status='active' "+
+    (audience==='GLOBAL'?'':'AND '+eventAudienceSqlExpression('u')+'=? ')+
+    'ORDER BY u.public_no LIMIT 500'
+  ).bind(...(audience==='GLOBAL'?[]:[audience])).all();
   for(const member of members.results||[]){
     try{
       const notice=await notifyUser(env.DB,{recipientUid:member.auth_uid,
