@@ -9,11 +9,19 @@ for(const part of ['original-games','greedy-wheel','fruit-royale']){
 }
 // Royal Slots uses its own original inline assets (including premium MP3).
 mkdirSync(join(dist,'games','royal-slots'),{recursive:true});
-const slotHtml=readFileSync(join(root,'web','royal-slots.html'),'utf8');
+let slotHtml=readFileSync(join(root,'web','royal-slots.html'),'utf8');
+const celebrationSignature='function celebrate(win, bet, jp) {';
+if(!slotHtml.includes(celebrationSignature)||!slotHtml.includes('</head>'))
+  throw Error('missing_royal_slots_visual_hook');
+slotHtml=slotHtml.replace(celebrationSignature,celebrationSignature+
+  "\n  if (window.SharikaWinCelebration?.show) return window.SharikaWinCelebration.show({win,bet,jackpot:!!jp,audioEnabled:S.snd,compact:$('app').classList.contains('compact')});\n");
+slotHtml=slotHtml.replace('</head>','<link rel="stylesheet" href="win-celebration.css?v=2"></head>');
 if(!slotHtml.includes('</body>'))throw Error('invalid_royal_slots_html');
-writeFileSync(join(dist,'games','royal-slots','index.html'),slotHtml.replace('</body>','<script src="bridge.js"></script><script src="royal-slots-voice.js"></script></body>'));
+writeFileSync(join(dist,'games','royal-slots','index.html'),slotHtml.replace('</body>','<script src="bridge.js"></script><script src="royal-slots-voice.js"></script><script src="win-celebration.js?v=2"></script></body>'));
 copyFileSync(join(root,'web','royal-slots-bridge.js'),join(dist,'games','royal-slots','bridge.js'));
 copyFileSync(join(root,'web','royal-slots-voice.js'),join(dist,'games','royal-slots','royal-slots-voice.js'));
+for(const name of ['win-celebration.js','win-celebration.css'])
+  copyFileSync(join(root,'web',name),join(dist,'games','royal-slots',name));
 for(const name of ['welcome-female.mp3','voice-big-female.mp3'])
   copyFileSync(join(root,'web',name),join(dist,'games','royal-slots',name));
 // Use the owner's original game-card artwork from the Android app.

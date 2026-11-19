@@ -1,0 +1,45 @@
+/* Royal Slots premium win studio — scoped to existing game iframe */
+#sharika-win-celebration{--light:#ffc14a;--halo:#db821e;position:absolute;inset:0;width:100%;height:100%;z-index:16;isolation:isolate;display:flex;align-items:center;justify-content:center;overflow:hidden;pointer-events:auto;font-family:'Trebuchet MS',system-ui,sans-serif}
+#sharika-win-celebration[hidden]{display:none!important}
+#sharika-win-celebration,#sharika-win-celebration *{box-sizing:border-box}
+#sharika-win-celebration .swc-shade{position:absolute;inset:0;background:radial-gradient(ellipse at center,#370c48bf,#080211ed 77%);animation:swcIn .3s both}
+#sharika-win-celebration .swc-burst{position:absolute;width:min(130%,570px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,#fffad0 0%,var(--light) 7%,#fabb307e 20%,var(--halo) 35%,transparent 70%);filter:blur(7px);opacity:.7;animation:swcBlast .7s ease-out both,swcPulse 3s .7s ease-in-out infinite}
+#sharika-win-celebration .swc-rays{position:absolute;width:min(155%,720px);aspect-ratio:1;border-radius:50%;opacity:.55;background:repeating-conic-gradient(#ffe7ae85 0 3deg,transparent 3deg 16deg);-webkit-mask-image:radial-gradient(circle,transparent 10%,#000 32%,transparent 72%);mask-image:radial-gradient(circle,transparent 10%,#000 32%,transparent 72%);animation:swcRotate 28s linear infinite}
+#sharika-win-celebration .swc-content{position:relative;z-index:3;max-width:98%;max-height:95%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:clamp(4px,1.2vh,13px);padding:6px;filter:drop-shadow(0 9px 14px #150016);animation:swcAppear .62s cubic-bezier(.15,1.38,.25,1) both}
+#sharika-win-celebration .swc-crown{color:#ffe4a0;font-size:clamp(27px,10vh,81px);line-height:1;text-shadow:0 3px #914b1a,0 0 18px #ffbd38;animation:swcFloat 2s ease-in-out infinite}
+#sharika-win-celebration .swc-kicker{color:#fff0b9;font-size:clamp(10px,2.1vw,15px);font-weight:900;letter-spacing:.18em}
+#sharika-win-celebration .swc-title{margin:0;max-width:100%;white-space:nowrap;font:1000 clamp(27px,8vw,74px)/1.08 Impact,'Arial Black',system-ui,sans-serif;letter-spacing:-.02em;background:linear-gradient(#fffefa 0%,#ffeaa0 22%,#ffb937 42%,#fff6bc 56%,#ed8212 82%,#a5460b);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:clamp(1px,.22vw,2px) #8b3b15;filter:drop-shadow(0 3px #541a24) drop-shadow(0 7px #160014) drop-shadow(0 0 14px var(--light));animation:swcTitle 1.65s .5s ease-in-out infinite}
+#sharika-win-celebration .swc-line{width:min(65%,340px);height:5px;border-radius:100px;background:linear-gradient(90deg,transparent,#fff4c7 26%,#fff 50%,#ffe09e 75%,transparent);box-shadow:0 0 11px var(--light)}
+#sharika-win-celebration .swc-sub{font-size:clamp(10px,2.6vw,16px);font-weight:900;letter-spacing:.22em;color:#fff0b9}
+#sharika-win-celebration .swc-prize{display:flex;align-items:center;justify-content:center;gap:clamp(6px,1.5vw,13px);max-width:96%;padding:clamp(6px,1.3vh,14px) clamp(8px,2vw,25px);border:1px solid #ffe2a3a1;border-radius:13px;background:linear-gradient(95deg,#370b28bc,#70283dbb,#2d0b23c9);box-shadow:inset 0 1px #ffe6aa5e,0 0 24px #ffaf4e50}
+#sharika-win-celebration .swc-medal{display:grid;place-items:center;flex:none;width:clamp(22px,5vw,32px);height:clamp(22px,5vw,32px);border-radius:50%;background:radial-gradient(circle at 30% 20%,#fffab6,#ffc13b 55%,#9a4c0b);border:2px ridge #ffde7c;color:#904316;font-weight:900}
+#sharika-win-celebration .swc-amount{color:#fff3bf;font:1000 clamp(19px,5.7vw,42px)/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 0 15px #ffbe4d}
+#sharika-win-celebration .swc-unit{color:#ffdc91;font-size:clamp(8px,1.9vw,12px);font-weight:900;letter-spacing:.09em}
+#sharika-win-celebration .swc-close{position:absolute;z-index:7;right:9px;top:9px;padding:8px 12px;border-radius:60px;border:1px solid #ffcc7db6;background:#17092adb;color:#fff0c3;font-size:10px;font-weight:900;cursor:pointer}
+#sharika-win-celebration .swc-particles{position:absolute;inset:0;z-index:4;overflow:hidden;pointer-events:none}
+#sharika-win-celebration .swc-coin{position:absolute;top:-15%;left:var(--x);width:var(--size);height:var(--size);border:2px solid #fff4c3;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 24%,#ffface,#ffc94d 50%,#9f520d);font-size:calc(var(--size)*.31);font-weight:1000;color:#963e0e;box-shadow:0 0 9px #ffcf72;animation:swcFall var(--dur) var(--delay) linear both}
+#sharika-win-celebration .swc-spark{position:absolute;left:var(--x);top:var(--y);color:#fff6c9;font-size:var(--size);text-shadow:0 0 12px #fff7aa;animation:swcSpark var(--dur) var(--delay) ease-out both}
+#sharika-win-celebration.tier-super{--light:#f6df87;--halo:#933bee}
+#sharika-win-celebration.tier-super .swc-shade{background:radial-gradient(ellipse at center,#622b9cd7,#080217f1 75%)}
+#sharika-win-celebration.tier-mega{--light:#ffda83;--halo:#ef4875}
+#sharika-win-celebration.tier-jackpot{--light:#fff1a2;--halo:#ff5a35}
+#sharika-win-celebration.tier-jackpot .swc-title{font-size:clamp(35px,10vw,90px)}
+#sharika-win-celebration.tier-win .swc-crown{opacity:.45}
+#sharika-win-celebration.swc-compact .swc-content{gap:3px;padding:3px}
+#sharika-win-celebration.swc-compact .swc-crown{font-size:clamp(22px,8vh,46px)}
+#sharika-win-celebration.swc-compact .swc-title{font-size:clamp(22px,6.8vw,47px)}
+#sharika-win-celebration.swc-compact .swc-kicker,#sharika-win-celebration.swc-compact .swc-sub{font-size:9px}
+#sharika-win-celebration.swc-compact .swc-amount{font-size:clamp(18px,4.9vw,29px)}
+#sharika-win-celebration.swc-compact .swc-prize{padding:4px 7px}
+#sharika-win-celebration.swc-exit{animation:swcOut .33s ease-in forwards}
+@keyframes swcIn{from{opacity:0}}
+@keyframes swcOut{to{opacity:0}}
+@keyframes swcBlast{from{transform:scale(.22);opacity:0}}
+@keyframes swcPulse{50%{opacity:.86;transform:scale(1.04)}}
+@keyframes swcRotate{to{transform:rotate(360deg)}}
+@keyframes swcAppear{from{opacity:0;transform:scale(.32) translateY(38px)}to{opacity:1;transform:scale(1)}}
+@keyframes swcTitle{40%{transform:scale(1.045)}65%{transform:scale(.99)}}
+@keyframes swcFloat{50%{transform:translateY(-5px)}}
+@keyframes swcFall{0%{opacity:0;transform:translateY(-25px) rotate(-50deg)}8%{opacity:1}90%{opacity:1}100%{opacity:0;transform:translateY(95vh) rotate(290deg)}}
+@keyframes swcSpark{0%{opacity:0;transform:scale(.2)}30%{opacity:1}100%{opacity:0;transform:scale(1.25) translateY(-80px)}}
+@media(prefers-reduced-motion:reduce){#sharika-win-celebration *,#sharika-win-celebration{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:0ms!important}#sharika-win-celebration .swc-particles{display:none}}

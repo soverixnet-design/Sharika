@@ -33,3 +33,14 @@ test('Royal Slots iframe only talks to trusted game-center origin and never owns
  assert.match(backend,/gameAcceptsBets\(env\.DB,'royal-slots'\)/);
  assert.match(native,/\(royal-ace\|cleopatra\|royal-slots\)/);
 });
+
+test('Premium Royal Slots celebration is visual-only and embedded in the hosted game',()=>{
+ const builder=read('scripts/build.mjs'),js=read('web/win-celebration.js'),css=read('web/win-celebration.css');
+ assert.match(builder,/SharikaWinCelebration.*show/);
+ assert.match(builder,/win-celebration\.css/);
+ assert.match(builder,/win-celebration\.js/);
+ assert.match(js,/BIG WINNER/);assert.match(js,/SUPER WINNER/);assert.match(js,/MEGA WINNER/);assert.match(js,/JACKPOT!/);
+ assert.match(js,/reduced-motion/);
+ assert.doesNotMatch(js,/\bfetch\s*\(|\bpostMessage\s*\(|Authorization|bearer\b/i);
+ assert.match(css,/#sharika-win-celebration/);
+});
