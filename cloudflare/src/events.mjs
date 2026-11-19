@@ -1,4 +1,5 @@
 import {notifyUser,deliverNotification} from './notifications.mjs';
+import {centerPublished} from './private-center.mjs';
 // Server-verified, Super-Admin-controlled staging events and one-time coin prizes.
 // Publication is separate from payment; only an ended published event can pay a rank.
 // Winners are selected explicitly by Super Admin and every credit has a D1 receipt + ledger.
@@ -102,7 +103,8 @@ export async function listEventData(db,admin=false,now=new Date()){
     'e.prize_1,e.prize_2,e.prize_3,e.banner_id,e.gift_rules_json,e.reward_labels_json,'+
     'CASE WHEN i.image_bytes>0 THEN i.version ELSE 0 END AS banner_image_version '+
     'FROM sharika_events e LEFT JOIN sharika_banner_images i ON i.banner_id=e.banner_id '+
-    (admin?'':'WHERE e.status=? AND e.ends_at>=? ')+
+    (admin?'':"WHERE e.status=? AND e.ends_at>=? AND EXISTS (SELECT 1 FROM sharika_center_publishing p "+
+      "WHERE p.id=('event:' || e.id) AND p.kind='event' AND p.published=1) ")+
     'ORDER BY e.starts_at DESC,e.id DESC LIMIT 60');
   if(!admin)statement=statement.bind('published',boundary);
   const events=rows(await statement.all());
@@ -129,6 +131,8 @@ export async function handleEventApp({request,env,uid,path,cors,reply,fail}){
   ).bind(uid,'active').first();
   if(!active)return fail('profile_unavailable',403,cors);
   if(leaderboard){
+    if(!await centerPublished(env.DB,'event','event:'+leaderboard[1]))
+      return fail('event_hidden',403,cors);
     const event=await env.DB.prepare('SELECT id,title,starts_at,ends_at,status,gift_rules_json '+
       'FROM sharika_events WHERE id=?').bind(Number(leaderboard[1])).first();
     if(!event||event.status!=='published')return fail('event_unavailable',404,cors);
