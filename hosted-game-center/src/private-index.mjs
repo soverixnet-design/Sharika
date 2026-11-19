@@ -3,6 +3,7 @@
 import oldGameSite from './index.mjs';
 import {handlePrivateCenter,centerPublished} from '../../cloudflare/src/private-center.mjs';
 import {readGiftRankings} from '../../cloudflare/src/admin.mjs';
+import {readCenterRankings} from '../../cloudflare/src/center-rankings.mjs';
 import {handleEventApp} from '../../cloudflare/src/events.mjs';
 const hdr={
   'cache-control':'private, no-store',
@@ -153,9 +154,10 @@ export default {async fetch(req,env){
   const period=url.searchParams.get('period')||'weekly';
   if(!await centerPublished(env.DB,'ranking',kind))
     return json({error:'ranking_hidden'},403);
-  const supported=['rich','charm','room','games','recharge','noble','lucky'];
+  const supported=['rich','charm','room','games','recharge','noble','lucky','cp','bd','agency','host'];
   if(!supported.includes(kind))return json({error:'ranking_source_not_available',leaders:[]},404);
-  const output=await readGiftRankings(env.DB,period,kind,0);
+  const output=['cp','bd','agency','host'].includes(kind)?
+    await readCenterRankings(env.DB,period,kind):await readGiftRankings(env.DB,period,kind,0);
   return output?json(output):json({error:'invalid_ranking_period'},400);
  }
  if(path==='/api/center/wallet'&&req.method==='GET'){
