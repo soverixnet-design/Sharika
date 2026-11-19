@@ -61,3 +61,24 @@ INSERT OR IGNORE INTO sharika_center_publishing(id,kind,title,published,sort_ord
  VALUES('assets','module','Royal Assets',0,4);
 -- Each existing event is a separate item; use a separate explicit publication
 -- rather than automatically exposing new event rows.
+
+-- One-time, short-lived mobile launch tickets (hashed at rest). This permits
+-- private site session creation without exposing Firebase ID tokens in URLs.
+CREATE TABLE IF NOT EXISTS sharika_center_launch_tickets (
+ token_sha256 TEXT PRIMARY KEY CHECK(length(token_sha256)=64),
+ auth_uid TEXT NOT NULL REFERENCES sharika_users(auth_uid),
+ created_at_ms INTEGER NOT NULL,
+ expires_at_ms INTEGER NOT NULL,
+ redeemed_at_ms INTEGER,
+ CHECK(expires_at_ms>created_at_ms)
+);
+CREATE INDEX IF NOT EXISTS ix_center_ticket_user_created ON sharika_center_launch_tickets(auth_uid,created_at_ms);
+CREATE TABLE IF NOT EXISTS sharika_center_browser_sessions (
+ session_sha256 TEXT PRIMARY KEY CHECK(length(session_sha256)=64),
+ auth_uid TEXT NOT NULL REFERENCES sharika_users(auth_uid),
+ created_at_ms INTEGER NOT NULL,
+ expires_at_ms INTEGER NOT NULL,
+ revoked_at_ms INTEGER,
+ CHECK(expires_at_ms>created_at_ms)
+);
+CREATE INDEX IF NOT EXISTS ix_center_session_expiry ON sharika_center_browser_sessions(expires_at_ms);
