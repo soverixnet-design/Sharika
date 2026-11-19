@@ -28,11 +28,16 @@ jobs:
                 print(name,path,'HTTP_ERROR',e.code,'TEXT',e.read(250).decode(errors='replace'))
               except Exception as e:
                 print(name,path,'ERROR',str(e)[:230])
-          u='https://sharika-admin-staging.soverixnet.workers.dev/admin/connection.js'
-          try:
-            with urllib.request.urlopen(u,timeout=15) as f:
-              src=f.read().decode(errors='replace')
-              print('ADMIN_JS',f.status,'PRIVATE_CENTER_MENU',('Private Center' in src))
-          except Exception as e:
-            print('ADMIN_JS_ERROR',str(e)[:220])
+          host='https://sharika-admin-staging.soverixnet.workers.dev'
+          for path in ['/admin/','/admin/connection.js']:
+            u=host+path
+            for label,headers in [('default',{}),('browser',{'User-Agent':'Mozilla/5.0','Accept':'text/html,application/javascript,*/*'})]:
+              try:
+                with urllib.request.urlopen(urllib.request.Request(u,headers=headers),timeout=15) as f:
+                  body=f.read()
+                  print('ADMIN_ROUTE',path,label,'STATUS',f.status,'LENGTH',len(body),'PRIVATE_CENTER_MENU',('Private Center' in body.decode(errors='replace')))
+              except urllib.error.HTTPError as e:
+                print('ADMIN_ROUTE',path,label,'HTTP_ERROR',e.code,'TEXT',e.read(350).decode(errors='replace'))
+              except Exception as e:
+                print('ADMIN_ROUTE',path,label,'ERROR',str(e)[:220])
           PY
