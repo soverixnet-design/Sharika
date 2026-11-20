@@ -48,6 +48,7 @@ import {handleRoleApplicationApp} from './role-applications.mjs';
 import {readPublicShowcase} from './profile-showcase.mjs';
 import {playVirtualOnly,playVirtualConfigured,playVirtualRouteBlocked} from './play-virtual-only.mjs';
 import {reserveGlobalPublicNo} from './global-public-ids.mjs';
+import {syncGlobalPublicProfile,findGlobalPublicProfile} from './unified-public-profiles.mjs';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 const PUBLIC_ID = /^[0-9]{8}$/;
@@ -167,6 +168,17 @@ function corsFor(request, env) {
 }
 async function me(db, uid) {
   return db.prepare('SELECT * FROM sharika_users WHERE auth_uid = ?').bind(uid).first();
+}
+// An existing, authenticated profile refreshes its own public directory record.
+// Never expose wallet, birthdate or Firebase credentials through this path.
+function schedulePublicProfileSync(env,user,ctx) {
+  if(!user)return;
+  const task=syncGlobalPublicProfile(env.SHARIKA_ID_DB,user,
+    playVirtualOnly(env)?'play_virtual':'staging'
+  ).catch(e=>console.warn('public_directory_sync_pending',
+    e instanceof Error?e.message:'unknown'));
+  if(ctx?.waitUntil){ctx.waitUntil(task);return;}
+  return task;
 }
 async function assertActive(db, uid) {
   const user = await me(db, uid);
@@ -542,6 +554,7 @@ export async function handleRequest(request, env, ctx) {
       if (request.method === 'GET') {
         const user = await me(env.DB, uid);
         if(!user)return fail('profile_not_found',404,cors);
+        schedulePublicProfileSync(env,user,ctx);
         const special=await activeSpecial(env.DB,uid);
         return reply({...showProfile(user),...svipAppearance(user,
           await readEquipped(env.DB,uid),await readSvipLevel(env.DB,uid)),
@@ -597,7 +610,9 @@ export async function handleRequest(request, env, ctx) {
         }));
         registration.push(...device.statements);
         await env.DB.batch(registration);
-        return reply({...showProfile(await me(env.DB, uid)),
+        const registered=await me(env.DB,uid);
+        await schedulePublicProfileSync(env,registered,null);
+        return reply({...showProfile(registered),
           invite_eligible:device.eligible,
           invite_bonused:verifiedReferral,
           invite_ineligible_reason:referral.inviter&&!verifiedReferral?
@@ -645,6 +660,7 @@ export async function handleRequest(request, env, ctx) {
         await env.DB.prepare('UPDATE sharika_users SET ' + keys.map(x => x + '=?').join(',') + `,updated_at=datetime('now') WHERE auth_uid=?`)
           .bind(...keys.map(k => changes[k]), uid).run();
         const current=await me(env.DB,uid);
+        await schedulePublicProfileSync(env,current,null);
         const special=await activeSpecial(env.DB,uid);
         return reply({...showProfile(current),...await readEquipped(env.DB,uid),
           special_id:special?.special_id||null,
@@ -659,6 +675,18 @@ export async function handleRequest(request, env, ctx) {
         'LEFT JOIN sharika_special_ids s ON s.auth_uid=u.auth_uid '+
         "WHERE u.public_no=? OR (s.special_id=? AND (s.expires_at IS NULL OR s.expires_at>datetime('now'))) LIMIT 1")
         .bind(Number(parts[3]),parts[3]).first();
+      // Shared directory is used for public ID lookup only. The Play wallet,
+      // room membership, messaging and gifting stay under their existing policy.
+      if(!user && PUBLIC_ID.test(parts[3])) {
+        try{
+          const global=await findGlobalPublicProfile(env.SHARIKA_ID_DB,parts[3]);
+          if(global)return reply(global,200,cors);
+        }catch(error){
+          console.warn('public_directory_lookup_unavailable',
+            error instanceof Error?error.message:'unknown');
+          return fail('public_directory_unavailable',503,cors);
+        }
+      }
       const special=user?await activeSpecial(env.DB,user.auth_uid):null;
       const family=user?await env.DB.prepare(
         'SELECT f.id,f.name,f.status,m.role FROM sharika_family_members m '+
