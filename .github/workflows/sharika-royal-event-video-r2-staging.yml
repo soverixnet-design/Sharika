@@ -1,0 +1,147 @@
+name: Publish eleven silent Royal Event MP4s to isolated staging R2
+on:
+  push:
+    branches: [feature/sharika-event-videos-r2-room-20261120]
+    paths:
+      - '.github/workflows/sharika-royal-event-video-r2-staging.yml'
+      - 'hosted-game-center/scripts/royal-event-video-manifest.mjs'
+      - 'hosted-game-center/scripts/link-royal-videos-staging.mjs'
+      - 'hosted-game-center/web/event-banners/**'
+      - 'cloudflare/src/room-banners.mjs'
+      - 'app/royal-room-ui.js'
+      - 'app/royal-room-ui.css'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-eleven-event-mp4-staging
+  cancel-in-progress: false
+jobs:
+  qa:
+    name: Verify Event identity, secure banners and room voice isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check all touched app, Worker and video scripts
+        run: |
+          node --check cloudflare/src/room-banners.mjs
+          node --check app/royal-room-ui.js
+          node --check hosted-game-center/scripts/royal-event-video-manifest.mjs
+          node --check hosted-game-center/scripts/link-royal-videos-staging.mjs
+          node --check hosted-game-center/web/center.js
+      - name: Test private event access, individual room banners and genuine rankings
+        run: |
+          node --test cloudflare/test/room-banners.test.mjs cloudflare/test/events.test.mjs hosted-game-center/test/private-event-access.test.mjs
+      - name: Full Cloudflare security and regression suite
+        run: npm --prefix cloudflare run check
+      - name: Verify room never plays all MP4s simultaneously or affects microphone
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const room=readFileSync('app/royal-room-ui.js','utf8');
+          const api=readFileSync('cloudflare/src/room-banners.mjs','utf8');
+          if(!room.includes('IntersectionObserver')||
+             !room.includes("clip.muted=true")||
+             !room.includes("clip.autoplay=false")||
+             !room.includes("clip.preload='none'")||
+             !room.includes('eventVideoObserver.observe(clip)')||
+             !api.includes('event_video_url'))
+             throw Error('Safe room video gating is missing');
+          const voices=readFileSync('android-staging/staging-connection.js','utf8');
+          if(!voices.includes('openEvent:eventId=>')||
+             !room.includes('Promise.resolve(open(id))'))
+             throw Error('Exact individual Event deep-link missing');
+          console.log('SAFE_MUTED_VISIBLE_ONLY_EVENT_CAROUSEL');
+          NODE
+  staging:
+    name: Render Full-HD clips and attach eleven Event videos in STAGING ONLY
+    needs: qa
+    environment: sharika-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      WORK_DIR: /tmp/sharika-royal-event-mp4
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Refuse any Play or production database, storage or Worker
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-event-videos-r2-room-20261120'||
+             !process.env.CLOUDFLARE_API_TOKEN||
+             process.env.CLOUDFLARE_ACCOUNT_ID!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             c.name!=='sharika-api-staging'||c.vars?.SHARIKA_ENV!=='staging'||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             c.d1_databases?.[0]?.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             c.r2_buckets?.[0]?.bucket_name!=='sharika-staging-media')
+             throw Error('STAGING ONLY media release safeguard refused this run');
+          console.log('STAGING_ONLY_BUCKET_AND_D1_VERIFIED');
+          NODE
+      - name: Install genuine H.264 MP4 renderer and SVG rasterizer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq librsvg2-bin ffmpeg
+      - name: Build exactly eleven deterministic Event media destinations
+        run: |
+          node hosted-game-center/scripts/royal-event-video-manifest.mjs "$WORK_DIR"
+      - name: Generate loopable 1920x1080 silent cinematic MP4s from unique Royal artwork
+        shell: bash
+        run: |
+          set -euo pipefail
+          for id in $(seq 3 13); do
+            rsvg-convert -w 2304 -h 1080 "hosted-game-center/web/event-banners/event-${id}.svg" \
+              -o "$WORK_DIR/event-${id}.png"
+            ffmpeg -nostdin -hide_banner -loglevel error -y \
+              -loop 1 -framerate 24 -i "$WORK_DIR/event-${id}.png" \
+              -vf "crop=1920:1080:192:0,zoompan=z='1.035+0.018*sin(2*PI*on/120)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=24,format=yuv420p" \
+              -frames:v 120 -an -c:v libx264 -preset veryfast -crf 23 \
+              -profile:v main -level 4.0 -movflags +faststart \
+              "$WORK_DIR/event-${id}.mp4"
+            test "$(stat -c%s "$WORK_DIR/event-${id}.mp4")" -gt 10000
+            test "$(stat -c%s "$WORK_DIR/event-${id}.mp4")" -lt 25000000
+            codecs=$(ffprobe -v error -select_streams v:0 \
+              -show_entries stream=codec_name,width,height -of csv=p=0 \
+              "$WORK_DIR/event-${id}.mp4")
+            test "$codecs" = "h264,1920,1080"
+            audio=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 \
+              "$WORK_DIR/event-${id}.mp4")
+            test -z "$audio"
+            echo "Rendered 1920x1080 silent Royal Event video #${id}"
+          done
+      - name: Upload each MP4 to isolated staging R2; never production
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' > "$WORK_DIR/rows.tsv"
+          import {readFileSync} from 'node:fs';
+          const data=JSON.parse(readFileSync(process.env.WORK_DIR+'/manifest.json','utf8'));
+          for(const e of data)console.log([e.id,e.key,e.target].join('\t'));
+          NODE
+          while IFS=$'\t' read -r id key source; do
+            test -f "$source"
+            npx --yes wrangler@4 r2 object put \
+              "sharika-staging-media/$key" \
+              --file="$source" --remote --force \
+              --content-type="video/mp4" \
+              --cache-control="public, max-age=31536000, immutable" \
+              --config cloudflare/wrangler.jsonc
+            echo "Uploaded isolated staging R2 Event #$id"
+          done < "$WORK_DIR/rows.tsv"
+      - name: Verify all public MP4s and atomically link individual Event IDs
+        run: |
+          node hosted-game-center/scripts/link-royal-videos-staging.mjs "$WORK_DIR/manifest.json"
+      - name: Final preview-only staging health check
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 --max-time 15 \
+            https://sharika-api-staging.soverixnet.workers.dev/health | grep -q staging
+          echo 'ELEVEN_STAGING_EVENT_MP4_URLS_LINKED_SUCCESS'
