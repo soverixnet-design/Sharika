@@ -1,0 +1,108 @@
+name: Sharika Play shared public directory guarded rollout
+on:
+  push:
+    branches:
+      - fix/sharika-play-unified-directory-20261121
+    paths:
+      - '.github/workflows/sharika-play-unified-directory-rollout.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-play-virtual-api-deploy
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Full Play backend and public identity regression checks
+        run: |
+          set -euo pipefail
+          node --check cloudflare/src/index.mjs
+          node --check cloudflare/src/unified-public-profiles.mjs
+          node --test cloudflare/test/unified-public-profiles.test.mjs cloudflare/test/global-public-ids.test.mjs
+          npm --prefix cloudflare run check
+      - name: Validate exact Play virtual-only routing (keep wallets isolated)
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('cloudflare/wrangler.play.virtual.jsonc','utf8'));
+          const db=b=>c.d1_databases?.find(x=>x.binding===b)?.database_id;
+          if(c.name!=='sharika-api-play-virtual'||
+             db('DB')!=='5b151101-1ac0-4b13-ab8e-e41cb06014fa'||
+             db('SHARIKA_ID_DB')!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             c.vars?.SHARIKA_ENV!=='play_virtual'||
+             c.vars?.SHARIKA_PLAY_VIRTUAL_ONLY!=='true'||
+             c.vars?.SHARIKA_PLAY_ISOLATED_DATA!=='true'||
+             c.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             c.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false'||
+             !c.durable_objects?.bindings?.some(b=>b.name==='VOICE_ROOMS')||
+             !c.r2_buckets?.some(b=>b.binding==='MEDIA_BUCKET'))
+            throw Error('Wrong Play environment; refusing build');
+          NODE
+      - name: Dry-run existing Play Worker only
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.play.virtual.jsonc --outdir /tmp/sharika-play-unified-public
+  publish:
+    needs: verify
+    environment: sharika-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Read-only deployed version and canonical-directory safety check
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module <<'NODE'
+          const base='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID;
+          const headers={Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN};
+          const current=await fetch(base+'/workers/scripts/sharika-api-play-virtual/deployments',{headers});
+          const deployed=await current.json();
+          const actual=deployed.result?.deployments?.[0]?.versions?.[0]?.version_id;
+          if(!current.ok||!deployed.success||actual!=='42a94af5-f1d5-48f8-b24c-cce445b59d9d')
+             throw Error('Play Worker version changed since verified baseline: stop, never overwrite new release');
+          async function sql(database,query) {
+            const response=await fetch(base+'/d1/database/'+database+'/query',{
+              method:'POST',headers:{...headers,'content-type':'application/json'},
+              body:JSON.stringify({sql:query})});
+            const data=await response.json();
+            if(!response.ok||!data.success||!data.result?.[0]?.success)
+              throw Error('Read-only D1 health failed');
+            return data.result[0].results;
+          }
+          const [shared,play]=await Promise.all([
+            sql('b2c62252-12a5-4740-90c7-01a536d9a39a',
+              'SELECT COUNT(*) AS n,COUNT(DISTINCT auth_uid) AS u FROM sharika_global_public_profiles'),
+            sql('5b151101-1ac0-4b13-ab8e-e41cb06014fa',
+              'SELECT COUNT(*) AS n FROM sharika_users')
+          ]);
+          if(shared[0].n<29||shared[0].n!==shared[0].u||play[0].n<21)
+            throw Error('Shared directory or Play identity data changed unexpectedly');
+          console.log('EXISTING_PLAY_DEPLOYMENT_AND_DIRECTORY_VERIFIED');
+          NODE
+      - name: Preserve Play branch's Admin templates
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+      - name: Deploy isolated Play API only (do not publish an APK or run migrations)
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.play.virtual.jsonc --keep-vars
+      - name: Verify Play health and route privacy
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-play-virtual.soverixnet.workers.dev/health | grep -q play_virtual
+          test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://sharika-api-play-virtual.soverixnet.workers.dev/api/v1/users/10000001)" = 401
+          echo PLAY_DIRECTORY_API_PUBLISHED_WITH_ISOLATED_WALLETS
