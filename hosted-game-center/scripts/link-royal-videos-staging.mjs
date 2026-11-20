@@ -26,6 +26,11 @@ async function query(sql,params=[]){
   throw new Error('Staging D1 query failed: '+JSON.stringify(json.errors||res.status));
  return json.result?.[0]||{results:[],meta:{}};
 }
+const auditor=(await query(
+ "SELECT r.auth_uid FROM sharika_admin_roles r JOIN sharika_users u "+
+ "ON u.auth_uid=r.auth_uid WHERE r.role='super' ORDER BY r.auth_uid LIMIT 1"
+)).results?.[0]?.auth_uid;
+if(!auditor)throw new Error('No authorized Super Admin exists to audit staging media linking');
 const sql='SELECT id,title,status,video_url FROM sharika_events WHERE id BETWEEN 3 AND 13 ORDER BY id';
 const existing=(await query(sql)).results;
 if(existing.length!==11||existing.some((x,i)=>x.id!==manifest[i].id||
@@ -50,7 +55,7 @@ for(const entry of manifest){
  if(Number(saved.meta?.changes)!==1)
   throw new Error('Event '+entry.id+' concurrent change; event left unchanged');
  await query('INSERT INTO sharika_admin_audit(actor_id,action,details_json) VALUES(?,?,?)',
-  ['ci:royal-event-staging','event_video_link',JSON.stringify({
+  [auditor,'event_video_link',JSON.stringify({
     event_id:entry.id,source:'original-royal-svg-cinematic-export',
     media_key:entry.key,coins_added:0,items_granted:0,environment:'staging'})]);
  linked++;
