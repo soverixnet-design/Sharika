@@ -92,7 +92,7 @@ test('only approved scheduled events expose verified banner and real prize detai
     ]};
     if(sql.includes('JOIN sharika_game_catalog'))return {results:[]};
     if(sql.includes('FROM sharika_events')){
-     assert.match(sql,/e\.ends_at>\?/);
+     assert.match(sql,/e\.ends_at>=\?/);
      assert.doesNotMatch(sql,/e\.starts_at<=\?/);
      return {results:[{id:7,title:'Golden Weekend',kind:'gift_race',
       description:'Official gift race',starts_at:'2099-01-01T00:00:00.000Z',
