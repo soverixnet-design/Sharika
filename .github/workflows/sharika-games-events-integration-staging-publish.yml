@@ -1,0 +1,122 @@
+name: Publish integrated Sharika Game Center and Cinematic Events to staging only
+on:
+  push:
+    branches: [integration/sharika-games-events-qa-20261120]
+    paths: ['.github/workflows/sharika-games-events-integration-staging-publish.yml']
+permissions: {contents: read}
+concurrency:
+  group: sharika-cinematic-royal-events-staging
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check merged source, all game routes and Event security
+        run: |
+          set -euo pipefail
+          for file in hosted-game-center/src/index.mjs hosted-game-center/src/private-index.mjs hosted-game-center/web/app.js hosted-game-center/web/center.js cloudflare/src/events.mjs cloudflare/src/private-center.mjs cloudflare/src/index.mjs admin/connection.js; do node --check "$file"; done
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/game-availability-smoke.test.mjs hosted-game-center/test/private-game-visual-reliability.test.mjs hosted-game-center/test/private-event-access.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/hosted-route.test.mjs
+          node --test cloudflare/test/rapid-round-taps.test.mjs cloudflare/test/rapid-tap-recovery.test.mjs cloudflare/test/royal-liveops-admin-e2e.test.mjs
+          npm --prefix cloudflare run check
+      - name: Browser test every hosted game with private Android bridge mock (no wagers)
+        run: |
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+          node --test hosted-game-center/test/all-games-browser-smoke.test.mjs
+      - name: Dry-run public games, private member center, API and existing Admin
+        run: |
+          set -euo pipefail
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.jsonc --outdir /tmp/sharika-integrated-games
+          npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.private.jsonc --outdir /tmp/sharika-integrated-private
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sharika-integrated-api
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sharika-integrated-admin
+  publish:
+    needs: verify
+    if: github.ref == 'refs/heads/integration/sharika-games-events-qa-20261120'
+    environment: sharika-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Fail closed unless exact staging destinations and existing media/audio bindings
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const r=p=>JSON.parse(readFileSync(p,'utf8'));
+          const api=r('cloudflare/wrangler.jsonc'),admin=r('cloudflare/wrangler.admin.jsonc');
+          const pub=r('hosted-game-center/wrangler.jsonc'),privateSite=r('hosted-game-center/wrangler.private.jsonc');
+          const acct='d81cf7c48fb9b36d468cb0a08720cd74',db='b2c62252-12a5-4740-90c7-01a536d9a39a';
+          if(process.env.GITHUB_REF!=='refs/heads/integration/sharika-games-events-qa-20261120'||
+            [api,admin,pub,privateSite].some(x=>x.account_id!==acct)||
+            api.name!=='sharika-api-staging'||admin.name!=='sharika-admin-staging'||
+            pub.name!=='sharika-games-web-staging'||privateSite.name!=='sharika-private-center-staging'||
+            api.d1_databases?.[0]?.database_id!==db||privateSite.d1_databases?.[0]?.database_id!==db||
+            admin.d1_databases?.[0]?.database_id!==db||
+            api.vars?.SHARIKA_ENV!=='staging'||api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+            api.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false'||api.keep_vars!==true||
+            !api.durable_objects?.bindings?.some(x=>x.name==='VOICE_ROOMS')||
+            !api.r2_buckets?.some(x=>x.binding==='MEDIA_BUCKET')||
+            pub.d1_databases||pub.r2_buckets||
+            !pub.assets?.run_worker_first||!privateSite.assets?.run_worker_first||
+            admin.services?.[0]?.service!=='sharika-api-staging')
+            throw Error('Staging isolation/media/voice policy mismatch - deployment forbidden');
+          console.log('EXACT_SHARIKA_STAGING_TARGETS_VERIFIED');
+          NODE
+      - name: Read-only migration/coin ledger preflight; never run migrations
+        run: |
+          node --input-type=module <<'NODE'
+          const url='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          async function query(sql){
+            const r=await fetch(url,{method:'POST',headers:{
+              Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+              'Content-Type':'application/json'},body:JSON.stringify({sql})});
+            const data=await r.json();
+            if(!r.ok||!data.success)throw Error('Read-only D1 check failed');
+            return data.result?.[0]?.results||[];
+          }
+          const migrations=await query("SELECT name FROM d1_migrations WHERE name IN ('0105_wallet_sized_game_stakes.sql','0106_event_cinematic_media.sql')");
+          const columns=await query("SELECT name FROM pragma_table_info('sharika_events') WHERE name IN ('video_url','animation_style')");
+          const tables=await query("SELECT name,sql FROM sqlite_master WHERE type='table' AND name IN ('sharika_food_deluxe_bets','sharika_original_game_bets','sharika_greedy_bets','sharika_greedy_classic_bets','sharika_gaddy_bets','sharika_fruit_royale_bets')");
+          if(migrations.length!==2||columns.length!==2||tables.length!==6||
+            tables.some(t=>!t.sql.includes('9007199254740991')))
+            throw Error('Required staging wallet/Event schema missing: refusing deployment');
+          console.log('EXISTING_D1_MIGRATIONS_AND_LEDGER_SCHEMA_VERIFIED_NO_WRITES');
+          NODE
+      - name: Assemble original game assets, private Royal Events and existing Admin
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+      - name: Deploy isolated public static games Worker
+        run: npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.jsonc
+      - name: Deploy isolated private authenticated Game Center
+        run: npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.private.jsonc
+      - name: Deploy verified game engine and existing Voice/Event API to staging
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc --keep-vars
+      - name: Deploy existing staging Admin Panel to preserve Event and Game controls
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Read-only smoke test all eleven games and protected member API
+        run: |
+          set -euo pipefail
+          node --test hosted-game-center/test/live-staging-assets.test.mjs
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health | grep -q staging
+          curl --fail --silent --show-error --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/health | grep -q sharika-admin-staging
+          test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://sharika-private-center-staging.soverixnet.workers.dev/api/catalog)" = 401
+          echo SHARIKA_INTEGRATED_GAMES_EVENTS_STAGING_PUBLISHED_AND_ANON_PROTECTED
