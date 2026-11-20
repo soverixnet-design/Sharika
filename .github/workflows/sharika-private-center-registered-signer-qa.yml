@@ -1,7 +1,7 @@
 name: Sharika Royal Events and Rapid Taps - registered Google OAuth signer QA
 on:
   push:
-    branches: [feature/sharika-private-center-rapid-tap-integration-20261120, feature/sharika-event-country-preview-20261120]
+    branches: [feature/sharika-private-center-rapid-tap-integration-20261120, feature/sharika-event-country-preview-20261120, integration/sharika-games-event-videos-20261121]
     paths: ['.github/workflows/sharika-private-center-registered-signer-qa.yml']
   workflow_dispatch:
 permissions:
@@ -20,7 +20,7 @@ jobs:
       - name: Verify Firebase config and Royal Slots native game
         run: |
           node --test android-staging/google-oauth-signing.test.cjs
-          node --test hosted-game-center/test/royal-slots-native-bridge.test.mjs
+          node --test hosted-game-center/test/native-gaddy-ranking-route.test.mjs hosted-game-center/test/royal-slots-native-bridge.test.mjs
           node --test hosted-game-center/test/royal-slots-integration.test.mjs
           node --test cloudflare/test/private-center.test.mjs cloudflare/test/rapid-round-taps.test.mjs
           node --test cloudflare/test/event-audience.test.mjs cloudflare/test/event-country-leaderboards.test.mjs cloudflare/test/royal-liveops-admin-e2e.test.mjs
