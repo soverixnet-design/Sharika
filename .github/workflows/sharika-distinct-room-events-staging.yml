@@ -13,6 +13,10 @@ on:
       - 'app/royal-room-ui.css'
       - 'hosted-game-center/web/center.js'
       - 'hosted-game-center/web/center.css'
+      - 'hosted-game-center/web/event-banners/**'
+      - 'hosted-game-center/scripts/build.mjs'
+      - 'hosted-game-center/src/private-index.mjs'
+      - 'hosted-game-center/test/private-event-access.test.mjs'
       - 'admin/connection.js'
   workflow_dispatch:
 permissions:
@@ -62,6 +66,25 @@ jobs:
              !admin.includes('rb-new-event')||!admin.includes('sh-ev-auto-publish'))
              throw Error('Individual Event ID and Admin controls are incomplete');
           console.log('ELEVEN_DISTINCT_EVENT_SURFACES_PRESENT');
+          NODE
+      - name: Verify exactly eleven different premium banner assets
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const digests=new Set();
+          for(let id=3;id<=13;id++){
+            const svg=readFileSync('hosted-game-center/dist/event-banners/event-'+id+'.svg','utf8');
+            if(svg.length<3000||!svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')||
+               svg.includes('<script')||!svg.includes('</svg>'))
+              throw Error('Missing or unsafe Royal Event art '+id);
+            digests.add(createHash('sha256').update(svg).digest('hex'));
+          }
+          if(digests.size!==11)throw Error('Duplicate event artwork detected');
+          const app=readFileSync('hosted-game-center/web/center.js','utf8');
+          if(!app.includes('event-artwork-unique')||!app.includes("'/event-banners/event-'"))
+            throw Error('Individual SVG art is not connected to Event Center');
+          console.log('11 standalone Royal Event banners, all different and linked');
           NODE
       - name: Dry-run staging-only Workers
         run: |
