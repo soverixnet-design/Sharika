@@ -1,0 +1,143 @@
+name: Sharika eleven independent Royal Events - staging QA and publish
+on:
+  push:
+    branches: [feature/sharika-distinct-room-events-20261120]
+    paths:
+      - '.github/workflows/sharika-distinct-room-events-staging.yml'
+      - 'cloudflare/src/room-banners.mjs'
+      - 'cloudflare/src/index.mjs'
+      - 'cloudflare/migrations/0105_distinct_room_event_banners.sql'
+      - 'cloudflare/test/room-banners.test.mjs'
+      - 'android-staging/staging-connection.js'
+      - 'app/royal-room-ui.js'
+      - 'app/royal-room-ui.css'
+      - 'hosted-game-center/web/center.js'
+      - 'hosted-game-center/web/center.css'
+      - 'admin/connection.js'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-independent-room-events-staging
+  cancel-in-progress: false
+jobs:
+  qa:
+    name: Verify individual Event isolation and regression safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check all changed JS surfaces
+        run: |
+          node --check cloudflare/src/room-banners.mjs
+          node --check cloudflare/src/index.mjs
+          node --check android-staging/staging-connection.js
+          node --check app/royal-room-ui.js
+          node --check hosted-game-center/web/center.js
+          node --check admin/connection.js
+      - name: Verify per-event isolation, visibility, country and security tests
+        run: |
+          node --test cloudflare/test/room-banners.test.mjs cloudflare/test/event-audience.test.mjs cloudflare/test/event-country-leaderboards.test.mjs hosted-game-center/test/private-event-access.test.mjs
+      - name: Full Cloudflare backend regression suite
+        run: npm --prefix cloudflare run check
+      - name: Build distinct Event website and Admin payloads
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const room=readFileSync('app/royal-room-ui.js','utf8');
+          const adapter=readFileSync('android-staging/staging-connection.js','utf8');
+          const web=readFileSync('hosted-game-center/web/center.js','utf8');
+          const admin=readFileSync('admin/connection.js','utf8');
+          if(!room.includes('sh-room-event-card')||
+             !room.includes("Promise.resolve(open(id))")||
+             !adapter.includes('openEvent:eventId=>')||
+             !web.includes('event-poster-individual')||
+             !web.includes('showEventDetail(selected)')||
+             !admin.includes('rb-new-event')||!admin.includes('sh-ev-auto-publish'))
+             throw Error('Individual Event ID and Admin controls are incomplete');
+          console.log('ELEVEN_DISTINCT_EVENT_SURFACES_PRESENT');
+          NODE
+      - name: Dry-run staging-only Workers
+        run: |
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sharika-room-events-api
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sharika-room-events-admin
+          npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.private.jsonc --outdir /tmp/sharika-room-events-site
+  staging:
+    name: Deploy verified isolated Event services to Staging ONLY
+    needs: qa
+    runs-on: ubuntu-24.04
+    environment: sharika-staging
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Hard-fail any non-staging target or missing secret
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const read=p=>JSON.parse(readFileSync(p,'utf8'));
+          const api=read('cloudflare/wrangler.jsonc');
+          const admin=read('cloudflare/wrangler.admin.jsonc');
+          const site=read('hosted-game-center/wrangler.private.jsonc');
+          const db='b2c62252-12a5-4740-90c7-01a536d9a39a';
+          const account='d81cf7c48fb9b36d468cb0a08720cd74';
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-distinct-room-events-20261120'||
+             !process.env.CLOUDFLARE_API_TOKEN||
+             [api,admin,site].some(c=>c.account_id!==account)||
+             api.name!=='sharika-api-staging'||
+             admin.name!=='sharika-admin-staging'||
+             site.name!=='sharika-private-center-staging'||
+             api.d1_databases?.[0]?.database_id!==db||
+             admin.d1_databases?.[0]?.database_id!==db||
+             site.d1_databases?.[0]?.database_id!==db||
+             api.vars?.SHARIKA_ENV!=='staging'||
+             api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             admin.services?.[0]?.service!=='sharika-api-staging')
+             throw Error('Refusing non-STAGING deployment');
+          console.log('Staging Worker destinations verified. No Play or production.');
+          NODE
+      - name: Confirm additive schema and exactly eleven distinct active links
+        run: |
+          node --input-type=module <<'NODE'
+          const url='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const sql="SELECT (SELECT COUNT(*) FROM pragma_table_info('sharika_room_banners') WHERE name='event_id') AS event_col,(SELECT COUNT(*) FROM sharika_room_banners WHERE event_id BETWEEN 3 AND 13 AND active=1) AS room_links,(SELECT COUNT(DISTINCT banner_id) FROM sharika_events WHERE id BETWEEN 3 AND 13 AND status='published') AS event_art_slots";
+          const result=await fetch(url,{method:'POST',headers:{
+            Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'},body:JSON.stringify({sql})});
+          const body=await result.json(),row=body.result?.[0]?.results?.[0];
+          if(!result.ok||!body.success||Number(row?.event_col)!==1||
+             Number(row?.room_links)!==11||Number(row?.event_art_slots)!==11)
+            throw Error('Expected existing 11 event links/artwork slots not verified');
+          console.log('All eleven separate published room links and artwork slots exist');
+          NODE
+      - name: Build the existing Admin and private Event Center assets
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+      - name: Publish private Royal Event Center staging Worker
+        run: npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.private.jsonc
+      - name: Publish Sharika staging API only
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Publish existing staging Admin Panel only
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Verify staging health and anonymous private access denied
+        run: |
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-api-staging.soverixnet.workers.dev/health | grep -q staging
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-admin-staging.soverixnet.workers.dev/health | grep -q sharika-admin-staging
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-private-center-staging.soverixnet.workers.dev/health | grep -q private_center
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 12 https://sharika-private-center-staging.soverixnet.workers.dev/api/center/events/11/ranking)
+          test "$status" = 401
+          echo 'ELEVEN_INDEPENDENT_EVENT_STAGING_WORKERS_PUBLISHED'
