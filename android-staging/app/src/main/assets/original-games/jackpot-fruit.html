@@ -61,6 +61,7 @@ body{background:radial-gradient(circle at 50% 20%,#4b1a7a,#12061f 75%);color:#ff
 <div id="bt"><div>My Coins<b id="bal"></b></div><div>Today's Winnings<b id="td"></b></div><button id="au">Auto</button></div>
 </div>
 <div id="pop"><div id="pb"></div></div>
+<script src="stake-picker.js"></script>
 <script src="rapid-bets.js"></script>
 <script>
 /* Same-origin native parent owns ALL identity and wallet operations.
@@ -174,6 +175,7 @@ const F=[['🍋',5],['🍇',5],['🥝',5],['🍒',40],0,['🍑',5],['🍉',20],[
 const RING=[0,1,2,5,8,7,6,3],CH=[1000,10000,100000,1000000,10000000];
 const chipLabel=c=>c>=1000000?(c/1000000)+'M':c>=1000?(c/1000)+'K':String(c);
 let chip=CH[0],bets=Array(9).fill(0),muted=false,latestSeen=null;
+window.installStakePicker({balance:()=>GameBridge.get()?.coins||0, selected:()=>chip, select:amount=>{chip=amount;document.querySelectorAll('.chip.on,#chips .on,#ch .on').forEach(b=>b.classList.remove('on'));}});
 const verifiedWinners=document.createElement('div');
 verifiedWinners.id='og-top3';
 verifiedWinners.setAttribute('role','status');

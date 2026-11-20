@@ -80,11 +80,11 @@ test('server-verified bet, exact retry, atomic debit and one-time payout',async(
  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sharika_wallet_ledger WHERE reason='greedy_classic_win'").get().n,payout?1:0);
  sqlite.close();
 });
-test('disallows unknown food, arbitrary coin stake, underage and insufficient wallet',async()=>{
+test('disallows unknown food, zero coin stake, underage and insufficient wallet',async()=>{
  const {sqlite,call,balance}=fixture(),now=Date.now(),n=Math.floor(now/38000);
  round(sqlite,now,n);
  const body={round:n,itemId:'hotdog',amount:100,request_id:'greedy-classic-invalid-01'};
- assert.equal((await call('bet',{...body,amount:200})).status,400);
+ assert.equal((await call('bet',{...body,amount:0})).status,400);
  assert.equal((await call('bet',{...body,itemId:'shrimp'})).status,400);
  assert.equal((await call('bet',body,'minor-1')).status,403);
  assert.equal(balance(),100000);
@@ -122,7 +122,7 @@ test('native parent bridge confirms wager before wallet changes, without fake de
  const source=readFileSync(new URL('../../android-staging/app/src/main/assets/original-games/greedy-classic-live.js',import.meta.url),'utf8');
  const requests=[],listeners=new Map(),elements=new Map(),messages=[];
  const parent={postMessage(data){requests.push(data)}};
- const window={parent,addEventListener(type,fn){listeners.set(type,fn)}};
+ const window={parent,installStakePicker(){},addEventListener(type,fn){listeners.set(type,fn)}};
  const S={bal:0,round:0,t:0,phase:'load',chip:100,bets:{},last:{},hist:[],played:0,rev:0,auto:false};
  const F=['chicken','fish','hotdog','steak','grape','lettuce','pepper','watermelon'].map(id=>({id}));
  const element=()=>({style:{},className:'',hidden:false,children:[],

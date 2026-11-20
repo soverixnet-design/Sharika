@@ -28,7 +28,7 @@
       if(!active||host===window)return reject(new Error('Secure app connection unavailable'));
       const id=++seq,timer=setTimeout(()=>{
         pending.delete(id);reject(new Error('server_timeout'));
-      },9000);
+      },24000);
       pending.set(id,{resolve,reject,timer});
       host.postMessage({type:'sharika:original-request',id,game:GAME,
         action,method:action==='bet'?'POST':'GET',...(body?{body}:{})},'*');
@@ -133,6 +133,7 @@
       }
     }finally{refreshing=false;}
   }
+window.installStakePicker({balance:()=>state?.coins||0, selected:()=>selected, select:amount=>{selected=amount;document.querySelectorAll('.chip.sel').forEach(b=>b.classList.remove('sel'));}});
   const enqueue=createRoundTapQueue({
     send:body=>request('bet',body),
     openRound:n=>authorized&&state?.round.round_no===n&&Date.now()+offset<state.round.bet_closes_ms,

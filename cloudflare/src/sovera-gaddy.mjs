@@ -133,10 +133,10 @@ export async function handleSoveraGaddy({request,db,uid,action,reply,fail,cors})
   const u=await user(db,uid);
   if(!u||u.status!=='active'||u.minor)return fail('game_adult_only',403,cors);
   let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
-  if(b?.taps)return settleTapBatch({db,uid,game:GAME,body:b,currentRound:number(Date.now()),ensure:()=>ensureRound(db,b.round_no),validAmount:a=>BET_AMOUNTS.includes(a),maxPick:7,reply,fail,cors});
+  if(b?.taps)return settleTapBatch({db,uid,game:GAME,body:b,currentRound:number(Date.now()),ensure:()=>ensureRound(db,b.round_no),validAmount:a=>Number.isSafeInteger(a)&&a>0,maxPick:7,reply,fail,cors});
   if(!b||!Number.isSafeInteger(b.round_no)||b.round_no<0||
     !Number.isSafeInteger(b.pick)||b.pick<0||b.pick>7||
-    !BET_AMOUNTS.includes(b.amount)||typeof b.request_id!=='string'||
+    (!Number.isSafeInteger(b.amount)||b.amount<1)||typeof b.request_id!=='string'||
     !REQ.test(b.request_id))return fail('invalid_bet',400,cors);
   const prior=await db.prepare('SELECT * FROM sharika_gaddy_bets WHERE user_uid=? AND request_id=?').bind(uid,b.request_id).first();
   if(prior){

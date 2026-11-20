@@ -14,7 +14,7 @@ const WEIGHTS=[2222,4000,6667,10000,20000,20000,20000,20000,20,10];
 const ROUND_MS=38000,BET_MS=30000,SPIN_MS=3500;
 const WINNER_BANNER_MIN=500000;
 const CHIPS=[100,1000,10000,50000];
-const MAX_ROUND_STAKE=Number.MAX_SAFE_INTEGER,MAX_BET=50000;
+const MAX_ROUND_STAKE=Number.MAX_SAFE_INTEGER;
 const REQUEST_ID=/^[A-Za-z0-9:_-]{12,80}$/;
 const enc=new TextEncoder();
 function hex(bytes){return [...bytes].map(x=>x.toString(16).padStart(2,'0')).join('');}
@@ -187,10 +187,10 @@ export async function handleGreedyClassicRequest({request,db,uid,action,reply,fa
   let b;try{b=await readBoundedJson(request);}catch{return fail('invalid_json',400,cors);}
   if(b?.taps)return settleTapBatch({db,uid,game:'greedy-classic',body:b,
     currentRound:roundNumber(Date.now()),ensure:()=>ensureRound(db,b.round_no),
-    validAmount:a=>CHIPS.includes(a),maxPick:7,items:ITEMS,reply,fail,cors});
+    validAmount:a=>Number.isSafeInteger(a)&&a>0,maxPick:7,items:ITEMS,reply,fail,cors});
   if(!b||typeof b!=='object'||Array.isArray(b)||
     !Number.isSafeInteger(b.round)||b.round<0||!ITEMS.includes(b.itemId)||
-    !Number.isSafeInteger(b.amount)||!CHIPS.includes(b.amount)||
+    !Number.isSafeInteger(b.amount)||(!Number.isSafeInteger(b.amount)||b.amount<1)||
     !REQUEST_ID.test(b.request_id||''))return fail('invalid_bet',400,cors);
   let prior=await db.prepare('SELECT * FROM sharika_greedy_classic_bets WHERE user_uid=? AND request_id=?')
     .bind(uid,b.request_id).first();

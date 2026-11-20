@@ -50,6 +50,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class SharikaRoomGameDialog {
     private static final String SITE_ORIGIN =
         "https://sharika-private-center-staging.soverixnet.workers.dev";
+    private static final String GAME_ASSET_ORIGIN =
+        "https://sharika-games-web-staging.soverixnet.workers.dev";
     private final Activity host;
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final AtomicInteger outstanding = new AtomicInteger();
@@ -109,6 +111,9 @@ final class SharikaRoomGameDialog {
             @Override public boolean shouldOverrideUrlLoading(WebView browser,WebResourceRequest req) {
                 Uri uri=req.getUrl();
                 String origin=uri.getScheme()+"://"+uri.getAuthority();
+                // Only our first-party static game host can load as a child
+                // iframe. Keep all top-level navigation on the private host.
+                if(!req.isForMainFrame()&&GAME_ASSET_ORIGIN.equals(origin))return false;
                 return !SITE_ORIGIN.equals(origin);
             }
         });

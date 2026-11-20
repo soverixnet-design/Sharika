@@ -106,7 +106,16 @@ test('Food Wheel has one top marquee and a separate verified Top 3 results panel
  assert.ok(!live.includes('DAILY TOP 1'));
  assert.ok(live.includes("(r.top||[]).slice(0,3)"));
  assert.ok(live.includes("Verified Round Top 3"));
- assert.ok(live.includes("pendingFoodTaps.push"));
+ // Rapid taps now use the shared request-ID queue, not the retired array.
+ // A test for a removed implementation must not fail an otherwise working game.
+ const taps=read('../android-staging/app/src/main/assets/original-games/rapid-bets.js');
+ const original=read('../android-staging/app/src/main/assets/original-games/greedy-classic.html');
+ assert.ok(live.includes('createRoundTapQueue({'));
+ assert.ok(taps.includes('window.createRoundTapQueue=function'));
+ assert.ok(original.includes('src="rapid-bets.js"'));
+ assert.ok(original.indexOf('src="rapid-bets.js"')<original.indexOf('src="greedy-classic-live.js"'));
+ assert.match(taps,/request_id/);
+ assert.match(taps,/waiting.push/);
  assert.ok(live.includes("cell.textContent=value>0?compactCoins(value)"));
  assert.ok(style.includes('sharikaVerifiedWinnerTravel 10s'));
  assert.ok(markup.includes('winner-game-icon'));

@@ -18,7 +18,7 @@
    const bits=new Uint32Array(1);crypto.getRandomValues(bits);return bits[0]%n;
  };
  const pick=a=>a[random(a.length)];
- const valid=n=>Number.isSafeInteger(n)&&n>=0&&n<=1000000000000;
+ const valid=n=>Number.isSafeInteger(n)&&n>=0;
  const clock=(duration=40000,betMs=28000,spinMs=5000)=>{
    const now=Date.now(),n=Math.floor(now/duration),start=n*duration,betEnd=start+betMs,
     spinEnd=betEnd+spinMs;
@@ -49,8 +49,8 @@
      return r;
    };
    const gamble=(bet,id,buy)=>{
-     const allowed=[1000,10000,100000,1000000,10000000];
-     if(!allowed.includes(bet))throw Error('invalid_demo_bet');
+
+     if(!valid(bet)||bet<1)throw Error('invalid_demo_bet');
      if(receiptCache.has(id))return receiptCache.get(id);
      const cost=buy?bet*10:bonus?0:bet;
      return pay(cost,id,()=>{
@@ -85,8 +85,8 @@
        if(r.now>=r.betEnd)throw Error('betting_closed');
        const itemId=String(body?.itemId||'chicken'),amount=Number(body?.amount);
        const id=String(body?.request_id||'');
-       const items=['chicken','fish','hotdog','steak','grape','lettuce','pepper','watermelon'];
-       if(!items.includes(itemId)||!valid(amount)||![100,1000,10000,50000].includes(amount)||
+       const items=game==='greedy-wheel'?['shrimp','fish','chicken','steak','cabbage','carrot','corn','tomato']:['chicken','fish','hotdog','steak','grape','lettuce','pepper','watermelon'];
+       if(!items.includes(itemId)||!valid(amount)||amount<1||
           !Number.isSafeInteger(body?.round)||body.round!==r.n)
          throw Error('invalid_demo_bet');
        return pay(amount,id,()=>{
@@ -240,7 +240,7 @@
              closesAt:r.betEnd,settlesAt:r.end,commit_sha256:'practice'},
            bets:bets.filter(x=>x.roundId===id),
            fruits:fruit.map(x=>({id:x[0],name:x[1],emoji:x[2],multiplier:x[3]})),
-           user:person,limits:{minBet:1,maxBet:10000000},
+           user:person,limits:{minBet:1,maxBet:Number.MAX_SAFE_INTEGER},
            previous_result:null,policy:{version:'practice',publicOdds:[],bonusOdds:[],
              poolContributionPercent:0}};
          if(action==='history'||action==='rankings')return [];

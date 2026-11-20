@@ -4,7 +4,7 @@ import {settleTapBatch} from './round-tap-batch.mjs';
 import {activeSpecialSelect} from './special-ids.mjs';
 
 export const FRUIT_ROUND_MS=40000;
-const BET_MS=28000,MAX_BET=1000000000000;
+const BET_MS=28000,MAX_BET=Number.MAX_SAFE_INTEGER;
 const REQUEST_ID=/^[A-Za-z0-9:_-]{12,80}$/;
 export const FRUIT_V2=Object.freeze([
   {id:'lemon',name:'Lemon',emoji:'🍋',multiplier:4,weight:15},

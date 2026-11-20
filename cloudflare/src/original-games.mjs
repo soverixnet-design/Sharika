@@ -10,7 +10,7 @@ const GAMES={
   'jackpot-fruit':{name:'Jackpot Fruit',symbols:['🍋','🍇','🥝','🍑','🍓','🍌','🍉','🍒'],mult:[5,5,5,5,10,10,20,40],chips:[1000,10000,100000,1000000,10000000]}
 };
 export const ORIGINAL_ROUND_MS=40000;
-const BET_MS=28000,MAX_STAKE=100000000,ID=/^[A-Za-z0-9:_-]{12,80}$/;
+const BET_MS=28000,MAX_STAKE=Number.MAX_SAFE_INTEGER,ID=/^[A-Za-z0-9:_-]{12,80}$/;
 const VALID_ACTIONS=new Set(['state','bet','history','stats','rankings']);
 function hex(bytes){return [...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');}
 async function sha(s){return hex(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))));}

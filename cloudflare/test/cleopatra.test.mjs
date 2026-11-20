@@ -93,7 +93,7 @@ test('idempotency: repeat requestId neither debits nor pays twice',async()=>{
 });
 test('invalid bets, insufficient coins, minor status, and rapid repeats rejected',async()=>{
  const {sqlite,route}=fixture();
- assert.equal((await route('spin',{bet:50,requestId:'invalid-bet-0001'})).status,400);
+ assert.equal((await route('spin',{bet:-1,requestId:'invalid-bet-0001'})).status,400);
  assert.equal((await route('spin',{bet:1000,requestId:'minor-bet-00001'},'minor-b')).status,403);
  sqlite.prepare("UPDATE sharika_users SET coins=50 WHERE auth_uid='adult-a'").run();
  assert.equal((await route('spin',{bet:1000,requestId:'insufficient-0001'})).status,409);
