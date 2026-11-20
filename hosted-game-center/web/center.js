@@ -175,6 +175,8 @@ function eventPoster(event,compact=false){
  root.style.setProperty('--event-individual-dark',visual[1]);
  root.style.setProperty('--event-individual-gold',visual[2]);
  const id=Number(event.id);
+ const animation=['cinematic','subtle','off'].includes(event.animation_style)?event.animation_style:'cinematic';
+ root.dataset.motion=animation;
  if(Number.isSafeInteger(id)&&id>=3&&id<=13){
   // Original SVG artwork is authenticated and filtered by this exact Event ID.
   const vector=el('img','event-artwork event-artwork-unique');
@@ -191,6 +193,25 @@ function eventPoster(event,compact=false){
   photo.onerror=()=>photo.remove();
   root.append(photo);
  }
+ const video=String(event.video_url||'');
+ if(!compact&&animation!=='off'&&
+    /^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-f0-9-]{36}\.(mp4|webm)$/.test(video)&&
+    !(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)){
+  const movie=el('video','event-cinematic-video');
+  movie.muted=true;movie.defaultMuted=true;movie.loop=true;movie.autoplay=true;
+  movie.playsInline=true;movie.setAttribute('playsinline','');
+  movie.preload='metadata';movie.setAttribute('aria-hidden','true');
+  movie.src=video;movie.onerror=()=>movie.remove();
+  root.append(movie);
+ }
+ const glints=el('div','event-cinematic-glints');
+ glints.setAttribute('aria-hidden','true');
+ for(let i=0;i<5;i++){
+  const sparkle=el('span','event-cinematic-sparkle');
+  sparkle.style.setProperty('--i',String(i));
+  glints.append(sparkle);
+ }
+ root.append(glints);
  const glow=el('div','event-poster-overlay');
  const crown=el('span','event-crown',visual[3]);
  const title=el('strong','event-poster-title',event.title);
@@ -250,89 +271,136 @@ function showEvents(){
  content.append(board);
 }
 function showEventDetail(event){
- // A focused single-event screen: never insert unpublished cross-promotions.
- content.replaceChildren();status.textContent='';
+ // This URL is a single Event ID. No other event cards appear inside.
  changeEventLink(event);
- const top=el('div','event-detail-top event-theme--'+eventTheme(event));
- const back=el('button','secondary','← All Events');back.type='button';
+ content.replaceChildren();status.textContent='';
+ const token=Symbol('royal-event');content._eventViewToken=token;
+ const kind=eventScore(event),unit=kind==='gift_points'?'PTS':'COINS';
+ const view=el('div','royal-event-screen event-theme--'+eventTheme(event));
+ const visual=eventPosterArt(event.id);
+ view.style.setProperty('--event-accent',visual[2]);
+ view.style.setProperty('--event-glow',visual[0]);
+ const top=el('div','royal-event-top');
+ const back=el('button','secondary royal-back','← All Events');back.type='button';
  back.onclick=showEvents;
- top.append(back,el('span','pill',eventPhase(event)));content.append(top);
- content.append(eventPoster(event));
- const section=el('section','event-detail-body event-theme--'+eventTheme(event));
- const heading=el('h2','',event.title);section.append(heading);
- section.append(el('p','event-date',eventAudienceLabel(event)+' · Starts: '+new Date(event.starts_at).toLocaleString()+
-   ' · Ends: '+new Date(event.ends_at).toLocaleString()));
- const time=el('div','event-live-time',eventTimeLabel(event));
- section.append(time,el('p','event-description',event.description||
-    'Only verified activity qualifies for this official Sharika event.'));
- section.append(eventPrizeDetails(event));
- const ranking=el('section','event-leaderboard');
- ranking.append(el('h3','',EVENT_THEMES[eventTheme(event)].rank));
- ranking.append(el('p','muted',EVENT_SCORE_CAPTIONS[eventScore(event)]));
- const loading=el('div','muted','Loading verified event ranking…');
- ranking.append(loading);section.append(ranking);content.append(section);
- const viewToken=Symbol('event');content._eventViewToken=viewToken;
+ top.append(back,el('span','royal-event-tag','✦ SHARIKA · OFFICIAL EVENT'));
+ view.append(top);
+ const hero=eventPoster(event);
+ hero.classList.add('royal-event-hero');
+ const chip=el('span','royal-event-live-chip',eventPhase(event));
+ hero.append(chip);
+ view.append(hero);
+ const timer=el('div','royal-event-timer',eventTimeLabel(event));
+ view.append(timer);
+ const strip=el('div','royal-reward-strip');
+ const stripHead=el('strong','royal-reward-label','TOP REWARDS');
+ strip.append(stripHead);
+ for(let rank=1;rank<=7;rank++){
+  const item=el('div','royal-reward-spot');
+  item.append(el('span','royal-reward-icon',['♛','◆','✦','🎁','🎁','🎁','🎁'][rank-1]),
+    el('b','','TOP '+rank),el('small','',eventRewardText(event,rank)));
+  strip.append(item);
+ }
+ view.append(strip);
+ const ranking=el('section','royal-event-panel royal-ranking-panel');
+ const rewards=el('section','royal-event-panel royal-rewards-panel');
+ const rules=el('section','royal-event-panel royal-rules-panel');
+ const about=el('section','royal-event-panel royal-about-panel');
+ const sections={ranking,rewards,rules,event:about};
+ const headline=el('h2','royal-ranking-heading',EVENT_THEMES[eventTheme(event)].rank);
+ ranking.append(headline,el('p','royal-ranking-sub',EVENT_SCORE_CAPTIONS[kind]));
+ const leaderboard=el('div','royal-ranking-content');
+ ranking.append(leaderboard);
+ rewards.append(el('h2','royal-ranking-heading','Event Rewards'),eventPrizeDetails(event));
+ rules.append(el('h2','royal-ranking-heading','Event Rules'),
+   el('p','royal-rule-detail',event.description||'Only verified server-recorded activity qualifies.'),
+   el('p','royal-rule-detail',EVENT_SCORE_CAPTIONS[kind]));
+ about.append(el('h2','royal-ranking-heading',event.title),
+   el('p','royal-rule-detail','Audience: '+eventAudienceLabel(event)),
+   el('p','royal-rule-detail','Starts: '+new Date(event.starts_at).toLocaleString()),
+   el('p','royal-rule-detail','Ends: '+new Date(event.ends_at).toLocaleString()),
+   el('p','royal-rule-detail',event.description||'Official Sharika event.'));
+ for(const node of Object.values(sections))view.append(node);
+ const nav=el('nav','royal-event-nav');nav.setAttribute('aria-label','Event screen sections');
+ const items=[['event','✧','Event'],['ranking','♛','Ranking'],
+   ['rewards','🎁','Rewards'],['rules','ⓘ','Rules']];
+ let activeTab='ranking';
+ const buttons={};
+ for(const [id,symbol,label] of items){
+  const btn=el('button','royal-event-nav-btn');
+  btn.type='button';btn.dataset.view=id;
+  btn.append(el('span','royal-nav-symbol',symbol),el('span','',label));
+  btn.onclick=()=>setView(id);nav.append(btn);buttons[id]=btn;
+ }
+ function setView(id){
+  activeTab=id;
+  for(const [name,node] of Object.entries(sections))
+   node.hidden=name!==id;
+  for(const [name,btn] of Object.entries(buttons))
+   btn.setAttribute('aria-selected',String(name===id));
+ }
+ view.append(nav);content.append(view);setView(activeTab);
  const path='events/'+Number(event.id)+'/ranking';
  async function loadRanking(){
-  loading.textContent='Loading verified event ranking…';loading.remove();
-  const spinner=el('div','muted','Loading verified event ranking…');ranking.append(spinner);
+  leaderboard.replaceChildren(el('div','royal-rank-loading','Loading verified event ranking…'));
   try{
-   const data=await endpoint(path);
-   if(content._eventViewToken!==viewToken)return;
-   spinner.remove();
-   if(!Array.isArray(data.ranking))throw Error('Invalid ranking payload');
-   const ranked=data.ranking.filter(member=>Number.isSafeInteger(Number(member.rank))&&
-     Number(member.rank)>0&&Number.isFinite(Number(member.points)));
-   if(!ranked.length){
-    ranking.append(el('div','empty','No verified event points yet. Rankings will appear after eligible activity is recorded.'));
-    return;
-   }
-   ranking.append(el('div','event-ranking-count',nice(ranked.length)+' verified participant'+
-     (ranked.length===1?'':'s')+' · Live server rankings'));
-   const podium=el('div','event-ranking-podium');
+   const response=await endpoint(path);
+   if(content._eventViewToken!==token)return;
+   if(!Array.isArray(response.ranking))throw Error('Invalid ranking payload');
+   const ranked=response.ranking.filter(member=>Number.isSafeInteger(Number(member.rank))&&
+      Number(member.rank)>0&&Number.isFinite(Number(member.points)));
+   leaderboard.replaceChildren();
+   const count=el('div','royal-ranking-count',
+     nice(ranked.length)+' VERIFIED PARTICIPANTS · '+unit);
+   leaderboard.append(count);
+   const podium=el('div','royal-ranking-podium');
    for(const rank of [2,1,3]){
-    const member=ranked.find(m=>Number(m.rank)===rank);
-    const tile=el('div','event-champion rank-'+rank+(member?'':' no-entry'));
-    tile.append(el('div','event-champion-medal',['','♛','✦','◆'][rank]),
-      el('span','event-champion-position','TOP '+rank));
-    if(member){
-     if(member.pic)tile.append(avatar(member));
-     tile.append(el('strong','event-champion-name',member.name||'Member'),
-       el('small','event-champion-id',member.public_id||''),
-       el('b','event-champion-score',nice(member.points)+' '+(eventScore(event)==='gift_points'?'points':'coins')));
-    }else{
-     tile.append(el('strong','event-champion-name','Not ranked'),
-       el('small','event-champion-id','Awaiting verified activity'));
-    }
-    tile.append(el('span','event-champion-reward',eventRewardText(event,rank)));
+    const person=ranked.find(r=>Number(r.rank)===rank);
+    const tile=el('div','royal-podium-person royal-podium-rank-'+rank+
+      (person?'':' royal-podium-empty'));
+    tile.append(el('span','royal-podium-crown',rank===1?'♛':rank===2?'◆':'✦'));
+    const portrait=el('div','royal-podium-portrait');
+    if(person?.pic)portrait.append(avatar(person));
+    else portrait.append(el('span','royal-avatar-empty','♛'));
+    portrait.append(el('span','royal-podium-number',rank));
+    tile.append(portrait,el('strong','royal-podium-name',person?.name||'No participant'));
+    if(person?.public_id)tile.append(el('small','royal-podium-id',String(person.public_id)));
+    tile.append(el('b','royal-podium-score',person?nice(person.points)+' '+unit:'–'));
     podium.append(tile);
    }
-   ranking.append(podium);
-   const rest=ranked.filter(m=>Number(m.rank)>3);
-   if(rest.length){
-    ranking.append(el('h4','event-ranking-subtitle','More event rankings'));
-    const list=el('div','leaderboard');
-    for(const member of rest){
-     const line=el('div','leader event-ranking-row');
-     line.append(el('span','num',Number(member.rank)));
-     if(member.pic)line.append(avatar(member));
-     const info=el('div','event-ranking-identity');
-     info.append(el('strong','',member.name||'Member'),el('small','',member.public_id||''));
-     const value=el('div','event-ranking-metrics');
-     value.append(el('strong','',nice(member.points)+' '+(eventScore(event)==='gift_points'?'pts':'coins')));
-     if(Number(member.rank)<=7)value.append(el('small','',eventRewardText(event,Number(member.rank))));
-     line.append(info,value);list.append(line);
-    }
-    ranking.append(list);
+   leaderboard.append(podium);
+   const list=el('div','royal-ranking-list');
+   for(const person of ranked.filter(m=>Number(m.rank)>3)){
+    const row=el('div','royal-rank-row');
+    row.append(el('span','royal-rank-position',String(person.rank)));
+    const portrait=el('span','royal-rank-avatar');
+    if(person.pic)portrait.append(avatar(person));
+    else portrait.textContent='♛';
+    const identity=el('span','royal-rank-identity');
+    identity.append(el('strong','',person.name||'Member'),
+      el('small','',String(person.public_id||'')));
+    row.append(portrait,identity,el('b','royal-rank-points',nice(person.points)));
+    list.append(row);
    }
-   ranking.append(el('p','muted',EVENT_SCORE_CAPTIONS[eventScore(event)]));
-  }catch(error){
-   if(content._eventViewToken!==viewToken)return;
-   spinner.remove();
-   const problem=el('div','empty','Ranking temporarily unavailable: '+errMessage(error));
+   if(!ranked.length){
+    list.append(el('p','royal-empty-message','No verified results yet. Rankings appear when eligible activity is recorded.'));
+   }
+   leaderboard.append(list);
+   const mine=el('div','royal-my-rank');
+   const rank=response.my_rank;
+   const valid=rank&&Number.isSafeInteger(Number(rank.rank))&&
+     Number(rank.rank)>0&&Number.isFinite(Number(rank.points));
+   mine.append(el('span','royal-my-rank-icon','♛'),
+     el('span','royal-my-rank-name','MY RANK'),
+     el('strong','royal-my-rank-number',valid?'#'+rank.rank:'Not ranked yet'),
+     el('b','royal-my-rank-points',valid?nice(rank.points)+' '+unit:'–'));
+   leaderboard.append(mine);
+  }catch(e){
+   if(content._eventViewToken!==token)return;
+   leaderboard.replaceChildren(el('p','royal-empty-message',
+     'Ranking unavailable: '+errMessage(e)));
    const retry=el('button','secondary','Retry ranking');retry.type='button';
-   retry.onclick=()=>{problem.remove();retry.remove();loadRanking();};
-   ranking.append(problem,retry);
+   retry.onclick=loadRanking;leaderboard.append(retry);
   }
  }
  loadRanking();
