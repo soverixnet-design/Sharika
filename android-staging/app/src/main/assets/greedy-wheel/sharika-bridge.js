@@ -22,7 +22,7 @@
     return new Promise((resolve,reject)=>{
       // A timed-out reply is ambiguous, not a rejected wager. Replays use
       // the identical request_id, so a shorter check cannot double debit.
-      const timeout=setTimeout(()=>{pending.delete(id);reject(Error('server_timeout'));},8000);
+      const timeout=setTimeout(()=>{pending.delete(id);reject(Error('server_timeout'));},24000);
       pending.set(id,{resolve,reject,timeout});
       window.parent.postMessage({type:'sharika:greedy-request',id,action,body},'*');
     });
