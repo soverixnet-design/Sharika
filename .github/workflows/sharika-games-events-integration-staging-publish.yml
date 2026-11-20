@@ -88,7 +88,11 @@ jobs:
               Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
               'Content-Type':'application/json'},body:JSON.stringify({sql})});
             const data=await r.json();
-            if(!r.ok||!data.success)throw Error('Read-only D1 check failed');
+            if(!r.ok||!data.success){
+              console.log('D1 preflight HTTP',r.status,'error_codes',JSON.stringify(
+                (data.errors||[]).map(e=>({code:e.code,message:String(e.message||'').slice(0,150)}))));
+              throw Error('Read-only D1 check failed');
+            }
             return data.result?.[0]?.results||[];
           }
           const migrations=await query("SELECT name FROM d1_migrations WHERE name IN ('0105_wallet_sized_game_stakes.sql','0106_event_cinematic_media.sql')");
