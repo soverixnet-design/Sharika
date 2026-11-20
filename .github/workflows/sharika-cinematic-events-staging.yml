@@ -1,0 +1,141 @@
+name: Sharika cinematic Royal Events staging QA and publish
+on:
+  push:
+    branches: [feature/sharika-cinematic-events-ranking-admin-20261120]
+    paths:
+      - '.github/workflows/sharika-cinematic-events-staging.yml'
+      - 'cloudflare/src/events.mjs'
+      - 'cloudflare/src/private-center.mjs'
+      - 'cloudflare/test/events.test.mjs'
+      - 'cloudflare/test/royal-liveops-admin-e2e.test.mjs'
+      - 'cloudflare/migrations/0106_event_cinematic_media.sql'
+      - 'hosted-game-center/web/center.js'
+      - 'hosted-game-center/web/center.css'
+      - 'hosted-game-center/src/index.mjs'
+      - 'admin/connection.js'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-cinematic-royal-events-staging
+  cancel-in-progress: false
+jobs:
+  qa:
+    name: Verify true live rankings, motion settings and media integrity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Syntax check all modified Worker, Admin and member UI code
+        run: |
+          node --check cloudflare/src/events.mjs
+          node --check cloudflare/src/private-center.mjs
+          node --check hosted-game-center/src/index.mjs
+          node --check hosted-game-center/web/center.js
+          node --check admin/connection.js
+      - name: Full existing backend and security regression suite
+        run: npm --prefix cloudflare run check
+      - name: Authenticated Event manifest and private media tests
+        run: |
+          node --test hosted-game-center/test/private-event-access.test.mjs cloudflare/test/private-center.test.mjs cloudflare/test/event-design.test.mjs cloudflare/test/events.test.mjs
+      - name: Verify no fabricated winners and exact four-tab Royal Ranking contract
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const web=readFileSync('hosted-game-center/web/center.js','utf8');
+          const admin=readFileSync('admin/connection.js','utf8');
+          const backend=readFileSync('cloudflare/src/events.mjs','utf8');
+          for(const v of ['royal-ranking-podium','royal-my-rank','royal-reward-strip',
+              'event-cinematic-video','event-cinematic-glints',"'rules'",'MY RANK'])
+            if(!web.includes(v))throw Error('Royal Ranking UI missing '+v);
+          for(const v of ['sh-ev-video','sh-ev-motion',"wireMediaStudio('sh-ev-media'"])
+            if(!admin.includes(v))throw Error('Admin video editing missing '+v);
+          if(!backend.includes('my_rank:myRank'))throw Error('Missing signed-in member rank');
+          for(const invalid of ['QueenAarya','LoveQueen','DiamondKing','GameLord']){
+            if(web.includes(invalid))throw Error('Sample mockup winner used in member UI');
+          }
+          console.log('CINEMATIC_EVENT_DYNAMIC_ONLY VERIFIED');
+          NODE
+      - name: Build hosted assets and bundle Admin
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          test -s hosted-game-center/dist/event-banners/event-3.svg
+          test -s hosted-game-center/dist/event-banners/event-13.svg
+      - name: Dry-run all three staging bundles before any deployment
+        run: |
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sh-cinematic-api
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sh-cinematic-admin
+          npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.private.jsonc --outdir /tmp/sh-cinematic-site
+  staging:
+    name: Publish verified cinematic Event Center to STAGING ONLY
+    needs: qa
+    runs-on: ubuntu-24.04
+    environment: sharika-staging
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Hard gate -- exactly isolated staging APIs and D1
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const read=p=>JSON.parse(readFileSync(p,'utf8'));
+          const a=read('cloudflare/wrangler.jsonc'),b=read('cloudflare/wrangler.admin.jsonc');
+          const c=read('hosted-game-center/wrangler.private.jsonc');
+          const db='b2c62252-12a5-4740-90c7-01a536d9a39a',account='d81cf7c48fb9b36d468cb0a08720cd74';
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-cinematic-events-ranking-admin-20261120'||
+             !process.env.CLOUDFLARE_API_TOKEN||
+             [a,b,c].some(x=>x.account_id!==account||x.d1_databases?.[0]?.database_id!==db)||
+             a.name!=='sharika-api-staging'||b.name!=='sharika-admin-staging'||
+             c.name!=='sharika-private-center-staging'||
+             a.vars?.SHARIKA_ENV!=='staging'||
+             a.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             b.services?.[0]?.service!=='sharika-api-staging')
+              throw Error('Non-staging target denied');
+          console.log('Staging-only targets VERIFIED');
+          NODE
+      - name: Confirm already-applied D1 migration without touching user balances
+        run: |
+          node --input-type=module <<'NODE'
+          const origin='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+           '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const sql="SELECT COUNT(*) AS n FROM pragma_table_info('sharika_events') WHERE name IN ('video_url','animation_style')";
+          const r=await fetch(origin,{method:'POST',headers:{
+           Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+           'Content-Type':'application/json'},body:JSON.stringify({sql})});
+          const data=await r.json();
+          if(!r.ok||!data.success||Number(data.result?.[0]?.results?.[0]?.n)!==2)
+           throw Error('Staging event cinematic schema missing -- refusing deployment');
+          console.log('Cinematic fields present; no migrations executed by CI');
+          NODE
+      - name: Assemble authenticated private website and existing Admin
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+      - name: Publish private Event Center website ONLY to staging
+        run: npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.private.jsonc
+      - name: Publish existing authenticated staging API
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Publish existing staging Super Admin Panel
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Anonymous access denied and staging Workers healthy
+        run: |
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-api-staging.soverixnet.workers.dev/health | grep -q staging
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-admin-staging.soverixnet.workers.dev/health | grep -q sharika-admin-staging
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-private-center-staging.soverixnet.workers.dev/health | grep -q private_center
+          for p in /api/center/events/3/ranking /event-banners/event-3.svg; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://sharika-private-center-staging.soverixnet.workers.dev$p")
+            test "$code" = 401
+          done
+          echo 'SHARIKA_CINEMATIC_EVENTS_STAGING_PUBLISHED'

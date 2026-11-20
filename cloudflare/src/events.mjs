@@ -6,6 +6,7 @@ import {safeEventTemplate,safeEventScoring,validEventDesignFields} from './event
 // Publication is separate from payment; only an ended published event can pay a rank.
 // Winners are selected explicitly by Super Admin and every credit has a D1 receipt + ledger.
 const PUBLIC_ID=/^[0-9]{8}$/;
+const EVENT_VIDEO=/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-f0-9-]{36}\.(mp4|webm)$/;
 const KINDS=new Set(['gift_race','room_battle','recharge_bonus','game_tournament',
   'invite_campaign','checkin_festival','festival','custom']);
 const STATUSES=new Set(['draft','published','cancelled']);
@@ -86,6 +87,11 @@ async function settledConfiguredEventRanking(db,event,limit=100){
 
 function validCampaign(body){
   if(!validEventDesignFields(body)||!validEventAudience(body.country_code))return false;
+  if(body.video_url!==undefined&&
+     (typeof body.video_url!=='string'||
+      (body.video_url!==''&&!EVENT_VIDEO.test(body.video_url))))return false;
+  if(body.animation_style!==undefined&&
+     !['cinematic','subtle','off'].includes(body.animation_style))return false;
   if(body.banner_id!==undefined&&body.banner_id!==null&&
     (!Number.isSafeInteger(body.banner_id)||body.banner_id<0||body.banner_id>999999999))return false;
   if(body.gift_rules!==undefined&&(!Array.isArray(body.gift_rules)||body.gift_rules.length>12||
@@ -118,6 +124,7 @@ function eventDto(row,awards,now){
     prizes:[Number(row.prize_1),Number(row.prize_2),Number(row.prize_3)],
     gift_rules:safeJson(row.gift_rules_json),reward_labels:safeJson(row.reward_labels_json),
     template_id:safeEventTemplate(row.template_id),scoring_mode:safeEventScoring(row.scoring_mode),
+    video_url:row.video_url||'',animation_style:row.animation_style||'cinematic',
     country_code:row.country_code||'GLOBAL',
     banner_id:row.banner_id==null?null:Number(row.banner_id),
     banner_image_url:row.banner_image_version>0&&row.banner_id!=null?
@@ -156,7 +163,7 @@ export async function listEventData(db,admin=false,now=new Date(),memberCountry=
   let statement=db.prepare(
     'SELECT e.id,e.title,e.kind,e.description,e.starts_at,e.ends_at,e.status,'+
     'e.prize_1,e.prize_2,e.prize_3,e.banner_id,e.gift_rules_json,e.reward_labels_json,'+
-    'e.template_id,e.scoring_mode,e.country_code,'+
+    'e.template_id,e.scoring_mode,e.country_code,e.video_url,e.animation_style,'+
     'CASE WHEN i.image_bytes>0 THEN i.version ELSE 0 END AS banner_image_version '+
     'FROM sharika_events e LEFT JOIN sharika_banner_images i ON i.banner_id=e.banner_id '+
     (admin?'':"WHERE e.status=? AND e.ends_at>=? AND EXISTS (SELECT 1 FROM sharika_center_publishing p "+
@@ -195,7 +202,11 @@ export async function handleEventApp({request,env,uid,path,cors,reply,fail}){
     if(!event||event.status!=='published')return fail('event_unavailable',404,cors);
     if(!eventAudienceAllows(event.country_code,active.country))return fail('event_hidden',403,cors);
     const ranked=await settledConfiguredEventRanking(env.DB,event);
-    return reply({event_id:event.id,ranking:ranked.map((r,i)=>({rank:i+1,
+    const me=pad(active.public_no);
+    const myIndex=ranked.findIndex(r=>event.scoring_mode==='cp_gifts'?
+      String(r.pair_id||'').split(' / ').includes(me):Number(r.public_no)===Number(active.public_no));
+    const myRank=myIndex>=0?{rank:myIndex+1,points:Number(ranked[myIndex].points)||0}:null;
+    return reply({event_id:event.id,my_rank:myRank,ranking:ranked.map((r,i)=>({rank:i+1,
       public_id:r.pair_id||r.special_id||pad(r.public_no),name:r.name,pic:r.pic||null,partner_pic:r.partner_pic||null,
       points:Number(r.points)||0,gift_count:Number(r.gift_count)||0})),
       scoring:safeEventScoring(event.scoring_mode),server_time:new Date().toISOString()},200,cors);
@@ -239,12 +250,13 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
     const result=await db.batch([
       db.prepare('INSERT INTO sharika_events '+
         '(title,kind,description,starts_at,ends_at,status,prize_1,prize_2,prize_3,'+
-        'banner_id,gift_rules_json,reward_labels_json,created_by,updated_by,template_id,scoring_mode,country_code) '+
-        'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        'banner_id,gift_rules_json,reward_labels_json,created_by,updated_by,template_id,scoring_mode,country_code,video_url,animation_style) '+
+        'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .bind(body.title.trim(),body.kind,body.description.trim(),body.starts_at,body.ends_at,
           body.status,...body.prizes,body.banner_id||null,JSON.stringify(body.gift_rules||[]),
           JSON.stringify(body.reward_labels||[]),uid,uid,
-          safeEventTemplate(body.template_id),safeEventScoring(body.scoring_mode),body.country_code||'GLOBAL'),
+          safeEventTemplate(body.template_id),safeEventScoring(body.scoring_mode),body.country_code||'GLOBAL',
+          body.video_url||'',body.animation_style||'cinematic'),
       db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) '+
         "VALUES(?,'event_created',?)")
         .bind(uid,JSON.stringify({title:body.title.trim(),kind:body.kind,status:body.status}))
@@ -273,6 +285,7 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
           'reward_labels_json=COALESCE(?,reward_labels_json),'+
           'template_id=COALESCE(?,template_id),scoring_mode=COALESCE(?,scoring_mode),'+
           'country_code=COALESCE(?,country_code),'+
+          'video_url=COALESCE(?,video_url),animation_style=COALESCE(?,animation_style),'+
           "updated_by=?,updated_at=datetime('now') "+
           'WHERE id=?')
           .bind(body.title.trim(),body.kind,body.description.trim(),body.starts_at,body.ends_at,
@@ -281,7 +294,9 @@ export async function handleEventAdmin({request,env,uid,actor,operation,cors,rep
             body.reward_labels===undefined?null:JSON.stringify(body.reward_labels),
             body.template_id===undefined?null:body.template_id,
             body.scoring_mode===undefined?null:body.scoring_mode,
-            body.country_code===undefined?null:body.country_code,uid,id),
+            body.country_code===undefined?null:body.country_code,
+            body.video_url===undefined?null:body.video_url,
+            body.animation_style===undefined?null:body.animation_style,uid,id),
         db.prepare('INSERT INTO sharika_admin_audit(actor_id,action,details_json) '+
           "VALUES(?,'event_updated',?)").bind(uid,JSON.stringify({event_id:id,status:body.status,prizes:body.prizes}))
       ]);
