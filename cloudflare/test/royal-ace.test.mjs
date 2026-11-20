@@ -61,7 +61,7 @@ test('staging migration starts game disabled and does not alter player balance',
 });
 test('server validates bets, adults, idempotency and wallet ledger',async()=>{
   const {sqlite,route,enable}=fixture();enable();
-  assert.equal((await route('spin',{bet:100,requestId:'ra_badbet_100',buy:false})).status,400);
+  assert.equal((await route('spin',{bet:-1,requestId:'ra_badbet_100',buy:false})).status,400);
   assert.equal((await route('spin',{bet:1000,requestId:'ra_minor_10001',buy:false},'minor-b')).status,403);
   const req={bet:1000,requestId:'ra_idempotency_00001',buy:false};
   const first=await route('spin',req);

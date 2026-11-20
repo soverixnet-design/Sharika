@@ -3,13 +3,13 @@
 export function sensitiveActionClass(method, path) {
   if (!['POST','PATCH','PUT','DELETE'].includes(method) ||
       typeof path !== 'string' || !path.startsWith('/api/v1/')) return null;
-  // Greedy Food Wheel is round-timed and every confirmed bet is a
-  // server-validated, idempotent, balance-checked D1 transaction. Avoid the
-  // generic finance rate-limit that rejects successive taps during a round.
-  // This exception is specific to this game's POST /bet endpoint: all other
-  // financial actions retain their rate-limit buckets.
-  if (method === 'POST' &&
-      path === '/api/v1/original-games/greedy-classic/bet') return null;
+  // Game handlers validate identity, eligibility, balance and unique receipts.
+  // Wallet transfers and unrelated writes retain their own request counters.
+  if (method === 'POST' && (
+    /^\/api\/v1\/original-games\/(greedy-classic|food-deluxe|sovera-gaddy|sovera-food|night-food|fruit-royale|jackpot-fruit)\/bet$/.test(path) ||
+    path === '/api/v1/greedy-wheel/bet' ||
+    /^\/api\/v1\/(royal-slots|royal-ace|cleopatra)\/spin$/.test(path)
+  )) return null;
   // Voice negotiation / heartbeat must never be throttled like purchases.
   if (/^\/api\/v1\/rooms\/[0-9]{8}\/voice(?:\/|$)/.test(path)) return null;
   if (

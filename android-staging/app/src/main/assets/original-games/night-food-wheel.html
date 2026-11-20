@@ -33,6 +33,7 @@ html,body{height:100%}body{background:radial-gradient(circle at 50% 30%,#4a1450,
 <div id="wheel"><div id="ctr"><small>Time</small><div id="t"></div></div></div>
 <div id="grp"><button class="g" data-g="8">🥗 Salad x1.2<u></u></button><button class="g" data-g="9">🍕 Pizza x4<u></u></button></div><div id="msg"></div><div id="hist"></div><div id="chips"></div>
 <div id="act"><button id="auto" class="off">Auto off</button><button id="snd">🔊</button></div><div id="foot">Today's Winnings: 🪙 <span id="today">0</span></div>
+<script src="stake-picker.js"></script>
 <script src="rapid-bets.js"></script>
 <script>
 /* Same-origin native parent owns ALL identity and wallet operations.
@@ -146,6 +147,7 @@ const $=s=>document.querySelector(s),fmt=n=>Number(n||0).toLocaleString('en-US')
 const chips=[1000,10000,100000,1000000,10000000];
 const chipLabel=c=>c>=1000000?(c/1000000)+'M':c>=1000?(c/1000)+'K':String(c);
 let chip=chips[0],bets=Array(10).fill(0),lastSeen=null,muted=false;
+window.installStakePicker({balance:()=>GameBridge.get()?.coins||0, selected:()=>chip, select:amount=>{chip=amount;document.querySelectorAll('.chip.on,#chips .on,#ch .on').forEach(b=>b.classList.remove('on'));}});
 const w=$('#wheel');
 C.items.forEach((it,i)=>{const a=(i*45-90)*Math.PI/180,d=document.createElement('div');d.className='it';
  d.style.left=(50+37*Math.cos(a))+'%';d.style.top=(50+37*Math.sin(a))+'%';

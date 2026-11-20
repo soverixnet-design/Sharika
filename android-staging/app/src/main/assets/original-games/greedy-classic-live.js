@@ -211,9 +211,10 @@ const enqueue=createRoundTapQueue({
  send:body=>request('bet','POST',body),
  openRound:n=>state&&S.round===n&&S.phase==='bet'&&Date.now()+clockOffset<state.state.endsAt,
 });
+window.installStakePicker({balance:()=>S.bal, selected:()=>S.chip, select:amount=>{S.chip=amount;draw();}});
 async function bet(id,amount=S.chip){
  const pick=F.findIndex(f=>f.id===id);
- if(!ready||pick<0||!CH.includes(amount))return false;
+ if(!ready||pick<0||(!Number.isSafeInteger(amount)||amount<1))return false;
  const round=S.round;
  try{
   const receipt=await enqueue(round,pick,amount,S.bal);
@@ -230,14 +231,8 @@ async function replayLast(){
  autoRunning=true;
  try{
   for(const f of F){
-   let amount=Number(S.last[f.id]||0);
-   for(const chip of [...CH].reverse()){
-    while(amount>=chip&&S.phase==='bet'&&ready){
-     const ok=await bet(f.id,chip);
-     if(!ok)return;
-     amount-=chip;
-    }
-   }
+   const amount=Number(S.last[f.id]||0);
+   if(amount>0 && !(await bet(f.id,amount)))return;
   }
  }finally{autoRunning=false;}
 }

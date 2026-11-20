@@ -125,8 +125,8 @@ export async function handleCleopatra({request,db,uid,action,reply,fail,cors}){
    const isFree=Number(free?.remaining||0)>0;
    const config=isFree?JSON.parse(free.settings_json):parseConfig(configRow);
    if(!config.bets||!config.weights)throw Error('cleopatra_invalid_free_snapshot');
-   if(isFree?bet!==Number(free.bet):!config.bets.includes(bet))
-     return fail(isFree?'free_spin_bet_locked':'invalid_bet',400,cors);
+   if(isFree&&bet!==Number(free.bet))
+     return fail('free_spin_bet_locked',400,cors);
    if(!isFree&&Number(user.coins)<bet)return fail('not_enough_balance',409,cors);
    const grid=drawGrid(config.weights);
    const result=evaluateCleopatra(grid,bet,Number(pool.pool),config,isFree);

@@ -3,7 +3,7 @@ export async function settleTapBatch({db,uid,game,body,currentRound,ensure,valid
   const {round_no:round,taps}=body;
   const vector=game==='food-deluxe';
   const validPick=t=>vector?Array.isArray(t.pick)&&t.pick.length===8&&
-    t.pick.every(n=>Number.isSafeInteger(n)&&n>=0&&n%100===0)&&
+    t.pick.every(n=>Number.isSafeInteger(n)&&n>=0)&&
     t.pick.reduce((sum,n)=>sum+n,0)===t.amount:
     Number.isInteger(t.pick)&&t.pick>=0&&t.pick<=maxPick;
   const choice=t=>vector?JSON.stringify(t.pick):items?items[t.pick]:t.pick;

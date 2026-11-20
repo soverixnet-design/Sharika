@@ -390,7 +390,7 @@
     }
    }else if(m.type==='spin'&&typeof m.id==='string'&&
      /^[A-Za-z0-9_-]{12,100}$/.test(m.id)&&
-     [1000,10000,100000,1000000,10000000].includes(m.bet)&&
+     Number.isSafeInteger(m.bet)&&m.bet>0&&
      typeof m.freeSpin==='boolean'){
     try{
      // Retry only unknown-commit network errors, with the ORIGINAL idempotent

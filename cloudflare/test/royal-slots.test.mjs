@@ -31,5 +31,5 @@ test('Royal Slots jackpot respects server pool and max wager cap',()=>{
 });
 test('Royal Slots rejects invalid grids and bets',()=>{
  assert.throws(()=>evaluateGrid([[5]],BET,false,1000,1000),/invalid_grid/);
- assert.throws(()=>evaluateGrid(grid(0),500,false,1000,1000),/invalid_grid/);
+ assert.throws(()=>evaluateGrid(grid(0),0.5,false,1000,1000),/invalid_grid/);
 });
