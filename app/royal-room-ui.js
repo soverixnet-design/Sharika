@@ -495,16 +495,34 @@
     return match&&Number(match[1])===Number(row.id)&&row.active
       ?row.image_url:null;
   }
+  // Distinct, id-scoped, first-party event artwork. The same id is passed
+  // to the authenticated Event Center; never open a generic list from a card.
+  const eventPalettes=[
+    ['#47172f','#c43e70','#ffdfad','♛'],  // Royal Gift Race
+    ['#102b55','#357ce4','#f9d9a6','⚔'],  // Game Champions
+    ['#541636','#db5797','#fff1d2','♥'],  // CP Love
+    ['#51320d','#a87716','#fff0aa','✦'],  // Golden Gift Cup
+    ['#452145','#e46988','#ffe9bf','❀'],  // Rose & Heart
+    ['#13375e','#55bce3','#f7ffff','◆'],  // Diamond Masters
+    ['#4c1419','#c95822','#ffe2a3','♜'],  // Royal Game League
+    ['#112b38','#339d9f','#ffe3a0','★'],  // Weekend Champions
+    ['#682333','#b93f5b','#fff0db','♡'],  // CP Hearts
+    ['#32205b','#8363ce','#edddff','✧'],  // CP Stars
+    ['#4f3a0c','#bca02a','#fff2bb','❖']   // Golden Gift Week
+  ];
+  const eventCaptions={gift_points:'GIFT RANKING',game_wins:'GAME CHAMPIONS',
+    cp_gifts:'COUPLE RANKING'};
+  function roomEventPalette(id){
+    return eventPalettes[((id-3)%eventPalettes.length+eventPalettes.length)%eventPalettes.length];
+  }
   function renderRoomBanners(entries){
     const sideGame=byId('sh-reference-game-banner');
     if(!sideGame)return;
     const rows=Array.isArray(entries)?entries:[];
     const game=rows.find(item=>item.placement==='game'&&bannerImage(item));
-    const event=rows.find(item=>item.placement==='event'&&bannerImage(item));
     const gameLabel=document.createElement('span');gameLabel.textContent='Games';
     if(game){
-      const picture=document.createElement('img');
-      picture.alt='';picture.loading='lazy';
+      const picture=document.createElement('img');picture.alt='';picture.loading='lazy';
       picture.src=bannerImage(game);
       picture.onerror=()=>sideGame.replaceChildren(sprite('games'),gameLabel);
       sideGame.replaceChildren(picture,gameLabel);
@@ -514,13 +532,61 @@
       sideGame.setAttribute('aria-label','Open room games');
     }
     eventStrip.replaceChildren();
-    eventStrip.hidden=!event;
-    if(event){
-      const img=document.createElement('img');img.alt='';img.loading='lazy';img.src=bannerImage(event);
-      const caption=document.createElement('strong');caption.textContent=String(event.title||'Room event').slice(0,70);
+    const linked=rows.filter(item=>item.placement==='event'&&
+      Number.isSafeInteger(item.event_id)&&item.event_id>0);
+    // Generic legacy promotional art must not replace or obscure separately
+    // published event cards. It remains available when no linked Events exist.
+    const legacy=rows.find(item=>item.placement==='event'&&!item.event_id&&bannerImage(item));
+    eventStrip.hidden=!linked.length&&!legacy;
+    if(linked.length){
+      eventStrip.classList.add('sh-room-event-carousel');
+      const title=document.createElement('div');title.className='sh-room-event-heading';
+      title.textContent='ROYAL EVENTS · '+linked.length+' LIVE';
+      eventStrip.append(title);
+      const rail=document.createElement('div');rail.className='sh-room-event-rail';
+      rail.setAttribute('aria-label','Individual active room events');
+      for(const item of linked){
+        const id=Number(item.event_id),color=roomEventPalette(id);
+        const card=document.createElement('button');
+        card.type='button';
+        card.className='sh-room-event-card';
+        card.style.setProperty('--sh-ev-dark',color[0]);
+        card.style.setProperty('--sh-ev-light',color[1]);
+        card.style.setProperty('--sh-ev-gold',color[2]);
+        card.setAttribute('aria-label','Open '+String(item.title||'Event')+' ranking and rewards');
+        card.dataset.eventId=String(id);
+        const art=document.createElement('span');art.className='sh-room-event-symbol';
+        art.textContent=color[3];
+        if(bannerImage(item)){
+          const photo=document.createElement('img');photo.alt='';
+          photo.className='sh-room-event-photo';photo.loading='lazy';
+          photo.src=bannerImage(item);photo.onerror=()=>photo.remove();
+          card.append(photo);
+        }
+        const caption=document.createElement('span');caption.className='sh-room-event-info';
+        const name=document.createElement('strong');
+        name.textContent=String(item.title||'Sharika Event').slice(0,70);
+        const type=document.createElement('small');
+        type.textContent=eventCaptions[item.scoring_mode]||'OFFICIAL EVENT';
+        caption.append(name,type);card.append(art,caption);
+        card.onclick=()=>{
+          const open=premiumState.room?.openEvent;
+          if(typeof open!=='function'){
+            window.toast?.('Open the Event Center from Sharika');
+            return;
+          }
+          Promise.resolve(open(id)).catch(()=>window.toast?.('Event temporarily unavailable'));
+        };
+        rail.append(card);
+      }
+      eventStrip.append(rail);
+    }else if(legacy){
+      eventStrip.classList.remove('sh-room-event-carousel');
+      const img=document.createElement('img');img.alt='';img.loading='lazy';img.src=bannerImage(legacy);
       img.onerror=()=>{eventStrip.hidden=true;};
+      const caption=document.createElement('strong');
+      caption.textContent=String(legacy.title||'Room event').slice(0,70);
       eventStrip.append(img,caption);
-      eventStrip.setAttribute('aria-label','Room event: '+caption.textContent);
     }
   }
   async function refreshRoomBanners() {
