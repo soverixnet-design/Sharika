@@ -25,7 +25,9 @@ function fixture(){
  "CREATE TABLE sharika_wallet_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,auth_uid TEXT,currency TEXT,delta INTEGER,reason TEXT,created_at TEXT)"
  ].join(';\n')+';');
  sql.exec("ALTER TABLE sharika_users ADD COLUMN country TEXT NOT NULL DEFAULT ''; "+
-   "ALTER TABLE sharika_events ADD COLUMN country_code TEXT NOT NULL DEFAULT 'GLOBAL';");
+   "ALTER TABLE sharika_events ADD COLUMN country_code TEXT NOT NULL DEFAULT 'GLOBAL'; "+
+   "ALTER TABLE sharika_events ADD COLUMN video_url TEXT NOT NULL DEFAULT ''; "+
+   "ALTER TABLE sharika_events ADD COLUMN animation_style TEXT NOT NULL DEFAULT 'cinematic';");
  sql.exec("INSERT INTO sharika_users(auth_uid,public_no,name,pic,status,country) "+
    "VALUES('qa:super',10000001,'QA Super',NULL,'active','BD'),"+
    "('qa:member',10000002,'QA Member',NULL,'active','Bangladesh'); "+
