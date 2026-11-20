@@ -3304,6 +3304,16 @@
       availableBanners.map(b=>'<option value="'+Number(b.id)+'">#'+Number(b.id)+' · '+
         esc(b.title)+(b.image_url?' · 🖼️':' · no photo')+'</option>').join('')+
       '</select></label>'+
+      '<div class="card" style="border:2px solid #e8b86f;background:linear-gradient(125deg,#36134e,#200c32);color:#ffe6b5">'+
+      '<h4>🎬 Animated Event Video & Motion</h4>'+
+      '<p style="color:#f5d9d0">Each Event has its own video. Upload a short silent loop, then save the Event. Video is muted inside voice rooms and the Royal Event screen.</p>'+
+      '<label>Verified first-party MP4 / WebM URL<input class="field" type="url" id="sh-ev-video" maxlength="500" placeholder="Upload a video below, then save"></label>'+
+      '<label>Animation Style<select class="field" id="sh-ev-motion">'+
+      '<option value="cinematic">Cinematic — shimmer, particles & moving art</option>'+
+      '<option value="subtle">Subtle — soft slow movement</option>'+
+      '<option value="off">Static — motion disabled</option>'+
+      '</select></label>'+
+      mediaStudio('sh-ev-media')+'</div>'+
       '<div style="margin:13px 0;border:1px solid #d8b363;border-radius:16px;padding:12px">'+
       '<h4>🎁 Only these gifts earn event points</h4>'+
       '<p class="n">Select up to 12 regular/luxury gifts. Points count only from real settled gifts sent during the event. Other gifts earn zero event points.</p>'+
@@ -3332,6 +3342,7 @@
       '<p class="n" id="sh-event-note">Use 0 to disable coins. With Publish selected, Save also enables Event Center visibility. Frames and medals in reward labels require separate Admin grants.</p>'+
       '</div>':'')+
       '<div id="sh-event-list">Loading…</div>';
+    if(role==='super')wireMediaStudio('sh-ev-media',[['sh-ev-video','This Event · video (save event afterwards)']]);
     let data;
     try{data=await api('GET','events');}
     catch(error){
@@ -3413,6 +3424,8 @@
         '<p class="n">Design: '+esc(ROYAL_EVENT_PRESETS[e.template_id]?.label||'Royal Gold')+
           ' · Ranking: '+esc(EVENT_SCORE_MODES[e.scoring_mode]||EVENT_SCORE_MODES.gift_points)+
           ' · Audience: '+esc(e.country_code==='GLOBAL'?'Global':e.country_code||'Global')+'</p>'+
+        '<p class="n">Animation: '+esc(e.animation_style||'cinematic')+
+          (e.video_url?' · MP4/WebM media configured':' · original animated Royal artwork')+'</p>'+
         '<p class="n">Home banner: '+(e.banner_id?'#'+Number(e.banner_id):'Royal gradient')+
           ' · Scoring gifts: '+(e.gift_rules||[]).map(g=>
             '#'+Number(g.gift_id)+' × '+Number(g.points)).join(', ')+(e.gift_rules?.length?'':'none')+'</p>'+
@@ -3442,6 +3455,15 @@
         'linear-gradient(145deg,'+theme.base+',#150b2a)';
       target.style.borderColor=theme.color;
       target.replaceChildren();
+      target.style.animation=byId('sh-ev-motion')?.value==='off'?'none':'shAdminEventBreath 5s ease-in-out infinite';
+      const uploadedVideo=String(byId('sh-ev-video')?.value||'').trim();
+      if(/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-f0-9-]{36}\.(mp4|webm)$/.test(uploadedVideo)){
+        const clip=document.createElement('video');
+        clip.src=uploadedVideo;clip.muted=true;clip.loop=true;clip.autoplay=true;
+        clip.playsInline=true;clip.preload='metadata';clip.controls=true;
+        clip.style.cssText='display:block;width:100%;max-height:170px;object-fit:cover;border-radius:14px;margin-bottom:12px';
+        clip.onerror=()=>clip.remove();target.append(clip);
+      }
       const selectedBanner=Number(byId('sh-ev-banner')?.value||0);
       const image=availableBanners.find(b=>Number(b.id)===selectedBanner);
       if(image?.image_url){
@@ -3498,6 +3520,8 @@
       byId('sh-ev-status').value='draft';
       byId('sh-ev-auto-publish').checked=true;
       byId('sh-ev-banner').value='0';
+      byId('sh-ev-video').value='';
+      byId('sh-ev-motion').value='cinematic';
       byId('sh-ev-template').value='royal_gold';
       byId('sh-ev-scoring').value='gift_points';
       byId('sh-ev-country').value='GLOBAL';
@@ -3512,7 +3536,7 @@
       clear();
       byId('sh-event-clear').onclick=clear;
       for(const id of ['sh-ev-title','sh-ev-template','sh-ev-scoring',
-        'sh-ev-country','sh-ev-banner','sh-ev-start','sh-ev-end',
+        'sh-ev-country','sh-ev-banner','sh-ev-video','sh-ev-motion','sh-ev-start','sh-ev-end',
         'sh-ev-p1','sh-ev-p2','sh-ev-p3'])
         byId(id).addEventListener('input',previewEventDesign);
       list.querySelectorAll('[data-sh-event-edit]').forEach(button=>button.onclick=()=>{
@@ -3528,6 +3552,8 @@
         byId('sh-ev-status').value=e.published?'published':e.status;
         byId('sh-ev-auto-publish').checked=publishedItems.get('event:event:'+e.id)===true;
         byId('sh-ev-banner').value=String(e.banner_id||0);
+        byId('sh-ev-video').value=e.video_url||'';
+        byId('sh-ev-motion').value=e.animation_style||'cinematic';
         byId('sh-ev-template').value=e.template_id||'royal_gold';
         byId('sh-ev-scoring').value=e.scoring_mode||'gift_points';
         byId('sh-ev-country').value=e.country_code||'GLOBAL';
@@ -3569,12 +3595,17 @@
           !(p.some(n=>n>0)||reward_labels.some(Boolean))){
           hint.textContent='Use valid dates and configure either coin prizes or reward descriptions.';return;
         }
+        const video_url=byId('sh-ev-video').value.trim();
+        if(video_url&&!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-f0-9-]{36}\.(mp4|webm)$/.test(video_url))
+          throw Error('Use only a video uploaded through the secure Sharika Media Studio');
+        const animation_style=byId('sh-ev-motion').value;
+        if(!['cinematic','subtle','off'].includes(animation_style))throw Error('Invalid animation');
         const payload={title:byId('sh-ev-title').value.trim(),kind:byId('sh-ev-kind').value,
           description:byId('sh-ev-desc').value.trim(),starts_at:new Date(start).toISOString(),
           ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p,
           banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,reward_labels,
           template_id:byId('sh-ev-template').value,scoring_mode:byId('sh-ev-scoring').value,
-          country_code:byId('sh-ev-country').value};
+          country_code:byId('sh-ev-country').value,video_url,animation_style};
         if(payload.title.length<3){hint.textContent='Enter an event name of at least 3 characters.';return;}
         if(!window.confirm((editing?'Update event #'+editing:'Create this event')+
           ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;
