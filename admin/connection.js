@@ -3259,8 +3259,8 @@
       catalogs[1].value.banners||[]:[];
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>🎉 Verified Events & Rewards</h3>'+
-      '<p class="n">Only published and upcoming/live events appear in the home banner slider. '+
-      'Each banner opens its own gift leaderboard and Top 1–7 reward preview; '+
+      '<p class="n">Published, explicitly visible events appear in the member Event Center. '+
+      'Each event opens its own verified leaderboard with Top 1–7 rewards; '+
       'the regular Rankings page stays separate. '+
       'Set UTC event dates and prize coins; select real winning user IDs only after the event ends. '+
       'Every winner is paid once through the server wallet and immutable ledger.</p>'+
@@ -3320,14 +3320,16 @@
       '<div class="row"><label>🥇 Rank 1 coins<input class="field" type="number" id="sh-ev-p1" min="0" max="1000000" value="10000"></label>'+
       '<label>🥈 Rank 2 coins<input class="field" type="number" id="sh-ev-p2" min="0" max="1000000" value="5000"></label>'+
       '<label>🥉 Rank 3 coins<input class="field" type="number" id="sh-ev-p3" min="0" max="1000000" value="2500"></label></div>'+
-      '<h4>🏅 Top 1–7 reward descriptions (display only)</h4>'+
+      '<h4>🏅 Top 1–7 reward descriptions (visible in Event Details)</h4>'+
       '<p class="n">These labels explain prizes in the event page. They never grant frames, medals or coins automatically. Coin awards for ranks 1–3 are manually verified above.</p>'+
       '<div class="row" style="flex-wrap:wrap">'+Array.from({length:7},(_,i)=>
         '<label>#'+(i+1)+'<input class="field" id="sh-ev-label-'+(i+1)+'" '+
         'maxlength="80" placeholder="e.g. Royal medal + frame" style="min-width:130px"></label>').join('')+'</div>'+
-      '<button class="btn s" type="button" id="sh-event-save">Create event</button>'+
+      '<label style="display:block;margin:12px 0;color:#644613;font-weight:700">'+
+       '<input type="checkbox" id="sh-ev-auto-publish" checked> Publish to Event Center when saving status Published</label>'+
+       '<button class="btn s" type="button" id="sh-event-save">Create event</button>'+
       ' <button class="btn" type="button" id="sh-event-clear">Clear form</button>'+
-      '<p class="n" id="sh-event-note">Use 0 to disable a prize. After saving, use the Event card Publish button and Event Center Master Visibility to show the event in the app. Existing prize receipts are protected.</p>'+
+      '<p class="n" id="sh-event-note">Use 0 to disable coins. With Publish selected, Save also enables Event Center visibility. Frames and medals in reward labels require separate Admin grants.</p>'+
       '</div>':'')+
       '<div id="sh-event-list">Loading…</div>';
     let data;
@@ -3382,7 +3384,7 @@
       const prizes=labels.map((medal,i)=>{
         const receipt=awarded.find(a=>a.rank===i+1);
         const coins=Number(e.prizes?.[i]||0);
-        if(!coins)return '<span class="n">'+medal+' No prize</span>';
+        if(!coins)return '<span class="n">'+medal+' No coin prize configured</span>';
         return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">'+
           '<b>'+medal+' '+fmt(coins)+' 🪙</b> '+
           (receipt?'<span class="n">✓ Paid to '+esc(receipt.public_id)+
@@ -3393,6 +3395,15 @@
              '<button type="button" class="btn s" data-sh-event-award="'+e.id+'" '+
              'data-sh-event-rank="'+(i+1)+'">Pay verified winner</button>':
              '<span class="n">Pending · ends first</span>')+'</div>';
+      }).join('');
+      const rewardTiers=Array.from({length:7},(_,i)=>{
+        const coins=i<3?Number(e.prizes?.[i]||0):0;
+        const label=String(e.reward_labels?.[i]||'').trim();
+        const safeLabel=/^(preview only|showcase only)/i.test(label)?'':label;
+        const rewards=[coins>0?fmt(coins)+' coins':'',safeLabel].filter(Boolean);
+        return '<div style="border:1px solid #c5a66977;border-radius:10px;padding:8px;min-width:0">'+
+          '<b>TOP '+(i+1)+'</b><div style="font-size:12px">'+
+          esc(rewards.length?rewards.join(' + '):'Reward not configured')+'</div></div>';
       }).join('');
       return '<div class="card" style="border:1px solid #9d7be4;border-radius:22px;'+
         'background:linear-gradient(140deg,#fff,#f6f0ff);box-shadow:0 7px 0 #d2c2ef">'+
@@ -3405,7 +3416,8 @@
         '<p class="n">Home banner: '+(e.banner_id?'#'+Number(e.banner_id):'Royal gradient')+
           ' · Scoring gifts: '+(e.gift_rules||[]).map(g=>
             '#'+Number(g.gift_id)+' × '+Number(g.points)).join(', ')+(e.gift_rules?.length?'':'none')+'</p>'+
-        '<div>'+prizes+'</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px;margin:12px 0">'+
+          rewardTiers+'</div><div>'+prizes+'</div>'+
         '<p class="n">App visibility: <b>'+(
           publishedItems.get('event:event:'+e.id)?'PUBLISHED':'HIDDEN')+
           '</b> · Global Event Center: '+(eventsModuleOn?'ON':'OFF')+'</p>'+
@@ -3484,6 +3496,7 @@
       byId('sh-ev-start').value=eventLocal(now.toISOString());
       byId('sh-ev-end').value=eventLocal(tomorrow.toISOString());
       byId('sh-ev-status').value='draft';
+      byId('sh-ev-auto-publish').checked=true;
       byId('sh-ev-banner').value='0';
       byId('sh-ev-template').value='royal_gold';
       byId('sh-ev-scoring').value='gift_points';
@@ -3513,6 +3526,7 @@
         byId('sh-ev-start').value=eventLocal(e.starts_at);
         byId('sh-ev-end').value=eventLocal(e.ends_at);
         byId('sh-ev-status').value=e.published?'published':e.status;
+        byId('sh-ev-auto-publish').checked=publishedItems.get('event:event:'+e.id)===true;
         byId('sh-ev-banner').value=String(e.banner_id||0);
         byId('sh-ev-template').value=e.template_id||'royal_gold';
         byId('sh-ev-scoring').value=e.scoring_mode||'gift_points';
@@ -3566,8 +3580,14 @@
           ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;
         const button=event.currentTarget;button.disabled=true;
         try{
-          await api(editing?'PATCH':'POST',editing?'events/'+editing:'events',payload);
-          note('Event saved to verified server ✓');
+          const saved=await api(editing?'PATCH':'POST',editing?'events/'+editing:'events',payload);
+          const eventId=editing||Number(saved?.id);
+          if(!Number.isSafeInteger(eventId)||eventId<1)
+            throw new Error('Event saved; server did not provide an Event ID. Refresh Events before retrying.');
+          const visible=payload.status==='published'&&byId('sh-ev-auto-publish').checked;
+          if(visible)await api('PATCH','private-center/visibility',{kind:'module',id:'events',published:true});
+          await api('PATCH','private-center/visibility',{kind:'event',id:'event:'+eventId,published:visible});
+          note(visible?'Event saved and published to Event Center ✓':'Event saved with member visibility off ✓');
           await P.events();
         }catch(error){hint.textContent='Event save failed: '+error.message;}
         finally{button.disabled=false;}
