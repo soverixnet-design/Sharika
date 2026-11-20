@@ -1,0 +1,38 @@
+name: Verify and publish staging game bet handlers
+on:
+  push:
+    branches: [fix/wallet-sized-game-stakes]
+    paths: ['.github/workflows/sharika-wallet-stake-staging.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staging-games:
+    if: github.ref == 'refs/heads/fix/wallet-sized-game-stakes'
+    environment: sharika-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify all catalog engines, wallet debits and retries
+        run: |
+          npm --prefix cloudflare run check
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/rapid-slot-input.test.mjs
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+          node --test hosted-game-center/test/all-games-browser-smoke.test.mjs
+      - name: Publish tested game handlers and assets to the existing staging services
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+        run: |
+          node .github/scripts/stage-game-worker.mjs
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc
+          npx --yes wrangler@4 deploy --upload-source-maps --keep-vars --config cloudflare/wrangler.jsonc
+          npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.jsonc
+          npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.private.jsonc
+          node --test hosted-game-center/test/live-staging-assets.test.mjs
