@@ -485,6 +485,8 @@
   const premiumState={room:null,announcement:null,announcementAt:0,announcementPromise:null};
   const promoState={roomId:null,lastRefresh:0,promise:null,requestRoomId:null,generation:0};
   const promoImagePattern=/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/room-banners\/([1-9][0-9]{0,8})\/image\?v=[1-9][0-9]*$/;
+  const eventVideoPattern=/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-f0-9-]{36}\.(mp4|webm)$/;
+  let eventVideoObserver=null;
   const eventStrip=document.createElement('div');
   eventStrip.id='sh-reference-event-banner';
   eventStrip.className='sh-reference-event-banner';
@@ -516,6 +518,9 @@
     return eventPalettes[((id-3)%eventPalettes.length+eventPalettes.length)%eventPalettes.length];
   }
   function renderRoomBanners(entries){
+    if(eventVideoObserver){eventVideoObserver.disconnect();eventVideoObserver=null;}
+    // A hidden or switched room must never keep a background video decoder alive.
+    for(const video of eventStrip.querySelectorAll('video'))video.pause();
     const sideGame=byId('sh-reference-game-banner');
     if(!sideGame)return;
     const rows=Array.isArray(entries)?entries:[];
@@ -545,6 +550,19 @@
       eventStrip.append(title);
       const rail=document.createElement('div');rail.className='sh-room-event-rail';
       rail.setAttribute('aria-label','Individual active room events');
+      const mayAnimate=typeof IntersectionObserver==='function'&&
+        !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)&&
+        !navigator.connection?.saveData;
+      if(mayAnimate){
+        eventVideoObserver=new IntersectionObserver(entries=>{
+          for(const entry of entries){
+            const video=entry.target;
+            if(entry.isIntersecting&&!document.hidden&&canShow())
+              video.play().catch(()=>{video.pause();});
+            else video.pause();
+          }
+        },{root:rail,threshold:.55});
+      }
       for(const item of linked){
         const id=Number(item.event_id),color=roomEventPalette(id);
         const card=document.createElement('button');
@@ -562,6 +580,19 @@
           photo.className='sh-room-event-photo';photo.loading='lazy';
           photo.src=bannerImage(item);photo.onerror=()=>photo.remove();
           card.append(photo);
+        }
+        // Never start all eleven videos: only visible cards in the horizontal
+        // rail are decoded. Data Saver/reduced-motion keep Royal fallback art.
+        const url=String(item.video_url||'');
+        if(mayAnimate&&eventVideoPattern.test(url)){
+          const clip=document.createElement('video');
+          clip.className='sh-room-event-video';
+          clip.src=url;clip.muted=true;clip.defaultMuted=true;
+          clip.autoplay=false;clip.loop=true;clip.playsInline=true;
+          clip.setAttribute('playsinline','');clip.setAttribute('aria-hidden','true');
+          clip.preload='none';clip.disablePictureInPicture=true;
+          clip.onerror=()=>{eventVideoObserver?.unobserve(clip);clip.remove();};
+          card.append(clip);eventVideoObserver.observe(clip);
         }
         const caption=document.createElement('span');caption.className='sh-room-event-info';
         const name=document.createElement('strong');

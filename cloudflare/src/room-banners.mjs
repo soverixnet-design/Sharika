@@ -64,6 +64,10 @@ function view(row,origin){
       ?origin+'/api/v1/room-banners/'+id+'/image?v='+version:null};
   if(Number.isSafeInteger(Number(row.event_id))&&Number(row.event_id)>0){
     output.event_id=Number(row.event_id);
+    // Never accept arbitrary video hosts or third-party media in voice rooms.
+    const video=String(row.event_video_url||'');
+    if(/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-f0-9-]{36}\.(mp4|webm)$/.test(video))
+      output.video_url=video;
     output.template_id=typeof row.event_template==='string'?row.event_template:'royal_gold';
     output.scoring_mode=typeof row.event_scoring==='string'?row.event_scoring:'gift_points';
   }
@@ -84,7 +88,7 @@ export async function listRoomBanners(db,origin,country='',viewerCountry=country
     const data=await db.prepare(
       'SELECT b.id,b.title,b.placement,b.country_code,b.action,b.sort_order,b.active,'+
       'b.image_bytes,b.image_version,b.event_id,e.template_id AS event_template,'+
-      'e.scoring_mode AS event_scoring '+
+      'e.scoring_mode AS event_scoring,e.video_url AS event_video_url '+
       'FROM sharika_room_banners b '+
       'LEFT JOIN sharika_events e ON e.id=b.event_id '+
       "LEFT JOIN sharika_center_publishing p ON p.id=('event:'||e.id) AND p.kind='event' "+

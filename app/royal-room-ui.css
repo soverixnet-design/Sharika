@@ -1397,3 +1397,17 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
   .app.sh-royal-room .sh-room-event-symbol{font-size:26px;min-width:30px}
 }
 @media(prefers-reduced-motion:reduce){.app.sh-royal-room .sh-room-event-card{transition:none!important}}
+
+
+/* Silent cinematic Event clips never capture input, block taps, or shift seats. */
+.app.sh-royal-room .sh-room-event-video{
+ position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+ opacity:.76;pointer-events:none!important;z-index:-1;filter:saturate(1.1);
+}
+.app.sh-royal-room .sh-room-event-symbol,
+.app.sh-royal-room .sh-room-event-info{
+ position:relative;z-index:2;text-shadow:0 2px 9px #05010c,0 0 11px #0c0526;
+}
+@media(prefers-reduced-motion:reduce){
+ .app.sh-royal-room .sh-room-event-video{display:none!important}
+}
