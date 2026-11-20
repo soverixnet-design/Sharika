@@ -196,3 +196,21 @@
   border-color:#ffe19b;transform:translateY(-2px);transition:transform .18s,border-color .18s;
 }
 @media(prefers-reduced-motion:reduce){.event-feature{transform:none!important}}
+
+
+/* Always render each original vector event banner at full resolution.
+   Uploaded Admin JPEG artwork, when present, layers on top. */
+.event-poster.event-poster-individual .event-artwork-unique{
+  opacity:.98;object-fit:cover;z-index:0;pointer-events:none;
+}
+.event-poster.event-poster-individual .event-artwork:not(.event-artwork-unique){
+  opacity:.94;z-index:0;pointer-events:none;
+}
+.event-poster.event-poster-individual .event-poster-overlay{
+  z-index:2;background:linear-gradient(110deg,#13091ae7,#170c2acc);
+}
+@media(max-width:420px){
+  .event-poster.event-poster-individual .event-poster-overlay{
+    max-width:95%;min-height:124px;padding:16px 13px;
+  }
+}
