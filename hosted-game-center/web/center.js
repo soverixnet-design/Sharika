@@ -174,7 +174,16 @@ function eventPoster(event,compact=false){
  root.style.setProperty('--event-individual-glow',visual[0]);
  root.style.setProperty('--event-individual-dark',visual[1]);
  root.style.setProperty('--event-individual-gold',visual[2]);
- const safeImage='/api/center/events/'+Number(event.id)+'/banner';
+ const id=Number(event.id);
+ if(Number.isSafeInteger(id)&&id>=3&&id<=13){
+  // Original SVG artwork is authenticated and filtered by this exact Event ID.
+  const vector=el('img','event-artwork event-artwork-unique');
+  vector.loading='lazy';vector.alt='';vector.decoding='async';
+  vector.src='/event-banners/event-'+id+'.svg';
+  vector.onerror=()=>vector.remove();
+  root.append(vector);
+ }
+ const safeImage='/api/center/events/'+id+'/banner';
  if(event.banner_url&&event.banner_url.startsWith(safeImage+'?v=')){
   const photo=el('img','event-artwork');
   photo.loading='lazy';photo.alt='';photo.decoding='async';
