@@ -102,6 +102,17 @@ for(const [dest,src] of Object.entries({
 })){
   copyFileSync(src.startsWith('@web/')?join(root,'web',src.slice(5)):join(source,src),join(dist,'cards',dest));
 }
+// Each Royal Event has independent first-party SVG art. Do not share images
+// or require remote asset CDNs. Future Admin JPEGs override these originals.
+mkdirSync(join(dist,'event-banners'),{recursive:true});
+for(let id=3;id<=13;id++){
+ const name='event-'+id+'.svg';
+ const svg=readFileSync(join(root,'web','event-banners',name),'utf8');
+ if(!svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')||
+    svg.includes('<script')||svg.includes('foreignObject')||
+    !svg.includes('</svg>'))throw Error('Unsafe or missing event artwork: '+id);
+ writeFileSync(join(dist,'event-banners',name),svg);
+}
 for(const name of ['index.html','app.js','practice.js','style.css','center.html','center.css','center.js'])
   copyFileSync(join(root,'web',name),join(dist,name));
 console.log('Sharika Game Center assets ready; original game files preserved');

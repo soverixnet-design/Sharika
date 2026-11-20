@@ -3697,16 +3697,23 @@
       }finally{URL.revokeObjectURL(object);}
     }
     try{
-      const result=await api('GET','room-banners');
+      const [result,eventsData]=await Promise.all([api('GET','room-banners'),api('GET','events')]);
       const items=Array.isArray(result.banners)?result.banners:[];
+      const availableEvents=(eventsData.events||[]).filter(e=>e.published&&e.status!=='ended');
+      const eventOptions=selected=>'<option value="0">Decorative banner (no event link)</option>'+
+        availableEvents.map(e=>'<option value="'+Number(e.id)+'" '+
+          (Number(e.id)===Number(selected)?'selected':'')+'>'+
+          esc(e.title)+' (#'+Number(e.id)+')</option>').join('');
       const writable=role==='super';
       root.innerHTML='<div class="card"><h3>Room Game & Event Banners</h3>'+
-        '<p class="n">Game artwork appears in the room right rail; event artwork appears above the room chat. '+
-        'Choose GLOBAL (all countries) or an ISO two-letter country. '+ 
-        'Images are uploaded by the Super Admin only. No changes to home banners, room cover or wallets.</p>'+
+        '<p class="n">Each linked Event appears as its OWN clickable Royal banner above room chat, and opens only that Event ranking and rewards. '+
+        'Choose GLOBAL (all countries) or an ISO two-letter country. '+
+        'Linked Events have a unique built-in design even without a photo; upload an optional JPEG to replace its artwork. '+ 
+        'You can hide the Event from the Events tab, or turn off this room banner here.</p>'+
         (writable?'<div class="row"><label>Banner title<input id="rb-new-title" maxlength="70" placeholder="Weekly Games"></label>'+
           '<label>Placement<select id="rb-new-position"><option value="game">Game icon/right side</option>'+
-          '<option value="event">Room event/chat</option></select></label></div>'+
+          '<option value="event">Room event/chat</option></select></label>'+
+          '<label>Linked Event<select id="rb-new-event">'+eventOptions(0)+'</select></label></div>'+
           '<div class="row"><label>Country (blank = global)<input id="rb-new-country" maxlength="2" placeholder="BD" style="text-transform:uppercase"></label>'+
           '<label>Image from gallery<input id="rb-new-image" type="file" accept="image/jpeg,image/png,image/webp"></label>'+
           '<button class="btn" type="button" id="rb-create">Upload & publish</button></div>':'')+
@@ -3722,13 +3729,15 @@
           const placement=byId('rb-new-position').value;
           const country_code=byId('rb-new-country').value.trim().toUpperCase();
           const photo=byId('rb-new-image').files?.[0];
-          if(!title||title.length>70||!/^(|[A-Z]{2})$/.test(country_code)||!photo)
-            throw Error('Provide a title, gallery image and valid two-letter country or blank');
-          const image_data=await compressPhoto(photo);
-          const created=await api('POST','room-banners',{title,placement,country_code});
+          const event_id=placement==='event'?Number(byId('rb-new-event').value)||null:null;
+          if(!title||title.length>70||!/^(|[A-Z]{2})$/.test(country_code)||
+             (!photo&&!event_id))
+            throw Error('Enter a title, country, and either a linked Event or artwork');
+          const image_data=photo?await compressPhoto(photo):null;
+          const created=await api('POST','room-banners',{title,placement,country_code,event_id});
           if(!Number.isSafeInteger(Number(created.id))||Number(created.id)<=0)
             throw Error('Created banner ID not confirmed; refresh before retrying');
-          await api('PUT','room-banners/'+created.id+'/image',{image_data});
+          if(image_data)await api('PUT','room-banners/'+created.id+'/image',{image_data});
           await api('PATCH','room-banners/'+created.id,{active:true});
           await P.roomBanners();
         }catch(error){showError(error);}finally{if(create.isConnected)create.disabled=false;}
@@ -3746,7 +3755,9 @@
         }
         const info=document.createElement('p');info.className='n';
         info.textContent=(item.placement==='game'?'Game side banner':'Room event banner')+
-          ' · '+(item.country_code||'GLOBAL')+' · '+(item.active?'Published':'Hidden');
+          ' · '+(item.country_code||'GLOBAL')+
+          (item.event_id?' · Linked Event #'+item.event_id:' · Decorative only')+
+          ' · '+(item.active?'Published':'Hidden');
         cardNode.append(info);
         if(writable){
           const controls=document.createElement('div');controls.className='row';
@@ -3760,21 +3771,25 @@
             const option=document.createElement('option');option.value=value;option.textContent=name;
             option.selected=item.placement===value;placement.append(option);
           }
+          const eventSelect=document.createElement('select');
+          eventSelect.setAttribute('aria-label','Linked Event');
+          eventSelect.innerHTML=eventOptions(item.event_id);
           const save=document.createElement('button');save.className='btn s';save.textContent='Save';
           const toggle=document.createElement('button');toggle.className='btn s';
           toggle.textContent=item.active?'Unpublish':'Publish';
-          toggle.disabled=!image&&!item.active;
+          toggle.disabled=(!image&&!item.event_id)&&!item.active;
           const upload=document.createElement('input');upload.type='file';
           upload.accept='image/jpeg,image/png,image/webp';
           upload.setAttribute('aria-label','Replace room banner image');
-          controls.append(title,country,placement,save,toggle,upload);
+          controls.append(title,country,placement,eventSelect,save,toggle,upload);
           save.onclick=async()=>{
             save.disabled=true;
             try{
               const code=country.value.trim().toUpperCase();
               if(!/^(|[A-Z]{2})$/.test(code))throw Error('Country must be blank or two-letter ISO code');
               await api('PATCH','room-banners/'+item.id,{
-                title:title.value.trim(),country_code:code,placement:placement.value
+                title:title.value.trim(),country_code:code,placement:placement.value,
+                event_id:placement.value==='event'?Number(eventSelect.value)||null:null
               });
               await P.roomBanners();
             }catch(error){showError(error);}finally{if(save.isConnected)save.disabled=false;}

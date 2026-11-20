@@ -19,6 +19,9 @@ function dbFixture({moduleEnabled=true,eventEnabled=true,engineEnabled=true,
      if(this.args[0]==='game'&&this.args[1]==='royal-slots')return {published:1};
      return null;
     }
+    if(sql.includes('SELECT status,starts_at,ends_at,country_code FROM sharika_events'))
+     return {status:'published',starts_at:'2020-01-01T00:00:00.000Z',
+       ends_at:'2099-01-01T00:00:00.000Z',country_code:eventCountry};
     if(sql.includes('SELECT id,starts_at,ends_at,banner_id,status,country_code FROM sharika_events'))
      return {id:7,starts_at:'2020-01-01T00:00:00.000Z',
       ends_at:'2099-01-01T00:00:00.000Z',banner_id:3,status:'published',country_code:eventCountry};
@@ -62,6 +65,24 @@ test('published event banner returns only verified JPEG from D1 behind private c
  assert.equal(res.headers.get('content-type'),'image/jpeg');
  assert.equal(res.headers.get('cache-control'),'private, no-store');
  assert.deepEqual(Buffer.from(await res.arrayBuffer()),jpeg);
+});
+test('individual SVG event artwork is authenticated and hidden Event access is denied',async()=>{
+ const anonymous=await get('/event-banners/event-7.svg');
+ assert.equal(anonymous.status,401);
+ const hidden=await get('/event-banners/event-7.svg',{auth:true,eventEnabled:false});
+ assert.equal(hidden.status,404);
+ const disabled=await get('/event-banners/event-7.svg',{auth:true,moduleEnabled:false});
+ assert.equal(disabled.status,404);
+ const ineligible=await get('/event-banners/event-7.svg',{
+  auth:true,eventCountry:'BD',memberCountry:'India'});
+ assert.equal(ineligible.status,404);
+ const allowed=await get('/event-banners/event-7.svg',{auth:true,eventCountry:'BD'});
+ assert.equal(allowed.status,200);
+ assert.match(allowed.headers.get('content-type')||'',/image\/svg\+xml/);
+ assert.equal(allowed.headers.get('cache-control'),'private, no-store');
+ assert.match(allowed.headers.get('content-security-policy')||'',/default-src 'none'/);
+ const notDefined=await get('/event-banners/event-99.svg',{auth:true});
+ assert.notEqual(notDefined.headers.get('content-type'),'image/svg+xml; charset=utf-8');
 });
 test('private hosted iframe CSP names private origin and never old public origin',async()=>{
  const res=await get('/games/royal-slots/index.html',{auth:true});

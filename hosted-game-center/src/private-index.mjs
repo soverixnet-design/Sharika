@@ -105,6 +105,28 @@ export default {async fetch(req,env){
   return new Response(null,{status:204,headers:{
     ...hdr,'set-cookie':'__Host-sh_center=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0'}});
  }
+ // The Royal artwork endpoints must not let logged-in members enumerate
+ // hidden or country-ineligible events through their static SVG URLs.
+ const art=/^\/event-banners\/event-(3|4|5|6|7|8|9|10|11|12|13)\.svg$/.exec(path);
+ if(art){
+  if(!['GET','HEAD'].includes(req.method))return json({error:'method_not_allowed'},405);
+  const id=Number(art[1]),now=new Date().toISOString();
+  if(!await centerPublished(env.DB,'module','events')||
+     !await centerPublished(env.DB,'event','event:'+id))
+    return json({error:'event_hidden'},404);
+  const event=await env.DB.prepare(
+   'SELECT status,starts_at,ends_at,country_code FROM sharika_events WHERE id=?'
+  ).bind(id).first();
+  if(!event||event.status!=='published'||event.ends_at<=now||
+     !eventAudienceAllows(event.country_code,await readMemberCountry(env.DB,uid)))
+    return json({error:'event_hidden'},404);
+  const file=await env.ASSETS.fetch(req);
+  const h=new Headers(file.headers);
+  Object.entries(hdr).forEach(([key,value])=>h.set(key,value));
+  h.set('content-type','image/svg+xml; charset=utf-8');
+  h.set('content-security-policy',"default-src 'none'; style-src 'none'; sandbox");
+  return new Response(req.method==='HEAD'?null:file.body,{status:file.status,headers:h});
+ }
  const eventEndpoint=/^\/api\/center\/events\/([1-9][0-9]{0,10})\/(ranking|banner)$/.exec(path);
  if(path.startsWith('/api/center/')&&!eventEndpoint&&
     !['/api/center/rankings','/api/center/wallet','/api/center/gifts'].includes(path)){

@@ -152,3 +152,65 @@
 @media(max-width:400px){.event-ranking-podium{gap:5px}.event-champion{padding:10px 4px;min-height:215px}.event-champion.rank-1{min-height:240px}.event-champion .avatar{width:43px;height:43px}.event-champion.rank-1 .avatar{width:53px;height:53px}.event-champion-reward{font-size:9px}.prize-grid{gap:5px}.prize-position{padding:9px 4px}}
 @media(min-width:700px){.event-ranking-podium{gap:16px}.event-champion{padding:22px 15px}.event-champion .avatar{width:75px;height:75px}.event-champion.rank-1 .avatar{width:90px;height:90px}.prize-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){.event-ranking-podium *{animation:none!important}}
+
+
+/* Eleven independent Royal Event posters; each Event ID gets its own art theme.
+   This works offline as CSS artwork until Admin uploads an optional JPEG. */
+.event-poster.event-poster-individual{
+  --event-individual-glow:#d5a44b;
+  --event-individual-dark:#2d1641;
+  --event-individual-gold:#ffe6b0;
+  background:
+    radial-gradient(ellipse at 79% 12%,color-mix(in srgb,var(--event-individual-gold) 70%,transparent),transparent 42%),
+    radial-gradient(ellipse at 9% 86%,var(--event-individual-glow),transparent 57%),
+    repeating-linear-gradient(135deg,transparent 0 33px,#ffe9b414 33px 35px),
+    linear-gradient(120deg,var(--event-individual-glow),var(--event-individual-dark) 71%);
+  box-shadow:0 12px 30px #09021c97,inset 0 0 32px #ffe5a125;
+}
+.event-poster.event-poster-individual::before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  opacity:.55;background:
+    radial-gradient(circle at 83% 42%,#fff7cd 0 2px,transparent 4px),
+    radial-gradient(circle at 67% 23%,#fff4bf 0 3px,transparent 6px),
+    radial-gradient(circle at 25% 17%,#fff4bf 0 1px,transparent 3px),
+    radial-gradient(circle at 91% 80%,#fff4bf 0 2px,transparent 5px);
+}
+.event-poster-individual .event-artwork{opacity:.34}
+.event-poster-individual .event-poster-overlay{
+  border-color:var(--event-individual-gold);background:
+    linear-gradient(110deg,#120622e6,var(--event-individual-dark) 86%);
+}
+.event-poster-individual .event-crown{
+  color:var(--event-individual-gold);font-size:48px;line-height:1.05;
+  text-shadow:0 2px 25px var(--event-individual-gold);
+}
+.event-poster-individual .event-poster-title{
+  color:#fff4d9;text-shadow:0 3px 10px #000e,0 0 18px #ffecc932;
+}
+.event-poster-individual .event-poster-band{
+  color:var(--event-individual-gold);
+}
+.event-feature.event-theme--royal_gold:hover,.event-feature.event-theme--cp_love:hover,
+.event-feature.event-theme--festival_special:hover,.event-feature.event-theme--diamond_luxury:hover,
+.event-feature.event-theme--game_tournament:hover{
+  border-color:#ffe19b;transform:translateY(-2px);transition:transform .18s,border-color .18s;
+}
+@media(prefers-reduced-motion:reduce){.event-feature{transform:none!important}}
+
+
+/* Always render each original vector event banner at full resolution.
+   Uploaded Admin JPEG artwork, when present, layers on top. */
+.event-poster.event-poster-individual .event-artwork-unique{
+  opacity:.98;object-fit:cover;z-index:0;pointer-events:none;
+}
+.event-poster.event-poster-individual .event-artwork:not(.event-artwork-unique){
+  opacity:.94;z-index:0;pointer-events:none;
+}
+.event-poster.event-poster-individual .event-poster-overlay{
+  z-index:2;background:linear-gradient(110deg,#13091ae7,#170c2acc);
+}
+@media(max-width:420px){
+  .event-poster.event-poster-individual .event-poster-overlay{
+    max-width:95%;min-height:124px;padding:16px 13px;
+  }
+}
