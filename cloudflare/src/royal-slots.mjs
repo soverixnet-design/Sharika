@@ -1,5 +1,4 @@
 // Server-authoritative Royal Slots: 5x3 grid, 9 lines, 100% virtual coins.
-const BETS=[1000,10000,100000,1000000,10000000];
 const WEIGHTS=[40,50,60,70,80,90,100,100,110,60,12,5];
 const PAY=[[5000,10000,25000],[4000,9000,20000],[3000,8000,18000],
  [2000,6000,16000],[1500,5000,14000],[1000,4000,12000],
@@ -18,7 +17,7 @@ function pick(){let n=secureInt(TOTAL);for(let i=0;i<WEIGHTS.length;i++){
  n-=WEIGHTS[i];if(n<0)return i;}return 8;}
 export function generateGrid(){return Array.from({length:5},()=>[pick(),pick(),pick()]);}
 export function evaluateGrid(grid,bet,freeSpin,pool,maxWin){
- if(!BETS.includes(bet)||!Array.isArray(grid)||grid.length!==5||
+ if(!Number.isSafeInteger(bet)||bet<1||!Array.isArray(grid)||grid.length!==5||
   grid.some(col=>!Array.isArray(col)||col.length!==3||
    col.some(n=>!Number.isInteger(n)||n<0||n>11)))throw Error('invalid_grid');
  let jackpotCount=0,bonusCount=0,total=0;const lines=[];
@@ -28,7 +27,7 @@ export function evaluateGrid(grid,bet,freeSpin,pool,maxWin){
   let symbol=symbols.find(x=>x!==9);if(symbol===undefined)symbol=0;
   if(symbol>=10)continue;
   let count=0;while(count<5&&(symbols[count]===symbol||symbols[count]===9))count++;
-  if(count>=3){const win=PAY[symbol][count-3]*(bet/1000);
+  if(count>=3){const win=Math.floor(PAY[symbol][count-3]*bet/1000);
    total+=win;lines.push({line:i+1,symbol,count,win});}
  }
  const cap=Math.min(maxWin,bet*200);
@@ -71,7 +70,7 @@ export async function handleRoyalSlots({request,db,uid,action,reply,fail,cors}){
  if(action!=='spin'||request.method!=='POST')return fail('method_not_allowed',405,cors);
  let b;try{const t=await request.text();if(t.length>512)throw Error('big');
   b=JSON.parse(t);}catch{return fail('invalid_spin_request',400,cors);}
- if(!b||!BETS.includes(b.bet)||typeof b.freeSpin!=='boolean'||
+ if(!b||!Number.isSafeInteger(b.bet)||b.bet<1||typeof b.freeSpin!=='boolean'||
   typeof b.requestId!=='string'||!REQUEST_ID.test(b.requestId))
   return fail('invalid_spin_request',400,cors);
  const first=await existing(db,uid,b.requestId);
@@ -82,7 +81,6 @@ export async function handleRoyalSlots({request,db,uid,action,reply,fail,cors}){
   if(!s.user||s.user.status!=='active'||s.user.minor)
    return fail('game_not_eligible',403,cors);
   if(!s.settings?.enabled)return fail('game_disabled',403,cors);
-  if(!JSON.parse(s.settings.bets_json).includes(b.bet))return fail('invalid_bet',400,cors);
   const hasFree=Number(s.free?.remaining||0)>0;
   if(hasFree!==b.freeSpin)return fail('free_spin_mode_conflict',409,cors);
   if(hasFree&&Number(s.free.bet)!==b.bet)return fail('free_spin_bet_locked',409,cors);

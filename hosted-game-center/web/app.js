@@ -18,6 +18,8 @@
  const hot=$('hot-section'),hotGames=$('hot-games'),search=$('game-search');
  const hero=$('royal-hero'),toolbarCount=$('toolbar-count');
  const API_ORIGIN='https://sharika-api-staging.soverixnet.workers.dev';
+ const GAME_ASSET_ORIGIN='https://sharika-games-web-staging.soverixnet.workers.dev';
+ const isPrivateCenter=location.hostname==='sharika-private-center-staging.soverixnet.workers.dev';
  const artworks={
   'royal-slots':'/cards/royal-slots.webp',
   'royal-ace':'/cards/superace.svg','cleopatra':'/cards/cleopatra.jpg',
@@ -154,6 +156,10 @@
    const art=document.createElement('span');art.className='featured-art';
    const picture=document.createElement('img');
    picture.src=artworks[id]||'/cards/food-wheel.png';picture.alt='';
+   picture.onerror=()=>{
+    if(picture.dataset.fallback==='1'){picture.style.visibility='hidden';return;}
+    picture.dataset.fallback='1';picture.src='/cards/food-wheel.png';
+   };
    picture.loading='eager';picture.decoding='async';
    art.append(picture);
    const name=document.createElement('b');name.textContent=shortNames[id]||g.name;
@@ -193,6 +199,12 @@
    art.className='art'+(variants[g.id]?' '+variants[g.id].className:'');
    const image=document.createElement('img');
    image.src=artworks[g.id]||'/cards/food-wheel.png';
+   image.onerror=()=>{
+    if(image.dataset.fallback==='1'){image.style.visibility='hidden';return;}
+    image.dataset.fallback='1';
+    image.src='/cards/food-wheel.png';
+    art.style.setProperty('--art-url','url("'+image.src+'")');
+   };
    image.alt=visibleName+' game artwork';image.loading=inRoom?'eager':'lazy';
    image.decoding='async';art.append(image);
    // The same original artwork supplies a subtle square backdrop for the
@@ -338,7 +350,13 @@
     hostedSlot?'mode='+(inRoom?'room':'full')+'&host='+(serverMode?'1':'0'):
     game.id==='greedy-wheel'&&inRoom?'sheet=1':'';
   const separator=params?(game.asset.includes('?')?'&':'?'):'';
-  frame.src=game.asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
+  // Hosted game files are unprivileged STATIC artwork and JavaScript. Their
+  // sandboxed opaque-origin iframe must never depend on the private login
+  // cookie, which Android WebView may omit for cross-site iframe resources.
+  // The authenticated main frame keeps the native bridge and verifies every
+  // real coin operation with Sharika API. Child pages cannot access it.
+  const asset=isPrivateCenter?GAME_ASSET_ORIGIN+game.asset:game.asset;
+  frame.src=asset+separator+params+((game.id==='sovera-gaddy'||game.id==='greedy-classic')&&inRoom?
     '#sharika-room':'');
  }
  // System Back first closes the game, then the native Activity.
@@ -382,7 +400,7 @@
     }
    }else if(m.type==='spin'&&typeof m.id==='string'&&
      /^[A-Za-z0-9_-]{12,100}$/.test(m.id)&&
-     [1000,10000,100000,1000000,10000000].includes(m.bet)&&
+     Number.isSafeInteger(m.bet)&&m.bet>0&&
      typeof m.freeSpin==='boolean'){
     try{
      // Retry only unknown-commit network errors, with the ORIGINAL idempotent
@@ -478,20 +496,38 @@
   try{
    // Safe, independent read operations run concurrently. Game actions
    // still require the verified main-frame native bridge.
-   const [response]=await Promise.all([
-    fetch('/api/catalog',{cache:'no-store'}),
-    bridge?refreshProfile():Promise.resolve()
-   ]);
+   // Profile is optional for DRAWING game cards; each real wager is still
+   // authenticated by the native bridge and verified D1 API. An intermittent
+   // profile request must not blank the entire Game Center catalogue.
+   const profileTask=bridge?refreshProfile().catch(error=>{
+     console.warn('Sharika game profile refresh delayed:',String(error?.message||error));
+   }):Promise.resolve();
+   const response=await fetch('/api/catalog',{cache:'no-store'});
    if(!response.ok)throw Error('Catalog unavailable');
-   const data=await response.json();games=data.games||[];
-   // The website controls which separate sections are visible. Never add
-   // unavailable Ranking/Event/Wallet links to the user's navigation.
-   const sectionResponse=await fetch('/api/center/manifest',{cache:'no-store',credentials:'same-origin'});
-   if(!sectionResponse.ok)throw Error('Private Center session expired');
-   const sections=await sectionResponse.json();
+   const data=await response.json();games=Array.isArray(data.games)?data.games:[];
+   // Public free-practice hosting has no private member manifest endpoint.
+   // Requesting it unconditionally made EVERY public game card disappear.
+   // Private center visibility is still fail-closed and checked again by the
+   // authenticated /api/v1/center/manifest before any real game is listed.
+   const privateHost=isPrivateCenter;
    const centerLink=$('private-center-link');
-   if(centerLink)centerLink.hidden=!((sections.rankings||[]).length||
-     (sections.events||[]).length||(sections.modules||[]).length);
+   if(centerLink)centerLink.hidden=true;
+   if(privateHost){
+     try{
+       const sectionResponse=await fetch('/api/center/manifest',{
+         cache:'no-store',credentials:'same-origin'
+       });
+       if(sectionResponse.ok){
+         const sections=await sectionResponse.json();
+         if(centerLink)centerLink.hidden=!((
+           (sections.rankings||[]).length||
+           (sections.events||[]).length||(sections.modules||[]).length));
+       }
+     }catch(error){
+       console.warn('Sharika member sections unavailable:',String(error?.message||error));
+     }
+   }
+   await profileTask;
    if(!bridge){
     // This authenticated PRIVATE site never offers unverified practice
     // results or a simulated wallet in place of actual Sharika gameplay.

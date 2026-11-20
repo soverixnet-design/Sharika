@@ -241,8 +241,24 @@ export default {async fetch(req,env){
  // static host's CSP names the OLD public game origin; replace it with this
  // private, authenticated origin or game scripts/styles will silently fail.
  const originalOrigin='https://sharika-games-web-staging.soverixnet.workers.dev';
- const policy=h.get('content-security-policy')||'';
+ let policy=h.get('content-security-policy')||'';
  if(policy.includes(originalOrigin))
-  h.set('content-security-policy',policy.replaceAll(originalOrigin,url.origin));
- return new Response(req.method==='HEAD'?null:result.body,{status:result.status,headers:h});
+   policy=policy.replaceAll(originalOrigin,url.origin);
+ // Public game assets are framed only from the authenticated private shell.
+ // Keep CSP and app bridge origin restrictions intact.
+ if(path==='/'||path==='/index.html')
+   policy=policy.replace("frame-src 'self'","frame-src 'self' "+originalOrigin);
+ if(policy)h.set('content-security-policy',policy);
+ // No simulated browser wallet in a signed-in member session.
+ let responseBody=req.method==='HEAD'?null:result.body;
+ if((path==='/'||path==='/index.html')&&req.method==='GET'&&result.ok){
+  const markup=await result.text();
+  responseBody=markup
+   .replace('<script src="/practice.js" defer></script>','')
+   .replace('Free browser demo: simulated virtual coins and results only. No cash withdrawal or Sharika wallet transactions. In the Android app, eligible games use the authenticated Cloudflare server.',
+     'Signed-in Sharika app required for verified virtual-coin games.')
+   .replace('FREE DEMO · Simulated coins and results · No Sharika wallet transactions',
+     'LIVE GAME · SHARIKA APP REQUIRED');
+ }
+ return new Response(responseBody,{status:result.status,headers:h});
 }};

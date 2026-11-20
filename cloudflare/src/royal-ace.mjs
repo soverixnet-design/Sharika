@@ -131,8 +131,6 @@ export async function handleRoyalAce({request,db,uid,action,reply,fail,cors}){
   const s=await getState(db,uid);
   if(!s.u||s.u.status!=='active'||s.u.minor)return fail('game_not_eligible',403,cors);
   if(!s.conf||!s.conf.enabled)return fail('game_disabled',403,cors);
-  const bets=JSON.parse(s.conf.bets_json);
-  if(!bets.includes(b.bet))return fail('invalid_bet',400,cors);
   const hasFree=Number(s.fs?.remaining||0)>0;
   if(hasFree&&b.buy)return fail('free_spins_active',409,cors);
   if(hasFree&&Number(s.fs.bet)!==b.bet)return fail('free_spin_bet_locked',409,cors);

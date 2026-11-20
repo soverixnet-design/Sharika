@@ -1,0 +1,68 @@
+name: Sharika All Games - catalog, iframe, rapid-tap and Android QA
+on:
+  push:
+    branches: [fix/sharika-all-games-catalog-rapid-taps-20261120, fix/sharika-live-games-asset-reliability-20261120]
+    paths:
+      - '.github/workflows/sharika-all-games-repair-qa.yml'
+      - 'hosted-game-center/**'
+      - 'android-staging/app/src/main/assets/original-games/**'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
+      - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
+      - 'cloudflare/test/rapid-tap-recovery.test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  game-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Syntax, bundle and source integrity
+        run: |
+          node --check hosted-game-center/src/index.mjs
+          node --check hosted-game-center/src/private-index.mjs
+          node --check hosted-game-center/web/app.js
+          node --check android-staging/app/src/main/assets/original-games/rapid-bets.js
+          node hosted-game-center/scripts/build.mjs
+          test -s hosted-game-center/dist/games/original-games/rapid-bets.js
+      - name: Every Game Center route and cross-origin iframe policy
+        run: |
+          node --test hosted-game-center/test/site.test.mjs hosted-game-center/test/hosted-route.test.mjs hosted-game-center/test/room-profile.test.mjs hosted-game-center/test/game-availability-smoke.test.mjs hosted-game-center/test/private-game-visual-reliability.test.mjs
+      - name: Wallet idempotency and rapid-tap behavior
+        run: |
+          node --test cloudflare/test/rapid-round-taps.test.mjs cloudflare/test/rapid-tap-recovery.test.mjs hosted-game-center/test/rapid-slot-input.test.mjs
+      - name: All backend game regressions
+        run: npm --prefix cloudflare run check
+      - name: Install isolated browser QA dependencies
+        run: |
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+      - name: Chromium smoke - every public and authenticated private game iframe
+        run: node --test hosted-game-center/test/all-games-browser-smoke.test.mjs
+  android-debug:
+    needs: game-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Compile staging Android APK with secure Game Center and Room WebViews
+        run: gradle -p android-staging :app:assembleDebug --no-daemon
+      - name: Validate test APK and preserve backend isolation
+        run: |
+          test -s android-staging/app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq android-staging/app/build/outputs/apk/debug/app-debug.apk
+          echo GAME_REPAIR_STAGING_ANDROID_BUILD_PASSED
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sharika-game-repair-staging-debug-qa
+          path: android-staging/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 3

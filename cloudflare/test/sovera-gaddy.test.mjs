@@ -29,7 +29,7 @@ test('server rejects wrong chips, item, request ID and underage play',async()=>{
     reply:(data,status)=>Response.json(data,{status}),
     fail:(error,status)=>Response.json({error},{status}),cors:{}
   });
-  assert.equal((await call({round_no:1,pick:0,amount:1000,request_id:'test-request-0001'})).status,400);
+  assert.equal((await call({round_no:1,pick:0,amount:0,request_id:'test-request-0001'})).status,400);
   assert.equal((await call({round_no:1,pick:8,amount:50,request_id:'test-request-0002'})).status,400);
   assert.equal((await call({round_no:1,pick:0,amount:50,request_id:'short'})).status,400);
 });

@@ -11,7 +11,7 @@ const WEIGHTS=[9694,6396,3758,1999,19388,19388,19388,19388,400,200];
 const ROUND_MS=41000,BET_MS=30000,SPIN_MS=6000;
 const WINNER_BANNER_MIN=500000;
 const CHIPS=[1000,10000,100000,1000000,10000000];
-const MAX_ROUND_STAKE=Number.MAX_SAFE_INTEGER,MAX_BET=100000000;
+const MAX_ROUND_STAKE=Number.MAX_SAFE_INTEGER,MAX_BET=Number.MAX_SAFE_INTEGER;
 const REQUEST_ID=/^[A-Za-z0-9:_-]{12,80}$/;
 const enc=new TextEncoder();
 function hex(bytes){return [...bytes].map(x=>x.toString(16).padStart(2,'0')).join('');}

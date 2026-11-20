@@ -167,6 +167,7 @@ html,body{background:#12081f}
 <div class="modal" id="mHist"><div class="mt">History</div><div class="x" data-c>&#10006;</div><div class="box" id="hl"></div></div>
 <div class="modal mn" id="mMenu"><button data-o="mRule">Rule</button><button data-o="mSet">Setting</button><button data-c>Close</button></div>
 </div>
+<script src="stake-picker.js"></script>
 <script>
 const $=s=>document.querySelector(s),fmt=n=>Math.round(n).toLocaleString('en-US');
 const S={A:{i:'A',c:'sA',p:[16,6,2]},K:{i:'K',c:'sK',p:[14,5,1.5]},Q:{i:'Q',c:'sQ',p:[12,4,1]},J:{i:'J',c:'sJ',p:[8,3,.8]},T:{i:'10',c:'s10',p:[6,2,.6]},N:{i:'9',c:'s9',p:[4,1,.4]},
@@ -202,6 +203,7 @@ function evalG(g,bet){let total=0,wins=[],cnt={B:0,P:0};
   let n=0;for(const k of sy){if(k===base||k==='W')n++;else break}
   if(n>=3){const m=S[base].p[5-n];total+=m*bet;wins.push(l.slice(0,n).map((row,r)=>[r,row]))}});
  return{total,wins}}
+window.installStakePicker({balance:()=>bal, selected:()=>bets[bi], select:amount=>{if(!bets.includes(amount))bets.push(amount);bi=bets.indexOf(amount);upd();}, locked:()=>spinning||fs>0});
 const spinTaps=[];
 function manualSpin(){
  if(!spinning)return spin();
@@ -268,7 +270,7 @@ async function getResult(bet){
  return {error:'Spin confirmation delayed. Checking your wallet.'};
 }
 addEventListener('message',e=>{if(ORIGIN!=='*'&&e.origin!==ORIGIN)return;const d=e.data||{};
-if(d.type==='init'){if(d.balance!=null)bal=d.balance;window.__sharikaGameReady=Number.isSafeInteger(bal)&&bal>=0;if(d.bets){bets=d.bets;bi=Math.min(bi,bets.length-1)}if(d.freeSpins!=null)fs=Math.max(0,Number(d.freeSpins)||0);if(fs>0&&d.lockedBet!=null){const index=bets.indexOf(d.lockedBet);if(index>=0)bi=index}if(d.jackpot!=null)jp=d.jackpot;if(d.rank){RK.d=d.rank.daily||RK.d;RK.w=d.rank.weekly||RK.w}if(d.history)hist=d.history;if(d.user){document.querySelector('.row.me .nm').textContent=d.user.name||''}upd()}
+if(d.type==='init'){if(d.balance!=null)bal=d.balance;window.__sharikaGameReady=Number.isSafeInteger(bal)&&bal>=0;if(d.bets){bets=d.bets;bi=Math.min(bi,bets.length-1)}if(d.freeSpins!=null)fs=Math.max(0,Number(d.freeSpins)||0);if(fs>0&&d.lockedBet!=null){if(!bets.includes(d.lockedBet))bets.push(d.lockedBet);bi=bets.indexOf(d.lockedBet)}if(d.jackpot!=null)jp=d.jackpot;if(d.rank){RK.d=d.rank.daily||RK.d;RK.w=d.rank.weekly||RK.w}if(d.history)hist=d.history;if(d.user){document.querySelector('.row.me .nm').textContent=d.user.name||''}upd()}
 if(d.type==='gameError'){window.__sharikaGameReady=false;auto=false;toast('Game unavailable')}
 if(d.type==='balance'){bal=d.balance;upd()}
 if(d.type==='spinResult'&&pend[d.id]){pend[d.id](d);delete pend[d.id]}});
