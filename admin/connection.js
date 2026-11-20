@@ -3451,6 +3451,15 @@
       const theme=ROYAL_EVENT_PRESETS[id]||ROYAL_EVENT_PRESETS.royal_gold;
       const target=byId('sh-ev-design-preview');
       if(!target)return;
+      if(!document.getElementById('sh-admin-event-motion-css')){
+        const stylesheet=document.createElement('style');
+        stylesheet.id='sh-admin-event-motion-css';
+        stylesheet.textContent='@keyframes shAdminEventBreath {'+
+          '0%,100%{box-shadow:0 0 14px #eeaf6970, inset 0 0 9px #fff2c31c;transform:scale(1)}'+
+          '50%{box-shadow:0 0 32px #eeaf69a8, inset 0 0 21px #fff2c344;transform:scale(1.005)}}'+
+          '@media(prefers-reduced-motion:reduce){#sh-ev-design-preview{animation:none!important}}';
+        document.head.appendChild(stylesheet);
+      }
       target.style.background='radial-gradient(circle at 50% 0, '+theme.color+'77, transparent 65%),'+
         'linear-gradient(145deg,'+theme.base+',#150b2a)';
       target.style.borderColor=theme.color;
