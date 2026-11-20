@@ -1,0 +1,34 @@
+name: Sharika unified public directory QA
+on:
+  push:
+    branches:
+      - fix/sharika-unified-public-directory-20261121
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-directory-qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check cloudflare/src/index.mjs
+          node --check cloudflare/src/unified-public-profiles.mjs
+      - name: Directory ID, privacy and cross-environment tests
+        run: |
+          node --test cloudflare/test/unified-public-profiles.test.mjs cloudflare/test/global-public-ids.test.mjs
+      - name: Existing Cloudflare backend regressions
+        run: npm --prefix cloudflare run check
+      - name: Enforce separate wallets and shared identity database
+        run: |
+          grep -q 'SHARIKA_ID_DB' cloudflare/wrangler.jsonc
+          grep -q 'SHARIKA_ID_DB' cloudflare/wrangler.play.virtual.jsonc
+          grep -q '5b151101-1ac0-4b13-ab8e-e41cb06014fa' cloudflare/wrangler.play.virtual.jsonc
+          ! grep -Eiq '^[[:space:]]+(coins|diamonds|wallet|birthdate)[[:space:]]' cloudflare/migrations/0107_global_public_profiles.sql
