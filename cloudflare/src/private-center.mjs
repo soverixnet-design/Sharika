@@ -51,6 +51,7 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
    'JOIN sharika_game_catalog c ON c.id=p.id AND c.enabled=1 '+
    "WHERE p.kind='game' AND p.published=1 ORDER BY p.sort_order,p.id").all();
   const now=new Date().toISOString();
+  const recentEventBoundary=new Date(Date.now()-30*86400000).toISOString();
   // Event-specific publishing is not enough: the global Event module must
   // also be enabled. Scheduled events are shown only if explicitly published.
   const eventsEnabled=active.some(item=>item.kind==='module'&&item.id==='events');
@@ -61,9 +62,9 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
    'FROM sharika_events e JOIN sharika_center_publishing p ON p.id=(\'event:\'||e.id) '+
    "AND p.kind='event' AND p.published=1 " +
    'LEFT JOIN sharika_banner_images i ON i.banner_id=e.banner_id '+
-   "WHERE e.status='published' AND e.ends_at>? AND (e.country_code='GLOBAL' OR e.country_code=?) "+
+   "WHERE e.status='published' AND e.ends_at>=? AND (e.country_code='GLOBAL' OR e.country_code=?) "+
    'ORDER BY e.starts_at DESC LIMIT 30')
-   .bind(now,await readMemberCountry(db,uid)).all():{results:[]};
+   .bind(recentEventBoundary,await readMemberCountry(db,uid)).all():{results:[]};
   return send({
    games:rows(games).filter(x=>HOSTED_GAME_IDS.has(x.id)).map(safeItem),
    rankings:active.filter(x=>x.kind==='ranking').map(safeItem),
@@ -72,7 +73,7 @@ export async function handlePrivateCenter({request,path,db,uid,reply,fail,cors})
     description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,
     template_id:e.template_id||'royal_gold',scoring_mode:e.scoring_mode||'gift_points',
     country_code:e.country_code||'GLOBAL',
-    status:e.starts_at>now?'scheduled':'live',
+    status:e.starts_at>now?'scheduled':e.ends_at>now?'live':'ended',
     banner_url:Number(e.banner_version)>0?'/api/center/events/'+Number(e.id)+'/banner?v='+Number(e.banner_version):null,
     prizes:[Number(e.prize_1)||0,Number(e.prize_2)||0,Number(e.prize_3)||0],
     reward_labels:(()=>{try{const a=JSON.parse(e.reward_labels_json||'[]');return Array.isArray(a)?a.filter(x=>typeof x==='string').slice(0,7):[]}catch(_){return []}})()})),

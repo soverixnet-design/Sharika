@@ -167,23 +167,29 @@ function eventPoster(event,compact=false){
  glow.append(crown,title,band);root.append(glow);
  return root;
 }
+function eventRewardText(event,rank){
+ const coins=rank<=3?Number(event.prizes?.[rank-1]||0):0;
+ const item=String(event.reward_labels?.[rank-1]||'').trim();
+ const description=/^(preview only|showcase only)/i.test(item)?'':item;
+ const parts=[];
+ if(Number.isFinite(coins)&&coins>0)parts.push(nice(coins)+' coins');
+ if(description)parts.push(description.slice(0,80));
+ return parts.join(' + ')||'Reward not configured';
+}
 function eventPrizeDetails(e){
- const prizes=Array.isArray(e.prizes)?e.prizes:[];
- const labels=Array.isArray(e.reward_labels)?e.reward_labels:[];
  const panel=el('section','event-prizes event-theme--'+eventTheme(e));
- panel.append(el('h3','','Royal Prizes'));
+ panel.append(el('h3','','Royal Event Rewards'));
+ const explainer=el('p','muted','The Admin sets all event rewards. Coin prizes are paid only after verified results and Super Admin approval. Frame and medal descriptions do not automatically grant items.');
+ panel.append(explainer);
  const grid=el('div','prize-grid');
- for(let i=0;i<3;i++){
-  const item=el('div','prize-position'+(i===0?' top-prize':''));
-  item.append(el('div','prize-medal',['♛','✦','◆'][i]),
-   el('strong','','TOP '+(i+1)));
-  if(Number(prizes[i])>0)item.append(el('span','',nice(prizes[i])+' coins'));
-  if(typeof labels[i]==='string'&&labels[i].trim())
-   item.append(el('small','',labels[i].trim().slice(0,80)));
+ for(let rank=1;rank<=7;rank++){
+  const item=el('div','prize-position'+(rank===1?' top-prize':'')+(rank>3?' supporting-prize':''));
+  item.append(el('div','prize-medal',['♛','✦','◆','✧','✧','✧','✧'][rank-1]),
+   el('strong','','TOP '+rank),
+   el('span','event-prize-value',eventRewardText(e,rank)));
   grid.append(item);
  }
- panel.append(grid);
- return panel;
+ panel.append(grid);return panel;
 }
 function showEvents(){
  changeEventLink(null);
@@ -201,9 +207,10 @@ function showEvents(){
   details.append(heading,el('h3','',e.title));
   const summary=el('p','muted',e.description||'Official Sharika limited-time event');
   details.append(summary,el('small','muted',eventAudienceLabel(e)));
-  const prizes=(e.prizes||[]).filter(x=>Number(x)>0);
-  if(prizes.length)details.append(el('span','event-feature-prizes',
-     'Royal rewards · '+prizes.map(n=>nice(n)).join(' / ')+' coins'));
+  const configured=Array.from({length:7},(_,i)=>eventRewardText(e,i+1))
+    .filter(value=>value!=='Reward not configured');
+  details.append(el('span','event-feature-prizes',
+    configured.length?'Top 1: '+eventRewardText(e,1)+' · '+configured.length+' reward tiers':'Rewards pending Admin configuration'));
   const button=el('button','action','View Event & Ranking');
   button.type='button';
   button.onclick=()=>showEventDetail(e);
@@ -231,33 +238,73 @@ function showEventDetail(event){
  const ranking=el('section','event-leaderboard');
  ranking.append(el('h3','',EVENT_THEMES[eventTheme(event)].rank));
  ranking.append(el('p','muted',EVENT_SCORE_CAPTIONS[eventScore(event)]));
- const loading=el('div','muted','Loading verified event ranking…');ranking.append(loading);
- section.append(ranking);content.append(section);
- let viewToken=Symbol('event');content._eventViewToken=viewToken;
+ const loading=el('div','muted','Loading verified event ranking…');
+ ranking.append(loading);section.append(ranking);content.append(section);
+ const viewToken=Symbol('event');content._eventViewToken=viewToken;
  const path='events/'+Number(event.id)+'/ranking';
- endpoint(path).then(data=>{
-  if(content._eventViewToken!==viewToken)return;
-  loading.remove();
-  if(!Array.isArray(data.ranking)||!data.ranking.length){
-   ranking.append(el('div','empty','No verified event points yet.'));return;
+ async function loadRanking(){
+  loading.textContent='Loading verified event ranking…';loading.remove();
+  const spinner=el('div','muted','Loading verified event ranking…');ranking.append(spinner);
+  try{
+   const data=await endpoint(path);
+   if(content._eventViewToken!==viewToken)return;
+   spinner.remove();
+   if(!Array.isArray(data.ranking))throw Error('Invalid ranking payload');
+   const ranked=data.ranking.filter(member=>Number.isSafeInteger(Number(member.rank))&&
+     Number(member.rank)>0&&Number.isFinite(Number(member.points)));
+   if(!ranked.length){
+    ranking.append(el('div','empty','No verified event points yet. Rankings will appear after eligible activity is recorded.'));
+    return;
+   }
+   ranking.append(el('div','event-ranking-count',nice(ranked.length)+' verified participant'+
+     (ranked.length===1?'':'s')+' · Live server rankings'));
+   const podium=el('div','event-ranking-podium');
+   for(const rank of [2,1,3]){
+    const member=ranked.find(m=>Number(m.rank)===rank);
+    const tile=el('div','event-champion rank-'+rank+(member?'':' no-entry'));
+    tile.append(el('div','event-champion-medal',['','♛','✦','◆'][rank]),
+      el('span','event-champion-position','TOP '+rank));
+    if(member){
+     if(member.pic)tile.append(avatar(member));
+     tile.append(el('strong','event-champion-name',member.name||'Member'),
+       el('small','event-champion-id',member.public_id||''),
+       el('b','event-champion-score',nice(member.points)+' '+(eventScore(event)==='gift_points'?'points':'coins')));
+    }else{
+     tile.append(el('strong','event-champion-name','Not ranked'),
+       el('small','event-champion-id','Awaiting verified activity'));
+    }
+    tile.append(el('span','event-champion-reward',eventRewardText(event,rank)));
+    podium.append(tile);
+   }
+   ranking.append(podium);
+   const rest=ranked.filter(m=>Number(m.rank)>3);
+   if(rest.length){
+    ranking.append(el('h4','event-ranking-subtitle','More event rankings'));
+    const list=el('div','leaderboard');
+    for(const member of rest){
+     const line=el('div','leader event-ranking-row');
+     line.append(el('span','num',Number(member.rank)));
+     if(member.pic)line.append(avatar(member));
+     const info=el('div','event-ranking-identity');
+     info.append(el('strong','',member.name||'Member'),el('small','',member.public_id||''));
+     const value=el('div','event-ranking-metrics');
+     value.append(el('strong','',nice(member.points)+' '+(eventScore(event)==='gift_points'?'pts':'coins')));
+     if(Number(member.rank)<=7)value.append(el('small','',eventRewardText(event,Number(member.rank))));
+     line.append(info,value);list.append(line);
+    }
+    ranking.append(list);
+   }
+   ranking.append(el('p','muted',EVENT_SCORE_CAPTIONS[eventScore(event)]));
+  }catch(error){
+   if(content._eventViewToken!==viewToken)return;
+   spinner.remove();
+   const problem=el('div','empty','Ranking temporarily unavailable: '+errMessage(error));
+   const retry=el('button','secondary','Retry ranking');retry.type='button';
+   retry.onclick=()=>{problem.remove();retry.remove();loadRanking();};
+   ranking.append(problem,retry);
   }
-  const list=el('div','leaderboard');
-  for(const member of data.ranking){
-   const line=el('div','leader');
-   line.append(el('span','num',Number(member.rank)||'–'));
-   if(member.pic)line.append(avatar(member));
-   const info=el('div');
-   info.append(el('strong','',member.name||'Member'),
-     el('small','',member.public_id||''));
-   const count=el('strong','',nice(member.points)+(eventScore(event)==='gift_points'?' pts':' coins'));
-   count.style.marginLeft='auto';
-   line.append(info,count);list.append(line);
-  }
-  ranking.append(list,el('p','muted',EVENT_SCORE_CAPTIONS[eventScore(event)]));
- }).catch(error=>{
-  if(content._eventViewToken!==viewToken)return;
-  loading.replaceWith(el('div','empty','Ranking unavailable: '+errMessage(error)));
- });
+ }
+ loadRanking();
 }
 async function showWallet(){
  heading('My Virtual Wallet','Read-only · No cash withdrawal');
