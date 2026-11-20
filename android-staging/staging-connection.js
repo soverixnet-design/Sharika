@@ -6471,6 +6471,16 @@
         loadBanners:()=>api('GET','/room-banners?country='+encodeURIComponent(
           String(room.owner_country||room.country||'').trim().toUpperCase()
         )),
+        // Exact event target is chosen inside the room but navigation stays
+        // in the authenticated parent WebView/native bridge, never the iframe.
+        openEvent:eventId=>{
+          const id=Number(eventId);
+          if(!Number.isSafeInteger(id)||id<1)
+            return Promise.reject(new Error('invalid_event_id'));
+          if(typeof window.showSharikaEvent!=='function')
+            return Promise.reject(new Error('event_center_unavailable'));
+          return window.showSharikaEvent(id);
+        },
         loadRankings:(period,offset=0,kind='riches')=>api('GET','/rooms/'+room.id+
           '/contributors?period='+encodeURIComponent(period)+'&offset='+offset+
           '&kind='+encodeURIComponent(kind)).then(result=>({
