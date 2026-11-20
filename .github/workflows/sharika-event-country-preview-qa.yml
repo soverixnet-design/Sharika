@@ -1,7 +1,7 @@
 name: Sharika Royal Events - country scope and admin preview QA
 on:
   push:
-    branches: [feature/sharika-event-country-preview-20261120]
+    branches: [feature/sharika-event-country-preview-20261120, feature/sharika-royal-events-rank-rewards-20261120]
     paths:
       - '.github/workflows/sharika-event-country-preview-qa.yml'
       - 'cloudflare/src/event-audience.mjs'
@@ -15,6 +15,8 @@ on:
       - 'cloudflare/test/royal-liveops-admin-e2e.test.mjs'
       - 'hosted-game-center/src/private-index.mjs'
       - 'hosted-game-center/web/center.js'
+      - 'hosted-game-center/web/center.css'
+      - 'cloudflare/test/private-center.test.mjs'
       - 'hosted-game-center/test/private-event-access.test.mjs'
       - 'admin/connection.js'
   workflow_dispatch:
@@ -77,3 +79,88 @@ jobs:
             hosted-game-center/test/private-event-access.test.mjs
       - name: Complete backend regression suite
         run: npm --prefix cloudflare run check
+
+  publish-royal-events-staging:
+    name: Publish QA-verified Royal Events to staging ONLY
+    if: github.ref == 'refs/heads/feature/sharika-royal-events-rank-rewards-20261120'
+    needs: isolated-liveops-qa
+    runs-on: ubuntu-24.04
+    environment: sharika-staging
+    timeout-minutes: 25
+    concurrency:
+      group: sharika-royal-events-staging
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Refuse Play, production, missing secrets, or unsafe D1 target
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const read=p=>JSON.parse(readFileSync(p,'utf8'));
+          const api=read('cloudflare/wrangler.jsonc');
+          const admin=read('cloudflare/wrangler.admin.jsonc');
+          const site=read('hosted-game-center/wrangler.private.jsonc');
+          const db='b2c62252-12a5-4740-90c7-01a536d9a39a';
+          const account='d81cf7c48fb9b36d468cb0a08720cd74';
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-royal-events-rank-rewards-20261120'||
+             !process.env.CLOUDFLARE_API_TOKEN||
+             [api,admin,site].some(x=>x.account_id!==account)||
+             api.name!=='sharika-api-staging'||
+             admin.name!=='sharika-admin-staging'||
+             site.name!=='sharika-private-center-staging'||
+             api.d1_databases?.[0]?.database_id!==db||
+             admin.d1_databases?.[0]?.database_id!==db||
+             site.d1_databases?.[0]?.database_id!==db||
+             api.vars?.SHARIKA_ENV!=='staging'||
+             api.keep_vars!==true||
+             admin.services?.[0]?.service!=='sharika-api-staging')
+             throw Error('STAGING ONLY safety gate refused release');
+          console.log('STAGING ONLY config verified');
+          NODE
+      - name: Confirm Event Country migration and publication tables already exist
+        run: |
+          node --input-type=module <<'NODE'
+          const url='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const sql="SELECT (SELECT COUNT(*) FROM pragma_table_info('sharika_events') WHERE name IN ('country_code','template_id','scoring_mode')) AS event_cols,(SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('sharika_center_publishing','sharika_center_launch_tickets','sharika_center_browser_sessions')) AS tables";
+          const res=await fetch(url,{method:'POST',headers:{
+            Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'},body:JSON.stringify({sql})});
+          const data=await res.json();
+          const row=data.result?.[0]?.results?.[0];
+          if(!res.ok||!data.success||Number(row?.event_cols)!==3||Number(row?.tables)!==3)
+            throw Error('Required existing D1 schema missing; no deployment performed');
+          console.log('Required D1 tables/columns present; no migrations run');
+          NODE
+      - name: Build Admin and private Center; run syntax guards
+        run: |
+          node hosted-game-center/scripts/build.mjs
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+          node --check hosted-game-center/web/center.js
+          node --check admin/connection.js
+          node --check hosted-game-center/src/private-index.mjs
+      - name: Dry-run all three staging Worker bundles
+        run: |
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/royal-events-api
+          npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/royal-events-admin
+          npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.private.jsonc --outdir /tmp/royal-events-center
+      - name: Deploy private Event Center staging Worker only
+        run: npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.private.jsonc
+      - name: Deploy staging API only
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Deploy existing staging Admin Panel only
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Verify only staging health endpoints
+        run: |
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-api-staging.soverixnet.workers.dev/health | grep -q staging
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-admin-staging.soverixnet.workers.dev/health | grep -q sharika-admin-staging
+          curl --fail --silent --show-error --retry 8 --retry-delay 3 --retry-all-errors --max-time 10 https://sharika-private-center-staging.soverixnet.workers.dev/health | grep -q private_center
+          STATUS=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 12 https://sharika-private-center-staging.soverixnet.workers.dev/api/center/events/6/ranking)
+          test "$STATUS" = 401
