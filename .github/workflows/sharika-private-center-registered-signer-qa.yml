@@ -1,7 +1,7 @@
 name: Sharika All Games Repair - registered Firebase Google OAuth signer QA
 on:
   push:
-    branches: [feature/sharika-private-center-rapid-tap-integration-20261120, feature/sharika-event-country-preview-20261120, fix/sharika-voice-health-background-qa-20261120, fix/sharika-all-games-catalog-rapid-taps-20261120]
+    branches: [feature/sharika-private-center-rapid-tap-integration-20261120, feature/sharika-event-country-preview-20261120, fix/sharika-voice-health-background-qa-20261120, fix/sharika-all-games-catalog-rapid-taps-20261120, integration/sharika-games-events-qa-20261120]
     paths: ['.github/workflows/sharika-private-center-registered-signer-qa.yml']
   workflow_dispatch:
 permissions:
