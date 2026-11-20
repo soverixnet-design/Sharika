@@ -156,6 +156,10 @@
    const art=document.createElement('span');art.className='featured-art';
    const picture=document.createElement('img');
    picture.src=artworks[id]||'/cards/food-wheel.png';picture.alt='';
+   picture.onerror=()=>{
+    if(picture.dataset.fallback==='1'){picture.style.visibility='hidden';return;}
+    picture.dataset.fallback='1';picture.src='/cards/food-wheel.png';
+   };
    picture.loading='eager';picture.decoding='async';
    art.append(picture);
    const name=document.createElement('b');name.textContent=shortNames[id]||g.name;
@@ -195,6 +199,12 @@
    art.className='art'+(variants[g.id]?' '+variants[g.id].className:'');
    const image=document.createElement('img');
    image.src=artworks[g.id]||'/cards/food-wheel.png';
+   image.onerror=()=>{
+    if(image.dataset.fallback==='1'){image.style.visibility='hidden';return;}
+    image.dataset.fallback='1';
+    image.src='/cards/food-wheel.png';
+    art.style.setProperty('--art-url','url("'+image.src+'")');
+   };
    image.alt=visibleName+' game artwork';image.loading=inRoom?'eager':'lazy';
    image.decoding='async';art.append(image);
    // The same original artwork supplies a subtle square backdrop for the
