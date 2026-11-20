@@ -229,5 +229,17 @@ export default {async fetch(req,env){
  if(path==='/'||path==='/index.html')
    policy=policy.replace("frame-src 'self'","frame-src 'self' "+originalOrigin);
  if(policy)h.set('content-security-policy',policy);
- return new Response(req.method==='HEAD'?null:result.body,{status:result.status,headers:h});
+ // The signed-in PRIVATE shell never loads or advertises the public fake-wallet
+ // practice adapter. Keep public /practice.js and public demos unchanged.
+ let responseBody=req.method==='HEAD'?null:result.body;
+ if((path==='/'||path==='/index.html')&&req.method==='GET'&&result.ok){
+  const markup=await result.text();
+  responseBody=markup
+   .replace('<script src="/practice.js" defer></script>','')
+   .replace('Free browser demo: simulated virtual coins and results only. No cash withdrawal or Sharika wallet transactions. In the Android app, eligible games use the authenticated Cloudflare server.',
+     'Signed-in Sharika app required for verified virtual-coin games.')
+   .replace('FREE DEMO · Simulated coins and results · No Sharika wallet transactions',
+     'LIVE GAME · SHARIKA APP REQUIRED');
+ }
+ return new Response(responseBody,{status:result.status,headers:h});
 }};
