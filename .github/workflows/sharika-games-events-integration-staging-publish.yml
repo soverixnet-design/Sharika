@@ -1,7 +1,7 @@
 name: Publish integrated Sharika Game Center and Cinematic Events to staging only
 on:
   push:
-    branches: [integration/sharika-games-events-qa-20261120]
+    branches: [integration/sharika-games-event-videos-20261121]
     paths: ['.github/workflows/sharika-games-events-integration-staging-publish.yml']
 permissions: {contents: read}
 concurrency:
@@ -40,7 +40,7 @@ jobs:
           npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.admin.jsonc --outdir /tmp/sharika-integrated-admin
   publish:
     needs: verify
-    if: github.ref == 'refs/heads/integration/sharika-games-events-qa-20261120'
+    if: github.ref == 'refs/heads/integration/sharika-games-event-videos-20261121'
     environment: sharika-staging
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -62,7 +62,7 @@ jobs:
           const api=r('cloudflare/wrangler.jsonc'),admin=r('cloudflare/wrangler.admin.jsonc');
           const pub=r('hosted-game-center/wrangler.jsonc'),privateSite=r('hosted-game-center/wrangler.private.jsonc');
           const acct='d81cf7c48fb9b36d468cb0a08720cd74',db='b2c62252-12a5-4740-90c7-01a536d9a39a';
-          if(process.env.GITHUB_REF!=='refs/heads/integration/sharika-games-events-qa-20261120'||
+          if(process.env.GITHUB_REF!=='refs/heads/integration/sharika-games-event-videos-20261121'||
             [api,admin,pub,privateSite].some(x=>x.account_id!==acct)||
             api.name!=='sharika-api-staging'||admin.name!=='sharika-admin-staging'||
             pub.name!=='sharika-games-web-staging'||privateSite.name!=='sharika-private-center-staging'||
