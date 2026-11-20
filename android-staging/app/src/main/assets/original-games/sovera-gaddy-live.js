@@ -28,7 +28,7 @@
       if(!active||host===window)return reject(new Error('Secure app connection unavailable'));
       const id=++seq,timer=setTimeout(()=>{
         pending.delete(id);reject(new Error('server_timeout'));
-      },9000);
+      },24000);
       pending.set(id,{resolve,reject,timer});
       host.postMessage({type:'sharika:original-request',id,game:GAME,
         action,method:action==='bet'?'POST':'GET',...(body?{body}:{})},'*');
