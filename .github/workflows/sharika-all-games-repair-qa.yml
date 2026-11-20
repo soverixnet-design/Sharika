@@ -6,6 +6,7 @@ on:
       - '.github/workflows/sharika-all-games-repair-qa.yml'
       - 'hosted-game-center/**'
       - 'android-staging/app/src/main/assets/original-games/**'
+      - 'android-staging/staging-connection.js'
       - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaGameCenterActivity.java'
       - 'android-staging/app/src/main/java/com/soverixnet/sharika/SharikaRoomGameDialog.java'
       - 'cloudflare/test/rapid-tap-recovery.test.mjs'
