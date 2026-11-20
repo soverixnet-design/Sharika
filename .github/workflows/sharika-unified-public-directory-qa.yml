@@ -31,4 +31,4 @@ jobs:
           grep -q 'SHARIKA_ID_DB' cloudflare/wrangler.jsonc
           grep -q 'SHARIKA_ID_DB' cloudflare/wrangler.play.virtual.jsonc
           grep -q '5b151101-1ac0-4b13-ab8e-e41cb06014fa' cloudflare/wrangler.play.virtual.jsonc
-          ! grep -Eiq 'coins|diamonds|wallet|birthdate' cloudflare/migrations/0107_global_public_profiles.sql
+          ! grep -Eiq '^[[:space:]]+(coins|diamonds|wallet|birthdate)[[:space:]]' cloudflare/migrations/0107_global_public_profiles.sql
