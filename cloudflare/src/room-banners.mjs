@@ -1,3 +1,4 @@
+import {normalizedMemberCountry} from './event-audience.mjs';
 // Admin-published room-only promotional artwork. No coins, gifts or bets.
 const ID=/^[1-9][0-9]{0,8}$/;
 const LOCATIONS=new Set(['game','event']);
@@ -71,8 +72,9 @@ function view(row,origin){
 function dbUnavailable(error){
   return /no such table: sharika_room_banners/i.test(String(error));
 }
-export async function listRoomBanners(db,origin,country=''){
+export async function listRoomBanners(db,origin,country='',viewerCountry=country){
   const code=validCountry(country)?country:'';
+  const audience=normalizedMemberCountry(viewerCountry);
   const now=new Date().toISOString();
   try{
     // A decorative legacy image remains independent. A linked event is shown
@@ -93,7 +95,7 @@ export async function listRoomBanners(db,origin,country=''){
       "AND p.published=1 AND m.published=1 "+
       "AND (e.country_code='GLOBAL' OR e.country_code=?))) "+
       'ORDER BY CASE WHEN b.country_code=? THEN 0 ELSE 1 END,b.sort_order,b.id LIMIT 40'
-    ).bind(code,now,code,code).all();
+    ).bind(code,now,audience,code).all();
     return (data.results||[]).map(row=>view(row,origin));
   }catch(error){if(dbUnavailable(error))return [];throw error;}
 }
