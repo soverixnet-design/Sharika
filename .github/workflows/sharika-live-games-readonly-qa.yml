@@ -1,0 +1,20 @@
+name: Sharika live deployed games read-only smoke (staging)
+on:
+  push:
+    branches: [fix/sharika-all-games-catalog-rapid-taps-20261120]
+    paths: ['.github/workflows/sharika-live-games-readonly-qa.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  verify-live-games:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check every published public staging game page and its live JS/CSS
+        run: node --test hosted-game-center/test/live-staging-assets.test.mjs
+      - name: Confirm no live wagers, D1 writes or production changes were requested
+        run: echo SHARIKA_GAMES_STAGING_HTTP_READ_ONLY_CHECK_COMPLETE
