@@ -149,9 +149,31 @@ function eventAudienceLabel(event){
  const value=String(event.country_code||'GLOBAL').toUpperCase();
  return value==='GLOBAL'?'Global event':value==='BD'?'Bangladesh event':'Country event · '+value;
 }
+// Unique first-party visual identity per independently published event.
+const EVENT_POSTER_ART=[
+ ['#b4416b','#291035','#ffdfad','♛'],
+ ['#3675d8','#0e2353','#d7f0ff','⚔'],
+ ['#d65b91','#4e1639','#ffe1ed','♥'],
+ ['#b48b20','#3e250e','#fff0a7','✦'],
+ ['#df6c8b','#391c47','#ffe6c4','❀'],
+ ['#48b4e1','#12335d','#edfbff','◆'],
+ ['#d8722e','#45141d','#ffdeae','♜'],
+ ['#379d9f','#112c3f','#e9ffff','★'],
+ ['#bf4364','#591b33','#ffe3df','♡'],
+ ['#8864d4','#2b1d54','#f0ddff','✧'],
+ ['#c7a22d','#4d370c','#fff4bd','❖']
+];
+function eventPosterArt(id){
+ const n=Number(id);
+ return EVENT_POSTER_ART[((n-3)%EVENT_POSTER_ART.length+EVENT_POSTER_ART.length)%EVENT_POSTER_ART.length];
+}
 function eventPoster(event,compact=false){
  // Only the server-authorized, first-party event endpoint may supply artwork.
- const root=el('div','event-poster event-theme--'+eventTheme(event)+(compact?' compact':''));
+ const root=el('div','event-poster event-poster-individual event-theme--'+eventTheme(event)+(compact?' compact':''));
+ const visual=eventPosterArt(event.id);
+ root.style.setProperty('--event-individual-glow',visual[0]);
+ root.style.setProperty('--event-individual-dark',visual[1]);
+ root.style.setProperty('--event-individual-gold',visual[2]);
  const safeImage='/api/center/events/'+Number(event.id)+'/banner';
  if(event.banner_url&&event.banner_url.startsWith(safeImage+'?v=')){
   const photo=el('img','event-artwork');
@@ -161,7 +183,7 @@ function eventPoster(event,compact=false){
   root.append(photo);
  }
  const glow=el('div','event-poster-overlay');
- const crown=el('span','event-crown',EVENT_THEMES[eventTheme(event)].symbol);
+ const crown=el('span','event-crown',visual[3]);
  const title=el('strong','event-poster-title',event.title);
  const band=el('span','event-poster-band',event.kind.replaceAll('_',' ').toUpperCase()+' · '+eventAudienceLabel(event));
  glow.append(crown,title,band);root.append(glow);
