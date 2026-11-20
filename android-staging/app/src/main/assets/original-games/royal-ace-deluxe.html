@@ -127,6 +127,7 @@ body.sharika-room .top .logo{height:clamp(26px,6dvh,48px)!important}body.sharika
 <div class="info"><div class="bet"><button id="mn">−</button><span>Bet <i class="cn"></i><span id="bt"></span></span></div>
 <div class="balb">Balance <i class="cn"></i><span id="bl"></span></div><div class="wf"><svg viewBox="0 0 24 24" width="26" fill="none" stroke="#4cd964" stroke-width="2.4" stroke-linecap="round"><path d="M2 9a14 14 0 0120 0M5.5 12.5a9 9 0 0113 0M9 16a4 4 0 016 0"/><circle cx="12" cy="19.5" r="1" fill="#4cd964"/></svg><div>v_138_0455</div></div></div></div>
 <div id="bw"></div><div id="ov"><div class="bx" id="bx"></div></div></div>
+<script src="stake-picker.js"></script>
 <script>
 const H=[];let mute=false,AC;function tone(f,d=.1,type='triangle',v=.08,t0=0,slide=0){if(mute)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state=='suspended')AC.resume();const t=AC.currentTime+t0,o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(slide)o.frequency.exponentialRampToValueAtTime(f*slide,t+d);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d)}catch(e){}}
 function noise(d=.15,v=.05,hp=1000,t0=0){if(mute)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state=='suspended')AC.resume();const n=Math.floor(AC.sampleRate*d),b=AC.createBuffer(1,n,AC.sampleRate),a=b.getChannelData(0);for(let i=0;i<n;i++)a[i]=(Math.random()*2-1)*(1-i/n);const s=AC.createBufferSource(),f=AC.createBiquadFilter(),g=AC.createGain();s.buffer=b;f.type='highpass';f.frequency.value=hp;g.gain.value=v;s.connect(f);f.connect(g);g.connect(AC.destination);s.start(AC.currentTime+t0)}catch(e){}}
@@ -250,6 +251,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   $('royal-skip-intro').onchange=e=>{try{localStorage.setItem('sharika_royal_intro_off',e.target.checked?'1':'0')}catch(_){}};
   const showError=s=>{loading.style.display='flex';errorBox.style.display='block';errorBox.textContent=s;retryButton.style.display='block';};
   const clearError=()=>{errorBox.style.display='none';errorBox.textContent='';retryButton.style.display='none';};
+window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if(!activeBets.includes(amount))activeBets.push(amount);bi=activeBets.indexOf(amount);bet=amount;upd();}, locked:()=>!ready||busy||freeRemaining>0});
   retryButton.onclick=()=>{ready=false;connectRetries=0;clearError();requestConnection();};
   const hideIntro=()=>{loading.style.display='none';};
   spinner.disabled=true;$('bb').disabled=true;
@@ -281,7 +283,8 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
       clearTimeout(connectTimer);connectRetries=0;
       if(!Array.isArray(d.bets)||!d.bets.every(x=>Number.isSafeInteger(x)&&x>0))return showError('Game configuration is unavailable.');
       clearError();activeBets=d.bets;freeRemaining=Number(d.freeSpins)||0;
-      bet=freeRemaining>0&&activeBets.includes(Number(d.lockedBet))?Number(d.lockedBet):activeBets[0];
+      bet=freeRemaining>0?Number(d.lockedBet):activeBets[0];
+      if(!activeBets.includes(bet))activeBets.push(bet);
       bi=activeBets.indexOf(bet);ready=true;
       previewBalance(d.balance);spinner.disabled=false;$('bb').disabled=false;
       $('royal-progress-fill').style.width='100%';$('royal-loading-caption').textContent='Ready';

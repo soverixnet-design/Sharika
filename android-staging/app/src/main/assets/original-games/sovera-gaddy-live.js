@@ -133,6 +133,7 @@
       }
     }finally{refreshing=false;}
   }
+window.installStakePicker({balance:()=>state?.coins||0, selected:()=>selected, select:amount=>{selected=amount;document.querySelectorAll('.chip.sel').forEach(b=>b.classList.remove('sel'));}});
   const enqueue=createRoundTapQueue({
     send:body=>request('bet',body),
     openRound:n=>authorized&&state?.round.round_no===n&&Date.now()+offset<state.round.bet_closes_ms,

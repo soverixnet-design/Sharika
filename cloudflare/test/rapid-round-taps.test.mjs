@@ -56,10 +56,10 @@ test('1,000 taps preserve picks, chip amounts and wallet debits across a lost re
 test('all eight round games accept each tap once and reject late taps',async()=>{
   const sql=new DatabaseSync(':memory:');
   for(const name of ['0001_initial','0007_original_games','0027_greedy_wheel','0046_admin_game_catalog',
-    '0055_fruit_royale_v2','0058_sovera_gaddy_game','0096_food_wheel_deluxe','0097_greedy_classic','0103_rapid_tap_rounds']){
+    '0055_fruit_royale_v2','0058_sovera_gaddy_game','0096_food_wheel_deluxe','0097_greedy_classic','0095_cleopatra_slot','0098_royal_ace_deluxe','0099_royal_ace_bonus_buy_10x','0100_royal_slots','0103_rapid_tap_rounds','0105_wallet_sized_game_stakes']){
     sql.exec(readFileSync(new URL('../migrations/'+name+'.sql',import.meta.url),'utf8'));
   }
-  sql.exec("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(10000001,'qa','QA','1995-01-01',0,800000)");
+  sql.exec("INSERT INTO sharika_users(public_no,auth_uid,name,birthdate,minor,coins) VALUES(10000001,'qa','QA','1995-01-01',0,9600000288)");
   const db={
     prepare:query=>({bind:(...args)=>({query,args})}),
     batch(statements){
@@ -86,7 +86,7 @@ test('all eight round games accept each tap once and reject late taps',async()=>
       ') VALUES ('+Object.keys(row).map(()=>'?').join(',')+')').run(...Object.values(row));
     const submit=body=>settleTapBatch({db,uid:'qa',game,body,currentRound:round,ensure:()=>row,
       validAmount:n=>n===amount,maxPick:7,items,reply:value=>value,fail:code=>{throw Error(code);}});
-    const amount=game==='sovera-gaddy'?500:1000,pick=game==='food-deluxe'?[0,0,1000,0,0,0,0,0]:0;
+    const amount=100000003,pick=game==='food-deluxe'?[0,0,amount,0,0,0,0,0]:0;
     const taps=Array.from({length:12},(_,i)=>({pick,amount,request_id:game+'-rapid-test-'+i}));
     const result=await submit({round_no:round,taps});
     assert.equal(new Set(result.receipts.map(r=>r.bet_id)).size,12,game);
@@ -94,6 +94,6 @@ test('all eight round games accept each tap once and reject late taps',async()=>
     assert.deepEqual((await submit({round_no:round,taps})).receipts,result.receipts);
     assert.equal((await submit({round_no:round+1,taps:[{...taps[0],request_id:game+'-late-test'}]})).receipts[0].error,'betting_closed');
   }
-  assert.equal(sql.prepare('SELECT coins FROM sharika_users').get().coins,710000);
+  assert.equal(sql.prepare('SELECT coins FROM sharika_users').get().coins,0);
   sql.close();
 });

@@ -5,7 +5,7 @@ const MULT=Object.freeze([5,10,15,25,5,5,5,45]);
 const NAMES=Object.freeze(['Strawberry','Burger','Shrimp','Puffer Fish','Banana','Orange','Cherry','Steak']);
 const CHIPS=Object.freeze([100,1000,5000,10000,50000]);
 export const FOOD_DELUXE_ROUND_MS=25000;
-const BET_MS=15000,RESULT_MS=20000,MAX_STAKE=100000000;
+const BET_MS=15000,RESULT_MS=20000,MAX_STAKE=Number.MAX_SAFE_INTEGER;
 const ID=/^[A-Za-z0-9:_-]{12,80}$/;
 const hex=bytes=>Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
 async function sha(text){
@@ -148,13 +148,13 @@ export async function handleFoodDeluxe({request,db,uid,action,reply,fail,cors}){
   b=JSON.parse(raw);
  }catch{return fail('invalid_bet',400,cors);}
  if(b?.taps)return settleTapBatch({db,uid,game:'food-deluxe',body:b,currentRound:roundNumber(Date.now()),
-  ensure:()=>ensureRound(db,b.round_no),validAmount:a=>Number.isSafeInteger(a)&&a>=100&&a<=MAX_STAKE,reply,fail,cors});
+  ensure:()=>ensureRound(db,b.round_no),validAmount:a=>Number.isSafeInteger(a)&&a>=1&&a<=MAX_STAKE,reply,fail,cors});
  if(!b||!Number.isSafeInteger(b.round_no)||b.round_no<0||!ID.test(b.request_id||'')||
   !Array.isArray(b.stakes)||b.stakes.length!==8||
-  b.stakes.some(a=>!Number.isSafeInteger(a)||a<0||a>MAX_STAKE||a%100!==0))
+  b.stakes.some(a=>!Number.isSafeInteger(a)||a<0||a>MAX_STAKE))
   return fail('invalid_bet',400,cors);
  const total=b.stakes.reduce((a,c)=>a+c,0);
- if(!Number.isSafeInteger(total)||total<100||total>MAX_STAKE)return fail('invalid_bet',400,cors);
+ if(!Number.isSafeInteger(total)||total<1||total>MAX_STAKE)return fail('invalid_bet',400,cors);
  const prior=await db.prepare('SELECT * FROM sharika_food_deluxe_bets '+
   'WHERE user_uid=? AND request_id=?').bind(uid,b.request_id).first();
  if(prior){
