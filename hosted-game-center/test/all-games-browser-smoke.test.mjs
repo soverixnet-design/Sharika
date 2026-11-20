@@ -121,6 +121,26 @@ test('private native Game Center loads every sandboxed game asset without accoun
      assert.ok(child.url().startsWith(publicHost+'/games/'));
      const body=await child.locator('body').textContent();
      assert.ok((body||'').trim().length>10,game.id+': empty hosted game document');
+     // Bet chips, fruit pictures, card art and game sprites must decode in
+     // the real sandboxed Chromium frame, not merely exist as HTML source.
+     const brokenVisibleImages=await child.evaluate(async()=>{
+       const images=[...document.images].filter(img=>{
+         if(!img.getAttribute('src'))return false;
+         const style=getComputedStyle(img),bounds=img.getBoundingClientRect();
+         return style.display!=='none'&&style.visibility!=='hidden'&&
+           bounds.width>1&&bounds.height>1;
+       });
+       return (await Promise.all(images.map(async img=>{
+         try{
+           await Promise.race([img.decode(),
+             new Promise(resolve=>setTimeout(resolve,2500))]);
+         }catch(_){}
+         return img.complete&&img.naturalWidth===0?
+           (img.currentSrc||img.src).slice(0,140):null;
+       }))).filter(Boolean);
+     });
+     assert.deepEqual(brokenVisibleImages,[],
+       game.id+': visible game chip/card image failed to decode');
      const bridge=await child.evaluate(()=>{
        try {return window.parent.SharikaGameBridge?'leaked':'isolated';}
        catch {return 'isolated';}
