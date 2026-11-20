@@ -1333,3 +1333,81 @@ html:has(.sh-royal-room),body:has(.sh-royal-room) {
 #sh-room-settings-page .sh-room-reward-rates > div > :last-child {
   border-right:0;
 }
+
+
+/* Individual linked Event carousel: keeps voice seats, room chat and keyboard stable. */
+.app.sh-royal-room .sh-room-event-carousel{
+  display:block!important;position:relative!important;max-width:100%!important;
+  min-height:0!important;height:auto!important;overflow:hidden!important;
+  padding:5px 0 8px!important;background:transparent!important;
+  border:0!important;box-shadow:none!important;pointer-events:auto!important;
+}
+.app.sh-royal-room .sh-room-event-carousel[hidden]{display:none!important}
+.app.sh-royal-room .sh-room-event-heading{
+  padding:1px 9px 5px;text-align:left;letter-spacing:.18em;
+  font:800 9px system-ui,sans-serif;color:#f8dda6;
+  text-shadow:0 1px 3px #000;
+}
+.app.sh-royal-room .sh-room-event-rail{
+  display:flex;align-items:stretch;gap:8px;overflow-x:auto;overflow-y:hidden;
+  padding:2px 8px 7px;scroll-snap-type:x mandatory;
+  scroll-padding-left:9px;overscroll-behavior-inline:contain;
+  scrollbar-width:thin;scrollbar-color:#d2aa67 #241333;
+}
+.app.sh-royal-room .sh-room-event-card{
+  flex:0 0 clamp(166px,59vw,237px);min-width:0;height:87px;
+  position:relative;isolation:isolate;display:flex;align-items:center;
+  border:1px solid #fff0bb98;border-radius:16px;overflow:hidden;
+  padding:11px 10px;background:
+  radial-gradient(circle at 85% 15%,#ffffff55,transparent 39%),
+  linear-gradient(132deg,var(--sh-ev-light),var(--sh-ev-dark) 72%);
+  box-shadow:inset 0 1px #fff7,0 5px 12px #0d041c90;
+  text-align:left;gap:8px;color:var(--sh-ev-gold);
+  scroll-snap-align:start;cursor:pointer;pointer-events:auto!important;
+}
+.app.sh-royal-room .sh-room-event-card::after{
+  content:"";position:absolute;inset:4px;pointer-events:none;border-radius:12px;
+  border:1px solid #ffedb055;z-index:-1;
+}
+.app.sh-royal-room .sh-room-event-card:focus-visible{
+  outline:3px solid #fff9bf;outline-offset:3px;
+}
+.app.sh-royal-room .sh-room-event-symbol{
+  font-size:30px;line-height:1;min-width:35px;
+  text-shadow:0 2px 13px #fff5b6b3,0 3px 6px #09021c;
+}
+.app.sh-royal-room .sh-room-event-info{
+  display:flex;flex-direction:column;gap:5px;min-width:0;max-width:100%;
+  position:relative;z-index:2;text-shadow:0 2px 7px #000b;
+}
+.app.sh-royal-room .sh-room-event-info strong{
+  font:900 12px/1.24 Georgia,serif;color:#fff1ca;max-height:2.5em;
+  overflow:hidden;text-overflow:ellipsis;overflow-wrap:anywhere;
+}
+.app.sh-royal-room .sh-room-event-info small{
+  font:800 8px system-ui,sans-serif;letter-spacing:.09em;
+  color:var(--sh-ev-gold);opacity:.95;
+}
+.app.sh-royal-room .sh-room-event-photo{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:.4;z-index:-1;pointer-events:none;
+}
+@media(max-width:360px){
+  .app.sh-royal-room .sh-room-event-card{height:80px;flex-basis:170px}
+  .app.sh-royal-room .sh-room-event-symbol{font-size:26px;min-width:30px}
+}
+@media(prefers-reduced-motion:reduce){.app.sh-royal-room .sh-room-event-card{transition:none!important}}
+
+
+/* Silent cinematic Event clips never capture input, block taps, or shift seats. */
+.app.sh-royal-room .sh-room-event-video{
+ position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+ opacity:.76;pointer-events:none!important;z-index:-1;filter:saturate(1.1);
+}
+.app.sh-royal-room .sh-room-event-symbol,
+.app.sh-royal-room .sh-room-event-info{
+ position:relative;z-index:2;text-shadow:0 2px 9px #05010c,0 0 11px #0c0526;
+}
+@media(prefers-reduced-motion:reduce){
+ .app.sh-royal-room .sh-room-event-video{display:none!important}
+}

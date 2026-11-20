@@ -67,6 +67,19 @@ test('valid event requires truthful UTC window and integer coin tiers',()=>{
   assert.equal(validEventPayload({...eventPayload,banner_id:-1}),false);
   assert.equal(validEventPayload({...eventPayload,reward_labels:['only one']}),false);
 });
+test('cinematic Event video allows only first-party media and supported animation styles',()=>{
+ const good='https://sharika-api-staging.soverixnet.workers.dev/api/v1/media/12345678-1234-4321-9876-123456789012.mp4';
+ assert.equal(validEventPayload({...eventPayload,video_url:good,animation_style:'cinematic'}),true);
+ assert.equal(validEventPayload({...eventPayload,video_url:good.replace('.mp4','.webm'),animation_style:'subtle'}),true);
+ assert.equal(validEventPayload({...eventPayload,video_url:'',animation_style:'off'}),true);
+ for(const video_url of [
+  'https://unsafe.example/video.mp4',
+  'http://sharika-api-staging.soverixnet.workers.dev/api/v1/media/12345678-1234-4321-9876-123456789012.mp4',
+  'javascript:alert(1)',
+  'https://sharika-api-staging.soverixnet.workers.dev/api/v1/media/abc.mp4'
+ ])assert.equal(validEventPayload({...eventPayload,video_url}),false);
+ assert.equal(validEventPayload({...eventPayload,animation_style:'blinking-fast'}),false);
+});
 test('support staff cannot read events and finance cannot create payouts',async()=>{
   const f=fixture();
   assert.equal((await admin(f,'events','GET',undefined,'support')).status,403);

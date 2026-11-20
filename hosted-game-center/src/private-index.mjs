@@ -5,6 +5,7 @@ import {handlePrivateCenter,centerPublished} from '../../cloudflare/src/private-
 import {readGiftRankings} from '../../cloudflare/src/admin.mjs';
 import {readCenterRankings} from '../../cloudflare/src/center-rankings.mjs';
 import {handleEventApp} from '../../cloudflare/src/events.mjs';
+import {readMemberCountry,eventAudienceAllows} from '../../cloudflare/src/event-audience.mjs';
 const hdr={
   'cache-control':'private, no-store',
   'x-content-type-options':'nosniff',
@@ -104,6 +105,28 @@ export default {async fetch(req,env){
   return new Response(null,{status:204,headers:{
     ...hdr,'set-cookie':'__Host-sh_center=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0'}});
  }
+ // The Royal artwork endpoints must not let logged-in members enumerate
+ // hidden or country-ineligible events through their static SVG URLs.
+ const art=/^\/event-banners\/event-(3|4|5|6|7|8|9|10|11|12|13)\.svg$/.exec(path);
+ if(art){
+  if(!['GET','HEAD'].includes(req.method))return json({error:'method_not_allowed'},405);
+  const id=Number(art[1]),now=new Date().toISOString();
+  if(!await centerPublished(env.DB,'module','events')||
+     !await centerPublished(env.DB,'event','event:'+id))
+    return json({error:'event_hidden'},404);
+  const event=await env.DB.prepare(
+   'SELECT status,starts_at,ends_at,country_code FROM sharika_events WHERE id=?'
+  ).bind(id).first();
+  if(!event||event.status!=='published'||event.ends_at<=now||
+     !eventAudienceAllows(event.country_code,await readMemberCountry(env.DB,uid)))
+    return json({error:'event_hidden'},404);
+  const file=await env.ASSETS.fetch(req);
+  const h=new Headers(file.headers);
+  Object.entries(hdr).forEach(([key,value])=>h.set(key,value));
+  h.set('content-type','image/svg+xml; charset=utf-8');
+  h.set('content-security-policy',"default-src 'none'; style-src 'none'; sandbox");
+  return new Response(req.method==='HEAD'?null:file.body,{status:file.status,headers:h});
+ }
  const eventEndpoint=/^\/api\/center\/events\/([1-9][0-9]{0,10})\/(ranking|banner)$/.exec(path);
  if(path.startsWith('/api/center/')&&!eventEndpoint&&
     !['/api/center/rankings','/api/center/wallet','/api/center/gifts'].includes(path)){
@@ -129,10 +152,12 @@ export default {async fetch(req,env){
     !await centerPublished(env.DB,'event','event:'+eid))
     return json({error:'event_hidden'},404);
   // Event-level status and time bounds are always independently enforced.
-  const row=await env.DB.prepare("SELECT id,starts_at,ends_at,banner_id,status FROM sharika_events WHERE id=?")
+  const row=await env.DB.prepare("SELECT id,starts_at,ends_at,banner_id,status,country_code FROM sharika_events WHERE id=?")
     .bind(eid).first();
   const now=new Date().toISOString();
   if(!row||row.status!=='published'||row.ends_at<=now)return json({error:'event_unavailable'},404);
+  if(!eventAudienceAllows(row.country_code,await readMemberCountry(env.DB,uid)))
+    return json({error:'event_hidden'},404);
   if(eventEndpoint[2]==='ranking'){
    if(req.method==='HEAD')return new Response(null,{status:405,headers:hdr});
    return handleEventApp({request:req,env,uid,path:'/api/v1/events/'+eid+'/ranking',cors:{},

@@ -31,7 +31,7 @@ function envForRanking(scoring_mode){
    async first(){
     if(sql.includes('SELECT published FROM sharika_center_publishing'))
       return {published:1};
-    if(sql.includes('SELECT public_no FROM sharika_users WHERE auth_uid'))
+    if(sql.includes('SELECT public_no,country FROM sharika_users WHERE auth_uid'))
       return {public_no:10000001};
     if(sql.includes('FROM sharika_events WHERE id'))
       return {id:5,status:'published',starts_at:'2026-11-23T00:00:00.000Z',

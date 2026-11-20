@@ -31,9 +31,12 @@ test('public room banners use only active uploaded artwork and country scope',as
   const result=await listRoomBanners(db,endpoint,'BD');
   assert.deepEqual(result,[]);
   const query=db.queries[0];
-  assert.match(query.sql,/active=1 AND image_bytes>0/);
-  assert.match(query.sql,/country_code='' OR country_code=\?/);
-  assert.deepEqual(query.arguments,['BD','BD']);
+  assert.match(query.sql,/b\.active=1 AND \(b\.image_bytes>0 OR b\.event_id IS NOT NULL\)/);
+  assert.match(query.sql,/b\.country_code='' OR b\.country_code=\?/);
+  assert.equal(query.arguments[0],'BD');
+  assert.equal(query.arguments[2],'BD');
+  assert.equal(query.arguments[3],'BD');
+  assert.match(query.sql,/p\.published=1 AND m\.published=1/);
 });
 
 test('room banners fail closed before optional staging migration exists',async()=>{
@@ -56,6 +59,38 @@ test('untrusted country and external image data are not returned',async()=>{
   assert.equal(result[0].action,'games');
 });
 
+test('linked room Event is independently identified, themed and opens its own Event ID',async()=>{
+  const row={id:14,title:'CP Hearts Celebration',placement:'event',country_code:'',
+    action:'none',sort_order:11,active:1,image_bytes:0,image_version:0,event_id:11,
+    event_template:'cp_love',event_scoring:'cp_gifts'};
+  const db={prepare(sql){return {bind(){return this;},all:async()=>({results:[row]})};}};
+  const result=await listRoomBanners(db,endpoint,'BD');
+  assert.equal(result.length,1);
+  assert.equal(result[0].event_id,11);
+  assert.equal(result[0].template_id,'cp_love');
+  assert.equal(result[0].scoring_mode,'cp_gifts');
+  assert.equal(result[0].image_url,null);
+  assert.equal(result[0].action,'none');
+});
+test('linked room Event may be published without JPEG; unrelated game still requires photo',async()=>{
+  const db=mockDB({id:1,placement:'event',image_bytes:0,event_id:11});
+  const res=await handleRoomBannerAdmin({
+    request:request('PATCH','/api/v1/admin/room-banners/1',{active:true}),
+    ...context(db),operation:'room-banners/1'
+  });
+  assert.equal(res.status,200);
+});
+test('only one Event may be linked and the room carousel uses individual target navigation',()=>{
+ const root=new URL('../../',import.meta.url);
+ const sql=readFileSync(new URL('cloudflare/migrations/0105_distinct_room_event_banners.sql',root),'utf8');
+ const app=readFileSync(new URL('app/royal-room-ui.js',root),'utf8');
+ const android=readFileSync(new URL('android-staging/staging-connection.js',root),'utf8');
+ assert.match(sql,/UNIQUE INDEX/);
+ assert.match(app,/roomEventPalette\(id\)/);
+ assert.match(app,/Promise\.resolve\(open\(id\)\)/);
+ assert.match(android,/openEvent:eventId=>/);
+ assert.doesNotMatch(sql,/sharika_wallet|sharika_users|sharika_event_awards/);
+});
 test('only Super Admin may publish or upload a room banner',async()=>{
   for(const method of ['POST','PATCH','PUT','DELETE']){
     const operation=method==='POST'?'room-banners':

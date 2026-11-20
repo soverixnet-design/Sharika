@@ -6,20 +6,25 @@ globalThis.crypto??=webcrypto;
 const origin='https://sharika-private-center-staging.soverixnet.workers.dev';
 const cookie='__Host-sh_center='+'A'.repeat(43);
 const jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
-function dbFixture({moduleEnabled=true,eventEnabled=true,engineEnabled=true}={}){
+function dbFixture({moduleEnabled=true,eventEnabled=true,engineEnabled=true,
+ eventCountry='GLOBAL',memberCountry='BD'}={}){
  return {prepare(sql){
   return {sql,args:[],bind(...args){this.args=args;return this;},
    async first(){
     if(sql.includes('FROM sharika_center_browser_sessions'))return {auth_uid:'firebase:test:member'};
+    if(sql.includes('SELECT country FROM sharika_users'))return {country:memberCountry};
     if(sql.includes('SELECT published FROM sharika_center_publishing')){
      if(this.args[0]==='module'&&this.args[1]==='events')return {published:Number(moduleEnabled)};
      if(this.args[0]==='event'&&this.args[1]==='event:7')return {published:Number(eventEnabled)};
      if(this.args[0]==='game'&&this.args[1]==='royal-slots')return {published:1};
      return null;
     }
-    if(sql.includes('SELECT id,starts_at,ends_at,banner_id,status FROM sharika_events'))
+    if(sql.includes('SELECT status,starts_at,ends_at,country_code FROM sharika_events'))
+     return {status:'published',starts_at:'2020-01-01T00:00:00.000Z',
+       ends_at:'2099-01-01T00:00:00.000Z',country_code:eventCountry};
+    if(sql.includes('SELECT id,starts_at,ends_at,banner_id,status,country_code FROM sharika_events'))
      return {id:7,starts_at:'2020-01-01T00:00:00.000Z',
-      ends_at:'2099-01-01T00:00:00.000Z',banner_id:3,status:'published'};
+      ends_at:'2099-01-01T00:00:00.000Z',banner_id:3,status:'published',country_code:eventCountry};
     if(sql.includes('SELECT image_base64,mime,image_bytes'))
      return {image_base64:jpeg.toString('base64'),mime:'image/jpeg',image_bytes:jpeg.length};
     if(sql.includes('SELECT enabled FROM sharika_game_catalog'))
@@ -61,6 +66,24 @@ test('published event banner returns only verified JPEG from D1 behind private c
  assert.equal(res.headers.get('cache-control'),'private, no-store');
  assert.deepEqual(Buffer.from(await res.arrayBuffer()),jpeg);
 });
+test('individual SVG event artwork is authenticated and hidden Event access is denied',async()=>{
+ const anonymous=await get('/event-banners/event-7.svg');
+ assert.equal(anonymous.status,401);
+ const hidden=await get('/event-banners/event-7.svg',{auth:true,eventEnabled:false});
+ assert.equal(hidden.status,404);
+ const disabled=await get('/event-banners/event-7.svg',{auth:true,moduleEnabled:false});
+ assert.equal(disabled.status,404);
+ const ineligible=await get('/event-banners/event-7.svg',{
+  auth:true,eventCountry:'BD',memberCountry:'India'});
+ assert.equal(ineligible.status,404);
+ const allowed=await get('/event-banners/event-7.svg',{auth:true,eventCountry:'BD'});
+ assert.equal(allowed.status,200);
+ assert.match(allowed.headers.get('content-type')||'',/image\/svg\+xml/);
+ assert.equal(allowed.headers.get('cache-control'),'private, no-store');
+ assert.match(allowed.headers.get('content-security-policy')||'',/default-src 'none'/);
+ const notDefined=await get('/event-banners/event-99.svg',{auth:true});
+ assert.notEqual(notDefined.headers.get('content-type'),'image/svg+xml; charset=utf-8');
+});
 test('private hosted iframe CSP names private origin and never old public origin',async()=>{
  const res=await get('/games/royal-slots/index.html',{auth:true});
  assert.equal(res.status,200);
@@ -85,4 +108,19 @@ test('practice-mode browser Javascript is disabled on the private member origin'
 test('disabled game cannot load its direct HTML in a signed-in session',async()=>{
  const res=await get('/games/royal-slots/index.html',{auth:true,engineEnabled:false});
  assert.equal(res.status,403);
+});
+
+test('country-limited event direct banner and ranking reject users from other countries',async()=>{
+ for(const suffix of ['banner','ranking']){
+  const notAllowed=await get('/api/center/events/7/'+suffix,{
+   auth:true,eventCountry:'BD',memberCountry:'India'});
+  assert.equal(notAllowed.status,404);
+  assert.equal((await notAllowed.json()).error,'event_hidden');
+ }
+ const allowed=await get('/api/center/events/7/banner',{
+  auth:true,eventCountry:'BD',memberCountry:'Bangladesh'});
+ assert.equal(allowed.status,200);
+ const global=await get('/api/center/events/7/banner',{
+  auth:true,eventCountry:'GLOBAL',memberCountry:'India'});
+ assert.equal(global.status,200);
 });

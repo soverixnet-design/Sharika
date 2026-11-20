@@ -1,0 +1,64 @@
+name: Deploy muted Royal Event room-video API to staging ONLY
+on:
+  push:
+    branches: [feature/sharika-event-videos-r2-room-20261120]
+    paths:
+      - '.github/workflows/sharika-event-room-video-api-staging.yml'
+      - 'cloudflare/src/room-banners.mjs'
+      - 'app/royal-room-ui.js'
+      - 'app/royal-room-ui.css'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-and-deploy:
+    name: Verify source + release only staging room Event API
+    runs-on: ubuntu-24.04
+    environment: sharika-staging
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Hard-fail if staging isolation is not exact
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const cfg=JSON.parse(readFileSync('cloudflare/wrangler.jsonc','utf8'));
+          if(process.env.GITHUB_REF!=='refs/heads/feature/sharika-event-videos-r2-room-20261120'||
+             !process.env.CLOUDFLARE_API_TOKEN||
+             process.env.CLOUDFLARE_ACCOUNT_ID!==cfg.account_id||
+             cfg.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             cfg.name!=='sharika-api-staging'||
+             cfg.vars?.SHARIKA_ENV!=='staging'||
+             cfg.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+             cfg.d1_databases?.[0]?.database_id!=='b2c62252-12a5-4740-90c7-01a536d9a39a'||
+             cfg.r2_buckets?.[0]?.bucket_name!=='sharika-staging-media')
+             throw Error('STAGING ONLY safeguard denied API deploy');
+          const src=readFileSync('cloudflare/src/room-banners.mjs','utf8');
+          const room=readFileSync('app/royal-room-ui.js','utf8');
+          if(!src.includes('e.video_url AS event_video_url')||
+             !room.includes('eventVideoObserver.observe(clip)'))
+             throw Error('Staging room Event video feature missing');
+          NODE
+      - name: Verify all API and Android room adapter syntax
+        run: |
+          node --check cloudflare/src/room-banners.mjs
+          node --check app/royal-room-ui.js
+          node --check android-staging/staging-connection.js
+      - name: Test Event isolation, media safety and voice-room interface
+        run: |
+          node --test cloudflare/test/room-banners.test.mjs cloudflare/test/events.test.mjs
+      - name: Dry-run staging API bundle
+        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare/wrangler.jsonc --outdir /tmp/sharika-room-event-video-api
+      - name: Deploy staging API only; preserve existing live variables
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc
+      - name: Confirm staging API is up
+        run: |
+          curl --fail --silent --show-error --retry 7 --retry-delay 3 \
+            https://sharika-api-staging.soverixnet.workers.dev/health | grep -q staging
+          echo 'STAGING_ROOM_EVENT_VIDEO_API_DEPLOYED'

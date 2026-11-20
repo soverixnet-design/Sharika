@@ -24,7 +24,14 @@ function fixture(){
  "CREATE TABLE sharika_agency_earnings(id INTEGER PRIMARY KEY,beneficiary_uid TEXT,kind TEXT,amount_units INTEGER,created_at TEXT)",
  "CREATE TABLE sharika_wallet_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,auth_uid TEXT,currency TEXT,delta INTEGER,reason TEXT,created_at TEXT)"
  ].join(';\n')+';');
- sql.exec("INSERT INTO sharika_users VALUES('qa:super',10000001,'QA Super',NULL,'active'),('qa:member',10000002,'QA Member',NULL,'active'); INSERT INTO sharika_admin_roles VALUES('qa:super','super');");
+ sql.exec("ALTER TABLE sharika_users ADD COLUMN country TEXT NOT NULL DEFAULT ''; "+
+   "ALTER TABLE sharika_events ADD COLUMN country_code TEXT NOT NULL DEFAULT 'GLOBAL'; "+
+   "ALTER TABLE sharika_events ADD COLUMN video_url TEXT NOT NULL DEFAULT ''; "+
+   "ALTER TABLE sharika_events ADD COLUMN animation_style TEXT NOT NULL DEFAULT 'cinematic';");
+ sql.exec("INSERT INTO sharika_users(auth_uid,public_no,name,pic,status,country) "+
+   "VALUES('qa:super',10000001,'QA Super',NULL,'active','BD'),"+
+   "('qa:member',10000002,'QA Member',NULL,'active','Bangladesh'); "+
+   "INSERT INTO sharika_admin_roles VALUES('qa:super','super');");
  for(const [id,kind] of [['events','module'],['cp','ranking'],['bd','ranking'],['agency','ranking'],['host','ranking'],['gift','ranking']])
   sql.prepare('INSERT INTO sharika_center_publishing(id,kind,title,published) VALUES(?,?,?,0)').run(id,kind,id);
  const db={
@@ -182,5 +189,40 @@ test('Game Event ranking aggregates all current server-owned win reasons, not be
   assert.equal(result.ranking.length,1);
   assert.equal(result.ranking[0].points,150);
   assert.equal(result.ranking[0].gift_count,5);
+ }finally{sql.close();}
+});
+
+
+test('Bangladesh-only event is hidden from other countries even by direct leaderboard URL',async()=>{
+ const {sql,db}=fixture();
+ try{
+  sql.prepare('INSERT INTO sharika_users(auth_uid,public_no,name,pic,status,country) VALUES(?,?,?,?,?,?)')
+    .run('qa:visitor',10000004,'QA Visitor',null,'active','India');
+  const bad={...event,country_code:'bd'};
+  assert.equal((await admin(db,'events','POST',bad)).status,400,'Reject non-ISO upper case input');
+  const payload={...event,country_code:'BD',status:'published'};
+  const created=await admin(db,'events','POST',payload);
+  assert.equal(created.status,201);
+  const id=(await created.json()).id;
+  assert.equal(sql.prepare('SELECT country_code FROM sharika_events WHERE id=?').get(id).country_code,'BD');
+  assert.equal((await center(db,'/api/v1/center/admin/visibility','PATCH',
+    {kind:'event',id:'event:'+id,published:true})).status,200);
+  assert.equal((await center(db,'/api/v1/center/admin/visibility','PATCH',
+    {kind:'module',id:'events',published:true})).status,200);
+  const bd=await center(db,'/api/v1/center/manifest','GET',undefined,'qa:member');
+  const india=await center(db,'/api/v1/center/manifest','GET',undefined,'qa:visitor');
+  assert.deepEqual((await bd.json()).events.map(x=>x.id),[id]);
+  assert.deepEqual((await india.json()).events,[]);
+  const rankingPath='/api/v1/events/'+id+'/ranking';
+  const forbidden=await handleEventApp({env:{DB:db},uid:'qa:visitor',
+    request:new Request('https://qa.invalid'+rankingPath),
+    path:rankingPath,cors:{},reply,fail});
+  assert.equal(forbidden.status,403);
+  assert.equal((await forbidden.json()).error,'event_hidden');
+  const allowed=await handleEventApp({env:{DB:db},uid:'qa:member',
+    request:new Request('https://qa.invalid'+rankingPath),
+    path:rankingPath,cors:{},reply,fail});
+  assert.equal(allowed.status,200);
+  assert.deepEqual((await allowed.json()).ranking,[]);
  }finally{sql.close();}
 });

@@ -67,6 +67,8 @@ on:
       - feature/sharika-full-integrated-staging-20261107
       - feature/sharika-crystal-bd-monthly-20261111
       - feature/sharika-room-weak-network-20261111
+      - feature/sharika-distinct-room-events-20261120
+      - feature/sharika-event-videos-r2-room-20261120
     paths:
       - 'android-staging/**'
       - 'cloudflare/test/assistant-private-account.test.mjs'

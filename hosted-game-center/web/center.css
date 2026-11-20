@@ -121,3 +121,315 @@
  border:1px solid var(--event-primary,#ffedb6);color:var(--event-ink,#42204b)}
 .event-feature[class*="event-theme--"] h3{color:var(--event-primary,#ffedb6)}
 @media(prefers-reduced-motion:reduce){.event-theme--game_tournament .event-poster-overlay{transform:none}}
+
+
+/* Royal Event Ranking and Seven-Tier Reward Experience */
+.event-prizes>.muted{margin:0 0 13px;line-height:1.65}
+.prize-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.prize-position.supporting-prize{grid-column:auto;border-color:#c8a36e65;background:linear-gradient(150deg,#34204d,#201532)}
+.prize-position .event-prize-value{font-size:clamp(10px,2.8vw,12px);line-height:1.35;word-break:break-word;white-space:normal}
+.event-ranking-count{border:1px solid #ebc97d73;border-radius:13px;padding:10px 13px;margin:10px 0 17px;background:#39234b;color:#fce5b4;font-weight:800;font-size:12px}
+.event-ranking-podium{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:end;margin:20px 0 25px}
+.event-champion{position:relative;min-width:0;min-height:220px;border:1px solid #e6bb7a90;border-radius:19px;padding:15px 8px 13px;background:radial-gradient(ellipse at 50% 5%,#ebac6955,transparent 57%),linear-gradient(145deg,#502c68,#261539);display:flex;align-items:center;flex-direction:column;text-align:center;gap:6px;justify-content:flex-start;box-shadow:inset 0 2px #fff6da34,0 8px 24px #07021155}
+.event-champion.rank-1{min-height:252px;border:2px solid #ffdf9f;background:radial-gradient(ellipse at 50% 0%,#ffdf9f83,transparent 58%),linear-gradient(150deg,#8d5d50,#49254f 69%,#2b163b);box-shadow:inset 0 2px #fff3ce92,0 8px 32px #f0ae5b44}
+.event-champion.rank-2{border-color:#c6dce9bc}
+.event-champion.rank-3{border-color:#dba47fc0}
+.event-champion-medal{font-size:31px;line-height:1;color:#ffe8b2;text-shadow:0 0 14px #ffe79a72}
+.event-champion-position{font:900 11px/1.1 Georgia,serif;letter-spacing:.07em;color:#ffdf97}
+.event-champion .avatar{width:55px;height:55px;max-width:100%;margin:2px auto;box-shadow:0 0 0 3px #d1a3625c}
+.event-champion.rank-1 .avatar{width:68px;height:68px}
+.event-champion-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff0d0;font-size:12px}
+.event-champion-id{font-size:10px;max-width:100%;overflow-wrap:anywhere;color:#d5c2e4}
+.event-champion-score{font-size:13px;color:#ffdf8c}
+.event-champion-reward{font-size:10px;color:#fff2ce;padding-top:7px;border-top:1px solid #e9bd7066;width:100%;overflow-wrap:anywhere;line-height:1.45}
+.event-champion.no-entry{opacity:.76}
+.event-ranking-subtitle{color:#ffe1a9;font:800 17px Georgia,serif;margin:15px 0 12px}
+.event-ranking-row{display:flex;align-items:center}
+.event-ranking-identity{flex:1;min-width:0}
+.event-ranking-metrics{text-align:right;max-width:43%;font-size:12px;overflow-wrap:anywhere}
+.event-ranking-metrics small{color:#eacb87;line-height:1.4}
+.event-leaderboard .secondary{margin-top:12px}
+@media(max-width:400px){.event-ranking-podium{gap:5px}.event-champion{padding:10px 4px;min-height:215px}.event-champion.rank-1{min-height:240px}.event-champion .avatar{width:43px;height:43px}.event-champion.rank-1 .avatar{width:53px;height:53px}.event-champion-reward{font-size:9px}.prize-grid{gap:5px}.prize-position{padding:9px 4px}}
+@media(min-width:700px){.event-ranking-podium{gap:16px}.event-champion{padding:22px 15px}.event-champion .avatar{width:75px;height:75px}.event-champion.rank-1 .avatar{width:90px;height:90px}.prize-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(prefers-reduced-motion:reduce){.event-ranking-podium *{animation:none!important}}
+
+
+/* Eleven independent Royal Event posters; each Event ID gets its own art theme.
+   This works offline as CSS artwork until Admin uploads an optional JPEG. */
+.event-poster.event-poster-individual{
+  --event-individual-glow:#d5a44b;
+  --event-individual-dark:#2d1641;
+  --event-individual-gold:#ffe6b0;
+  background:
+    radial-gradient(ellipse at 79% 12%,color-mix(in srgb,var(--event-individual-gold) 70%,transparent),transparent 42%),
+    radial-gradient(ellipse at 9% 86%,var(--event-individual-glow),transparent 57%),
+    repeating-linear-gradient(135deg,transparent 0 33px,#ffe9b414 33px 35px),
+    linear-gradient(120deg,var(--event-individual-glow),var(--event-individual-dark) 71%);
+  box-shadow:0 12px 30px #09021c97,inset 0 0 32px #ffe5a125;
+}
+.event-poster.event-poster-individual::before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  opacity:.55;background:
+    radial-gradient(circle at 83% 42%,#fff7cd 0 2px,transparent 4px),
+    radial-gradient(circle at 67% 23%,#fff4bf 0 3px,transparent 6px),
+    radial-gradient(circle at 25% 17%,#fff4bf 0 1px,transparent 3px),
+    radial-gradient(circle at 91% 80%,#fff4bf 0 2px,transparent 5px);
+}
+.event-poster-individual .event-artwork{opacity:.34}
+.event-poster-individual .event-poster-overlay{
+  border-color:var(--event-individual-gold);background:
+    linear-gradient(110deg,#120622e6,var(--event-individual-dark) 86%);
+}
+.event-poster-individual .event-crown{
+  color:var(--event-individual-gold);font-size:48px;line-height:1.05;
+  text-shadow:0 2px 25px var(--event-individual-gold);
+}
+.event-poster-individual .event-poster-title{
+  color:#fff4d9;text-shadow:0 3px 10px #000e,0 0 18px #ffecc932;
+}
+.event-poster-individual .event-poster-band{
+  color:var(--event-individual-gold);
+}
+.event-feature.event-theme--royal_gold:hover,.event-feature.event-theme--cp_love:hover,
+.event-feature.event-theme--festival_special:hover,.event-feature.event-theme--diamond_luxury:hover,
+.event-feature.event-theme--game_tournament:hover{
+  border-color:#ffe19b;transform:translateY(-2px);transition:transform .18s,border-color .18s;
+}
+@media(prefers-reduced-motion:reduce){.event-feature{transform:none!important}}
+
+
+/* Always render each original vector event banner at full resolution.
+   Uploaded Admin JPEG artwork, when present, layers on top. */
+.event-poster.event-poster-individual .event-artwork-unique{
+  opacity:.98;object-fit:cover;z-index:0;pointer-events:none;
+}
+.event-poster.event-poster-individual .event-artwork:not(.event-artwork-unique){
+  opacity:.94;z-index:0;pointer-events:none;
+}
+.event-poster.event-poster-individual .event-poster-overlay{
+  z-index:2;background:linear-gradient(110deg,#13091ae7,#170c2acc);
+}
+@media(max-width:420px){
+  .event-poster.event-poster-individual .event-poster-overlay{
+    max-width:95%;min-height:124px;padding:16px 13px;
+  }
+}
+
+
+/* Approved Royal Events Ranking layout: dynamic server-backed content only.
+   Gold podium, per-Event cinematic art, video, top rewards, rank list and My Rank. */
+.royal-event-screen{
+ --event-accent:#ffe3a7;--event-glow:#c655a6;
+ position:relative;width:100%;max-width:680px;margin:4px auto 24px;
+ padding:13px 11px 18px;overflow:hidden;border-radius:27px;
+ border:1px solid #facb83bd;
+ background:
+   radial-gradient(ellipse at 49% 23%,#a33d7b60,transparent 54%),
+   linear-gradient(170deg,#260834 0%,#160a32 50%,#10051f 100%);
+ box-shadow:0 5px 0 #9b613d,0 18px 50px #050211b0,inset 0 0 29px #ffc3881d;
+ color:#fff2ce;
+}
+.royal-event-screen::before{
+ content:"";position:absolute;inset:5px;border-radius:22px;
+ border:1px solid #f8d99a32;pointer-events:none;
+}
+.royal-event-top{display:flex;justify-content:space-between;align-items:center;margin:0 0 9px}
+.royal-event-top .royal-back{padding:7px 10px;font-size:12px}
+.royal-event-tag{font:900 9px/1.3 Georgia,serif;letter-spacing:.12em;color:#ffe5a7}
+.royal-event-screen .royal-event-hero{
+ width:100%;min-height:210px;border-radius:21px;
+ border:1px solid #ffdfa299;overflow:hidden;padding:13px;position:relative;
+ box-shadow:inset 0 0 34px #fff0be29,0 5px 25px #f7a95648;
+}
+.royal-event-screen .royal-event-hero .event-poster-overlay{
+ margin-left:0;max-width:63%;min-height:150px;padding:12px;
+ background:linear-gradient(104deg,#13051fe9,#210d3ad9);
+}
+.royal-event-screen .royal-event-hero .event-crown{font-size:37px}
+.royal-event-screen .royal-event-hero .event-poster-title{
+ font:900 clamp(21px,5vw,34px)/1.1 Georgia,serif;
+ text-shadow:0 4px 9px #000d;
+}
+.royal-event-screen .event-cinematic-video{
+ position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+ z-index:1;pointer-events:none;opacity:.94;
+}
+.royal-event-screen .event-cinematic-glints,
+.event-feature .event-cinematic-glints{
+ position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1;
+}
+.event-cinematic-sparkle{
+ position:absolute;left:calc(9% + var(--i)*19%);top:calc(9% + var(--i)*13%);
+ width:7px;height:7px;border-radius:50%;background:#fff7cb;
+ opacity:0;box-shadow:0 0 8px 3px #ffdc89,0 0 30px 5px #f4abec;
+ animation:shEventSparkle 4.8s ease-in-out infinite;
+ animation-delay:calc(var(--i)*.7s);
+}
+@keyframes shEventSparkle{0%,100%{opacity:0;transform:scale(.15) translateY(0)}45%{opacity:.85;transform:scale(1.35) translateY(-7px)}}
+@keyframes shEventFloat{0%,100%{transform:scale(1.015) translate3d(0,0,0)}50%{transform:scale(1.075) translate3d(-.7%,.6%,0)}}
+@keyframes shEventGlint{0%{transform:translateX(-190%) rotate(16deg)}58%,100%{transform:translateX(210%) rotate(16deg)}}
+.event-poster[data-motion="cinematic"] .event-artwork-unique{
+ animation:shEventFloat 11s ease-in-out infinite;
+ transform-origin:50% 40%;
+}
+.event-poster[data-motion="cinematic"]::after{
+ background:linear-gradient(100deg,transparent 42%,#fff6cb66 50%,transparent 58%);
+ animation:shEventGlint 8s ease-in-out infinite;
+}
+.event-poster[data-motion="subtle"] .event-artwork-unique{animation:shEventFloat 20s ease-in-out infinite}
+.event-poster[data-motion="off"] .event-artwork-unique,
+.event-poster[data-motion="off"]::after,
+.event-poster[data-motion="off"] .event-cinematic-sparkle{animation:none!important}
+.royal-event-live-chip{
+ position:absolute;right:9px;bottom:9px;z-index:5;
+ border:1px solid #f6d793;color:#fff6cb;
+ border-radius:999px;padding:4px 11px;background:#691833d9;
+ box-shadow:0 0 13px #ffca785c;font-size:10px;font-weight:900;letter-spacing:.08em;
+}
+.royal-event-timer{
+ margin:-12px auto 13px;position:relative;z-index:3;
+ width:max-content;max-width:90%;padding:5px 16px;
+ border:1px solid #dba654;border-radius:999px;
+ background:linear-gradient(100deg,#4d0b57,#1d0f35);
+ text-align:center;font:800 11px Georgia,serif;color:#fff2b4;
+}
+.royal-reward-strip{
+ display:flex;align-items:stretch;width:100%;overflow-x:auto;scroll-snap-type:x mandatory;
+ background:linear-gradient(120deg,#69266f,#270c45);
+ border:1px solid #edbfa3;border-radius:14px;margin:6px 0 21px;
+ box-shadow:inset 0 1px #ffe6ca52,0 5px 19px #e7a2bc3b;
+ scrollbar-width:thin;scrollbar-color:#ebba72 #260e3e;
+}
+.royal-reward-label{
+ display:flex;align-items:center;justify-content:center;flex:0 0 82px;
+ font:900 11px/1.2 Georgia,serif;text-align:center;color:#ffe7a0;
+ padding:13px 7px;border-right:1px solid #ffda9850;
+}
+.royal-reward-spot{
+ display:flex;flex:0 0 96px;flex-direction:column;align-items:center;
+ justify-content:center;gap:2px;text-align:center;padding:8px 5px;
+ border-right:1px solid #ffda9840;scroll-snap-align:center;
+}
+.royal-reward-spot b{font:900 10px Georgia,serif;color:#ffebbe}
+.royal-reward-spot small{font-size:9px;line-height:1.25;color:#f4d8e3;overflow-wrap:anywhere;max-height:2.6em;overflow:hidden}
+.royal-reward-icon{font-size:24px;color:#ffe4a6;text-shadow:0 0 14px #ffd482}
+.royal-event-panel[hidden]{display:none!important}
+.royal-event-panel{padding:3px 2px 9px}
+.royal-ranking-heading{font:900 clamp(19px,5vw,26px) Georgia,serif;text-align:center;color:#ffe4a2;margin:5px 0 4px}
+.royal-ranking-sub{text-align:center;font-size:10px;color:#d7bce7;margin:3px 0 12px}
+.royal-ranking-count{text-align:center;font:900 10px system-ui,sans-serif;letter-spacing:.08em;color:#e9cfa7;margin:11px 0 4px}
+.royal-ranking-podium{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+ align-items:end;gap:6px;padding:31px 4px 10px;margin:0 auto;
+ background:radial-gradient(ellipse at 50% 100%,#d776536b,transparent 70%);
+}
+.royal-podium-person{
+ position:relative;min-width:0;min-height:151px;
+ display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+ gap:3px;text-align:center;padding:12px 4px 10px;
+ background:linear-gradient(180deg,#4d19578a,#4d144eea 63%,#2d0d3a);
+ border:1px solid #e3a86b9c;border-radius:17px 17px 11px 11px;
+ box-shadow:inset 0 1px #ffe2c56b,0 9px 21px #09031896;
+}
+.royal-podium-rank-1{
+ min-height:200px;border:2px solid #ffe0a1;
+ background:radial-gradient(circle at 50% 23%,#ffc46180,transparent 56%),linear-gradient(165deg,#a95178,#61204c 59%,#35123c);
+ box-shadow:0 0 25px #f6b46082,inset 0 1px #fff8d4;
+}
+.royal-podium-rank-2{border-color:#c5d0e7b0}
+.royal-podium-rank-3{border-color:#dca485ba}
+.royal-podium-crown{
+ position:absolute;top:-19px;left:50%;transform:translateX(-50%);
+ font-size:28px;line-height:1;color:#ffeb9b;text-shadow:0 0 16px #ffe1a6;
+}
+.royal-podium-portrait{
+ position:relative;display:flex;align-items:center;justify-content:center;
+ width:67px;height:67px;border-radius:50%;margin:4px 0 3px;
+ background:linear-gradient(140deg,#9d3681,#3d1956);
+ border:3px solid #ffe5a9;box-shadow:0 0 16px #ffb2ac94;
+ overflow:visible;
+}
+.royal-podium-rank-1 .royal-podium-portrait{width:84px;height:84px;box-shadow:0 0 25px #ffe09eb8}
+.royal-podium-portrait .avatar{
+ border-radius:50%;width:100%!important;height:100%!important;object-fit:cover;max-width:none;
+}
+.royal-avatar-empty{font-size:30px;color:#ffdb88}
+.royal-podium-number{
+ position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);
+ min-width:22px;height:22px;padding:2px 5px;border-radius:50%;
+ background:linear-gradient(#fff4ca,#dba24d);border:1px solid #fff2ca;
+ font:900 13px Georgia,serif;color:#4c163e;
+}
+.royal-podium-name{font-size:12px;color:#ffefc9;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.royal-podium-id{font-size:9px;color:#e2c6dd;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.royal-podium-score{
+ font:900 11px system-ui,sans-serif;color:#ffe5a9;max-width:100%;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.royal-podium-empty{opacity:.8}
+.royal-ranking-list{display:grid;gap:5px;margin:9px 0}
+.royal-rank-row{
+ display:flex;align-items:center;gap:8px;min-height:40px;padding:5px 8px;
+ border-radius:12px;border:1px solid #ffdf8651;
+ background:linear-gradient(90deg,#65215b,#290f3d 75%);
+ box-shadow:inset 0 1px #ffe2be23;
+}
+.royal-rank-position{
+ display:inline-grid;place-items:center;flex:0 0 27px;height:26px;
+ border:1px solid #ffd480aa;border-radius:9px;background:#681c68;
+ font:900 12px Georgia,serif;color:#ffe5b0;
+}
+.royal-rank-avatar{
+ display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;
+ overflow:hidden;border-radius:50%;border:2px solid #ecbf78;
+ font-size:17px;color:#f8db91;background:#541a62;
+}
+.royal-rank-avatar .avatar{width:100%!important;height:100%!important;object-fit:cover;border-radius:50%}
+.royal-rank-identity{display:flex;flex:1;min-width:0;flex-direction:column;gap:1px}
+.royal-rank-identity strong{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.royal-rank-identity small{font-size:9px;color:#d5b4d3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.royal-rank-points{font:900 11px system-ui,sans-serif;color:#ffe7a7;text-align:right;white-space:nowrap}
+.royal-my-rank{
+ display:flex;gap:9px;align-items:center;flex-wrap:wrap;
+ padding:12px 13px;margin:14px 0 5px;border:2px solid #ffca92;
+ border-radius:16px;background:linear-gradient(120deg,#a23e91,#631c76 56%,#320d42);
+ box-shadow:0 0 20px #f5acd154,inset 0 1px #fff3c38f;
+}
+.royal-my-rank-icon{font-size:27px;color:#ffe69a;text-shadow:0 0 14px #fff2b5}
+.royal-my-rank-name{font:900 10px Georgia,serif;color:#ffeac6}
+.royal-my-rank-number{font:900 14px Georgia,serif;color:#fff2c6}
+.royal-my-rank-points{margin-left:auto;font:900 12px system-ui,sans-serif;color:#ffe5a0}
+.royal-event-nav{
+ position:sticky;bottom:4px;z-index:9;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+ align-items:center;gap:6px;margin:15px 0 0;padding:7px;
+ background:#180924f2;border:1px solid #f7c78b78;border-radius:17px;
+ box-shadow:0 -7px 21px #160724b0;
+}
+.royal-event-nav-btn{
+ display:flex;flex-direction:column;align-items:center;justify-content:center;
+ gap:1px;border:1px solid transparent;border-radius:12px;padding:7px 2px;
+ color:#e9c6db;background:transparent;font-size:10px;font-weight:800;
+}
+.royal-event-nav-btn[aria-selected="true"]{
+ background:linear-gradient(135deg,#b74283,#51207e);
+ color:#ffe4aa;border-color:#eec285;box-shadow:0 0 15px #ffc47d60;
+}
+.royal-nav-symbol{font-size:20px;line-height:1.2;color:inherit}
+.royal-empty-message{text-align:center;color:#eac9d9;font-size:12px;padding:15px 7px}
+.royal-rule-detail{padding:10px 14px;border:1px solid #f9db7b61;border-radius:14px;background:#251237;color:#f7e9d3;line-height:1.65}
+@media(max-width:410px){
+ .royal-event-screen{padding:10px 7px}
+ .royal-ranking-podium{gap:3px;padding-left:0;padding-right:0}
+ .royal-podium-person{min-height:140px;padding:10px 2px 7px}
+ .royal-podium-rank-1{min-height:186px}
+ .royal-podium-portrait{width:54px;height:54px}
+ .royal-podium-rank-1 .royal-podium-portrait{width:67px;height:67px}
+ .royal-podium-name{font-size:10px}
+ .royal-podium-score{font-size:9px}
+ .royal-event-screen .royal-event-hero{min-height:176px;padding:10px}
+ .royal-event-screen .royal-event-hero .event-poster-overlay{min-height:110px}
+}
+@media(prefers-reduced-motion:reduce){
+ .event-cinematic-sparkle,.event-poster[data-motion] .event-artwork-unique,
+ .event-poster[data-motion]::after{animation:none!important}
+}

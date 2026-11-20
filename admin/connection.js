@@ -3259,8 +3259,8 @@
       catalogs[1].value.banners||[]:[];
     const root=byId('pg');
     root.innerHTML='<div class="card"><h3>🎉 Verified Events & Rewards</h3>'+
-      '<p class="n">Only published and upcoming/live events appear in the home banner slider. '+
-      'Each banner opens its own gift leaderboard and Top 1–7 reward preview; '+
+      '<p class="n">Published, explicitly visible events appear in the member Event Center. '+
+      'Each event opens its own verified leaderboard with Top 1–7 rewards; '+
       'the regular Rankings page stays separate. '+
       'Set UTC event dates and prize coins; select real winning user IDs only after the event ends. '+
       'Every winner is paid once through the server wallet and immutable ledger.</p>'+
@@ -3280,6 +3280,15 @@
       Object.entries(EVENT_SCORE_MODES).map(([key,label])=>
         '<option value="'+key+'">'+esc(label)+'</option>').join('')+
       '</select></label></div>'+
+      '<label>🌍 Event Audience<select class="field" id="sh-ev-country">'+
+      '<option value="GLOBAL">Global · All countries</option>'+
+      '<option value="BD">Bangladesh only</option><option value="IN">India only</option>'+
+      '<option value="OM">Oman only</option><option value="AE">UAE only</option>'+
+      '<option value="SA">Saudi Arabia only</option><option value="US">United States only</option>'+
+      '<option value="GB">United Kingdom only</option><option value="DE">Germany only</option>'+
+      '<option value="PK">Pakistan only</option><option value="NP">Nepal only</option>'+
+      '</select></label>'+
+      '<p class="n">Uses the member’s manually selected Sharika profile country. No GPS or IP detection.</p>'+
       '<div id="sh-ev-design-preview" role="img" aria-label="Selected royal event design preview" '+
       'style="padding:20px;text-align:center;border:2px solid #d9b369;border-radius:20px;'+
       'margin:10px 0;color:#ffe7b3;background:linear-gradient(145deg,#432460,#14092f)"></div>'+
@@ -3295,6 +3304,16 @@
       availableBanners.map(b=>'<option value="'+Number(b.id)+'">#'+Number(b.id)+' · '+
         esc(b.title)+(b.image_url?' · 🖼️':' · no photo')+'</option>').join('')+
       '</select></label>'+
+      '<div class="card" style="border:2px solid #e8b86f;background:linear-gradient(125deg,#36134e,#200c32);color:#ffe6b5">'+
+      '<h4>🎬 Animated Event Video & Motion</h4>'+
+      '<p style="color:#f5d9d0">Each Event has its own video. Upload a short silent loop, then save the Event. Video is muted inside voice rooms and the Royal Event screen.</p>'+
+      '<label>Verified first-party MP4 / WebM URL<input class="field" type="url" id="sh-ev-video" maxlength="500" placeholder="Upload a video below, then save"></label>'+
+      '<label>Animation Style<select class="field" id="sh-ev-motion">'+
+      '<option value="cinematic">Cinematic — shimmer, particles & moving art</option>'+
+      '<option value="subtle">Subtle — soft slow movement</option>'+
+      '<option value="off">Static — motion disabled</option>'+
+      '</select></label>'+
+      mediaStudio('sh-ev-media')+'</div>'+
       '<div style="margin:13px 0;border:1px solid #d8b363;border-radius:16px;padding:12px">'+
       '<h4>🎁 Only these gifts earn event points</h4>'+
       '<p class="n">Select up to 12 regular/luxury gifts. Points count only from real settled gifts sent during the event. Other gifts earn zero event points.</p>'+
@@ -3311,16 +3330,19 @@
       '<div class="row"><label>🥇 Rank 1 coins<input class="field" type="number" id="sh-ev-p1" min="0" max="1000000" value="10000"></label>'+
       '<label>🥈 Rank 2 coins<input class="field" type="number" id="sh-ev-p2" min="0" max="1000000" value="5000"></label>'+
       '<label>🥉 Rank 3 coins<input class="field" type="number" id="sh-ev-p3" min="0" max="1000000" value="2500"></label></div>'+
-      '<h4>🏅 Top 1–7 reward descriptions (display only)</h4>'+
+      '<h4>🏅 Top 1–7 reward descriptions (visible in Event Details)</h4>'+
       '<p class="n">These labels explain prizes in the event page. They never grant frames, medals or coins automatically. Coin awards for ranks 1–3 are manually verified above.</p>'+
       '<div class="row" style="flex-wrap:wrap">'+Array.from({length:7},(_,i)=>
         '<label>#'+(i+1)+'<input class="field" id="sh-ev-label-'+(i+1)+'" '+
         'maxlength="80" placeholder="e.g. Royal medal + frame" style="min-width:130px"></label>').join('')+'</div>'+
-      '<button class="btn s" type="button" id="sh-event-save">Create event</button>'+
+      '<label style="display:block;margin:12px 0;color:#644613;font-weight:700">'+
+       '<input type="checkbox" id="sh-ev-auto-publish" checked> Publish to Event Center when saving status Published</label>'+
+       '<button class="btn s" type="button" id="sh-event-save">Create event</button>'+
       ' <button class="btn" type="button" id="sh-event-clear">Clear form</button>'+
-      '<p class="n" id="sh-event-note">Use 0 to disable a prize. After saving, use the Event card Publish button and Event Center Master Visibility to show the event in the app. Existing prize receipts are protected.</p>'+
+      '<p class="n" id="sh-event-note">Use 0 to disable coins. With Publish selected, Save also enables Event Center visibility. Frames and medals in reward labels require separate Admin grants.</p>'+
       '</div>':'')+
       '<div id="sh-event-list">Loading…</div>';
+    if(role==='super')wireMediaStudio('sh-ev-media',[['sh-ev-video','This Event · video (save event afterwards)']]);
     let data;
     try{data=await api('GET','events');}
     catch(error){
@@ -3373,7 +3395,7 @@
       const prizes=labels.map((medal,i)=>{
         const receipt=awarded.find(a=>a.rank===i+1);
         const coins=Number(e.prizes?.[i]||0);
-        if(!coins)return '<span class="n">'+medal+' No prize</span>';
+        if(!coins)return '<span class="n">'+medal+' No coin prize configured</span>';
         return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">'+
           '<b>'+medal+' '+fmt(coins)+' 🪙</b> '+
           (receipt?'<span class="n">✓ Paid to '+esc(receipt.public_id)+
@@ -3385,17 +3407,30 @@
              'data-sh-event-rank="'+(i+1)+'">Pay verified winner</button>':
              '<span class="n">Pending · ends first</span>')+'</div>';
       }).join('');
+      const rewardTiers=Array.from({length:7},(_,i)=>{
+        const coins=i<3?Number(e.prizes?.[i]||0):0;
+        const label=String(e.reward_labels?.[i]||'').trim();
+        const safeLabel=/^(preview only|showcase only)/i.test(label)?'':label;
+        const rewards=[coins>0?fmt(coins)+' coins':'',safeLabel].filter(Boolean);
+        return '<div style="border:1px solid #c5a66977;border-radius:10px;padding:8px;min-width:0">'+
+          '<b>TOP '+(i+1)+'</b><div style="font-size:12px">'+
+          esc(rewards.length?rewards.join(' + '):'Reward not configured')+'</div></div>';
+      }).join('');
       return '<div class="card" style="border:1px solid #9d7be4;border-radius:22px;'+
         'background:linear-gradient(140deg,#fff,#f6f0ff);box-shadow:0 7px 0 #d2c2ef">'+
         '<h3>🏆 '+esc(e.title)+' <small>#'+e.id+'</small></h3>'+
         '<p class="n">'+esc(EVENT_KINDS[e.kind]||e.kind)+' · <b>'+esc(e.status.toUpperCase())+'</b></p>'+
         '<p class="n">'+schedule+'</p><p>'+esc(e.description||'No rules entered')+'</p>'+
         '<p class="n">Design: '+esc(ROYAL_EVENT_PRESETS[e.template_id]?.label||'Royal Gold')+
-          ' · Ranking: '+esc(EVENT_SCORE_MODES[e.scoring_mode]||EVENT_SCORE_MODES.gift_points)+'</p>'+
+          ' · Ranking: '+esc(EVENT_SCORE_MODES[e.scoring_mode]||EVENT_SCORE_MODES.gift_points)+
+          ' · Audience: '+esc(e.country_code==='GLOBAL'?'Global':e.country_code||'Global')+'</p>'+
+        '<p class="n">Animation: '+esc(e.animation_style||'cinematic')+
+          (e.video_url?' · MP4/WebM media configured':' · original animated Royal artwork')+'</p>'+
         '<p class="n">Home banner: '+(e.banner_id?'#'+Number(e.banner_id):'Royal gradient')+
           ' · Scoring gifts: '+(e.gift_rules||[]).map(g=>
             '#'+Number(g.gift_id)+' × '+Number(g.points)).join(', ')+(e.gift_rules?.length?'':'none')+'</p>'+
-        '<div>'+prizes+'</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px;margin:12px 0">'+
+          rewardTiers+'</div><div>'+prizes+'</div>'+
         '<p class="n">App visibility: <b>'+(
           publishedItems.get('event:event:'+e.id)?'PUBLISHED':'HIDDEN')+
           '</b> · Global Event Center: '+(eventsModuleOn?'ON':'OFF')+'</p>'+
@@ -3416,10 +3451,48 @@
       const theme=ROYAL_EVENT_PRESETS[id]||ROYAL_EVENT_PRESETS.royal_gold;
       const target=byId('sh-ev-design-preview');
       if(!target)return;
+      if(!document.getElementById('sh-admin-event-motion-css')){
+        const stylesheet=document.createElement('style');
+        stylesheet.id='sh-admin-event-motion-css';
+        stylesheet.textContent='@keyframes shAdminEventBreath {'+
+          '0%,100%{box-shadow:0 0 14px #eeaf6970, inset 0 0 9px #fff2c31c;transform:scale(1)}'+
+          '50%{box-shadow:0 0 32px #eeaf69a8, inset 0 0 21px #fff2c344;transform:scale(1.005)}}'+
+          '@media(prefers-reduced-motion:reduce){#sh-ev-design-preview{animation:none!important}}';
+        document.head.appendChild(stylesheet);
+      }
       target.style.background='radial-gradient(circle at 50% 0, '+theme.color+'77, transparent 65%),'+
         'linear-gradient(145deg,'+theme.base+',#150b2a)';
       target.style.borderColor=theme.color;
       target.replaceChildren();
+      target.style.animation=byId('sh-ev-motion')?.value==='off'?'none':'shAdminEventBreath 5s ease-in-out infinite';
+      const uploadedVideo=String(byId('sh-ev-video')?.value||'').trim();
+      if(/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-f0-9-]{36}\.(mp4|webm)$/.test(uploadedVideo)){
+        const clip=document.createElement('video');
+        clip.src=uploadedVideo;clip.muted=true;clip.loop=true;clip.autoplay=true;
+        clip.playsInline=true;clip.preload='metadata';clip.controls=true;
+        clip.style.cssText='display:block;width:100%;max-height:170px;object-fit:cover;border-radius:14px;margin-bottom:12px';
+        clip.onerror=()=>clip.remove();target.append(clip);
+      }
+      const selectedBanner=Number(byId('sh-ev-banner')?.value||0);
+      const image=availableBanners.find(b=>Number(b.id)===selectedBanner);
+      if(image?.image_url){
+        try{
+          const raw=new URL(String(image.image_url),location.href);
+          // Preview only the official authenticated Banner API. No third-party
+          // URLs, arbitrary HTML, or external tracking pixels in Admin Panel.
+          if(raw.origin===location.origin&&
+             /^\/api\/v1\/banners\/[0-9]+\/image$/.test(raw.pathname)){
+            const photo=document.createElement('img');
+            photo.src=raw.href;
+            photo.alt='Selected event banner preview';
+            photo.loading='lazy';photo.decoding='async';
+            photo.style.cssText='display:block;max-width:100%;max-height:145px;'+
+              'width:auto;object-fit:contain;border-radius:12px;margin:0 auto 12px';
+            photo.onerror=()=>photo.remove();
+            target.append(photo);
+          }
+        }catch(_){}
+      }
       const sign=document.createElement('div');sign.textContent=theme.symbol;
       sign.style.cssText='font-size:43px;color:'+theme.color+';text-shadow:0 0 22px '+theme.color;
       const title=document.createElement('strong');
@@ -3428,7 +3501,22 @@
       const note=document.createElement('p');note.textContent='Template preview · '+theme.label+
         ' · '+(EVENT_SCORE_MODES[byId('sh-ev-scoring')?.value]||EVENT_SCORE_MODES.gift_points);
       note.style.cssText='font-size:11px;color:#f9edda';
-      target.append(sign,title,note);
+      const country=byId('sh-ev-country')?.value||'GLOBAL';
+      const audience=document.createElement('p');
+      audience.textContent=country==='GLOBAL'?'Worldwide audience':'Audience restricted to '+country;
+      audience.style.cssText='font-size:12px;color:#f9edda';
+      const dates=document.createElement('p');
+      const start=byId('sh-ev-start')?.value,end=byId('sh-ev-end')?.value;
+      dates.textContent='Schedule · '+(start||'Choose start time')+' — '+(end||'Choose end time');
+      dates.style.cssText='font-size:12px;color:#f9edda';
+      const amounts=[1,2,3].map(i=>byId('sh-ev-p'+i)?.value||'0');
+      const prizes=document.createElement('p');
+      prizes.textContent='Top 3 virtual coin prizes · '+amounts.join(' / ');
+      prizes.style.cssText='font-size:14px;color:'+theme.color+';font-weight:700';
+      const protectedNotice=document.createElement('small');
+      protectedNotice.textContent='ADMIN PREVIEW ONLY · No event published · No ranking winners generated';
+      protectedNotice.style.cssText='display:block;color:#e9d5aa';
+      target.append(sign,title,note,audience,dates,prizes,protectedNotice);
     }
     function clear(){
       editing=null;
@@ -3439,9 +3527,13 @@
       byId('sh-ev-start').value=eventLocal(now.toISOString());
       byId('sh-ev-end').value=eventLocal(tomorrow.toISOString());
       byId('sh-ev-status').value='draft';
+      byId('sh-ev-auto-publish').checked=true;
       byId('sh-ev-banner').value='0';
+      byId('sh-ev-video').value='';
+      byId('sh-ev-motion').value='cinematic';
       byId('sh-ev-template').value='royal_gold';
       byId('sh-ev-scoring').value='gift_points';
+      byId('sh-ev-country').value='GLOBAL';
       previewEventDesign();
       root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>input.checked=false);
       root.querySelectorAll('[data-sh-ev-points]').forEach(input=>input.value='1');
@@ -3452,7 +3544,9 @@
     if(role==='super'){
       clear();
       byId('sh-event-clear').onclick=clear;
-      for(const id of ['sh-ev-title','sh-ev-template','sh-ev-scoring'])
+      for(const id of ['sh-ev-title','sh-ev-template','sh-ev-scoring',
+        'sh-ev-country','sh-ev-banner','sh-ev-video','sh-ev-motion','sh-ev-start','sh-ev-end',
+        'sh-ev-p1','sh-ev-p2','sh-ev-p3'])
         byId(id).addEventListener('input',previewEventDesign);
       list.querySelectorAll('[data-sh-event-edit]').forEach(button=>button.onclick=()=>{
         const e=all.find(row=>row.id===Number(button.dataset.shEventEdit));
@@ -3465,9 +3559,13 @@
         byId('sh-ev-start').value=eventLocal(e.starts_at);
         byId('sh-ev-end').value=eventLocal(e.ends_at);
         byId('sh-ev-status').value=e.published?'published':e.status;
+        byId('sh-ev-auto-publish').checked=publishedItems.get('event:event:'+e.id)===true;
         byId('sh-ev-banner').value=String(e.banner_id||0);
+        byId('sh-ev-video').value=e.video_url||'';
+        byId('sh-ev-motion').value=e.animation_style||'cinematic';
         byId('sh-ev-template').value=e.template_id||'royal_gold';
         byId('sh-ev-scoring').value=e.scoring_mode||'gift_points';
+        byId('sh-ev-country').value=e.country_code||'GLOBAL';
         previewEventDesign();
         root.querySelectorAll('[data-sh-ev-gift]').forEach(input=>{
           const found=(e.gift_rules||[]).find(rule=>Number(rule.gift_id)===Number(input.dataset.shEvGift));
@@ -3477,6 +3575,7 @@
         });
         for(let i=1;i<=7;i++)byId('sh-ev-label-'+i).value=e.reward_labels?.[i-1]||'';
         (e.prizes||[]).forEach((n,i)=>byId('sh-ev-p'+(i+1)).value=n);
+        previewEventDesign();
         byId('sh-event-save').textContent='Save event changes';
         byId('sh-event-form-title').scrollIntoView({behavior:'smooth',block:'start'});
       });
@@ -3505,18 +3604,30 @@
           !(p.some(n=>n>0)||reward_labels.some(Boolean))){
           hint.textContent='Use valid dates and configure either coin prizes or reward descriptions.';return;
         }
+        const video_url=byId('sh-ev-video').value.trim();
+        if(video_url&&!/^https:\/\/sharika-api-staging\.soverixnet\.workers\.dev\/api\/v1\/media\/[a-f0-9-]{36}\.(mp4|webm)$/.test(video_url))
+          throw Error('Use only a video uploaded through the secure Sharika Media Studio');
+        const animation_style=byId('sh-ev-motion').value;
+        if(!['cinematic','subtle','off'].includes(animation_style))throw Error('Invalid animation');
         const payload={title:byId('sh-ev-title').value.trim(),kind:byId('sh-ev-kind').value,
           description:byId('sh-ev-desc').value.trim(),starts_at:new Date(start).toISOString(),
           ends_at:new Date(end).toISOString(),status:byId('sh-ev-status').value,prizes:p,
           banner_id:Number(byId('sh-ev-banner').value)||0,gift_rules,reward_labels,
-          template_id:byId('sh-ev-template').value,scoring_mode:byId('sh-ev-scoring').value};
+          template_id:byId('sh-ev-template').value,scoring_mode:byId('sh-ev-scoring').value,
+          country_code:byId('sh-ev-country').value,video_url,animation_style};
         if(payload.title.length<3){hint.textContent='Enter an event name of at least 3 characters.';return;}
         if(!window.confirm((editing?'Update event #'+editing:'Create this event')+
           ' with '+p.map(fmt).join(' / ')+' prize coins?'))return;
         const button=event.currentTarget;button.disabled=true;
         try{
-          await api(editing?'PATCH':'POST',editing?'events/'+editing:'events',payload);
-          note('Event saved to verified server ✓');
+          const saved=await api(editing?'PATCH':'POST',editing?'events/'+editing:'events',payload);
+          const eventId=editing||Number(saved?.id);
+          if(!Number.isSafeInteger(eventId)||eventId<1)
+            throw new Error('Event saved; server did not provide an Event ID. Refresh Events before retrying.');
+          const visible=payload.status==='published'&&byId('sh-ev-auto-publish').checked;
+          if(visible)await api('PATCH','private-center/visibility',{kind:'module',id:'events',published:true});
+          await api('PATCH','private-center/visibility',{kind:'event',id:'event:'+eventId,published:visible});
+          note(visible?'Event saved and published to Event Center ✓':'Event saved with member visibility off ✓');
           await P.events();
         }catch(error){hint.textContent='Event save failed: '+error.message;}
         finally{button.disabled=false;}
@@ -3626,16 +3737,23 @@
       }finally{URL.revokeObjectURL(object);}
     }
     try{
-      const result=await api('GET','room-banners');
+      const [result,eventsData]=await Promise.all([api('GET','room-banners'),api('GET','events')]);
       const items=Array.isArray(result.banners)?result.banners:[];
+      const availableEvents=(eventsData.events||[]).filter(e=>e.published&&e.status!=='ended');
+      const eventOptions=selected=>'<option value="0">Decorative banner (no event link)</option>'+
+        availableEvents.map(e=>'<option value="'+Number(e.id)+'" '+
+          (Number(e.id)===Number(selected)?'selected':'')+'>'+
+          esc(e.title)+' (#'+Number(e.id)+')</option>').join('');
       const writable=role==='super';
       root.innerHTML='<div class="card"><h3>Room Game & Event Banners</h3>'+
-        '<p class="n">Game artwork appears in the room right rail; event artwork appears above the room chat. '+
-        'Choose GLOBAL (all countries) or an ISO two-letter country. '+ 
-        'Images are uploaded by the Super Admin only. No changes to home banners, room cover or wallets.</p>'+
+        '<p class="n">Each linked Event appears as its OWN clickable Royal banner above room chat, and opens only that Event ranking and rewards. '+
+        'Choose GLOBAL (all countries) or an ISO two-letter country. '+
+        'Linked Events have a unique built-in design even without a photo; upload an optional JPEG to replace its artwork. '+ 
+        'You can hide the Event from the Events tab, or turn off this room banner here.</p>'+
         (writable?'<div class="row"><label>Banner title<input id="rb-new-title" maxlength="70" placeholder="Weekly Games"></label>'+
           '<label>Placement<select id="rb-new-position"><option value="game">Game icon/right side</option>'+
-          '<option value="event">Room event/chat</option></select></label></div>'+
+          '<option value="event">Room event/chat</option></select></label>'+
+          '<label>Linked Event<select id="rb-new-event">'+eventOptions(0)+'</select></label></div>'+
           '<div class="row"><label>Country (blank = global)<input id="rb-new-country" maxlength="2" placeholder="BD" style="text-transform:uppercase"></label>'+
           '<label>Image from gallery<input id="rb-new-image" type="file" accept="image/jpeg,image/png,image/webp"></label>'+
           '<button class="btn" type="button" id="rb-create">Upload & publish</button></div>':'')+
@@ -3651,13 +3769,15 @@
           const placement=byId('rb-new-position').value;
           const country_code=byId('rb-new-country').value.trim().toUpperCase();
           const photo=byId('rb-new-image').files?.[0];
-          if(!title||title.length>70||!/^(|[A-Z]{2})$/.test(country_code)||!photo)
-            throw Error('Provide a title, gallery image and valid two-letter country or blank');
-          const image_data=await compressPhoto(photo);
-          const created=await api('POST','room-banners',{title,placement,country_code});
+          const event_id=placement==='event'?Number(byId('rb-new-event').value)||null:null;
+          if(!title||title.length>70||!/^(|[A-Z]{2})$/.test(country_code)||
+             (!photo&&!event_id))
+            throw Error('Enter a title, country, and either a linked Event or artwork');
+          const image_data=photo?await compressPhoto(photo):null;
+          const created=await api('POST','room-banners',{title,placement,country_code,event_id});
           if(!Number.isSafeInteger(Number(created.id))||Number(created.id)<=0)
             throw Error('Created banner ID not confirmed; refresh before retrying');
-          await api('PUT','room-banners/'+created.id+'/image',{image_data});
+          if(image_data)await api('PUT','room-banners/'+created.id+'/image',{image_data});
           await api('PATCH','room-banners/'+created.id,{active:true});
           await P.roomBanners();
         }catch(error){showError(error);}finally{if(create.isConnected)create.disabled=false;}
@@ -3675,7 +3795,9 @@
         }
         const info=document.createElement('p');info.className='n';
         info.textContent=(item.placement==='game'?'Game side banner':'Room event banner')+
-          ' · '+(item.country_code||'GLOBAL')+' · '+(item.active?'Published':'Hidden');
+          ' · '+(item.country_code||'GLOBAL')+
+          (item.event_id?' · Linked Event #'+item.event_id:' · Decorative only')+
+          ' · '+(item.active?'Published':'Hidden');
         cardNode.append(info);
         if(writable){
           const controls=document.createElement('div');controls.className='row';
@@ -3689,21 +3811,25 @@
             const option=document.createElement('option');option.value=value;option.textContent=name;
             option.selected=item.placement===value;placement.append(option);
           }
+          const eventSelect=document.createElement('select');
+          eventSelect.setAttribute('aria-label','Linked Event');
+          eventSelect.innerHTML=eventOptions(item.event_id);
           const save=document.createElement('button');save.className='btn s';save.textContent='Save';
           const toggle=document.createElement('button');toggle.className='btn s';
           toggle.textContent=item.active?'Unpublish':'Publish';
-          toggle.disabled=!image&&!item.active;
+          toggle.disabled=(!image&&!item.event_id)&&!item.active;
           const upload=document.createElement('input');upload.type='file';
           upload.accept='image/jpeg,image/png,image/webp';
           upload.setAttribute('aria-label','Replace room banner image');
-          controls.append(title,country,placement,save,toggle,upload);
+          controls.append(title,country,placement,eventSelect,save,toggle,upload);
           save.onclick=async()=>{
             save.disabled=true;
             try{
               const code=country.value.trim().toUpperCase();
               if(!/^(|[A-Z]{2})$/.test(code))throw Error('Country must be blank or two-letter ISO code');
               await api('PATCH','room-banners/'+item.id,{
-                title:title.value.trim(),country_code:code,placement:placement.value
+                title:title.value.trim(),country_code:code,placement:placement.value,
+                event_id:placement.value==='event'?Number(eventSelect.value)||null:null
               });
               await P.roomBanners();
             }catch(error){showError(error);}finally{if(save.isConnected)save.disabled=false;}
