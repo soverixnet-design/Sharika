@@ -597,7 +597,12 @@ export async function handleRequest(request, env, ctx) {
     if(path==='/api/v1/room-banners'&&request.method==='GET'){
       await assertActive(env.DB,uid);
       const country=String(url.searchParams.get('country')||'').trim().toUpperCase();
-      return reply({banners:await listRoomBanners(env.DB,url.origin,country)},200,cors);
+      // Room-country display may differ from the viewer's manually selected
+      // profile country. Never expose a country-restricted Event to outsiders.
+      const viewer=await env.DB.prepare(
+        "SELECT country FROM sharika_users WHERE auth_uid=? AND status='active'"
+      ).bind(uid).first();
+      return reply({banners:await listRoomBanners(env.DB,url.origin,country,viewer?.country)},200,cors);
     }
     if(path==='/api/v1/banners' && request.method==='GET') {
       await assertActive(env.DB,uid);
