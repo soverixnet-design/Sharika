@@ -68,7 +68,7 @@ test('an external admin grant is refreshed only via the authenticated wallet on 
   runInNewContext(adapter.slice(start,end),ctx);
   assert.equal(typeof periodic,'function');
   handlers.get('doc:visibilitychange')();
-  await Promise.resolve();await Promise.resolve();
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(walletReads,1);
   periodic(); // 25-second guard avoids a second fetch immediately
   assert.equal(walletReads,1);
@@ -77,7 +77,7 @@ test('an external admin grant is refreshed only via the authenticated wallet on 
   assert.equal(walletReads,1);
   doc.hidden=false;
   handlers.get('win:pageshow')();
-  await Promise.resolve();await Promise.resolve();
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(walletReads,2);
   assert.match(adapter,/const wallet = await api\('GET','\/wallet'\)/);
   assert.match(adapter,/if\(document.hidden\|\|!joinedRoom\|\|wantedVoiceRoom!==joinedRoom.id\)return;/);
