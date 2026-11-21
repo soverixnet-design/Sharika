@@ -16,19 +16,29 @@ test('registered country codes, country names and flags normalize consistently',
   assert.equal(discovery.countryCode('🇦🇪 United Arab Emirates'),'AE');
 });
 
-test('same-country rooms precede more popular foreign rooms; other rooms stay visible',()=>{
+test('Popular uses live occupancy ahead of country and ignores stale template counts',()=>{
   const rooms=[
-    {id:'10000001',owner_country:'US',n:90},
-    {id:'10000002',owner_country:'Bangladesh',n:2},
-    {id:'10000003',owner_country:'IN',n:50},
-    {id:'10000004',owner_country:'BD',n:7}
+    {id:'10000001',owner_country:'US',n:900,online_count:0},
+    {id:'10000002',owner_country:'Bangladesh',n:2,online_count:15},
+    {id:'10000003',owner_country:'IN',n:50,online_count:3},
+    {id:'10000004',owner_country:'BD',n:7,online_count:1}
+  ];
+  const expected=['10000002','10000003','10000004','10000001'];
+  for(const viewer of ['BD','US','IN'])
+    assert.deepEqual(discovery.sortRooms(rooms,viewer,'popular').map(r=>r.id),expected);
+  assert.equal(discovery.onlineCount(rooms[0]),0);
+  assert.equal(discovery.onlineCount({n:23}),23);
+  assert.equal(discovery.onlineCount({online_count:-5,n:100}),0);
+});
+
+test('Popular uses a home-country tiebreaker when live counts match',()=>{
+  const rooms=[
+    {id:'10000001',owner_country:'US',online_count:5},
+    {id:'10000002',owner_country:'BD',online_count:5},
+    {id:'10000003',owner_country:'IN',online_count:8}
   ];
   assert.deepEqual(discovery.sortRooms(rooms,'BD','popular').map(r=>r.id),
-    ['10000004','10000002','10000001','10000003']);
-  assert.deepEqual(discovery.sortRooms(rooms,'US','popular').map(r=>r.id),
-    ['10000001','10000003','10000004','10000002']);
-  assert.deepEqual(discovery.sortRooms(rooms,'IN','popular').map(r=>r.id),
-    ['10000003','10000001','10000004','10000002']);
+    ['10000003','10000002','10000001']);
 });
 
 test('Global keeps every room, while selecting a country shows only its rooms',()=>{
