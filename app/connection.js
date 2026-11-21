@@ -157,7 +157,8 @@
       window.CFG.rooms = (data.rooms || []).filter(r => r.owner_id !== session?.user?.id).map((room, i) => ({
         id: room.id, name: room.name, emoji: room.emoji || '🎙️',
         n: Math.max(0,Number(room.online_count)||0), online_count:Math.max(0,Number(room.online_count)||0),
-        owner_country:room.owner_country||'',room_display_id:room.room_display_id,
+        owner_country:room.owner_country||'',country_pinned:room.country_pinned===true,
+        room_display_id:room.room_display_id,
         host: 'Room owner', tag: 'Voice Room', mics: [],
         c: COLORS[i % COLORS.length], th: room.theme || 'mid',
         owner_id: room.owner_id, seat_count: room.seat_count,
@@ -167,7 +168,8 @@
         name: own.name, emoji: own.emoji, th: own.theme,
         c: COLORS[0], owner_id: own.owner_id, seat_count: own.seat_count,
         n:Math.max(0,Number(own.online_count)||0), online_count:Math.max(0,Number(own.online_count)||0),
-        owner_country:own.owner_country||'',room_display_id:own.room_display_id,
+        owner_country:own.owner_country||'',country_pinned:own.country_pinned===true,
+        room_display_id:own.room_display_id,
       } : null;
       window.renderRooms();
     } catch (err) { window.toast('Rooms could not sync: ' + err.message); }
