@@ -58,6 +58,9 @@ async function runGame(browser,game,viewport){
    const child=page.frameLocator('#game');
    const buttons=game==='sovera-food-wheel'?'#chips button.chip':'#ch button';
    await child.locator(buttons).first().waitFor({state:'visible',timeout:18000});
+   // Fruit Jackpot intentionally shows an opening loader for one second;
+   // measuring hit targets before it disappears falsely reports blocked chips.
+   await child.locator('#load, #ld').first().waitFor({state:'detached',timeout:18000});
    if(game==='sovera-food-wheel')
      await child.locator('#chips button.chip').first().waitFor({state:'visible'});
    const layout=await child.locator('body').evaluate((body,selector)=>{
