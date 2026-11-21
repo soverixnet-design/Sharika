@@ -66,11 +66,23 @@ jobs:
       - name: Verify live static game patches
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 25 'https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/sovera-food-wheel.html' > /tmp/food-live.html
-          curl --fail --silent --show-error --max-time 25 'https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/jackpot-fruit.html' > /tmp/jackpot-live.html
-          curl --fail --silent --show-error --max-time 25 'https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/stake-picker.js' > /tmp/stake-live.js
-          grep -F 'min-height:64px' /tmp/food-live.html
-          grep -F "anchor:document.getElementById('au')" /tmp/jackpot-live.html
-          grep -F 'paintBetClock(d)' /tmp/jackpot-live.html
-          grep -F 'anchor.replaceWith(button)' /tmp/stake-live.js
-          echo 'SHARIKA_TWO_GAME_BET_LAYOUT_STAGING_PUBLISHED'
+          # Workers assets propagate globally; poll read-only versioned URLs rather
+          # than declaring failure from a just-deployed edge cache.
+          for attempt in 1 2 3 4 5 6; do
+            curl --fail --silent --show-error --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/sovera-food-wheel.html?verify=20261121-v2" > /tmp/food-live.html
+            curl --fail --silent --show-error --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/jackpot-fruit.html?verify=20261121-v2" > /tmp/jackpot-live.html
+            curl --fail --silent --show-error --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/stake-picker.js?verify=20261121-v2" > /tmp/stake-live.js
+            if grep -Fq 'min-height:64px' /tmp/food-live.html &&
+               grep -Fq "anchor:document.getElementById('au')" /tmp/jackpot-live.html &&
+               grep -Fq 'paintBetClock(d)' /tmp/jackpot-live.html &&
+               grep -Fq 'anchor.replaceWith(button)' /tmp/stake-live.js; then
+              echo 'SHARIKA_TWO_GAME_BET_LAYOUT_STAGING_PUBLISHED'
+              exit 0
+            fi
+            echo "Static propagation attempt $attempt: food=$(wc -c </tmp/food-live.html) jackpot=$(wc -c </tmp/jackpot-live.html) stake=$(wc -c </tmp/stake-live.js)"
+            sleep 5
+          done
+          echo 'Live static assets did not match source after bounded propagation retries.'
+          echo 'Food first 180 bytes:'; head -c 180 /tmp/food-live.html
+          echo 'Jackpot first 180 bytes:'; head -c 180 /tmp/jackpot-live.html
+          exit 1
