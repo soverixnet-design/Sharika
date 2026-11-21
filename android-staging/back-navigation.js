@@ -165,9 +165,9 @@
       } catch (_) {
         // A frame can be briefly unavailable while a room loads.
       }
-      // Back leaves the room or cancels entry. The explicit Minimize button
-      // is available when the user wants to keep listening.
-      if (typeof window.leaveRoom === 'function') window.leaveRoom();
+      // Android Back minimizes the active room without destroying its iframe,
+      // presence or voice publication. Only the explicit Leave control exits.
+      if (typeof window.minimizeRoom === 'function') window.minimizeRoom();
       return 'handled';
     }
 
