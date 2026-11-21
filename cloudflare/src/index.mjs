@@ -1342,13 +1342,19 @@ export async function handleRequest(request, env, ctx) {
           String(a.id).localeCompare(String(b.id)));
         let countryNotice='';
         try {
-          const config=await env.DB.prepare(
-            'SELECT notice FROM sharika_country_settings WHERE country_code=?'
-          ).bind(viewerCountry).first();
-          countryNotice=String(config?.notice||'').slice(0,280);
+          const settings=await env.DB.prepare(
+            'SELECT country_code,pinned_room_id,notice FROM sharika_country_settings'
+          ).all();
+          const byCountry=new Map((settings.results||[]).map(row=>[row.country_code,row]));
+          countryNotice=String(byCountry.get(viewerCountry)?.notice||'').slice(0,280);
+          for(const room of listed){
+            const code=String(room.owner_country||'').trim().toUpperCase();
+            room.country_pinned=!!byCountry.get(code)?.pinned_room_id &&
+              String(room.id)===String(byCountry.get(code).pinned_room_id);
+          }
         } catch(error) {
           // Older staging D1 databases still serve rooms before migration 0107.
-          console.warn('country_notice_unavailable',error?.message);
+          console.warn('country_settings_unavailable',error?.message);
         }
         return reply({rooms:listed.slice(0,100),country_notice:countryNotice},200,cors);
       }
