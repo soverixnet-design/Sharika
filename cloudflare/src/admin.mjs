@@ -1,4 +1,5 @@
 import {handleAdminLocation} from './profile-location.mjs';
+import {handleCountryAdmin} from './admin-countries.mjs';
 // Sharika staging admin: verified D1 reads plus restricted user moderation and gift catalog edits.
 // Every request is authenticated by the outer Worker with a verified Firebase JWT.
 // Only explicitly audited seller inventory and verified grants may credit wallets.
@@ -204,6 +205,8 @@ export async function handleAdminOperation({ request, env, uid, path, cors, repl
         if(raw.length>8192)throw Error('body_too_large');return JSON.parse(raw||'{}');},
       reply,fail,cors
     });
+  if(operation==='countries'||/^countries\/[A-Z]{2}$/.test(operation))
+    return await handleCountryAdmin({request,db:env.DB,uid,role:actor.role,operation,reply,fail,cors});
   if(operation==='location')return await handleAdminLocation({
     request,db:env.DB,uid,role:actor.role,reply,fail,cors
   });
