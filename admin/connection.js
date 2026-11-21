@@ -2846,13 +2846,14 @@
     const section=document.createElement('div');
     section.className='card';
     section.innerHTML='<h3>🪙 Direct verified user coin credit</h3>'+
-      '<p class="n">Credits the real user wallet exactly once. This is a manual admin grant, NOT a payment receipt or seller stock. Every credit has an immutable ledger entry and reason.</p>'+
+      '<p class="n"><b>STAGING WALLET ONLY.</b> Google Play users have a separate coin wallet. For Play test coins, use the Play Testers page. Every credit here has an immutable ledger entry and reason.</p>'+
       '<div class="row"><input id="direct-user" maxlength="10" inputmode="numeric" placeholder="Recipient 1–10 digit Member or Special ID" aria-label="User ID">'+
       '<button id="direct-find" class="btn s" type="button">Find user</button></div>'+
       '<p id="direct-recipient-preview" class="n" role="status">Find and verify the recipient before adding coins.</p>'+
       '<div class="row"><input id="direct-coins" inputmode="numeric" placeholder="Coins (Super Admin: up to 1 trillion)" aria-label="Coin amount"></div>'+
       '<div class="row"><input id="direct-reason" maxlength="200" placeholder="Reason (8–200 characters)" aria-label="Reason">'+
-      '<button id="direct-submit" class="btn s" type="button" disabled>Credit user wallet</button></div>'+
+      '<button id="direct-submit" class="btn s" type="button" disabled>Credit STAGING wallet</button></div>'+ 
+      '<label class="n" style="display:block;margin:10px 0"><input type="checkbox" id="direct-confirm-staging"> I confirmed the member uses the STAGING wallet, not the Google Play wallet.</label>'+
       '<p id="direct-note" class="n" aria-live="polite"></p>'+
       '<h4>Verified direct credit history</h4><div id="direct-history">Loading…</div>';
     root.insertBefore(section,root.firstChild);
@@ -2874,14 +2875,16 @@
     }
     const button=byId('direct-submit'),recipientInput=byId('direct-user');
     const recipientPreview=byId('direct-recipient-preview');
+    const confirmedStaging=byId('direct-confirm-staging');
     let checkedRecipient=null,lookupSequence=0;
+    confirmedStaging.onchange=()=>{button.disabled=!checkedRecipient||!confirmedStaging.checked;};
     recipientInput.oninput=()=>{
-      lookupSequence++;checkedRecipient=null;button.disabled=true;
+      lookupSequence++;checkedRecipient=null;confirmedStaging.checked=false;button.disabled=true;
       recipientPreview.textContent='Find and verify the recipient before adding coins.';
     };
     async function findRecipient(){
       const target=recipientInput.value.trim(),sequence=++lookupSequence;
-      checkedRecipient=null;button.disabled=true;
+      checkedRecipient=null;confirmedStaging.checked=false;button.disabled=true;
       if(!/^[0-9]{1,10}$/.test(target)){
         recipientPreview.textContent='Enter a valid 1–10 digit Member or Special ID.';return;
       }
@@ -2891,10 +2894,20 @@
         if(sequence!==lookupSequence||target!==recipientInput.value.trim())return;
         const person=result.recipient;
         checkedRecipient={...person,lookupId:target};
-        recipientPreview.textContent='Verified: '+person.name+' · Display ID '+person.display_id+
+        recipientPreview.textContent='Verified STAGING: '+person.name+' · Display ID '+person.display_id+
           ' · Account '+person.public_id+' · '+person.country+' · Current wallet '+
           fmt(person.coins)+' coins';
-        button.disabled=false;
+        // An identical numeric ID can exist in Play with a different wallet.
+        // This check is advisory; only an explicit STAGING acknowledgement
+        // can enable the grant, even when Play lookup is unavailable.
+        if(role==='super'){
+          const play=await api('GET','play-testers?q='+encodeURIComponent(person.public_id))
+            .catch(()=>null);
+          if(sequence!==lookupSequence||target!==recipientInput.value.trim())return;
+          if(play?.users?.some(u=>u.public_id===person.public_id))
+            recipientPreview.textContent+=' · WARNING: This numeric ID ALSO EXISTS IN PLAY. Do not credit the wrong wallet.';
+        }
+        button.disabled=!confirmedStaging.checked;
       }catch(error){
         if(sequence===lookupSequence)recipientPreview.textContent='User not verified: '+error.message;
       }
@@ -2906,7 +2919,7 @@
       const raw=byId('direct-coins').value.trim();
       const amount=Number(raw);
       const reason=byId('direct-reason').value.trim();
-      if(!checkedRecipient||checkedRecipient.lookupId!==target){
+      if(!checkedRecipient||checkedRecipient.lookupId!==target||!confirmedStaging.checked){
         note.textContent='Find and verify the recipient first.';return;
       }
       if(!/^[0-9]{1,10}$/.test(target)||!/^[0-9]+$/.test(raw)||
@@ -2929,6 +2942,7 @@
           coins:amount,reason,request_id:requestId
         });
         pendingAdminCredit=null;
+        confirmedStaging.checked=false;
         note.textContent=(result.duplicate?'Already credited (safe retry). ':'Credit confirmed. ')+
           'Transaction #'+result.transaction_id+' · New wallet '+fmt(result.balance_after)+' coins.';
         byId('direct-coins').value='';
@@ -2940,7 +2954,7 @@
           checkedRecipient=null;
           recipientPreview.textContent='Special ID or account changed. Find the recipient again.';
         }
-      }finally{button.disabled=!checkedRecipient;}
+      }finally{button.disabled=!checkedRecipient||!confirmedStaging.checked;}
     };
     await refreshHistory();
   }
