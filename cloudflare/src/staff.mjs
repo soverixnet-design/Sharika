@@ -22,9 +22,9 @@ async function rechargeRecipient(db,publicId){
     'SELECT u.auth_uid,u.coins,u.status,u.public_no,u.name,u.country,'+
     's.special_id FROM sharika_users u LEFT JOIN sharika_special_ids s '+
     'ON s.auth_uid=u.auth_uid AND (s.expires_at IS NULL OR s.expires_at>datetime(\'now\')) '+
-    // When a Member ID equals another account\'s Special ID, always resolve\n'+
-    // the canonical Member ID first. Unordered LIMIT 1 could credit a\n'+
-    // different wallet depending on SQLite query planning.\n'+
+    // When a Member ID equals another account's Special ID, always resolve
+    // the canonical Member ID first. Unordered LIMIT 1 could credit a
+    // different wallet depending on SQLite query planning.
     'WHERE u.public_no=? OR s.special_id=? '+
     'ORDER BY CASE WHEN u.public_no=? THEN 0 ELSE 1 END,u.public_no ASC LIMIT 1'
   ).bind(Number(publicId),publicId,Number(publicId)).first();
