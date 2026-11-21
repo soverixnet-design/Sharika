@@ -303,12 +303,12 @@
   /* ---------------- BETTING (both modes) ---------------- */
   const sumMy = () => S.myBets.reduce((a, b) => a + b, 0);
 
+window.installStakePicker({balance:()=>S.balance, selected:()=>CONFIG.chips[S.chipIdx], select:amount=>{if(!CONFIG.chips.includes(amount))CONFIG.chips.push(amount);S.chipIdx=CONFIG.chips.indexOf(amount);buildChips();}});
   async function placeBet(i, el, amountOverride, silent) {
     if (S.phase !== 'betting') { if (!silent) toast(t('betClosed')); return false; }
     const amount = amountOverride || CONFIG.chips[S.chipIdx];
     const pendingSum = [...S.pending.values()].reduce((a, p) => a + p.amount, 0);
     if (amount > S.balance - pendingSum) { if (!silent) { toast(t('noCoins')); emit('insufficient_balance', { need: amount, balance: S.balance }); } return false; }
-    if (sumMy() + pendingSum + amount > CONFIG.maxBetPerRound) { if (!silent) toast(t('maxBet')); return false; }
     const it = CONFIG.items[i];
     if (!silent) { sfx('bet'); flyChip(el); }
 

@@ -107,6 +107,7 @@
   let roomFrameDocument = null;
   let framePoll = null, giftPoll = null, chatPoll = null, invitePoll = null, entryPoll = null,
     reactionPoll = null, musicPoll = null;
+  let roomVisualVisibilityListener = null;
   let voiceRoom = null, voiceRoomId = null;
   let voiceBackend = null;
 
@@ -6006,33 +6007,38 @@
       const data = await api('GET','/rooms');
       if(requestNo!==roomsRequestNo || session?.user?.id!==userId)return;
       const rows = data.rooms || [];
+      window.CFG.countryNotice=String(data.country_notice||'').slice(0,280);
       const own = rows.find(r => r.owner_id === userId);
       const discovery=window.SharikaDiscovery;
       window.CFG.viewerCountry=typeof profile==='undefined'?'':profile?.country||'';
       window.CFG.roomHistoryIds=discovery?discovery.readHistory(window.localStorage,userId):[];
       window.CFG.rooms = rows.filter(r => r.owner_id !== userId).map((r,i)=>({
-        id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
+        id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,
+        online_count:Math.max(0,Number(r.online_count)||0),host:'Room owner',
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
         seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
         access_locked:Number(r.access_locked)===1?1:0,
-        owner_country:r.owner_country||'',room_display_id:r.room_display_id,
+        owner_country:r.owner_country||'',country_pinned:r.country_pinned===true,
+        room_display_id:r.room_display_id,
         created_at:r.created_at||''
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
         c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
         seat_frame_style:own.seat_frame_style||'grad',
-        n:Number(own.online_count)||0,cover_url:own.cover_url||null,
+        n:Number(own.online_count)||0,online_count:Math.max(0,Number(own.online_count)||0),
+        cover_url:own.cover_url||null,
         access_locked:Number(own.access_locked)===1?1:0,
         owner_country:own.owner_country||window.CFG.viewerCountry||'',
+        country_pinned:own.country_pinned===true,
         room_display_id:own.room_display_id,
         created_at:own.created_at||''
       } : null;
       // Quiet background refresh: changing identical room cards restarts every
       // CSS animation and drops touch/scroll state on slower Android WebViews.
       const renderSignature=JSON.stringify([userId,rows,window.CFG.viewerCountry,
-        window.CFG.roomHistoryIds]);
+        window.CFG.roomHistoryIds,window.CFG.countryNotice]);
       if(renderSignature!==lastRoomsRenderSignature){
         lastRoomsRenderSignature=renderSignature;
         window.renderRooms();
@@ -6471,8 +6477,8 @@
         loadBanners:()=>api('GET','/room-banners?country='+encodeURIComponent(
           String(room.owner_country||room.country||'').trim().toUpperCase()
         )),
-        // Exact event target is chosen inside the room but navigation stays
-        // in the authenticated parent WebView/native bridge, never the iframe.
+        // Choose the event inside the room; navigate through the
+        // authenticated parent instead of letting the sandbox open URLs.
         openEvent:eventId=>{
           const id=Number(eventId);
           if(!Number.isSafeInteger(id)||id<1)
@@ -8701,7 +8707,65 @@
             '. Reopen settings to confirm values.';
         }finally{if(page.isConnected)saveMain.disabled=false;}
       };
+      // Local, read-only voice statistics. Never uploads microphone samples,
+      // SDP, ICE credentials, Firebase tokens or room conversations.
+      function openVoiceHealthPage(){
+        const panel=subpage('Voice Health');
+        const note=doc.createElement('p');
+        note.className='sh-room-settings-status';
+        note.textContent='Local connection diagnostics only. No audio is recorded or sent to Admin.';
+        panel.append(note);
+        const rows=doc.createElement('div');
+        rows.className='sh-room-settings-list';
+        rows.id='sh-room-voice-health-data';
+        rows.setAttribute('role','status');
+        panel.append(rows);
+        const refresh=doc.createElement('button');
+        refresh.type='button';refresh.className='sh-room-settings-primary';
+        refresh.textContent='Refresh voice connection';
+        const inspect=async()=>{
+          if(!panel.isConnected||window.cur?.id!==room.id)return;
+          refresh.disabled=true;
+          const state=sfuState?.roomId===room.id&&!sfuState.closed?sfuState:null;
+          if(state)await inspectSfuAudio(state);
+          if(!panel.isConnected||window.cur?.id!==room.id)return;
+          const receive=state?.receivePC?.connectionState||'not connected';
+          const publish=state?.publishPC?.connectionState||'not publishing';
+          const local=state?.media?.getAudioTracks()?.[0];
+          const mic=state?.readyPublication&&local?.readyState==='live'&&local.enabled
+            ?'publishing':local?.enabled===false?'muted':publish;
+          const stats=state?.lastMediaStats;
+          const safeCount=n=>Number.isFinite(Number(n))?String(Math.max(0,Number(n))):'—';
+          const lines=[
+            ['Internet',navigator.onLine?'online':'offline'],
+            ['Receiving connection',receive],
+            ['Microphone',mic],
+            ['Subscribed audio tracks',safeCount(state?.subscribed.size||0)],
+            ['Incoming network route',stats?.incomingRoute||'unknown'],
+            ['Outgoing network route',stats?.outgoingRoute||'unknown'],
+            ['Received audio packets',safeCount(stats?.incoming?.packets)],
+            ['Lost incoming packets',safeCount(stats?.incoming?.packetsLost)],
+            ['Sent microphone packets',safeCount(stats?.outgoing?.packets)],
+            ['Last checked',stats?.checkedAt?new Date(stats.checkedAt).toLocaleTimeString():'not yet']
+          ];
+          rows.replaceChildren();
+          for(const [label,value] of lines){
+            const line=doc.createElement('div');line.className='sh-room-settings-row';
+            const heading=doc.createElement('span');heading.textContent=label;
+            const detail=doc.createElement('small');detail.textContent=value;
+            line.append(heading,detail);rows.append(line);
+          }
+          refresh.disabled=false;
+        };
+        refresh.onclick=()=>inspect().catch(error=>{
+          if(panel.isConnected)note.textContent='Voice diagnostics unavailable: '+errText(error);
+          refresh.disabled=false;
+        });
+        panel.append(refresh);
+        refresh.click();
+      }
       const settings=section('Room Settings');
+      row(settings,'Voice Health','Local mic & network diagnostics',openVoiceHealthPage);
       row(settings,'Password',currentPolicy.password_required?'Set':'Not set',
         owner?passwordPolicyPage:null);
       row(settings,'Release notification','Room announcement',owner?async()=>{
@@ -9405,7 +9469,10 @@
     pollRoomEntries().catch(error=>console.warn('Room entries:',errText(error)));
     if(entryPoll)clearInterval(entryPoll);
     entryPoll=setInterval(()=>{
-      if(window.cur?.id===room.id)pollRoomEntries().catch(()=>{});
+      // No need to fetch or animate room arrivals behind a hidden WebView.
+      // Voice signaling and member/seat sync continue independently.
+      if(!document.hidden&&window.cur?.id===room.id)
+        pollRoomEntries().catch(()=>{});
     },2500);
     startRoomMusicPoll(room.id);
     // Voice and visual room refresh are independent. A slow ICE/TURN join
@@ -9432,7 +9499,19 @@
     framePoll=setInterval(refreshRoomSeats,8000);
     if(giftPoll)clearInterval(giftPoll);
     pollGiftEvents().catch(()=>{});
-    giftPoll=setInterval(()=>{if(window.cur?.id===room.id)pollGiftEvents().catch(()=>{});},5000);
+    giftPoll=setInterval(()=>{
+      if(!document.hidden&&window.cur?.id===room.id)pollGiftEvents().catch(()=>{});
+    },5000);
+    // Restore visual freshness as soon as the user returns from Game Center,
+    // lock screen, or another app. No duplicate network polls after re-entry.
+    if(roomVisualVisibilityListener)
+      document.removeEventListener('visibilitychange',roomVisualVisibilityListener);
+    roomVisualVisibilityListener=()=>{
+      if(document.hidden||!visitIsActive())return;
+      pollRoomEntries().catch(()=>{});
+      pollGiftEvents().catch(()=>{});
+    };
+    document.addEventListener('visibilitychange',roomVisualVisibilityListener);
   }
   // Block simulated gift/chat bots in the original room HTML only in this
   // packaged staging APK. Do not edit the user's original layout or art.
@@ -9646,6 +9725,12 @@
   const originalLeaveRoom=window.leaveRoom;
 
   function stopRoomServices(){
+    // Older isolated Back-button QA executes this helper without the outer
+    // module's optional visual-poll observer; room audio cleanup still works.
+    if(typeof roomVisualVisibilityListener!=='undefined'&&roomVisualVisibilityListener){
+      document.removeEventListener('visibilitychange',roomVisualVisibilityListener);
+      roomVisualVisibilityListener=null;
+    }
     window.__sharikaRoomGameClose?.();
     resetRoomMusic();
     clearInterval(framePoll);framePoll=null;

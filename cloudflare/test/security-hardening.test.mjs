@@ -25,7 +25,6 @@ test('verified financial writes have a smaller independent counter', async () =>
     ['/api/v1/admin/events/3/award','finance'],
     ['/api/v1/rooms/10000001/gifts','finance'],
     ['/api/v1/games/food-wheel/bet','finance'],
-    ['/api/v1/original-games/sovera-food/bet','finance'],
     ['/api/v1/profile','action'],
     ['/api/v1/rooms/10000001/chat','action']
   ];
@@ -68,6 +67,6 @@ test('Food Wheel accepts repeated authenticated round bets without finance bucke
   limit:async()=>({success:false})}};
  for(let i=0;i<32;i++)
   assert.equal(await allowSensitiveAction({env,uid:'player-one',path,method:'POST'}),true);
- assert.equal(sensitiveActionClass('POST','/api/v1/original-games/sovera-food/bet'),'finance');
+ assert.equal(sensitiveActionClass('POST','/api/v1/original-games/sovera-food/bet'),null);
  assert.equal(sensitiveActionClass('POST','/api/v1/sellers/transfer'),'finance');
 });

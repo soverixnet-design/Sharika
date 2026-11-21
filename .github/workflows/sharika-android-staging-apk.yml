@@ -3,6 +3,7 @@ name: Sharika isolated Android staging APK
 on:
   push:
     branches:
+      - integration/sharika-games-event-videos-20261121
       - feature/sharika-hosted-game-center-20261118
       - feature/sharika-room-half-sheet-profile-games-20261118
       - feature/sharika-cleopatra-slot-staging-20261117

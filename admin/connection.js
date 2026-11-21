@@ -26,6 +26,11 @@
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
       ['playTesters','🧪','Play Closed-Test Users']);
   }
+  if(!NAV_ALL.some(item=>item[0]==='countryManager')){
+    const idx=NAV_ALL.findIndex(item=>item[0]==='rooms');
+    NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
+      ['countryManager','🌍','Country Management']);
+  }
   if(!NAV_ALL.some(item=>item[0]==='roomBanners')){
     const idx=NAV_ALL.findIndex(item=>item[0]==='banners');
     NAV_ALL.splice(idx<0?NAV_ALL.length:idx+1,0,
@@ -956,6 +961,73 @@
     input.oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,300);};
     await Promise.all([refresh(),refreshCredits()]);
   };
+  // All counts and country settings come from D1. Never show template data
+  // or allow a support/finance account to change country configuration.
+  P.countryManager=async function(){
+    const root=byId('pg');
+    if(role!=='super'){root.innerHTML=card('Country Management','Super Admin access required.');return;}
+    root.innerHTML='<div class="card"><h3>🌍 Country Management · Staging</h3>'+
+      '<p class="n">Separate country settings on the shared server. Counts are saved user/room totals, not live visitors. Per-country room banners are managed from Room Banners.</p>'+
+      '<div id="sh-country-list">Loading verified country records…</div></div>'+
+      '<div class="card"><h3>Edit country settings</h3>'+
+      '<form id="sh-country-form">'+
+      '<label>Two-letter country code<input class="field" id="sh-country-code" required maxlength="2" pattern="[A-Za-z]{2}" placeholder="BD"></label>'+
+      '<label>Pinned country room ID (optional)<input class="field" id="sh-country-pin" maxlength="8" pattern="[0-9]{8}" placeholder="10000001"></label>'+
+      '<label>Country notice (optional)<textarea class="field" id="sh-country-notice" maxlength="280" rows="3"></textarea></label>'+
+      '<button class="btn" type="submit">Save country settings</button></form>'+
+      '<p class="n" id="sh-country-status" role="status"></p></div>'+
+      '<div class="card"><h3>Set user location or location-change price</h3>'+
+      '<div id="sh-country-location">Loading verified location controls…</div></div>';
+    const list=byId('sh-country-list'),form=byId('sh-country-form'),status=byId('sh-country-status');
+    loadLocationSettings(byId('sh-country-location'),'staging');
+    let data;
+    try{data=await api('GET','countries');}
+    catch(error){list.textContent='Country records unavailable: '+error.message;return;}
+    if(!list.isConnected)return;
+    const rows=data.countries||[];
+    const versions=new Map(rows.map(row=>[row.country_code,row]));
+    const names=typeof Intl.DisplayNames==='function'?new Intl.DisplayNames(['en'],{type:'region'}):null;
+    list.innerHTML='<p class="n">Select a country to edit its notice or pinned room. Add an ISO country code manually for a new country.</p>'+
+      window.T(['Country','Users','Rooms','Pinned Room','Edit'],
+        rows.map(row=>[
+          esc((names?.of(row.country_code)||row.country_code)+' ('+row.country_code+')'),
+          fmt(row.user_count),fmt(row.room_count),
+          esc(row.pinned_room_id||'—'),
+          '<button type="button" class="btn s" data-country-code="'+esc(row.country_code)+'">Edit</button>'
+        ]));
+    const pick=code=>{
+      const row=versions.get(code)||{country_code:code,pinned_room_id:'',notice:'',revision:0};
+      byId('sh-country-code').value=code;
+      byId('sh-country-pin').value=row.pinned_room_id||'';
+      byId('sh-country-notice').value=row.notice||'';
+      status.textContent='Editing '+code+' · revision '+row.revision;
+    };
+    list.onclick=e=>{const button=e.target.closest('button[data-country-code]');if(button)pick(button.dataset.countryCode);};
+    if(rows.length)pick(rows[0].country_code);
+    form.onsubmit=async e=>{
+      e.preventDefault();
+      const code=byId('sh-country-code').value.trim().toUpperCase();
+      const pin=byId('sh-country-pin').value.trim();
+      const notice=byId('sh-country-notice').value;
+      if(!/^[A-Z]{2}$/.test(code)||pin&&!/^[0-9]{8}$/.test(pin)){
+        status.textContent='Enter a valid ISO country code and optional 8-digit room ID.';return;
+      }
+      const old=versions.get(code);
+      const button=form.querySelector('button[type=submit]');
+      if(!window.confirm('Save country settings for '+code+'?'))return;
+      button.disabled=true;status.textContent='Saving verified country settings…';
+      try{
+        const saved=await api('PUT','countries/'+code,{
+          pinned_room_id:pin,notice,expected_revision:Number(old?.revision)||0
+        });
+        versions.set(code,{...old,...saved});
+        status.textContent='Saved '+code+' · revision '+saved.revision+
+          '. Country banners: use the Room Banners module.';
+      }catch(error){status.textContent='Country update not saved: '+error.message;}
+      finally{button.disabled=false;}
+    };
+  };
+
   P.rooms=async function () {
     const root=byId('pg');root.innerHTML=card('Rooms','Loading verified room and live presence…');
     try{

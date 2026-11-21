@@ -30,7 +30,7 @@ function call(action,method='GET',body,query){
   return new Promise((resolve,reject)=>{
     const id=++seq;
     const timer=setTimeout(()=>{pending.delete(id);reject(new Error(
-      'Connection timed out. Check the status before retrying the same bet.'));},12000);
+      'Connection timed out. Check the status before retrying the same bet.'));},24000);
     pending.set(id,{resolve,reject,timer});
     window.parent.postMessage({type:'sharika:original-request',game:GAME,id,
       action,method,body,query},'*');

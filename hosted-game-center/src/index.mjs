@@ -32,9 +32,12 @@ export default {async fetch(request,env){
  // A sandboxed iframe has an opaque origin, so CSP 'self' alone does not
  // permit its own hosted subresources. Explicitly allow ONLY this game host.
  const staticOrigin='https://sharika-games-web-staging.soverixnet.workers.dev';
+ const privateOrigin='https://sharika-private-center-staging.soverixnet.workers.dev';
  const profileImages='https://sharika-api-staging.soverixnet.workers.dev https://lh3.googleusercontent.com https://firebasestorage.googleapis.com https://storage.googleapis.com';
+ // CSP frame-ancestors (not X-Frame-Options) lists the ONLY two trusted hosts.
+ if(url.pathname.startsWith('/games/'))h.delete('x-frame-options');
  h.set('content-security-policy',url.pathname.startsWith('/games/')?
-   "default-src 'none'; img-src 'self' "+staticOrigin+" "+profileImages+" data: blob:; script-src 'self' "+staticOrigin+" 'unsafe-inline'; style-src 'self' "+staticOrigin+" 'unsafe-inline'; font-src 'self' "+staticOrigin+" data:; frame-ancestors 'self' "+staticOrigin+"; connect-src 'none'; media-src 'self' "+staticOrigin+" data: blob:":
+   "default-src 'none'; img-src 'self' "+staticOrigin+" "+profileImages+" data: blob:; script-src 'self' "+staticOrigin+" 'unsafe-inline'; style-src 'self' "+staticOrigin+" 'unsafe-inline'; font-src 'self' "+staticOrigin+" data:; frame-ancestors 'self' "+staticOrigin+" "+privateOrigin+"; connect-src 'none'; media-src 'self' "+staticOrigin+" data: blob:":
    "default-src 'self'; img-src 'self' "+profileImages+" data:; media-src 'self' https://sharika-api-staging.soverixnet.workers.dev; style-src 'self'; script-src 'self'; frame-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
  return new Response(request.method==='HEAD'?null:result.body,{status:result.status,headers:h});
 }};

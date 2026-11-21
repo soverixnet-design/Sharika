@@ -1305,32 +1305,58 @@ export async function handleRequest(request, env, ctx) {
     if (path === '/api/v1/rooms') {
       const viewer=await assertActive(env.DB, uid);
       if (request.method === 'GET') {
-        // Prioritize the account's signup country *before* limiting the feed.
-        // The client still shows foreign rooms in its Global list.
+        // Query the most active verified room IDs *before* the feed limit.
+        // A busy, older room must not disappear behind 100 newly created rooms.
         const viewerCountry=String(viewer.country||'').trim().toUpperCase()||'ZZ';
+        let online={};
+        if(env.VOICE_ROOMS){
+          try{online=await roomPresence(env).presenceRoomCounts();}
+          catch(error){console.warn('room_presence_unavailable',error?.message);}
+        }
+        const liveRoomIds=Object.entries(online||{})
+          .filter(([id,count])=>/^[0-9]{8}$/.test(id)&&Number(count)>0)
+          .sort((a,b)=>Number(b[1])-Number(a[1]))
+          .slice(0,100).map(([id])=>id);
+        const liveClause=liveRoomIds.length
+          ? 'r.id IN ('+liveRoomIds.map(()=>'?').join(',')+')' : '0';
         const rows=await env.DB.prepare(
           'SELECT r.*,COALESCE(al.locked,0) AS access_locked,c.version AS cover_version,u.country AS owner_country,u.public_no AS owner_public_no,'+activeSpecialSelect('u')+' FROM sharika_rooms r '+
           'LEFT JOIN sharika_room_access_locks al ON al.room_id=r.id '+
           'LEFT JOIN sharika_room_covers c ON c.room_id=r.id '+
           'LEFT JOIN sharika_users u ON u.auth_uid=r.owner_id '+
-          'ORDER BY CASE WHEN UPPER(TRIM(u.country))=? THEN 0 ELSE 1 END, '+
-          'r.created_at DESC LIMIT 100'
-        ).bind(viewerCountry).all();
-        // One verified room presence snapshot for all displayed cards.
-        let online={};
-        if(env.VOICE_ROOMS) {
-          try {
-            online=await roomPresence(env)
-              .presenceRoomCounts();
-          } catch(error) {console.warn('room_presence_unavailable',error?.message);}
-        }
-        return reply({rooms:(rows.results||[]).map(({owner_public_no,...r})=>({
+          'ORDER BY CASE WHEN '+liveClause+' THEN 0 ELSE 1 END, '+
+          'CASE WHEN UPPER(TRIM(u.country))=? THEN 0 ELSE 1 END, '+
+          'r.created_at DESC LIMIT 250'
+        ).bind(...liveRoomIds,viewerCountry).all();
+        const listed=(rows.results||[]).map(({owner_public_no,...r})=>({
           ...r,room_display_id:owner_public_no?publicId(owner_public_no):null,
           owner_display_id:owner_public_no?publicId(owner_public_no):r.id,
           cover_url:r.cover_version?url.origin+'/api/v1/rooms/'+r.id+
             '/cover?v='+r.cover_version:null,
-          online_count:Number(online?.[r.id])||0
-        }))},200,cors);
+          online_count:Math.max(0,Number(online?.[r.id])||0)
+        }));
+        const homeFirst=row=>String(row.owner_country||'').trim().toUpperCase()===viewerCountry?1:0;
+        listed.sort((a,b)=>b.online_count-a.online_count ||
+          homeFirst(b)-homeFirst(a) ||
+          String(b.created_at||'').localeCompare(String(a.created_at||'')) ||
+          String(a.id).localeCompare(String(b.id)));
+        let countryNotice='';
+        try {
+          const settings=await env.DB.prepare(
+            'SELECT country_code,pinned_room_id,notice FROM sharika_country_settings'
+          ).all();
+          const byCountry=new Map((settings.results||[]).map(row=>[row.country_code,row]));
+          countryNotice=String(byCountry.get(viewerCountry)?.notice||'').slice(0,280);
+          for(const room of listed){
+            const code=String(room.owner_country||'').trim().toUpperCase();
+            room.country_pinned=!!byCountry.get(code)?.pinned_room_id &&
+              String(room.id)===String(byCountry.get(code).pinned_room_id);
+          }
+        } catch(error) {
+          // Older staging D1 databases still serve rooms before migration 0107.
+          console.warn('country_settings_unavailable',error?.message);
+        }
+        return reply({rooms:listed.slice(0,100),country_notice:countryNotice},200,cors);
       }
       if (request.method === 'POST') {
         const prior = await env.DB.prepare('SELECT * FROM sharika_rooms WHERE owner_id=?').bind(uid).first();

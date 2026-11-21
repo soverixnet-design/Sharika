@@ -37,6 +37,12 @@
     const country=countryCode(selectedCountry);
     return (rooms||[]).filter(room=>!country||countryCode(room.owner_country||room.country)===country);
   }
+  // An explicitly verified online_count (including zero) wins over the old
+  // template count. Older offline fixtures retain the legacy n fallback.
+  function onlineCount(room){
+    const n=room&&room.online_count!=null?room.online_count:room&&room.n;
+    return Number.isFinite(Number(n))?Math.max(0,Math.trunc(Number(n))):0;
+  }
   function sortRooms(rooms,viewerCountry,mode,historyIds){
     const country=countryCode(viewerCountry);
     const order=Array.isArray(historyIds)?historyIds:[];
@@ -46,6 +52,12 @@
       const a=left.room,b=right.room;
       const aLocal=country&&countryCode(a.owner_country||a.country)===country?1:0;
       const bLocal=country&&countryCode(b.owner_country||b.country)===country?1:0;
+      // Popular means most people currently present, globally. Local
+      // country is a tie-breaker, not a reason to bury a busy room.
+      if(mode!=='new'&&mode!=='history'){
+        const live=onlineCount(b)-onlineCount(a);
+        if(live)return live;
+      }
       if(aLocal!==bLocal)return bLocal-aLocal;
       if(mode==='history'){
         const recent=historyIndex.get(String(a.id))-historyIndex.get(String(b.id));
@@ -54,8 +66,7 @@
         const newer=String(b.created_at||'').localeCompare(String(a.created_at||''));
         if(newer)return newer;
       }else{
-        const popular=(Number(b.n)||0)-(Number(a.n)||0);
-        if(popular)return popular;
+        // Activity has already been compared above.
       }
       return left.index-right.index;
     }).map(x=>x.room);
@@ -74,5 +85,5 @@
     try{storage.setItem(historyKey(userId),JSON.stringify(entries));}catch(_){}
     return entries;
   }
-  return {countryCode,flagForCountry,filterRooms,sortRooms,readHistory,recordVisit};
+  return {countryCode,flagForCountry,filterRooms,onlineCount,sortRooms,readHistory,recordVisit};
 });
