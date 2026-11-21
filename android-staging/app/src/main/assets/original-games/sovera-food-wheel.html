@@ -44,7 +44,9 @@ body{background:var(--bg);font-family:system-ui,"Noto Sans Bengali",sans-serif;o
 .in .mid{padding:0}.in .res{flex-direction:column;width:52px;order:-1;background:#0a8f86;padding:18px 6px;justify-content:flex-start}
 .in .chips{flex-direction:column;width:76px;justify-content:center;gap:8px;padding:4px}.in .chip{width:64px;height:54px}
 .in .me{background:var(--red)}
-.out .mid{flex-direction:column}.out .stage{flex:1;order:1}.out .res{order:2;background:var(--red);justify-content:space-between;padding:8px 10px 4px}.out .res i{width:32px;height:32px;font-size:19px}.out .chips{order:3;background:var(--red);padding:6px 8px 10px}.rbx{display:flex;align-items:center;gap:4px;flex:1;background:#8c1a1c;border-radius:40px;padding:8px 12px;box-shadow:inset 0 3px 8px #0007,0 0 0 2px #c9433f;font-size:11px}.out .rbx{justify-content:space-between}.in .res{width:60px;padding:14px 3px}.in .rbx{flex-direction:column;border-radius:22px;padding:12px 2px;gap:8px}
+.out .mid{flex-direction:column;overflow:hidden}
+.out .stage{flex:1 1 0%;min-height:0;order:1;overflow:hidden}
+.out .res{flex:0 0 auto;order:2;background:var(--red);justify-content:space-between;padding:8px 10px 4px}.out .res i{width:32px;height:32px;font-size:19px}.out .chips{flex:0 0 auto;min-height:64px;order:3;background:var(--red);padding:6px 8px 10px}.rbx{display:flex;align-items:center;gap:4px;flex:1;background:#8c1a1c;border-radius:40px;padding:8px 12px;box-shadow:inset 0 3px 8px #0007,0 0 0 2px #c9433f;font-size:11px}.out .rbx{justify-content:space-between}.in .res{width:60px;padding:14px 3px}.in .rbx{flex-direction:column;border-radius:22px;padding:12px 2px;gap:8px}
 .rp{position:absolute;left:3%;right:3%;bottom:14%;background:#a8452c;padding:8px;transform:translateY(140%);opacity:0;pointer-events:none;transition:transform .4s,opacity .3s;z-index:5;border-radius:22px}
 .rp.show{transform:none;opacity:1;pointer-events:auto}.rp>div{background:var(--cream);border-radius:16px;padding:10px 14px 14px;font-size:14px;position:relative}
 .rp .big{font-size:60px;float:left;margin-right:14px}.rp p{display:flex;justify-content:space-between;margin:6px 0}.rp h4{color:#e09a00;text-align:center;clear:both;margin:8px 0 4px;font-size:17px}
@@ -192,7 +194,13 @@ const S=[{id:'chk',e:'🍗',img:CHK,m:45,x:50,y:9,g:'m'},
 {id:'mel',e:'🍉',m:5,x:26,y:17,g:'v'}];
 const ic=s=>s.img?'<img class="ci" src="'+s.img+'">':s.e;
 const CH=[50,500,2000,10000];let chip=50,bets={},lastResult=null,waiting=false;
-window.installStakePicker({balance:()=>GameBridge.get()?.coins||0, selected:()=>chip, select:amount=>{chip=amount;document.querySelectorAll('.chip.on,#chips .on,#ch .on').forEach(b=>b.classList.remove('on'));}});
+// Mount the custom stake control where the unavailable Auto Play used to sit.
+window.installStakePicker({
+  balance:()=>GameBridge.get()?.coins||0,
+  selected:()=>chip,
+  select:amount=>{chip=amount;makeChips()},
+  anchor:document.getElementById('au')
+});
 const W=$('wh');
 W.innerHTML=`<svg viewBox="0 0 1080 1150"><path d="M120 930H960L1060 1150H20Z" fill="#e0903a"/><path d="M120 930H960L975 975H105Z" fill="#f0b455"/><line x1="340" y1="940" x2="500" y2="650" stroke="#e8993e" stroke-width="80" stroke-linecap="round"/><line x1="740" y1="940" x2="580" y2="650" stroke="#e8993e" stroke-width="80" stroke-linecap="round"/>${S.map(s=>`<line x1="540" y1="495" x2="${s.x*10.8}" y2="${s.y*11.5+40}" stroke="#a8452c" stroke-width="30"/>`).join('')}<circle cx="540" cy="495" r="150" fill="#a8452c"/></svg>
 <div class="hub"><em>🍽️</em><b id="hb">Select Time</b><span id="ht">30</span><small>s</small></div>`+S.map(s=>`<button class="slot" id="s_${s.id}" style="left:${s.x}%;top:${s.y+3}%"><span class="ic">${ic(s)}</span><b class="mx">x${s.m}</b>${s.m==10?'<u class="ht">HOT</u>':''}<span class="am"><span class="g">◆</span> <span>0</span></span><i class="bn"></i></button>`).join('')+`<button class="cat" id="c_v" style="left:19%;top:80.5%">🥗<small>SALAD</small></button><button class="cat" id="c_m" style="left:81%;top:80.5%">🍕<small>PIZZA</small></button><div class="base" style="left:27%">👩 <span class="g">◆</span> <span id="pot"></span></div><div class="base" style="left:73%;justify-content:center;font-weight:600;cursor:pointer" id="mh">My History ›</div>`;
@@ -230,13 +238,14 @@ function render(d){
     $('res').textContent='Live synchronized round';
   makeChips();
   const left=Math.max(0,Math.ceil((d.round.bet_closes_ms-GameBridge.now())/1000));
-  $('hb').textContent=d.round.phase==='bet'?'Select Time':'SPINNING';
+  const accepting=d.round.phase==='bet'&&GameBridge.now()<d.round.bet_closes_ms;
+  $('hb').textContent=accepting?'Select Time':'BET CLOSED';
   $('ht').textContent=String(left);
 }
 async function place(i,amount){
 
   const d=GameBridge.get();
-  if(!d||d.round.phase!=='bet'){modal('Betting is closed for this round');return;}
+  if(!d||d.round.phase!=='bet'||GameBridge.now()>=d.round.bet_closes_ms){modal('Betting is closed for this round');return;}
 
   try{await GameBridge.bet(i,amount)}catch(e){modal(e.message||'Bet failed')}
 
@@ -252,7 +261,7 @@ for(const g of ['v','m'])$('c_'+g).onclick=async()=>{
 };
 $('chips').onclick=e=>{const b=e.target.closest('.chip');if(b){chip=Number(b.dataset.c);makeChips()}};
 $('hp').onclick=()=>modal('Original Food Wheel: select a chip and food to place a real virtual-coin bet. The result is shared by all players. Winning food pays the displayed multiplier. SALAD/PIZZA each place four separate bets. No fake coins or bots.');
-$('au').onclick=()=>modal('Auto-betting is disabled to protect your wallet. Select each bet manually.');
+// Auto-betting remains disabled; its old button was replaced with Set stake.
 $('ad').style.display='none';
 $('bk').onclick=()=>parent.postMessage({type:'sharika:original-exit'},'*');
 $('tg').onclick=()=>{app.classList.toggle('in');setTimeout(fit,100)};
@@ -301,7 +310,7 @@ html.sharika-room-mini .hd{gap:5px;padding:4px 6px;font-size:12px}
 html.sharika-room-mini .hd .rb{width:30px;height:30px;font-size:14px}
 html.sharika-room-mini .res{padding:3px 6px;font-size:11px}
 html.sharika-room-mini .res i{width:26px;height:26px;font-size:17px}
-html.sharika-room-mini .chips{gap:3px;padding:3px 4px 5px}
+html.sharika-room-mini .chips{gap:3px;padding:3px 4px 5px;flex:0 0 auto;min-height:58px}
 html.sharika-room-mini .chip{width:clamp(44px,15vw,57px);height:46px;font-size:12px}
 html.sharika-room-mini .me{gap:5px;padding:4px 6px;font-size:11px}
 html.sharika-room-mini .me .av{font-size:20px}
