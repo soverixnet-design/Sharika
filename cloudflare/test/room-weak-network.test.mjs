@@ -140,7 +140,7 @@ test('voice publishing prefers low-bandwidth audio without making unsupported We
     publish.indexOf('state.publishPC.createOffer()'));
 });
 
-test('Android Back leaves the active room after dismissing any room overlay',()=>{
+test('Android Back minimizes the active room after dismissing any room overlay',()=>{
   const script=readFileSync(new URL('../../android-staging/back-navigation.js',import.meta.url),'utf8');
   const events=[];
   let trayOpen=true;
@@ -149,7 +149,7 @@ test('Android Back leaves the active room after dismissing any room overlay',()=
   const roomDocument={getElementById:id=>({
     tray,min:{disabled:false,click(){events.push('minimize');}}
   })[id]};
-  const window={leaveRoom(){events.push('leave');}};
+  const window={minimizeRoom(){events.push('minimize');},leaveRoom(){events.push('leave');}};
   const document={
     getElementById:id=>({rw:{classList:on},rf:{contentDocument:roomDocument}})[id],
     querySelector:()=>null
@@ -158,7 +158,7 @@ test('Android Back leaves the active room after dismissing any room overlay',()=
   assert.equal(window.sharikaHandleAndroidBack(),'handled');
   assert.deepEqual(events,['close tray']);
   assert.equal(window.sharikaHandleAndroidBack(),'handled');
-  assert.deepEqual(events,['close tray','leave']);
+  assert.deepEqual(events,['close tray','minimize']);
 });
 
 test('a delayed voice config cannot reconnect an earlier visit to the same room',async()=>{

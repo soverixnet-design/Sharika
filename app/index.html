@@ -77,7 +77,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.g4 button{border:1px solid var(--line);background:var(--glass);border-radius:16px;padding:10px 2px;font-size:11px;color:var(--gold);display:flex;flex-direction:column;align-items:center;gap:3px}.g4 button span{font-size:28px}.g4 button.sel{border-color:var(--gold);background:rgba(246,196,83,.12)}
 .row{display:flex;align-items:center;justify-content:space-between;padding:13px 2px;border-bottom:1px solid var(--line);font-size:14px}
 .roomwrap{position:absolute;inset:0;z-index:50;display:none;background:#05030f}.roomwrap.on{display:block}.roomwrap iframe{width:100%;height:100%;border:0;display:block}
-.mini{position:absolute;right:14px;bottom:92px;z-index:30;display:none;align-items:center;gap:6px}.mini.on{display:flex}
+.country-notice{margin:7px 12px;padding:8px 12px;border:1px solid #bd923c77;border-radius:11px;color:#fbe3ac;background:#281934;font-size:12px}.country-notice[hidden]{display:none}.room-card-pin{font-size:12px;color:#ffcf61;margin-left:4px}
+.mini{position:absolute;right:14px;left:14px;bottom:92px;z-index:30;display:none;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--gold);border-radius:18px;background:linear-gradient(120deg,#1a1031,#34213c);box-shadow:0 8px 25px #0009}.mini.on{display:flex}.mini-label{color:#fff4dc;font-weight:700;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.mini button.mini-leave{width:auto;height:36px;padding:0 12px;border-radius:12px;animation:none;font-size:12px;font-weight:700;background:#672d34;color:#fff}
 .mini button{width:54px;height:54px;border-radius:50%;border:2px solid var(--gold);background:linear-gradient(135deg,var(--a),var(--b));font-size:26px;box-shadow:0 8px 20px rgba(0,0,0,.5),0 0 0 0 rgba(246,196,83,.6);animation:pu 2s infinite}
 @keyframes pu{70%{box-shadow:0 8px 20px rgba(0,0,0,.5),0 0 0 14px rgba(246,196,83,0)}}
 .mini u{text-decoration:none;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.6);display:grid;place-items:center;font-size:11px;cursor:pointer}
@@ -328,6 +329,7 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
   <div class="ban" id="ban"></div><div class="dots" id="dots"></div>
   <div class="qa"><button id="qd"><span class="home-icon hi-reward" aria-hidden="true"></span>Daily Reward</button><button id="qg"><span class="home-icon hi-games" aria-hidden="true"></span>Games</button><button id="qi"><span class="home-icon hi-invite" aria-hidden="true"></span>Invite</button></div>
   <div class="tabs" id="tabs"><button class="on">🔥 Popular</button><button>✨ New</button><button>🏠 My Room</button><button>🕘 History</button><div class="country-room-filter" title="Choose country"><span id="room-country-icon" aria-hidden="true">🌍</span><select id="room-country" aria-label="Show all countries or choose a country"><option value="">🌍 Global · All Rooms</option></select><small id="room-country-hint" aria-live="polite">All countries visible</small></div></div>
+  <div class="country-notice" id="country-notice" role="status" hidden></div>
   <div class="grid" id="grid"></div>
   <span id="hc" hidden></span><button id="qr" type="button" hidden><small>Recharge</small></button>
  </section>
@@ -342,7 +344,7 @@ img.logo{width:44px;height:44px;border-radius:50%;object-fit:cover;background:no
  <button class="ni" data-v="msg"><span>💬</span>Messages<em>2</em></button>
  <button class="ni" data-v="me"><span>👤</span>Profile</button>
 </div>
-<div class="mini" id="mini"><button id="minib">🎙️</button><u id="minix">✕</u></div>
+<div class="mini" id="mini" role="region" aria-label="Minimized voice room"><button id="minib" type="button" aria-label="Return to voice room">🎙️</button><span class="mini-label" id="mini-name">Voice room</span><button class="mini-leave" id="minix" type="button" aria-label="Leave voice room">Leave</button></div>
 <div class="thread" id="th"><div class="thh"><button id="thb">‹</button><span id="thn"></span><button id="th-block" type="button" hidden>Block</button></div><div class="tb" id="tb"></div><div class="tin"><input class="field" id="ti" placeholder="Type a message…" autocomplete="off"><button id="ts">➤</button></div></div>
 <div class="roomwrap" id="rw"><iframe id="rf" title="Voice room"></iframe></div>
 <div class="pfo" id="pfo"><button class="pfx" id="pfb">‹</button><div id="pfc"></div></div>
@@ -454,13 +456,20 @@ function updateRoomCountryFilter(){
   $("room-country-icon").textContent=selected?discovery.flagForCountry(selected):"🌍";
   $("room-country-hint").textContent=roomCountryFilter?
     (discovery.flagForCountry(selected)+' '+(info?info[1]:selected)+' rooms only'):
-    (viewer?discovery.flagForCountry(viewer)+' '+(info?info[1]:viewer)+' rooms first · All countries visible':'All countries visible');
+    (viewer?discovery.flagForCountry(viewer)+' '+(info?info[1]:viewer)+' · Popular by live visitors':'All countries visible');
+  var note=$("country-notice"),text=(roomCountryFilter&&roomCountryFilter!==viewer)?'':String(CFG.countryNotice||'').slice(0,280);
+  if(note){note.textContent=text;note.hidden=!text;}
 }
 function roomList(){
   var q=($("q").value||"").trim().toLowerCase(),L=CFG.rooms.slice();if(A.myRoom)L.unshift(myR());
   if(tab===2)L=A.myRoom?[myR()]:[];
   else if(window.SharikaDiscovery)L=SharikaDiscovery.sortRooms(L,CFG.viewerCountry||A.country,tab===1?'new':tab===3?'history':'popular',CFG.roomHistoryIds||[]);
-  if(tab!==2&&roomCountryFilter&&window.SharikaDiscovery)L=SharikaDiscovery.filterRooms(L,roomCountryFilter);
+  if(tab!==2&&roomCountryFilter&&window.SharikaDiscovery){
+    L=SharikaDiscovery.filterRooms(L,roomCountryFilter);
+    // The selected country's Super Admin pin is a deliberate exception to
+    // the activity ranking; Global Popular still ranks by live visitors.
+    if(tab===0)L.sort(function(a,b){return Number(!!b.country_pinned)-Number(!!a.country_pinned)});
+  }
   if(q)L=L.filter(function(r){return String(r.name||'').toLowerCase().indexOf(q)>-1||String(r.id).indexOf(q)>-1});return L;
 }
 function cardHTML(room){
@@ -475,7 +484,7 @@ function cardHTML(room){
   }
   const roomLocked=Number(room.access_locked)===1;
   const displayId=room.room_display_id||room.id;
-  const online=Math.max(0,Number(room.n)||0);
+  const online=window.SharikaDiscovery?.onlineCount?.(room)??Math.max(0,Number(room.n)||0);
   const cover=window.sharikaVerifiedRoomCover?.(room.cover_url,room.id);
   return '<div class="room-card" role="button" tabindex="0" aria-label="'+
     esc((roomLocked?'Locked room ':'Join ')+room.name)+'" data-id="'+esc(room.id)+'">'+
@@ -490,6 +499,7 @@ function cardHTML(room){
     '<b title="'+esc(room.name)+'">'+esc(room.name)+'</b>'+
     (flag?'<span class="room-card-flag" role="img" title="'+esc(countryName)+
       '" aria-label="'+esc(countryName)+'">'+esc(flag)+'</span>':'')+
+    (room.country_pinned?'<span class="room-card-pin" aria-label="Pinned country room">📌</span>':'')+
     '</div><div class="room-card-meta"><span>ID '+esc(displayId)+'</span></div></div></div>';
 }
 function renderRooms(){
@@ -509,15 +519,26 @@ G.addEventListener("click",function(e){var c=e.target.closest(".room-card");if(!
 G.addEventListener("keydown",function(e){if(e.key!=='Enter'&&e.key!==' ')return;var c=e.target.closest('.room-card');if(c){e.preventDefault();c.click()}});
 /* ===== Entering the room ===== */
 var cur=null;
-function openRoom(r){var rf=$("rf");var w=JSON.stringify(JSON.stringify({name:r.name,emoji:r.emoji,theme:r.th,id:r.id,minor:!!A.minor})).replace(/</g,"\\u003c");rf.srcdoc=ROOM_HTML.replace("<head>","<head><script>window.name="+w+"<\/script>");$("rw").classList.add("on");$("mini").classList.remove("on");cur=r}
+function openRoom(r){if(cur){if(String(cur.id)===String(r.id)){restoreRoom();return;}leaveRoom();}var rf=$("rf");var w=JSON.stringify(JSON.stringify({name:r.name,emoji:r.emoji,theme:r.th,id:r.id,minor:!!A.minor})).replace(/</g,"\\u003c");rf.srcdoc=ROOM_HTML.replace("<head>","<head><script>window.name="+w+"<\/script>");$("rw").classList.add("on");$("mini").classList.remove("on");cur=r}
 function leaveRoom(){var rf=$("rf");rf.removeAttribute("srcdoc");rf.src="about:blank";$("rw").classList.remove("on");$("mini").classList.remove("on");cur=null;refresh()}
+function minimizeRoom(){
+  if(!cur)return false;
+  // Keep the existing iframe/RTC session running; never reload the room.
+  $("rw").classList.remove("on");
+  $("minib").textContent=cur.emoji||'🎙️';
+  $("mini-name").textContent=cur.name||'Voice room';
+  $("mini").classList.add("on");
+  return true;
+}
+function restoreRoom(){if(!cur)return false;$("rw").classList.add("on");$("mini").classList.remove("on");return true;}
+window.minimizeRoom=minimizeRoom;
 window.addEventListener("message",function(e){var rf=$("rf");if(!rf.contentWindow||e.source!==rf.contentWindow)return;var d=e.data||{};
-  if(d.t==="exit")leaveRoom();
+  if(d.t==="exit")window.leaveRoom();
   if(d.t==="gift"){fixA();A.st.sent=(A.st.sent||0)+d.n;A.sw[d.g]=(A.sw[d.g]||0)+d.n;saveA()}
   if(d.t==="profile"){if(d.u.seat===0){var mm=myModel();$("pfc").innerHTML=pfHTML(mm,true);pfWire($("pfc"),mm,true);$("pfo").classList.add("on")}else openProfile(d.u)}
-  if(d.t==="min"&&cur){$("rw").classList.remove("on");$("minib").textContent=cur.emoji;$("mini").classList.add("on");refresh()}});
-$("minib").onclick=function(){$("rw").classList.add("on");$("mini").classList.remove("on")};
-$("minix").onclick=leaveRoom;
+  if(d.t==="min"&&cur){minimizeRoom();refresh()}});
+$("minib").onclick=function(){if(cur&&typeof window.openRoom==='function')window.openRoom(cur);else restoreRoom()};
+$("minix").onclick=function(){window.leaveRoom()};
 function createSheet(){
   var E=["🎙️","🎤","🎶","🌙","⚽","📖","🎮","🌍","💬","🔥","💎","🌸"],ch="🎙️";
   openSheet('<h3>👑 Create your own room</h3>'+

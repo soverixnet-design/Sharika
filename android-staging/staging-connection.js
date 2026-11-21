@@ -6007,33 +6007,38 @@
       const data = await api('GET','/rooms');
       if(requestNo!==roomsRequestNo || session?.user?.id!==userId)return;
       const rows = data.rooms || [];
+      window.CFG.countryNotice=String(data.country_notice||'').slice(0,280);
       const own = rows.find(r => r.owner_id === userId);
       const discovery=window.SharikaDiscovery;
       window.CFG.viewerCountry=typeof profile==='undefined'?'':profile?.country||'';
       window.CFG.roomHistoryIds=discovery?discovery.readHistory(window.localStorage,userId):[];
       window.CFG.rooms = rows.filter(r => r.owner_id !== userId).map((r,i)=>({
-        id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,host:'Room owner',
+        id:r.id,name:r.name,emoji:r.emoji || '🎙️',n:Number(r.online_count)||0,
+        online_count:Math.max(0,Number(r.online_count)||0),host:'Room owner',
         tag:'Voice Room',mics:[],c:COLORS[i%COLORS.length],
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
         seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
         access_locked:Number(r.access_locked)===1?1:0,
-        owner_country:r.owner_country||'',room_display_id:r.room_display_id,
+        owner_country:r.owner_country||'',country_pinned:r.country_pinned===true,
+        room_display_id:r.room_display_id,
         created_at:r.created_at||''
       }));
       window.A.myRoom = own ? {
         id:own.id,name:own.name,emoji:own.emoji,th:own.theme,
         c:COLORS[0],owner_id:own.owner_id,seat_count:own.seat_count,
         seat_frame_style:own.seat_frame_style||'grad',
-        n:Number(own.online_count)||0,cover_url:own.cover_url||null,
+        n:Number(own.online_count)||0,online_count:Math.max(0,Number(own.online_count)||0),
+        cover_url:own.cover_url||null,
         access_locked:Number(own.access_locked)===1?1:0,
         owner_country:own.owner_country||window.CFG.viewerCountry||'',
+        country_pinned:own.country_pinned===true,
         room_display_id:own.room_display_id,
         created_at:own.created_at||''
       } : null;
       // Quiet background refresh: changing identical room cards restarts every
       // CSS animation and drops touch/scroll state on slower Android WebViews.
       const renderSignature=JSON.stringify([userId,rows,window.CFG.viewerCountry,
-        window.CFG.roomHistoryIds]);
+        window.CFG.roomHistoryIds,window.CFG.countryNotice]);
       if(renderSignature!==lastRoomsRenderSignature){
         lastRoomsRenderSignature=renderSignature;
         window.renderRooms();
