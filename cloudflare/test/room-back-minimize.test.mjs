@@ -51,5 +51,6 @@ test('Mini Room keeps the same iframe and restores the room without a new join',
   assert.equal(context.restoreRoom(),true);
   assert.equal(elements.rw.classList.contains('on'),true);
   assert.equal(elements.mini.classList.contains('on'),false);
-  assert.match(html,/\$\("minix"\)\.onclick=leaveRoom/);
+  assert.match(html,/\$\("minix"\)\.onclick=function\(\)\{window\.leaveRoom\(\)\}/);
+  assert.match(html,/\$\("minib"\)\.onclick=function\(\)\{if\(cur&&typeof window\.openRoom/);
 });
