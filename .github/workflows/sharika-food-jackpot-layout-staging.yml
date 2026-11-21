@@ -69,9 +69,9 @@ jobs:
           # Workers assets propagate globally; poll read-only versioned URLs rather
           # than declaring failure from a just-deployed edge cache.
           for attempt in 1 2 3 4 5 6; do
-            curl --fail --silent --show-error --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/sovera-food-wheel.html?verify=20261121-v2" > /tmp/food-live.html
-            curl --fail --silent --show-error --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/jackpot-fruit.html?verify=20261121-v2" > /tmp/jackpot-live.html
-            curl --fail --silent --show-error --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/stake-picker.js?verify=20261121-v2" > /tmp/stake-live.js
+            curl --fail --silent --show-error --location --max-redirs 4 --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/sovera-food-wheel.html?verify=20261121-v2" > /tmp/food-live.html
+            curl --fail --silent --show-error --location --max-redirs 4 --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/jackpot-fruit.html?verify=20261121-v2" > /tmp/jackpot-live.html
+            curl --fail --silent --show-error --location --max-redirs 4 --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/stake-picker.js?verify=20261121-v2" > /tmp/stake-live.js
             if grep -Fq 'min-height:64px' /tmp/food-live.html &&
                grep -Fq "anchor:document.getElementById('au')" /tmp/jackpot-live.html &&
                grep -Fq 'paintBetClock(d)' /tmp/jackpot-live.html &&
