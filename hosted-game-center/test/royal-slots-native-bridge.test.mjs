@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 
 const source=readFileSync(new URL('../web/royal-slots-bridge.js',import.meta.url),'utf8');
 const app=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
-const parentOrigin='https://sharika-games-web-staging.soverixnet.workers.dev';
+const parentOrigin='https://sharika-private-center-staging.soverixnet.workers.dev';
 
 function boot(mode='production'){
  const sent=[],listeners={},nodes=[],timers=new Map();
@@ -50,12 +50,38 @@ test('authenticated production starts behind overlay and removes it after verifi
  const ctx=boot();
  assert.match(ctx.cover.style.cssText,/display:flex/);
  assert.equal(ctx.sent.at(-1).payload.type,'ready');
+ assert.equal(ctx.sent.at(-1).target,parentOrigin,'native parent must receive handshake');
  const host=init(ctx);
  assert.equal(ctx.game.config.mode,'production');
  assert.equal(typeof host.placeBet,'function');
  assert.equal(ctx.cover.style.display,'none');
  assert.equal(ctx.game.config.profile.id,'10000003');
 });
+
+test('production message rejects the public-games origin, even when coming from the parent window',()=>{
+ const ctx=boot(),data={source:'sharika-royal-slots-server',type:'init',balance:100000,
+  freeSpins:0,lockedBet:1000,jackpot:100000,profile:{public_id:'10000003',name:'Alice'}};
+ ctx.listeners.message({source:ctx.cover,origin:'https://sharika-games-web-staging.soverixnet.workers.dev',data});
+ assert.equal(ctx.game.config,undefined);
+ init(ctx);
+ assert.equal(ctx.game.config.mode,'production');
+});
+
+test('lost initial handshake becomes a retryable error without inventing a wallet balance',()=>{
+ const ctx=boot();
+ const watchdog=[...ctx.timers.values()].find(t=>t.delay===14000);
+ assert.ok(watchdog,'missing connection watchdog');
+ watchdog.fn();
+ assert.match(ctx.cover.children[0].textContent,/timed out/i);
+ assert.equal(ctx.cover.children[1].hidden,false);
+ ctx.cover.children[1].events.click();
+ assert.equal(ctx.sent.at(-1).payload.type,'ready');
+ assert.equal(ctx.sent.at(-1).target,parentOrigin);
+ const host=init(ctx);
+ assert.equal(typeof host.placeBet,'function');
+ assert.equal(ctx.cover.style.display,'none');
+});
+
 test('paid bet completes via one server settlement; startRound does not debit twice',async()=>{
  const ctx=boot(),host=init(ctx),id='R1763561234567-1';
  const accepted=host.placeBet({roundId:id,bet:1000});
