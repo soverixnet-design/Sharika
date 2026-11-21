@@ -241,6 +241,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
 /* Sharika verified bridge. Never settle bets, choose outcomes, or persist coins here. */
 (function(){
   const SOURCE='sharika-royal-ace',SERVER='sharika-royal-ace-server',pending=new Map();
+  let unresolvedRound=null,serverMaxWin=null;
   let ready=false,waiting=false,freeRemaining=0,activeBets=[1000,10000,100000,1000000,10000000];
   const loading=$('royal-loading'),spinner=$('sp'),errorBox=$('royal-network-error');
   const retryButton=$('royal-try-again');
@@ -252,7 +253,15 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   const showError=s=>{loading.style.display='flex';errorBox.style.display='block';errorBox.textContent=s;retryButton.style.display='block';};
   const clearError=()=>{errorBox.style.display='none';errorBox.textContent='';retryButton.style.display='none';};
 window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if(!activeBets.includes(amount))activeBets.push(amount);bi=activeBets.indexOf(amount);bet=amount;upd();}, locked:()=>!ready||busy||freeRemaining>0});
-  retryButton.onclick=()=>{ready=false;connectRetries=0;clearError();requestConnection();};
+  retryButton.onclick=()=>{
+    if(busy||waiting)return;
+    if(unresolvedRound){
+      // Recover the outstanding receipt, never create a second charge on reconnect.
+      ready=true;clearError();hideIntro();
+      return spin(unresolvedRound.buy,unresolvedRound.amount,unresolvedRound.requestId);
+    }
+    ready=false;connectRetries=0;clearError();requestConnection();
+  };
   const hideIntro=()=>{loading.style.display='none';};
   spinner.disabled=true;$('bb').disabled=true;
   const previewBalance=v=>{if(Number.isSafeInteger(v)&&v>=0){bal=v;upd();}};
@@ -283,10 +292,11 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
       clearTimeout(connectTimer);connectRetries=0;
       if(!Array.isArray(d.bets)||!d.bets.every(x=>Number.isSafeInteger(x)&&x>0))return showError('Game configuration is unavailable.');
       clearError();activeBets=d.bets;freeRemaining=Number(d.freeSpins)||0;
+      serverMaxWin=Number.isSafeInteger(d.maxWin)&&d.maxWin>0?d.maxWin:null;
       bet=freeRemaining>0?Number(d.lockedBet):activeBets[0];
       if(!activeBets.includes(bet))activeBets.push(bet);
       bi=activeBets.indexOf(bet);ready=true;
-      previewBalance(d.balance);spinner.disabled=false;$('bb').disabled=false;
+      previewBalance(d.balance);spinner.disabled=false;$('bb').disabled=freeRemaining>0;
       $('royal-progress-fill').style.width='100%';$('royal-loading-caption').textContent='Ready';
       setTimeout(hideIntro,$('royal-skip-intro').checked?0:650);
       if(freeRemaining){$('st').textContent='Free Spins: '+freeRemaining+' remaining';}
@@ -302,7 +312,7 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
   const confirmedRound=async(requestId,amount,buy)=>{
     for(let attempt=0;attempt<3;attempt++){
       try{
-        const receipt=awaitRound(requestId,11000);
+        const receipt=awaitRound(requestId,34000);
         replyToHost({type:'spin',id:requestId,bet:amount,buy:!!buy});
         return await receipt;
       }catch(error){
@@ -320,20 +330,31 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
     spinTaps.push({amount:activeBets[bi],free:freeRemaining>0});
     $('st').textContent=spinTaps.length+' spins pending';
   }
-  spin=async function(buy=false,amount=activeBets[bi]){
+  spin=async function(buy=false,amount=activeBets[bi],recoveryId=null){
     if(busy||waiting)return;
     if(!ready){showError('Connect to Sharika server before playing.');return;}
 
+    if(buy&&freeRemaining>0&&!recoveryId)return;
     const cost=buy?amount*10:freeRemaining?0:amount;
-    if(bal<cost){spinTaps.length=0;auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
+    if(!recoveryId&&bal<cost){spinTaps.length=0;auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
     busy=true;waiting=true;
-    const requestId=id();
+    const requestId=recoveryId||id();
+    unresolvedRound={requestId,amount,buy:!!buy};
     let completed=false;
     $('st').textContent='Verifying bet with Sharika server…';
     try{
       const r=await confirmedRound(requestId,amount,buy);
-      if(!Number.isSafeInteger(r.win)||r.win<0||!Number.isSafeInteger(r.balance)||r.balance<0||
-         !Array.isArray(r.steps))throw Error('Invalid server response.');
+      if(r.settled!==true||r.requestId!==requestId||r.bet!==amount||
+         (buy?r.mode!=='bonus_buy':!['paid','free'].includes(r.mode))||
+         !Number.isSafeInteger(r.win)||r.win<0||!Number.isSafeInteger(r.balance)||r.balance<0||
+         !Number.isSafeInteger(r.freeSpins)||r.freeSpins<0||
+         !Number.isSafeInteger(r.bonusSpins)||r.bonusSpins<0||
+         !Array.isArray(r.steps)||r.steps.length>9||(!buy&&!r.steps.length)||
+         !r.steps.every(step=>Array.isArray(step.grid)&&step.grid.length===5&&
+           step.grid.every(col=>Array.isArray(col)&&col.length===4&&
+             col.every(x=>x&&Number.isInteger(x.s)&&x.s>=0&&x.s<=10))))
+        throw Error('Invalid server response.');
+      unresolvedRound=null;
       clearError();waiting=false;SFX.spin();
       freeRemaining=Number(r.freeSpins)||0;
       free=r.mode==='free';
@@ -356,8 +377,9 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
     }catch(err){
       spinTaps.length=0;auto=false;$('au').classList.remove('on');
       const code=String(err?.message||'Connection error');
-      const declined=/^(?:spin_rate_limited|not_enough_balance|free_spins_active|free_spin_bet_locked|invalid_bet|request_id_conflict)$/.test(code);
+      const declined=/^(?:spin_rate_limited|not_enough_balance|free_spins_active|free_spin_bet_locked|free_spin_conflict|invalid_bet|request_id_conflict|game_not_eligible|game_disabled)$/.test(code);
       if(declined){
+        unresolvedRound=null;
         // D1 rejected this bet. Do not cover the game with a reconnect overlay
         // and do not automatically resubmit it with a fresh request ID.
         const description=code.replace(/_/g,' ');
@@ -366,11 +388,11 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
         if(code!=='spin_rate_limited')replyToHost({type:'ready'});
       }else{
         // Unknown network results can be settled on D1. Never refund locally
-        // or automatically start another bet; require a verified state refresh.
+        // or automatically start another bet; recover the same receipt on Retry.
         ready=false;
-        showError('Spin not confirmed. Reconnect and check your balance: '+code);
+        showError('Spin not confirmed. Tap Retry connection to recover the SAME spin; do not place another bet: '+code);
       }
-    }finally{busy=false;waiting=false;spinner.disabled=!ready;}
+    }finally{busy=false;waiting=false;spinner.disabled=!ready;$('bb').disabled=!ready||freeRemaining>0;}
     while(completed&&ready&&spinTaps.length){
       const next=spinTaps.shift();
       if(next.free&&!freeRemaining)continue;
@@ -379,7 +401,7 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
     if(completed&&ready&&(auto||freeRemaining>0))setTimeout(()=>spin(false),750);
   };
   $('sp').onclick=manualSpin;
-  $('bb').onclick=()=>{if(!ready||busy)return;
+  $('bb').onclick=()=>{if(!ready||busy||freeRemaining>0)return;
     if(confirm('Buy 10 Free Spins for '+fmt(bet*10)+' virtual coins?'))spin(true);};
   $('pl').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=(bi+1)%activeBets.length;bet=activeBets[bi];upd();};
   $('mn').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=Math.max(0,bi-1);bet=activeBets[bi];upd();};
@@ -400,7 +422,8 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
     if(panel&&panel.querySelector('h2')){
       const note=document.createElement('p');
       note.style.cssText='font:700 13px system-ui;color:#ffe4a2;padding:8px;border:1px solid #c68d48;border-radius:8px';
-      note.textContent='Sharika Staging payouts: 7.5% of the original gross wins; maximum 10× stake per spin. All results and balances are settled by the server.';
+      note.textContent='Sharika Staging payouts: 7.5% of the original gross wins; maximum 10× stake per spin. All results and balances are settled by the server. This gross scaling is not a win probability or guaranteed return.'+
+        (serverMaxWin?' Server payout cap: '+fmt(serverMaxWin)+' coins per spin.':' A separate server payout cap also applies.');
       panel.appendChild(note);
     }
   };

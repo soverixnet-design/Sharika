@@ -187,3 +187,39 @@ test('SuperAce capped RTP applies to paid and bonus rounds',()=>{
     }
   }
 });
+
+
+test('cascade receipt payouts add up to the settled total, including rounding and caps',()=>{
+  const original=crypto.getRandomValues.bind(crypto);
+  let seed=123456789;
+  crypto.getRandomValues=a=>{
+    for(let i=0;i<a.length;i++){
+      seed=(Math.imul(seed,1664525)+1013904223)>>>0;a[i]=seed;
+    }
+    return a;
+  };
+  try{
+    for(const cap of [100000000,37])for(const free of [false,true]){
+      for(let i=0;i<200;i++){
+        const round=simulateRoyalAce(1000,free,cap);
+        const payouts=round.steps.map(s=>s.payout||0);
+        assert.ok(payouts.every(n=>Number.isSafeInteger(n)&&n>=0));
+        assert.equal(payouts.reduce((a,b)=>a+b,0),round.win);
+        assert.ok(round.win<=Math.min(10000,cap));
+      }
+    }
+  }finally{crypto.getRandomValues=original;}
+});
+
+test('legacy rejected stake returns a readable error without changing wallet or rounds',async()=>{
+  const {sqlite,route,enable}=fixture();enable();
+  try{
+    const res=await route('spin',{bet:1234,requestId:'ra_legacy_stake_001',buy:false});
+    assert.equal(res.status,400);
+    assert.equal((await res.json()).error,'invalid_bet');
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sharika_royal_ace_rounds').get().n,0);
+    assert.equal(sqlite.prepare("SELECT coins FROM sharika_users WHERE auth_uid='adult-a'").get().coins,1000000);
+    sqlite.prepare('UPDATE sharika_royal_ace_settings SET max_win=34567 WHERE id=1').run();
+    assert.equal((await (await route('state')).json()).maxWin,34567);
+  }finally{sqlite.close();}
+});

@@ -81,9 +81,12 @@ export function simulateRoyalAce(bet,free=false,maxWin=100000000){
   for(let combo=0;combo<8;combo++){
     const result=evaluate(g,bet,free,combo);
     if(!result.marks.length)break;
+    const creditedBefore=Math.floor(Math.min(cap,total*payoutBps/10000));
     total=Math.min(Math.ceil(cap*10000/payoutBps),total+result.win);
     steps[steps.length-1].marks=result.marks;
-    steps[steps.length-1].payout=Math.min(cap,Math.floor(result.win*payoutBps/10000));
+    // Allocate integer rounding and the remaining cap once across the round.
+    steps[steps.length-1].payout=
+      Math.floor(Math.min(cap,total*payoutBps/10000))-creditedBefore;
     if(Math.floor(total*payoutBps/10000)>=cap)break;
     cascade(g,result.marks,combo);
     steps.push({grid:copy(g),marks:[],combo:Math.min(combo+1,4),
@@ -116,7 +119,7 @@ export async function handleRoyalAce({request,db,uid,action,reply,fail,cors}){
     if(!s.conf||!s.conf.enabled)return fail('game_disabled',403,cors);
     return reply({balance:Number(s.u.coins),bets:JSON.parse(s.conf.bets_json),
       freeSpins:Number(s.fs?.remaining||0),lockedBet:Number(s.fs?.bet||0),
-      virtual_coins_only:true},200,cors);
+      maxWin:Number(s.conf.max_win),virtual_coins_only:true},200,cors);
   }
   if(action!=='spin'||request.method!=='POST')return fail('method_not_allowed',405,cors);
   let b;try{const t=await request.text();if(t.length>512)throw Error('too_large');b=JSON.parse(t);}catch{
@@ -155,6 +158,9 @@ export async function handleRoyalAce({request,db,uid,action,reply,fail,cors}){
         (previous.mode==='bonus_buy')===b.buy?reply(output(previous),200,cors):
         fail('request_id_conflict',409,cors);
       const detail=String(e?.message||e);
+      if(detail.includes('invalid_bet'))return fail('invalid_bet',400,cors);
+      if(detail.includes('royal_ineligible'))return fail('game_not_eligible',403,cors);
+      if(detail.includes('royal_migrating'))return fail('game_temporarily_unavailable',503,cors);
       if(detail.includes('royal_insufficient'))return fail('not_enough_balance',409,cors);
       if(detail.includes('royal_rate_limited'))return fail('spin_rate_limited',429,cors);
       if(detail.includes('royal_locked_bet'))return fail('free_spin_bet_locked',409,cors);
