@@ -9,7 +9,7 @@ body{margin:0;background:#0d0705;color:#fff;font-family:system-ui,"Noto Sans Ben
 .top .logo{height:70px;display:block;margin:0 auto}
 .row{display:flex;align-items:center;justify-content:center;gap:2%;padding:0 3%}
 .cw{position:relative;width:78%}.cw img{width:100%;display:block}
-#hl{position:absolute;top:10%;height:80%;width:19%;border:3px solid #fff;border-radius:14px;box-shadow:0 0 14px #fff,inset 0 0 10px #fff8;transition:left .25s;pointer-events:none}
+#hl{position:absolute;top:10%;height:80%;width:19%;border:3px solid #fff;border-radius:14px;box-shadow:0 0 14px #fff,inset 0 0 10px #fff8;pointer-events:none}
 #starc{width:15%;display:block}
 #bb{position:absolute;right:6px;top:2px;width:15%;background:none;border:0;padding:0;cursor:pointer;z-index:3}
 #bb img,.ib img{width:100%;display:block}
@@ -59,7 +59,7 @@ body{margin:0;background:#0d0705;color:#fff;font-family:system-ui,"Noto Sans Ben
 .flash{animation:flash .9s ease-out}.fall.flash{animation:fall var(--dur,.5s) cubic-bezier(.3,.9,.4,1.1) both,flash .9s ease-out;animation-delay:var(--dl,0s),0s}
 @keyframes flash{0%{filter:brightness(3) drop-shadow(0 0 14px #fff)}100%{filter:none}}
 .pop{animation:popo .38s forwards!important}@keyframes popo{40%{transform:scale(1.15)}100%{transform:scale(0);opacity:0}}
-.hw .c:not(.win):not(.pop){opacity:.38;filter:brightness(.55);transition:.2s}
+
 #wp{position:absolute;left:0;right:0;top:36%;text-align:center;z-index:6;pointer-events:none;opacity:0}
 #wp b{display:block;font:900 40px Impact,system-ui;color:#ffe27a;-webkit-text-stroke:3px #5a2a00;paint-order:stroke fill;text-shadow:0 4px 0 #5a2a00}
 #wp small{display:inline-block;background:#000a;border:2px solid #f2c230;border-radius:14px;padding:2px 12px;font:800 14px system-ui;color:#fff}
@@ -156,7 +156,7 @@ function upd(){$('bl').textContent=fmt(bal);$('bt').textContent=fmt(bet);/* Read
 function gen(c){let s;if(Math.random()<.045)s=8;else{let t=Math.random()*WT.reduce((a,b)=>a+b),i=0;while((t-=WT[i])>0)i++;s=i}
 return{s,g:s<8&&c>=1&&c<=3&&Math.random()<.1}}
 function html(x){const s=x.s;return '<img draggable="false" src="'+(s<8?IM[(x.g?'g':'n')+s]:s==8?IM.s8:IM['w'+s])+'">'}
-function render(marks,pop){const g=$('grid');g.innerHTML='';g.classList.toggle('hw',!!marks&&!pop);const f=turbo?.35:1;
+function render(marks,pop){const g=$('grid');g.innerHTML='';const f=turbo?.35:1;
 for(let r=0;r<4;r++)for(let c=0;c<5;c++){const x=G[c][r],k=c*4+r,d=document.createElement('div');
 let cl='c';if(x.d){cl+=' fall';d.style.setProperty('--d',x.d);d.style.setProperty('--dur',(.5*f)+'s');d.style.setProperty('--dl',((c*70+(3-r)*55)*f/1000)+'s');setTimeout(()=>SFX.land(c),((c*70+(3-r)*55)+470)*f)}
 if(x.f){cl+=' flip';if(!window._fl){window._fl=1;SFX.flip();setTimeout(()=>window._fl=0,400)}}if(marks&&marks.has(k))cl+=(pop&&!x.g)?' pop':' win';x.d=0;x.fl=x.f;x.f=0;d.className=cl;d.innerHTML=x.fl?'<span class="fc">'+html(x)+'</span><img class="bk" src="'+IM.back+'">':html(x);g.appendChild(d)}}
@@ -167,7 +167,23 @@ function evalG(){let win=0,mark=new Set();
 for(let s=0;s<8;s++){let cnt=[];for(let c=0;c<5;c++){let n=0;for(let r=0;r<4;r++){const x=G[c][r].s;if(x==s||x>=9)n++}if(!n)break;cnt.push(n)}
 const L=cnt.length;if(L>=3){win+=P[s][5-L]*cnt.reduce((a,b)=>a*b,1)*bet;for(let c=0;c<L;c++)for(let r=0;r<4;r++){const x=G[c][r].s;if(x==s||x>=9)mark.add(c*4+r)}}}
 return{win,mark}}
-function setCombo(i){$('cbar').src=free?IM.fbar:IM.mbar;const hl=$('hl');hl.style.left=(i*19.6+1)+'%'}
+let activeCombo=0,multiplierJump;
+function setCombo(index,jump=false){
+  const bar=$('cbar'),highlight=$('hl');
+  const image=free?IM.fbar:IM.mbar;
+  if(bar.getAttribute('src')!==image)bar.src=image;
+  const previous=activeCombo;
+  activeCombo=index;
+  highlight.style.left=(index*19.6+1)+'%';
+  multiplierJump?.cancel();
+  if(!jump||index<=previous||window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+  const distance=(index-previous)*highlight.parentElement.clientWidth*.196;
+  multiplierJump=highlight.animate?.([
+    {transform:'translateX('+(-distance)+'px)'},
+    {transform:'translate('+(-distance/2)+'px, -12px) scale(1.06)',offset:.5},
+    {transform:'translateX(0)'}
+  ],{duration:turbo?100:210,easing:'ease-out'});
+}
 let free=false;
 async function play(fr){free=fr;G=[];for(let c=0;c<5;c++){G.push([]);for(let r=0;r<4;r++){const x=gen(c);x.d=4;G[c].push(x)}}
 render();setCombo(0);$('wn').textContent=fmt(fsBase);$('st').textContent=fr?'FREE GAME':MSG[0];await sleep(1000);
@@ -241,6 +257,7 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
 /* Sharika verified bridge. Never settle bets, choose outcomes, or persist coins here. */
 (function(){
   const SOURCE='sharika-royal-ace',SERVER='sharika-royal-ace-server',pending=new Map();
+  let unresolvedRound=null,serverMaxWin=null;
   let ready=false,waiting=false,freeRemaining=0,activeBets=[1000,10000,100000,1000000,10000000];
   const loading=$('royal-loading'),spinner=$('sp'),errorBox=$('royal-network-error');
   const retryButton=$('royal-try-again');
@@ -252,7 +269,15 @@ document.addEventListener('click',e=>{if(e.target.closest('button'))SFX.click()}
   const showError=s=>{loading.style.display='flex';errorBox.style.display='block';errorBox.textContent=s;retryButton.style.display='block';};
   const clearError=()=>{errorBox.style.display='none';errorBox.textContent='';retryButton.style.display='none';};
 window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if(!activeBets.includes(amount))activeBets.push(amount);bi=activeBets.indexOf(amount);bet=amount;upd();}, locked:()=>!ready||busy||freeRemaining>0});
-  retryButton.onclick=()=>{ready=false;connectRetries=0;clearError();requestConnection();};
+  retryButton.onclick=()=>{
+    if(busy||waiting)return;
+    if(unresolvedRound){
+      // Recover the outstanding receipt, never create a second charge on reconnect.
+      ready=true;clearError();hideIntro();
+      return spin(unresolvedRound.buy,unresolvedRound.amount,unresolvedRound.requestId);
+    }
+    ready=false;connectRetries=0;clearError();requestConnection();
+  };
   const hideIntro=()=>{loading.style.display='none';};
   spinner.disabled=true;$('bb').disabled=true;
   const previewBalance=v=>{if(Number.isSafeInteger(v)&&v>=0){bal=v;upd();}};
@@ -283,10 +308,11 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
       clearTimeout(connectTimer);connectRetries=0;
       if(!Array.isArray(d.bets)||!d.bets.every(x=>Number.isSafeInteger(x)&&x>0))return showError('Game configuration is unavailable.');
       clearError();activeBets=d.bets;freeRemaining=Number(d.freeSpins)||0;
+      serverMaxWin=Number.isSafeInteger(d.maxWin)&&d.maxWin>0?d.maxWin:null;
       bet=freeRemaining>0?Number(d.lockedBet):activeBets[0];
       if(!activeBets.includes(bet))activeBets.push(bet);
       bi=activeBets.indexOf(bet);ready=true;
-      previewBalance(d.balance);spinner.disabled=false;$('bb').disabled=false;
+      previewBalance(d.balance);spinner.disabled=false;$('bb').disabled=freeRemaining>0;
       $('royal-progress-fill').style.width='100%';$('royal-loading-caption').textContent='Ready';
       setTimeout(hideIntro,$('royal-skip-intro').checked?0:650);
       if(freeRemaining){$('st').textContent='Free Spins: '+freeRemaining+' remaining';}
@@ -302,7 +328,7 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
   const confirmedRound=async(requestId,amount,buy)=>{
     for(let attempt=0;attempt<3;attempt++){
       try{
-        const receipt=awaitRound(requestId,11000);
+        const receipt=awaitRound(requestId,34000);
         replyToHost({type:'spin',id:requestId,bet:amount,buy:!!buy});
         return await receipt;
       }catch(error){
@@ -320,31 +346,52 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
     spinTaps.push({amount:activeBets[bi],free:freeRemaining>0});
     $('st').textContent=spinTaps.length+' spins pending';
   }
-  spin=async function(buy=false,amount=activeBets[bi]){
+  spin=async function(buy=false,amount=activeBets[bi],recoveryId=null){
     if(busy||waiting)return;
     if(!ready){showError('Connect to Sharika server before playing.');return;}
 
+    if(buy&&freeRemaining>0&&!recoveryId)return;
     const cost=buy?amount*10:freeRemaining?0:amount;
-    if(bal<cost){spinTaps.length=0;auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
+    if(!recoveryId&&bal<cost){spinTaps.length=0;auto=false;$('au').classList.remove('on');await msg('Not enough balance','OK');return;}
     busy=true;waiting=true;
-    const requestId=id();
+    const requestId=recoveryId||id();
+    unresolvedRound={requestId,amount,buy:!!buy};
     let completed=false;
     $('st').textContent='Verifying bet with Sharika server…';
     try{
       const r=await confirmedRound(requestId,amount,buy);
-      if(!Number.isSafeInteger(r.win)||r.win<0||!Number.isSafeInteger(r.balance)||r.balance<0||
-         !Array.isArray(r.steps))throw Error('Invalid server response.');
+      if(r.settled!==true||r.requestId!==requestId||r.bet!==amount||
+         (buy?r.mode!=='bonus_buy':!['paid','free'].includes(r.mode))||
+         !Number.isSafeInteger(r.win)||r.win<0||!Number.isSafeInteger(r.balance)||r.balance<0||
+         !Number.isSafeInteger(r.freeSpins)||r.freeSpins<0||
+         !Number.isSafeInteger(r.bonusSpins)||r.bonusSpins<0||
+         !Array.isArray(r.steps)||r.steps.length>9||(!buy&&!r.steps.length)||
+         !r.steps.every(step=>Array.isArray(step.grid)&&step.grid.length===5&&
+           step.grid.every(col=>Array.isArray(col)&&col.length===4&&
+             col.every(x=>x&&Number.isInteger(x.s)&&x.s>=0&&x.s<=10))))
+        throw Error('Invalid server response.');
+      unresolvedRound=null;
       clearError();waiting=false;SFX.spin();
       freeRemaining=Number(r.freeSpins)||0;
       free=r.mode==='free';
-      const steps=r.steps.slice(0,12);
-      for(const step of steps){
-        if(!Array.isArray(step.grid)||step.grid.length!==5)continue;
-        G=step.grid.map(col=>col.map(x=>({s:x.s,g:!!x.g,d:0,f:0})));
-        render(new Set(Array.isArray(step.marks)?step.marks:[]));
-        if(step.multiplier)setCombo(Math.min(4,Number(step.combo)||0));
-        await sleep(270);
+      if(r.steps.length){
+        setCombo(0);
+        $('wn').textContent=fmt(0);
       }
+      for(const step of r.steps){
+        G=step.grid.map(col=>col.map(x=>({s:x.s,g:!!x.g,d:0,f:0})));
+        // Show all 20 cards at full brightness before highlighting this win.
+        render();
+        await sleep(180);
+        const nextCombo=Math.min(4,Math.max(0,Number(step.combo)||0));
+        setCombo(nextCombo,true);
+        await sleep(240);
+        if(Array.isArray(step.marks)&&step.marks.length){
+          render(new Set(step.marks));
+          await sleep(170);
+        }
+      }
+      render();
       previewBalance(r.balance);
       $('wn').textContent=fmt(r.win);
       H.unshift([amount,r.win]);if(H.length>30)H.pop();
@@ -356,8 +403,9 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
     }catch(err){
       spinTaps.length=0;auto=false;$('au').classList.remove('on');
       const code=String(err?.message||'Connection error');
-      const declined=/^(?:spin_rate_limited|not_enough_balance|free_spins_active|free_spin_bet_locked|invalid_bet|request_id_conflict)$/.test(code);
+      const declined=/^(?:spin_rate_limited|not_enough_balance|free_spins_active|free_spin_bet_locked|free_spin_conflict|invalid_bet|request_id_conflict|game_not_eligible|game_disabled)$/.test(code);
       if(declined){
+        unresolvedRound=null;
         // D1 rejected this bet. Do not cover the game with a reconnect overlay
         // and do not automatically resubmit it with a fresh request ID.
         const description=code.replace(/_/g,' ');
@@ -366,11 +414,11 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
         if(code!=='spin_rate_limited')replyToHost({type:'ready'});
       }else{
         // Unknown network results can be settled on D1. Never refund locally
-        // or automatically start another bet; require a verified state refresh.
+        // or automatically start another bet; recover the same receipt on Retry.
         ready=false;
-        showError('Spin not confirmed. Reconnect and check your balance: '+code);
+        showError('Spin not confirmed. Tap Retry connection to recover the SAME spin; do not place another bet: '+code);
       }
-    }finally{busy=false;waiting=false;spinner.disabled=!ready;}
+    }finally{busy=false;waiting=false;spinner.disabled=!ready;$('bb').disabled=!ready||freeRemaining>0;}
     while(completed&&ready&&spinTaps.length){
       const next=spinTaps.shift();
       if(next.free&&!freeRemaining)continue;
@@ -379,7 +427,7 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
     if(completed&&ready&&(auto||freeRemaining>0))setTimeout(()=>spin(false),750);
   };
   $('sp').onclick=manualSpin;
-  $('bb').onclick=()=>{if(!ready||busy)return;
+  $('bb').onclick=()=>{if(!ready||busy||freeRemaining>0)return;
     if(confirm('Buy 10 Free Spins for '+fmt(bet*10)+' virtual coins?'))spin(true);};
   $('pl').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=(bi+1)%activeBets.length;bet=activeBets[bi];upd();};
   $('mn').onclick=()=>{if(busy||!ready||freeRemaining>0)return;bi=Math.max(0,bi-1);bet=activeBets[bi];upd();};
@@ -400,7 +448,8 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
     if(panel&&panel.querySelector('h2')){
       const note=document.createElement('p');
       note.style.cssText='font:700 13px system-ui;color:#ffe4a2;padding:8px;border:1px solid #c68d48;border-radius:8px';
-      note.textContent='Sharika Staging payouts: 7.5% of the original gross wins; maximum 10× stake per spin. All results and balances are settled by the server.';
+      note.textContent='Sharika Staging payouts: 7.5% of the original gross wins; maximum 10× stake per spin. All results and balances are settled by the server. This gross scaling is not a win probability or guaranteed return.'+
+        (serverMaxWin?' Server payout cap: '+fmt(serverMaxWin)+' coins per spin.':' A separate server payout cap also applies.');
       panel.appendChild(note);
     }
   };

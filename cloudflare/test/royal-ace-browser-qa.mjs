@@ -8,7 +8,7 @@ const source=resolve(import.meta.dirname,'../../android-staging/app/src/main/ass
 const dir=mkdtempSync(join(tmpdir(),'superace-qa-'));
 const images=process.env.SUPERACE_QA_OUTPUT||join(dir,'screens');
 mkdirSync(images,{recursive:true});
-for(const n of ['royal-ace-deluxe.html','royal-ace-loader.svg'])copyFileSync(join(source,n),join(dir,n));
+for(const n of ['royal-ace-deluxe.html','royal-ace-loader.svg','stake-picker.js'])copyFileSync(join(source,n),join(dir,n));
 let browser;
 try{
  const chrome=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/opt/google/chrome/chrome','/usr/bin/chromium'].find(existsSync);
@@ -20,12 +20,14 @@ try{
    '<script>window.requests=[];window.connected=false;window.readyCount=0;',
    "addEventListener('message',e=>{const d=e.data;if(d?.source!=='sharika-royal-ace')return;",
    "if(d.type==='ready'){window.readyCount++;if(window.readyCount===1)return;setTimeout(()=>{e.source.postMessage({source:'sharika-royal-ace-server',type:'init',",
-   "balance:1000000,bets:[1000,10000,100000,1000000,10000000],lockedBet:0,freeSpins:0},'*');window.connected=true},1200);}",
-   "if(d.type==='spin'){window.requests.push(d);if(window.requests.length===2){",
+   "balance:1000000,maxWin:100000000,bets:[1000,10000,100000,1000000,10000000],lockedBet:0,freeSpins:0},'*');window.connected=true},1200);}",
+   "if(d.type==='spin'){window.requests.push(d);if(window.responseMode==='lost'){",
+   "setTimeout(()=>e.source.postMessage({source:'sharika-royal-ace-server',type:'spinResult',id:d.id,error:'network unavailable'},'*'),25);return;}",
+   "if(window.requests.length===2){",
    "setTimeout(()=>e.source.postMessage({source:'sharika-royal-ace-server',type:'spinResult',id:d.id,error:'spin_rate_limited'},'*'),100);return;}",
    "let grid=Array.from({length:5},()=>Array.from({length:4},()=>({s:8,g:false})));",
    "setTimeout(()=>e.source.postMessage({source:'sharika-royal-ace-server',type:'spinResult',id:d.id,",
-   "win:500,balance:999500,mode:'paid',freeSpins:0,bonusSpins:0,steps:[{grid,marks:[],combo:0,multiplier:1}]},'*'),100)",
+   "settled:true,requestId:d.id,bet:d.bet,win:500,balance:999500,mode:'paid',freeSpins:0,bonusSpins:0,steps:[{grid,marks:[],combo:0,multiplier:1}]},'*'),window.responseMode==='slow'?12000:100)",
    "}});</script></html>"
   ].join('\n');
   const file=join(dir,m.mode+'.html');writeFileSync(file,html);
@@ -86,6 +88,40 @@ try{
   await f.locator('#royal-try-again').click();
   await f.locator('#royal-loading').waitFor({state:'hidden',timeout:10000});
   assert.equal(await f.locator('#sp').isDisabled(),false);
+  // A network failure may hide a committed round. Explicit Retry must recover
+  // the receipt with the original ID and stake, never submit a fresh bet.
+  await page.evaluate(()=>{window.responseMode='lost';});
+  const before=await page.evaluate(()=>window.requests.length);
+  await f.locator('#sp').click();
+  await f.locator('#royal-network-error').waitFor({state:'visible',timeout:10000});
+  const lost=await page.evaluate(n=>window.requests.slice(n),before);
+  assert.equal(lost.length,3);
+  assert.equal(new Set(lost.map(r=>r.id)).size,1);
+  await page.evaluate(()=>{window.responseMode='ok';});
+  await f.locator('#royal-try-again').click();
+  await page.waitForFunction(n=>window.requests.length===n+4,before);
+  assert.equal(await page.evaluate(()=>window.requests.at(-1).id),lost[0].id);
+  await f.locator('#royal-loading').waitFor({state:'hidden'});
+  await page.waitForTimeout(700);
+  assert.equal(await f.locator('#sp').isDisabled(),false);
+  if(m.mode==='full'){
+    // The 19s parent bridge can legitimately take longer than the old 11s
+    // child timeout. A 12s success must remain a single submission.
+    await page.evaluate(()=>{window.responseMode='slow';});
+    const count=await page.evaluate(()=>window.requests.length);
+    await f.locator('#sp').click();
+    await page.waitForTimeout(12800);
+    assert.equal(await page.evaluate(()=>window.requests.length),count+1);
+    assert.equal(await f.locator('#royal-loading').isVisible(),false);
+  }
+  await f.locator('#inf').click();
+  assert.match(await f.locator('#bx').textContent(),/Server payout cap: 100,000,000/);
+  assert.match(await f.locator('#bx').textContent(),/not a win probability/);
+  await page.evaluate(()=>document.getElementById('game').contentWindow.postMessage(
+    {source:'sharika-royal-ace-server',type:'init',balance:0,maxWin:100000000,
+     bets:[1000],lockedBet:1000,freeSpins:1},'*'));
+  await page.waitForTimeout(100);
+  assert.equal(await f.locator('#bb').isDisabled(),true,'Bonus purchase is locked during free spins');
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({mode:m.mode,status:'passed',box}));
   await page.close();
