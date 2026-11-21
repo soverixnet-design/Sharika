@@ -1,0 +1,43 @@
+name: Sharika Voice Stability and Admin Credit QA
+on:
+  push:
+    branches:
+      - fix/sharika-voice-wallet-credit-20261121
+  pull_request:
+    paths:
+      - 'cloudflare/src/staff.mjs'
+      - 'cloudflare/test/admin-credit-voice-stability.test.mjs'
+      - 'admin/connection.js'
+      - 'android-staging/staging-connection.js'
+      - '.github/workflows/sharika-voice-wallet-credit-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate voice, recharge, and admin JavaScript syntax
+        run: |
+          node --check android-staging/staging-connection.js
+          node --check admin/connection.js
+          node --check cloudflare/src/staff.mjs
+          node --check cloudflare/test/admin-credit-voice-stability.test.mjs
+      - name: Verify collision-safe wallet grants, foreground refresh and voice recovery
+        run: |
+          node --test \
+            cloudflare/test/admin-credit-voice-stability.test.mjs \
+            cloudflare/test/staff.test.mjs \
+            cloudflare/test/play-tester-admin.test.mjs \
+            cloudflare/test/voice-ice.test.mjs \
+            cloudflare/test/room-weak-network.test.mjs
+      - name: Run complete Cloudflare test suite
+        run: npm --prefix cloudflare run check

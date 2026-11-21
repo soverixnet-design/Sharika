@@ -5245,6 +5245,16 @@
     voiceRecoveryAttempts=0;
     scheduleVoiceRetry(roomId,'network restored',true);
   });
+  // After Android resumes, online events are not guaranteed to fire for
+  // cellular/VPN transitions. Check an existing room's RTC connection without
+  // navigating away, recreating the room iframe or unmuting the microphone.
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden||!joinedRoom||wantedVoiceRoom!==joinedRoom.id)return;
+    const roomId=joinedRoom.id;
+    if(sfuState?.roomId===roomId&&!sfuState.closed&&
+       !sfuTransportHealthy(sfuState))
+      scheduleVoiceRetry(roomId,'foreground voice transport check');
+  });
   // Frame cosmetics cannot restart a voice transport already in progress.
   function ensureVoiceConnected(roomId) {
     if(pendingVoice?.roomId===roomId&&wantedVoiceRoom===roomId)return pendingVoice.promise;
@@ -5946,6 +5956,35 @@
     window.refresh();
     return wallet;
   }
+  // An administrator can credit this wallet while the member is online.
+  // Previously the visible balance refreshed mostly after a local purchase,
+  // claim or sign-in, so a genuine grant appeared missing until re-login.
+  // Only the verified /wallet response can update coins: never use messages
+  // or a local notification as an authoritative balance change.
+  let lastPassiveWalletCheck=0,passiveWalletRequest=null;
+  function refreshWalletWhenVisible(force=false){
+    if(!session?.user?.id||document.hidden)return Promise.resolve(false);
+    if(passiveWalletRequest)return passiveWalletRequest;
+    const now=Date.now();
+    if(!force&&now-lastPassiveWalletCheck<25000)return Promise.resolve(false);
+    lastPassiveWalletCheck=now;
+    const current=reloadWallet().then(()=>true).catch(error=>{
+      console.warn('Passive wallet refresh deferred:',errText(error));
+      return false;
+    });
+    passiveWalletRequest=current.finally(()=>{
+      if(passiveWalletRequest===wrapped)passiveWalletRequest=null;
+    });
+    const wrapped=passiveWalletRequest;
+    return wrapped;
+  }
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden)refreshWalletWhenVisible(true);
+  });
+  window.addEventListener('focus',()=>refreshWalletWhenVisible());
+  window.addEventListener('pageshow',()=>refreshWalletWhenVisible(true));
+  setInterval(()=>refreshWalletWhenVisible(),30000);
+
   async function refreshWalletAfterConfirmedTransaction(snapshot=null) {
     const accountId=session?.user?.id;
     try{await reloadWallet();return true;}
