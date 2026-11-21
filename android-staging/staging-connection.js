@@ -6019,7 +6019,8 @@
         th:r.theme || 'mid',owner_id:r.owner_id,seat_count:r.seat_count,
         seat_frame_style:r.seat_frame_style||'grad',cover_url:r.cover_url||null,
         access_locked:Number(r.access_locked)===1?1:0,
-        owner_country:r.owner_country||'',room_display_id:r.room_display_id,
+        owner_country:r.owner_country||'',country_pinned:r.country_pinned===true,
+        room_display_id:r.room_display_id,
         created_at:r.created_at||''
       }));
       window.A.myRoom = own ? {
@@ -6030,6 +6031,7 @@
         cover_url:own.cover_url||null,
         access_locked:Number(own.access_locked)===1?1:0,
         owner_country:own.owner_country||window.CFG.viewerCountry||'',
+        country_pinned:own.country_pinned===true,
         room_display_id:own.room_display_id,
         created_at:own.created_at||''
       } : null;
