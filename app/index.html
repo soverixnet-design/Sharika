@@ -533,12 +533,12 @@ function minimizeRoom(){
 function restoreRoom(){if(!cur)return false;$("rw").classList.add("on");$("mini").classList.remove("on");return true;}
 window.minimizeRoom=minimizeRoom;
 window.addEventListener("message",function(e){var rf=$("rf");if(!rf.contentWindow||e.source!==rf.contentWindow)return;var d=e.data||{};
-  if(d.t==="exit")leaveRoom();
+  if(d.t==="exit")window.leaveRoom();
   if(d.t==="gift"){fixA();A.st.sent=(A.st.sent||0)+d.n;A.sw[d.g]=(A.sw[d.g]||0)+d.n;saveA()}
   if(d.t==="profile"){if(d.u.seat===0){var mm=myModel();$("pfc").innerHTML=pfHTML(mm,true);pfWire($("pfc"),mm,true);$("pfo").classList.add("on")}else openProfile(d.u)}
   if(d.t==="min"&&cur){minimizeRoom();refresh()}});
-$("minib").onclick=restoreRoom;
-$("minix").onclick=leaveRoom;
+$("minib").onclick=function(){if(cur&&typeof window.openRoom==='function')window.openRoom(cur);else restoreRoom()};
+$("minix").onclick=function(){window.leaveRoom()};
 function createSheet(){
   var E=["🎙️","🎤","🎶","🌙","⚽","📖","🎮","🌍","💬","🔥","💎","🌸"],ch="🎙️";
   openSheet('<h3>👑 Create your own room</h3>'+
