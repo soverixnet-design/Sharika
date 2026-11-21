@@ -1340,7 +1340,17 @@ export async function handleRequest(request, env, ctx) {
           homeFirst(b)-homeFirst(a) ||
           String(b.created_at||'').localeCompare(String(a.created_at||'')) ||
           String(a.id).localeCompare(String(b.id)));
-        return reply({rooms:listed.slice(0,100)},200,cors);
+        let countryNotice='';
+        try {
+          const config=await env.DB.prepare(
+            'SELECT notice FROM sharika_country_settings WHERE country_code=?'
+          ).bind(viewerCountry).first();
+          countryNotice=String(config?.notice||'').slice(0,280);
+        } catch(error) {
+          // Older staging D1 databases still serve rooms before migration 0107.
+          console.warn('country_notice_unavailable',error?.message);
+        }
+        return reply({rooms:listed.slice(0,100),country_notice:countryNotice},200,cors);
       }
       if (request.method === 'POST') {
         const prior = await env.DB.prepare('SELECT * FROM sharika_rooms WHERE owner_id=?').bind(uid).first();
