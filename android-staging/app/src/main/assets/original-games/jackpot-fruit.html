@@ -45,7 +45,7 @@ body{background:radial-gradient(circle at 50% 20%,#4b1a7a,#12061f 75%);color:#ff
 #lv{position:absolute;right:-24px;top:2px;width:8px;height:46px;background:linear-gradient(90deg,#888,#fff,#888);border-radius:4px}#lv::before{content:"";position:absolute;top:-14px;left:-7px;width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff9a9a,#c00)}
 #bd{position:relative}#bd::before,#bd::after{content:"";position:absolute;top:34px;bottom:34px;left:-9px;width:8px;background:radial-gradient(circle,#fff 40%,#ffd0ff 48%,transparent 52%) 0 0/8px 22px repeat-y;filter:drop-shadow(0 0 4px #f8f);animation:tw 1s infinite alternate}#bd::after{left:auto;right:-9px;animation-delay:.5s}@keyframes tw{to{opacity:.35}}
 #g{padding:8px;background:#2a1a6a;border-radius:16px;box-shadow:inset 0 4px 10px #000a}
-.t:not(.p) b{filter:drop-shadow(0 0 10px #8fffc0aa) drop-shadow(0 5px 3px #0009)}.t i{text-shadow:0 2px 2px #000}
+.t:not(.p) b{filter:drop-shadow(0 0 10px #8fffc0aa) drop-shadow(0 5px 3px #0009)}#tm.bet-closed{font-size:clamp(16px,5vw,22px)!important;color:#ffd07d!important;letter-spacing:.4px}.t i{text-shadow:0 2px 2px #000}
 #rs span{position:relative}#rs em{position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);background:#ff4a8a;color:#fff;font-size:8px;font-style:normal;border-radius:6px;padding:0 4px}
 .cw{flex:1;display:flex;flex-direction:column;align-items:center}#ch button{flex:none;width:100%;height:38px;font-size:14px}.am{width:64%;height:16px;margin-top:8px;border-radius:50% 50% 30% 30%;background:linear-gradient(#6ab0ff,#1a4ab0);box-shadow:0 5px 0 #0a1a5a,0 8px 8px #0008}.on+.am{background:linear-gradient(#ff7a7a,#c01a2a);box-shadow:0 2px 0 #5a0a14;transform:translateY(3px)}
 #bt b::before{content:"🪙 "}#bt div{box-shadow:0 6px 0 #2a1470,inset 0 3px 6px #fff5}
@@ -175,7 +175,18 @@ const F=[['🍋',5],['🍇',5],['🥝',5],['🍒',40],0,['🍑',5],['🍉',20],[
 const RING=[0,1,2,5,8,7,6,3],CH=[1000,10000,100000,1000000,10000000];
 const chipLabel=c=>c>=1000000?(c/1000000)+'M':c>=1000?(c/1000)+'K':String(c);
 let chip=CH[0],bets=Array(9).fill(0),muted=false,latestSeen=null;
-window.installStakePicker({balance:()=>GameBridge.get()?.coins||0, selected:()=>chip, select:amount=>{chip=amount;document.querySelectorAll('.chip.on,#chips .on,#ch .on').forEach(b=>b.classList.remove('on'));}});
+// The former Auto control never placed bets. Put the custom stake action
+// in that slot instead of floating over the in-room close button.
+window.installStakePicker({
+  balance:()=>GameBridge.get()?.coins||0,
+  selected:()=>chip,
+  select:amount=>{
+    chip=amount;
+    document.querySelectorAll('#ch button').forEach(b=>
+      b.classList.toggle('on',Number(b.dataset.c)===amount));
+  },
+  anchor:document.getElementById('au')
+});
 const verifiedWinners=document.createElement('div');
 verifiedWinners.id='og-top3';
 verifiedWinners.setAttribute('role','status');
@@ -194,6 +205,12 @@ const tiles=F.map((f,i)=>{
 $('#ch').innerHTML=CH.map((c,i)=>'<div class="cw"><button class="'+(i?'':'on')+'" data-c="'+c+'">'+['🔵','🟡','🟠','🟣','🔴'][i]+' '+chipLabel(c)+'</button><i class="am"></i></div>').join('');
 document.querySelectorAll('#ch button').forEach(b=>b.onclick=()=>{chip=Number(b.dataset.c);document.querySelectorAll('#ch button').forEach(v=>v.classList.toggle('on',b===v))});
 function msg(t){$('#msg').textContent=t;clearTimeout(msg.id);msg.id=setTimeout(()=>$('#msg').textContent='',3000)}
+function paintBetClock(d){
+  const remain=Math.max(0,Math.ceil((d.round.bet_closes_ms-GameBridge.now())/1000));
+  const clock=$('#tm');
+  clock.textContent=remain?remain+'s':'CLOSED';
+  clock.classList.toggle('bet-closed',remain===0);
+}
 async function place(tileIndex){
 
  const d=GameBridge.get();if(!d||GameBridge.now()>=d.round.bet_closes_ms){msg('Betting closed');return;}
@@ -206,7 +223,7 @@ function redraw(d){
  bets.fill(0);for(const b of d.my_bets||[])if(b.round_no===d.round.round_no)bets[RING[b.pick_index]]+=b.amount;
  $('#rd').textContent=d.round.round_no;$('#bal').textContent=fmt(d.coins);$('#jp').textContent=fmt(d.jackpot_pool||0);
  $('#pg').textContent='🔒 Secure server';
- $('#tm').textContent=Math.max(0,Math.ceil((d.round.bet_closes_ms-GameBridge.now())/1000))||'--';
+ paintBetClock(d);
  tiles.forEach((v,i)=>{v.classList.remove('hl');const u=v.querySelector('u');if(u)u.textContent=bets[i]?fmt(bets[i]):''});
  const prev=d.previous_result;
  if(prev){
@@ -251,7 +268,7 @@ function showRound(d){
  $('#pb').append(header,sym,bonus,spentNode,winNode,rankTitle,ranks,close);
  $('#pop').style.display='flex';setTimeout(()=>$('#pop').style.display='none',4500);
 }
-$('#au').onclick=()=>msg('Auto-betting disabled for wallet safety.');
+// Auto-betting remains disabled; the old Auto button is now Set stake.
 $('#ss').textContent='TOP';
 $('.tr').style.cursor='pointer';
 $('.tr').onclick=async()=>{
@@ -280,7 +297,7 @@ GameBridge.onRefresh(async(d,now,changed)=>{
  $('#td').textContent=fmt(d.today_won);
 });
 GameBridge.onError(e=>msg('Server: '+e));
-setInterval(()=>{const d=GameBridge.get();if(d)$('#tm').textContent=Math.max(0,Math.ceil((d.round.bet_closes_ms-GameBridge.now())/1000))||'--'},200);
+setInterval(()=>{const d=GameBridge.get();if(d)paintBetClock(d)},200);
 setTimeout(()=>{$('#load')?.remove();GameBridge.start()},1000);
 </script><style>.sc{perspective:700px;height:170px;display:flex;align-items:center;justify-content:center;position:relative;margin-top:10px}
 .sc::after{content:"";position:absolute;bottom:4px;width:110px;height:18px;border-radius:50%;background:radial-gradient(#000c,transparent 70%);animation:sd 3s ease-in-out infinite}
