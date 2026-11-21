@@ -1,0 +1,113 @@
+name: Sharika Room Minimize and Country Management staging rollout
+
+on:
+  push:
+    branches:
+      - integration/sharika-games-event-videos-20261121
+    paths:
+      - '.github/workflows/sharika-room-country-staging-rollout.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharika-room-country-staging-rollout
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify room back button, verified live ranking and audited country settings
+        run: |
+          set -euo pipefail
+          node --check android-staging/back-navigation.js
+          node --check app/room-discovery.js
+          node --check admin/connection.js
+          node --check cloudflare/src/index.mjs
+          node --check cloudflare/src/admin-countries.mjs
+          node --test cloudflare/test/room-back-minimize.test.mjs cloudflare/test/room-discovery.test.mjs cloudflare/test/admin-countries.test.mjs cloudflare/test/profile-location.test.mjs
+          npm --prefix cloudflare run check
+      - name: Reject any non-staging destination or changed policy guard
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const get=p=>JSON.parse(readFileSync(p,'utf8'));
+          const api=get('cloudflare/wrangler.jsonc');
+          const admin=get('cloudflare/wrangler.admin.jsonc');
+          const acct='d81cf7c48fb9b36d468cb0a08720cd74';
+          const d1='b2c62252-12a5-4740-90c7-01a536d9a39a';
+          if(api.name!=='sharika-api-staging'||admin.name!=='sharika-admin-staging'||
+            api.account_id!==acct||admin.account_id!==acct||
+            api.d1_databases?.[0]?.database_id!==d1||
+            admin.d1_databases?.[0]?.database_id!==d1||
+            api.vars?.SHARIKA_ENV!=='staging'||
+            api.vars?.SHARIKA_COINS_CASH_REDEEMABLE!=='false'||
+            api.vars?.SHARIKA_PLAY_BILLING_ENABLED!=='false'||
+            api.keep_vars!==true||
+            !api.durable_objects?.bindings?.some(x=>x.name==='VOICE_ROOMS')||
+            !api.r2_buckets?.some(x=>x.binding==='MEDIA_BUCKET')||
+            admin.services?.[0]?.service!=='sharika-api-staging'||
+            process.env.GITHUB_REF!=='refs/heads/integration/sharika-games-event-videos-20261121')
+            throw Error('Staging isolation, data, voice or policy guard mismatch');
+          console.log('EXACT_STAGING_DESTINATIONS_CONFIRMED');
+          NODE
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: sharika-staging
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fail closed unless staging token and additive migration 0107 are present
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN}"
+          node --input-type=module <<'NODE'
+          const url='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+
+            '/d1/database/b2c62252-12a5-4740-90c7-01a536d9a39a/query';
+          const sql="SELECT name FROM d1_migrations WHERE name='0107_country_management.sql'; SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sharika_country_settings','sharika_country_settings_audit')";
+          const res=await fetch(url,{method:'POST',headers:{
+            'Authorization':'Bearer '+process.env.CLOUDFLARE_API_TOKEN,
+            'Content-Type':'application/json'
+          },body:JSON.stringify({sql})});
+          const data=await res.json();
+          if(!res.ok||!data.success||
+            !data.result?.[0]?.results?.some(row=>row.name==='0107_country_management.sql')||
+            data.result?.[1]?.results?.length!==2)
+            throw Error('Staging D1 migration 0107 not verified; refusing deployment');
+          console.log('STAGING_MIGRATION_0107_VERIFIED_READ_ONLY');
+          NODE
+      - name: Assemble existing admin content from reviewed files
+        run: |
+          cp admin/index.html cloudflare/src/admin-index.html
+          cp admin/connection.js cloudflare/src/admin-connection.txt
+      - name: Publish API with existing voice secrets and settings preserved
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.jsonc --keep-vars
+      - name: Publish existing staging Admin Panel with new Country Management
+        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.admin.jsonc
+      - name: Check staging health and protect country management from anonymous access
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/health | grep -q staging
+          curl --fail --silent --show-error --max-time 20 https://sharika-admin-staging.soverixnet.workers.dev/health | grep -q sharika-admin-staging
+          code="$(curl --silent --show-error -o /dev/null -w '%{http_code}' --max-time 20 https://sharika-api-staging.soverixnet.workers.dev/api/v1/admin/countries)"
+          test "$code" = 401 || { echo "Unauthorized country request returned $code"; exit 1; }
+          echo 'SHARIKA_ROOM_COUNTRY_STAGING_DEPLOYED_WITH_AUTH_GUARD'
