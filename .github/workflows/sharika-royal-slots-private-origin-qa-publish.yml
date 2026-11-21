@@ -1,0 +1,81 @@
+name: Fix Royal Slots stuck Connecting overlay (staging only)
+on:
+  push:
+    branches:
+      - fix/sharika-royal-slots-private-origin-20261121
+    paths:
+      - '.github/workflows/sharika-royal-slots-private-origin-qa-publish.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sharika-games-static-staging
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify correct parent for iframe postMessage
+        run: |
+          set -euo pipefail
+          node --check hosted-game-center/web/royal-slots-bridge.js
+          node --check hosted-game-center/web/app.js
+          grep -F "const PARENT='https://sharika-private-center-staging.soverixnet.workers.dev'" hosted-game-center/web/royal-slots-bridge.js
+          ! grep -F "const PARENT='https://sharika-games-web-staging.soverixnet.workers.dev'" hosted-game-center/web/royal-slots-bridge.js
+          node --test hosted-game-center/test/royal-slots-native-bridge.test.mjs hosted-game-center/test/royal-slots-integration.test.mjs
+      - name: Build original static games and run hosted routing tests
+        run: |
+          set -euo pipefail
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/game-availability-smoke.test.mjs hosted-game-center/test/private-game-visual-reliability.test.mjs hosted-game-center/test/hosted-route.test.mjs
+          test -s hosted-game-center/dist/games/royal-slots/bridge.js
+          grep -F "const PARENT='https://sharika-private-center-staging.soverixnet.workers.dev'" hosted-game-center/dist/games/royal-slots/bridge.js
+      - name: Chromium all eleven games smoke test
+        run: |
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+          node --test hosted-game-center/test/all-games-browser-smoke.test.mjs
+      - name: Dry-run only static public game host
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('hosted-game-center/wrangler.jsonc','utf8'));
+          if(c.name!=='sharika-games-web-staging'||
+            c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+            c.assets?.directory!=='./dist'||c.d1_databases||c.r2_buckets||
+            c.assets?.run_worker_first!==true)
+            throw Error('Static-only game target mismatch');
+          NODE
+          npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.jsonc --outdir /tmp/sharika-slots-static-only
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    environment: sharika-staging
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Deploy only verified public static assets; never modify game API or user DB
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node hosted-game-center/scripts/build.mjs
+          npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.jsonc
+      - name: Verify live script and public no-wallet posture
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 25 'https://sharika-games-web-staging.soverixnet.workers.dev/games/royal-slots/bridge.js' > /tmp/royal-slots-bridge-live.js
+          grep -F "const PARENT='https://sharika-private-center-staging.soverixnet.workers.dev'" /tmp/royal-slots-bridge-live.js
+          grep -F 'Game server connection timed out. Tap Retry connection.' /tmp/royal-slots-bridge-live.js
+          curl --fail --silent --show-error --max-time 25 'https://sharika-games-web-staging.soverixnet.workers.dev/health' | grep -q staging
+          echo SHARIKA_ROYAL_SLOTS_PRIVATE_PARENT_FIXED_STATIC_ONLY
