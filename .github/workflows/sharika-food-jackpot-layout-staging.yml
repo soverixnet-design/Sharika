@@ -1,0 +1,88 @@
+name: Sharika Sovera Food and Fruit Jackpot layout staging QA
+on:
+  push:
+    branches: [fix/sharika-sovera-food-jackpot-bet-layout-20261121]
+    paths: ['.github/workflows/sharika-food-jackpot-layout-staging.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: sharika-games-static-staging
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build all original hosted game assets without modifying Android app
+        run: |
+          set -euo pipefail
+          node --check hosted-game-center/scripts/build.mjs
+          node --check android-staging/app/src/main/assets/original-games/stake-picker.js
+          node hosted-game-center/scripts/build.mjs
+          node --test hosted-game-center/test/game-availability-smoke.test.mjs hosted-game-center/test/hosted-route.test.mjs
+      - name: Native-size Chromium validation of both games and all eleven game cards
+        run: |
+          set -euo pipefail
+          npm install --prefix hosted-game-center --no-audit --no-fund
+          ./hosted-game-center/node_modules/.bin/playwright install --only-shell chromium
+          # The test checks after the opening overlay is hidden OR removed, depending on the game.
+          node --test hosted-game-center/test/sovera-food-jackpot-room-bets.test.mjs
+          node --test hosted-game-center/test/all-games-browser-smoke.test.mjs
+      - name: Verify exact static-only Cloudflare deployment target
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const c=JSON.parse(readFileSync('hosted-game-center/wrangler.jsonc','utf8'));
+          if(c.name!=='sharika-games-web-staging'||
+             c.account_id!=='d81cf7c48fb9b36d468cb0a08720cd74'||
+             c.assets?.directory!=='./dist'||c.d1_databases||c.r2_buckets||
+             c.assets?.run_worker_first!==true)throw Error('Static host target mismatch');
+          NODE
+      - name: Dry-run static assets
+        run: npx --yes wrangler@4 deploy --dry-run --config hosted-game-center/wrangler.jsonc --outdir /tmp/sharika-food-jackpot
+  publish:
+    needs: verify
+    environment: sharika-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: d81cf7c48fb9b36d468cb0a08720cd74
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Publish only hosted static game assets (never user wallet or Play API)
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node hosted-game-center/scripts/build.mjs
+          npx --yes wrangler@4 deploy --config hosted-game-center/wrangler.jsonc
+      - name: Verify live static game patches
+        run: |
+          set -euo pipefail
+          # Workers assets propagate globally; poll read-only versioned URLs rather
+          # than declaring failure from a just-deployed edge cache.
+          for attempt in 1 2 3 4 5 6; do
+            curl --fail --silent --show-error --location --max-redirs 4 --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/sovera-food-wheel.html?verify=20261121-v2" > /tmp/food-live.html
+            curl --fail --silent --show-error --location --max-redirs 4 --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/jackpot-fruit.html?verify=20261121-v2" > /tmp/jackpot-live.html
+            curl --fail --silent --show-error --location --max-redirs 4 --max-time 25 "https://sharika-games-web-staging.soverixnet.workers.dev/games/original-games/stake-picker.js?verify=20261121-v2" > /tmp/stake-live.js
+            if grep -Fq 'min-height:64px' /tmp/food-live.html &&
+               grep -Fq "anchor:document.getElementById('au')" /tmp/jackpot-live.html &&
+               grep -Fq 'paintBetClock(d)' /tmp/jackpot-live.html &&
+               grep -Fq 'anchor.replaceWith(button)' /tmp/stake-live.js; then
+              echo 'SHARIKA_TWO_GAME_BET_LAYOUT_STAGING_PUBLISHED'
+              exit 0
+            fi
+            echo "Static propagation attempt $attempt: food=$(wc -c </tmp/food-live.html) jackpot=$(wc -c </tmp/jackpot-live.html) stake=$(wc -c </tmp/stake-live.js)"
+            sleep 5
+          done
+          echo 'Live static assets did not match source after bounded propagation retries.'
+          echo 'Food first 180 bytes:'; head -c 180 /tmp/food-live.html
+          echo 'Jackpot first 180 bytes:'; head -c 180 /tmp/jackpot-live.html
+          exit 1

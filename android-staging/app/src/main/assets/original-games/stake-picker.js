@@ -1,9 +1,17 @@
 // Editing the selection never sends a bet. The game's regular play control does that.
-window.installStakePicker = function ({ balance, selected, select, locked = () => false }) {
+window.installStakePicker = function ({ balance, selected, select, locked = () => false, anchor = null }) {
   const button = document.createElement('button');
   button.type = 'button';
   button.textContent = 'Set stake';
-  button.style.cssText = 'position:fixed;right:6px;top:28px;z-index:9998;padding:5px 9px;border-radius:12px;background:#352447;color:white;font:600 12px sans-serif';
+  button.id = 'sharika-stake-picker';
+  // The floating top-right button covered the native close/room buttons.
+  // Games may mount it in their ordinary betting toolbar instead.
+  button.style.cssText = anchor ?
+    'flex:0 0 auto;min-width:82px;min-height:44px;padding:6px 10px;'+
+    'border:2px solid #ffd76a;border-radius:14px;background:#352447;'+
+    'color:#fff;font:700 12px system-ui,sans-serif;cursor:pointer' :
+    'position:fixed;right:6px;top:28px;z-index:9998;padding:5px 9px;'+
+    'border-radius:12px;background:#352447;color:white;font:600 12px sans-serif';
   const dialog = document.createElement('dialog');
   dialog.style.cssText = 'max-width:85vw;padding:16px;border-radius:12px;background:#241c31;color:white;font:16px sans-serif';
   dialog.innerHTML = '<form><label>Stake in coins <input type="number" min="1" step="1" inputmode="numeric" required></label><p></p><button type="button" data-full>Full balance</button> <button type="submit">Set</button> <button type="button" data-close>Cancel</button></form>';
@@ -29,7 +37,10 @@ window.installStakePicker = function ({ balance, selected, select, locked = () =
       return;
     }
     select(amount);
+    if (anchor) button.textContent = 'Stake: ' + Number(amount).toLocaleString('en-US');
     dialog.close();
   };
-  document.body.append(button, dialog);
+  if (anchor && typeof anchor.replaceWith === 'function') anchor.replaceWith(button);
+  else document.body.appendChild(button);
+  document.body.appendChild(dialog);
 };
