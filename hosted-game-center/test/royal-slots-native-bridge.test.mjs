@@ -27,7 +27,7 @@ function boot(mode='production'){
   setTimeout(fn,delay){const id=++nextTimer;timers.set(id,{fn,delay});return id},
   clearTimeout(id){timers.delete(id)}});
  const message=data=>listeners.message?.({source:parent,origin:parentOrigin,data});
- return {sent,game,document,nodes,timers,message,cover:nodes[0],listeners};
+ return {sent,game,document,nodes,timers,message,cover:nodes[0],listeners,parent};
 }
 function init(ctx){
  ctx.message({source:'sharika-royal-slots-server',type:'init',balance:100000,
@@ -61,7 +61,7 @@ test('authenticated production starts behind overlay and removes it after verifi
 test('production message rejects the public-games origin, even when coming from the parent window',()=>{
  const ctx=boot(),data={source:'sharika-royal-slots-server',type:'init',balance:100000,
   freeSpins:0,lockedBet:1000,jackpot:100000,profile:{public_id:'10000003',name:'Alice'}};
- ctx.listeners.message({source:ctx.cover,origin:'https://sharika-games-web-staging.soverixnet.workers.dev',data});
+ ctx.listeners.message({source:ctx.parent,origin:'https://sharika-games-web-staging.soverixnet.workers.dev',data});
  assert.equal(ctx.game.config,undefined);
  init(ctx);
  assert.equal(ctx.game.config.mode,'production');
