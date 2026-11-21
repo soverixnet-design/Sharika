@@ -9,7 +9,7 @@ body{margin:0;background:#0d0705;color:#fff;font-family:system-ui,"Noto Sans Ben
 .top .logo{height:70px;display:block;margin:0 auto}
 .row{display:flex;align-items:center;justify-content:center;gap:2%;padding:0 3%}
 .cw{position:relative;width:78%}.cw img{width:100%;display:block}
-#hl{position:absolute;top:10%;height:80%;width:19%;border:3px solid #fff;border-radius:14px;box-shadow:0 0 14px #fff,inset 0 0 10px #fff8;transition:left .25s;pointer-events:none}
+#hl{position:absolute;top:10%;height:80%;width:19%;border:3px solid #fff;border-radius:14px;box-shadow:0 0 14px #fff,inset 0 0 10px #fff8;pointer-events:none}
 #starc{width:15%;display:block}
 #bb{position:absolute;right:6px;top:2px;width:15%;background:none;border:0;padding:0;cursor:pointer;z-index:3}
 #bb img,.ib img{width:100%;display:block}
@@ -167,7 +167,23 @@ function evalG(){let win=0,mark=new Set();
 for(let s=0;s<8;s++){let cnt=[];for(let c=0;c<5;c++){let n=0;for(let r=0;r<4;r++){const x=G[c][r].s;if(x==s||x>=9)n++}if(!n)break;cnt.push(n)}
 const L=cnt.length;if(L>=3){win+=P[s][5-L]*cnt.reduce((a,b)=>a*b,1)*bet;for(let c=0;c<L;c++)for(let r=0;r<4;r++){const x=G[c][r].s;if(x==s||x>=9)mark.add(c*4+r)}}}
 return{win,mark}}
-function setCombo(i){$('cbar').src=free?IM.fbar:IM.mbar;const hl=$('hl');hl.style.left=(i*19.6+1)+'%'}
+let activeCombo=0,multiplierJump;
+function setCombo(index,jump=false){
+  const bar=$('cbar'),highlight=$('hl');
+  const image=free?IM.fbar:IM.mbar;
+  if(bar.getAttribute('src')!==image)bar.src=image;
+  const previous=activeCombo;
+  activeCombo=index;
+  highlight.style.left=(index*19.6+1)+'%';
+  multiplierJump?.cancel();
+  if(!jump||index<=previous||window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+  const distance=(index-previous)*highlight.parentElement.clientWidth*.196;
+  multiplierJump=highlight.animate?.([
+    {transform:'translateX('+(-distance)+'px)'},
+    {transform:'translate('+(-distance/2)+'px, -12px) scale(1.06)',offset:.5},
+    {transform:'translateX(0)'}
+  ],{duration:turbo?100:210,easing:'ease-out'});
+}
 let free=false;
 async function play(fr){free=fr;G=[];for(let c=0;c<5;c++){G.push([]);for(let r=0;r<4;r++){const x=gen(c);x.d=4;G[c].push(x)}}
 render();setCombo(0);$('wn').textContent=fmt(fsBase);$('st').textContent=fr?'FREE GAME':MSG[0];await sleep(1000);
@@ -358,14 +374,24 @@ window.installStakePicker({balance:()=>bal, selected:()=>bet, select:amount=>{if
       clearError();waiting=false;SFX.spin();
       freeRemaining=Number(r.freeSpins)||0;
       free=r.mode==='free';
-      const steps=r.steps.slice(0,12);
-      for(const step of steps){
-        if(!Array.isArray(step.grid)||step.grid.length!==5)continue;
-        G=step.grid.map(col=>col.map(x=>({s:x.s,g:!!x.g,d:0,f:0})));
-        render(new Set(Array.isArray(step.marks)?step.marks:[]));
-        if(step.multiplier)setCombo(Math.min(4,Number(step.combo)||0));
-        await sleep(270);
+      if(r.steps.length){
+        setCombo(0);
+        $('wn').textContent=fmt(0);
       }
+      for(const step of r.steps){
+        G=step.grid.map(col=>col.map(x=>({s:x.s,g:!!x.g,d:0,f:0})));
+        // Show all 20 cards at full brightness before highlighting this win.
+        render();
+        await sleep(180);
+        const nextCombo=Math.min(4,Math.max(0,Number(step.combo)||0));
+        setCombo(nextCombo,true);
+        await sleep(240);
+        if(Array.isArray(step.marks)&&step.marks.length){
+          render(new Set(step.marks));
+          await sleep(170);
+        }
+      }
+      render();
       previewBalance(r.balance);
       $('wn').textContent=fmt(r.win);
       H.unshift([amount,r.win]);if(H.length>30)H.pop();
