@@ -1,8 +1,11 @@
 /* Royal Slots authenticated iframe relay. Coins, spins and outcomes are server-owned. */
 (()=>{'use strict';
  if(window.parent===window||new URLSearchParams(location.search).get('mode')!=='production')return;
- const PARENT='https://sharika-games-web-staging.soverixnet.workers.dev';
- const pending=new Map(),receipts=new Map();let ready=false;
+ // The native WebView loads the authenticated PRIVATE center as the parent.
+ // Static game art/scripts come from games-web; that is NOT the parent origin.
+ // Keep an exact targetOrigin: child frames never receive Firebase credentials.
+ const PARENT='https://sharika-private-center-staging.soverixnet.workers.dev';
+ const pending=new Map(),receipts=new Map();let ready=false,connectionTimer=null;
  const send=payload=>parent.postMessage({source:'sharika-royal-slots',...payload},PARENT);
  // Prevent unverified Spin clicks before the native Firebase + D1 bridge is ready.
  // Demo-mode pages return above and never display this cover or access wallets.
@@ -24,10 +27,17 @@
   ready=false;cover.style.display='flex';
   status.textContent=message;retryButton.hidden=!canRetry;
  };
- retryButton.addEventListener('click',()=>{
-  showConnection('Checking your verified wallet and game connection…');
+ // Do not keep a permanent black overlay when the iframe handshake is lost.
+ // The state/wallet always comes from the verified parent, never a local fallback.
+ function requestConnection(){
+  clearTimeout(connectionTimer);
+  showConnection('Connecting to Sharika game server…');
+  connectionTimer=setTimeout(()=>{
+   if(!ready)showConnection('Game server connection timed out. Tap Retry connection.',true);
+  },14000);
   send({type:'ready'});
- });
+ }
+ retryButton.addEventListener('click',requestConnection);
  const validMoney=n=>Number.isSafeInteger(n)&&n>=0;
  const validReceipt=(r,p,id)=>!!r&&r.requestId===id&&r.bet===p.bet&&
   r.freeSpin===p.freeSpin&&r.settled===true&&r.virtual_coins_only===true&&
@@ -79,7 +89,11 @@
   if(!m||m.source!=='sharika-royal-slots-server')return;
   if(m.type==='init'){
    if(!validMoney(m.balance)||!validMoney(m.freeSpins)||
-      !m.profile||typeof m.profile.name!=='string'||!m.profile.name.trim())return;
+      !m.profile||typeof m.profile.name!=='string'||!m.profile.name.trim()){
+    clearTimeout(connectionTimer);
+    showConnection('Game server returned incomplete wallet data. Retry connection.',true);
+    return;
+   }
    if(!window.SharikaGame||typeof window.SharikaGame.init!=='function'){
     showConnection('Royal Slots could not load. Retry connection.',true);return;
    }
@@ -89,9 +103,14 @@
      avatar:m.profile.pic||m.profile.avatar||''},
      balance:m.balance,bet:m.lockedBet||1000,freeSpins:m.freeSpins,
      jackpot:validMoney(m.jackpot)?m.jackpot:0});
+    clearTimeout(connectionTimer);
     ready=true;cover.style.display='none';retryButton.hidden=true;
-   }catch(error){showConnection('Royal Slots could not initialize. Please retry.',true);}
+   }catch(error){
+    clearTimeout(connectionTimer);
+    showConnection('Royal Slots could not initialize. Please retry.',true);
+   }
   }else if(m.type==='initError'){
+   clearTimeout(connectionTimer);
    showConnection('Game server unavailable: '+String(m.error||'Connection failed').slice(0,120),true);
   }else if(m.type==='spinResult'&&typeof m.id==='string'){
    const p=pending.get(m.id);if(!p)return;
@@ -112,7 +131,7 @@
   }
  });
  window.SharikaGame?.on('gameClose',()=>send({type:'close'}));
- const announceReady=()=>send({type:'ready'});
+ const announceReady=requestConnection;
  if(document.readyState==='complete')announceReady();
  else window.addEventListener('load',announceReady,{once:true});
 })();
